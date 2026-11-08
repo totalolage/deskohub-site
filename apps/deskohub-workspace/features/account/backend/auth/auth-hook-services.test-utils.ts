@@ -2,12 +2,19 @@ import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-fla
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
+import { releaseGateOverFlags } from "@/features/feature-flags/backend/release-gate.test-utils";
+import { releaseGateForRun } from "@/features/feature-flags/backend/release-gate-run";
 import type { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend/workspace-feature-flag.service";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
+import {
+  AnalyticsConsentLedger,
+  type IAnalyticsConsentLedger,
+} from "@/features/legal/backend/analytics-consent-ledger";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import type { WorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
+  accountReleaseRunPolicy,
   PasskeyReleaseGate,
   SignInCodeReleaseGate,
 } from "../account-release-gates";
@@ -44,6 +51,11 @@ export type AuthHookServiceOverrides = {
   readonly registerReviewAccount?: ReviewAccounts["Service"]["register"];
   readonly createCustomerAccount?: Records["createCustomerAccount"];
   readonly captureLocalePreference?: Records["captureLocalePreference"];
+  /**
+   * The ledger's mirror of a signing-in device's consent choice: the real
+   * ledger over Postgres, and a no-op over an in-memory store.
+   */
+  readonly mirrorAnalyticsConsent?: IAnalyticsConsentLedger["mirror"];
 };
 
 /** A flag evaluation that fails as PostHog being unavailable. */
@@ -86,8 +98,14 @@ const releaseGates = ({
         Effect.die(new Error(`Unexpected auth flag read: ${flag}`)),
     });
   return Layer.mergeAll(
-    SignInCodeReleaseGate.onFirstRead(featureFlags),
-    PasskeyReleaseGate.onFirstRead(featureFlags)
+    releaseGateForRun(
+      releaseGateOverFlags(SignInCodeReleaseGate, featureFlags),
+      accountReleaseRunPolicy
+    ),
+    releaseGateForRun(
+      releaseGateOverFlags(PasskeyReleaseGate, featureFlags),
+      accountReleaseRunPolicy
+    )
   );
 };
 
@@ -126,10 +144,20 @@ export const postgresAuthHookServices = (
       register: overrides.registerReviewAccount ?? real.register,
     }))
   ).pipe(Layer.provide(ReviewAccounts.Default));
+  const consentLedger = Layer.effect(
+    AnalyticsConsentLedger,
+    Effect.map(AnalyticsConsentLedger, (real) => ({
+      ...real,
+      mirror: overrides.mirrorAnalyticsConsent ?? real.mirror,
+    }))
+  ).pipe(Layer.provide(AnalyticsConsentLedger.Default));
   return Layer.mergeAll(
-    Layer.mergeAll(records, reviewAccounts, AccountRoleGrants.Default).pipe(
-      Layer.provide(testDatabase.layer)
-    ),
+    Layer.mergeAll(
+      records,
+      reviewAccounts,
+      consentLedger,
+      AccountRoleGrants.Default
+    ).pipe(Layer.provide(testDatabase.layer)),
     WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase.pool),
     botProtection(overrides),
     releaseGates(overrides)
@@ -138,8 +166,9 @@ export const postgresAuthHookServices = (
 
 /**
  * Capabilities for an in-memory login store, which has no Workspace
- * database: no account records, role grants, or review accounts, and a
- * sign-in lock that only runs its effect, since one process holds the store.
+ * database: no account records, role grants, review accounts, or consent
+ * ledger, and a sign-in lock that only runs its effect, since one process
+ * holds the store.
  */
 export const memoryAuthHookServices = (
   overrides: AuthHookServiceOverrides = {}
@@ -158,6 +187,9 @@ export const memoryAuthHookServices = (
       register: overrides.registerReviewAccount ?? (() => Effect.void),
     }),
     Layer.mock(AccountRoleGrants, { has: () => Effect.succeed(false) }),
+    Layer.mock(AnalyticsConsentLedger, {
+      mirror: overrides.mirrorAnalyticsConsent ?? (() => Effect.succeed(false)),
+    }),
     Layer.mock(WorkspaceDatabaseAdvisoryLock, {
       withLock: (_key, effect) => effect,
     }),

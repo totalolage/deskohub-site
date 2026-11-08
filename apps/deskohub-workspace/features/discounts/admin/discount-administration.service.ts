@@ -45,6 +45,7 @@ import {
   sameMoneyUnit,
 } from "@/shared/money/money";
 import type { DiscountAdjustment } from "../contracts";
+import { insertDiscountCode } from "../discount-code-issuance";
 import { toDotyposDiscountBasisPoints } from "../dotypos-discount-percentage";
 import type {
   DiscountCodeClaimId,
@@ -53,6 +54,7 @@ import type {
   VoucherClaimId,
   VoucherId,
 } from "../persistence-contracts";
+import { isAssignableDotyposDiscountGroup } from "./admin-discount-group";
 import type {
   CreateCustomerDiscountCodeAdminInput,
   CreateCustomerVoucherAdminInput,
@@ -92,6 +94,8 @@ export type AdminDiscountCode = {
   readonly maxUses: number | null;
   readonly maxUsesPerCustomer: number | null;
   readonly audienceSize: number;
+  /** The customers the code is limited to; empty when it is unrestricted. */
+  readonly audienceCustomerIds: readonly DotyposCustomerId[];
   readonly reservedUses: number;
   readonly redeemedUses: number;
   readonly releasedUses: number;
@@ -109,6 +113,8 @@ export type AdminVoucher = {
   readonly validFrom: Temporal.Instant | null;
   readonly validUntil: Temporal.Instant | null;
   readonly audienceSize: number;
+  /** The customers the voucher is limited to; empty when it is unrestricted. */
+  readonly audienceCustomerIds: readonly DotyposCustomerId[];
   readonly reservedUses: number;
   readonly redeemedUses: number;
   readonly releasedUses: number;
@@ -596,34 +602,14 @@ export class DiscountAdministration extends Context.Service<
                   }),
                 })
               );
-              const [promotion] = yield* db
-                .insert(promotionCodes)
-                .values({
-                  kind: "discount",
-                  ...toPromotionCodeValues(input.code),
-                })
-                .returning({ id: promotionCodes.id });
-              if (!promotion) {
-                return yield* Effect.die(
-                  new Error("Promotion insert returned no identifier.")
-                );
-              }
-              const codeRows = yield* db
-                .insert(discountCodes)
-                .values({
-                  ...toPromotionCodeValues(input.code),
-                  promotionCodeId: promotion.id,
-                  discountId,
-                  maxUses: input.code.maxUses,
-                  maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
-                })
-                .returning({ id: discountCodes.id });
-              const codeRow = codeRows[0];
-              return codeRow
-                ? codeRow.id
-                : yield* Effect.die(
-                    new Error("Discount code insert returned no identifier.")
-                  );
+              const code = yield* insertDiscountCode({
+                ...toPromotionCodeValues(input.code),
+                discountId,
+                maxUses: input.code.maxUses,
+                maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
+                audience: [],
+              });
+              return code.id;
             })
           )
       );
@@ -672,39 +658,14 @@ export class DiscountAdministration extends Context.Service<
                 }),
               })
             );
-            const [promotion] = yield* db
-              .insert(promotionCodes)
-              .values({
-                kind: "discount",
-                ...toPromotionCodeValues(input.code),
-              })
-              .returning({ id: promotionCodes.id });
-            if (!promotion) {
-              return yield* Effect.die(
-                new Error("Promotion insert returned no identifier.")
-              );
-            }
-            const codeRows = yield* db
-              .insert(discountCodes)
-              .values({
-                ...toPromotionCodeValues(input.code),
-                promotionCodeId: promotion.id,
-                discountId,
-                maxUses: input.code.maxUses,
-                maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
-              })
-              .returning({ id: discountCodes.id });
-            const codeRow = codeRows[0];
-            if (!codeRow) {
-              return yield* Effect.die(
-                new Error("Discount code insert returned no identifier.")
-              );
-            }
-            yield* db.insert(promotionCodeCustomers).values({
-              promotionCodeId: promotion.id,
-              dotyposCustomerId: input.customerId,
+            const code = yield* insertDiscountCode({
+              ...toPromotionCodeValues(input.code),
+              discountId,
+              maxUses: input.code.maxUses,
+              maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
+              audience: [input.customerId],
             });
-            return codeRow.id;
+            return code.id;
           })
         );
       });
@@ -1162,6 +1123,30 @@ export class DiscountAdministration extends Context.Service<
         )
       );
 
+      const requireAssignableDiscountGroup = Effect.fnUntraced(function* (
+        discountGroupId: DotyposDiscountGroupId
+      ) {
+        const discountGroups = yield* dotypos.getDiscountGroups();
+        const group = discountGroups.find(({ id }) => id === discountGroupId);
+        if (!group || !isAssignableDotyposDiscountGroup(group)) {
+          return yield* new DiscountAdminNotFoundError({
+            resource: {
+              kind: "Dotypos discount group",
+              id: discountGroupId,
+            },
+            message:
+              "The Dotypos discount group does not exist or is unavailable.",
+          });
+        }
+        if (toDotyposDiscountBasisPoints(group.discountPercent) === undefined) {
+          return yield* new InvalidDotyposDiscountPercentage({
+            discountGroupId,
+            message:
+              "The Dotypos discount group has an invalid discount percentage.",
+          });
+        }
+      });
+
       const setCustomerDiscountGroup = Effect.fn(
         "DiscountAdministration.setCustomerDiscountGroup"
       )(function* (input: {
@@ -1173,29 +1158,7 @@ export class DiscountAdministration extends Context.Service<
           if (customer._discountGroupId === input.discountGroupId) {
             return;
           }
-          const discountGroups = yield* dotypos.getDiscountGroups();
-          const group = discountGroups.find(
-            ({ id }) => id === input.discountGroupId
-          );
-          if (!group || group.deleted || group.display === false) {
-            return yield* new DiscountAdminNotFoundError({
-              resource: {
-                kind: "Dotypos discount group",
-                id: input.discountGroupId,
-              },
-              message:
-                "The Dotypos discount group does not exist or is unavailable.",
-            });
-          }
-          if (
-            toDotyposDiscountBasisPoints(group.discountPercent) === undefined
-          ) {
-            return yield* new InvalidDotyposDiscountPercentage({
-              discountGroupId: input.discountGroupId,
-              message:
-                "The Dotypos discount group has an invalid discount percentage.",
-            });
-          }
+          yield* requireAssignableDiscountGroup(input.discountGroupId);
         }
         yield* dotypos.setCustomerDiscountGroup(
           input.customerId,

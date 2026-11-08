@@ -1,12 +1,38 @@
 import type CookieConsent from "vanilla-cookieconsent";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
+import { getLegalDocumentPath } from "@/features/legal/legal-document-path";
 import { consentCategories } from "@/shared/utils/consent-cookie";
 
+/** Links to the privacy notice and the cookie policy the choice is made under. */
+function legalDocumentLinks(locale: Locale): string {
+  return [
+    [
+      getLegalDocumentPath(locale, "privacy-policy"),
+      m.cookieConsentPrivacyPolicyLink({}, { locale }),
+    ],
+    [
+      getLegalDocumentPath(locale, "cookie-policy"),
+      m.cookieConsentCookiePolicyLink({}, { locale }),
+    ],
+  ]
+    .map(([href, label]) => `<a href="${href}">${label}</a>`)
+    .join("\n");
+}
+
+/**
+ * The banner's configuration. `revision` binds saved choices to the current
+ * legal documents. The banner never opens itself: the caller shows it once it
+ * knows the device needs to choose.
+ */
 export function createConsentConfig(
-  locale: Locale
+  locale: Locale,
+  revision: number
 ): CookieConsent.CookieConsentConfig {
+  const links = legalDocumentLinks(locale);
   return {
+    revision,
+    autoShow: false,
     guiOptions: {
       consentModal: {
         layout: "box wide",
@@ -49,6 +75,7 @@ export function createConsentConfig(
               {},
               { locale }
             ),
+            footer: links,
           },
           preferencesModal: {
             title: m.cookieConsentPreferencesModalTitle({}, { locale }),
@@ -108,6 +135,9 @@ export function createConsentConfig(
                   ),
                 linkedCategory: "preferences",
               },
+              // The vendor spaces a link group only in the consent modal's
+              // footer, which wraps the footer in one itself.
+              { description: `<span class="cm__link-group">${links}</span>` },
             ],
           },
         },

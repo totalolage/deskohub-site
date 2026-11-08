@@ -32,14 +32,14 @@ import { currentInstant, instantStringSchema } from "@/shared/utils/temporal";
 import type { AudienceFilter } from "../../audience-filter";
 import type { AudienceEvaluationContext } from "../../backend/audience-evaluation-context";
 import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";
-import { renderCampaignEmailPreview } from "../../body/render-campaign-email-preview";
+import { renderCampaignEmailPreview } from "../../campaign-email";
 import type { CampaignId } from "../../campaign-identifiers";
 import {
   CampaignAudienceMissing,
   type CampaignDeliveryMismatch,
   type CampaignNotFound,
 } from "../../errors";
-import { campaignLocales } from "../../recipient-locale";
+import { campaignLocaleEntries, campaignLocales } from "../../recipient-locale";
 import type { AutomationDraftHash } from "../automation-draft-hash";
 import { automationPageCursor } from "../automation-page-cursor";
 import { automationTickAtOrAfter } from "../automation-ticks";
@@ -501,24 +501,14 @@ export class AutomationDryRun extends Context.Service<
           onNone: () => Effect.succeed([]),
           onSome: ({ campaign }) =>
             Effect.forEach(
-              campaignLocales.flatMap((locale) => {
-                const content = campaign.content[locale];
-                return content === undefined ? [] : [{ locale, content }];
-              }),
-              ({ locale, content }) =>
+              campaignLocaleEntries(campaign.content, campaignLocales),
+              ([locale, content]) =>
                 renderCampaignEmailPreview({
                   templateKey: campaign.templateKey,
                   purpose: campaign.purpose,
                   locale,
                   content,
-                }).pipe(
-                  Effect.map(({ subject, html, text }) => ({
-                    locale,
-                    subject,
-                    html,
-                    text,
-                  }))
-                )
+                }).pipe(Effect.map((email) => ({ locale, ...email })))
             ),
         });
 

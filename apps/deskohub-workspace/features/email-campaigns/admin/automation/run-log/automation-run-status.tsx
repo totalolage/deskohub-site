@@ -89,10 +89,6 @@ const endedLabel = (
   return automationRunOutcomeLabel(outcome, locale);
 };
 
-/**
- * Where a run stands: waiting until a time, sending, or how it ended and
- * why.
- */
 /** How a run still under way reads: sending, waiting until, or in progress. */
 const activeLabel = (
   run: Pick<AutomationRunSummary, "dueAt" | "phase" | "state">,
@@ -109,6 +105,10 @@ const activeLabel = (
     : m.emailAutomationRunsStatusInProgress({}, { locale });
 };
 
+/**
+ * Where a run stands: waiting until a time, sending, or how it ended and
+ * why.
+ */
 export function AutomationRunStatus({
   locale,
   run,

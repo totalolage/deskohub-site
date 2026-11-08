@@ -6,7 +6,6 @@ import {
   type DotyposTable,
   type DotyposTableId,
 } from "@deskohub/dotypos";
-import type { Table } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/product-catalog";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -28,7 +27,6 @@ import {
 } from "@/features/reservation/reservation-interval";
 import { ReservationIntervalValidationError } from "@/features/reservation/reservation-interval-domain";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import {
   excludeDotyposReservationsById,
   getWorkspaceReservationIntervalDates,
@@ -81,9 +79,7 @@ const getReservedDeskScoringOccupancyById = Effect.fn(
   const rankingOccupancyByTableId = new Map(actualOccupancyByTableId);
 
   for (const table of tables) {
-    const tableId = getAssignableDotyposTableId(table);
     if (
-      !tableId ||
       table.enabled !== true ||
       table.display !== true ||
       !table.tags?.includes(workspaceCoworkOpenSpaceTableTag)
@@ -93,8 +89,8 @@ const getReservedDeskScoringOccupancyById = Effect.fn(
 
     const seatCapacity = yield* getWorkspaceTableSeatCapacity(table);
     rankingOccupancyByTableId.set(
-      tableId,
-      Math.max(actualOccupancyByTableId.get(tableId) ?? 0, seatCapacity)
+      table.id,
+      Math.max(actualOccupancyByTableId.get(table.id) ?? 0, seatCapacity)
     );
   }
 
@@ -374,7 +370,7 @@ const getReservationSeats = (
 
 const validateTableAssignment = (input: {
   readonly assignment: WorkspaceTableAssignment;
-  readonly matchingTable: Table | undefined;
+  readonly matchingTable: DotyposTable | undefined;
   readonly matchingTables: readonly DotyposTable[];
 }) =>
   Effect.succeed(input).pipe(
@@ -388,9 +384,7 @@ const validateTableAssignment = (input: {
           )}`,
         })
     ),
-    Effect.let("matchingTableId", ({ matchingTable }) =>
-      matchingTable ? getAssignableDotyposTableId(matchingTable) : undefined
-    ),
+    Effect.let("matchingTableId", ({ matchingTable }) => matchingTable?.id),
     Effect.filterOrFail(
       (
         assignment

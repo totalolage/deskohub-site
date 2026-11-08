@@ -172,6 +172,58 @@ const isMarked = (mark: Mark) => (ast: SchemaAST.AST) =>
   ast.context?.annotations?.[mark] === true ||
   (ast.checks?.some(isMarkedCheck(mark)) ?? false);
 
+interface MarkableChild {
+  readonly ast: SchemaAST.AST;
+  readonly path: ReadonlyArray<string>;
+}
+
+/**
+ * The nodes a value at `path` can hold a marked value through, in visiting
+ * order: the node's encodings, then its structure.
+ */
+const markableChildren = (
+  ast: SchemaAST.AST,
+  path: ReadonlyArray<string>
+): ReadonlyArray<MarkableChild> => [
+  ...(ast.encoding ?? []).map((link) => ({ ast: link.to, path })),
+  ...structuralChildren(ast, path),
+];
+
+/** Properties and elements add a path segment; other wrappers keep the path. */
+const structuralChildren = (
+  ast: SchemaAST.AST,
+  path: ReadonlyArray<string>
+): ReadonlyArray<MarkableChild> => {
+  if (SchemaAST.isObjects(ast)) {
+    return [
+      ...ast.propertySignatures.map((property) => ({
+        ast: property.type,
+        path: [...path, String(property.name)],
+      })),
+      ...ast.indexSignatures.map((index) => ({
+        ast: index.type,
+        path: [...path, "*"],
+      })),
+    ];
+  }
+  if (SchemaAST.isArrays(ast)) {
+    return [...ast.elements, ...ast.rest].map((element) => ({
+      ast: element,
+      path: [...path, "*"],
+    }));
+  }
+  if (SchemaAST.isUnion(ast)) {
+    return ast.types.map((member) => ({ ast: member, path }));
+  }
+  if (SchemaAST.isSuspend(ast)) {
+    return [{ ast: ast.thunk(), path }];
+  }
+  if (SchemaAST.isDeclaration(ast)) {
+    return ast.typeParameters.map((parameter) => ({ ast: parameter, path }));
+  }
+  return [];
+};
+
 /** The property paths at which a value of the schema holds a `mark`ed value. */
 const markedPaths = (mark: Mark, schema: Schema.Top) => {
   const isMarkedNode = isMarked(mark);
@@ -190,30 +242,8 @@ const markedPaths = (mark: Mark, schema: Schema.Top) => {
       paths.push(path);
       return;
     }
-    for (const link of ast.encoding ?? []) {
-      visit(link.to, path, within);
-    }
-    if (SchemaAST.isObjects(ast)) {
-      for (const property of ast.propertySignatures) {
-        visit(property.type, [...path, String(property.name)], within);
-      }
-      for (const index of ast.indexSignatures) {
-        visit(index.type, [...path, "*"], within);
-      }
-    } else if (SchemaAST.isArrays(ast)) {
-      for (const element of [...ast.elements, ...ast.rest]) {
-        visit(element, [...path, "*"], within);
-      }
-    } else if (SchemaAST.isUnion(ast)) {
-      for (const member of ast.types) {
-        visit(member, path, within);
-      }
-    } else if (SchemaAST.isSuspend(ast)) {
-      visit(ast.thunk(), path, within);
-    } else if (SchemaAST.isDeclaration(ast)) {
-      for (const parameter of ast.typeParameters) {
-        visit(parameter, path, within);
-      }
+    for (const child of markableChildren(ast, path)) {
+      visit(child.ast, child.path, within);
     }
   };
   visit(schema.ast, [], new Set());

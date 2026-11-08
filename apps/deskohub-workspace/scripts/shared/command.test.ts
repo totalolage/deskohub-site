@@ -48,6 +48,29 @@ describe("runCommand", () => {
     });
   });
 
+  test("forwards output as it arrives and still captures it", async () => {
+    const forwarded = { stdout: [] as string[], stderr: [] as string[] };
+    const decoder = new TextDecoder();
+    const result = await runCommand(
+      ["bash", "-c", "echo one; echo two >&2; sleep 0.05; echo three"],
+      {
+        forwardOutput: {
+          stdout: {
+            write: (chunk) => forwarded.stdout.push(decoder.decode(chunk)),
+          },
+          stderr: {
+            write: (chunk) => forwarded.stderr.push(decoder.decode(chunk)),
+          },
+        },
+      }
+    );
+    expect(result.exitCode).toBe(0);
+    expect(forwarded.stdout.join("")).toBe("one\nthree\n");
+    expect(forwarded.stderr.join("")).toBe("two\n");
+    expect(result.stdout).toBe("one\nthree\n");
+    expect(result.stderr).toBe("two\n");
+  });
+
   test("a timeout ends descendants that inherit the output pipes", async () => {
     const started = performance.now();
     const result = await runCommand(

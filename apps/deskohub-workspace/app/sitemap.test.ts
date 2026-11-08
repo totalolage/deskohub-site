@@ -66,6 +66,8 @@ const origin = "https://workspace.deskohub.cz";
 const noindexPathnames = [
   "/account",
   "/admin",
+  // The mobile web app, which `X-Robots-Tag` keeps out of search.
+  "/app",
   "/auth/callback",
   "/auth/sign-in",
   "/checkout/pay",

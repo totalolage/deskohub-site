@@ -2,6 +2,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { createElement } from "react";
 import { CampaignBodyContent } from "@/features/email-campaigns/body/campaign-body-content";
 import { workspaceSiteConstants } from "@/shared/utils";
+import { WorkspaceCampaignFooter } from "../_components/workspace-campaign-footer";
 import type { ContactBusinessEmailProps } from "../contact-business";
 import type { ContactConfirmationEmailProps } from "../contact-confirmation";
 import type { CustomerReservationEmailProps } from "../customer-reservation";
@@ -19,26 +20,18 @@ const workspaceLocationMapUrl =
   "https://workspace.deskohub.cz/workspace-location-map.jpeg";
 
 export const contactBusinessPreviewProps = {
-  locale: "cs-CZ",
-  preview: "Nová zpráva od Ada Lovelace",
-  heading: "Nová zpráva z kontaktního formuláře Workspace",
-  messageHeading: "Zpráva",
-  details: [
-    { label: "Jméno", value: "Ada Lovelace" },
-    { label: "Email", value: customerEmail },
-    { label: "Telefon", value: "+420 123 456 789" },
-    { label: "Datum a čas", value: "pátek 12. června 2026 v 9:00" },
-  ],
+  name: "Ada Lovelace",
+  email: customerEmail,
+  phone: "+420 123 456 789",
   message: customerMessage,
+  submittedAt: "2026-06-12T07:00:00.000Z",
+  // Previews show the live subject, without the test tag.
+  environment: { isProduction: true },
 } satisfies ContactBusinessEmailProps;
 
 export const contactConfirmationPreviewProps = {
   locale: "en-US",
-  preview: "We received your Workspace message",
-  heading: "Your message is in",
-  body: "Thanks for reaching out. We will get back to you as soon as possible with next steps or an answer.",
   message: customerMessage,
-  followUp: `If you want to add anything, reply or write to ${workspaceSiteConstants.contact.infoEmail}.`,
 } satisfies ContactConfirmationEmailProps;
 
 export const customerReservationPreviewProps = {
@@ -135,10 +128,9 @@ export const reservationNotificationPreviewProps = {
 } satisfies ReservationNotificationEmailProps;
 
 export const invoiceDeliveryPreviewProps = {
-  locale: "en-US",
-  preview: "Invoice WS-FV-2026-000003",
-  heading: "Your invoice is attached",
-  body: "Invoice WS-FV-2026-000003 for order reservation-3 is attached as a PDF.",
+  invoiceNumber: "WS-FV-2026-000003",
+  invoice: { source: "reservation", orderId: "reservation-3" },
+  recipient: { audience: "customer", locale: "en-US" },
 } satisfies InvoiceDeliveryEmailProps;
 
 const text = (value: string) => ({ type: "text", text: value });
@@ -187,11 +179,7 @@ export const workspaceCampaignPreviewProps = {
       },
     },
   }),
-  footer: {
-    note: "Tento e-mail dostáváš, protože máme tvůj souhlas se zasíláním marketingových sdělení od Deskohub Workspace.",
-    link: {
-      label: "Odhlásit odběr nebo změnit nastavení",
-      href: `https://${workspaceSiteConstants.brand.domain}/cs-CZ/marketing-preferences/access?token=preview`,
-    },
-  },
+  footer: WorkspaceCampaignFooter.Marketing({
+    marketingPreferencesUrl: `https://${workspaceSiteConstants.brand.domain}/cs-CZ/marketing-preferences/access?token=preview`,
+  }),
 } satisfies WorkspaceCampaignEmailProps;

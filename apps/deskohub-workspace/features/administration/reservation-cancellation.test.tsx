@@ -21,6 +21,7 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import { m } from "./i18n";
 
 const execute = mock();
 
@@ -256,5 +257,45 @@ describe("ReservationCancellation", () => {
     expect(
       view.getByText("Rezervace byla zrušena a zákazník dostal e-mail.")
     ).toBeDefined();
+  });
+
+  test("keeps the dialog open and explains a refused or interrupted cancellation", async () => {
+    withActionOptions();
+    const view = await renderCancellation();
+    await openDialog(view);
+    await submitDialog(view);
+    const dialog = within(view.getByRole("dialog"));
+
+    act(() => {
+      actionOptions?.onError({
+        error: { serverError: "Synthetic refusal from the server." },
+      });
+    });
+    expect(dialog.getByRole("alert").textContent).toBe(
+      "Synthetic refusal from the server."
+    );
+
+    act(() => {
+      actionOptions?.onError({ error: {} });
+    });
+    expect(dialog.getByRole("alert").textContent).toBe(
+      m.administrationReservationCancellationFailed({}, { locale: "en-US" })
+    );
+
+    act(() => {
+      actionOptions?.onTransportError();
+    });
+    expect(dialog.getByRole("alert").textContent).toBe(
+      m.administrationReservationCancellationInterrupted(
+        {},
+        { locale: "en-US" }
+      )
+    );
+
+    act(() => {
+      actionOptions?.onSuccess({});
+    });
+    expect(view.getByRole("dialog")).toBeDefined();
+    expect(view.queryByRole("status")).toBeNull();
   });
 });

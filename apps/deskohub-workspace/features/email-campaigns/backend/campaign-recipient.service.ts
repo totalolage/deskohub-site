@@ -1,9 +1,8 @@
 import "server-only";
 
 import type { DotyposCustomer, DotyposCustomerId } from "@deskohub/dotypos";
-import { Context, Effect, Layer, Option, Order, Result, Schema } from "effect";
+import { Context, Effect, Layer, Option, Order, Result } from "effect";
 import type { Locale } from "@/features/i18n";
-import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { currentInstant } from "@/shared/utils/temporal";
 import type {
   AudienceCandidate,
@@ -26,6 +25,11 @@ import {
   type CampaignCandidateFacts,
   CampaignCandidateRepository,
 } from "./campaign-candidate.repository";
+import {
+  CampaignEligibilityStage,
+  type CampaignUnreachableReason,
+  campaignEligibility,
+} from "./campaign-reachability";
 
 /** A customer the campaign reaches, with the Dotypos profile email. */
 type CampaignRecipient = {
@@ -34,16 +38,10 @@ type CampaignRecipient = {
   readonly email: string;
 };
 
-type CampaignRecipientExclusionReason =
-  | "missing-from-dotypos"
-  | "deleted-customer"
-  | "missing-email"
-  | "invalid-email";
-
 /** A customer the audience matches whom the campaign can't reach. */
 type CampaignRecipientExclusion = {
   readonly dotyposCustomerId: DotyposCustomerId;
-  readonly reason: CampaignRecipientExclusionReason;
+  readonly reason: CampaignUnreachableReason;
 };
 
 /**
@@ -246,36 +244,23 @@ const classifyRecipients = ({
   };
 };
 
-const decodeEmail = Schema.decodeUnknownOption(reservationCustomerEmailSchema);
-
-/**
- * The email a campaign can reach a customer at, or why it can't. Resolution
- * and delivery both apply it, so a profile that changed since the send was
- * frozen is excluded the same way.
- */
-export const reachableCampaignEmail = (
-  profile: Option.Option<DotyposCustomer>
-): Result.Result<string, CampaignRecipientExclusionReason> => {
-  if (Option.isNone(profile)) return Result.fail("missing-from-dotypos");
-  if (profile.value.deleted) return Result.fail("deleted-customer");
-  if (!profile.value.email?.trim()) return Result.fail("missing-email");
-  return Option.match(decodeEmail(profile.value.email), {
-    onNone: () => Result.fail("invalid-email" as const),
-    onSome: Result.succeed,
-  });
-};
-
 const classify = (
   candidate: Candidate,
   profile: Option.Option<DotyposCustomer>
 ): EligibleRecipient | CampaignRecipientExclusion =>
-  Result.match(reachableCampaignEmail(profile), {
-    onFailure: (reason) => ({
-      dotyposCustomerId: candidate.dotyposCustomerId,
-      reason,
+  Result.match(
+    campaignEligibility({
+      profile,
+      stage: CampaignEligibilityStage.Resolution(),
     }),
-    onSuccess: (email) => ({ ...candidate, email }),
-  });
+    {
+      onFailure: (reason) => ({
+        dotyposCustomerId: candidate.dotyposCustomerId,
+        reason,
+      }),
+      onSuccess: (email) => ({ ...candidate, email }),
+    }
+  );
 
 const byCustomerId = Order.mapInput(
   Order.String,

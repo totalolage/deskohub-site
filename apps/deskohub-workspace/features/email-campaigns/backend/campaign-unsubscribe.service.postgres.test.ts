@@ -22,7 +22,7 @@ import {
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
 const run = crypto.randomUUID().slice(0, 8);
-const [signingKey] = await Effect.runPromise(
+const signingKeys = await Effect.runPromise(
   loadCampaignSigningKeys("unsubscribe-token")
 );
 
@@ -74,10 +74,12 @@ describe.skipIf(!testDatabase)(
           grantedAt: Temporal.Instant.from("2026-01-01T00:00:00Z"),
         })
       );
-      return signCampaignUnsubscribeToken(signingKey, {
-        sendId,
-        dotyposCustomerId,
-      });
+      return await Effect.runPromise(
+        signCampaignUnsubscribeToken(signingKeys, {
+          sendId,
+          dotyposCustomerId,
+        })
+      );
     };
 
     const unsubscribe = (token: string) =>

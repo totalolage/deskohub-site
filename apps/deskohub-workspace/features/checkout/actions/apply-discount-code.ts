@@ -17,13 +17,71 @@ import { defaultLocale, isLocale, type Locale } from "@/features/i18n";
 import { ReferralService } from "@/features/referrals";
 import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
+import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
-import { applyDiscountCodeSchema } from "./apply-discount-code-input";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
+import {
+  type ApplyDiscountCodeInput,
+  applyDiscountCodeSchema,
+} from "./apply-discount-code-input";
 import {
   type ApplyDiscountCodeResult,
   applyDiscountCodeToPayState,
   getApplyDiscountCodeDeadline,
 } from "./apply-discount-code-to-pay-state";
+
+/** What the site's discount-code entry can answer. */
+export type ApplyDiscountCodeActionResult =
+  | ApplyDiscountCodeResult
+  /** BotID rejected the request as automated; the code was not checked. */
+  | { readonly status: "automated_request" };
+
+/**
+ * Screens the browser with BotID before the shared operation opens the token
+ * or checks the code.
+ */
+const applyDiscountCodeOnSite = Effect.fn("checkout.applyDiscountCodeOnSite")(
+  function* (input: ApplyDiscountCodeInput) {
+    const botProtection = yield* BotProtectionService;
+
+    // Discount code: part of the customer's own purchase, so verified customer
+    // agents may enter one; unverified bots get the automated-request status.
+    yield* botProtection.verifyHuman({
+      verificationFailurePolicy: "deny",
+      verifiedBots: { allow: customerAgentNames },
+      callSite: "checkout.apply-discount-code",
+    });
+
+    const result: ApplyDiscountCodeActionResult =
+      yield* applyDiscountCodeToPayState(input).pipe(
+        Effect.provide(
+          RememberedReferral.Cookies.pipe(
+            Layer.provideMerge(
+              Layer.mergeAll(
+                CheckoutPricingService.Live,
+                PayableReservationService.Live,
+                ReferralService.Live,
+                CheckoutReferralService.Live,
+                CustomerAccountContactService.Live,
+                SealedStateKeys.Default
+              )
+            ),
+            Layer.provideMerge(ReferralReleaseGateRequest)
+          )
+        )
+      );
+    return result;
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.catchTag(
+        "BotDetectedError",
+        (): Effect.Effect<ApplyDiscountCodeActionResult> =>
+          Effect.succeed({ status: "automated_request" })
+      )
+    )
+);
 
 const applyDiscountCodeAction = defineWorkspaceAction(
   {
@@ -31,23 +89,7 @@ const applyDiscountCodeAction = defineWorkspaceAction(
     deadline: getApplyDiscountCodeDeadline(env.VERCEL_ENV),
     schema: applyDiscountCodeSchema,
   },
-  (input) =>
-    applyDiscountCodeToPayState(input).pipe(
-      Effect.provide(
-        RememberedReferral.Cookies.pipe(
-          Layer.provideMerge(
-            Layer.mergeAll(
-              CheckoutPricingService.Live,
-              PayableReservationService.Live,
-              ReferralService.Live,
-              CheckoutReferralService.Live,
-              CustomerAccountContactService.Live
-            )
-          ),
-          Layer.provideMerge(ReferralReleaseGateRequest)
-        )
-      )
-    )
+  applyDiscountCodeOnSite
 );
 
 const applyDiscountCode: typeof applyDiscountCodeAction = async (
@@ -58,13 +100,57 @@ const applyDiscountCode: typeof applyDiscountCodeAction = async (
 };
 
 const getDiscountCodeRejection = (
-  status: ApplyDiscountCodeResult["status"] | undefined
+  status: ApplyDiscountCodeActionResult["status"] | undefined
 ): DiscountCodeRejection => {
   if (status === "already_attributed") return "referral-already-attributed";
   if (status === "ineligible") return "referral-ineligible";
   if (status === "automated_request") return "automated-request";
   return "unavailable";
 };
+
+/** What the action returned; nothing when it rejected its input. */
+type DiscountCodeActionData = Awaited<
+  ReturnType<typeof applyDiscountCode>
+>["data"];
+
+/** The replacement Pay URL the action signed, if it returned one. */
+const getFreshPayUrl = (data: DiscountCodeActionData) =>
+  data && "freshPayUrl" in data ? data.freshPayUrl : undefined;
+
+const isAcceptedReferral = (data: DiscountCodeActionData) =>
+  data?.status === "accepted" || data?.status === "already_accepted";
+
+/**
+ * Where a signed replacement leads: an accepted referral also carries the
+ * marker that announces it, when the URL can take one.
+ */
+const getReplacementPayPath = (
+  data: DiscountCodeActionData,
+  freshPayUrl: string,
+  locale: Locale
+) =>
+  isAcceptedReferral(data)
+    ? (addCheckoutReferralAppliedMarker(freshPayUrl, locale) ?? freshPayUrl)
+    : freshPayUrl;
+
+/**
+ * The original pay state with the field error for the result. Server Action
+ * arguments are client-controlled, so never build a redirect path from an
+ * unvalidated locale segment.
+ */
+const getRejectedPayPath = (
+  locale: Locale,
+  payStateToken: string,
+  status: ApplyDiscountCodeActionResult["status"] | undefined
+) =>
+  buildCheckoutPayPathFromToken(
+    isLocale(locale) ? locale : defaultLocale,
+    payStateToken,
+    {
+      discountCodeError: getDiscountCodeRejection(status),
+      discountCodeErrorId: randomUUID(),
+    }
+  );
 
 export async function applyDiscountCodeForm(
   locale: Locale,
@@ -78,34 +164,17 @@ export async function applyDiscountCodeForm(
     submittedCode: Predicate.isString(submittedCode) ? submittedCode : "",
   });
   const data = result.data;
-  const freshPayUrl =
-    data && "freshPayUrl" in data ? data.freshPayUrl : undefined;
+  const freshPayUrl = getFreshPayUrl(data);
 
-  if (
-    freshPayUrl &&
-    (data?.status === "accepted" || data?.status === "already_accepted")
-  ) {
+  if (freshPayUrl) {
     redirect(
-      addCheckoutReferralAppliedMarker(freshPayUrl, locale) ?? freshPayUrl,
+      getReplacementPayPath(data, freshPayUrl, locale),
       RedirectType.replace
     );
   }
 
-  if (freshPayUrl) {
-    redirect(freshPayUrl, RedirectType.replace);
-  }
-
-  // Server Action arguments are client-controlled, so never build a redirect
-  // path from an unvalidated locale segment.
   redirect(
-    buildCheckoutPayPathFromToken(
-      isLocale(locale) ? locale : defaultLocale,
-      payStateToken,
-      {
-        discountCodeError: getDiscountCodeRejection(data?.status),
-        discountCodeErrorId: randomUUID(),
-      }
-    ),
+    getRejectedPayPath(locale, payStateToken, data?.status),
     RedirectType.replace
   );
 }

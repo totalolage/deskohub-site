@@ -11,7 +11,10 @@ import {
 import type { CloudinaryConfig } from "./config";
 import { CloudinarySearchError } from "./errors";
 import type { CnfExpression } from "./expression";
-import { createTransientRetryPolicy } from "./retry";
+import {
+  getCloudinaryRetryPolicy,
+  isTransientCloudinaryFailure,
+} from "./request-policy";
 import {
   type CloudinaryAsset,
   CloudinaryAssetSchema,
@@ -47,7 +50,9 @@ const TagListSchema = Schema.Struct({
  * request fails with the typed error; it is not retried because it carries no
  * 5xx code.
  */
-const tagListRequestTimeout = Duration.seconds(5);
+const tagListRequestPolicy = getCloudinaryRetryPolicy(
+  "tag list"
+).withAttemptTimeout(Duration.seconds(5));
 
 /**
  * Fixed, identifier-free failure values. Provider responses, the requested
@@ -63,9 +68,6 @@ const toTagListError = (httpCode?: number) =>
     expression: tagListExpressionLabel,
     httpCode,
   });
-
-const tagListRetryPolicy =
-  createTransientRetryPolicy<CloudinarySearchError>("tag list");
 
 /**
  * Lists image assets matching a tag expression from Cloudinary's CDN-delivered
@@ -130,12 +132,9 @@ export function makeTaggedAssetLister(
       Effect.mapError((error) =>
         error instanceof CloudinarySearchError ? error : toTagListError()
       ),
-      Effect.timeoutOrElse({
-        duration: tagListRequestTimeout,
-        orElse: () => Effect.fail(toTagListError()),
-      }),
+      tagListRequestPolicy.attempt(() => toTagListError()),
       Effect.tapError(() => Effect.logError(tagListFailureMessage)),
-      Effect.retry(tagListRetryPolicy),
+      tagListRequestPolicy.retryWhile(isTransientCloudinaryFailure),
       // Effect's client spans record the full request URL, signature
       // included. `CloudinaryService.Live` also suppresses OpenTelemetry fetch
       // and HTTP instrumentation spans for these requests.

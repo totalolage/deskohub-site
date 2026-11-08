@@ -24,9 +24,10 @@
   provides `config.services` inside its own `runWorkspaceEffect`. Add a
   capability to that union and to the Layer in `auth.server.ts`; capture no
   context and start no runtime or nested run.
-- The release gates in `services` are `SignInCodeReleaseGate.LiveOnFirstRead`
-  and `PasskeyReleaseGate.LiveOnFirstRead`, decided once per hook run. Never
-  use the eager `Live` there: merged into `services`, it builds the flag
+- The release gates in `services` are `SignInCodeReleaseGateForRun` and
+  `PasskeyReleaseGateForRun` (`account-release-gates-run.ts`, built with
+  `releaseGateForRun`), decided once per hook run. Never use the eager
+  `Live` there: merged into `services`, it builds the flag
   provider for every hook, so a provider that can't be built (a rejected
   module import) rejects passkey sign-in, which reads no flag, and the
   sign-in email, which should fall back to link-only. Built on first read,
@@ -152,6 +153,35 @@ Keep these settings unless a reviewed decision changes them:
   flag is on, sends are also capped at five per address per rolling
   hour (`SIGN_IN_EMAIL_LIMIT_REACHED`, 429), one verification row per send
   keyed by a digest of the address. Logic: `sign-in-code.ts`.
+- Native app sign-in (`native-sign-in.ts`, plugin `native-sign-in`, before
+  `expo()`). A `/sign-in/magic-link` whose callback is exactly
+  `/app/auth/callback`, with no new-user or error callback, emails the App
+  Link `<origin>/app/auth/callback?token=…`; every other callback keeps the
+  verification URL. A `/magic-link/verify` without any callback answers a
+  failure as 400 JSON (`{ code }`, no Location) instead of Better Auth's
+  redirect; success is JSON plus the session cookie. Over HTTP, that
+  token-only verify refuses an account switch: a session of another account
+  (any session when the link would create one) gets 403
+  `ACCOUNT_SWITCH_REFUSED` from the auth guard's
+  `refuseMagicLinkAccountSwitch`, before the sign-in claim and Better
+  Auth's consume, so the link survives.
+  Links with a callback keep the redirect sign-in. The handoff moves a
+  browser sign-in into the app: `POST /native-handoff/mint` (fresh session
+  via `freshSessionMiddleware`, body `code_challenge`, `code_challenge_method`
+  `S256`, `state`, `return_uri`) stores a three-minute verification row bound
+  to the challenge, the return URI and the minting session, and answers
+  `{ url: return_uri?code&state }`. Return URIs are exactly
+  `deskohub://auth/callback`, the customer-facing `/app/auth/callback`, and
+  the request host's `/app/auth/callback`. `POST /native-handoff/exchange`
+  (`code`, `code_verifier`, `return_uri`) checks the return URI and S256
+  verifier before `consumeVerificationValue`, so a wrong verifier doesn't
+  burn the code, requires the minting session to still exist, and creates a
+  new session that keeps the minting session's `createdAt`, so a handoff never
+  makes a stale sign-in fresh. Every refusal is 400 `INVALID_HANDOFF_CODE`
+  and logs `account.native-handoff.rejected` with a fixed reason. Neither
+  endpoint is BotID-screened: minting needs a fresh session, and a code is
+  useless without the verifier only the app holds. Both allow ten requests
+  per IP per 10 minutes and answer `no-store`.
 - The browser side is `features/account/auth-return.ts`. It sends
   `metadata: { locale }`, shows the code step when the response's `signInCode`
   is `true`, and signs in through `signIn.emailOtp` with only the email, code,
@@ -187,7 +217,10 @@ Keep these settings unless a reviewed decision changes them:
 - What remains in Neon is the login email, the email inside each pending
   verification row, raw `IP|path` rate-limit keys, and `auth.passkey` rows
   (credential ID, public key, AAGUID, and the customer-written label). Sign-in code, claim, current-claim,
-  binding, and per-email send rows store only hashed identifiers and values. Better Auth has no
+  binding, and per-email send rows store only hashed identifiers and values. A pending native
+  handoff row has a hashed identifier but keeps the minting session's token
+  (already stored in `auth.session`) until it is redeemed or the cleanup cron
+  removes it. Better Auth has no
   native option to hash or encrypt these, so don't build a custom adapter or
   HMAC rate-limit storage to remove them.
 

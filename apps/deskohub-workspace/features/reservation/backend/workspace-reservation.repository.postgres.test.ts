@@ -9,7 +9,7 @@ import {
 } from "@deskohub/igloohome";
 import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { eq } from "drizzle-orm";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerEvents,
@@ -157,6 +157,57 @@ describe.skipIf(!testDatabase)(
       return attempt;
     };
 
+    describe("payment return target", () => {
+      test("stores the last submission's app, clears it, and leaves updatedAt alone", async () => {
+        const id = await insertReservation();
+        const before = await readReservation(id);
+
+        expect(
+          await run((repository) => repository.findPaymentReturnTarget(id))
+        ).toBeUndefined();
+
+        for (const paymentReturnTarget of ["native-app", "web-app"] as const) {
+          await run((repository) =>
+            repository.recordPaymentReturnTarget({ id, paymentReturnTarget })
+          );
+          expect(
+            await run((repository) => repository.findPaymentReturnTarget(id))
+          ).toBe(paymentReturnTarget);
+        }
+
+        await run((repository) =>
+          repository.recordPaymentReturnTarget({
+            id,
+            paymentReturnTarget: undefined,
+          })
+        );
+        const after = await readReservation(id);
+        expect(after?.paymentReturnTarget).toBeNull();
+        expect(after?.updatedAt).toEqual(before?.updatedAt);
+      });
+
+      test("finds no target for an unknown reservation", async () => {
+        expect(
+          await run((repository) =>
+            repository.findPaymentReturnTarget(
+              "missing-reservation" as WorkspaceReservationId
+            )
+          )
+        ).toBeUndefined();
+      });
+
+      test("refuses a stored target outside the allowlist", async () => {
+        const id = await insertReservation();
+
+        await expect(
+          testDatabase.pool.query(
+            "update workspace_reservations set payment_return_target = $2 where id = $1",
+            [id, "https://elsewhere.test"]
+          )
+        ).rejects.toThrow("workspace_reservations_payment_return_target_check");
+      });
+    });
+
     describe("expired holds", () => {
       test("selects unpaid expired holds and queues holds with skipped cleanup behind fresh ones", async () => {
         const skippedCleanup = await insertReservation(
@@ -270,6 +321,55 @@ describe.skipIf(!testDatabase)(
       );
     });
 
+    describe("draft creation", () => {
+      test("dies when the insert conflicts with a row neither lookup finds", async () => {
+        const conflictingId = await insertReservation({
+          reservation: "cancelled",
+        });
+        const conflicting = await readReservation(conflictingId);
+        const sessionKey = checkoutSessionKeySchema.make(
+          `session-${crypto.randomUUID()}`
+        );
+
+        const exit = await run((repository) =>
+          repository
+            .createDraft({
+              checkoutSessionKey: sessionKey,
+              checkoutAttemptKey: checkoutAttemptKeySchema.make(
+                conflicting?.checkoutAttemptKey ?? "missing-attempt"
+              ),
+              checkoutSessionLockKey: 4_242_424_242n,
+              acceptedCheckoutSessionKeys: [sessionKey],
+              acceptedCheckoutAttemptKeys: [
+                checkoutAttemptKeySchema.make(`attempt-${crypto.randomUUID()}`),
+              ],
+              dotyposCustomerId: DotyposCustomerIdSchema.make("customer-id"),
+              authorAccountId: fixtureReservationAuthorId,
+              reservationPurpose: "personal",
+              reservationDetails: {
+                kind: "cowork",
+                entryTier: "basic",
+                coffee: false,
+              },
+              locale: "en-US",
+            })
+            .pipe(Effect.exit)
+        );
+
+        expect(Exit.isFailure(exit)).toBe(true);
+        expect(Exit.isFailure(exit) && Cause.squash(exit.cause)).toBe(
+          "Workspace reservation insert returned no row."
+        );
+        const [sessionRow] = await Effect.runPromise(
+          testDatabase.db
+            .select({ id: workspaceReservations.id })
+            .from(workspaceReservations)
+            .where(eq(workspaceReservations.checkoutSessionKey, sessionKey))
+        );
+        expect(sessionRow).toBeUndefined();
+      });
+    });
+
     describe("administration cancellation", () => {
       const confirmedPaid = {
         reservation: "confirmed",
@@ -362,6 +462,40 @@ describe.skipIf(!testDatabase)(
         expect(
           (await readReservation(otherAttemptReservation))?.paymentState
         ).toBe("pending");
+      });
+
+      test("fails and keeps the payment pending when its attempt can no longer be cancelled", async () => {
+        const id = await insertReservation({ payment: "pending" });
+        const paymentAttemptId = await insertActivePaymentAttempt(id, {
+          state: "failed",
+          failureCode: "provider_declined",
+        });
+
+        const error = await runFailure((repository) =>
+          repository.claimAdministrationCancellation({
+            id,
+            providerCredentialRemoved: false,
+            accessGrantUpdatedAt: null,
+            staleCancellingBefore: at(10),
+            pendingPaymentCancellation: {
+              paymentAttemptId,
+              failureCode: "provider_abandoned",
+            },
+          })
+        );
+
+        expect(error).toBeInstanceOf(WorkspaceReservationStateError);
+        expect(error).toMatchObject({
+          operation: "workspaceReservations.claimAdministrationCancellation",
+          reservationId: id,
+        });
+        expect(await readReservation(id)).toMatchObject({
+          reservationState: "held",
+          paymentState: "pending",
+        });
+        expect((await readPaymentAttempt(paymentAttemptId))?.state).toBe(
+          "failed"
+        );
       });
 
       test("expires a live access credential only once the provider removed it", async () => {

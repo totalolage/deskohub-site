@@ -2,11 +2,8 @@ import type { DotyposCustomerId } from "@deskohub/dotypos/types";
 import type { PostHog } from "posthog-js";
 import type { AnalyticsAccountIdentity } from "@/features/account/analytics-identity";
 import type { CustomerAccountId } from "@/features/account/customer-account";
-import type { DeploymentEnvironment } from "@/shared/backend/config/deployment-request-timeout";
-
-export const getPostHogAccountDistinctId = (
-  accountId: CustomerAccountId
-): string => `workspace-account:${accountId}`;
+import { getPostHogAccountDistinctId } from "@/features/account/posthog-account-distinct-id";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 
 /**
  * Person property holding the account's opaque Dotypos customer ID, which
@@ -27,7 +24,11 @@ export type PostHogIdentityClient = Pick<
 >;
 
 export type PostHogIdentityController = {
-  readonly isReady: () => boolean;
+  /**
+   * Whether analytics is ready for `identity`: the controller settled on it
+   * and the SDK still holds it.
+   */
+  readonly isReadyFor: (identity: AnalyticsAccountIdentity) => boolean;
   readonly reconcile: (
     consented: boolean,
     identity: AnalyticsAccountIdentity
@@ -44,17 +45,24 @@ export type PostHogIdentityControllerOptions = {
   ) => DotyposCustomerId | undefined;
 };
 
-type SettledAnalyticsAccountIdentity = Extract<
+/** An account identity analytics can settle on. */
+export type SettledAnalyticsAccountIdentity = Extract<
   AnalyticsAccountIdentity,
   { readonly status: "anonymous" | "authenticated" }
 >;
 
 type PostHogUserState = ReturnType<PostHogIdentityClient["get_property"]>;
 
-const sameSettledIdentity = (
+export const isSettledAnalyticsAccountIdentity = (
+  identity: AnalyticsAccountIdentity
+): identity is SettledAnalyticsAccountIdentity =>
+  identity.status === "anonymous" || identity.status === "authenticated";
+
+/** Whether both name the anonymous visitor or the same account. */
+export const sameSettledAnalyticsAccountIdentity = (
   left: SettledAnalyticsAccountIdentity,
   right: SettledAnalyticsAccountIdentity
-) => {
+): boolean => {
   if (left.status !== right.status) return false;
   if (left.status === "anonymous") return true;
   return right.status === "authenticated" && left.accountId === right.accountId;
@@ -73,6 +81,35 @@ const sdkMatchesSettledIdentity = (
     readDistinctId() === getPostHogAccountDistinctId(identity.accountId) &&
     readUserState() === "identified"
   );
+};
+
+type PostHogSdkIdentity = {
+  readonly readDistinctId: () => string;
+  readonly readUserState: () => PostHogUserState;
+};
+
+/** Reads the SDK's distinct ID and user state at most once per reconcile. */
+const observeSdkIdentity = (
+  client: PostHogIdentityClient
+): PostHogSdkIdentity => {
+  let observedDistinctId: string | undefined;
+  let observedUserState: PostHogUserState;
+  let userStateWasObserved = false;
+  return {
+    readDistinctId: () => {
+      if (observedDistinctId === undefined) {
+        observedDistinctId = client.get_distinct_id();
+      }
+      return observedDistinctId;
+    },
+    readUserState: () => {
+      if (!userStateWasObserved) {
+        observedUserState = client.get_property("$user_state");
+        userStateWasObserved = true;
+      }
+      return observedUserState;
+    },
+  };
 };
 
 export function createPostHogIdentityController(
@@ -138,76 +175,74 @@ export function createPostHogIdentityController(
     onReady();
   };
 
-  const reconcile = (
-    consented: boolean,
-    identity: AnalyticsAccountIdentity
+  const withdrawConsent = () => {
+    pause();
+    if (consentWasWithdrawn) return;
+
+    resetClient();
+    client.opt_out_capturing();
+    consentWasWithdrawn = true;
+    identityAssociationNeeded = true;
+  };
+
+  /**
+   * Whether the ready identity still holds in the SDK, so nothing needs to
+   * change. A customer link that loads after identify lands on the same
+   * person.
+   */
+  const keepReadyIdentity = (
+    identity: SettledAnalyticsAccountIdentity,
+    sdk: PostHogSdkIdentity
   ) => {
-    if (!consented) {
-      pause();
-
-      if (!consentWasWithdrawn) {
-        resetClient();
-        client.opt_out_capturing();
-        consentWasWithdrawn = true;
-        identityAssociationNeeded = true;
-      }
-      return;
-    }
-
-    consentWasWithdrawn = false;
-
-    if (identity.status === "pending" || identity.status === "unavailable") {
-      pause();
-      return;
-    }
-
-    let observedDistinctId: string | undefined;
-    let observedUserState: PostHogUserState;
-    let userStateWasObserved = false;
-    const readDistinctId = () => {
-      if (observedDistinctId === undefined) {
-        observedDistinctId = client.get_distinct_id();
-      }
-      return observedDistinctId;
-    };
-    const readUserState = () => {
-      if (!userStateWasObserved) {
-        observedUserState = client.get_property("$user_state");
-        userStateWasObserved = true;
-      }
-      return observedUserState;
-    };
-
     if (
-      ready &&
-      readyIdentity &&
-      sameSettledIdentity(readyIdentity, identity)
+      !ready ||
+      !readyIdentity ||
+      !sameSettledAnalyticsAccountIdentity(readyIdentity, identity) ||
+      !sdkMatchesSettledIdentity(
+        identity,
+        sdk.readDistinctId,
+        sdk.readUserState
+      )
     ) {
-      if (sdkMatchesSettledIdentity(identity, readDistinctId, readUserState)) {
-        // A customer link that loads after identify lands on the same person.
-        if (identity.status === "authenticated") {
-          syncDotyposCustomerId(readDistinctId(), identity.accountId);
-        }
-        return;
-      }
+      return false;
+    }
+    if (identity.status === "authenticated") {
+      syncDotyposCustomerId(sdk.readDistinctId(), identity.accountId);
+    }
+    return true;
+  };
+
+  const settleAnonymous = (
+    identity: Extract<SettledAnalyticsAccountIdentity, { status: "anonymous" }>,
+    sdk: PostHogSdkIdentity
+  ) => {
+    if (sdk.readUserState() === "identified") {
+      resetClient();
     }
 
-    if (ready) pause();
+    client.opt_in_capturing({ captureEventName: false });
+    identityAssociationNeeded = false;
+    finishReady(identity);
+  };
 
-    if (identity.status === "anonymous") {
-      if (readUserState() === "identified") {
-        resetClient();
-      }
-
-      client.opt_in_capturing({ captureEventName: false });
-      identityAssociationNeeded = false;
-      finishReady(identity);
-      return;
+  // Only production persons stay unmarked. Preview (including CI E2E) and
+  // development share the production PostHog project.
+  const markInternalOrTestPerson = (testAccount: boolean) => {
+    if (testAccount || deploymentEnvironment !== "production") {
+      client.setInternalOrTestUser();
     }
+  };
 
-    const distinctId = readDistinctId();
+  const settleAuthenticated = (
+    identity: Extract<
+      SettledAnalyticsAccountIdentity,
+      { status: "authenticated" }
+    >,
+    sdk: PostHogSdkIdentity
+  ) => {
+    const distinctId = sdk.readDistinctId();
     const desiredDistinctId = getPostHogAccountDistinctId(identity.accountId);
-    const sdkIsIdentified = readUserState() === "identified";
+    const sdkIsIdentified = sdk.readUserState() === "identified";
     const shouldIdentify =
       identityAssociationNeeded ||
       distinctId !== desiredDistinctId ||
@@ -219,26 +254,65 @@ export function createPostHogIdentityController(
 
     client.opt_in_capturing({ captureEventName: false });
 
+    // The $identify event, and anything else the SDK emits while settling,
+    // already belongs to the ready account.
+    ready = true;
+    readyIdentity = identity;
     if (shouldIdentify) {
-      ready = true;
       client.identify(desiredDistinctId);
-    } else {
-      ready = true;
     }
 
-    // Only production persons stay unmarked. Preview (including CI E2E) and
-    // development share the production PostHog project.
-    if (identity.testAccount || deploymentEnvironment !== "production") {
-      client.setInternalOrTestUser();
-    }
+    markInternalOrTestPerson(identity.testAccount);
     syncDotyposCustomerId(desiredDistinctId, identity.accountId);
 
     identityAssociationNeeded = false;
     finishReady(identity);
   };
 
+  const reconcile = (
+    consented: boolean,
+    identity: AnalyticsAccountIdentity
+  ) => {
+    if (!consented) {
+      withdrawConsent();
+      return;
+    }
+
+    consentWasWithdrawn = false;
+
+    if (identity.status === "pending" || identity.status === "unavailable") {
+      pause();
+      return;
+    }
+
+    const sdk = observeSdkIdentity(client);
+    if (keepReadyIdentity(identity, sdk)) return;
+
+    if (ready) pause();
+
+    if (identity.status === "anonymous") {
+      settleAnonymous(identity, sdk);
+    } else {
+      settleAuthenticated(identity, sdk);
+    }
+  };
+
+  const isReadyFor = (identity: AnalyticsAccountIdentity) => {
+    if (!ready || !readyIdentity) return false;
+    if (!isSettledAnalyticsAccountIdentity(identity)) return false;
+    if (!sameSettledAnalyticsAccountIdentity(readyIdentity, identity)) {
+      return false;
+    }
+    const sdk = observeSdkIdentity(client);
+    return sdkMatchesSettledIdentity(
+      identity,
+      sdk.readDistinctId,
+      sdk.readUserState
+    );
+  };
+
   return {
-    isReady: () => ready,
+    isReadyFor,
     reconcile,
   };
 }

@@ -8,10 +8,7 @@ import {
 } from "@/features/discounts/contracts";
 import { promotionCodeIdSchema } from "@/features/discounts/persistence-contracts";
 import type { DiscountCandidate } from "@/features/discounts/provider";
-import {
-  getReferralInvitationDiscountId,
-  getReferralReferrerDiscountId,
-} from "@/features/referrals/discount-identifiers";
+import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import { calculateReferrerDiscountAmount } from "@/features/referrals/referrer-discount";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { isExpectedReferralQuoteAddition } from "./checkout-referral-price-change";
@@ -31,8 +28,8 @@ const referrerCustomerId = dotyposCustomerIdSchema.make(
 const referralPromotionCodeId = promotionCodeIdSchema.make(
   "referral-price-change-code-id"
 );
-const invitationId = getReferralInvitationDiscountId(invitedCustomerId);
-const referrerId = getReferralReferrerDiscountId(invitedCustomerId);
+const invitationId = getReferralBenefitIds(invitedCustomerId).invitation;
+const referrerId = getReferralBenefitIds(invitedCustomerId).referrer;
 const ordinaryDiscountId = discountIdSchema.make("ordinary-code-discount");
 
 const makeAppliedDiscount = (input: {
@@ -163,12 +160,18 @@ const getCandidate = (application: AppliedDiscount): DiscountCandidate => {
   };
 };
 
-const makeCommitment = (discounts: readonly AppliedDiscount[]) =>
+const makeCommitment = (
+  discounts: readonly AppliedDiscount[],
+  overrideCandidate: (
+    candidate: DiscountCandidate,
+    application: AppliedDiscount
+  ) => DiscountCandidate = (candidate) => candidate
+) =>
   makeDiscountCommitment({
     product: { kind: "cowork", tier: "reserved-desk" },
     applications: discounts.map((application) => ({
       application,
-      candidate: getCandidate(application),
+      candidate: overrideCandidate(getCandidate(application), application),
     })),
   });
 
@@ -284,6 +287,373 @@ describe("expected referral checkout quote addition", () => {
         current,
         commitment: makeCommitment([invitation, freshReferrer]),
         dotyposCustomerId: invitedCustomerId,
+      })
+    ).toBe(false);
+  });
+});
+
+describe("referral checkout quote comparison outcomes", () => {
+  const invitation = makeInvitationDiscount(10_000);
+  const referrer = makeReferrerDiscount({
+    subtotalBefore: invitation.subtotalAfter.value,
+    count: 1,
+  });
+  const previousReferrer = makeReferrerDiscount({
+    subtotalBefore: 10_000,
+    count: 1,
+  });
+  const ordinaryCode = makeOrdinaryDiscount({
+    label: "SUMMER10",
+    subtotalBefore: 10_000,
+    amount: 1_000,
+  });
+  const withDiscount = (
+    application: AppliedDiscount,
+    discount: Partial<AppliedDiscount["discount"]>
+  ): AppliedDiscount => ({
+    ...application,
+    discount: { ...application.discount, ...discount },
+  });
+  const withProvenance =
+    (
+      discountId: DiscountId,
+      provenance: Partial<DiscountCandidate["provenance"]>
+    ) =>
+    (candidate: DiscountCandidate, application: AppliedDiscount) =>
+      application.discount.id === discountId
+        ? {
+            ...candidate,
+            provenance: { ...candidate.provenance, ...provenance },
+          }
+        : candidate;
+  const withReferrerDetails = (
+    details: Partial<{
+      readonly referrerDotyposCustomerId: typeof invitedCustomerId;
+      readonly eligibleInviteeCount: number;
+    }>
+  ) =>
+    withProvenance(referrerId, {
+      details: {
+        referralReferrer: {
+          referrerDotyposCustomerId: invitedCustomerId,
+          eligibleInviteeCount: 1,
+          discountPercentage: "5",
+          ...details,
+        },
+      },
+    });
+  const compare = (input: {
+    readonly previous: readonly AppliedDiscount[];
+    readonly current: readonly AppliedDiscount[];
+    readonly commitment?: ReturnType<typeof makeCommitment>;
+    readonly previousQuote?: CoworkReservationQuote;
+    readonly currentQuote?: CoworkReservationQuote;
+  }) =>
+    isExpectedReferralQuoteAddition({
+      previous: input.previousQuote ?? makeQuote(10_000, input.previous),
+      current: input.currentQuote ?? makeQuote(10_000, input.current),
+      commitment: input.commitment ?? makeCommitment(input.current),
+      dotyposCustomerId: invitedCustomerId,
+    });
+
+  test("accepts unchanged quotes with and without referral applications", () => {
+    expect(compare({ previous: [], current: [] })).toBe(true);
+    expect(compare({ previous: [ordinaryCode], current: [ordinaryCode] })).toBe(
+      true
+    );
+    expect(
+      compare({
+        previous: [invitation, referrer],
+        current: [invitation, referrer],
+      })
+    ).toBe(true);
+  });
+
+  test("accepts the invitation and referrer recalculation after an unchanged ordinary code", () => {
+    const codeInvitation = makeInvitationDiscount(9_000);
+    expect(
+      compare({
+        previous: [
+          ordinaryCode,
+          makeReferrerDiscount({ subtotalBefore: 9_000, count: 1 }),
+        ],
+        current: [
+          ordinaryCode,
+          codeInvitation,
+          makeReferrerDiscount({
+            subtotalBefore: codeInvitation.subtotalAfter.value,
+            count: 1,
+          }),
+        ],
+      })
+    ).toBe(true);
+  });
+
+  test("rejects a carried invitation that changed, lost its proof or is not the referral percentage", () => {
+    const relabelled = withDiscount(invitation, { label: "Changed" });
+    expect(compare({ previous: [invitation], current: [relabelled] })).toBe(
+      false
+    );
+    expect(
+      compare({
+        previous: [invitation],
+        current: [invitation],
+        commitment: makeCommitment(
+          [invitation],
+          withProvenance(invitationId, { providerNamespace: "discount-code" })
+        ),
+      })
+    ).toBe(false);
+    const tenPercent = makeAppliedDiscount({
+      id: invitationId,
+      label: "Invitation discount 10%",
+      adjustment: { kind: "percentage", basisPoints: 1_000 },
+      subtotalBefore: 10_000,
+      amount: 1_000,
+    });
+    expect(compare({ previous: [tenPercent], current: [tenPercent] })).toBe(
+      false
+    );
+  });
+
+  test("rejects a removed or duplicated invitation", () => {
+    expect(compare({ previous: [invitation], current: [] })).toBe(false);
+    expect(compare({ previous: [], current: [invitation, invitation] })).toBe(
+      false
+    );
+    expect(
+      compare({ previous: [invitation, invitation], current: [invitation] })
+    ).toBe(false);
+  });
+
+  test("rejects a new invitation with a deadline, another adjustment, a wrong amount or inconsistent math", () => {
+    const rejected = [
+      withDiscount(invitation, { expiresAt: "2026-11-02T10:00:00.000Z" }),
+      withDiscount(invitation, {
+        countdownStartsAt: "2026-11-02T10:00:00.000Z",
+      }),
+      withDiscount(invitation, {
+        adjustment: { kind: "fixed", amount: money(1_500) },
+      }),
+      makeAppliedDiscount({
+        id: invitationId,
+        label: "Invitation discount 15%",
+        adjustment: { kind: "percentage", basisPoints: 1_500 },
+        subtotalBefore: 10_000,
+        amount: 1_499,
+      }),
+      { ...invitation, subtotalAfter: money(8_400) },
+      { ...invitation, amount: { ...invitation.amount, currency: "EUR" } },
+    ];
+    for (const application of rejected) {
+      expect(compare({ previous: [], current: [application] })).toBe(false);
+    }
+  });
+
+  test("rejects a new invitation whose commitment does not prove the booked customer's invitation", () => {
+    const rejectedCommitments = [
+      makeCommitment([]),
+      makeCommitment([withDiscount(invitation, { label: "Other" })]),
+      makeCommitment(
+        [invitation],
+        withProvenance(invitationId, { providerReference: "" })
+      ),
+      makeCommitment(
+        [invitation],
+        withProvenance(invitationId, { details: undefined })
+      ),
+      makeCommitment(
+        [invitation],
+        withProvenance(invitationId, {
+          details: {
+            referralInvitation: {
+              invitedDotyposCustomerId: referrerCustomerId,
+              referrerDotyposCustomerId: referrerCustomerId,
+              promotionCodeId: referralPromotionCodeId,
+            },
+          },
+        })
+      ),
+    ];
+    for (const commitment of rejectedCommitments) {
+      expect(compare({ previous: [], current: [invitation], commitment })).toBe(
+        false
+      );
+    }
+    expect(compare({ previous: [], current: [invitation] })).toBe(true);
+  });
+
+  test("rejects a referrer application that appears, disappears or is duplicated", () => {
+    expect(compare({ previous: [], current: [invitation, referrer] })).toBe(
+      false
+    );
+    expect(
+      compare({ previous: [previousReferrer], current: [invitation] })
+    ).toBe(false);
+    expect(
+      compare({
+        previous: [previousReferrer],
+        current: [invitation, referrer, referrer],
+      })
+    ).toBe(false);
+    expect(
+      compare({
+        previous: [previousReferrer, previousReferrer],
+        current: [invitation, referrer],
+      })
+    ).toBe(false);
+  });
+
+  test("rejects a referrer recalculation the commitment does not prove for the booked customer", () => {
+    const current = [invitation, referrer];
+    const rejectedCommitments = [
+      makeCommitment([invitation]),
+      makeCommitment([invitation, withDiscount(referrer, { label: "Other" })]),
+      makeCommitment(
+        current,
+        withProvenance(referrerId, { providerNamespace: "referral-invitation" })
+      ),
+      makeCommitment(
+        current,
+        withProvenance(referrerId, { details: undefined })
+      ),
+      makeCommitment(
+        current,
+        withProvenance(referrerId, {
+          details: {
+            referralInvitation: {
+              invitedDotyposCustomerId: invitedCustomerId,
+              referrerDotyposCustomerId: referrerCustomerId,
+              promotionCodeId: referralPromotionCodeId,
+            },
+          },
+        })
+      ),
+      makeCommitment(
+        current,
+        withReferrerDetails({ referrerDotyposCustomerId: referrerCustomerId })
+      ),
+      makeCommitment(current, withReferrerDetails({ eligibleInviteeCount: 0 })),
+      makeCommitment(
+        current,
+        withReferrerDetails({ eligibleInviteeCount: 1.5 })
+      ),
+      makeCommitment(current, withReferrerDetails({ eligibleInviteeCount: 2 })),
+    ];
+    for (const commitment of rejectedCommitments) {
+      expect(
+        compare({ previous: [previousReferrer], current, commitment })
+      ).toBe(false);
+    }
+    expect(compare({ previous: [previousReferrer], current })).toBe(true);
+  });
+
+  test("rejects a referrer application with another identity or a mismatched fixed amount", () => {
+    expect(
+      compare({
+        previous: [
+          withDiscount(previousReferrer, {
+            expiresAt: "2026-11-02T10:00:00.000Z",
+          }),
+        ],
+        current: [invitation, referrer],
+      })
+    ).toBe(false);
+    const mismatchedAdjustment = withDiscount(referrer, {
+      adjustment: { kind: "fixed", amount: money(1) },
+    });
+    expect(
+      compare({
+        previous: [previousReferrer],
+        current: [invitation, mismatchedAdjustment],
+      })
+    ).toBe(false);
+    const percentageReferrer = withDiscount(referrer, {
+      adjustment: { kind: "percentage", basisPoints: 500 },
+    });
+    expect(
+      compare({
+        previous: [
+          withDiscount(previousReferrer, {
+            adjustment: { kind: "percentage", basisPoints: 500 },
+          }),
+        ],
+        current: [invitation, percentageReferrer],
+      })
+    ).toBe(false);
+  });
+
+  test("rejects referral applications out of their pricing sequence", () => {
+    expect(
+      compare({
+        previous: [],
+        current: [],
+        previousQuote: { ...makeQuote(10_000, []), items: [] },
+        currentQuote: { ...makeQuote(10_000, []), items: [] },
+      })
+    ).toBe(false);
+    const codeAfterInvitation = makeOrdinaryDiscount({
+      label: "SUMMER10",
+      subtotalBefore: invitation.subtotalAfter.value,
+      amount: 1_000,
+    });
+    expect(
+      compare({
+        previous: [codeAfterInvitation],
+        current: [invitation, codeAfterInvitation],
+      })
+    ).toBe(false);
+    expect(
+      compare({ previous: [ordinaryCode], current: [ordinaryCode, invitation] })
+    ).toBe(false);
+    const unchainedReferrer = makeReferrerDiscount({
+      subtotalBefore: 10_000,
+      count: 1,
+    });
+    expect(
+      compare({
+        previous: [previousReferrer],
+        current: [invitation, unchainedReferrer],
+      })
+    ).toBe(false);
+  });
+
+  test("rejects changed items, undiscounted price or total currency", () => {
+    const current = [invitation];
+    const valid = makeQuote(10_000, current);
+    expect(
+      compare({
+        previous: [],
+        current,
+        currentQuote: {
+          ...valid,
+          items: [
+            { type: "cowork", tier: "open-space", amount: money(10_000) },
+          ],
+        },
+      })
+    ).toBe(false);
+    expect(
+      compare({
+        previous: [],
+        current,
+        currentQuote: {
+          ...valid,
+          payment: { ...valid.payment, undiscountedPrice: money(10_001) },
+        },
+      })
+    ).toBe(false);
+    expect(
+      compare({
+        previous: [],
+        current,
+        currentQuote: {
+          ...valid,
+          payment: {
+            ...valid.payment,
+            expectedPrice: { ...valid.payment.expectedPrice, currency: "EUR" },
+          },
+        },
       })
     ).toBe(false);
   });

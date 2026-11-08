@@ -65,6 +65,7 @@ const {
   saveMarketingPreferencesAction,
   confirmMarketingManagementAction,
   clearMarketingManagementAction,
+  recordDeviceAnalyticsConsent,
 } = await import("./actions");
 
 describe("marketing Server Action edges", () => {
@@ -92,6 +93,11 @@ describe("marketing Server Action edges", () => {
       { operation: "legal.marketing-preferences.save", logInput: false },
       { operation: "legal.marketing-preferences.confirm", logInput: false },
       { operation: "legal.marketing-preferences.clear", logInput: false },
+      { operation: "legal.analytics-consent.record-device", logInput: false },
+      {
+        operation: "legal.analytics-consent.resolve-silent-grant",
+        logInput: false,
+      },
     ]);
     for (const invalid of [
       { ...input, confirmed: false },
@@ -103,6 +109,18 @@ describe("marketing Server Action edges", () => {
       );
     }
     expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  test("accepts only the hydration and banner-save occasions for device analytics consent", async () => {
+    for (const invalid of [
+      { occasion: "sign_in" },
+      { occasion: "hydration", decision: "grant" },
+      {},
+    ]) {
+      expect(
+        await recordDeviceAnalyticsConsent(invalid as never)
+      ).toHaveProperty("validationErrors");
+    }
   });
 
   test("leaves unavailable dependencies to the runtime's unexpected copy", async () => {

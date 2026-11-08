@@ -1,12 +1,15 @@
 import { describe, expect, mock, test } from "bun:test";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import { EMAIL_TEST_DOMAIN, testEmailAddress } from "@deskohub/test-email";
 import {
+  Duration,
   Effect,
   Fiber,
   Layer,
   Logger,
   Option,
   Predicate,
+  Random,
   References,
   Schema,
 } from "effect";
@@ -17,11 +20,16 @@ import {
   DotyposRuntimeConfigSchema,
   makeDotyposRuntimeConfigLayer,
 } from "../config";
-import type {
-  Category,
+import type { DotyposConditionalWriteFailure } from "../errors";
+import {
+  type Category,
   Customer,
-  DotyposClient,
+  CustomerWriteRecord,
+  type DotyposClient,
+  ReplaceCustomersRequestJson,
+  ReplaceReservationsRequestJson,
   Reservation,
+  ReservationWriteRecord,
   Table,
 } from "../generated/effect.gen";
 import { dotyposIdReadBatchSize, dotyposIdReadRequests } from "../id-reads";
@@ -29,6 +37,7 @@ import {
   DotyposTimestampFromString,
   DotyposTimestampSchema,
 } from "../timestamp";
+import type { DotyposCustomer } from "../types";
 import {
   DotyposCategorySchema,
   DotyposCustomerIdSchema,
@@ -40,12 +49,21 @@ import {
   DotyposTableSchema,
 } from "../types";
 import { DotyposAccessToken, DotyposGeneratedClient } from "./api";
-import { dotyposRequestProfiles } from "./request-profiles";
+import {
+  dotyposRequestProfiles,
+  getDotyposRequestWorstCase,
+} from "./request-profiles";
 import {
   CustomerVersionSelection,
+  type DotyposCustomerBillingDetails,
+  type DotyposCustomerDetails,
+  type DotyposCustomerProfile,
   DotyposService,
   type IDotyposService,
 } from "./service";
+
+/** A phone number as a caller passes it, read from entered text. */
+const phoneNumber = (text: string) => Option.getOrThrow(parsePhoneNumber(text));
 
 const adaAddress = testEmailAddress("ada");
 const mixedCaseAdaAddress = testEmailAddress("Ada");
@@ -205,14 +223,17 @@ const runWithService = <A, E>(
  * Runs on a TestClock that advances in steps far shorter than the request
  * timeout until the effect finishes, so retry backoff elapses instantly. Only
  * for fetch mocks that answer without real-time delays: a mock that waits on a
- * real timer would hit the request timeout.
+ * real timer would hit the request timeout. `startsAt` sets the clock before
+ * the effect starts.
  */
 const runWithServiceRetryingInstantly = <A, E>(
   effect: Effect.Effect<A, E, DotyposService>,
-  fetchMock: typeof globalThis.fetch
+  fetchMock: typeof globalThis.fetch,
+  startsAt?: number
 ) =>
   Effect.runPromise(
     Effect.gen(function* () {
+      if (startsAt !== undefined) yield* TestClock.setTime(startsAt);
       const fiber = yield* effect.pipe(
         Effect.provide(makeServiceLayer(fetchMock)),
         Effect.forkChild
@@ -891,7 +912,7 @@ describe("DotyposService customer lookup", () => {
           {
             firstName: "Ada",
             email: adaAddress,
-            phone: "+420 601 111 222",
+            phone: phoneNumber("+420 601 111 222"),
           },
           { lookupFields: ["email"] }
         );
@@ -947,6 +968,78 @@ describe("DotyposService customer lookup", () => {
     expect(updateAttempts).toBeGreaterThan(1);
   });
 
+  test("rejects a customer lookup that returns a customer without an id", async () => {
+    const { id: _id, ...matched } = customer({
+      email: adaAddress,
+      lastName: undefined,
+    });
+    const requests: string[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      requests.push(`${request.method} ${url.pathname}`);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        return Response.json({ data: [matched] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findOrCreateCustomer(
+          { firstName: "Ada", lastName: "Lovelace", email: adaAddress },
+          { lookupFields: ["email"] }
+        );
+      }).pipe(Effect.flip),
+      fetchMock
+    );
+
+    expect(error).toMatchObject({
+      _tag: "DotyposRejected",
+      operation: "findOrCreateCustomer",
+      request: "customers.lookup",
+      reason: "invalid-response",
+    });
+    expect(requests.filter((line) => !line.startsWith("GET"))).toEqual([
+      "POST /signin/token",
+    ]);
+  });
+
+  test.each([
+    ["an email", { firstName: "Ada", phone: phoneNumber("+420 601 111 222") }],
+    ["a phone", { firstName: "Ada", email: adaAddress }],
+  ])(
+    "refuses to create a customer without %s after finding no match",
+    async (_, customerData) => {
+      const requests: string[] = [];
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        requests.push(`${request.method} ${url.pathname}`);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        if (url.pathname === "/clouds/cloud-id/customers") {
+          return Response.json({ data: [] });
+        }
+        return new Response("Not found", { status: 404 });
+      });
+
+      const error = await runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.findOrCreateCustomer(customerData);
+        }).pipe(Effect.flip),
+        fetchMock
+      );
+
+      expect(error).toMatchObject({
+        _tag: "DotyposRejected",
+        operation: "findOrCreateCustomer",
+        reason: "invalid-request",
+      });
+      expect(requests).not.toContain("POST /clouds/cloud-id/customers");
+    }
+  );
+
   test("keeps provider error details out of createCustomer logs", async () => {
     const logs: CapturedLog[] = [];
     const providerDescription = `firstName=Ada; lastName=Lovelace; email=${adaSecretAddress}; phone=+420 777 123 456; ${"x".repeat(700)}`;
@@ -977,7 +1070,7 @@ describe("DotyposService customer lookup", () => {
             firstName: "Ada",
             lastName: "Lovelace",
             email: adaSecretAddress,
-            phone: "+420 777 123 456",
+            phone: phoneNumber("+420 777 123 456"),
           },
           undefined
         );
@@ -1073,7 +1166,7 @@ describe("DotyposService customer lookup", () => {
             firstName: "Ada",
             lastName: "Lovelace",
             email: adaAddress,
-            phone: "+420 777 123 456",
+            phone: phoneNumber("+420 777 123 456"),
           },
           undefined
         );
@@ -1200,10 +1293,14 @@ describe("DotyposService customer lookup", () => {
   });
 
   test.each([
-    { label: "unparseable", phone: "not a phone", expectedPhone: undefined },
-    { label: "valid", phone: "777 123 456", expectedPhone: "+420777123456" },
+    { label: "without a phone", phone: undefined, expectedPhone: undefined },
+    {
+      label: "with a phone",
+      phone: phoneNumber("777 123 456"),
+      expectedPhone: "+420777123456",
+    },
   ])(
-    "updates invoice customer details with a $label phone",
+    "updates invoice customer details $label",
     async ({ phone, expectedPhone }) => {
       const stored = customer({
         id: "invoice-customer",
@@ -1331,7 +1428,7 @@ describe("DotyposService customer lookup", () => {
               firstName: "Ada",
               lastName: "Lovelace",
               email: adaAddress,
-              phone: "+420 777 123 456",
+              phone: phoneNumber("+420 777 123 456"),
             },
             undefined
           )
@@ -1393,7 +1490,7 @@ describe("DotyposService customer lookup", () => {
             firstName: "Ada",
             lastName: "Lovelace",
             email: adaPrivateAddress,
-            phone: "+420 777 123 456",
+            phone: phoneNumber("+420 777 123 456"),
           },
           undefined
         );
@@ -1402,7 +1499,7 @@ describe("DotyposService customer lookup", () => {
             firstName: "Grace",
             lastName: "Hopper",
             email: gracePrivateAddress,
-            phone: "+420 777 987 654",
+            phone: phoneNumber("+420 777 987 654"),
           },
           undefined
         );
@@ -1566,7 +1663,7 @@ describe("DotyposService customer lookup", () => {
             firstName: "Ada",
             lastName: "Lovelace",
             email: mixedCaseAdaAddress,
-            phone: "+420777123456",
+            phone: phoneNumber("+420777123456"),
           },
           { lookupFields: ["email"] }
         );
@@ -3321,55 +3418,6 @@ describe("DotyposService customer discounts", () => {
       },
     });
   });
-
-  test('accepts "10" and ignores out-of-range discounts', async () => {
-    const discounts: Record<string, string> = {
-      ten: "10",
-      zero: "0",
-      tooHigh: "101",
-    };
-    const fetchMock = mockDotyposFetch((request) => {
-      const url = new URL(request.url);
-      if (url.pathname === "/signin/token") return tokenResponse();
-      const match = url.pathname.match(/\/discount-groups\/(.+)$/);
-      if (match) {
-        const discountGroupId = match[1]!;
-        return Response.json({
-          id: discountGroupId,
-          discountPercent: discounts[discountGroupId],
-        });
-      }
-      return new Response("Not found", { status: 404 });
-    });
-
-    const result = await runWithService(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* Effect.all([
-          dotypos.getCustomerDiscount(
-            customer({ _discountGroupId: dotyposDiscountGroupId("ten") })
-          ),
-          dotypos.getCustomerDiscount(
-            customer({ _discountGroupId: dotyposDiscountGroupId("zero") })
-          ),
-          dotypos.getCustomerDiscount(
-            customer({ _discountGroupId: dotyposDiscountGroupId("tooHigh") })
-          ),
-        ]);
-      }),
-      fetchMock
-    );
-
-    expect(result).toEqual([
-      {
-        source: "dotypos-discount-group",
-        discountGroupId: dotyposDiscountGroupId("ten"),
-        percent: 10,
-      },
-      undefined,
-      undefined,
-    ]);
-  });
 });
 
 describe("DotyposService reservation listing", () => {
@@ -4070,7 +4118,7 @@ const failureOutcomeCustomerDetails = {
   firstName: "Ada",
   lastName: "Lovelace",
   email: adaAddress,
-  phone: "+420 777 123 456",
+  phone: phoneNumber("+420 777 123 456"),
   addressLine1: "",
   addressLine2: "",
   city: "",
@@ -4602,7 +4650,7 @@ const runCreationOutcomeOperation = (
         firstName: "Ada",
         lastName: "Lovelace",
         email: adaAddress,
-        phone: "+420 777 123 456",
+        phone: phoneNumber("+420 777 123 456"),
       });
     case "createCustomer":
       return dotypos.createCustomer(failureOutcomeCustomerDetails);
@@ -5165,6 +5213,1600 @@ describe("DotyposService conditional-write replay", () => {
     expect(versionReads).toBe(1);
     expect(patchCount).toBe(row.patchCount);
   });
+
+  type ConfirmSettlementRead = "NEW" | "CONFIRMED" | "CANCELLED" | 503;
+  type ConfirmSettlementPatch = "success" | "transport" | 503 | 412 | 404;
+  type ConfirmSettlementRow = {
+    readonly label: string;
+    /** Each version read's answer in order; the last one repeats. */
+    readonly reads: readonly ConfirmSettlementRead[];
+    /** Each version read's ETag version in order; defaults to v1, then v2. */
+    readonly readEtags?: readonly string[];
+    readonly patches: readonly ConfirmSettlementPatch[];
+    readonly expected:
+      | "success"
+      | "cancelled"
+      | {
+          readonly _tag: string;
+          readonly reason?: string;
+          readonly request: string;
+          readonly httpStatus: number;
+        };
+    readonly expectedReads: number;
+    readonly expectedIfMatch: readonly string[];
+  };
+
+  const confirmSettlementRows: readonly ConfirmSettlementRow[] = [
+    {
+      label: "503 then 412 settles as applied when the reread is CONFIRMED",
+      reads: ["NEW", "CONFIRMED"],
+      patches: [503, 412],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label:
+        "transport failure then 412 settles as applied when the reread is CONFIRMED",
+      reads: ["NEW", "CONFIRMED"],
+      patches: ["transport", 412],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label:
+        "503 then 412 keeps cancellation protection when the reread is CANCELLED",
+      reads: ["NEW", "CANCELLED"],
+      patches: [503, 412],
+      expected: "cancelled",
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label:
+        "503 then 412 patches again under the fresh ETag when the reread is NEW",
+      reads: ["NEW", "NEW"],
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: [
+        '"reservation-v1"',
+        '"reservation-v1"',
+        '"reservation-v2"',
+      ],
+    },
+    {
+      label: "a plain 412 on the rerun PATCH stays uncertain",
+      reads: ["NEW", "NEW"],
+      patches: [503, 412, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "reservation.patch",
+        httpStatus: 412,
+      },
+      expectedReads: 2,
+      expectedIfMatch: [
+        '"reservation-v1"',
+        '"reservation-v1"',
+        '"reservation-v2"',
+      ],
+    },
+    {
+      label: "a rejected rerun PATCH stays uncertain",
+      reads: ["NEW", "NEW"],
+      patches: [503, 412, 404],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "reservation.patch",
+        httpStatus: 404,
+      },
+      expectedReads: 2,
+      expectedIfMatch: [
+        '"reservation-v1"',
+        '"reservation-v1"',
+        '"reservation-v2"',
+      ],
+    },
+    {
+      label:
+        "a NEW reread under the replayed ETag stays uncertain without another PATCH",
+      reads: ["NEW", "NEW"],
+      readEtags: ["v1", "v1"],
+      patches: [503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "reservation.patch",
+        httpStatus: 412,
+      },
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label: "a CONFIRMED reread under the replayed ETag settles as applied",
+      reads: ["NEW", "CONFIRMED"],
+      readEtags: ["v1", "v1"],
+      patches: [503, 412],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label:
+        "a CANCELLED reread under the replayed ETag keeps cancellation protection",
+      reads: ["NEW", "CANCELLED"],
+      readEtags: ["v1", "v1"],
+      patches: [503, 412],
+      expected: "cancelled",
+      expectedReads: 2,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+    {
+      label: "a second replay conflict stays uncertain without another rerun",
+      reads: ["NEW", "NEW"],
+      patches: [503, 412, 503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "reservation.patch",
+        httpStatus: 412,
+      },
+      expectedReads: 2,
+      expectedIfMatch: [
+        '"reservation-v1"',
+        '"reservation-v1"',
+        '"reservation-v2"',
+        '"reservation-v2"',
+      ],
+    },
+    {
+      label: "a failed settling reread stays uncertain",
+      reads: ["NEW", 503],
+      patches: [503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "reservation.version",
+        httpStatus: 503,
+      },
+      expectedReads: 5,
+      expectedIfMatch: ['"reservation-v1"', '"reservation-v1"'],
+    },
+  ];
+
+  test.each([...confirmSettlementRows])(
+    "confirmReservation settlement: $label",
+    async (row) => {
+      let versionReads = 0;
+      const ifMatchHeaders: Array<string | null> = [];
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        if (url.pathname !== "/clouds/cloud-id/reservations/reservation-id") {
+          return new Response("Not found", { status: 404 });
+        }
+        if (request.method === "GET") {
+          const read =
+            row.reads[Math.min(versionReads, row.reads.length - 1)] ?? 503;
+          const etag =
+            row.readEtags?.[versionReads] ??
+            `v${Math.min(versionReads + 1, 2)}`;
+          versionReads += 1;
+          if (read === 503) return new Response("Unavailable", { status: 503 });
+          return Response.json(reservation({ status: read }), {
+            headers: { ETag: `"reservation-${etag}"` },
+          });
+        }
+        if (request.method === "PATCH") {
+          const patch = row.patches[ifMatchHeaders.length];
+          ifMatchHeaders.push(request.headers.get("if-match"));
+          if (patch === "success") {
+            return Response.json(reservation({ status: "CONFIRMED" }));
+          }
+          if (patch === "transport") throw new TypeError("fetch failed");
+          return new Response(null, { status: patch ?? 500 });
+        }
+        return new Response("Not found", { status: 404 });
+      });
+
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .confirmReservation(dotyposReservationId("reservation-id"))
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+
+      if (row.expected === "success") {
+        expect(result).toMatchObject({
+          _tag: "Success",
+          success: { id: "reservation-id", status: "CONFIRMED" },
+        });
+      } else if (row.expected === "cancelled") {
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "DotyposReservationCancelledError",
+            reservationId: "reservation-id",
+          },
+        });
+      } else {
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: row.expected._tag,
+            ...(row.expected.reason && { reason: row.expected.reason }),
+            operation: "confirmReservation",
+            request: row.expected.request,
+            httpStatus: row.expected.httpStatus,
+          },
+        });
+      }
+      expect(versionReads).toBe(row.expectedReads);
+      expect(ifMatchHeaders).toEqual([...row.expectedIfMatch]);
+    }
+  );
+
+  /**
+   * A version read: the customer's discount group (null clears it) under an
+   * ETag, a 503, a 200 without an ETag, or a 200 whose body fails decoding.
+   */
+  type DiscountGroupSettlementRead =
+    | { readonly group: string | null; readonly etag: string }
+    | 503
+    | "missing-etag"
+    | "invalid-body";
+  /**
+   * A PATCH answer: `success` echoes the requested group, `null-group`
+   * answers 200 without a group, `null-body` answers 200 with a JSON null,
+   * and `invalid-body` fails decoding.
+   */
+  type DiscountGroupSettlementPatch =
+    | "success"
+    | "null-group"
+    | "null-body"
+    | "invalid-body"
+    | "transport"
+    | 503
+    | 412
+    | 404;
+  type DiscountGroupSettlementRow = {
+    readonly label: string;
+    readonly requested: string | null;
+    /** Each version read's answer in order; the last one repeats. */
+    readonly reads: readonly DiscountGroupSettlementRead[];
+    readonly patches: readonly DiscountGroupSettlementPatch[];
+    readonly expected:
+      | "success"
+      | {
+          readonly _tag: string;
+          readonly reason?: string;
+          readonly request: string;
+          readonly httpStatus?: number;
+        };
+    readonly expectedReads: number;
+    /** Each PATCH's If-Match ETag version in order. */
+    readonly expectedIfMatch: readonly string[];
+  };
+
+  const replayConflict = {
+    _tag: "DotyposUncertain",
+    reason: "conflict-after-replay",
+    request: "customer.patch",
+    httpStatus: 412,
+  } as const;
+  const replayedOnly = ["v1", "v1"] as const;
+  const confirmedOnce = ["v1", "v1", "v2"] as const;
+  const appliedReads = [
+    { group: "group-a", etag: "v1" },
+    { group: "group-b", etag: "v2" },
+  ] as const;
+
+  const discountGroupSettlementRows: readonly DiscountGroupSettlementRow[] = [
+    {
+      label:
+        "503 then 412 settles as applied when a confirming PATCH holds the reread group",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "transport failure then 412 settles as applied when a confirming PATCH holds the reread group",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: ["transport", 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "503 then 412 settles a cleared group when a confirming PATCH holds none",
+      requested: null,
+      reads: [
+        { group: "group-a", etag: "v1" },
+        { group: null, etag: "v2" },
+      ],
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a stale matching reread whose confirming PATCH meets 412 stays uncertain",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a confirming PATCH that is retried and then meets 412 stays uncertain without another settlement",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, 503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: ["v1", "v1", "v2", "v2"],
+    },
+    {
+      label: "a confirming PATCH that exhausts its retries stays uncertain",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, 503, 503, 503, 503],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "server",
+        request: "customer.patch",
+        httpStatus: 503,
+      },
+      expectedReads: 2,
+      expectedIfMatch: ["v1", "v1", "v2", "v2", "v2", "v2"],
+    },
+    {
+      label: "a rejected confirming PATCH stays uncertain",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, 404],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "customer.patch",
+        httpStatus: 404,
+      },
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that fails decoding stays uncertain",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, "invalid-body"],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "invalid-response",
+        request: "customer.patch",
+      },
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that answers a null body stays uncertain",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, "null-body"],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "invalid-response",
+        request: "customer.patch",
+      },
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a confirming PATCH that answers without the group stays uncertain",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [503, 412, "null-group"],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a reread that holds another group stays uncertain without a PATCH",
+      requested: "group-b",
+      reads: [
+        { group: "group-a", etag: "v1" },
+        { group: "group-c", etag: "v2" },
+      ],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label:
+        "a reread that holds a group after clearing stays uncertain without a PATCH",
+      requested: null,
+      reads: [
+        { group: "group-a", etag: "v1" },
+        { group: "group-c", etag: "v2" },
+      ],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label:
+        "a reread that holds the group under the replayed ETag stays uncertain without a PATCH",
+      requested: "group-b",
+      reads: [
+        { group: "group-a", etag: "v1" },
+        { group: "group-b", etag: "v1" },
+      ],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a plain 412 is a version conflict without a reread",
+      requested: "group-b",
+      reads: appliedReads,
+      patches: [412],
+      expected: {
+        _tag: "DotyposVersionConflict",
+        request: "customer.patch",
+        httpStatus: 412,
+      },
+      expectedReads: 1,
+      expectedIfMatch: ["v1"],
+    },
+    {
+      label: "a failed settling reread stays uncertain",
+      requested: "group-b",
+      reads: [{ group: "group-a", etag: "v1" }, 503],
+      patches: [503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "customer.version",
+        httpStatus: 503,
+      },
+      expectedReads: 5,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a settling reread without an ETag stays uncertain",
+      requested: "group-b",
+      reads: [{ group: "group-a", etag: "v1" }, "missing-etag"],
+      patches: [503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "customer.version",
+      },
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a settling reread that fails decoding stays uncertain",
+      requested: "group-b",
+      reads: [{ group: "group-a", etag: "v1" }, "invalid-body"],
+      patches: [503, 412],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "conflict-after-replay",
+        request: "customer.version",
+      },
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+  ];
+
+  test.each([...discountGroupSettlementRows])(
+    "setCustomerDiscountGroup settlement: $label",
+    async (row) => {
+      let versionReads = 0;
+      const ifMatchHeaders: Array<string | null> = [];
+      const patchBodies: unknown[] = [];
+      const fetchMock = mockDotyposFetch(async (request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        if (url.pathname !== "/clouds/cloud-id/customers/customer-id") {
+          return new Response("Not found", { status: 404 });
+        }
+        if (request.method === "GET") {
+          const read = row.reads[
+            Math.min(versionReads, row.reads.length - 1)
+          ] as DiscountGroupSettlementRead;
+          versionReads += 1;
+          if (read === 503) return new Response("Unavailable", { status: 503 });
+          // Both hold the requested group, so only the failed read decides.
+          if (read === "missing-etag") {
+            return Response.json(customer({ _discountGroupId: "group-b" }));
+          }
+          if (read === "invalid-body") {
+            return Response.json(
+              { ...customer({ _discountGroupId: "group-b" }), _cloudId: 42 },
+              { headers: { ETag: '"customer-v9"' } }
+            );
+          }
+          return Response.json(customer({ _discountGroupId: read.group }), {
+            headers: { ETag: `"customer-${read.etag}"` },
+          });
+        }
+        if (request.method === "PATCH") {
+          const patch = row.patches[ifMatchHeaders.length];
+          ifMatchHeaders.push(request.headers.get("if-match"));
+          patchBodies.push(await request.json());
+          if (patch === "transport") throw new TypeError("fetch failed");
+          if (patch === "success") {
+            return Response.json(customer({ _discountGroupId: row.requested }));
+          }
+          if (patch === "null-group") {
+            return Response.json(customer({ _discountGroupId: null }));
+          }
+          if (patch === "null-body") return Response.json(null);
+          if (patch === "invalid-body") {
+            return Response.json({
+              ...customer({ _discountGroupId: row.requested }),
+              _cloudId: 42,
+            });
+          }
+          return new Response(null, { status: patch ?? 500 });
+        }
+        return new Response("Not found", { status: 404 });
+      });
+
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .setCustomerDiscountGroup(
+              dotyposCustomerId("customer-id"),
+              row.requested === null
+                ? null
+                : dotyposDiscountGroupId(row.requested)
+            )
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+
+      if (row.expected === "success") {
+        expect(result).toMatchObject({
+          _tag: "Success",
+          success: { id: "customer-id" },
+        });
+        if (Predicate.isTagged(result, "Success")) {
+          expect(result.success._discountGroupId ?? null).toBe(
+            row.requested === null
+              ? null
+              : dotyposDiscountGroupId(row.requested)
+          );
+        }
+      } else {
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: row.expected._tag,
+            ...(row.expected.reason && { reason: row.expected.reason }),
+            operation: "setCustomerDiscountGroup",
+            request: row.expected.request,
+            ...(row.expected.httpStatus !== undefined && {
+              httpStatus: row.expected.httpStatus,
+            }),
+          },
+        });
+      }
+      expect(versionReads).toBe(row.expectedReads);
+      // The replay reuses the first ETag; a confirmation uses the reread's.
+      expect(ifMatchHeaders).toEqual(
+        row.expectedIfMatch.map((etag) => `"customer-${etag}"`)
+      );
+      // Every PATCH, a confirmation included, sends the same payload.
+      expect(patchBodies).toEqual(
+        row.expectedIfMatch.map(() => ({ _discountGroupId: row.requested }))
+      );
+    }
+  );
+
+  /** Customer fields an answer carries; undefined leaves one out. */
+  type CustomerFieldsSettlementFields = {
+    readonly [Field in keyof DotyposCustomerDetails]?: string | null;
+  } & {
+    readonly expireDate?: string | null;
+    readonly deleted?: boolean;
+  };
+  /** A version read: the customer's detail fields under an ETag, or a 503. */
+  type CustomerFieldsSettlementRead =
+    | { readonly fields: CustomerFieldsSettlementFields; readonly etag: string }
+    | 503;
+  /** A PATCH answer: `success` echoes the written fields; fields answer 200 with them. */
+  type CustomerFieldsSettlementPatch =
+    | "success"
+    | { readonly fields: CustomerFieldsSettlementFields }
+    | "transport"
+    | 503
+    | 412;
+  type CustomerFieldsSettlementRow = {
+    readonly label: string;
+    /** Each version read's answer in order; the last one repeats. */
+    readonly reads: readonly CustomerFieldsSettlementRead[];
+    readonly patches: readonly CustomerFieldsSettlementPatch[];
+    readonly expected:
+      | "success"
+      | {
+          readonly _tag: string;
+          readonly reason?: string;
+          readonly request: string;
+          readonly httpStatus?: number;
+        };
+    readonly expectedReads: number;
+    /** Each PATCH's If-Match ETag version in order. */
+    readonly expectedIfMatch: readonly string[];
+  };
+
+  /**
+   * Runs one settlement row of a customer-field write against the fetch mock
+   * and checks the outcome, the version reads, each PATCH's If-Match ETag and
+   * that every PATCH sends exactly `written`.
+   */
+  const expectCustomerFieldsSettlement = async (input: {
+    readonly row: CustomerFieldsSettlementRow;
+    readonly operation:
+      | "updateCustomerBillingDetails"
+      | "updateCustomerDetails"
+      | "updateCustomerProfile"
+      | "expireCustomer"
+      | "reactivateCustomer";
+    /** The write; one that returns an Option must answer some. */
+    readonly write: (
+      dotypos: IDotyposService
+    ) => Effect.Effect<
+      DotyposCustomer | Option.Option<DotyposCustomer>,
+      DotyposConditionalWriteFailure
+    >;
+    readonly written: CustomerFieldsSettlementFields;
+  }) => {
+    const { row } = input;
+    let versionReads = 0;
+    const ifMatchHeaders: Array<string | null> = [];
+    const patchBodies: unknown[] = [];
+    const fetchMock = mockDotyposFetch(async (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname !== "/clouds/cloud-id/customers/customer-id") {
+        return new Response("Not found", { status: 404 });
+      }
+      if (request.method === "GET") {
+        const read = row.reads[
+          Math.min(versionReads, row.reads.length - 1)
+        ] as CustomerFieldsSettlementRead;
+        versionReads += 1;
+        if (read === 503) return new Response("Unavailable", { status: 503 });
+        return Response.json(customer(read.fields), {
+          headers: { ETag: `"customer-${read.etag}"` },
+        });
+      }
+      if (request.method === "PATCH") {
+        const patch = row.patches[ifMatchHeaders.length];
+        ifMatchHeaders.push(request.headers.get("if-match"));
+        patchBodies.push(await request.json());
+        if (patch === "transport") throw new TypeError("fetch failed");
+        if (patch === "success") return Response.json(customer(input.written));
+        if (typeof patch === "object") {
+          return Response.json(customer(patch.fields));
+        }
+        return new Response(null, { status: patch ?? 500 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithServiceRetryingInstantly(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* input.write(dotypos).pipe(
+          Effect.map((written) =>
+            Option.isOption(written) ? Option.getOrUndefined(written) : written
+          ),
+          Effect.result
+        );
+      }),
+      fetchMock,
+      settlementNow
+    );
+
+    if (row.expected === "success") {
+      expect(result).toMatchObject({
+        _tag: "Success",
+        success: { id: "customer-id" },
+      });
+    } else {
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: row.expected._tag,
+          ...(row.expected.reason && { reason: row.expected.reason }),
+          operation: input.operation,
+          request: row.expected.request,
+          ...(row.expected.httpStatus !== undefined && {
+            httpStatus: row.expected.httpStatus,
+          }),
+        },
+      });
+    }
+    expect(versionReads).toBe(row.expectedReads);
+    // The replay reuses the first ETag; a confirmation uses the reread's.
+    expect(ifMatchHeaders).toEqual(
+      row.expectedIfMatch.map((etag) => `"customer-${etag}"`)
+    );
+    // Every PATCH, a confirmation included, sends exactly the written fields.
+    expect(patchBodies).toStrictEqual(
+      row.expectedIfMatch.map(() => input.written)
+    );
+  };
+
+  /** The settlement tests' clock, so an expiry is written at a known instant. */
+  const settlementNow = Date.parse("2026-11-05T12:00:00.000Z");
+  const fieldsBefore = { fields: {}, etag: "v1" } as const;
+  const fieldsRereadOnly = (fields: CustomerFieldsSettlementFields) =>
+    ({
+      reads: [fieldsBefore, { fields, etag: "v2" }],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    }) as const;
+  const settlingRereadFailed = {
+    _tag: "DotyposUncertain",
+    reason: "conflict-after-replay",
+    request: "customer.version",
+    httpStatus: 503,
+  } as const;
+  const plainCustomerConflict = {
+    _tag: "DotyposVersionConflict",
+    request: "customer.patch",
+    httpStatus: 412,
+  } as const;
+
+  const requestedBilling: DotyposCustomerBillingDetails = {
+    addressLine1: "Synthetic street 1",
+    addressLine2: "",
+    city: "Synthetic city",
+    zip: "12345",
+    country: "CZ",
+    companyName: "Synthetic company",
+    companyId: "",
+    vatId: "",
+  };
+  const blankBillingAsNull = {
+    ...requestedBilling,
+    addressLine2: null,
+    companyId: null,
+    vatId: null,
+  } as const;
+  const blankBillingMissing = {
+    ...requestedBilling,
+    addressLine2: undefined,
+    companyId: undefined,
+    vatId: undefined,
+  } as const;
+  const billingApplied = [
+    fieldsBefore,
+    { fields: requestedBilling, etag: "v2" },
+  ] as const;
+
+  const billingSettlementRows: readonly CustomerFieldsSettlementRow[] = [
+    {
+      label:
+        "503 then 412 settles when a confirming PATCH holds every billing detail",
+      reads: billingApplied,
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "transport failure then 412 settles when a confirming PATCH holds every billing detail",
+      reads: billingApplied,
+      patches: ["transport", 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "null fields hold blank billing details",
+      reads: [fieldsBefore, { fields: blankBillingAsNull, etag: "v2" }],
+      patches: [503, 412, { fields: blankBillingAsNull }],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "missing fields hold blank billing details",
+      reads: [fieldsBefore, { fields: blankBillingMissing, etag: "v2" }],
+      patches: [503, 412, { fields: blankBillingMissing }],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a reread with another zip stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...requestedBilling, zip: "54321" }),
+    },
+    {
+      label:
+        "a reread with a VAT ID where a blank was written stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...requestedBilling, vatId: "CZ00000000" }),
+    },
+    {
+      label: "a reread without a written city stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...requestedBilling, city: null }),
+    },
+    {
+      label:
+        "a reread whose city differs only by case stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...requestedBilling, city: "SYNTHETIC CITY" }),
+    },
+    {
+      label:
+        "a reread whose address differs only by whitespace stays uncertain without a PATCH",
+      ...fieldsRereadOnly({
+        ...requestedBilling,
+        addressLine1: " Synthetic street 1 ",
+      }),
+    },
+    {
+      label:
+        "a reread that holds the details under the replayed ETag stays uncertain without a PATCH",
+      reads: [fieldsBefore, { fields: requestedBilling, etag: "v1" }],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a confirming PATCH that answers another country stays uncertain",
+      reads: billingApplied,
+      patches: [503, 412, { fields: { ...requestedBilling, country: "SK" } }],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that meets 412 stays uncertain",
+      reads: billingApplied,
+      patches: [503, 412, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that exhausts its retries stays uncertain",
+      reads: billingApplied,
+      patches: [503, 412, 503, 503, 503, 503],
+      expected: {
+        _tag: "DotyposUncertain",
+        reason: "server",
+        request: "customer.patch",
+        httpStatus: 503,
+      },
+      expectedReads: 2,
+      expectedIfMatch: ["v1", "v1", "v2", "v2", "v2", "v2"],
+    },
+    {
+      label: "a failed settling reread stays uncertain",
+      reads: [fieldsBefore, 503],
+      patches: [503, 412],
+      expected: settlingRereadFailed,
+      expectedReads: 5,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a plain 412 is a version conflict without a reread",
+      reads: billingApplied,
+      patches: [412],
+      expected: plainCustomerConflict,
+      expectedReads: 1,
+      expectedIfMatch: ["v1"],
+    },
+  ];
+
+  test.each([...billingSettlementRows])(
+    "updateCustomerBillingDetails settlement: $label",
+    (row) =>
+      expectCustomerFieldsSettlement({
+        row,
+        operation: "updateCustomerBillingDetails",
+        write: (dotypos) =>
+          dotypos.updateCustomerBillingDetails(
+            dotyposCustomerId("customer-id"),
+            requestedBilling
+          ),
+        written: requestedBilling,
+      })
+  );
+
+  /** Details as a caller passes them: padded, with a phone read from local-format text. */
+  const enteredDetails: DotyposCustomerDetails = {
+    firstName: " Ada ",
+    lastName: "Lovelace ",
+    email: ` ${adaAddress}`,
+    phone: phoneNumber(" 777 123 456 "),
+    addressLine1: " Synthetic street 1",
+    addressLine2: "  ",
+    city: "Synthetic city ",
+    zip: " 12345",
+    country: "CZ ",
+    companyName: " ",
+    companyId: "",
+    vatId: " ",
+  };
+  /** What updateCustomerDetails writes for enteredDetails without a phone. */
+  const writtenDetailsWithoutPhone = {
+    firstName: "Ada",
+    lastName: "Lovelace",
+    email: adaAddress,
+    addressLine1: "Synthetic street 1",
+    addressLine2: "",
+    city: "Synthetic city",
+    zip: "12345",
+    country: "CZ",
+    companyName: "",
+    companyId: "",
+    vatId: "",
+  } as const;
+  /** What updateCustomerDetails writes for enteredDetails: trimmed, with its phone. */
+  const writtenDetails = {
+    ...writtenDetailsWithoutPhone,
+    phone: "+420777123456",
+  } as const;
+  const storedPhone = "+420777000111";
+  const blankDetailsAsNull = {
+    ...writtenDetails,
+    addressLine2: null,
+    companyName: null,
+    companyId: null,
+    vatId: null,
+  } as const;
+  const blankDetailsMissing = {
+    ...writtenDetails,
+    addressLine2: undefined,
+    companyName: undefined,
+    companyId: undefined,
+    vatId: undefined,
+  } as const;
+  const detailsApplied = [
+    fieldsBefore,
+    { fields: writtenDetails, etag: "v2" },
+  ] as const;
+
+  type CustomerDetailsSettlementRow = CustomerFieldsSettlementRow & {
+    /** `without-phone` passes no phone, which the write omits. */
+    readonly entered?: "without-phone";
+  };
+
+  const detailsSettlementRows: readonly CustomerDetailsSettlementRow[] = [
+    {
+      label:
+        "503 then 412 settles when a confirming PATCH holds the trimmed details and normalized phone",
+      reads: detailsApplied,
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "transport failure then 412 settles when a confirming PATCH holds the details",
+      reads: detailsApplied,
+      patches: ["transport", 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "null fields hold blank details",
+      reads: [fieldsBefore, { fields: blankDetailsAsNull, etag: "v2" }],
+      patches: [503, 412, { fields: blankDetailsAsNull }],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "missing fields hold blank details",
+      reads: [fieldsBefore, { fields: blankDetailsMissing, etag: "v2" }],
+      patches: [503, 412, { fields: blankDetailsMissing }],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a write without a phone settles over the stored phone and never sends one",
+      entered: "without-phone",
+      reads: [
+        fieldsBefore,
+        {
+          fields: { ...writtenDetailsWithoutPhone, phone: storedPhone },
+          etag: "v2",
+        },
+      ],
+      patches: [
+        503,
+        412,
+        { fields: { ...writtenDetailsWithoutPhone, phone: storedPhone } },
+      ],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a write without a phone settles on a customer without one",
+      entered: "without-phone",
+      reads: [
+        fieldsBefore,
+        { fields: { ...writtenDetailsWithoutPhone, phone: null }, etag: "v2" },
+      ],
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a write without a phone still checks the other fields and stays uncertain on another email",
+      entered: "without-phone",
+      ...fieldsRereadOnly({
+        ...writtenDetailsWithoutPhone,
+        email: testEmailAddress("someone-else"),
+        phone: storedPhone,
+      }),
+    },
+    {
+      label: "a reread with another phone stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenDetails, phone: storedPhone }),
+    },
+    {
+      label:
+        "a reread without the written phone stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenDetails, phone: null }),
+    },
+    {
+      label:
+        "a reread holding the phone as entered rather than normalized stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenDetails, phone: "777 123 456" }),
+    },
+    {
+      label:
+        "a reread holding an untrimmed entered value stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenDetails, firstName: " Ada " }),
+    },
+    {
+      label: "a reread with another email stays uncertain without a PATCH",
+      ...fieldsRereadOnly({
+        ...writtenDetails,
+        email: testEmailAddress("someone-else"),
+      }),
+    },
+    {
+      label:
+        "a reread whose email differs only by case stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenDetails, email: mixedCaseAdaAddress }),
+    },
+    {
+      label: "a reread with another last name stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenDetails, lastName: "Byron" }),
+    },
+    {
+      label:
+        "a reread with a company name where a blank was written stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenDetails, companyName: "Other company" }),
+    },
+    {
+      label:
+        "a reread that holds the details under the replayed ETag stays uncertain without a PATCH",
+      reads: [fieldsBefore, { fields: writtenDetails, etag: "v1" }],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label:
+        "a confirming PATCH that answers another first name stays uncertain",
+      reads: detailsApplied,
+      patches: [503, 412, { fields: { ...writtenDetails, firstName: "Ida" } }],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that answers another phone stays uncertain",
+      reads: detailsApplied,
+      patches: [
+        503,
+        412,
+        { fields: { ...writtenDetails, phone: storedPhone } },
+      ],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that meets 412 stays uncertain",
+      reads: detailsApplied,
+      patches: [503, 412, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a failed settling reread stays uncertain",
+      reads: [fieldsBefore, 503],
+      patches: [503, 412],
+      expected: settlingRereadFailed,
+      expectedReads: 5,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a plain 412 is a version conflict without a reread",
+      reads: detailsApplied,
+      patches: [412],
+      expected: plainCustomerConflict,
+      expectedReads: 1,
+      expectedIfMatch: ["v1"],
+    },
+    {
+      label:
+        "a plain 412 on a write without a phone is a version conflict without a reread",
+      entered: "without-phone",
+      reads: detailsApplied,
+      patches: [412],
+      expected: plainCustomerConflict,
+      expectedReads: 1,
+      expectedIfMatch: ["v1"],
+    },
+  ];
+
+  test.each([...detailsSettlementRows])(
+    "updateCustomerDetails settlement: $label",
+    (row) => {
+      const withoutPhone = row.entered === "without-phone";
+      return expectCustomerFieldsSettlement({
+        row,
+        operation: "updateCustomerDetails",
+        write: (dotypos) =>
+          dotypos.updateCustomerDetails(
+            dotyposCustomerId("customer-id"),
+            withoutPhone
+              ? { ...enteredDetails, phone: undefined }
+              : enteredDetails
+          ),
+        written: withoutPhone ? writtenDetailsWithoutPhone : writtenDetails,
+      });
+    }
+  );
+
+  /** A profile as the account passes it: padded, with a phone read from local-format text. */
+  const enteredProfile: DotyposCustomerProfile = {
+    firstName: " Ada ",
+    lastName: "Lovelace ",
+    phone: phoneNumber(" 777 123 456 "),
+    addressLine1: " Synthetic street 1",
+    addressLine2: "  ",
+    city: "Synthetic city ",
+    zip: " 12345",
+    country: "CZ ",
+    companyName: " ",
+    companyId: "",
+    vatId: " ",
+  };
+  /** What updateCustomerProfile writes for enteredProfile: trimmed, with its phone, no email. */
+  const writtenProfile = {
+    firstName: "Ada",
+    lastName: "Lovelace",
+    phone: "+420777123456",
+    addressLine1: "Synthetic street 1",
+    addressLine2: "",
+    city: "Synthetic city",
+    zip: "12345",
+    country: "CZ",
+    companyName: "",
+    companyId: "",
+    vatId: "",
+  } as const;
+  /** What updateCustomerProfile writes when the customer clears the phone. */
+  const writtenProfileClearingPhone = { ...writtenProfile, phone: "" } as const;
+  const profileApplied = [
+    fieldsBefore,
+    { fields: writtenProfile, etag: "v2" },
+  ] as const;
+
+  type CustomerProfileSettlementRow = CustomerFieldsSettlementRow & {
+    /** `clearing-phone` passes a blank phone, which explicitly clears it. */
+    readonly entered?: "clearing-phone";
+  };
+
+  const profileSettlementRows: readonly CustomerProfileSettlementRow[] = [
+    {
+      label:
+        "503 then 412 settles when a confirming PATCH holds the trimmed profile and normalized phone",
+      reads: profileApplied,
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "null and missing blank fields hold the profile",
+      reads: [
+        fieldsBefore,
+        {
+          fields: { ...writtenProfile, addressLine2: null, vatId: undefined },
+          etag: "v2",
+        },
+      ],
+      patches: [
+        503,
+        412,
+        { fields: { ...writtenProfile, addressLine2: null, vatId: undefined } },
+      ],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "the profile leaves the email out, so a reread with another email still settles",
+      reads: [
+        fieldsBefore,
+        {
+          fields: {
+            ...writtenProfile,
+            email: testEmailAddress("someone-else"),
+          },
+          etag: "v2",
+        },
+      ],
+      patches: [
+        503,
+        412,
+        {
+          fields: {
+            ...writtenProfile,
+            email: testEmailAddress("someone-else"),
+          },
+        },
+      ],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a cleared phone settles on a customer without a phone",
+      entered: "clearing-phone",
+      reads: [
+        fieldsBefore,
+        { fields: { ...writtenProfileClearingPhone, phone: null }, etag: "v2" },
+      ],
+      patches: [
+        503,
+        412,
+        { fields: { ...writtenProfileClearingPhone, phone: null } },
+      ],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a cleared phone stays uncertain without a PATCH while the reread still has one",
+      entered: "clearing-phone",
+      ...fieldsRereadOnly({
+        ...writtenProfileClearingPhone,
+        phone: "+420777000111",
+      }),
+    },
+    {
+      label: "a reread with another phone stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenProfile, phone: "+420777000111" }),
+    },
+    {
+      label:
+        "a reread holding the phone as entered rather than normalized stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenProfile, phone: "777 123 456" }),
+    },
+    {
+      label: "a reread with another last name stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenProfile, lastName: "Byron" }),
+    },
+    {
+      label:
+        "a deleted reread that holds every field stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenProfile, deleted: true }),
+    },
+    {
+      label:
+        "a reread that holds the profile under the replayed ETag stays uncertain without a PATCH",
+      reads: [fieldsBefore, { fields: writtenProfile, etag: "v1" }],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a confirming PATCH that answers another phone stays uncertain",
+      reads: profileApplied,
+      patches: [
+        503,
+        412,
+        { fields: { ...writtenProfile, phone: "+420777000111" } },
+      ],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that meets 412 stays uncertain",
+      reads: profileApplied,
+      patches: [503, 412, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a failed settling reread stays uncertain",
+      reads: [fieldsBefore, 503],
+      patches: [503, 412],
+      expected: settlingRereadFailed,
+      expectedReads: 5,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a plain 412 is a version conflict without a reread",
+      reads: profileApplied,
+      patches: [412],
+      expected: plainCustomerConflict,
+      expectedReads: 1,
+      expectedIfMatch: ["v1"],
+    },
+  ];
+
+  test.each([...profileSettlementRows])(
+    "updateCustomerProfile settlement: $label",
+    (row) => {
+      const clearingPhone = row.entered === "clearing-phone";
+      return expectCustomerFieldsSettlement({
+        row,
+        operation: "updateCustomerProfile",
+        write: (dotypos) =>
+          dotypos.updateCustomerProfile(
+            dotyposCustomerId("customer-id"),
+            clearingPhone ? { ...enteredProfile, phone: "" } : enteredProfile
+          ),
+        written: clearingPhone ? writtenProfileClearingPhone : writtenProfile,
+      });
+    }
+  );
+
+  /** The expiry expireCustomer writes: a minute before settlementNow. */
+  const writtenExpiry = { expireDate: "2026-11-05T11:59:00.000Z" } as const;
+  const expiryApplied = [
+    fieldsBefore,
+    { fields: writtenExpiry, etag: "v2" },
+  ] as const;
+
+  const expirySettlementRows: readonly CustomerFieldsSettlementRow[] = [
+    {
+      label:
+        "503 then 412 settles when a confirming PATCH answers an expired customer",
+      reads: expiryApplied,
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label:
+        "a reread expired by an earlier expiry settles through the confirming PATCH",
+      reads: [
+        fieldsBefore,
+        { fields: { expireDate: "2026-01-01T00:00:00.000Z" }, etag: "v2" },
+      ],
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "an active reread stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ expireDate: null }),
+    },
+    {
+      label:
+        "a reread whose expiry is still ahead stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ expireDate: "2026-11-06T00:00:00.000Z" }),
+    },
+    {
+      label: "a deleted reread stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...writtenExpiry, deleted: true }),
+    },
+    {
+      label:
+        "an expired reread under the replayed ETag stays uncertain without a PATCH",
+      reads: [fieldsBefore, { fields: writtenExpiry, etag: "v1" }],
+      patches: [503, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label:
+        "a confirming PATCH that answers a deleted customer stays uncertain",
+      reads: expiryApplied,
+      patches: [503, 412, { fields: { ...writtenExpiry, deleted: true } }],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a confirming PATCH that meets 412 stays uncertain",
+      reads: expiryApplied,
+      patches: [503, 412, 412],
+      expected: replayConflict,
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a failed settling reread stays uncertain",
+      reads: [fieldsBefore, 503],
+      patches: [503, 412],
+      expected: settlingRereadFailed,
+      expectedReads: 5,
+      expectedIfMatch: replayedOnly,
+    },
+    {
+      label: "a plain 412 is a version conflict without a reread",
+      reads: expiryApplied,
+      patches: [412],
+      expected: plainCustomerConflict,
+      expectedReads: 1,
+      expectedIfMatch: ["v1"],
+    },
+  ];
+
+  test.each([...expirySettlementRows])(
+    "expireCustomer settlement: $label",
+    (row) =>
+      expectCustomerFieldsSettlement({
+        row,
+        operation: "expireCustomer",
+        write: (dotypos) =>
+          dotypos.expireCustomer(dotyposCustomerId("customer-id")),
+        written: writtenExpiry,
+      })
+  );
+
+  const clearedExpiry = { expireDate: null } as const;
+  const reactivationApplied = [
+    { fields: writtenExpiry, etag: "v1" },
+    { fields: clearedExpiry, etag: "v2" },
+  ] as const;
+
+  const reactivationSettlementRows: readonly CustomerFieldsSettlementRow[] = [
+    {
+      label: "503 then 412 settles when a confirming PATCH answers no expiry",
+      reads: reactivationApplied,
+      patches: [503, 412, "success"],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a missing expiry holds the reactivation",
+      reads: [
+        { fields: writtenExpiry, etag: "v1" },
+        { fields: {}, etag: "v2" },
+      ],
+      patches: [503, 412, { fields: {} }],
+      expected: "success",
+      expectedReads: 2,
+      expectedIfMatch: confirmedOnce,
+    },
+    {
+      label: "a still expired reread stays uncertain without a PATCH",
+      ...fieldsRereadOnly(writtenExpiry),
+    },
+    {
+      label:
+        "an active reread with an expiry ahead stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ expireDate: "2026-11-06T00:00:00.000Z" }),
+    },
+    {
+      label:
+        "a deleted reread without an expiry stays uncertain without a PATCH",
+      ...fieldsRereadOnly({ ...clearedExpiry, deleted: true }),
+    },
+    {
+      label: "a plain 412 is a version conflict without a reread",
+      reads: reactivationApplied,
+      patches: [412],
+      expected: plainCustomerConflict,
+      expectedReads: 1,
+      expectedIfMatch: ["v1"],
+    },
+  ];
+
+  test.each([...reactivationSettlementRows])(
+    "reactivateCustomer settlement: $label",
+    (row) =>
+      expectCustomerFieldsSettlement({
+        row,
+        operation: "reactivateCustomer",
+        write: (dotypos) =>
+          dotypos.reactivateCustomer(dotyposCustomerId("customer-id")),
+        written: clearedExpiry,
+      })
+  );
+
+  const accountCustomerWrites = {
+    updateCustomerProfile: (dotypos: IDotyposService) =>
+      dotypos.updateCustomerProfile(
+        dotyposCustomerId("customer-id"),
+        enteredProfile
+      ),
+    expireCustomer: (dotypos: IDotyposService) =>
+      dotypos.expireCustomer(dotyposCustomerId("customer-id")),
+    reactivateCustomer: (dotypos: IDotyposService) =>
+      dotypos.reactivateCustomer(dotyposCustomerId("customer-id")),
+  } as const;
+
+  test.each(
+    Object.keys(accountCustomerWrites) as Array<
+      keyof typeof accountCustomerWrites
+    >
+  )(
+    "%s answers none without a PATCH when the customer is missing",
+    async (operation) => {
+      const methods: string[] = [];
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        methods.push(request.method);
+        return new Response(null, { status: 404 });
+      });
+
+      const result = await runWithServiceRetryingInstantly(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* accountCustomerWrites[operation](dotypos);
+        }),
+        fetchMock
+      );
+
+      expect(Option.isNone(result)).toBe(true);
+      expect(methods).toEqual(["GET"]);
+    }
+  );
 });
 
 type SingleReadPageOperation =
@@ -5246,6 +6888,166 @@ describe("DotyposService read retry boundary", () => {
     }
   );
 
+  test("ends a retried read whose every attempt times out at its retried worst case", async () => {
+    const apiTimeout = dotyposApiTimeoutDefaultMilliseconds;
+    const worstCase = getDotyposRequestWorstCase(apiTimeout);
+    let customerRequests = 0;
+    let markRequestStarted!: () => void;
+    const requestStarted = new Promise<void>((resolve) => {
+      markRequestStarted = resolve;
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      customerRequests += 1;
+      markRequestStarted();
+      return new Promise<Response>((_, reject) => {
+        request.signal.addEventListener("abort", () =>
+          reject(request.signal.reason)
+        );
+      });
+    });
+
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .getCustomer(dotyposCustomerId("customer-id"))
+            .pipe(Effect.result);
+        }).pipe(
+          Effect.provide(
+            makeServiceLayer(fetchMock, { ...config, apiTimeout })
+          ),
+          // Pin every jittered backoff at its maximum.
+          Effect.provideService(Random.Random, {
+            nextDoubleUnsafe: () => 1,
+            nextIntUnsafe: () => 0,
+          }),
+          Effect.forkChild
+        );
+        yield* Effect.promise(() => requestStarted);
+        yield* TestClock.adjust(
+          Duration.subtract(worstCase.retried, Duration.millis(1))
+        );
+        const finishedEarly = fiber.pollUnsafe() !== undefined;
+        yield* TestClock.adjust("1 millis");
+        const finishedAtBound = fiber.pollUnsafe() !== undefined;
+        return {
+          finishedEarly,
+          finishedAtBound,
+          result: yield* Fiber.join(fiber),
+        };
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(Duration.toMillis(worstCase.once)).toBe(30_000);
+    expect(Duration.toMillis(worstCase.retried)).toBe(120_840);
+    expect(outcome.finishedEarly).toBe(false);
+    expect(outcome.finishedAtBound).toBe(true);
+    expect(outcome.result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "DotyposUnavailable",
+        reason: "timeout",
+        operation: "getCustomer",
+        request: "customer.get",
+      },
+    });
+    expect(customerRequests).toBe(4);
+  });
+
+  test("resumes a retried paged list load at the failed page and ends within its paged-load worst case", async () => {
+    const apiTimeout = dotyposApiTimeoutDefaultMilliseconds;
+    const worstCase = getDotyposRequestWorstCase(apiTimeout);
+    const requestedPages: string[] = [];
+    let answerFirstPage!: () => void;
+    const firstPageStarted = Promise.withResolvers<void>();
+    const secondPageStarted = Promise.withResolvers<void>();
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      const page = url.searchParams.get("page") ?? "";
+      requestedPages.push(page);
+      if (page === "1") {
+        firstPageStarted.resolve();
+        return new Promise<Response>((resolve) => {
+          answerFirstPage = () =>
+            resolve(Response.json({ data: [reservation()], nextPage: "2" }));
+        });
+      }
+      secondPageStarted.resolve();
+      return new Promise<Response>((_, reject) => {
+        request.signal.addEventListener("abort", () =>
+          reject(request.signal.reason)
+        );
+      });
+    });
+
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.listReservations().pipe(Effect.result);
+        }).pipe(
+          Effect.provide(
+            makeServiceLayer(fetchMock, { ...config, apiTimeout })
+          ),
+          // Pin every jittered backoff at its maximum.
+          Effect.provideService(Random.Random, {
+            nextDoubleUnsafe: () => 1,
+            nextIntUnsafe: () => 0,
+          }),
+          Effect.forkChild
+        );
+        // Page 1 answers 1 ms before its attempt timeout; every attempt at
+        // page 2 times out. That is the slowest two-page load, 1 ms under
+        // its bound.
+        yield* Effect.promise(() => firstPageStarted.promise);
+        yield* TestClock.adjust(
+          Duration.subtract(Duration.millis(apiTimeout), Duration.millis(1))
+        );
+        answerFirstPage();
+        yield* Effect.promise(() => secondPageStarted.promise);
+        const slowest = Duration.subtract(
+          worstCase.pagedLoad(2),
+          Duration.millis(1)
+        );
+        // The clock stands at 1 ms before one attempt timeout; move it to
+        // 1 ms before the slowest load.
+        yield* TestClock.adjust(
+          Duration.subtract(slowest, Duration.millis(apiTimeout))
+        );
+        const finishedEarly = fiber.pollUnsafe() !== undefined;
+        yield* TestClock.adjust("1 millis");
+        const finishedAtSlowest = fiber.pollUnsafe() !== undefined;
+        return {
+          finishedEarly,
+          finishedAtSlowest,
+          result: yield* Fiber.join(fiber),
+        };
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    // Two page attempts plus three shared retries of 30 s, and 840 ms of
+    // maximal backoff.
+    expect(Duration.toMillis(worstCase.pagedLoad(2))).toBe(150_840);
+    expect(outcome.finishedEarly).toBe(false);
+    expect(outcome.finishedAtSlowest).toBe(true);
+    expect(outcome.result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "DotyposUnavailable",
+        reason: "timeout",
+        operation: "listReservations",
+        request: "reservations.list",
+      },
+    });
+    // The retries resend only page 2; page 1 is read once.
+    expect(requestedPages).toEqual(["1", "2", "2", "2", "2"]);
+    expect(Duration.isFinite(worstCase.pagedLoad("unknown"))).toBe(false);
+  });
+
   test("does not retry a generated products decode failure", async () => {
     let productRequests = 0;
     const fetchMock = mockDotyposFetch((request) => {
@@ -5287,16 +7089,25 @@ describe("DotyposService read retry boundary", () => {
       label: "reservation 404",
       linkedCustomer: false,
       missingCustomerId: false,
+      missingId: false,
     },
     {
       label: "linked customer 404",
       linkedCustomer: true,
       missingCustomerId: false,
+      missingId: false,
     },
     {
       label: "missing customer ID",
       linkedCustomer: false,
       missingCustomerId: true,
+      missingId: false,
+    },
+    {
+      label: "reservation without an ID",
+      linkedCustomer: false,
+      missingCustomerId: false,
+      missingId: true,
     },
   ])("getReservation read boundary: $label", async (row) => {
     let reservationReads = 0;
@@ -5306,11 +7117,13 @@ describe("DotyposService read retry boundary", () => {
       if (url.pathname === "/signin/token") return tokenResponse();
       if (url.pathname === "/clouds/cloud-id/reservations/reservation-id") {
         reservationReads += 1;
-        if (!row.linkedCustomer && !row.missingCustomerId) {
+        if (!row.linkedCustomer && !row.missingCustomerId && !row.missingId) {
           return new Response("Not found", { status: 404 });
         }
+        const { id, ...withoutId } = reservation();
         return Response.json({
-          ...reservation(),
+          ...withoutId,
+          ...(!row.missingId && { id }),
           ...(row.missingCustomerId && { _customerId: "" }),
         });
       }
@@ -5330,7 +7143,7 @@ describe("DotyposService read retry boundary", () => {
       fetchMock
     );
 
-    if (!row.linkedCustomer && !row.missingCustomerId) {
+    if (!row.linkedCustomer && !row.missingCustomerId && !row.missingId) {
       expect(result).toMatchObject({ _tag: "Success", success: Option.none() });
       expect(customerReads).toBe(0);
     } else if (row.linkedCustomer) {
@@ -5420,7 +7233,7 @@ describe("DotyposService package input validation", () => {
                 firstName: "Ada",
                 lastName: "Lovelace",
                 email: adaAddress,
-                phone: "+420 777 123 456",
+                phone: phoneNumber("+420 777 123 456"),
               })
               .pipe(Effect.result);
         }
@@ -5485,16 +7298,9 @@ describe("DotyposService ID reads", () => {
         );
 
   test.each(["customers", "reservations"] as const)(
-    "%s handles empty 404s, unidentified records and invalid filters",
+    "%s handles empty 404s and rejects unidentified records and invalid filters",
     async (resource) => {
-      for (const response of [
-        () => Response.json(null, { status: 404 }),
-        () => {
-          const { id, ...unidentified } =
-            resource === "customers" ? customer() : reservation();
-          return Response.json({ data: [unidentified] });
-        },
-      ]) {
+      const readWith = async (response: () => Response) => {
         let attempts = 0;
         const fetchMock = mockDotyposFetch((request) => {
           if (new URL(request.url).pathname === "/signin/token")
@@ -5504,13 +7310,31 @@ describe("DotyposService ID reads", () => {
         });
         const result = await runWithService(
           Effect.flatMap(DotyposService, (dotypos) =>
-            read(dotypos, resource, ["id-0"])
+            read(dotypos, resource, ["id-0"]).pipe(Effect.result)
           ),
           fetchMock
         );
-        expect(result.size).toBe(0);
-        expect(attempts).toBe(1);
+        return { attempts, result };
+      };
+
+      const empty = await readWith(() => Response.json(null, { status: 404 }));
+      expect(empty.result).toMatchObject({ _tag: "Success" });
+      if (empty.result._tag === "Success") {
+        expect(empty.result.success.size).toBe(0);
       }
+      expect(empty.attempts).toBe(1);
+
+      const unidentified = await readWith(() => {
+        const { id: _id, ...record } =
+          resource === "customers" ? customer() : reservation();
+        return Response.json({ data: [record] });
+      });
+      expect(unidentified.result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "DotyposRejected", reason: "invalid-response" },
+      });
+      expect(unidentified.attempts).toBe(1);
+
       let attempts = 0;
       const fetchMock = mockDotyposFetch(() => {
         attempts++;
@@ -5683,4 +7507,185 @@ describe("DotyposService ID reads", () => {
       }
     }
   );
+});
+
+describe("DotyposService write responses without an id", () => {
+  const withoutId = <A extends { readonly id: string }>({
+    id: _id,
+    ...record
+  }: A) => record;
+
+  test("generated write schemas accept records without an id; read schemas reject them", () => {
+    const decodes = (schema: Schema.Decoder<unknown>, value: unknown) =>
+      Schema.decodeUnknownExit(schema)(value)._tag === "Success";
+
+    expect(decodes(ReplaceCustomersRequestJson, [withoutId(customer())])).toBe(
+      true
+    );
+    expect(
+      decodes(ReplaceReservationsRequestJson, [withoutId(reservation())])
+    ).toBe(true);
+    expect(decodes(CustomerWriteRecord, withoutId(customer()))).toBe(true);
+    expect(decodes(ReservationWriteRecord, withoutId(reservation()))).toBe(
+      true
+    );
+    expect(decodes(Customer, withoutId(customer()))).toBe(false);
+    expect(decodes(Reservation, withoutId(reservation()))).toBe(false);
+    expect(decodes(Table, withoutId(table()))).toBe(false);
+  });
+
+  test("createCustomer returns a created customer without an id for the caller's fallback", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/customers" &&
+        request.method === "POST"
+      ) {
+        return Response.json([withoutId(customer())]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const created = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.createCustomer(failureOutcomeCustomerDetails)
+      ),
+      fetchMock
+    );
+
+    expect(created.id).toBeUndefined();
+    expect(created.firstName).toBe("Ada");
+  });
+
+  test("createReservation still fails as invalid-response without an id", async () => {
+    let attempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        attempts += 1;
+        return Response.json([withoutId(reservation())]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.createReservation(failureOutcomeReservationInput)
+      ).pipe(Effect.flip),
+      fetchMock
+    );
+
+    expect(error).toMatchObject({
+      operation: "createReservation",
+      request: "reservation.create",
+      reason: "invalid-response",
+    });
+    expect(attempts).toBe(1);
+  });
+
+  test("patchCustomer keeps the requested id when the PATCH response has none", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers/customer-id") {
+        if (request.method === "GET") {
+          return Response.json(customer(), {
+            headers: { etag: '"customer-etag"' },
+          });
+        }
+        if (request.method === "PATCH") {
+          return Response.json(withoutId(customer({ firstName: "Grace" })));
+        }
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const patched = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.patchCustomer(dotyposCustomerId("customer-id"), {
+          firstName: "Grace",
+        })
+      ),
+      fetchMock
+    );
+
+    expect(Option.getOrThrow(patched)).toMatchObject({
+      id: dotyposCustomerId("customer-id"),
+      firstName: "Grace",
+    });
+  });
+
+  test("confirmReservation keeps the requested id when the PATCH response has none", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations/reservation-id") {
+        if (request.method === "GET") {
+          return Response.json(reservation(), {
+            headers: { etag: '"reservation-etag"' },
+          });
+        }
+        if (request.method === "PATCH") {
+          return Response.json(withoutId(reservation({ status: "CONFIRMED" })));
+        }
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const confirmed = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.confirmReservation(dotyposReservationId("reservation-id"))
+      ),
+      fetchMock
+    );
+
+    expect(confirmed).toMatchObject({
+      id: dotyposReservationId("reservation-id"),
+      status: "CONFIRMED",
+    });
+  });
+
+  test("findOrCreateCustomer keeps the matched id when the fill response has none", async () => {
+    const matched = customer({ email: adaAddress, lastName: undefined });
+    let fills = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/customers" &&
+        request.method === "GET"
+      ) {
+        return Response.json({ data: [matched] });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/customers/customer-id" &&
+        request.method === "PUT"
+      ) {
+        fills += 1;
+        return Response.json(withoutId(customer({ lastName: "Lovelace" })));
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const found = await runWithService(
+      Effect.flatMap(DotyposService, (dotypos) =>
+        dotypos.findOrCreateCustomer(
+          { firstName: "Ada", lastName: "Lovelace", email: adaAddress },
+          { lookupFields: ["email"] }
+        )
+      ),
+      fetchMock
+    );
+
+    expect(fills).toBe(1);
+    expect(found).toMatchObject({
+      id: dotyposCustomerId("customer-id"),
+      lastName: "Lovelace",
+    });
+  });
 });

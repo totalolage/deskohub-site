@@ -16,6 +16,7 @@ import {
   referralCodeCookieName,
   setReferralCodeCookie,
 } from "./referral-code-cookie";
+import { referralFailureLogFields } from "./referral-failure";
 import { ReferralReleaseGate } from "./referral-release-gate";
 
 /**
@@ -110,6 +111,28 @@ export class RememberedReferral extends Context.Service<
 >()("@deskohub-workspace/referrals/RememberedReferral") {
   /** The site's browser cookie (`referral-code-cookie.ts`). */
   static Cookies = Layer.effect(this, makeRememberedReferral(nextCookieJar()));
+
+  /**
+   * A client application that keeps the remembered code itself and sends it
+   * with each request, such as the native app through the customer HTTP API.
+   * `code` is the value the client sent, checked like a cookie value; reads
+   * follow the referral release decision as the cookie's do. Writes do
+   * nothing: the client owns its storage and forgets its code when a
+   * response reports the referral settled.
+   */
+  static fromClient = (code: string | undefined) =>
+    Layer.effect(
+      this,
+      makeRememberedReferral(clientHeldJar(code)).pipe(
+        Effect.map(
+          (remembered): IRememberedReferral => ({
+            ...remembered,
+            remember: () => Effect.void,
+            forgetIfSettled: () => Effect.void,
+          })
+        )
+      )
+    );
 
   /** A channel without a browser, such as an AI agent's tool call. */
   static none = Layer.succeed(this, {
@@ -207,9 +230,10 @@ function makeRememberedReferral(jar: ReferralCodeJar) {
             })
             .pipe(
               Effect.catch((error) =>
-                Effect.logInfo("Checkout referral code was not carried", {
-                  reason: error.reason,
-                }).pipe(Effect.as(undefined))
+                Effect.logInfo(
+                  "Checkout referral code was not carried",
+                  referralFailureLogFields(error)
+                ).pipe(Effect.as(undefined))
               )
             );
           if (evaluation === undefined) return none;
@@ -224,13 +248,16 @@ function makeRememberedReferral(jar: ReferralCodeJar) {
               : { kind: "carried" }
           ) satisfies RememberedReferralForBooking;
         }
-        const availableCode = yield* referrals.findAvailableCode({ code }).pipe(
-          Effect.catch((error) =>
-            Effect.logInfo("Checkout referral code prefill was skipped", {
-              reason: error.reason,
-            }).pipe(Effect.as(undefined))
-          )
-        );
+        const availableCode = yield* referrals
+          .findAvailableCode({ code })
+          .pipe(
+            Effect.catch((error) =>
+              Effect.logInfo(
+                "Checkout referral code prefill was skipped",
+                referralFailureLogFields(error)
+              ).pipe(Effect.as(undefined))
+            )
+          );
         if (availableCode === undefined) return none;
         return {
           kind: "prefill",
@@ -303,6 +330,15 @@ function nextCookieJar(): ReferralCodeJar {
     write: (code) =>
       writeCookie((jar, secure) => setReferralCodeCookie(jar, code, secure)),
     clear: writeCookie(clearReferralCodeCookie),
+  };
+}
+
+/** A code the client keeps; nothing here writes it. */
+function clientHeldJar(code: string | undefined): ReferralCodeJar {
+  return {
+    read: Effect.succeed(code),
+    write: () => Effect.void,
+    clear: Effect.void,
   };
 }
 

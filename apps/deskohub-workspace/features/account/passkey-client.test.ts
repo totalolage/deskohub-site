@@ -10,6 +10,12 @@ import {
 } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
+import {
+  hasStoredEmailSignInRequest,
+  observeSignInAnalytics,
+  remembersPasskeyFor,
+  storePendingEmailSignInRequest,
+} from "./browser-sign-in-completion.test-utils";
 
 type PasskeyResponse = {
   readonly data?: unknown;
@@ -40,9 +46,6 @@ const updatePasskey = mock(
 const deletePasskey = mock((_body: { readonly id: string }) =>
   Promise.resolve<PasskeyResponse>({ data: null, error: null })
 );
-const recordSignInCompletion = mock((_method: string) => undefined);
-const rememberPasskeyOnThisBrowser = mock((_accountId: string) => undefined);
-const forgetEmailSignInRequest = mock(() => undefined);
 
 mock.module("@/features/account/auth.client", () => ({
   authClient: {
@@ -51,22 +54,23 @@ mock.module("@/features/account/auth.client", () => ({
   },
 }));
 mock.module("./passkey-sign-in", () => ({ requestPasskeySignIn }));
-mock.module("./sign-in-analytics", () => ({ recordSignInCompletion }));
-mock.module("./passkey-prompt", () => ({ rememberPasskeyOnThisBrowser }));
-mock.module("./email-sign-in-request", () => ({ forgetEmailSignInRequest }));
 
 let passkeyClient: typeof import("./passkey-client");
+let analytics: ReturnType<typeof observeSignInAnalytics>;
 let originalReplace: typeof window.location.replace;
 const replace = mock((_url: string | URL) => undefined);
 
 describe("passkey client", () => {
   beforeAll(async () => {
-    GlobalRegistrator.register();
+    GlobalRegistrator.register({ url: "https://deskohub.test/cs-CZ/account" });
     originalReplace = window.location.replace;
     passkeyClient = await import("./passkey-client");
   });
 
   beforeEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+    analytics = observeSignInAnalytics();
     window.location.replace = replace;
     for (const fn of [
       signInPasskey,
@@ -74,9 +78,6 @@ describe("passkey client", () => {
       addPasskey,
       updatePasskey,
       deletePasskey,
-      recordSignInCompletion,
-      rememberPasskeyOnThisBrowser,
-      forgetEmailSignInRequest,
       replace,
     ]) {
       fn.mockClear();
@@ -84,6 +85,7 @@ describe("passkey client", () => {
   });
 
   afterEach(() => {
+    analytics.stop();
     window.location.replace = originalReplace;
   });
 
@@ -127,6 +129,7 @@ describe("passkey client", () => {
   });
 
   test("signs in, remembers the passkey for the account, and opens the account", async () => {
+    storePendingEmailSignInRequest();
     requestPasskeySignIn.mockResolvedValueOnce({
       data: { session: { userId: "account-1" }, user: { id: "account-1" } },
       error: null,
@@ -140,9 +143,9 @@ describe("passkey client", () => {
       autoFill: false,
       signal: undefined,
     });
-    expect(rememberPasskeyOnThisBrowser).toHaveBeenCalledWith("account-1");
-    expect(recordSignInCompletion).toHaveBeenCalledWith("passkey");
-    expect(forgetEmailSignInRequest).toHaveBeenCalledTimes(1);
+    expect(await remembersPasskeyFor("account-1")).toBe(true);
+    expect(analytics.takeRecordedSignInMethod()).toBe("passkey");
+    expect(hasStoredEmailSignInRequest()).toBe(false);
     expect(replace).toHaveBeenCalledWith("/cs-CZ/account");
   });
 
@@ -189,6 +192,7 @@ describe("passkey client", () => {
   ])(
     "keeps the session but leaves the page alone when the attempt is cancelled %s",
     async (_timing, cancel) => {
+      storePendingEmailSignInRequest();
       const owner = new AbortController();
       requestPasskeySignIn.mockImplementationOnce(() => {
         cancel(owner);
@@ -206,14 +210,16 @@ describe("passkey client", () => {
         })
       ).resolves.toBe("cancelled");
 
-      expect(rememberPasskeyOnThisBrowser).toHaveBeenCalledWith("account-1");
-      expect(recordSignInCompletion).toHaveBeenCalledWith("passkey");
-      expect(forgetEmailSignInRequest).toHaveBeenCalledTimes(1);
+      expect(await remembersPasskeyFor("account-1")).toBe(true);
+      expect(analytics.takeRecordedSignInMethod()).toBe("passkey");
+      // The tab stays, signed in, so a reload must not bring the code step back.
+      expect(hasStoredEmailSignInRequest()).toBe(false);
       expect(replace).not.toHaveBeenCalled();
     }
   );
 
   test("passes autofill through and stays on the page when it is cancelled", async () => {
+    storePendingEmailSignInRequest();
     requestPasskeySignIn.mockResolvedValueOnce(failure("AUTH_CANCELLED"));
 
     const card = new AbortController();
@@ -229,7 +235,8 @@ describe("passkey client", () => {
       autoFill: true,
       signal: card.signal,
     });
-    expect(recordSignInCompletion).not.toHaveBeenCalled();
+    expect(analytics.takeRecordedSignInMethod()).toBeUndefined();
+    expect(hasStoredEmailSignInRequest()).toBe(true);
     expect(replace).not.toHaveBeenCalled();
   });
 
@@ -273,7 +280,7 @@ describe("passkey client", () => {
         createdAt: "2026-10-16T09:00:00.000Z",
       },
     });
-    expect(rememberPasskeyOnThisBrowser).toHaveBeenCalledWith("account-1");
+    expect(await remembersPasskeyFor("account-1")).toBe(true);
   });
 
   test("asks for re-authentication without remembering a passkey", async () => {
@@ -285,7 +292,7 @@ describe("passkey client", () => {
     await expect(passkeyClient.createPasskey("account-1")).resolves.toEqual({
       result: "reauthentication-required",
     });
-    expect(rememberPasskeyOnThisBrowser).not.toHaveBeenCalled();
+    expect(await remembersPasskeyFor("account-1")).toBe(false);
   });
 
   test("remembers an authenticator that already holds a passkey for the account", async () => {
@@ -296,7 +303,7 @@ describe("passkey client", () => {
     await expect(passkeyClient.createPasskey("account-1")).resolves.toEqual({
       result: "failed",
     });
-    expect(rememberPasskeyOnThisBrowser).toHaveBeenCalledWith("account-1");
+    expect(await remembersPasskeyFor("account-1")).toBe(true);
   });
 
   test("renames and deletes through the plugin client", async () => {

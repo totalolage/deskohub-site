@@ -1,12 +1,15 @@
+import {
+  type ProviderRequestPolicy,
+  ProviderRetryPolicy,
+} from "@deskohub/provider-request";
 import { auth, calendar, type calendar_v3 } from "@googleapis/calendar";
 import {
   Context,
-  Duration,
+  type Duration,
   Effect,
   Layer,
   Option,
   Predicate,
-  Schedule,
   Schema,
   Stream,
 } from "effect";
@@ -20,7 +23,9 @@ import {
   GoogleCalendarChannelIdSchema,
   type GoogleCalendarEvent,
   type GoogleCalendarEventDateTime,
+  type GoogleCalendarEventId,
   GoogleCalendarEventIdSchema,
+  type GoogleCalendarICalUid,
   GoogleCalendarICalUidSchema,
   type GoogleCalendarId,
   type GoogleCalendarListEventsInput,
@@ -34,54 +39,50 @@ const calendarReadonlyScope =
 const defaultPageSize = 250;
 const defaultRequestTimeout = "10 seconds";
 
-const retryBaseDelayMilliseconds = 100;
-const maxRetries = 1;
-/** `Schedule.jittered` scales each delay by a random factor of at most 1.2. */
-const maxRetryJitterFactor = 1.2;
+/**
+ * Event reads retry a transient failure once, after a jittered 100 ms
+ * backoff. A watch registration runs once.
+ */
+const googleCalendarRetryPolicy = ProviderRetryPolicy.make({
+  label: "Google Calendar",
+  baseDelay: "100 millis",
+  maxRetries: 1,
+});
 
 /**
  * A timeout, a network failure (no HTTP status), rate limiting, or a server
  * error is transient. Other client errors would fail again.
  */
-const isTransientGoogleCalendarError = (error: GoogleCalendarAPIError) =>
-  error.statusCode === undefined ||
-  error.statusCode === 429 ||
-  error.statusCode >= 500;
-
-const retryPolicy = Schedule.exponential(
-  Duration.millis(retryBaseDelayMilliseconds)
-).pipe(
-  Schedule.jittered,
-  Schedule.while<GoogleCalendarAPIError, Duration.Duration>(({ input }) =>
-    isTransientGoogleCalendarError(input)
-  ),
-  Schedule.both(Schedule.recurs(maxRetries)),
-  Schedule.tapOutput(([delay, attempt]) =>
-    Effect.logWarning(`Google Calendar retry attempt #${attempt + 1}`, {
-      attemptNumber: attempt + 1,
-      delayMs: Duration.toMillis(delay),
-      maxRetries,
-    })
-  )
+const retryTransientGoogleCalendarError = googleCalendarRetryPolicy.retryWhile(
+  (error: GoogleCalendarAPIError) =>
+    error.statusCode === undefined ||
+    error.statusCode === 429 ||
+    error.statusCode >= 500
 );
 
 /**
- * The longest `listEvents` can take: the first attempt and each retry wait up
- * to `requestTimeout`, with the jittered exponential backoff between them.
- * `listEvents` enforces this bound over all of its pages, so a multi-page
- * load shares the budget of one retried request.
+ * `listEvents` retries each page request on its own and reads as many pages
+ * as Google returns. It enforces one retried request's worst case over all of
+ * its pages, so a load of any page count shares that budget.
+ */
+const getListEventsDeadline = (requestPolicy: ProviderRequestPolicy) =>
+  requestPolicy.worstCase.retried;
+
+/**
+ * The longest one `listEvents` load can take: its whole-load deadline, the
+ * budget of one retried request (the first attempt and its retry, each up to
+ * `requestTimeout`, with the jittered backoff between them).
  */
 export const getGoogleCalendarRequestWorstCaseDuration = (
   requestTimeout: Duration.Input
 ) => {
-  let backoffMilliseconds = 0;
-  for (let retry = 0; retry < maxRetries; retry += 1) {
-    backoffMilliseconds +=
-      retryBaseDelayMilliseconds * 2 ** retry * maxRetryJitterFactor;
-  }
-  return Duration.millis(
-    Duration.toMillis(requestTimeout) * (maxRetries + 1) + backoffMilliseconds
-  );
+  const requestPolicy =
+    googleCalendarRetryPolicy.withAttemptTimeout(requestTimeout);
+  return requestPolicy.worstCase.paginated({
+    pages: "unknown",
+    retry: "each-page",
+    deadline: getListEventsDeadline(requestPolicy),
+  });
 };
 
 export interface IGoogleCalendarService {
@@ -103,9 +104,9 @@ export class GoogleCalendarService extends Context.Service<
       const rawConfig = yield* GoogleCalendarRuntimeConfig;
       const config = yield* validateGoogleCalendarRuntimeConfig(rawConfig);
       const client = getCalendarClient(config);
-      const requestTimeout = config.requestTimeout ?? defaultRequestTimeout;
-      const listEventsTimeout =
-        getGoogleCalendarRequestWorstCaseDuration(requestTimeout);
+      const requestPolicy = googleCalendarRetryPolicy.withAttemptTimeout(
+        config.requestTimeout ?? defaultRequestTimeout
+      );
 
       const listEvents = Effect.fn("GoogleCalendarService.listEvents")(
         (input: GoogleCalendarListEventsInput) =>
@@ -121,7 +122,10 @@ export class GoogleCalendarService extends Context.Service<
             ),
             Effect.bind("events", (range) =>
               loadEventPages(range).pipe(
-                withRequestTimeout("events.list", listEventsTimeout)
+                withinDeadline(
+                  "events.list",
+                  getListEventsDeadline(requestPolicy)
+                )
               )
             ),
             Effect.bind("result", ({ events }) =>
@@ -180,7 +184,7 @@ export class GoogleCalendarService extends Context.Service<
                 cause: withoutRequestBody(cause),
               }),
           }).pipe(
-            withRequestTimeout("events.watch", requestTimeout),
+            requestPolicy.attempt(() => googleCalendarTimeout("events.watch")),
             Effect.flatMap((data) => toGoogleCalendarWatchChannel(data, input))
           ),
         (effect, input) =>
@@ -247,8 +251,8 @@ export class GoogleCalendarService extends Context.Service<
               cause,
             }),
         }).pipe(
-          withRequestTimeout("events.list", requestTimeout),
-          Effect.retry(retryPolicy)
+          requestPolicy.attempt(() => googleCalendarTimeout("events.list")),
+          retryTransientGoogleCalendarError
         );
 
       return { listEvents, watchEvents };
@@ -315,26 +319,49 @@ const toGoogleCalendarEvent = (event: calendar_v3.Schema$Event) =>
     );
 
     const result: GoogleCalendarEvent = {
-      ...(Option.isSome(id) && { id: id.value }),
-      ...(Option.isSome(iCalUID) && { iCalUID: iCalUID.value }),
-      ...(event.htmlLink && { htmlLink: event.htmlLink }),
-      ...(Option.isSome(recurringEventId) && {
-        recurringEventId: recurringEventId.value,
+      ...toGoogleCalendarEventIdentity({
+        id,
+        iCalUID,
+        htmlLink: event.htmlLink,
+        recurringEventId,
       }),
-      ...(event.status && { status: event.status }),
-      ...(event.summary && { summary: event.summary }),
-      ...(event.description && { description: event.description }),
-      ...(event.start && { start: toGoogleCalendarEventDateTime(event.start) }),
-      ...(event.end && { end: toGoogleCalendarEventDateTime(event.end) }),
-      ...(event.originalStartTime && {
-        originalStartTime: toGoogleCalendarEventDateTime(
-          event.originalStartTime
-        ),
-      }),
+      ...toGoogleCalendarEventDetails(event),
     };
 
     return result;
   });
+
+/** The event's decoded identifiers and link, omitting the absent ones. */
+const toGoogleCalendarEventIdentity = ({
+  id,
+  iCalUID,
+  htmlLink,
+  recurringEventId,
+}: {
+  readonly id: Option.Option<GoogleCalendarEventId>;
+  readonly iCalUID: Option.Option<GoogleCalendarICalUid>;
+  readonly htmlLink: calendar_v3.Schema$Event["htmlLink"];
+  readonly recurringEventId: Option.Option<GoogleCalendarEventId>;
+}) => ({
+  ...(Option.isSome(id) && { id: id.value }),
+  ...(Option.isSome(iCalUID) && { iCalUID: iCalUID.value }),
+  ...(htmlLink && { htmlLink }),
+  ...(Option.isSome(recurringEventId) && {
+    recurringEventId: recurringEventId.value,
+  }),
+});
+
+/** The event's status, text and times, omitting the absent ones. */
+const toGoogleCalendarEventDetails = (event: calendar_v3.Schema$Event) => ({
+  ...(event.status && { status: event.status }),
+  ...(event.summary && { summary: event.summary }),
+  ...(event.description && { description: event.description }),
+  ...(event.start && { start: toGoogleCalendarEventDateTime(event.start) }),
+  ...(event.end && { end: toGoogleCalendarEventDateTime(event.end) }),
+  ...(event.originalStartTime && {
+    originalStartTime: toGoogleCalendarEventDateTime(event.originalStartTime),
+  }),
+});
 
 const toGoogleCalendarEventDateTime = (
   input: calendar_v3.Schema$EventDateTime
@@ -370,20 +397,20 @@ const toGoogleCalendarWatchChannel = (
     return result;
   });
 
+const googleCalendarTimeout = (operation: string) =>
+  new GoogleCalendarAPIError({
+    operation,
+    message: "Google Calendar request timed out.",
+  });
+
 /** Interrupting the request aborts it, so a stalled provider call is released. */
-const withRequestTimeout =
-  (operation: string, duration: Duration.Input) =>
+const withinDeadline =
+  (operation: string, deadline: Duration.Input) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(
       Effect.timeoutOrElse({
-        duration,
-        orElse: () =>
-          Effect.fail(
-            new GoogleCalendarAPIError({
-              operation,
-              message: "Google Calendar request timed out.",
-            })
-          ),
+        duration: deadline,
+        orElse: () => Effect.fail(googleCalendarTimeout(operation)),
       })
     );
 

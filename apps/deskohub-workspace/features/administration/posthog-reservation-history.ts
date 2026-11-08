@@ -10,22 +10,16 @@ import {
   HttpClientResponse,
 } from "effect/unstable/http";
 import { env } from "@/env";
+import {
+  type ReservationLifecycleEvent,
+  reservationLifecycleEvents,
+} from "@/features/checkout/reservation-lifecycle-events";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { postHogRuntimeConfig } from "@/shared/backend/config/posthog.config";
 import { parseInstant } from "@/shared/utils/temporal";
 import type { AdministrationTimelineItem } from "./administration.service";
 
-const lifecycleEvents = [
-  "reservation started",
-  "reservation abandoned",
-  "reservation completed",
-  "reservation fulfilled",
-  "payment started",
-  "payment completed",
-  "payment abandoned",
-  "payment failed",
-] as const;
-
-const lifecycleEventSchema = Schema.Literals(lifecycleEvents);
+const lifecycleEventSchema = Schema.Literals(reservationLifecycleEvents);
 
 const postHogHistoryResponseSchema = Schema.Struct({
   results: Schema.Array(
@@ -89,7 +83,7 @@ const eventPresentation = {
     tone: "warning",
   },
 } as const satisfies Record<
-  (typeof lifecycleEvents)[number],
+  ReservationLifecycleEvent,
   Pick<AdministrationTimelineItem, "event" | "title" | "description" | "tone">
 >;
 
@@ -114,10 +108,11 @@ export class PostHogHistoryRuntimeConfig extends Context.Service<
 >()("@deskohub-workspace/administration/PostHogHistoryRuntimeConfig") {
   static Default = Layer.succeed(this, {
     apiKey: env.POSTHOG_API_KEY,
-    environment: env.VERCEL_ENV,
+    // The deployment and service the server events are sent under.
+    environment: postHogRuntimeConfig.environment,
     host: env.POSTHOG_API_HOST,
     projectId: env.POSTHOG_PROJECT_ID,
-    serviceName: env.POSTHOG_SERVICE_NAME,
+    serviceName: postHogRuntimeConfig.serviceName,
   });
 }
 
@@ -129,11 +124,10 @@ SELECT
   properties.payment_attempt_id,
   properties.provider
 FROM events
-WHERE distinct_id = {reservationId}
-  AND properties.reservation_id = {reservationId}
+WHERE properties.reservation_id = {reservationId}
   AND properties.\`deployment.environment.name\` = {environment}
   AND properties.\`service.name\` = {serviceName}
-  AND event IN (${lifecycleEvents.map((event) => `'${event}'`).join(", ")})
+  AND event IN (${reservationLifecycleEvents.map((event) => `'${event}'`).join(", ")})
 ORDER BY timestamp ASC, uuid ASC
 LIMIT 100`;
 

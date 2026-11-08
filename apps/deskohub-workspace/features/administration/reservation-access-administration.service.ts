@@ -11,6 +11,7 @@ import {
   type ReservationAccessIssuanceError,
   ReservationAccessService,
 } from "@/features/reservation-access";
+import { providePerRequest } from "@/shared/backend/provide-per-request";
 
 type ReservationAccessAdministrationMutation =
   | {
@@ -162,10 +163,44 @@ export class ReservationAccessAdministration extends Context.Service<
     })
   );
 
-  static Live = this.Default.pipe(
-    Layer.provide(ReservationAccessService.Live),
-    Layer.provide(WorkspaceReservationService.Live),
-    Layer.provide(ReservationFulfillment.Live)
+  /**
+   * The service whose every operation runs on its own instance of
+   * `implementation`, built for that operation over what its run or request
+   * already built. An administration API builds its services once per
+   * process, so state an instance keeps for its request, such as the consent
+   * decisions its fulfillment's analytics read, would otherwise reach every
+   * later request.
+   */
+  static perOperation = (
+    implementation: Layer.Layer<ReservationAccessAdministration>
+  ) => {
+    const operate = <A>(
+      use: (
+        administration: IReservationAccessAdministration
+      ) => Effect.Effect<A, ReservationAccessAdministrationError>
+    ) =>
+      Effect.flatMap(Effect.service(ReservationAccessAdministration), use).pipe(
+        providePerRequest(implementation)
+      );
+    return Layer.succeed(this, {
+      mutate: (mutation) =>
+        operate((administration) => administration.mutate(mutation)),
+      resumeInterruptedMutation: (reservationId) =>
+        operate((administration) =>
+          administration.resumeInterruptedMutation(reservationId)
+        ),
+    });
+  };
+
+  // A configuration that can't be read fails the operation as a defect, as
+  // it failed the API's build before each operation built its own instance.
+  static Live = this.perOperation(
+    this.Default.pipe(
+      Layer.provide(ReservationAccessService.Live),
+      Layer.provide(WorkspaceReservationService.Live),
+      Layer.provide(ReservationFulfillment.Live),
+      Layer.orDie
+    )
   );
 }
 

@@ -48,11 +48,11 @@ export type VirtualAuthenticator = {
 /** A virtual authenticator that also watches its page's WebAuthn requests. */
 export type PageVirtualAuthenticator = VirtualAuthenticator & {
   /**
-   * Waits until the current document has started a conditional (autofill)
+   * Waits until the current document has a pending conditional (autofill)
    * request. Presence answers a request that starts during a ceremony but
    * not one already pending, so a test that drives another ceremony waits
-   * for the form's request first; a timeout that elapses shows that none
-   * started. Only documents loaded after the authenticator was added are
+   * for the form's request first; the wait times out if no pending request
+   * is observed. Only documents loaded after the authenticator was added are
    * watched.
    */
   readonly waitForConditionalRequest: (timeout: number) => Promise<void>;
@@ -78,9 +78,9 @@ const conditionalRequestCountKey = "deskohub.e2e.conditionalWebAuthnRequests";
 const signInRequestBinding = "__deskohubE2EWebAuthnSignInRequestSettled";
 
 /**
- * Runs in every new document: counts the conditional WebAuthn requests it
- * starts, reports how each sign-in request settles, and passes every request
- * on unchanged. Serialized into the page, so it references no module scope.
+ * Runs in every new document: counts pending conditional WebAuthn requests,
+ * reports how each sign-in request settles, and passes every request on
+ * unchanged. Serialized into the page, so it references no module scope.
  */
 const watchSignInRequests = ({
   countKey,
@@ -94,16 +94,23 @@ const watchSignInRequests = ({
   const get = CredentialsContainer.prototype.get;
   CredentialsContainer.prototype.get = function (options) {
     const conditional = options?.mediation === "conditional";
-    if (conditional) {
-      Reflect.set(
-        globalThis,
-        count,
-        Number(Reflect.get(globalThis, count)) + 1
-      );
-    }
     const request = get.call(this, options);
     if (options?.publicKey !== undefined) {
+      if (conditional) {
+        Reflect.set(
+          globalThis,
+          count,
+          Number(Reflect.get(globalThis, count)) + 1
+        );
+      }
       const report = (answered: boolean) => {
+        if (conditional) {
+          Reflect.set(
+            globalThis,
+            count,
+            Number(Reflect.get(globalThis, count)) - 1
+          );
+        }
         const settled = Reflect.get(globalThis, binding);
         if (typeof settled === "function") {
           void settled({ conditional, answered });

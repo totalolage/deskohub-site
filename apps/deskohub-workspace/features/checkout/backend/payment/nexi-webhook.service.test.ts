@@ -6,8 +6,8 @@ import type {
   PaymentVerificationResult,
 } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
+import type { CheckoutAnalytics } from "@/features/checkout/backend/analytics/checkout-analytics.service";
 import type { IWorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { CapturePostHogEventInput } from "@/shared/backend/analytics/posthog-event.service";
 import {
   type IReservationFulfillment,
   WorkspacePaidFulfillmentError,
@@ -93,9 +93,7 @@ type NexiWebhookTestServices = {
   readonly reservations: WorkspaceReservationRepositoryType;
   readonly nexi: NexiServiceType;
   readonly fulfillment: Pick<IReservationFulfillment, "run">;
-  readonly posthog?: {
-    readonly capture: (input: CapturePostHogEventInput) => Effect.Effect<void>;
-  };
+  readonly analytics?: { readonly layer: Layer.Layer<CheckoutAnalytics> };
   readonly latePaymentRecoveries?: object;
   readonly latePaymentRecoveryQueue?: object;
   readonly paymentRefunds?: object;
@@ -110,8 +108,8 @@ const buildWebhookEffect = async (
   const { WorkspaceReservationRepository } = await import(
     "@/features/reservation/backend/workspace-reservation.repository"
   );
-  const { PostHogEventService } = await import(
-    "@/shared/backend/analytics/posthog-event.service"
+  const { recordCheckoutAnalytics } = await import(
+    "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
   );
   const { NexiWebhookService } = await import("./nexi-webhook.service");
   const { PaymentAttemptRepository } = await import(
@@ -174,10 +172,7 @@ const buildWebhookEffect = async (
               enqueue: mock(() => Effect.die("unused")),
               ...services.latePaymentRecoveryQueue,
             }),
-            Layer.mock(PostHogEventService, {
-              capture: mock(() => Effect.void),
-              ...services.posthog,
-            }),
+            (services.analytics ?? recordCheckoutAnalytics()).layer,
             Layer.mock(PaymentRefundService, {
               reconcileAttempt: mock(() => Effect.die("unused")),
               reconcileRefunds: mock(() => Effect.die("unused")),
@@ -204,7 +199,10 @@ describe("NexiWebhookService", () => {
     );
     const verifyPaymentOutcome = mock(() => Effect.succeed(verification));
     const fulfillPaidOrder = mock(() => Effect.void);
-    const capture = mock((_input: CapturePostHogEventInput) => Effect.void);
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
+    );
+    const analytics = recordCheckoutAnalytics();
 
     const result = await Effect.runPromise(
       await buildWebhookEffect({
@@ -235,7 +233,7 @@ describe("NexiWebhookService", () => {
         fulfillment: {
           run: fulfillPaidOrder,
         } satisfies Pick<IReservationFulfillment, "run">,
-        posthog: { capture },
+        analytics,
       })
     );
 
@@ -268,7 +266,7 @@ describe("NexiWebhookService", () => {
       expect.objectContaining({ type: "eventId", eventId: "event-id" })
     );
     expect(markFailed).not.toHaveBeenCalled();
-    expect(capture).toHaveBeenCalledWith(
+    expect(analytics.messages).toContainEqual(
       expect.objectContaining({
         distinctId: "reservation-id",
         event: "payment completed",

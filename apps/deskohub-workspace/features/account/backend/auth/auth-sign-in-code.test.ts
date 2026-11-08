@@ -9,6 +9,7 @@ import {
   buildDatabaseAdapter,
   type CapturedMagicLink,
   callHandler,
+  callNativeHandler,
   cookieJar,
   getSessionCookie,
   makeMemoryTestAuth,
@@ -473,6 +474,44 @@ describe.skipIf(!testDatabase)(
   () => {
     const makeCodeAuth = (sentLinks: CapturedMagicLink[]) =>
       makeTestAuth({ sentLinks, signInCodeFlag: Effect.succeed(true) });
+
+    test("signs the app in with the emailed code and hands it the session cookie", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeCodeAuth(sentLinks);
+      const email = uniqueEmail("code-native");
+      const callbackURL = "deskohub://account";
+      const nativePost = (path: string, body: AuthRequestBody) =>
+        callNativeHandler(auth, path, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-vercel-forwarded-for": uniqueIp(),
+          },
+          body: JSON.stringify(body),
+        });
+
+      const sent = await nativePost("/sign-in/magic-link", {
+        email,
+        callbackURL,
+      });
+      expect(await sent.json()).toEqual({ status: true, signInCode: true });
+      const response = await nativePost("/sign-in/email-otp", {
+        email,
+        otp: sentLinks[0]!.code,
+        callbackURL,
+      });
+
+      // The app reads the session from the response; nothing redirects.
+      expect(response.status).toBe(200);
+      expect(response.headers.get("location")).toBeNull();
+      expect(await sessionCount(email)).toBe(1);
+      const session = await callNativeHandler(auth, "/get-session", {
+        headers: { cookie: cookieJar(getSessionCookie(response)!) },
+      });
+      expect(
+        ((await session.json()) as { user?: { id: string } } | null)?.user?.id
+      ).toBe(await userIdForEmail(email));
+    });
 
     test("signs in with the code read from the rendered email, as the browser sends it", async () => {
       const sentLinks: CapturedMagicLink[] = [];

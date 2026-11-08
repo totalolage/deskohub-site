@@ -1,23 +1,17 @@
 import Link from "next/link";
-import { Suspense } from "react";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import type { Locale } from "@/features/i18n";
-import {
-  LocaleSwitcherLabels,
-  LocaleSwitcherLinks,
-} from "@/shared/components/locale-switcher-links";
+import { LocaleSwitcher } from "@/shared/components/locale-switcher";
 import { SiteHeaderLogo } from "@/shared/components/site-header-logo";
 
 type MinimalSiteHeaderProps = {
   currentLocale: Locale;
-  languageLabels: Record<Locale, string>;
   languageSwitcherLabel: string;
   localePreference?: LocalePreferenceSaving;
 };
 
 export function MinimalSiteHeader({
   currentLocale,
-  languageLabels,
   languageSwitcherLabel,
   localePreference,
 }: MinimalSiteHeaderProps) {
@@ -38,20 +32,11 @@ export function MinimalSiteHeader({
           data-locale-switcher
           className="rounded-full border border-white/12 bg-white/6 px-6 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72"
         >
-          <Suspense
-            fallback={
-              <LocaleSwitcherLabels
-                currentLocale={currentLocale}
-                languageLabels={languageLabels}
-              />
-            }
-          >
-            <LocaleSwitcherLinks
-              currentLocale={currentLocale}
-              languageLabels={languageLabels}
-              localePreference={localePreference}
-            />
-          </Suspense>
+          <LocaleSwitcher
+            locale={currentLocale}
+            appearance="stacked"
+            localePreference={localePreference}
+          />
         </nav>
       </div>
     </header>

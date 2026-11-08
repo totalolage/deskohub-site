@@ -1,5 +1,5 @@
-import { normalizePhoneNumber } from "@deskohub/dotypos";
-import { Effect } from "effect";
+import { parsePhoneNumber } from "@deskohub/phone-number";
+import { Effect, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import {
   getAccountSignInPath,
@@ -64,6 +64,10 @@ import {
 import { waitForCheckoutRow } from "../integrations/database";
 import { E2EDatabase } from "../integrations/database.service";
 import type { WorkspaceE2ECaseBinder } from "../playwright-checkout/fixtures";
+import {
+  recordCheckoutIntent,
+  recordReservationResult,
+} from "../reservation-intents";
 import {
   addRedaction,
   assert,
@@ -268,6 +272,7 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
     readonly state: CheckoutFlowState;
   }) {
     const database = yield* E2EDatabase;
+    const reservationIntent = yield* recordCheckoutIntent(state.data);
     const previewLogs = yield* resolveWorkspaceE2EPreviewLogs(accountConfig);
     const { data } = state;
     const { locale } = data;
@@ -447,13 +452,15 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
       const orderId = yield* runStep({
         execute: Effect.gen(function* () {
           const browser = yield* browserSessionFor(run, session);
-          return yield* waitForReservationPayPage({
+          const orderId = yield* waitForReservationPayPage({
             onOrderId: (startedOrderId) => {
               state.orderId = startedOrderId;
             },
             session: browser,
             timeouts: config.timeouts,
           });
+          yield* recordReservationResult(reservationIntent, { orderId });
+          return orderId;
         }),
         id: "continue-to-pay-page-after-verification",
         timeoutMs: config.timeouts.checkoutStart,
@@ -643,7 +650,8 @@ export const assertSavedCheckoutProfile = ({
     "saved profile name does not match the typed contact"
   );
   assert(
-    normalizePhoneNumber(profile.phone) === normalizePhoneNumber(contact.phone),
+    Option.getOrNull(parsePhoneNumber(profile.phone ?? "")) ===
+      Option.getOrNull(parsePhoneNumber(contact.phone)),
     "saved profile phone does not match the typed contact"
   );
   assert(

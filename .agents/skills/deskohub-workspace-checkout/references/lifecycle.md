@@ -34,6 +34,7 @@ Paths are under `apps/deskohub-workspace/`.
 | Late payment | `features/checkout/backend/payment/late-payment-*.ts`, queue `app/api/queues/workspace/late-payment-recovery` |
 | Refund reconciliation | `features/checkout/backend/payment/payment-refund.service.ts`, cron `app/api/cron/workspace/payment-refunds` |
 | Hold cleanup | `features/checkout/backend/holds/`, queue `app/api/queues/workspace/reservation-hold-cleanup`, daily cron `app/api/cron/workspace/reservation-holds` |
+| Dotypos hold release (live-status rule, cancel, failure marker) shared by supersession, agent rotated holds, hold cleanup, and late payment | `features/checkout/backend/holds/dotypos-hold-release.service.ts` |
 | Paid fulfillment | `features/checkout/backend/fulfillment/reservation-fulfillment.service.ts`, trigger adapters `paid-fulfillment-triggers.ts` for queue `app/api/queues/workspace/paid-fulfillment` and daily cron `app/api/cron/workspace/paid-fulfillment` |
 | Email delivery webhook | `app/api/webhooks/resend/route.ts` composes the ingress `shared/backend/email/delivery-reports.ts` with the handlers `customerAccessDeliveryReports` (`features/checkout/backend/fulfillment/reservation-delivery-reports.ts`; `ReservationFulfillment.recordDelivery` applies) and `campaignDeliveryReports` |
 
@@ -99,6 +100,7 @@ State types and check constraints are in `db/schema`. Repositories guard every t
 - `checkoutAttemptId` identifies one mounted-form submission and its immediate transport retries. A changed value or new mount is a new attempt.
 - Neither identifies a Dotypos reservation. Only HMAC digests are stored, in `checkout_session_key` and `checkout_attempt_key`.
 - The attempt key binds the normalized reservation, including contact and billing details, so replaying an opaque ID with different inputs can't reuse a hold. Marketing consent is excluded.
+- The normalized reservation, and so the attempt key and signed Pay state, keeps the phone as the customer entered it (trimmed). Parse it to a `PhoneNumber` only where a provider call or profile write needs one (Nexi customer, Dotypos lookup, first profile); normalizing it earlier would change in-flight keys and Pay state.
 - Both payloads are `JSON.stringify` of a fixed object shape. Never sort keys or join a tuple.
 
 Lookup keys survive `CHECKOUT_PAY_STATE_KEYS` rotation. Each configured key derives an HKDF subkey; new rows store the active key's `<kid>:<hex>` digest. Lookups accept every configured key's prefixed digest plus the legacy ring-keyed digest: an unprefixed hex HMAC keyed by the whole configured string. Never look up a single freshly derived key.
@@ -108,7 +110,9 @@ Lookup keys survive `CHECKOUT_PAY_STATE_KEYS` rotation. Each configured key deri
 
 ### Rotating `CHECKOUT_PAY_STATE_KEYS`
 
-The value is an ordered `kid:base64url-32-byte-key` list. The first entry is active: it seals new Pay-state tokens and derives new lookup keys. Every entry opens its tokens and is accepted for lookups. The shared sealed-state helper (`shared/backend/sealed-state.ts`) uses the same ring for every sealed state, including purpose-bound auth return state, whose tokens live 30 minutes; wait out the longest token lifetime before retiring a key.
+The value is an ordered `kid:base64url-32-byte-key` list. The first entry is active: it seals new Pay-state tokens and derives new lookup keys. Every entry opens its tokens and is accepted for lookups. Code reads it only through the `SealedStateKeys` capability (`shared/backend/sealed-state-keys.service.ts`): its `ring` seals and opens every sealed state, including purpose-bound auth return state, whose tokens live 30 minutes, and its `configured` string keys only the ring-keyed lookup digest. Wait out the longest token lifetime before retiring a key.
+
+Pay-state and advertised-price tokens keep the purposeless sealed-state format (`makeLegacySealedState`), and `checkout-state-token-formats.test.ts` pins their bytes along with the stable Pay URL. Open Pay pages and agent links hold such tokens, so a change that fails those pins breaks tokens in flight. Boundaries provide `SealedStateKeys.Default`; tests provide `TestSealedStateKeys` or run through `runSealedState` (`shared/testing/sealed-state-keys.test-utils.ts`) for another ring or a stopped clock.
 
 Before any change to the value, including the one-step replace below, confirm with a read-only query that no `held` row or row with `pending` payment stores an unprefixed (ring-keyed) `checkout_session_key` or `checkout_attempt_key`. Any edit to the string stops those digests matching, which breaks lookup and late-payment recovery and lets a resubmission create a duplicate hold. The same check gates removing the ring-keyed derivation from lookups.
 
@@ -144,7 +148,7 @@ The customer MCP tool `start_reservation` (`features/agent-tools/start-reservati
   - Open (draft, in-flight transition, or held, `not_started`, before the deadline): continue under its own session (the agent session, or the session promoted from its attempt) and attempt, so the exact attempt match reuses it. If the attempt key no longer matches, for example after a profile edit, treat it as ended when it is in the agent session (so it is superseded). In a rotated session, refuse with `CheckoutAttemptUnavailableError` until it ends, because a new hold would leave it in place.
   - Held with `pending` payment: keep it. Return its Pay link while that is valid; afterwards refuse with `AgentBookingPaymentInProgressError` (`payment_in_progress`). Never hold again or cancel.
   - Anything else ended: start the next attempt in the agent session, which supersedes or rotates past the session's current reservation as usual. First, `supersedeRotatedAgentHolds` cancels the client's held, unpaid holds outside the agent session (`findSupersedableByAgentClient`, filtered by author account and `agent_client_id`) through the same claim and Dotypos check as session supersession. Once the agent session's reservation is paid or payment-pending, every new selection rotates, so without this step the previous hold would stay payable beside the new one. A hold with a pending or completed payment is never claimed, and another assistant's or another account's hold is never cancelled.
-- An agent hold is anchored at its booking instant: the deadline is `bookedAt` plus the Pay-state lifetime, and its Pay state is issued as of that instant (`toReadyResult` `stableLink`) and sealed with a synthetic IV (`sealState` `syntheticIv`). A repeat re-quotes at the anchor and so returns a byte-identical Pay URL. The token never outlives the hold, and nothing extends it. The URL changes only when what it seals changes: a Pay-state key activation, a price or discount change, or a profile or locale change. The browser checkout keeps random IVs and seal-time claims.
+- An agent hold is anchored at its booking instant: the deadline is `bookedAt` plus the Pay-state lifetime, and its Pay state is issued as of that instant (`toReadyResult` `stableLink`) and sealed deterministically with a synthetic IV (`issuedAt` and `deterministic` options of the Pay-state codec). A repeat re-quotes at the anchor and so returns a byte-identical Pay URL. The token never outlives the hold, and nothing extends it. The URL changes only when what it seals changes: a Pay-state key activation, a price or discount change, or a profile or locale change. The browser checkout keeps random IVs and seal-time claims.
 - Agent bookings use the account's profile contact and personal billing without an invoice; business billing and invoices stay on the site.
 
 ## Review account sandbox
@@ -167,7 +171,7 @@ App-directory review accounts (`customer_accounts.review`) book in a sandbox own
 
 Each Nexi request times out after 5 seconds in production and 30 seconds elsewhere (`getNexiRequestTimeoutMilliseconds` in `shared/backend/config/nexi.config.ts`). The sandbox can exceed 5 seconds to create a hosted page, and each timeout leaves an ambiguous `created` attempt, so test environments wait instead of retrying. Keep every deadline that wraps a Nexi call above one full request plus surrounding work:
 
-- Pay submit: `getCheckoutSubmitDeadline` (one Calendar load, one Dotypos request, one Nexi request, and 10 seconds of overhead).
+- Pay submit: `getCheckoutSubmitDeadline` (one Calendar load, one Dotypos request attempt without its retries, one Nexi request, and 10 seconds of overhead).
 - Status refresh: one shared 40-second verification budget (`refreshVerificationBudget` in `checkout-status.service.ts`) passed to `verifyPaymentOutcome`; on expiry the page reports `provider_verification_failed` and renders stored status. If finalization returns `not_pending`, late-payment verification starts only if one full Nexi request still fits; otherwise it logs the deferral and the next webhook or refresh starts recovery. Never shorten that lookup below one full request. The account modal's status route shares this refresh.
 - Webhook, queue, and cron verification keep unbounded retries inside the 300-second function limit.
 
@@ -187,6 +191,8 @@ Status-page and cleanup reconciliation go through provider payment finalization.
 ## Hold cleanup
 
 Keep abandoned and expired hold cleanup only in the per-reservation scheduled queue task, with the daily cron as recovery. Don't add inline cleanup, sweeps, or terminal-payment cancellation fallbacks. Supersession cancellation is not cleanup.
+
+Every unpaid-hold cancellation releases its Dotypos hold through `DotyposHoldRelease.release`, while each flow keeps its own claim, local completion, and logs. The caller states the live-status rule: supersession and agent rotated holds use `require_new`; cleanup uses `unchecked` and cancels whatever it claimed without reading the status; late payment reads the status itself before it claims, then uses `unchecked` for `NEW`. Whether cleanup should also require `NEW` is an open developer decision, so don't change a flow's rule as part of a refactor. A hold the step leaves in Dotypos moves the row to `cancellation_failed` with the caller's stored code (`dotypos_cancel_failed` or `checkout_supersession_cancel_failed`); never rename those codes. Administration cancellation is a separate lifecycle with its own claim and codes.
 
 Nexi's card HPP documents no expiry, so queued cleanup applies a 30-minute abandonment window (`features/checkout/provider-order-abandonment.ts`):
 

@@ -12,7 +12,7 @@ import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-tim
 import { Result, Schema } from "effect";
 import { Plus } from "lucide-react";
 import { useRef, useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { type UseFormReturn, useForm, useWatch } from "react-hook-form";
 import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
 import type { Locale } from "@/features/i18n";
@@ -116,12 +116,6 @@ export function CreateStandaloneAccessCodeForm() {
       createStandaloneAccessCodeFormSchema(locale)
     ),
   });
-  const [watchedStartsAt, watchedEndsAt] = useWatch({
-    control: form.control,
-    name: ["startsAt", "endsAt"],
-  });
-  const startsAt = watchedStartsAt ?? "";
-  const endsAt = watchedEndsAt ?? "";
 
   const { execute, isExecuting } = useWorkspaceAction(
     createStandaloneAccessCode,
@@ -171,17 +165,6 @@ export function CreateStandaloneAccessCodeForm() {
       },
     }
   );
-
-  const elapsedHours = standaloneAccessCodeElapsedHours({ startsAt, endsAt });
-  const endMin = isStandaloneAccessCodeLocalDateTime(startsAt)
-    ? standaloneAccessCodeEarliestLocalEnd(startsAt)
-    : undefined;
-  const endMax = isStandaloneAccessCodeLocalDateTime(startsAt)
-    ? shiftStandaloneAccessCodeLocalEnd({
-        startsAt,
-        hours: ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS,
-      })
-    : undefined;
 
   const startNewAttempt = () => {
     attemptIdRef.current = createStandaloneAccessCodeAttemptId();
@@ -237,128 +220,233 @@ export function CreateStandaloneAccessCodeForm() {
   };
 
   if (creation.kind === "created") {
-    const { outcome } = creation;
     return (
-      <div
-        className="rounded-xl outline-none"
-        data-standalone-access-code-creation="created"
-        ref={focusOnMount}
-        tabIndex={-1}
-      >
-        <AdministrationAlert className="font-semibold" status="warning">
-          {m.accessCodesPinShownOnceWarning({}, { locale })}
-        </AdministrationAlert>
-        <div className="mt-6">
-          <AccessCodeDigits code={outcome.pin} />
-          <div className="mt-5">
-            <AccessCodeCopyButton code={outcome.pin} locale={locale} />
-          </div>
-        </div>
-        <dl className="mt-7 grid gap-x-6 gap-y-4 border-t border-navy-blue/10 pt-5 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="font-semibold text-navy-blue/65">
-              {m.accessCodesResultName({}, { locale })}
-            </dt>
-            <dd className="mt-0.5 font-medium">{outcome.name}</dd>
-          </div>
-          <div>
-            <dt className="font-semibold text-navy-blue/65">
-              {m.accessCodesResultValidFrom({}, { locale })}
-            </dt>
-            <dd className="mt-0.5 font-medium">
-              {formatStandaloneAccessCodeLocalDateTime(
-                outcome.startsAt,
-                locale
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt className="font-semibold text-navy-blue/65">
-              {m.accessCodesResultValidUntil({}, { locale })}
-            </dt>
-            <dd className="mt-0.5 font-medium">
-              {formatStandaloneAccessCodeLocalDateTime(outcome.endsAt, locale)}
-            </dd>
-          </div>
-          <div>
-            <dt className="font-semibold text-navy-blue/65">
-              {m.accessCodesResultDuration({}, { locale })}
-            </dt>
-            <dd className="mt-0.5 font-medium">
-              {formatStandaloneAccessCodeDuration(
-                standaloneAccessCodeElapsedHours(outcome) ??
-                  ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS,
-                locale
-              )}
-            </dd>
-          </div>
-        </dl>
-        <div className="mt-6 border-t border-navy-blue/10 pt-5">
-          <Button
-            className="sm:w-auto"
-            fullWidth
-            onClick={startNewAttempt}
-            type="button"
-          >
-            <Plus aria-hidden className="size-4" />
-            {m.accessCodesCreateAnother({}, { locale })}
-          </Button>
-        </div>
-      </div>
+      <CreatedStandaloneAccessCode
+        locale={locale}
+        onCreateAnother={startNewAttempt}
+        outcome={creation.outcome}
+      />
     );
   }
 
   if (creation.kind === "already-created") {
     return (
-      <div
-        data-standalone-access-code-creation="already-created"
-        ref={focusOnMount}
-        tabIndex={-1}
-      >
-        <AdministrationAlert className="font-semibold" status="warning">
-          {m.accessCodesAlreadyCreated({}, { locale })}
-        </AdministrationAlert>
-        <div className="mt-6 border-t border-navy-blue/10 pt-5">
-          <Button
-            className="sm:w-auto"
-            fullWidth
-            onClick={startNewAttempt}
-            type="button"
-          >
-            <Plus aria-hidden className="size-4" />
-            {m.accessCodesCreateAnother({}, { locale })}
-          </Button>
-        </div>
-      </div>
+      <AlreadyCreatedStandaloneAccessCode
+        locale={locale}
+        onCreateAnother={startNewAttempt}
+      />
     );
   }
 
   if (creation.kind === "cleanup-confirm") {
     return (
-      <div
-        data-standalone-access-code-creation={creation.reason}
-        ref={focusOnMount}
-        tabIndex={-1}
-      >
-        <AdministrationAlert role="alert" status="warning">
-          {creation.reason === "ambiguous"
-            ? m.accessCodesAmbiguousNotice({}, { locale })
-            : m.accessCodesCleanupRequiredNotice({}, { locale })}
-        </AdministrationAlert>
-        <p className="mt-5 text-sm leading-6 text-navy-blue/70">
-          {m.accessCodesCleanupInstructions(
-            { name: creation.cleanupTarget.name },
-            { locale }
-          )}
-        </p>
-        <CleanupConfirmationForm
-          locale={locale}
-          onConfirmed={() => confirmLockCleanup(creation.cleanupTarget)}
-          onStartOver={startNewAttempt}
-        />
-      </div>
+      <StandaloneAccessCodeCleanup
+        creation={creation}
+        locale={locale}
+        onConfirmed={() => confirmLockCleanup(creation.cleanupTarget)}
+        onStartOver={startNewAttempt}
+      />
     );
   }
+
+  return (
+    <StandaloneAccessCodeWindowForm
+      focusNameOnReturn={focusNameOnReturn}
+      form={form}
+      isExecuting={isExecuting}
+      locale={locale}
+      notice={notice}
+      onSubmit={submit}
+    />
+  );
+}
+
+function CreatedStandaloneAccessCode({
+  locale,
+  onCreateAnother,
+  outcome,
+}: {
+  readonly locale: Locale;
+  readonly onCreateAnother: () => void;
+  readonly outcome: CreatedOutcome;
+}) {
+  return (
+    <div
+      className="rounded-xl outline-none"
+      data-standalone-access-code-creation="created"
+      ref={focusOnMount}
+      tabIndex={-1}
+    >
+      <AdministrationAlert className="font-semibold" status="warning">
+        {m.accessCodesPinShownOnceWarning({}, { locale })}
+      </AdministrationAlert>
+      <div className="mt-6">
+        <AccessCodeDigits code={outcome.pin} />
+        <div className="mt-5">
+          <AccessCodeCopyButton code={outcome.pin} locale={locale} />
+        </div>
+      </div>
+      <dl className="mt-7 grid gap-x-6 gap-y-4 border-t border-navy-blue/10 pt-5 text-sm sm:grid-cols-2">
+        <div>
+          <dt className="font-semibold text-navy-blue/65">
+            {m.accessCodesResultName({}, { locale })}
+          </dt>
+          <dd className="mt-0.5 font-medium">{outcome.name}</dd>
+        </div>
+        <div>
+          <dt className="font-semibold text-navy-blue/65">
+            {m.accessCodesResultValidFrom({}, { locale })}
+          </dt>
+          <dd className="mt-0.5 font-medium">
+            {formatStandaloneAccessCodeLocalDateTime(outcome.startsAt, locale)}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-semibold text-navy-blue/65">
+            {m.accessCodesResultValidUntil({}, { locale })}
+          </dt>
+          <dd className="mt-0.5 font-medium">
+            {formatStandaloneAccessCodeLocalDateTime(outcome.endsAt, locale)}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-semibold text-navy-blue/65">
+            {m.accessCodesResultDuration({}, { locale })}
+          </dt>
+          <dd className="mt-0.5 font-medium">
+            {formatStandaloneAccessCodeDuration(
+              standaloneAccessCodeElapsedHours(outcome) ??
+                ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS,
+              locale
+            )}
+          </dd>
+        </div>
+      </dl>
+      <CreateAnotherStandaloneAccessCode
+        locale={locale}
+        onCreateAnother={onCreateAnother}
+      />
+    </div>
+  );
+}
+
+function AlreadyCreatedStandaloneAccessCode({
+  locale,
+  onCreateAnother,
+}: {
+  readonly locale: Locale;
+  readonly onCreateAnother: () => void;
+}) {
+  return (
+    <div
+      data-standalone-access-code-creation="already-created"
+      ref={focusOnMount}
+      tabIndex={-1}
+    >
+      <AdministrationAlert className="font-semibold" status="warning">
+        {m.accessCodesAlreadyCreated({}, { locale })}
+      </AdministrationAlert>
+      <CreateAnotherStandaloneAccessCode
+        locale={locale}
+        onCreateAnother={onCreateAnother}
+      />
+    </div>
+  );
+}
+
+function CreateAnotherStandaloneAccessCode({
+  locale,
+  onCreateAnother,
+}: {
+  readonly locale: Locale;
+  readonly onCreateAnother: () => void;
+}) {
+  return (
+    <div className="mt-6 border-t border-navy-blue/10 pt-5">
+      <Button
+        className="sm:w-auto"
+        fullWidth
+        onClick={onCreateAnother}
+        type="button"
+      >
+        <Plus aria-hidden className="size-4" />
+        {m.accessCodesCreateAnother({}, { locale })}
+      </Button>
+    </div>
+  );
+}
+
+function StandaloneAccessCodeCleanup({
+  creation,
+  locale,
+  onConfirmed,
+  onStartOver,
+}: {
+  readonly creation: Extract<CreationState, { kind: "cleanup-confirm" }>;
+  readonly locale: Locale;
+  readonly onConfirmed: () => void;
+  readonly onStartOver: () => void;
+}) {
+  return (
+    <div
+      data-standalone-access-code-creation={creation.reason}
+      ref={focusOnMount}
+      tabIndex={-1}
+    >
+      <AdministrationAlert role="alert" status="warning">
+        {creation.reason === "ambiguous"
+          ? m.accessCodesAmbiguousNotice({}, { locale })
+          : m.accessCodesCleanupRequiredNotice({}, { locale })}
+      </AdministrationAlert>
+      <p className="mt-5 text-sm leading-6 text-navy-blue/70">
+        {m.accessCodesCleanupInstructions(
+          { name: creation.cleanupTarget.name },
+          { locale }
+        )}
+      </p>
+      <CleanupConfirmationForm
+        locale={locale}
+        onConfirmed={onConfirmed}
+        onStartOver={onStartOver}
+      />
+    </div>
+  );
+}
+
+function StandaloneAccessCodeWindowForm({
+  focusNameOnReturn,
+  form,
+  isExecuting,
+  locale,
+  notice,
+  onSubmit,
+}: {
+  readonly focusNameOnReturn: boolean;
+  readonly form: UseFormReturn<
+    CreateStandaloneAccessCodeFormInput,
+    unknown,
+    CreateStandaloneAccessCodeFormValues
+  >;
+  readonly isExecuting: boolean;
+  readonly locale: Locale;
+  readonly notice: string | null;
+  readonly onSubmit: (values: CreateStandaloneAccessCodeFormValues) => void;
+}) {
+  const [watchedStartsAt, watchedEndsAt] = useWatch({
+    control: form.control,
+    name: ["startsAt", "endsAt"],
+  });
+  const startsAt = watchedStartsAt ?? "";
+  const endsAt = watchedEndsAt ?? "";
+  const endMin = isStandaloneAccessCodeLocalDateTime(startsAt)
+    ? standaloneAccessCodeEarliestLocalEnd(startsAt)
+    : undefined;
+  const endMax = isStandaloneAccessCodeLocalDateTime(startsAt)
+    ? shiftStandaloneAccessCodeLocalEnd({
+        startsAt,
+        hours: ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS,
+      })
+    : undefined;
 
   return (
     <Form {...form}>
@@ -367,7 +455,7 @@ export function CreateStandaloneAccessCodeForm() {
         data-standalone-access-code-creation="editing"
         noValidate
         onSubmit={(event) => {
-          void form.handleSubmit(submit)(event);
+          void form.handleSubmit(onSubmit)(event);
         }}
       >
         <div className="grid gap-5">
@@ -450,20 +538,11 @@ export function CreateStandaloneAccessCodeForm() {
           </fieldset>
         </div>
 
-        {elapsedHours !== null &&
-          isStandaloneAccessCodeWindowValid({ startsAt, endsAt }) && (
-            <p aria-live="polite" className="mt-4 text-sm text-navy-blue/65">
-              {m.accessCodesDurationSummary(
-                {
-                  duration: formatStandaloneAccessCodeDuration(
-                    elapsedHours,
-                    locale
-                  ),
-                },
-                { locale }
-              )}
-            </p>
-          )}
+        <StandaloneAccessCodeDurationSummary
+          endsAt={endsAt}
+          locale={locale}
+          startsAt={startsAt}
+        />
 
         {notice && (
           <AdministrationAlert
@@ -484,6 +563,32 @@ export function CreateStandaloneAccessCodeForm() {
         </div>
       </form>
     </Form>
+  );
+}
+
+function StandaloneAccessCodeDurationSummary({
+  endsAt,
+  locale,
+  startsAt,
+}: {
+  readonly endsAt: string;
+  readonly locale: Locale;
+  readonly startsAt: string;
+}) {
+  const elapsedHours = standaloneAccessCodeElapsedHours({ startsAt, endsAt });
+  if (
+    elapsedHours === null ||
+    !isStandaloneAccessCodeWindowValid({ startsAt, endsAt })
+  ) {
+    return null;
+  }
+  return (
+    <p aria-live="polite" className="mt-4 text-sm text-navy-blue/65">
+      {m.accessCodesDurationSummary(
+        { duration: formatStandaloneAccessCodeDuration(elapsedHours, locale) },
+        { locale }
+      )}
+    </p>
   );
 }
 

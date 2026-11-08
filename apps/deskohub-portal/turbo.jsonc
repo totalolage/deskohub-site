@@ -7,7 +7,15 @@
       "outputs": ["dist/**", ".astro/**", ".vercel/output/**"]
     },
     "test": {
-      "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"]
+      "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"],
+      // The deployment tests read the repository's package graph.
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/.agents/package.json",
+        "$TURBO_ROOT$/apps/*/package.json",
+        "$TURBO_ROOT$/packages/*/package.json"
+      ]
     },
     "typecheck": {
       "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"]

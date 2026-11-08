@@ -160,13 +160,4 @@ describe("getSiteHeaderConfig", () => {
 
     expect(await config.administrator.visible).toBe(false);
   });
-
-  test("treats a failed session check as a guest switch", async () => {
-    const { createLocalePreferenceSaving } = await import(
-      "./site-header-config"
-    );
-    isCustomerSignedIn.mockRejectedValue(new Error("synthetic failure"));
-
-    expect(await createLocalePreferenceSaving().signedIn).toBe(false);
-  });
 });

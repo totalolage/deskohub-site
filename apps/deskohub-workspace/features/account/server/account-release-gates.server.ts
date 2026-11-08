@@ -1,13 +1,16 @@
 import "server-only";
 
 import { releaseGateForRequest } from "@/features/feature-flags/backend/release-gate.server";
-import { PasskeyReleaseGate } from "../backend/account-release-gates";
+import {
+  accountReleaseRunPolicy,
+  PasskeyReleaseGate,
+} from "../backend/account-release-gates";
 
 // A run that fails beyond the gate's own fail-closed policy, such as a
 // runtime that cannot start, rejects.
 const passkeyRequest = releaseGateForRequest(PasskeyReleaseGate, {
   operation: "account.passkeys-enabled",
-  whenRunFails: "reject",
+  ...accountReleaseRunPolicy,
 });
 
 /**

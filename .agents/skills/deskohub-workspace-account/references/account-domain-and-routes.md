@@ -191,6 +191,13 @@ glossary defines the customer account, reservation author, and tombstone.
   re-reads the session. The `/account` redirect for signed-out visitors stays
   only for direct or stale navigations, and it is a document navigation too,
   so it loads the sign-in page instead of opening its modal.
+- A sign-in that finishes in the browser (passkey, link callback or
+  hand-off, typed code) calls `completeBrowserSignIn` and leaves with
+  `leaveForSignInDestination` (`features/account/browser-sign-in-completion.ts`).
+  Never sequence the analytics record, passkey-prompt note, passkey marker or
+  pending-request forget at the call site. Tests read those outcomes through
+  `browser-sign-in-completion.test-utils.ts` instead of mocking the storage
+  modules.
 - Use one magic-link form for sign-in and implicit sign-up. Only an
   app-directory review login's address gets a password step after it; see
   the password bullet in [Better Auth configuration](better-auth-configuration.md).
@@ -270,6 +277,14 @@ glossary defines the customer account, reservation author, and tombstone.
   and the auth guard rejects `name` or `image` in a magic-link request.
 - The verified login email is immutable because it's the reservation-linking
   trust boundary. Profile input never accepts an email.
+- The profile contract rejects a nonblank phone that holds no phone number,
+  so a save never clears a phone by accident. A blank phone is the explicit
+  clearing. `CustomerProfileInput` is what the form and typed clients send,
+  phone as entered text: Effect's `HttpApiClient` takes a payload's decoded
+  type, so a payload schema that decoded the phone would make every client
+  send E.164. The Workspace reads it as a `CustomerProfileSave`, with the
+  phone decoded to its `PhoneNumber`: the profile actions' schemas decode to
+  it, and the customer API handlers read the payload into it.
 
 ## Deletion
 
@@ -280,8 +295,9 @@ Better Auth's public delete endpoint is the only identity-deletion path:
    `CustomerAccountDeletionService.requestDeletion`, which takes the account
    lock and then:
    1. persists the `deletionRequestedAt` marker in its own transaction;
-   2. expires the linked Dotypos profile with a fresh ETag, retrying once on
-      a conflict; a missing or deleted profile counts as done;
+   2. expires the linked Dotypos profile with a fresh ETag, refreshing once
+      on a genuine version conflict; a missing profile counts as done, and an
+      uncertain expiration fails so deletion stays retryable;
    3. destroys the avatar (see [avatar media storage](avatar-media-storage.md));
    4. tombstones the durable customer account (`deleted_at`), last, so
       reservations it authored keep their author. A retry keeps the first

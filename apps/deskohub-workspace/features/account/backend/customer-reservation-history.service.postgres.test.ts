@@ -1,7 +1,4 @@
-import {
-  seededCustomerReads,
-  seededReservationReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
@@ -30,6 +27,7 @@ import {
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import {
   fixtureReservationAuthorId,
+  type ReservationFixtureStage,
   workspaceFixtures,
 } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -124,12 +122,12 @@ const insertWorkspaceReservation = async (input: {
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly dotyposReservationId: DotyposReservationId;
   readonly authorAccountId: CustomerAccountId;
-  readonly reservationState?: "held" | "confirmed";
+  readonly stage?: ReservationFixtureStage;
   readonly details?: StoredWorkspaceReservationDetails;
 }) => {
   await Effect.runPromise(
     workspaceFixtures(testDatabase!.db).reservation({
-      stage: { reservation: input.reservationState ?? "confirmed" },
+      stage: input.stage ?? { reservation: "confirmed" },
       customer: input.dotyposCustomerId,
       author: input.authorAccountId,
       ...(input.details && { details: input.details }),
@@ -224,7 +222,9 @@ const makeHistoryLayer = (
                     )
                 ).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 );
               },
@@ -245,7 +245,9 @@ const makeHistoryLayer = (
                       )
                 ).pipe(
                   Effect.flatMap((records) =>
-                    seededCustomerReads(records).getCustomersByIds(ids)
+                    makeInMemoryDotypos({
+                      customers: records,
+                    }).service.getCustomersByIds(ids)
                   )
                 );
               },
@@ -355,6 +357,8 @@ describe.skipIf(!testDatabase)(
       const foreignDotyposReservationId = DotyposReservationIdSchema.make(
         `dotypos-${uniqueId()}`
       );
+      const laterProviderOnlyDotyposReservationId =
+        DotyposReservationIdSchema.make(`dotypos-${uniqueId()}`);
 
       await insertAuthUser(account, testEmailAddress(`h-${account}`));
       await testDatabase!.pool.query(
@@ -392,6 +396,7 @@ describe.skipIf(!testDatabase)(
                 endDate: "2000-01-02T11:00:00.000Z",
               }),
               makeDotyposReservation({
+                id: laterProviderOnlyDotyposReservationId,
                 startDate: "2000-01-03T10:00:00.000Z",
                 endDate: "2000-01-03T11:00:00.000Z",
               }),
@@ -411,7 +416,7 @@ describe.skipIf(!testDatabase)(
       const summaries = history.groups.past;
       expect(summaries.map((summary) => summary.id)).toEqual([
         foreignDotyposReservationId,
-        "2000-01-03T10:00:00.000Z:1",
+        laterProviderOnlyDotyposReservationId,
         providerOnlyDotyposReservationId,
         matchedWorkspaceReservationId,
       ]);
@@ -689,8 +694,8 @@ describe.skipIf(!testDatabase)(
     const seedOwnReservations = async (
       entries: readonly {
         readonly key: string;
-        readonly reservationState: "held" | "confirmed";
-        readonly status: "NEW" | "CONFIRMED";
+        readonly stage: ReservationFixtureStage;
+        readonly status: "NEW" | "CONFIRMED" | "CANCELLED";
         readonly startDate?: string;
         readonly endDate?: string;
         readonly seats?: string;
@@ -721,7 +726,7 @@ describe.skipIf(!testDatabase)(
           dotyposCustomerId,
           dotyposReservationId: dotypos,
           authorAccountId: account,
-          reservationState: entry.reservationState,
+          stage: entry.stage,
           ...(entry.details && { details: entry.details }),
         });
         const reservation = makeDotyposReservation({
@@ -752,14 +757,14 @@ describe.skipIf(!testDatabase)(
       const seeded = await seedOwnReservations([
         {
           key: "newest",
-          reservationState: "confirmed",
+          stage: { reservation: "confirmed" },
           status: "CONFIRMED",
           startDate: "2000-04-03T10:00:00.000Z",
           endDate: "not-a-date",
         },
         {
           key: "unreadable-end",
-          reservationState: "confirmed",
+          stage: { reservation: "confirmed" },
           status: "CONFIRMED",
           startDate: "2000-04-02T10:00:00.000Z",
           endDate: "not-a-date",
@@ -767,7 +772,7 @@ describe.skipIf(!testDatabase)(
         },
         {
           key: "unreadable-start",
-          reservationState: "confirmed",
+          stage: { reservation: "confirmed" },
           status: "CONFIRMED",
           startDate: "not-a-date",
           endDate: "not-a-date",
@@ -795,7 +800,7 @@ describe.skipIf(!testDatabase)(
       const seeded = await seedOwnReservations([
         {
           key: "early-setup",
-          reservationState: "confirmed",
+          stage: { reservation: "confirmed" },
           status: "CONFIRMED",
           startDate: "2000-04-02T09:45:00.000Z",
           endDate: "2000-04-02T11:00:00.000Z",
@@ -804,7 +809,7 @@ describe.skipIf(!testDatabase)(
         {
           // Starts after the setup start but before the booked start.
           key: "between",
-          reservationState: "confirmed",
+          stage: { reservation: "confirmed" },
           status: "CONFIRMED",
           startDate: "2000-04-02T09:50:00.000Z",
           endDate: "2000-04-02T10:50:00.000Z",
@@ -812,7 +817,7 @@ describe.skipIf(!testDatabase)(
         },
         {
           key: "without-setup",
-          reservationState: "confirmed",
+          stage: { reservation: "confirmed" },
           status: "CONFIRMED",
           startDate: "2000-04-01T09:45:00.000Z",
           endDate: "2000-04-01T11:00:00.000Z",
@@ -862,14 +867,14 @@ describe.skipIf(!testDatabase)(
       const seeded = await seedOwnReservations([
         {
           key: "impossible-start",
-          reservationState: "confirmed",
+          stage: { reservation: "confirmed" },
           status: "CONFIRMED",
           startDate: "2000-04-31T10:00:00.000Z",
           endDate: "not-a-date",
         },
         {
           key: "newest",
-          reservationState: "confirmed",
+          stage: { reservation: "confirmed" },
           status: "CONFIRMED",
           startDate: "2000-04-03T10:00:00.000Z",
           endDate: "not-a-date",
@@ -877,7 +882,7 @@ describe.skipIf(!testDatabase)(
         },
         {
           key: "zero-seats",
-          reservationState: "confirmed",
+          stage: { reservation: "confirmed" },
           status: "CONFIRMED",
           startDate: "2000-04-02T10:00:00.000Z",
           endDate: "not-a-date",
@@ -907,8 +912,8 @@ describe.skipIf(!testDatabase)(
     // Workspace confirmed the paid hold in Dotypos.
     test("shows a booking Workspace confirmed as confirmed while its details still say NEW", async () => {
       const seeded = await seedOwnReservations([
-        { key: "unpaid", reservationState: "held", status: "NEW" },
-        { key: "paid", reservationState: "confirmed", status: "NEW" },
+        { key: "unpaid", stage: { reservation: "held" }, status: "NEW" },
+        { key: "paid", stage: { reservation: "confirmed" }, status: "NEW" },
       ]);
 
       const past = await loadPast(
@@ -922,12 +927,68 @@ describe.skipIf(!testDatabase)(
       ]);
     });
 
+    test("lets a cancellation win over a failure that needs attention", async () => {
+      const paidFailed = {
+        reservation: "confirmed",
+        payment: "paid",
+        fulfillment: "failed",
+      } as const;
+      const seeded = await seedOwnReservations([
+        {
+          key: "expired",
+          stage: { reservation: "hold_expired" },
+          status: "NEW",
+        },
+        {
+          key: "cancelled-in-dotypos",
+          stage: paidFailed,
+          status: "CANCELLED",
+        },
+        { key: "fulfillment-failed", stage: paidFailed, status: "CONFIRMED" },
+        {
+          key: "cancellation-failed",
+          stage: { reservation: "cancellation_failed", payment: "paid" },
+          status: "CONFIRMED",
+        },
+        {
+          key: "cancelled",
+          stage: { reservation: "cancelled", payment: "cancelled" },
+          status: "CONFIRMED",
+        },
+        {
+          key: "confirmed-in-dotypos",
+          stage: { reservation: "confirming", payment: "paid" },
+          status: "CONFIRMED",
+        },
+      ]);
+
+      const past = await loadPast(
+        seeded.account,
+        makeHistoryLayer(seeded.reservations)
+      );
+
+      expect(
+        Object.fromEntries(past.map(({ id, status }) => [id, status]))
+      ).toEqual({
+        [seeded.idsOf("expired").workspace]: "cancelled",
+        [seeded.idsOf("cancelled-in-dotypos").workspace]: "cancelled",
+        [seeded.idsOf("fulfillment-failed").workspace]: "requires-attention",
+        [seeded.idsOf("cancellation-failed").workspace]: "requires-attention",
+        [seeded.idsOf("cancelled").workspace]: "cancelled",
+        [seeded.idsOf("confirmed-in-dotypos").workspace]: "confirmed",
+      });
+    });
+
     // A shared snapshot of the list can predate one of these bookings, so
     // the records reader needs them to fill the gap.
     test("tells the records reader which of the customer's reservations Workspace recorded", async () => {
       const seeded = await seedOwnReservations([
-        { key: "first", reservationState: "confirmed", status: "CONFIRMED" },
-        { key: "second", reservationState: "held", status: "NEW" },
+        {
+          key: "first",
+          stage: { reservation: "confirmed" },
+          status: "CONFIRMED",
+        },
+        { key: "second", stage: { reservation: "held" }, status: "NEW" },
       ]);
       const customerListReads: Parameters<
         ReservationRecords["Service"]["listForCustomer"]

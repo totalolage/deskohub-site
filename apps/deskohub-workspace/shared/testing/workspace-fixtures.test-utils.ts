@@ -31,7 +31,7 @@ import type { Locale } from "@/features/i18n";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 
 /** A synthetic login: the customer account id and its login email. */
-export type FixtureAccount = {
+type FixtureAccount = {
   readonly accountId: CustomerAccountId;
   readonly email: string;
 };
@@ -120,6 +120,13 @@ export const fixtureReservationAuthorId = customerAccountIdSchema.make(
 
 const syntheticId = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 
+/**
+ * A Dotypos customer ID no other test produces, for suites that link it to a
+ * customer account: the shared test database keeps one account per customer.
+ */
+export const syntheticDotyposCustomerId = (prefix = "fixture-customer") =>
+  DotyposCustomerIdSchema.make(syntheticId(prefix));
+
 const withDotyposReservation = (): StageColumns => ({
   dotyposReservationId: DotyposReservationIdSchema.make(
     syntheticId("fixture-dotypos-reservation")
@@ -207,8 +214,7 @@ const reservationRow = ({
     checkoutAttemptKey: checkoutAttemptKeySchema.make(
       syntheticId("fixture-attempt")
     ),
-    dotyposCustomerId:
-      customer ?? DotyposCustomerIdSchema.make(syntheticId("fixture-customer")),
+    dotyposCustomerId: customer ?? syntheticDotyposCustomerId(),
     authorAccountId: author,
     reservationState: reservation,
     paymentState: payment,

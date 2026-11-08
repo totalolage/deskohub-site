@@ -10,7 +10,7 @@ import {
   ignoredDeliveryReport,
   processedDeliveryReport,
 } from "@/shared/backend/email/delivery-reports";
-import type { CampaignEmailRecipient } from "../campaign-email-message";
+import type { CampaignEmailRecipient } from "../campaign-email";
 import type { CampaignRecipientStatus } from "../campaign-states";
 
 /** A provider delivery event for one campaign email. */

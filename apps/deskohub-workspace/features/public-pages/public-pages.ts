@@ -18,6 +18,7 @@ export const publicPagePathnames = [
   "/contact",
   "/faq",
   "/ai-assistants",
+  "/android",
   "/pricing",
   "/meeting-room",
   "/team",

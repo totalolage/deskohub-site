@@ -1,29 +1,43 @@
 import {
   afterAll,
   afterEach,
-  beforeAll,
+  beforeEach,
   describe,
   expect,
   mock,
   test,
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { cleanup, render, within } from "@testing-library/react";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { m } from "@/features/administration/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import type { grantAdministrator as grantAdministratorAction } from "./actions";
 import type { AdministratorsPageData } from "./page-data.server";
 
+type GrantResult = Awaited<ReturnType<typeof grantAdministratorAction>>;
+
+const grantAdministrator = mock<typeof grantAdministratorAction>(
+  async () => ({})
+);
+
 mock.module("./actions", () => ({
-  grantAdministrator: async () => ({}),
+  grantAdministrator,
   revokeAdministrator: async () => ({}),
 }));
 
-beforeAll(() => {
-  registerWorkspaceComponentTestEnv();
+registerWorkspaceComponentTestEnv();
+// React DOM, which @testing-library/react loads, must load after the
+// happy-dom registration to handle input events.
+const { act, cleanup, fireEvent, render, waitFor, within } = await import(
+  "@testing-library/react"
+);
+
+beforeEach(() => {
+  grantAdministrator.mockReset();
 });
 
 afterEach(() => {
@@ -108,5 +122,73 @@ describe("AdministratorRoster", () => {
         name: `Odebrat roli administrátora účtu ${otherEmail}`,
       })
     ).toBeDefined();
+  });
+
+  describe("granting the administrator role", () => {
+    const grantedEmail = testEmailAddress("roster-view-granted");
+
+    const submitGrant = async (result: GrantResult) => {
+      grantAdministrator.mockResolvedValue(result);
+      const view = await renderRoster("en-US");
+      const input = view.getByPlaceholderText(
+        m.administratorsGrantEmailLabel({}, { locale: "en-US" })
+      ) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: grantedEmail } });
+      await act(async () => {
+        fireEvent.click(
+          view.getByRole("button", {
+            name: m.administratorsGrantSubmit({}, { locale: "en-US" }),
+          })
+        );
+      });
+      await waitFor(() => expect(grantAdministrator).toHaveBeenCalledTimes(1));
+      return { input, view };
+    };
+
+    test.each([
+      [true, m.administratorsGrantGranted],
+      [false, m.administratorsGrantAlreadyAdministrator],
+    ] as const)(
+      "confirms the grant (changed: %p) and clears the field",
+      async (changed, message) => {
+        const { input, view } = await submitGrant({
+          data: { changed, email: grantedEmail },
+        });
+
+        expect(grantAdministrator.mock.calls[0]?.[0]).toEqual({
+          email: grantedEmail,
+        });
+        await waitFor(() =>
+          expect(view.getByRole("status").textContent).toBe(
+            message({ email: grantedEmail }, { locale: "en-US" })
+          )
+        );
+        expect(input.value).toBe("");
+      }
+    );
+
+    test("shows the server's refusal as an error and keeps the address", async () => {
+      const { input, view } = await submitGrant({
+        serverError: "The account has no verified sign-in.",
+      });
+
+      await waitFor(() =>
+        expect(view.getByRole("alert").textContent).toBe(
+          "The account has no verified sign-in."
+        )
+      );
+      expect(input.value).toBe(grantedEmail);
+    });
+
+    test("reports nothing and keeps the address when the action returns no result", async () => {
+      const { input, view } = await submitGrant({});
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(view.queryByRole("status")).toBeNull();
+      expect(view.queryByRole("alert")).toBeNull();
+      expect(input.value).toBe(grantedEmail);
+    });
   });
 });

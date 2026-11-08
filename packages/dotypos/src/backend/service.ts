@@ -1,4 +1,17 @@
-import { Context, Data, Effect, Layer, Match, Option, Schema } from "effect";
+import type { PhoneNumber } from "@deskohub/phone-number";
+import {
+  Clock,
+  Context,
+  Data,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Ref,
+  Schedule,
+  Schema,
+  Struct,
+} from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { DotyposRuntimeConfig } from "../config";
 import {
@@ -9,6 +22,7 @@ import {
   type DotyposRequest,
   DotyposReservationCancelledError,
   DotyposUnavailable,
+  type DotyposUncertain,
   type DotyposWriteFailure,
 } from "../errors";
 import type {
@@ -24,6 +38,7 @@ import type {
   DotyposCategoryId,
   DotyposCustomer,
   DotyposCustomerId,
+  DotyposCustomerWriteRecord,
   DotyposDiscountGroup,
   DotyposDiscountGroupId,
   DotyposProduct,
@@ -37,6 +52,7 @@ import {
   DotyposCategorySchema,
   DotyposCustomerIdSchema,
   DotyposCustomerSchema,
+  DotyposCustomerWriteRecordSchema,
   DotyposDiscountGroupIdSchema,
   DotyposDiscountGroupSchema,
   DotyposProductSchema,
@@ -46,7 +62,7 @@ import {
   DotyposTableSchema,
 } from "../types";
 import { toCustomerEmailIdentity } from "../utils/customer-email";
-import { normalizePhoneNumber } from "../utils/phone-formatting";
+import { customerLifecycle } from "../utils/customer-lifecycle";
 import {
   DotyposAccessToken,
   DotyposGeneratedClient,
@@ -63,6 +79,8 @@ import { type DotyposIdReadOptions, readByIds } from "./id-reads";
 import {
   type DotyposAttemptFailure,
   type DotyposRequestFailure,
+  getDotyposRequestPolicy,
+  keepUncertainty,
   retryDotyposRequest,
 } from "./request-profiles";
 
@@ -121,6 +139,16 @@ type DotyposPage<A> = {
 const isNotFound = (failure: DotyposAttemptFailure) =>
   failure._tag === "DotyposRejected" && failure.reason === "not-found";
 
+/** A replayed PATCH of `request` that met 412 after an uncertain attempt. */
+const isReplayConflict =
+  (request: "reservation.patch" | "customer.patch") =>
+  (
+    failure: DotyposConditionalWriteFailure | DotyposReservationCancelledError
+  ): failure is DotyposUncertain =>
+    failure._tag === "DotyposUncertain" &&
+    failure.reason === "conflict-after-replay" &&
+    failure.request === request;
+
 /**
  * Reads the addressed record as some, or none when Dotypos answers 404 for
  * it. Only the record's own request counts: the access-token request never
@@ -164,7 +192,7 @@ const emptyFirstPageWhenNotFound =
       )
     );
 
-const validateReservationInterval = (
+export const validateReservationInterval = (
   interval: DotyposReservationInterval,
   operation: DotyposOperation
 ): Effect.Effect<void, DotyposRejected> => {
@@ -241,7 +269,7 @@ type ReservationListQuery = {
 };
 
 /** The reservation list request's filter and sort. */
-const reservationListQuery = (
+export const reservationListQuery = (
   options: ReservationListOptions,
   operation: DotyposOperation
 ): Effect.Effect<ReservationListQuery, DotyposRejected> => {
@@ -297,7 +325,7 @@ const singleIdPage = <A>(
     Effect.as(page.data ?? [])
   );
 
-const validateReservationPageNumber = (
+export const validateReservationPageNumber = (
   page: number,
   operation: DotyposOperation
 ): Effect.Effect<void, DotyposRejected> =>
@@ -342,6 +370,11 @@ type DotyposPages<A> = {
   readonly pageCount: number;
 };
 
+/**
+ * Reads every page in order. The cursor and the items read so far live with
+ * the returned effect, so a retry around it resumes at the page that failed
+ * (the `resume` pagination of `getDotyposRequestWorstCase(...).pagedLoad`).
+ */
 const loadDotyposPages = <A, E, R, Request extends DotyposRequest>(
   input: DotyposPageLoad<A, E, R, Request>
 ): Effect.Effect<DotyposPages<A>, E | DotyposRequestFailure<Request>, R> => {
@@ -383,13 +416,7 @@ export type DotyposCustomerLookupData = {
   firstName: string;
   lastName?: string;
   email?: string;
-  phone?: string;
-};
-
-export type DotyposCustomerDiscount = {
-  readonly source: "dotypos-discount-group";
-  readonly discountGroupId: DotyposDiscountGroupId;
-  readonly percent: number;
+  phone?: PhoneNumber;
 };
 
 export type DotyposCustomerDiscountGroup = {
@@ -408,12 +435,143 @@ export type DotyposCustomerBillingDetails = {
   readonly vatId: string;
 };
 
+/** Customer details a write sets. A write without a phone leaves the stored phone alone. */
 export type DotyposCustomerDetails = DotyposCustomerBillingDetails & {
   readonly firstName: string;
   readonly lastName: string;
   readonly email: string;
-  readonly phone?: string;
+  readonly phone?: PhoneNumber;
 };
+
+/**
+ * A customer's own profile edit. Every field is written; the email is not
+ * part of it. A blank phone explicitly clears the stored phone.
+ */
+export type DotyposCustomerProfile = DotyposCustomerBillingDetails & {
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly phone: PhoneNumber | "";
+};
+
+/** A customer text field a details write always sets. */
+type CustomerDetailTextField = Exclude<keyof DotyposCustomerDetails, "phone">;
+
+/** Every billing detail field; the type check keeps the list complete. */
+const customerBillingDetailFieldSet = {
+  addressLine1: true,
+  addressLine2: true,
+  city: true,
+  zip: true,
+  country: true,
+  companyName: true,
+  companyId: true,
+  vatId: true,
+} as const satisfies {
+  readonly [Field in keyof DotyposCustomerBillingDetails]: true;
+};
+
+/** Every customer detail text field; the type check keeps the list complete. */
+const customerDetailTextFields = Struct.keys({
+  ...customerBillingDetailFieldSet,
+  firstName: true,
+  lastName: true,
+  email: true,
+} as const satisfies { readonly [Field in CustomerDetailTextField]: true });
+
+/**
+ * Whether a customer holds each text field exactly as written. An empty
+ * value also matches a field Dotypos leaves missing or null.
+ */
+const holdsCustomerText =
+  <Field extends CustomerDetailTextField>(
+    fields: readonly Field[],
+    written: { readonly [Key in Field]: string }
+  ) =>
+  (customer: DotyposCustomer) =>
+    fields.every((field) => (customer[field] ?? "") === written[field]);
+
+const holdsCustomerBillingDetails = (details: DotyposCustomerBillingDetails) =>
+  holdsCustomerText(Struct.keys(customerBillingDetailFieldSet), details);
+
+/**
+ * Whether a customer holds a details write: every text field as
+ * holdsCustomerText checks it, and the phone exactly only when the write
+ * includes one. A write without a phone leaves the stored phone alone, so
+ * any stored phone holds it.
+ */
+const holdsCustomerDetails = (details: DotyposCustomerDetails) => {
+  const holdsText = holdsCustomerText(customerDetailTextFields, details);
+  return (customer: DotyposCustomer) =>
+    holdsText(customer) &&
+    (details.phone === undefined || customer.phone === details.phone);
+};
+
+/** Every customer profile text field; the type check keeps the list complete. */
+const customerProfileTextFields = Struct.keys({
+  ...customerBillingDetailFieldSet,
+  firstName: true,
+  lastName: true,
+} as const satisfies {
+  readonly [Field in Exclude<keyof DotyposCustomerProfile, "phone">]: true;
+});
+
+/**
+ * Whether a customer that is not deleted holds a profile write: every text
+ * field as holdsCustomerText checks it, and the written phone exactly, where a
+ * blank phone also matches a missing or null one.
+ */
+const holdsCustomerProfile = (profile: DotyposCustomerProfile) => {
+  const holdsText = holdsCustomerText(customerProfileTextFields, profile);
+  return (customer: DotyposCustomer) =>
+    !customer.deleted &&
+    holdsText(customer) &&
+    (customer.phone ?? "") === profile.phone;
+};
+
+/** The trimmed profile an update writes. */
+const toCustomerProfileUpdate = (
+  profile: DotyposCustomerProfile
+): DotyposCustomerProfile => ({
+  addressLine1: profile.addressLine1.trim(),
+  addressLine2: profile.addressLine2.trim(),
+  city: profile.city.trim(),
+  companyId: profile.companyId.trim(),
+  companyName: profile.companyName.trim(),
+  country: profile.country.trim(),
+  firstName: profile.firstName.trim(),
+  lastName: profile.lastName.trim(),
+  phone: profile.phone,
+  vatId: profile.vatId.trim(),
+  zip: profile.zip.trim(),
+});
+
+/**
+ * How far in the past an expiration sets the expiry, so the customer reads
+ * as expired at once despite clock skew between Workspace and Dotypos.
+ */
+const customerExpiryLeadMilliseconds = 60_000;
+
+/**
+ * The trimmed details an update writes. An absent phone is left out so the
+ * phone stored in Dotypos stays untouched; clearing it requires an explicit
+ * provider patch.
+ */
+const toCustomerDetailsUpdate = (
+  details: DotyposCustomerDetails
+): DotyposCustomerDetails => ({
+  addressLine1: details.addressLine1.trim(),
+  addressLine2: details.addressLine2.trim(),
+  city: details.city.trim(),
+  companyId: details.companyId.trim(),
+  companyName: details.companyName.trim(),
+  country: details.country.trim(),
+  email: details.email.trim(),
+  firstName: details.firstName.trim(),
+  lastName: details.lastName.trim(),
+  ...(details.phone && { phone: details.phone }),
+  vatId: details.vatId.trim(),
+  zip: details.zip.trim(),
+});
 
 export type FindCustomerOptions = {
   readonly lookupFields?: readonly CustomerLookupField[];
@@ -448,17 +606,10 @@ const defaultCustomerLookupFields: readonly CustomerLookupField[] = [
 
 const normalizeCustomerLookupData = (
   customerData: DotyposCustomerLookupData
-): DotyposCustomerLookupData => {
-  const normalizedPhone = customerData.phone
-    ? normalizePhoneNumber(customerData.phone)
-    : null;
-
-  return {
-    ...customerData,
-    email: customerData.email?.trim() || undefined,
-    phone: normalizedPhone || undefined,
-  };
-};
+): DotyposCustomerLookupData => ({
+  ...customerData,
+  email: customerData.email?.trim() || undefined,
+});
 
 /**
  * Customers own one mailbox regardless of how its address was cased, so
@@ -538,24 +689,12 @@ const addUniqueCustomer = (
   customers: DotyposCustomer[],
   customer: DotyposCustomer
 ) => {
-  const isDuplicate = customers.find((existing) =>
-    customer.id ? existing.id === customer.id : existing === customer
-  );
+  const isDuplicate = customers.find((existing) => existing.id === customer.id);
 
   if (!isDuplicate) {
     customers.push(customer);
   }
 };
-
-const DiscountPercentSchema = Schema.Union([
-  Schema.Finite,
-  Schema.FiniteFromString,
-]).check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(100));
-
-const parseDiscountPercent = (value: unknown) =>
-  Option.getOrUndefined(
-    Schema.decodeUnknownOption(DiscountPercentSchema)(value)
-  );
 
 const hasAtLeastTwoCustomers = (
   customers: readonly DotyposCustomer[]
@@ -565,12 +704,122 @@ const hasAtLeastTwoCustomers = (
   ...DotyposCustomer[],
 ] => customers.length >= 2;
 
+/** One provider search for a lookup field, and the test that a candidate is that customer. */
+type CustomerLookupSearch = {
+  readonly field: CustomerLookupField;
+  readonly value: string;
+  readonly identifies: (customer: DotyposCustomer) => boolean;
+};
+
+/** The searches a lookup runs, email first, for the requested fields it has values for. */
+const customerLookupSearches = (
+  customerData: DotyposCustomerLookupData,
+  lookupFields: readonly CustomerLookupField[]
+): CustomerLookupSearch[] => {
+  const searches: CustomerLookupSearch[] = [];
+  const { email, phone } = customerData;
+
+  if (lookupFields.includes("email") && email) {
+    // The provider filter is already case-insensitive; send the address as
+    // entered so its collation, not JavaScript case mapping, folds case.
+    searches.push({
+      field: "email",
+      value: email,
+      identifies: (customer) => hasCustomerEmail(customer, email),
+    });
+  }
+
+  if (lookupFields.includes("phone") && phone) {
+    searches.push({
+      field: "phone",
+      value: phone,
+      identifies: (customer) => customer.phone === phone,
+    });
+  }
+
+  return searches;
+};
+
+/** Active matches decide the outcome; deleted ones only tell a deleted customer from none. */
+const customerLookupResult = (
+  matchingCustomers: readonly DotyposCustomer[],
+  normalizedCustomerData: DotyposCustomerLookupData
+) => {
+  const activeMatchingCustomers = matchingCustomers.filter(
+    (customer) => !customer.deleted
+  );
+
+  if (activeMatchingCustomers.length === 0) {
+    return matchingCustomers.length > 0
+      ? {
+          _tag: "Deleted" as const,
+          matches: matchingCustomers,
+          normalizedCustomerData,
+        }
+      : {
+          _tag: "NotFound" as const,
+          matches: [],
+          normalizedCustomerData,
+        };
+  }
+
+  if (hasAtLeastTwoCustomers(activeMatchingCustomers)) {
+    return {
+      _tag: "Ambiguous" as const,
+      matches: activeMatchingCustomers,
+      normalizedCustomerData,
+    };
+  }
+
+  return {
+    _tag: "Matched" as const,
+    customer: activeMatchingCustomers[0]!,
+    matches: activeMatchingCustomers,
+    normalizedCustomerData,
+  };
+};
+
+const fillableCustomerFields = [
+  "email",
+  "phone",
+  "firstName",
+  "lastName",
+] as const;
+
+/**
+ * The looked-up details an existing customer lacks. `needsUpdate` keeps the
+ * value of `email-missing || phone-missing || firstName-missing ||
+ * lastName-missing`, as the update decision log reports it.
+ */
+const customerFill = (
+  customerData: DotyposCustomerLookupData,
+  existingCustomer: DotyposCustomer
+) => {
+  const patch: {
+    -readonly [Field in (typeof fillableCustomerFields)[number]]?: string;
+  } = {};
+  for (const field of fillableCustomerFields) {
+    const value = customerData[field];
+    if (value && !existingCustomer[field]) patch[field] = value;
+  }
+
+  return {
+    needsUpdate: fillableCustomerFields
+      .map((field) => customerData[field] && !existingCustomer[field])
+      .reduce((needed, fieldNeeded) => needed || fieldNeeded),
+    patch: patch satisfies UpdateCustomerRequest,
+  };
+};
+
 /** The public patch operations, all of which go through one ETag read and If-Match PATCH. */
 type PatchCustomerOperation =
   | "patchCustomer"
   | "setCustomerDiscountGroup"
   | "updateCustomerBillingDetails"
-  | "updateCustomerDetails";
+  | "updateCustomerDetails"
+  | "updateCustomerProfile"
+  | "expireCustomer"
+  | "reactivateCustomer";
 
 export interface IDotyposService {
   // ---- Reads: DotyposReadFailure only ----
@@ -625,9 +874,6 @@ export interface IDotyposService {
     DotyposCustomerDiscountGroup | undefined,
     DotyposReadFailure
   >;
-  readonly getCustomerDiscount: (
-    customer: DotyposCustomer
-  ) => Effect.Effect<DotyposCustomerDiscount | undefined, DotyposReadFailure>;
   readonly getDiscountGroups: () => Effect.Effect<
     readonly DotyposDiscountGroup[],
     DotyposReadFailure
@@ -666,12 +912,12 @@ export interface IDotyposService {
   /** Never retried. */
   readonly createCustomer: (
     details: DotyposCustomerDetails
-  ) => Effect.Effect<DotyposCustomer, DotyposWriteFailure>;
+  ) => Effect.Effect<DotyposCustomerWriteRecord, DotyposWriteFailure>;
   /** A lookup, then either a fill-missing PUT whose failures are swallowed or a create retried like createReservation. */
   readonly findOrCreateCustomer: (
     customerData: DotyposCustomerLookupData,
     options?: FindCustomerOptions
-  ) => Effect.Effect<DotyposCustomer, DotyposWriteFailure>;
+  ) => Effect.Effect<DotyposCustomerWriteRecord, DotyposWriteFailure>;
   /** Never retried. A missing reservation fails DotyposRejected{not-found}. */
   readonly cancelReservation: (
     reservationId: DotyposReservationId
@@ -681,7 +927,11 @@ export interface IDotyposService {
   readonly updateReservation: (
     input: UpdateDotyposReservationInput
   ) => Effect.Effect<DotyposReservation, DotyposConditionalWriteFailure>;
-  /** CONFIRMED already: succeeds without a PATCH. CANCELLED: DotyposReservationCancelledError. A vanished reservation: DotyposRejected{not-found}. */
+  /**
+   * CONFIRMED already: succeeds without a PATCH. CANCELLED: DotyposReservationCancelledError. A vanished reservation: DotyposRejected{not-found}.
+   * A replayed PATCH that meets 412 reruns the read, status match and PATCH once to settle it; a NEW reread under the replayed
+   * ETag, or any failure of the rerun, stays DotyposUncertain. A plain 412 on the first PATCH is DotyposVersionConflict.
+   */
   readonly confirmReservation: (
     reservationId: DotyposReservationId
   ) => Effect.Effect<
@@ -696,7 +946,12 @@ export interface IDotyposService {
     Option.Option<DotyposCustomer>,
     DotyposConditionalWriteFailure
   >;
-  /** The next three patch the customer and fail DotyposRejected{not-found} when it does not exist. */
+  /**
+   * The next three patch the customer and fail DotyposRejected{not-found} when it does not exist.
+   * Each settles a replayed PATCH that meets 412 by rereading the customer once: a reread with a new ETag that holds
+   * the write gets one confirming PATCH under that ETag, which succeeds when it holds the write; any other reread, a
+   * failed one, or a failed confirmation stays DotyposUncertain. A plain 412 is DotyposVersionConflict.
+   */
   readonly setCustomerDiscountGroup: (
     customerId: DotyposCustomerId,
     discountGroupId: DotyposDiscountGroupId | null
@@ -709,6 +964,34 @@ export interface IDotyposService {
     customerId: DotyposCustomerId,
     details: DotyposCustomerDetails
   ) => Effect.Effect<DotyposCustomer, DotyposConditionalWriteFailure>;
+  /**
+   * The next three settle a replayed PATCH that meets 412 like the three above, and none means the customer does not
+   * exist and nothing was applied. A genuine 412 is DotyposVersionConflict; refreshing after it is the caller's choice.
+   *
+   * updateCustomerProfile writes the trimmed profile; it holds when a customer that is not deleted carries every
+   * field, the blank-cleared phone included.
+   */
+  readonly updateCustomerProfile: (
+    customerId: DotyposCustomerId,
+    profile: DotyposCustomerProfile
+  ) => Effect.Effect<
+    Option.Option<DotyposCustomer>,
+    DotyposConditionalWriteFailure
+  >;
+  /** Sets an expiry a minute in the past; holds when the customer reads as expired, not deleted. */
+  readonly expireCustomer: (
+    customerId: DotyposCustomerId
+  ) => Effect.Effect<
+    Option.Option<DotyposCustomer>,
+    DotyposConditionalWriteFailure
+  >;
+  /** Clears the expiry; holds when the customer is not deleted and has no expiry. */
+  readonly reactivateCustomer: (
+    customerId: DotyposCustomerId
+  ) => Effect.Effect<
+    Option.Option<DotyposCustomer>,
+    DotyposConditionalWriteFailure
+  >;
 }
 
 const makeDotyposService: Effect.Effect<
@@ -718,6 +1001,7 @@ const makeDotyposService: Effect.Effect<
 > = Effect.gen(function* () {
   const config = yield* DotyposRuntimeConfig;
   const { client } = yield* DotyposGeneratedClient;
+  const requestPolicy = getDotyposRequestPolicy(config.apiTimeout);
 
   /**
    * Sends one request attempt and classifies its failure by the request's
@@ -734,10 +1018,7 @@ const makeDotyposService: Effect.Effect<
           call
         )
       ),
-      Effect.timeoutOrElse({
-        duration: config.apiTimeout,
-        orElse: () => Effect.fail(dotyposTimeout(call)),
-      })
+      requestPolicy.attempt(() => dotyposTimeout(call))
     );
 
   /** A creation answered with an empty array created nothing, so it can be retried. */
@@ -811,7 +1092,7 @@ const makeDotyposService: Effect.Effect<
 
       return yield* decodeProviderEntity(
         DotyposReservationSchema,
-        { ...reservationResult, id: reservationId },
+        reservationResult,
         call
       );
     },
@@ -849,19 +1130,7 @@ const makeDotyposService: Effect.Effect<
         "Customer ID",
         reservationCall
       );
-      const customerCall = {
-        operation: "getReservation",
-        request: "customer.get",
-      } as const;
-      const customerResult = yield* readCustomer(
-        customerId,
-        customerCall.operation
-      );
-      const customer = yield* decodeProviderEntity(
-        DotyposCustomerSchema,
-        { ...customerResult, id: customerId },
-        customerCall
-      );
+      const customer = yield* readCustomer(customerId, "getReservation");
 
       return { reservation, customer };
     },
@@ -1048,7 +1317,7 @@ const makeDotyposService: Effect.Effect<
 
           return decodeProviderEntity(
             DotyposReservationSchema,
-            { ...reservation, id: reservation.id ?? reservationId },
+            reservation,
             call
           ).pipe(Effect.map((decoded) => ({ etag, reservation: decoded })));
         })
@@ -1099,35 +1368,89 @@ const makeDotyposService: Effect.Effect<
 
       yield* Effect.logInfo("Dotypos reservation confirmation patch started");
 
-      // The If-Match ETag makes the status check and the PATCH one atomic
-      // transition: a cancellation after this read fails the PATCH instead of
-      // being overwritten, so a cancelled hold is never revived.
-      const reservation = yield* readReservationVersion(
-        id,
-        "confirmReservation"
-      ).pipe(
-        Effect.flatMap((current) =>
-          Match.value(current.reservation.status).pipe(
-            Match.when("CANCELLED", () =>
-              Effect.fail(
-                new DotyposReservationCancelledError({
-                  reservationId: id,
-                  message: "Dotypos reservation is already cancelled.",
-                })
-              )
-            ),
-            Match.when("CONFIRMED", () => Effect.succeed(current.reservation)),
-            Match.when("NEW", () =>
-              patchReservationVersion({
+      // The replay conflict, and the ETag its PATCH replayed, that make the
+      // next attempt a settling rerun.
+      const unsettled = yield* Ref.make(
+        Option.none<{
+          readonly uncertain: DotyposUncertain;
+          readonly replayedEtag: string;
+        }>()
+      );
+
+      // A replayed PATCH that meets 412 has probably already landed: the
+      // replay carries the ETag the landed PATCH replaced. Rerun the read,
+      // status match and PATCH once to settle it. CONFIRMED means it landed,
+      // CANCELLED keeps the cancellation, and NEW patches under the fresh
+      // ETag. A reread that still carries the replayed ETag can't postdate
+      // the version that rejected the replay, so it stays uncertain without
+      // another PATCH. Any failure of the rerun stays uncertain. A plain 412
+      // stays a version conflict and is not rerun.
+      const attempt = Effect.gen(function* () {
+        const earlier = yield* Ref.get(unsettled);
+        const stayUncertain = (failure: DotyposConditionalWriteFailure) =>
+          keepUncertainty(
+            failure,
+            Option.map(earlier, ({ uncertain }) => uncertain)
+          );
+
+        // The If-Match ETag makes the status check and the PATCH one atomic
+        // transition: a cancellation after this read fails the PATCH instead
+        // of being overwritten, so a cancelled hold is never revived.
+        const current = yield* readReservationVersion(
+          id,
+          "confirmReservation"
+        ).pipe(Effect.mapError(stayUncertain));
+
+        return yield* Match.value(current.reservation.status).pipe(
+          Match.when("CANCELLED", () =>
+            Effect.fail(
+              new DotyposReservationCancelledError({
                 reservationId: id,
-                etag: current.etag,
-                payload: { status: "CONFIRMED" },
-                operation: "confirmReservation",
+                message: "Dotypos reservation is already cancelled.",
               })
-            ),
-            Match.exhaustive
-          )
-        ),
+            )
+          ),
+          Match.when("CONFIRMED", () => Effect.succeed(current.reservation)),
+          Match.when("NEW", () =>
+            Option.isSome(earlier) &&
+            earlier.value.replayedEtag === current.etag
+              ? Effect.fail(earlier.value.uncertain)
+              : patchReservationVersion({
+                  reservationId: id,
+                  etag: current.etag,
+                  payload: { status: "CONFIRMED" },
+                  operation: "confirmReservation",
+                }).pipe(
+                  Effect.mapError(stayUncertain),
+                  Effect.tapError((failure) =>
+                    Option.isNone(earlier) &&
+                    isReplayConflict("reservation.patch")(failure)
+                      ? Ref.set(
+                          unsettled,
+                          Option.some({
+                            uncertain: failure,
+                            replayedEtag: current.etag,
+                          })
+                        ).pipe(
+                          Effect.andThen(
+                            Effect.logWarning(
+                              "Dotypos reservation confirmation replay conflicted; rereading to settle it"
+                            )
+                          )
+                        )
+                      : Effect.void
+                  )
+                )
+          ),
+          Match.exhaustive
+        );
+      });
+
+      const reservation = yield* attempt.pipe(
+        Effect.retry({
+          schedule: Schedule.recurs(1),
+          while: isReplayConflict("reservation.patch"),
+        }),
         Effect.tapError((error) =>
           Effect.logError("Dotypos reservation confirmation failed", {
             error,
@@ -1197,11 +1520,7 @@ const makeDotyposService: Effect.Effect<
         client.getCustomer(config.cloudId, id, undefined),
         call
       ).pipe(retryDotyposRequest(call.request));
-      return yield* decodeProviderEntity(
-        DotyposCustomerSchema,
-        { ...customer, id: customer.id ?? id },
-        call
-      );
+      return yield* decodeProviderEntity(DotyposCustomerSchema, customer, call);
     },
     (effect, customerId) =>
       effect.pipe(
@@ -1414,68 +1733,22 @@ const makeDotyposService: Effect.Effect<
           }).pipe(retryDotyposRequest(call.request));
         });
 
-      const lookupFields = options?.lookupFields ?? defaultCustomerLookupFields;
-      const shouldLookupBy = (field: CustomerLookupField) =>
-        lookupFields.includes(field);
-
       const matchingCustomers: DotyposCustomer[] = [];
-
-      if (shouldLookupBy("email") && normalizedCustomerData.email) {
-        const email = normalizedCustomerData.email;
-        // The provider filter is already case-insensitive; send the address as
-        // entered so its collation, not JavaScript case mapping, folds case.
-        const customersByEmail = yield* searchByField("email", email);
-        for (const customer of customersByEmail) {
-          if (hasCustomerEmail(customer, email)) {
-            addUniqueCustomer(matchingCustomers, customer);
-          }
-        }
-      }
-
-      if (shouldLookupBy("phone") && normalizedCustomerData.phone) {
-        const customersByPhone = yield* searchByField(
-          "phone",
-          normalizedCustomerData.phone
-        );
-        for (const customer of customersByPhone) {
-          if (customer.phone === normalizedCustomerData.phone) {
-            addUniqueCustomer(matchingCustomers, customer);
-          }
-        }
-      }
-
-      const activeMatchingCustomers = matchingCustomers.filter(
-        (customer) => !customer.deleted
+      const searches = customerLookupSearches(
+        normalizedCustomerData,
+        options?.lookupFields ?? defaultCustomerLookupFields
       );
 
-      if (activeMatchingCustomers.length === 0) {
-        return matchingCustomers.length > 0
-          ? {
-              _tag: "Deleted" as const,
-              matches: matchingCustomers,
-              normalizedCustomerData,
-            }
-          : {
-              _tag: "NotFound" as const,
-              matches: [],
-              normalizedCustomerData,
-            };
+      for (const { field, value, identifies } of searches) {
+        const candidates = yield* searchByField(field, value);
+        for (const customer of candidates) {
+          if (identifies(customer)) {
+            addUniqueCustomer(matchingCustomers, customer);
+          }
+        }
       }
 
-      if (hasAtLeastTwoCustomers(activeMatchingCustomers)) {
-        return {
-          _tag: "Ambiguous" as const,
-          matches: activeMatchingCustomers,
-          normalizedCustomerData,
-        };
-      }
-
-      return {
-        _tag: "Matched" as const,
-        customer: activeMatchingCustomers[0]!,
-        matches: activeMatchingCustomers,
-        normalizedCustomerData,
-      };
+      return customerLookupResult(matchingCustomers, normalizedCustomerData);
     },
     (effect, _input, options) =>
       effect.pipe(Effect.annotateLogs(getCustomerLookupLogAnnotations(options)))
@@ -1545,8 +1818,8 @@ const makeDotyposService: Effect.Effect<
         internalNote: "",
         lastName: details.lastName.trim(),
         // Dotypos requires a phone on creation; a new customer has no stored
-        // phone to preserve, so an absent or unparseable phone stays blank.
-        phone: normalizePhoneNumber(details.phone) ?? "",
+        // phone to preserve, so an absent phone stays blank.
+        phone: details.phone ?? "",
         points: "0",
         tags: [],
         vatId: details.vatId.trim(),
@@ -1565,143 +1838,81 @@ const makeDotyposService: Effect.Effect<
         retryDotyposRequest(call.request)
       );
 
-      return yield* decodeProviderEntity(DotyposCustomerSchema, result, call);
+      return yield* decodeProviderEntity(
+        DotyposCustomerWriteRecordSchema,
+        result,
+        call
+      );
     },
     (effect) => effect.pipe(Effect.scoped)
   );
 
-  const findOrCreateCustomer = Effect.fn("findOrCreateCustomer")(
-    function* (
-      customerData: DotyposCustomerLookupData,
-      options?: FindCustomerOptions
-    ) {
-      yield* Effect.annotateLogsScoped({
-        customerInputFields: presentCustomerInputFields(customerData),
-      });
-      yield* Effect.logInfo("Dotypos customer lookup started");
-
-      const lookup = yield* lookupCustomer(
-        customerData,
-        options,
-        "findOrCreateCustomer"
+  /** Fills the details an existing customer lacks; a failed fill keeps the customer as it was. */
+  const fillExistingCustomer = (
+    existingCustomer: DotyposCustomer,
+    normalizedCustomerData: DotyposCustomerLookupData
+  ) =>
+    Effect.gen(function* () {
+      const { needsUpdate, patch: updateRequest } = customerFill(
+        normalizedCustomerData,
+        existingCustomer
       );
 
-      yield* Effect.logDebug("Dotypos customer lookup result", {
-        outcome: lookup._tag,
-        matchedCustomerIds: lookup.matches.map((customer) => customer.id),
+      yield* Effect.logDebug("Dotypos customer update-needed decision", {
+        needsUpdate,
+        customerId: existingCustomer.id,
       });
 
-      const normalizedCustomerData = lookup.normalizedCustomerData;
-      const existingCustomer = yield* Match.value(lookup).pipe(
-        Match.tag("Ambiguous", (ambiguousLookup) =>
-          Effect.gen(function* () {
-            yield* Effect.logError("Ambiguous Dotypos customer lookup", {
-              customerIds: ambiguousLookup.matches.map(
-                (customer) => customer.id
-              ),
-              matchCount: ambiguousLookup.matches.length,
-            });
-
-            return yield* new DotyposRejected({
-              operation: "findOrCreateCustomer",
-              request: "customers.lookup",
-              reason: "ambiguous-match",
-              message: "Dotypos customer lookup matched multiple customers",
-            });
-          })
-        ),
-        Match.tag("Matched", (matchedLookup) =>
-          Effect.succeed(matchedLookup.matches[0])
-        ),
-        Match.tag("NotFound", () => Effect.as(Effect.void, undefined)),
-        // Deleted profiles never served active lookups before; keep creating
-        // a fresh customer so existing findOrCreate callers stay compatible.
-        Match.tag("Deleted", () => Effect.as(Effect.void, undefined)),
-        Match.exhaustive
-      );
-
-      if (existingCustomer) {
-        const needsUpdate =
-          (normalizedCustomerData.email && !existingCustomer.email) ||
-          (normalizedCustomerData.phone && !existingCustomer.phone) ||
-          (normalizedCustomerData.firstName && !existingCustomer.firstName) ||
-          (normalizedCustomerData.lastName && !existingCustomer.lastName);
-
-        yield* Effect.logDebug("Dotypos customer update-needed decision", {
-          needsUpdate,
-          customerId: existingCustomer.id,
-        });
-
-        if (needsUpdate) {
-          const customerId = existingCustomer.id;
-          if (!customerId) {
-            return yield* dotyposInvalidResponse(
-              {
-                operation: "findOrCreateCustomer",
-                request: "customers.lookup",
-              },
-              { message: "Cannot update Dotypos customer without id" }
-            );
-          }
-
-          const updateRequest: UpdateCustomerRequest = {
-            ...(normalizedCustomerData.email && !existingCustomer.email
-              ? { email: normalizedCustomerData.email }
-              : {}),
-            ...(normalizedCustomerData.phone && !existingCustomer.phone
-              ? { phone: normalizedCustomerData.phone }
-              : {}),
-            ...(normalizedCustomerData.firstName && !existingCustomer.firstName
-              ? { firstName: normalizedCustomerData.firstName }
-              : {}),
-            ...(normalizedCustomerData.lastName && !existingCustomer.lastName
-              ? { lastName: normalizedCustomerData.lastName }
-              : {}),
-          };
-
-          const fillCall = {
-            operation: "findOrCreateCustomer",
-            request: "customer.fill",
-          } as const;
-          const updatedCustomer = yield* runDotyposRequest(
-            client.updateCustomer(config.cloudId, customerId, {
-              payload: updateRequest,
-            }),
-            fillCall
-          ).pipe(
-            retryDotyposRequest(fillCall.request),
-            Effect.flatMap((customer) =>
-              decodeProviderEntity(
-                DotyposCustomerSchema,
-                { ...customer, id: customer.id ?? customerId },
-                fillCall
-              )
-            ),
-            Effect.tapError((error) =>
-              Effect.logWarning("Dotypos customer update failed", {
-                errorTag: error._tag,
-                operation: "updateCustomer",
-                customerId,
-                updatedFields: Object.keys(updateRequest),
-              })
-            ),
-            Effect.orElseSucceed(() => existingCustomer)
-          );
-
-          yield* Effect.logDebug("Dotypos existing customer result", {
-            customerId: updatedCustomer.id,
-          });
-
-          return updatedCustomer;
-        }
+      if (needsUpdate) {
+        const customerId = existingCustomer.id;
+        const fillCall = {
+          operation: "findOrCreateCustomer",
+          request: "customer.fill",
+        } as const;
+        const updatedCustomer = yield* runDotyposRequest(
+          client.updateCustomer(config.cloudId, customerId, {
+            payload: updateRequest,
+          }),
+          fillCall
+        ).pipe(
+          retryDotyposRequest(fillCall.request),
+          Effect.flatMap((customer) =>
+            decodeProviderEntity(
+              DotyposCustomerSchema,
+              { ...customer, id: customer.id ?? customerId },
+              fillCall
+            )
+          ),
+          Effect.tapError((error) =>
+            Effect.logWarning("Dotypos customer update failed", {
+              errorTag: error._tag,
+              operation: "updateCustomer",
+              customerId,
+              updatedFields: Object.keys(updateRequest),
+            })
+          ),
+          Effect.orElseSucceed(() => existingCustomer)
+        );
 
         yield* Effect.logDebug("Dotypos existing customer result", {
-          customerId: existingCustomer.id,
+          customerId: updatedCustomer.id,
         });
 
-        return existingCustomer;
+        return updatedCustomer;
       }
 
+      yield* Effect.logDebug("Dotypos existing customer result", {
+        customerId: existingCustomer.id,
+      });
+
+      return existingCustomer;
+    });
+
+  /** Creates the customer a lookup found no active match for. */
+  const createLookedUpCustomer = (
+    normalizedCustomerData: DotyposCustomerLookupData
+  ) =>
+    Effect.gen(function* () {
       if (!normalizedCustomerData.email) {
         return yield* dotyposInvalidRequest(
           "findOrCreateCustomer",
@@ -1768,7 +1979,7 @@ const makeDotyposService: Effect.Effect<
       );
 
       const customer = yield* decodeProviderEntity(
-        DotyposCustomerSchema,
+        DotyposCustomerWriteRecordSchema,
         customerResult,
         createCall
       );
@@ -1778,6 +1989,66 @@ const makeDotyposService: Effect.Effect<
       });
 
       return customer;
+    });
+
+  const findOrCreateCustomer = Effect.fn("findOrCreateCustomer")(
+    function* (
+      customerData: DotyposCustomerLookupData,
+      options?: FindCustomerOptions
+    ) {
+      yield* Effect.annotateLogsScoped({
+        customerInputFields: presentCustomerInputFields(customerData),
+      });
+      yield* Effect.logInfo("Dotypos customer lookup started");
+
+      const lookup = yield* lookupCustomer(
+        customerData,
+        options,
+        "findOrCreateCustomer"
+      );
+
+      yield* Effect.logDebug("Dotypos customer lookup result", {
+        outcome: lookup._tag,
+        matchedCustomerIds: lookup.matches.map((customer) => customer.id),
+      });
+
+      const normalizedCustomerData = lookup.normalizedCustomerData;
+      const existingCustomer = yield* Match.value(lookup).pipe(
+        Match.tag("Ambiguous", (ambiguousLookup) =>
+          Effect.gen(function* () {
+            yield* Effect.logError("Ambiguous Dotypos customer lookup", {
+              customerIds: ambiguousLookup.matches.map(
+                (customer) => customer.id
+              ),
+              matchCount: ambiguousLookup.matches.length,
+            });
+
+            return yield* new DotyposRejected({
+              operation: "findOrCreateCustomer",
+              request: "customers.lookup",
+              reason: "ambiguous-match",
+              message: "Dotypos customer lookup matched multiple customers",
+            });
+          })
+        ),
+        Match.tag("Matched", (matchedLookup) =>
+          Effect.succeed(matchedLookup.matches[0])
+        ),
+        Match.tag("NotFound", () => Effect.as(Effect.void, undefined)),
+        // Deleted profiles never served active lookups before; keep creating
+        // a fresh customer so existing findOrCreate callers stay compatible.
+        Match.tag("Deleted", () => Effect.as(Effect.void, undefined)),
+        Match.exhaustive
+      );
+
+      if (existingCustomer) {
+        return yield* fillExistingCustomer(
+          existingCustomer,
+          normalizedCustomerData
+        );
+      }
+
+      return yield* createLookedUpCustomer(normalizedCustomerData);
     },
     (effect, _input, options) =>
       effect.pipe(
@@ -1788,7 +2059,7 @@ const makeDotyposService: Effect.Effect<
 
   const loadCustomerDiscountGroup = (
     customer: DotyposCustomer,
-    operation: "getCustomerDiscountGroup" | "getCustomerDiscount"
+    operation: "getCustomerDiscountGroup"
   ) =>
     Effect.gen(function* () {
       const rawDiscountGroupId = customer._discountGroupId?.toString().trim();
@@ -1842,32 +2113,6 @@ const makeDotyposService: Effect.Effect<
       effect.pipe(Effect.annotateLogs({ customerId: input.customerId }))
   );
 
-  const getCustomerDiscount = Effect.fn("getCustomerDiscount")(
-    function* (customer: DotyposCustomer) {
-      const discountGroup = yield* loadCustomerDiscountGroup(
-        customer,
-        "getCustomerDiscount"
-      );
-      if (!discountGroup) return undefined;
-
-      const percent = parseDiscountPercent(discountGroup.discountPercent);
-
-      if (percent === undefined) return undefined;
-
-      return {
-        source: "dotypos-discount-group",
-        discountGroupId: discountGroup.discountGroupId,
-        percent,
-      } satisfies DotyposCustomerDiscount;
-    },
-    (effect, customer) =>
-      effect.pipe(
-        Effect.annotateLogs({
-          discountGroupId: customer._discountGroupId?.toString().trim(),
-        })
-      )
-  );
-
   const discountGroupsCall = {
     operation: "getDiscountGroups",
     request: "discountGroups.list",
@@ -1895,16 +2140,136 @@ const makeDotyposService: Effect.Effect<
     }).pipe(retryDotyposRequest(discountGroupsCall.request))
   );
 
+  const readCustomerVersion = (
+    customerId: DotyposCustomerId,
+    operation: PatchCustomerOperation
+  ) => {
+    const call = { operation, request: "customer.version" } as const;
+    return runDotyposRequest(
+      client.getCustomer(config.cloudId, customerId, {
+        config: { includeResponse: true },
+      }),
+      call
+    ).pipe(
+      retryDotyposRequest(call.request),
+      Effect.flatMap(([record, response]) => {
+        const etag = response.headers.etag ?? response.headers.ETag;
+        return etag
+          ? Effect.succeed({ etag, record })
+          : Effect.fail(
+              dotyposInvalidResponse(call, {
+                message: "Customer ETag header was missing.",
+              })
+            );
+      })
+    );
+  };
+
+  /**
+   * Sends an If-Match customer PATCH that the package replays on transient
+   * failures, and decodes the patched customer.
+   */
+  const patchCustomerVersion = (input: {
+    readonly customerId: DotyposCustomerId;
+    readonly etag: string;
+    readonly payload: UpdateCustomerRequest;
+    readonly operation: PatchCustomerOperation;
+  }) => {
+    const call = {
+      operation: input.operation,
+      request: "customer.patch",
+    } as const;
+    return runDotyposRequest(
+      client.patchCustomer(config.cloudId, input.customerId, {
+        params: { "If-Match": input.etag },
+        payload: input.payload,
+      }),
+      call
+    ).pipe(
+      retryDotyposRequest(call.request),
+      Effect.flatMap((customer) =>
+        decodeProviderEntity(
+          DotyposCustomerSchema,
+          { ...customer, id: customer.id ?? input.customerId },
+          call
+        )
+      )
+    );
+  };
+
+  /**
+   * Settles a replayed customer PATCH that met 412. It rereads the customer
+   * once; a reread that holds the write under a new ETag gets one confirming
+   * PATCH of the same payload under the reread's ETag, and a confirmation
+   * that holds the write is the result. A differing ETag alone doesn't prove
+   * the reread postdates the replay, since nothing shows Dotypos reads are
+   * monotonic, so only the conditional PATCH can confirm the write still
+   * holds. Every other outcome stays DotyposUncertain without another PATCH:
+   * a failed reread, one that still carries the replayed ETag, and one that
+   * doesn't hold the write, because a mismatch can't prove a concurrent
+   * change won. A failed confirmation stays DotyposUncertain too and is not
+   * settled again. Never infer whose write landed from the ETag: same-value
+   * PATCHes change it too.
+   */
+  const settleCustomerReplay = Effect.fn("DotyposService.settleCustomerReplay")(
+    function* (input: {
+      readonly customerId: DotyposCustomerId;
+      readonly payload: UpdateCustomerRequest;
+      readonly operation: PatchCustomerOperation;
+      readonly holds: (customer: DotyposCustomer) => boolean;
+      readonly replayedEtag: string;
+      readonly uncertain: DotyposUncertain;
+    }) {
+      yield* Effect.logWarning(
+        "Dotypos customer write replay conflicted; rereading to settle it"
+      );
+      const stayUncertain = (failure: DotyposConditionalWriteFailure) =>
+        keepUncertainty(failure, Option.some(input.uncertain));
+      const versionCall = {
+        operation: input.operation,
+        request: "customer.version",
+      } as const;
+      const reread = yield* readCustomerVersion(
+        input.customerId,
+        input.operation
+      ).pipe(
+        Effect.flatMap(({ etag, record }) =>
+          decodeProviderEntity(DotyposCustomerSchema, record, versionCall).pipe(
+            Effect.map((customer) => ({ etag, customer }))
+          )
+        ),
+        Effect.mapError(stayUncertain)
+      );
+      if (reread.etag === input.replayedEtag || !input.holds(reread.customer)) {
+        return yield* input.uncertain;
+      }
+      const confirmed = yield* patchCustomerVersion({
+        customerId: input.customerId,
+        etag: reread.etag,
+        payload: input.payload,
+        operation: input.operation,
+      }).pipe(Effect.mapError(stayUncertain));
+      if (!input.holds(confirmed)) return yield* input.uncertain;
+      return confirmed;
+    }
+  );
+
   /**
    * Reads the customer's ETag, then sends an If-Match PATCH that the package
    * replays on transient failures. A missing customer fails
    * DotyposRejected{not-found}, and nothing was applied.
+   *
+   * `holds` is the operation's own check that a customer record holds the
+   * write. With it, a replayed PATCH that meets 412 is settled by
+   * settleCustomerReplay; without it, that failure stays DotyposUncertain.
+   * A plain 412 is always DotyposVersionConflict and is never reapplied.
    */
   const updateCustomerVersion = Effect.fn("DotyposService.patchCustomer")(
     function* (
       customerId: DotyposCustomerId,
       payload: UpdateCustomerRequest,
-      operation: PatchCustomerOperation
+      operation: PatchCustomerOperation,
+      holds?: (customer: DotyposCustomer) => boolean
     ) {
       const normalizedCustomerId = yield* normalizeInputIdentifier(
         DotyposCustomerIdSchema,
@@ -1913,32 +2278,29 @@ const makeDotyposService: Effect.Effect<
         operation
       );
 
-      const versionCall = { operation, request: "customer.version" } as const;
-      const [, response] = yield* runDotyposRequest(
-        client.getCustomer(config.cloudId, normalizedCustomerId, {
-          config: { includeResponse: true },
-        }),
-        versionCall
-      ).pipe(retryDotyposRequest(versionCall.request));
-      const etag = response.headers.etag ?? response.headers.ETag;
-      if (!etag) {
-        return yield* dotyposInvalidResponse(versionCall, {
-          message: "Customer ETag header was missing.",
-        });
-      }
+      const { etag } = yield* readCustomerVersion(
+        normalizedCustomerId,
+        operation
+      );
 
-      const patchCall = { operation, request: "customer.patch" } as const;
-      const customer = yield* runDotyposRequest(
-        client.patchCustomer(config.cloudId, normalizedCustomerId, {
-          params: { "If-Match": etag },
-          payload,
-        }),
-        patchCall
-      ).pipe(retryDotyposRequest(patchCall.request));
-      return yield* decodeProviderEntity(
-        DotyposCustomerSchema,
-        { ...customer, id: customer.id ?? normalizedCustomerId },
-        patchCall
+      return yield* patchCustomerVersion({
+        customerId: normalizedCustomerId,
+        etag,
+        payload,
+        operation,
+      }).pipe(
+        Effect.catchIf(isReplayConflict("customer.patch"), (uncertain) =>
+          holds
+            ? settleCustomerReplay({
+                customerId: normalizedCustomerId,
+                payload,
+                operation,
+                holds,
+                replayedEtag: etag,
+                uncertain,
+              })
+            : Effect.fail(uncertain)
+        )
       );
     }
   );
@@ -1948,15 +2310,22 @@ const makeDotyposService: Effect.Effect<
    * uncertain attempt the failure is DotyposUncertain, so it never reads as
    * none.
    */
-  const patchCustomer = (
-    customerId: DotyposCustomerId,
-    payload: UpdateCustomerRequest
+  const noneWhenCustomerMissing = <E extends DotyposConditionalWriteFailure>(
+    write: Effect.Effect<DotyposCustomer, E>
   ) =>
-    updateCustomerVersion(customerId, payload, "patchCustomer").pipe(
+    write.pipe(
       Effect.map(Option.some),
       Effect.catchIf(isNotFound, () =>
         Effect.succeed(Option.none<DotyposCustomer>())
       )
+    );
+
+  const patchCustomer = (
+    customerId: DotyposCustomerId,
+    payload: UpdateCustomerRequest
+  ) =>
+    noneWhenCustomerMissing(
+      updateCustomerVersion(customerId, payload, "patchCustomer")
     );
 
   const setCustomerDiscountGroup = Effect.fn(
@@ -1977,43 +2346,78 @@ const makeDotyposService: Effect.Effect<
     return yield* updateCustomerVersion(
       customerId,
       { _discountGroupId: normalizedDiscountGroupId },
-      "setCustomerDiscountGroup"
+      "setCustomerDiscountGroup",
+      (customer) =>
+        (customer._discountGroupId ?? null) === normalizedDiscountGroupId
     );
   });
 
   const updateCustomerBillingDetails = Effect.fn(
     "DotyposService.updateCustomerBillingDetails"
   )((customerId: DotyposCustomerId, details: DotyposCustomerBillingDetails) =>
-    updateCustomerVersion(customerId, details, "updateCustomerBillingDetails")
+    updateCustomerVersion(
+      customerId,
+      details,
+      "updateCustomerBillingDetails",
+      holdsCustomerBillingDetails(details)
+    )
   );
 
-  /**
-   * An absent or unparseable phone omits the field so the phone stored in
-   * Dotypos stays untouched; clearing it requires an explicit provider patch.
-   */
+  /** Writes the trimmed details; see toCustomerDetailsUpdate for the phone. */
   const updateCustomerDetails = Effect.fn(
     "DotyposService.updateCustomerDetails"
   )((customerId: DotyposCustomerId, details: DotyposCustomerDetails) => {
-    const phone = normalizePhoneNumber(details.phone);
+    const update = toCustomerDetailsUpdate(details);
     return updateCustomerVersion(
       customerId,
-      {
-        addressLine1: details.addressLine1.trim(),
-        addressLine2: details.addressLine2.trim(),
-        city: details.city.trim(),
-        companyId: details.companyId.trim(),
-        companyName: details.companyName.trim(),
-        country: details.country.trim(),
-        email: details.email.trim(),
-        firstName: details.firstName.trim(),
-        lastName: details.lastName.trim(),
-        ...(phone && { phone }),
-        vatId: details.vatId.trim(),
-        zip: details.zip.trim(),
-      },
-      "updateCustomerDetails"
+      update,
+      "updateCustomerDetails",
+      holdsCustomerDetails(update)
     );
   });
+
+  const updateCustomerProfile = Effect.fn(
+    "DotyposService.updateCustomerProfile"
+  )(function* (customerId: DotyposCustomerId, profile: DotyposCustomerProfile) {
+    const update = toCustomerProfileUpdate(profile);
+    return yield* noneWhenCustomerMissing(
+      updateCustomerVersion(
+        customerId,
+        update,
+        "updateCustomerProfile",
+        holdsCustomerProfile(update)
+      )
+    );
+  });
+
+  const expireCustomer = Effect.fn("DotyposService.expireCustomer")(function* (
+    customerId: DotyposCustomerId
+  ) {
+    const now = yield* Clock.currentTimeMillis;
+    const expireDate = new Date(
+      now - customerExpiryLeadMilliseconds
+    ).toISOString();
+    return yield* noneWhenCustomerMissing(
+      updateCustomerVersion(
+        customerId,
+        { expireDate },
+        "expireCustomer",
+        (customer) => customerLifecycle(customer, new Date(now)) === "expired"
+      )
+    );
+  });
+
+  const reactivateCustomer = Effect.fn("DotyposService.reactivateCustomer")(
+    (customerId: DotyposCustomerId) =>
+      noneWhenCustomerMissing(
+        updateCustomerVersion(
+          customerId,
+          { expireDate: null },
+          "reactivateCustomer",
+          (customer) => !customer.deleted && customer.expireDate == null
+        )
+      )
+  );
 
   const getTables = Effect.fn("getTables")(
     function* () {
@@ -2267,9 +2671,11 @@ const makeDotyposService: Effect.Effect<
     listCustomerChanges,
     createCustomer,
     patchCustomer,
+    expireCustomer,
+    reactivateCustomer,
+    updateCustomerProfile,
     searchCustomers,
     getCustomerDiscountGroup,
-    getCustomerDiscount,
     getDiscountGroups,
     setCustomerDiscountGroup,
     updateCustomerBillingDetails,

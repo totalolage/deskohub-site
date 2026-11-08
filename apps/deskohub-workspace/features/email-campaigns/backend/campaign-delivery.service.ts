@@ -6,7 +6,6 @@ import {
   DotyposService,
 } from "@deskohub/dotypos";
 import { type EmailMessage, EmailServiceTag } from "@deskohub/email";
-import { isTestEmailRecipient } from "@deskohub/email/backend/test-recipients";
 import {
   and,
   asc,
@@ -38,7 +37,6 @@ import {
   type WorkspaceTransaction,
 } from "@/db/database.service";
 import {
-  customerMarketingConsents,
   emailCampaignAutomationVersions,
   emailCampaignDeliveryBatches,
   emailCampaignRecipients,
@@ -46,35 +44,37 @@ import {
   emailCampaigns,
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
-import { type Locale, locales } from "@/features/i18n";
-import { marketingConsentState } from "@/features/legal/backend/marketing-consent-ledger";
+import type { Locale } from "@/features/i18n";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
 import { currentInstant } from "@/shared/utils/temporal";
 import type { AutomationVersionId } from "../automation/automation-identifiers";
 import { AutomationRunSettlement } from "../automation/backend/automation-run-settlement.service";
 import type {
-  CampaignLocaleContent,
   CampaignLocalizedContent,
   CampaignPurpose,
   CampaignTemplateKey,
 } from "../body/campaign-content";
-import {
-  CampaignEmailFooter,
-  renderCampaignEmail,
-} from "../body/render-campaign-email";
 import {
   campaignDeliveryBatchIdempotencyKey,
   campaignDeliveryBatchReplayWindow,
   campaignDeliveryBatchSize,
   campaignDeliveryPayloadHash,
 } from "../campaign-delivery-batches";
-import { campaignDeliveryMessage } from "../campaign-email-message";
+import {
+  CampaignDeliveryAudience,
+  CampaignEmailOccasion,
+  campaignEmailMessage,
+} from "../campaign-email";
 import type { CampaignId, CampaignSendId } from "../campaign-identifiers";
 import type { CampaignRecipientSkipReason } from "../campaign-states";
-import { campaignFallbackLocale } from "../recipient-locale";
+import { campaignContentForRecipient } from "../recipient-locale";
 import { CampaignEmailConfig } from "./campaign-email.config";
-import { reachableCampaignEmail } from "./campaign-recipient.service";
+import {
+  CampaignEligibilityStage,
+  campaignEligibility,
+  consentingCampaignCustomers,
+} from "./campaign-reachability";
 import type { CampaignDeliveryAttempt } from "./campaign-send-queue.service";
 import { sendAutomationVersion } from "./campaign-send-selection";
 import { CampaignUnsubscribeService } from "./campaign-unsubscribe.service";
@@ -531,40 +531,15 @@ export class CampaignDeliveryService extends Context.Service<
             })
           );
 
-      const loadActiveConsents = (customerIds: readonly DotyposCustomerId[]) =>
-        db
-          .select({
-            dotyposCustomerId: customerMarketingConsents.dotyposCustomerId,
-          })
-          .from(customerMarketingConsents)
-          .where(
-            and(
-              inArray(customerMarketingConsents.dotyposCustomerId, [
-                ...customerIds,
-              ]),
-              eq(
-                marketingConsentState(
-                  customerMarketingConsents.dotyposCustomerId
-                ),
-                "active"
-              )
-            )
-          )
-          .pipe(
-            Effect.map(
-              (rows) => new Set(rows.map((row) => row.dotyposCustomerId))
-            )
-          );
-
-      /** The recipients who may receive the campaign's purpose of email. */
       const loadConsenting = (input: {
         readonly campaign: DeliveredCampaign;
         readonly customerIds: readonly DotyposCustomerId[];
       }) =>
-        Match.value(input.campaign.purpose).pipe(
-          Match.when("marketing", () => loadActiveConsents(input.customerIds)),
-          Match.orElse(() => Effect.succeed(new Set(input.customerIds)))
-        );
+        consentingCampaignCustomers({
+          db,
+          purpose: input.campaign.purpose,
+          customerIds: input.customerIds,
+        });
 
       const loadProfiles = (customerIds: readonly DotyposCustomerId[]) =>
         dotypos.getCustomersByIds(customerIds);
@@ -580,18 +555,16 @@ export class CampaignDeliveryService extends Context.Service<
           dotyposCustomerId: recipient.dotyposCustomerId,
           reason,
         });
-        if (!input.consenting.has(recipient.dotyposCustomerId)) {
-          return Result.fail(skip("consent-withdrawn"));
-        }
-        return reachableCampaignEmail(
-          Option.fromNullishOr(input.profiles.get(recipient.dotyposCustomerId))
-        ).pipe(
-          Result.flatMap((to) =>
-            config.deploymentEnvironment === "production" ||
-            isTestEmailRecipient(to)
-              ? Result.succeed({ ...recipient, to })
-              : Result.fail("outside-test-domain" as const)
+        return campaignEligibility({
+          profile: Option.fromNullishOr(
+            input.profiles.get(recipient.dotyposCustomerId)
           ),
+          stage: CampaignEligibilityStage.Delivery({
+            consenting: input.consenting.has(recipient.dotyposCustomerId),
+            deploymentEnvironment: config.deploymentEnvironment,
+          }),
+        }).pipe(
+          Result.map((to) => ({ ...recipient, to })),
           Result.mapError(skip)
         );
       };
@@ -644,39 +617,43 @@ export class CampaignDeliveryService extends Context.Service<
             sendId: context.sendId,
             dotyposCustomerId: recipient.dotyposCustomerId,
           })),
-          Effect.bind("unsubscribeUrl", ({ context, recipientTags }) =>
-            unsubscribe
-              .unsubscribeUrl(recipientTags)
-              .pipe(
-                Effect.when(
-                  Effect.succeed(context.campaign.purpose === "marketing")
-                )
-              )
+          Effect.bind("audience", ({ context, recipientTags }) =>
+            Match.value(context.campaign.purpose).pipe(
+              Match.when("marketing", () =>
+                unsubscribe
+                  .unsubscribeUrl(recipientTags)
+                  .pipe(
+                    Effect.map((unsubscribeUrl) =>
+                      CampaignDeliveryAudience.Marketing({ unsubscribeUrl })
+                    )
+                  )
+              ),
+              Match.when("operational", () =>
+                Effect.succeed(CampaignDeliveryAudience.Operational())
+              ),
+              Match.exhaustive
+            )
           ),
           Effect.let("localized", ({ context, recipient }) =>
-            campaignContentFor(context.campaign, recipient.locale)
+            campaignContentForRecipient(
+              context.campaign.content,
+              recipient.locale
+            )
           ),
-          Effect.bind("rendered", ({ context, unsubscribeUrl, localized }) =>
-            renderCampaignEmail({
-              templateKey: context.campaign.templateKey,
-              locale: localized.locale,
-              content: localized.content,
-              footer: Option.match(unsubscribeUrl, {
-                onNone: () => CampaignEmailFooter.Operational(),
-                onSome: (marketingPreferencesUrl) =>
-                  CampaignEmailFooter.Marketing({ marketingPreferencesUrl }),
-              }),
-            })
-          ),
-          Effect.map(({ recipient, recipientTags, unsubscribeUrl, rendered }) =>
-            campaignDeliveryMessage({
-              sender: config,
-              to: recipient.to,
-              email: rendered,
-              unsubscribeUrl,
-              recipient: recipientTags,
-              deploymentEnvironment: config.deploymentEnvironment,
-            })
+          Effect.flatMap(
+            ({ context, recipient, recipientTags, audience, localized }) =>
+              campaignEmailMessage({
+                templateKey: context.campaign.templateKey,
+                locale: localized.locale,
+                content: localized.content,
+                occasion: CampaignEmailOccasion.Delivery({
+                  to: recipient.to,
+                  recipient: recipientTags,
+                  audience,
+                }),
+                sender: config,
+                deploymentEnvironment: config.deploymentEnvironment,
+              })
           ),
           Effect.withSpan("CampaignDeliveryService.renderMessage")
         );
@@ -1649,19 +1626,3 @@ const incomplete = (attempt: CampaignDeliveryAttempt) =>
       deliveryAttempt: attempt.deliveryAttempt,
     })
   );
-
-/**
- * The content a recipient reads: their locale's, else Czech, else the
- * campaign's only locale (an audience restricted to it).
- */
-const campaignContentFor = (
-  campaign: DeliveredCampaign,
-  locale: Locale
-): { readonly locale: Locale; readonly content: CampaignLocaleContent } => {
-  const candidates = [locale, campaignFallbackLocale, ...localesOf(campaign)];
-  const chosen = candidates.find((candidate) => campaign.content[candidate]);
-  return { locale: chosen!, content: campaign.content[chosen!]! };
-};
-
-const localesOf = (campaign: DeliveredCampaign) =>
-  locales.filter((locale) => campaign.content[locale] !== undefined);

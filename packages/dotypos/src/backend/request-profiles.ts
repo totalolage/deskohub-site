@@ -1,4 +1,8 @@
-import { Duration, Effect, Option, Ref, Schedule } from "effect";
+import {
+  type ProviderPageCount,
+  ProviderRetryPolicy,
+} from "@deskohub/provider-request";
+import { type Duration, Effect, Option, Ref } from "effect";
 import {
   type DotyposConditionalWriteFailure,
   type DotyposReadFailure,
@@ -126,25 +130,40 @@ const retryCeilings = {
   (outcome: DotyposAttemptFailure) => boolean
 >;
 
-const maxRetries = 3;
+/**
+ * Every retried Dotypos request backs off exponentially from 100 ms with
+ * jitter, at most three times. Its profile's ceiling decides which outcomes
+ * are retried; a `none` ceiling sends the request once.
+ */
+const dotyposRetryPolicy = ProviderRetryPolicy.make({
+  label: "Dotypos",
+  baseDelay: "100 millis",
+  maxRetries: 3,
+});
 
-const retrySchedule = (
-  shouldRetry: (outcome: DotyposAttemptFailure) => boolean
-) =>
-  Schedule.exponential("100 millis").pipe(
-    Schedule.jittered,
-    Schedule.while<DotyposAttemptFailure, Duration.Duration>(({ input }) =>
-      shouldRetry(input)
-    ),
-    Schedule.both(Schedule.recurs(maxRetries)),
-    Schedule.tapOutput(([delay, attempt]) =>
-      Effect.logWarning(`Dotypos retry attempt #${attempt + 1}`, {
-        attemptNumber: attempt + 1,
-        delayMs: Duration.toMillis(delay),
-        maxRetries,
-      })
-    )
-  );
+/** The Dotypos request policy of a deployment's per-attempt timeout. */
+export const getDotyposRequestPolicy = (apiTimeout: Duration.Input) =>
+  dotyposRetryPolicy.withAttemptTimeout(apiTimeout);
+
+/**
+ * The longest Dotypos requests can take when every attempt times out: `once`
+ * for a request whose profile never retries, `retried` for any other, and
+ * `sequential` for several in a row. `pagedLoad` bounds a paginated list
+ * load: its profile's retries wrap the whole load, which keeps the pages it
+ * has read, so each retry resends only the page that failed and all pages
+ * share one retry budget. A load of an unknown page count has no finite
+ * bound.
+ */
+export const getDotyposRequestWorstCase = (apiTimeout: Duration.Input) => {
+  const { worstCase } = getDotyposRequestPolicy(apiTimeout);
+  return {
+    once: worstCase.once,
+    retried: worstCase.retried,
+    sequential: worstCase.sequential,
+    pagedLoad: (pages: ProviderPageCount) =>
+      worstCase.paginated({ pages, retry: "resume" }),
+  };
+};
 
 /**
  * Retries the request up to its profile's ceiling. A replayed write keeps the
@@ -160,8 +179,8 @@ export const retryDotyposRequest =
   ): Effect.Effect<A, E, R> => {
     const ceiling = dotyposRequestProfiles[request].retry;
     if (ceiling === "none") return effect;
-    const schedule = retrySchedule(retryCeilings[ceiling]);
-    if (ceiling !== "replay") return Effect.retry(effect, { schedule });
+    const retry = dotyposRetryPolicy.retryWhile(retryCeilings[ceiling]);
+    if (ceiling !== "replay") return retry(effect);
 
     return Ref.make(Option.none<DotyposUncertain>()).pipe(
       Effect.flatMap((firstUncertain) =>
@@ -169,7 +188,7 @@ export const retryDotyposRequest =
           Effect.tapError((outcome) =>
             recordFirstUncertain(firstUncertain, outcome)
           ),
-          Effect.retry({ schedule }),
+          retry,
           Effect.catch((outcome) =>
             Ref.get(firstUncertain).pipe(
               Effect.flatMap((uncertain) =>
@@ -194,7 +213,13 @@ const recordFirstUncertain = (
       )
     : Effect.void;
 
-const keepUncertainty = (
+/**
+ * Keeps an earlier uncertain attempt's uncertainty on a later failure of the
+ * same call. A version conflict becomes `conflict-after-replay`; any other
+ * failure keeps the earlier reason. Without an earlier uncertainty the
+ * failure stands.
+ */
+export const keepUncertainty = (
   outcome: DotyposAttemptFailure,
   firstUncertain: Option.Option<DotyposUncertain>
 ): DotyposAttemptFailure =>

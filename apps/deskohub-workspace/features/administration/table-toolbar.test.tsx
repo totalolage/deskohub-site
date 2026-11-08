@@ -101,10 +101,15 @@ describe("AdministrationTableToolbar", () => {
     {
       filterLayout: "stacked",
       // A grid that puts the controls on their own row below the count until
-      // the 2xl breakpoint.
-      row: { has: ["grid"], lacks: ["flex-wrap"] },
-      count: { has: [], lacks: ["flex-auto", "min-h-10"] },
-      controls: { has: ["flex-col"], lacks: ["ml-auto"] },
+      // the 2xl breakpoint. From there one wrapping row keeps them beside the
+      // count while they fit; the count never shrinks below its content, so
+      // wide controls wrap below it instead of covering it.
+      row: { has: ["grid", "2xl:flex", "2xl:flex-wrap"], lacks: ["flex-wrap"] },
+      count: {
+        has: ["2xl:flex-1", "2xl:min-w-min"],
+        lacks: ["flex-auto", "min-h-10"],
+      },
+      controls: { has: ["flex-col", "2xl:ml-auto"], lacks: ["ml-auto"] },
     },
   ] as const)(
     "lays out $filterLayout filters with the actions after them",
@@ -172,6 +177,27 @@ describe("AdministrationTableToolbar", () => {
     expect(rowElement?.lastElementChild?.contains(view.getByRole("link"))).toBe(
       true
     );
+  });
+
+  test("shows filters alone without an empty actions group or export alert", async () => {
+    const { AdministrationTableToolbar } = await import("./table-toolbar");
+    const view = render(
+      <RouteLocaleProvider locale="en-US">
+        <AdministrationTableToolbar
+          count={null}
+          filters={<input aria-label="Filter" />}
+          label="Table controls"
+        />
+      </RouteLocaleProvider>
+    );
+    const region = view.getByRole("region", { name: "Table controls" });
+    const controls = view.getByRole("textbox", {
+      name: "Filter",
+    }).parentElement;
+
+    expect(controls?.children).toHaveLength(1);
+    expect(region.querySelector(".self-end")).toBeNull();
+    expect(view.queryByRole("alert")).toBeNull();
   });
 
   test("shows a failed export below the controls until the next attempt", async () => {

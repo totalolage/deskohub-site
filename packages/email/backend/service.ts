@@ -1,4 +1,4 @@
-import { Context, Duration, Effect, Layer, Match, Schedule } from "effect";
+import { Context, Effect, Layer, Match } from "effect";
 import type { EmailMessage, EmailSendResult } from "../types/email.types";
 import {
   type EmailBatchOptions,
@@ -9,6 +9,7 @@ import {
 } from "./capabilities";
 import { RoutedEmailProviderLive } from "./email-routing";
 import { ConfiguredEmailProviderLayer } from "./provider-factory";
+import { emailRetryPolicy } from "./request-policy";
 
 export {
   type EmailBatchOptions,
@@ -83,22 +84,8 @@ const emailFailureLogFacts = (error: EmailSendError) => ({
   errorType: error._tag,
 });
 
-const emailRetryPolicy = Schedule.exponential("1 second").pipe(
-  Schedule.jittered,
-  Schedule.while<EmailSendError, Duration.Duration>(({ input }) =>
-    isRetryableEmailError(input)
-  ),
-  Schedule.both(Schedule.recurs(3)),
-  Schedule.tapOutput(([duration, attempt]) =>
-    Effect.logWarning(
-      `Email retry attempt #${attempt + 1} starting after ${Duration.toMillis(duration)}ms delay`,
-      {
-        attemptNumber: attempt + 1,
-        delayMs: Duration.toMillis(duration),
-        maxRetries: 3,
-      }
-    )
-  )
+const retryEmailTransportFailure = emailRetryPolicy.retryWhile(
+  isRetryableEmailError
 );
 
 const emailServiceImplementation = Effect.gen(function* () {
@@ -126,7 +113,7 @@ const emailServiceImplementation = Effect.gen(function* () {
               retryPolicy: getEmailRetryPolicyDescription(error),
             })
           ),
-          Effect.retry(emailRetryPolicy),
+          retryEmailTransportFailure,
           Effect.tap((sendResult) =>
             Effect.logInfo("Email sent successfully", {
               id: sendResult.id,

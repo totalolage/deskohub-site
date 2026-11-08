@@ -8,9 +8,9 @@
     "./api-timeout": "./src/api-timeout.ts",
     "./backend/service.mock": "./src/backend/service.mock.ts",
     "./table-map": "./src/table-map.tsx",
+    "./testing": "./src/backend/in-memory-dotypos.ts",
     "./generated": "./src/generated/index.ts",
     "./generated/*": "./src/generated/*.ts",
-    "./phone-number": "./src/utils/phone-formatting.ts",
     "./types": "./src/types.ts"
   },
   "scripts": {
@@ -20,8 +20,9 @@
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
-    "effect": "4.0.0-beta.85",
-    "libphonenumber-js": "^1.13.15"
+    "@deskohub/phone-number": "workspace:*",
+    "@deskohub/provider-request": "workspace:*",
+    "effect": "4.0.0-beta.85"
   },
   "peerDependencies": {
     "react": "^19.2.7"

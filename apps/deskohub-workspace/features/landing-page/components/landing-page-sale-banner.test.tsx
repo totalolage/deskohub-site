@@ -10,12 +10,15 @@ import {
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { Schema } from "effect";
 import type { ComponentProps } from "react";
+import { bindVisitorConsentRevision } from "@/features/cookie-consent/visitor-consent";
 import {
   type DiscountAdjustment,
   discountIdSchema,
 } from "@/features/discounts/contracts";
 import { workspaceProductFamilies } from "@/features/discounts/product-target";
 import { type Locale, m } from "@/features/i18n";
+import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -48,10 +51,9 @@ mock.module("next/link", () => ({
 }));
 
 const setAnalyticsConsent = () => {
+  bindVisitorConsentRevision(getConsentBannerRevision());
   // biome-ignore lint/suspicious/noDocumentCookie: This test sets the cookie consumed by the analytics boundary.
-  document.cookie = `cc_cookie=${encodeURIComponent(
-    JSON.stringify({ categories: ["necessary", "analytics"] })
-  )}; Path=/`;
+  document.cookie = `cc_cookie=${savedConsentCookieValue({ categories: ["necessary", "analytics"] })}; Path=/`;
 };
 
 const clearAnalyticsConsent = () => {

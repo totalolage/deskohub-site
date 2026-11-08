@@ -84,4 +84,57 @@ describe("ReservationTypeInput", () => {
     fireEvent.click(reservedDesk);
     expect(onChange).toHaveBeenCalledWith("reserved-desk");
   });
+
+  test("shows an option's illustration only in the illustrated presentation", () => {
+    const options = (presentation?: "illustrated") => (
+      <ReservationTypeInput
+        onChange={() => undefined}
+        presentation={presentation}
+        value="open-space"
+      >
+        <ReservationTypeOption
+          illustration={<svg data-testid="desk" />}
+          price="CZK 290 / day"
+          priceReady={false}
+          title="Open Space"
+          value="open-space"
+        />
+      </ReservationTypeInput>
+    );
+    const view = render(options("illustrated"));
+    const illustration = () =>
+      view.container.querySelector("[data-reservation-type-illustration]");
+
+    expect(illustration()?.getAttribute("aria-hidden")).toBe("true");
+    expect(
+      illustration()?.querySelector('[data-testid="desk"]')
+    ).not.toBeNull();
+    expect(
+      view.container
+        .querySelector("[data-reservation-type-price]")
+        ?.getAttribute("data-reservation-type-price-ready")
+    ).toBe("false");
+
+    view.rerender(options());
+    expect(illustration()).toBeNull();
+    expect(view.getByRole("radio").getAttribute("aria-labelledby")).toBe(
+      "reservation-type-open-space-title reservation-type-open-space-price"
+    );
+  });
+
+  test("requires the option group around an option", () => {
+    const consoleError = console.error;
+    console.error = () => undefined;
+    try {
+      expect(() =>
+        render(
+          <ReservationTypeOption price="CZK 290" title="Open" value="open" />
+        )
+      ).toThrow(
+        "ReservationTypeOption must be used within ReservationTypeInput"
+      );
+    } finally {
+      console.error = consoleError;
+    }
+  });
 });

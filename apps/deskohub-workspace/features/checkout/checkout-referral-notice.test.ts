@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { type AppliedDiscount, discountIdSchema } from "@/features/discounts";
-import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
+import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import {
   addCheckoutReferralAppliedMarker,
   hasCheckoutReferralAppliedNotice,
+  hasCheckoutReferralBenefit,
 } from "./checkout-referral-notice";
 
 const customerId = DotyposCustomerIdSchema.make("referral-notice-customer");
@@ -12,7 +13,7 @@ const invitationDiscount: AppliedDiscount = {
   amount: { currency: "CZK", exponent: 2, value: 1500 },
   discount: {
     adjustment: { basisPoints: 1500, kind: "percentage" },
-    id: getReferralInvitationDiscountId(customerId),
+    id: getReferralBenefitIds(customerId).invitation,
     label: "First booking referral discount",
   },
   subtotalAfter: { currency: "CZK", exponent: 2, value: 8500 },
@@ -79,5 +80,23 @@ test("requires one exact marker and this customer's signed 15% invitation discou
       discounts: [ordinaryDiscount],
       dotyposCustomerId: customerId,
     })
+  ).toBe(false);
+});
+
+test("recognizes this customer's signed 15% invitation discount without a marker", () => {
+  expect(
+    hasCheckoutReferralBenefit({
+      discounts: [invitationDiscount],
+      dotyposCustomerId: customerId,
+    })
+  ).toBe(true);
+  expect(
+    hasCheckoutReferralBenefit({
+      discounts: [invitationDiscount],
+      dotyposCustomerId: DotyposCustomerIdSchema.make("another-customer"),
+    })
+  ).toBe(false);
+  expect(
+    hasCheckoutReferralBenefit({ discounts: [], dotyposCustomerId: customerId })
   ).toBe(false);
 });

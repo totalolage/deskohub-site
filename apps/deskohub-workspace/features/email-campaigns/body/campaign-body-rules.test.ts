@@ -175,6 +175,73 @@ describe("campaignBodyIssues", () => {
   });
 });
 
+describe("campaignBodyIssues per node", () => {
+  const issues = (body: CampaignBodyNode) =>
+    campaignBodyIssues(body, imageCloudName).map(({ _tag, path }) => [
+      _tag,
+      path,
+    ]);
+
+  test("checks a node's link mark, leaving other marks alone", () => {
+    expect(
+      issues(
+        doc(
+          paragraph(
+            text("x", [
+              { type: "bold" },
+              { type: "link", attrs: { href: "http://a", title: null } },
+            ]),
+            text("y", [{ type: "italic" }])
+          )
+        )
+      )
+    ).toEqual([
+      [
+        "LinkHrefInvalid",
+        ["content", 0, "content", 0, "marks", 1, "attrs", "href"],
+      ],
+    ]);
+  });
+
+  test("reports an image's source, then its alignment, then its width", () => {
+    expect(
+      issues(
+        doc({
+          type: "image",
+          attrs: { src: "https://example.com/a.png", align: "top", width: 1.5 },
+        })
+      )
+    ).toEqual([
+      ["ImageSourceInvalid", ["content", 0, "attrs", "src"]],
+      ["ImageLayoutInvalid", ["content", 0, "attrs", "align"]],
+      ["ImageLayoutInvalid", ["content", 0, "attrs", "width"]],
+    ]);
+  });
+
+  test.each<[string, CampaignBodyNode["attrs"]]>([
+    ["no layout", { src: cloudinaryImage }],
+    ["a null layout", { src: cloudinaryImage, align: null, width: null }],
+    ["a valid layout", { src: cloudinaryImage, align: "left", width: 320 }],
+  ])("accepts an image with %s", (_name, attrs) => {
+    expect(issues(doc({ type: "image", attrs }))).toEqual([]);
+  });
+
+  test("checks layout only on images", () => {
+    expect(
+      issues(
+        doc(paragraph(), { type: "horizontalRule", attrs: { align: "x" } })
+      )
+    ).toEqual([]);
+  });
+
+  test("reports a button's label before its URL", () => {
+    expect(issues(doc(cta({ label: "Book\rnow", href: "ftp://x" })))).toEqual([
+      ["ButtonLabelLineBreaks", ["content", 0, "attrs", "label"]],
+      ["ButtonHrefInvalid", ["content", 0, "attrs", "href"]],
+    ]);
+  });
+});
+
 describe("campaignBodyStructureIssues", () => {
   test("leaves unfinished links, images and buttons to the full rules", () => {
     expect(

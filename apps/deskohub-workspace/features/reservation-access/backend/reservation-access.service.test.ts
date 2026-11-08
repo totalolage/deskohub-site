@@ -10,7 +10,10 @@ import {
 } from "@deskohub/igloohome";
 import { Effect, Layer, Result, Schema } from "effect";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { reservationAccessGrantIdSchema } from "../reservation-access";
+import {
+  reservationAccessGrantIdSchema,
+  reservationAccessProvisioningStaleAfterMilliseconds,
+} from "../reservation-access";
 import { ReservationAccessRepository } from "./reservation-access.repository";
 import {
   getReservationAccessInterval,
@@ -132,8 +135,11 @@ describe("reservation access interval", () => {
     );
 
     expect(Result.isSuccess(accepted)).toBe(true);
-    expect(Result.isFailure(rejected)).toBe(true);
-    expect(Result.isFailure(rejectedAfterRounding)).toBe(true);
+    for (const result of [rejected, rejectedAfterRounding]) {
+      expect(Result.isFailure(result) && result.failure.refusal).toBe(
+        "unrepresentable-interval"
+      );
+    }
   });
 
   test("rounds reservation boundaries outward to Prague hours", () => {
@@ -160,7 +166,9 @@ describe("reservation access interval", () => {
       }).pipe(Effect.result)
     );
 
-    expect(Result.isFailure(result)).toBe(true);
+    expect(Result.isFailure(result) && result.failure.refusal).toBe(
+      "reservation-ended"
+    );
   });
 });
 
@@ -840,6 +848,92 @@ describe("ReservationAccessService", () => {
     expect(loadIssuedCode).not.toHaveBeenCalled();
     expect(markUncertain).toHaveBeenCalledTimes(1);
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+  });
+
+  test("fails a grant another request is provisioning or left uncertain, marking only a stale claim uncertain", async () => {
+    const now = Temporal.Now.instant();
+    const issueFor = async (
+      prepared: Omit<typeof grant, "state" | "provisioningStartedAt"> & {
+        readonly state: "provisioning" | "uncertain";
+        readonly provisioningStartedAt: Temporal.Instant | null;
+      }
+    ) => {
+      const markUncertain = mock(() => Effect.void);
+      const claim = mock(() => Effect.die("grant must not be claimed"));
+      const issueHourlyAlgoPin = mock(() =>
+        Effect.die("Igloohome must not be called")
+      );
+      const result = await Effect.gen(function* () {
+        const service = yield* ReservationAccessService;
+        return yield* service
+          .issueForReservation(reservation)
+          .pipe(Effect.result);
+      }).pipe(
+        Effect.provide(
+          ReservationAccessService.Default.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.mock(ReservationAccessRepository, {
+                  findByReservationId: mock(() => Effect.succeed(null)),
+                  ensure: mock(() => Effect.succeed(prepared)),
+                  claim,
+                  markUncertain,
+                }),
+                Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
+              )
+            )
+          )
+        ),
+        Effect.runPromise
+      );
+      expect(claim).not.toHaveBeenCalled();
+      expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+      return {
+        outcome: Result.isFailure(result) ? result.failure.outcome : undefined,
+        markedUncertain: markUncertain.mock.calls.map(
+          (call) => (call as unknown[])[0]
+        ),
+      };
+    };
+
+    const fresh = await issueFor({
+      ...grant,
+      state: "provisioning",
+      provisioningStartedAt: now.subtract({ seconds: 1 }),
+    });
+    expect(fresh).toEqual({ outcome: "uncertain", markedUncertain: [] });
+
+    const unstarted = await issueFor({
+      ...grant,
+      state: "provisioning",
+      provisioningStartedAt: null,
+    });
+    expect(unstarted).toEqual({ outcome: "uncertain", markedUncertain: [] });
+
+    const stale = await issueFor({
+      ...grant,
+      state: "provisioning",
+      provisioningStartedAt: now.subtract({
+        milliseconds: reservationAccessProvisioningStaleAfterMilliseconds + 1,
+      }),
+    });
+    expect(stale).toEqual({
+      outcome: "uncertain",
+      markedUncertain: [
+        expect.objectContaining({
+          id: grantId,
+          reservationId,
+          failureCode: "stale_provisioning",
+        }),
+      ],
+    });
+
+    const uncertain = await issueFor({
+      ...grant,
+      state: "uncertain",
+      provisioningStartedAt: now.subtract({ seconds: 1 }),
+    });
+    expect(uncertain).toEqual({ outcome: "uncertain", markedUncertain: [] });
   });
 
   test("names a new credential by its grant, not its reservation", async () => {

@@ -1,25 +1,53 @@
 import { Effect, Layer } from "effect";
-import { createTracingLive } from "../shared/backend/observability/otel-tracing";
-import { createPostHogTracerProvider } from "../shared/backend/observability/posthog-tracing";
+import {
+  createIdentifiedTracingLive,
+  createPostHogTracerProvider,
+  type TelemetryIdentity,
+} from "../shared/backend/observability/telemetry-sinks";
 import type { E2EEnvironment } from "./e2e-env";
 import { runUntracedE2EEffect } from "./effect-edge";
 import { workspaceE2EError } from "./errors";
+import { makeNativeRunCapture, soakEvidenceService } from "./soak-native";
 
-const e2eServiceName = "deskohub-workspace-e2e";
-const e2eServiceNamespace = "deskohub";
 const telemetryShutdownTimeoutMs = 5_000;
 
 export const makeE2ETelemetryRuntime = (environment: E2EEnvironment) => {
-  const provider = createPostHogTracerProvider({
+  const capture = makeNativeRunCapture();
+  const identity: TelemetryIdentity = {
     deploymentEnvironment: "preview",
+    serviceName: soakEvidenceService,
+    serviceVersion: environment.TARGET_SHA,
+  };
+  const provider = createPostHogTracerProvider({
+    ...identity,
     posthogHost: environment.WORKSPACE_E2E_POSTHOG_HOST,
     posthogProjectToken: environment.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN,
-    serviceName: e2eServiceName,
-    serviceNamespace: e2eServiceNamespace,
-    serviceVersion: environment.TARGET_SHA,
   });
 
   return {
+    capture,
+    complete:
+      environment.GITHUB_ACTIONS === "true" &&
+      !environment.WORKSPACE_E2E_TRACE_PARENT
+        ? Effect.try({
+            try: () => capture.receipt(environment),
+            catch: () =>
+              workspaceE2EError("Native soak evidence is unavailable"),
+          }).pipe(
+            Effect.flatMap((receipt) =>
+              Effect.promise(() => import("./soak-evidence")).pipe(
+                Effect.flatMap(({ captureSoakEvidence }) =>
+                  captureSoakEvidence(environment, receipt)
+                )
+              )
+            ),
+            Effect.catchCause(() =>
+              Effect.sync(() => {
+                console.warn("C18_SOAK_EVIDENCE_UNAVAILABLE incomplete-proof");
+              })
+            )
+          )
+        : Effect.void,
     shutdown: provider
       ? Effect.tryPromise({
           catch: (cause) =>
@@ -43,15 +71,7 @@ export const makeE2ETelemetryRuntime = (environment: E2EEnvironment) => {
       : Effect.void,
     telemetryEnabled: provider !== undefined,
     tracingLayer: provider
-      ? createTracingLive({
-          attributes: {
-            "deployment.environment.name": "preview",
-            "service.namespace": e2eServiceNamespace,
-          },
-          provider,
-          serviceName: e2eServiceName,
-          serviceVersion: environment.TARGET_SHA,
-        })
+      ? createIdentifiedTracingLive(identity, provider)
       : Layer.empty,
   };
 };
@@ -63,9 +83,14 @@ export const runE2EEffect = <A, E>(
   telemetry: E2ETelemetryRuntime
 ) =>
   runUntracedE2EEffect(
-    effect.pipe(
-      Effect.exit,
-      Effect.tap(() => telemetry.shutdown),
-      Effect.provide(telemetry.tracingLayer)
-    )
+    Effect.gen(function* () {
+      const tracer = yield* Effect.tracer;
+      const exit = yield* effect.pipe(
+        Effect.exit,
+        Effect.withTracer(telemetry.capture.tracer(tracer))
+      );
+      yield* telemetry.complete;
+      yield* telemetry.shutdown;
+      return exit;
+    }).pipe(Effect.provide(telemetry.tracingLayer))
   );

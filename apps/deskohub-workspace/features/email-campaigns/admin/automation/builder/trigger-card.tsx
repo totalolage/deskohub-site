@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useId } from "react";
 import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
@@ -75,6 +76,20 @@ const eventTriggerPresentation = {
   { readonly icon: LucideIcon; readonly description: unknown }
 >;
 
+const triggerFamilyOf = (
+  trigger: FlowTriggerValue | null
+): TriggerFamily | null =>
+  trigger && (trigger._tag === "Schedule" ? "schedule" : "event");
+
+/** The card's title: the trigger's name, or the call to choose one. */
+const triggerTitle = (trigger: FlowTriggerValue | null, locale: Locale) =>
+  trigger === null
+    ? m.emailAutomationFlowTriggerChooseTitle({}, { locale })
+    : automationTriggerLabel(
+        trigger._tag === "Schedule" ? "schedule" : eventTriggerKindOf(trigger),
+        locale
+      );
+
 /**
  * The flow's start (D26): a schedule with its calendar, sentence, next fires
  * and frequency warning, or one customer event, optionally for one
@@ -99,9 +114,7 @@ export function TriggerCard({
   const familyErrorId = useId();
   const familyError = errorAt("");
   const calendar = useCalendarPreview(initialPreview, "trigger");
-  const previewMinutesError = scheduleMinutesFailure(calendar.preview);
-  const family: TriggerFamily | null =
-    trigger && (trigger._tag === "Schedule" ? "schedule" : "event");
+  const family = triggerFamilyOf(trigger);
 
   const chooseFamily = (next: TriggerFamily) => {
     if (next === family) return;
@@ -117,115 +130,29 @@ export function TriggerCard({
     calendar.refresh(next);
   };
 
-  const title =
-    trigger === null
-      ? m.emailAutomationFlowTriggerChooseTitle({}, { locale })
-      : automationTriggerLabel(
-          trigger._tag === "Schedule"
-            ? "schedule"
-            : eventTriggerKindOf(trigger),
-          locale
-        );
-
   return (
     <FlowCard
       accent
       icon={family === "event" ? Zap : CalendarClock}
       eyebrow={m.emailAutomationFlowTriggerEyebrow({}, { locale })}
-      title={title}
+      title={triggerTitle(trigger, locale)}
     >
-      {family === null ? (
-        <div className="flex flex-col gap-3">
-          <p className="text-navy-blue/70 text-sm">
-            {m.emailAutomationFlowTriggerChooseDescription({}, { locale })}
-          </p>
-          <div
-            role="radiogroup"
-            aria-label={m.emailAutomationFlowTriggerFamilyLabel({}, { locale })}
-            {...fieldErrorAttributes(familyErrorId, familyError !== undefined)}
-            className="grid gap-2 @lg:grid-cols-2"
-          >
-            {(
-              [
-                [
-                  "schedule",
-                  CalendarClock,
-                  m.emailAutomationFlowTriggerFamilySchedule,
-                  m.emailAutomationFlowTriggerFamilyScheduleDescription,
-                ],
-                [
-                  "event",
-                  Zap,
-                  m.emailAutomationFlowTriggerFamilyEvent,
-                  m.emailAutomationFlowTriggerFamilyEventDescription,
-                ],
-              ] as const
-            ).map(([value, Icon, label, description]) => (
-              <ChoiceCard key={value} tone="plain">
-                <input
-                  type="radio"
-                  name={familyName}
-                  value={value}
-                  checked={false}
-                  onChange={() => chooseFamily(value)}
-                  className="sr-only"
-                />
-                <Icon
-                  className="mt-0.5 h-5 w-5 shrink-0 text-burned-orange"
-                  aria-hidden
-                />
-                <span>
-                  <span className="block font-semibold text-sm">
-                    {label({}, { locale })}
-                  </span>
-                  <span className="block text-navy-blue/60 text-sm leading-5">
-                    {description({}, { locale })}
-                  </span>
-                </span>
-              </ChoiceCard>
-            ))}
-          </div>
-          <FieldError id={familyErrorId} messages={[familyError]} />
-        </div>
-      ) : (
-        <SegmentedControl
-          label={m.emailAutomationFlowTriggerFamilyLabel({}, { locale })}
-          name={familyName}
-          onValueChange={chooseFamily}
-          options={[
-            {
-              label: m.emailAutomationFlowTriggerFamilySchedule({}, { locale }),
-              value: "schedule",
-            },
-            {
-              label: m.emailAutomationFlowTriggerFamilyEvent({}, { locale }),
-              value: "event",
-            },
-          ]}
-          value={family}
-        />
-      )}
+      <TriggerFamilyPicker
+        family={family}
+        onChoose={chooseFamily}
+        name={familyName}
+        errorId={familyErrorId}
+        error={familyError}
+      />
 
       {trigger?._tag === "Schedule" && (
-        <div className="space-y-3">
-          <CalendarExpressionEditor
-            value={trigger.calendar}
-            onChange={setCalendar}
-            usage="trigger"
-            minutesError={minutesError ?? previewMinutesError}
-          />
-          <CalendarPreviewText
-            preview={previewMinutesError ? undefined : calendar.preview}
-            pending={calendar.pending}
-          />
-          <CalendarNextStarts preview={calendar.preview} locale={locale} />
-          {calendar.preview?._tag === "Ready" && (
-            <AutomationFrequencyBanner
-              frequency={calendar.preview.frequency}
-              locale={locale}
-            />
-          )}
-        </div>
+        <ScheduleTriggerFields
+          calendar={trigger.calendar}
+          onChange={setCalendar}
+          minutesError={minutesError}
+          preview={calendar.preview}
+          pending={calendar.pending}
+        />
       )}
 
       {trigger !== null && trigger._tag !== "Schedule" && (
@@ -236,6 +163,140 @@ export function TriggerCard({
         />
       )}
     </FlowCard>
+  );
+}
+
+/**
+ * Schedule or event: two large choices while the flow has no trigger, a
+ * segmented switch once it has one.
+ */
+function TriggerFamilyPicker({
+  family,
+  onChoose,
+  name,
+  errorId,
+  error,
+}: {
+  readonly family: TriggerFamily | null;
+  readonly onChoose: (family: TriggerFamily) => void;
+  readonly name: string;
+  readonly errorId: string;
+  /** The missing trigger's error, shown under the first choice. */
+  readonly error: string | undefined;
+}) {
+  const locale = useRouteLocale();
+  return family === null ? (
+    <div className="flex flex-col gap-3">
+      <p className="text-navy-blue/70 text-sm">
+        {m.emailAutomationFlowTriggerChooseDescription({}, { locale })}
+      </p>
+      <div
+        role="radiogroup"
+        aria-label={m.emailAutomationFlowTriggerFamilyLabel({}, { locale })}
+        {...fieldErrorAttributes(errorId, error !== undefined)}
+        className="grid gap-2 @lg:grid-cols-2"
+      >
+        {(
+          [
+            [
+              "schedule",
+              CalendarClock,
+              m.emailAutomationFlowTriggerFamilySchedule,
+              m.emailAutomationFlowTriggerFamilyScheduleDescription,
+            ],
+            [
+              "event",
+              Zap,
+              m.emailAutomationFlowTriggerFamilyEvent,
+              m.emailAutomationFlowTriggerFamilyEventDescription,
+            ],
+          ] as const
+        ).map(([value, Icon, label, description]) => (
+          <ChoiceCard key={value} tone="plain">
+            <input
+              type="radio"
+              name={name}
+              value={value}
+              checked={false}
+              onChange={() => onChoose(value)}
+              className="sr-only"
+            />
+            <Icon
+              className="mt-0.5 h-5 w-5 shrink-0 text-burned-orange"
+              aria-hidden
+            />
+            <span>
+              <span className="block font-semibold text-sm">
+                {label({}, { locale })}
+              </span>
+              <span className="block text-navy-blue/60 text-sm leading-5">
+                {description({}, { locale })}
+              </span>
+            </span>
+          </ChoiceCard>
+        ))}
+      </div>
+      <FieldError id={errorId} messages={[error]} />
+    </div>
+  ) : (
+    <SegmentedControl
+      label={m.emailAutomationFlowTriggerFamilyLabel({}, { locale })}
+      name={name}
+      onValueChange={onChoose}
+      options={[
+        {
+          label: m.emailAutomationFlowTriggerFamilySchedule({}, { locale }),
+          value: "schedule",
+        },
+        {
+          label: m.emailAutomationFlowTriggerFamilyEvent({}, { locale }),
+          value: "event",
+        },
+      ]}
+      value={family}
+    />
+  );
+}
+
+/**
+ * A schedule's calendar with the port's sentence, next starts and, when it
+ * fires more than hourly, the frequency warning.
+ */
+function ScheduleTriggerFields({
+  calendar,
+  onChange,
+  minutesError,
+  preview,
+  pending,
+}: {
+  readonly calendar: CalendarExpression;
+  readonly onChange: (calendar: CalendarExpression) => void;
+  readonly minutesError: string | undefined;
+  readonly preview: CalendarPreviewView | undefined;
+  readonly pending: boolean;
+}) {
+  const locale = useRouteLocale();
+  const previewMinutesError = scheduleMinutesFailure(preview);
+  return (
+    <div className="space-y-3">
+      <CalendarExpressionEditor
+        value={calendar}
+        onChange={onChange}
+        usage="trigger"
+        minutesError={minutesError ?? previewMinutesError}
+      />
+      <CalendarPreviewText
+        preview={previewMinutesError ? undefined : preview}
+        pending={pending}
+      />
+      <CalendarNextStarts preview={preview} locale={locale} />
+      {preview?._tag === "Ready" && (
+        <AutomationFrequencyBanner
+          frequency={preview.frequency}
+          locale={locale}
+        />
+      )}
+    </div>
   );
 }
 

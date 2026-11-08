@@ -169,8 +169,8 @@ export class ReservationVisits extends Context.Service<
                 page
               )
               .pipe(Effect.mapError(ReservationVisitsUnavailable.fromDotypos));
-            const dotyposIds = result.reservations.flatMap((reservation) =>
-              reservation.id === undefined ? [] : [reservation.id]
+            const dotyposIds = result.reservations.map(
+              (reservation) => reservation.id
             );
             const booked =
               dotyposIds.length === 0
@@ -316,10 +316,7 @@ export class ReservationVisits extends Context.Service<
           );
           return Effect.forEach(
             reservations.flatMap((reservation) => {
-              const match =
-                reservation.id === undefined
-                  ? undefined
-                  : bookedByDotyposId.get(reservation.id);
+              const match = bookedByDotyposId.get(reservation.id);
               return match ? [{ booked: match, reservation }] : [];
             }),
             ({ booked: bookedReservation, reservation }) =>

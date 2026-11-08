@@ -6,7 +6,7 @@ import {
 import type { CampaignTemplateKey } from "./campaign-content";
 
 /** Props every campaign template accepts. */
-export type CampaignTemplateProps = WorkspaceCampaignEmailProps;
+type CampaignTemplateProps = WorkspaceCampaignEmailProps;
 
 export type CampaignTemplate = {
   readonly key: CampaignTemplateKey;

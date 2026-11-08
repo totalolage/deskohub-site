@@ -16,6 +16,7 @@ import {
   getAccountSignInPath,
 } from "@/features/account/routes";
 import { administrationRequestPathHeader } from "@/features/administrators/administration-request-path";
+import type { Locale } from "@/features/i18n";
 import { exactLocaleRedirect } from "@/features/i18n/exact-locale-redirect";
 import { resolveWorkspaceLocale } from "@/features/i18n/locale-resolution";
 import {
@@ -86,6 +87,22 @@ const isAccountPath = (pathname: string) => /\/account(\/|$)/.test(pathname);
 const isPrivateAccountPath = (pathname: string) =>
   isAccountPath(pathname) || /\/auth(\/|$)/.test(pathname);
 
+const isPrivatePagePath = (pathname: string) =>
+  isPrivateReservationPath(pathname) || isPrivateAccountPath(pathname);
+
+// Outside the account and the administration, a dotted path reaches the proxy
+// only for the exact-locale redirect.
+const isFileLikePath = (pathname: string) =>
+  pathname.includes(".") &&
+  !isAccountPath(pathname) &&
+  !isAdministrationPath(pathname);
+
+const isPageLoad = (request: NextRequest) =>
+  request.method === "GET" || request.method === "HEAD";
+
+const isServerAction = (request: NextRequest) =>
+  request.method === "POST" && request.headers.has("next-action");
+
 /**
  * Hands a request on to its render. An account render receives its pathname,
  * which the account sections' layout checks before it renders the account
@@ -118,18 +135,27 @@ const continueRequest = (
 const isDocumentNavigation = (request: NextRequest) => {
   if (request.method !== "GET") return false;
   const { headers } = request;
-  if (
-    headers.has("rsc") ||
-    headers.has("next-router-state-tree") ||
-    headers.has("next-router-prefetch") ||
-    headers.has("next-router-segment-prefetch")
-  ) {
-    return false;
-  }
-  const purpose = `${headers.get("sec-purpose") ?? ""};${headers.get("purpose") ?? ""}`;
-  if (/prefetch|prerender/i.test(purpose)) return false;
+  if (isRouterRequest(headers) || isSpeculativeLoad(headers)) return false;
   const destination = headers.get("sec-fetch-dest");
   return destination === null || destination === "document";
+};
+
+const routerRequestHeaders = [
+  "rsc",
+  "next-router-state-tree",
+  "next-router-prefetch",
+  "next-router-segment-prefetch",
+] as const;
+
+// A Next.js router request or prefetch rather than a page load.
+const isRouterRequest = (headers: Headers) =>
+  routerRequestHeaders.some((name) => headers.has(name));
+
+// A browser prefetch or prerender, named by `Sec-Purpose` or the legacy
+// `Purpose`.
+const isSpeculativeLoad = (headers: Headers) => {
+  const purpose = `${headers.get("sec-purpose") ?? ""};${headers.get("purpose") ?? ""}`;
+  return /prefetch|prerender/i.test(purpose);
 };
 
 /**
@@ -162,7 +188,7 @@ const findSharedReferralCodeOfNavigation = (request: NextRequest) =>
 // sets the cookie again.
 const pageLocalePreference = async (request: NextRequest) => {
   if (
-    (request.method !== "GET" && request.method !== "HEAD") ||
+    !isPageLoad(request) ||
     request.headers.has("next-router-prefetch") ||
     !getSessionCookie(request)
   ) {
@@ -209,62 +235,91 @@ async function localizedPageResponse(
     savedPreference
   );
 
-  if (localeFromUrl === resolvedLocale) {
-    const sectionRedirect = findLegacyAccountSectionRedirect(
-      resolvedLocale,
-      new URL(request.url)
+  return localeFromUrl === resolvedLocale
+    ? resolvedLocalePageResponse(request, resolvedLocale, {
+        forwardRequestHeaders,
+      })
+    : localeRedirectResponse(request, resolvedLocale, { savedPreference });
+}
+
+// The URL already names the resolved locale, so the page renders there: as
+// Markdown when a public page's request prefers it, or redirected when it is
+// a retired account section link.
+const resolvedLocalePageResponse = (
+  request: NextRequest,
+  locale: Locale,
+  { forwardRequestHeaders }: { readonly forwardRequestHeaders: boolean }
+) => {
+  const sectionRedirect = findLegacyAccountSectionRedirect(
+    locale,
+    new URL(request.url)
+  );
+  if (sectionRedirect) {
+    const response = markPrivateResponse(
+      NextResponse.redirect(sectionRedirect)
     );
-    if (sectionRedirect) {
-      const response = markPrivateResponse(
-        NextResponse.redirect(sectionRedirect)
-      );
-      setLocaleCookie(response, localeCookieName, resolvedLocale);
-      return response;
-    }
-
-    const publicPage = findLocalizedPublicPage(request.nextUrl.pathname);
-    if (publicPage && requestsPageMarkdown(request)) {
-      recordAgentPageRequest(request, resolvedLocale);
-      return NextResponse.rewrite(
-        new URL(
-          getPageMarkdownRoutePath(publicPage.locale, publicPage.pathname),
-          request.url
-        )
-      );
-    }
-
-    const sharedReferralCode = findSharedReferralCodeOfNavigation(request);
-    if (sharedReferralCode) {
-      request.cookies.set(referralCodeCookieName, sharedReferralCode);
-    }
-    recordAgentPageRequest(request, resolvedLocale);
-    const response = continueRequest(request, {
-      headersChanged: Boolean(sharedReferralCode) || forwardRequestHeaders,
-    });
-    // The same URL answers with Markdown when `Accept` prefers it.
-    if (publicPage) response.headers.append("Vary", "Accept");
-    if (
-      isPrivateReservationPath(request.nextUrl.pathname) ||
-      isPrivateAccountPath(request.nextUrl.pathname)
-    ) {
-      markPrivateResponse(response);
-    }
-    setLocaleCookie(response, localeCookieName, resolvedLocale);
+    setLocaleCookie(response, localeCookieName, locale);
     return response;
   }
 
+  const publicPage = findLocalizedPublicPage(request.nextUrl.pathname);
+  if (publicPage && requestsPageMarkdown(request)) {
+    recordAgentPageRequest(request, locale);
+    return NextResponse.rewrite(
+      new URL(
+        getPageMarkdownRoutePath(publicPage.locale, publicPage.pathname),
+        request.url
+      )
+    );
+  }
+
+  const response = continuePageRequest(request, locale, {
+    forwardRequestHeaders,
+  });
+  // The same URL answers with Markdown when `Accept` prefers it.
+  if (publicPage) response.headers.append("Vary", "Accept");
+  if (isPrivatePagePath(request.nextUrl.pathname)) {
+    markPrivateResponse(response);
+  }
+  setLocaleCookie(response, localeCookieName, locale);
+  return response;
+};
+
+// Hands a page load on to its render with the shared referral code its URL
+// carries, recording it when an agent made it.
+const continuePageRequest = (
+  request: NextRequest,
+  locale: Locale,
+  { forwardRequestHeaders }: { readonly forwardRequestHeaders: boolean }
+) => {
+  const sharedReferralCode = findSharedReferralCodeOfNavigation(request);
+  if (sharedReferralCode) {
+    request.cookies.set(referralCodeCookieName, sharedReferralCode);
+  }
+  recordAgentPageRequest(request, locale);
+  return continueRequest(request, {
+    headersChanged: Boolean(sharedReferralCode) || forwardRequestHeaders,
+  });
+};
+
+// Moves a page request to the resolved locale's URL. A redirect the saved
+// preference decided, or one that keeps a reservation capability, answers
+// privately.
+const localeRedirectResponse = (
+  request: NextRequest,
+  locale: Locale,
+  { savedPreference }: { readonly savedPreference: Locale | undefined }
+) => {
   const localizedUrl = request.nextUrl.clone();
   localizedUrl.pathname = getLocalizedRedirectPathname(
     request.nextUrl.pathname,
-    resolvedLocale,
+    locale,
     locales
   );
   // A retired account section link goes straight to its section's path.
   const redirectUrl =
-    findLegacyAccountSectionRedirect(
-      resolvedLocale,
-      new URL(localizedUrl.href)
-    ) ?? localizedUrl;
+    findLegacyAccountSectionRedirect(locale, new URL(localizedUrl.href)) ??
+    localizedUrl;
 
   const response = NextResponse.redirect(redirectUrl);
   response.headers.set("Vary", "Accept-Language");
@@ -274,15 +329,14 @@ async function localizedPageResponse(
   ) {
     markPrivateResponse(response);
   }
-  setLocaleCookie(response, localeCookieName, resolvedLocale);
+  setLocaleCookie(response, localeCookieName, locale);
   return response;
-}
+};
 
 // A public page load whose `Accept` header prefers Markdown gets the page's
 // Markdown variant instead of its HTML.
 const requestsPageMarkdown = (request: NextRequest) =>
-  (request.method === "GET" || request.method === "HEAD") &&
-  prefersMarkdown(request.headers);
+  isPageLoad(request) && prefersMarkdown(request.headers);
 
 // One event per agent page load that reaches a render; humans and other
 // unclassified traffic send none. A path no page matches renders the
@@ -349,10 +403,8 @@ const administrationPageAccess = async (request: NextRequest) => {
 
 async function administrationResponse(request: NextRequest) {
   // A Server Action reaches its guard, which fails closed without a redirect.
-  if (request.method === "POST" && request.headers.has("next-action")) {
-    return NextResponse.next();
-  }
-  if (request.method === "GET" || request.method === "HEAD") {
+  if (isServerAction(request)) return NextResponse.next();
+  if (isPageLoad(request)) {
     const access = await administrationPageAccess(request).catch(
       () => "unavailable" as const
     );
@@ -374,8 +426,7 @@ async function administrationResponse(request: NextRequest) {
 // own redirect would run in the browser as a client navigation, which the
 // site's modal slot intercepts and shows over an empty page.
 const customerAgentSignInRedirect = (request: NextRequest) => {
-  if (request.method !== "GET" && request.method !== "HEAD") return;
-  if (getSessionCookie(request)) return;
+  if (!isPageLoad(request) || getSessionCookie(request)) return;
   const locale = getLocaleFromRequestPathname(request, locales);
   if (!locale) return;
   const connectPath = getLocalizedPagePath(locale, "/[locale]/auth/connect");
@@ -401,10 +452,7 @@ const customerAgentSignInRedirect = (request: NextRequest) => {
 // permanently to the canonical origin, so search engines index one host.
 // Preview deployments serve their own hosts.
 const canonicalHostRedirect = (request: NextRequest) => {
-  if (
-    env.VERCEL_ENV !== "production" ||
-    (request.method !== "GET" && request.method !== "HEAD")
-  ) {
+  if (env.VERCEL_ENV !== "production" || !isPageLoad(request)) {
     return undefined;
   }
   const canonicalOrigin = new URL(workspaceSiteOrigin);
@@ -426,9 +474,7 @@ const markRedirectPrivacy = (request: NextRequest, response: NextResponse) => {
   if (isAdministrationPath(pathname)) {
     return markAdministrationResponse(response);
   }
-  return isPrivateReservationPath(pathname) || isPrivateAccountPath(pathname)
-    ? markPrivateResponse(response)
-    : response;
+  return isPrivatePagePath(pathname) ? markPrivateResponse(response) : response;
 };
 
 export async function proxy(request: NextRequest) {
@@ -441,47 +487,62 @@ export async function proxy(request: NextRequest) {
     return markRedirectPrivacy(request, normalizingRedirect);
   }
 
-  // Outside the account and the administration, a dotted path reaches the
-  // proxy only for the exact-locale redirect, so a file-like path under an
-  // exact locale goes on untouched to the localized catch-all.
   const { pathname } = request.nextUrl;
-  if (
-    pathname.includes(".") &&
-    !isAccountPath(pathname) &&
-    !isAdministrationPath(pathname)
-  ) {
-    return NextResponse.next();
-  }
+  if (isMobileWebAppPath(pathname)) return mobileWebAppResponse(request);
+
+  // A file-like path under an exact locale goes on untouched to the localized
+  // catch-all.
+  if (isFileLikePath(pathname)) return NextResponse.next();
 
   if (isAdministrationPath(pathname)) {
     return markAdministrationResponse(await administrationResponse(request));
   }
 
-  if (request.method === "POST" && request.headers.has("next-action")) {
+  if (isServerAction(request)) {
     return continueRequest(request, { headersChanged: false });
   }
 
-  if (
-    env.VERCEL_ENV === "preview" &&
-    (request.method === "GET" || request.method === "HEAD")
-  ) {
-    const callbackOrigin = Result.getOrThrow(
-      resolveWorkspaceRuntimeCallbackOrigin()
-    );
-    if (request.nextUrl.origin !== callbackOrigin.origin) {
-      const redirectUrl = new URL(
-        `${request.nextUrl.pathname}${request.nextUrl.search}`,
-        callbackOrigin
-      );
-      appendVercelPreviewProtectionBypass(redirectUrl, {
-        setBypassCookie: true,
-      });
-      return markPrivateResponse(NextResponse.redirect(redirectUrl));
-    }
-  }
-
-  return customerAgentSignInRedirect(request) ?? localizedPageResponse(request);
+  return (
+    previewCallbackOriginRedirect(request) ??
+    customerAgentSignInRedirect(request) ??
+    localizedPageResponse(request)
+  );
 }
+
+// `/app/` serves the mobile app's web export (`mobile-web-app:build`), which
+// routes on the client: it has no locale, and its account and administration
+// paths are the app's own. The installed app's scope is `/app/`, so the bare
+// path moves inside it. Next's `/app/` to `/app` redirect is off in
+// `next.config.mjs`.
+const isMobileWebAppPath = (pathname: string) =>
+  pathname === "/app" || pathname.startsWith("/app/");
+
+const mobileWebAppResponse = (request: NextRequest) => {
+  if (request.nextUrl.pathname === "/app") {
+    // `NextURL` drops a trailing slash when it serializes.
+    const appUrl = new URL(request.url);
+    appUrl.pathname = "/app/";
+    return NextResponse.redirect(appUrl, 308);
+  }
+  return previewCallbackOriginRedirect(request) ?? NextResponse.next();
+};
+
+// A preview page load on any origin other than the runtime callback origin
+// moves there, with the Vercel protection bypass and its cookie.
+const previewCallbackOriginRedirect = (request: NextRequest) => {
+  if (env.VERCEL_ENV !== "preview" || !isPageLoad(request)) return undefined;
+  const callbackOrigin = Result.getOrThrow(
+    resolveWorkspaceRuntimeCallbackOrigin()
+  );
+  if (request.nextUrl.origin === callbackOrigin.origin) return undefined;
+
+  const redirectUrl = new URL(
+    `${request.nextUrl.pathname}${request.nextUrl.search}`,
+    callbackOrigin
+  );
+  appendVercelPreviewProtectionBypass(redirectUrl, { setBypassCookie: true });
+  return markPrivateResponse(NextResponse.redirect(redirectUrl));
+};
 
 // Every account route, dotted segments included, passes through the proxy: the
 // account sections' layout trusts the request pathname only because the proxy

@@ -1,5 +1,6 @@
 import { Data, Effect, Option } from "effect";
 import type { ImageSize } from "./image-size";
+import { isTransparent } from "./image-transparency";
 
 /** The browser can't decode the file as a picture. */
 export class ImageDecodeError extends Data.TaggedError("ImageDecodeError") {}
@@ -47,13 +48,6 @@ const scaledBy = (size: ImageSize, scale: number): ImageSize => ({
   width: Math.max(1, Math.floor(size.width * scale)),
   height: Math.max(1, Math.floor(size.height * scale)),
 });
-
-const isTransparent = (pixels: Uint8ClampedArray) => {
-  for (let alpha = 3; alpha < pixels.length; alpha += 4) {
-    if (pixels[alpha] !== 255) return true;
-  }
-  return false;
-};
 
 const drawingContext = (canvas: OffscreenCanvas) =>
   Effect.sync(() => canvas.getContext("2d")).pipe(

@@ -26,18 +26,100 @@ import {
 } from "./payment-components";
 import { getProviderValueLabel } from "./payment-presentation";
 
-const getReconciliationLabel = (order: AdministrationOrder, locale: Locale) => {
-  switch (order.providerStatus) {
-    case "available":
-      return m.administrationOrderReconciliationProviderOnly({}, { locale });
-    case "not_found":
-      return m.administrationOrderReconciliationNotFound({}, { locale });
-    case "not_returned":
-      return m.administrationOrderReconciliationNotReturned({}, { locale });
-    case "unavailable":
-      return m.administrationOrderReconciliationUnavailable({}, { locale });
-  }
+const getReconciliationLabel = (order: AdministrationOrder, locale: Locale) =>
+  ({
+    available: m.administrationOrderReconciliationProviderOnly,
+    not_found: m.administrationOrderReconciliationNotFound,
+    not_returned: m.administrationOrderReconciliationNotReturned,
+    unavailable: m.administrationOrderReconciliationUnavailable,
+  })[order.providerStatus]({}, { locale });
+
+/**
+ * When the order last moved: Nexi's last operation, else when the Nexi order
+ * or the local attempt was created. Nothing when none of them is set.
+ */
+const getOrderActivityTime = (order: AdministrationOrder) => {
+  const times = [
+    order.provider?.lastOperationTime,
+    order.link?.providerOrderCreatedAt,
+    order.link?.attemptCreatedAt,
+  ];
+  if (!times.some(Boolean)) return undefined;
+  return times.find((time) => time !== undefined && time !== null) ?? "";
 };
+
+/** The order's sortable amount: Nexi's reported amount, else the local attempt's. */
+const getOrderAmountSortValue = (order: AdministrationOrder) =>
+  order.provider?.amount
+    ? Number(order.provider.amount)
+    : order.link?.amount.value;
+
+/** A stable row id, even for an operation Nexi reported without an id. */
+export const getOperationRowId = (
+  operation: AdministrationOperation,
+  index: number
+) =>
+  operation.operationId ??
+  `${operation.orderId ?? "unknown"}-${operation.operationTime ?? "unknown"}-${index}`;
+
+function OrderReference({
+  locale,
+  order,
+}: {
+  readonly locale: Locale;
+  readonly order: AdministrationOrder;
+}) {
+  const activityTime = getOrderActivityTime(order);
+  return (
+    <>
+      <Link
+        className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
+        href={administrationHref("/[locale]/admin/orders/[orderId]", {
+          orderId: order.orderId,
+        })}
+      >
+        {order.orderId}
+      </Link>
+      {activityTime !== undefined && (
+        <p className="mt-1 text-xs text-navy-blue/65">
+          {formatProviderDateTime(activityTime, locale)}
+        </p>
+      )}
+    </>
+  );
+}
+
+function OperationReference({
+  locale,
+  operation,
+}: {
+  readonly locale: Locale;
+  readonly operation: AdministrationOperation;
+}) {
+  return (
+    <>
+      {operation.operationId ? (
+        <Link
+          className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
+          href={administrationHref("/[locale]/admin/operations/[operationId]", {
+            operationId: operation.operationId,
+          })}
+        >
+          {operation.operationId}
+        </Link>
+      ) : (
+        <span className="text-sm text-navy-blue/65">
+          {m.administrationOperationNotReported({}, { locale })}
+        </span>
+      )}
+      {operation.operationTime && (
+        <p className="mt-1 text-xs text-navy-blue/65">
+          {formatProviderDateTime(operation.operationTime, locale)}
+        </p>
+      )}
+    </>
+  );
+}
 
 export function OrderTable({
   orders,
@@ -51,36 +133,11 @@ export function OrderTable({
         accessorKey: "orderId",
         header: m.administrationOrderColumnOrder({}, { locale }),
         cell: ({ row }) => (
-          <>
-            <Link
-              className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-              href={administrationHref("/[locale]/admin/orders/[orderId]", {
-                orderId: row.original.orderId,
-              })}
-            >
-              {row.original.orderId}
-            </Link>
-            {(row.original.provider?.lastOperationTime ||
-              row.original.link?.providerOrderCreatedAt ||
-              row.original.link?.attemptCreatedAt) && (
-              <p className="mt-1 text-xs text-navy-blue/65">
-                {formatProviderDateTime(
-                  row.original.provider?.lastOperationTime ??
-                    row.original.link?.providerOrderCreatedAt ??
-                    row.original.link?.attemptCreatedAt ??
-                    "",
-                  locale
-                )}
-              </p>
-            )}
-          </>
+          <OrderReference locale={locale} order={row.original} />
         ),
       },
       {
-        accessorFn: (order) =>
-          order.provider?.amount
-            ? Number(order.provider.amount)
-            : order.link?.amount.value,
+        accessorFn: getOrderAmountSortValue,
         id: "amount",
         header: m.administrationOrderColumnAmount({}, { locale }),
         cell: ({ row }) => formatOrderMoney(row.original, locale),
@@ -178,28 +235,7 @@ export function OperationTable({
         id: "operation",
         header: m.administrationOperationColumnOperation({}, { locale }),
         cell: ({ row }) => (
-          <>
-            {row.original.operationId ? (
-              <Link
-                className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                href={administrationHref(
-                  "/[locale]/admin/operations/[operationId]",
-                  { operationId: row.original.operationId }
-                )}
-              >
-                {row.original.operationId}
-              </Link>
-            ) : (
-              <span className="text-sm text-navy-blue/65">
-                {m.administrationOperationNotReported({}, { locale })}
-              </span>
-            )}
-            {row.original.operationTime && (
-              <p className="mt-1 text-xs text-navy-blue/65">
-                {formatProviderDateTime(row.original.operationTime, locale)}
-              </p>
-            )}
-          </>
+          <OperationReference locale={locale} operation={row.original} />
         ),
       },
       {
@@ -303,10 +339,7 @@ export function OperationTable({
       ariaLabel={m.administrationOperationTableLabel({}, { locale })}
       columns={columns}
       data={operations}
-      getRowId={(operation, index) =>
-        operation.operationId ??
-        `${operation.orderId ?? "unknown"}-${operation.operationTime ?? "unknown"}-${index}`
-      }
+      getRowId={getOperationRowId}
       tableClassName="min-w-[880px]"
     />
   );

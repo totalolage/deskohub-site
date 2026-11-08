@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { ReferralService } from "@/features/referrals";
 import type { ReferralCode } from "@/features/referrals/client";
+import { referralFailureLogFields } from "@/features/referrals/referral-failure";
 import type { CustomerAccountLinkResolution } from "./customer-account-resolver.service";
 
 /**
@@ -14,7 +15,8 @@ import type { CustomerAccountLinkResolution } from "./customer-account-resolver.
  * Acceptance applies the usual set-once, self-referral, and first-booking
  * rules and takes the account lock itself, so run this only after resolution
  * has released it. A rejected code or a failure is logged with a fixed code
- * and its reason, never the code value, and never blocks sign-in.
+ * and its reason or failed source, never the code value, and never blocks
+ * sign-in.
  */
 export const acceptAutoLinkedReferral = Effect.fn(
   "account.acceptAutoLinkedReferral"
@@ -37,7 +39,7 @@ export const acceptAutoLinkedReferral = Effect.fn(
         Effect.logWarning("Referral was not recorded at sign-in").pipe(
           Effect.annotateLogs({
             code: "account.auto-link.referral",
-            reason: error.reason,
+            ...referralFailureLogFields(error),
           })
         )
       )

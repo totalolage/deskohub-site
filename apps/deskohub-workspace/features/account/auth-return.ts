@@ -10,13 +10,13 @@ import { listenForReturn } from "@/shared/browser/return-window";
 import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 import { authClient } from "./auth.client";
 import {
-  forgetEmailSignInRequest,
-  rememberEmailSignInRequest,
-} from "./email-sign-in-request";
-import { noteEmailSignInForPasskeyPrompt } from "./passkey-prompt";
+  type BrowserSignInCompletion,
+  completeBrowserSignIn,
+  leaveForSignInDestination,
+} from "./browser-sign-in-completion";
+import { rememberEmailSignInRequest } from "./email-sign-in-request";
 import {
   captureSignInCodeRejection,
-  recordSignInCompletion,
   type SignInCodeRejectionReason,
 } from "./sign-in-analytics";
 
@@ -189,6 +189,48 @@ const toSignInEmailFailure = ({
     : "rate-limited";
 };
 
+type SignInEmailResponse = typeof signInEmailResponseSchema.Type;
+
+/** A thrown or undecodable response reads as none. */
+const requestSignInEmail = async ({
+  email,
+  callbackURL,
+  locale,
+}: {
+  readonly email: string;
+  readonly callbackURL: string;
+  readonly locale: Locale;
+}): Promise<Option.Option<SignInEmailResponse>> => {
+  try {
+    return decodeSignInEmailResponse(
+      await authClient.signIn.magicLink({
+        email,
+        callbackURL,
+        metadata: { locale },
+      })
+    );
+  } catch {
+    return Option.none();
+  }
+};
+
+const toSignInEmailResult = (
+  response: Option.Option<SignInEmailResponse>,
+  attemptId: string | undefined
+): SignInEmailResult => {
+  if (Option.isNone(response)) return { status: "failed", reason: "failed" };
+  const { data, error } = response.value;
+  if (error !== null) {
+    return { status: "failed", reason: toSignInEmailFailure(error) };
+  }
+  if (data?.method === "password") return { status: "password" };
+  return {
+    status: "sent",
+    signInCode: data?.signInCode === true,
+    ...(attemptId !== undefined && { attemptId }),
+  };
+};
+
 const signInCodeRejections: Readonly<
   Record<
     string,
@@ -271,13 +313,6 @@ const hasAuthenticatedSession = (
 // Refocusing is best effort and must not change the navigation result.
 const focusWindow = Option.liftThrowable(() => globalThis.window?.focus?.());
 
-const requestNavigation = Option.liftThrowable((path: string): boolean => {
-  const replace = globalThis.window?.location?.replace;
-  if (!Predicate.isFunction(replace)) return false;
-  replace.call(globalThis.window.location, path);
-  return true;
-});
-
 // Return-window cleanup is best effort.
 const runCleanup = Option.liftThrowable((cleanup: () => void) => cleanup());
 
@@ -309,18 +344,26 @@ export const createAuthReturnLifecycle = ({
   let currentCallbackURL = callbackURLFor(undefined);
   let verifiedCallbackURL: string | undefined;
   let passwordCallbackURL: string | undefined;
-  // Every continuation (link hand-off, typed code, session check) leaves the
-  // page at most once.
+  // Every continuation (link hand-off, typed code, password, session check)
+  // leaves the page at most once, and only the first one that leaves
+  // completes the sign-in.
   let leaving = false;
 
-  const leaveFor = (path: string, { focus }: { readonly focus: boolean }) => {
+  const leaveFor = (
+    path: string,
+    {
+      completion,
+      focus,
+    }: {
+      readonly completion?: BrowserSignInCompletion;
+      readonly focus: boolean;
+    }
+  ) => {
     if (leaving) return true;
-    leaving = Option.getOrElse(requestNavigation(path), () => false);
-    if (!leaving) return false;
-    // A signed-in tab must not show this code step again after a sign-out.
-    forgetEmailSignInRequest();
-    if (focus) focusWindow();
-    return true;
+    if (completion !== undefined) completeBrowserSignIn(completion);
+    leaving = leaveForSignInDestination(path);
+    if (leaving && focus) focusWindow();
+    return leaving;
   };
 
   const dispose = () => {
@@ -346,12 +389,14 @@ export const createAuthReturnLifecycle = ({
           if (signal.aborted || requestEpoch !== requestId || !signedIn) {
             return false;
           }
-          // The link tab hands off and closes, so this tab records it.
-          if (!requireFreshSession) {
-            recordSignInCompletion("link");
-            noteEmailSignInForPasskeyPrompt();
-          }
-          return leaveFor(destination, { focus: true });
+          // The link tab hands off and closes, so this tab completes the
+          // sign-in; a reauthentication only continues.
+          return leaveFor(destination, {
+            completion: requireFreshSession
+              ? undefined
+              : { method: "link", via: "hand-off" },
+            focus: true,
+          });
         },
         ttlMs: RETURN_LISTENER_TTL_MS,
       })
@@ -376,63 +421,40 @@ export const createAuthReturnLifecycle = ({
     currentCallbackURL = callbackURLFor(listening ? attemptId : undefined);
   };
 
+  // Starts the link-return listener for a fresh attempt; the attempt ID is
+  // undefined when this browser cannot hand off between tabs.
+  const listenForNewLinkReturn = (requestId: number): string | undefined => {
+    if (!hasReturnWindowSupport()) return undefined;
+    const candidate = createAttemptId();
+    return candidate !== undefined && listenForLinkReturn(candidate, requestId)
+      ? candidate
+      : undefined;
+  };
+
   const sendSignInEmail = async (email: string): Promise<SignInEmailResult> => {
     const requestId = requestEpoch + 1;
     requestEpoch = requestId;
     dispose();
 
-    let attemptId: string | undefined;
-    if (hasReturnWindowSupport()) {
-      const candidate = createAttemptId();
-      if (
-        candidate !== undefined &&
-        listenForLinkReturn(candidate, requestId)
-      ) {
-        attemptId = candidate;
-      }
-    }
+    const attemptId = listenForNewLinkReturn(requestId);
     const callbackURL = callbackURLFor(attemptId);
     currentCallbackURL = callbackURL;
 
-    let response: Option.Option<typeof signInEmailResponseSchema.Type>;
-    try {
-      response = decodeSignInEmailResponse(
-        await authClient.signIn.magicLink({
-          email,
-          callbackURL,
-          metadata: { locale },
-        })
-      );
-    } catch {
-      response = Option.none();
-    }
+    const response = await requestSignInEmail({
+      email,
+      callbackURL,
+      locale,
+    });
     if (requestEpoch !== requestId) return { status: "cancelled" };
-    if (
-      Option.isSome(response) &&
-      response.value.error === null &&
-      response.value.data?.method === "password"
-    ) {
+    const result = toSignInEmailResult(response, attemptId);
+    if (result.status === "password") {
       // No link is on its way, so nothing hands off from another tab.
       dispose();
       currentCallbackURL = callbackURLFor(undefined);
-      return { status: "password" };
+    } else if (result.status === "failed") {
+      dispose();
     }
-    if (Option.isSome(response) && response.value.error === null) {
-      return {
-        status: "sent",
-        signInCode: response.value.data?.signInCode === true,
-        ...(attemptId !== undefined && { attemptId }),
-      };
-    }
-    dispose();
-    return {
-      status: "failed",
-      reason: Option.match(response, {
-        onNone: () => "failed",
-        onSome: ({ error }) =>
-          error === null ? "failed" : toSignInEmailFailure(error),
-      }),
-    };
+    return result;
   };
 
   const verifySignInCode = async (
@@ -466,14 +488,12 @@ export const createAuthReturnLifecycle = ({
     return "verified";
   };
 
-  const continueWithVerifiedCode = () => {
-    if (verifiedCallbackURL === undefined) return false;
-    if (!leaving) {
-      recordSignInCompletion("code");
-      noteEmailSignInForPasskeyPrompt();
-    }
-    return leaveFor(verifiedCallbackURL, { focus: false });
-  };
+  const continueWithVerifiedCode = () =>
+    verifiedCallbackURL !== undefined &&
+    leaveFor(verifiedCallbackURL, {
+      completion: { method: "code" },
+      focus: false,
+    });
 
   const signInWithPassword = async (
     email: string,

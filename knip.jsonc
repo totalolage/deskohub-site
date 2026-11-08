@@ -21,6 +21,12 @@
         "env.ts",
         // Public reusable-email service API during the additive rollout, before delivery switches.
         "features/emails/backend/index.ts",
+        // Public customer-value resolver consumed by recipient preparation.
+        "features/emails/values/customer/index.ts",
+        // Public discount-value issuance consumed by recipient preparation and delivery cleanup.
+        "features/emails/values/discount/index.ts",
+        // Public recipient preparation and samples consumed by delivery and previews.
+        "features/emails/values/preparation/index.ts",
         // Command-line scripts run by path from package.json, CI, or the skills.
         "scripts/*.ts",
         "scripts/account-sticky/run.ts",
@@ -46,8 +52,20 @@
         // (`prepare` script), not an installable module.
         "@effect/language-service",
         // Preview server the `email:dev` CLI resolves from the project at runtime.
-        "@react-email/ui"
+        "@react-email/ui",
+        // Not imported: declared so Vercel deploys Workspace previews for
+        // agent-skill changes (apps/deskohub-portal/deployment-graph.test.ts).
+        "@deskohub/agent-skills",
+        // Not imported: `mobile-web-app:build` copies its web export to
+        // public/app, so its changes must deploy the Workspace too.
+        "deskohub-mobile"
       ]
+    },
+    "apps/deskohub-mobile": {
+      // app.config.ts derives the Android version code from the version that
+      // Expo merges in from app.json; the plugin loads it without that merge,
+      // so it reads the static app.json instead.
+      "expo": { "config": ["app.json"] }
     }
   }
 }

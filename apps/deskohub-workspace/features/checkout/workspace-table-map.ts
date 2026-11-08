@@ -1,11 +1,8 @@
-import {
-  type DotyposReservation,
-  type DotyposTable,
-  type DotyposTableId,
-  DotyposTableIdSchema,
+import type {
+  DotyposReservation,
+  DotyposTable,
+  DotyposTableId,
 } from "@deskohub/dotypos";
-import { Option, Schema } from "effect";
-import { getAssignableDotyposTableId } from "./backend/reservation/dotypos-table-id";
 import { isDisplayableWorkspaceTable } from "./backend/reservation/workspace-table-selection";
 
 export type WorkspaceTableMap = {
@@ -23,16 +20,12 @@ export const getWorkspaceTableMap = (
   reservation: Pick<DotyposReservation, "_tableId">,
   tables: readonly DotyposTable[]
 ): WorkspaceTableMap | undefined => {
-  const assignedTableId = Option.getOrUndefined(
-    Schema.decodeUnknownOption(DotyposTableIdSchema)(
-      reservation._tableId?.trim()
-    )
-  );
+  const assignedTableId = reservation._tableId;
   if (!assignedTableId) return undefined;
 
   const displayableTables = tables.filter(isDisplayableWorkspaceTable);
   const assignedTable = displayableTables.find(
-    (table) => getAssignableDotyposTableId(table) === assignedTableId
+    (table) => table.id === assignedTableId
   );
   if (!assignedTable) return undefined;
 

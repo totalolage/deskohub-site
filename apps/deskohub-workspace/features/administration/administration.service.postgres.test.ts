@@ -1,7 +1,4 @@
-import {
-  seededCustomerReads,
-  seededReservationReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -13,18 +10,26 @@ import {
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { IgloohomeDeviceIdSchema } from "@deskohub/igloohome";
-import { NexiOrderIdSchema } from "@deskohub/nexi";
+import {
+  NexiOperationIdSchema,
+  NexiOrderIdSchema,
+  NexiWebhookEventIdSchema,
+} from "@deskohub/nexi";
 import { Effect, Layer, Option } from "effect";
 import {
   customerMarketingConsents,
+  discountApplications,
   type FulfillmentState,
+  legalEvidenceEvents,
   paymentAttempts,
   type ReservationState,
   reservationAccessGrants,
+  webhookEvents,
 } from "@/db/schema";
 import { ReservationAuthorDirectory } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
+import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   type StoredWorkspaceReservationDetails,
   type WorkspaceReservationId,
@@ -71,6 +76,18 @@ describe.skipIf(!testDatabase)(
 
     afterAll(async () => {
       await testDatabase.pool.query(
+        "delete from webhook_events where event_id like $1",
+        [`%-${runId}`]
+      );
+      await testDatabase.pool.query(
+        "delete from discount_applications where workspace_reservation_id = any($1)",
+        [reservationIds]
+      );
+      await testDatabase.pool.query(
+        "delete from legal_evidence_events where workspace_reservation_id = any($1)",
+        [reservationIds]
+      );
+      await testDatabase.pool.query(
         "delete from payment_attempts where workspace_reservation_id = any($1)",
         [reservationIds]
       );
@@ -101,8 +118,13 @@ describe.skipIf(!testDatabase)(
         administration: typeof AdministrationService.Service
       ) => Effect.Effect<A, E>,
       {
+        getReservation,
+        getTables = () => Effect.succeed([]),
         listReservations = () => Effect.succeed([]),
-      }: Pick<DotyposServiceOverrides, "listReservations"> = {}
+      }: Pick<
+        DotyposServiceOverrides,
+        "getReservation" | "getTables" | "listReservations"
+      > = {}
     ) =>
       Effect.runPromise(
         Effect.gen(function* () {
@@ -128,17 +150,20 @@ describe.skipIf(!testDatabase)(
                           : []
                       ).pipe(
                         Effect.flatMap((records) =>
-                          seededCustomerReads(records).getCustomersByIds(ids)
+                          makeInMemoryDotypos({
+                            customers: records,
+                          }).service.getCustomersByIds(ids)
                         )
                       ),
-                    getTables: () => Effect.succeed([]),
+                    ...(getReservation && { getReservation }),
+                    getTables,
                     listReservations,
                     getReservationsByIds: (ids, options) =>
                       listReservations({ ...options, ids: [...ids] }).pipe(
                         Effect.flatMap((records) =>
-                          seededReservationReads(records).getReservationsByIds(
-                            ids
-                          )
+                          makeInMemoryDotypos({
+                            reservations: records,
+                          }).service.getReservationsByIds(ids)
                         )
                       ),
                   }),
@@ -543,7 +568,9 @@ describe.skipIf(!testDatabase)(
           getReservationsByIds: (ids) =>
             Effect.succeed(bookings).pipe(
               Effect.flatMap((records) =>
-                seededReservationReads(records).getReservationsByIds(ids)
+                makeInMemoryDotypos({
+                  reservations: records,
+                }).service.getReservationsByIds(ids)
               )
             ),
         });
@@ -581,7 +608,9 @@ describe.skipIf(!testDatabase)(
                 return inRangeLabels.map(booking);
               }).pipe(
                 Effect.flatMap((records) =>
-                  seededReservationReads(records).getReservationsByIds(ids)
+                  makeInMemoryDotypos({
+                    reservations: records,
+                  }).service.getReservationsByIds(ids)
                 )
               );
             },
@@ -656,7 +685,9 @@ describe.skipIf(!testDatabase)(
                 getReservationsByIds: (ids) =>
                   Effect.succeed(bookings("CANCELLED")).pipe(
                     Effect.flatMap((records) =>
-                      seededReservationReads(records).getReservationsByIds(ids)
+                      makeInMemoryDotypos({
+                        reservations: records,
+                      }).service.getReservationsByIds(ids)
                     )
                   ),
               }
@@ -759,7 +790,9 @@ describe.skipIf(!testDatabase)(
                 })
               ).pipe(
                 Effect.flatMap((records) =>
-                  seededReservationReads(records).getReservationsByIds(ids)
+                  makeInMemoryDotypos({
+                    reservations: records,
+                  }).service.getReservationsByIds(ids)
                 )
               ),
           }
@@ -783,7 +816,9 @@ describe.skipIf(!testDatabase)(
             getReservationsByIds: (ids) =>
               Effect.succeed(bookings).pipe(
                 Effect.flatMap((records) =>
-                  seededReservationReads(records).getReservationsByIds(ids)
+                  makeInMemoryDotypos({
+                    reservations: records,
+                  }).service.getReservationsByIds(ids)
                 )
               ),
           });
@@ -834,7 +869,9 @@ describe.skipIf(!testDatabase)(
                   })
                 ).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 ),
             }
@@ -856,7 +893,9 @@ describe.skipIf(!testDatabase)(
             getReservationsByIds: (ids) =>
               Effect.die(new Error("Dotypos must not be read")).pipe(
                 Effect.flatMap((records) =>
-                  seededReservationReads(records).getReservationsByIds(ids)
+                  makeInMemoryDotypos({
+                    reservations: records,
+                  }).service.getReservationsByIds(ids)
                 )
               ),
           }
@@ -979,7 +1018,9 @@ describe.skipIf(!testDatabase)(
                 getReservationsByIds: (ids) =>
                   Effect.succeed(pagedLabels.map(booking)).pipe(
                     Effect.flatMap((records) =>
-                      seededReservationReads(records).getReservationsByIds(ids)
+                      makeInMemoryDotypos({
+                        reservations: records,
+                      }).service.getReservationsByIds(ids)
                     )
                   ),
               }
@@ -1348,7 +1389,9 @@ describe.skipIf(!testDatabase)(
             getReservationsByIds: (ids) =>
               Effect.succeed(bookings).pipe(
                 Effect.flatMap((records) =>
-                  seededReservationReads(records).getReservationsByIds(ids)
+                  makeInMemoryDotypos({
+                    reservations: records,
+                  }).service.getReservationsByIds(ids)
                 )
               ),
           }
@@ -1433,7 +1476,9 @@ describe.skipIf(!testDatabase)(
                     : bookings
                 ).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 );
               },
@@ -1645,6 +1690,402 @@ describe.skipIf(!testDatabase)(
         expect(productsOf(mixed?.reservations ?? []).sort()).toEqual(
           Object.keys(products).sort()
         );
+      });
+    });
+
+    /** A confirmed Dotypos booking on 10 August 2099 for the customer. */
+    const liveBooking = (
+      label: string,
+      customerId: DotyposCustomerId,
+      tableId = "table-desk"
+    ) =>
+      ({
+        _branchId: "branch",
+        _cloudId: "cloud",
+        _customerId: customerId,
+        _tableId: tableId,
+        id: bookingId(label),
+        startDate: "2099-08-10T08:00:00Z",
+        endDate: "2099-08-10T16:00:00Z",
+        seats: "1",
+        status: "CONFIRMED",
+      }) as const;
+
+    describe("booking detail", () => {
+      test("loads a booking with its Workspace reservation and table", async () => {
+        const customerId = makeCustomerId("booking-detail");
+        const reservationId = await insertReservation({
+          customerId,
+          fulfillmentState: "fulfilled",
+          label: "booking-detail",
+          reservationState: "confirmed",
+        });
+
+        const detail = await run(
+          (administration) =>
+            administration.loadBooking(bookingId("booking-detail")),
+          {
+            getReservation: () =>
+              Effect.succeed(
+                Option.some({
+                  customer: { id: customerId, firstName: "Bea" },
+                  reservation: liveBooking("booking-detail", customerId),
+                })
+              ),
+            getTables: () =>
+              Effect.succeed([
+                { id: "table-window", name: "Window" },
+                { id: "table-desk", name: "Desk 4", locationName: "Upstairs" },
+              ]),
+          }
+        );
+
+        expect(detail?.references).toEqual({
+          bookingId: bookingId("booking-detail"),
+          customerId,
+          workspaceReservationId: reservationId,
+        });
+        expect(detail?.booking).toMatchObject({
+          customerId,
+          tableId: "table-desk",
+          tableName: "Desk 4",
+          tableLocation: "Upstairs",
+          linkedReservation: {
+            id: reservationId,
+            product: { kind: "cowork", tier: "open-space" },
+          },
+        });
+      });
+
+      test("loads a booking no Workspace reservation links, at a table Dotypos no longer lists", async () => {
+        const customerId = makeCustomerId("booking-unlinked");
+
+        const detail = await run(
+          (administration) =>
+            administration.loadBooking(bookingId("booking-unlinked")),
+          {
+            getReservation: () =>
+              Effect.succeed(
+                Option.some({
+                  customer: null,
+                  reservation: liveBooking(
+                    "booking-unlinked",
+                    customerId,
+                    "table-removed"
+                  ),
+                })
+              ),
+            getTables: () =>
+              Effect.succeed([{ id: "table-desk", name: "Desk 4" }]),
+          }
+        );
+
+        expect(detail?.references).toEqual({
+          bookingId: bookingId("booking-unlinked"),
+          customerId,
+          workspaceReservationId: null,
+        });
+        expect(detail?.booking).toMatchObject({
+          customer: null,
+          tableId: "table-removed",
+          tableName: null,
+          tableLocation: null,
+          linkedReservation: null,
+        });
+      });
+    });
+
+    describe("reservation detail on its booking's date", () => {
+      const insertBooked = (label: string) =>
+        insertReservation({
+          customerId: makeCustomerId(label),
+          fulfillmentState: "fulfilled",
+          label,
+          reservationState: "confirmed",
+        });
+      const loadDetail = (
+        reservationId: WorkspaceReservationId,
+        label: string,
+        listReservations: DotyposServiceOverrides["listReservations"]
+      ) =>
+        run((administration) => administration.loadReservation(reservationId), {
+          getReservation: () =>
+            Effect.succeed(
+              Option.some({
+                customer: null,
+                reservation: liveBooking(label, makeCustomerId(label)),
+              })
+            ),
+          getTables: () =>
+            Effect.succeed([{ id: "table-desk", name: "Desk 4" }]),
+          listReservations,
+        });
+
+      test("lists the other Workspace reservations Dotypos books on the same date", async () => {
+        const reservationId = await insertBooked("same-date-own");
+        const sameDateId = await insertBooked("same-date-other");
+
+        const detail = await loadDetail(reservationId, "same-date-own", () =>
+          Effect.succeed([
+            liveBooking("same-date-own", makeCustomerId("same-date-own")),
+            liveBooking("same-date-other", makeCustomerId("same-date-other")),
+            // A booking Workspace doesn't hold lists nothing.
+            liveBooking("same-date-walk-in", makeCustomerId("walk-in")),
+          ])
+        );
+
+        expect(detail?.booking).toMatchObject({
+          id: bookingId("same-date-own"),
+          tableName: "Desk 4",
+          linkedReservation: { id: reservationId },
+        });
+        expect(detail?.sameDateReservations.map(({ id }) => id)).toEqual([
+          sameDateId,
+        ]);
+      });
+
+      test("lists no same-date reservations when the booking is the date's only one", async () => {
+        const reservationId = await insertBooked("same-date-alone");
+
+        const detail = await loadDetail(reservationId, "same-date-alone", () =>
+          Effect.succeed([
+            liveBooking("same-date-alone", makeCustomerId("same-date-alone")),
+          ])
+        );
+
+        expect(detail?.booking?.id).toBe(bookingId("same-date-alone"));
+        expect(detail?.sameDateReservations).toEqual([]);
+      });
+
+      test("keeps the detail without same-date reservations when Dotypos can't list the date", async () => {
+        const reservationId = await insertBooked("same-date-unavailable");
+
+        const detail = await loadDetail(
+          reservationId,
+          "same-date-unavailable",
+          () =>
+            Effect.fail(
+              new DotyposUnavailable({
+                operation: "listReservations",
+                reason: "server",
+              })
+            )
+        );
+
+        expect(detail?.booking?.id).toBe(bookingId("same-date-unavailable"));
+        expect(detail?.sameDateReservations).toEqual([]);
+      });
+    });
+
+    test("pages a customer's reservations, most recently updated first", async () => {
+      const customerId = makeCustomerId("reservation-pages");
+      const latest = Temporal.Instant.from("2026-10-20T10:00:00Z");
+      const ids: WorkspaceReservationId[] = [];
+      for (let index = 0; index < 11; index += 1) {
+        ids.push(
+          await insertReservation({
+            customerId,
+            fulfillmentState: "fulfilled",
+            label: `reservation-pages-${index}`,
+            reservationState: "confirmed",
+            updatedAt: latest.subtract({ hours: index }),
+          })
+        );
+      }
+
+      const [first, second, beyond] = await Promise.all(
+        [undefined, 2, 5].map((page) =>
+          run((administration) =>
+            administration.loadCustomerReservations({ customerId, page })
+          )
+        )
+      );
+
+      expect(first).toMatchObject({ page: 1, pageCount: 2, total: 11 });
+      expect(first?.items.map(({ id }) => id)).toEqual(ids.slice(0, 10));
+      expect(second).toMatchObject({ page: 2, pageCount: 2, total: 11 });
+      expect(second?.items.map(({ id }) => id)).toEqual(ids.slice(10));
+      expect(beyond?.page).toBe(2);
+    });
+
+    test("pages no reservations for a customer without any", async () => {
+      const page = await run((administration) =>
+        administration.loadCustomerReservations({
+          customerId: makeCustomerId("reservation-pages-none"),
+        })
+      );
+
+      expect(page).toEqual({ items: [], page: 1, pageCount: 1, total: 0 });
+    });
+
+    describe("reservation lookup", () => {
+      const lookupId = (label: string) => `lookup-${label}-${runId}`;
+      const find = (identifier: string) =>
+        run((administration) => administration.findReservationId(identifier));
+
+      const insertLookupReservation = async (label: string) => {
+        const { id, checkoutAttemptKey, checkoutSessionKey, correlationId } =
+          await Effect.runPromise(
+            workspaceFixtures(testDatabase.db).reservation({
+              stage: {
+                reservation: "confirmed",
+                payment: "paid",
+                fulfillment: "fulfilled",
+              },
+              customer: makeCustomerId(`lookup-${label}`),
+              details: openSpaceDetails,
+              overrides: { dotyposReservationId: bookingId(`lookup-${label}`) },
+            })
+          );
+        reservationIds.push(id);
+        return { id, checkoutAttemptKey, checkoutSessionKey, correlationId };
+      };
+
+      const insertPaymentRecords = async (
+        reservationId: WorkspaceReservationId,
+        label: string
+      ) => {
+        const attemptId = paymentAttemptIdSchema.make(
+          lookupId(`${label}-attempt`)
+        );
+        const orderId = NexiOrderIdSchema.make(lookupId(`${label}-order`));
+        await Effect.runPromise(
+          testDatabase.db.insert(paymentAttempts).values({
+            id: attemptId,
+            workspaceReservationId: reservationId,
+            provider: "nexi",
+            providerOrderId: orderId,
+            lastWebhookEventId: NexiWebhookEventIdSchema.make(
+              lookupId(`${label}-last-webhook`)
+            ),
+            lastProviderOperationId: NexiOperationIdSchema.make(
+              lookupId(`${label}-operation`)
+            ),
+            state: "paid",
+            refundState: "not_required",
+            amountValue: 29_000,
+            amountExponent: 2,
+            currency: "CZK",
+          })
+        );
+        const [application] = await Effect.runPromise(
+          testDatabase.db
+            .insert(discountApplications)
+            .values({
+              paymentAttemptId: attemptId,
+              workspaceReservationId: reservationId,
+              sequence: 0,
+              publicDiscountId: discountIdSchema.make(
+                lookupId(`${label}-discount`)
+              ),
+              label: "Synthetic discount",
+              adjustment: { kind: "percentage", basisPoints: 1000 },
+              productIdentity: { kind: "cowork" },
+              subtotalBeforeValue: 32_000,
+              subtotalBeforeExponent: 2,
+              subtotalBeforeCurrency: "CZK",
+              appliedAmountValue: 3_000,
+              appliedAmountExponent: 2,
+              appliedAmountCurrency: "CZK",
+              subtotalAfterValue: 29_000,
+              subtotalAfterExponent: 2,
+              subtotalAfterCurrency: "CZK",
+              provenance: { source: "promotion-code" },
+            })
+            .returning({ id: discountApplications.id })
+        );
+        const [evidence] = await Effect.runPromise(
+          testDatabase.db
+            .insert(legalEvidenceEvents)
+            .values({
+              workspaceReservationId: reservationId,
+              documentKey: "terms",
+              documentPath: "/terms",
+              documentHash: "synthetic-hash",
+              hashAlgorithm: "sha256",
+              accepted: true,
+              acceptedAt: Temporal.Instant.from("2026-10-01T10:00:00Z"),
+              locale: "en-US",
+              source: "checkout",
+            })
+            .returning({ id: legalEvidenceEvents.id })
+        );
+        // The webhook names only the order, so it reaches the attempt by it.
+        const [webhook] = await Effect.runPromise(
+          testDatabase.db
+            .insert(webhookEvents)
+            .values({
+              provider: "nexi",
+              eventId: NexiWebhookEventIdSchema.make(
+                lookupId(`${label}-webhook`)
+              ),
+              providerOrderId: orderId,
+              receivedAt: Temporal.Instant.from("2026-10-01T10:01:00Z"),
+              state: "received",
+            })
+            .returning({ id: webhookEvents.id })
+        );
+        if (!application || !evidence || !webhook) {
+          throw new Error("Lookup records were not stored.");
+        }
+        return {
+          attemptId,
+          orderId,
+          applicationId: application.id,
+          evidenceId: evidence.id,
+          webhookId: webhook.id,
+        };
+      };
+
+      test("finds a reservation by any id of its own or of its payment, discount, legal evidence, and webhook records", async () => {
+        const reservation = await insertLookupReservation("found");
+        const records = await insertPaymentRecords(reservation.id, "found");
+
+        const identifiers = [
+          reservation.id,
+          reservation.checkoutSessionKey,
+          reservation.checkoutAttemptKey,
+          reservation.correlationId,
+          bookingId("lookup-found"),
+          records.attemptId,
+          records.orderId,
+          lookupId("found-last-webhook"),
+          lookupId("found-operation"),
+          records.applicationId,
+          records.evidenceId,
+          records.webhookId,
+          lookupId("found-webhook"),
+        ];
+        const found = await Promise.all(identifiers.map(find));
+
+        expect(found).toEqual(identifiers.map(() => reservation.id));
+      });
+
+      test("finds no reservation for an identifier nothing holds, or an empty one", async () => {
+        await expect(find(lookupId("unknown"))).resolves.toBeNull();
+        await expect(find("")).resolves.toBeNull();
+      });
+
+      test("finds no reservation for an identifier two reservations hold", async () => {
+        const first = await insertLookupReservation("ambiguous-first");
+        const second = await insertLookupReservation("ambiguous-second");
+        // The second reservation's payment order carries the first's id.
+        await Effect.runPromise(
+          testDatabase.db.insert(paymentAttempts).values({
+            id: paymentAttemptIdSchema.make(lookupId("ambiguous-attempt")),
+            workspaceReservationId: second.id,
+            provider: "nexi",
+            providerOrderId: NexiOrderIdSchema.make(first.id),
+            state: "paid",
+            refundState: "not_required",
+            amountValue: 29_000,
+            amountExponent: 2,
+            currency: "CZK",
+          })
+        );
+
+        await expect(find(first.id)).resolves.toBeNull();
+        await expect(find(second.id)).resolves.toBe(second.id);
       });
     });
   }

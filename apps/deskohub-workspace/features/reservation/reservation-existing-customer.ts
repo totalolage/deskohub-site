@@ -215,33 +215,17 @@ export type ReservationCheckoutFormValues = ReservationContactValues & {
 const isSameEmail = (left: string, right: string) =>
   left.toLowerCase() === right.toLowerCase();
 
-/**
- * Seeds the reservation form's contact-details step. Details typed before an
- * email verification (`checkoutContact`) refill the form: a signed-out
- * visitor gets them back, an account without a profile books with them on its
- * own email, and an account with a saved profile keeps the profile and offers
- * them, minus the email, for booking for someone else.
- */
-export const getReservationCheckoutCustomerForm = <
-  Kind extends WorkspaceReservationKind,
-  Values extends ReservationCheckoutFormValues,
->({
-  account,
-  checkoutContact,
-  queryMode,
-  restored,
-  values,
-}: {
-  readonly account: ReservationCheckoutAccount<Kind>;
-  readonly checkoutContact: ReservationCheckoutContact | undefined;
-  readonly queryMode: ReservationCustomerMode | undefined;
-  readonly restored: boolean;
-  readonly values: Values;
-}): {
+type ReservationCheckoutCustomerSeed<Values> = {
   readonly checkoutCustomer: ReservationCheckoutCustomerForm;
   readonly initialValues: Values;
-} => {
-  const typedValues: Values = checkoutContact
+};
+
+/** The form values with the details typed before an email verification. */
+const withCheckoutContact = <Values extends ReservationCheckoutFormValues>(
+  values: Values,
+  checkoutContact: ReservationCheckoutContact | undefined
+): Values =>
+  checkoutContact
     ? {
         ...values,
         name: checkoutContact.name,
@@ -252,53 +236,65 @@ export const getReservationCheckoutCustomerForm = <
       }
     : values;
 
-  if (
-    account.status === "signed-out" ||
-    account.status === "support-required" ||
-    account.status === "unavailable"
-  ) {
-    return {
-      checkoutCustomer: { status: account.status },
-      initialValues: typedValues,
-    };
-  }
+const getReviewAccountCustomerForm = <
+  Values extends ReservationCheckoutFormValues,
+>(
+  contact: ReservationAccountContact,
+  typedValues: Values
+): ReservationCheckoutCustomerSeed<Values> => ({
+  checkoutCustomer: {
+    status: "review-account",
+    existingCustomer: {
+      contact,
+      // The simulated booking records no consent, so it never asks.
+      hasMarketingConsent: true,
+      initialMode: "account",
+      otherContact: emptyReservationContact,
+    },
+  },
+  initialValues: {
+    ...typedValues,
+    ...getAccountContactValues(contact, typedValues.phone),
+  },
+});
 
-  if (account.status === "review-account") {
-    return {
-      checkoutCustomer: {
-        status: "review-account",
-        existingCustomer: {
-          contact: account.contact,
-          // The simulated booking records no consent, so it never asks.
-          hasMarketingConsent: true,
-          initialMode: "account",
-          otherContact: emptyReservationContact,
-        },
-      },
-      initialValues: {
-        ...typedValues,
-        ...getAccountContactValues(account.contact, typedValues.phone),
-      },
-    };
-  }
+const getProfileMissingCustomerForm = <
+  Values extends ReservationCheckoutFormValues,
+>(
+  email: string,
+  checkoutContact: ReservationCheckoutContact | undefined,
+  typedValues: Values
+): ReservationCheckoutCustomerSeed<Values> => ({
+  checkoutCustomer: {
+    status: "profile-missing",
+    email,
+    continuesCheckout: Boolean(
+      checkoutContact && isSameEmail(checkoutContact.email, email)
+    ),
+  },
+  initialValues: { ...typedValues, email },
+});
 
-  if (account.status === "profile-missing") {
-    return {
-      checkoutCustomer: {
-        status: "profile-missing",
-        email: account.email,
-        continuesCheckout: Boolean(
-          checkoutContact && isSameEmail(checkoutContact.email, account.email)
-        ),
-      },
-      initialValues: { ...typedValues, email: account.email },
-    };
-  }
-
+const getLinkedCustomerForm = <
+  Kind extends WorkspaceReservationKind,
+  Values extends ReservationCheckoutFormValues,
+>({
+  checkoutContact,
+  customer,
+  queryMode,
+  restored,
+  typedValues,
+}: {
+  readonly checkoutContact: ReservationCheckoutContact | undefined;
+  readonly customer: ReservationExistingCustomer<Kind>;
+  readonly queryMode: ReservationCustomerMode | undefined;
+  readonly restored: boolean;
+  readonly typedValues: Values;
+}): ReservationCheckoutCustomerSeed<Values> => {
   const { existingCustomer, initialValues } =
     getReservationExistingCustomerForm({
-      contact: account.customer.contact,
-      hasMarketingConsent: account.customer.hasMarketingConsent,
+      contact: customer.contact,
+      hasMarketingConsent: customer.hasMarketingConsent,
       queryMode: checkoutContact ? "account" : queryMode,
       restored: restored && !checkoutContact,
       values: typedValues,
@@ -325,6 +321,59 @@ export const getReservationCheckoutCustomerForm = <
       existingCustomer.initialMode === "contact"
         ? { ...initialValues, emailConfirmation: initialValues.email }
         : initialValues,
+  };
+};
+
+/**
+ * Seeds the reservation form's contact-details step. Details typed before an
+ * email verification (`checkoutContact`) refill the form: a signed-out
+ * visitor gets them back, an account without a profile books with them on its
+ * own email, and an account with a saved profile keeps the profile and offers
+ * them, minus the email, for booking for someone else.
+ */
+export const getReservationCheckoutCustomerForm = <
+  Kind extends WorkspaceReservationKind,
+  Values extends ReservationCheckoutFormValues,
+>({
+  account,
+  checkoutContact,
+  queryMode,
+  restored,
+  values,
+}: {
+  readonly account: ReservationCheckoutAccount<Kind>;
+  readonly checkoutContact: ReservationCheckoutContact | undefined;
+  readonly queryMode: ReservationCustomerMode | undefined;
+  readonly restored: boolean;
+  readonly values: Values;
+}): ReservationCheckoutCustomerSeed<Values> => {
+  const typedValues = withCheckoutContact(values, checkoutContact);
+
+  if (account.status === "review-account") {
+    return getReviewAccountCustomerForm(account.contact, typedValues);
+  }
+
+  if (account.status === "profile-missing") {
+    return getProfileMissingCustomerForm(
+      account.email,
+      checkoutContact,
+      typedValues
+    );
+  }
+
+  if (account.status === "linked") {
+    return getLinkedCustomerForm({
+      checkoutContact,
+      customer: account.customer,
+      queryMode,
+      restored,
+      typedValues,
+    });
+  }
+
+  return {
+    checkoutCustomer: { status: account.status },
+    initialValues: typedValues,
   };
 };
 

@@ -37,7 +37,7 @@ UI-only:
 
 - Reservations and customers CSV exports (`app/[locale]/admin/reservations/export/route.ts`, `app/[locale]/admin/customers/export/route.ts`): a browser download in a locale-specific format. `listReservations` and `listCustomers` page the same data.
 - CLI login approval and its request detail (`features/admin-cli/actions.ts`, `features/admin-cli/page-data.server.ts`): approval mints a CLI credential and is bound to the browser's one-time code, so a person approves it in the browser.
-- Campaign image upload (`features/email-campaigns/admin/editor/actions.ts`): a browser file upload to Cloudinary. Markdown bodies can reference images that are already uploaded.
+- Campaign image upload (`features/emails/admin/editor/image-upload-actions.ts`): a browser file upload to Cloudinary. Markdown bodies can reference images that are already uploaded.
 - The admin locale switch (`features/administration/administration-locale-switcher.tsx`): browser navigation and the account's locale preference, not administration.
 
 `CliOnly` endpoints: `cli.getInfo`, `startAuthentication`, `getAuthenticationStatus`, `exchangeGrant`, and `getCurrentSession`. They're the CLI's own sign-in handshake and client checks, and three of them return credentials.

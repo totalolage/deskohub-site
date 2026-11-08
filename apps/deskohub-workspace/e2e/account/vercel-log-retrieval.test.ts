@@ -9,7 +9,7 @@ import { Effect, Layer, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { renderMagicLinkEmail } from "../../features/account/backend/auth/magic-link-email";
 import { createCensoredOtelSpanExporter } from "../../shared/backend/logging/censorship";
-import { createTracingLive } from "../../shared/backend/observability/otel-tracing";
+import { createTracingLive } from "../../shared/backend/observability/telemetry-sinks";
 import { withInstantSleeps } from "../../shared/testing/workspace-test-clock.test-utils";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
 import {

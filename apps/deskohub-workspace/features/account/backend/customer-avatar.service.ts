@@ -7,6 +7,10 @@ import {
 } from "@deskohub/cloudinary";
 import { buildVersionedDeliveryUrl } from "@deskohub/cloudinary/delivery";
 import { CloudinaryService } from "@deskohub/cloudinary/server";
+import {
+  customerAvatarMaxUploadBytes,
+  customerAvatarMediaTypes,
+} from "@deskohub/workspace-customer-api";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { env } from "@/env";
 import { WorkspaceCloudinaryLayer } from "@/shared/backend/cloudinary";
@@ -20,8 +24,6 @@ import { CustomerAccountLinkRepository } from "./customer-account-link.repositor
 import { CustomerAuthentication } from "./customer-authentication.service";
 import {
   CustomerAvatarRejectedError,
-  customerAvatarAllowedMediaTypes,
-  customerAvatarMaxUploadBytes,
   normalizeCustomerAvatar,
 } from "./customer-avatar-normalization";
 
@@ -342,7 +344,7 @@ export class CustomerAvatarService extends Context.Service<
 }
 
 const allowedMediaTypes: ReadonlySet<string> = new Set(
-  customerAvatarAllowedMediaTypes
+  customerAvatarMediaTypes
 );
 
 /**

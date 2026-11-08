@@ -65,6 +65,7 @@ const makeTestAuth = (sentMagicLinks: { url: string }[] = []) => {
     }),
     secrets: [{ version: 1, value: SECRET_V1 }],
     allowedHosts: [HOST],
+    nativeAppLinkOrigin: `https://${HOST}`,
     passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
     customerMcpResource: `https://${HOST}/api/mcp`,
     httpsOnly: true,

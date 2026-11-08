@@ -18,12 +18,6 @@ mock.module("next/server", () => ({
   after: () => undefined,
   connection: () => Promise.resolve(),
 }));
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
 
 mock.module("@/features/i18n/server/request-locale", () => ({
   getRequestLocale: () => Promise.resolve(requestLocale),

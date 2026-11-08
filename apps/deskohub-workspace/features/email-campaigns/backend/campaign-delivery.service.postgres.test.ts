@@ -1,4 +1,4 @@
-import { seededCustomerReads } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -15,7 +15,7 @@ import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { customerMarketingConsents } from "@/db/schema";
-import { campaignEmailKind } from "../campaign-email-message";
+import { campaignEmailKind } from "../campaign-email";
 import type { CampaignId } from "../campaign-identifiers";
 import type { CampaignDeliveryEvent } from "./campaign-delivery-status.service";
 import {
@@ -197,7 +197,9 @@ describe.skipIf(!testDatabase)(
               getCustomersByIds: (ids) =>
                 readCustomers(ids).pipe(
                   Effect.flatMap((records) =>
-                    seededCustomerReads(records).getCustomersByIds(ids)
+                    makeInMemoryDotypos({
+                      customers: records,
+                    }).service.getCustomersByIds(ids)
                   )
                 ),
             }),
@@ -669,6 +671,52 @@ describe.skipIf(!testDatabase)(
         }).pipe(Effect.provide(Layer.merge(consumerLayer, testDatabase.layer)))
       );
     };
+
+    test("automated batch reads consent written in its transaction", async () => {
+      const id = customerId("unit-transaction-consent");
+      consentCustomerIds.push(id);
+      profiles = [profile(id)];
+      const campaignId = await seedAutomatedCampaign(db, {
+        purpose: "marketing",
+      });
+      automatedCampaignIds.push(campaignId);
+      const versionId = await seedAutomationVersion(db, {
+        campaignId,
+        purpose: "marketing",
+      });
+      const sendId = await Effect.runPromise(
+        Effect.gen(function* () {
+          const delivery = yield* CampaignDeliveryService;
+          const { transaction, db } = yield* WorkspaceDatabase;
+          const at = Temporal.Now.instant();
+          return yield* transaction(
+            Effect.gen(function* () {
+              yield* db.insert(customerMarketingConsents).values({
+                dotyposCustomerId: id,
+                documentHash: "hash",
+                locale: "cs-CZ",
+                grantedAt: at,
+              });
+              const sendId = yield* delivery.createAutomatedSend({
+                campaignId,
+                versionId,
+                at,
+              });
+              yield* delivery.persistAutomatedBatch({
+                sendId,
+                recipients: [{ dotyposCustomerId: id, locale: "cs-CZ" }],
+                profiles: new Map([[id, profiles[0]!]]),
+                at,
+              });
+              return sendId;
+            })
+          );
+        }).pipe(Effect.provide(Layer.merge(consumerLayer, testDatabase.layer)))
+      );
+      const { recipients, batches } = await stored(sendId);
+      expect(recipients[0]?.status).toBe("pending");
+      expect(batches[0]?.dotypos_customer_ids).toEqual([id]);
+    });
 
     test("a deliver unit's send mails its version's content, skips non-test recipients one by one and leaves the campaign's status", async () => {
       const inside = customerId("unit-inside");

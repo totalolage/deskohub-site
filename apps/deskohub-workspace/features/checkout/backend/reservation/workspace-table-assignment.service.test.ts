@@ -167,9 +167,6 @@ const assignTableId = (
     findOrCreateCustomer: mock(() =>
       Effect.die("findOrCreateCustomer not mocked")
     ),
-    getCustomerDiscount: mock(() =>
-      Effect.die("getCustomerDiscount not mocked")
-    ),
     getTables: mock(() => Effect.succeed([...tables])),
     listActiveReservationsOverlapping: mock((interval) => {
       onReservationInterval?.(interval);
@@ -763,7 +760,7 @@ describe("WorkspaceTableAssignmentService", () => {
     ).resolves.toBe("dual-tag");
   });
 
-  test("ignores hidden, disabled, missing-id, inactive-flag, and unlabeled active visible virtual tables", async () => {
+  test("ignores hidden, disabled, inactive-flag, and unlabeled active visible virtual tables", async () => {
     await expect(
       assignTableId(makeReservation({ entryTier: "basic" }), [
         makeTable({ id: "online", name: "Online reservation", tags: [] }),
@@ -785,8 +782,6 @@ describe("WorkspaceTableAssignmentService", () => {
           tags: ["tier:basic"],
           enabled: false,
         }),
-        makeTable({ id: "", name: "3", tags: ["tier:basic"] }),
-        makeTable({ name: "4", tags: ["tier:basic"] }),
         makeTable({ id: "basic-8", name: "8", tags: ["tier:basic"] }),
       ])
     ).resolves.toBe("basic-8");

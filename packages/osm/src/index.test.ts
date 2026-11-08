@@ -236,6 +236,49 @@ describe("generateStaticMapImage", () => {
     expect(colorAt(35, 85)).toEqual([1, 1, 1]);
   });
 
+  test("requests only tiles inside the world, wrapping columns across the antimeridian", async () => {
+    const requests: string[] = [];
+    const fetch = makeFetch(async (input) => {
+      requests.push(input instanceof Request ? input.url : String(input));
+      return new Response(pngPixel, {
+        status: 200,
+        headers: { "Content-Type": "image/png" },
+      });
+    });
+
+    // Near the north pole the image reaches one row above and one below the
+    // single zoom-0 tile; near longitude 180 it spans the last and first
+    // zoom-1 columns.
+    const nearPole = await runWithFetch(
+      generateStaticMapImage({ ...staticMapOptions, lat: 85, height: 3 }),
+      fetch
+    );
+    const poleRequests = requests.splice(0);
+    const acrossAntimeridian = await runWithFetch(
+      generateStaticMapImage({
+        ...staticMapOptions,
+        lng: 179,
+        zoom: 1,
+        width: 2,
+      }),
+      fetch
+    );
+
+    expect(poleRequests).toEqual(["https://tiles.example.test/0/0/0.png"]);
+    expect(requests.toSorted()).toEqual([
+      "https://tiles.example.test/1/0/1.png",
+      "https://tiles.example.test/1/1/1.png",
+    ]);
+    await expect(sharp(nearPole).metadata()).resolves.toMatchObject({
+      width: 1,
+      height: 3,
+    });
+    await expect(sharp(acrossAntimeridian).metadata()).resolves.toMatchObject({
+      width: 2,
+      height: 1,
+    });
+  });
+
   test("renders WebP without the marker or attribution when asked", async () => {
     const tile = await sharp({
       create: {
@@ -417,6 +460,49 @@ describe("generateSvgPngBuffer", () => {
       2.25,
       1
     );
+  });
+
+  test("pads a canvas without a background with transparent pixels", async () => {
+    const image = await Effect.runPromise(
+      generateSvgPngBuffer(
+        '<svg width="10" height="10" xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10" fill="#00024F"/></svg>',
+        { canvas: { width: 20, height: 20, padding: 5 } }
+      )
+    );
+    const { data, info } = await sharp(image)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const alphaAt = (x: number, y: number) =>
+      data[(y * info.width + x) * info.channels + 3];
+
+    expect(info).toMatchObject({ width: 20, height: 20 });
+    expect(alphaAt(0, 0)).toBe(0);
+    expect(alphaAt(10, 10)).toBe(255);
+  });
+
+  test.each([
+    ["a fractional width", { width: 10.5, height: 10 }],
+    ["an unsafe height", { width: 10, height: Number.MAX_SAFE_INTEGER + 1 }],
+    ["a fractional padding", { width: 10, height: 10, padding: 0.5 }],
+    ["a zero width", { width: 0, height: 10 }],
+    ["a negative height", { width: 10, height: -10 }],
+    ["a negative padding", { width: 10, height: 10, padding: -1 }],
+    ["padding that fills the width", { width: 10, height: 20, padding: 5 }],
+    ["padding that fills the height", { width: 20, height: 10, padding: 5 }],
+  ])("rejects a canvas with %s", async (_, canvas) => {
+    const error = await Effect.runPromise(
+      generateSvgPngBuffer(
+        '<svg width="10" height="10" xmlns="http://www.w3.org/2000/svg"/>',
+        { canvas }
+      ).pipe(Effect.flip)
+    );
+
+    expect(error).toMatchObject({
+      _tag: "ImageRenderingError",
+      operation: "render-svg",
+    });
+    expect(error.cause).toBeInstanceOf(RangeError);
   });
 
   test("composites centered text overlays without changing output dimensions", async () => {

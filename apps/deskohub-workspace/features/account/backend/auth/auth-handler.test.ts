@@ -11,9 +11,11 @@ import {
   withPostgresAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
 import { ReviewAccounts } from "@/features/review-accounts";
+import { BotDetectedError } from "@/shared/backend/bot-protection/bot-protection.service";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   encodeAuthCallbackReturn,
+  getAuthCallbackPath,
   readAuthCallbackReturnTo,
   signInCallbackReturnParam,
 } from "../../routes";
@@ -30,9 +32,9 @@ import { CustomerDotyposAdapter } from "../customer-dotypos-adapter.service";
 import {
   type CapturedMagicLink,
   callHandler,
+  callNativeHandler,
   captureFailure,
   cookieJar,
-  emitWorkspaceLog,
   getSessionCookie,
   HOST,
   linkAccount,
@@ -50,6 +52,7 @@ import {
   uniqueIp,
   userIdForEmail,
   verifyMagicLink,
+  workspaceLogs,
 } from "./auth-handler.test-utils";
 import { betterAuthMagicLinkOptions } from "./auth-options";
 
@@ -125,7 +128,7 @@ test("reports auth handler failures without logging provider data", async () => 
     () => undefined
   );
 
-  emitWorkspaceLog.mockClear();
+  workspaceLogs.reset();
 
   try {
     const authContext = await auth.$context;
@@ -143,7 +146,7 @@ test("reports auth handler failures without logging provider data", async () => 
         ...consoleError.mock.calls,
         ...consoleLog.mock.calls,
         ...consoleWarn.mock.calls,
-        ...emitWorkspaceLog.mock.calls,
+        ...workspaceLogs.records(),
       ],
       (_key, value) =>
         value instanceof Error
@@ -161,8 +164,8 @@ test("reports auth handler failures without logging provider data", async () => 
     expect(captured).not.toContain("insert into auth.verification");
     expect(captured).not.toContain("query");
     expect(captured).not.toContain("params");
-    expect(emitWorkspaceLog).toHaveBeenCalledTimes(1);
-    expect(emitWorkspaceLog.mock.calls[0]?.[0]).toMatchObject({
+    expect(workspaceLogs.records()).toHaveLength(1);
+    expect(workspaceLogs.records()[0]).toMatchObject({
       attributes: {
         boundary: "route",
         operation: "account.auth.handler",
@@ -235,6 +238,154 @@ test("sends an expired link to the same rejected-link callback as a replayed one
   } finally {
     setSystemTime();
   }
+});
+
+const requestNativeMagicLink = (auth: TestAuth, callbackURL: string) =>
+  callNativeHandler(auth, "/sign-in/magic-link", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-vercel-forwarded-for": uniqueIp(),
+    },
+    body: JSON.stringify({ email: uniqueEmail("native-link"), callbackURL }),
+  });
+
+test("returns a magic-link sign-in the app started to the app with its session", async () => {
+  const sentLinks: CapturedMagicLink[] = [];
+  const { auth } = makeMemoryTestAuth({ sentLinks });
+
+  expect(
+    (await requestNativeMagicLink(auth, "deskohub://account")).status
+  ).toBe(200);
+  // The customer opens the emailed link in a browser; the Expo plugin hands
+  // the session cookie to the app in the scheme redirect.
+  const verified = await verifyMagicLink(auth, sentLinks[0]!);
+
+  expect(verified.status).toBe(302);
+  const location = verified.headers.get("location") ?? "";
+  expect(location.startsWith("deskohub://account?")).toBe(true);
+  expect(
+    new URLSearchParams(location.slice(location.indexOf("?"))).get("cookie")
+  ).toContain(cookieJar(getSessionCookie(verified)!));
+});
+
+test("refuses a magic-link sign-in that returns to an untrusted app scheme", async () => {
+  const sentLinks: CapturedMagicLink[] = [];
+  const { auth } = makeMemoryTestAuth({ sentLinks });
+
+  expect((await requestNativeMagicLink(auth, "evil://account")).status).toBe(
+    403
+  );
+  expect(sentLinks).toHaveLength(0);
+});
+
+test("returns a web app sign-in to its /app/ path without handing out the cookie", async () => {
+  const sentLinks: CapturedMagicLink[] = [];
+  const { auth } = makeMemoryTestAuth({ sentLinks });
+  const returnTo = "/app/account";
+  const callbackURL = `/cs-CZ/auth/callback?${signInCallbackReturnParam}=${encodeAuthCallbackReturn(returnTo)}`;
+
+  for (const callback of [returnTo, callbackURL]) {
+    await signInForMagicLink(auth, uniqueEmail("app-link"), callback);
+  }
+  const [direct, throughSite] = sentLinks;
+
+  const directVerified = await verifyMagicLink(auth, direct!);
+  expect(directVerified.headers.get("location")).toBe(
+    `https://${HOST}${returnTo}`
+  );
+  expect(getSessionCookie(directVerified)).toBeDefined();
+
+  const siteVerified = await verifyMagicLink(auth, throughSite!);
+  const location = new URL(
+    siteVerified.headers.get("location") ?? "",
+    `https://${HOST}`
+  );
+  expect(location.searchParams.has("cookie")).toBe(false);
+  expect(
+    readAuthCallbackReturnTo(
+      location.searchParams.get(signInCallbackReturnParam)
+    )
+  ).toBe(returnTo);
+});
+
+test("lets the app verify an /app/ magic link itself, with no BotID check", async () => {
+  // The /app/ web bundle sends the BotID-screened email on the site; the app
+  // then verifies the link from its App Link with its own headers.
+  const store = makeMemoryAuthStore();
+  const sentLinks: CapturedMagicLink[] = [];
+  const sender = makeTestAuth({ database: memoryAdapter(store), sentLinks });
+  const appAuth = makeTestAuth({
+    database: memoryAdapter(store),
+    verifyHuman: () =>
+      Effect.fail(
+        new BotDetectedError({
+          message: "Automated request detected",
+          reason: "unverified_bot",
+        })
+      ),
+  });
+  const returnTo = "/app/sign-in/complete";
+  const email = uniqueEmail("app-link-native");
+
+  expect((await requestNativeMagicLink(appAuth, returnTo)).status).toBe(403);
+  expect((await signInForMagicLink(sender, email, returnTo)).status).toBe(200);
+  const verified = await callNativeHandler(
+    appAuth,
+    sentLinks[0]!.url.slice(`https://${HOST}/api/auth`.length)
+  );
+
+  expect(verified.status).toBe(302);
+  expect(verified.headers.get("location")).toBe(`https://${HOST}${returnTo}`);
+  const session = await callNativeHandler(appAuth, "/get-session", {
+    headers: { cookie: cookieJar(getSessionCookie(verified)!) },
+  });
+  expect(
+    ((await session.json()) as { user?: { email: string } } | null)?.user?.email
+  ).toBe(email.toLowerCase());
+});
+
+test("accepts an /app/ callback, direct or through the site callback, from the app", async () => {
+  const sentLinks: CapturedMagicLink[] = [];
+  const { auth } = makeMemoryTestAuth({ sentLinks });
+  const returnTo = "/app/account";
+
+  for (const callbackURL of [
+    returnTo,
+    getAuthCallbackPath("cs-CZ", { returnTo }),
+  ]) {
+    expect((await requestNativeMagicLink(auth, callbackURL)).status).toBe(200);
+  }
+  const [direct, throughSite] = sentLinks;
+  expect(
+    (
+      await callNativeHandler(
+        auth,
+        direct!.url.slice(`https://${HOST}/api/auth`.length)
+      )
+    ).headers.get("location")
+  ).toBe(`https://${HOST}${returnTo}`);
+  const siteLocation = new URL(
+    (
+      await callNativeHandler(
+        auth,
+        throughSite!.url.slice(`https://${HOST}/api/auth`.length)
+      )
+    ).headers.get("location") ?? "",
+    `https://${HOST}`
+  );
+  expect(siteLocation.searchParams.has("cookie")).toBe(false);
+  expect(
+    readAuthCallbackReturnTo(
+      siteLocation.searchParams.get(signInCallbackReturnParam)
+    )
+  ).toBe(returnTo);
+});
+
+test("keeps the site callback on the site; the Expo plugin returns app sign-ins", () => {
+  expect(
+    readAuthCallbackReturnTo(encodeAuthCallbackReturn("deskohub://account"))
+  ).toBeUndefined();
 });
 
 const postJson = (
@@ -317,7 +468,7 @@ describe.skipIf(!testDatabase)(
       const email = uniqueEmail("profile-fields");
       const rawProfileSecret = `profile-secret-${crypto.randomUUID()}`;
 
-      emitWorkspaceLog.mockClear();
+      workspaceLogs.reset();
       const response = await callHandler(auth, "/sign-in/magic-link", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -331,7 +482,7 @@ describe.skipIf(!testDatabase)(
       expect(response.status).toBe(400);
       expect(await response.text()).not.toContain(rawProfileSecret);
       expect(sentLinks).toHaveLength(0);
-      expect(emitWorkspaceLog).not.toHaveBeenCalled();
+      expect(workspaceLogs.records()).toHaveLength(0);
 
       const verification = await testDatabase!.pool.query(
         `select id from auth.verification where value like $1`,
@@ -558,14 +709,14 @@ describe.skipIf(!testDatabase)(
       const email = uniqueEmail("legacy-capture-failure");
       const accountId = await insertLegacyAccount(email);
 
-      emitWorkspaceLog.mockClear();
+      workspaceLogs.reset();
       await signInForMagicLink(auth, email, "/cs-CZ/account");
       const verified = await verifyMagicLink(auth, sentLinks[0]!);
 
       expect(verified.status).toBe(302);
       expect(getSessionCookie(verified)).toBeTruthy();
       expect(await localeOf(accountId)).toBeNull();
-      const logs = JSON.stringify(emitWorkspaceLog.mock.calls);
+      const logs = JSON.stringify(workspaceLogs.records());
       expect(logs).toContain("account-locale-preference.capture-failed");
       expect(logs).not.toContain("synthetic constraint violation");
       expect(logs).not.toContain(email);
@@ -693,7 +844,7 @@ describe.skipIf(!testDatabase)(
       const verifyResponse = await verifyMagicLink(auth, sentLinks[0]!);
       const cookie = cookieJar(getSessionCookie(verifyResponse)!);
 
-      emitWorkspaceLog.mockClear();
+      workspaceLogs.reset();
       const evilOrigin = await auth.handler(
         new Request(`https://${HOST}/api/auth/sign-out`, {
           method: "POST",
@@ -720,7 +871,7 @@ describe.skipIf(!testDatabase)(
         `/magic-link/verify?token=${sentLinks[0]!.token}&callbackURL=${encodeURIComponent("https://evil.example/steal")}`
       );
       expect(evilCallbackVerify.status).toBe(403);
-      expect(emitWorkspaceLog).not.toHaveBeenCalled();
+      expect(workspaceLogs.records()).toHaveLength(0);
     });
 
     test("sets secure host-only cookies with lax same-site", async () => {
@@ -846,7 +997,7 @@ describe.skipIf(!testDatabase)(
       const deletionLayers = makeTestDeletionLayers(() =>
         Effect.fail(
           new DotyposUncertain({
-            operation: "patchCustomer",
+            operation: "expireCustomer",
             reason: "transport",
           })
         )

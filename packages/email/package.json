@@ -23,6 +23,7 @@
     "./types/email.types": "./types/email.types.ts"
   },
   "dependencies": {
+    "@deskohub/provider-request": "workspace:*",
     "@deskohub/test-email": "workspace:*",
     "effect": "4.0.0-beta.85",
     "resend": "^6.32.1"

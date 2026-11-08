@@ -4,9 +4,9 @@ import { Layer } from "effect";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { env } from "@/env";
 import {
-  PasskeyReleaseGate,
-  SignInCodeReleaseGate,
-} from "@/features/account/backend/account-release-gates";
+  PasskeyReleaseGateForRun,
+  SignInCodeReleaseGateForRun,
+} from "@/features/account/backend/account-release-gates-run";
 import {
   type BetterAuthHostEnvironment,
   resolveBetterAuthAllowedHosts,
@@ -23,6 +23,7 @@ import { LoginLifecycleRecords } from "@/features/account/backend/auth/login-lif
 import { CustomerAccountDeletionService } from "@/features/account/backend/customer-account-deletion";
 import { customerMcpServerPath } from "@/features/account/customer-agent-routes";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
+import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -47,7 +48,9 @@ if (allowedHosts.kind === "invalid") {
   );
 }
 
-const passkeyRelyingParty = resolvePasskeyRelyingParty(hostEnvironment);
+const passkeyRelyingParty = resolvePasskeyRelyingParty(hostEnvironment, {
+  androidDebugCertificate: env.ANDROID_DEBUG_SIGNING_CERT_SHA256,
+});
 if (passkeyRelyingParty.kind === "invalid") {
   throw new Error(
     `Workspace account bootstrap failed: ${passkeyRelyingParty.message}`
@@ -74,6 +77,7 @@ export const auth = makeWorkspaceAuth({
   database: makeWorkspaceAuthDatabase(),
   secrets: secrets.secrets,
   allowedHosts: allowedHosts.hosts,
+  nativeAppLinkOrigin: `https://${workspaceSiteConstants.brand.domain}`,
   passkeyRelyingParty: passkeyRelyingParty.relyingParty,
   customerMcpResource,
   httpsOnly: env.VERCEL_ENV !== "development",
@@ -85,11 +89,12 @@ export const auth = makeWorkspaceAuth({
   // that gate and fails no hook that doesn't read it.
   services: Layer.mergeAll(
     AccountRoleGrants.Live,
+    AnalyticsConsentLedger.Live,
     BotProtectionService.Default,
     LoginLifecycleRecords.Live,
-    PasskeyReleaseGate.LiveOnFirstRead,
+    PasskeyReleaseGateForRun,
     ReviewAccounts.Live,
-    SignInCodeReleaseGate.LiveOnFirstRead,
+    SignInCodeReleaseGateForRun,
     WorkspaceDatabaseAdvisoryLock.Default
   ),
   // A deletion service that cannot be built is a configuration defect, not a

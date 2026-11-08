@@ -10,10 +10,7 @@ import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser
 import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles.test-utils";
 import type { CampaignBodyNode } from "../../body/campaign-body-document";
 import { campaignBodyColumnWidth } from "../../body/campaign-image";
-import {
-  CampaignEmailFooter,
-  renderCampaignEmail,
-} from "../../body/render-campaign-email";
+import { renderCampaignEmailPreview } from "../../campaign-email";
 
 const chromiumAvailable = await playwrightChromiumAvailable();
 const origin = "http://campaign-image.test";
@@ -42,8 +39,8 @@ beforeAll(async () => {
     outdir: directory,
     plugins: [
       browserModuleStubPlugin({
-        "./actions":
-          "export const authorizeCampaignImageUpload = async () => ({});",
+        "./image-upload-actions":
+          "export const authorizeEmailImageUpload = async () => ({});",
       }),
     ],
     target: "browser",
@@ -166,10 +163,10 @@ for (const { locale, initialWidth } of [
         });
         const render = (body: CampaignBodyNode) =>
           Effect.runPromise(
-            renderCampaignEmail({
+            renderCampaignEmailPreview({
               templateKey: "workspace",
+              purpose: "operational",
               locale,
-              footer: CampaignEmailFooter.Operational(),
               content: {
                 subject: "Synthetic image sizing",
                 preheader: "Preview",

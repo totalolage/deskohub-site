@@ -56,6 +56,152 @@ type AutomationRunEntry = {
   readonly rejected: number;
 };
 
+/** What `enterAutomationRuns` enters. */
+type AutomationRunEntryInput = {
+  readonly campaignId: CampaignId;
+  readonly versionId: AutomationVersionId;
+  /** Occurrences that start runs at the version's first step. */
+  readonly admitted?: {
+    /** The version's flow; its first step is where runs start. */
+    readonly flow: AutomationFlow;
+    readonly occurrences: readonly AutomationTriggerOccurrence[];
+    /** Plans a first Condition step's units. */
+    readonly facts: AutomationEvaluationFacts["Service"];
+  };
+  readonly rejected: readonly AutomationTriggerRejection[];
+  readonly at: Temporal.Instant;
+};
+
+type AutomationFirstStepId = AutomationFlow["steps"][number]["id"];
+
+/** Each customer's earliest admitted occurrence: the one that may start a run. */
+const earliestOccurrenceByCustomer = (
+  admitted: readonly AutomationTriggerOccurrence[]
+): ReadonlyMap<DotyposCustomerId, AutomationTriggerOccurrence> => {
+  const firstByCustomer = new Map<
+    DotyposCustomerId,
+    AutomationTriggerOccurrence
+  >();
+  for (const occurrence of admitted.toSorted(byOccurrence)) {
+    if (!firstByCustomer.has(occurrence.dotyposCustomerId)) {
+      firstByCustomer.set(occurrence.dotyposCustomerId, occurrence);
+    }
+  }
+  return firstByCustomer;
+};
+
+/**
+ * Starts a run, `ready` at `firstStepId` and due at `at`, for each
+ * candidate without an open run; returns the runs it started.
+ */
+const insertStartedRuns = Effect.fnUntraced(function* (
+  input: AutomationRunEntryInput,
+  candidates: readonly AutomationTriggerOccurrence[],
+  firstStepId: AutomationFirstStepId | undefined
+) {
+  if (firstStepId === undefined || candidates.length === 0) return [];
+  const { db } = yield* WorkspaceTransaction;
+  return yield* db
+    .insert(runs)
+    .values(
+      candidates.map((occurrence) => ({
+        campaignId: input.campaignId,
+        versionId: input.versionId,
+        dotyposCustomerId: occurrence.dotyposCustomerId,
+        triggerKind: occurrence.kind,
+        triggerAt: occurrence.at,
+        triggerEventId: occurrence.eventId,
+        triggerReservationId: occurrence.reservationId,
+        status: "active" as const,
+        stepId: firstStepId,
+        phase: "ready" as const,
+        stepEnteredAt: input.at,
+        dueAt: input.at,
+        workUnitId: null,
+      }))
+    )
+    .onConflictDoNothing({
+      target: [runs.campaignId, runs.dotyposCustomerId],
+      where: ne(runs.status, "ended"),
+    })
+    .returning({
+      id: runs.id,
+      dotyposCustomerId: runs.dotyposCustomerId,
+    });
+});
+
+/**
+ * One receipt per occurrence: `started` with its run for the occurrence
+ * that started one, else `already-active`; then each rejection's own.
+ */
+const entryReceiptRows = (
+  input: AutomationRunEntryInput,
+  firstByCustomer: ReadonlyMap<DotyposCustomerId, AutomationTriggerOccurrence>,
+  startedRuns: ReadonlyMap<DotyposCustomerId, AutomationRunId>
+) => [
+  ...(input.admitted?.occurrences ?? []).map((occurrence) => {
+    const runId =
+      firstByCustomer.get(occurrence.dotyposCustomerId) === occurrence
+        ? startedRuns.get(occurrence.dotyposCustomerId)
+        : undefined;
+    return receiptRow(input, occurrence, {
+      disposition: runId === undefined ? "already-active" : "started",
+      runId: runId ?? null,
+    });
+  }),
+  ...input.rejected.map((rejection) =>
+    receiptRow(input, rejection, {
+      disposition: rejection.disposition,
+      runId: null,
+    })
+  ),
+];
+
+/** Inserts the receipts, returning those no earlier commit had taken. */
+const insertReceipts = Effect.fnUntraced(function* (
+  rows: ReadonlyArray<ReturnType<typeof receiptRow>>
+) {
+  if (rows.length === 0) return [];
+  const { db } = yield* WorkspaceTransaction;
+  return yield* db
+    .insert(receipts)
+    .values([...rows])
+    .onConflictDoNothing()
+    .returning({ dedupKey: receipts.dedupKey, runId: receipts.runId });
+});
+
+/** Plans the started runs' first step in the entry's transaction (D36). */
+const planStartedRunsFirstStep = Effect.fnUntraced(function* (
+  input: AutomationRunEntryInput,
+  firstStepId: AutomationFirstStepId | undefined,
+  started: ReadonlyArray<{
+    readonly id: AutomationRunId;
+    readonly dotyposCustomerId: DotyposCustomerId;
+  }>,
+  firstByCustomer: ReadonlyMap<DotyposCustomerId, AutomationTriggerOccurrence>
+) {
+  if (input.admitted === undefined || firstStepId === undefined) return;
+  yield* planReachedStep(input.admitted.facts, {
+    campaignId: input.campaignId,
+    versionId: input.versionId,
+    flow: Option.some(input.admitted.flow),
+    stepId: firstStepId,
+    runs: started.flatMap((run) =>
+      Option.toArray(
+        Option.fromUndefinedOr(firstByCustomer.get(run.dotyposCustomerId))
+      ).map((occurrence) => ({
+        runId: run.id,
+        dotyposCustomerId: run.dotyposCustomerId,
+        triggerKind: occurrence.kind,
+        triggerAt: occurrence.at,
+        triggerReservationId: occurrence.reservationId,
+      }))
+    ),
+    at: input.at,
+    chainedSteps: 0,
+  });
+});
+
 /**
  * Enters customers into one automation version (§5.6, §5.7). Each admitted
  * occurrence starts a run at the flow's first step, `ready` and due at
@@ -72,138 +218,49 @@ type AutomationRunEntry = {
  * `AutomationUnitRecheckFailed`, rolling the runs back: the unit drops and
  * its subjects are replanned, when the key is no longer free.
  */
-export const enterAutomationRuns = Effect.fn("automationRuns.enter")(
-  function* (input: {
-    readonly campaignId: CampaignId;
-    readonly versionId: AutomationVersionId;
-    /** Occurrences that start runs at the version's first step. */
-    readonly admitted?: {
-      /** The version's flow; its first step is where runs start. */
-      readonly flow: AutomationFlow;
-      readonly occurrences: readonly AutomationTriggerOccurrence[];
-      /** Plans a first Condition step's units. */
-      readonly facts: AutomationEvaluationFacts["Service"];
-    };
-    readonly rejected: readonly AutomationTriggerRejection[];
-    readonly at: Temporal.Instant;
-  }) {
-    const { db } = yield* WorkspaceTransaction;
-    const admitted = input.admitted?.occurrences ?? [];
-    const firstStepId = input.admitted?.flow.steps[0]?.id;
-    const firstByCustomer = new Map<
-      DotyposCustomerId,
-      AutomationTriggerOccurrence
-    >();
-    for (const occurrence of admitted.toSorted(byOccurrence)) {
-      if (!firstByCustomer.has(occurrence.dotyposCustomerId)) {
-        firstByCustomer.set(occurrence.dotyposCustomerId, occurrence);
-      }
-    }
-    const candidates = [...firstByCustomer.values()];
+export const enterAutomationRuns = Effect.fn("automationRuns.enter")(function* (
+  input: AutomationRunEntryInput
+) {
+  const admitted = input.admitted?.occurrences ?? [];
+  const firstStepId = input.admitted?.flow.steps[0]?.id;
+  const firstByCustomer = earliestOccurrenceByCustomer(admitted);
+  const inserted = yield* insertStartedRuns(
+    input,
+    [...firstByCustomer.values()],
+    firstStepId
+  );
+  const startedRuns = new Map<DotyposCustomerId, AutomationRunId>(
+    inserted.map((run) => [run.dotyposCustomerId, run.id])
+  );
 
-    const inserted =
-      firstStepId === undefined || candidates.length === 0
-        ? []
-        : yield* db
-            .insert(runs)
-            .values(
-              candidates.map((occurrence) => ({
-                campaignId: input.campaignId,
-                versionId: input.versionId,
-                dotyposCustomerId: occurrence.dotyposCustomerId,
-                triggerKind: occurrence.kind,
-                triggerAt: occurrence.at,
-                triggerEventId: occurrence.eventId,
-                triggerReservationId: occurrence.reservationId,
-                status: "active" as const,
-                stepId: firstStepId,
-                phase: "ready" as const,
-                stepEnteredAt: input.at,
-                dueAt: input.at,
-                workUnitId: null,
-              }))
-            )
-            .onConflictDoNothing({
-              target: [runs.campaignId, runs.dotyposCustomerId],
-              where: ne(runs.status, "ended"),
-            })
-            .returning({
-              id: runs.id,
-              dotyposCustomerId: runs.dotyposCustomerId,
-            });
-    const startedRuns = new Map<DotyposCustomerId, AutomationRunId>(
-      inserted.map((run) => [run.dotyposCustomerId, run.id])
-    );
-
-    const receiptRows = [
-      ...admitted.map((occurrence) => {
-        const runId =
-          firstByCustomer.get(occurrence.dotyposCustomerId) === occurrence
-            ? startedRuns.get(occurrence.dotyposCustomerId)
-            : undefined;
-        return receiptRow(input, occurrence, {
-          disposition: runId === undefined ? "already-active" : "started",
-          runId: runId ?? null,
-        });
-      }),
-      ...input.rejected.map((rejection) =>
-        receiptRow(input, rejection, {
-          disposition: rejection.disposition,
-          runId: null,
-        })
-      ),
-    ];
-    const written =
-      receiptRows.length === 0
-        ? []
-        : yield* db
-            .insert(receipts)
-            .values(receiptRows)
-            .onConflictDoNothing()
-            .returning({ dedupKey: receipts.dedupKey, runId: receipts.runId });
-    const startedReceipts = written.filter(
-      ({ runId }) => runId !== null
-    ).length;
-    if (startedReceipts < startedRuns.size) {
-      return yield* new AutomationUnitRecheckFailed({ code: "receipt-taken" });
-    }
-
-    yield* appendAutomationRunProgress(
-      inserted.map((run) => ({
-        runId: run.id,
-        kind: "started" as const,
-        stepId: firstStepId ?? null,
-        at: input.at,
-      }))
-    );
-    if (input.admitted !== undefined && firstStepId !== undefined) {
-      yield* planReachedStep(input.admitted.facts, {
-        campaignId: input.campaignId,
-        versionId: input.versionId,
-        flow: Option.some(input.admitted.flow),
-        stepId: firstStepId,
-        runs: inserted.flatMap((run) =>
-          Option.toArray(
-            Option.fromUndefinedOr(firstByCustomer.get(run.dotyposCustomerId))
-          ).map((occurrence) => ({
-            runId: run.id,
-            dotyposCustomerId: run.dotyposCustomerId,
-            triggerKind: occurrence.kind,
-            triggerAt: occurrence.at,
-            triggerReservationId: occurrence.reservationId,
-          }))
-        ),
-        at: input.at,
-        chainedSteps: 0,
-      });
-    }
-    return {
-      started: startedRuns.size,
-      alreadyActive: admitted.length - startedRuns.size,
-      rejected: input.rejected.length,
-    } satisfies AutomationRunEntry;
+  const written = yield* insertReceipts(
+    entryReceiptRows(input, firstByCustomer, startedRuns)
+  );
+  const startedReceipts = written.filter(({ runId }) => runId !== null).length;
+  if (startedReceipts < startedRuns.size) {
+    return yield* new AutomationUnitRecheckFailed({ code: "receipt-taken" });
   }
-);
+
+  yield* appendAutomationRunProgress(
+    inserted.map((run) => ({
+      runId: run.id,
+      kind: "started" as const,
+      stepId: firstStepId ?? null,
+      at: input.at,
+    }))
+  );
+  yield* planStartedRunsFirstStep(
+    input,
+    firstStepId,
+    inserted,
+    firstByCustomer
+  );
+  return {
+    started: startedRuns.size,
+    alreadyActive: admitted.length - startedRuns.size,
+    rejected: input.rejected.length,
+  } satisfies AutomationRunEntry;
+});
 
 /** Receipt keys among `dedupKeys` the automation already recorded. */
 export const takenReceiptKeys = (

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { v2 as cloudinary } from "cloudinary";
-import { Clock, Context, Effect, Layer, pipe } from "effect";
+import { Clock, Context, Effect, Layer, Predicate, pipe } from "effect";
 import * as Schema from "effect/Schema";
 import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 import { decodeCloudinaryAsset } from "./asset-decoding";
@@ -19,7 +19,7 @@ import {
   CloudinaryUploadError,
 } from "./errors";
 import type { CnfExpression } from "./expression";
-import { createTransientRetryPolicy } from "./retry";
+import { retryTransientCloudinaryFailure } from "./request-policy";
 import {
   type CloudinaryAsset,
   type CloudinaryDestroyOutcome,
@@ -282,10 +282,7 @@ const publicIdLookupExpression = "public_id lookup";
 const publicIdLookupFailureMessage = "Cloudinary public ID lookup failed";
 
 function toPublicIdLookupSearchError(error: CloudinaryRejectedValue) {
-  const httpCode =
-    typeof error === "object" && error !== null
-      ? readCloudinaryHttpCode(error)
-      : undefined;
+  const httpCode = readRejectedHttpCode(error);
 
   return new CloudinarySearchError({
     message: publicIdLookupFailureMessage,
@@ -307,8 +304,7 @@ function decodeAssetResponse(result: unknown) {
   );
 }
 
-const cloudinaryRetryPolicy =
-  createTransientRetryPolicy<CloudinarySearchError>("search");
+const retryTransientSearchFailure = retryTransientCloudinaryFailure("search");
 
 function readCloudinaryHttpCode(
   error: CloudinaryProviderError
@@ -322,16 +318,21 @@ function readCloudinaryHttpCode(
   return typeof httpCode === "number" ? httpCode : undefined;
 }
 
+function readRejectedHttpCode(
+  error: CloudinaryRejectedValue
+): number | undefined {
+  return typeof error === "object" && error !== null
+    ? readCloudinaryHttpCode(error)
+    : undefined;
+}
+
 function toCloudinarySearchError(error: CloudinaryRejectedValue) {
   // Provider rejection text and the caller-supplied expression never enter
   // the typed error: both can carry identifiers or secrets that propagate
   // verbatim into framework error reporting. Only the numeric HTTP code is
   // retained, so 5xx retry and avatar 404 handling keep working, and the raw
   // rejection is never attached as a cause or payload.
-  const httpCode =
-    typeof error === "object" && error !== null
-      ? readCloudinaryHttpCode(error)
-      : undefined;
+  const httpCode = readRejectedHttpCode(error);
 
   return new CloudinarySearchError({
     message: searchFailureMessage,
@@ -359,10 +360,7 @@ const folderListingExpressionLabel = "folder listing";
 const folderListingFailureMessage = "Cloudinary folder listing failed";
 
 function toSanitizedFolderListingError(error: CloudinaryRejectedValue) {
-  const httpCode =
-    typeof error === "object" && error !== null
-      ? readCloudinaryHttpCode(error)
-      : undefined;
+  const httpCode = readRejectedHttpCode(error);
 
   return new CloudinarySearchError({
     message: folderListingFailureMessage,
@@ -455,7 +453,7 @@ function createSearchExecutor(config: CloudinaryConfig, sanitized = false) {
           ? Effect.logError(folderListingFailureMessage)
           : Effect.logError("Cloudinary search page failed")
       ),
-      Effect.retry(cloudinaryRetryPolicy)
+      retryTransientSearchFailure
     );
 
   return Effect.fn("cloudinary.search")(
@@ -552,7 +550,7 @@ function createPublicIdLookupExecutor() {
         Effect.tapError(() =>
           Effect.logError("Cloudinary public ID lookup failed")
         ),
-        Effect.retry(cloudinaryRetryPolicy)
+        retryTransientSearchFailure
       );
     },
     (effect) => Effect.scoped(effect)
@@ -592,10 +590,7 @@ function toUploadError(
   error: CloudinaryRejectedValue,
   publicId: CloudinaryPublicId
 ) {
-  const httpCode =
-    typeof error === "object" && error !== null
-      ? readCloudinaryHttpCode(error)
-      : undefined;
+  const httpCode = readRejectedHttpCode(error);
 
   return new CloudinaryUploadError({
     message: "Cloudinary image upload failed",
@@ -605,8 +600,8 @@ function toUploadError(
 }
 
 function createUploadExecutor() {
-  const uploadRetryPolicy =
-    createTransientRetryPolicy<CloudinaryUploadError>("image upload");
+  const retryTransientUploadFailure =
+    retryTransientCloudinaryFailure("image upload");
 
   const performUpload = (input: CloudinaryImageUploadInput) =>
     Effect.tryPromise({
@@ -674,7 +669,7 @@ function createUploadExecutor() {
         Effect.tapError(() =>
           Effect.logError("Cloudinary image upload failed")
         ),
-        Effect.retry(uploadRetryPolicy)
+        retryTransientUploadFailure
       );
     },
     (effect) => Effect.scoped(effect)
@@ -725,8 +720,8 @@ function toDestroyOutcome(
 }
 
 function createDestroyExecutor() {
-  const destroyRetryPolicy =
-    createTransientRetryPolicy<CloudinaryDestroyError>("asset destroy");
+  const retryTransientDestroyFailure =
+    retryTransientCloudinaryFailure("asset destroy");
 
   const performDestroy = (publicId: CloudinaryPublicId) =>
     Effect.tryPromise({
@@ -786,7 +781,7 @@ function createDestroyExecutor() {
             outcome: error.outcome,
           })
         ),
-        Effect.retry(destroyRetryPolicy)
+        retryTransientDestroyFailure
       );
     },
     (effect) => Effect.scoped(effect)
@@ -799,78 +794,70 @@ type PrefixDeletePage = {
   readonly nextCursor?: string;
 };
 
+type PrefixDeleteResponse = {
+  readonly deleted: { readonly [key: PropertyKey]: unknown };
+  readonly partial: boolean;
+  readonly next_cursor?: unknown;
+};
+
+const isPrefixDeleteResponse = (
+  result: unknown
+): result is PrefixDeleteResponse =>
+  Predicate.isObject(result) &&
+  Predicate.isObject(result.deleted) &&
+  typeof result.partial === "boolean";
+
+const failPrefixDeletePage = (message: string) =>
+  Effect.fail(
+    new CloudinaryPrefixDeleteError({ message, outcome: "uncertain" })
+  );
+
 function decodePrefixDeletePage(
   result: unknown
 ): Effect.Effect<PrefixDeletePage, CloudinaryPrefixDeleteError> {
-  if (typeof result !== "object" || result === null || Array.isArray(result)) {
-    return Effect.fail(
-      new CloudinaryPrefixDeleteError({
-        message: "Cloudinary prefix delete returned an invalid response",
-        outcome: "uncertain",
-      })
+  if (!isPrefixDeleteResponse(result)) {
+    return failPrefixDeletePage(
+      "Cloudinary prefix delete returned an invalid response"
     );
   }
 
-  const response = result as {
-    readonly deleted?: unknown;
-    readonly partial?: unknown;
-    readonly next_cursor?: unknown;
-  };
-  if (
-    typeof response.deleted !== "object" ||
-    response.deleted === null ||
-    Array.isArray(response.deleted) ||
-    typeof response.partial !== "boolean"
-  ) {
-    return Effect.fail(
-      new CloudinaryPrefixDeleteError({
-        message: "Cloudinary prefix delete returned an invalid response",
-        outcome: "uncertain",
-      })
-    );
-  }
-
-  const statuses = Object.values(response.deleted);
+  const statuses = Object.values(result.deleted);
   if (
     statuses.some((status) => status !== "deleted" && status !== "not found")
   ) {
-    return Effect.fail(
-      new CloudinaryPrefixDeleteError({
-        message: "Cloudinary prefix delete returned an incomplete result",
-        outcome: "uncertain",
-      })
+    return failPrefixDeletePage(
+      "Cloudinary prefix delete returned an incomplete result"
     );
   }
 
-  if (response.partial) {
-    return typeof response.next_cursor === "string" &&
-      response.next_cursor.length > 0
-      ? Effect.succeed({
-          nextCursor: response.next_cursor,
-        } satisfies PrefixDeletePage)
-      : Effect.fail(
-          new CloudinaryPrefixDeleteError({
-            message: "Cloudinary prefix delete returned an invalid cursor",
-            outcome: "uncertain",
-          })
+  return decodePrefixDeleteCursor(result);
+}
+
+/** A partial page must name the next cursor; a final page must name none. */
+function decodePrefixDeleteCursor({
+  partial,
+  next_cursor: nextCursor,
+}: PrefixDeleteResponse): Effect.Effect<
+  PrefixDeletePage,
+  CloudinaryPrefixDeleteError
+> {
+  if (partial) {
+    return typeof nextCursor === "string" && nextCursor.length > 0
+      ? Effect.succeed({ nextCursor } satisfies PrefixDeletePage)
+      : failPrefixDeletePage(
+          "Cloudinary prefix delete returned an invalid cursor"
         );
   }
 
-  return response.next_cursor === undefined
+  return nextCursor === undefined
     ? Effect.succeed({} satisfies PrefixDeletePage)
-    : Effect.fail(
-        new CloudinaryPrefixDeleteError({
-          message: "Cloudinary prefix delete returned an invalid cursor",
-          outcome: "uncertain",
-        })
+    : failPrefixDeletePage(
+        "Cloudinary prefix delete returned an invalid cursor"
       );
 }
 
 function toPrefixDeleteError(error: CloudinaryRejectedValue) {
-  const httpCode =
-    typeof error === "object" && error !== null
-      ? readCloudinaryHttpCode(error)
-      : undefined;
+  const httpCode = readRejectedHttpCode(error);
 
   return new CloudinaryPrefixDeleteError({
     message: "Cloudinary asset prefix delete failed",
@@ -880,7 +867,7 @@ function toPrefixDeleteError(error: CloudinaryRejectedValue) {
 }
 
 function createPrefixDeleteExecutor() {
-  const retryPolicy = createTransientRetryPolicy<CloudinaryPrefixDeleteError>(
+  const retryTransientPrefixDeleteFailure = retryTransientCloudinaryFailure(
     "asset prefix delete"
   );
 
@@ -908,7 +895,7 @@ function createPrefixDeleteExecutor() {
             : {}),
         });
       }),
-      Effect.retry(retryPolicy)
+      retryTransientPrefixDeleteFailure
     );
 
   return Effect.fn("cloudinary.api.delete_resources_by_prefix")(
@@ -947,60 +934,59 @@ function createPrefixDeleteExecutor() {
   );
 }
 
-function classifyRenameFailure(
-  error: CloudinaryRejectedValue,
-  fromPublicId: CloudinaryPublicId,
-  toPublicId: CloudinaryPublicId
-) {
-  const httpCode =
-    typeof error === "object" && error !== null
-      ? readCloudinaryHttpCode(error)
-      : undefined;
+type RenameFailureReason = CloudinaryRenameError["reason"];
 
+const renameFailureMessages: Record<RenameFailureReason, string> = {
+  "target-exists": "Cloudinary rename target public ID already exists",
+  "source-missing": "Cloudinary rename source public ID is missing",
+  failed: "Cloudinary asset rename failed",
+};
+
+/** The provider's rejection text, lower-cased, used only for classification. */
+function readRenameRejectionText(error: CloudinaryRejectedValue): string {
   const rawMessage =
     typeof error === "object" && error !== null
       ? (error.message ?? error.error?.message)
       : undefined;
 
-  const message =
-    typeof rawMessage === "string" ? rawMessage.toLowerCase() : "";
+  return typeof rawMessage === "string" ? rawMessage.toLowerCase() : "";
+}
 
+function classifyRenameReason(
+  httpCode: number | undefined,
+  rejectionText: string
+): RenameFailureReason {
   if (
     httpCode === 409 ||
-    message.includes("already exists") ||
-    message.includes("already a file")
+    rejectionText.includes("already exists") ||
+    rejectionText.includes("already a file")
   ) {
-    return new CloudinaryRenameError({
-      message: "Cloudinary rename target public ID already exists",
-      fromPublicId,
-      toPublicId,
-      reason: "target-exists",
-      httpCode,
-    });
+    return "target-exists";
   }
 
-  if (httpCode === 404) {
-    return new CloudinaryRenameError({
-      message: "Cloudinary rename source public ID is missing",
-      fromPublicId,
-      toPublicId,
-      reason: "source-missing",
-      httpCode,
-    });
-  }
+  return httpCode === 404 ? "source-missing" : "failed";
+}
+
+function classifyRenameFailure(
+  error: CloudinaryRejectedValue,
+  fromPublicId: CloudinaryPublicId,
+  toPublicId: CloudinaryPublicId
+) {
+  const httpCode = readRejectedHttpCode(error);
+  const reason = classifyRenameReason(httpCode, readRenameRejectionText(error));
 
   return new CloudinaryRenameError({
-    message: "Cloudinary asset rename failed",
+    message: renameFailureMessages[reason],
     fromPublicId,
     toPublicId,
-    reason: "failed",
+    reason,
     httpCode,
   });
 }
 
 function createRenameExecutor() {
-  const renameRetryPolicy =
-    createTransientRetryPolicy<CloudinaryRenameError>("asset rename");
+  const retryTransientRenameFailure =
+    retryTransientCloudinaryFailure("asset rename");
 
   const performRename = (
     fromPublicId: CloudinaryPublicId,
@@ -1057,7 +1043,7 @@ function createRenameExecutor() {
             reason: error.reason,
           })
         ),
-        Effect.retry(renameRetryPolicy)
+        retryTransientRenameFailure
       );
     },
     (effect) => Effect.scoped(effect)

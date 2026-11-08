@@ -38,16 +38,40 @@ export function AccountSectionPanel({
 }: AccountSectionPanelProps) {
   const generatedTitleId = useId();
   const headingId = titleId ?? generatedTitleId;
-  const destructive = variant === "destructive";
-  const compact = size === "compact";
+  const tone = {
+    default: {
+      border: "border-[#dfe4ec]",
+      divider: "border-[#e6ebf1]",
+      title: "text-[#00024f]",
+    },
+    destructive: {
+      border: "border-rose-200",
+      divider: "border-rose-200",
+      title: "text-rose-900",
+    },
+  }[variant];
+  const density = {
+    default: {
+      section: undefined,
+      header: "items-start pb-5",
+      title: "text-[26px] tracking-[-0.025em]",
+      body: "pt-7",
+    },
+    compact: {
+      section: "pb-4 @xl:pb-5",
+      header: "items-center pb-4",
+      title: "text-xl tracking-[-0.02em]",
+      body: "pt-4 @xl:pt-8",
+    },
+  }[size];
 
   return (
     <section
       aria-labelledby={headingId}
       className={cn(
         "min-w-0 rounded-2xl border bg-white p-5 text-navy-blue shadow-[0_18px_40px_-28px_rgba(0,2,79,0.45)] @xl:p-8 [&_input]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))] [&_select]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))]",
-        destructive ? "border-rose-200" : "border-[#dfe4ec]",
-        compact && "pb-4 @xl:pb-5",
+        tone.border,
+        density.section,
         className
       )}
       {...rest}
@@ -58,17 +82,15 @@ export function AccountSectionPanel({
       <header
         className={cn(
           "flex min-w-0 flex-wrap justify-between gap-x-4 gap-y-3 border-b",
-          compact ? "items-center pb-4" : "items-start pb-5",
-          destructive ? "border-rose-200" : "border-[#e6ebf1]"
+          density.header,
+          tone.divider
         )}
       >
         <h2
           className={cn(
             "min-w-0 break-words font-bold leading-tight",
-            compact
-              ? "text-xl tracking-[-0.02em]"
-              : "text-[26px] tracking-[-0.025em]",
-            destructive ? "text-rose-900" : "text-[#00024f]"
+            density.title,
+            tone.title
           )}
           id={headingId}
         >
@@ -77,13 +99,7 @@ export function AccountSectionPanel({
         {actions && <div className="shrink-0">{actions}</div>}
       </header>
 
-      <div
-        className={cn(
-          "min-w-0",
-          compact ? "pt-4 @xl:pt-8" : "pt-7",
-          bodyClassName
-        )}
-      >
+      <div className={cn("min-w-0", density.body, bodyClassName)}>
         {children}
       </div>
 
@@ -91,7 +107,7 @@ export function AccountSectionPanel({
         <div
           className={cn(
             "sticky bottom-0 z-10 mt-8 min-w-0 border-t bg-white pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]",
-            destructive ? "border-rose-200" : "border-[#e6ebf1]"
+            tone.divider
           )}
         >
           {footer}

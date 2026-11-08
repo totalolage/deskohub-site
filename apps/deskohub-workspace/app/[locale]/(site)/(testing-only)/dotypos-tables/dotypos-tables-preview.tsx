@@ -8,7 +8,7 @@ type DotyposTablesPreviewProps = {
   readonly tables: readonly Table[];
 };
 
-const getTableKey = (table: Table) => table.id ?? table.name;
+const getTableKey = (table: Table) => table.id;
 
 const getTableClassName = (table: Table, selectedTable: Table | undefined) => {
   const selected =
@@ -44,31 +44,49 @@ export function DotyposTablesPreview({ tables }: DotyposTablesPreviewProps) {
         <h2 className="font-bold text-2xl text-[#00024f]">Selected table</h2>
         {selectedTable ? (
           <dl className="mt-5 grid grid-cols-[96px_1fr] gap-x-3 gap-y-2 text-sm">
-            <dt className="text-stone-500">Name</dt>
-            <dd className="font-semibold">{selectedTable.name}</dd>
-            <dt className="text-stone-500">ID</dt>
-            <dd className="break-all">{selectedTable.id ?? "-"}</dd>
-            <dt className="text-stone-500">Type</dt>
-            <dd>{selectedTable.type ?? "GENERIC"}</dd>
-            <dt className="text-stone-500">Location</dt>
-            <dd>{selectedTable.locationName ?? "-"}</dd>
-            <dt className="text-stone-500">Seats</dt>
-            <dd>{selectedTable.seats ?? "-"}</dd>
-            <dt className="text-stone-500">Position</dt>
-            <dd>
-              {selectedTable.positionX ?? "0"}, {selectedTable.positionY ?? "0"}
-            </dd>
-            <dt className="text-stone-500">Rotation</dt>
-            <dd>{selectedTable.rotation ?? "0"}</dd>
-            <dt className="text-stone-500">Visible</dt>
-            <dd>{selectedTable.display === false ? "No" : "Yes"}</dd>
-            <dt className="text-stone-500">Enabled</dt>
-            <dd>{selectedTable.enabled === false ? "No" : "Yes"}</dd>
+            <TableIdentityFacts table={selectedTable} />
+            <TablePlacementFacts table={selectedTable} />
           </dl>
         ) : (
           <p className="mt-4 text-stone-600">No Dotypos tables loaded.</p>
         )}
       </aside>
     </div>
+  );
+}
+
+/** What the selected table is: its name, IDs, type, location, and seats. */
+function TableIdentityFacts({ table }: { readonly table: Table }) {
+  return (
+    <>
+      <dt className="text-stone-500">Name</dt>
+      <dd className="font-semibold">{table.name}</dd>
+      <dt className="text-stone-500">ID</dt>
+      <dd className="break-all">{table.id}</dd>
+      <dt className="text-stone-500">Type</dt>
+      <dd>{table.type ?? "GENERIC"}</dd>
+      <dt className="text-stone-500">Location</dt>
+      <dd>{table.locationName ?? "-"}</dd>
+      <dt className="text-stone-500">Seats</dt>
+      <dd>{table.seats ?? "-"}</dd>
+    </>
+  );
+}
+
+/** Where the selected table sits on the map and whether it is offered. */
+function TablePlacementFacts({ table }: { readonly table: Table }) {
+  return (
+    <>
+      <dt className="text-stone-500">Position</dt>
+      <dd>
+        {table.positionX ?? "0"}, {table.positionY ?? "0"}
+      </dd>
+      <dt className="text-stone-500">Rotation</dt>
+      <dd>{table.rotation ?? "0"}</dd>
+      <dt className="text-stone-500">Visible</dt>
+      <dd>{table.display === false ? "No" : "Yes"}</dd>
+      <dt className="text-stone-500">Enabled</dt>
+      <dd>{table.enabled === false ? "No" : "Yes"}</dd>
+    </>
   );
 }

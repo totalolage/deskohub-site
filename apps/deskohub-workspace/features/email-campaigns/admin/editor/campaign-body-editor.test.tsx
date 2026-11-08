@@ -40,8 +40,8 @@ let authorize = async (): Promise<{
   readonly serverError?: string;
 }> => ({ data: authorization });
 
-mock.module("@/features/email-campaigns/admin/editor/actions", () => ({
-  authorizeCampaignImageUpload: () => authorize(),
+mock.module("@/features/emails/admin/editor/image-upload-actions", () => ({
+  authorizeEmailImageUpload: () => authorize(),
 }));
 
 /** The picture's size as the browser reads it; by default a small one. */
@@ -65,7 +65,9 @@ const answerStored = () =>
   fetchSpy.mockImplementation(async () => Response.json(storedImage));
 
 const { CampaignBodyEditor } = await import("./campaign-body-editor");
-const { campaignImageUploadLimits } = await import("./campaign-image-upload");
+const { emailImageUploadLimits } = await import(
+  "@/features/emails/admin/editor/email-image-upload"
+);
 const defaults = { authorize, pictureSize, downscale };
 
 beforeEach(answerStored);
@@ -489,7 +491,7 @@ const animatedGif = (bytes: number) => {
 };
 
 test("refuses an animation above the account's limits rather than flatten it", async () => {
-  const { maxBytes } = campaignImageUploadLimits;
+  const { maxBytes } = emailImageUploadLimits;
   let shrunk = false;
   downscale = () => {
     shrunk = true;

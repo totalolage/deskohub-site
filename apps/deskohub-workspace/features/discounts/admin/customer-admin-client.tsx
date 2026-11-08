@@ -12,7 +12,11 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
 import { type DefaultValues, type FieldValues, useForm } from "react-hook-form";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
-import { administrationHref } from "@/features/administration/administration-href";
+import {
+  type AdministrationHref,
+  administrationHref,
+  localizeAdministrationHref,
+} from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
@@ -47,7 +51,19 @@ import { Label } from "@/shared/components/ui/label";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateDiscountAdmin, searchDiscountAdminCustomers } from "./actions";
 import type { DiscountAdminMutation } from "./contracts";
+import { formatDiscountAdminCustomerContact } from "./customer-contact";
 import { formatDiscountAdminCustomerName } from "./customer-display-name";
+import {
+  type CustomerPromotionCode,
+  type CustomerPromotionCodeMutations,
+  type CustomerPromotionDialogMode,
+  type CustomerPromotionEligibilityCopy,
+  customerPromotionCodeMutations,
+  customerPromotionDialogConfirmation,
+  customerPromotionDialogMode,
+  customerPromotionDialogText,
+  customerPromotionEligibilityCopy,
+} from "./customer-promotion-dialog";
 import type {
   AdminCustomerSearchResult,
   AdminDiscountGroup,
@@ -79,10 +95,20 @@ const createSearchFormSchema = (locale: Locale) =>
 const formatDiscountGroupPercentage = (basisPoints: number, locale: Locale) =>
   formatDiscountAdjustment({ kind: "percentage", basisPoints }, locale);
 
+type AdminCustomerSearchMatch = AdminCustomerSearchResult["customers"][number];
+
+/**
+ * Searches Dotypos customers by name or email. Each match opens its customer
+ * page unless `renderCustomerAction` offers another action for it.
+ */
 export function CustomerSearch({
+  renderCustomerAction,
   variant = "card",
 }: {
-  readonly variant?: "card" | "toolbar";
+  readonly renderCustomerAction?: (
+    customer: AdminCustomerSearchMatch
+  ) => ReactNode;
+  readonly variant?: "card" | "toolbar" | "inline";
 }) {
   const locale = useRouteLocale();
   const [result, setResult] = useState<AdminCustomerSearchResult | null>(null);
@@ -116,7 +142,15 @@ export function CustomerSearch({
   );
 
   return (
-    <div className="space-y-4">
+    <div
+      className={
+        {
+          card: "space-y-4",
+          toolbar: "space-y-4",
+          inline: "@container space-y-4",
+        }[variant]
+      }
+    >
       <Form {...form}>
         <form
           className={
@@ -124,6 +158,8 @@ export function CustomerSearch({
               card: "grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end",
               toolbar:
                 "grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end",
+              inline:
+                "grid gap-3 @md:grid-cols-[minmax(0,1fr)_auto] @md:items-end",
             }[variant]
           }
           noValidate
@@ -206,22 +242,23 @@ export function CustomerSearch({
                         {formatDiscountAdminCustomerName(customer, locale)}
                       </p>
                       <p className="mt-1 text-sm text-navy-blue/65">
-                        {[customer.email, customer.phone]
-                          .filter(Boolean)
-                          .join(" · ") ||
-                          m.discountsCustomerNoContactDetails({}, { locale })}
+                        {formatDiscountAdminCustomerContact(customer, locale)}
                       </p>
                     </div>
-                    <Button asChild size="sm" variant="secondary">
-                      <Link
-                        href={administrationHref(
-                          "/[locale]/admin/customers/[customerId]",
-                          { customerId: customer.id }
-                        )}
-                      >
-                        {m.discountsOpenCustomer({}, { locale })}
-                      </Link>
-                    </Button>
+                    {renderCustomerAction ? (
+                      renderCustomerAction(customer)
+                    ) : (
+                      <Button asChild size="sm" variant="secondary">
+                        <Link
+                          href={administrationHref(
+                            "/[locale]/admin/customers/[customerId]",
+                            { customerId: customer.id }
+                          )}
+                        >
+                          {m.discountsOpenCustomer({}, { locale })}
+                        </Link>
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -432,93 +469,43 @@ export function AdminMutationButton({
   );
 }
 
-type CustomerPromotionCode =
-  | { readonly kind: "discount-code"; readonly id: DiscountCodeId }
-  | { readonly kind: "voucher"; readonly id: VoucherId };
-
-const customerPromotionCodeMutations = (
-  promotion: CustomerPromotionCode,
-  customerId: DotyposCustomerId
-) =>
-  promotion.kind === "voucher"
-    ? ({
-        add: {
-          kind: "add-voucher-customer",
-          voucherId: promotion.id,
-          customerId,
-        },
-        remove: {
-          kind: "remove-voucher-customer",
-          voucherId: promotion.id,
-          customerId,
-        },
-        makeUnrestricted: {
-          kind: "make-voucher-unrestricted",
-          voucherId: promotion.id,
-        },
-        delete: { kind: "delete-voucher", id: promotion.id },
-      } satisfies Record<string, DiscountAdminMutation>)
-    : ({
-        add: { kind: "add-code-customer", codeId: promotion.id, customerId },
-        remove: {
-          kind: "remove-code-customer",
-          codeId: promotion.id,
-          customerId,
-        },
-        makeUnrestricted: {
-          kind: "make-code-unrestricted",
-          codeId: promotion.id,
-        },
-        delete: { kind: "delete-code", id: promotion.id },
-      } satisfies Record<string, DiscountAdminMutation>);
-
-const discountCodeEligibilityCopy = {
-  addLabel: m.discountsCodeAddCustomerLabel,
-  removeLabel: m.discountsCodeRemoveCustomerLabel,
-  limitTitle: m.discountsCodeLimitTitle,
-  limitDescription: m.discountsCodeLimitDescription,
-  removeOnlyCustomerDescription: m.discountsCodeRemoveOnlyCustomerDescription,
-  removeDescription: m.discountsCodeRemoveCustomerDescription,
-  addTitle: m.discountsCodeAddCustomerTitle,
-  addDescription: m.discountsCodeAddCustomerDialogDescription,
-  deleteLabel: m.discountsDeleteCode,
-};
-
-const voucherEligibilityCopy = {
-  addLabel: m.discountsVoucherAddCustomerLabel,
-  removeLabel: m.discountsVoucherRemoveCustomerLabel,
-  limitTitle: m.discountsVoucherLimitTitle,
-  limitDescription: m.discountsVoucherLimitDescription,
-  removeOnlyCustomerDescription:
-    m.discountsVoucherRemoveOnlyCustomerDescription,
-  removeDescription: m.discountsVoucherRemoveCustomerDescription,
-  addTitle: m.discountsVoucherAddCustomerTitle,
-  addDescription: m.discountsVoucherAddCustomerDialogDescription,
-  deleteLabel: m.discountsDeleteVoucher,
-};
-
+/**
+ * Adds a customer to a code or voucher, or removes them, after a dialog that
+ * explains how the change moves the promotion's audience.
+ */
 export function CustomerPromotionCodeAction({
   audienceSize,
   code,
   customerId,
   customerName,
+  deleteRedirect,
   eligible,
+  labeled = false,
   promotion,
 }: {
   readonly audienceSize: number;
   readonly code: string;
   readonly customerId: DotyposCustomerId;
   readonly customerName: string;
+  /** Where to go after the dialog deletes the promotion whose page is open. */
+  readonly deleteRedirect?: AdministrationHref;
   readonly eligible: boolean;
+  /** Shows the action's verb beside its icon instead of the icon alone. */
+  readonly labeled?: boolean;
   readonly promotion: CustomerPromotionCode;
 }) {
   const router = useRouter();
   const locale = useRouteLocale();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mutations = customerPromotionCodeMutations(promotion, customerId);
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
-    onSuccess: () => {
+    onSuccess: ({ input }) => {
       setOpen(false);
+      if (deleteRedirect && input.kind === mutations.delete.kind) {
+        router.push(localizeAdministrationHref(deleteRedirect, locale));
+        return;
+      }
       router.refresh();
     },
     onError: ({ error: actionError }) =>
@@ -529,32 +516,19 @@ export function CustomerPromotionCodeAction({
       setError(m.discountsSaveFailedRetry({}, { locale })),
   });
 
-  const mutations = customerPromotionCodeMutations(promotion, customerId);
-  const copy =
-    promotion.kind === "voucher"
-      ? voucherEligibilityCopy
-      : discountCodeEligibilityCopy;
+  const copy = customerPromotionEligibilityCopy(promotion.kind);
   const names = { code, customerName };
   const label = (eligible ? copy.removeLabel : copy.addLabel)(names, {
     locale,
   });
   const Icon = eligible ? Minus : Plus;
-  const isOnlyCustomer = eligible && audienceSize === 1;
-  let dialogTitle = copy.limitTitle(names, { locale });
-  let dialogDescription = copy.limitDescription(names, { locale });
-  if (isOnlyCustomer) {
-    dialogTitle = m.discountsRemoveOnlyCustomerTitle({}, { locale });
-    dialogDescription = copy.removeOnlyCustomerDescription(names, { locale });
-  } else if (eligible) {
-    dialogTitle = m.discountsRemoveCustomerTitle({ customerName }, { locale });
-    dialogDescription = copy.removeDescription(names, { locale });
-  } else if (audienceSize > 0) {
-    dialogTitle = copy.addTitle(names, { locale });
-    dialogDescription = copy.addDescription(
-      { ...names, count: audienceSize, total: audienceSize + 1 },
-      { locale }
-    );
-  }
+  const mode = customerPromotionDialogMode(eligible, audienceSize);
+  const dialogText = customerPromotionDialogText(mode, {
+    audienceSize,
+    copy,
+    locale,
+    names,
+  });
 
   return (
     <Dialog
@@ -568,17 +542,21 @@ export function CustomerPromotionCodeAction({
         <Button
           aria-label={label}
           className="relative z-10"
-          size="icon-sm"
+          size={labeled ? "sm" : "icon-sm"}
           title={label}
-          variant="ghost"
+          variant={labeled ? "secondary" : "ghost"}
         >
           <Icon aria-hidden className="size-4" />
+          {labeled &&
+            (eligible
+              ? m.discountsRemove({}, { locale })
+              : m.discountsAdd({}, { locale }))}
         </Button>
       </DialogTrigger>
       <DialogContent locale={locale}>
         <DialogHeader>
-          <DialogTitle>{dialogTitle}</DialogTitle>
-          <DialogDescription>{dialogDescription}</DialogDescription>
+          <DialogTitle>{dialogText.title}</DialogTitle>
+          <DialogDescription>{dialogText.description}</DialogDescription>
         </DialogHeader>
         {error && (
           <p
@@ -589,67 +567,74 @@ export function CustomerPromotionCodeAction({
           </p>
         )}
         <DialogFooter>
-          {isOnlyCustomer && (
-            <>
-              <Button
-                disabled={isExecuting}
-                onClick={() => execute(mutations.delete)}
-                type="button"
-                variant="secondary"
-              >
-                {copy.deleteLabel({}, { locale })}
-              </Button>
-              <Button
-                disabled={isExecuting}
-                onClick={() => execute(mutations.makeUnrestricted)}
-                tone="burned-orange-ink"
-                type="button"
-              >
-                {m.discountsMakeAvailableToAll({}, { locale })}
-              </Button>
-            </>
-          )}
-          {!isOnlyCustomer && eligible && (
-            <>
-              <DialogClose asChild>
-                <Button type="button" variant="secondary">
-                  {m.discountsCancel({}, { locale })}
-                </Button>
-              </DialogClose>
-              <Button
-                disabled={isExecuting}
-                onClick={() => execute(mutations.remove)}
-                tone="burned-orange-ink"
-                type="button"
-              >
-                {m.discountsRemoveCustomer({}, { locale })}
-              </Button>
-            </>
-          )}
-          {!eligible && (
-            <>
-              <DialogClose asChild>
-                <Button type="button" variant="secondary">
-                  {audienceSize > 0
-                    ? m.discountsCancel({}, { locale })
-                    : m.discountsKeepAvailableToAll({}, { locale })}
-                </Button>
-              </DialogClose>
-              <Button
-                disabled={isExecuting}
-                onClick={() => execute(mutations.add)}
-                tone="burned-orange-ink"
-                type="button"
-              >
-                {audienceSize > 0
-                  ? m.discountsAddCustomer({}, { locale })
-                  : m.discountsLimitToCustomer({}, { locale })}
-              </Button>
-            </>
-          )}
+          <CustomerPromotionDialogActions
+            copy={copy}
+            execute={execute}
+            isExecuting={isExecuting}
+            locale={locale}
+            mode={mode}
+            mutations={mutations}
+          />
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function CustomerPromotionDialogActions({
+  copy,
+  execute,
+  isExecuting,
+  locale,
+  mode,
+  mutations,
+}: {
+  readonly copy: CustomerPromotionEligibilityCopy;
+  readonly execute: (mutation: DiscountAdminMutation) => void;
+  readonly isExecuting: boolean;
+  readonly locale: Locale;
+  readonly mode: CustomerPromotionDialogMode;
+  readonly mutations: CustomerPromotionCodeMutations;
+}) {
+  if (mode === "remove-only-customer") {
+    return (
+      <>
+        <Button
+          disabled={isExecuting}
+          onClick={() => execute(mutations.delete)}
+          type="button"
+          variant="secondary"
+        >
+          {copy.deleteLabel({}, { locale })}
+        </Button>
+        <Button
+          disabled={isExecuting}
+          onClick={() => execute(mutations.makeUnrestricted)}
+          tone="burned-orange-ink"
+          type="button"
+        >
+          {m.discountsMakeAvailableToAll({}, { locale })}
+        </Button>
+      </>
+    );
+  }
+  const confirmation = customerPromotionDialogConfirmation[mode];
+  return (
+    <>
+      <DialogClose asChild>
+        <Button type="button" variant="secondary">
+          {confirmation.cancelLabel({}, { locale })}
+        </Button>
+      </DialogClose>
+      <Button
+        disabled={isExecuting}
+        onClick={() => execute(mutations[confirmation.mutation])}
+        tone="burned-orange-ink"
+        type="button"
+      >
+        {confirmation.confirmLabel({}, { locale })}
+      </Button>
+    </>
   );
 }
 
@@ -701,12 +686,11 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
       // Rebase the defaults onto the submitted snapshot while retaining every
       // current value, so dirty state recomputes against the snapshot and an
       // in-flight edit that reverted a field to its original value survives.
-      form.reset(
-        resetOnSuccessTo === "submitted"
-          ? (submittedValues ?? undefined)
-          : undefined,
-        resetOnSuccessTo === "submitted" ? { keepValues: true } : undefined
-      );
+      if (resetOnSuccessTo === "submitted") {
+        form.reset(submittedValues ?? undefined, { keepValues: true });
+      } else {
+        form.reset();
+      }
       router.refresh();
     },
     onError: ({ error }) =>

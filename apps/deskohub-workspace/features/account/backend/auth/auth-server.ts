@@ -1,6 +1,7 @@
 import "server-only";
 
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
+import { expo } from "@better-auth/expo";
 import {
   getAuthenticatorName,
   type PasskeyOptions,
@@ -44,6 +45,8 @@ import {
 } from "@/features/account/customer-account";
 import type { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { defaultLocale, isLocale, type Locale, locales } from "@/features/i18n";
+import type { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
+import { mirrorDeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
 import { ReviewAccounts } from "@/features/review-accounts";
 import {
   classifyAgentTraffic,
@@ -53,6 +56,7 @@ import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protec
 import {
   catchRecoverableCause,
   runWorkspaceEffect,
+  runWorkspaceEffectOrElse,
 } from "@/shared/backend/workspace-effect";
 import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
@@ -81,6 +85,14 @@ import {
 } from "./customer-agent-authorization-server";
 import { LoginLifecycleRecords } from "./login-lifecycle-records.service";
 import { renderMagicLinkEmail } from "./magic-link-email";
+import { nativeAppOrigin } from "./native-app";
+import {
+  appSignInLocale,
+  nativeAppLinkFor,
+  nativeSignIn,
+  refuseMagicLinkAccountSwitch,
+  refuseUnsupportedAppLocale,
+} from "./native-sign-in";
 import {
   findReviewAccountCredential,
   type ReviewAccountCredential,
@@ -122,6 +134,7 @@ export type MagicLinkSendFunction = (
  */
 export type WorkspaceAuthHookServices =
   | AccountRoleGrants
+  | AnalyticsConsentLedger
   | BotProtectionService
   | LoginLifecycleRecords
   | PasskeyReleaseGate
@@ -133,6 +146,8 @@ export type WorkspaceAuthConfig = {
   readonly database: NonNullable<BetterAuthOptions["database"]>;
   readonly secrets: NonNullable<BetterAuthOptions["secrets"]>;
   readonly allowedHosts: readonly string[];
+  /** The customer-facing HTTPS origin whose `/app/` App Links open the app. */
+  readonly nativeAppLinkOrigin: string;
   /** This deployment's passkey RP ID and origins, never the plugin default. */
   readonly passkeyRelyingParty: PasskeyRelyingParty;
   /** The canonical URL of this deployment's customer MCP server. */
@@ -297,7 +312,18 @@ const callbackLocaleFromAuthContext = (
 };
 
 /**
- * Captures the sign-in callback locale as the preference of an account that
+ * The sign-in's locale: its localized callback URL's, else the app's locale
+ * on its sign-in code or magic-link verification.
+ */
+const signInLocaleFromAuthContext = (
+  ctx: Parameters<typeof appSignInLocale>[0]
+): Locale | undefined =>
+  callbackLocaleFromAuthContext(
+    Option.getOrElse(decodeAuthContext(ctx), () => ({}))
+  ) ?? appSignInLocale(ctx);
+
+/**
+ * Captures the sign-in locale as the preference of an account that
  * has none, such as one created before preferences existed. The update never
  * overwrites a saved preference. A failure is logged with a fixed code and
  * never blocks the login: readers fall back without a preference, and the
@@ -343,6 +369,9 @@ const decodeAuthContext = Schema.decodeUnknownOption(authContextSchema);
 
 type GuardedAuthRequest = {
   readonly path: string;
+  /** The HTTP request; a server-side `auth.api` call has none. */
+  readonly request?: Request;
+  readonly headers?: Headers;
   readonly body?: unknown;
   readonly query?: unknown;
   readonly json: (body: PasswordSignInStep) => unknown;
@@ -623,7 +652,11 @@ const screenPasswordSignIn = (guard: AuthRequestGuard) =>
 const guardSignInPath = (guard: AuthRequestGuard) =>
   Match.value(guard.request.path).pipe(
     Match.when("/sign-in/magic-link", () => guardSignInEmail(guard)),
-    Match.when("/magic-link/verify", () => claimMagicLink(guard)),
+    Match.when("/magic-link/verify", () =>
+      refuseMagicLinkAccountSwitch(guard).pipe(
+        Effect.andThen(claimMagicLink(guard))
+      )
+    ),
     Match.when("/sign-in/email-otp", () => screenSignInCode(guard)),
     Match.when("/sign-in/email", () => screenPasswordSignIn(guard)),
     Match.orElse(() => Effect.void)
@@ -634,13 +667,14 @@ const guardSignInPath = (guard: AuthRequestGuard) =>
  * flag counts as disabled) or for a review account, any request carrying
  * profile fields, the password reset token route, code sign-ins carrying
  * anything beyond the email, code, and callback URL, and password sign-ins
- * outside the review logins.
+ * outside the review logins, and an app sign-in naming an unsupported locale.
  */
 const guardAuthRequest = (guard: AuthRequestGuard) =>
   Effect.succeed(guard).pipe(
     Effect.tap(requirePasskeyRegistration),
     Effect.tap(rejectProfileFields),
     Effect.tap(rejectPasswordResetToken),
+    Effect.tap(({ request }) => refuseUnsupportedAppLocale(request)),
     Effect.flatMap(guardSignInPath),
     Effect.withSpan("WorkspaceAuth.guardRequest")
   );
@@ -708,6 +742,8 @@ const signInCodeBodySchema = Schema.Struct({
 type AuthEndpointContext = {
   readonly path?: string;
   readonly body?: unknown;
+  /** The HTTP request's headers; a server-side `auth.api` call may have none. */
+  readonly headers?: Headers;
   readonly context: { readonly adapter: DBAdapter };
 } | null;
 
@@ -774,7 +810,7 @@ const dateRestoredSignInCode = ({
   );
 
 /**
- * Captures the sign-in callback locale for the session's account, when both
+ * Captures the sign-in locale for the session's account, when both
  * are known.
  */
 const captureSessionLocale = ({
@@ -786,11 +822,7 @@ const captureSessionLocale = ({
 }) =>
   Option.all({
     accountId: Option.fromNullishOr(decodeAccountId(session.userId)),
-    locale: Option.fromNullishOr(
-      callbackLocaleFromAuthContext(
-        Option.getOrElse(decodeAuthContext(ctx), () => ({}))
-      )
-    ),
+    locale: Option.fromNullishOr(signInLocaleFromAuthContext(ctx)),
   }).pipe(
     Option.match({
       onNone: () => Effect.void,
@@ -815,6 +847,33 @@ const prepareSession = <Session extends { readonly userId: string }>(request: {
       data: { ...session, ipAddress: null, userAgent: null },
     }))
   );
+
+/**
+ * Mirrors the signing-in device's analytics consent choice for the account
+ * of the session Better Auth just created, in the banner language the choice
+ * was saved in, else the sign-in callback locale. A session created without
+ * a request cookie, such as a server-side one, mirrors nothing.
+ */
+const mirrorSessionAnalyticsConsent = ({
+  session,
+  ctx,
+}: {
+  readonly session: { readonly userId: string };
+  readonly ctx: AuthEndpointContext;
+}) => {
+  const accountId = decodeAccountId(session.userId);
+  const cookieHeader = ctx?.headers?.get("cookie");
+  if (!accountId || !cookieHeader) return Effect.void;
+  return mirrorDeviceAnalyticsConsent({
+    accountId,
+    cookieHeader,
+    locale:
+      callbackLocaleFromAuthContext(
+        Option.getOrElse(decodeAuthContext(ctx), () => ({}))
+      ) ?? defaultLocale,
+    source: "sign_in_mirror",
+  }).pipe(Effect.asVoid);
+};
 
 type SignInEmailCompletion = {
   readonly status: true;
@@ -1015,6 +1074,9 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
     ...authOptions,
     secrets: config.secrets,
     baseURL,
+    // The hosts in `baseURL` are trusted already; the native app adds its
+    // scheme, which its Expo client sends as `expo-origin`.
+    trustedOrigins: [nativeAppOrigin],
     database: config.database,
     logger: { disabled: true },
     onAPIError: {
@@ -1087,7 +1149,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
           })(
             sendSignInEmail({
               sendMagicLink: config.sendMagicLink,
-              email: data,
+              email: { ...data, url: nativeAppLinkFor(data.url) },
               context: ctx?.context,
               createSignInCode: (email) =>
                 createSignInCode(email, ctx?.request),
@@ -1123,6 +1185,11 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
         resource: config.customerMcpResource,
         clientMetadataTransport: config.clientMetadataTransport,
       }),
+      nativeSignIn({ appLinkOrigin: config.nativeAppLinkOrigin }),
+      // The native app's requests carry no browser `Origin`: the plugin takes
+      // it from `expo-origin`, and a magic link the app started returns to
+      // the app scheme with the session cookie.
+      expo(),
       // Better Auth requires `nextCookies` to be the last plugin: it forwards
       // Set-Cookie headers into the Next.js cookie store for Server Action
       // `auth.api` calls and defers RSC-only session refreshes.
@@ -1136,6 +1203,18 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
               boundary: "route",
             })(
               prepareSession({ session, ctx }).pipe(
+                Effect.provide(config.services)
+              )
+            ),
+          // A failed mirror is logged and never fails the sign-in; the next
+          // hydration of the session mirrors the choice again.
+          after: (session, ctx) =>
+            runWorkspaceEffectOrElse("account.auth.mirror-analytics-consent", {
+              boundary: "route",
+              failureCode: "analytics-consent.sign-in-mirror-failed",
+              orElse: () => undefined,
+            })(
+              mirrorSessionAnalyticsConsent({ session, ctx }).pipe(
                 Effect.provide(config.services)
               )
             ),
@@ -1161,7 +1240,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
           // The locale preference is part of the user insert, so no account
           // exists without one. A server-side creation supplies it; otherwise
           // it comes from the initiating site locale in the callback URL, else
-          // the site default.
+          // the app's locale header, else the site default.
           before: (user, ctx) =>
             runWorkspaceEffect("account.customer-account.create", {
               boundary: "route",
@@ -1178,9 +1257,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
                 const locale =
                   Predicate.isString(user.locale) && isLocale(user.locale)
                     ? user.locale
-                    : (callbackLocaleFromAuthContext(
-                        Option.getOrElse(decodeAuthContext(ctx), () => ({}))
-                      ) ?? defaultLocale);
+                    : (signInLocaleFromAuthContext(ctx) ?? defaultLocale);
                 return { data: { ...user, id: accountId, locale } };
               }).pipe(Effect.provide(config.services))
             ),

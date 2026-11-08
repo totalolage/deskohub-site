@@ -6,9 +6,9 @@ import {
 import { Duration, Layer } from "effect";
 import { env } from "@/env";
 import {
+  byStage,
   type DeploymentEnvironment,
-  getDeploymentRequestTimeout,
-} from "./deployment-request-timeout";
+} from "@/shared/deployment/deployment-stage";
 
 /**
  * The Nexi sandbox can take several seconds to create a hosted payment page,
@@ -19,13 +19,10 @@ export const getNexiRequestTimeoutMilliseconds = (
   deploymentEnvironment: DeploymentEnvironment
 ) =>
   Duration.toMillis(
-    getDeploymentRequestTimeout(
-      {
-        production: Duration.seconds(5),
-        nonProduction: Duration.seconds(30),
-      },
-      deploymentEnvironment
-    )
+    byStage(deploymentEnvironment, {
+      production: Duration.seconds(5),
+      otherwise: Duration.seconds(30),
+    })
   );
 
 /** The per-request Nexi timeout of this deployment. */

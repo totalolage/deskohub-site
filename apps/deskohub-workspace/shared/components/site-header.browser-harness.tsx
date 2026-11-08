@@ -15,10 +15,6 @@ if (!(locale && isLocale(locale))) {
   throw new Error("The SiteHeader browser harness needs a supported locale.");
 }
 
-const languageLabels = {
-  "cs-CZ": m.languageCzech({}, { locale }),
-  "en-US": m.languageEnglish({}, { locale }),
-};
 const languageSwitcherLabel = m.languageSwitcherLabel({}, { locale });
 const administrator = mountPoint.dataset.administrator === "true";
 const signedIn = mountPoint.dataset.session === "signed-in";
@@ -29,7 +25,6 @@ createRoot(mountPoint).render(
   mountPoint.dataset.variant === "minimal" ? (
     <MinimalSiteHeader
       currentLocale={locale}
-      languageLabels={languageLabels}
       languageSwitcherLabel={languageSwitcherLabel}
     />
   ) : (
@@ -48,7 +43,6 @@ createRoot(mountPoint).render(
       contactHref={`/${locale}/reservation/cowork`}
       contactLabel={m.reservationNavCta({}, { locale })}
       currentLocale={locale}
-      languageLabels={languageLabels}
       languageSwitcherLabel={languageSwitcherLabel}
       localePreference={{
         save: async () => undefined,

@@ -13,6 +13,7 @@ import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { getReservationCustomerQueryMode } from "@/features/reservation/reservation-checkout-query";
 import { currencyCZK } from "@/shared/money/currencies";
+import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
 import { makeCoworkCheckoutData } from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
@@ -157,9 +158,11 @@ test("both ownership guards accept and constrain URLs from the real fresh-pay bu
     quote: buildCoworkReservationQuote(reservation),
   };
   const buildPayUrl = () =>
-    Effect.runPromise(buildFreshCheckoutPayPath(input, {}, { orderId })).then(
-      (path) => new URL(path, baseUrl).href
-    );
+    Effect.runPromise(
+      buildFreshCheckoutPayPath(input, {}, { orderId }).pipe(
+        Effect.provide(TestSealedStateKeys)
+      )
+    ).then((path) => new URL(path, baseUrl).href);
   const [previousUrl, freshUrl] = await Promise.all([
     buildPayUrl(),
     buildPayUrl(),

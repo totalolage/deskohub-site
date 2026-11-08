@@ -20,12 +20,6 @@ mock.module("next/cache", () => ({
   revalidatePath,
   revalidateTag: () => undefined,
 }));
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
 
 const operationsModule = await import("../backend/campaign-operations.service");
 const grantsModule = await import(

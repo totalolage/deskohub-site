@@ -1,29 +1,24 @@
 "use client";
 
-import { KeyRound, Loader2, Mail, Pencil, Plus, Trash2 } from "lucide-react";
+import { Mail } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthReturnLifecycle } from "@/features/account/auth-return";
-import { AccountReauthenticationStep } from "@/features/account/components/account-reauthentication-step";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
-import {
-  type AccountPasskey,
-  type PasskeyChangeResult,
-  type PasskeyConfirmationResult,
-  type PasskeyCreationResult,
-  passkeyDisplayName,
+import type {
+  AccountPasskey,
+  PasskeyChangeResult,
+  PasskeyConfirmationResult,
+  PasskeyCreationResult,
 } from "@/features/account/passkeys";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
+import { maskEmailAddress } from "@/shared/utils";
+import { AccountPasskeyList } from "./account-passkey-list";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/components/ui/dialog";
-import { maskEmailAddress, workspaceSiteConstants } from "@/shared/utils";
-import { formatInstantDate } from "@/shared/utils/date-time-format";
+  AddPasskeyButtonLabel,
+  AddPasskeyDialog,
+  type AddPasskeyDialogStep,
+} from "./add-passkey-dialog";
 import { PasskeyDeleteDialog } from "./passkey-delete-dialog";
 import { PasskeyRenameDialog } from "./passkey-rename-dialog";
 
@@ -43,7 +38,6 @@ type SignInSecurityScreenProps = {
 };
 
 type Announcement = "created" | "create-failed" | "renamed" | "deleted";
-type AddDialogStep = "closed" | "reauthenticate" | "ready";
 
 /**
  * The account's sign-in methods: email, which always works, and the passkeys
@@ -60,7 +54,8 @@ export function SignInSecurityScreen({
 }: SignInSecurityScreenProps) {
   const [creating, setCreating] = useState(false);
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
-  const [addDialogStep, setAddDialogStep] = useState<AddDialogStep>("closed");
+  const [addDialogStep, setAddDialogStep] =
+    useState<AddPasskeyDialogStep>("closed");
   const [addDialogFailed, setAddDialogFailed] = useState(false);
   const [renaming, setRenaming] = useState<AccountPasskey | null>(null);
   const [deleting, setDeleting] = useState<AccountPasskey | null>(null);
@@ -102,19 +97,6 @@ export function SignInSecurityScreen({
     setAddDialogFailed(false);
   };
 
-  const createButton = (
-    <>
-      {creating ? (
-        <Loader2 aria-hidden className="size-4 animate-spin" />
-      ) : (
-        <Plus aria-hidden className="size-4" />
-      )}
-      {creating
-        ? m.accountPasskeyCreating({}, { locale })
-        : m.accountSecurityPasskeysAdd({}, { locale })}
-    </>
-  );
-
   return (
     <AccountSectionPanel
       title={m.accountSectionSecurity({}, { locale })}
@@ -140,124 +122,23 @@ export function SignInSecurityScreen({
               type="button"
               variant="secondary"
             >
-              {createButton}
+              <AddPasskeyButtonLabel
+                creating={creating}
+                locale={locale}
+                variant="add"
+              />
             </Button>
           )}
         </div>
 
-        {passkeys === null && (
-          <p
-            className="mt-5 rounded-xl border border-[#dfe4ec] px-4 py-5 text-sm leading-6 text-navy-blue/68"
-            id="account-security-passkeys-unavailable"
-          >
-            {m.accountSecurityPasskeysUnavailable({}, { locale })}
-          </p>
-        )}
-        {passkeys !== null && passkeys.length > 0 && (
-          <ul
-            aria-labelledby="account-security-passkeys-title"
-            className="mt-5 divide-y divide-[#e6ebf1] rounded-xl border border-[#dfe4ec]"
-          >
-            {passkeys.map((passkey) => {
-              const name = passkeyDisplayName(passkey, locale);
-              const date = formatInstantDate({
-                instant: Temporal.Instant.from(passkey.createdAt),
-                locale,
-                timeZone: workspaceSiteConstants.location.timeZone,
-              });
-              return (
-                <li
-                  className="flex min-w-0 items-center gap-2 py-3 pr-2 pl-4 @xl:gap-4 @xl:p-4"
-                  data-passkey-id={passkey.id}
-                  key={passkey.id}
-                >
-                  <span className="hidden size-10 shrink-0 items-center justify-center rounded-xl bg-[#f4f3ef] text-navy-blue @xl:flex">
-                    <KeyRound aria-hidden className="size-5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold text-navy-blue">
-                      {name}
-                    </p>
-                    <p className="mt-0.5 text-sm text-navy-blue/60">
-                      {passkey.provider === undefined ||
-                      passkey.provider === name
-                        ? m.accountSecurityPasskeyCreatedOn(
-                            { date },
-                            { locale }
-                          )
-                        : m.accountSecurityPasskeyDetails(
-                            { provider: passkey.provider, date },
-                            { locale }
-                          )}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center @xl:gap-1">
-                    <Button
-                      aria-label={m.accountSecurityPasskeyRenameLabel(
-                        { name },
-                        { locale }
-                      )}
-                      onClick={() => setRenaming(passkey)}
-                      shape="rounded"
-                      size="sm"
-                      tone="navy-blue"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Pencil aria-hidden className="size-4" />
-                      <span className="hidden @xl:inline">
-                        {m.accountSecurityPasskeyRename({}, { locale })}
-                      </span>
-                    </Button>
-                    <Button
-                      aria-label={m.accountSecurityPasskeyDeleteLabel(
-                        { name },
-                        { locale }
-                      )}
-                      onClick={() => setDeleting(passkey)}
-                      shape="rounded"
-                      size="sm"
-                      tone="danger"
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Trash2 aria-hidden className="size-4" />
-                      <span className="hidden @xl:inline">
-                        {m.accountSecurityPasskeyDelete({}, { locale })}
-                      </span>
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {passkeys?.length === 0 && (
-          <div className="mt-5 flex flex-col items-center rounded-xl border border-dashed border-[#cfd6e0] bg-[#fbfcfd] px-6 py-8 text-center">
-            <span className="flex size-12 items-center justify-center rounded-2xl bg-white text-burned-orange shadow-[0_12px_28px_-18px_rgba(0,2,79,0.45)]">
-              <KeyRound aria-hidden className="size-6" />
-            </span>
-            <p className="mt-4 font-semibold text-navy-blue">
-              {m.accountSecurityPasskeysEmptyTitle({}, { locale })}
-            </p>
-            <Button
-              className="mt-5"
-              disabled={creating}
-              id="account-security-add-passkey"
-              onClick={addPasskey}
-              type="button"
-            >
-              {creating ? (
-                <Loader2 aria-hidden className="size-4 animate-spin" />
-              ) : (
-                <KeyRound aria-hidden className="size-4" />
-              )}
-              {creating
-                ? m.accountPasskeyCreating({}, { locale })
-                : m.accountPasskeyCreate({}, { locale })}
-            </Button>
-          </div>
-        )}
+        <AccountPasskeyList
+          creating={creating}
+          locale={locale}
+          onCreate={addPasskey}
+          onDelete={setDeleting}
+          onRename={setRenaming}
+          passkeys={passkeys}
+        />
 
         <div
           aria-live="polite"
@@ -308,66 +189,18 @@ export function SignInSecurityScreen({
         </div>
       </section>
 
-      <Dialog open={addDialogStep !== "closed"} onOpenChange={closeAddDialog}>
-        <DialogContent
-          aria-describedby="add-passkey-dialog-description"
-          locale={locale}
-        >
-          {addDialogStep === "reauthenticate" ? (
-            <AccountReauthenticationStep
-              purpose="add-passkey"
-              authReturn={authReturn}
-              confirmWithPasskey={confirmWithPasskey}
-              email={email}
-              locale={locale}
-              onReauthenticated={() => setAddDialogStep("ready")}
-            />
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>
-                  {m.accountPasskeyReadyTitle({}, { locale })}
-                </DialogTitle>
-                <DialogDescription id="add-passkey-dialog-description">
-                  {m.accountPasskeyReadyBody({}, { locale })}
-                </DialogDescription>
-              </DialogHeader>
-              <div
-                aria-live="polite"
-                className="mt-4 min-h-5 text-sm text-red-700"
-              >
-                {addDialogFailed &&
-                  m.accountPasskeyCreateFailed({}, { locale })}
-              </div>
-              <DialogFooter>
-                <Button
-                  disabled={creating}
-                  onClick={() => closeAddDialog(false)}
-                  type="button"
-                  variant="ghost"
-                >
-                  {m.accountPasskeyDialogCancel({}, { locale })}
-                </Button>
-                <Button
-                  disabled={creating}
-                  id="add-passkey-create"
-                  onClick={addPasskey}
-                  type="button"
-                >
-                  {creating ? (
-                    <Loader2 aria-hidden className="size-4 animate-spin" />
-                  ) : (
-                    <KeyRound aria-hidden className="size-4" />
-                  )}
-                  {creating
-                    ? m.accountPasskeyCreating({}, { locale })
-                    : m.accountPasskeyCreate({}, { locale })}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      <AddPasskeyDialog
+        authReturn={authReturn}
+        confirmWithPasskey={confirmWithPasskey}
+        creating={creating}
+        email={email}
+        failed={addDialogFailed}
+        locale={locale}
+        onCreate={addPasskey}
+        onOpenChange={closeAddDialog}
+        onReauthenticated={() => setAddDialogStep("ready")}
+        step={addDialogStep}
+      />
 
       <PasskeyRenameDialog
         locale={locale}

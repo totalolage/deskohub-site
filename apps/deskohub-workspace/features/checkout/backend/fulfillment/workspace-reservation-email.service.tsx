@@ -1,5 +1,5 @@
+import type { DotyposCustomer } from "@deskohub/dotypos";
 import { getCustomerDisplayName } from "@deskohub/dotypos";
-import type { Customer } from "@deskohub/dotypos/generated";
 import type { EmailDeliveryId } from "@deskohub/email";
 import {
   EmailConfigTag,
@@ -35,7 +35,6 @@ import {
   getReservationAccessPath,
   getReservationInvoicePath,
 } from "@/features/reservation/backend/reservation-access-url";
-import { getCustomerReservationTable } from "@/features/reservation/backend/reservation-table";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import {
@@ -188,7 +187,7 @@ export const createCustomerEmailLocaleResolver =
       )
     );
 
-const getCustomerName = (customer: Customer) =>
+const getCustomerName = (customer: DotyposCustomer) =>
   getCustomerDisplayName(customer) ||
   customer.email?.trim() ||
   "Workspace customer";
@@ -374,7 +373,7 @@ export const createReservationRows = (
 
 const createInternalReservationDetails = (
   reservation: WorkspaceReservationDetails,
-  customer: Customer,
+  customer: DotyposCustomer,
   locale: Locale
 ): WorkspaceEmailDetail[] => {
   const customerEmail = customer.email?.trim();
@@ -418,7 +417,7 @@ const createCustomerReservationEmail = (input: {
     {},
     { locale: input.locale }
   );
-  const table = getCustomerReservationTable(input.reservation);
+  const { table } = input.reservation.placement;
 
   return (
     <CustomerReservationEmail
@@ -488,7 +487,7 @@ const createReservationAuthorEmail = (input: {
   readonly locationMapImageSrc?: string;
 }) => {
   const { reservation, locale } = input;
-  const table = getCustomerReservationTable(reservation);
+  const { table } = reservation.placement;
 
   return (
     <ReservationAuthorEmail

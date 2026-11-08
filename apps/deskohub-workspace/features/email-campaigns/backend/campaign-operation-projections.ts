@@ -7,10 +7,8 @@ import type {
 } from "@deskohub/workspace-admin-api";
 import { type Effect, Option } from "effect";
 import type { CampaignAudienceRow, CampaignRow } from "@/db/schema";
-import {
-  campaignContentLocales,
-  writeCampaignContent,
-} from "../body/campaign-content-codec";
+import { writeCampaignContent } from "../body/campaign-content-codec";
+import { campaignContentLocales } from "../recipient-locale";
 import type { ICampaignSendStatusService } from "./campaign-send-status.service";
 
 export const toAdministrationAudience = (

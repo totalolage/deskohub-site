@@ -5,10 +5,8 @@ import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
-import {
-  DotyposServiceMock,
-  seededReservationReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import { Effect, Layer, Option } from "effect";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
@@ -154,8 +152,8 @@ describe.skipIf(!database)(
               Layer.provide(database.layer)
             ),
             DotyposServiceMock(
-              seededReservationReads(
-                visits.map(({ id, name, start, end }) => ({
+              makeInMemoryDotypos({
+                reservations: visits.map(({ id, name, start, end }) => ({
                   id,
                   startDate: start,
                   endDate: end,
@@ -163,8 +161,8 @@ describe.skipIf(!database)(
                     name === "provider-cancel"
                       ? ("CANCELLED" as const)
                       : ("NEW" as const),
-                }))
-              )
+                })),
+              }).service
             )
           )
         )

@@ -324,67 +324,114 @@ const largestCustomerBookedCount = (db: WorkspaceDatabaseClient) => {
 const secondsSince = (now: Temporal.Instant, then: Temporal.Instant) =>
   (now.epochMilliseconds - then.epochMilliseconds) / 1000;
 
+/** Seconds since `at`, or null without one. */
+const lagSecondsSince = (
+  now: Temporal.Instant,
+  at: Temporal.Instant | null
+): number | null => (at === null ? null : secondsSince(now, at));
+
+const waitedLongerThan = (
+  now: Temporal.Instant,
+  at: Temporal.Instant | null,
+  seconds: number
+): boolean => at !== null && secondsSince(now, at) > seconds;
+
+const instantText = (at: Temporal.Instant | null): string | null =>
+  at?.toString() ?? null;
+
+/** What the warning rules judge: the reads and the lags derived from them. */
+type HealthSnapshot = {
+  readonly now: Temporal.Instant;
+  readonly reads: HealthReads;
+  readonly sweepLagSeconds: number | null;
+  readonly reconcileLagSeconds: number | null;
+  readonly schedules: EngineHealthReport["automations"];
+};
+
+/** Each warning with the rule that raises it, in the order the report lists them. */
+const engineWarningRules: ReadonlyArray<
+  readonly [AutomationEngineWarningType, (health: HealthSnapshot) => boolean]
+> = [
+  [
+    "planner-stale",
+    ({ now, reads }) =>
+      reads.lastPlannedAt === null ||
+      waitedLongerThan(now, reads.lastPlannedAt, plannerStaleAfterSeconds),
+  ],
+  [
+    "sweep-lagging",
+    ({ sweepLagSeconds }) =>
+      sweepLagSeconds !== null && sweepLagSeconds > backlogAfterSeconds,
+  ],
+  [
+    "reconcile-stalled",
+    // Without its cursor row the reconcile never runs.
+    ({ reconcileLagSeconds }) =>
+      reconcileLagSeconds === null ||
+      reconcileLagSeconds > reconcileStalledAfterSeconds,
+  ],
+  [
+    "event-backlog",
+    ({ now, reads }) =>
+      waitedLongerThan(
+        now,
+        reads.oldestUnprocessedEventAt,
+        backlogAfterSeconds
+      ),
+  ],
+  [
+    "unit-backlog",
+    ({ now, reads }) =>
+      waitedLongerThan(now, reads.oldestPlannedUnitAt, unitBacklogAfterSeconds),
+  ],
+  [
+    "schedule-lagging",
+    ({ schedules }) =>
+      schedules.some(
+        ({ scheduleLagSeconds }) =>
+          scheduleLagSeconds !== null &&
+          scheduleLagSeconds > scheduleLaggingAfterSeconds
+      ),
+  ],
+  [
+    "falling-behind",
+    ({ schedules }) =>
+      schedules.some(({ lastFire }) => lastFire?.fallingBehind),
+  ],
+];
+
+const engineWarnings = (
+  health: HealthSnapshot
+): ReadonlyArray<AutomationEngineWarningType> =>
+  engineWarningRules
+    .filter(([, raised]) => raised(health))
+    .map(([warning]) => warning);
+
 const healthReport = (
   now: Temporal.Instant,
   reads: HealthReads
 ): EngineHealthReport => {
-  const sweepLagSeconds =
-    reads.sweptUntil === null ? null : secondsSince(now, reads.sweptUntil);
-  const reconcileLagSeconds =
-    reads.reconciledUntil === null
-      ? null
-      : secondsSince(now, reads.reconciledUntil);
-  const schedules = reads.schedules.map((schedule) =>
-    scheduleHealth(now, schedule)
-  );
-  const waitedLongerThan = (
-    at: Temporal.Instant | null,
-    seconds: number
-  ): boolean => at !== null && secondsSince(now, at) > seconds;
+  const health: HealthSnapshot = {
+    now,
+    reads,
+    sweepLagSeconds: lagSecondsSince(now, reads.sweptUntil),
+    reconcileLagSeconds: lagSecondsSince(now, reads.reconciledUntil),
+    schedules: reads.schedules.map((schedule) => scheduleHealth(now, schedule)),
+  };
   return {
-    lastPlannedAt: reads.lastPlannedAt?.toString() ?? null,
-    sweepLagSeconds,
-    reconcileLagSeconds,
-    oldestUnprocessedEventAt:
-      reads.oldestUnprocessedEventAt?.toString() ?? null,
-    automations: schedules,
+    lastPlannedAt: instantText(reads.lastPlannedAt),
+    sweepLagSeconds: health.sweepLagSeconds,
+    reconcileLagSeconds: health.reconcileLagSeconds,
+    oldestUnprocessedEventAt: instantText(reads.oldestUnprocessedEventAt),
+    automations: health.schedules,
     unitDurations: reads.unitDurations,
     units: reads.units,
-    oldestPlannedUnitAt: reads.oldestPlannedUnitAt?.toString() ?? null,
+    oldestPlannedUnitAt: instantText(reads.oldestPlannedUnitAt),
     retryingUnits: reads.retryingUnits,
     deadlineMisses: reads.deadlineMisses,
     largestCustomerBookedCount: reads.largestCustomerBookedCount,
     soloThreshold: soloUnitBookingThreshold,
-    warnings: [
-      ...(reads.lastPlannedAt === null ||
-      waitedLongerThan(reads.lastPlannedAt, plannerStaleAfterSeconds)
-        ? (["planner-stale"] as const)
-        : []),
-      ...(sweepLagSeconds !== null && sweepLagSeconds > backlogAfterSeconds
-        ? (["sweep-lagging"] as const)
-        : []),
-      // Without its cursor row the reconcile never runs.
-      ...(reconcileLagSeconds === null ||
-      reconcileLagSeconds > reconcileStalledAfterSeconds
-        ? (["reconcile-stalled"] as const)
-        : []),
-      ...(waitedLongerThan(reads.oldestUnprocessedEventAt, backlogAfterSeconds)
-        ? (["event-backlog"] as const)
-        : []),
-      ...(waitedLongerThan(reads.oldestPlannedUnitAt, unitBacklogAfterSeconds)
-        ? (["unit-backlog"] as const)
-        : []),
-      ...(schedules.some(
-        ({ scheduleLagSeconds }) =>
-          scheduleLagSeconds !== null &&
-          scheduleLagSeconds > scheduleLaggingAfterSeconds
-      )
-        ? (["schedule-lagging"] as const)
-        : []),
-      ...(schedules.some(({ lastFire }) => lastFire?.fallingBehind)
-        ? (["falling-behind"] as const)
-        : []),
-    ] satisfies ReadonlyArray<AutomationEngineWarningType>,
+    warnings: engineWarnings(health),
   };
 };
 

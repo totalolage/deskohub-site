@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.33.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.32.0...dhw-v1.33.0) (2026-11-04)
+
+
+### Features
+
+* **dhw:** bundle multilingual email body and publication contracts ([22b58a6](https://github.com/totalolage/deskohub-site/commit/22b58a6c31de9d568435a458140c1dfbcdd6201d))
+* **emails:** render and edit one multilingual email structure ([f4eb619](https://github.com/totalolage/deskohub-site/commit/f4eb6198b3faacf252d48ff9b474926cc8e0626a))
+
+## [1.32.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.31.0...dhw-v1.32.0) (2026-11-04)
+
+
+### Features
+
+* **dhw:** add reusable email publication and recipient storage ([ba444cc](https://github.com/totalolage/deskohub-site/commit/ba444cc09cac33bfb4687a7d15193e65e296c3fc))
+* **dhw:** bundle typed customer email value resolution ([a62a737](https://github.com/totalolage/deskohub-site/commit/a62a7379428db484c592e8caf7d48c069b56ec2c))
+* **workspace:** resolve typed customer email values ([c2a33e0](https://github.com/totalolage/deskohub-site/commit/c2a33e0872aea04061155c954a4c3bc319e06244))
+
 ## [1.31.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.30.0...dhw-v1.31.0) (2026-11-01)
 
 

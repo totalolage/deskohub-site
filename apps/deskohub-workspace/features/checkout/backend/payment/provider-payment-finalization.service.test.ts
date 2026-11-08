@@ -122,8 +122,8 @@ describe("ProviderPaymentFinalizationService", () => {
       const { WorkspaceReservationRepository } = await import(
         "@/features/reservation/backend/workspace-reservation.repository"
       );
-      const { PostHogEventService } = await import(
-        "@/shared/backend/analytics/posthog-event.service"
+      const { recordCheckoutAnalytics } = await import(
+        "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
       );
       const { NexiService } = await import("@deskohub/nexi");
 
@@ -153,9 +153,7 @@ describe("ProviderPaymentFinalizationService", () => {
                   {} as PaymentAttemptRepositoryType
                 ),
                 paymentLifecycleLayer(),
-                Layer.mock(PostHogEventService, {
-                  capture: () => Effect.void,
-                }),
+                recordCheckoutAnalytics().layer,
                 Layer.mock(NexiService, {} as NexiServiceType)
               )
             )
@@ -189,8 +187,8 @@ describe("ProviderPaymentFinalizationService", () => {
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
     );
     const { NexiService } = await import("@deskohub/nexi");
 
@@ -223,9 +221,7 @@ describe("ProviderPaymentFinalizationService", () => {
                 {} as PaymentAttemptRepositoryType
               ),
               paymentLifecycleLayer(),
-              Layer.mock(PostHogEventService, {
-                capture: () => Effect.void,
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(NexiService, {} as NexiServiceType)
             )
           )
@@ -251,8 +247,8 @@ describe("ProviderPaymentFinalizationService", () => {
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
     );
     const { NexiService } = await import("@deskohub/nexi");
 
@@ -285,9 +281,7 @@ describe("ProviderPaymentFinalizationService", () => {
                 {} as PaymentAttemptRepositoryType
               ),
               paymentLifecycleLayer(),
-              Layer.mock(PostHogEventService, {
-                capture: () => Effect.void,
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(NexiService, {} as NexiServiceType)
             )
           )
@@ -317,8 +311,8 @@ describe("ProviderPaymentFinalizationService", () => {
       const { WorkspaceReservationRepository } = await import(
         "@/features/reservation/backend/workspace-reservation.repository"
       );
-      const { PostHogEventService } = await import(
-        "@/shared/backend/analytics/posthog-event.service"
+      const { recordCheckoutAnalytics } = await import(
+        "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
       );
       const { NexiService } = await import("@deskohub/nexi");
 
@@ -376,9 +370,7 @@ describe("ProviderPaymentFinalizationService", () => {
                   markPaid: markPaidForReservation,
                   markTerminal: markTerminalForReservation,
                 }),
-                Layer.mock(PostHogEventService, {
-                  capture: mock(() => Effect.void),
-                }),
+                recordCheckoutAnalytics().layer,
                 Layer.mock(NexiService, nexi)
               )
             )
@@ -436,8 +428,8 @@ describe("ProviderPaymentFinalizationService", () => {
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
     );
     const { NexiService } = await import("@deskohub/nexi");
 
@@ -495,9 +487,7 @@ describe("ProviderPaymentFinalizationService", () => {
                   findById: mock(() => Effect.succeed(pendingAttempt)),
                 }),
                 paymentLifecycleLayer(),
-                Layer.mock(PostHogEventService, {
-                  capture: () => Effect.void,
-                }),
+                recordCheckoutAnalytics().layer,
                 Layer.mock(NexiService, {
                   verifyPaymentOutcome: mock(() =>
                     Effect.succeed(scenario.verification)
@@ -527,8 +517,8 @@ describe("ProviderPaymentFinalizationService", () => {
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
     );
     const { NexiService } = await import("@deskohub/nexi");
     const persistenceFailure = new EffectDrizzleQueryError({
@@ -561,9 +551,7 @@ describe("ProviderPaymentFinalizationService", () => {
               paymentLifecycleLayer({
                 markPaid: mock(() => Effect.fail(persistenceFailure)),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: () => Effect.void,
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(NexiService, {
                 verifyPaymentOutcome: mock(() =>
                   Effect.succeed(buildVerification("success"))
@@ -593,8 +581,8 @@ describe("ProviderPaymentFinalizationService", () => {
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
     );
     const { NexiService } = await import("@deskohub/nexi");
 
@@ -635,9 +623,7 @@ describe("ProviderPaymentFinalizationService", () => {
                 markPaid: markPaidForReservation,
                 markTerminal: markTerminalForReservation,
               }),
-              Layer.mock(PostHogEventService, {
-                capture: () => Effect.void,
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(NexiService, {
                 verifyPaymentOutcome,
               })
@@ -693,8 +679,8 @@ describe("ProviderPaymentFinalizationService unattached provider sessions", () =
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
     );
     const { NexiService } = await import("@deskohub/nexi");
 
@@ -739,9 +725,7 @@ describe("ProviderPaymentFinalizationService unattached provider sessions", () =
                 findById: mock(() => Effect.succeed(unattachedAttempt)),
               }),
               paymentLifecycleLayer({ markTerminal }),
-              Layer.mock(PostHogEventService, {
-                capture: () => Effect.void,
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(NexiService, { getOrder, verifyPaymentOutcome })
             )
           )

@@ -37,14 +37,19 @@ import {
 } from "@/features/accounting/manual-invoice";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import {
   AccountingDocumentSnapshotRepository,
   type AccountingDocumentSnapshotStorageError,
 } from "./accounting-document-snapshot.repository";
-import { AccountingSnapshotKeyService } from "./accounting-snapshot-key.service";
+import {
+  type AccountingSnapshotKey,
+  AccountingSnapshotKeyService,
+} from "./accounting-snapshot-key.service";
 import { encryptAccountingSnapshot } from "./accounting-snapshot-sql";
+import { isFulfilledReservation } from "./invoice-eligibility";
 import { InvoiceStorageError, makeInvoiceReads } from "./invoice-reads";
 
 class InvoiceEligibilityError extends Data.TaggedError(
@@ -120,6 +125,12 @@ export interface IInvoiceRepository {
     ReservationInvoice | null,
     EffectDrizzleQueryError | InvoiceStorageError
   >;
+  readonly findByReservationId: (
+    reservationId: WorkspaceReservationId
+  ) => Effect.Effect<
+    ReservationInvoice | null,
+    EffectDrizzleQueryError | InvoiceStorageError
+  >;
   readonly issue: (input: {
     readonly paymentAttemptId: string;
     readonly buyer: InvoiceBuyer;
@@ -153,6 +164,14 @@ export interface IInvoiceRepository {
   >;
 }
 
+interface InvoiceNumbering {
+  readonly key: AccountingSnapshotKey;
+  readonly issuedAt: Temporal.Instant;
+  readonly numberingYear: number;
+  readonly numberingSequence: number;
+  readonly invoiceNumber: InvoiceNumber;
+}
+
 const invoiceStorage = Layer.merge(
   WorkspaceDatabase.Default,
   AccountingSnapshotKeyService.Default
@@ -170,6 +189,99 @@ export class InvoiceRepository extends Context.Service<
       const keys = yield* AccountingSnapshotKeyService;
       const reads = yield* makeInvoiceReads;
       const { findById, findByPaymentAttemptId } = reads;
+
+      /**
+       * Takes the next number of the issue year's counter, together with the
+       * active key that will encrypt the invoice. Runs in the issuing
+       * transaction, so a rollback returns the number.
+       */
+      const allocateInvoiceNumber = Effect.fnUntraced(function* (
+        invoiceId: string
+      ) {
+        const key = yield* keys.getActive.pipe(
+          Effect.mapError(
+            (cause) =>
+              new InvoiceStorageError({
+                operation: "encrypt",
+                paymentAttemptId: invoiceId,
+                message: "Invoice encryption key is unavailable.",
+                cause: censorLogValue(cause),
+              })
+          )
+        );
+        const issuedAt = Temporal.Instant.from(
+          temporalInstantToIsoString(Temporal.Now.instant())
+        );
+        const numberingYear = getInvoiceNumberingYear(issuedAt);
+        const [counter] = yield* db
+          .insert(invoiceNumberCounters)
+          .values({ numberingYear, lastSequence: 1 })
+          .onConflictDoUpdate({
+            target: invoiceNumberCounters.numberingYear,
+            set: {
+              lastSequence: sql`${invoiceNumberCounters.lastSequence} + 1`,
+            },
+          })
+          .returning({ sequence: invoiceNumberCounters.lastSequence });
+
+        if (!counter) {
+          return yield* new InvoiceStorageError({
+            operation: "load",
+            paymentAttemptId: invoiceId,
+            message: "Invoice number allocation returned no row.",
+          });
+        }
+
+        return {
+          key,
+          issuedAt,
+          numberingYear,
+          numberingSequence: counter.sequence,
+          invoiceNumber: formatInvoiceNumber({
+            year: numberingYear,
+            sequence: counter.sequence,
+          }),
+        } satisfies InvoiceNumbering;
+      });
+
+      const insertEncryptedInvoice = (input: {
+        readonly invoiceId: string;
+        readonly source: Pick<
+          typeof invoices.$inferInsert,
+          | "id"
+          | "workspaceReservationId"
+          | "paymentAttemptId"
+          | "dotyposCustomerId"
+        >;
+        readonly numbering: InvoiceNumbering;
+        readonly document: InvoiceDocument;
+      }) =>
+        db
+          .insert(invoices)
+          .values({
+            ...input.source,
+            invoiceNumber: input.numbering.invoiceNumber,
+            numberingYear: input.numbering.numberingYear,
+            numberingSequence: input.numbering.numberingSequence,
+            keyId: input.numbering.key.id,
+            encryptedDocument: encryptAccountingSnapshot(
+              JSON.stringify(input.document),
+              input.numbering.key.secret
+            ),
+            issuedAt: input.numbering.issuedAt,
+          })
+          .pipe(
+            Effect.withTracerEnabled(false),
+            Effect.mapError(
+              (cause) =>
+                new InvoiceStorageError({
+                  operation: "encrypt",
+                  paymentAttemptId: input.invoiceId,
+                  message: "Invoice could not be encrypted.",
+                  cause: censorLogValue(cause),
+                })
+            )
+          );
 
       const issue = Effect.fn("InvoiceRepository.issue")(function* (input: {
         readonly paymentAttemptId: string;
@@ -262,77 +374,28 @@ export class InvoiceRepository extends Context.Service<
               };
             }
 
-            if (
-              locked.paymentAttemptState !== "paid" ||
-              locked.reservationPaymentState !== "paid" ||
-              locked.activePaymentAttemptId !== paymentAttemptId ||
-              locked.paidAt === null
-            ) {
+            if (!isActivePaidAttempt(locked, paymentAttemptId)) {
               return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
                 "Only the active paid attempt of a paid reservation can be invoiced."
               );
             }
 
-            if (
-              locked.fulfillmentState !== "fulfilled" ||
-              locked.fulfilledAt === null
-            ) {
+            if (!isFulfilledReservation(locked)) {
               return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
                 "Only a reservation whose access code has been delivered can be invoiced."
               );
             }
 
-            if (
-              source.workspaceReservationId !== locked.reservationId ||
-              source.dotyposCustomerId !== locked.dotyposCustomerId ||
-              source.dotyposReservationId !== locked.dotyposReservationId
-            ) {
+            if (!snapshotMatchesLockedReservation(source, locked)) {
               return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
                 "The accounting snapshot does not match the paid reservation."
               );
             }
 
-            const key = yield* keys.getActive.pipe(
-              Effect.mapError(
-                (cause) =>
-                  new InvoiceStorageError({
-                    operation: "encrypt",
-                    paymentAttemptId,
-                    message: "Invoice encryption key is unavailable.",
-                    cause: censorLogValue(cause),
-                  })
-              )
-            );
-            const issuedAt = Temporal.Instant.from(
-              temporalInstantToIsoString(Temporal.Now.instant())
-            );
-            const numberingYear = getInvoiceNumberingYear(issuedAt);
-            const [counter] = yield* db
-              .insert(invoiceNumberCounters)
-              .values({ numberingYear, lastSequence: 1 })
-              .onConflictDoUpdate({
-                target: invoiceNumberCounters.numberingYear,
-                set: {
-                  lastSequence: sql`${invoiceNumberCounters.lastSequence} + 1`,
-                },
-              })
-              .returning({ sequence: invoiceNumberCounters.lastSequence });
-
-            if (!counter) {
-              return yield* new InvoiceStorageError({
-                operation: "load",
-                paymentAttemptId,
-                message: "Invoice number allocation returned no row.",
-              });
-            }
-
-            const invoiceNumber = formatInvoiceNumber({
-              year: numberingYear,
-              sequence: counter.sequence,
-            });
+            const numbering = yield* allocateInvoiceNumber(paymentAttemptId);
             const document = yield* Schema.decodeUnknownEffect(
               invoiceDocumentSchema,
               { onExcessProperty: "error" }
@@ -341,8 +404,8 @@ export class InvoiceRepository extends Context.Service<
                 source,
                 buyer,
                 paymentAttemptId,
-                invoiceNumber,
-                issuedAt,
+                invoiceNumber: numbering.invoiceNumber,
+                issuedAt: numbering.issuedAt,
                 fulfilledAt: locked.fulfilledAt,
                 paidAt: locked.paidAt,
                 provenance: input.provenance,
@@ -358,34 +421,16 @@ export class InvoiceRepository extends Context.Service<
               )
             );
 
-            yield* db
-              .insert(invoices)
-              .values({
+            yield* insertEncryptedInvoice({
+              invoiceId: paymentAttemptId,
+              source: {
                 workspaceReservationId: locked.reservationId,
                 paymentAttemptId,
                 dotyposCustomerId: locked.dotyposCustomerId,
-                invoiceNumber,
-                numberingYear,
-                numberingSequence: counter.sequence,
-                keyId: key.id,
-                encryptedDocument: encryptAccountingSnapshot(
-                  JSON.stringify(document),
-                  key.secret
-                ),
-                issuedAt,
-              })
-              .pipe(
-                Effect.withTracerEnabled(false),
-                Effect.mapError(
-                  (cause) =>
-                    new InvoiceStorageError({
-                      operation: "encrypt",
-                      paymentAttemptId,
-                      message: "Invoice could not be encrypted.",
-                      cause: censorLogValue(cause),
-                    })
-                )
-              );
+              },
+              numbering,
+              document,
+            });
 
             return { paymentAttemptId, changed: true };
           })
@@ -458,77 +503,25 @@ export class InvoiceRepository extends Context.Service<
               .limit(1);
             if (existing) return { changed: false } as const;
 
-            const key = yield* keys.getActive.pipe(
-              Effect.mapError(
-                (cause) =>
-                  new InvoiceStorageError({
-                    operation: "encrypt",
-                    paymentAttemptId: normalized.invoiceId,
-                    message: "Invoice encryption key is unavailable.",
-                    cause: censorLogValue(cause),
-                  })
-              )
+            const numbering = yield* allocateInvoiceNumber(
+              normalized.invoiceId
             );
-            const issuedAt = Temporal.Instant.from(
-              temporalInstantToIsoString(Temporal.Now.instant())
-            );
-            const numberingYear = getInvoiceNumberingYear(issuedAt);
-            const [counter] = yield* db
-              .insert(invoiceNumberCounters)
-              .values({ numberingYear, lastSequence: 1 })
-              .onConflictDoUpdate({
-                target: invoiceNumberCounters.numberingYear,
-                set: {
-                  lastSequence: sql`${invoiceNumberCounters.lastSequence} + 1`,
-                },
-              })
-              .returning({ sequence: invoiceNumberCounters.lastSequence });
-            if (!counter) {
-              return yield* new InvoiceStorageError({
-                operation: "load",
-                paymentAttemptId: normalized.invoiceId,
-                message: "Invoice number allocation returned no row.",
-              });
-            }
-
-            const invoiceNumber = formatInvoiceNumber({
-              year: numberingYear,
-              sequence: counter.sequence,
-            });
             const document = makeManualInvoiceDocument({
               normalized,
-              invoiceNumber,
-              issuedAt,
+              invoiceNumber: numbering.invoiceNumber,
+              issuedAt: numbering.issuedAt,
             });
-            yield* db
-              .insert(invoices)
-              .values({
+            yield* insertEncryptedInvoice({
+              invoiceId: normalized.invoiceId,
+              source: {
                 id: normalized.invoiceId,
                 workspaceReservationId: null,
                 paymentAttemptId: null,
                 dotyposCustomerId: normalized.dotyposCustomerId,
-                invoiceNumber,
-                numberingYear,
-                numberingSequence: counter.sequence,
-                keyId: key.id,
-                encryptedDocument: encryptAccountingSnapshot(
-                  JSON.stringify(document),
-                  key.secret
-                ),
-                issuedAt,
-              })
-              .pipe(
-                Effect.withTracerEnabled(false),
-                Effect.mapError(
-                  (cause) =>
-                    new InvoiceStorageError({
-                      operation: "encrypt",
-                      paymentAttemptId: normalized.invoiceId,
-                      message: "Invoice could not be encrypted.",
-                      cause: censorLogValue(cause),
-                    })
-                )
-              );
+              },
+              numbering,
+              document,
+            });
             yield* db.insert(manualInvoiceActors).values({
               invoiceId: normalized.invoiceId,
               actorAccountId: issuedBy.accountId,
@@ -602,6 +595,38 @@ export class InvoiceRepository extends Context.Service<
     )
   );
 }
+
+const isActivePaidAttempt = <
+  Locked extends {
+    readonly paymentAttemptState: string;
+    readonly reservationPaymentState: string;
+    readonly activePaymentAttemptId: string | null;
+    readonly paidAt: Temporal.Instant | null;
+  },
+>(
+  locked: Locked,
+  paymentAttemptId: string
+): locked is Locked & { readonly paidAt: Temporal.Instant } =>
+  locked.paymentAttemptState === "paid" &&
+  locked.reservationPaymentState === "paid" &&
+  locked.activePaymentAttemptId === paymentAttemptId &&
+  locked.paidAt !== null;
+
+const snapshotMatchesLockedReservation = (
+  source: {
+    readonly workspaceReservationId: string;
+    readonly dotyposCustomerId: string;
+    readonly dotyposReservationId: string;
+  },
+  locked: {
+    readonly reservationId: string;
+    readonly dotyposCustomerId: string;
+    readonly dotyposReservationId: string | null;
+  }
+) =>
+  source.workspaceReservationId === locked.reservationId &&
+  source.dotyposCustomerId === locked.dotyposCustomerId &&
+  source.dotyposReservationId === locked.dotyposReservationId;
 
 const wrapInvoiceEligibilityError = (
   paymentAttemptId: string,

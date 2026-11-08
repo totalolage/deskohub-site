@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react";
+import type { ReactNode } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import type {
   AdministrationCustomerActivity,
@@ -20,17 +21,17 @@ import {
 import { groupCustomerReservations } from "@/features/administration/customer-activity";
 import { m } from "@/features/administration/i18n";
 import { getAdministrationReservationProductTitle } from "@/features/administration/reservation-product";
-import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import type { Locale } from "@/features/i18n";
+import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { formatMoney, type Money } from "@/shared/money/money";
 import { formatCount } from "@/shared/utils/number";
 import { VoucherEditor } from "./admin-tables";
+import { toClaimHistoryItem } from "./claim-history-item";
 import {
   AddCodeCustomerForm,
   AddVoucherCustomerForm,
-  AdminMutationButton,
   CustomerDiscountGroupForm,
 } from "./customer-admin-client";
 import {
@@ -39,6 +40,13 @@ import {
   CustomerTransactionHistoryTable,
 } from "./customer-admin-tables";
 import { formatDiscountAdminCustomerName } from "./customer-display-name";
+import {
+  countCustomerAvailableCodes,
+  customerClaimHistory,
+  customerPromotionCodeValues,
+  customerVisiblePromotionCodes,
+  formatCustomerDiscountGroup,
+} from "./customer-profile-display";
 import type {
   AdminCustomerProfile,
   AdminDiscountCode,
@@ -48,6 +56,8 @@ import type {
   AdminVoucherClaim,
   AdminVoucherDetail,
 } from "./discount-administration.service";
+import { PromotionAudienceSection } from "./promotion-audience";
+import { PromotionCustomerPicker } from "./promotion-customers";
 import { formatDiscountUsageLimit } from "./usage-limit";
 
 type Notice = {
@@ -89,94 +99,36 @@ export function CodeAdministrationDetailPage({
       />
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <section className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-navy-blue/10 px-5 py-4">
-            <div>
-              <h2 className="font-semibold">
-                {m.discountsColumnAudience({}, { locale })}
-              </h2>
-              <p className="mt-1 text-sm text-navy-blue/65">
-                {detail.customers.length === 0
-                  ? m.discountsCodeAudienceUnrestricted({}, { locale })
-                  : m.discountsCodeAudienceCount(
-                      { count: detail.customers.length },
-                      { locale }
-                    )}
-              </p>
-            </div>
-            {detail.customers.length > 0 && (
-              <AdminMutationButton
-                confirmation={m.discountsCodeMakeUnrestrictedConfirmation(
-                  {},
+        <PromotionAudienceSection
+          customers={detail.customers}
+          locale={locale}
+          makeUnrestricted={{
+            confirmation: m.discountsCodeMakeUnrestrictedConfirmation(
+              {},
+              { locale }
+            ),
+            mutation: { kind: "make-code-unrestricted", codeId: code.id },
+          }}
+          removeCustomer={(customerId, customerName) => ({
+            confirmation: m.discountsCodeRemoveCustomerConfirmation(
+              { customerName },
+              { locale }
+            ),
+            mutation: {
+              kind: "remove-code-customer",
+              codeId: code.id,
+              customerId,
+            },
+          })}
+          summary={
+            detail.customers.length === 0
+              ? m.discountsCodeAudienceUnrestricted({}, { locale })
+              : m.discountsCodeAudienceCount(
+                  { count: detail.customers.length },
                   { locale }
-                )}
-                mutation={{
-                  kind: "make-code-unrestricted",
-                  codeId: code.id,
-                }}
-              >
-                {m.discountsMakeUnrestricted({}, { locale })}
-              </AdminMutationButton>
-            )}
-          </div>
-          {detail.customers.length === 0 ? (
-            <EmptyState message={m.discountsAudienceEmpty({}, { locale })} />
-          ) : (
-            <ul className="divide-y divide-navy-blue/10">
-              {detail.customers.map(({ customer, customerId }) => (
-                <li
-                  className="flex flex-wrap items-center justify-between gap-4 px-5 py-4"
-                  key={customerId}
-                >
-                  <div>
-                    <Link
-                      className="font-semibold underline decoration-navy-blue/25 underline-offset-4"
-                      href={administrationHref(
-                        "/[locale]/admin/customers/[customerId]",
-                        { customerId }
-                      )}
-                    >
-                      {customer
-                        ? formatDiscountAdminCustomerName(customer, locale)
-                        : m.discountsCustomerDetailsUnavailable({}, { locale })}
-                    </Link>
-                    <p className="mt-1 text-sm text-navy-blue/65">
-                      {customer
-                        ? [customer.email, customer.phone]
-                            .filter(Boolean)
-                            .join(" · ") ||
-                          m.discountsCustomerNoContactDetails({}, { locale })
-                        : customerId}
-                    </p>
-                  </div>
-                  {detail.customers.length > 1 ? (
-                    <AdminMutationButton
-                      confirmation={m.discountsCodeRemoveCustomerConfirmation(
-                        {
-                          customerName: customer
-                            ? formatDiscountAdminCustomerName(customer, locale)
-                            : customerId,
-                        },
-                        { locale }
-                      )}
-                      mutation={{
-                        kind: "remove-code-customer",
-                        codeId: code.id,
-                        customerId,
-                      }}
-                    >
-                      {m.discountsRemove({}, { locale })}
-                    </AdminMutationButton>
-                  ) : (
-                    <span className="text-xs text-navy-blue/65">
-                      {m.discountsUseMakeUnrestricted({}, { locale })}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                )
+          }
+        />
 
         <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-5">
           <h2 className="font-semibold">
@@ -185,13 +137,15 @@ export function CodeAdministrationDetailPage({
           <p className="mb-4 mt-1 text-sm leading-5 text-navy-blue/65">
             {m.discountsCodeAddCustomerDescription({}, { locale })}
           </p>
-          <AddCodeCustomerForm codeId={code.id} />
-          <Link
-            className="mt-4 inline-block text-sm font-semibold underline underline-offset-4"
-            href={administrationHref("/[locale]/admin/customers")}
-          >
-            {m.discountsFindDotyposCustomer({}, { locale })}
-          </Link>
+          <PromotionCustomerPicker
+            audienceCustomerIds={code.audienceCustomerIds}
+            code={code.code}
+            deleteRedirect={administrationHref("/[locale]/admin/codes")}
+            promotion={{ kind: "discount-code", id: code.id }}
+          />
+          <AddCustomerByIdDisclosure locale={locale}>
+            <AddCodeCustomerForm codeId={code.id} />
+          </AddCustomerByIdDisclosure>
         </aside>
       </div>
 
@@ -251,94 +205,39 @@ export function VoucherAdministrationDetailPage({
       </section>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <section className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-navy-blue/10 px-5 py-4">
-            <div>
-              <h2 className="font-semibold">
-                {m.discountsColumnAudience({}, { locale })}
-              </h2>
-              <p className="mt-1 text-sm text-navy-blue/65">
-                {detail.customers.length === 0
-                  ? m.discountsVoucherAudienceUnrestricted({}, { locale })
-                  : m.discountsVoucherAudienceCount(
-                      { count: detail.customers.length },
-                      { locale }
-                    )}
-              </p>
-            </div>
-            {detail.customers.length > 0 && (
-              <AdminMutationButton
-                confirmation={m.discountsVoucherMakeUnrestrictedConfirmation(
-                  {},
+        <PromotionAudienceSection
+          customers={detail.customers}
+          locale={locale}
+          makeUnrestricted={{
+            confirmation: m.discountsVoucherMakeUnrestrictedConfirmation(
+              {},
+              { locale }
+            ),
+            mutation: {
+              kind: "make-voucher-unrestricted",
+              voucherId: voucher.id,
+            },
+          }}
+          removeCustomer={(customerId, customerName) => ({
+            confirmation: m.discountsVoucherRemoveCustomerConfirmation(
+              { customerName },
+              { locale }
+            ),
+            mutation: {
+              kind: "remove-voucher-customer",
+              voucherId: voucher.id,
+              customerId,
+            },
+          })}
+          summary={
+            detail.customers.length === 0
+              ? m.discountsVoucherAudienceUnrestricted({}, { locale })
+              : m.discountsVoucherAudienceCount(
+                  { count: detail.customers.length },
                   { locale }
-                )}
-                mutation={{
-                  kind: "make-voucher-unrestricted",
-                  voucherId: voucher.id,
-                }}
-              >
-                {m.discountsMakeUnrestricted({}, { locale })}
-              </AdminMutationButton>
-            )}
-          </div>
-          {detail.customers.length === 0 ? (
-            <EmptyState message={m.discountsAudienceEmpty({}, { locale })} />
-          ) : (
-            <ul className="divide-y divide-navy-blue/10">
-              {detail.customers.map(({ customer, customerId }) => (
-                <li
-                  className="flex flex-wrap items-center justify-between gap-4 px-5 py-4"
-                  key={customerId}
-                >
-                  <div>
-                    <Link
-                      className="font-semibold underline decoration-navy-blue/25 underline-offset-4"
-                      href={administrationHref(
-                        "/[locale]/admin/customers/[customerId]",
-                        { customerId }
-                      )}
-                    >
-                      {customer
-                        ? formatDiscountAdminCustomerName(customer, locale)
-                        : m.discountsCustomerDetailsUnavailable({}, { locale })}
-                    </Link>
-                    <p className="mt-1 text-sm text-navy-blue/65">
-                      {customer
-                        ? [customer.email, customer.phone]
-                            .filter(Boolean)
-                            .join(" · ") ||
-                          m.discountsCustomerNoContactDetails({}, { locale })
-                        : customerId}
-                    </p>
-                  </div>
-                  {detail.customers.length > 1 ? (
-                    <AdminMutationButton
-                      confirmation={m.discountsVoucherRemoveCustomerConfirmation(
-                        {
-                          customerName: customer
-                            ? formatDiscountAdminCustomerName(customer, locale)
-                            : customerId,
-                        },
-                        { locale }
-                      )}
-                      mutation={{
-                        kind: "remove-voucher-customer",
-                        voucherId: voucher.id,
-                        customerId,
-                      }}
-                    >
-                      {m.discountsRemove({}, { locale })}
-                    </AdminMutationButton>
-                  ) : (
-                    <span className="text-xs text-navy-blue/65">
-                      {m.discountsUseMakeUnrestricted({}, { locale })}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                )
+          }
+        />
 
         <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-5">
           <h2 className="font-semibold">
@@ -347,7 +246,15 @@ export function VoucherAdministrationDetailPage({
           <p className="mb-4 mt-1 text-sm leading-5 text-navy-blue/65">
             {m.discountsVoucherAddCustomerDescription({}, { locale })}
           </p>
-          <AddVoucherCustomerForm voucherId={voucher.id} />
+          <PromotionCustomerPicker
+            audienceCustomerIds={voucher.audienceCustomerIds}
+            code={voucher.code}
+            deleteRedirect={administrationHref("/[locale]/admin/vouchers")}
+            promotion={{ kind: "voucher", id: voucher.id }}
+          />
+          <AddCustomerByIdDisclosure locale={locale}>
+            <AddVoucherCustomerForm voucherId={voucher.id} />
+          </AddCustomerByIdDisclosure>
         </aside>
       </div>
 
@@ -364,6 +271,27 @@ export function VoucherAdministrationDetailPage({
         />
       </section>
     </AdministrationPage>
+  );
+}
+
+/**
+ * Adding a customer by Dotypos ID, for a customer the name and email search
+ * cannot single out.
+ */
+function AddCustomerByIdDisclosure({
+  children,
+  locale,
+}: {
+  readonly children: ReactNode;
+  readonly locale: Locale;
+}) {
+  return (
+    <details className="mt-5 border-t border-navy-blue/10 pt-4">
+      <summary className="cursor-pointer text-sm font-semibold">
+        {m.discountsAddCustomerById({}, { locale })}
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
   );
 }
 
@@ -384,77 +312,8 @@ export function CustomerAdministrationDetailPage({
     profile.customer,
     locale
   );
-  const currentGroup = profile.discountGroups.find(
-    ({ id }) => id === profile.customer.discountGroupId
-  );
-  let currentGroupLabel: string = m.discountsCustomerGroupNone({}, { locale });
-  if (currentGroup) {
-    currentGroupLabel = `${currentGroup.name} (${formatDiscountAdjustment(
-      { kind: "percentage", basisPoints: currentGroup.basisPoints },
-      locale
-    )})`;
-  } else if (profile.customer.discountGroupId) {
-    currentGroupLabel = m.discountsCustomerGroupUnavailable(
-      { groupId: profile.customer.discountGroupId },
-      { locale }
-    );
-  }
-  const visiblePromotionCodes = [
-    ...profile.codes.map(
-      ({
-        audienceSize,
-        code,
-        discountAdjustment,
-        discountLabels,
-        eligible,
-        enabled,
-        id,
-      }) => ({
-        kind: "discount-code" as const,
-        audienceSize,
-        code,
-        discountAdjustment,
-        discountLabel: discountLabels[locale],
-        eligible,
-        enabled,
-        id,
-      })
-    ),
-    ...profile.vouchers.map(
-      ({
-        audienceSize,
-        code,
-        eligible,
-        enabled,
-        id,
-        issuedCredit,
-        remainingCredit,
-      }) => ({
-        kind: "voucher" as const,
-        audienceSize,
-        code,
-        eligible,
-        enabled,
-        id,
-        issuedCredit,
-        remainingCredit,
-      })
-    ),
-  ]
-    .filter((item) => item.eligible || item.audienceSize === 0)
-    .toSorted(
-      (left, right) =>
-        Number(right.enabled) - Number(left.enabled) ||
-        Number(right.eligible) - Number(left.eligible) ||
-        left.code.localeCompare(right.code)
-    );
-  const targetedCodeCount = profile.codes.filter(
-    (code) => code.enabled && code.eligible && code.audienceSize > 0
-  ).length;
-  const universalCodeCount = profile.codes.filter(
-    (code) => code.enabled && code.audienceSize === 0
-  ).length;
-  const reservationGroups = groupCustomerReservations(activity.reservations);
+  const visiblePromotionCodes = customerVisiblePromotionCodes(profile, locale);
+  const availableCodes = countCustomerAvailableCodes(profile.codes);
   return (
     <AdministrationPage>
       <AdministrationPageHeader title={customerName} />
@@ -468,7 +327,7 @@ export function CustomerAdministrationDetailPage({
       <div className="mb-7 grid gap-5 lg:grid-cols-2">
         <CustomerStats
           activity={activity}
-          availableCodes={`${formatCount(targetedCodeCount, locale)} (+ ${formatCount(universalCodeCount, locale)})`}
+          availableCodes={`${formatCount(availableCodes.targeted, locale)} (+ ${formatCount(availableCodes.universal, locale)})`}
           locale={locale}
         />
         <CustomerConsents consent={activity.marketingConsent} locale={locale} />
@@ -476,92 +335,11 @@ export function CustomerAdministrationDetailPage({
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-7">
-          <section>
-            <h2 className="mb-3 text-xl">
-              {m.discountsCustomerReservationsTitle({}, { locale })}
-            </h2>
-            {activity.reservationHistoryTruncated && (
-              <p className="mb-3 text-sm text-navy-blue/65">
-                {m.discountsCustomerReservationsTruncated({}, { locale })}{" "}
-                <Link
-                  className="font-semibold underline underline-offset-4"
-                  href={`${administrationHref(
-                    "/[locale]/admin/reservations"
-                  )}?customerId=${encodeURIComponent(profile.customer.id)}`}
-                >
-                  {m.discountsCustomerViewAllReservations({}, { locale })}
-                </Link>
-              </p>
-            )}
-            <div className="space-y-4">
-              <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-                <summary className="cursor-pointer px-5 py-4 font-semibold">
-                  {m.discountsCustomerPastReservations(
-                    {
-                      count: formatCount(reservationGroups.past.length, locale),
-                    },
-                    { locale }
-                  )}
-                </summary>
-                <div className="border-t border-navy-blue/10 p-3">
-                  <ReservationTable
-                    emptyMessage={m.discountsCustomerPastReservationsEmpty(
-                      {},
-                      { locale }
-                    )}
-                    reservations={reservationGroups.past}
-                    showCustomer={false}
-                  />
-                </div>
-              </details>
-
-              <section aria-labelledby="current-reservations-heading">
-                <h3
-                  className="mb-3 font-semibold"
-                  id="current-reservations-heading"
-                >
-                  {m.discountsCustomerCurrentReservations({}, { locale })}
-                </h3>
-                <ReservationTable
-                  emptyMessage={
-                    activity.reservationHistoryTruncated
-                      ? m.discountsCustomerCurrentReservationsTruncatedEmpty(
-                          {},
-                          { locale }
-                        )
-                      : m.discountsCustomerCurrentReservationsEmpty(
-                          {},
-                          { locale }
-                        )
-                  }
-                  reservations={reservationGroups.currentAndFuture}
-                  showCustomer={false}
-                />
-              </section>
-
-              {reservationGroups.unavailable.length > 0 && (
-                <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-                  <summary className="cursor-pointer px-5 py-4 font-semibold">
-                    {m.discountsCustomerUnavailableDateReservations(
-                      {
-                        count: formatCount(
-                          reservationGroups.unavailable.length,
-                          locale
-                        ),
-                      },
-                      { locale }
-                    )}
-                  </summary>
-                  <div className="border-t border-navy-blue/10 p-3">
-                    <ReservationTable
-                      reservations={reservationGroups.unavailable}
-                      showCustomer={false}
-                    />
-                  </div>
-                </details>
-              )}
-            </div>
-          </section>
+          <CustomerReservations
+            activity={activity}
+            customerId={profile.customer.id}
+            locale={locale}
+          />
 
           <section>
             <h2 className="mb-3 text-xl">
@@ -627,22 +405,10 @@ export function CustomerAdministrationDetailPage({
             </h2>
             <ClaimHistory
               ariaLabel={m.discountsCustomerClaimHistoryLabel({}, { locale })}
-              claims={[...profile.claims, ...profile.voucherClaims].toSorted(
-                (left, right) =>
-                  Temporal.Instant.compare(right.reservedAt, left.reservedAt)
-              )}
+              claims={customerClaimHistory(profile)}
               emptyMessage={m.discountsCustomerClaimsEmpty({}, { locale })}
               locale={locale}
-              promotionCodes={
-                new Map([
-                  ...profile.codes.map(
-                    ({ code, id }) => [`discount-code:${id}`, code] as const
-                  ),
-                  ...profile.vouchers.map(
-                    ({ code, id }) => [`voucher:${id}`, code] as const
-                  ),
-                ])
-              }
+              promotionCodes={customerPromotionCodeValues(profile)}
               subject="promotion-code"
             />
           </section>
@@ -664,7 +430,7 @@ export function CustomerAdministrationDetailPage({
               />
               <AdministrationFact
                 label={m.discountsCustomerCurrentGroupLabel({}, { locale })}
-                value={currentGroupLabel}
+                value={formatCustomerDiscountGroup(profile, locale)}
               />
             </dl>
           </section>
@@ -695,6 +461,100 @@ export function CustomerAdministrationDetailPage({
         </aside>
       </div>
     </AdministrationPage>
+  );
+}
+
+function CustomerReservations({
+  activity,
+  customerId,
+  locale,
+}: {
+  readonly activity: AdministrationCustomerActivity;
+  readonly customerId: DotyposCustomerId;
+  readonly locale: Locale;
+}) {
+  const reservationGroups = groupCustomerReservations(activity.reservations);
+  return (
+    <section>
+      <h2 className="mb-3 text-xl">
+        {m.discountsCustomerReservationsTitle({}, { locale })}
+      </h2>
+      {activity.reservationHistoryTruncated && (
+        <p className="mb-3 text-sm text-navy-blue/65">
+          {m.discountsCustomerReservationsTruncated({}, { locale })}{" "}
+          <Link
+            className="font-semibold underline underline-offset-4"
+            href={`${administrationHref(
+              "/[locale]/admin/reservations"
+            )}?customerId=${encodeURIComponent(customerId)}`}
+          >
+            {m.discountsCustomerViewAllReservations({}, { locale })}
+          </Link>
+        </p>
+      )}
+      <div className="space-y-4">
+        <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
+          <summary className="cursor-pointer px-5 py-4 font-semibold">
+            {m.discountsCustomerPastReservations(
+              {
+                count: formatCount(reservationGroups.past.length, locale),
+              },
+              { locale }
+            )}
+          </summary>
+          <div className="border-t border-navy-blue/10 p-3">
+            <ReservationTable
+              emptyMessage={m.discountsCustomerPastReservationsEmpty(
+                {},
+                { locale }
+              )}
+              reservations={reservationGroups.past}
+              showCustomer={false}
+            />
+          </div>
+        </details>
+
+        <section aria-labelledby="current-reservations-heading">
+          <h3 className="mb-3 font-semibold" id="current-reservations-heading">
+            {m.discountsCustomerCurrentReservations({}, { locale })}
+          </h3>
+          <ReservationTable
+            emptyMessage={
+              activity.reservationHistoryTruncated
+                ? m.discountsCustomerCurrentReservationsTruncatedEmpty(
+                    {},
+                    { locale }
+                  )
+                : m.discountsCustomerCurrentReservationsEmpty({}, { locale })
+            }
+            reservations={reservationGroups.currentAndFuture}
+            showCustomer={false}
+          />
+        </section>
+
+        {reservationGroups.unavailable.length > 0 && (
+          <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
+            <summary className="cursor-pointer px-5 py-4 font-semibold">
+              {m.discountsCustomerUnavailableDateReservations(
+                {
+                  count: formatCount(
+                    reservationGroups.unavailable.length,
+                    locale
+                  ),
+                },
+                { locale }
+              )}
+            </summary>
+            <div className="border-t border-navy-blue/10 p-3">
+              <ReservationTable
+                reservations={reservationGroups.unavailable}
+                showCustomer={false}
+              />
+            </div>
+          </details>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -1009,37 +869,9 @@ function ClaimHistory({
   return (
     <ClaimHistoryTable
       ariaLabel={ariaLabel}
-      claims={claims.map((claim) => {
-        const promotion =
-          "codeId" in claim
-            ? { kind: "discount-code" as const, id: claim.codeId }
-            : { kind: "voucher" as const, id: claim.voucherId };
-        const completedAt = claim.redeemedAt ?? claim.releasedAt;
-        return {
-          id: claim.id,
-          kind: promotion.kind,
-          appliedAmount: claim.appliedAmount,
-          promotion: {
-            id: promotion.id,
-            code:
-              promotionCodes?.get(`${promotion.kind}:${promotion.id}`) ?? null,
-          },
-          dotyposCustomerId: claim.dotyposCustomerId,
-          redeemedAt: claim.redeemedAt?.toString() ?? null,
-          releasedAt: claim.releasedAt?.toString() ?? null,
-          releaseReason: claim.releaseReason,
-          reservedAt: claim.reservedAt.toString(),
-          reservedAtLabel: formatAdministrationDateTime(
-            claim.reservedAt.toString(),
-            locale
-          ),
-          completedAtLabel: completedAt
-            ? formatAdministrationDateTime(completedAt.toString(), locale)
-            : null,
-          state: claim.state,
-          workspaceReservationId: claim.workspaceReservationId,
-        };
-      })}
+      claims={claims.map((claim) =>
+        toClaimHistoryItem(claim, locale, promotionCodes)
+      )}
       subject={subject}
     />
   );

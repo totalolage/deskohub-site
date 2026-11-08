@@ -1,3 +1,4 @@
+import type { ProviderRequestPolicy } from "@deskohub/provider-request";
 import { Config, Duration, Effect, Layer, Option, Schema } from "effect";
 import { Resend } from "resend";
 import {
@@ -13,6 +14,7 @@ import {
   isRetryableEmailError,
 } from "../capabilities";
 import { NetworkError } from "../network-error";
+import { emailRetryPolicy } from "../request-policy";
 
 const resendTagPattern = /^[A-Za-z0-9_-]{1,256}$/;
 
@@ -40,20 +42,30 @@ export const deploymentResendRequestTimeouts = Effect.gen(function* () {
     : resendRequestTimeouts.nonProduction;
 }).pipe(Effect.orDie);
 
-const toResendTags = (message: EmailMessage) => {
-  const tags: { name: string; value: string }[] = [];
+type ResendTag = { name: string; value: string };
 
-  for (const tag of message.tags ?? []) {
-    if (resendTagPattern.test(tag)) {
-      tags.push({ name: "category", value: tag });
-    }
-  }
+/** The message's categories Resend can carry, each as a `category` tag. */
+const toResendCategoryTags = (categories: EmailMessage["tags"]) =>
+  (categories ?? [])
+    .filter((category) => resendTagPattern.test(category))
+    .map((category): ResendTag => ({ name: "category", value: category }));
 
-  for (const [name, value] of Object.entries(message.metadata ?? {})) {
+/** The message's string metadata whose name and value Resend can carry. */
+const toResendMetadataTags = (metadata: EmailMessage["metadata"]) => {
+  const tags: ResendTag[] = [];
+  for (const [name, value] of Object.entries(metadata ?? {})) {
     if (typeof value !== "string") continue;
     if (!resendTagPattern.test(name) || !resendTagPattern.test(value)) continue;
     tags.push({ name, value });
   }
+  return tags;
+};
+
+const toResendTags = (message: EmailMessage) => {
+  const tags = [
+    ...toResendCategoryTags(message.tags),
+    ...toResendMetadataTags(message.metadata),
+  ];
 
   return tags.length > 0 ? tags : undefined;
 };
@@ -101,7 +113,7 @@ const isResendRefusal = (statusCode: number) =>
  */
 const requestResend = <A>(
   request: (signal: AbortSignal) => Promise<ResendResponse<A>>,
-  timeout: Duration.Input
+  policy: ProviderRequestPolicy
 ) =>
   Effect.tryPromise({
     try: async (signal) => {
@@ -149,15 +161,12 @@ const requestResend = <A>(
       });
     },
   }).pipe(
-    Effect.timeoutOrElse({
-      duration: timeout,
-      orElse: () =>
-        Effect.fail(
-          new NetworkError({
-            message: "Resend send timed out",
-          })
-        ),
-    }),
+    policy.attempt(
+      () =>
+        new NetworkError({
+          message: "Resend send timed out",
+        })
+    ),
     Effect.tapError((error) =>
       Effect.logWarning(
         "Resend tryPromise failed - will retry if NetworkError",
@@ -201,6 +210,8 @@ export const createResendProvider = (
   timeouts: ResendRequestTimeouts
 ): EmailProvider => {
   const resend = new Resend(apiKey);
+  const sendPolicy = emailRetryPolicy.withAttemptTimeout(timeouts.send);
+  const batchPolicy = emailRetryPolicy.withAttemptTimeout(timeouts.batch);
 
   return {
     name: "resend",
@@ -230,7 +241,7 @@ export const createResendProvider = (
                 signal,
               }
             ),
-          timeouts.send
+          sendPolicy
         ).pipe(
           Effect.tap((response) =>
             Effect.logInfo("Resend tryPromise succeeded", {
@@ -288,7 +299,7 @@ export const createResendProvider = (
               idempotencyKey: getResendIdempotencyKey(options.idempotencyKey),
               signal,
             }),
-          timeouts.batch
+          batchPolicy
         );
 
         const ids = data?.data ?? [];

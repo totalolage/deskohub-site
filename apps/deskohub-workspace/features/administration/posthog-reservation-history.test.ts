@@ -77,6 +77,13 @@ describe("PostHog reservation history", () => {
       },
       refresh: "blocking",
     });
+    // A consenting author's events carry the account's distinct ID, so the
+    // history finds every event of the reservation by its property alone.
+    const { query } = (capturedBody as { query: { query: string } }).query;
+    expect(query).toContain(
+      "WHERE properties.reservation_id = {reservationId}"
+    );
+    expect(query).not.toContain("distinct_id");
   });
 
   test("keeps offset timestamps and drops events with unreadable timestamps", async () => {

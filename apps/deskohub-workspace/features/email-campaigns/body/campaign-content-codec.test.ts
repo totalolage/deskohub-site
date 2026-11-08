@@ -14,7 +14,6 @@ import type {
 } from "./campaign-content";
 import {
   type CampaignContentChanges,
-  campaignContentLocales,
   changeCampaignContent,
   readCampaignContent,
   readCampaignDraftContent,
@@ -408,6 +407,43 @@ describe("changeCampaignContent", () => {
     expect(changed["en-US"]?.operationalReason).toBe("We change hours.");
   });
 
+  test("replaces a preheader, keeping the reason", async () => {
+    const changed = await Effect.runPromise(
+      change({ "cs-CZ": { preheader: "Nový úvod" } })
+    );
+
+    expect(changed["cs-CZ"]).toEqual({
+      ...czech(current),
+      preheader: "Nový úvod",
+    });
+  });
+
+  test("adds a locale with its preheader and reason", async () => {
+    const changed = await Effect.runPromise(
+      changeCampaignContent({
+        campaignId,
+        current: {},
+        changes: {
+          "en-US": {
+            subject: "New",
+            preheader: "Intro",
+            operationalReason: "We change hours.",
+            bodyDocument: document(paragraph("Hello")),
+          },
+        },
+      })
+    );
+
+    expect(changed).toEqual({
+      "en-US": {
+        subject: "New",
+        preheader: "Intro",
+        body: body("Hello"),
+        operationalReason: "We change hours.",
+      },
+    });
+  });
+
   test.each([
     ["Markdown", { bodyMarkdown: "Ahoj" }],
     ["a document", { bodyDocument: document(paragraph("Ahoj")) }],
@@ -510,7 +546,6 @@ describe("writeCampaignContent", () => {
       expect(Object.keys(writeCampaignContent(reordered, form))).toEqual([
         ...locales,
       ]);
-      expect(campaignContentLocales(reordered)).toEqual(locales);
     }
   );
 

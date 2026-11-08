@@ -31,7 +31,8 @@ import {
 } from "@/db/schema";
 import { WorkspaceLockSections } from "@/db/workspace-locks";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { signedInAuthentication } from "@/features/account/backend/customer-authentication.test-utils";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
   type AccountingDocumentSnapshot,
@@ -72,8 +73,8 @@ import {
 import type { DiscountCandidate } from "@/features/discounts/provider";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { type Locale, m } from "@/features/i18n";
-import { getReferralInvitationDiscountId } from "@/features/referrals/discount-identifiers";
 import { ReferralService } from "@/features/referrals/referral.service";
+import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { Money } from "@/shared/money/money";
@@ -175,11 +176,13 @@ const makeReferralService = async (input?: {
               databaseLayer,
               lockLayer,
               accountLinksLayer,
-              Layer.mock(CustomerAccountResolver, {
-                resolve: input?.identity
-                  ? Effect.succeed(input.identity)
-                  : Effect.die("Identity is not used by quote lookup"),
-              }),
+              input?.identity
+                ? signedInAuthentication(input.identity.accountId)
+                : Layer.succeed(CustomerAuthentication, {
+                    currentUser: Effect.die(
+                      "Identity is not used by quote lookup"
+                    ),
+                  }),
               Layer.mock(DotyposService, {
                 listReservations:
                   input?.listReservations ?? (() => Effect.succeed([])),
@@ -498,7 +501,7 @@ const makeReferralAdmission = (input: {
   const promotionCodeId = promotionCodeIdSchema.make(input.promotionCodeId);
   const candidate = {
     discount: {
-      id: getReferralInvitationDiscountId(input.invitedDotyposCustomerId),
+      id: getReferralBenefitIds(input.invitedDotyposCustomerId).invitation,
       label: m.checkoutSummaryItemReferralInvitationDiscount({}, { locale }),
       adjustment: { kind: "percentage" as const, basisPoints: 1_500 },
     },
@@ -1394,9 +1397,9 @@ describe.skipIf(!testDatabase)(
             .where(eq(discountApplications.paymentAttemptId, attempt.id))
             .orderBy(discountApplications.sequence)
         );
-        const invitationId = getReferralInvitationDiscountId(
+        const invitationId = getReferralBenefitIds(
           fixture.invitedDotyposCustomerId
-        );
+        ).invitation;
         const [sale, invitation] = applications;
         expect(
           applications.filter(

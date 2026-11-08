@@ -51,6 +51,7 @@ describe.skipIf(!testDatabase)(
         }),
         secrets: [{ version: 1, value: SECRET }],
         allowedHosts: [HOST],
+        nativeAppLinkOrigin: `https://${HOST}`,
         passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
         customerMcpResource: `https://${HOST}/api/mcp`,
         httpsOnly: true,

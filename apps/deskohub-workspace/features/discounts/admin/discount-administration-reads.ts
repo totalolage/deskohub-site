@@ -1,18 +1,6 @@
-import {
-  DotyposCustomerIdSchema,
-  DotyposDiscountGroupIdSchema,
-  DotyposService,
-} from "@deskohub/dotypos";
-import type {
-  Customer as DotyposCustomer,
-  DiscountGroup as DotyposDiscountGroup,
-} from "@deskohub/dotypos/generated";
-import {
-  type GoogleCalendarEventId,
-  type GoogleCalendarICalUid,
-  GoogleCalendarService,
-} from "@deskohub/google-calendar";
-import { Effect, Option, Schema } from "effect";
+import { type DotyposCustomer, DotyposService } from "@deskohub/dotypos";
+import { GoogleCalendarService } from "@deskohub/google-calendar";
+import { Effect, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type {
   DiscountCode,
@@ -34,21 +22,15 @@ import {
 } from "@/shared/backend/config/calendar-resource.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import type { DiscountAdjustment } from "../contracts";
-import { toDotyposDiscountBasisPoints } from "../dotypos-discount-percentage";
-import {
-  type DiscountCodeId,
-  storedDiscountIdSchema,
-  type VoucherId,
-} from "../persistence-contracts";
-import { untitledCalendarEventTitle } from "./calendar-sale-title";
+import type { DiscountCodeId, VoucherId } from "../persistence-contracts";
+import { toAdminCalendarSale } from "./admin-calendar-sale";
+import { toAdminDiscountGroup } from "./admin-discount-group";
 import type { DiscountAdminCustomerSearch } from "./contracts";
 import type {
-  AdminCalendarSale,
   AdminCustomerSearchResult,
   AdminDiscount,
   AdminDiscountCode,
   AdminDiscountCodeClaim,
-  AdminDiscountGroup,
   AdminDotyposCustomer,
   AdminVoucher,
   AdminVoucherClaim,
@@ -72,9 +54,7 @@ export const makeDiscountAdministrationReads = Effect.gen(function* () {
     "DiscountAdministration.loadActiveCustomer"
   )((customerId: DotyposCustomerId) =>
     dotypos.getCustomer(customerId).pipe(
-      Effect.map(
-        Option.filter((customer) => Boolean(customer.id) && !customer.deleted)
-      ),
+      Effect.map(Option.filter((customer) => !customer.deleted)),
       Effect.flatMap(
         Option.match({
           onNone: () =>
@@ -318,7 +298,7 @@ export const makeDiscountAdministrationReads = Effect.gen(function* () {
   const searchCustomers = Effect.fn("DiscountAdministration.searchCustomers")(
     function* (input: DiscountAdminCustomerSearch) {
       const customers = (yield* dotypos.searchCustomers(input.query))
-        .filter((customer) => customer.id && !customer.deleted)
+        .filter((customer) => !customer.deleted)
         .map(toAdminDotyposCustomer)
         .slice(0, 50);
       let kind: AdminCustomerSearchResult["kind"] = "not-found";
@@ -500,6 +480,9 @@ const toAdminDiscountCode = (row: AdminDiscountCodeRow): AdminDiscountCode => {
     maxUses: row.maxUses,
     maxUsesPerCustomer: row.maxUsesPerCustomer,
     audienceSize: row.promotion.customers.length,
+    audienceCustomerIds: row.promotion.customers.map(
+      ({ dotyposCustomerId }) => dotyposCustomerId
+    ),
     ...usage,
     createdAt: row.promotion.createdAt,
     updatedAt: row.promotion.updatedAt,
@@ -546,6 +529,9 @@ const toAdminVoucher = (row: AdminVoucherRow): AdminVoucher => {
       value: Math.max(0, issuedCredit.value - usedValue),
     },
     audienceSize: row.promotion.customers.length,
+    audienceCustomerIds: row.promotion.customers.map(
+      ({ dotyposCustomerId }) => dotyposCustomerId
+    ),
     reservedUses: usage.reservedUses,
     redeemedUses: usage.redeemedUses,
     releasedUses: usage.releasedUses,
@@ -593,42 +579,13 @@ export const toAdminDotyposCustomer = (
     customer.phone?.trim();
 
   return {
-    id: Schema.decodeUnknownSync(DotyposCustomerIdSchema)(customer.id),
+    id: customer.id,
     displayName: name || unnamedCustomerDisplayName,
     hasName: Boolean(name),
     email: customer.email?.trim() || null,
     phone: customer.phone?.trim() || null,
-    discountGroupId: Option.getOrNull(
-      Schema.decodeUnknownOption(DotyposDiscountGroupIdSchema)(
-        customer._discountGroupId?.trim()
-      )
-    ),
+    discountGroupId: customer._discountGroupId ?? null,
   };
-};
-
-const toAdminDiscountGroup = (
-  group: DotyposDiscountGroup
-): readonly AdminDiscountGroup[] => {
-  const id = Option.getOrUndefined(
-    Schema.decodeUnknownOption(DotyposDiscountGroupIdSchema)(group.id?.trim())
-  );
-  const basisPoints = toDotyposDiscountBasisPoints(group.discountPercent);
-  if (
-    !id ||
-    group.deleted ||
-    group.display === false ||
-    basisPoints === undefined
-  ) {
-    return [];
-  }
-
-  return [
-    {
-      id,
-      name: group.name?.trim() || id,
-      basisPoints,
-    },
-  ];
 };
 
 const toAdminDiscountCodeClaim = (
@@ -767,52 +724,4 @@ const loadCalendarDashboard = (input: {
         to,
       }))
     );
-};
-
-const toAdminCalendarSale = (input: {
-  readonly calendarUrl: string;
-  readonly discounts: readonly AdminDiscount[];
-  readonly event: {
-    readonly id?: GoogleCalendarEventId;
-    readonly iCalUID?: GoogleCalendarICalUid;
-    readonly htmlLink?: string;
-    readonly summary?: string;
-    readonly description?: string;
-    readonly status?: string;
-    readonly start?: { readonly date?: string; readonly dateTime?: string };
-    readonly end?: { readonly date?: string; readonly dateTime?: string };
-  };
-}): AdminCalendarSale => {
-  const description = input.event.description?.trim() ?? "";
-  const normalizedId = description.toLowerCase();
-  const discountId = Option.getOrUndefined(
-    Schema.decodeUnknownOption(storedDiscountIdSchema)(normalizedId)
-  );
-  const matchedDiscount = input.discounts.find(({ id }) => id === discountId);
-  let association: AdminCalendarSale["association"] = {
-    kind: "missing-description",
-  };
-  if (description.length > 0 && !discountId) {
-    association = { kind: "invalid-description" };
-  } else if (discountId && matchedDiscount) {
-    association = {
-      kind: "associated",
-      discountId: matchedDiscount.id,
-      discountLabel: matchedDiscount.labels["en-US"],
-    };
-  } else if (discountId) {
-    association = { kind: "missing-discount", discountId };
-  }
-
-  return {
-    eventReference: input.event.id ?? input.event.iCalUID ?? undefined,
-    title: input.event.summary?.trim() || untitledCalendarEventTitle,
-    description,
-    start:
-      input.event.start?.date ?? input.event.start?.dateTime ?? "Unknown start",
-    end: input.event.end?.date ?? input.event.end?.dateTime ?? "Unknown end",
-    status: input.event.status ?? "unknown",
-    eventUrl: input.event.htmlLink ?? input.calendarUrl,
-    association,
-  };
 };

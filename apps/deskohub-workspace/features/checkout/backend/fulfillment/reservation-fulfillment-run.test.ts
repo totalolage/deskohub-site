@@ -58,8 +58,8 @@ const {
 const noReservationAuthors = Layer.mock(ReservationAuthorDirectory, {
   describe: () => Effect.succeed(new Map()),
 });
-const { PostHogEventService } = await import(
-  "@/shared/backend/analytics/posthog-event.service"
+const { recordCheckoutAnalytics } = await import(
+  "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
 );
 
 describe("ReservationFulfillment.run", () => {
@@ -92,7 +92,7 @@ describe("ReservationFulfillment.run", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     const claimPaidFulfillment = mock(() => Effect.succeed(claimed as never));
     const confirmReservation = mock(() =>
@@ -161,9 +161,7 @@ describe("ReservationFulfillment.run", () => {
               Layer.mock(WorkspaceCheckoutAccessCodeService, {
                 resolveCustomerAccessCode,
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: processInvoice,
               })
@@ -298,9 +296,7 @@ describe("ReservationFulfillment.run", () => {
               Layer.mock(WorkspaceCheckoutAccessCodeService, {
                 resolveCustomerAccessCode,
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: processInvoice,
               })
@@ -415,9 +411,7 @@ describe("ReservationFulfillment.run", () => {
                     Effect.succeed("access-code")
                   ),
                 }),
-                Layer.mock(PostHogEventService, {
-                  capture: mock(() => Effect.void),
-                }),
+                recordCheckoutAnalytics().layer,
                 Layer.mock(ReservationInvoiceService, {
                   processByPaymentAttemptId: mock(() => Effect.void),
                 })
@@ -485,7 +479,7 @@ describe("ReservationFulfillment.run", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     const confirmReservation = mock(() => Effect.void);
     const markReservationConfirmed = mock(() => Effect.void);
@@ -542,9 +536,7 @@ describe("ReservationFulfillment.run", () => {
                   Effect.succeed("access-code")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: processInvoice,
               })
@@ -604,7 +596,7 @@ describe("ReservationFulfillment.run", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     const sendFailure = new Error("synthetic email provider failure");
     const sendInputs: unknown[] = [];
@@ -674,9 +666,7 @@ describe("ReservationFulfillment.run", () => {
                   Effect.succeed("access-code")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: mock(() => Effect.void),
               })
@@ -783,9 +773,7 @@ describe("ReservationFulfillment.run", () => {
                   Effect.die("access flow should not start")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: mock(() =>
                   Effect.die("invoice processing should not start")
@@ -843,9 +831,7 @@ describe("ReservationFulfillment.run", () => {
               Layer.mock(WorkspaceReservationService, {}),
               Layer.mock(WorkspaceReservationEmailService, {}),
               Layer.mock(WorkspaceCheckoutAccessCodeService, {}),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: processInvoice,
               })
@@ -934,9 +920,7 @@ describe("ReservationFulfillment.run", () => {
                   Effect.die("access flow should not start")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: mock(() =>
                   Effect.die("invoice processing should not start")
@@ -991,7 +975,7 @@ describe("ReservationFulfillment.run", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     // The stale writer resolves the changed preference, but the repository
     // reports the locale the winning concurrent worker already retained for
@@ -1060,9 +1044,7 @@ describe("ReservationFulfillment.run", () => {
                   Effect.succeed("access-code")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: mock(() => Effect.void),
               })
@@ -1108,7 +1090,7 @@ describe("ReservationFulfillment.run", () => {
       customer: { email: testEmailAddressForCustomer },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
-      tableName: "12",
+      placement: { table: { mode: "assigned", name: "12" } },
     };
     const retainInputs: Parameters<
       IFulfillmentLedger["retainActiveCustomerEmailDeliveryLocale"]
@@ -1172,9 +1154,7 @@ describe("ReservationFulfillment.run", () => {
                   Effect.succeed("access-code")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: mock(() =>
                   Effect.die("invoice processing should not start")
@@ -1273,9 +1253,7 @@ describe("ReservationFulfillment.run", () => {
                   Effect.die("access flow should not start")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: mock(() =>
                   Effect.die("invoice processing should not start")
@@ -1364,9 +1342,7 @@ describe("ReservationFulfillment.run", () => {
                   Effect.die("access flow should not start")
                 ),
               }),
-              Layer.mock(PostHogEventService, {
-                capture: mock(() => Effect.void),
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(ReservationInvoiceService, {
                 processByPaymentAttemptId: mock(() =>
                   Effect.die("invoice processing should not start")

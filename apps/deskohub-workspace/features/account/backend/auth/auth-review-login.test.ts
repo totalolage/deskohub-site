@@ -6,7 +6,6 @@ import {
   type CapturedMagicLink,
   callHandler,
   cookieJar,
-  emitWorkspaceLog,
   getSessionCookie,
   makeMemoryAuthStore,
   makeTestAuth,
@@ -19,6 +18,7 @@ import {
   uniqueIp,
   userIdForEmail,
   verifyMagicLink,
+  workspaceLogs,
 } from "./auth-handler.test-utils";
 import type { ReviewAccountCredential } from "./review-account-credentials";
 
@@ -286,7 +286,7 @@ describe("review login password sign-in", () => {
     );
     store.session.length = 0;
     const { auth } = makeReviewAuth([login], { store });
-    emitWorkspaceLog.mockClear();
+    workspaceLogs.reset();
 
     const response = await signInWithPassword(auth, login);
 
@@ -294,7 +294,7 @@ describe("review login password sign-in", () => {
     expect(await errorCode(response)).toBe("INVALID_EMAIL_OR_PASSWORD");
     expect(credentialAccounts(store)).toHaveLength(0);
     expect(store.session).toHaveLength(0);
-    expect(JSON.stringify(emitWorkspaceLog.mock.calls)).toContain(
+    expect(JSON.stringify(workspaceLogs.records())).toContain(
       "account.review-login.customer-login"
     );
   });

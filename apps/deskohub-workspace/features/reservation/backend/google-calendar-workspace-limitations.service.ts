@@ -110,29 +110,60 @@ const toWorkspaceCalendarLimitations = (
     return [];
   }
 
-  const summary = event.summary?.trim();
-  const normalizedDescription =
-    event.description?.trim().toLocaleLowerCase("en-US") ?? "";
-  const sourceEventId = event.id ?? event.iCalUID;
+  const source = getLimitationSource(event);
 
-  if (!sourceEventId) {
+  if (!source) {
     return [];
   }
 
-  if (normalizedDescription.includes(fullMarker)) {
+  const marker = getLimitationMarker(event);
+
+  if (marker === fullMarker) {
     return getEventDates(event).map((date) =>
-      WorkspaceCalendarLimitation.FullyOccupied({
-        date,
-        sourceEventId,
-        ...(summary && { summary }),
-      })
+      WorkspaceCalendarLimitation.FullyOccupied({ date, ...source })
     );
   }
 
-  if (!normalizedDescription.includes(partialMarker)) {
-    return [];
+  if (marker === partialMarker) {
+    return toPartiallyOccupiedLimitations(event, source);
   }
 
+  return [];
+};
+
+type LimitationSource = Pick<
+  WorkspaceCalendarLimitation,
+  "sourceEventId" | "summary"
+>;
+
+/** The event a limitation came from, or nothing when it has no id. */
+const getLimitationSource = (
+  event: GoogleCalendarEvent
+): LimitationSource | undefined => {
+  const summary = event.summary?.trim();
+  const sourceEventId = event.id ?? event.iCalUID;
+
+  if (!sourceEventId) {
+    return undefined;
+  }
+
+  return { sourceEventId, ...(summary && { summary }) };
+};
+
+/** The limitation marker in the event description; full wins over partial. */
+const getLimitationMarker = (event: GoogleCalendarEvent) => {
+  const normalizedDescription =
+    event.description?.trim().toLocaleLowerCase("en-US") ?? "";
+
+  return [fullMarker, partialMarker].find((marker) =>
+    normalizedDescription.includes(marker)
+  );
+};
+
+const toPartiallyOccupiedLimitations = (
+  event: GoogleCalendarEvent,
+  source: LimitationSource
+): readonly WorkspaceCalendarLimitation[] => {
   const date = getEventStartDate(event);
   const startsAt = getEventStartTime(event);
   const endsAt = getEventEndTime(event);
@@ -146,8 +177,7 @@ const toWorkspaceCalendarLimitations = (
       date,
       startsAt,
       endsAt,
-      sourceEventId,
-      ...(summary && { summary }),
+      ...source,
     }),
   ];
 };

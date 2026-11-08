@@ -3,7 +3,6 @@ import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-fla
 import {
   type Context,
   Effect,
-  Exit,
   Layer,
   Logger,
   Option,
@@ -173,67 +172,6 @@ describe("ReleaseGate", () => {
         )
       ).toBe(open);
     }
-  });
-
-  test("builds its flag provider on the first read, once per build of the layer", async () => {
-    let builds = 0;
-    let evaluations = 0;
-    const gate = TestReleaseGate.onFirstRead(
-      Layer.unwrap(
-        Effect.sync(() => {
-          builds += 1;
-          return WorkspaceFeatureFlagServiceMock({
-            isEnabled: () =>
-              Effect.sync(() => {
-                evaluations += 1;
-                return true;
-              }),
-          });
-        })
-      )
-    );
-
-    await Effect.runPromise(
-      Effect.flatMap(TestReleaseGate, () => Effect.void).pipe(
-        Effect.provide(gate)
-      )
-    );
-    expect({ builds, evaluations }).toEqual({ builds: 0, evaluations: 0 });
-
-    expect(
-      await Effect.runPromise(
-        Effect.all([TestReleaseGate.isOpen, TestReleaseGate.isOpen]).pipe(
-          Effect.provide(gate)
-        )
-      )
-    ).toEqual([true, true]);
-    expect({ builds, evaluations }).toEqual({ builds: 1, evaluations: 1 });
-
-    // Another run builds the layer anew, so it decides again.
-    expect(
-      await Effect.runPromise(TestReleaseGate.isOpen.pipe(Effect.provide(gate)))
-    ).toBe(true);
-    expect({ builds, evaluations }).toEqual({ builds: 2, evaluations: 2 });
-  });
-
-  test("fails only its reads when its flag provider can't be built", async () => {
-    const importFailure = new Error("synthetic import failure");
-    const gate = TestReleaseGate.onFirstRead(
-      Layer.unwrap(Effect.promise(() => Promise.reject(importFailure)))
-    );
-
-    expect(
-      await Effect.runPromise(
-        Effect.flatMap(TestReleaseGate, () => Effect.succeed("unread")).pipe(
-          Effect.provide(gate)
-        )
-      )
-    ).toBe("unread");
-
-    const read = await Effect.runPromise(
-      Effect.exit(TestReleaseGate.isOpen.pipe(Effect.provide(gate)))
-    );
-    expect(read).toEqual(Exit.die(importFailure));
   });
 
   test("describes the release for every visitor only while the flag is the same for everyone", async () => {

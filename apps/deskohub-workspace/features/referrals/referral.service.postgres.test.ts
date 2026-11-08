@@ -8,7 +8,7 @@ import {
   DotyposService,
   DotyposUnavailable,
 } from "@deskohub/dotypos";
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Result } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import {
@@ -16,8 +16,17 @@ import {
   referralAttributions,
   referralCodes,
 } from "@/db/schema";
+import { isDatabaseQueryError } from "@/db/sql-constraint";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import {
+  accountLinksFailingAt,
+  unreachableAccountLinks,
+} from "@/features/account/backend/customer-account-link.test-utils";
+import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import {
+  signedInAuthentication,
+  unreachableSessionAuthentication,
+} from "@/features/account/backend/customer-authentication.test-utils";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
@@ -25,6 +34,7 @@ import {
 import { canonicalPromotionCodeSchema } from "@/features/discounts/persistence-contracts";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { currencyCZK } from "@/shared/money/currencies";
+import { connectUnreachableWorkspaceDatabase } from "@/shared/testing/unreachable-workspace-database.test-utils";
 import {
   collectDatabaseQueryLogs,
   expectQueryLogsToOmit,
@@ -33,12 +43,13 @@ import {
   type FixtureAccountOptions,
   workspaceFixtures,
 } from "@/shared/testing/workspace-fixtures.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
-  getReferralInvitationDiscountId,
-  getReferralReferrerDiscountId,
-} from "./discount-identifiers";
+  holdPostgresTransaction,
+  waitForAdvisoryLockWaiter,
+} from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
+import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { ReferralService } from "./referral.service";
+import { getReferralBenefitIds } from "./referral-benefits";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const uniqueId = () => crypto.randomUUID();
@@ -147,9 +158,7 @@ const makeReferralLayer = (
         databaseLayer,
         lockLayer,
         accountLinksLayer,
-        Layer.mock(CustomerAccountResolver, {
-          resolve: Effect.succeed(identity),
-        }),
+        signedInAuthentication(identity.accountId),
         Layer.mock(DotyposService, {
           listReservations,
         } as Partial<DotyposService["Service"]>)
@@ -812,14 +821,15 @@ describe.skipIf(!testDatabase)("ReferralService on disposable Postgres", () => {
       )
     );
     const referrerDiscountId =
-      getReferralReferrerDiscountId(referrerCustomerId);
+      getReferralBenefitIds(referrerCustomerId).referrer;
     await insertDiscountedBooking({
       dotyposCustomerId: referrerCustomerId,
       attempt: "paid",
       applications: [
         { publicDiscountId: "synthetic-ordinary-discount", amountValue: 1000 },
         {
-          publicDiscountId: getReferralInvitationDiscountId(referrerCustomerId),
+          publicDiscountId:
+            getReferralBenefitIds(referrerCustomerId).invitation,
           amountValue: 3000,
         },
         { publicDiscountId: referrerDiscountId, amountValue: 1234 },
@@ -877,7 +887,7 @@ describe.skipIf(!testDatabase)("ReferralService on disposable Postgres", () => {
       attempt: "paid",
       applications: [
         {
-          publicDiscountId: getReferralReferrerDiscountId(otherCustomer),
+          publicDiscountId: getReferralBenefitIds(otherCustomer).referrer,
           amountValue: 7000,
         },
       ],
@@ -1366,6 +1376,90 @@ describe.skipIf(!testDatabase)(
       }
     });
 
+    test("prices the referrer discount only for a referrer with eligible invitees and a subtotal left to reduce", async () => {
+      const referrer = await createActiveReferrer();
+      const loneReferrer = await createActiveReferrer();
+      const invitee = uniqueDotyposId();
+      const inviteeBooking =
+        `invitee-booking-${uniqueId()}` as DotyposReservationId;
+      const referrerCandidate = (
+        dotyposCustomerId: DotyposCustomerId,
+        remainingValue: number
+      ) =>
+        runReferrals(
+          (referrals) =>
+            referrals.resolveReferrerCandidate({
+              dotyposCustomerId,
+              locale: "en-US",
+              remainingSubtotal: currencyCZK(remainingValue),
+            }),
+          makeReferralLayer(
+            {
+              accountId: customerAccountIdSchema.make(uniqueId()),
+              dotyposCustomerId,
+            },
+            (customerId) =>
+              customerId === invitee
+                ? [makeLiveConfirmedReservation(inviteeBooking)]
+                : []
+          )
+        );
+      try {
+        await Effect.runPromise(
+          testDatabase!.db.insert(referralAttributions).values({
+            invitedDotyposCustomerId: invitee,
+            referrerDotyposCustomerId: referrer.dotyposCustomerId,
+            promotionCodeId: referrer.promotionCodeId,
+          })
+        );
+        await Effect.runPromise(
+          workspaceFixtures(testDatabase!.db).reservation({
+            stage: { reservation: "confirmed", payment: "paid" },
+            customer: invitee,
+            overrides: { dotyposReservationId: inviteeBooking },
+          })
+        );
+
+        expect(
+          await referrerCandidate(loneReferrer.dotyposCustomerId, 100_000)
+        ).toMatchObject({ _tag: "Success", success: undefined });
+        // Nothing is left to reduce, so the referrer discount prices nothing.
+        expect(
+          await referrerCandidate(referrer.dotyposCustomerId, 0)
+        ).toMatchObject({ _tag: "Success", success: undefined });
+        expect(
+          await referrerCandidate(referrer.dotyposCustomerId, 100_000)
+        ).toMatchObject({
+          _tag: "Success",
+          success: {
+            discount: {
+              id: getReferralBenefitIds(referrer.dotyposCustomerId).referrer,
+              adjustment: { kind: "fixed", amount: currencyCZK(5_000) },
+            },
+            provenance: {
+              providerNamespace: "referral-referrer",
+              providerReference: referrer.dotyposCustomerId,
+              details: {
+                referralReferrer: {
+                  referrerDotyposCustomerId: referrer.dotyposCustomerId,
+                  eligibleInviteeCount: 1,
+                  discountPercentage: "5",
+                },
+              },
+            },
+          },
+        });
+      } finally {
+        await deleteBookings([invitee]);
+        await testDatabase!.pool.query(
+          "delete from referral_attributions where invited_dotypos_customer_id = $1",
+          [invitee]
+        );
+        await referrer.cleanup();
+        await loneReferrer.cleanup();
+      }
+    });
+
     test("withholds every referral operation while the program is off and leaves recorded referrals untouched", async () => {
       const referrer = await createActiveReferrer();
       const attributedCustomer = uniqueDotyposId();
@@ -1496,7 +1590,7 @@ describe.skipIf(!testDatabase)(
       }
     });
 
-    test("rejects acceptance cleanly when Dotypos history fails inside the attribution transaction", async () => {
+    test("fails acceptance with the Dotypos outage and rolls back cleanly when history fails inside the attribution transaction", async () => {
       const referrer = await createActiveReferrer();
       const inviteeAccountId = customerAccountIdSchema.make(uniqueId());
       const inviteeCustomerId = uniqueDotyposId();
@@ -1532,7 +1626,7 @@ describe.skipIf(!testDatabase)(
 
         expect(acceptance).toMatchObject({
           _tag: "Failure",
-          failure: { _tag: "ReferralError", reason: "unavailable" },
+          failure: { _tag: "DotyposUnavailable" },
         });
         // The pool connection is still usable after the rollback.
         const attributions = await testDatabase!.pool.query(
@@ -1620,6 +1714,772 @@ describe.skipIf(!testDatabase)(
           [inviteeAccountId]
         );
         await referrer.cleanup();
+      }
+    });
+  }
+);
+
+/** A verdict, or the tag of a failure that is not one. */
+const outcomeOf = (
+  result: Result.Result<
+    { readonly kind: string },
+    { readonly _tag: string; readonly reason?: unknown }
+  >
+) => {
+  if (Result.isSuccess(result)) return result.success.kind;
+  return result.failure._tag === "ReferralError"
+    ? result.failure.reason
+    : result.failure._tag;
+};
+
+type ActiveReferrer = Awaited<ReturnType<typeof createActiveReferrer>>;
+
+type VerdictContext = {
+  readonly referrer: ActiveReferrer;
+  readonly invitee: {
+    readonly accountId: CustomerAccountId;
+    readonly dotyposCustomerId: DotyposCustomerId;
+  };
+};
+
+const readInviteeReferrer = async (invitee: DotyposCustomerId) =>
+  (
+    await testDatabase!.pool.query<{ referrer_dotypos_customer_id: string }>(
+      "select referrer_dotypos_customer_id from referral_attributions where invited_dotypos_customer_id = $1",
+      [invitee]
+    )
+  ).rows[0]?.referrer_dotypos_customer_id;
+
+/** A referrer whose code the invitee holds, with the invitee's linked account. */
+const createVerdictContext = async (): Promise<
+  VerdictContext & {
+    /** Another active referrer, removed with the context. */
+    readonly otherReferrer: () => Promise<ActiveReferrer>;
+    /** A referral code the invitee owns, removed with the context. */
+    readonly inviteeCode: () => Promise<string>;
+    readonly cleanup: () => Promise<void>;
+  }
+> => {
+  const referrer = await createActiveReferrer();
+  const inviteeCustomerId = uniqueDotyposId();
+  const inviteeAccountId = await insertLinkedAccount(inviteeCustomerId);
+  const extraReferrers: ActiveReferrer[] = [];
+  const inviteePromotionCodeIds: string[] = [];
+  return {
+    inviteeCode: async () => {
+      const [promotion] = await Effect.runPromise(
+        testDatabase!.db
+          .insert(promotionCodes)
+          .values({
+            kind: "referral",
+            code: canonicalPromotionCodeSchema.make(
+              `RFC${uniqueId().replaceAll("-", "").slice(0, 10).toUpperCase()}`
+            ),
+            enabled: true,
+          })
+          .returning({ id: promotionCodes.id })
+      );
+      await Effect.runPromise(
+        testDatabase!.db.insert(referralCodes).values({
+          promotionCodeId: promotion!.id,
+          referrerDotyposCustomerId: inviteeCustomerId,
+        })
+      );
+      inviteePromotionCodeIds.push(promotion!.id);
+      return promotion!.id;
+    },
+    referrer,
+    otherReferrer: async () => {
+      const other = await createActiveReferrer();
+      extraReferrers.push(other);
+      return other;
+    },
+    invitee: {
+      accountId: inviteeAccountId,
+      dotyposCustomerId: inviteeCustomerId,
+    },
+    cleanup: async () => {
+      await testDatabase!.pool.query(
+        "delete from referral_attributions where invited_dotypos_customer_id = any($1)",
+        [[inviteeCustomerId, referrer.dotyposCustomerId]]
+      );
+      await deleteBookings([inviteeCustomerId]);
+      await testDatabase!.pool.query('delete from auth."user" where id = $1', [
+        inviteeAccountId,
+      ]);
+      await testDatabase!.pool.query(
+        "delete from customer_accounts where id = $1",
+        [inviteeAccountId]
+      );
+      await testDatabase!.pool.query(
+        "delete from promotion_codes where id = any($1)",
+        [inviteePromotionCodeIds]
+      );
+      for (const extra of extraReferrers) await extra.cleanup();
+      await referrer.cleanup();
+    },
+  };
+};
+
+const evaluateAtCheckout = (
+  context: VerdictContext,
+  code: string,
+  layer = makeReferralLayer(context.invitee)
+) =>
+  runReferrals(
+    (referrals) =>
+      referrals.evaluateCheckoutReferral({
+        code,
+        dotyposCustomerId: context.invitee.dotyposCustomerId,
+      }),
+    layer
+  );
+
+const acceptAtAccount = (
+  context: VerdictContext,
+  code: string,
+  layer = makeReferralLayer(context.invitee)
+) =>
+  runReferrals(
+    (referrals) =>
+      referrals.acceptReferral({
+        code,
+        customerAccountId: context.invitee.accountId,
+        dotyposCustomerId: context.invitee.dotyposCustomerId,
+      }),
+    layer
+  );
+
+describe.skipIf(!testDatabase)(
+  "ReferralService verdicts at checkout and acceptance on disposable Postgres",
+  () => {
+    const verdictCases: readonly {
+      readonly name: string;
+      /** Prepares the case and returns the code the customer enters. */
+      readonly arrange: (
+        context: Awaited<ReturnType<typeof createVerdictContext>>
+      ) => Promise<string>;
+      readonly checkout: string;
+      readonly acceptance: string;
+    }[] = [
+      {
+        name: "an open first-booking invitation",
+        arrange: async ({ referrer }) => referrer.code.toLowerCase(),
+        checkout: "eligible",
+        acceptance: "accepted",
+      },
+      {
+        name: "an unknown code",
+        arrange: async () => "RFX0000000000",
+        checkout: "unavailable",
+        acceptance: "unavailable",
+      },
+      {
+        name: "a disabled code",
+        arrange: async ({ referrer }) => {
+          await testDatabase!.pool.query(
+            "update promotion_codes set enabled = false where id = $1",
+            [referrer.promotionCodeId]
+          );
+          return referrer.code;
+        },
+        checkout: "unavailable",
+        acceptance: "unavailable",
+      },
+      {
+        name: "an expired code",
+        arrange: async ({ referrer }) => {
+          await testDatabase!.pool.query(
+            "update promotion_codes set valid_until = now() - interval '1 day' where id = $1",
+            [referrer.promotionCodeId]
+          );
+          return referrer.code;
+        },
+        checkout: "unavailable",
+        acceptance: "unavailable",
+      },
+      {
+        name: "a referrer whose account awaits deletion",
+        arrange: async ({ referrer }) => {
+          await testDatabase!.pool.query(
+            'update auth."user" set deletion_requested_at = now() where id = $1',
+            [referrer.accountId]
+          );
+          return referrer.code;
+        },
+        checkout: "unavailable",
+        acceptance: "unavailable",
+      },
+      {
+        name: "an existing referral from the same referrer",
+        arrange: async ({ referrer, invitee }) => {
+          await Effect.runPromise(
+            testDatabase!.db.insert(referralAttributions).values({
+              invitedDotyposCustomerId: invitee.dotyposCustomerId,
+              referrerDotyposCustomerId: referrer.dotyposCustomerId,
+              promotionCodeId: referrer.promotionCodeId,
+            })
+          );
+          // A settled referral needs no open invitation.
+          await insertPaidBooking(invitee.dotyposCustomerId);
+          return referrer.code;
+        },
+        checkout: "already_accepted",
+        acceptance: "already_accepted",
+      },
+      {
+        name: "an existing referral from another referrer",
+        arrange: async ({ referrer, invitee, otherReferrer }) => {
+          const other = await otherReferrer();
+          await Effect.runPromise(
+            testDatabase!.db.insert(referralAttributions).values({
+              invitedDotyposCustomerId: invitee.dotyposCustomerId,
+              referrerDotyposCustomerId: other.dotyposCustomerId,
+              promotionCodeId: other.promotionCodeId,
+            })
+          );
+          return referrer.code;
+        },
+        checkout: "already_attributed",
+        acceptance: "already_attributed",
+      },
+      {
+        name: "a paid first booking",
+        arrange: async ({ referrer, invitee }) => {
+          await insertPaidBooking(invitee.dotyposCustomerId);
+          return referrer.code;
+        },
+        checkout: "ineligible",
+        acceptance: "ineligible",
+      },
+      {
+        name: "a referrer this customer invited",
+        arrange: async ({ referrer, invitee, inviteeCode }) => {
+          await Effect.runPromise(
+            testDatabase!.db.insert(referralAttributions).values({
+              invitedDotyposCustomerId: referrer.dotyposCustomerId,
+              referrerDotyposCustomerId: invitee.dotyposCustomerId,
+              promotionCodeId: await inviteeCode(),
+            })
+          );
+          return referrer.code;
+        },
+        checkout: "cycle",
+        acceptance: "cycle",
+      },
+    ];
+
+    test.each(verdictCases)(
+      "reaches the same verdict for $name at checkout and at acceptance",
+      async ({ arrange, checkout, acceptance }) => {
+        const context = await createVerdictContext();
+        try {
+          const code = await arrange(context);
+          const before = await readInviteeReferrer(
+            context.invitee.dotyposCustomerId
+          );
+
+          expect(outcomeOf(await evaluateAtCheckout(context, code))).toBe(
+            checkout
+          );
+          // The checkout check writes nothing.
+          expect(
+            await readInviteeReferrer(context.invitee.dotyposCustomerId)
+          ).toBe(before);
+
+          expect(outcomeOf(await acceptAtAccount(context, code))).toBe(
+            acceptance
+          );
+          expect(
+            await readInviteeReferrer(context.invitee.dotyposCustomerId)
+          ).toBe(
+            acceptance === "accepted"
+              ? context.referrer.dotyposCustomerId
+              : before
+          );
+        } finally {
+          await context.cleanup();
+        }
+      }
+    );
+
+    test("rejects the customer's own code at checkout and at acceptance", async () => {
+      const referrer = await createActiveReferrer();
+      try {
+        const self: VerdictContext = {
+          referrer,
+          invitee: {
+            accountId: referrer.accountId,
+            dotyposCustomerId: referrer.dotyposCustomerId,
+          },
+        };
+        expect(outcomeOf(await evaluateAtCheckout(self, referrer.code))).toBe(
+          "self_referral"
+        );
+        expect(outcomeOf(await acceptAtAccount(self, referrer.code))).toBe(
+          "self_referral"
+        );
+        expect(
+          await readInviteeReferrer(referrer.dotyposCustomerId)
+        ).toBeUndefined();
+      } finally {
+        await referrer.cleanup();
+      }
+    });
+
+    test("lets a checkout carry the referral past its own pending booking while acceptance waits for that payment", async () => {
+      const context = await createVerdictContext();
+      try {
+        await insertPendingBooking(context.invitee.dotyposCustomerId);
+
+        // No invitation claim yet: the pending booking may be this checkout's.
+        expect(
+          outcomeOf(await evaluateAtCheckout(context, context.referrer.code))
+        ).toBe("eligible");
+        // Acceptance holds off: that payment may become the first paid booking.
+        expect(
+          outcomeOf(await acceptAtAccount(context, context.referrer.code))
+        ).toBe("pending_payment");
+        expect(
+          await readInviteeReferrer(context.invitee.dotyposCustomerId)
+        ).toBeUndefined();
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    test("reports a Dotypos outage as such, never as a verdict, and decides an existing referral without Dotypos", async () => {
+      const context = await createVerdictContext();
+      let historyReads = 0;
+      const dotyposDown = makeReferralLayer(
+        context.invitee,
+        () => [],
+        () =>
+          Effect.suspend(() => {
+            historyReads += 1;
+            return Effect.fail(
+              new DotyposUnavailable({
+                operation: "listReservations",
+                reason: "timeout",
+              })
+            );
+          })
+      );
+      try {
+        const code = context.referrer.code;
+        expect(
+          outcomeOf(await evaluateAtCheckout(context, code, dotyposDown))
+        ).toBe("DotyposUnavailable");
+        expect(
+          outcomeOf(await acceptAtAccount(context, code, dotyposDown))
+        ).toBe("DotyposUnavailable");
+        expect(
+          await runReferrals(
+            (referrals) =>
+              referrals.resolveInvitationCandidate({
+                dotyposCustomerId: context.invitee.dotyposCustomerId,
+                locale: "en-US",
+                referralCode: code,
+              }),
+            dotyposDown
+          )
+        ).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "DotyposUnavailable" },
+        });
+        expect(
+          await runReferrals(
+            (referrals) =>
+              referrals.hasSettledReferral({
+                dotyposCustomerId: context.invitee.dotyposCustomerId,
+              }),
+            dotyposDown
+          )
+        ).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "DotyposUnavailable" },
+        });
+        expect(
+          await readInviteeReferrer(context.invitee.dotyposCustomerId)
+        ).toBeUndefined();
+        expect(historyReads).toBe(4);
+
+        // An existing referral settles the verdict before history is read.
+        await Effect.runPromise(
+          testDatabase!.db.insert(referralAttributions).values({
+            invitedDotyposCustomerId: context.invitee.dotyposCustomerId,
+            referrerDotyposCustomerId: context.referrer.dotyposCustomerId,
+            promotionCodeId: context.referrer.promotionCodeId,
+          })
+        );
+        historyReads = 0;
+        expect(
+          outcomeOf(await evaluateAtCheckout(context, code, dotyposDown))
+        ).toBe("already_accepted");
+        expect(
+          outcomeOf(await acceptAtAccount(context, code, dotyposDown))
+        ).toBe("already_accepted");
+        expect(historyReads).toBe(0);
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    test("reports an unreachable referral store as a database failure, never as an unusable code", async () => {
+      const context = await createVerdictContext();
+      const unreachable = await connectUnreachableWorkspaceDatabase();
+      try {
+        const databaseLayer = unreachable.database;
+        const lockLayer = unreachable.advisoryLock;
+        const storeDown = ReferralService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              ReferralReleaseGate.fromDecision(true),
+              databaseLayer,
+              lockLayer,
+              CustomerAccountLinkRepository.Default.pipe(
+                Layer.provide(Layer.mergeAll(databaseLayer, lockLayer))
+              ),
+              signedInAuthentication(context.invitee.accountId),
+              Layer.mock(DotyposService, {
+                listReservations: () => Effect.succeed([]),
+              } as Partial<DotyposService["Service"]>)
+            )
+          )
+        );
+        const code = context.referrer.code;
+        const failures = [
+          await runReferrals(
+            (referrals) => referrals.findAvailableCode({ code }),
+            storeDown
+          ),
+          await runReferrals(
+            (referrals) => referrals.lookupCodeKind({ code }),
+            storeDown
+          ),
+          await evaluateAtCheckout(context, code, storeDown),
+          await acceptAtAccount(context, code, storeDown),
+        ];
+
+        for (const failure of failures) {
+          expect(failure._tag).toBe("Failure");
+          expect(
+            failure._tag === "Failure" && isDatabaseQueryError(failure.failure)
+          ).toBe(true);
+        }
+        // The code itself is still usable once the store answers again.
+        expect(outcomeOf(await evaluateAtCheckout(context, code))).toBe(
+          "eligible"
+        );
+      } finally {
+        await unreachable.pool.end();
+        await context.cleanup();
+      }
+    });
+
+    test("leaves acceptance undecided when the referrer relinks while it waits for its locks, and decides on the next attempt", async () => {
+      const context = await createVerdictContext();
+      const relinkedAccountId = customerAccountIdSchema.make(uniqueId());
+      const graph = await holdPostgresTransaction(
+        testDatabase!.pool,
+        "select pg_advisory_xact_lock(hashtext($1), hashtext($2))",
+        ["referral-attribution", "graph"]
+      );
+      let released = false;
+      try {
+        const acceptance = acceptAtAccount(context, context.referrer.code);
+        await waitForAdvisoryLockWaiter(testDatabase!.pool, [
+          "referral-attribution",
+          "graph",
+        ]);
+        // The referrer's customer moves to another account meanwhile.
+        await testDatabase!.pool.query(
+          "update customer_accounts set dotypos_customer_id = null where id = $1",
+          [context.referrer.accountId]
+        );
+        await insertAuthUser(relinkedAccountId, {
+          linkedCustomer: context.referrer.dotyposCustomerId,
+        });
+        await graph.commit();
+        released = true;
+
+        expect(outcomeOf(await acceptance)).toBe("referrer_changed");
+        expect(
+          await readInviteeReferrer(context.invitee.dotyposCustomerId)
+        ).toBeUndefined();
+
+        expect(
+          outcomeOf(await acceptAtAccount(context, context.referrer.code))
+        ).toBe("accepted");
+        expect(
+          await readInviteeReferrer(context.invitee.dotyposCustomerId)
+        ).toBe(context.referrer.dotyposCustomerId);
+      } finally {
+        if (!released) await graph.commit();
+        await testDatabase!.pool.query(
+          'delete from auth."user" where id = $1',
+          [relinkedAccountId]
+        );
+        await testDatabase!.pool.query(
+          "delete from customer_accounts where id = $1",
+          [relinkedAccountId]
+        );
+        await context.cleanup();
+      }
+    });
+  }
+);
+
+/**
+ * The referral service on the disposable database with this session, and with
+ * the named account reads failing to connect, so a test fails one account
+ * prerequisite at a time while the others answer.
+ */
+const makeAccountPrerequisiteLayer = (input: {
+  readonly authentication: Layer.Layer<CustomerAuthentication>;
+  readonly failingAt?: {
+    readonly reads: Parameters<typeof accountLinksFailingAt>[0];
+    readonly unreachable: CustomerAccountLinkRepository["Service"];
+    /** How many times each named read answers before it fails. */
+    readonly afterHealthyReads?: number;
+  };
+}) => {
+  const databaseLayer = Layer.succeed(
+    WorkspaceDatabase,
+    WorkspaceDatabase.make(testDatabase!.db)
+  );
+  const lockLayer = WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool);
+  const healthyLinks = CustomerAccountLinkRepository.Default.pipe(
+    Layer.provide(Layer.mergeAll(databaseLayer, lockLayer))
+  );
+  const accountLinks = input.failingAt
+    ? accountLinksFailingAt(input.failingAt.reads, {
+        healthy: healthyLinks,
+        unreachable: input.failingAt.unreachable,
+        ...(input.failingAt.afterHealthyReads !== undefined && {
+          afterHealthyReads: input.failingAt.afterHealthyReads,
+        }),
+      })
+    : healthyLinks;
+
+  return ReferralService.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        ReferralReleaseGate.fromDecision(true),
+        databaseLayer,
+        lockLayer,
+        accountLinks,
+        input.authentication,
+        Layer.mock(DotyposService, {
+          listReservations: () => Effect.succeed([]),
+        } as Partial<DotyposService["Service"]>)
+      )
+    )
+  );
+};
+
+const summarizeAtAccount = (
+  context: VerdictContext,
+  layer: Layer.Layer<ReferralService>,
+  dotyposCustomerId = context.invitee.dotyposCustomerId
+) =>
+  runReferrals(
+    (referrals) =>
+      referrals
+        .getAccountSummary({
+          customerAccountId: context.invitee.accountId,
+          dotyposCustomerId,
+        })
+        .pipe(Effect.as({ kind: "summarized" } as const)),
+    layer
+  );
+
+describe.skipIf(!testDatabase)(
+  "ReferralService account prerequisites on disposable Postgres",
+  () => {
+    test("reports a session that can't be read as an authentication outage, never as an unavailable account", async () => {
+      const context = await createVerdictContext();
+      try {
+        const sessionDown = makeAccountPrerequisiteLayer({
+          authentication: unreachableSessionAuthentication,
+        });
+
+        for (const failure of [
+          await summarizeAtAccount(context, sessionDown),
+          await acceptAtAccount(context, context.referrer.code, sessionDown),
+        ]) {
+          expect(failure).toMatchObject({
+            _tag: "Failure",
+            failure: {
+              _tag: "ReferralAuthenticationUnavailable",
+              diagnostic: "authentication.session.unclassified",
+            },
+          });
+        }
+        expect(
+          await readInviteeReferrer(context.invitee.dotyposCustomerId)
+        ).toBeUndefined();
+
+        expect(
+          outcomeOf(await acceptAtAccount(context, context.referrer.code))
+        ).toBe("accepted");
+      } finally {
+        await context.cleanup();
+      }
+    });
+
+    test.each([
+      { read: "find", operations: ["summary", "acceptance"] },
+      { read: "findActivityState", operations: ["summary", "acceptance"] },
+      { read: "withAccountLock", operations: ["summary"] },
+    ] as const)(
+      "reports a failed $read as a database outage, never as an unavailable account, and writes nothing",
+      async ({ read, operations }) => {
+        const context = await createVerdictContext();
+        const unreachable = await connectUnreachableWorkspaceDatabase();
+        try {
+          const readDown = makeAccountPrerequisiteLayer({
+            authentication: signedInAuthentication(context.invitee.accountId),
+            failingAt: {
+              reads: [read],
+              unreachable: await unreachableAccountLinks(unreachable),
+            },
+          });
+
+          for (const operation of operations) {
+            const failure =
+              operation === "summary"
+                ? await summarizeAtAccount(context, readDown)
+                : await acceptAtAccount(
+                    context,
+                    context.referrer.code,
+                    readDown
+                  );
+            expect(failure._tag).toBe("Failure");
+            expect(
+              failure._tag === "Failure" &&
+                isDatabaseQueryError(failure.failure)
+            ).toBe(true);
+          }
+          expect(
+            await readInviteeReferrer(context.invitee.dotyposCustomerId)
+          ).toBeUndefined();
+
+          // Once the account can be read again, acceptance decides.
+          expect(
+            outcomeOf(await acceptAtAccount(context, context.referrer.code))
+          ).toBe("accepted");
+        } finally {
+          await unreachable.pool.end();
+          await context.cleanup();
+        }
+      }
+    );
+
+    test("reports a failed link recheck under acceptance's locks as a database outage and writes nothing", async () => {
+      const context = await createVerdictContext();
+      const unreachable = await connectUnreachableWorkspaceDatabase();
+      try {
+        // The identity check reads the link before the locks; the recheck
+        // inside the attribution transaction fails.
+        const recheckDown = makeAccountPrerequisiteLayer({
+          authentication: signedInAuthentication(context.invitee.accountId),
+          failingAt: {
+            reads: ["find"],
+            unreachable: await unreachableAccountLinks(unreachable),
+            afterHealthyReads: 1,
+          },
+        });
+
+        const failure = await acceptAtAccount(
+          context,
+          context.referrer.code,
+          recheckDown
+        );
+        expect(failure._tag).toBe("Failure");
+        expect(
+          failure._tag === "Failure" && isDatabaseQueryError(failure.failure)
+        ).toBe(true);
+        expect(
+          await readInviteeReferrer(context.invitee.dotyposCustomerId)
+        ).toBeUndefined();
+
+        expect(
+          outcomeOf(await acceptAtAccount(context, context.referrer.code))
+        ).toBe("accepted");
+      } finally {
+        await unreachable.pool.end();
+        await context.cleanup();
+      }
+    });
+
+    test("still reports a gone, other, deleting, or relinked account as account_unavailable", async () => {
+      const context = await createVerdictContext();
+      try {
+        const otherSession = makeAccountPrerequisiteLayer({
+          authentication: signedInAuthentication(context.referrer.accountId),
+        });
+        const deletingSession = makeAccountPrerequisiteLayer({
+          authentication: signedInAuthentication(context.invitee.accountId, {
+            deletionRequested: true,
+          }),
+        });
+        const noSession = makeAccountPrerequisiteLayer({
+          authentication: Layer.succeed(CustomerAuthentication, {
+            currentUser: Effect.succeed(null),
+          }),
+        });
+        const ownSession = makeAccountPrerequisiteLayer({
+          authentication: signedInAuthentication(context.invitee.accountId),
+        });
+
+        for (const layer of [otherSession, deletingSession, noSession]) {
+          expect(outcomeOf(await summarizeAtAccount(context, layer))).toBe(
+            "account_unavailable"
+          );
+          expect(
+            outcomeOf(
+              await acceptAtAccount(context, context.referrer.code, layer)
+            )
+          ).toBe("account_unavailable");
+        }
+
+        // The account is linked to another customer than the caller named.
+        expect(
+          outcomeOf(
+            await summarizeAtAccount(context, ownSession, uniqueDotyposId())
+          )
+        ).toBe("account_unavailable");
+
+        // The account awaits deletion: the summary checks it under the
+        // account lock, acceptance under its transaction's locks.
+        await testDatabase!.pool.query(
+          `update auth."user" set deletion_requested_at = now() where id = $1`,
+          [context.invitee.accountId]
+        );
+        expect(outcomeOf(await summarizeAtAccount(context, ownSession))).toBe(
+          "account_unavailable"
+        );
+        expect(
+          outcomeOf(
+            await acceptAtAccount(context, context.referrer.code, ownSession)
+          )
+        ).toBe("account_unavailable");
+        await testDatabase!.pool.query(
+          `update auth."user" set deletion_requested_at = null where id = $1`,
+          [context.invitee.accountId]
+        );
+
+        expect(
+          await readInviteeReferrer(context.invitee.dotyposCustomerId)
+        ).toBeUndefined();
+        expect(
+          outcomeOf(
+            await acceptAtAccount(context, context.referrer.code, ownSession)
+          )
+        ).toBe("accepted");
+      } finally {
+        await context.cleanup();
       }
     });
   }

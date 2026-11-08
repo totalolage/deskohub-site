@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { isReservationAccessProvisioningStale } from "@/features/reservation-access/reservation-access";
@@ -48,13 +49,7 @@ export function ReservationAccessAdministration({
   }
 
   const needsProviderReconciliation =
-    grant.state === "uncertain" ||
-    isReservationAccessProvisioningStale({
-      state: grant.state,
-      provisioningStartedAt: grant.provisioningStartedAt
-        ? Temporal.Instant.from(grant.provisioningStartedAt)
-        : null,
-    });
+    needsReservationAccessReconciliation(grant);
   // A stale provisioning attempt needs the same reconciliation as an
   // uncertain one.
   const status = (
@@ -121,78 +116,117 @@ export function ReservationAccessAdministration({
       )}
 
       {needsProviderReconciliation && (
-        <details className="mt-4 rounded-xl border border-burned-orange/25 bg-burned-orange/5 p-4">
-          <Button asChild size="sm">
-            <summary>
-              {m.administrationReservationAccessReconcile({}, { locale })}
-            </summary>
-          </Button>
-          <div className="mt-4 space-y-4 text-sm leading-6 text-navy-blue/65">
-            <p>
-              {m.administrationReservationAccessReconcileInstructions(
-                { accessName: grant.accessName },
-                { locale }
-              )}
-            </p>
-            <Button
-              disabled={isExecuting}
-              onClick={() => {
-                setError(null);
-                execute({
-                  kind: "confirm-provider-credential-removed",
-                  providerCredentialRemoved: true,
-                  reservationId,
-                });
-              }}
-              type="button"
-            >
-              {isExecuting
-                ? m.administrationReservationAccessRetrying({}, { locale })
-                : m.administrationReservationAccessConfirmRemoved(
-                    {},
-                    { locale }
-                  )}
-            </Button>
-          </div>
-        </details>
+        <ReservationAccessReconciliation
+          accessName={grant.accessName}
+          isExecuting={isExecuting}
+          locale={locale}
+          onConfirmRemoved={() => {
+            setError(null);
+            execute({
+              kind: "confirm-provider-credential-removed",
+              providerCredentialRemoved: true,
+              reservationId,
+            });
+          }}
+        />
       )}
 
-      <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
-        <AdministrationFact
-          label={m.administrationReservationAccessName({}, { locale })}
-          value={grant.accessName}
-        />
-        <AdministrationFact
-          label={m.administrationReservationAccessTargetDevice({}, { locale })}
-          value={grant.deviceId}
-        />
-        <AdministrationFact
-          label={m.administrationReservationAccessValidFrom({}, { locale })}
-          value={formatAdministrationDateTime(grant.startsAt, locale)}
-        />
-        <AdministrationFact
-          label={m.administrationReservationAccessValidUntil({}, { locale })}
-          value={formatAdministrationDateTime(grant.endsAt, locale)}
-        />
-        <AdministrationFact
-          label={m.administrationReservationAccessProviderCredential(
-            {},
+      <ReservationAccessFacts grant={grant} locale={locale} />
+    </AdministrationDetailSection>
+  );
+}
+
+/** Whether the provider may hold a credential Workspace can't confirm: uncertain, or stuck provisioning. */
+const needsReservationAccessReconciliation = (
+  grant: AdministrationReservationAccessGrant
+) =>
+  grant.state === "uncertain" ||
+  isReservationAccessProvisioningStale({
+    state: grant.state,
+    provisioningStartedAt: grant.provisioningStartedAt
+      ? Temporal.Instant.from(grant.provisioningStartedAt)
+      : null,
+  });
+
+/** Asks the operator to remove the credential at the provider and confirm it. */
+function ReservationAccessReconciliation({
+  accessName,
+  isExecuting,
+  locale,
+  onConfirmRemoved,
+}: {
+  readonly accessName: string;
+  readonly isExecuting: boolean;
+  readonly locale: Locale;
+  readonly onConfirmRemoved: () => void;
+}) {
+  return (
+    <details className="mt-4 rounded-xl border border-burned-orange/25 bg-burned-orange/5 p-4">
+      <Button asChild size="sm">
+        <summary>
+          {m.administrationReservationAccessReconcile({}, { locale })}
+        </summary>
+      </Button>
+      <div className="mt-4 space-y-4 text-sm leading-6 text-navy-blue/65">
+        <p>
+          {m.administrationReservationAccessReconcileInstructions(
+            { accessName },
             { locale }
           )}
-          value={
-            grant.providerCredentialId ??
-            m.administrationReservationUnavailable({}, { locale })
-          }
-          valueClassName="break-all font-mono text-xs"
-        />
-        <AdministrationFact
-          label={m.administrationReservationAccessFailure({}, { locale })}
-          value={
-            grant.failureCode ??
-            m.administrationReservationAccessNoFailure({}, { locale })
-          }
-        />
-      </dl>
-    </AdministrationDetailSection>
+        </p>
+        <Button disabled={isExecuting} onClick={onConfirmRemoved} type="button">
+          {isExecuting
+            ? m.administrationReservationAccessRetrying({}, { locale })
+            : m.administrationReservationAccessConfirmRemoved({}, { locale })}
+        </Button>
+      </div>
+    </details>
+  );
+}
+
+function ReservationAccessFacts({
+  grant,
+  locale,
+}: {
+  readonly grant: AdministrationReservationAccessGrant;
+  readonly locale: Locale;
+}) {
+  return (
+    <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
+      <AdministrationFact
+        label={m.administrationReservationAccessName({}, { locale })}
+        value={grant.accessName}
+      />
+      <AdministrationFact
+        label={m.administrationReservationAccessTargetDevice({}, { locale })}
+        value={grant.deviceId}
+      />
+      <AdministrationFact
+        label={m.administrationReservationAccessValidFrom({}, { locale })}
+        value={formatAdministrationDateTime(grant.startsAt, locale)}
+      />
+      <AdministrationFact
+        label={m.administrationReservationAccessValidUntil({}, { locale })}
+        value={formatAdministrationDateTime(grant.endsAt, locale)}
+      />
+      <AdministrationFact
+        label={m.administrationReservationAccessProviderCredential(
+          {},
+          { locale }
+        )}
+        value={
+          grant.providerCredentialId ??
+          m.administrationReservationUnavailable({}, { locale })
+        }
+        valueClassName="break-all font-mono text-xs"
+      />
+      <AdministrationFact
+        label={m.administrationReservationAccessFailure({}, { locale })}
+        value={
+          grant.failureCode ??
+          m.administrationReservationAccessNoFailure({}, { locale })
+        }
+      />
+    </dl>
   );
 }

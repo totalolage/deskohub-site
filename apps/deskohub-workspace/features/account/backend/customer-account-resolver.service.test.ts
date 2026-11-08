@@ -76,7 +76,7 @@ const makeDependencies = (
       return overrides.reactivation === "fails"
         ? Effect.fail(
             new DotyposUncertain({
-              operation: "patchCustomer",
+              operation: "reactivateCustomer",
               reason: "transport",
             })
           )
