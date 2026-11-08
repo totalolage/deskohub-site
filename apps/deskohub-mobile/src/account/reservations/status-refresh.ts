@@ -128,14 +128,14 @@ const refreshLoop = <R>(
     Effect.map(({ failure }) => failure)
   );
 
-  // One automatic read, unless the budget ran low while waiting for it.
+  // One automatic read, unless the budget ran low while waiting for it. The
+  // read counts as soon as it starts, so a run interrupted mid-read (the app
+  // went to the background) resumes with the read it already spent.
   const automaticRead = (attempt: number): Effect.Effect<void, never, R> =>
     Effect.flatMap(input.remainingBudget, (remaining) =>
       allowsAutomaticRefresh(remaining)
-        ? readOnce.pipe(
-            Effect.tap(() =>
-              publish((state) => ({ ...state, attempt: attempt + 1 }))
-            ),
+        ? publish((state) => ({ ...state, attempt: attempt + 1 })).pipe(
+            Effect.andThen(readOnce),
             Effect.flatMap(
               Option.match({
                 onNone: () => automaticFrom(attempt + 1),

@@ -16,7 +16,7 @@ import {
   focusLost,
   makeOrderStatusAtoms,
 } from "./order-status-state";
-import type { StatusRefreshState } from "./status-refresh";
+import { canRefreshManually, type StatusRefreshState } from "./status-refresh";
 import type { StatusVisit } from "./status-refresh-rules";
 
 const orderId = sampleOrderIds.pending;
@@ -263,6 +263,65 @@ describe("order status atoms", () => {
 
     h.tap();
     await h.readsSettled(afterTaps + 1);
+    h.dispose();
+  });
+
+  test("a read cut off by the background still counts toward the visit's three", async () => {
+    const h = harness();
+    h.focus(true);
+    await h.readsSettled(1);
+    h.workspace.fail("getReservationStatus", "hang");
+    await h.adjust("10 seconds");
+    await Effect.runPromise(eventually(() => h.reads() === 2));
+
+    h.registry.set(h.foreground, false);
+    h.registry.set(h.foreground, true);
+    await h.quietly();
+    await h.adjust("20 seconds");
+    await h.readsSettled(3);
+    await h.adjust("40 seconds");
+    await h.readsSettled(4);
+    await h.adjust("30 minutes");
+    await h.quietly();
+
+    expect(h.reads()).toBe(4);
+    h.dispose();
+  });
+
+  test("a new visit's first read shows as waiting over the previous order", async () => {
+    const h = harness();
+    h.focus(true);
+    await h.readsSettled(1);
+    h.focus(false);
+    h.workspace.fail("getReservationStatus", "hang");
+
+    h.focus(true);
+    await Effect.runPromise(eventually(() => h.reads() === 2));
+    const shown = h.registry.get(h.status);
+
+    expect(AsyncResult.isSuccess(shown) && shown.waiting).toBe(true);
+    h.dispose();
+  });
+
+  test("a new visit whose first read fails keeps the order and retries the visit", async () => {
+    const h = harness();
+    h.focus(true);
+    await h.readsSettled(1);
+    h.focus(false);
+    h.workspace.fail("getReservationStatus", "service-unavailable");
+
+    h.focus(true);
+    await Effect.runPromise(
+      eventually(() => AsyncResult.isFailure(h.registry.get(h.status)))
+    );
+    const failed = h.registry.get(h.status);
+    expect(Option.map(AsyncResult.value(failed), canRefreshManually)).toEqual(
+      Option.some(true)
+    );
+
+    h.registry.refresh(h.atoms.progress(orderId));
+    await h.readsSettled(3);
+    expect(AsyncResult.isSuccess(h.registry.get(h.status))).toBe(true);
     h.dispose();
   });
 });

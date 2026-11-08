@@ -7,7 +7,7 @@ import { customerRead } from "../../customer-api/customer-request";
 import { DotyposReadBudget } from "../../customer-api/dotypos-read-budget";
 import { appForegroundAtom } from "../../platform/app-foreground";
 import { type StatusRefreshState, statusRefreshes } from "./status-refresh";
-import type { StatusVisit } from "./status-refresh-rules";
+import { AutomaticRefresh, type StatusVisit } from "./status-refresh-rules";
 
 /** One status read: the server refreshes the order and it spends the budget. */
 export const readOrderStatus = (orderId: CustomerReservationOrderId) =>
@@ -86,23 +86,33 @@ const endedAsDefect = <E>(
     })
   );
 
-// A stream atom also reports every value as waiting until the stream ends,
-// which this one never does; the screen is waiting only while a read is
-// under way.
+// What the screen shows of the refreshes in focus session `session`:
+// - A stream atom reports every value as waiting until the stream ends,
+//   which this one never does; the screen waits only while a read is under
+//   way, or while a new session's first read is (the state shown is then
+//   the previous session's).
+// - A new session whose first read failed keeps showing the previous
+//   session's order under the failure, stopped: refreshing it means retrying
+//   the session, not tapping a stream that has ended.
 const shownProgress = <E>(
-  result: AsyncResult.AsyncResult<StatusProgress, E | Cause.NoSuchElementError>
+  result: AsyncResult.AsyncResult<StatusProgress, E | Cause.NoSuchElementError>,
+  session: number
 ): AsyncResult.AsyncResult<StatusRefreshState, E> =>
   AsyncResult.match(result, {
     onInitial: ({ waiting }) =>
       AsyncResult.initial<StatusRefreshState, E>(waiting),
     onSuccess: ({ value }) =>
       AsyncResult.success<StatusRefreshState, E>(value.state, {
-        waiting: value.state.reading,
+        waiting: value.state.reading || value.session !== session,
       }),
     onFailure: ({ cause, previousSuccess, waiting }) =>
       AsyncResult.failure<StatusRefreshState, E>(endedAsDefect(cause), {
         previousSuccess: Option.map(previousSuccess, ({ value }) =>
-          AsyncResult.success<StatusRefreshState, E>(value.state)
+          AsyncResult.success<StatusRefreshState, E>({
+            ...value.state,
+            reading: false,
+            automatic: AutomaticRefresh.Stopped({ reason: "failed" }),
+          })
         ),
         waiting,
       }),
@@ -156,7 +166,9 @@ export const makeOrderStatusAtoms = (foreground: Atom.Atom<boolean>) => {
 
   /** The order as the status screen shows it, kept up to date while in view. */
   const status = Atom.family((orderId: CustomerReservationOrderId) =>
-    Atom.make((get) => shownProgress(get(progress(orderId))))
+    Atom.make((get) =>
+      shownProgress(get(progress(orderId)), get(focus(orderId)).session)
+    )
   );
 
   return { focus, refreshRequests, progress, status };

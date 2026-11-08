@@ -263,16 +263,14 @@ function OrderStatusContent({
   const tone = orderStatusTraits[order.status].tone;
   // The status changes while the screen is open: announce the new one.
   useLiveRegionAnnouncement(copy.title);
-  const limited = AutomaticRefresh.$is("Stopped")(state.automatic)
-    ? state.automatic.reason === "limited"
-    : false;
+  // The last read's own failure; a 429 reads as "temporarily limited".
   const failureMessage = Option.getOrUndefined(
-    Option.map(state.failure, (failure) =>
-      limited
-        ? m.account_error_rate_limited({}, { locale })
-        : (statusErrorMessage(locale)(failure) ??
-          sharedViewErrorMessage(failure, locale) ??
-          m.account_error_unexpected({}, { locale }))
+    Option.map(
+      state.failure,
+      (failure) =>
+        statusErrorMessage(locale)(failure) ??
+        sharedViewErrorMessage(failure, locale) ??
+        m.account_error_unexpected({}, { locale })
     )
   );
   const setupStartsAt = Option.flatMap(
@@ -389,7 +387,10 @@ export function OrderStatusScreen({
     }, [setFocus, visit])
   );
 
-  const refresh = () => tap((taps) => taps + 1);
+  // After a failed first read the refreshes have ended: start them again.
+  const refresh = AsyncResult.isFailure(result)
+    ? retry
+    : () => tap((taps) => taps + 1);
   const refreshable = Option.match(AsyncResult.value(result), {
     onNone: () => false,
     onSome: canRefreshManually,
