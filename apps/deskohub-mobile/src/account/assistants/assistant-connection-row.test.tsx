@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { Button } from "../../ui/controls";
-import { AssistantConnectionRow } from "./assistants-screen";
+import { AssistantConnectionRow } from "./assistant-connection-row";
 import type { AssistantRow } from "./connected-assistants";
 
 type Props = {
