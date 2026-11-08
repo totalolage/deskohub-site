@@ -1,12 +1,12 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
 import { Duration, Effect, Match } from "effect";
 import type { CustomerAgentGrant } from "@/features/account";
 import {
   RequestBudget,
   type RequestBudgetPolicy,
 } from "@/shared/backend/request-budget/request-budget.service";
+import { budgetKeyDigest } from "@/shared/backend/request-budget/request-budget-key";
 import { AgentToolError } from "./agent-tool-error";
 
 /**
@@ -84,12 +84,5 @@ export const spendSignedInCallBudgets = Effect.fn(
   );
 });
 
-/**
- * Budget keys are stored verbatim, so they carry a one-way digest of the
- * account and client instead of the identifiers.
- */
 const digest = (...parts: ReadonlyArray<string>) =>
-  createHash("sha256")
-    .update(["deskohub-workspace/agent-tool-budget", ...parts].join("\0"))
-    .digest("base64url")
-    .slice(0, 32);
+  budgetKeyDigest("deskohub-workspace/agent-tool-budget", ...parts);

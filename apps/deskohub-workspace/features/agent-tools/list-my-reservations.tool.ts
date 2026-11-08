@@ -1,10 +1,10 @@
 import { Effect, Match, Schema } from "effect";
 import {
-  CustomerAccountContactService,
   type CustomerReservationHistory,
   CustomerReservationHistoryService,
   type CustomerReservationParty,
   type CustomerReservationSummary,
+  currentReservationHistoryAccount,
 } from "@/features/account";
 import { workspaceCoworkTiers } from "@/features/checkout/product-catalog";
 import { agentToolLocaleField, defineSignedInAgentTool } from "./agent-tool";
@@ -86,19 +86,13 @@ export const listMyReservationsTool = defineSignedInAgentTool({
   ),
 });
 
-/**
- * The account whose history is listed: with its linked Dotypos customer
- * once it has one, otherwise only the reservations it authored. Reading the
- * link never claims one.
- */
-const readHistoryAccount = Effect.all({
-  grant: CurrentCustomerAgentGrant,
-  linked: CustomerAccountContactService.pipe(
-    Effect.flatMap((contacts) => contacts.currentLinkedAccount),
-    Effect.mapError(AgentToolError.refused("account_unavailable"))
-  ),
-}).pipe(
-  Effect.map(({ grant, linked }) => linked ?? { accountId: grant.accountId })
+/** The grant's account history (`currentReservationHistoryAccount`). */
+const readHistoryAccount = CurrentCustomerAgentGrant.pipe(
+  Effect.flatMap((grant) =>
+    currentReservationHistoryAccount(grant.accountId).pipe(
+      Effect.mapError(AgentToolError.refused("account_unavailable"))
+    )
+  )
 );
 
 const toListResult = (

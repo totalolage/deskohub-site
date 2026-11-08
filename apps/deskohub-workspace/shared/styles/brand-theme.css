@@ -1,5 +1,8 @@
 /* Brand tokens: colours, type, radii and button lighting. The site and
-   standalone surfaces such as the agent booking widget share them. */
+   standalone surfaces such as the agent booking widget share them. The
+   brand values themselves come from @deskohub/brand-tokens. */
+@import "@deskohub/brand-tokens/brand-theme.css";
+
 @theme inline {
   --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
     sans-serif;
@@ -35,28 +38,4 @@
   --shadow-button-pressed: inset 0 2px 4px #0004;
   --shadow-button-pressed-subtle: inset 0 2px 3px
     color-mix(in oklab, var(--brand-navy-blue) 14%, transparent);
-}
-
-:root {
-  --brand-navy-blue: #00024f;
-  --brand-silver: #d8d8d8;
-  --brand-sunset-yellow: #eca423;
-  --brand-sunset-yellow-ink: #8a5d00;
-  --brand-chilean-fire: #f57c00;
-  --brand-burned-orange: #b83b06;
-  --brand-burned-orange-ink: #7a2e0a;
-  --brand-aquamarine-green: #00df99;
-  --brand-aquamarine-ink: #004c3b;
-
-  --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI",
-    "Helvetica Neue", Arial, sans-serif;
-  --font-subheading: var(--font-sculpin), "Avenir Next", "Segoe UI",
-    "Helvetica Neue", Arial, sans-serif;
-  --font-body: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue",
-    Arial, sans-serif;
-  --font-heading-weight: 400;
-  --font-subheading-weight: 400;
-  --font-body-weight: 400;
-
-  --radius: 0.65rem;
 }

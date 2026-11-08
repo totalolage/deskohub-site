@@ -13,6 +13,7 @@ import type { LegalDocumentKey } from "@/features/legal/legal-document-summaries
 import { legalPageMarkdown } from "@/features/legal/legal-page-markdown";
 import { meetingRoomPageMarkdown } from "@/features/meeting-room/meeting-room-page-markdown";
 import { meetingRoomReservationPageMarkdown } from "@/features/meeting-room/meeting-room-reservation-page-markdown";
+import { androidDownloadPageMarkdown } from "@/features/mobile-distribution/android-download-page-markdown";
 import { officeReservationPageMarkdown } from "@/features/office/office-reservation-page-markdown";
 import { pricingPageMarkdown } from "@/features/pricing/pricing-page-markdown";
 import { teamPageMarkdown } from "@/features/team/team-page-markdown";
@@ -83,6 +84,7 @@ export const publicPageMarkdown = {
   "/contact": { topic: "contact", render: contactPageMarkdown },
   "/faq": { topic: "offer", render: faqPageMarkdown },
   "/ai-assistants": { topic: "booking", render: aiAssistantsPageMarkdown },
+  "/android": { topic: "booking", render: androidDownloadPageMarkdown },
   "/pricing": { topic: "prices", render: pricingPageMarkdown },
   "/meeting-room": { topic: "offer", render: meetingRoomPageMarkdown },
   "/team": { topic: "offer", render: teamPageMarkdown },

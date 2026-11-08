@@ -1,0 +1,80 @@
+{
+  "origin": "https://workspace.deskohub.cz",
+  "rpID": "workspace.deskohub.cz",
+  "registrationOptions": {
+    "challenge": "BH1MqEUuuZlYUOtnvrxsH93SDBB4KM2pVrvxuig7hb4",
+    "rp": {
+      "name": "Deskohub Workspace",
+      "id": "workspace.deskohub.cz"
+    },
+    "user": {
+      "id": "c3ludGhldGljLXVzZXItMDAwMQ",
+      "name": "synthetic.customer@example.test",
+      "displayName": "synthetic.customer@example.test"
+    },
+    "pubKeyCredParams": [
+      {
+        "alg": -8,
+        "type": "public-key"
+      },
+      {
+        "alg": -7,
+        "type": "public-key"
+      },
+      {
+        "alg": -257,
+        "type": "public-key"
+      }
+    ],
+    "timeout": 60000,
+    "attestation": "none",
+    "excludeCredentials": [],
+    "authenticatorSelection": {
+      "residentKey": "preferred",
+      "userVerification": "preferred",
+      "requireResidentKey": false
+    },
+    "extensions": {
+      "credProps": true
+    },
+    "hints": []
+  },
+  "registrationResponse": {
+    "id": "28OfxJdnK1pRG5L8bbiVEg",
+    "rawId": "28OfxJdnK1pRG5L8bbiVEg",
+    "type": "public-key",
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "response": {
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiQkgxTXFFVXV1WmxZVU90bnZyeHNIOTNTREJCNEtNMnBWcnZ4dWlnN2hiNCIsIm9yaWdpbiI6Imh0dHBzOi8vd29ya3NwYWNlLmRlc2tvaHViLmN6IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+      "attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViUfMC19hglsxLXpOo-OAEOREmkYCQZmrGVvFg7AS7dbDVFAAAAAAAAAAAAAAAAAAAAAAAAAAAAENvDn8SXZytaURuS_G24lRKlAQIDJiABIVggEFM50bC84sRt-jXReLNG1qXQpzMne9QUL1OznxKGnZYiWCCpU75IRnJUbCxe6uEic3GG2IvT2xpoLOrIPh-yCcGqKw",
+      "transports": ["internal", "hybrid"]
+    }
+  },
+  "authenticationOptions": {
+    "rpId": "workspace.deskohub.cz",
+    "challenge": "x6M98XX4HYuDnRYy9Z4lfUoOCVBjHZp0vbl56sRgjMw",
+    "allowCredentials": [
+      {
+        "id": "28OfxJdnK1pRG5L8bbiVEg",
+        "transports": ["internal", "hybrid"],
+        "type": "public-key"
+      }
+    ],
+    "timeout": 60000,
+    "userVerification": "preferred"
+  },
+  "authenticationResponse": {
+    "id": "28OfxJdnK1pRG5L8bbiVEg",
+    "rawId": "28OfxJdnK1pRG5L8bbiVEg",
+    "type": "public-key",
+    "authenticatorAttachment": "platform",
+    "clientExtensionResults": {},
+    "response": {
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoieDZNOThYWDRIWXVEblJZeTlaNGxmVW9PQ1ZCakhacDB2Ymw1NnNSZ2pNdyIsIm9yaWdpbiI6Imh0dHBzOi8vd29ya3NwYWNlLmRlc2tvaHViLmN6IiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ",
+      "authenticatorData": "fMC19hglsxLXpOo-OAEOREmkYCQZmrGVvFg7AS7dbDUFAAAAAQ",
+      "signature": "MEYCIQCrLui1d7ez07HIYm-EkYXsoPiCI8H4HcyMiB-P2RrurQIhAOaNqp5THcSoIiuEiTZY0i18M91RZRl8wD4ggtyoCtAZ",
+      "userHandle": "c3ludGhldGljLXVzZXItMDAwMQ"
+    }
+  }
+}

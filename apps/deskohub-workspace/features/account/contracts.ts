@@ -1,136 +1,35 @@
-import { PhoneNumberSchema } from "@deskohub/phone-number";
+import {
+  CustomerProfileCompletionInput,
+  CustomerProfileInput,
+  customerInputParseOptions,
+} from "@deskohub/workspace-customer-api";
 import { Option, Schema } from "effect";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 
-const trimmedRequiredText = (maximumLength: number) =>
-  Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(maximumLength));
-
-const trimmedOptionalText = (maximumLength: number) =>
-  Schema.optional(Schema.Trim.check(Schema.isMaxLength(maximumLength)));
-
-const customerProfileNameFieldSchema = trimmedRequiredText(100);
-
-/**
- * Dotypos owns the stored phone, so a blank value only means "clear the
- * field". Any other value decodes to the phone number it holds, and one
- * without a phone number is rejected at this boundary: accepting it would let
- * a profile save silently clear the phone, including a legacy stored value
- * that the user was merely rendering back. The form therefore forces an
- * explicit correction or an explicit clearing.
+/*
+ * The profile schemas are the customer API's, so the account forms and the
+ * mobile app validate a profile identically.
  */
-const customerProfilePhoneFieldSchema = Schema.Trim.check(
-  Schema.isMaxLength(32)
-).pipe(Schema.decodeTo(Schema.Union([Schema.Literal(""), PhoneNumberSchema])));
-
-const customerProfileAddressFields = {
-  addressLine1: trimmedOptionalText(200),
-  addressLine2: trimmedOptionalText(200),
-  city: trimmedOptionalText(100),
-  zip: trimmedOptionalText(20),
-  country: trimmedOptionalText(2),
-} as const;
-
-/**
- * The single source of the business billing field schemas: the profile
- * contract validates saved billing input against them, and the ARES mapper
- * decodes registry values through the same schemas so both paths share one
- * definition of trimming and maximum length.
- */
-const customerProfileBusinessBillingSchema = Schema.Struct({
-  ...customerProfileAddressFields,
-  companyName: trimmedRequiredText(200),
-  companyId: trimmedOptionalText(32),
-  vatId: trimmedOptionalText(32),
-});
-
-export const customerProfileBusinessBillingFields =
-  customerProfileBusinessBillingSchema.fields;
-
-const customerProfileBillingSchema = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("personal"),
-    ...customerProfileAddressFields,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("business"),
-    ...customerProfileBusinessBillingFields,
-  }),
-]);
-
-/** A customer's billing details as read from Dotypos. */
-type CustomerProfileBilling = {
-  readonly kind: "personal" | "business";
-  readonly addressLine1: string | null;
-  readonly addressLine2: string | null;
-  readonly city: string | null;
-  readonly zip: string | null;
-  readonly country: string | null;
-  readonly companyName: string | null;
-  readonly companyId: string | null;
-  readonly vatId: string | null;
-};
-
-/** A customer's profile as read from Dotypos. */
-export type CustomerProfile = {
-  readonly firstName: string;
-  readonly lastName: string | null;
-  readonly phone: string | null;
-  readonly billing: CustomerProfileBilling | null;
-};
-
-/**
- * Dotypos owns the customer profile, so the login email is deliberately
- * absent from the profile input: the verified email is the immutable
- * reservation-linking trust boundary and is never an editable field.
- */
-export const updateCustomerProfileSchema = Schema.Struct({
-  firstName: customerProfileNameFieldSchema,
-  lastName: trimmedOptionalText(100),
-  phone: Schema.optional(customerProfilePhoneFieldSchema),
-  billing: Schema.optional(customerProfileBillingSchema),
-});
+export {
+  type CustomerProfile,
+  CustomerProfileCompletionInput as completeCustomerProfileSchema,
+  type CustomerProfileCompletionInput,
+  CustomerProfileInput as updateCustomerProfileSchema,
+  type CustomerProfileInput,
+  customerProfileBusinessBillingFields,
+  type ProfileCompletionReferralOutcome,
+} from "@deskohub/workspace-customer-api";
 
 export const updateCustomerProfileStandardSchema = Schema.toStandardSchemaV1(
-  updateCustomerProfileSchema,
-  { parseOptions: { errors: "all", onExcessProperty: "error" } }
+  CustomerProfileInput,
+  { parseOptions: customerInputParseOptions }
 );
-
-export type CustomerProfileInput = typeof updateCustomerProfileSchema.Type;
-
-/**
- * First-time completion may also carry the referral code the new customer was
- * invited with. Profile updates keep the plain profile contract, so an
- * established account can never submit one. `prefilledReferralCode` is the
- * code the form was prefilled with from the shared link; a submitted code
- * equal to it came from the link rather than from typing.
- */
-export const completeCustomerProfileSchema = Schema.Struct({
-  ...updateCustomerProfileSchema.fields,
-  referralCode: trimmedOptionalText(64),
-  prefilledReferralCode: trimmedOptionalText(64),
-});
 
 export const completeCustomerProfileStandardSchema = Schema.toStandardSchemaV1(
-  completeCustomerProfileSchema,
-  { parseOptions: { errors: "all", onExcessProperty: "error" } }
+  CustomerProfileCompletionInput,
+  { parseOptions: customerInputParseOptions }
 );
-
-/**
- * What happened to the referral code entered at first-time completion. A
- * pending code is retried on a later account visit.
- */
-export type ProfileCompletionReferralOutcome =
-  | { readonly status: "applied" }
-  | { readonly status: "pending" }
-  | {
-      readonly status: "not-applied";
-      readonly reason:
-        | "already-referred"
-        | "not-eligible"
-        | "code-unusable"
-        | "profile-already-completed";
-    };
 
 export type CustomerReservationStatus =
   | "cancelled"
