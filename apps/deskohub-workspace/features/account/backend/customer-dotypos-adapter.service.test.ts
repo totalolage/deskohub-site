@@ -11,7 +11,7 @@ import {
 } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
-import type { CustomerProfileInput } from "../contracts";
+import type { CustomerProfileSave } from "../contracts";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 
 const customerEmail = testEmailAddress("ada");
@@ -408,7 +408,7 @@ describe("CustomerDotyposAdapter", () => {
   });
 
   describe("profile updates", () => {
-    const writeProfile = async (input: CustomerProfileInput) => {
+    const writeProfile = async (input: CustomerProfileSave) => {
       const profiles: DotyposCustomerProfile[] = [];
       await runWithDotypos(
         {
@@ -447,13 +447,13 @@ describe("CustomerDotyposAdapter", () => {
       ]);
     });
 
-    test("passes the validated phone for the package to normalize", async () => {
+    test("writes the phone number the profile contract decoded", async () => {
       const profiles = await writeProfile({
         firstName: "Ada",
-        phone: "+420 601 111 222",
+        phone: "+420601111222",
       });
 
-      expect(profiles[0]?.phone).toBe("+420 601 111 222");
+      expect(profiles[0]?.phone).toBe("+420601111222");
     });
 
     test("clears business billing when the profile switches to personal", async () => {

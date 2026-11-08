@@ -105,4 +105,3 @@ export {
   type DotyposCustomerLifecycle,
 } from "./utils/customer-lifecycle";
 export { getCustomerDisplayName } from "./utils/customer-name";
-export { normalizePhoneNumber } from "./utils/phone-formatting";

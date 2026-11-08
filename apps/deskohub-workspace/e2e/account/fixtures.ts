@@ -4,6 +4,7 @@ import {
   DotyposService,
 } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import { Temporal } from "@js-temporal/polyfill";
 import { Effect, Option } from "effect";
 import type { DatasourceConfig } from "../config";
@@ -59,7 +60,7 @@ export const createSyntheticCustomerProfile = (
       email: profile.email,
       firstName: profile.firstName,
       lastName: "E2E",
-      ...(profile.phone === undefined ? {} : { phone: profile.phone }),
+      phone: Option.getOrUndefined(parsePhoneNumber(profile.phone ?? "")),
     });
     assert(customer.id, "created synthetic Dotypos profile has no id");
     log("Synthetic Dotypos profile created");

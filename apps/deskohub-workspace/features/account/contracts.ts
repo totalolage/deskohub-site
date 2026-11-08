@@ -1,6 +1,6 @@
 import {
-  CustomerProfileCompletionInput,
-  CustomerProfileInput,
+  CustomerProfileCompletionSave,
+  CustomerProfileSave,
   customerInputParseOptions,
 } from "@deskohub/workspace-customer-api";
 import { Option, Schema } from "effect";
@@ -9,25 +9,28 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 
 /*
  * The profile schemas are the customer API's, so the account forms and the
- * mobile app validate a profile identically.
+ * mobile app validate a profile identically. The forms keep the phone as
+ * entered text; the profile actions decode it to its phone number.
  */
 export {
   type CustomerProfile,
   CustomerProfileCompletionInput as completeCustomerProfileSchema,
   type CustomerProfileCompletionInput,
+  type CustomerProfileCompletionSave,
   CustomerProfileInput as updateCustomerProfileSchema,
   type CustomerProfileInput,
+  type CustomerProfileSave,
   customerProfileBusinessBillingFields,
   type ProfileCompletionReferralOutcome,
 } from "@deskohub/workspace-customer-api";
 
 export const updateCustomerProfileStandardSchema = Schema.toStandardSchemaV1(
-  CustomerProfileInput,
+  CustomerProfileSave,
   { parseOptions: customerInputParseOptions }
 );
 
 export const completeCustomerProfileStandardSchema = Schema.toStandardSchemaV1(
-  CustomerProfileCompletionInput,
+  CustomerProfileCompletionSave,
   { parseOptions: customerInputParseOptions }
 );
 

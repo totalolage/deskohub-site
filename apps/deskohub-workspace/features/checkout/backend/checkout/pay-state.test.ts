@@ -451,15 +451,15 @@ describe("Pay URL state", () => {
   });
 });
 
+// Any record with claims, in the Pay-state token format.
+const payStateRecord = makeLegacySealedState({
+  schema: Schema.StructWithRest(Schema.Struct(sealedStateClaimsSchema.fields), [
+    Schema.Record(Schema.String, Schema.Unknown),
+  ]),
+  ttlMilliseconds: 10 * 60 * 1000,
+});
+
 describe("legacy signed Pay state with a retired customer message", () => {
-  // Any record with claims, in the Pay-state token format.
-  const payStateRecord = makeLegacySealedState({
-    schema: Schema.StructWithRest(
-      Schema.Struct(sealedStateClaimsSchema.fields),
-      [Schema.Record(Schema.String, Schema.Unknown)]
-    ),
-    ttlMilliseconds: 10 * 60 * 1000,
-  });
   const openLegacyPayStateWithMessage = (state: SignedPayState) => {
     const legacyState = {
       ...state,
@@ -498,4 +498,38 @@ describe("legacy signed Pay state with a retired customer message", () => {
     });
     expect(restartKind).toBe("cowork");
   });
+});
+
+describe("reservation phone in signed Pay state", () => {
+  test("keeps the entered reservation phone text", () => {
+    const state = buildState();
+
+    expect(
+      run(openPayState(seal(state)), { keys: fixedKey, at: fixedNow })
+        .reservation.phone
+    ).toBe("+420 777 777 777");
+  });
+
+  // Seal below the Pay-state schema, as a token from before a rule change would be.
+  const openWithPhone = (phone: string) => {
+    const state = buildState();
+    const token = run(
+      payStateRecord.seal({
+        ...state,
+        reservation: { ...state.reservation, phone },
+      })
+    );
+    return run(openPayState(token), { keys: fixedKey, at: fixedNow });
+  };
+
+  test("opens a token whose reservation phone is valid entered text", () => {
+    expect(openWithPhone("777 123 456").reservation.phone).toBe("777 123 456");
+  });
+
+  test.each(["+420 123 456 789", "777 123 4567", "777 123 456 (mobile)"])(
+    "does not open a token whose reservation phone is %p",
+    (phone) => {
+      expect(() => openWithPhone(phone)).toThrow("Invalid Pay state token");
+    }
+  );
 });

@@ -9,6 +9,7 @@ import {
   NexiOrderIdSchema,
   NexiService,
 } from "@deskohub/nexi";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import { Context, Data, Effect, Layer, Match, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { OptionalAccountActivityGuard } from "@/features/account";
@@ -1258,7 +1259,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                             id: dotyposCustomerId,
                             name: data.name,
                             email: data.email,
-                            phone: data.phone,
+                            phone: parsePhoneNumber(data.phone),
                           }),
                           accountingSnapshot,
                           reservation: state.reservation,
