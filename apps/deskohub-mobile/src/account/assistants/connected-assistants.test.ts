@@ -6,10 +6,10 @@ import {
   type Atom,
   AtomRegistry,
 } from "effect/unstable/reactivity";
-import { viewErrorOf } from "../../customer-api/async-view";
 import {
   CustomerViewError,
   isRetryableViewError,
+  viewErrorOf,
 } from "../../customer-api/customer-view-error";
 import {
   makeFakeCustomerData,

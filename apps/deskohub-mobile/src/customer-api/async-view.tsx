@@ -1,4 +1,4 @@
-import { Cause, Option } from "effect";
+import { Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
 import type { ReactNode } from "react";
 import { useAppLocale } from "../i18n/locale-context";
@@ -11,20 +11,13 @@ import {
 import { Notice } from "../ui/notice";
 import {
   type CustomerRequestFailure,
-  CustomerViewError,
+  type CustomerViewError,
   isRetryableViewError,
-  toCustomerViewError,
+  viewErrorOf,
 } from "./customer-view-error";
 import { sharedViewErrorMessage } from "./customer-view-error-message";
 
-/** The view error of a failed result; a defect or interruption is unexpected. */
-export const viewErrorOf = <E extends CustomerRequestFailure>(
-  cause: Cause.Cause<E>
-): CustomerViewError =>
-  Option.match(Cause.findErrorOption(cause), {
-    onNone: () => CustomerViewError.Unexpected(),
-    onSome: toCustomerViewError,
-  });
+export { viewErrorOf } from "./customer-view-error";
 
 /**
  * Renders a screen's async data the same way everywhere: a spinner while it

@@ -5,16 +5,16 @@ import {
 } from "@deskohub/workspace-customer-api";
 import { Cause, Effect, Exit, Match, Option, Predicate, Schema } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
-import { viewErrorOf } from "../../customer-api/async-view";
 import { CustomerApi } from "../../customer-api/customer-api.service";
 import {
   accountAtom,
   customerDataRuntime,
 } from "../../customer-api/customer-data-runtime";
 import { customerWrite } from "../../customer-api/customer-request";
-import type {
-  CustomerRequestFailure,
-  CustomerViewError,
+import {
+  type CustomerRequestFailure,
+  type CustomerViewError,
+  viewErrorOf,
 } from "../../customer-api/customer-view-error";
 import { accountIndexModel } from "../account-gating";
 

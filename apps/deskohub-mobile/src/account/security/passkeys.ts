@@ -2,7 +2,6 @@ import type { AccountPasskey } from "@deskohub/workspace-customer-api";
 import { type DateTime, Effect, Exit, Match, Option, Predicate } from "effect";
 import type { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { isReauthenticationRequired } from "../../auth/auth-session-state";
-import { viewErrorOf } from "../../customer-api/async-view";
 import {
   CustomerApi,
   CustomerAuthApi,
@@ -13,9 +12,10 @@ import {
   customerWrite,
   refreshAfterWrite,
 } from "../../customer-api/customer-request";
-import type {
-  CustomerRequestFailure,
-  CustomerViewError,
+import {
+  type CustomerRequestFailure,
+  type CustomerViewError,
+  viewErrorOf,
 } from "../../customer-api/customer-view-error";
 import { parseInstant } from "../../i18n/date-time-format";
 

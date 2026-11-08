@@ -2,7 +2,7 @@ import type {
   CustomerMarketingPreferences,
   SaveCustomerMarketingPreferences,
 } from "@deskohub/workspace-customer-api";
-import { Cause, Effect, Match, Option } from "effect";
+import { type Cause, Effect, Match, Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { CustomerApi } from "../../customer-api/customer-api.service";
 import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
@@ -13,8 +13,8 @@ import {
 } from "../../customer-api/customer-request";
 import {
   type CustomerRequestFailure,
-  CustomerViewError,
-  toCustomerViewError,
+  type CustomerViewError,
+  viewErrorOf,
 } from "../../customer-api/customer-view-error";
 import type { AppLocale } from "../../i18n/app-locale";
 
@@ -93,17 +93,10 @@ export interface MarketingSwitchView {
 const isGranted = (status: CustomerMarketingPreferences["status"]) =>
   status === "active";
 
-// `viewErrorOf` lives with the React view; this module stays React-free.
-const saveViewError = (cause: Cause.Cause<CustomerRequestFailure>) =>
-  Option.match(Cause.findErrorOption(cause), {
-    onNone: () => CustomerViewError.Unexpected(),
-    onSome: toCustomerViewError,
-  });
-
 const failureFeedback = (
   cause: Cause.Cause<CustomerRequestFailure>
 ): MarketingSaveFeedback =>
-  Match.value(saveViewError(cause)).pipe(
+  Match.value(viewErrorOf(cause)).pipe(
     Match.tag("MarketingPreferencesStale", () => ({ kind: "stale" }) as const),
     Match.tag("Unconfirmed", () => ({ kind: "unconfirmed" }) as const),
     Match.orElse((error) => ({ kind: "failed", error }) as const)
