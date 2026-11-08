@@ -20,6 +20,8 @@ import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { drizzleAuthTables } from "@/db/schema/auth";
 import { WorkspaceLockSections } from "@/db/workspace-locks";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
+import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
+import { mirrorDeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { captureWorkspaceLogs } from "@/shared/testing/workspace-telemetry.test-utils";
@@ -79,6 +81,7 @@ export type TestAuthOptions = {
   readonly verifyHuman?: WorkspaceAuthConfig["verifyHuman"];
   readonly beforeDeleteUser?: WorkspaceAuthConfig["beforeDeleteUser"];
   readonly captureAccountLocalePreference?: WorkspaceAuthConfig["captureAccountLocalePreference"];
+  readonly mirrorSignInAnalyticsConsent?: WorkspaceAuthConfig["mirrorSignInAnalyticsConsent"];
   readonly clientMetadataTransport?: WorkspaceAuthConfig["clientMetadataTransport"];
   readonly createCustomerAccount?: WorkspaceAuthConfig["createCustomerAccount"];
   readonly hasAdministratorGrant?: WorkspaceAuthConfig["hasAdministratorGrant"];
@@ -223,6 +226,22 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
             )
         : () => Effect.void,
     captureAccountLocalePreference,
+    mirrorSignInAnalyticsConsent:
+      options.mirrorSignInAnalyticsConsent ??
+      // Memory-backed instances have no consent ledger.
+      (testDatabase && !options.database
+        ? (device) =>
+            mirrorDeviceAnalyticsConsent({
+              ...device,
+              source: "sign_in_mirror",
+            }).pipe(
+              Effect.provide(
+                AnalyticsConsentLedger.Default.pipe(
+                  Layer.provide(testDatabaseLayer())
+                )
+              )
+            )
+        : () => Effect.void),
     reviewAccountCredentials: options.reviewAccountCredentials ?? [],
     // Memory-backed instances have no customer_accounts table.
     isReviewAccount:

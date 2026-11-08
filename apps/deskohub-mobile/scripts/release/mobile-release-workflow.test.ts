@@ -167,3 +167,21 @@ describe("mobile-release.yml pull request dry run", () => {
     expect(upload?.with?.name).toBe("deskohub-mobile-apk");
   });
 });
+
+describe("mobile-release.yml update publish", () => {
+  test("resolves the app config with the production build profile's env", async () => {
+    const eas = (await Bun.file(
+      resolve(import.meta.dir, "../../eas.json")
+    ).json()) as {
+      build: { production: { env?: Record<string, string> } };
+    };
+    const productionEnv = eas.build.production.env ?? {};
+    expect(productionEnv.MOBILE_UPDATES_CODE_SIGNING).toBe("required");
+    expect(workflow.jobs["ota-update"]?.env).toMatchObject(productionEnv);
+    for (const step of workflow.jobs["ota-update"]?.steps ?? []) {
+      for (const name of Object.keys(productionEnv)) {
+        expect(step.env?.[name]).toBeUndefined();
+      }
+    }
+  });
+});

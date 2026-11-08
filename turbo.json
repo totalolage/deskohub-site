@@ -4,6 +4,7 @@
   "globalEnv": ["NODE_ENV", "VERCEL_ENV"],
   "globalPassThroughEnv": [
     "BUN_OPTIONS",
+    "TMPDIR",
     "DESKOHUB_COVERAGE_RUN_DIR",
     "ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID",
     "ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_*",
@@ -148,6 +149,7 @@
     },
     "test": {
       "dependsOn": ["^test"],
+      "env": ["CI", "TZ"],
       "outputs": []
     },
     "start": {

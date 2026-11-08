@@ -277,6 +277,14 @@ glossary defines the customer account, reservation author, and tombstone.
   and the auth guard rejects `name` or `image` in a magic-link request.
 - The verified login email is immutable because it's the reservation-linking
   trust boundary. Profile input never accepts an email.
+- The profile contract rejects a nonblank phone that holds no phone number,
+  so a save never clears a phone by accident. A blank phone is the explicit
+  clearing. `CustomerProfileInput` is what the form and typed clients send,
+  phone as entered text: Effect's `HttpApiClient` takes a payload's decoded
+  type, so a payload schema that decoded the phone would make every client
+  send E.164. The Workspace reads it as a `CustomerProfileSave`, with the
+  phone decoded to its `PhoneNumber`: the profile actions' schemas decode to
+  it, and the customer API handlers read the payload into it.
 
 ## Deletion
 

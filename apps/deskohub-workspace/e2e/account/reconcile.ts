@@ -185,6 +185,8 @@ export type WorkspaceE2EAccountJournalEvidence = {
  * labels whose synthetic identities it may own.
  */
 export type WorkspaceE2EAccountJournalOwner = {
+  /** Case controlling admission, when the journal owner has a different ID. */
+  readonly caseId?: string;
   /** The suite's journal directory; the checkout suite's when absent. */
   readonly journalDirectory?: string;
   readonly ownerId: WorkspaceE2EAccountJournalOwnerId;

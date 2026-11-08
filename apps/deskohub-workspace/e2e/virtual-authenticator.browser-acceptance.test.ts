@@ -55,6 +55,7 @@ const signInDocument = `<!doctype html><html lang="en"><body>
       );
   };
   window.armAutofill = () => start("autofill", "conditional");
+  window.cancelAutofill = () => pending?.abort();
   window.pressButton = () => start("button", undefined);
   window.continueAfterSignIn = () => (opensAccount = true);
   window.failButtonSignIn = () => (refusesButton = true);
@@ -170,6 +171,33 @@ const pressButtonUntilAccount = async (page: Page) => {
     timeout: 5_000,
   });
 };
+
+test.skipIf(!chromiumAvailable)(
+  "waits for a fresh conditional request after the previous one was cancelled",
+  async () => {
+    await withPasskeyPage(async (page, authenticator) => {
+      await armAutofill(page);
+      await authenticator.waitForConditionalRequest(5_000);
+      await page.evaluate("cancelAutofill()");
+      await page.waitForFunction(
+        "window.outcomes.includes('autofill AbortError')",
+        undefined,
+        { timeout: 5_000 }
+      );
+
+      await expect(
+        authenticator.waitForConditionalRequest(250)
+      ).rejects.toThrow();
+
+      await armAutofill(page);
+      await authenticator.waitForConditionalRequest(5_000);
+      await page.evaluate("continueAfterSignIn()");
+      await authenticator.answerModalCeremony(() =>
+        pressButtonUntilAccount(page)
+      );
+    });
+  }
+);
 
 test.skipIf(!chromiumAvailable)(
   "accepts a modal ceremony that signs in alone, across the navigation",

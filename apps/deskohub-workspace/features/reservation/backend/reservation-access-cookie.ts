@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { Data, Effect, Option, Schema } from "effect";
 import { type Locale, locales } from "@/features/i18n";
 import {
@@ -9,6 +9,7 @@ import {
   reservationAccessPath,
   reservationStatusPath,
 } from "@/features/reservation/routes";
+import { makeSignedClaims } from "@/shared/backend/signed-claims";
 import {
   getReservationAccessTokenSecret,
   type ReservationAccessTokenError,
@@ -45,6 +46,11 @@ const reservationAccessCookieClaimsSchema = Schema.Struct({
 
 type ReservationAccessCookieClaims =
   typeof reservationAccessCookieClaimsSchema.Type;
+
+const reservationAccessCookieClaims = makeSignedClaims({
+  purpose: reservationAccessCookiePurpose,
+  schema: reservationAccessCookieClaimsSchema,
+});
 
 export type ReservationAccessCookieOptions = Pick<
   ReservationAccessTokenOptions,
@@ -121,11 +127,6 @@ const mapSecretError = (error: ReservationAccessTokenError) =>
         : "invalid-cookie",
     message: "Reservation access cookie signing is unavailable.",
   });
-
-const signClaims = (encodedClaims: string, key: Buffer) =>
-  createHmac("sha256", key)
-    .update(`${reservationAccessCookiePurpose}.${encodedClaims}`)
-    .digest();
 
 const hasValidCanonicalReservationSearchParams = (
   url: URL,
@@ -272,12 +273,10 @@ export const sealReservationAccessCookie = Effect.fn(
     options.now?.() ?? Date.now()
   );
   if (lifetimeError) return yield* lifetimeError;
-  const encodedClaims = Buffer.from(JSON.stringify(claims)).toString(
-    "base64url"
-  );
-  const signature = signClaims(encodedClaims, secret).toString("base64url");
 
-  return `${encodedClaims}.${signature}`;
+  return yield* reservationAccessCookieClaims
+    .sign(claims, [secret])
+    .pipe(Effect.mapError(() => invalidCookie()));
 });
 
 export const createReservationAccessCookieCapability = Effect.fn(
@@ -302,49 +301,6 @@ export const createReservationAccessCookieCapability = Effect.fn(
   }
 );
 
-/** The claims and signature parts of a sealed cookie value. */
-const splitSealedCookie = (value: string) => {
-  const [encodedClaims, encodedSignature, ...extraParts] = value.split(".");
-  return extraParts.length > 0 || !encodedClaims || !encodedSignature
-    ? Effect.fail(invalidCookie())
-    : Effect.succeed({ encodedClaims, encodedSignature });
-};
-
-const decodeCookieClaims = (encodedClaims: string) =>
-  Effect.try({
-    try: () =>
-      JSON.parse(
-        Buffer.from(encodedClaims, "base64url").toString("utf8")
-      ) as unknown,
-    catch: () => invalidCookie(),
-  }).pipe(
-    Effect.flatMap(
-      Schema.decodeUnknownEffect(reservationAccessCookieClaimsSchema, {
-        onExcessProperty: "error",
-      })
-    ),
-    Effect.mapError(() => invalidCookie())
-  );
-
-/** Fails unless the signature is the secret's MAC of the encoded claims. */
-const verifyCookieSignature = Effect.fnUntraced(function* (
-  encodedClaims: string,
-  encodedSignature: string,
-  secret: Buffer
-) {
-  const providedSignature = yield* Effect.try({
-    try: () => Buffer.from(encodedSignature, "base64url"),
-    catch: () => invalidCookie(),
-  });
-  const expectedSignature = signClaims(encodedClaims, secret);
-  if (
-    providedSignature.length !== expectedSignature.length ||
-    !timingSafeEqual(providedSignature, expectedSignature)
-  ) {
-    return yield* invalidCookie();
-  }
-});
-
 export const openReservationAccessCookie = Effect.fn(
   "reservationAccessCookie.open"
 )(function* (
@@ -354,14 +310,17 @@ export const openReservationAccessCookie = Effect.fn(
   },
   options: ReservationAccessCookieOptions = {}
 ) {
-  const { encodedClaims, encodedSignature } = yield* splitSealedCookie(
-    input.value
-  );
-  const claims = yield* decodeCookieClaims(encodedClaims);
-  const secret = yield* getReservationAccessTokenSecret(options).pipe(
-    Effect.mapError(mapSecretError)
-  );
-  yield* verifyCookieSignature(encodedClaims, encodedSignature, secret);
+  const claims = yield* reservationAccessCookieClaims
+    .open(
+      input.value,
+      getReservationAccessTokenSecret(options).pipe(
+        Effect.mapError(mapSecretError),
+        Effect.map((secret) => [secret] as const)
+      )
+    )
+    .pipe(
+      Effect.catchTag("SignedClaimsError", () => Effect.fail(invalidCookie()))
+    );
 
   if (claims.orderId !== input.orderId) {
     return yield* invalidCookie();

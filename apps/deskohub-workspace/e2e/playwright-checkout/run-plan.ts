@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { WorkspaceE2EPreparation } from "../cases";
+import { writeReservationJournal } from "../reservation-journal";
 import { workspaceDir, writeJsonAtomically } from "../runtime";
 import type { E2ERunContext } from "../services/telemetry";
 import type { CheckoutData, CheckoutFlowState } from "../types";
@@ -34,15 +35,16 @@ type SerializedCheckoutFlowState = {
 export const writeWorkspaceE2ERunPlan = async (plan: WorkspaceE2ERunPlan) =>
   writeJsonAtomically(runPlanPath, plan);
 
-export const readWorkspaceE2ERunPlan = async (): Promise<WorkspaceE2ERunPlan> =>
-  parseRunPlan(await readFile(runPlanPath, "utf8"));
+export const readWorkspaceE2ERunPlan = async (
+  path = runPlanPath
+): Promise<WorkspaceE2ERunPlan> => parseRunPlan(await readFile(path, "utf8"));
 
 export const writeWorkspaceE2ECaseJournal = async (
   caseId: WorkspaceE2ECaseId,
   flowStates: readonly CheckoutFlowState[],
   journalStartedAt = new Date()
 ) =>
-  writeJsonAtomically(resolve(journalRoot, `${caseId}.json`), {
+  writeReservationJournal(resolve(journalRoot, `${caseId}.json`), {
     caseId,
     checkoutStates: flowStates.map(
       ({ completedDotyposReservationId, data, orderId, startedAt }) => ({

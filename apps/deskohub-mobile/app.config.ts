@@ -81,6 +81,34 @@ export const updatesManifestUrl = (configured: string | undefined): string => {
   return `${url.origin}/api/mobile/updates/manifest`;
 };
 
+// A build that embeds the code-signing certificate accepts only signed
+// manifests. A development client built that way asks Metro for a signed
+// development manifest, which Metro serves only with the private key, so the
+// certificate goes only into builds that install updates. They set
+// `MOBILE_UPDATES_CODE_SIGNING=required`: the production profile in eas.json
+// does for every APK build, and the release workflow's ota-update job does for
+// the update publish. The signing fields feed the fingerprint runtime version,
+// so a publish without the setting targets no installed release.
+type UpdatesCodeSigning = Pick<
+  NonNullable<ExpoConfig["updates"]>,
+  "codeSigningCertificate" | "codeSigningMetadata"
+>;
+
+const updatesCodeSigning = (
+  setting: string | undefined
+): UpdatesCodeSigning => {
+  if (setting === undefined || setting === "") return {};
+  if (setting !== "required") {
+    throw new Error(
+      `MOBILE_UPDATES_CODE_SIGNING must be "required" or unset, got ${JSON.stringify(setting)}.`
+    );
+  }
+  return {
+    codeSigningCertificate: "./code-signing/code-signing-certificate.pem",
+    codeSigningMetadata: { keyid: "main", alg: "rsa-v1_5-sha256" },
+  };
+};
+
 // app.json links only the production host's /app/ paths to the app. A
 // development build pointed at a preview (`EXPO_PUBLIC_API_ORIGIN`) also
 // claims that host's /app/ paths, so a sign-in email from the preview opens
@@ -139,7 +167,6 @@ export default (
     url: updatesManifestUrl(env.EXPO_PUBLIC_API_ORIGIN),
     checkAutomatically: "ON_ERROR_RECOVERY",
     fallbackToCacheTimeout: 0,
-    codeSigningCertificate: "./code-signing/code-signing-certificate.pem",
-    codeSigningMetadata: { keyid: "main", alg: "rsa-v1_5-sha256" },
+    ...updatesCodeSigning(env.MOBILE_UPDATES_CODE_SIGNING),
   },
 });

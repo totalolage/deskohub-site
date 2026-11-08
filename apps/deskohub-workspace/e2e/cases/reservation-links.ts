@@ -426,6 +426,7 @@ const runReservationLinkZeroTotalCase = ({
         });
         const browser = yield* browserSessionFor(run, session);
         return yield* submitReservationForPayPage({
+          data: replacementData,
           onOrderId: (orderId) => {
             replacementState.orderId = orderId;
           },
@@ -699,6 +700,7 @@ const openLinkAndHoldReservation = ({
         });
       }
       return yield* submitReservationForPayPage({
+        data,
         onOrderId: (orderId) => {
           state.orderId = orderId;
         },

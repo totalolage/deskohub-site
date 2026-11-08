@@ -2,13 +2,7 @@ import { Effect } from "effect";
 import {
   prepareWorkspaceE2EAccountJournalReconciliations,
   reconcileWorkspaceE2EAccountJournals,
-  workspaceE2EAccountLaneJournalOwner,
 } from "../account/reconcile";
-import { workspaceE2EAdministrationJournalOwners } from "../administrators/identities";
-import { agentBookingJournalOwner } from "../cases/agent-booking";
-import { referralSomeoneElsePaymentJournalOwner } from "../cases/referral-someone-else-payment";
-import { signedOutVerificationJournalOwner } from "../cases/signed-out-verification";
-import { workspaceE2ECheckoutBookerJournalOwners } from "../checkout/booker";
 import {
   cleanupPreparedCheckoutFlowStates,
   prepareCheckoutFlowCleanup,
@@ -19,13 +13,13 @@ import {
   deleteRunAutomationJourneys,
 } from "../email-campaigns/automation-reservation-case";
 import { E2EDatabase } from "../integrations/database.service";
-import { workspaceE2EReferralJournalOwners } from "../referrals/journal-owners";
 import { workspaceE2ECaseIds } from "./case-catalog";
 import {
   runWorkspaceE2ECleanupWithPreparedCandidates,
   traceWorkspaceE2ESuiteCleanup,
 } from "./cleanup-plan";
 import { cleanupTest as test } from "./cleanup-runtime-fixtures";
+import { workspaceE2ECheckoutJournalOwners } from "./journal-owners";
 import { readWorkspaceE2ECaseJournals } from "./run-plan";
 
 test("reconcile workspace checkout reservations", async ({
@@ -59,15 +53,7 @@ test("reconcile workspace checkout reservations", async ({
           prepareWorkspaceE2EAccountJournalReconciliations(
             datasourceConfig,
             runContext.runId,
-            [
-              workspaceE2EAccountLaneJournalOwner,
-              ...workspaceE2EReferralJournalOwners,
-              referralSomeoneElsePaymentJournalOwner,
-              signedOutVerificationJournalOwner,
-              agentBookingJournalOwner,
-              ...workspaceE2ECheckoutBookerJournalOwners,
-              ...workspaceE2EAdministrationJournalOwners,
-            ]
+            workspaceE2ECheckoutJournalOwners
           )
         ),
       readCheckoutCleanup: async () => {

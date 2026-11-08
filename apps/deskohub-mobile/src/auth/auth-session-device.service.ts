@@ -10,6 +10,12 @@ interface Subscription {
   readonly remove: () => void;
 }
 
+/** How an Android auth session opens its Custom Tab. */
+export interface CustomTabOptions {
+  readonly browserPackage: string;
+  readonly createTask: boolean;
+}
+
 /** What opening a sign-in page needs from the device. */
 interface IAuthSessionDevice {
   readonly platform: string;
@@ -17,13 +23,12 @@ interface IAuthSessionDevice {
   /** The Android browsers that can show a Custom Tab. */
   readonly findCustomTabsBrowsers: () => Promise<WebBrowser.WebBrowserCustomTabsResults>;
   /**
-   * Expo's auth session: Safari's sheet on iOS, a Custom Tab of
-   * `browserPackage` on Android.
+   * Expo's auth session: Safari's sheet on iOS, a Custom Tab on Android.
    */
   readonly openAuthSession: (
     url: string,
     returnUri: string,
-    options: { readonly browserPackage: string } | undefined
+    options: CustomTabOptions | undefined
   ) => Promise<WebBrowser.WebBrowserAuthSessionResult>;
   /** Links the app receives while it runs. */
   readonly onUrl: (listener: (url: string) => void) => Subscription;

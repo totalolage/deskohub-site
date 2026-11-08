@@ -2,6 +2,7 @@
 
 import { type DotyposReservationId, DotyposService } from "@deskohub/dotypos";
 import { EmailRecipientDomainService } from "@deskohub/email/backend/recipient-domain.service";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import {
   Data,
   Duration,
@@ -65,6 +66,7 @@ import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import { type Locale, m } from "@/features/i18n";
+import { mirrorDeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import type { MarketingConsentGrantSource } from "@/features/legal/marketing-consent-grant-source";
 import { ensureOfficeReservationsEnabled } from "@/features/office/backend/office-release-gate";
@@ -102,6 +104,8 @@ import { getReservationCustomerProfile } from "@/features/reservation/reservatio
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
+import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
+import { currentRequestHeaders } from "@/shared/backend/workspace-request-context";
 import {
   currentInstant,
   instantStringSchema,
@@ -1395,7 +1399,7 @@ const resolveBookedCustomerId = Effect.fnUntraced(function* (
         {
           ...splitCustomerName(reservation.name),
           email: reservation.email,
-          phone: reservation.phone,
+          phone: Option.getOrUndefined(parsePhoneNumber(reservation.phone)),
         },
         { lookupFields: ["email"] }
       )
@@ -1437,6 +1441,39 @@ const recordCheckoutMarketingConsent = Effect.fnUntraced(function* ({
   );
 });
 
+/**
+ * Mirrors the booking device's analytics consent choice into the account's
+ * ledger. An agent's request carries no device choice, so it mirrors
+ * nothing. Any failure, a defect included, is logged and never blocks the
+ * booking.
+ */
+const mirrorBookingDeviceAnalyticsConsent = Effect.fnUntraced(
+  function* ({
+    locale,
+    bookingAgent,
+    accountId,
+  }: {
+    readonly locale: Locale;
+    readonly bookingAgent: Option.Option<BookingAgent["Service"]>;
+    readonly accountId: CustomerAccountId;
+  }) {
+    if (Option.isSome(bookingAgent)) return;
+    const headers = yield* currentRequestHeaders;
+    yield* mirrorDeviceAnalyticsConsent({
+      accountId,
+      cookieHeader: headers.get("cookie") ?? "",
+      locale,
+      source: "hydration_mirror",
+    });
+  },
+  catchRecoverableCause((cause) =>
+    Effect.logWarning(
+      "Analytics consent mirror failed; continuing the booking.",
+      { cause }
+    )
+  )
+);
+
 const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
   function* (input: PayStateSubmission, inReviewSandbox: Ref.Ref<boolean>) {
     const bookingAgent = yield* Effect.serviceOption(BookingAgent);
@@ -1462,6 +1499,11 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
             reason: "unauthenticated",
           });
         }
+        yield* mirrorBookingDeviceAnalyticsConsent({
+          locale: input.locale,
+          bookingAgent,
+          accountId,
+        });
         const reviewAccount = yield* ReviewAccounts.pipe(
           Effect.flatMap((accounts) => accounts.isReviewAccount(accountId))
         );

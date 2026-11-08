@@ -462,7 +462,7 @@ describe("auth session browser", () => {
     expect(call).toEqual([
       "https://workspace.example.test/app/sign-in?native=1",
       "deskohub://auth/callback",
-      { browserPackage: "com.android.chrome" },
+      { browserPackage: "com.android.chrome", createTask: false },
     ]);
   });
 

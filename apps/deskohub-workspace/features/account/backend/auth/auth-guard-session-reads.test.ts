@@ -87,6 +87,7 @@ const makeTestAuth = (sentMagicLinks: { url: string }[] = []) => {
         Effect.provide(testDatabase!.layer)
       ),
     captureAccountLocalePreference: captureLocalePreference,
+    mirrorSignInAnalyticsConsent: () => Effect.void,
     reviewAccountCredentials: [],
     isReviewAccount: () => Effect.succeed(false),
     registerReviewAccount: () => Effect.void,

@@ -6,13 +6,15 @@ import {
   type CustomerAccountState,
   type CustomerAgentConnection,
   CustomerMarketingPreferencesRejected,
+  CustomerProfileCompletionSave,
+  CustomerProfileSave,
   CustomerServiceUnavailable,
   type CustomerSession,
   CustomerSessionRequired,
   customerReferralCodeHeader,
   WorkspaceCustomerApi,
 } from "@deskohub/workspace-customer-api";
-import { Effect, Layer, Match } from "effect";
+import { Effect, Layer, Match, Schema } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { loadAccountState } from "@/features/account/backend/account-state";
 import { accountStateCapabilitiesForRun } from "@/features/account/backend/account-state-capabilities";
@@ -42,6 +44,18 @@ import {
   answerUnavailable,
 } from "./customer-api-failure";
 import { customerAvatarUploadHandler } from "./customer-avatar-upload";
+
+/**
+ * The save a profile payload asks for, its entered phone decoded to the phone
+ * number it holds. The payload already passed the same rules, so a failure
+ * here is a defect, not a client error.
+ */
+const readProfileSave = <S extends Schema.Top>(schema: S) => {
+  const decode = Schema.decodeEffect(schema);
+  return (payload: S["Encoded"]) => decode(payload).pipe(Effect.orDie);
+};
+const readProfileUpdate = readProfileSave(CustomerProfileSave);
+const readProfileCompletion = readProfileSave(CustomerProfileCompletionSave);
 
 /**
  * The account group's handlers. Each endpoint builds its operation's Layers
@@ -108,13 +122,15 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
           )
         )
         .handle("updateProfile", ({ payload }) =>
-          updateCurrentCustomerProfile(payload).pipe(
+          readProfileUpdate(payload).pipe(
+            Effect.flatMap(updateCurrentCustomerProfile),
             Effect.provide(profileSaving),
             answerCustomerApiFailure("customerApi.updateProfile")
           )
         )
         .handle("completeProfile", ({ headers, payload }) =>
-          completeCurrentCustomerProfile(payload).pipe(
+          readProfileCompletion(payload).pipe(
+            Effect.flatMap(completeCurrentCustomerProfile),
             Effect.provide(
               profileCompletion(headers[customerReferralCodeHeader])
             ),

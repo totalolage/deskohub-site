@@ -1,11 +1,11 @@
+import type { Locator, Page } from "@playwright/test";
 import { Effect } from "effect";
-import { browserTextScript, inPageCall } from "./browser-scripts";
+import { inPageCall } from "./browser-scripts";
 import { type E2EBrowserSession, isPlaywrightTimeout } from "./browser-session";
 import type { WorkspaceE2EConfig } from "./config";
 import {
   toWorkspaceE2EError,
   tryWorkspaceE2EPromise,
-  tryWorkspaceE2ESync,
   type WorkspaceE2EError,
   withoutWorkspaceE2ETimeout,
   workspaceE2EError,
@@ -14,7 +14,7 @@ import {
 import { pollUntil } from "./polling";
 import { redact } from "./redaction";
 import type { Runner } from "./runtime";
-import { log, redactDiagnosticText } from "./runtime";
+import { log } from "./runtime";
 import { argvCommandTimeoutMs, workspaceE2EPollIntervalMs } from "./timeouts";
 
 // Playwright reports an exhausted command budget as its TimeoutError; classify
@@ -42,25 +42,7 @@ export const runBrowserCommand = (
     )
   );
 
-// The session's request/response log, or an empty log when it is unavailable.
-export const readBrowserNetworkLog = (
-  run: Runner,
-  session: string
-): Effect.Effect<string, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "read browser network log",
-    run,
-    session,
-    ["network", "requests"],
-    {
-      allowFailure: true,
-      logCommand: false,
-      logOutput: false,
-      timeoutMs: 30_000,
-    }
-  ).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout : "")));
-
-export const readBrowserUrl = (
+const readBrowserUrl = (
   run: Runner,
   session: string
 ): Effect.Effect<string | undefined, WorkspaceE2EError> =>
@@ -71,105 +53,6 @@ export const readBrowserUrl = (
     Effect.map((result) =>
       result.exitCode === 0 ? result.stdout.trim() : undefined
     )
-  );
-
-export const readActiveBrowserTabId = (
-  run: Runner,
-  session: string
-): Effect.Effect<string, WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    const tabs = yield* readBrowserTabs(run, session);
-    const tabId = tabs.find((tab) => tab.active)?.tabId;
-    if (!tabId) {
-      return yield* toWorkspaceE2EError(
-        "read active browser tab",
-        new Error("active browser tab missing")
-      );
-    }
-    return tabId;
-  });
-
-export type BrowserTab = {
-  readonly active: boolean;
-  readonly tabId: string;
-};
-
-export const readBrowserTabs = (
-  run: Runner,
-  session: string
-): Effect.Effect<readonly BrowserTab[], WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    const result = yield* runBrowserCommand(
-      "read browser tabs",
-      run,
-      session,
-      ["--json", "tab", "list"],
-      { logOutput: false }
-    );
-    return yield* tryWorkspaceE2ESync("parse browser tabs", () => {
-      const response = JSON.parse(result.stdout) as {
-        readonly data?: {
-          readonly tabs?: readonly {
-            readonly active?: boolean;
-            readonly tabId?: string;
-          }[];
-        };
-      };
-      return (response.data?.tabs ?? []).map((tab) => {
-        if (!tab.tabId) throw new Error("browser tab id missing");
-        return { active: tab.active === true, tabId: tab.tabId };
-      });
-    });
-  });
-
-export const switchToBrowserTab = (
-  run: Runner,
-  session: string,
-  tabId: string
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand("switch browser tab", run, session, ["tab", tabId], {
-    logOutput: false,
-  }).pipe(Effect.asVoid);
-
-export const closeBrowserTab = (
-  run: Runner,
-  session: string,
-  tabId: string
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "close browser tab",
-    run,
-    session,
-    ["tab", "close", tabId],
-    {
-      logOutput: false,
-    }
-  ).pipe(Effect.asVoid);
-
-const getBrowserHeaderArgs = (config: WorkspaceE2EConfig) =>
-  config.bypassSecret
-    ? [
-        "--headers",
-        JSON.stringify({
-          "x-vercel-protection-bypass": config.bypassSecret,
-          "x-vercel-set-bypass-cookie": "true",
-        }),
-      ]
-    : [];
-
-export const openBrowserPage = (
-  config: WorkspaceE2EConfig,
-  run: Runner,
-  session: string,
-  url: string,
-  options: { readonly timeoutMs?: number } = {}
-) =>
-  runBrowserCommand(
-    "open browser page",
-    run,
-    session,
-    [...getBrowserHeaderArgs(config), "open", url],
-    { timeoutMs: options.timeoutMs ?? 60_000 }
   );
 
 export const waitForBrowserReactHydration = (
@@ -272,24 +155,7 @@ export const evalBrowserScript = (
     ...options,
   });
 
-export const clickBrowserElement = (
-  run: Runner,
-  session: string,
-  selector: string,
-  options: { readonly timeoutMs?: number } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "click browser element",
-    run,
-    session,
-    ["click", selector],
-    {
-      logOutput: false,
-      timeoutMs: options.timeoutMs ?? 60_000,
-    }
-  ).pipe(Effect.asVoid);
-
-export const focusBrowserElement = (
+const focusBrowserElement = (
   run: Runner,
   session: string,
   selector: string,
@@ -324,7 +190,7 @@ export const scrollBrowserElementIntoView = (
     }
   ).pipe(Effect.asVoid);
 
-export const pressBrowserKey = (
+const pressBrowserKey = (
   run: Runner,
   session: string,
   key: string,
@@ -357,105 +223,8 @@ export const activateHydratedBrowserElement = (
     yield* activateBrowserElement(run, session, selector, options);
   });
 
-export const readInteractiveSnapshot = (
-  run: Runner,
-  session: string,
-  allowFailure = false
-): Effect.Effect<string, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "read interactive browser snapshot",
-    run,
-    session,
-    ["snapshot", "-i"],
-    { allowFailure, logOutput: false, timeoutMs: 60_000 }
-  ).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout : "")));
-
-const readBrowserText = (
-  run: Runner,
-  session: string,
-  allowFailure = false
-): Effect.Effect<string, WorkspaceE2EError> =>
-  runBrowserCommand("read browser text", run, session, ["eval", "--stdin"], {
-    allowFailure,
-    input: browserTextScript,
-    logOutput: false,
-    timeoutMs: 30_000,
-  }).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout : "")));
-
 export const normalizeBrowserText = (text: string) =>
   text.replaceAll(/\s+/g, " ").trim();
-
-export const waitForBrowserText = ({
-  description,
-  matches,
-  run,
-  session,
-  timeoutMs,
-}: {
-  description: string;
-  matches: (text: string) => boolean;
-  run: Runner;
-  session: string;
-  timeoutMs: number;
-}) =>
-  pollUntil(
-    readBrowserText(run, session, true).pipe(
-      Effect.map((text) => (matches(text) ? text : undefined))
-    ),
-    {
-      intervalMs: workspaceE2EPollIntervalMs.browser,
-      label: description,
-      timeoutMs,
-    }
-  );
-
-// Best-effort switch for cleanup and diagnostics; a failed switch is ignored.
-export const switchToMainFrame = (
-  run: Runner,
-  session: string
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand("switch to main frame", run, session, ["frame", "main"], {
-    allowFailure: true,
-    logOutput: false,
-    timeoutMs: 30_000,
-  }).pipe(Effect.asVoid);
-
-// Fails unless the session is back in the main frame, for callers whose next
-// commands must not run inside an iframe.
-export const requireMainFrame = (
-  run: Runner,
-  session: string
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand("switch to main frame", run, session, ["frame", "main"], {
-    logOutput: false,
-    timeoutMs: 30_000,
-  }).pipe(
-    Effect.flatMap((result) =>
-      result.exitCode === 0
-        ? Effect.void
-        : Effect.fail(
-            toWorkspaceE2EError(
-              "switch to main frame",
-              new Error(`frame command exited with ${result.exitCode}`)
-            )
-          )
-    )
-  );
-
-export const summarizeHostedPaymentSnapshot = (snapshot: string) => {
-  const lines = snapshot
-    .split("\n")
-    .filter((line) =>
-      /\b(?:button|frame|heading|iframe|input|textbox|link)\b/i.test(line)
-    )
-    .slice(0, 80)
-    .map(redactDiagnosticText)
-    .join("\n");
-
-  return lines
-    ? `Nexi HPP snapshot summary:\n${lines}`
-    : "Nexi HPP snapshot summary unavailable";
-};
 
 const hasSnapshotRole = (line: string, role: string | undefined) =>
   role === undefined ||
@@ -683,7 +452,7 @@ export const waitForPageText = ({
  * secrets redacted, as the argv `snapshot -i` output was. Each Playwright
  * wait is bounded by that command's 60 s.
  */
-const readPageSnapshot = (
+export const readPageSnapshot = (
   session: E2EBrowserSession
 ): Effect.Effect<string, WorkspaceE2EError> =>
   session
@@ -693,6 +462,14 @@ const readPageSnapshot = (
       return body.ariaSnapshot({ mode: "ai", timeout: 60_000 });
     })
     .pipe(Effect.map(redact));
+
+/**
+ * The element a `readPageSnapshot` line names by its `[ref=…]`, through
+ * Playwright's own AI-snapshot ref engine. A frame-scoped ref (`f1e6`)
+ * resolves inside its iframe.
+ */
+export const locateSnapshotRef = (page: Page, ref: string): Locator =>
+  page.locator(`aria-ref=${ref}`);
 
 /**
  * Polls the interactive aria snapshot until `matches` accepts it and returns
@@ -884,6 +661,24 @@ export const scrollIntoView = (
       { timeoutMs }
     )
     .pipe(withoutWorkspaceE2ETimeout("scroll browser element into view"));
+
+/** The page the session drives now; a closed page fails the read. */
+export const readActivePage = (
+  session: E2EBrowserSession
+): Effect.Effect<Page, WorkspaceE2EError> =>
+  session.use("read active browser tab", async (page) => {
+    if (page.isClosed()) throw new Error("no active browser tab");
+    return page;
+  });
+
+/**
+ * The session's request and response log, one entry per line, as the argv
+ * `network requests` output was. The session redacts each entry.
+ */
+export const readNetworkLog = (
+  session: E2EBrowserSession
+): Effect.Effect<string> =>
+  session.diagnostics.pipe(Effect.map(({ requests }) => requests.join("\n")));
 
 /**
  * The active page's URL with registered secrets redacted, as argv output was,
