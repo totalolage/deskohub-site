@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CustomerReservationOrderId } from "@deskohub/workspace-customer-api";
-import { Effect, Exit, Layer } from "effect";
+import { Deferred, Effect, Exit, Fiber, Layer } from "effect";
 import { CustomerViewError } from "../../customer-api/customer-view-error";
 import {
   DeviceCapabilityFailed,
@@ -13,6 +13,7 @@ import {
 } from "../../customer-api/testing/fake-customer-data";
 import { FakeWorkspace } from "../../customer-api/testing/fake-workspace";
 import { sampleOrderIds } from "../../customer-api/testing/sample-fixtures";
+import { eventually } from "../../testing/eventually";
 import {
   InvoiceShareFailure,
   invoiceFileName,
@@ -111,5 +112,38 @@ describe("shareInvoice", () => {
     ).toEqual(
       InvoiceShareFailure.Download({ error: CustomerViewError.NotFound() })
     );
+  });
+
+  test("leaving while the share sheet is open removes the file once it closes", async () => {
+    const workspace = FakeWorkspace.forKind("linked");
+    const device = makeFakeDevice();
+
+    await Effect.gen(function* () {
+      const closed = yield* Deferred.make<void>();
+      const sheet = Layer.succeed(ShareSheet, {
+        shareFile: (file) =>
+          Effect.suspend(() => {
+            device.sharedFiles.push(file);
+            return Deferred.await(closed);
+          }),
+        shareLink: () => Effect.void,
+      });
+      const fiber = yield* shareInvoice(sampleOrderIds.fulfilled).pipe(
+        Effect.provide(
+          Layer.mergeAll(fakeCustomerDataLayer({ workspace, device }), sheet)
+        ),
+        Effect.forkChild
+      );
+      yield* eventually(() => device.sharedFiles.length === 1);
+
+      const interrupted = yield* Effect.forkChild(Fiber.interrupt(fiber));
+      yield* Effect.yieldNow;
+      // Still open: the file stays for the app the customer shares it with.
+      expect(device.files.size).toBe(1);
+
+      yield* Deferred.succeed(closed, undefined);
+      yield* Fiber.join(interrupted);
+      expect(device.files.size).toBe(0);
+    }).pipe(Effect.runPromise);
   });
 });

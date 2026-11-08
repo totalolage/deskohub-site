@@ -33,35 +33,42 @@ const writeTemporaryInvoice = (input: {
     storage.writeTemporaryFile(input.name, input.bytes)
   );
 
-// The temporary copy lives only as long as the share sheet needs it, however
-// sharing ends.
-const shareThenRemove = (file: { readonly uri: string; readonly name: string }) =>
-  Effect.flatMap(Effect.service(ShareSheet), (sheet) =>
-    sheet.shareFile({ ...file, mimeType: "application/pdf" })
-  ).pipe(
-    Effect.ensuring(
+const removeTemporaryFile = (uri: Option.Option<string>) =>
+  Option.match(uri, {
+    onNone: () => Effect.void,
+    onSome: (written) =>
       Effect.flatMap(Effect.service(TemporaryFiles), (files) =>
-        files.remove(file.uri)
-      )
-    )
-  );
+        files.remove(written)
+      ),
+  });
+
+// The share sheet can't be called back once open, so an interruption waits
+// for it to close rather than removing the file it may still be reading.
+const shareFile = (name: string) => (uri: Option.Option<string>) =>
+  Option.match(uri, {
+    onNone: () => Effect.void,
+    onSome: (written) =>
+      Effect.flatMap(Effect.service(ShareSheet), (sheet) =>
+        sheet.shareFile({ uri: written, name, mimeType: "application/pdf" })
+      ).pipe(Effect.uninterruptible),
+  });
 
 /**
  * Downloads the order's invoice and hands it to the share sheet (a download
- * on the web), removing the temporary file once sharing ends. Nothing is
- * written when the download fails, and nothing is shared after the session
- * ended (the account's storage then writes no file).
+ * on the web), removing the temporary file once sharing ends, however it
+ * ends. Nothing is written when the download fails, and nothing is shared
+ * after the session ended (the account's storage then writes no file).
  */
 export const shareInvoice = (orderId: CustomerReservationOrderId) =>
   Effect.Do.pipe(
     Effect.let("name", () => invoiceFileName(orderId)),
     Effect.bind("bytes", () => readInvoice(orderId)),
-    Effect.bind("uri", writeTemporaryInvoice),
-    Effect.flatMap(({ uri, name }) =>
-      Option.match(uri, {
-        onNone: () => Effect.void,
-        onSome: (written) => shareThenRemove({ uri: written, name }),
-      })
+    Effect.flatMap(({ name, bytes }) =>
+      Effect.acquireUseRelease(
+        writeTemporaryInvoice({ name, bytes }),
+        shareFile(name),
+        removeTemporaryFile
+      )
     )
   );
 
