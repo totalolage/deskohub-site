@@ -44,7 +44,13 @@ export function ErrorState({
   useLiveRegionAnnouncement(alert);
   return (
     <View style={styles.centered}>
-      <Text role="alert" aria-live="assertive" style={styles.message}>
+      <Text
+        role="alert"
+        aria-live="assertive"
+        // Text doesn't map `aria-live` to Android's live region; View does.
+        accessibilityLiveRegion="assertive"
+        style={styles.message}
+      >
         {alert ?? ""}
       </Text>
       <Button
@@ -80,7 +86,13 @@ export function RefreshingIndicator({
           color={theme.colors.textMuted}
         />
       )}
-      <Text role="status" aria-live="polite" style={styles.refreshingLabel}>
+      <Text
+        role="status"
+        aria-live="polite"
+        // Text doesn't map `aria-live` to Android's live region; View does.
+        accessibilityLiveRegion="polite"
+        style={styles.refreshingLabel}
+      >
         {message ?? ""}
       </Text>
     </View>
