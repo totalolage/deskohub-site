@@ -57,7 +57,7 @@ const feedbackNotice = (
       }),
       FileUnreadable: () => ({
         tone: "error" as const,
-        message: m.profile_avatar_undecodable({}, { locale }),
+        message: m.profile_avatar_failed({}, { locale }),
       }),
       PickerFailed: () => ({
         tone: "error" as const,
@@ -68,10 +68,6 @@ const feedbackNotice = (
           Match.tag("Unconfirmed", () => ({
             tone: "warning" as const,
             message: m.account_save_unconfirmed({}, { locale }),
-          })),
-          Match.tag("RateLimited", () => ({
-            tone: "warning" as const,
-            message: m.account_error_rate_limited({}, { locale }),
           })),
           Match.orElse(() => ({
             tone: "error" as const,

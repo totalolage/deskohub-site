@@ -328,4 +328,39 @@ describe("while an action runs", () => {
     expect(feedback).toEqual(AvatarFeedback.Uploading());
     expect(isAvatarBusy(feedback)).toBe(true);
   });
+
+  test("the controls wait, silently, while the picker is open", async () => {
+    const workspace = FakeWorkspace.forKind("linked");
+    const registry = makeCustomerDataRegistry(
+      Layer.merge(
+        fakeCustomerDataLayer({ workspace, device: makeFakeDevice() }),
+        Layer.succeed(ImageLibrary, { pickImage: Effect.never })
+      )
+    );
+    registry.mount(avatarActionAtom);
+
+    registry.set(avatarActionAtom, "change");
+    await Bun.sleep(50);
+    const feedback = avatarFeedback(registry.get(avatarActionAtom));
+
+    expect(feedback).toEqual(AvatarFeedback.Picking());
+    expect(isAvatarBusy(feedback)).toBe(true);
+    expect(workspace.calls).toEqual([]);
+  });
+
+  test("the controls wait while the avatar is removed", async () => {
+    const { registry, workspace } = makeFakeCustomerData(
+      "linked",
+      withAvatar(FakeWorkspace.forKind("linked"))
+    );
+    workspace.fail("removeAvatar", "hang");
+    registry.mount(avatarActionAtom);
+
+    registry.set(avatarActionAtom, "remove");
+    await Bun.sleep(50);
+    const feedback = avatarFeedback(registry.get(avatarActionAtom));
+
+    expect(feedback).toEqual(AvatarFeedback.Removing());
+    expect(isAvatarBusy(feedback)).toBe(true);
+  });
 });

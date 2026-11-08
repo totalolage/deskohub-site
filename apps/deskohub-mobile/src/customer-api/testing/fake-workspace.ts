@@ -141,8 +141,9 @@ export type FakeAvatarUploadPart =
     }
   | { readonly _tag: "Field"; readonly field: string; readonly value: string };
 
-// Reads every part of an upload body. A body the fake can't read, such as a
-// React Native URI part in the on-device sample-data mode, records no parts.
+// Reads every part of an upload body. A body the multipart parser can't read,
+// such as a React Native URI part in the on-device sample-data mode, records
+// no parts; other failures surface.
 const avatarUploadParts = (
   payload: Stream.Stream<Multipart.Part, Multipart.MultipartError>
 ) =>
@@ -164,7 +165,7 @@ const avatarUploadParts = (
             })
     ),
     Stream.runCollect,
-    Effect.catchCause(() => Effect.succeed([]))
+    Effect.catchTag("MultipartError", () => Effect.succeed([]))
   );
 
 const storedProfile = (input: CustomerProfileInput): CustomerProfile => ({
