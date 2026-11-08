@@ -139,9 +139,9 @@ function applyConsent(options: GoogleConsentUpdateOptions) {
  */
 const vendorRendered = () => document.getElementById("cc-main") !== null;
 
-// How long a device without a consent cookie waits for its session before
-// the banner opens anyway.
-const sessionWaitMs = 5000;
+// How long a device without a consent cookie waits for its session and the
+// account's answer before the banner opens anyway.
+const choiceWaitMs = 5000;
 
 /**
  * Shows the banner while the device has no choice under the current
@@ -150,7 +150,9 @@ const sessionWaitMs = 5000;
  * known: for each signed-in account the session verifies, the server says
  * whether the account's grant applies (a silent grant); if it does, the
  * device accepts analytics only and the banner stays closed (or closes),
- * else it opens. A session still unknown after `sessionWaitMs` opens it.
+ * else it opens. A device still undecided after `choiceWaitMs`, its session
+ * unknown or the answer late, sees it then; a grant arriving later still
+ * applies and closes it.
  * Stops once the device holds a choice.
  */
 function promptForConsentChoice(
@@ -200,16 +202,14 @@ function promptForConsentChoice(
     });
   };
 
-  const sessionWait = setTimeout(() => {
-    if (getAnalyticsAccountIdentity().status === "pending") {
-      if (!stopped && !visitorConsent.hasChoice()) show();
-    }
-  }, sessionWaitMs);
+  const choiceWait = setTimeout(() => {
+    if (!stopped && !visitorConsent.hasChoice()) show();
+  }, choiceWaitMs);
   const stopFollowingIdentity = subscribeAnalyticsAccountIdentity(settle);
   settle();
   return () => {
     stopped = true;
-    clearTimeout(sessionWait);
+    clearTimeout(choiceWait);
     stopFollowingIdentity();
   };
 }

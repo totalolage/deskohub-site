@@ -5,6 +5,7 @@ import {
   beforeEach,
   describe,
   expect,
+  jest,
   mock,
   test,
 } from "bun:test";
@@ -407,6 +408,40 @@ describe("silent grant", () => {
     expect(accepted()).toEqual(["necessary", "analytics"]);
     expect(bannerOpen()).toBe(false);
     expect(resolveSilentAnalyticsGrantForDevice).toHaveBeenCalledTimes(1);
+  });
+
+  test("a device left waiting for the account's answer sees the banner after the wait, and a late grant still applies", async () => {
+    let answer: (value: SilentGrantAnswer) => void = () => undefined;
+    answerSilentGrant = () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      });
+    jest.useFakeTimers();
+    try {
+      identity = signedIn;
+      render(<ConsentBanner locale="en-US" revision={revision} />);
+      await act(async () => {
+        jest.advanceTimersByTime(0);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(resolveSilentAnalyticsGrantForDevice).toHaveBeenCalledTimes(1);
+      expect(bannerOpen()).toBe(false);
+
+      await act(async () => {
+        jest.advanceTimersByTime(5000);
+      });
+      expect(bannerOpen()).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+
+    await act(async () => {
+      answer({ data: grantedAt });
+      await flushMicrotasks();
+    });
+    expect(bannerOpen()).toBe(false);
+    expect(accepted()).toEqual(["necessary", "analytics"]);
   });
 
   test("a device holding a cookie from an earlier revision sees the banner without asking the account", async () => {
