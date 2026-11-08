@@ -12,11 +12,11 @@ import { billingFieldsOf } from "./profile-draft";
 import { BillingChoiceField, ProfileTextFields } from "./profile-fields";
 import {
   invalidOf,
-  ProfileSubmitFooter,
   UnsavedChangesGuard,
   useFocusFirstInvalid,
   useProfileForm,
 } from "./profile-form";
+import { ProfileSubmitFooter } from "./profile-submit-footer";
 
 /**
  * Billing & Invoices: the billing details of the same profile draft the

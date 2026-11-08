@@ -287,8 +287,7 @@ export const profileSubmitState = (
     : Match.value(result).pipe(
         Match.tagsExhaustive({
           Initial: () => ProfileSubmitState.Idle(),
-          Success: ({ value }) =>
-            ProfileSubmitState.Done({ referral: value }),
+          Success: ({ value }) => ProfileSubmitState.Done({ referral: value }),
           Failure: ({ cause }) => failureState(cause),
         })
       );

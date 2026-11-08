@@ -17,11 +17,11 @@ import { identityFields } from "./profile-draft";
 import { ProfileTextFields } from "./profile-fields";
 import {
   invalidOf,
-  ProfileSubmitFooter,
   UnsavedChangesGuard,
   useFocusFirstInvalid,
   useProfileForm,
 } from "./profile-form";
+import { ProfileSubmitFooter } from "./profile-submit-footer";
 
 /** Initials for an account without a photo, from the saved name. */
 export const initialsOf = (profile: CustomerProfile) =>

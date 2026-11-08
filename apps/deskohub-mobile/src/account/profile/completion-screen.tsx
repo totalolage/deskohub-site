@@ -26,7 +26,6 @@ import {
 import { BillingChoiceField, ProfileTextFields } from "./profile-fields";
 import {
   invalidOf,
-  ProfileSubmitFooter,
   UnsavedChangesGuard,
   useFocusFirstInvalid,
   useSettledResultReset,
@@ -38,6 +37,7 @@ import {
   invitationCodeOf,
   profileSubmitState,
 } from "./profile-save";
+import { ProfileSubmitFooter } from "./profile-submit-footer";
 import { SignupReferralNotice } from "./signup-referral-notice";
 
 /**
