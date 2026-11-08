@@ -35,6 +35,19 @@ export interface CommandOptions {
    * exits sooner gets the group's SIGKILL as soon as its output settles.
    */
   readonly terminateGraceMs?: number;
+  /**
+   * Also writes the command's output to these streams as it arrives, such as
+   * `process.stdout` and `process.stderr` for a long command whose progress
+   * someone follows live. The result still carries the whole output.
+   */
+  readonly forwardOutput?: {
+    readonly stdout: OutputSink;
+    readonly stderr: OutputSink;
+  };
+}
+
+interface OutputSink {
+  readonly write: (chunk: Uint8Array) => unknown;
 }
 
 export interface CommandResult {
@@ -51,7 +64,8 @@ const timedOutDrainMs = 500;
 
 const readText = async (
   stream: ReadableStream<Uint8Array>,
-  abandoned: Promise<void>
+  abandoned: Promise<void>,
+  forward: OutputSink | undefined
 ): Promise<string> => {
   const reader = stream.getReader();
   // Cancelling settles a pending read as done, so a pipe still held open by
@@ -62,6 +76,7 @@ const readText = async (
   for (;;) {
     const { done, value } = await reader.read();
     if (done) return text + decoder.decode();
+    forward?.write(value);
     text += decoder.decode(value, { stream: true });
   }
 };
@@ -311,8 +326,16 @@ export const runCommand = async (
         }, options.timeoutMs);
   try {
     const [stdout, stderr, { exitCode, signalCode }] = await Promise.all([
-      readText(child.stdout, abandonOutput.promise),
-      readText(child.stderr, abandonOutput.promise),
+      readText(
+        child.stdout,
+        abandonOutput.promise,
+        options.forwardOutput?.stdout
+      ),
+      readText(
+        child.stderr,
+        abandonOutput.promise,
+        options.forwardOutput?.stderr
+      ),
       child.exited,
     ]);
     return { exitCode, signalCode, stdout, stderr, timedOut };

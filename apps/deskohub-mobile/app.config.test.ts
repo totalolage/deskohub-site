@@ -93,28 +93,90 @@ describe("app config", () => {
     expect(resolved.version).toBe("1.2.3");
   });
 
-  test("configures signed updates that the app checks for itself", () => {
-    const resolved = appConfig(
-      context({ name: "Deskohub", slug: "deskohub-mobile", version: "1.2.3" })
+  const staticConfig = {
+    name: "Deskohub",
+    slug: "deskohub-mobile",
+    version: "1.2.3",
+  };
+  const updatesWithoutSigning = {
+    enabled: true,
+    url: updatesManifestUrl(undefined),
+    checkAutomatically: "ON_ERROR_RECOVERY",
+    fallbackToCacheTimeout: 0,
+  } as const;
+
+  test("configures updates without signing for development clients and Metro", () => {
+    expect(appConfig(context(staticConfig), {}).updates).toEqual(
+      updatesWithoutSigning
     );
-    expect(resolved.updates).toEqual({
-      enabled: true,
-      url: updatesManifestUrl(process.env.EXPO_PUBLIC_API_ORIGIN),
-      checkAutomatically: "ON_ERROR_RECOVERY",
-      fallbackToCacheTimeout: 0,
+    expect(
+      appConfig(context(staticConfig), { MOBILE_UPDATES_CODE_SIGNING: "" })
+        .updates
+    ).toEqual(updatesWithoutSigning);
+  });
+
+  test("configures signed updates when code signing is required", () => {
+    expect(
+      appConfig(context(staticConfig), {
+        MOBILE_UPDATES_CODE_SIGNING: "required",
+      }).updates
+    ).toEqual({
+      ...updatesWithoutSigning,
       codeSigningCertificate: "./code-signing/code-signing-certificate.pem",
       codeSigningMetadata: { keyid: "main", alg: "rsa-v1_5-sha256" },
     });
   });
 
+  test.each(["true", "1", "Required", "off"])(
+    "rejects code signing setting %p",
+    (value) => {
+      expect(() =>
+        appConfig(context(staticConfig), { MOBILE_UPDATES_CODE_SIGNING: value })
+      ).toThrow();
+    }
+  );
+
   test("points the embedded certificate at a file in the app", async () => {
-    const resolved = appConfig(
-      context({ name: "Deskohub", slug: "deskohub-mobile", version: "1.2.3" })
-    );
+    const resolved = appConfig(context(staticConfig), {
+      MOBILE_UPDATES_CODE_SIGNING: "required",
+    });
     const certificate = resolved.updates?.codeSigningCertificate ?? "";
+    expect(certificate).not.toBe("");
     expect(
       await Bun.file(`${import.meta.dir}/${certificate}`).exists()
     ).toBeTrue();
+  });
+
+  // `eas build` applies a profile's env to every evaluation of this config,
+  // the CLI's and the native build's, so the profile decides the signing.
+  const easProfileEnv = async (profile: string) => {
+    const eas = (await Bun.file(`${import.meta.dir}/eas.json`).json()) as {
+      build: Record<string, { env?: Record<string, string> }>;
+    };
+    const build = eas.build[profile];
+    if (build === undefined) {
+      throw new Error(`eas.json has no ${profile} build profile.`);
+    }
+    return build.env ?? {};
+  };
+
+  test("signs the production build, which the release APK uses", async () => {
+    const resolved = appConfig(
+      context(staticConfig),
+      await easProfileEnv("production")
+    );
+    expect(resolved.updates?.codeSigningCertificate).toBe(
+      "./code-signing/code-signing-certificate.pem"
+    );
+  });
+
+  test("leaves the development client build unsigned, so Metro serves it", async () => {
+    const resolved = appConfig(
+      context(staticConfig),
+      await easProfileEnv("development")
+    );
+    expect(resolved.updates?.codeSigningCertificate).toBeUndefined();
+    expect(resolved.updates?.codeSigningMetadata).toBeUndefined();
   });
 
   test("fails when the static config has no usable version", () => {
