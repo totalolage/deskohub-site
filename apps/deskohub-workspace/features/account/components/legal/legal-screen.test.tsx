@@ -153,9 +153,7 @@ const { ConsentBanner } = await import(
   "@/features/cookie-consent/components/consent-banner"
 );
 const { LegalScreen } = await import("./legal-screen");
-const { LegalPreferenceSettings } = await import(
-  "./legal-preference-settings"
-);
+const { LegalPreferenceSettings } = await import("./legal-preference-settings");
 
 beforeAll(registerWorkspaceComponentTestEnv);
 beforeEach(() => {
@@ -347,7 +345,11 @@ test.each([
     marketingPreferences: { ...linkMarketingState },
     rowCount: 5,
   },
-  { name: "the marketing fallback", marketingPreferences: undefined, rowCount: 4 },
+  {
+    name: "the marketing fallback",
+    marketingPreferences: undefined,
+    rowCount: 4,
+  },
 ])(
   "renders no analytics preference row for a signed-out visitor with $name",
   ({ marketingPreferences, rowCount }) => {

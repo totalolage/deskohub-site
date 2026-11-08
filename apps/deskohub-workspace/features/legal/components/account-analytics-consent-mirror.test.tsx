@@ -71,6 +71,7 @@ const readSavedCookie = () => {
     ? (JSON.parse(decodeURIComponent(entry.slice("cc_cookie=".length))) as {
         readonly categories: string[];
         readonly lastConsentTimestamp: string;
+        readonly revision: number;
       })
     : undefined;
 };
@@ -105,6 +106,7 @@ mock.module("vanilla-cookieconsent", () => ({
     vendorSave(rememberedCategories);
     return true;
   },
+  validConsent: () => readSavedCookie()?.revision === revision,
 }));
 
 mock.module("@/features/account/analytics-identity", () => ({
@@ -160,15 +162,18 @@ const saveConsentCookie = (savedAt: string) => {
   writeConsentCookie(rememberedCategories, savedAt);
 };
 
-/** Settles the next hydration request when the returned function runs. */
+/**
+ * Holds every later hydration request; the returned function settles the
+ * `request`-th one (from 0) with `result`.
+ */
 const deferHydration = () => {
-  let settle!: (result: HydrationResult) => void;
+  const pending: Array<(result: HydrationResult) => void> = [];
   respondToHydration = () =>
     new Promise<HydrationResult>((resolve) => {
-      settle = resolve;
+      pending.push(resolve);
     });
-  return async (result: HydrationResult) => {
-    await act(async () => settle(result));
+  return async (request: number, result: HydrationResult) => {
+    await act(async () => pending[request]?.(result));
     await flushWorkspaceComponentWork();
   };
 };
@@ -366,7 +371,7 @@ describe("AccountAnalyticsConsentMirror", () => {
     saveConsentCookie("2026-11-08T10:20:00.000Z");
     const savedMeanwhile = visitorConsent.saveMark();
     const changes = await announcedChanges(() =>
-      respond({ data: "2026-11-08T10:15:30.123Z" })
+      respond(0, { data: "2026-11-08T10:15:30.123Z" })
     );
 
     expect(visitorConsent.saveMark()).toBe(savedMeanwhile);
@@ -404,6 +409,36 @@ describe("AccountAnalyticsConsentMirror", () => {
       expect(visitorConsent.accepts("analytics")).toBe(analytics);
       expect(changes).toEqual([change]);
       expect(occasions).toEqual(["hydration"]);
+    }
+  );
+
+  test.each([
+    { name: "signs out", next: { status: "anonymous" } as Identity },
+    { name: "switches to another account", next: signedIn("account-b") },
+  ])(
+    "ignores a withdrawal that arrives after the session $name",
+    async ({ next }) => {
+      saveConsentCookie("2026-11-02T09:30:00.000Z");
+      const saved = visitorConsent.saveMark();
+      identity = signedIn("account-a");
+      const respond = deferHydration();
+      await mountMirror();
+
+      await publishIdentity(next);
+      const changes = await announcedChanges(() =>
+        respond(0, { data: "2026-11-08T10:15:30.123Z" })
+      );
+
+      expect(visitorConsent.saveMark()).toBe(saved);
+      expect(visitorConsent.accepts("analytics")).toBe(true);
+      expect(changes).toEqual([]);
+      // A newly signed-in account gets its own mirror.
+      expect(occasions).toEqual(
+        next.status === "authenticated"
+          ? ["hydration", "hydration"]
+          : ["hydration"]
+      );
+      await respond(1, { data: null });
     }
   );
 });
