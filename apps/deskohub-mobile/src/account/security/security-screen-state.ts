@@ -61,8 +61,11 @@ export const initialSecurityScreenState: SecurityScreenState = {
 export type SecurityScreenEvent = Data.TaggedEnum<{
   RenameOpened: { readonly passkey: PasskeyRow };
   DraftChanged: { readonly draft: string };
-  /** Save in the rename dialog; a valid new name also starts the write. */
-  RenameSubmitted: Record<never, never>;
+  /**
+   * Save in the rename dialog; a valid new name also starts the write.
+   * `shownName` is the passkey's name in the list now.
+   */
+  RenameSubmitted: { readonly shownName: string };
   DeleteOpened: {
     readonly passkey: PasskeyRow;
     readonly passkeyCount: number;
@@ -131,7 +134,7 @@ export const securityScreenReducer = (
         state.dialog?.kind === "rename"
           ? { ...state, dialog: { ...state.dialog, draft } }
           : state,
-      RenameSubmitted: () => renameSubmitted(state),
+      RenameSubmitted: ({ shownName }) => renameSubmitted(state, shownName),
       DeleteOpened: ({ passkey, passkeyCount }) => ({
         ...state,
         announcement: undefined,
@@ -174,16 +177,26 @@ export type RenameSubmission =
   | { readonly _tag: "Invalid" };
 
 /**
- * Saving the rename dialog: a valid new name is saved, the unchanged name
- * closes without a request, an invalid one shows its validation.
+ * The name the list shows for the dialog's passkey now. A refresh after an
+ * unconfirmed rename may already show the new name.
+ */
+export const shownPasskeyName = (
+  dialog: PasskeyDialog,
+  rows: ReadonlyArray<PasskeyRow> | undefined
+): string =>
+  rows?.find((row) => row.id === dialog.passkey.id)?.name ??
+  dialog.passkey.name;
+
+/**
+ * Saving the rename dialog: a valid new name is saved, the name the list
+ * shows closes without a request, an invalid one shows its validation.
  */
 export const renameSubmission = (
-  dialog: PasskeyDialog | undefined
+  dialog: PasskeyDialog | undefined,
+  shownName: string
 ): RenameSubmission => {
   if (dialog?.kind !== "rename") return { _tag: "Close" };
-  return Match.value(
-    checkPasskeyName({ draft: dialog.draft, shownName: dialog.passkey.name })
-  ).pipe(
+  return Match.value(checkPasskeyName({ draft: dialog.draft, shownName })).pipe(
     Match.tagsExhaustive({
       Valid: ({ name }) => ({
         _tag: "Save" as const,
@@ -197,10 +210,13 @@ export const renameSubmission = (
   );
 };
 
-const renameSubmitted = (state: SecurityScreenState): SecurityScreenState => {
+const renameSubmitted = (
+  state: SecurityScreenState,
+  shownName: string
+): SecurityScreenState => {
   const dialog = state.dialog;
   if (dialog?.kind !== "rename") return state;
-  return Match.value(renameSubmission(dialog)).pipe(
+  return Match.value(renameSubmission(dialog, shownName)).pipe(
     Match.tagsExhaustive({
       Save: () => state,
       Close: () => ({ ...state, dialog: undefined }),

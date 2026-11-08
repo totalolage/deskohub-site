@@ -10,6 +10,7 @@ import {
   SecurityScreenEvent,
   type SecurityScreenState,
   securityScreenReducer,
+  shownPasskeyName,
 } from "./security-screen-state";
 
 const passkey: PasskeyRow = {
@@ -50,21 +51,27 @@ describe("the rename dialog", () => {
 
   test("saves a valid new name, trimmed", () => {
     const state = renaming("  Laptop ");
-    expect(renameSubmission(state.dialog)).toEqual({
+    expect(renameSubmission(state.dialog, passkey.name)).toEqual({
       _tag: "Save",
       id: passkey.id,
       name: "Laptop",
     });
     expect(
-      securityScreenReducer(state, SecurityScreenEvent.RenameSubmitted()).dialog
+      securityScreenReducer(
+        state,
+        SecurityScreenEvent.RenameSubmitted({ shownName: passkey.name })
+      ).dialog
     ).toMatchObject({ kind: "rename", draft: "  Laptop " });
   });
 
   test("closes without a request for the unchanged name", () => {
     const state = renaming(` ${passkey.name} `);
-    expect(renameSubmission(state.dialog)._tag).toBe("Close");
+    expect(renameSubmission(state.dialog, passkey.name)._tag).toBe("Close");
     expect(
-      securityScreenReducer(state, SecurityScreenEvent.RenameSubmitted()).dialog
+      securityScreenReducer(
+        state,
+        SecurityScreenEvent.RenameSubmitted({ shownName: passkey.name })
+      ).dialog
     ).toBeUndefined();
   });
 
@@ -78,12 +85,12 @@ describe("the rename dialog", () => {
     ],
   ] as const)("refuses %s on save", (_case, draft, expected) => {
     const state = renaming(draft);
-    expect(renameSubmission(state.dialog)._tag).toBe("Invalid");
+    expect(renameSubmission(state.dialog, passkey.name)._tag).toBe("Invalid");
     expect(renameValidation(state.dialog)).toBeUndefined();
 
     const submitted = securityScreenReducer(
       state,
-      SecurityScreenEvent.RenameSubmitted()
+      SecurityScreenEvent.RenameSubmitted({ shownName: passkey.name })
     );
 
     expect(submitted.dialog).toMatchObject({ kind: "rename", submitted: true });
@@ -93,7 +100,7 @@ describe("the rename dialog", () => {
   test("revalidates as the draft changes after a save", () => {
     const submitted = securityScreenReducer(
       renaming(""),
-      SecurityScreenEvent.RenameSubmitted()
+      SecurityScreenEvent.RenameSubmitted({ shownName: passkey.name })
     );
     const fixed = securityScreenReducer(
       submitted,
@@ -135,6 +142,42 @@ describe("the rename dialog", () => {
       SecurityScreenEvent.WriteStarted()
     );
     expect(state.dialog?.failure).toBeUndefined();
+  });
+});
+
+describe("a rename whose outcome is unknown", () => {
+  test("compares a later save with the name the refreshed list shows", () => {
+    const open = securityScreenReducer(
+      renaming("Laptop"),
+      SecurityScreenEvent.WriteEnded({ outcome: "unconfirmed" })
+    );
+    const refreshed = [{ ...passkey, name: "Laptop" }];
+    const restored = securityScreenReducer(
+      open,
+      SecurityScreenEvent.DraftChanged({ draft: passkey.name })
+    );
+    if (restored.dialog === undefined) throw new Error("The dialog stays open");
+    const shownName = shownPasskeyName(restored.dialog, refreshed);
+
+    expect(shownName).toBe("Laptop");
+    expect(renameSubmission(restored.dialog, shownName)).toEqual({
+      _tag: "Save",
+      id: passkey.id,
+      name: passkey.name,
+    });
+    expect(
+      securityScreenReducer(
+        restored,
+        SecurityScreenEvent.RenameSubmitted({ shownName })
+      ).dialog
+    ).toMatchObject({ kind: "rename", draft: passkey.name });
+  });
+
+  test("keeps the opened name while the passkey isn't listed", () => {
+    const { dialog } = renaming("Laptop");
+    if (dialog === undefined) throw new Error("The dialog is open");
+    expect(shownPasskeyName(dialog, undefined)).toBe(passkey.name);
+    expect(shownPasskeyName(dialog, [])).toBe(passkey.name);
   });
 });
 

@@ -1,5 +1,6 @@
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Match, Option } from "effect";
+import { AsyncResult } from "effect/unstable/reactivity";
 import { useReducer } from "react";
 import { StyleSheet, View } from "react-native";
 import { AddPasskeyAction } from "../../auth/passkey/add-passkey-action";
@@ -36,6 +37,7 @@ import {
   type SecurityAnnouncement,
   SecurityScreenEvent,
   securityScreenReducer,
+  shownPasskeyName,
 } from "./security-screen-state";
 
 const passkeyDetails = (row: PasskeyRow, locale: AppLocale) =>
@@ -130,6 +132,11 @@ export function SecurityScreen() {
       : reauthenticationNoticeMessage(prompt.notice, locale);
   const dialog = state.dialog;
   const defaultName = m.security_passkey_default_name({}, { locale });
+  const rows = Option.getOrUndefined(
+    Option.map(AsyncResult.value(passkeys), (list) =>
+      list.map((passkey) => passkeyRow(passkey, defaultName))
+    )
+  );
 
   const confirmItsYou = async () => {
     const outcome = await reauthenticate();
@@ -146,8 +153,10 @@ export function SecurityScreen() {
   };
 
   const saveName = () => {
-    const submission = renameSubmission(dialog);
-    dispatch(SecurityScreenEvent.RenameSubmitted());
+    if (dialog === undefined) return;
+    const shownName = shownPasskeyName(dialog, rows);
+    const submission = renameSubmission(dialog, shownName);
+    dispatch(SecurityScreenEvent.RenameSubmitted({ shownName }));
     if (submission._tag === "Save") {
       void runWrite(() => rename({ id: submission.id, name: submission.name }));
     }
@@ -201,19 +210,19 @@ export function SecurityScreen() {
             errorMessage={passkeysErrorMessage(locale)}
           >
             {(list) => {
-              const rows = list.map((passkey) =>
+              const listed = list.map((passkey) =>
                 passkeyRow(passkey, defaultName)
               );
               return (
                 <>
-                  {rows.length === 0 && (
+                  {listed.length === 0 && (
                     <ListGroup>
                       <ListRow
                         label={m.security_passkeys_empty({}, { locale })}
                       />
                     </ListGroup>
                   )}
-                  {rows.map((row) => (
+                  {listed.map((row) => (
                     <ListGroup key={row.id}>
                       <ListRow
                         label={row.name}
@@ -249,7 +258,7 @@ export function SecurityScreen() {
                               dispatch(
                                 SecurityScreenEvent.DeleteOpened({
                                   passkey: row,
-                                  passkeyCount: rows.length,
+                                  passkeyCount: listed.length,
                                 })
                               )
                             }
