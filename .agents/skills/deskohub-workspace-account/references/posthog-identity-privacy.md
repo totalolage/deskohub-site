@@ -21,17 +21,26 @@ Code: `features/account/analytics-identity.ts`,
   synchronous `consentUpdated` app event and cross-tab ping; the
   `consent_update` dataLayer event follows in a microtask, for first consent
   and changes only. Externally managed tags rely on that order.
-- The banner's `revision` is derived from the privacy notice and cookie
-  policy versions (`getLegalDocumentVersion`) of every locale, so a change to
-  either document re-prompts every visitor. A cookie saved under an older
-  revision brings the banner back, and the server treats it as no choice: it
-  mirrors nothing into the ledger and lets no visitor capture through. The
-  consent modal footer and the preferences modal link to both documents.
+- `getConsentBannerRevision` (`features/legal/consent-banner-revision.ts`)
+  derives the banner's `revision` from the privacy notice and cookie policy
+  versions of every locale, so a change to either document re-prompts every
+  visitor. The `shared/utils/consent-cookie.ts` readers take that revision,
+  and a cookie copy saved under another revision holds no choice: the browser
+  shows the banner again, and the server mirrors nothing from it into the
+  ledger and lets no visitor capture through. The consent modal footer and
+  the preferences modal link to both documents.
 - Silent grant: when a signed-in session hydrates on a device that holds no
   consent cookie at all (a new device or cleared cookies) and the account's
-  current decision is a grant under the current privacy notice hash,
-  Workspace writes the cookie with analytics accepted and every other
-  optional category declined, and shows no banner. A withdrawal, a grant
+  current decision is a grant whose notice hash is the current privacy
+  notice of the decision's locale, Workspace writes the cookie with analytics
+  accepted and every other optional category declined, and shows no banner.
+  `resolveSilentAnalyticsGrant`
+  (`features/legal/backend/analytics-consent-mirror.ts`, reached through the
+  `resolveSilentAnalyticsGrantForDevice` action) decides it, and
+  `visitorConsent.applyAccountGrant` writes the cookie dated at the grant's
+  `decided_at`, so a later mirror neither duplicates the grant nor outranks a
+  newer decision. The change is announced as an `account` change, which the
+  mirror component doesn't record as a banner save. A withdrawal, a grant
   under an older notice hash, or no decision shows the banner instead. So
   does a device holding a cookie saved under an earlier banner revision,
   whatever the account decided. The cookie stays after sign-out, like any

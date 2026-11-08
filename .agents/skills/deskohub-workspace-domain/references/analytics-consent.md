@@ -22,8 +22,8 @@ stays the place where the choice is made; the account copies it.
   consent), and `preference` (account preferences).
 - **Silent grant**: applying the account's grant to a signed-in device that
   holds no consent cookie at all, when the current decision is a grant under
-  the current privacy notice hash: the cookie accepts analytics and declines
-  every other optional category, and no banner shows. A device holding a
+  the current privacy notice of the decision's locale: the cookie accepts
+  analytics and declines every other optional category, and no banner shows. A device holding a
   cookie from an earlier banner revision gets the banner instead.
 - **Person-linked**: a reservation or payment lifecycle event captured under
   the author's account person (`workspace-account:<accountId>`) because the
