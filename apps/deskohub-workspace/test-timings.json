@@ -472,7 +472,6 @@
     "features/agent-tools/get-reservation-status.tool.test.ts": 903,
     "features/agent-tools/list-my-reservations.tool.test.ts": 437,
     "features/agent-tools/list-offerings.tool.test.ts": 526,
-    "features/agent-tools/reservation-selection.test.ts": 145,
     "features/agent-tools/show-booking.tool.test.ts": 1103,
     "features/agent-tools/site-tools-release-gate.test.ts": 121,
     "features/agent-tools/site-tools-when-enabled.test.tsx": 22,

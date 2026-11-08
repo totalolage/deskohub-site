@@ -103,3 +103,12 @@ test("links the prices and opening hours page", async () => {
       .getAttribute("href")
   ).toBe("/cs-CZ/pricing");
 });
+
+test("links the Android app page for crawlers and visitors without scripts", async () => {
+  const { PublicSiteFooter } = await import("./public-site-footer");
+  const view = render(await PublicSiteFooter());
+
+  expect(
+    view.getAllByRole("link").map((link) => link.getAttribute("href"))
+  ).toContain("/cs-CZ/android");
+});

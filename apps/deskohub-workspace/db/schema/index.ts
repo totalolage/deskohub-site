@@ -1,3 +1,4 @@
+export { accountAnalyticsConsentDecisions } from "./account-analytics-consent-decisions";
 export { accountRoleGrants } from "./account-role-grants";
 export { accountingDocumentSnapshots } from "./accounting-document-snapshots";
 export { administrationActions } from "./administration-actions";
@@ -95,6 +96,7 @@ export {
 } from "./legal-evidence-events";
 export { manualInvoiceActors } from "./manual-invoice-actors";
 export { manualInvoiceCreationRequests } from "./manual-invoice-creation-requests";
+export { mobileUpdatePublications } from "./mobile-update-publications";
 export {
   type PaymentAttemptRow,
   type PaymentAttemptState,

@@ -257,6 +257,28 @@ const buildPayStateToken = (input: {
     }).pipe(Effect.provide(TestSealedStateKeys))
   );
 
+/**
+ * A pricing review hands out one seal: the token beside the fresh Pay URL is
+ * the one inside it, and the expiry is that signed state's own.
+ */
+const expectFreshPayStateFromOneSeal = (result: {
+  readonly freshPayUrl: string;
+  readonly freshPayStateToken: string;
+  readonly expiresAt: string;
+}) => {
+  const urlToken = new URL(
+    result.freshPayUrl,
+    "https://deskohub.test"
+  ).searchParams.get(payStateTokenQueryParam);
+  expect(result.freshPayStateToken).toBe(urlToken ?? "missing token");
+  const freshState = Effect.runSync(
+    openPayState(result.freshPayStateToken).pipe(
+      Effect.provide(TestSealedStateKeys)
+    )
+  );
+  expect(result.expiresAt).toBe(new Date(freshState.exp * 1000).toISOString());
+};
+
 const buildMeetingRoomQuote = (
   discountQuote?: DiscountQuote,
   reservation = meetingRoomReservationData
@@ -769,7 +791,7 @@ describe("CheckoutService", () => {
     const error = await Effect.runPromise(Effect.flip(harness.effect));
 
     expect(error).toMatchObject({
-      code: "checkout_failed",
+      code: "early_performance_consent_required",
       message: "Early performance consent is required before checkout.",
     });
     expect(harness.requireCurrent).toHaveBeenCalled();
@@ -777,6 +799,73 @@ describe("CheckoutService", () => {
     expect(harness.recordLegalEvidence).not.toHaveBeenCalled();
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  describe("without the required early-performance request", () => {
+    const nearTermReservation = () =>
+      normalizedCoworkReservationOrderSchema.make({
+        ...reservationData,
+        date: Temporal.Now.zonedDateTimeISO(
+          workspaceSiteConstants.location.timeZone
+        )
+          .toPlainDate()
+          .add({ days: 1 })
+          .toString(),
+      });
+
+    test("returns the pending price review first", async () => {
+      const orderId = "reservation-review-before-early-performance";
+      const harness = await createCheckoutHarness({
+        orderId,
+        earlyPerformanceConsent: false,
+        payStateToken: buildPayStateToken({
+          orderId,
+          reservation: nearTermReservation(),
+          changedKeys: {
+            sectionKeys: ["total"],
+            itemKeys: ["total:final"],
+          },
+        }),
+      });
+
+      const result = await Effect.runPromise(harness.effect);
+
+      expect(result.status).toBe("pricing_changed");
+      expect(harness.recordLegalEvidence).not.toHaveBeenCalled();
+    });
+
+    test("returns a repriced order's review first", async () => {
+      const orderId = "reservation-reprice-before-early-performance";
+      const reservation = nearTermReservation();
+      const affirm = mock(() =>
+        Effect.succeed({
+          quote: buildCoworkReservationQuote(reservation, {
+            discountQuote: undiscountedQuote,
+          }),
+          commitment: emptyCommitment,
+        })
+      );
+      const harness = await createCheckoutHarness({
+        orderId,
+        earlyPerformanceConsent: false,
+        affirm,
+        payStateToken: buildPayStateToken({
+          orderId,
+          reservation,
+          quote: buildCoworkReservationQuote(reservation, {
+            discountQuote: discountedQuote,
+          }),
+          submittedCode: canonicalCode("SUMMER50"),
+        }),
+      });
+
+      const result = await Effect.runPromise(harness.effect);
+
+      expect(result.status).toBe("pricing_changed");
+      expect(affirm).toHaveBeenCalled();
+      expect(harness.recordLegalEvidence).not.toHaveBeenCalled();
+      expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    });
   });
 
   test("records early-performance consent with the accepted terms of a near-term paid checkout", async () => {
@@ -1054,6 +1143,7 @@ describe("CheckoutService", () => {
 
     expect(result).toEqual({
       status: "redirect",
+      orderId: "reservation-reuses-provider-attempt",
       redirectUrl: "https://payments.example/existing",
       statusUrl:
         "/en-US/reservation/status/reservation-reuses-provider-attempt",
@@ -1102,6 +1192,11 @@ describe("CheckoutService", () => {
     });
 
     const result = await Effect.runPromise(harness.effect);
+    if (result.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    // Before toMatchObject: Bun swaps matched fields for their matchers.
+    expectFreshPayStateFromOneSeal(result);
 
     expect(result).toMatchObject({
       status: "pricing_changed",
@@ -1128,10 +1223,29 @@ describe("CheckoutService", () => {
 
     expect(error).toMatchObject({
       _tag: "CheckoutError",
-      code: "checkout_failed",
+      code: "legal_consent_required",
     });
     expect(harness.requireCurrent).not.toHaveBeenCalled();
     expect(harness.affirm).not.toHaveBeenCalled();
+  });
+
+  test("asks for legal consent before a pending price review", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-review-without-legal-consent",
+      legalConsent: false,
+      changedKeys: {
+        sectionKeys: ["total"],
+        itemKeys: ["total:final"],
+      },
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      _tag: "CheckoutError",
+      code: "legal_consent_required",
+    });
+    expect(harness.requireCurrent).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -1237,6 +1351,7 @@ describe("CheckoutService", () => {
     expect(harness.findAttempt).toHaveBeenCalledWith("active-attempt");
     expect(result).toEqual({
       status: "redirect",
+      orderId: "reservation-starts-new-attempt",
       redirectUrl: "https://payments.example/hosted",
       statusUrl: "/en-US/reservation/status/reservation-starts-new-attempt",
     });
@@ -1402,6 +1517,7 @@ describe("CheckoutService", () => {
 
     expect(result).toEqual({
       status: "redirect",
+      orderId: "reservation-zero-total",
       redirectUrl:
         "/en-US/reservation/status/reservation-zero-total?outcome=success",
       paid: true,
@@ -1528,6 +1644,7 @@ describe("CheckoutService", () => {
 
     expect(result).toEqual({
       status: "redirect",
+      orderId: "reservation-already-paid",
       redirectUrl:
         "/en-US/reservation/status/reservation-already-paid?outcome=success",
       paid: true,
@@ -1568,6 +1685,7 @@ describe("CheckoutService", () => {
 
     expect(result).toEqual({
       status: "redirect",
+      orderId: orderId,
       redirectUrl: `/en-US/reservation/status/${orderId}?outcome=success`,
       paid: true,
     });
@@ -1601,6 +1719,7 @@ describe("CheckoutService", () => {
 
     expect(result).toEqual({
       status: "redirect",
+      orderId: "reservation-paid-race",
       redirectUrl:
         "/en-US/reservation/status/reservation-paid-race?outcome=success",
       paid: true,
@@ -1733,6 +1852,7 @@ describe("CheckoutService", () => {
 
     expect(result).toEqual({
       status: "redirect",
+      orderId: orderId,
       redirectUrl: "https://payments.example/hosted",
       statusUrl: `/en-US/reservation/status/${orderId}`,
     });
@@ -1863,6 +1983,7 @@ describe("CheckoutService", () => {
 
       expect(result).toEqual({
         status: "redirect",
+        orderId: orderId,
         redirectUrl: "https://payments.example/hosted",
         statusUrl: `/en-US/reservation/status/${orderId}`,
       });
@@ -1945,6 +2066,7 @@ describe("CheckoutService", () => {
       // session is returned even though the reserved day has ended.
       expect(result).toEqual({
         status: "redirect",
+        orderId: orderId,
         redirectUrl: "https://payments.example/existing",
         statusUrl: `/en-US/reservation/status/${orderId}`,
       });
@@ -2146,6 +2268,7 @@ describe("CheckoutService", () => {
 
     expect(result).toEqual({
       status: "redirect",
+      orderId: orderId,
       redirectUrl: "https://payments.example/existing",
       statusUrl: `/en-US/reservation/status/${orderId}`,
     });
@@ -2233,6 +2356,7 @@ describe("CheckoutService", () => {
 
     expect(result).toEqual({
       status: "redirect",
+      orderId: "meeting-room-paid-whole-day",
       redirectUrl:
         "/en-US/reservation/status/meeting-room-paid-whole-day?outcome=success",
       paid: true,
@@ -2400,6 +2524,7 @@ describe("CheckoutService", () => {
     if (result.status !== "pricing_changed") {
       throw new Error("Expected pricing_changed result");
     }
+    expectFreshPayStateFromOneSeal(result);
     const freshToken = new URL(
       result.freshPayUrl,
       "https://deskohub.test"
@@ -2485,6 +2610,7 @@ describe("CheckoutService", () => {
 
     expect(result).toEqual({
       status: "redirect",
+      orderId: "reservation-refreshes-note",
       redirectUrl: "https://payments.example/hosted",
       statusUrl: "/en-US/reservation/status/reservation-refreshes-note",
     });
@@ -2613,6 +2739,10 @@ describe("CheckoutService", () => {
         total: money(53_000),
       },
     });
+    if (result.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    expectFreshPayStateFromOneSeal(result);
     expect(affirm).toHaveBeenCalledTimes(2);
     expect(createPendingNexiAttempt).toHaveBeenCalledTimes(1);
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
