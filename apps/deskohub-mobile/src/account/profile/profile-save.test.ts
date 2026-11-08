@@ -92,9 +92,11 @@ describe("saveProfileAtom", () => {
     const state = await submit(registry, saveProfileAtom, draft);
 
     expect(state._tag).toBe("Done");
+    // The Workspace stores the entered phone as its phone number.
     expect(linkedProfileOf(storedAccount(workspace))).toEqual({
       ...sampleProfile,
       firstName: "Alexa",
+      phone: "+420600000000",
     });
     expect(workspace.calls).toEqual([
       "getAccount",
@@ -118,7 +120,7 @@ describe("saveProfileAtom", () => {
     expect(linkedProfileOf(storedAccount(workspace))).toMatchObject({
       firstName: "Alex",
       lastName: "Sample",
-      phone: "+420 600 000 000",
+      phone: "+420600000000",
       billing: { kind: "personal", city: "Othertown", companyName: null },
     });
   });
@@ -175,7 +177,12 @@ describe("saveProfileAtom", () => {
     const { registry, workspace } = makeFakeCustomerData("linked");
     await settle(registry, accountAtom);
     workspace.fail("updateProfile", "unreadable-answer");
-    const draft = { ...profileDraftOf(sampleProfile), city: "Othertown" };
+    // The phone as the Workspace stores it, so the stored profile matches.
+    const draft = {
+      ...profileDraftOf(sampleProfile),
+      phone: "+420600000000",
+      city: "Othertown",
+    };
     registry.set(profileEditsAtom, Option.some(draft));
 
     await submit(registry, saveProfileAtom, draft);

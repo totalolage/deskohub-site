@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
-import { CustomerAuthApi } from "../customer-api.service";
+import { CustomerApi, CustomerAuthApi } from "../customer-api.service";
 import { fakeCustomerApiLayer } from "./fake-customer-data";
 import { FakeWorkspace } from "./fake-workspace";
 
@@ -14,6 +14,79 @@ const refusal = (
       Effect.provide(fakeCustomerApiLayer(workspace))
     )
   );
+
+const accountRequest = (
+  workspace: FakeWorkspace,
+  request: (api: CustomerApi["Service"]) => Effect.Effect<unknown, unknown>
+) =>
+  Effect.runPromise(
+    Effect.flatMap(Effect.service(CustomerApi), request).pipe(
+      Effect.result,
+      Effect.provide(fakeCustomerApiLayer(workspace))
+    )
+  );
+
+const storedPhone = (workspace: FakeWorkspace) =>
+  "profile" in workspace.data.account
+    ? workspace.data.account.profile.phone
+    : undefined;
+
+// The Workspace decodes each profile payload through the shared save schemas
+// before it stores the profile, so the fake stores what the Workspace would.
+describe("the fake Workspace's profile endpoints", () => {
+  test("store an entered phone as its phone number, as the Workspace does", async () => {
+    const workspace = FakeWorkspace.forKind("linked");
+
+    const result = await accountRequest(workspace, (api) =>
+      api.account.updateProfile({
+        payload: { firstName: "Alex", phone: "601 123 456" },
+      })
+    );
+
+    expect(result._tag).toBe("Success");
+    expect(storedPhone(workspace)).toBe("+420601123456");
+  });
+
+  test("store a blank phone as cleared, as the Workspace does", async () => {
+    const workspace = FakeWorkspace.forKind("linked");
+
+    const result = await accountRequest(workspace, (api) =>
+      api.account.updateProfile({ payload: { firstName: "Alex", phone: "" } })
+    );
+
+    expect(result._tag).toBe("Success");
+    expect(storedPhone(workspace)).toBeNull();
+  });
+
+  test("store a completion's entered phone as its phone number", async () => {
+    const workspace = FakeWorkspace.forKind("completion-required");
+
+    const result = await accountRequest(workspace, (api) =>
+      api.account.completeProfile({
+        headers: {},
+        payload: { firstName: "Jordan", phone: "601 123 456" },
+      })
+    );
+
+    expect(result._tag).toBe("Success");
+    expect(workspace.data.account.kind).toBe("linked");
+    expect(storedPhone(workspace)).toBe("+420601123456");
+  });
+
+  test("refuse a phone without a phone number before saving, as the Workspace's payload check does", async () => {
+    const workspace = FakeWorkspace.forKind("linked");
+    const before = workspace.data.account;
+
+    const result = await accountRequest(workspace, (api) =>
+      api.account.updateProfile({
+        payload: { firstName: "Alex", phone: "not a phone" },
+      })
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(workspace.data.account).toBe(before);
+  });
+});
 
 describe("the fake Workspace's Better Auth passkey endpoints", () => {
   test("refuse renaming an unknown passkey as Better Auth does", async () => {
