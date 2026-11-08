@@ -53,12 +53,15 @@ export function CustomerDataProvider({
       session={{ accountId, sessionStartedAt }}
       sampleKind={sampleKind}
     >
-      {children}
-      {sampleKind !== undefined && (
+      {sampleKind === undefined ? (
+        children
+      ) : (
         <SampleDataBanner
           kind={sampleKind}
           onNextKind={() => setSampleKind(nextSampleAccountKind(sampleKind))}
-        />
+        >
+          {children}
+        </SampleDataBanner>
       )}
     </AccountRegistry>
   );

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { formatPhoneNumber, parsePhoneNumber } from "@deskohub/phone-number";
 import type { CustomerProfile } from "@deskohub/workspace-customer-api";
 import { Option, Result } from "effect";
 import { sampleProfile } from "../../customer-api/testing/sample-fixtures";
@@ -74,6 +75,30 @@ describe("profileDraftOf", () => {
     expect(
       profileDraftOf({ ...personalProfile, billing: null }).billingKind
     ).toBe("none");
+  });
+
+  test("shows a stored phone number in international format", () => {
+    const stored = Option.getOrThrow(parsePhoneNumber("600 000 001"));
+    const draft = profileDraftOf({ ...sampleProfile, phone: stored });
+    expect(draft.phone).toBe(formatPhoneNumber(stored));
+    expect(draft.phone).not.toBe(stored);
+    expect(parsePhoneNumber(draft.phone)).toEqual(Option.some(stored));
+  });
+
+  test.each(["not a phone", "tel. 600 000 001"])(
+    "shows stored text that isn't just a phone number as stored: %p",
+    (stored) => {
+      expect(profileDraftOf({ ...sampleProfile, phone: stored }).phone).toBe(
+        stored
+      );
+    }
+  );
+
+  test("counts the stored number as unchanged however it was typed", () => {
+    const stored = Option.getOrThrow(parsePhoneNumber("600 000 001"));
+    const saved = profileDraftOf({ ...sampleProfile, phone: stored });
+    expect(sameDraft({ ...saved, phone: "600000001" }, saved)).toBe(true);
+    expect(sameDraft({ ...saved, phone: stored }, saved)).toBe(true);
   });
 });
 

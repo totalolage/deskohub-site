@@ -1,4 +1,8 @@
-import { parsePhoneNumber } from "@deskohub/phone-number";
+import {
+  formatPhoneNumber,
+  isPhoneNumber,
+  parsePhoneNumber,
+} from "@deskohub/phone-number";
 import {
   type CustomerProfile,
   CustomerProfileCompletionInput,
@@ -99,11 +103,20 @@ export const emptyProfileDraft: ProfileDraft = {
   country: "",
 };
 
+// The Workspace stores a phone number in E.164 form; the form shows it for
+// reading. Any other stored text, such as a legacy value with a label, shows
+// as stored.
+const readablePhone = (stored: string) =>
+  Option.match(Option.filter(parsePhoneNumber(stored), () => isPhoneNumber(stored)), {
+    onNone: () => stored,
+    onSome: formatPhoneNumber,
+  });
+
 /** The draft of a stored profile: what the customer has saved now. */
 export const profileDraftOf = (profile: CustomerProfile): ProfileDraft => ({
   firstName: profile.firstName,
   lastName: profile.lastName ?? "",
-  phone: profile.phone ?? "",
+  phone: readablePhone(profile.phone ?? ""),
   billingKind: profile.billing?.kind ?? "none",
   companyName: profile.billing?.companyName ?? "",
   companyId: profile.billing?.companyId ?? "",

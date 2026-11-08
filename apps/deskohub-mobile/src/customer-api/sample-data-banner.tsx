@@ -1,52 +1,70 @@
-import { Pressable, StyleSheet, Text } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { ReactNode } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  SafeAreaInsetsContext,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useAppLocale } from "../i18n/locale-context";
 import { m } from "../i18n/messages";
 import { theme } from "../theme";
 import type { SampleAccountKind } from "./sample-data-mode";
 
-// Above the tab bar, so it never shifts the screens' own layout.
-const tabBarClearance = 64;
-
 /**
- * Shown on every signed-in screen while sample data is on (development builds
- * only). Pressing it switches to the next account state; the state name is a
+ * Shown above every signed-in screen while sample data is on (development
+ * builds only). The banner takes the top of the window, under the status
+ * bar, and the screens lay out below it, so it covers none of their content
+ * or the tab bar; they see no top inset, as the banner already clears it.
+ * Pressing it switches to the next account state; the state name is a
  * developer-facing identifier.
  */
 export function SampleDataBanner({
   kind,
   onNextKind,
+  children,
 }: {
   readonly kind: SampleAccountKind;
   readonly onNextKind: () => void;
+  readonly children: ReactNode;
 }) {
   const locale = useAppLocale();
-  const { bottom } = useSafeAreaInsets();
+  const insets = useSafeAreaInsets();
   const text = `${m.account_sample_data_banner({}, { locale })} · ${kind}`;
   return (
-    <Pressable
-      role="button"
-      aria-label={text}
-      onPress={onNextKind}
-      style={[styles.banner, { bottom: bottom + tabBarClearance }]}
-    >
-      <Text style={styles.text}>{text}</Text>
-    </Pressable>
+    <View style={styles.frame}>
+      <Pressable
+        role="button"
+        aria-label={text}
+        onPress={onNextKind}
+        style={[
+          styles.banner,
+          {
+            minHeight: insets.top + theme.touchTarget,
+            paddingTop: insets.top,
+            paddingLeft: insets.left + theme.spacing.md,
+            paddingRight: insets.right + theme.spacing.md,
+          },
+        ]}
+      >
+        <Text style={styles.text}>{text}</Text>
+      </Pressable>
+      <SafeAreaInsetsContext.Provider value={{ ...insets, top: 0 }}>
+        <View style={styles.screens}>{children}</View>
+      </SafeAreaInsetsContext.Provider>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  frame: { flex: 1 },
   banner: {
-    alignSelf: "center",
+    alignItems: "center",
     backgroundColor: theme.colors.accent,
-    borderRadius: theme.radius.md,
-    minHeight: theme.touchTarget,
     justifyContent: "center",
-    paddingHorizontal: theme.spacing.md,
-    position: "absolute",
   },
+  screens: { flex: 1 },
   text: {
     color: theme.colors.background,
+    paddingVertical: theme.spacing.xs,
     ...theme.type.captionStrong,
   },
 });

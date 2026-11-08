@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Option, Schema } from "effect";
 import { parsePhoneNumberWithError } from "libphonenumber-js";
 import {
+  formatPhoneNumber,
   isPhoneNumber,
   PhoneNumberSchema,
   parsePhoneNumber,
@@ -106,5 +107,23 @@ describe("phoneNumberParts", () => {
     expect(
       phoneNumberParts(Option.getOrThrow(parsePhoneNumber("777 123 456")))
     ).toEqual({ countryCallingCode: "420", nationalNumber: "777123456" });
+  });
+});
+
+describe("formatPhoneNumber", () => {
+  test.each(enteredPhones.filter(([, e164]) => e164 !== null))(
+    "writes the number %p holds in international format",
+    (text, e164) => {
+      expect(
+        formatPhoneNumber(Option.getOrThrow(parsePhoneNumber(text)))
+      ).toBe(parsePhoneNumberWithError(e164 ?? "").formatInternational());
+    }
+  );
+
+  test("reads back as the same number", () => {
+    const phone = Option.getOrThrow(parsePhoneNumber("777123456"));
+    expect(parsePhoneNumber(formatPhoneNumber(phone))).toEqual(
+      Option.some(phone)
+    );
   });
 });
