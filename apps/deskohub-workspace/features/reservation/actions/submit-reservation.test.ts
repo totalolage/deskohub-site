@@ -150,6 +150,53 @@ describe("submitWorkspaceReservation", () => {
 
   test.each([
     [
+      "a hosted payment",
+      {
+        status: "redirect",
+        orderId: "reservation-id",
+        redirectUrl: "https://payments.example.test/checkout",
+        statusUrl: "/en-US/reservation/status/reservation-id",
+      },
+      ["message", "redirectUrl", "status", "statusUrl"],
+    ],
+    [
+      "a paid order",
+      {
+        status: "redirect",
+        orderId: "reservation-id",
+        redirectUrl: "/en-US/reservation/status/reservation-id",
+        paid: true,
+      },
+      ["message", "paid", "redirectUrl", "status"],
+    ],
+    [
+      "a changed price",
+      {
+        status: "pricing_changed",
+        changedKeys: { sectionKeys: [], itemKeys: [] },
+        freshSummary: { sections: [] },
+        freshPayUrl: "/en-US/checkout/pay?payState=fresh",
+        freshPayStateToken: "fresh-token",
+        expiresAt: "2099-07-01T10:13:00.000Z",
+      },
+      ["changedKeys", "freshPayUrl", "freshSummary", "message", "status"],
+    ],
+    ["a payment in progress", { status: "in_progress" }, ["message", "status"]],
+  ] as const)(
+    "answers the Pay page %s without the API's checkout fields",
+    async (_label, checkout, keys) => {
+      const scenario = await runSubmitReservation({
+        createHostedPaymentCheckout: mock(() => Effect.succeed(checkout)),
+      });
+
+      const result = await Effect.runPromise(scenario.effect);
+
+      expect(Object.keys(result).toSorted()).toEqual([...keys]);
+    }
+  );
+
+  test.each([
+    [
       "zero-total",
       "/en-US/reservation/status/reservation-zero-total?outcome=success",
     ],
@@ -301,4 +348,48 @@ describe("submitWorkspaceReservation", () => {
       }),
     });
   });
+
+  test.each([
+    { code: "legal_consent_required", locale: "en-US" },
+    { code: "early_performance_consent_required", locale: "en-US" },
+    { code: "legal_consent_required", locale: "cs-CZ" },
+    { code: "early_performance_consent_required", locale: "cs-CZ" },
+  ] as const)(
+    "shows the generic checkout failure for $code in $locale",
+    async ({ code, locale }) => {
+      const { CheckoutError } = await import(
+        "@/features/checkout/backend/checkout"
+      );
+      const { m } = await import("@/features/i18n");
+      const failSubmission = async (
+        error: InstanceType<typeof CheckoutError>
+      ) =>
+        Effect.runPromise(
+          Effect.flip(
+            (
+              await runSubmitReservation({
+                locale,
+                createHostedPaymentCheckout: mock(() => Effect.fail(error)),
+              })
+            ).effect
+          )
+        );
+
+      const consentFailure = await failSubmission(
+        new CheckoutError({ code, message: "Consent is required." })
+      );
+      const genericFailure = await failSubmission(
+        new CheckoutError({
+          code: "checkout_failed",
+          message: "Checkout failed.",
+        })
+      );
+
+      expect(consentFailure).toMatchObject({
+        _tag: "PublicSafeActionError",
+        message: m.reservationErrorMessage({}, { locale }),
+      });
+      expect(consentFailure.message).toBe(genericFailure.message);
+    }
+  );
 });

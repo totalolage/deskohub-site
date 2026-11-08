@@ -25,7 +25,12 @@ import {
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import { moneyEquals } from "@/shared/money/money";
-import { buildFreshCheckoutPayPath } from "./checkout-pay-url";
+import {
+  type FreshPayState,
+  issueFreshPayState,
+  type NoFreshPayState,
+  toFreshPayState,
+} from "./checkout-pay-url";
 import {
   CheckoutPricingService,
   type ICheckoutPricingService,
@@ -39,17 +44,36 @@ import {
   openPayState,
   type SignedPayState,
 } from "./pay-state.server";
-import { PayableReservationService } from "./payable-reservation.service";
+import {
+  PayableReservationService,
+  type PayableReservationUnavailableError,
+} from "./payable-reservation.service";
+
+/**
+ * Why a referral code could not be accepted. The customer sees one generic
+ * unavailable code either way; the cause only tells callers whether a retry
+ * can help.
+ */
+type CheckoutReferralUnavailable =
+  | {
+      readonly status: "unavailable";
+      /**
+       * `code`: the code can't refer this customer. `provider`: pricing, the
+       * referral registry or the pay-state seal failed, so a retry can work.
+       */
+      readonly reason: "code" | "provider";
+    }
+  | {
+      readonly status: "unavailable";
+      readonly reason: "checkout";
+      readonly checkoutReason: PayableReservationUnavailableError["reason"];
+    };
 
 export type CheckoutReferralResult =
-  | {
-      readonly status: "accepted" | "already_accepted";
-      readonly freshPayUrl: string;
-    }
-  | {
-      readonly status: "unavailable" | "pricing_changed";
-      readonly freshPayUrl?: string;
-    }
+  | ({ readonly status: "accepted" } & FreshPayState)
+  | ({ readonly status: "already_accepted" } & FreshPayState)
+  | ({ readonly status: "pricing_changed" } & (FreshPayState | NoFreshPayState))
+  | CheckoutReferralUnavailable
   | {
       /** The customer already has a different, permanent referrer. */
       readonly status: "already_attributed";
@@ -67,24 +91,44 @@ export interface ICheckoutReferralService {
   }) => Effect.Effect<CheckoutReferralResult>;
 }
 
-const unavailable: CheckoutReferralResult = { status: "unavailable" };
+const codeUnavailable: CheckoutReferralUnavailable = {
+  status: "unavailable",
+  reason: "code",
+};
+const providerUnavailable: CheckoutReferralUnavailable = {
+  status: "unavailable",
+  reason: "provider",
+};
 
 /**
  * Only an immutable existing attribution and first-booking ineligibility are
- * explained to the customer; every other verdict, a withheld program, and an
- * outage stay a generic unavailable code so the response cannot probe codes
- * or accounts.
+ * explained to the customer; every other verdict, and a withheld program,
+ * stays a generic unavailable code so the response cannot probe codes or
+ * accounts.
  */
-const getAcceptanceRejection = (
+const evaluationRejections = {
+  already_attributed: { status: "already_attributed" },
+  ineligible: { status: "ineligible" },
+  unavailable: codeUnavailable,
+  invalid_code: codeUnavailable,
+  self_referral: codeUnavailable,
+  pending_payment: codeUnavailable,
+  cycle: codeUnavailable,
+  disabled: codeUnavailable,
+  account_unavailable: providerUnavailable,
+  referrer_changed: providerUnavailable,
+} satisfies Record<ReferralError["reason"], CheckoutReferralResult>;
+
+/**
+ * A verdict answers from the table above. An outage reached no verdict, so it
+ * reads as a provider failure that a retry can fix, never as an unusable code.
+ */
+const getEvaluationRejection = (
   failure: ReferralError | ReferralOutage
-): CheckoutReferralResult | undefined => {
-  if (!(failure instanceof ReferralError)) return undefined;
-  if (failure.reason === "already_attributed") {
-    return { status: "already_attributed" };
-  }
-  if (failure.reason === "ineligible") return { status: "ineligible" };
-  return undefined;
-};
+): CheckoutReferralResult =>
+  failure instanceof ReferralError
+    ? evaluationRejections[failure.reason]
+    : providerUnavailable;
 
 /**
  * Only a not-yet-attributed customer carries the typed code; it prices the
@@ -209,15 +253,15 @@ const getReferralRepricing = (input: {
 const toReferralAcceptanceResult = (input: {
   readonly changed: boolean;
   readonly evaluation: CheckoutReferralEvaluation;
-  readonly freshPayUrl: string;
+  readonly freshPayState: FreshPayState;
 }): CheckoutReferralResult => {
   if (input.changed) {
-    return { status: "pricing_changed", freshPayUrl: input.freshPayUrl };
+    return { status: "pricing_changed", ...input.freshPayState };
   }
   return {
     status:
       input.evaluation.kind === "eligible" ? "accepted" : "already_accepted",
-    freshPayUrl: input.freshPayUrl,
+    ...input.freshPayState,
   };
 };
 
@@ -238,12 +282,14 @@ export class CheckoutReferralService extends Context.Service<
       )(
         function* (input) {
           const opened = yield* openPayState(input.payStateToken);
-          if (opened.locale !== input.locale) return unavailable;
+          // Callers open the token for its locale first, so a mismatch here
+          // is unexpected.
+          if (opened.locale !== input.locale) return providerUnavailable;
 
           const codeKind = yield* referrals.lookupCodeKind({
             code: input.code,
           });
-          if (codeKind.kind !== "referral") return unavailable;
+          if (codeKind.kind !== "referral") return codeUnavailable;
 
           // The referral belongs to the booked customer: the account's own
           // customer, or the person it books for.
@@ -259,10 +305,7 @@ export class CheckoutReferralService extends Context.Service<
             .evaluateCheckoutReferral({ code: input.code, dotyposCustomerId })
             .pipe(Effect.result);
           if (evaluation._tag === "Failure") {
-            return (
-              getAcceptanceRejection(evaluation.failure) ??
-              (yield* evaluation.failure)
-            );
+            return getEvaluationRejection(evaluation.failure);
           }
           const referralInput = getCarriedReferral({
             evaluation: evaluation.success,
@@ -292,23 +335,35 @@ export class CheckoutReferralService extends Context.Service<
               prepared.quote.payment.discounts
             ),
           };
-          const freshPayUrl = yield* buildFreshCheckoutPayPath(
+          const freshPayState = yield* issueFreshPayState(
             changedKeys === undefined
               ? freshPayPathInput
               : { ...freshPayPathInput, changedKeys },
             undefined,
             { orderId: opened.orderId }
-          );
+          ).pipe(Effect.map(toFreshPayState));
 
           return toReferralAcceptanceResult({
             changed,
             evaluation: evaluation.success,
-            freshPayUrl,
+            freshPayState,
           });
         },
         (effect) =>
           effect.pipe(
-            Effect.orElseSucceed(() => unavailable),
+            Effect.catchTag(
+              "PayableReservationUnavailableError",
+              (error): Effect.Effect<CheckoutReferralResult> =>
+                Effect.succeed({
+                  status: "unavailable",
+                  reason: "checkout",
+                  checkoutReason: error.reason,
+                })
+            ),
+            // Every other failure is an outage, never a verdict on the code:
+            // the referral registry's code-kind lookup, the stored customer
+            // identity, pricing and affirmation, storage, or the seal.
+            Effect.orElseSucceed(() => providerUnavailable),
             Effect.provideService(SealedStateKeys, sealedStateKeys)
           )
       );

@@ -33,6 +33,14 @@ export const watchPageDiagnostics = (page: Page, watched: WatchedRequests) => {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
   const requests = new Map<Request, RequestRecord>();
+  const milestones = { domContentLoaded: false, load: false };
+
+  page.on("domcontentloaded", () => {
+    milestones.domContentLoaded = true;
+  });
+  page.on("load", () => {
+    milestones.load = true;
+  });
 
   page.on("pageerror", (error) =>
     pageErrors.push(redactDiagnosticText(`${error.name}: ${error.message}`))
@@ -73,6 +81,23 @@ export const watchPageDiagnostics = (page: Page, watched: WatchedRequests) => {
   });
 
   return {
+    /** Safe even after a timeout: no browser reads, URLs, paths, or error text. */
+    summary: () => ({
+      milestones: { ...milestones },
+      pageErrors: pageErrors.length,
+      consoleErrors: consoleErrors.length,
+      requests: [...requests.values()].map((record) => {
+        let outcome = "pending";
+        if (record.failure !== undefined) outcome = "failed";
+        else if (record.settledAt !== undefined) outcome = "finished";
+        return {
+          group: record.group,
+          status: record.status ?? null,
+          outcome,
+          elapsedMs: (record.settledAt ?? Date.now()) - record.startedAt,
+        };
+      }),
+    }),
     /** Every uncaught page error so far, redacted. */
     pageErrors: (): readonly string[] => [...pageErrors],
     /**

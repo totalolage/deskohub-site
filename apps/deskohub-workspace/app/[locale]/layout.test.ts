@@ -119,6 +119,15 @@ describe("localized route layout", () => {
     expect(viewport.themeColor).toBeDefined();
   });
 
+  test("links the manifest of the app installed under /app/", async () => {
+    const { generateMetadata } = await import("./layout");
+    const { manifest } = await generateMetadata({
+      params: Promise.resolve({ locale: "cs-CZ" }),
+    });
+
+    expect(manifest).toBe("/app/manifest.webmanifest");
+  });
+
   test("starts the document head with the Temporal loader", async () => {
     const { default: LocaleLayout } = await import("./layout");
     const { TemporalLoader } = await import(

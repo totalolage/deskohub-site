@@ -122,3 +122,90 @@ test.skipIf(!chromiumAvailable)(
   },
   30_000
 );
+
+test.skipIf(!chromiumAvailable)(
+  "summarizes a pending document without disclosing request paths or error text",
+  async () => {
+    if (!browser) throw new Error("setup did not run");
+    const release = Promise.withResolvers<void>();
+    const privateValue = "synthetic-customer-17";
+    const stream = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        if (new URL(request.url).pathname.endsWith(".js"))
+          return new Response("missing", { status: 404 });
+        return new Response(
+          new ReadableStream({
+            async start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `<!doctype html><script src="/${privateValue}.js"></script>
+                  <script>console.error('${privateValue}'); throw new Error('${privateValue}')</script>`
+                )
+              );
+              await release.promise;
+              controller.close();
+            },
+          }),
+          { headers: { "content-type": "text/html" } }
+        );
+      },
+    });
+    const page = await browser.newPage();
+    try {
+      const diagnostics = watchPageDiagnostics(page, {
+        Documents: (_url, type) => type === "document",
+        Scripts: (_url, type) => type === "script",
+      });
+      const pageError = page.waitForEvent("pageerror");
+      await page.goto(
+        `${stream.url.origin}/${privateValue}?code=${privateValue}`,
+        {
+          waitUntil: "commit",
+        }
+      );
+      await pageError;
+
+      const summary = diagnostics.summary();
+      expect(summary.milestones).toEqual({
+        domContentLoaded: false,
+        load: false,
+      });
+      expect(summary.pageErrors).toBe(1);
+      expect(summary.consoleErrors).toBeGreaterThan(0);
+      expect(summary.requests).toEqual([
+        {
+          group: "Documents",
+          status: 200,
+          outcome: "pending",
+          elapsedMs: expect.any(Number),
+        },
+        {
+          group: "Scripts",
+          status: 404,
+          outcome: "failed",
+          elapsedMs: expect.any(Number),
+        },
+      ]);
+      expect(JSON.stringify(summary)).not.toContain(privateValue);
+      expect(JSON.stringify(summary)).not.toContain(stream.url.host);
+
+      release.resolve();
+      await page.waitForLoadState("load");
+      expect(diagnostics.summary().milestones).toEqual({
+        domContentLoaded: true,
+        load: true,
+      });
+      await page.close();
+      expect(diagnostics.summary().requests[0]).toMatchObject({
+        outcome: "finished",
+      });
+    } finally {
+      release.resolve();
+      await page.close();
+      await stream.stop(true);
+    }
+  },
+  30_000
+);

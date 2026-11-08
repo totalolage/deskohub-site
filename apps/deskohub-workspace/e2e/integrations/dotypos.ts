@@ -446,10 +446,9 @@ export const readDotyposReservationStatus = (
   config: DatasourceConfig,
   dotyposReservationId: DotyposReservationId
 ) =>
-  Effect.gen(function* () {
-    const dotypos = yield* DotyposService;
-    return yield* dotypos.getReservationStatus(dotyposReservationId);
-  }).pipe(
+  Effect.flatMap(DotyposService, (dotypos) =>
+    dotypos.getReservationStatus(dotyposReservationId)
+  ).pipe(
     Effect.provide(getDotyposLayer(config)),
     Effect.mapError((cause) =>
       toWorkspaceE2EError("read Dotypos reservation status", cause)

@@ -54,6 +54,8 @@ const run = async <A, E>(
     readonly account?: CurrentAccount;
     readonly settled?: readonly DotyposCustomerId[];
     readonly referrals?: Partial<IReferralService>;
+    /** A client application sends `cookie` as its code instead of a browser. */
+    readonly heldByClient?: boolean;
   } = {}
 ) => {
   const cookie = { value: options.cookie };
@@ -62,9 +64,12 @@ const run = async <A, E>(
   const exit = await Effect.runPromiseExit(
     Effect.flatMap(RememberedReferral, use).pipe(
       Effect.provide(
-        RememberedReferral.inMemory(cookie, {
-          writable: options.writable ?? true,
-        }).pipe(
+        (options.heldByClient
+          ? RememberedReferral.fromClient(options.cookie)
+          : RememberedReferral.inMemory(cookie, {
+              writable: options.writable ?? true,
+            })
+        ).pipe(
           Layer.provide(
             Layer.mergeAll(
               ReferralReleaseGate.fromDecision(options.released ?? true),
@@ -464,5 +469,83 @@ describe("RememberedReferral.none", () => {
         remembered.isSettled({ kind: "order", paid: true })
       )
     ).toBe(false);
+  });
+});
+
+describe("RememberedReferral.fromClient", () => {
+  const fromClient = { heldByClient: true } as const;
+
+  test("reads the client's code as the cookie's, while referrals are released", async () => {
+    const result = await run((remembered) => remembered.code, {
+      ...fromClient,
+      cookie: " rfl12345 ",
+    });
+    expect(value(result.exit)).toBe(sharedCode);
+  });
+
+  test("ignores a client code that isn't shaped like a referral code, or none", async () => {
+    for (const cookie of ["not a code", "", undefined]) {
+      const result = await run((remembered) => remembered.code, {
+        ...fromClient,
+        cookie,
+      });
+      expect(value(result.exit)).toBeUndefined();
+    }
+  });
+
+  test("ignores the client's code while referrals are withheld", async () => {
+    const result = await run((remembered) => remembered.code, {
+      ...fromClient,
+      cookie: sharedCode,
+      released: false,
+    });
+    expect(value(result.exit)).toBeUndefined();
+  });
+
+  test("prefills a usable client code for a booking made for someone else", async () => {
+    const result = await run(
+      (remembered) => remembered.forBooking({ for: "someone-else" }),
+      {
+        ...fromClient,
+        cookie: sharedCode,
+        referrals: {
+          findAvailableCode: ({ code }) => Effect.succeed(code),
+        },
+      }
+    );
+    expect(value(result.exit)).toEqual({
+      kind: "prefill",
+      code: canonicalPromotionCodeSchema.make(sharedCode),
+    });
+  });
+
+  test("reports a settled referral so the client can forget its code", async () => {
+    const result = await run(
+      (remembered) =>
+        remembered.isSettled({ kind: "account", customerId: booker }),
+      { ...fromClient, cookie: sharedCode, settled: [booker] }
+    );
+    expect(value(result.exit)).toBe(true);
+    expect(result.settledChecks).toEqual([booker]);
+  });
+
+  test("writes nothing and checks nothing on remember or forget, as the client owns its storage", async () => {
+    const result = await run(
+      (remembered) =>
+        Effect.all([
+          remembered.remember(typedCode),
+          remembered.forgetIfSettled({ kind: "account", customerId: booker }),
+          remembered.forgetIfSettled({ kind: "order", paid: true }),
+        ]),
+      {
+        ...fromClient,
+        cookie: sharedCode,
+        account: linkedAs(booker),
+        settled: [booker],
+      }
+    );
+    expect(Exit.isSuccess(result.exit)).toBe(true);
+    expect(result.settledChecks).toEqual([]);
+    expect(result.sessionReads.count).toBe(0);
   });
 });

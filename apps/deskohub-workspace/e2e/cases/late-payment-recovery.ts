@@ -1,10 +1,6 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import {
-  openBrowserPage,
-  waitForBrowserText,
-  waitForBrowserUrl,
-} from "../browser";
+import { openPage, waitForPageText, waitForPageUrl } from "../browser";
 import { getWorkspaceE2EDateInterval } from "../capacity";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import { completeNexiHostedPayment } from "../checkout/nexi-hosted-payment";
@@ -114,11 +110,14 @@ export const executeLatePaymentRecovery = ({
         session,
         Effect.gen(function* () {
           const hostedPaymentPage = yield* runStep({
-            execute: submitPaymentAndWaitForHostedPage({
-              run,
-              session,
-              timeouts: config.timeouts,
-            }),
+            execute: Effect.flatMap(
+              browserSessionFor(run, session),
+              (browser) =>
+                submitPaymentAndWaitForHostedPage({
+                  session: browser,
+                  timeouts: config.timeouts,
+                })
+            ),
             id: "start-late-payment",
             timeoutMs: config.timeouts.providerTransition,
           });
@@ -183,23 +182,25 @@ export const executeLatePaymentRecovery = ({
           state.checkoutRow = releasedRow;
 
           yield* runStep({
-            execute: completeNexiHostedPayment({
-              data,
-              hostedPaymentPage,
-              run,
-              session,
-              timeouts: config.timeouts,
-            }),
+            execute: Effect.flatMap(
+              browserSessionFor(run, session),
+              (browser) =>
+                completeNexiHostedPayment({
+                  data,
+                  hostedPaymentPage,
+                  session: browser,
+                  timeouts: config.timeouts,
+                })
+            ),
             id: "complete-late-hosted-payment",
             timeoutMs: config.timeouts.hostedPayment,
           });
           yield* runStep({
-            execute: waitForBrowserUrl({
+            execute: waitForPageUrl({
               description: "late-payment checkout status page",
               matches: (url) =>
                 isExpectedCheckoutStatusUrl(url, config.expectedHost),
-              run,
-              session,
+              session: browserSessionFor(run, session),
               timeoutMs: config.timeouts.providerTransition,
             }).pipe(Effect.asVoid),
             id: "reach-late-payment-status-page",
@@ -238,9 +239,12 @@ export const executeLatePaymentRecovery = ({
             `${config.baseUrl}/en-US/reservation/status/${orderId}`
           );
           yield* setSearchParams(statusUrl, { e2eAt: String(Date.now()) });
-          yield* openBrowserPage(config, run, session, statusUrl.toString(), {
-            timeoutMs: config.timeouts.browserNavigation,
-          });
+          yield* openPage(
+            yield* browserSessionFor(run, session),
+            config,
+            statusUrl.toString(),
+            { timeoutMs: config.timeouts.browserNavigation }
+          );
         }),
         id: "open-refund-status-page",
         timeoutMs: config.timeouts.browserNavigation,
@@ -248,7 +252,7 @@ export const executeLatePaymentRecovery = ({
       yield* runStep({
         // The customer must learn the payment will be refunded, never that a
         // paid reservation is still awaiting confirmation.
-        execute: waitForBrowserText({
+        execute: waitForPageText({
           description: "late-payment refund status copy",
           matches: (text) =>
             /We will refund your payment\./.test(text) &&
@@ -256,8 +260,7 @@ export const executeLatePaymentRecovery = ({
               text
             ) &&
             !/We.re finishing your reservation/.test(text),
-          run,
-          session,
+          session: browserSessionFor(run, session),
           timeoutMs: config.timeouts.uiTransition,
         }),
         id: "assert-refund-status-page",
@@ -294,9 +297,12 @@ export const executeLatePaymentRecovery = ({
           `${config.baseUrl}/${data.locale}/reservation/status/${orderId}`
         );
         yield* setSearchParams(statusUrl, { e2eAt: String(Date.now()) });
-        yield* openBrowserPage(config, run, session, statusUrl.toString(), {
-          timeoutMs: config.timeouts.browserNavigation,
-        });
+        yield* openPage(
+          yield* browserSessionFor(run, session),
+          config,
+          statusUrl.toString(),
+          { timeoutMs: config.timeouts.browserNavigation }
+        );
       }),
       id: "open-recovered-status-page",
       timeoutMs: config.timeouts.browserNavigation,
