@@ -181,7 +181,6 @@ export const visitorConsent = {
     readonly decidedAt: string;
     readonly change: Extract<VisitorConsentChange, "account" | "preference">;
   }): void => {
-    const hadChoice = visitorConsent.hasChoice();
     const others = acceptedCategories().filter(
       (category) => category !== "analytics"
     );
@@ -190,11 +189,11 @@ export const visitorConsent = {
       : others;
     savingAccountDecision = true;
     try {
-      if (hadChoice) {
+      if (CookieConsent.validConsent()) {
         saveAcceptedCategories(categories);
       } else {
-        // The vendor's first save under this revision, with the banner
-        // still asking.
+        // The vendor's first save under this revision, which it always
+        // persists; the banner may still be asking.
         CookieConsent.acceptCategory(categories);
         CookieConsent.hide();
       }
