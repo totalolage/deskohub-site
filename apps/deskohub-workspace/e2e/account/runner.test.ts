@@ -21,7 +21,11 @@ const writeWorkspaceE2EAccountJournal = mock(
   async (_journal: WorkspaceE2EAccountJournal) => journalFlushObserver?.()
 );
 
-mock.module("./journal", () => ({ writeWorkspaceE2EAccountJournal }));
+const realJournalModule = await import("./journal");
+mock.module("./journal", () => ({
+  ...realJournalModule,
+  writeWorkspaceE2EAccountJournal,
+}));
 
 afterEach(() => {
   journalFlushObserver = undefined;
