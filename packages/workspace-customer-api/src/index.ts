@@ -34,7 +34,6 @@ export {
   CustomerAuthSession,
 } from "./customer-auth-api";
 export { CustomerBookingApi } from "./customer-booking-api";
-export { CustomerLocale, customerSignInLocaleHeader } from "./customer-locale";
 export {
   CustomerAdvertisedPrice,
   CustomerAvailability,
@@ -90,6 +89,7 @@ export {
   CustomerCheckoutSummaryDiscount,
   CustomerCheckoutSummaryItem,
 } from "./customer-checkout-summary";
+export { CustomerLocale, customerSignInLocaleHeader } from "./customer-locale";
 export {
   CustomerProfile,
   CustomerProfileBilling,
