@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Children, createElement, isValidElement, type ReactNode } from "react";
 import { ConfirmDialog } from "./confirm-dialog";
-import { find } from "./testing/element-tree";
+import { elementTree, find } from "./testing/element-tree";
 
 const dialog = (children?: ReactNode) =>
-  ConfirmDialog({
+  elementTree(ConfirmDialog, {
     visible: true,
     title: "title",
     body: "body",
