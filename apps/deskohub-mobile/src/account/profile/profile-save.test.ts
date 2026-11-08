@@ -11,7 +11,10 @@ import {
   makeFakeCustomerData,
   settle,
 } from "../../customer-api/testing/customer-data-test-registry";
-import { sampleProfile } from "../../customer-api/testing/sample-fixtures";
+import {
+  sampleInvitationCode,
+  sampleProfile,
+} from "../../customer-api/testing/sample-fixtures";
 import { completionDraftOf, profileDraftOf } from "./profile-draft";
 import {
   completeProfileAtom,
@@ -291,14 +294,9 @@ describe("completeProfileAtom", () => {
 
   test("the invitation code comes from a completion-required account only", () => {
     const { workspace } = makeFakeCustomerData("completion-required");
-    const account = storedAccount(workspace);
-    expect(
-      invitationCodeOf(
-        account.kind === "completion-required"
-          ? { ...account, referralCode: "FRIEND-1" as never }
-          : account
-      )
-    ).toBe("FRIEND-1");
+    expect(invitationCodeOf(storedAccount(workspace))).toBe(
+      sampleInvitationCode
+    );
     expect(
       invitationCodeOf(storedAccount(makeFakeCustomerData("linked").workspace))
     ).toBeUndefined();

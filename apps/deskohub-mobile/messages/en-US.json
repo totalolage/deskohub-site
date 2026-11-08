@@ -166,5 +166,8 @@
   "profile_avatar_undecodable": "That image couldn't be read. Try a different one.",
   "profile_avatar_dimensions_too_large": "That image's dimensions are too large. Choose a smaller one.",
   "profile_avatar_failed": "We couldn't update your profile photo. Try again.",
-  "profile_avatar_picker_failed": "We couldn't open your photos. Check the app's photo access and try again."
+  "profile_avatar_picker_failed": "We couldn't open your photos. Check the app's photo access and try again.",
+  "profile_invalid_on_profile": "Some of your personal details need fixing before you can save.",
+  "profile_invalid_on_billing": "Some of your billing details need fixing before you can save.",
+  "profile_complete_continue": "Continue"
 }

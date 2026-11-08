@@ -166,5 +166,8 @@
   "profile_avatar_undecodable": "Tento obrázek se nepodařilo načíst. Zkus jiný.",
   "profile_avatar_dimensions_too_large": "Tento obrázek má moc velké rozměry. Vyber menší.",
   "profile_avatar_failed": "Profilovou fotografii se nepodařilo uložit. Zkus to znovu.",
-  "profile_avatar_picker_failed": "Fotky se nepodařilo otevřít. Zkontroluj přístup aplikace k fotkám a zkus to znovu."
+  "profile_avatar_picker_failed": "Fotky se nepodařilo otevřít. Zkontroluj přístup aplikace k fotkám a zkus to znovu.",
+  "profile_invalid_on_profile": "Některé tvoje osobní údaje je potřeba opravit, než to půjde uložit.",
+  "profile_invalid_on_billing": "Některé tvoje fakturační údaje je potřeba opravit, než to půjde uložit.",
+  "profile_complete_continue": "Pokračovat"
 }
