@@ -1,5 +1,5 @@
-import { PlaceholderScreen } from "../../../../src/ui/placeholder-screen";
+import { DangerZoneScreen } from "../../../../src/account/danger/danger-zone-screen";
 
 export default function DangerZoneRoute() {
-  return <PlaceholderScreen />;
+  return <DangerZoneScreen />;
 }
