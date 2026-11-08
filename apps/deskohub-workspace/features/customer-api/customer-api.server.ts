@@ -15,6 +15,9 @@ import {
 import { WorkspaceRouterRequestContext } from "@/shared/backend/workspace-router-request-context";
 import { CustomerAccountApiHandlers } from "./customer-account-handlers";
 import { CustomerAccountLayers } from "./customer-account-layers";
+import { CustomerBookingCatalogLayers } from "./customer-booking-catalog-layers";
+import { CustomerBookingCheckoutLayers } from "./customer-booking-checkout-layers";
+import { CustomerBookingApiHandlers } from "./customer-booking-handlers";
 import {
   CustomerRequestOriginCheckLive,
   CustomerSessionAuthenticationLive,
@@ -22,22 +25,15 @@ import {
 import { CustomerReservationsApiHandlers } from "./customer-reservation-handlers";
 import { CustomerReservationLayers } from "./customer-reservation-layers";
 
-/** The booking group's handlers; its endpoints arrive with #985. */
-const CustomerBookingApiHandlers = HttpApiBuilder.group(
-  WorkspaceCustomerApi,
-  "booking",
-  (handlers) => handlers
-);
-
 /**
  * The customer API's HTTP app: every group's handlers behind the origin
  * check and session authentication, each routed request served in its own
  * Workspace request context, and every response private and uncached. Each
  * call builds its own router, group handlers and global middleware, which
  * capture the router they were built with, so instances sharing the
- * Workspace memo map must not share them. The account and reservation
- * services, the request origins, the authentication and the request budget
- * come from the caller.
+ * Workspace memo map must not share them. The account, reservation and
+ * booking services, the request origins, the authentication and the
+ * request budget come from the caller.
  */
 export const makeWorkspaceCustomerApiLayer = () =>
   Layer.mergeAll(
@@ -73,6 +69,8 @@ const provideWorkspaceCustomerApiServices = <A, E, R>(
       Layer.mergeAll(
         CustomerAccountLayers.Live,
         CustomerReservationLayers.Live,
+        CustomerBookingCatalogLayers.Live,
+        CustomerBookingCheckoutLayers.Live,
         CustomerAuthentication.Default,
         CustomerRequestOrigins.Default,
         RequestBudget.Live

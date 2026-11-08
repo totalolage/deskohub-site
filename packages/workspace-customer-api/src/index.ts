@@ -34,6 +34,61 @@ export {
   CustomerAuthSession,
 } from "./customer-auth-api";
 export { CustomerBookingApi } from "./customer-booking-api";
+export {
+  CustomerAdvertisedPrice,
+  CustomerAvailability,
+  CustomerAvailabilityNotice,
+  CustomerAvailabilityQuery,
+  CustomerBookingOfferings,
+  CustomerBookingQuote,
+  CustomerLegalDocument,
+  CustomerLegalDocuments,
+  CustomerMeetingRoomStartTimes,
+  CustomerOffering,
+  CustomerOfferingAddOn,
+  customerAvailabilityReplacementHeader,
+} from "./customer-booking-catalog-api";
+export {
+  AcceptCustomerCheckoutPriceChange,
+  ApplyCustomerCheckoutDiscountCode,
+  CreateCustomerCheckout,
+  CustomerCheckout,
+  CustomerCheckoutBilling,
+  CustomerCheckoutChangedKeys,
+  CustomerCheckoutDetailsInvalid,
+  CustomerCheckoutDiscountCodeResult,
+  CustomerCheckoutNotFound,
+  CustomerCheckoutPaymentDisabled,
+  CustomerCheckoutStart,
+  CustomerCheckoutSubmission,
+  CustomerCheckoutUnavailable,
+  CustomerCheckoutUnavailableReason,
+  CustomerConsentRequired,
+  CustomerDiscountCodeRejected,
+  CustomerLegalDocumentsChanged,
+  CustomerQuoteExpired,
+  CustomerSelectionUnavailable,
+  customerBookingCheckoutEndpoints,
+  SubmitCustomerCheckout,
+} from "./customer-booking-checkout-api";
+export {
+  CustomerBookableCoworkTier,
+  CustomerBookingDateOutOfRange,
+  CustomerBookingSelection,
+  CustomerBookingSelectionInvalid,
+  CustomerBookingSelectionQuery,
+  CustomerMeetingRoomDuration,
+  CustomerMonitorOption,
+  CustomerOfferingUnavailable,
+  CustomerPlainDate,
+  CustomerReservationFamily,
+  CustomerStartTime,
+} from "./customer-booking-selection";
+export {
+  CustomerCheckoutSummary,
+  CustomerCheckoutSummaryDiscount,
+  CustomerCheckoutSummaryItem,
+} from "./customer-checkout-summary";
 export { CustomerLocale, customerSignInLocaleHeader } from "./customer-locale";
 export {
   CustomerProfile,

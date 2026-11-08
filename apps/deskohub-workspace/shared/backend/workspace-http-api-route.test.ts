@@ -126,6 +126,26 @@ describe("continueMutationsAfterDisconnect", () => {
 
     expect(outcome).toBe("interrupted");
   });
+
+  // Next.js hands an app route its request behind a Proxy that forwards
+  // every read to the request (`proxyNextRequest`). Node's `Request` can't
+  // copy a Proxy and throws; Bun reads it as a URL and sends a GET.
+  test("serves a mutation Next.js hands its route behind a Proxy", async () => {
+    const route = slowRoute("POST");
+    route.release.resolve();
+    const request = new Proxy(
+      workRequest("POST", new AbortController().signal),
+      { get: (target, property) => Reflect.get(target, property, target) }
+    );
+
+    const response = await continueMutationsAfterDisconnect(route.handle)(
+      request
+    );
+
+    expect(response.status).toBe(200);
+    expect(await route.received.promise).toBe("first chunk, last chunk");
+    expect(await route.outcome.promise).toBe("finished");
+  });
 });
 
 describe("defineWorkspaceHttpApiRoute", () => {

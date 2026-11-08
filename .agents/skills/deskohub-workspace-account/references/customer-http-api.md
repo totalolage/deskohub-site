@@ -36,21 +36,28 @@ authenticates every request.
    version it instead.
 3. Implement it in the group's `HttpApiBuilder.group` in the adapter, in the
    group's own handlers module (`customer-account-handlers.ts`,
-   `customer-reservation-handlers.ts`). The `booking` group is a pass-through
-   placeholder in `customer-api.server.ts` until it gets one.
+   `customer-reservation-handlers.ts`, `customer-booking-handlers.ts`, which
+   joins `customer-booking-catalog-handlers.ts` and
+   `customer-booking-checkout-handlers.ts`).
 4. Classify it in `customerRequestBudgetClasses`. The Record is exhaustive
    over the contract, so an unclassified endpoint is a type error, and
    `customer-request-budget.test.ts` pins the endpoint counts: update them.
-   Every endpoint spends the account's general budget. An endpoint is
-   Dotypos-backed when it, or the account resolution it starts with, can call
-   Dotypos (resolving an unlinked account looks its customer up and may
-   reactivate an expired one): a GET is `dotypos-read`, any other method
-   `dotypos-mutation`, each with its own per-account budget so reads can't
-   use up what edits and deletion need; the test checks the method.
-   `workspace-only` reads only the Workspace database and Better Auth.
-   Reservation reads count: they read Dotypos live. If the endpoint changes
-   the Dotypos call rate, recheck the budget numbers against the site's shared
-   150 requests per 30 minutes. Per-account budgets bound one account's share;
+   Every endpoint spends the account's general budget (120 per 10 minutes).
+   An endpoint is Dotypos-backed when it, or the account resolution it starts
+   with, can call Dotypos (resolving an unlinked account looks its customer up
+   and may reactivate an expired one): a GET is `dotypos-read` (20 per 30
+   minutes), any other method `dotypos-mutation` (15 per 30 minutes, which
+   account edits and checkout steps share; two bookings fit), each with its
+   own per-account budget so reads can't use up what edits, bookings and
+   deletion need; the test checks the method. The booking catalog's reads
+   (offerings, availability, meeting-room start times, quotes) are
+   `catalog-read` (120 per 10 minutes): they read the shared snapshots, which
+   call Dotypos only on a miss, and a booking compares several dates before it
+   checks out, so they keep off the Dotypos read budget the account and its
+   reservations use. `workspace-only` reads only the Workspace database and
+   Better Auth. Reservation reads count: they read Dotypos live. If the
+   endpoint changes the Dotypos call rate, recheck the budget numbers against
+   the site's shared 150 requests per 30 minutes. Per-account budgets bound one account's share;
    they can't keep the whole site within that allowance.
 5. Regenerate the OpenAPI golden from `packages/workspace-customer-api` with
    `UPDATE_OPENAPI=1 bun test src/workspace-customer-api.test.ts`, and review
@@ -124,6 +131,84 @@ authenticates every request.
   (`@deskohub/workspace-customer-api/customer-locale`, an Effect-only entry
   point the app bundles without the HTTP API). The account it creates takes it
   as its language; see the locale-preference reference.
+
+## Booking checkout
+
+The booking group's checkout endpoints (`customer-booking-checkout-api.ts`,
+handlers in `customer-booking-checkout-handlers.ts`) call the same shared
+operations the site's booking form, Pay page and agent tools call:
+`prepareWorkspacePayState`, `applyDiscountCodeToPayState`, the Pay state
+price acceptance, and `CheckoutService.createHostedPaymentCheckout`.
+
+Flow:
+
+1. `getQuote` prices a selection and returns its `advertisedPriceToken`.
+2. `createCheckout` holds the selection and returns a `CustomerCheckout`
+   with a `payStateToken`, the summary, `expiresAt`, and whether submitting
+   needs early-performance consent. `bookingFor: "self"` books as the
+   account's own profile and Dotypos customer; the submitted contact only
+   completes a profile that isn't linked yet. `"someone-else"` books the
+   submitted contact. A review account gets `payment_disabled`: nothing is
+   reserved and there's no token.
+3. Optionally `applyCheckoutDiscountCode`. A rejected code answers 422 and
+   leaves the checkout usable; when the server signed a replacement that keeps
+   the attempted code, the error carries its token. An unknown Calendar
+   discount or a provider outage answers 503, never a price review.
+4. A `price_review` checkout shows the new summary and calls
+   `acceptCheckoutPriceChange`, the same continuation the Pay page's link
+   issues. Acceptance needs only the token: it doesn't renew the hold, so the
+   hold can end before the token's `expiresAt`, and submission checks the hold
+   and the price again.
+5. `submitCheckout` sends the consents and the legal documents the client
+   showed, as `listLegalDocuments` listed them. Documents that changed since
+   answer 409 `CustomerLegalDocumentsChanged`: list them again and ask again.
+   `payment_required` opens `paymentUrl` (Nexi). Nexi returns to the site's
+   return route, which redirects to the reservation status page; the app deep
+   links to `statusUrl`. `paid` needs no payment. A checkout whose payment
+   started or that can no longer be paid answers 409 reason `not_payable`:
+   open the status screen.
+
+Author check: discount-code, price-acceptance and submit open the token and
+answer 404 `CustomerCheckoutNotFound` unless the signed-in account authored
+the held reservation (`authorAccountId`), so a token alone never acts for
+another account. A repository failure answers 503.
+
+Referral fields: the client keeps the remembered referral code and sends it in
+`x-deskohub-referral-code`. `RememberedReferral.fromClient` writes nothing, so
+`customer-referral-updates.ts` records what the site would have written to its
+cookie and the handler reports it: `rememberReferralCode` after an accepted
+referral code while the referral release is open, and
+`rememberedReferralCodeUsed` once a paid booking settles the referral. The
+client stores or drops the code accordingly. `referralApplied` means the
+signed price includes the invited customer's benefit; only `createCheckout`
+reports it, from the hold's own check (later steps answer an accepted
+referral code as `discountCode: "referral_accepted"`).
+
+Bot protection: the site's booking actions call BotID, which needs the
+browser's JavaScript challenge; a native client can't run it, so these
+endpoints don't. They rely instead on a verified Better Auth session (native
+sign-in starts in the site-origin browser flow, which runs BotID), the origin
+and client-header check, the per-account request budgets, and the same
+server-side checks every booking passes: the sealed Pay state, the hold,
+repricing, consent, and legal evidence. BotID stays in the site action
+wrappers, outside the shared operations, so the HTTP API never reaches it.
+
+Wiring: each request builds its operations from
+`CustomerBookingCheckoutLayers` (`customer-booking-checkout-layers.ts`).
+`CustomerCheckoutOperations` (`customer-checkout-operations.service.ts`)
+closes over the request's referral and office gates (their `…ForRun`
+layers) and its `CustomerReferralUpdates`, so the selection, the shared
+operation and the referral record share one decision per gate; preparation
+receives the gates through `payStatePreparationServicesWith`. Each operation
+builds its own services when it runs: acceptance builds only the sealing
+keys, and services that can't be built answer 503. A checkout state the
+server fails to seal or sign also answers 503, never `expired`: only the
+client's own token can expire. Mutations keep their site
+actions' deadlines (`getPreparePayStateDeadline`,
+`getApplyDiscountCodeDeadline`, `getCheckoutSubmitDeadline`); one that runs
+out answers 503. Handler tests fake `CustomerCheckoutOperations` and
+`CheckoutService` through the `bookingCheckout` option of
+`makeCustomerApiTestServer`.
 
 ## Tests
 
