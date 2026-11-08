@@ -148,18 +148,18 @@ jobs:
               test:shard-1 test:shard-2 test:shard-3 test:shard-4 \
               --affected --dry-run=json
           )"
-          selected="$(jq -er '
-            .tasks
+          selected="$(jq -ers '
+            if length == 1 then .[0].tasks else error("expected one dry run") end
             | if type == "array" then . else error("tasks is not a list") end
             | map(.taskId | if type == "string" then . else error("task without an id") end)
             | map(select(startswith("deskohub-workspace#test:shard-")))
             | length
           ' <<< "$selection")"
           echo "Affected Workspace test shard tasks since $base: $selected"
-          if (( selected > 0 )); then
-            echo "affected=true" >> "$GITHUB_OUTPUT"
-          else
+          if [[ "$selected" == 0 ]]; then
             echo "affected=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "affected=true" >> "$GITHUB_OUTPUT"
           fi
 
   test-functional-shards:
