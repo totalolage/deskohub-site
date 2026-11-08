@@ -33,6 +33,11 @@ const capability = await Effect.runPromise(
   )
 );
 
+// The cookie value this module seals for these inputs today. Cookies already
+// set must keep opening, so the format can't change.
+const goldenCookie =
+  "eyJwdXJwb3NlIjoicmVzZXJ2YXRpb24tYWNjZXNzLWNvb2tpZSIsIm9yZGVySWQiOiJyZXNlcnZhdGlvbi1jb29raWUtMSIsImxvY2FsZSI6ImVuLVVTIiwiaXNzdWVkQXRFcG9jaE1pbGxpc2Vjb25kcyI6MTgwMDAwMDAwMDAwMCwiZXhwaXJlc0F0RXBvY2hNaWxsaXNlY29uZHMiOjE4MDAwODY0MDAwMDB9.c3MfbVwwPajdDx1ZJgqAV55ibefyWnryxfZrNYlC88A";
+
 const seal = () =>
   Effect.runPromise(
     sealReservationAccessCookie(
@@ -111,6 +116,18 @@ describe("reservation access cookie", () => {
         secure: true,
       },
     ]);
+  });
+
+  test("keeps the sealed cookie format", async () => {
+    expect(await seal()).toBe(goldenCookie);
+    expect(
+      await Effect.runPromise(
+        openReservationAccessCookie(
+          { value: goldenCookie, orderId },
+          { now: () => now, secret }
+        )
+      )
+    ).toEqual(capability);
   });
 
   test("contains only cookie details and is not a legacy invoice capability", async () => {
