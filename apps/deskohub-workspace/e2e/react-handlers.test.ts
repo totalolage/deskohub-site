@@ -128,6 +128,45 @@ test.skipIf(!chromiumAvailable)(
   }
 );
 
+test.skipIf(!chromiumAvailable)(
+  "sees a hydrated control while the page delivers no animation frames",
+  async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      // Playwright's injected script takes the page's requestAnimationFrame
+      // when it first runs, so a stub stands in for a browser that has
+      // stopped rendering frames.
+      await page.addInitScript(() => {
+        window.requestAnimationFrame = () => 0;
+      });
+      const origin = "http://react-handlers.test";
+      await page.route(`${origin}/`, (route) =>
+        route.fulfill({
+          body: `<button type="button">${controlLabel}</button><script>
+            setTimeout(() => {
+              document.querySelector("button").__reactProps$late = {
+                onClick: () => undefined,
+              };
+            }, 200);
+          </script>`,
+          contentType: "text/html",
+        })
+      );
+      await page.goto(`${origin}/`);
+
+      const startedAt = performance.now();
+      await waitForReactClickHandler(
+        page,
+        page.getByRole("button", { name: controlLabel })
+      );
+      expect(performance.now() - startedAt).toBeLessThan(5_000);
+    } finally {
+      await browser.close();
+    }
+  }
+);
+
 test("rejects within its deadline when a detached control is never replaced", async () => {
   const startedAt = Date.parse("2026-10-11T12:00:00.000Z");
   let now = startedAt;

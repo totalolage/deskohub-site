@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import { EMAIL_TEST_DOMAIN, testEmailAddress } from "@deskohub/test-email";
 import {
   Duration,
@@ -60,6 +61,9 @@ import {
   DotyposService,
   type IDotyposService,
 } from "./service";
+
+/** A phone number as a caller passes it, read from entered text. */
+const phoneNumber = (text: string) => Option.getOrThrow(parsePhoneNumber(text));
 
 const adaAddress = testEmailAddress("ada");
 const mixedCaseAdaAddress = testEmailAddress("Ada");
@@ -908,7 +912,7 @@ describe("DotyposService customer lookup", () => {
           {
             firstName: "Ada",
             email: adaAddress,
-            phone: "+420 601 111 222",
+            phone: phoneNumber("+420 601 111 222"),
           },
           { lookupFields: ["email"] }
         );
@@ -1003,7 +1007,7 @@ describe("DotyposService customer lookup", () => {
   });
 
   test.each([
-    ["an email", { firstName: "Ada", phone: "+420 601 111 222" }],
+    ["an email", { firstName: "Ada", phone: phoneNumber("+420 601 111 222") }],
     ["a phone", { firstName: "Ada", email: adaAddress }],
   ])(
     "refuses to create a customer without %s after finding no match",
@@ -1066,7 +1070,7 @@ describe("DotyposService customer lookup", () => {
             firstName: "Ada",
             lastName: "Lovelace",
             email: adaSecretAddress,
-            phone: "+420 777 123 456",
+            phone: phoneNumber("+420 777 123 456"),
           },
           undefined
         );
@@ -1162,7 +1166,7 @@ describe("DotyposService customer lookup", () => {
             firstName: "Ada",
             lastName: "Lovelace",
             email: adaAddress,
-            phone: "+420 777 123 456",
+            phone: phoneNumber("+420 777 123 456"),
           },
           undefined
         );
@@ -1289,10 +1293,14 @@ describe("DotyposService customer lookup", () => {
   });
 
   test.each([
-    { label: "unparseable", phone: "not a phone", expectedPhone: undefined },
-    { label: "valid", phone: "777 123 456", expectedPhone: "+420777123456" },
+    { label: "without a phone", phone: undefined, expectedPhone: undefined },
+    {
+      label: "with a phone",
+      phone: phoneNumber("777 123 456"),
+      expectedPhone: "+420777123456",
+    },
   ])(
-    "updates invoice customer details with a $label phone",
+    "updates invoice customer details $label",
     async ({ phone, expectedPhone }) => {
       const stored = customer({
         id: "invoice-customer",
@@ -1420,7 +1428,7 @@ describe("DotyposService customer lookup", () => {
               firstName: "Ada",
               lastName: "Lovelace",
               email: adaAddress,
-              phone: "+420 777 123 456",
+              phone: phoneNumber("+420 777 123 456"),
             },
             undefined
           )
@@ -1482,7 +1490,7 @@ describe("DotyposService customer lookup", () => {
             firstName: "Ada",
             lastName: "Lovelace",
             email: adaPrivateAddress,
-            phone: "+420 777 123 456",
+            phone: phoneNumber("+420 777 123 456"),
           },
           undefined
         );
@@ -1491,7 +1499,7 @@ describe("DotyposService customer lookup", () => {
             firstName: "Grace",
             lastName: "Hopper",
             email: gracePrivateAddress,
-            phone: "+420 777 987 654",
+            phone: phoneNumber("+420 777 987 654"),
           },
           undefined
         );
@@ -1655,7 +1663,7 @@ describe("DotyposService customer lookup", () => {
             firstName: "Ada",
             lastName: "Lovelace",
             email: mixedCaseAdaAddress,
-            phone: "+420777123456",
+            phone: phoneNumber("+420777123456"),
           },
           { lookupFields: ["email"] }
         );
@@ -4110,7 +4118,7 @@ const failureOutcomeCustomerDetails = {
   firstName: "Ada",
   lastName: "Lovelace",
   email: adaAddress,
-  phone: "+420 777 123 456",
+  phone: phoneNumber("+420 777 123 456"),
   addressLine1: "",
   addressLine2: "",
   city: "",
@@ -4642,7 +4650,7 @@ const runCreationOutcomeOperation = (
         firstName: "Ada",
         lastName: "Lovelace",
         email: adaAddress,
-        phone: "+420 777 123 456",
+        phone: phoneNumber("+420 777 123 456"),
       });
     case "createCustomer":
       return dotypos.createCustomer(failureOutcomeCustomerDetails);
@@ -6137,12 +6145,12 @@ describe("DotyposService conditional-write replay", () => {
       })
   );
 
-  /** Details as a caller passes them: padded, with a local-format phone. */
+  /** Details as a caller passes them: padded, with a phone read from local-format text. */
   const enteredDetails: DotyposCustomerDetails = {
     firstName: " Ada ",
     lastName: "Lovelace ",
     email: ` ${adaAddress}`,
-    phone: " 777 123 456 ",
+    phone: phoneNumber(" 777 123 456 "),
     addressLine1: " Synthetic street 1",
     addressLine2: "  ",
     city: "Synthetic city ",
@@ -6152,7 +6160,7 @@ describe("DotyposService conditional-write replay", () => {
     companyId: "",
     vatId: " ",
   };
-  /** What updateCustomerDetails writes for enteredDetails without a usable phone. */
+  /** What updateCustomerDetails writes for enteredDetails without a phone. */
   const writtenDetailsWithoutPhone = {
     firstName: "Ada",
     lastName: "Lovelace",
@@ -6166,7 +6174,7 @@ describe("DotyposService conditional-write replay", () => {
     companyId: "",
     vatId: "",
   } as const;
-  /** What updateCustomerDetails writes for enteredDetails: trimmed, E.164 phone. */
+  /** What updateCustomerDetails writes for enteredDetails: trimmed, with its phone. */
   const writtenDetails = {
     ...writtenDetailsWithoutPhone,
     phone: "+420777123456",
@@ -6192,7 +6200,7 @@ describe("DotyposService conditional-write replay", () => {
   ] as const;
 
   type CustomerDetailsSettlementRow = CustomerFieldsSettlementRow & {
-    /** `without-phone` passes an unparseable phone, which the write omits. */
+    /** `without-phone` passes no phone, which the write omits. */
     readonly entered?: "without-phone";
   };
 
@@ -6390,7 +6398,7 @@ describe("DotyposService conditional-write replay", () => {
           dotypos.updateCustomerDetails(
             dotyposCustomerId("customer-id"),
             withoutPhone
-              ? { ...enteredDetails, phone: "not a phone" }
+              ? { ...enteredDetails, phone: undefined }
               : enteredDetails
           ),
         written: withoutPhone ? writtenDetailsWithoutPhone : writtenDetails,
@@ -6398,11 +6406,11 @@ describe("DotyposService conditional-write replay", () => {
     }
   );
 
-  /** A profile as the account passes it: padded, with a local-format phone. */
+  /** A profile as the account passes it: padded, with a phone read from local-format text. */
   const enteredProfile: DotyposCustomerProfile = {
     firstName: " Ada ",
     lastName: "Lovelace ",
-    phone: " 777 123 456 ",
+    phone: phoneNumber(" 777 123 456 "),
     addressLine1: " Synthetic street 1",
     addressLine2: "  ",
     city: "Synthetic city ",
@@ -6412,7 +6420,7 @@ describe("DotyposService conditional-write replay", () => {
     companyId: "",
     vatId: " ",
   };
-  /** What updateCustomerProfile writes for enteredProfile: trimmed, E.164 phone, no email. */
+  /** What updateCustomerProfile writes for enteredProfile: trimmed, with its phone, no email. */
   const writtenProfile = {
     firstName: "Ada",
     lastName: "Lovelace",
@@ -6593,43 +6601,12 @@ describe("DotyposService conditional-write replay", () => {
         write: (dotypos) =>
           dotypos.updateCustomerProfile(
             dotyposCustomerId("customer-id"),
-            clearingPhone ? { ...enteredProfile, phone: "  " } : enteredProfile
+            clearingPhone ? { ...enteredProfile, phone: "" } : enteredProfile
           ),
         written: clearingPhone ? writtenProfileClearingPhone : writtenProfile,
       });
     }
   );
-
-  test("updateCustomerProfile rejects an unparseable phone before any request", async () => {
-    const requests: string[] = [];
-    const fetchMock = mockDotyposFetch((request) => {
-      requests.push(`${request.method} ${new URL(request.url).pathname}`);
-      return tokenResponse();
-    });
-
-    const result = await runWithServiceRetryingInstantly(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* dotypos
-          .updateCustomerProfile(dotyposCustomerId("customer-id"), {
-            ...enteredProfile,
-            phone: "not a phone",
-          })
-          .pipe(Effect.result);
-      }),
-      fetchMock
-    );
-
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: {
-        _tag: "DotyposRejected",
-        reason: "invalid-request",
-        operation: "updateCustomerProfile",
-      },
-    });
-    expect(requests).toEqual([]);
-  });
 
   /** The expiry expireCustomer writes: a minute before settlementNow. */
   const writtenExpiry = { expireDate: "2026-11-05T11:59:00.000Z" } as const;
@@ -7256,7 +7233,7 @@ describe("DotyposService package input validation", () => {
                 firstName: "Ada",
                 lastName: "Lovelace",
                 email: adaAddress,
-                phone: "+420 777 123 456",
+                phone: phoneNumber("+420 777 123 456"),
               })
               .pipe(Effect.result);
         }

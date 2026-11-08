@@ -1,5 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
+import { DotyposUnavailable } from "@deskohub/dotypos";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
 import {
   type Context,
@@ -13,7 +14,6 @@ import {
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type { ReferralService as ReferralServiceTag } from "@/features/referrals";
-import { ReferralError } from "@/features/referrals/contracts";
 import {
   ReferralServiceMock,
   WithheldReferralService,
@@ -1292,7 +1292,10 @@ describe("DiscountService", () => {
       },
     };
     const unavailable = Effect.fail(
-      new ReferralError({ reason: "unavailable" })
+      new DotyposUnavailable({
+        operation: "listReservations",
+        reason: "server",
+      })
     );
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock({
@@ -1326,8 +1329,8 @@ describe("DiscountService", () => {
       discountBoundary: "resolution",
       discountProvider: "referral",
       discountOperation: "quote",
-      discountErrorTag: "ReferralError",
-      discountErrorReason: "unavailable",
+      discountErrorTag: "DotyposUnavailable",
+      discountErrorReason: "server",
     });
 
     const withoutReferrer = await quoteWith({

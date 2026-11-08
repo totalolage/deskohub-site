@@ -8,6 +8,26 @@ export const clamp = (value: number, min: number, max: number) =>
 export const formatCount = (count: number, locale: string) =>
   new Intl.NumberFormat(locale).format(count);
 
+const fileSizeUnits = ["byte", "kilobyte", "megabyte", "gigabyte"] as const;
+
+/**
+ * Formats a file size in decimal units with one decimal place, as Android and
+ * browsers show downloads: "42.1 MB" in English, "42,1 MB" in Czech.
+ */
+export const formatFileSize = (bytes: number, locale: string) => {
+  const exponent = clamp(
+    Math.floor(Math.log10(Math.max(bytes, 1)) / 3),
+    0,
+    fileSizeUnits.length - 1
+  );
+  return new Intl.NumberFormat(locale, {
+    style: "unit",
+    unit: fileSizeUnits[exponent],
+    unitDisplay: "short",
+    maximumFractionDigits: 1,
+  }).format(bytes / 1000 ** exponent);
+};
+
 /** A run of consecutive integers, from `first` to `last` inclusive. */
 interface IntegerRun {
   readonly first: number;

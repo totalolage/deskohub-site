@@ -60,6 +60,13 @@ mock.module("@/features/legal/actions", () => ({
     Promise.resolve<MarketingActionResult>({ data: { status: "confirmed" } }),
   saveMarketingPreferencesAction: (_input: MarketingActionInput) =>
     Promise.resolve<MarketingActionResult>({ data: { status: "saved" } }),
+  resolveSilentAnalyticsGrantForDevice: () =>
+    Promise.resolve<MarketingActionResult>({ data: null }),
+}));
+
+mock.module("@/features/account/analytics-identity", () => ({
+  getAnalyticsAccountIdentity: () => ({ status: "anonymous" }),
+  subscribeAnalyticsAccountIdentity: () => () => undefined,
 }));
 
 mock.module("@/shared/utils/use-workspace-action", () => ({
@@ -73,7 +80,13 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
       void Promise.resolve().then(() => setIsExecuting(false));
       return input;
     };
-    return { execute, isExecuting, reset: () => undefined, result: {} };
+    return {
+      execute,
+      executeAsync: () => Promise.resolve<MarketingActionResult>({}),
+      isExecuting,
+      reset: () => undefined,
+      result: {},
+    };
   },
 }));
 
@@ -106,6 +119,8 @@ mock.module("vanilla-cookieconsent", () => ({
     onConsentChange = config.onChange;
     return Promise.resolve();
   },
+  show: () => undefined,
+  hide: () => undefined,
   showPreferences: () => undefined,
 }));
 
@@ -155,7 +170,7 @@ afterAll(async () => {
 function renderLegalScreen(locale: Locale) {
   return render(
     <>
-      <ConsentBanner locale={locale} />
+      <ConsentBanner locale={locale} revision={1} />
       <LegalScreen locale={locale} />
     </>
   );
@@ -173,7 +188,7 @@ test.each(["en-US", "cs-CZ"] as const)(
   (locale) => {
     const view = render(
       <>
-        <ConsentBanner locale={locale} />
+        <ConsentBanner locale={locale} revision={1} />
         <LegalScreen
           locale={locale}
           marketingPreferences={{ ...linkMarketingState }}

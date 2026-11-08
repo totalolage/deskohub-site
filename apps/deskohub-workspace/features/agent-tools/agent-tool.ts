@@ -2,18 +2,10 @@ import type {
   StandardJSONSchemaV1,
   StandardSchemaV1,
 } from "@standard-schema/spec";
-import {
-  Context,
-  Data,
-  Effect,
-  Layer,
-  Option,
-  Predicate,
-  Schema,
-  SchemaIssue,
-} from "effect";
+import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import type { CustomerAgentScope } from "@/features/account";
 import { defaultLocale, type Locale, locales } from "@/features/i18n";
+import { getFirstInvalidFieldPath } from "@/shared/utils/schema-issue";
 import type { AgentToolAccountBudget } from "./agent-tool-call-budget";
 import {
   AgentToolError,
@@ -151,16 +143,6 @@ export const getRequestedAgentToolLocale = (args: Schema.Json): Locale =>
     onSome: getAgentToolLocale,
   });
 
-const formatIssues = SchemaIssue.makeFormatterStandardSchemaV1();
-
-/** The dotted path of the first invalid argument, such as `seats`. */
-export const getInvalidField = (issue: SchemaIssue.Issue) =>
-  formatIssues(issue)
-    .issues[0]?.path?.map((segment) =>
-      String(Predicate.hasProperty(segment, "key") ? segment.key : segment)
-    )
-    .join(".") || undefined;
-
 type AgentToolDefinition<
   Input extends Schema.Top & { readonly DecodingServices: never },
   Output extends Schema.Codec<AgentToolResult, AgentToolResult>,
@@ -281,7 +263,7 @@ const makeAgentTool = <
       provideCaller(
         decodeInput(args).pipe(
           Effect.mapError((error) =>
-            AgentToolError.invalidInput(getInvalidField(error.issue))
+            AgentToolError.invalidInput(getFirstInvalidFieldPath(error.issue))
           ),
           Effect.flatMap(definition.run)
         ),

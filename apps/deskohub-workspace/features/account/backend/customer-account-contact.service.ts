@@ -8,7 +8,7 @@ import {
   getReviewAccountContact,
   ReviewAccounts,
 } from "@/features/review-accounts";
-import type { CustomerProfile, CustomerProfileInput } from "../contracts";
+import type { CustomerProfile, CustomerProfileSave } from "../contracts";
 import {
   type CustomerAccountAccessError,
   type CustomerAccountId,
@@ -136,7 +136,7 @@ interface ICustomerAccountContactService {
    */
   readonly completeProfileUnderHeldLock: (
     account: { readonly accountId: CustomerAccountId; readonly email: string },
-    profile: CustomerProfileInput
+    profile: CustomerProfileSave
   ) => Effect.Effect<CustomerAccountContact | null, CustomerAccountAccessError>;
 }
 
@@ -209,7 +209,7 @@ export class CustomerAccountContactService extends Context.Service<
           readonly accountId: CustomerAccountId;
           readonly email: string;
         },
-        input: CustomerProfileInput
+        input: CustomerProfileSave
       ) {
         const created = yield* profiles.createUnderHeldLock(
           account.accountId,

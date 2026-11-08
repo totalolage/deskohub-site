@@ -30,10 +30,9 @@ import { acceptAutoLinkedReferral } from "./auto-linked-referral";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import {
   type CustomerAccountResolutionDependencies,
-  CustomerAccountResolver,
-  resolveCustomerAccount,
   resolveCustomerAccountLink,
 } from "./customer-account-resolver.service";
+import { CustomerAuthentication } from "./customer-authentication.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const uniqueId = () => crypto.randomUUID();
@@ -171,8 +170,8 @@ const signIn = (input: {
               databaseLayer,
               lockLayer,
               linksLayer,
-              Layer.mock(CustomerAccountResolver, {
-                resolve: resolveCustomerAccount(dependencies),
+              Layer.succeed(CustomerAuthentication, {
+                currentUser: dependencies.currentUser(),
               }),
               Layer.mock(DotyposService, {
                 listReservations: () =>

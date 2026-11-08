@@ -2,7 +2,7 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { Context, Effect, Layer } from "effect";
 import type { ReferralSignupIntent } from "@/features/referrals/signup-intent.repository";
 import { ReviewAccounts } from "@/features/review-accounts";
-import type { CustomerProfile, CustomerProfileInput } from "../contracts";
+import type { CustomerProfile, CustomerProfileSave } from "../contracts";
 import {
   CustomerAccountAccessError,
   type CustomerAccountId,
@@ -45,7 +45,7 @@ interface ICustomerProfileService {
   ) => Effect.Effect<CustomerProfile, CustomerAccountAccessError>;
   readonly update: (
     account: LinkedCustomerAccount,
-    input: CustomerProfileInput
+    input: CustomerProfileSave
   ) => Effect.Effect<CustomerProfile, CustomerAccountAccessError>;
   /**
    * The signup referral is stored with the link only when this call creates
@@ -54,7 +54,7 @@ interface ICustomerProfileService {
   readonly create: (
     accountId: CustomerAccountId,
     verifiedEmail: string,
-    input: CustomerProfileInput,
+    input: CustomerProfileSave,
     signupReferral?: ReferralSignupIntent
   ) => Effect.Effect<CustomerProfileCreation, CustomerAccountAccessError>;
   /**
@@ -65,7 +65,7 @@ interface ICustomerProfileService {
   readonly createUnderHeldLock: (
     accountId: CustomerAccountId,
     verifiedEmail: string,
-    input: CustomerProfileInput
+    input: CustomerProfileSave
   ) => Effect.Effect<CustomerProfileCreation, CustomerAccountAccessError>;
 }
 
@@ -97,7 +97,7 @@ export class CustomerProfileService extends Context.Service<
       );
 
       const update = Effect.fn("CustomerProfileService.update")(
-        (account: LinkedCustomerAccount, input: CustomerProfileInput) =>
+        (account: LinkedCustomerAccount, input: CustomerProfileSave) =>
           links
             .withAccountLock(
               account.accountId,
@@ -126,7 +126,7 @@ export class CustomerProfileService extends Context.Service<
       )(function* (
         accountId: CustomerAccountId,
         verifiedEmail: string,
-        input: CustomerProfileInput,
+        input: CustomerProfileSave,
         signupReferral?: ReferralSignupIntent
       ) {
         yield* Effect.logDebug("Account profile create lock scope entered");
@@ -202,7 +202,7 @@ export class CustomerProfileService extends Context.Service<
         (
           accountId: CustomerAccountId,
           verifiedEmail: string,
-          input: CustomerProfileInput,
+          input: CustomerProfileSave,
           signupReferral?: ReferralSignupIntent
         ) =>
           links

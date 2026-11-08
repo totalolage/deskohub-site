@@ -5,10 +5,8 @@ import {
   DotyposCustomerIdSchema,
   DotyposUnavailable,
 } from "@deskohub/dotypos";
-import {
-  DotyposServiceMock,
-  seededCustomerReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import type { AudienceFilter } from "../audience-filter";
@@ -428,7 +426,9 @@ describe("CampaignRecipientService.resolve", () => {
             })
           ).pipe(
             Effect.flatMap((records) =>
-              seededCustomerReads(records).getCustomersByIds(ids)
+              makeInMemoryDotypos({
+                customers: records,
+              }).service.getCustomersByIds(ids)
             )
           ),
       },

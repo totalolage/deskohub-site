@@ -425,8 +425,9 @@ describe.skipIf(!testDatabase)(
     test("follows a reschedule in Dotypos without any local change", async () => {
       const customer = customerId("moved");
       await insert([{ label: "moved", customer }]);
-      const held = [dotyposReservation({ label: "moved", customer })];
-      const dotypos = countedDotyposReservationReads(held);
+      const dotypos = countedDotyposReservationReads([
+        dotyposReservation({ label: "moved", customer }),
+      ]);
       const lookUp = withVisits(
         dotypos,
         Effect.gen(function* () {
@@ -437,11 +438,12 @@ describe.skipIf(!testDatabase)(
       );
       const before = await Effect.runPromise(lookUp);
 
-      held[0] = dotyposReservation({
+      const moved = dotyposReservation({
         label: "moved",
         customer,
         startsAt: at(33),
       });
+      dotypos.reservations.set(moved.id, moved);
       const after = await Effect.runPromise(lookUp);
 
       expect(before?.map(({ startsAt }) => startsAt)).toEqual([at(9)]);

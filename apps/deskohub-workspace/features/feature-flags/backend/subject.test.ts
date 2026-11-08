@@ -6,17 +6,14 @@ import {
   withAnonymousVisitor,
   withWorkspaceRequestContext,
 } from "@/shared/backend/workspace-request-context";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   POSTHOG_DISTINCT_ID_COOKIE,
   POSTHOG_SESSION_ID_COOKIE,
 } from "@/shared/utils/posthog-session-cookies";
 
-const analyticsConsentCookie = `cc_cookie=${encodeURIComponent(
-  JSON.stringify({ categories: ["necessary", "analytics"] })
-)}`;
-const necessaryConsentCookie = `cc_cookie=${encodeURIComponent(
-  JSON.stringify({ categories: ["necessary"] })
-)}`;
+const analyticsConsentCookie = `cc_cookie=${savedConsentCookieValue({ categories: ["necessary", "analytics"] })}`;
+const necessaryConsentCookie = `cc_cookie=${savedConsentCookieValue({ categories: ["necessary"] })}`;
 const globalReleaseSubject = {
   distinctId: "deskohub-workspace:global-release",
   sendFeatureFlagEvents: false,

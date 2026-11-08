@@ -57,14 +57,18 @@ const {
   CONSENT_UPDATED_EVENT,
   CONSENT_UPDATED_STORAGE_KEY,
   announceVisitorConsentChange,
+  bindVisitorConsentRevision,
   useVisitorConsent,
   visitorConsent,
 } = await import("./visitor-consent");
 
-function setConsentCookie(categories: string[]) {
+// The banner revision the page was served with in these tests.
+const revision = 7;
+
+function setConsentCookie(categories: string[], savedRevision = revision) {
   // biome-ignore lint/suspicious/noDocumentCookie: The browser test needs to control consent synchronously.
   document.cookie = `${CONSENT_COOKIE_NAME}=${encodeURIComponent(
-    JSON.stringify({ categories })
+    JSON.stringify({ categories, revision: savedRevision })
   )}; Path=/`;
 }
 
@@ -89,6 +93,7 @@ function ConsentToggle() {
 
 beforeAll(registerWorkspaceComponentTestEnv);
 beforeEach(() => {
+  bindVisitorConsentRevision(revision);
   window.happyDOM.setURL("https://deskohub.test/account");
   rememberedCategories = ["necessary"];
   preferenceCategories = ["necessary"];
@@ -177,7 +182,11 @@ test("an announcement carries the strict categories and signals other tabs", () 
   }
 
   expect(details).toEqual([
-    { _tag: "ConsentUpdated", acceptedCategories: ["necessary", "analytics"] },
+    {
+      _tag: "ConsentUpdated",
+      acceptedCategories: ["necessary", "analytics"],
+      change: "local",
+    },
   ]);
   const nonce = window.localStorage.getItem(CONSENT_UPDATED_STORAGE_KEY);
   expect(nonce).toMatch(/^[0-9a-f-]{36}$/);
@@ -185,6 +194,19 @@ test("an announcement carries the strict categories and signals other tabs", () 
   expect(window.localStorage.getItem(CONSENT_UPDATED_STORAGE_KEY)).not.toBe(
     nonce
   );
+});
+
+test("a choice saved under an earlier banner revision counts as none until the visitor chooses again", () => {
+  setConsentCookie(["necessary", "analytics"], 0);
+
+  expect(visitorConsent.hasChoice()).toBe(false);
+  expect(visitorConsent.accepts("analytics")).toBe(false);
+  expect(visitorConsent.acceptedCategories()).toEqual([]);
+
+  setConsentCookie(["necessary", "analytics"]);
+
+  expect(visitorConsent.hasChoice()).toBe(true);
+  expect(visitorConsent.accepts("analytics")).toBe(true);
 });
 
 test("toggles start from the shared cookie, not this tab's stale state", () => {

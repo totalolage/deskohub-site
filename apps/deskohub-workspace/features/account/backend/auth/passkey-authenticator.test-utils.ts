@@ -83,9 +83,18 @@ export const makeSoftwarePasskey = ({
   );
   let counter = 0;
 
-  const clientData = (type: string, challenge: string) =>
+  const clientData = (
+    type: string,
+    challenge: string,
+    clientOrigin: string = origin
+  ) =>
     new TextEncoder().encode(
-      JSON.stringify({ type, challenge, origin, crossOrigin: false })
+      JSON.stringify({
+        type,
+        challenge,
+        origin: clientOrigin,
+        crossOrigin: false,
+      })
     );
 
   return {
@@ -125,10 +134,17 @@ export const makeSoftwarePasskey = ({
         },
       };
     },
-    /** Answers `/passkey/generate-authenticate-options`. */
+    /**
+     * Answers `/passkey/generate-authenticate-options`. `origin` overrides
+     * the client the assertion comes from, as when the native app uses a
+     * passkey the site created.
+     */
     authenticate: (
       options: { readonly challenge: string },
-      { userVerified = true }: { readonly userVerified?: boolean } = {}
+      {
+        userVerified = true,
+        origin: assertionOrigin = origin,
+      }: { readonly userVerified?: boolean; readonly origin?: string } = {}
     ) => {
       counter += 1;
       const authenticatorData = concat(
@@ -136,7 +152,11 @@ export const makeSoftwarePasskey = ({
         new Uint8Array([userPresent | (userVerified ? userVerifiedFlag : 0)]),
         uint32(counter)
       );
-      const clientDataJSON = clientData("webauthn.get", options.challenge);
+      const clientDataJSON = clientData(
+        "webauthn.get",
+        options.challenge,
+        assertionOrigin
+      );
       const signature = sign(
         "sha256",
         concat(authenticatorData, sha256(clientDataJSON)),

@@ -1,9 +1,12 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
 } from "@deskohub/dotypos";
-import { Option, Schema } from "effect";
+import { Effect, Schema } from "effect";
+import {
+  makeSignedClaims,
+  type SignedClaimsKeyRing,
+} from "@/shared/backend/signed-claims";
 import {
   type CampaignSendId,
   campaignSendIdSchema,
@@ -15,51 +18,46 @@ export type CampaignUnsubscribeRecipient = {
   readonly dotyposCustomerId: DotyposCustomerId;
 };
 
-const tokenPayloadSchema = Schema.fromJsonString(
-  Schema.Tuple([campaignSendIdSchema, DotyposCustomerIdSchema])
-);
-
-const signature = (key: Buffer, payload: string) =>
-  createHmac("sha256", key).update(payload).digest();
+// The MAC covers the bare payload: links in sent emails carry no purpose
+// prefix, and the HKDF-derived key already binds the token to unsubscribing.
+const unsubscribeTokenClaims = makeSignedClaims({
+  purpose: undefined,
+  schema: Schema.Tuple([campaignSendIdSchema, DotyposCustomerIdSchema]),
+});
 
 /**
- * Signs a recipient into an unsubscribe token. It carries no expiry: a
- * one-click unsubscribe link must keep working for as long as the email
- * sits in an inbox, and the token is deterministic so a replayed provider
- * batch renders the same email.
+ * Signs a recipient into an unsubscribe token with the first key of `keys`.
+ * It carries no expiry: a one-click unsubscribe link must keep working for as
+ * long as the email sits in an inbox, and the token is deterministic so a
+ * replayed provider batch renders the same email.
  */
-export const signCampaignUnsubscribeToken = (
-  key: Buffer,
+export const signCampaignUnsubscribeToken = Effect.fn(
+  "campaignUnsubscribeToken.sign"
+)(function* (
+  keys: SignedClaimsKeyRing,
   recipient: CampaignUnsubscribeRecipient
-) => {
-  const payload = Buffer.from(
-    JSON.stringify([recipient.sendId, recipient.dotyposCustomerId])
-  ).toString("base64url");
-  return `${payload}.${signature(key, payload).toString("base64url")}`;
-};
+) {
+  // A typed recipient always encodes; a failure here is a defect.
+  return yield* unsubscribeTokenClaims
+    .sign([recipient.sendId, recipient.dotyposCustomerId], keys)
+    .pipe(Effect.orDie);
+});
 
 /**
  * Opens a token signed by any of `keys`, so links in sent emails survive a
- * signing-secret rotation while the old secret stays listed.
+ * signing-secret rotation while the old secret stays listed. A malformed or
+ * forged token opens to nothing.
  */
-export const openCampaignUnsubscribeToken = (
-  keys: readonly Buffer[],
-  token: string
-): Option.Option<CampaignUnsubscribeRecipient> => {
-  const [payload, signed, ...rest] = token.split(".");
-  if (!payload || !signed || rest.length > 0) return Option.none();
-  const presented = Buffer.from(signed, "base64url");
-  const authentic = keys.some((key) => {
-    const expected = signature(key, payload);
-    return (
-      presented.length === expected.length &&
-      timingSafeEqual(presented, expected)
-    );
-  });
-  if (!authentic) return Option.none();
-  return Schema.decodeUnknownOption(tokenPayloadSchema)(
-    Buffer.from(payload, "base64url").toString("utf8")
-  ).pipe(
-    Option.map(([sendId, dotyposCustomerId]) => ({ sendId, dotyposCustomerId }))
+export const openCampaignUnsubscribeToken = Effect.fn(
+  "campaignUnsubscribeToken.open"
+)(function* (keys: SignedClaimsKeyRing, token: string) {
+  return yield* unsubscribeTokenClaims.open(token, Effect.succeed(keys)).pipe(
+    Effect.map(
+      ([sendId, dotyposCustomerId]): CampaignUnsubscribeRecipient => ({
+        sendId,
+        dotyposCustomerId,
+      })
+    ),
+    Effect.option
   );
-};
+});

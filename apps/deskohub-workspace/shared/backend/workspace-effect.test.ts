@@ -7,6 +7,7 @@ import {
 } from "effect/unstable/http";
 import { redirect } from "next/navigation";
 import * as nextServer from "next/server";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import { captureWorkspaceLogs } from "@/shared/testing/workspace-telemetry.test-utils";
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 import {
@@ -22,9 +23,9 @@ const logFlushes = spyOn(workspaceLogs.loggerProvider, "forceFlush");
 // A consented visitor in Next's request store, which work that serves no
 // visitor must never pick up.
 const ambientHeaders = mock(async () => {
-  const consent = encodeURIComponent(
-    JSON.stringify({ categories: ["necessary", "analytics"] })
-  );
+  const consent = savedConsentCookieValue({
+    categories: ["necessary", "analytics"],
+  });
   return new Headers({
     cookie: `cc_cookie=${consent}; ${POSTHOG_DISTINCT_ID_COOKIE}=ambient-visitor; ${POSTHOG_SESSION_ID_COOKIE}=ambient-session`,
   });

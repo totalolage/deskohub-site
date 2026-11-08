@@ -5,6 +5,7 @@ import {
   DotyposCustomerIdSchema,
   DotyposService,
 } from "@deskohub/dotypos";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import type {
   AdministrationDotyposCustomerIdType,
   AdministrationInvoiceCreateInputType,
@@ -81,7 +82,7 @@ import {
   InvoiceEmailDeliveryRepository,
 } from "../backend/invoice-email-delivery.repository";
 import { InvoiceEmailDeliveryService } from "../backend/invoice-email-delivery.service";
-import { renderInvoicePdf } from "../backend/invoice-pdf";
+import { renderInvoicePdf, renderInvoicePdfFile } from "../backend/invoice-pdf";
 import {
   decodeInvoiceAdministrationId,
   InvoiceAdministrationNotFoundError,
@@ -318,8 +319,7 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
     const stored = yield* invoices.findById(id);
     if (!stored)
       return yield* new InvoiceAdministrationNotFoundError({ invoiceId });
-    const bytes = yield* renderInvoicePdf(stored.document);
-    return { bytes, fileName: `${stored.invoiceNumber}.pdf` };
+    return yield* renderInvoicePdfFile(stored.document);
   });
 
   const searchCustomers = Effect.fn(
@@ -576,7 +576,7 @@ const toDotyposDetails = (
   firstName: details.firstName ?? "",
   lastName: details.lastName ?? "",
   email: details.email,
-  ...(details.phone && { phone: details.phone }),
+  phone: Option.getOrUndefined(parsePhoneNumber(details.phone ?? "")),
   addressLine1: details.address.line1,
   addressLine2: details.address.line2 ?? "",
   city: details.address.city,
