@@ -71,6 +71,7 @@ import type { CampaignRecipientSkipReason } from "../campaign-states";
 import { campaignContentForRecipient } from "../recipient-locale";
 import { CampaignEmailConfig } from "./campaign-email.config";
 import {
+  CampaignEligibilityStage,
   campaignEligibility,
   consentingCampaignCustomers,
 } from "./campaign-reachability";
@@ -558,8 +559,10 @@ export class CampaignDeliveryService extends Context.Service<
           profile: Option.fromNullishOr(
             input.profiles.get(recipient.dotyposCustomerId)
           ),
-          consenting: input.consenting.has(recipient.dotyposCustomerId),
-          deploymentEnvironment: config.deploymentEnvironment,
+          stage: CampaignEligibilityStage.Delivery({
+            consenting: input.consenting.has(recipient.dotyposCustomerId),
+            deploymentEnvironment: config.deploymentEnvironment,
+          }),
         }).pipe(
           Result.map((to) => ({ ...recipient, to })),
           Result.mapError(skip)

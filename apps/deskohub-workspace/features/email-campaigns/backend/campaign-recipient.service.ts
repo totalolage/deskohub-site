@@ -25,7 +25,11 @@ import {
   type CampaignCandidateFacts,
   CampaignCandidateRepository,
 } from "./campaign-candidate.repository";
-import { reachableCampaignEmail } from "./campaign-reachability";
+import {
+  CampaignEligibilityStage,
+  type CampaignUnreachableReason,
+  campaignEligibility,
+} from "./campaign-reachability";
 
 /** A customer the campaign reaches, with the Dotypos profile email. */
 type CampaignRecipient = {
@@ -34,16 +38,10 @@ type CampaignRecipient = {
   readonly email: string;
 };
 
-type CampaignRecipientExclusionReason =
-  | "missing-from-dotypos"
-  | "deleted-customer"
-  | "missing-email"
-  | "invalid-email";
-
 /** A customer the audience matches whom the campaign can't reach. */
 type CampaignRecipientExclusion = {
   readonly dotyposCustomerId: DotyposCustomerId;
-  readonly reason: CampaignRecipientExclusionReason;
+  readonly reason: CampaignUnreachableReason;
 };
 
 /**
@@ -250,13 +248,19 @@ const classify = (
   candidate: Candidate,
   profile: Option.Option<DotyposCustomer>
 ): EligibleRecipient | CampaignRecipientExclusion =>
-  Result.match(reachableCampaignEmail(profile), {
-    onFailure: (reason) => ({
-      dotyposCustomerId: candidate.dotyposCustomerId,
-      reason,
+  Result.match(
+    campaignEligibility({
+      profile,
+      stage: CampaignEligibilityStage.Resolution(),
     }),
-    onSuccess: (email) => ({ ...candidate, email }),
-  });
+    {
+      onFailure: (reason) => ({
+        dotyposCustomerId: candidate.dotyposCustomerId,
+        reason,
+      }),
+      onSuccess: (email) => ({ ...candidate, email }),
+    }
+  );
 
 const byCustomerId = Order.mapInput(
   Order.String,
