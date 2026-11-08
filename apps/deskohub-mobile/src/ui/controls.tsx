@@ -43,15 +43,19 @@ export function Button({
   onPress,
   disabled = false,
   variant = "primary",
+  accessibilityLabel,
 }: {
   readonly label: string;
   readonly onPress: () => void;
   readonly disabled?: boolean;
   readonly variant?: "primary" | "secondary" | "destructive";
+  /** The accessible name when the visible label alone is ambiguous, such as "Delete" in a list. */
+  readonly accessibilityLabel?: string;
 }) {
   return (
     <Pressable
       role="button"
+      aria-label={accessibilityLabel}
       aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
