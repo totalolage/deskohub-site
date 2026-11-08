@@ -19,7 +19,7 @@ what the privacy copy promises. Privacy copy lives in
 | Igloohome (Singapore) | Per door-code grant: the access name `Deskohub <grant-id>` (credentials requested before #780: `Deskohub <reservation-id>`), validity window, and device ID; no customer identity | Provider retention only |
 | Cloudinary | Avatar asset | Destroyed before identity removal |
 | PostHog warehouse | Allowlisted Dotypos customer fields in `custom.dotypos_customers` | PostHog retention settings; a Dotypos deletion arrives as `deleted: true`, not erasure |
-| PostHog events | Reservation and payment step records keyed by the reservation ID, with no contact data ([lifecycle events](posthog-identity-privacy.md#reservation-and-payment-lifecycle-events)) | PostHog retention settings; an objection is handled by a manual deletion request |
+| PostHog events | Reservation and payment step records, with no contact data: keyed by the reservation ID, or person-linked to the author's account person when the author's current analytics consent decision is a grant ([lifecycle events](posthog-identity-privacy.md#reservation-and-payment-lifecycle-events)) | PostHog retention settings; an objection is handled by deleting the account's PostHog person with its events for person-linked records and by a manual deletion request for reservation-keyed ones |
 
 ## Transfers outside the EU
 

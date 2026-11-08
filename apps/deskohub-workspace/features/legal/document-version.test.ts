@@ -26,7 +26,7 @@ const publishedDocuments: ReadonlyArray<{
   {
     locale: "en-US",
     documentKey: "privacy-policy",
-    version: "d6ce494a0f95e212c2ec4408ec3e7c1248aec37ae93fd2c03f383344449bc8dc",
+    version: "5447e6b7a9e983ec4ee772884bb63e65add6a451d5084bf3db9eaee5522afe70",
   },
   {
     locale: "en-US",
@@ -36,7 +36,7 @@ const publishedDocuments: ReadonlyArray<{
   {
     locale: "en-US",
     documentKey: "cookie-policy",
-    version: "29ac7ca092e54b93689e777f2a6d4dec4a07746d4ad9f7e46be86c14bc1a3450",
+    version: "6f6dfe905178428e2e533ac26de8116e4f222993a585a727b188d9cbae184e2e",
   },
   {
     locale: "cs-CZ",
@@ -51,7 +51,7 @@ const publishedDocuments: ReadonlyArray<{
   {
     locale: "cs-CZ",
     documentKey: "privacy-policy",
-    version: "60a932f787e257e58573ac3764974a3c4b362dd418b3e1535f20b11a76ae8da0",
+    version: "a991131f5c50fc56f30b0bb34666105c190b136b000f60ca76fd1eedac6eb319",
   },
   {
     locale: "cs-CZ",
@@ -61,7 +61,7 @@ const publishedDocuments: ReadonlyArray<{
   {
     locale: "cs-CZ",
     documentKey: "cookie-policy",
-    version: "7cd5562413ba11f8d4ad190ad5b90e893d67edb13e49a622a0c28b1bc5ae7593",
+    version: "df94429ec4cff84e40d74624d28b509367a55535d9a23287a749ee395d31d49c",
   },
 ];
 

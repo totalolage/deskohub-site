@@ -15,7 +15,6 @@ import {
 import { checkoutStatusTraits } from "@/features/checkout/checkout-status-kind";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import { CheckoutPaymentWindowCoordinator } from "@/features/checkout/components/checkout-payment-window";
-import { CheckoutStatusAnalytics } from "@/features/checkout/components/checkout-status-analytics";
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";
 import { CheckoutStatusPageSkeleton } from "@/features/checkout/components/checkout-status-page-skeleton";
 import { CheckoutStatusReferralCodeSettlement } from "@/features/checkout/components/checkout-status-referral-code-settlement";
@@ -137,7 +136,6 @@ async function CheckoutStatusContent({
         <RouteAutoRefresh
           enabled={checkoutStatusTraits[status.status].autoRefresh}
         />
-        <CheckoutStatusAnalytics status={status.status} />
         <CheckoutStatusReferralCodeSettlement status={status.status} />
         <CheckoutStatusPage
           locale={locale}
