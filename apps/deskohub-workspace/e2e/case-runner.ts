@@ -2,6 +2,10 @@ import { Cause, Effect, Exit } from "effect";
 import { WorkspaceE2EProviderVerificationPermitService } from "./coordination/provider-verification-permit.service";
 import type { WorkspaceE2EError } from "./errors";
 import { withinWorkspaceE2EDeadline } from "./polling";
+import {
+  CurrentReservationCase,
+  reservationIntentJournalPath,
+} from "./reservation-intents";
 import { log } from "./runtime";
 import {
   type E2EOutcome,
@@ -208,4 +212,9 @@ export const runE2ECase = <R, RC = never, RF = never>(input: {
           );
         })
       );
-  });
+  }).pipe(
+    Effect.provideService(CurrentReservationCase, {
+      caseId: input.caseId,
+      journalPath: reservationIntentJournalPath(input.caseId),
+    })
+  );

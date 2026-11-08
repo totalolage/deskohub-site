@@ -133,6 +133,7 @@ export const startPayPage = ({
         timeoutMs: config.timeouts.browserNavigation,
       });
       const orderId = yield* submitReservationForPayPage({
+        data,
         onOrderId: (value) => {
           state.orderId = value;
         },

@@ -14,6 +14,7 @@ import type {
   CaptureResult,
   PostHogConfig,
 } from "posthog-js";
+import { StrictMode } from "react";
 import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
 import { runWorkspaceBrowserEffect } from "@/shared/browser/workspace-browser-effect";
 import {
@@ -1480,5 +1481,128 @@ describe("PostHogAnalytics", () => {
     expect(capturedEventNames()).not.toContain("after withdrawal");
 
     view.unmount();
+  });
+  test("starts one session under Strict Mode's repeated effects", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?strict-mode"
+    );
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary", "analytics"]);
+    captureAnalyticsEvent("before strict mount");
+    const view = render(
+      <StrictMode>
+        <PostHogProvider>
+          <PostHogAnalytics analyticsAccepted posthogEnvironment="preview" />
+        </PostHogProvider>
+      </StrictMode>
+    );
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-a",
+        status: "authenticated",
+      });
+    });
+
+    expect(init).toHaveBeenCalledTimes(1);
+    expect(identify).toHaveBeenCalledTimes(1);
+    expect(reset).not.toHaveBeenCalled();
+    expect(optOutCapturing).not.toHaveBeenCalled();
+    expect(onSessionId).toHaveBeenCalledTimes(1);
+    expect(
+      capturedEvents
+        .map(({ event }) => event)
+        .filter((event) => event !== "$set")
+    ).toEqual(["$identify", "$pageview", "before strict mount"]);
+    expect(document.cookie).toContain(
+      "dh_ph_distinct_id=workspace-account%3Aaccount-a"
+    );
+
+    view.unmount();
+  });
+
+  test("applies changed flag overrides without restarting identity or pageviews", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?flag-override-change"
+    );
+    const AnalyticsBoundary = ({
+      discountCodesOverride,
+    }: {
+      readonly discountCodesOverride?: boolean;
+    }) => (
+      <PostHogProvider>
+        <PostHogAnalytics
+          analyticsAccepted
+          featureFlagOverrides={
+            discountCodesOverride === undefined
+              ? undefined
+              : { discount_codes: discountCodesOverride }
+          }
+          posthogEnvironment="preview"
+        />
+      </PostHogProvider>
+    );
+
+    setConsentCookie(["necessary", "analytics"]);
+    const view = render(<AnalyticsBoundary discountCodesOverride />);
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    expect(overrideFeatureFlags).toHaveBeenLastCalledWith({
+      flags: { discount_codes: true },
+    });
+    const eventCount = capturedEvents.length;
+    const reloadCount = reloadFeatureFlags.mock.calls.length;
+
+    await act(async () => {
+      view.rerender(<AnalyticsBoundary discountCodesOverride={false} />);
+    });
+    expect(overrideFeatureFlags).toHaveBeenLastCalledWith({
+      flags: { discount_codes: false },
+    });
+
+    await act(async () => {
+      view.rerender(<AnalyticsBoundary />);
+    });
+    expect(overrideFeatureFlags).toHaveBeenLastCalledWith(false);
+    expect(init).toHaveBeenCalledTimes(1);
+    expect(reset).not.toHaveBeenCalled();
+    expect(capturedEvents).toHaveLength(eventCount);
+    expect(reloadFeatureFlags).toHaveBeenCalledTimes(reloadCount);
+
+    const overrideCount = overrideFeatureFlags.mock.calls.length;
+    await act(async () => {
+      view.rerender(<AnalyticsBoundary />);
+    });
+    expect(overrideFeatureFlags).toHaveBeenCalledTimes(overrideCount);
+
+    view.unmount();
+  });
+
+  test("does not initialize an SDK that finishes loading after unmount", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?unmount-during-load"
+    );
+    const AnalyticsBoundary = () => (
+      <PostHogProvider>
+        <PostHogAnalytics analyticsAccepted posthogEnvironment="preview" />
+      </PostHogProvider>
+    );
+
+    setConsentCookie(["necessary", "analytics"]);
+    publishAnalyticsAccountIdentity({ status: "anonymous" });
+    const view = render(<AnalyticsBoundary />);
+    view.unmount();
+    await act(async () => undefined);
+
+    expect(init).not.toHaveBeenCalled();
+    expect(capturedEvents).toHaveLength(0);
+
+    const remountedView = render(<AnalyticsBoundary />);
+    await act(async () => undefined);
+    expect(init).toHaveBeenCalledTimes(1);
+    expect(capturedEvents.map(({ event }) => event)).toEqual(["$pageview"]);
+
+    remountedView.unmount();
   });
 });

@@ -1,6 +1,6 @@
 ---
 name: deskohub-mobile-release
-description: Mobile release, Android APK, mobile-v tag, mobile-release.yml, versionCode, expo.version bump, mobile CHANGELOG, release signing keystore, apksigner fingerprint, eas build --local, local APK build on a developer machine, latest Android release lookup, /api/mobile/releases/latest, native version endpoint, loadLatestAndroidRelease, GitHub API rate limit, first public release, Sculpin brand font licence.
+description: Mobile release, Android APK, mobile-v tag, mobile-release.yml, versionCode, expo.version bump, mobile CHANGELOG, release signing keystore, apksigner fingerprint, eas build --local, local APK build on a developer machine, latest Android release lookup, /api/mobile/releases/latest, native version endpoint, loadLatestAndroidRelease, GitHub API rate limit, first public release, Sculpin brand font licence, update code signing, codeSigningCertificate, MOBILE_UPDATES_CODE_SIGNING, signed development manifest, --private-key-path, dev client cannot load from Metro, debug dev-client APK.
 ---
 
 # Deskohub mobile release
@@ -41,6 +41,19 @@ EXPO_TOKEN=... ANDROID_KEYSTORE_PATH=<release.keystore> ANDROID_KEYSTORE_PASSWOR
 `ANDROID_KEYSTORE_BASE64` replaces `ANDROID_KEYSTORE_PATH` in CI. Without the release keystore, `bun run release:apk --signing debug --out-dir <dir>` builds the same APK signed with a throwaway key (JDK `keytool` from `JAVA_HOME` or `PATH`); it refuses `--tag`. The script writes `credentials.json` (git-ignored) for the build and removes it afterwards; it refuses to run when one already exists. It sets `GRADLE_OPTS=-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4` unless `GRADLE_OPTS` is set, because a Gradle daemon killed mid-build on a shared machine fails the build with "Gradle build daemon disappeared". EAS works in the system temporary directory, so point `TMPDIR` at a disk with room for a full Android build.
 
 The release certificate SHA-256 is `releaseCertificateSha256` in `scripts/release/apk-signature.ts`; `/.well-known/assetlinks.json` and the passkey `android:apk-key-hash` origin use the same key.
+
+## Update code signing and development clients
+
+`app.config.ts` embeds the update code-signing certificate (`code-signing/code-signing-certificate.pem`, keyid `main`) only when `MOBILE_UPDATES_CODE_SIGNING=required`; unset or empty leaves it out, and any other value fails the config. The `production` profile in `eas.json` sets it, so every release, dry-run and `release:apk` build verifies update signatures. The `ota-update` job sets it as job env for the runtime-version check and the publish: the signing fields feed the fingerprint runtime version, so a publish without the variable resolves a runtime no release has. Set it for a manual `publish-mobile-update.ts` run too. `app.config.test.ts` pins both config shapes and the two `eas.json` profiles; `mobile-release-workflow.test.ts` pins the `ota-update` job env to the production profile's env.
+
+Development clients and Metro run without it. A build that embeds the certificate asks Metro for a signed development manifest, and Metro refuses with "Must specify --private-key-path argument to sign development manifest" unless started with the private key; never point Metro at the key. Build a debug dev client for local work or the emulator from `apps/deskohub-mobile`, with `MOBILE_UPDATES_CODE_SIGNING` unset:
+
+```bash
+CI=1 bunx expo prebuild --platform android --no-install --clean
+(cd android && ./gradlew assembleDebug --no-daemon --max-workers=4 -PreactNativeArchitectures=x86_64)
+```
+
+Install `android/app/build/outputs/apk/debug/app-debug.apk`, run `bun run dev`, and open the app: it loads from Metro (`adb reverse tcp:8081 tcp:8081` on an emulator).
 
 ## Latest-release endpoint
 

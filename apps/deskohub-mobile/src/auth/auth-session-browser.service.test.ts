@@ -12,7 +12,10 @@ import {
   AuthSessionResult,
   AuthSessionUnavailable,
 } from "./auth-session-browser.service";
-import { AuthSessionDevice } from "./auth-session-device.service";
+import {
+  AuthSessionDevice,
+  type CustomTabOptions,
+} from "./auth-session-device.service";
 
 const signInUrl =
   "https://workspace.deskohub.cz/app/sign-in?native=1&state=state-1";
@@ -53,7 +56,7 @@ const makeDevice = ({
   }> = [];
   const authSessions: Array<{
     readonly url: string;
-    readonly options: { readonly browserPackage: string } | undefined;
+    readonly options: CustomTabOptions | undefined;
   }> = [];
   let customTabsLookups = 0;
   let releases = 0;
@@ -290,7 +293,10 @@ describe("auth session sign-in", () => {
         Exit.succeed(AuthSessionResult.Returned({ url: callbackUrl }))
       );
       expect(device.authSessions).toEqual([
-        { url: signInUrl, options: { browserPackage: "com.android.chrome" } },
+        {
+          url: signInUrl,
+          options: { browserPackage: "com.android.chrome", createTask: false },
+        },
       ]);
       expect(device.launches).toEqual([]);
     }
