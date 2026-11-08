@@ -65,7 +65,7 @@ describe("app route tree", () => {
     );
   });
 
-  test("the signed-in group is a stack over the tabs", () => {
+  test("the signed-in group and the tabs each have a layout file", () => {
     expect(layouts()).toContain("(account)");
     expect(layouts()).toContain("(account)/(tabs)");
   });
@@ -83,7 +83,7 @@ describe("app route tree", () => {
     expect(tabs).toEqual(["account", "reservations"]);
   });
 
-  test("app and web links still reach their screens", () => {
+  test("app and web link paths match a screen's route pattern", () => {
     for (const link of [
       "deskohub://reservations/synthetic-order?after=payment",
       "deskohub://account/legal",
