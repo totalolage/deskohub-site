@@ -199,6 +199,11 @@ jobs:
     environment: mobile-release
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # The APK build gets the production profile's env from eas.json; the
+    # runtime check and the export resolve the app config with the same
+    # values, or the fingerprint differs.
+    env:
+      MOBILE_UPDATES_CODE_SIGNING: required
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
