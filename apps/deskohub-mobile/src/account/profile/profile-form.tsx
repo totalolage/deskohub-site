@@ -114,12 +114,70 @@ export function useFocusFirstInvalid<F extends CompletionTextField>(
 export const invalidOf = (state: ProfileSubmitState) =>
   state._tag === "Invalid" ? state.invalid : undefined;
 
+/** A screen in a navigator's stack, as the guard reads it. */
+interface StackRoute {
+  readonly key: string;
+  readonly name: string;
+}
+
 /**
- * Asks before leaving with unsaved changes; discarding drops the edits and
- * then completes the navigation the customer started. Going back to another
- * screen in `sharedWith`, which edits the same draft, keeps the edits: that
- * screen guards them in turn.
+ * Whether removing the screen `key` goes back to a screen in `sharedWith`,
+ * which edits the same draft: the edits stay, and that screen guards them in
+ * turn. An action that also removes the screen below asks there.
  */
+export const returnsToSharedDraft = ({
+  routes,
+  key,
+  sharedWith,
+}: {
+  readonly routes: ReadonlyArray<StackRoute>;
+  readonly key: string;
+  readonly sharedWith: ReadonlyArray<string>;
+}) => {
+  const below = routes[routes.findIndex((route) => route.key === key) - 1];
+  return below !== undefined && sharedWith.includes(below.name);
+};
+
+/**
+ * Holds a navigation away from unsaved changes until the customer decides:
+ * keep editing cancels it, discard drops the edits and then completes it.
+ */
+export function useUnsavedChangesGuard({
+  unsaved,
+  onDiscard,
+  sharedWith,
+}: {
+  readonly unsaved: boolean;
+  readonly onDiscard: () => void;
+  readonly sharedWith: ReadonlyArray<string>;
+}) {
+  const [leave, setLeave] = useState<(() => void) | undefined>(undefined);
+  const navigation = useNavigation();
+  const route = useRoute();
+  usePreventRemove(
+    unsaved &&
+      !returnsToSharedDraft({
+        routes: navigation.getState()?.routes ?? [],
+        key: route.key,
+        sharedWith,
+      }),
+    ({ repeat }) => setLeave(() => repeat)
+  );
+  // The navigation completes once the discarded edits are gone.
+  useEffect(() => {
+    if (!unsaved && leave !== undefined) {
+      setLeave(undefined);
+      leave();
+    }
+  }, [unsaved, leave]);
+  return {
+    asking: unsaved && leave !== undefined,
+    keepEditing: () => setLeave(undefined),
+    discard: onDiscard,
+  };
+}
+
+/** Asks before leaving with unsaved changes (`useUnsavedChangesGuard`). */
 export function UnsavedChangesGuard({
   unsaved,
   onDiscard,
@@ -131,33 +189,17 @@ export function UnsavedChangesGuard({
   readonly sharedWith?: ReadonlyArray<string>;
   readonly locale: AppLocale;
 }) {
-  const [leave, setLeave] = useState<(() => void) | undefined>(undefined);
-  const navigation = useNavigation();
-  const route = useRoute();
-  const routes = navigation.getState()?.routes ?? [];
-  const below = routes[routes.findIndex(({ key }) => key === route.key) - 1];
-  const returnsToSharedDraft =
-    below !== undefined && sharedWith.includes(below.name);
-  // An action that also removes the screen below asks there.
-  usePreventRemove(unsaved && !returnsToSharedDraft, ({ repeat }) =>
-    setLeave(() => repeat)
-  );
-  useEffect(() => {
-    if (!unsaved && leave !== undefined) {
-      setLeave(undefined);
-      leave();
-    }
-  }, [unsaved, leave]);
+  const guard = useUnsavedChangesGuard({ unsaved, onDiscard, sharedWith });
   return (
     <ConfirmDialog
-      visible={unsaved && leave !== undefined}
+      visible={guard.asking}
       title={m.profile_unsaved_title({}, { locale })}
       body={m.profile_unsaved_body({}, { locale })}
       confirmLabel={m.profile_unsaved_discard({}, { locale })}
       cancelLabel={m.profile_unsaved_keep({}, { locale })}
       destructive
-      onConfirm={onDiscard}
-      onCancel={() => setLeave(undefined)}
+      onConfirm={guard.discard}
+      onCancel={guard.keepEditing}
     />
   );
 }
