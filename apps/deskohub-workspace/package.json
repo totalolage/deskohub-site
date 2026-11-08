@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build:generate": "MIMALLOC_PURGE_DELAY=0 next build --turbo --experimental-build-mode=generate",
-    "build:compile": "MIMALLOC_PURGE_DELAY=0 next build --turbo --experimental-build-mode=compile",
+    "build:compile": "rm -rf .next/cache/turbopack && MIMALLOC_PURGE_DELAY=0 next build --turbo --experimental-build-mode=compile",
     "build:source-maps": "bun scripts/upload-source-maps.ts",
     "vercel-build": "turbo build",
     "booking-widget:build": "bun features/agent-tools/booking-widget/build-booking-widget.ts",
