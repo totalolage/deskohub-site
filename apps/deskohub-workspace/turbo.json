@@ -135,7 +135,8 @@
         "$TURBO_ROOT$/*.test.{ts,tsx}",
         "$TURBO_ROOT$/{.agents,.github,apps,lint,packages,patches,scripts}/**/*.test.{ts,tsx}",
         "$TURBO_ROOT$/.gitignore",
-        "$TURBO_ROOT$/{apps,packages}/*/.gitignore"
+        "$TURBO_ROOT$/{apps,packages}/*/.gitignore",
+        "!$TURBO_ROOT$/**/node_modules/**"
       ],
       "outputs": ["test-timings.shard-1.json"],
       "passThroughEnv": [
@@ -170,7 +171,8 @@
         "$TURBO_ROOT$/*.test.{ts,tsx}",
         "$TURBO_ROOT$/{.agents,.github,apps,lint,packages,patches,scripts}/**/*.test.{ts,tsx}",
         "$TURBO_ROOT$/.gitignore",
-        "$TURBO_ROOT$/{apps,packages}/*/.gitignore"
+        "$TURBO_ROOT$/{apps,packages}/*/.gitignore",
+        "!$TURBO_ROOT$/**/node_modules/**"
       ],
       "outputs": ["test-timings.shard-2.json"],
       "passThroughEnv": [
@@ -205,7 +207,8 @@
         "$TURBO_ROOT$/*.test.{ts,tsx}",
         "$TURBO_ROOT$/{.agents,.github,apps,lint,packages,patches,scripts}/**/*.test.{ts,tsx}",
         "$TURBO_ROOT$/.gitignore",
-        "$TURBO_ROOT$/{apps,packages}/*/.gitignore"
+        "$TURBO_ROOT$/{apps,packages}/*/.gitignore",
+        "!$TURBO_ROOT$/**/node_modules/**"
       ],
       "outputs": ["test-timings.shard-3.json"],
       "passThroughEnv": [
@@ -240,7 +243,8 @@
         "$TURBO_ROOT$/*.test.{ts,tsx}",
         "$TURBO_ROOT$/{.agents,.github,apps,lint,packages,patches,scripts}/**/*.test.{ts,tsx}",
         "$TURBO_ROOT$/.gitignore",
-        "$TURBO_ROOT$/{apps,packages}/*/.gitignore"
+        "$TURBO_ROOT$/{apps,packages}/*/.gitignore",
+        "!$TURBO_ROOT$/**/node_modules/**"
       ],
       "outputs": ["test-timings.shard-4.json"],
       "passThroughEnv": [
