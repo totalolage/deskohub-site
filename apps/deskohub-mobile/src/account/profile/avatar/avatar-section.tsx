@@ -1,81 +1,21 @@
 import type { CustomerAvatarPresentation } from "@deskohub/workspace-customer-api";
 import { useAtom } from "@effect/atom-react";
-import { Match } from "effect";
 import { useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
-import type { AppLocale } from "../../../i18n/app-locale";
 import { useAppLocale } from "../../../i18n/locale-context";
 import { m } from "../../../i18n/messages";
 import { theme } from "../../../theme";
 import { ConfirmDialog } from "../../../ui/confirm-dialog";
 import { Button } from "../../../ui/controls";
-import { Notice, type NoticeTone } from "../../../ui/notice";
+import { Notice } from "../../../ui/notice";
 import {
-  type AvatarFeedback,
   avatarActionAtom,
   avatarFeedback,
   isAvatarBusy,
 } from "./avatar-action";
+import { avatarFeedbackNotice } from "./avatar-feedback-presentation";
 
 const avatarSize = 72;
-
-// The live message for the latest action, or none.
-const feedbackNotice = (
-  feedback: AvatarFeedback,
-  locale: AppLocale
-): { readonly tone: NoticeTone; readonly message: string | undefined } =>
-  Match.value(feedback).pipe(
-    Match.tagsExhaustive({
-      Idle: () => ({ tone: "info" as const, message: undefined }),
-      Picking: () => ({ tone: "info" as const, message: undefined }),
-      Withheld: () => ({ tone: "info" as const, message: undefined }),
-      Uploading: () => ({
-        tone: "info" as const,
-        message: m.profile_avatar_uploading({}, { locale }),
-      }),
-      Removing: () => ({
-        tone: "info" as const,
-        message: m.profile_avatar_removing({}, { locale }),
-      }),
-      Updated: () => ({
-        tone: "info" as const,
-        message: m.profile_avatar_updated({}, { locale }),
-      }),
-      Removed: () => ({
-        tone: "info" as const,
-        message: m.profile_avatar_removed({}, { locale }),
-      }),
-      Rejected: ({ reason }) => ({
-        tone: "error" as const,
-        message: {
-          "file-missing": m.profile_avatar_file_missing,
-          "file-too-large": m.profile_avatar_file_too_large,
-          "unsupported-format": m.profile_avatar_unsupported_format,
-          "undecodable-image": m.profile_avatar_undecodable,
-          "image-dimensions-too-large": m.profile_avatar_dimensions_too_large,
-        }[reason]({}, { locale }),
-      }),
-      FileUnreadable: () => ({
-        tone: "error" as const,
-        message: m.profile_avatar_failed({}, { locale }),
-      }),
-      PickerFailed: () => ({
-        tone: "error" as const,
-        message: m.profile_avatar_picker_failed({}, { locale }),
-      }),
-      Failed: ({ error }) =>
-        Match.value(error).pipe(
-          Match.tag("Unconfirmed", () => ({
-            tone: "warning" as const,
-            message: m.account_save_unconfirmed({}, { locale }),
-          })),
-          Match.orElse(() => ({
-            tone: "error" as const,
-            message: m.profile_avatar_failed({}, { locale }),
-          }))
-        ),
-    })
-  );
 
 /**
  * The account's profile photo, or its initials, with controls to change or
@@ -94,7 +34,7 @@ export function AvatarSection({
   const [confirmingRemoval, setConfirmingRemoval] = useState(false);
   const feedback = avatarFeedback(result);
   const busy = isAvatarBusy(feedback);
-  const notice = feedbackNotice(feedback, locale);
+  const notice = avatarFeedbackNotice(feedback, locale);
 
   if (avatar.kind === "hidden" || feedback._tag === "Withheld") return null;
   const image = avatar.avatar;

@@ -1,6 +1,7 @@
 import { Effect, Layer, Option } from "effect";
 import {
   AccountExitFence,
+  type AccountSession,
   accountDeviceLayer,
   makeAccountExitFence,
 } from "../account-scoped-storage";
@@ -62,6 +63,9 @@ export const makeFakeDevice = (): FakeDevice => ({
 });
 
 const fakeShareDirectory = "file:///cache/deskohub-share";
+// Each write gets a folder of its own, as on the device, across every fake
+// layer over one device.
+let fakeFilesWritten = 0;
 
 /** In-memory device capabilities that record what the app did. */
 export const fakeDeviceCapabilities = (
@@ -84,7 +88,8 @@ export const fakeDeviceCapabilities = (
     Layer.succeed(TemporaryFiles, {
       write: (owner, name, bytes) =>
         Effect.sync(() => {
-          const uri = `${fakeShareDirectory}/${encodeURIComponent(owner)}/${name}`;
+          fakeFilesWritten += 1;
+          const uri = `${fakeShareDirectory}/${encodeURIComponent(owner)}/${fakeFilesWritten}/${name}`;
           device.files.set(uri, bytes);
           return uri;
         }),
@@ -151,11 +156,14 @@ export const fakeCustomerDataLayer = ({
   workspace,
   device,
   fence = Layer.sync(AccountExitFence, makeAccountExitFence),
+  session = {},
 }: {
   readonly workspace: FakeWorkspace;
   readonly device: FakeDevice;
   /** Share one fence with an exit cleanup under test. */
   readonly fence?: Layer.Layer<AccountExitFence>;
+  /** Another account or sign-in than the workspace's own, started at 0. */
+  readonly session?: Partial<AccountSession>;
 }): Layer.Layer<CustomerDataServices> =>
   Layer.mergeAll(
     fakeCustomerApiLayer(workspace),
@@ -171,6 +179,7 @@ export const fakeCustomerDataLayer = ({
           accountId: workspace.data.accountId,
           apiOrigin: fakeWorkspaceOrigin,
           sessionStartedAt: 0,
+          ...session,
         })
       )
     )

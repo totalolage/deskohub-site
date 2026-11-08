@@ -37,7 +37,10 @@ export class DeviceStorage extends Context.Service<
 >()("DeviceStorage") {}
 
 interface ITemporaryFiles {
-  /** Writes `bytes` to a new temporary file of `owner` and answers its URI. */
+  /**
+   * Writes `bytes` to a new temporary file of `owner` and answers its URI,
+   * never one an earlier write answered, even for the same name.
+   */
   readonly write: (
     owner: string,
     name: string,
