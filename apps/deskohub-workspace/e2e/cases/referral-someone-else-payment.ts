@@ -13,7 +13,7 @@ import type { WorkspaceE2EAccountJournalOwner } from "../account/reconcile";
 import { seedWorkspaceE2EReferralOwner } from "../account/referral-fixture";
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
-import { waitForBrowserUrl } from "../browser";
+import { waitForPageUrl } from "../browser";
 import type { WorkspaceE2EStep } from "../case-runner";
 import {
   makeCoworkCheckoutData,
@@ -349,7 +349,7 @@ const executeReferralSomeoneElsePayment = Effect.fn(
           config,
           session: browser,
         });
-        yield* waitForBrowserUrl({
+        yield* waitForPageUrl({
           description: "referral-applied pay page",
           matches: (currentUrl) =>
             isReferralAppliedPayUrl({
@@ -358,8 +358,7 @@ const executeReferralSomeoneElsePayment = Effect.fn(
               locale,
               orderId,
             }),
-          run,
-          session,
+          session: browser,
           timeoutMs: config.timeouts.uiTransition,
         });
       }),

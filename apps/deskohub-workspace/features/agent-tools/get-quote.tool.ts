@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 import { buildAdvertisedPrice } from "@/features/checkout/backend/checkout/advertised-price.server";
 import { getReservationQuoteDiscount } from "@/features/checkout/reservation-quote-schema";
 import { m } from "@/features/i18n";
+import type { QuoteSelection } from "@/features/reservation/backend/booking-selection";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
 import { currentInstant } from "@/shared/utils/temporal";
 import {
@@ -14,7 +15,6 @@ import { toAgentToolMoney } from "./agent-tool-money";
 import { type GetQuoteResult, getQuoteResultSchema } from "./get-quote.schema";
 import {
   completeSelectionFields,
-  type QuoteSelection,
   resolveQuoteSelection,
 } from "./quote-selection";
 

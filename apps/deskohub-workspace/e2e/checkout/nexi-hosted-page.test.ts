@@ -76,21 +76,21 @@ test("locates each hosted card field and the iframe that owns it", () => {
 
   expect(findNexiCardField(nodes, "card_number")).toEqual({
     enabled: true,
-    frameRef: "@e39",
-    ref: "@f1e6",
+    frameRef: "e39",
+    ref: "f1e6",
   });
   expect(findNexiCardField(nodes, "expiration_date")).toEqual({
     enabled: false,
-    frameRef: "@e42",
-    ref: "@f2e6",
+    frameRef: "e42",
+    ref: "f2e6",
   });
   expect(findNexiCardField(nodes, "cardholder_email")).toEqual({
     enabled: false,
-    frameRef: "@e59",
-    ref: "@f5e6",
+    frameRef: "e59",
+    ref: "f5e6",
   });
   // A sibling outside an iframe is not attributed to the preceding iframe.
-  expect(nodes.find((node) => node.ref === "@e76")?.frameRef).toBeUndefined();
+  expect(nodes.find((node) => node.ref === "e76")?.frameRef).toBeUndefined();
 });
 
 test("matches Nexi controls by role and accessible name, not substrings", () => {
@@ -108,10 +108,10 @@ test("matches Nexi controls by role and accessible name, not substrings", () => 
     ].join("\n")
   );
 
-  expect(findNexiControl(nodes, "pay")).toEqual({ enabled: true, ref: "@e8" });
+  expect(findNexiControl(nodes, "pay")).toEqual({ enabled: true, ref: "e8" });
   expect(
     findNexiControl(parseNexiSnapshot('- button "PAY €208.80" [ref=e7]'), "pay")
-  ).toEqual({ enabled: true, ref: "@e7" });
+  ).toEqual({ enabled: true, ref: "e7" });
   expect(
     findNexiControl(
       parseNexiSnapshot(
@@ -128,7 +128,7 @@ test("matches Nexi controls by role and accessible name, not substrings", () => 
       parseNexiSnapshot('- button "TORNA AL NEGOZIO" [ref=e9]'),
       "return"
     )
-  ).toEqual({ enabled: true, ref: "@e9" });
+  ).toEqual({ enabled: true, ref: "e9" });
   const challenge = parseNexiSnapshot(
     [
       '- button "AUTENTICAZIONE FALLITA" [ref=e10]',
@@ -137,11 +137,11 @@ test("matches Nexi controls by role and accessible name, not substrings", () => 
   );
   expect(findNexiControl(challenge, "challenge")).toEqual({
     enabled: true,
-    ref: "@e11",
+    ref: "e11",
   });
   expect(findNexiControl(challenge, "challenge_failure")).toEqual({
     enabled: true,
-    ref: "@e10",
+    ref: "e10",
   });
 });
 

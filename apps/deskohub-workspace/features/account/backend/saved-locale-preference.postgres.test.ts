@@ -48,6 +48,7 @@ describe.skipIf(!testDatabase)(
         }),
         secrets: [{ version: 1, value: SECRET }],
         allowedHosts: [HOST],
+        nativeAppLinkOrigin: `https://${HOST}`,
         passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
         customerMcpResource: `https://${HOST}/api/mcp`,
         arePasskeysEnabled: async () => false,
@@ -62,6 +63,7 @@ describe.skipIf(!testDatabase)(
             Effect.provide(testDatabase!.layer)
           ),
         captureAccountLocalePreference: () => Effect.void,
+        mirrorSignInAnalyticsConsent: () => Effect.void,
         reviewAccountCredentials: [],
         isReviewAccount: () => Effect.succeed(false),
         registerReviewAccount: () => Effect.void,

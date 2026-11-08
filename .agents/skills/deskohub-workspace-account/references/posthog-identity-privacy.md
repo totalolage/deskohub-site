@@ -40,6 +40,28 @@ Code: `features/account/analytics-identity.ts`,
   `consent_update` dataLayer event follows in a microtask, for first consent
   and changes only. Externally managed tags rely on that order.
 
+## Account analytics consent ledger
+
+- The account keeps every analytics consent decision it made in
+  `account_analytics_consent_decisions`: grant or withdrawal, the privacy
+  notice hash and locale it was given under, when it was made, and its
+  source. It exists so the server can read a booker's current decision
+  without a browser; the vocabulary and ordering rules are in the
+  `deskohub-workspace-domain` skill's
+  [analytics consent](../../deskohub-workspace-domain/references/analytics-consent.md)
+  reference.
+- The strict reader's `readConsentCookieChoice` also returns the cookie's
+  `lastConsentTimestamp` and `languageCode`; mirrors date a decision at that
+  timestamp. Browser and server keep using the one reader.
+- The ledger is written at sign-in (Better Auth's session create hook), when
+  a signed-in page hydrates or the visitor saves the banner in that tab
+  (`AccountAnalyticsConsentMirror` calling `recordDeviceAnalyticsConsent`),
+  and in Pay-state preparation. A customer agent's booking carries no device
+  choice and mirrors nothing.
+- Nothing about the ledger reaches PostHog: no new identifier, property, or
+  event, and the banner, consent cookie, and capture rules are unchanged.
+- Rows cascade with the `auth.user` row when the account is deleted.
+
 ## Account identity contract
 
 - The account analytics boundary publishes only `pending`, `unavailable`,
@@ -167,10 +189,14 @@ non-production traffic apart:
   and remove saved UTM and click metadata.
 - Browser checkout events carry no reservation form values (name, email,
   phone, message, date, tier, or coffee and monitor preferences). The
-  PostHog `pre-payment outcome` event's only custom property is its outcome;
-  the Vercel Analytics `workspace_checkout_started` event's custom properties
-  are only the five `utm_*` keys allowlisted in `features/reservation/reservation-analytics.ts`, each
-  trimmed to 128 characters.
+  PostHog `pre-payment outcome` event's only custom property is its outcome.
+  The PostHog `checkout status viewed` event's only custom property is
+  `status`, the status page's `CheckoutStatusKind`. `CheckoutStatusAnalytics`
+  captures it from the browser through `captureAnalyticsEvent`, once per status
+  per page visit, so polling refreshes don't repeat it. The Vercel Analytics
+  `workspace_checkout_started` event's custom properties are only the five
+  `utm_*` keys allowlisted in `features/reservation/reservation-analytics.ts`,
+  each trimmed to 128 characters.
 - Don't describe network IP handling as disabled.
 - Person properties never include email, name, phone, billing, reservation
   IDs, or raw auth data. The signed-in account's `dotypos_customer_id` is the
@@ -264,6 +290,23 @@ traffic category and the name of a recognized assistant.
   `distinct_id` once the deletion has run (PostHog deletes event data
   asynchronously, on weekends on Cloud). Recheck after the reservation
   settles, since an open reservation can still emit events.
+
+## Funnel insights
+
+Filter every step to `deployment.environment.name = production`.
+
+- Consented person funnel: `$pageview` → `$pageview` where `$pathname`
+  contains `/reservation/` → `pre-payment outcome` where `outcome = prepared`
+  → `checkout status viewed` where `status` is a paid kind
+  (`checkoutStatusTraits[kind].paid`: `paid_waiting_fulfillment`,
+  `paid_fulfillment_delayed`, `paid_awaiting_delivery`,
+  `paid_delivery_delayed`, `fulfilled`, `fulfillment_failed`). It counts
+  consented browsers only.
+- Reservation funnel: `reservation started` → `payment started` → `payment
+  completed`, aggregated by the HogQL expression `properties.reservation_id`.
+  It counts every reservation, consented or not.
+- The two can't be joined: lifecycle events carry no browser or account ID by
+  policy, so don't stitch them to persons to merge the funnels.
 
 ## Server capture
 
