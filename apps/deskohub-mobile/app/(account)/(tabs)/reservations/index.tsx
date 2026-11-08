@@ -1,5 +1,5 @@
-import { PlaceholderScreen } from "../../../../src/ui/placeholder-screen";
+import { ReservationsListScreen } from "../../../../src/account/reservations/reservations-list-screen";
 
 export default function ReservationsRoute() {
-  return <PlaceholderScreen />;
+  return <ReservationsListScreen />;
 }
