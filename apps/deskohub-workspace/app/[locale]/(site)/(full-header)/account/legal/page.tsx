@@ -5,6 +5,7 @@ import { AccountContentLoading } from "@/features/account/components/account-loa
 import { PublicAccountLegal } from "@/features/account/components/public-account-legal";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { getAnalyticsPreference } from "@/features/legal/analytics-preference.server";
 import { getMarketingPreferences } from "@/features/legal/marketing-preferences.server";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -30,10 +31,14 @@ async function PublicAccountLegalPageContent({
 }) {
   await connection();
 
-  const marketingPreferences = await getMarketingPreferences(locale);
+  const [marketingPreferences, analyticsPreference] = await Promise.all([
+    getMarketingPreferences(locale),
+    getAnalyticsPreference(locale),
+  ]);
 
   return (
     <PublicAccountLegal
+      analyticsPreference={analyticsPreference}
       locale={locale}
       marketingPreferences={marketingPreferences}
     />

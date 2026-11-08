@@ -46,6 +46,16 @@ export function getConsentCookieValuesFromCookie(cookieString: string) {
  * The choice the device saved in the consent banner: the categories it
  * accepts and when it last saved them.
  */
+/**
+ * `instant` as the consent cookie's last-consent timestamp holds it: ISO 8601
+ * truncated to the millisecond, so a device's copy of an account decision is
+ * never newer than the decision it copies.
+ */
+export const toConsentCookieTimestamp = (instant: Temporal.Instant): string =>
+  instant
+    .round({ smallestUnit: "millisecond", roundingMode: "trunc" })
+    .toString();
+
 export interface ConsentCookieChoice {
   readonly acceptedCategories: readonly ConsentCategory[];
   /**

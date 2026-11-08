@@ -1,15 +1,25 @@
 "use server";
 
 import { Effect, Layer, Option, Schema } from "effect";
+import { AnalyticsPersonAnonymisation } from "@/features/account/backend/analytics-person-anonymisation";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { locales } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
+import { toConsentCookieTimestamp } from "@/shared/utils/consent-cookie";
 import { AnalyticsConsentLedger } from "./backend/analytics-consent-ledger";
 import {
   recordSignedInDeviceAnalyticsConsent,
   resolveSilentAnalyticsGrant,
 } from "./backend/analytics-consent-mirror";
+import { saveAnalyticsPreference } from "./backend/analytics-consent-preference";
 import { MarketingPreferences } from "./backend/marketing-preferences.service";
+
+// An account decision's instant as the device's consent cookie takes it, or
+// null without one.
+const consentCookieTimestampOrNull = Option.match({
+  onNone: () => null,
+  onSome: toConsentCookieTimestamp,
+});
 
 const marketingPreferencesContextSchema = Schema.NonEmptyString;
 
@@ -99,6 +109,7 @@ const recordDeviceAnalyticsConsentAction = defineWorkspaceAction(
   },
   ({ occasion }, { locale }) =>
     recordSignedInDeviceAnalyticsConsent({ occasion, locale }).pipe(
+      Effect.map(consentCookieTimestampOrNull),
       Effect.provide(
         Layer.mergeAll(
           AnalyticsConsentLedger.Live,
@@ -111,7 +122,9 @@ const recordDeviceAnalyticsConsentAction = defineWorkspaceAction(
 /**
  * Records this device's analytics consent choice on the signed-in account:
  * as a decision made now after a banner save, or as a mirror of the saved
- * choice when a signed-in session hydrates. Does nothing when signed out.
+ * choice when a signed-in session hydrates. After a hydration, the instant
+ * (ISO 8601) of the account's withdrawal this device still accepts analytics
+ * against, which the device takes; else null. Does nothing when signed out.
  */
 export const recordDeviceAnalyticsConsent: typeof recordDeviceAnalyticsConsentAction =
   async (...args: Parameters<typeof recordDeviceAnalyticsConsentAction>) => {
@@ -129,17 +142,7 @@ const silentAnalyticsGrantAction = defineWorkspaceAction(
   },
   () =>
     resolveSilentAnalyticsGrant().pipe(
-      Effect.map(
-        Option.match({
-          onNone: () => null,
-          // Truncated to the millisecond the consent cookie holds, so the
-          // device's copy is never newer than the grant it copies.
-          onSome: (grantedAt) =>
-            grantedAt
-              .round({ smallestUnit: "millisecond", roundingMode: "trunc" })
-              .toString(),
-        })
-      ),
+      Effect.map(consentCookieTimestampOrNull),
       Effect.provide(
         Layer.mergeAll(
           AnalyticsConsentLedger.Live,
@@ -159,4 +162,41 @@ export const resolveSilentAnalyticsGrantForDevice: typeof silentAnalyticsGrantAc
   async (...args: Parameters<typeof silentAnalyticsGrantAction>) => {
     "use server";
     return await silentAnalyticsGrantAction(...args);
+  };
+
+const analyticsPreferenceSchema = Schema.toStandardSchemaV1(
+  Schema.Struct({ granted: Schema.Boolean }),
+  { parseOptions: { errors: "all", onExcessProperty: "error" } }
+);
+
+const saveAnalyticsPreferenceAction = defineWorkspaceAction(
+  {
+    operation: "legal.analytics-consent.save-preference",
+    schema: analyticsPreferenceSchema,
+    logInput: false,
+  },
+  ({ granted }, { locale }) =>
+    saveAnalyticsPreference({ granted, locale }).pipe(
+      Effect.map(consentCookieTimestampOrNull),
+      Effect.provide(
+        Layer.mergeAll(
+          AnalyticsConsentLedger.Live,
+          AnalyticsPersonAnonymisation.Live,
+          CustomerAuthentication.Default
+        )
+      )
+    )
+);
+
+/**
+ * Records the signed-in account's analytics preference from account
+ * preferences as its decision now; turning it off also requests the
+ * anonymisation of the account's PostHog person. Returns the instant (ISO
+ * 8601) the decision was recorded at, which this device's consent cookie
+ * takes; null when signed out, which records nothing.
+ */
+export const saveAccountAnalyticsPreference: typeof saveAnalyticsPreferenceAction =
+  async (...args: Parameters<typeof saveAnalyticsPreferenceAction>) => {
+    "use server";
+    return await saveAnalyticsPreferenceAction(...args);
   };

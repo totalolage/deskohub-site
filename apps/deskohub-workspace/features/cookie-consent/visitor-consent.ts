@@ -18,11 +18,24 @@ export type { ConsentCategory } from "@/shared/utils/consent-cookie";
 
 /**
  * Where a consent change was noticed: announced in this tab after a save
- * there, announced in this tab after it applied the signed-in account's
- * grant (a silent grant), signalled by another tab, or found when this tab
- * regained focus.
+ * there, announced in this tab after it applied a decision the signed-in
+ * account made elsewhere (a silent grant, or a withdrawal from another
+ * device), announced in this tab after the visitor changed the account's
+ * analytics preference here, signalled by another tab, or found when this
+ * tab regained focus.
  */
-export type VisitorConsentChange = "local" | "account" | "other-tab" | "focus";
+export type VisitorConsentChange =
+  | "local"
+  | "account"
+  | "preference"
+  | "other-tab"
+  | "focus";
+
+/** A change this tab announces itself. */
+type AnnouncedVisitorConsentChange = Extract<
+  VisitorConsentChange,
+  "local" | "account" | "preference"
+>;
 
 // The app event and the cross-tab key are part of the page's observable
 // behavior; keep their names stable.
@@ -32,7 +45,7 @@ export const CONSENT_UPDATED_STORAGE_KEY = "deskohub.consent-updated";
 type ConsentUpdatedEventDetail = {
   readonly _tag: "ConsentUpdated";
   readonly acceptedCategories: ConsentCategory[];
-  readonly change: Extract<VisitorConsentChange, "local" | "account">;
+  readonly change: AnnouncedVisitorConsentChange;
 };
 
 declare global {
@@ -66,9 +79,9 @@ const acceptedCategories = (): ConsentCategory[] =>
     onSome: (choice) => [...choice.acceptedCategories],
   });
 
-// True while the vendor saves the account's grant, whose announcement waits
-// until the saved choice carries the grant's instant.
-let savingAccountGrant = false;
+// True while the vendor saves an account decision, whose announcement waits
+// until the saved choice carries the decision's instant.
+let savingAccountDecision = false;
 
 /**
  * The visitor's cookie consent. The consent cookie every tab writes is the
@@ -147,22 +160,49 @@ export const visitorConsent = {
   },
 
   /**
-   * Applies the signed-in account's analytics grant, given at `grantedAt`
-   * (ISO 8601), to a device without a consent cookie (a silent grant): saves
-   * analytics accepted and every other optional category declined, dated at
-   * the grant, so a later mirror of the cookie never outranks a decision
-   * made after the grant. It is announced once, as an `account` change, not
-   * a `local` save, so it is never recorded as a banner decision.
+   * Applies the signed-in account's analytics decision, made at `decidedAt`
+   * (ISO 8601), to this device: saves analytics accepted or declined, keeping
+   * the device's other categories as saved, or declining every other
+   * optional category on a device without a choice, and dates the saved
+   * choice at the decision, so a later mirror of the cookie never outranks a
+   * decision made after it. It is announced once, as `change`, never as a
+   * `local` save, so it is never recorded as a banner decision: `account`
+   * for a decision made elsewhere (a silent grant, or a withdrawal from
+   * another device), `preference` for one the visitor just made in this
+   * tab's account preferences, which re-verifies the account before
+   * identifying.
    */
-  applyAccountGrant: (grantedAt: string): void => {
-    savingAccountGrant = true;
+  applyAccountDecision: ({
+    analytics,
+    decidedAt,
+    change,
+  }: {
+    readonly analytics: boolean;
+    readonly decidedAt: string;
+    readonly change: Extract<VisitorConsentChange, "account" | "preference">;
+  }): void => {
+    const hadChoice = visitorConsent.hasChoice();
+    const others = acceptedCategories().filter(
+      (category) => category !== "analytics"
+    );
+    const categories: ConsentCategory[] = analytics
+      ? [...others, "analytics"]
+      : others;
+    savingAccountDecision = true;
     try {
-      CookieConsent.acceptCategory(["analytics"]);
+      if (hadChoice) {
+        saveAcceptedCategories(categories);
+      } else {
+        // The vendor's first save under this revision, with the banner
+        // still asking.
+        CookieConsent.acceptCategory(categories);
+        CookieConsent.hide();
+      }
     } finally {
-      savingAccountGrant = false;
+      savingAccountDecision = false;
     }
-    dateSavedChoice(grantedAt);
-    announce("account");
+    dateSavedChoice(decidedAt);
+    announce(change);
   },
 };
 
@@ -253,11 +293,11 @@ function dateSavedChoice(lastConsentAt: string) {
  * consent.
  */
 export function announceVisitorConsentChange(): void {
-  if (savingAccountGrant) return;
+  if (savingAccountDecision) return;
   announce("local");
 }
 
-function announce(change: Extract<VisitorConsentChange, "local" | "account">) {
+function announce(change: AnnouncedVisitorConsentChange) {
   if (globalThis.window === undefined) return;
 
   window.dispatchEvent(
