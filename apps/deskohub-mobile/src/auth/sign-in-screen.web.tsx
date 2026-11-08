@@ -13,10 +13,15 @@ import {
   TextField,
 } from "../ui/controls";
 import { type SignInCallbackMethod, withSignInMethod } from "./auth-callback";
-import { isFreshSignIn, safeReturnPath } from "./auth-session-state";
+import {
+  type AuthUser,
+  isFreshSignIn,
+  safeReturnPath,
+} from "./auth-session-state";
 import type { NativeHandoffRequest } from "./native-handoff-request";
 import { webSignInFailureMessage } from "./sign-in-failure-message";
 import type { SignInScreenProps } from "./sign-in-screen.native";
+import { signInStep } from "./sign-in-step";
 import { useAuthSession } from "./use-auth-session";
 import {
   firstFailure,
@@ -36,7 +41,9 @@ import {
   prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
   reauthenticationExpectation,
+  type SentSignInEmail,
   sendSignInEmail,
+  signInEmailField,
   type WebAccountExpectation,
 } from "./web-sign-in";
 import { WebSignInFailure } from "./web-sign-in-failure";
@@ -72,16 +79,6 @@ const finishSignIn = (
       ),
   });
 
-type SignInStep = "continue" | "email" | "code";
-
-const signInStep = (
-  continueAs: string | undefined,
-  sentTo: string | undefined
-): SignInStep => {
-  if (continueAs !== undefined) return "continue";
-  return sentTo === undefined ? "email" : "code";
-};
-
 const signInStatus = ({
   restoring,
   returningToApp,
@@ -109,7 +106,7 @@ const unexpected = () =>
 
 /**
  * `/app/sign-in` on the web: email, then the sign-in code (or the link in the
- * email). Opened by the native app with `?native=1`, it hands the finished
+ * email), or only the link when the email carries no code. Opened by the native app with `?native=1`, it hands the finished
  * sign-in back to the app; a fresh browser session can continue without
  * signing in again, unless the app asked to reauthenticate.
  */
@@ -123,10 +120,11 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const [nativeRequest] = useState(() => loadNativeHandoffRequest(Date.now()));
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [sentTo, setSentTo] = useState<string>();
+  const [sent, setSent] = useState<SentSignInEmail>();
   const [invalidEmail, setInvalidEmail] = useState(false);
   const [useAnotherAccount, setUseAnotherAccount] = useState(false);
   const [passkeyPending, setPasskeyPending] = useState(false);
+  const returnPath = safeReturnPath(params.return_to);
 
   const send = useAuthTask(
     standaloneTaskRuntime,
@@ -135,7 +133,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
         openedByApp: Option.isSome(nativeRequest),
         currentRequest: loadNativeHandoffRequest(Date.now()),
       }).pipe(
-        Effect.andThen(prepareReauthenticationEmail(expectation)),
+        Effect.andThen(prepareReauthenticationEmail(expectation, returnPath)),
         Effect.andThen(sendSignInEmail(address, locale))
       ),
     unexpected
@@ -147,20 +145,27 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const reauthenticating =
     params.prompt === "login" && Option.isNone(nativeRequest);
   const [pageSession, setPageSession] = useState<{
-    readonly userId: string | undefined;
+    readonly user: AuthUser | undefined;
   }>();
   const sessionUserId =
     session.status === "signed-in" ? session.user.id : undefined;
+  const sessionEmail =
+    session.status === "signed-in" ? session.user.email : undefined;
   const sessionRead = session.status !== "restoring";
   useEffect(() => {
-    if (sessionRead) {
-      setPageSession((known) => known ?? { userId: sessionUserId });
-    }
-  }, [sessionRead, sessionUserId]);
+    if (!sessionRead) return;
+    const user =
+      sessionUserId === undefined || sessionEmail === undefined
+        ? undefined
+        : { id: sessionUserId, email: sessionEmail };
+    setPageSession((known) => known ?? { user });
+  }, [sessionRead, sessionUserId, sessionEmail]);
+  // Its email goes only to that account, through any start over.
+  const emailField = signInEmailField({ reauthenticating, pageSession });
   const verify = useAuthTask(
     standaloneTaskRuntime,
     (address: string, entered: string, expectation: WebAccountExpectation) =>
-      completeWebCodeSignIn(address, entered, expectation).pipe(
+      completeWebCodeSignIn(address, entered, expectation, locale).pipe(
         Effect.andThen(finishSignIn(nativeRequest, "code"))
       ),
     unexpected
@@ -180,7 +185,6 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const reauthenticate =
     params.prompt === "login" ||
     Option.exists(nativeRequest, (request) => request.reauthenticate);
-  const returnPath = safeReturnPath(params.return_to);
   const finished = firstSuccess(verify.state, handoff.state, passkey.state);
 
   useEffect(() => {
@@ -216,7 +220,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
     handoff.state.status !== "failed"
       ? session.user.email
       : undefined;
-  const step = signInStep(continueAs, sentTo);
+  const step = signInStep(continueAs, sent);
 
   const failure = firstFailure(
     handoff.state,
@@ -245,7 +249,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const accountExpectation = () =>
     reauthenticationExpectation({
       reauthenticating,
-      sessionUserId: pageSession?.userId,
+      sessionUserId: pageSession?.user?.id,
       storedUserId: reauthenticating
         ? loadReauthenticatingUser(Date.now())
         : Option.none(),
@@ -256,25 +260,27 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   // Enter in a field submits too, so each submission checks that no other
   // sign-in method is running.
   const submitEmail = () => {
-    if (busy) return;
-    const address = email.trim();
+    if (busy || emailField.kind === "waiting") return;
+    const address =
+      emailField.kind === "locked" ? emailField.email : email.trim();
     const valid = emailPattern.test(address);
     setInvalidEmail(!valid);
     if (!valid) return;
     void send.start(address, accountExpectation()).then((exit) => {
-      if (!Option.exists(exit, Exit.isSuccess)) return;
+      const sentEmail = Option.flatMap(exit, Exit.getSuccess);
+      if (Option.isNone(sentEmail)) return;
       trackSignInStarted("link");
-      setSentTo(address);
+      setSent(sentEmail.value);
     });
   };
 
   const submitCode = () => {
-    if (busy || sentTo === undefined) return;
-    void verify.start(sentTo, code.trim(), accountExpectation());
+    if (busy || sent?.signInCode !== true) return;
+    void verify.start(sent.email, code.trim(), accountExpectation());
   };
 
   const startOver = () => {
-    setSentTo(undefined);
+    setSent(undefined);
     setCode("");
     setUseAnotherAccount(true);
     send.reset();
@@ -286,7 +292,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   return (
     <Screen
       title={
-        step === "code"
+        step === "code" || step === "link"
           ? m.signin_sent_title({}, { locale })
           : m.signin_title({}, { locale })
       }
@@ -317,26 +323,26 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
         <>
           <TextField
             label={m.signin_email_label({}, { locale })}
-            value={email}
+            value={emailField.kind === "locked" ? emailField.email : email}
             onChangeText={setEmail}
             onSubmitEditing={submitEmail}
             autoComplete="email"
             inputMode="email"
             keyboardType="email-address"
             textContentType="emailAddress"
-            editable={!busy}
+            editable={!busy && emailField.kind !== "locked"}
           />
           <Button
             label={m.signin_send_link({}, { locale })}
             onPress={submitEmail}
-            disabled={busy}
+            disabled={busy || emailField.kind === "waiting"}
           />
         </>
       )}
       {step === "code" && (
         <>
           <BodyText>
-            {m.signin_sent_body({ email: sentTo ?? "" }, { locale })}
+            {m.signin_sent_code_body({ email: sent?.email ?? "" }, { locale })}
           </BodyText>
           <TextField
             label={m.signin_code_label({}, { locale })}
@@ -353,6 +359,19 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
             onPress={submitCode}
             disabled={busy || code.trim() === ""}
           />
+          <Button
+            variant="secondary"
+            label={m.signin_use_another_email({}, { locale })}
+            onPress={startOver}
+            disabled={busy}
+          />
+        </>
+      )}
+      {step === "link" && (
+        <>
+          <BodyText>
+            {m.signin_sent_link_body({ email: sent?.email ?? "" }, { locale })}
+          </BodyText>
           <Button
             variant="secondary"
             label={m.signin_use_another_email({}, { locale })}

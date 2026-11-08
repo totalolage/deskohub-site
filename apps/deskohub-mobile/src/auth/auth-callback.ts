@@ -3,7 +3,8 @@
  * App Link (a magic link opened from a mail app) or as the
  * `deskohub://auth/callback` return of the in-app auth session (a handoff
  * code the web sign-in page minted). The route at `app/auth/callback.tsx`
- * owns both; Expo Router strips the `/app` base URL before it matches.
+ * owns both; `app/+native-intent.ts` maps the App Link's `/app/auth/callback`
+ * to it, since Expo Router applies its `/app` base URL only on web.
  */
 export type AuthCallback =
   | { readonly kind: "token"; readonly token: string }

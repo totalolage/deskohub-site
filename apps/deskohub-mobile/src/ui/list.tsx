@@ -113,8 +113,7 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     marginTop: theme.spacing.sm,
     paddingHorizontal: theme.spacing.md,
-    ...theme.type.caption,
-    fontWeight: "600",
+    ...theme.type.captionStrong,
   },
   group: {
     backgroundColor: theme.colors.surface,
@@ -140,7 +139,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5 },
   text: { flex: 1, gap: 2 },
   label: { color: theme.colors.text, ...theme.type.body },
-  destructiveLabel: { color: theme.colors.danger, fontWeight: "600" },
+  destructiveLabel: { color: theme.colors.danger, ...theme.type.bodyStrong },
   description: { color: theme.colors.textMuted, ...theme.type.caption },
   value: {
     color: theme.colors.textMuted,

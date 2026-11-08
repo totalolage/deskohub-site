@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
   isFreshSignIn,
   isReauthenticationRequired,
@@ -6,7 +7,7 @@ import {
   toAuthSessionState,
 } from "./auth-session-state";
 
-const user = { id: "user-ada", email: "ada@example.test" };
+const user = { id: "user-ada", email: testEmailAddress("ada") };
 const signedInAt = new Date(Date.UTC(2026, 10, 7, 12));
 const session = { user, session: { createdAt: signedInAt } };
 
@@ -69,18 +70,32 @@ describe("isReauthenticationRequired", () => {
 });
 
 describe("safeReturnPath", () => {
-  test("keeps an in-app path and refuses anything else", () => {
+  test("keeps an in-app path with its query", () => {
     expect(safeReturnPath("/account/passkeys")).toBe("/account/passkeys");
-    expect(safeReturnPath(["/account"])).toBe("/");
+    expect(safeReturnPath("/account?tab=x")).toBe("/account?tab=x");
+  });
+
+  test("refuses anything that isn't a plain in-app route", () => {
     for (const value of [
       undefined,
+      ["/account"],
       "",
       "account",
       "//evil.test",
       "/\\evil.test",
       "https://evil.test",
-      "/auth/callback",
+      "javascript:alert(1)",
+      // Browsers strip tabs and newlines, which leaves "//evil.test".
+      "/\t/evil.test",
+      "/\n/evil.test",
+      "/ /evil.test",
+      "/a/../sign-in",
       "/sign-in",
+      "/sign-in/",
+      "/sign-in?x=1",
+      "/auth//callback",
+      "/auth/callback",
+      "/auth/callback#token",
     ]) {
       expect(safeReturnPath(value)).toBe("/");
     }

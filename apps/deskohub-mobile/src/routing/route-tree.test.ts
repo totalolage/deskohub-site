@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { screenPathPattern } from "../analytics/screen-path";
+import { appLinkRoute } from "./app-link";
 
 const appDir = join(import.meta.dir, "../../app");
 
@@ -15,8 +16,23 @@ const routeFiles = () =>
         .split(sep)
     );
 
+/** Screens, without layouts and Expo Router's `+` files such as `+native-intent`. */
 const screens = () =>
-  routeFiles().filter((segments) => segments.at(-1) !== "_layout");
+  routeFiles().filter(
+    (segments) =>
+      segments.at(-1) !== "_layout" && !segments.at(-1)?.startsWith("+")
+  );
+
+/** Whether a link's path names a screen, matching dynamic segments to any one segment. */
+const resolves = (link: string) => {
+  const route = appLinkRoute(link).replace(/^deskohub:\/\//, "/");
+  const path = route.split(/[?#]/)[0]?.replace(/\/$/, "") || "/";
+  return screens()
+    .map(screenPathPattern)
+    .some((pattern) =>
+      new RegExp(`^${pattern.replace(/\[[^\]/]+\]/g, "[^/]+")}$`).test(path)
+    );
+};
 
 const layouts = () =>
   routeFiles()
@@ -65,5 +81,21 @@ describe("app route tree", () => {
       .map((entry) => entry.name)
       .sort();
     expect(tabs).toEqual(["account", "reservations"]);
+  });
+
+  test("app and web links still reach their screens", () => {
+    for (const link of [
+      "deskohub://reservations/synthetic-order?after=payment",
+      "deskohub://account/legal",
+      "https://workspace.deskohub.cz/app/reservations/synthetic-order?after=payment",
+      "https://workspace.deskohub.cz/app/account/legal",
+      "/reservations/synthetic-order/access",
+    ]) {
+      expect({ link, resolves: resolves(link) }).toEqual({
+        link,
+        resolves: true,
+      });
+    }
+    expect(resolves("deskohub://no-such-screen")).toBe(false);
   });
 });

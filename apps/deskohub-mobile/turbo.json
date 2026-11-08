@@ -12,7 +12,8 @@
       "outputs": ["dist/**"]
     },
     "dev": {
-      "dependsOn": ["i18n:compile"]
+      "dependsOn": ["i18n:compile"],
+      "passThroughEnv": ["EXPO_PUBLIC_API_ORIGIN"]
     },
     "i18n:compile": {
       "inputs": [
@@ -30,13 +31,15 @@
       ]
     },
     "start": {
-      "dependsOn": ["i18n:compile"]
+      "dependsOn": ["i18n:compile"],
+      "passThroughEnv": ["EXPO_PUBLIC_API_ORIGIN"]
     },
     "test": {
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/biome.json",
-        "$TURBO_ROOT$/lint/**"
+        "$TURBO_ROOT$/lint/**",
+        "$TURBO_ROOT$/apps/deskohub-workspace/features/mobile-updates/code-signing-certificate.pem"
       ],
       "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"]
     },

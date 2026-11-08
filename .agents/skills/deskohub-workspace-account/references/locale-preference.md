@@ -11,12 +11,22 @@ backfill or invent a default.
 Write code lives in `features/account/backend/customer-locale-preference.ts`
 and the hooks in `auth-server.ts`.
 
-- The `user.create.before` hook puts the callback locale (else the site
+- The `user.create.before` hook puts the sign-in locale (else the site
   default) into the user insert, so no new account lacks one.
-- Every session creation captures the callback locale with an update that only
+- Every session creation captures the sign-in locale with an update that only
   matches a NULL locale, so sign-in never overwrites a saved preference. A
   capture failure logs `account-locale-preference.capture-failed` and never
   blocks login.
+- The sign-in locale is the callback URL's locale segment, else the app's
+  `x-deskohub-locale` header (`customerSignInLocaleHeader`). `/app/` paths
+  carry no locale, so the app sends the header on the two requests that can
+  create its account: `POST /sign-in/email-otp` and `GET /magic-link/verify`.
+  `appSignInLocale` (`native-sign-in.ts`) reads it only on those paths. The
+  auth guard refuses any other value than a supported locale with 400
+  `INVALID_LOCALE` before it claims the code or link, so a corrected retry
+  still works. Never accept the locale as a body or query field: Better Auth
+  rejects a `locale` user field on code sign-up after it consumes the code,
+  and drops unknown verify query keys.
 - The profile language control and the header switcher share `switchLocale`
   (`features/account/switch-locale.ts`); callers pass the
   `updateLocalePreference` Server Action as `save`. It saves under the account

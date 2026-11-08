@@ -9,9 +9,6 @@
     "runtimeVersion": {
       "policy": "fingerprint"
     },
-    "updates": {
-      "url": "https://workspace.deskohub.cz/api/mobile/updates/manifest"
-    },
     "ios": {
       "bundleIdentifier": "cz.deskohub.workspace",
       "associatedDomains": [
@@ -60,7 +57,23 @@
           "backgroundColor": "#00024f"
         }
       ],
-      "expo-font",
+      [
+        "expo-font",
+        {
+          "ios": {
+            "fonts": ["./assets/fonts/Sculpin.ttf"]
+          },
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "Sculpin Variable",
+                "path": "./assets/fonts/Sculpin.ttf",
+                "fontDefinitions": [{ "weight": 400 }, { "weight": 600 }]
+              }
+            ]
+          }
+        }
+      ],
       [
         "expo-build-properties",
         {
@@ -75,6 +88,12 @@
         {
           "cameraPermission": false,
           "microphonePermission": false
+        }
+      ],
+      [
+        "./plugins/android-asset-statements.cjs",
+        {
+          "sites": ["https://workspace.deskohub.cz"]
         }
       ]
     ],

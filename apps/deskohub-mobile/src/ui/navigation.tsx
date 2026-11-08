@@ -35,7 +35,7 @@ export const tabScreenOptions = {
   // The bar holds 49pt: a 28pt icon slot leaves no room for a readable
   // label, so the slot shrinks to the indicator.
   tabBarIconStyle: { height: 3, marginBottom: theme.spacing.xs + 2 },
-  tabBarLabelStyle: { ...theme.type.caption, fontWeight: "600" },
+  tabBarLabelStyle: theme.type.captionStrong,
   tabBarStyle: {
     backgroundColor: theme.colors.background,
     borderTopColor: theme.colors.border,

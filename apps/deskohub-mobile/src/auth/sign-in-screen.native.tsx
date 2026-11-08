@@ -1,4 +1,4 @@
-import { Option } from "effect";
+import { Effect, Option } from "effect";
 import { Redirect } from "expo-router";
 import { type ReactNode, useState } from "react";
 import { trackSignInCompleted } from "../analytics/events";
@@ -10,6 +10,7 @@ import { nativeAuthRuntime } from "./native-auth-runtime";
 import { signInWithEmail } from "./native-sign-in";
 import { SignInUnavailable } from "./native-sign-in-errors";
 import { nativeSignInFailureMessage } from "./sign-in-failure-message";
+import { SignInLocale } from "./sign-in-locale";
 import { useAuthSession } from "./use-auth-session";
 import { useAuthTask } from "./use-auth-task";
 
@@ -54,7 +55,10 @@ export interface SignInScreenProps {
 
 const recordPasskeySignIn = (): void => trackSignInCompleted("passkey");
 
-const signInWithEmailNow = () => signInWithEmail(Option.none());
+const signInWithEmailNow = (locale: AppLocale) =>
+  signInWithEmail(Option.none()).pipe(
+    Effect.provideService(SignInLocale, locale)
+  );
 const unexpected = () => new SignInUnavailable({});
 
 /**
@@ -65,13 +69,19 @@ const unexpected = () => new SignInUnavailable({});
 export function SignInScreen({ passkeyOption }: SignInScreenProps) {
   const locale = useAppLocale();
   const session = useAuthSession();
-  const { state, start } = useAuthTask(
+  const { state, start, reset } = useAuthTask(
     nativeAuthRuntime,
     signInWithEmailNow,
     unexpected
   );
 
   const [passkeyPending, setPasskeyPending] = useState(false);
+  // A passkey attempt replaces the email sign-in's earlier failure, so its
+  // alert doesn't stay up during and after the attempt.
+  const handlePasskeyPendingChange = (pending: boolean) => {
+    if (pending) reset();
+    setPasskeyPending(pending);
+  };
 
   if (session.status === "signed-in") return <Redirect href="/" />;
 
@@ -82,13 +92,13 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
       <BodyText>{m.signin_intro_native({}, { locale })}</BodyText>
       <Button
         label={m.signin_continue_with_email({}, { locale })}
-        onPress={() => void start()}
+        onPress={() => void start(locale)}
         disabled={restoring || running || passkeyPending}
       />
       {passkeyOption?.({
         onSignedIn: recordPasskeySignIn,
         disabled: restoring || running,
-        onPendingChange: setPasskeyPending,
+        onPendingChange: handlePasskeyPendingChange,
       })}
       <LiveMessage
         role="status"

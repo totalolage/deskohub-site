@@ -12,17 +12,24 @@ import { theme } from "../theme";
 import { useLiveRegionAnnouncement } from "./live-announcement";
 import { textFieldSubmit } from "./text-field-submit";
 
-/** A centred screen with a heading, used by the sign-in screens. */
+/**
+ * A centred screen with a heading. Its content keeps to a readable width;
+ * `align="center"` also centres each item, as on the home screen.
+ */
 export function Screen({
   title,
+  align = "start",
   children,
 }: {
   readonly title: string;
+  readonly align?: "start" | "center";
   readonly children: ReactNode;
 }) {
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.content}>
+      <View
+        style={[styles.content, align === "center" && styles.centeredContent]}
+      >
         <Text role="heading" style={styles.title}>
           {title}
         </Text>
@@ -150,6 +157,7 @@ const styles = StyleSheet.create({
     padding: theme.spacing.lg,
     width: "100%",
   },
+  centeredContent: { alignItems: "center" },
   title: { color: theme.colors.text, ...theme.type.title },
   body: { color: theme.colors.textMuted, ...theme.type.body },
   button: {
@@ -172,7 +180,7 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.8 },
   disabled: { opacity: 0.5 },
-  buttonLabel: { ...theme.type.body, fontWeight: "600" },
+  buttonLabel: theme.type.bodyStrong,
   filledLabel: { color: theme.colors.background },
   secondaryLabel: { color: theme.colors.text },
   field: { gap: theme.spacing.sm },

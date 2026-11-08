@@ -344,10 +344,24 @@ const serverLayer = (workspace: FakeWorkspace) => {
         )
   );
 
+  // Sample data has no booking catalog: each booking step answers as the
+  // service being unavailable, and there are no legal documents to accept.
+  const bookingUnavailable = () =>
+    Effect.fail(new CustomerServiceUnavailable());
   const booking = HttpApiBuilder.group(
     WorkspaceCustomerApi,
     "booking",
-    (handlers) => handlers
+    (handlers) =>
+      handlers
+        .handle("listOfferings", bookingUnavailable)
+        .handle("getAvailability", bookingUnavailable)
+        .handle("getMeetingRoomStartTimes", bookingUnavailable)
+        .handle("getQuote", bookingUnavailable)
+        .handle("listLegalDocuments", () => Effect.succeed({ documents: [] }))
+        .handle("createCheckout", bookingUnavailable)
+        .handle("applyCheckoutDiscountCode", bookingUnavailable)
+        .handle("acceptCheckoutPriceChange", bookingUnavailable)
+        .handle("submitCheckout", bookingUnavailable)
   );
 
   const auth = HttpApiBuilder.group(CustomerAuthHttpApi, "auth", (handlers) =>

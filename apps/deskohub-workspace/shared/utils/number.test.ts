@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   consecutiveRuns,
   formatCount,
+  formatFileSize,
   formatNamesWithNumericRanges,
 } from "./number";
 
@@ -10,6 +11,16 @@ describe("formatCount", () => {
     expect(formatCount(1000, "en-US")).toBe("1,000");
     expect(formatCount(1000, "cs-CZ")).toBe("1\u00a0000");
     expect(formatCount(7, "cs-CZ")).toBe("7");
+  });
+});
+
+describe("formatFileSize", () => {
+  test("picks the decimal unit that fits the size", () => {
+    expect(formatFileSize(42_123_456, "en-US")).toBe("42.1 MB");
+    expect(formatFileSize(42_123_456, "cs-CZ")).toBe("42,1 MB");
+    expect(formatFileSize(1500, "en-US")).toBe("1.5 kB");
+    expect(formatFileSize(1_200_000_000, "en-US")).toBe("1.2 GB");
+    expect(formatFileSize(999, "cs-CZ")).toBe("999 B");
   });
 });
 

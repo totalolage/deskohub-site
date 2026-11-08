@@ -10,6 +10,15 @@ export type PasskeyCeremonyState<A> =
   | { readonly status: "failed"; readonly failure: PasskeyFailure };
 
 /**
+ * A control's state once another sign-in method starts: an earlier failure
+ * gives way, so its alert doesn't stay up beside the new attempt.
+ */
+export const withoutEarlierFailure = <A>(
+  state: PasskeyCeremonyState<A>
+): PasskeyCeremonyState<A> =>
+  state.status === "failed" ? { status: "idle" } : state;
+
+/**
  * Failures a control settles quietly: the customer closed the prompt, or
  * another control's ceremony is still running.
  */

@@ -5,8 +5,8 @@ import { describe, expect, mock, test } from "bun:test";
 import { Duration } from "effect";
 import { payStateTokenQueryParam } from "@/features/checkout/backend/checkout/pay-state";
 import type { WorkspaceActionOptions } from "@/shared/backend/workspace-action";
+import type { ApplyDiscountCodeActionResult } from "./apply-discount-code";
 import type { ApplyDiscountCodeInput } from "./apply-discount-code-input";
-import type { ApplyDiscountCodeResult } from "./apply-discount-code-to-pay-state";
 
 mock.module("server-only", () => ({}));
 
@@ -38,11 +38,11 @@ mock.module("@/shared/backend/workspace-action", () => ({
   workspaceActionDeadline: Duration.seconds(45),
 }));
 
-let operationResult: ApplyDiscountCodeResult | undefined;
+let operationResult: ApplyDiscountCodeActionResult | undefined;
 const actionInputs: Array<ApplyDiscountCodeInput> = [];
 
 const runForm = async (
-  result: ApplyDiscountCodeResult | undefined,
+  result: ApplyDiscountCodeActionResult | undefined,
   input: {
     readonly locale?: string;
     readonly payStateToken: string;
@@ -80,7 +80,12 @@ describe("applyDiscountCodeForm", () => {
     async (status) => {
       const freshPayUrl = "/en-US/checkout/pay?payState=fresh-referral-state";
       const redirectedUrl = await runForm(
-        { status, freshPayUrl },
+        {
+          status,
+          freshPayUrl,
+          freshPayStateToken: "fresh-referral-state",
+          expiresAt: "2026-06-01T10:08:00Z",
+        },
         { payStateToken: "original-token", submittedCode: "RFL12345" }
       );
 
@@ -93,7 +98,12 @@ describe("applyDiscountCodeForm", () => {
     async (status) => {
       const freshPayUrl = "/en-US/checkout/pay?payState=fresh-ordinary-state";
       const redirectedUrl = await runForm(
-        { status, freshPayUrl },
+        {
+          status,
+          freshPayUrl,
+          freshPayStateToken: "fresh-ordinary-state",
+          expiresAt: "2026-06-01T10:08:00Z",
+        },
         { payStateToken: "original-token", submittedCode: "SAVE20" }
       );
 
@@ -103,7 +113,7 @@ describe("applyDiscountCodeForm", () => {
 
   test("falls back to the original-token pay URL when no replacement is returned", async () => {
     const redirectedUrl = await runForm(
-      { status: "unavailable" },
+      { status: "unavailable", reason: "code" },
       { payStateToken: "original-token" }
     );
 
@@ -111,6 +121,39 @@ describe("applyDiscountCodeForm", () => {
     expect(redirectedUrl).toContain("discountCodeError=unavailable");
     expect(redirectedUrl).toContain("discountCodeErrorId=");
   });
+
+  test.each([
+    { status: "unavailable", reason: "code" },
+    { status: "unavailable", reason: "provider" },
+    { status: "unavailable", reason: "price_review_pending" },
+    { status: "unavailable", reason: "code_already_applied" },
+    {
+      status: "unavailable",
+      reason: "checkout",
+      checkoutReason: "payment_in_progress",
+    },
+    { status: "unavailable", reason: "checkout", checkoutReason: "expired" },
+  ] as const)(
+    "routes an unavailable result back with the same field error whatever its reason: %o",
+    async (result) => {
+      const redirectedUrl = await runForm(result, {
+        payStateToken: "original-token",
+      });
+      const url = new URL(redirectedUrl, "https://deskohub.test");
+
+      expect(url.pathname).toBe("/en-US/checkout/pay");
+      expect([...url.searchParams.keys()]).toEqual([
+        payStateTokenQueryParam,
+        "discountCodeError",
+        "discountCodeErrorId",
+      ]);
+      expect(url.searchParams.get(payStateTokenQueryParam)).toBe(
+        "original-token"
+      );
+      expect(url.searchParams.get("discountCodeError")).toBe("unavailable");
+      expect(url.searchParams.get("discountCodeErrorId")).toBeTruthy();
+    }
+  );
 
   test("routes an automated request back to the Pay path with its error", async () => {
     const redirectedUrl = await runForm(
@@ -152,7 +195,7 @@ describe("applyDiscountCodeForm", () => {
 
   test("never redirects off-site when the action is invoked with a tampered locale", async () => {
     const redirectedUrl = await runForm(
-      { status: "unavailable" },
+      { status: "unavailable", reason: "code" },
       { locale: "/evil.example", payStateToken: "original-token" }
     );
 
@@ -178,7 +221,12 @@ describe("applyDiscountCodeForm", () => {
     const freshPayUrl = "/cs-CZ/checkout/pay?payState=fresh-referral-state";
 
     const redirectedUrl = await runForm(
-      { status: "accepted", freshPayUrl },
+      {
+        status: "accepted",
+        freshPayUrl,
+        freshPayStateToken: "fresh-referral-state",
+        expiresAt: "2026-06-01T10:08:00Z",
+      },
       { payStateToken: "original-token", submittedCode: "RFL12345" }
     );
 
@@ -189,7 +237,13 @@ describe("applyDiscountCodeForm", () => {
     const freshPayUrl = "/en-US/checkout/pay?payState=requested-intent";
 
     const redirectedUrl = await runForm(
-      { status: "unavailable", freshPayUrl },
+      {
+        status: "unavailable",
+        reason: "code",
+        freshPayUrl,
+        freshPayStateToken: "requested-intent",
+        expiresAt: "2026-06-01T10:08:00Z",
+      },
       { payStateToken: "original-token" }
     );
 
@@ -198,12 +252,12 @@ describe("applyDiscountCodeForm", () => {
 
   test("submits the typed code, or an empty one when the field isn't text", async () => {
     await runForm(
-      { status: "unavailable" },
+      { status: "unavailable", reason: "code" },
       { payStateToken: "original-token", submittedCode: " save20 " }
     );
     const [typed] = actionInputs;
     await runForm(
-      { status: "unavailable" },
+      { status: "unavailable", reason: "code" },
       { payStateToken: "original-token", submittedCode: new Blob(["SAVE20"]) }
     );
     const [uploaded] = actionInputs;

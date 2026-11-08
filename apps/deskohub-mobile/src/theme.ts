@@ -1,10 +1,29 @@
-import { brandColors, brandFonts, brandRadius } from "@deskohub/brand-tokens";
+import {
+  brandColors,
+  brandFontFamilies,
+  brandFonts,
+  brandFontVariation,
+  brandRadius,
+} from "@deskohub/brand-tokens";
+import { Platform } from "react-native";
+
+const brandFontFamily = Platform.select({
+  web: brandFontFamilies.web,
+  default: brandFontFamilies.native,
+});
+
+type BrandWeight = (typeof brandFonts.weights)[keyof typeof brandFonts.weights];
+
+const brandText = (weight: BrandWeight) => ({
+  fontFamily: brandFontFamily,
+  fontWeight: weight,
+  fontVariationSettings: brandFontVariation(weight),
+});
 
 /**
  * The app's colour, radius and type values, named for their role on screen
- * and taken from the shared brand tokens. Text uses the platform's system
- * font and the app ships no font files until the brand face's licence is
- * confirmed to cover app embedding.
+ * and taken from the shared brand tokens. Text uses the brand face, which
+ * native builds embed and the web loads before the first screen renders.
  */
 export const theme = {
   colors: {
@@ -28,9 +47,11 @@ export const theme = {
   /** The smallest tappable size, in points. */
   touchTarget: 44,
   type: {
-    title: { fontSize: 36, fontWeight: brandFonts.weights.heading },
-    heading: { fontSize: 22, fontWeight: "600" },
-    body: { fontSize: 17, fontWeight: brandFonts.weights.body },
-    caption: { fontSize: 15, fontWeight: brandFonts.weights.body },
+    title: { fontSize: 36, ...brandText(brandFonts.weights.heading) },
+    heading: { fontSize: 22, ...brandText(brandFonts.weights.emphasis) },
+    body: { fontSize: 17, ...brandText(brandFonts.weights.body) },
+    bodyStrong: { fontSize: 17, ...brandText(brandFonts.weights.emphasis) },
+    caption: { fontSize: 15, ...brandText(brandFonts.weights.body) },
+    captionStrong: { fontSize: 15, ...brandText(brandFonts.weights.emphasis) },
   },
 } as const;

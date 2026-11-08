@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
+import { customerSignInLocaleHeader } from "@deskohub/workspace-customer-api/customer-locale";
 import { Effect, Exit, Option } from "effect";
 
 type SessionRead = () => Promise<{
@@ -10,12 +12,30 @@ let readSession: SessionRead = async () => ({ data: null, error: null });
 let signOuts = 0;
 /** The account a verified magic link signs the browser in to. */
 let linkAccount = "bob";
+/** The app locale each code or link request named. */
+let namedLocales: Array<string | undefined> = [];
+
+interface FetchOptions {
+  readonly headers?: Readonly<Record<string, string>>;
+}
+
+const recordLocale = (fetchOptions: FetchOptions | undefined) => {
+  namedLocales.push(fetchOptions?.headers?.[customerSignInLocaleHeader]);
+};
+/** What the server answers a sign-in email request with. */
+let emailSent: unknown = { status: true, signInCode: true };
 
 mock.module("./auth-client.web", () => ({
   authClient: {
     getSession: () => readSession(),
     signIn: {
-      emailOtp: async () => {
+      magicLink: async () => ({ data: emailSent, error: null }),
+      emailOtp: async ({
+        fetchOptions,
+      }: {
+        readonly fetchOptions?: FetchOptions;
+      }) => {
+        recordLocale(fetchOptions);
         readSession = async () => ({
           data: { user: { id: linkAccount } },
           error: null,
@@ -26,11 +46,22 @@ mock.module("./auth-client.web", () => ({
     magicLink: {
       verify: async ({
         query,
+        fetchOptions,
       }: {
         readonly query: { readonly token: string };
+        readonly fetchOptions?: FetchOptions;
       }) => {
+        recordLocale(fetchOptions);
         if (query.token === "used") {
           return { data: null, error: { status: 400, code: "INVALID_TOKEN" } };
+        }
+        // The server refuses another account's link while this browser is
+        // signed in, and leaves its session as it was.
+        if (query.token === "another-account") {
+          return {
+            data: null,
+            error: { status: 403, code: "ACCOUNT_SWITCH_REFUSED" },
+          };
         }
         readSession = async () => ({
           data: { user: { id: linkAccount } },
@@ -54,10 +85,14 @@ const {
   prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
   reauthenticationExpectation,
+  sendSignInEmail,
+  signInEmailField,
 } = await import("./web-sign-in");
-const { clearReauthenticatingUser, loadReauthenticatingUser } = await import(
-  "./web-reauthentication-store"
-);
+const {
+  clearReauthenticatingUser,
+  loadReauthentication,
+  loadReauthenticatingUser,
+} = await import("./web-reauthentication-store");
 
 /** A browser `localStorage`, or one that refuses access. */
 const useStorage = (available: boolean) => {
@@ -90,8 +125,10 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  namedLocales = [];
   signOuts = 0;
   linkAccount = "bob";
+  emailSent = { status: true, signInCode: true };
   readSession = async () => ({ data: { user: { id: "ada" } }, error: null });
 });
 
@@ -181,12 +218,42 @@ describe("reauthenticationExpectation", () => {
   });
 });
 
+describe("signInEmailField", () => {
+  const user = { id: "ada", email: testEmailAddress("ada") };
+
+  test("locks a reauthentication to the page's signed-in account", () => {
+    expect(
+      signInEmailField({ reauthenticating: true, pageSession: { user } })
+    ).toEqual({ kind: "locked", email: user.email });
+  });
+
+  test("sends nothing before the page's first session read", () => {
+    for (const reauthenticating of [true, false]) {
+      expect(
+        signInEmailField({ reauthenticating, pageSession: undefined })
+      ).toEqual({ kind: "waiting" });
+    }
+  });
+
+  test("leaves the address free with no account to keep", () => {
+    expect(
+      signInEmailField({
+        reauthenticating: true,
+        pageSession: { user: undefined },
+      })
+    ).toEqual({ kind: "free" });
+    expect(
+      signInEmailField({ reauthenticating: false, pageSession: { user } })
+    ).toEqual({ kind: "free" });
+  });
+});
+
 describe("completeWebMagicLink", () => {
   const linkReason = async (
     context: Parameters<typeof completeWebMagicLink>[1]
   ): Promise<string | undefined> => {
     const exit = await Effect.runPromiseExit(
-      completeWebMagicLink("token", context)
+      completeWebMagicLink("token", context, "en-US")
     );
     return Exit.isSuccess(exit)
       ? undefined
@@ -243,6 +310,30 @@ describe("completeWebMagicLink", () => {
     ).toBe("reauthentication-unconfirmed");
     expect(signOuts).toBe(1);
   });
+
+  test("keeps the browser's session when the server refuses another account", async () => {
+    useStorage(true);
+    await Effect.runPromise(
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
+    );
+    const exit = await Effect.runPromiseExit(
+      completeWebMagicLink(
+        "another-account",
+        {
+          nativePending: false,
+          storedUserId: loadReauthenticatingUser(Date.now()),
+        },
+        "en-US"
+      )
+    );
+    expect(Option.getOrUndefined(Exit.findErrorOption(exit))?.reason).toBe(
+      "account-switch"
+    );
+    expect(signOuts).toBe(0);
+    expect((await readSession()).data?.user.id).toBe("ada");
+    expect(loadReauthenticatingUser(Date.now())).toEqual(Option.some("ada"));
+    clearReauthenticatingUser();
+  });
 });
 
 describe("prepareReauthenticationEmail", () => {
@@ -250,7 +341,7 @@ describe("prepareReauthenticationEmail", () => {
     expectation: Parameters<typeof prepareReauthenticationEmail>[0]
   ) => {
     const exit = await Effect.runPromiseExit(
-      prepareReauthenticationEmail(expectation)
+      prepareReauthenticationEmail(expectation, "/")
     );
     return Exit.isSuccess(exit)
       ? undefined
@@ -270,6 +361,23 @@ describe("prepareReauthenticationEmail", () => {
     expect(loadReauthenticatingUser(Date.now())).toEqual(Option.some("ada"));
   });
 
+  test("keeps the screen the reauthentication returns to", async () => {
+    useStorage(true);
+    await Effect.runPromise(
+      prepareReauthenticationEmail(
+        { kind: "account", userId: "ada" },
+        "/account/passkeys"
+      )
+    );
+    expect(loadReauthentication(Date.now())).toEqual(
+      Option.some({
+        userId: "ada",
+        returnPath: Option.some("/account/passkeys"),
+      })
+    );
+    clearReauthenticatingUser();
+  });
+
   test("stops the email when the account can't be stored or recovered", async () => {
     useStorage(false);
     expect(await prepareReason({ kind: "account", userId: "ada" })).toBe(
@@ -283,15 +391,19 @@ describe("prepareReauthenticationEmail", () => {
   test("its link refuses another account after the session is gone", async () => {
     useStorage(true);
     await Effect.runPromise(
-      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     // Ada's session expired before Bob's link was opened.
     readSession = async () => ({ data: null, error: null });
     const exit = await Effect.runPromiseExit(
-      completeWebMagicLink("token", {
-        nativePending: false,
-        storedUserId: loadReauthenticatingUser(Date.now()),
-      })
+      completeWebMagicLink(
+        "token",
+        {
+          nativePending: false,
+          storedUserId: loadReauthenticatingUser(Date.now()),
+        },
+        "en-US"
+      )
     );
     expect(Option.getOrUndefined(Exit.findErrorOption(exit))?.reason).toBe(
       "account-switch"
@@ -311,16 +423,20 @@ describe("the stored reauthentication outlives failed attempts", () => {
 
   const openLink = (token: string) =>
     Effect.runPromiseExit(
-      completeWebMagicLink(token, {
-        nativePending: false,
-        storedUserId: loadReauthenticatingUser(Date.now()),
-      })
+      completeWebMagicLink(
+        token,
+        {
+          nativePending: false,
+          storedUserId: loadReauthenticatingUser(Date.now()),
+        },
+        "en-US"
+      )
     );
 
   test("a used link, then the other account's valid link", async () => {
     useStorage(true);
     await Effect.runPromise(
-      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     readSession = async () => ({ data: null, error: null });
 
@@ -335,13 +451,15 @@ describe("the stored reauthentication outlives failed attempts", () => {
   test("a refused code, then the email's link", async () => {
     useStorage(true);
     await Effect.runPromise(
-      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     const codeExit = await Effect.runPromiseExit(
-      completeWebCodeSignIn("bob@example.test", "123456", {
-        kind: "account",
-        userId: "ada",
-      })
+      completeWebCodeSignIn(
+        testEmailAddress("bob"),
+        "123456",
+        { kind: "account", userId: "ada" },
+        "en-US"
+      )
     );
     expect(reasonOfExit(codeExit)).toBe("account-switch");
     readSession = async () => ({ data: null, error: null });
@@ -352,7 +470,7 @@ describe("the stored reauthentication outlives failed attempts", () => {
     useStorage(true);
     linkAccount = "ada";
     await Effect.runPromise(
-      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     expect(reasonOfExit(await openLink("valid"))).toBeUndefined();
     expect(loadReauthenticatingUser(Date.now())).toEqual(Option.none());
@@ -380,7 +498,7 @@ describe("completeWebPasskeySignIn", () => {
   test("refuses a reauthentication's passkey for another account", async () => {
     useStorage(true);
     await Effect.runPromise(
-      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     readSession = async () => ({ data: { user: { id: "bob" } }, error: null });
     expect(await reasonOfPasskey({ kind: "account", userId: "ada" })).toBe(
@@ -402,7 +520,7 @@ describe("completeWebPasskeySignIn", () => {
   test("ends a reauthentication its passkey confirms", async () => {
     useStorage(true);
     await Effect.runPromise(
-      prepareReauthenticationEmail({ kind: "account", userId: "ada" })
+      prepareReauthenticationEmail({ kind: "account", userId: "ada" }, "/")
     );
     expect(
       await reasonOfPasskey({ kind: "account", userId: "ada" })
@@ -450,5 +568,53 @@ describe("prepareNativeHandoffEmail", () => {
         currentRequest: Option.none(),
       })
     ).toBe("native-request-expired");
+  });
+});
+
+describe("the app's locale", () => {
+  test("the code and link requests name it", async () => {
+    await Effect.runPromise(
+      completeWebCodeSignIn(
+        testEmailAddress("ada"),
+        "123456",
+        { kind: "none" },
+        "cs-CZ"
+      )
+    );
+    await Effect.runPromise(
+      completeWebMagicLink(
+        "token",
+        { nativePending: true, storedUserId: Option.none() },
+        "en-US"
+      )
+    );
+
+    expect(namedLocales).toEqual(["cs-CZ", "en-US"]);
+  });
+});
+
+describe("sendSignInEmail", () => {
+  const email = testEmailAddress("ada");
+  const send = () => Effect.runPromise(sendSignInEmail(email, "en-US"));
+
+  test("reports a code when the server issued one", async () => {
+    expect(await send()).toEqual({ email, signInCode: true });
+  });
+
+  test("reports a link-only email when the server issued no code", async () => {
+    emailSent = { status: true, signInCode: false };
+    expect(await send()).toEqual({ email, signInCode: false });
+  });
+
+  test("treats an answer without the decision as link-only", async () => {
+    emailSent = { status: true };
+    expect(await send()).toEqual({ email, signInCode: false });
+    emailSent = null;
+    expect(await send()).toEqual({ email, signInCode: false });
+  });
+
+  test("takes only a literal yes as a code", async () => {
+    emailSent = { status: true, signInCode: "true" };
+    expect(await send()).toEqual({ email, signInCode: false });
   });
 });
