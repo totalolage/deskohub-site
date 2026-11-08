@@ -4,6 +4,7 @@ import {
   RequestCustomerAccountDeletion,
 } from "@deskohub/workspace-customer-api";
 import { Cause, Effect, Exit, Match, Option, Predicate, Schema } from "effect";
+import { AsyncResult } from "effect/unstable/reactivity";
 import { viewErrorOf } from "../../customer-api/async-view";
 import { CustomerApi } from "../../customer-api/customer-api.service";
 import {
@@ -114,9 +115,7 @@ export const deletionFollowUp = (attempt: DeletionAttempt): DeletionFollowUp =>
 export interface DangerZoneView {
   readonly offer: DeletionOffer;
   /** The delete (or retry) button, enabled once the customer has confirmed. */
-  readonly deleteAction:
-    | { readonly shown: false }
-    | { readonly shown: true; readonly enabled: boolean };
+  readonly deleteAction: "hidden" | "disabled" | "enabled";
 }
 
 /**
@@ -135,12 +134,23 @@ export const dangerZoneView = (
   }
 ): DangerZoneView => {
   const offer = deletionOffer(account);
-  if (offer === "withheld") return { offer, deleteAction: { shown: false } };
-  return {
-    offer,
-    deleteAction: {
-      shown: true,
-      enabled: confirmed && attempt?.kind !== "refused",
-    },
-  };
+  if (offer === "withheld") return { offer, deleteAction: "hidden" };
+  const enabled = confirmed && attempt?.kind !== "refused";
+  return { offer, deleteAction: enabled ? "enabled" : "disabled" };
 };
+
+/**
+ * Whether the dialog may send the deletion now: the account was read afresh
+ * (not still refetching after the last attempt, not failing) and its gates
+ * still offer deletion with the customer's confirmation.
+ */
+export const deletionSubmittable = (
+  account: AsyncResult.AsyncResult<CustomerAccountState, unknown>,
+  choice: {
+    readonly confirmed: boolean;
+    readonly attempt: DeletionAttempt | undefined;
+  }
+) =>
+  AsyncResult.isSuccess(account) &&
+  !account.waiting &&
+  dangerZoneView(account.value, choice).deleteAction === "enabled";

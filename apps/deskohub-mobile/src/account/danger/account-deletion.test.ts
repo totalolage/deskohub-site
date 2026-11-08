@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CustomerAccountState } from "@deskohub/workspace-customer-api";
-import { Effect } from "effect";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { Effect, Option } from "effect";
+import { AsyncResult, AtomRegistry } from "effect/unstable/reactivity";
 import { accountAtom } from "../../customer-api/customer-data-runtime";
 import {
   makeFakeCustomerData,
@@ -14,6 +14,7 @@ import {
   deletionAttemptOf,
   deletionFollowUp,
   deletionOffer,
+  deletionSubmittable,
   requestAccountDeletionAtom,
 } from "./account-deletion";
 
@@ -81,7 +82,7 @@ describe("deletionOffer", () => {
     expect(
       dangerZoneView(account, { confirmed: true, attempt: undefined })
         .deleteAction
-    ).toEqual({ shown: false });
+    ).toBe("hidden");
   });
 });
 
@@ -91,11 +92,11 @@ describe("dangerZoneView", () => {
     expect(
       dangerZoneView(account, { confirmed: false, attempt: undefined })
         .deleteAction
-    ).toEqual({ shown: true, enabled: false });
+    ).toBe("disabled");
     expect(
       dangerZoneView(account, { confirmed: true, attempt: undefined })
         .deleteAction
-    ).toEqual({ shown: true, enabled: true });
+    ).toBe("enabled");
   });
 
   test("gates the pending deletion's retry the same way", async () => {
@@ -105,11 +106,11 @@ describe("dangerZoneView", () => {
       attempt: undefined,
     });
     expect(unconfirmed.offer).toBe("pending");
-    expect(unconfirmed.deleteAction).toEqual({ shown: true, enabled: false });
+    expect(unconfirmed.deleteAction).toBe("disabled");
     expect(
       dangerZoneView(account, { confirmed: true, attempt: undefined })
         .deleteAction
-    ).toEqual({ shown: true, enabled: true });
+    ).toBe("enabled");
   });
 
   test("a refusal ends deleting for the visit", async () => {
@@ -119,7 +120,7 @@ describe("dangerZoneView", () => {
         confirmed: true,
         attempt: { kind: "refused" },
       }).deleteAction
-    ).toEqual({ shown: true, enabled: false });
+    ).toBe("disabled");
   });
 
   test("a retryable failure leaves deleting enabled", async () => {
@@ -129,7 +130,59 @@ describe("dangerZoneView", () => {
         confirmed: true,
         attempt: { kind: "failed" },
       }).deleteAction
-    ).toEqual({ shown: true, enabled: true });
+    ).toBe("enabled");
+  });
+});
+
+describe("deletionSubmittable", () => {
+  const choice = { confirmed: true, attempt: undefined };
+
+  test("sends once the freshly read account offers deletion", async () => {
+    const { account } = await openDangerZone("linked");
+    expect(deletionSubmittable(AsyncResult.success(account), choice)).toBe(
+      true
+    );
+  });
+
+  test("waits while the account is refetched after the last attempt", async () => {
+    const { account } = await openDangerZone("linked");
+    expect(
+      deletionSubmittable(
+        AsyncResult.success(account, { waiting: true }),
+        choice
+      )
+    ).toBe(false);
+  });
+
+  test("won't send once the refetched account withholds deletion", async () => {
+    const { account } = await openDangerZone("linked", (workspace) =>
+      workspace.setAccount(withDeletion(workspace.data.account, "withheld"))
+    );
+    expect(deletionSubmittable(AsyncResult.success(account), choice)).toBe(
+      false
+    );
+  });
+
+  test("won't send on an account it couldn't read", async () => {
+    const { account } = await openDangerZone("linked");
+    expect(
+      deletionSubmittable(
+        AsyncResult.fail("unavailable", {
+          previousSuccess: Option.some(AsyncResult.success(account)),
+        }),
+        choice
+      )
+    ).toBe(false);
+  });
+
+  test("won't send without the customer's confirmation", async () => {
+    const { account } = await openDangerZone("linked");
+    expect(
+      deletionSubmittable(AsyncResult.success(account), {
+        confirmed: false,
+        attempt: undefined,
+      })
+    ).toBe(false);
   });
 });
 

@@ -1,53 +1,75 @@
 import { describe, expect, test } from "bun:test";
-import { Data, Effect } from "effect";
-import { leaveDeletedAccount } from "./deleted-account-exit";
+import { Data, Duration, Effect, Exit, Fiber } from "effect";
+import { TestClock } from "effect/testing";
+import {
+  deletedAccountSignOutBound,
+  leaveDeletedAccount,
+} from "./deleted-account-exit";
 
 class SignOutBroke extends Data.TaggedError("SignOutBroke") {}
 
-const recordExit = (signOut: Effect.Effect<void, SignOutBroke>) => {
+/** Runs the exit with recorded steps, letting `elapse` pass on a test clock. */
+const runExit = ({
+  leave = Effect.void,
+  signOut = Effect.void,
+  elapse = Duration.zero,
+}: {
+  readonly leave?: Effect.Effect<void>;
+  readonly signOut?: Effect.Effect<void, SignOutBroke>;
+  readonly elapse?: Duration.Input;
+}) => {
   const steps: string[] = [];
   const exit = leaveDeletedAccount({
-    signOut: Effect.andThen(
-      Effect.sync(() => steps.push("sign-out")),
-      signOut
+    leave: Effect.sync(() => steps.push("leave")).pipe(Effect.andThen(leave)),
+    signOut: Effect.sync(() => steps.push("sign-out")).pipe(
+      Effect.andThen(signOut),
+      Effect.andThen(Effect.sync(() => steps.push("signed-out")))
     ),
-    leave: Effect.sync(() => {
-      steps.push("leave");
-    }),
   });
-  return { steps, exit };
+  return Effect.gen(function* () {
+    const fiber = yield* Effect.forkChild(Effect.exit(exit));
+    yield* TestClock.adjust(elapse);
+    return { exit: yield* Fiber.join(fiber), steps };
+  }).pipe(Effect.provide(TestClock.layer()), Effect.runPromise);
 };
 
 describe("leaveDeletedAccount", () => {
-  test("signs out, then leaves", async () => {
-    const { steps, exit } = recordExit(Effect.void);
-    await Effect.runPromise(exit);
-    expect(steps).toEqual(["sign-out", "leave"]);
+  test("leaves, then signs out", async () => {
+    const { exit, steps } = await runExit({});
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(steps).toEqual(["leave", "sign-out", "signed-out"]);
   });
 
-  test("still leaves when the sign-out request fails", async () => {
-    const { steps, exit } = recordExit(Effect.fail(new SignOutBroke()));
-    await Effect.runPromise(exit);
-    expect(steps).toEqual(["sign-out", "leave"]);
-  });
-
-  test("still leaves when the sign-out breaks", async () => {
-    const { steps, exit } = recordExit(Effect.die("sign-out defect"));
-    await Effect.runPromise(exit);
-    expect(steps).toEqual(["sign-out", "leave"]);
-  });
-
-  test("leaves only after the sign-out settles", async () => {
-    const steps: string[] = [];
-    const exit = leaveDeletedAccount({
-      signOut: Effect.sleep("10 millis").pipe(
-        Effect.andThen(Effect.sync(() => steps.push("signed-out")))
-      ),
-      leave: Effect.sync(() => {
-        steps.push("leave");
-      }),
+  test("a failed sign-out changes nothing for the customer", async () => {
+    const { exit, steps } = await runExit({
+      signOut: Effect.fail(new SignOutBroke()),
     });
-    await Effect.runPromise(exit);
-    expect(steps).toEqual(["signed-out", "leave"]);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(steps).toEqual(["leave", "sign-out"]);
+  });
+
+  test("a broken sign-out changes nothing for the customer", async () => {
+    const { exit, steps } = await runExit({
+      signOut: Effect.die("sign-out defect"),
+    });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(steps).toEqual(["leave", "sign-out"]);
+  });
+
+  test("still signs out when leaving breaks", async () => {
+    const { exit, steps } = await runExit({
+      leave: Effect.die("navigation defect"),
+    });
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(steps).toEqual(["leave", "sign-out", "signed-out"]);
+  });
+
+  test("gives up on a sign-out request that outlasts its bound", async () => {
+    const { exit, steps } = await runExit({
+      signOut: Effect.never,
+      elapse: deletedAccountSignOutBound,
+    });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(steps).toEqual(["leave", "sign-out"]);
   });
 });

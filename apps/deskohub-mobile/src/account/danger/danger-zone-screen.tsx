@@ -2,7 +2,7 @@ import type { CustomerAccountState } from "@deskohub/workspace-customer-api";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Effect, Match } from "effect";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import {
   type ReauthenticationOutcome,
@@ -31,16 +31,17 @@ import {
   dangerZoneView,
   deletionAttemptOf,
   deletionFollowUp,
+  deletionSubmittable,
   requestAccountDeletionAtom,
 } from "./account-deletion";
 import { ConfirmationCheckbox } from "./confirmation-checkbox";
 import { leaveDeletedAccount } from "./deleted-account-exit";
 
-// The global router: the replace must outlive these screens, which unmount
-// as the signed-out guard takes the signed-in routes away.
+// The global router: these screens unmount as the replace takes the
+// signed-in routes away, and the exit outlives them.
 const leaveDeletedAccountScreens = leaveDeletedAccount({
-  signOut,
   leave: Effect.sync(() => router.replace("/account-deleted")),
+  signOut,
 });
 
 /** The sentence for an attempt's outcome, where the customer acts on it. */
@@ -61,8 +62,8 @@ const attemptMessage = (attempt: DeletionAttempt, locale: AppLocale) =>
 
 /**
  * The danger zone: deleting the account (or retrying a pending deletion)
- * after an explicit confirmation and a final dialog. A deleted account signs
- * out and leaves for the deleted-account screen.
+ * after an explicit confirmation and a final dialog. A deleted account
+ * leaves for the deleted-account screen and signs out.
  */
 export function DangerZoneScreen() {
   const locale = useAppLocale();
@@ -79,9 +80,23 @@ export function DangerZoneScreen() {
   const [reauthenticationOutcome, setReauthenticationOutcome] =
     useState<ReauthenticationOutcome>();
 
+  // Held from the press through the request and any reauthentication, so a
+  // second press before the next render sends nothing.
+  const submitting = useRef(false);
+
   const reauthenticating = reauthentication.state.status === "running";
   const leaving = attempt?.kind === "deleted";
-  const busy = requesting || leaving || reauthenticating;
+  // The last attempt's refetch decides whether the dialog may send again.
+  const refetching = dialogOpen && account.waiting;
+  const busy = requesting || leaving || reauthenticating || refetching;
+  const submittable = deletionSubmittable(account, { confirmed, attempt });
+  // The account no longer offers deletion (or couldn't be read) under the
+  // open dialog: close it, and the screen shows what the account offers now.
+  if (dialogOpen && !busy && !submittable) {
+    setDialogOpen(false);
+    setAttempt(undefined);
+    setReauthenticationOutcome(undefined);
+  }
   let busyMessage: string | undefined;
   if (requesting) busyMessage = m.danger_deleting({}, { locale });
   if (leaving) busyMessage = m.danger_signing_out({}, { locale });
@@ -119,7 +134,8 @@ export function DangerZoneScreen() {
   };
 
   const confirm = async () => {
-    if (busy) return;
+    if (submitting.current || busy || !submittable) return;
+    submitting.current = true;
     setRequesting(true);
     setAttempt(undefined);
     setReauthenticationOutcome(undefined);
@@ -129,12 +145,19 @@ export function DangerZoneScreen() {
     const followUp = deletionFollowUp(next);
     if (followUp.shownIn === "screen") setDialogOpen(false);
     if (followUp.next === "leave") {
-      // Outside the account's registry, which ends with these screens.
+      // Outside the account's registry, which ends with these screens. The
+      // press guard stays held: the account is gone.
       standaloneTaskRuntime.runFork(leaveDeletedAccountScreens);
+      return;
     }
     if (followUp.next === "reauthenticate") {
-      setReauthenticationOutcome(await reauthentication.reauthenticate());
+      const outcome = await reauthentication.reauthenticate();
+      setReauthenticationOutcome(outcome);
+      // Confirmed: the stale sign-in no longer applies; the customer presses
+      // delete again.
+      if (outcome === "reauthenticated") setAttempt(undefined);
     }
+    submitting.current = false;
   };
 
   return (
@@ -198,7 +221,7 @@ function DangerZoneContent({
   readonly onDelete: () => void;
 }) {
   const view = dangerZoneView(account, { confirmed, attempt });
-  if (!view.deleteAction.shown) {
+  if (view.deleteAction === "hidden") {
     return <BodyText>{m.danger_withheld({}, { locale })}</BodyText>;
   }
   const pending = view.offer === "pending";
@@ -228,7 +251,7 @@ function DangerZoneContent({
             ? m.danger_retry_button({}, { locale })
             : m.danger_button({}, { locale })
         }
-        disabled={!view.deleteAction.enabled}
+        disabled={view.deleteAction !== "enabled"}
         onPress={onDelete}
       />
     </View>
