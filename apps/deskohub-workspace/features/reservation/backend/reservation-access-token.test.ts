@@ -2,6 +2,7 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { createHmac } from "node:crypto";
 import { Effect } from "effect";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationAccessTokenSchema } from "@/features/reservation/reservation-access-token";
@@ -18,6 +19,24 @@ const now = Temporal.Instant.from("2026-06-20T08:00:00Z");
 // sent must keep opening, so the format can't change.
 const goldenToken =
   "eyJwdXJwb3NlIjoicmVzZXJ2YXRpb24tYWNjZXNzIiwib3JkZXJJZCI6InJlc2VydmF0aW9uLTEiLCJsb2NhbGUiOiJlbi1VUyIsImlzc3VlZEF0RXBvY2hNaWxsaXNlY29uZHMiOjE3ODE5NDI0MDAwMDB9.bdiqEW-XmvyeCmoctnVagNsr-L4Tm3s0Fym2bp1pD6w";
+
+const openToken = (token: string, options: { secret?: string | Buffer }) =>
+  openReservationAccessToken(
+    {
+      token: reservationAccessTokenSchema.make(token),
+      orderId,
+      locale: "en-US",
+    },
+    options
+  );
+
+/** The golden claims signed with `key` for `purpose`. */
+const signGoldenClaims = (key: Buffer, purpose = "reservation-access") => {
+  const [encodedClaims] = goldenToken.split(".");
+  return `${encodedClaims}.${createHmac("sha256", key)
+    .update(`${purpose}.${encodedClaims}`)
+    .digest("base64url")}`;
+};
 
 const createToken = () =>
   createReservationAccessToken(
@@ -121,5 +140,70 @@ describe("reservation access token", () => {
       expect(error.message).toBe("Reservation access token is invalid.");
       expect(error.cause).toBeDefined();
     }
+  });
+
+  test("requires a secret of at least 32 bytes to issue or open a token", async () => {
+    for (const [configuredSecret, code] of [
+      ["", "missing-secret"],
+      [Buffer.alloc(31, 9), "invalid-secret"],
+    ] as const) {
+      const issued = await Effect.runPromise(
+        Effect.flip(
+          createReservationAccessToken(
+            { orderId, locale: "en-US" },
+            { secret: configuredSecret }
+          )
+        )
+      );
+      const opened = await Effect.runPromise(
+        Effect.flip(openToken(goldenToken, { secret: configuredSecret }))
+      );
+      expect(issued.code).toBe(code);
+      expect(opened.code).toBe(code);
+    }
+  });
+
+  test("rejects a malformed token as invalid before reading the secret", async () => {
+    const [encodedClaims, signature = ""] = goldenToken.split(".");
+
+    for (const token of [
+      `${goldenToken}.extra`,
+      `${encodedClaims}.${signature.slice(0, -1)}`,
+      encodedClaims,
+    ]) {
+      const error = await Effect.runPromise(
+        Effect.flip(openToken(token, { secret: "" }))
+      );
+      expect(error.code).toBe("invalid-token");
+      expect(error.message).toBe("Reservation access token is invalid.");
+    }
+  });
+
+  test("rejects a token signed with another key or for another purpose", async () => {
+    for (const token of [
+      signGoldenClaims(Buffer.alloc(32, 10)),
+      signGoldenClaims(secret, "reservation-access-cookie"),
+    ]) {
+      const error = await Effect.runPromise(
+        Effect.flip(openToken(token, { secret }))
+      );
+      expect(error.code).toBe("invalid-token");
+      expect(error.message).toBe("Reservation access token is invalid.");
+    }
+    expect(signGoldenClaims(secret)).toBe(goldenToken);
+  });
+
+  test("refuses to issue a token with an invalid issuance time", async () => {
+    const error = await Effect.runPromise(
+      Effect.flip(
+        createReservationAccessToken(
+          { orderId, locale: "en-US" },
+          { secret, now: () => -1 }
+        )
+      )
+    );
+
+    expect(error.code).toBe("invalid-token");
+    expect(error.message).toBe("Reservation access token claims are invalid.");
   });
 });
