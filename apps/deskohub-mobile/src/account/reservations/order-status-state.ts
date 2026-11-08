@@ -90,7 +90,7 @@ const endedAsDefect = <E>(
 // - A stream atom reports every value as waiting until the stream ends,
 //   which this one never does; the screen waits only while a read is under
 //   way, or while a new session's first read is (the state shown is then
-//   the previous session's).
+//   the previous session's, marked as reading so Refresh stays disabled).
 // - A new session whose first read failed keeps showing the previous
 //   session's order under the failure, stopped: refreshing it means retrying
 //   the session, not tapping a stream that has ended.
@@ -101,16 +101,20 @@ const shownProgress = <E>(
   AsyncResult.match(result, {
     onInitial: ({ waiting }) =>
       AsyncResult.initial<StatusRefreshState, E>(waiting),
-    onSuccess: ({ value }) =>
-      AsyncResult.success<StatusRefreshState, E>(value.state, {
-        waiting: value.state.reading || value.session !== session,
-      }),
+    onSuccess: ({ value }) => {
+      const reading = value.state.reading || value.session !== session;
+      return AsyncResult.success<StatusRefreshState, E>(
+        { ...value.state, reading },
+        { waiting: reading }
+      );
+    },
     onFailure: ({ cause, previousSuccess, waiting }) =>
       AsyncResult.failure<StatusRefreshState, E>(endedAsDefect(cause), {
         previousSuccess: Option.map(previousSuccess, ({ value }) =>
           AsyncResult.success<StatusRefreshState, E>({
             ...value.state,
-            reading: false,
+            // A retry of the visit is under way.
+            reading: waiting,
             automatic: AutomaticRefresh.Stopped({ reason: "failed" }),
           })
         ),

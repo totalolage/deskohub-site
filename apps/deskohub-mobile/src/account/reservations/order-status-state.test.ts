@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { CustomerReservationOrderId } from "@deskohub/workspace-customer-api";
 import { Duration, Effect, Layer, Option } from "effect";
 import { TestClock } from "effect/testing";
 import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
@@ -19,9 +20,10 @@ import {
 import { canRefreshManually, type StatusRefreshState } from "./status-refresh";
 import type { StatusVisit } from "./status-refresh-rules";
 
-const orderId = sampleOrderIds.pending;
-
-const harness = (visit: StatusVisit = "normal") => {
+const harness = (
+  visit: StatusVisit = "normal",
+  orderId: CustomerReservationOrderId = sampleOrderIds.pending
+) => {
   const workspace = FakeWorkspace.forKind("linked");
   const registry = makeCustomerDataRegistry(
     Layer.mergeAll(
@@ -94,6 +96,7 @@ const harness = (visit: StatusVisit = "normal") => {
     readsSettled: (count: number) => settle(readsSettled(count)),
     quietly: () => settle(quietly),
     adjust,
+    orderId,
     focus: (focused: boolean) =>
       registry.update(
         atoms.focus(orderId),
@@ -300,6 +303,10 @@ describe("order status atoms", () => {
     const shown = h.registry.get(h.status);
 
     expect(AsyncResult.isSuccess(shown) && shown.waiting).toBe(true);
+    // Refresh and pull-to-refresh stay disabled while it is under way.
+    expect(Option.map(AsyncResult.value(shown), canRefreshManually)).toEqual(
+      Option.some(false)
+    );
     h.dispose();
   });
 
@@ -319,9 +326,41 @@ describe("order status atoms", () => {
       Option.some(true)
     );
 
-    h.registry.refresh(h.atoms.progress(orderId));
-    await h.readsSettled(3);
+    h.workspace.fail("getReservationStatus", "hang");
+    h.registry.refresh(h.atoms.progress(h.orderId));
+    await Effect.runPromise(eventually(() => h.reads() === 3));
+    expect(
+      Option.map(
+        AsyncResult.value(h.registry.get(h.status)),
+        canRefreshManually
+      )
+    ).toEqual(Option.some(false));
+
+    h.registry.refresh(h.atoms.progress(h.orderId));
+    await h.readsSettled(4);
     expect(AsyncResult.isSuccess(h.registry.get(h.status))).toBe(true);
+    h.dispose();
+  });
+
+  test("refocusing a settled order keeps Refresh disabled until its first read answers", async () => {
+    const h = harness("normal", sampleOrderIds.fulfilled);
+    h.focus(true);
+    await h.readsSettled(1);
+    const settled = h.registry.get(h.status);
+    expect(Option.map(AsyncResult.value(settled), canRefreshManually)).toEqual(
+      Option.some(true)
+    );
+
+    h.focus(false);
+    h.workspace.fail("getReservationStatus", "hang");
+    h.focus(true);
+    await Effect.runPromise(eventually(() => h.reads() === 2));
+    const refocused = h.registry.get(h.status);
+
+    expect(refocused.waiting).toBe(true);
+    expect(
+      Option.map(AsyncResult.value(refocused), canRefreshManually)
+    ).toEqual(Option.some(false));
     h.dispose();
   });
 });
