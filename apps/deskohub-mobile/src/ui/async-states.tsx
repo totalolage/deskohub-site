@@ -41,7 +41,7 @@ export function ErrorState({
 }) {
   const [alert, setAlert] = useState<string>();
   useEffect(() => setAlert(message), [message]);
-  useLiveRegionAnnouncement(alert);
+  useLiveRegionAnnouncement(alert, "assertive");
   return (
     <View style={styles.centered}>
       <Text
@@ -76,7 +76,7 @@ export function RefreshingIndicator({
   readonly label: string;
 }) {
   const message = refreshing ? label : undefined;
-  useLiveRegionAnnouncement(message);
+  useLiveRegionAnnouncement(message, "polite");
   return (
     <View style={styles.refreshing}>
       {refreshing && (

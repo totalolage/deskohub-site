@@ -262,7 +262,7 @@ function OrderStatusContent({
   const copy = statusCopy(order.status, locale);
   const tone = orderStatusTraits[order.status].tone;
   // The status changes while the screen is open: announce the new one.
-  useLiveRegionAnnouncement(copy.title);
+  useLiveRegionAnnouncement(copy.title, "polite");
   // The last read's own failure; a 429 reads as "temporarily limited".
   const failureMessage = Option.getOrUndefined(
     Option.map(

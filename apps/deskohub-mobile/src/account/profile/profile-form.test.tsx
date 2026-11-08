@@ -1,8 +1,7 @@
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { describe, expect, mock, test } from "bun:test";
 import { Option } from "effect";
 import { act, createElement, useState } from "react";
-import type { Root } from "react-dom/client";
+import { clientRoot } from "../../testing/client-root";
 import type { CompletionTextField } from "./profile-draft";
 import type { ProfileSubmitState } from "./profile-save";
 
@@ -38,23 +37,7 @@ const { returnsToSharedDraft, useFocusFirstInvalid, useUnsavedChangesGuard } =
   await import("./profile-form");
 const { ProfileSubmitState: SubmitState } = await import("./profile-save");
 
-let root: Root;
-beforeAll(async () => {
-  GlobalRegistrator.register();
-  // React reads the act environment flag only once a DOM exists.
-  (
-    globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-  ).IS_REACT_ACT_ENVIRONMENT = true;
-  const { createRoot } = await import("react-dom/client");
-  root = createRoot(document.createElement("div"));
-});
-afterAll(async () => {
-  await act(async () => root.unmount());
-  await GlobalRegistrator.unregister();
-});
-
-const render = async (element: Parameters<Root["render"]>[0]) =>
-  act(async () => root.render(element));
+const { render } = clientRoot();
 
 type Guard = ReturnType<typeof useUnsavedChangesGuard>;
 

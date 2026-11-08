@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createElement, type ReactNode } from "react";
+import { AccessibilityInfo, Platform } from "react-native";
+import { clientRoot } from "../testing/client-root";
 import { ErrorState, RefreshingIndicator } from "./async-states";
 import { elementTree, findAll } from "./testing/element-tree";
 
@@ -35,5 +38,66 @@ describe("live regions", () => {
       expect(region?.["aria-live"]).toBe("polite");
       expect(region?.accessibilityLiveRegion).toBe("polite");
     }
+  });
+});
+
+// VoiceOver ignores `aria-live`, so on iOS each region announces its message
+// itself, as politely as the region it declares.
+describe("iOS announcements", () => {
+  const { render } = clientRoot();
+  const announced: Array<{ message: string; queue: boolean | undefined }> = [];
+  const platform = Platform as { OS: string };
+  const accessibility = AccessibilityInfo as {
+    announceForAccessibilityWithOptions?: (
+      message: string,
+      options: { readonly queue?: boolean }
+    ) => void;
+  };
+  let os = platform.OS;
+  beforeEach(() => {
+    os = platform.OS;
+    platform.OS = "ios";
+    announced.length = 0;
+    accessibility.announceForAccessibilityWithOptions = (message, options) => {
+      announced.push({ message, queue: options.queue });
+    };
+  });
+  afterEach(async () => {
+    await render(null);
+    platform.OS = os;
+    delete accessibility.announceForAccessibilityWithOptions;
+  });
+
+  // The component runs inside a probe so its hooks and effects run while the
+  // host components it returns, which only stand in as names, aren't drawn.
+  const announce = async <Props,>(
+    component: (props: Props) => ReactNode,
+    props: Props
+  ) => {
+    const Probe = () => {
+      component(props);
+      return null;
+    };
+    await render(createElement(Probe));
+    return announced;
+  };
+
+  test("the error state interrupts current speech", async () => {
+    expect(
+      await announce(ErrorState, {
+        message: "x",
+        retryLabel: "retry",
+        onRetry: () => undefined,
+      })
+    ).toEqual([{ message: "x", queue: false }]);
+  });
+
+  test("the refreshing indicator waits for current speech", async () => {
+    expect(
+      await announce(RefreshingIndicator, {
+        refreshing: true,
+        label: "refreshing",
+      })
+    ).toEqual([{ message: "refreshing", queue: true }]);
   });
 });
