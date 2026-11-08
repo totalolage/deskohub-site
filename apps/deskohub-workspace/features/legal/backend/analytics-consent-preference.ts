@@ -5,6 +5,7 @@ import { AnalyticsPersonAnonymisation } from "@/features/account/backend/analyti
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import type { Locale } from "@/features/i18n";
 import type { AnalyticsPreferenceState } from "@/features/legal/analytics-preference";
+import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
 import { AnalyticsConsentLedger } from "./analytics-consent-ledger";
 
 /**
@@ -61,7 +62,7 @@ export const saveAnalyticsPreference = Effect.fn(
   if (!granted) {
     const anonymisation = yield* AnalyticsPersonAnonymisation;
     yield* anonymisation.anonymiseWithdrawnAccount(session.accountId).pipe(
-      Effect.catchDefect(() =>
+      catchRecoverableCause(() =>
         Effect.logWarning(
           "PostHog person anonymisation could not be requested"
         ).pipe(

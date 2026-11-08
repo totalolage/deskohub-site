@@ -2,6 +2,7 @@
 
 import Interpolate from "@doist/react-interpolate";
 import { useRef, useState } from "react";
+import { getAnalyticsAccountIdentity } from "@/features/account/analytics-identity";
 import { visitorConsent } from "@/features/cookie-consent/visitor-consent";
 import { type Locale, m } from "@/features/i18n";
 import { saveAccountAnalyticsPreference } from "@/features/legal/actions";
@@ -11,6 +12,11 @@ import { GuardedLink } from "@/shared/components/guarded-link";
 import { PreferenceRow } from "@/shared/components/ui/preference-row";
 import { Switch } from "@/shared/components/ui/switch";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+
+const signedInAccount = () => {
+  const identity = getAnalyticsAccountIdentity();
+  return identity.status === "authenticated" ? identity.accountId : undefined;
+};
 
 const switchId = "account-analytics-preference";
 const titleId = `${switchId}-title`;
@@ -46,6 +52,15 @@ export function AnalyticsPreferenceRow({
   }
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
+  // This device's saved choice and the signed-in account when the save was
+  // sent. A choice saved on the device meanwhile, as with its own analytics
+  // switch, is newer than the account's decision, and another account's
+  // decision never applies, so either leaves the device as it is.
+  const sentFrom = useRef<{
+    readonly accountId: ReturnType<typeof signedInAccount>;
+    readonly savedChoice: string;
+  } | null>(null);
+
   const fail = () => {
     setChecked(confirmedGranted);
     setFeedback("error");
@@ -57,11 +72,16 @@ export function AnalyticsPreferenceRow({
       onSuccess: ({ data, input }) => {
         // Null when the session ended meanwhile: nothing was recorded.
         if (!data) return fail();
-        visitorConsent.applyAccountDecision({
-          analytics: input.granted,
-          decidedAt: data,
-          change: "preference",
-        });
+        if (
+          sentFrom.current?.savedChoice === visitorConsent.saveMark() &&
+          sentFrom.current.accountId === signedInAccount()
+        ) {
+          visitorConsent.applyAccountDecision({
+            analytics: input.granted,
+            decidedAt: data,
+            change: "preference",
+          });
+        }
         setConfirmedGranted(input.granted);
         setFeedback("saved");
       },
@@ -82,6 +102,10 @@ export function AnalyticsPreferenceRow({
   const handleToggle = (nextChecked: boolean) => {
     if (isExecuting || inFlight.current || nextChecked === checked) return;
     inFlight.current = true;
+    sentFrom.current = {
+      accountId: signedInAccount(),
+      savedChoice: visitorConsent.saveMark(),
+    };
     setFeedback(null);
     setChecked(nextChecked);
     void executeAsync({ granted: nextChecked }).then(release, release);

@@ -40,7 +40,8 @@ stays the place where the choice is made; the account copies it.
 - **Cross-device withdrawal**: applying the account's withdrawal to another
   signed-in device whose saved choice still accepts analytics, at that
   device's next signed-in page load, when the ledger didn't take the
-  device's choice over the withdrawal. Until then that device keeps
+  device's choice over the withdrawal (a tie goes to the withdrawal, and an
+  undated or future-dated choice never outranks it). Until then that device keeps
   capturing. A grant is never applied to a device that holds a choice.
 - **Person-linked**: a reservation or payment lifecycle event captured under
   the author's account person (`workspace-account:<accountId>`) because the

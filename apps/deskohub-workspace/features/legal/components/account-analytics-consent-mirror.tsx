@@ -27,14 +27,19 @@ export function AccountAnalyticsConsentMirror() {
   const hydration = useWorkspaceAction(recordDeviceAnalyticsConsent, {});
   const bannerSave = useWorkspaceAction(recordDeviceAnalyticsConsent, {});
 
-  const mirrorSavedChoice = useEffectEvent(() => {
+  const mirrorSavedChoice = useEffectEvent((accountId: CustomerAccountId) => {
     const mirroredChoice = visitorConsent.saveMark();
     void hydration.executeAsync({ occasion: "hydration" }).then(
       (result) => {
         const withdrawnAt = result?.data;
-        // A choice saved since the request outranks the withdrawal here; the
-        // next page's mirror orders them.
-        if (!withdrawnAt || visitorConsent.saveMark() !== mirroredChoice) {
+        // A choice saved since the request outranks the withdrawal here, and
+        // another account's withdrawal never applies; the next page's mirror
+        // orders them.
+        if (
+          !withdrawnAt ||
+          visitorConsent.saveMark() !== mirroredChoice ||
+          signedInAccount() !== accountId
+        ) {
           return;
         }
         visitorConsent.applyAccountDecision({
@@ -59,7 +64,9 @@ export function AccountAnalyticsConsentMirror() {
       const accountId = signedInAccount();
       if (accountId === mirroredAccount) return;
       mirroredAccount = accountId;
-      if (accountId !== undefined && savedConsent !== "") mirrorSavedChoice();
+      if (accountId !== undefined && savedConsent !== "") {
+        mirrorSavedChoice(accountId);
+      }
     };
 
     // The banner also announces the saved consent on every page load, which
