@@ -298,6 +298,16 @@ describe("recordSignedInDeviceAnalyticsConsent", () => {
       expect(mirrored.map(({ decision }) => decision)).toEqual(["grant"]);
     });
 
+    test("an accepting device whose choice is dated at the withdrawal's instant takes the withdrawal", async () => {
+      // The ledger never takes a same-instant copy over a recorded decision.
+      currentDecision = decidedAt("withdraw", "2026-11-02T09:30:00Z");
+      mirrorTakes = false;
+
+      expect(await runSignedIn("hydration", signedIn)).toBe(
+        "2026-11-02T09:30:00Z"
+      );
+    });
+
     test("an accepting device whose choice is undated takes the account's withdrawal", async () => {
       currentDecision = decidedAt("withdraw", withdrawnAt);
       mirrorTakes = false;
