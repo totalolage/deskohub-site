@@ -114,9 +114,9 @@ describe("formatPhoneNumber", () => {
   test.each(enteredPhones.filter(([, e164]) => e164 !== null))(
     "writes the number %p holds in international format",
     (text, e164) => {
-      expect(
-        formatPhoneNumber(Option.getOrThrow(parsePhoneNumber(text)))
-      ).toBe(parsePhoneNumberWithError(e164 ?? "").formatInternational());
+      expect(formatPhoneNumber(Option.getOrThrow(parsePhoneNumber(text)))).toBe(
+        parsePhoneNumberWithError(e164 ?? "").formatInternational()
+      );
     }
   );
 

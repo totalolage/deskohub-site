@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Children, isValidElement, type ReactElement } from "react";
 import { SafeAreaInsetsContext } from "react-native-safe-area-context";
+import { AppLocaleProvider } from "../i18n/locale-context";
 import { elementTree, type HostProps } from "../ui/testing/element-tree";
 import { SampleDataBanner } from "./sample-data-banner";
 
@@ -19,9 +20,11 @@ const bannerTree = (onNextKind: () => void = () => undefined) => {
     SampleDataBanner,
     { kind: "linked", onNextKind, children: screens },
     (probe) => (
-      <SafeAreaInsetsContext.Provider value={insets}>
-        {probe}
-      </SafeAreaInsetsContext.Provider>
+      <AppLocaleProvider locale="en-US">
+        <SafeAreaInsetsContext.Provider value={insets}>
+          {probe}
+        </SafeAreaInsetsContext.Provider>
+      </AppLocaleProvider>
     )
   );
   if (!isValidElement<HostProps>(tree)) throw new Error("no element");

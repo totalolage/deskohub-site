@@ -107,10 +107,13 @@ export const emptyProfileDraft: ProfileDraft = {
 // reading. Any other stored text, such as a legacy value with a label, shows
 // as stored.
 const readablePhone = (stored: string) =>
-  Option.match(Option.filter(parsePhoneNumber(stored), () => isPhoneNumber(stored)), {
-    onNone: () => stored,
-    onSome: formatPhoneNumber,
-  });
+  Option.match(
+    Option.filter(parsePhoneNumber(stored), () => isPhoneNumber(stored)),
+    {
+      onNone: () => stored,
+      onSome: formatPhoneNumber,
+    }
+  );
 
 /** The draft of a stored profile: what the customer has saved now. */
 export const profileDraftOf = (profile: CustomerProfile): ProfileDraft => ({
