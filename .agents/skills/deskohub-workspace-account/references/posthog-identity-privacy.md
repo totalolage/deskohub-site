@@ -23,14 +23,21 @@ Code: `features/account/analytics-identity.ts`,
 - The banner's `revision` is derived from the privacy notice and cookie
   policy versions (`getLegalDocumentVersion`) of every locale, so a change to
   either document re-prompts every visitor. A cookie saved under an older
-  revision counts as no choice, on the server as well as in the browser. The
+  revision brings the banner back, and the server treats it as no choice: it
+  mirrors nothing into the ledger and lets no visitor capture through. The
   consent modal footer and the preferences modal link to both documents.
-- Silent grant: when a signed-in session hydrates on a device with no valid
-  cookie choice and the account's current decision is a grant under the
-  current privacy notice hash, Workspace writes the cookie with analytics
-  accepted and every other optional category declined, and shows no banner. A
-  withdrawal, a grant under an older notice hash, or no decision shows the
-  banner instead. The cookie stays after sign-out, like any other choice.
+- Silent grant: when a signed-in session hydrates on a device that holds no
+  consent cookie at all (a new device or cleared cookies) and the account's
+  current decision is a grant under the current privacy notice hash,
+  Workspace writes the cookie with analytics accepted and every other
+  optional category declined, and shows no banner. A withdrawal, a grant
+  under an older notice hash, or no decision shows the banner instead. So
+  does a device holding a cookie saved under an earlier banner revision,
+  whatever the account decided. The cookie stays after sign-out, like any
+  other choice.
+- Known limit: the ledger records only the privacy notice hash, so after a
+  change to the cookie policy alone a new device still gets a silent grant
+  from a grant given under the earlier cookie policy.
 
 ## Account analytics consent ledger
 

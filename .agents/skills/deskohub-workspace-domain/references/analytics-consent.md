@@ -21,9 +21,10 @@ stays the place where the choice is made; the account copies it.
   Pay-state preparation), `backfill` (the one-off seeding of earlier
   consent), and `preference` (account preferences).
 - **Silent grant**: applying the account's grant to a signed-in device that
-  has no valid cookie choice, when the current decision is a grant under the
-  current privacy notice hash: the cookie accepts analytics and declines every
-  other optional category, and no banner shows.
+  holds no consent cookie at all, when the current decision is a grant under
+  the current privacy notice hash: the cookie accepts analytics and declines
+  every other optional category, and no banner shows. A device holding a
+  cookie from an earlier banner revision gets the banner instead.
 - **Person-linked**: a reservation or payment lifecycle event captured under
   the author's account person (`workspace-account:<accountId>`) because the
   author's current decision was a grant when it was captured.
@@ -39,8 +40,8 @@ stays the place where the choice is made; the account copies it.
   the moment it is written: the notice current when the decision was
   recorded. For a mirror of an older cookie that need not be the notice the
   visitor saw when choosing. The banner revision derives from the privacy
-  notice and cookie policy versions, and a cookie saved under an older
-  revision counts as no choice. A mirror uses the banner language
+  notice and cookie policy versions, and the server treats a cookie saved
+  under an older revision as no choice, so a mirror records nothing from it. A mirror uses the banner language
   the cookie holds (`languageCode`) when it is a site locale, else the
   request's locale.
 - A mirror is appended only when the account has no decision at that
@@ -65,7 +66,8 @@ stays the place where the choice is made; the account copies it.
   checkout: failures are logged and dropped.
 - A grant keeps linking lifecycle events even under an older notice hash,
   until the account answers again; only a current-notice grant gives a silent
-  grant. The PostHog side is in the `deskohub-workspace-account` skill's
+  grant. A decision records no cookie policy version, so a grant given before
+  a cookie-policy-only change still gives a new device a silent grant. The PostHog side is in the `deskohub-workspace-account` skill's
   PostHog identity and privacy reference.
 
 Code: `features/legal/backend/analytics-consent-ledger.ts` (ledger),
