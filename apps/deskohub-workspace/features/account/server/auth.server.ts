@@ -23,6 +23,8 @@ import { ensureCustomerAccount } from "@/features/account/backend/customer-accou
 import { captureAccountLocalePreference } from "@/features/account/backend/customer-locale-preference";
 import { customerMcpServerPath } from "@/features/account/customer-agent-routes";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
+import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
+import { mirrorDeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -51,7 +53,9 @@ if (allowedHosts.kind === "invalid") {
   );
 }
 
-const passkeyRelyingParty = resolvePasskeyRelyingParty(hostEnvironment);
+const passkeyRelyingParty = resolvePasskeyRelyingParty(hostEnvironment, {
+  androidDebugCertificate: env.ANDROID_DEBUG_SIGNING_CERT_SHA256,
+});
 if (passkeyRelyingParty.kind === "invalid") {
   throw new Error(
     `Workspace account bootstrap failed: ${passkeyRelyingParty.message}`
@@ -78,6 +82,7 @@ export const auth = makeWorkspaceAuth({
   database: makeWorkspaceAuthDatabase(),
   secrets: secrets.secrets,
   allowedHosts: allowedHosts.hosts,
+  nativeAppLinkOrigin: `https://${workspaceSiteConstants.brand.domain}`,
   passkeyRelyingParty: passkeyRelyingParty.relyingParty,
   customerMcpResource,
   httpsOnly: env.VERCEL_ENV !== "development",
@@ -108,6 +113,10 @@ export const auth = makeWorkspaceAuth({
   captureAccountLocalePreference: (accountId, locale) =>
     captureAccountLocalePreference(accountId, locale).pipe(
       Effect.provide(WorkspaceDatabase.Default)
+    ),
+  mirrorSignInAnalyticsConsent: (device) =>
+    mirrorDeviceAnalyticsConsent({ ...device, source: "sign_in_mirror" }).pipe(
+      Effect.provide(AnalyticsConsentLedger.Live)
     ),
   reviewAccountCredentials: env.REVIEW_ACCOUNT_CREDENTIALS ?? [],
   isReviewAccount: (accountId) =>

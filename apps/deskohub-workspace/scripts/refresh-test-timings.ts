@@ -4,6 +4,7 @@ import { join, relative, resolve } from "node:path";
 import { Schema } from "effect";
 import workspacePackage from "../package.json";
 import { runCommand } from "./shared/command";
+import { shardTimingsRecordingPattern } from "./test-shard";
 
 const testTimingsSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -177,9 +178,9 @@ const downloadShardTimings = async (
       );
     }
     const shards: TestTimings[] = [];
-    for await (const file of new Bun.Glob("*/test-timings.json").scan(
-      directory
-    )) {
+    for await (const file of new Bun.Glob(
+      `*/${shardTimingsRecordingPattern}`
+    ).scan(directory)) {
       const path = join(directory, file);
       shards.push(
         parseTestTimings(

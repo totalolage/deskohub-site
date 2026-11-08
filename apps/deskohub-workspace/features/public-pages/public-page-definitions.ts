@@ -81,6 +81,11 @@ export const publicPageDefinitions: Readonly<
     description: m.aiAssistantsMetadataDescription,
     contentDate: "2026-10-22",
   },
+  "/android": {
+    title: m.androidPageMetadataTitle,
+    description: m.androidPageMetadataDescription,
+    contentDate: "2026-11-07",
+  },
   "/pricing": {
     title: m.pricingMetadataTitle,
     description: m.pricingMetadataDescription,
