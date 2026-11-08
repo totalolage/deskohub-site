@@ -7,10 +7,11 @@ import {
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
-import { testEmailAddress } from "@deskohub/test-email";
+import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import type { AudienceFilter } from "../audience-filter";
 import { campaignIdSchema } from "../campaign-identifiers";
+import { ensureCampaignRecipientsAllowed } from "../recipient-domain-guard";
 import {
   type AudienceEvaluationContext,
   AudienceFactSource,
@@ -348,6 +349,46 @@ describe("CampaignRecipientService.resolve", () => {
     expect(
       recipients.map(({ dotyposCustomerId }) => dotyposCustomerId)
     ).toEqual(["5"]);
+  });
+
+  test("keeps a reachable address outside the test domain, so a preview send refuses the whole list", async () => {
+    const outside = resendSimulatorAddress("delivered");
+    const { exit } = await resolve({
+      candidates: ["1", "2"].map((id) => facts(id)),
+      customers: [customer("1"), customer("2", { email: outside })],
+    });
+    const { recipients, exclusions } = resolution(exit);
+    expect(exclusions).toEqual([]);
+    expect(recipients.map(({ email }) => email)).toEqual([
+      testEmailAddress("customer-1"),
+      outside,
+    ]);
+    const emails = recipients.map(({ email }) => email);
+    expect(
+      Effect.runSyncExit(
+        ensureCampaignRecipientsAllowed({
+          deploymentEnvironment: "preview",
+          emails,
+        })
+      )
+    ).toEqual(
+      Exit.fail(
+        expect.objectContaining({
+          _tag: "CampaignRecipientsOutsideTestDomain",
+          recipientCount: 1,
+        })
+      )
+    );
+    expect(
+      Exit.isSuccess(
+        Effect.runSyncExit(
+          ensureCampaignRecipientsAllowed({
+            deploymentEnvironment: "production",
+            emails,
+          })
+        )
+      )
+    ).toBe(true);
   });
 
   test("mails one record per address and reports the duplicate group", async () => {
