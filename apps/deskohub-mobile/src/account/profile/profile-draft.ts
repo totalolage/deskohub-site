@@ -1,3 +1,4 @@
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import {
   type CustomerProfile,
   CustomerProfileCompletionInput,
@@ -122,10 +123,23 @@ export const completionDraftOf = (
   referralCode: invitationCode ?? "",
 });
 
-/** Whether two drafts hold the same values. */
+// The Workspace stores an entered phone as its phone number, so two texts
+// holding the same number are the same phone. Text without one compares as
+// entered.
+const samePhone = (left: string, right: string) =>
+  left === right ||
+  Option.exists(parsePhoneNumber(left), (phone) =>
+    Option.contains(parsePhoneNumber(right), phone)
+  );
+
+/**
+ * Whether two drafts hold the same values, a phone counting as the number the
+ * Workspace stores for it.
+ */
 export const sameDraft = <D extends ProfileDraft>(left: D, right: D) =>
+  samePhone(left.phone, right.phone) &&
   (Object.keys(left) as Array<keyof D>).every(
-    (field) => left[field] === right[field]
+    (field) => field === "phone" || left[field] === right[field]
   );
 
 /** Why a field's value can't be saved; the screen picks the copy. */

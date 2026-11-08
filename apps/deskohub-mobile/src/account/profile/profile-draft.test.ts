@@ -247,6 +247,22 @@ describe("drafts", () => {
     expect(sameDraft(validDraft(), validDraft({ zip: "111 11" }))).toBe(false);
   });
 
+  test("a phone counts as the number the Workspace stores for it", () => {
+    const stored = validDraft({ phone: "+420600000000" });
+    expect(sameDraft(validDraft({ phone: "600 000 000" }), stored)).toBe(true);
+    expect(sameDraft(validDraft({ phone: "+420 600 000 000" }), stored)).toBe(
+      true
+    );
+    expect(sameDraft(validDraft({ phone: "600 000 001" }), stored)).toBe(false);
+    expect(sameDraft(validDraft({ phone: "" }), stored)).toBe(false);
+  });
+
+  test("a phone without a number compares as entered", () => {
+    const stored = validDraft({ phone: "legacy" });
+    expect(sameDraft(validDraft({ phone: "legacy" }), stored)).toBe(true);
+    expect(sameDraft(validDraft({ phone: "other" }), stored)).toBe(false);
+  });
+
   test("each billing choice shows its own fields", () => {
     expect(billingFieldsOf("none")).toEqual([]);
     expect(billingFieldsOf("personal")).not.toContain("companyName");
