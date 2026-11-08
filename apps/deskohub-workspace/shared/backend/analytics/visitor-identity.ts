@@ -4,6 +4,7 @@ import {
 } from "@deskohub/posthog/identifiers";
 import { Effect, Option, Schema } from "effect";
 import { type CookieStore, cookieStoreFromHeader } from "posthog-node";
+import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
 import {
   isConsentCategoryAcceptedInCookie,
   type UnexpectedConsentCookieReason,
@@ -29,7 +30,8 @@ export const anonymousVisitor: VisitorIdentity = {};
 
 /**
  * The consented visitor behind `headers`. Without analytics consent in every
- * copy of the consent cookie the visitor stays anonymous. PostHog's tracing
+ * copy of the consent cookie, saved under the current banner revision, the
+ * visitor stays anonymous. PostHog's tracing
  * headers name the visitor only once both first-party cookie identifiers
  * exist, since the headers can outlive a consent revoked without a reload.
  * Logs a warning for each unexpected consent cookie value.
@@ -54,6 +56,7 @@ function visitorIdentityOf(
     cookieHeader,
     "analytics",
     {
+      revision: getConsentBannerRevision(),
       onUnexpectedValue: (reason) => {
         unexpectedConsentCookieReasons.push(reason);
       },

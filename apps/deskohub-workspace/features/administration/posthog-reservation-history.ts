@@ -124,8 +124,7 @@ SELECT
   properties.payment_attempt_id,
   properties.provider
 FROM events
-WHERE distinct_id = {reservationId}
-  AND properties.reservation_id = {reservationId}
+WHERE properties.reservation_id = {reservationId}
   AND properties.\`deployment.environment.name\` = {environment}
   AND properties.\`service.name\` = {serviceName}
   AND event IN (${reservationLifecycleEvents.map((event) => `'${event}'`).join(", ")})

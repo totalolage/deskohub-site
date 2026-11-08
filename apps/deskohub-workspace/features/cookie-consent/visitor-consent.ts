@@ -1,5 +1,6 @@
 "use client";
 
+import { Option } from "effect";
 import { useSyncExternalStore } from "react";
 import * as CookieConsent from "vanilla-cookieconsent";
 import {
@@ -7,18 +8,21 @@ import {
   subscribeOtherTabSignal,
 } from "@/shared/browser/local-storage";
 import {
+  CONSENT_COOKIE_NAME,
   type ConsentCategory,
-  getAcceptedConsentCategoriesFromCookie,
   getConsentCookieValuesFromCookie,
+  readConsentCookieChoice,
 } from "@/shared/utils/consent-cookie";
 
 export type { ConsentCategory } from "@/shared/utils/consent-cookie";
 
 /**
- * Where a consent change was noticed: announced in this tab, signalled by
- * another tab, or found when this tab regained focus.
+ * Where a consent change was noticed: announced in this tab after a save
+ * there, announced in this tab after it applied the signed-in account's
+ * grant (a silent grant), signalled by another tab, or found when this tab
+ * regained focus.
  */
-export type VisitorConsentChange = "local" | "other-tab" | "focus";
+export type VisitorConsentChange = "local" | "account" | "other-tab" | "focus";
 
 // The app event and the cross-tab key are part of the page's observable
 // behavior; keep their names stable.
@@ -28,6 +32,7 @@ export const CONSENT_UPDATED_STORAGE_KEY = "deskohub.consent-updated";
 type ConsentUpdatedEventDetail = {
   readonly _tag: "ConsentUpdated";
   readonly acceptedCategories: ConsentCategory[];
+  readonly change: Extract<VisitorConsentChange, "local" | "account">;
 };
 
 declare global {
@@ -36,17 +41,48 @@ declare global {
   }
 }
 
+// The banner revision the page was served with; none until the banner binds
+// it, and nothing counts as chosen until then.
+let bannerRevision: number | undefined;
+
+/**
+ * Binds the banner revision the page was served with. The consent banner
+ * binds it before any effect reads consent.
+ */
+export function bindVisitorConsentRevision(revision: number): void {
+  bannerRevision = revision;
+}
+
+const savedChoice = () =>
+  globalThis.document === undefined || bannerRevision === undefined
+    ? Option.none()
+    : readConsentCookieChoice(globalThis.document.cookie, {
+        revision: bannerRevision,
+      });
+
 const acceptedCategories = (): ConsentCategory[] =>
-  globalThis.document === undefined
-    ? []
-    : getAcceptedConsentCategoriesFromCookie(globalThis.document.cookie);
+  Option.match(savedChoice(), {
+    onNone: () => [],
+    onSome: (choice) => [...choice.acceptedCategories],
+  });
+
+// True while the vendor saves the account's grant, whose announcement waits
+// until the saved choice carries the grant's instant.
+let savingAccountGrant = false;
 
 /**
  * The visitor's cookie consent. The consent cookie every tab writes is the
  * one source: a category counts as accepted only when every copy of the
- * cookie is well-formed and accepts it, the same rule the server applies.
+ * cookie is well-formed, saved under the banner revision the page was served
+ * with, and accepts it, the same rule the server applies.
  */
 export const visitorConsent = {
+  /**
+   * Whether the device holds a choice under the current banner revision. A
+   * choice saved before the current privacy notice or cookie policy is none.
+   */
+  hasChoice: (): boolean => Option.isSome(savedChoice()),
+
   accepts: (category: ConsentCategory): boolean =>
     acceptedCategories().includes(category),
 
@@ -72,7 +108,9 @@ export const visitorConsent = {
   ): (() => void) => {
     if (globalThis.window === undefined) return () => undefined;
 
-    const handleLocalChange = () => onChange("local");
+    const handleLocalChange = (
+      event: WindowEventMap[typeof CONSENT_UPDATED_EVENT]
+    ) => onChange(event.detail.change);
     const handleFocus = () => onChange("focus");
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") handleFocus();
@@ -106,6 +144,25 @@ export const visitorConsent = {
     saveAcceptedCategories(
       acceptedCategories().filter((accepted) => accepted !== category)
     );
+  },
+
+  /**
+   * Applies the signed-in account's analytics grant, given at `grantedAt`
+   * (ISO 8601), to a device without a consent cookie (a silent grant): saves
+   * analytics accepted and every other optional category declined, dated at
+   * the grant, so a later mirror of the cookie never outranks a decision
+   * made after the grant. It is announced once, as an `account` change, not
+   * a `local` save, so it is never recorded as a banner decision.
+   */
+  applyAccountGrant: (grantedAt: string): void => {
+    savingAccountGrant = true;
+    try {
+      CookieConsent.acceptCategory(["analytics"]);
+    } finally {
+      savingAccountGrant = false;
+    }
+    dateSavedChoice(grantedAt);
+    announce("account");
   },
 };
 
@@ -162,11 +219,45 @@ function saveAcceptedCategories(categories: readonly ConsentCategory[]) {
 }
 
 /**
+ * Rewrites the saved consent cookie with `lastConsentAt` as its last-consent
+ * timestamp, keeping every other field and the attributes vanilla-cookieconsent
+ * writes it with.
+ */
+function dateSavedChoice(lastConsentAt: string) {
+  const saved = CookieConsent.getCookie();
+  // The vendor resolves these with its defaults when it runs.
+  const {
+    name = CONSENT_COOKIE_NAME,
+    path = "/",
+    domain = location.hostname,
+    sameSite = "Lax",
+    secure = true,
+  } = CookieConsent.getConfig("cookie") ?? {};
+  const value = encodeURIComponent(
+    JSON.stringify({ ...saved, lastConsentTimestamp: lastConsentAt })
+  );
+  const attributes = [
+    `expires=${new Date(saved.expirationTime).toUTCString()}`,
+    `Path=${path}`,
+    `SameSite=${sameSite}`,
+    ...(location.hostname.includes(".") ? [`Domain=${domain}`] : []),
+    ...(secure && location.protocol === "https:" ? ["Secure"] : []),
+  ];
+  // biome-ignore lint/suspicious/noDocumentCookie: vanilla-cookieconsent has no API to date a saved choice, so the cookie is rewritten as it writes it.
+  document.cookie = [`${name}=${value}`, ...attributes].join("; ");
+}
+
+/**
  * Tells this tab's subscribers, then the browser's other tabs, that consent
  * may have changed. The consent banner calls it after the vendor saves
  * consent.
  */
 export function announceVisitorConsentChange(): void {
+  if (savingAccountGrant) return;
+  announce("local");
+}
+
+function announce(change: Extract<VisitorConsentChange, "local" | "account">) {
   if (globalThis.window === undefined) return;
 
   window.dispatchEvent(
@@ -174,6 +265,7 @@ export function announceVisitorConsentChange(): void {
       detail: {
         _tag: "ConsentUpdated",
         acceptedCategories: acceptedCategories(),
+        change,
       },
     })
   );

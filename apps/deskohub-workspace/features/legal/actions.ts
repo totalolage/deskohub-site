@@ -1,11 +1,14 @@
 "use server";
 
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { locales } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { AnalyticsConsentLedger } from "./backend/analytics-consent-ledger";
-import { recordSignedInDeviceAnalyticsConsent } from "./backend/analytics-consent-mirror";
+import {
+  recordSignedInDeviceAnalyticsConsent,
+  resolveSilentAnalyticsGrant,
+} from "./backend/analytics-consent-mirror";
 import { MarketingPreferences } from "./backend/marketing-preferences.service";
 
 const marketingPreferencesContextSchema = Schema.NonEmptyString;
@@ -114,4 +117,46 @@ export const recordDeviceAnalyticsConsent: typeof recordDeviceAnalyticsConsentAc
   async (...args: Parameters<typeof recordDeviceAnalyticsConsentAction>) => {
     "use server";
     return await recordDeviceAnalyticsConsentAction(...args);
+  };
+
+const silentAnalyticsGrantAction = defineWorkspaceAction(
+  {
+    operation: "legal.analytics-consent.resolve-silent-grant",
+    schema: Schema.toStandardSchemaV1(Schema.Struct({}), {
+      parseOptions: { errors: "all", onExcessProperty: "error" },
+    }),
+    logInput: false,
+  },
+  () =>
+    resolveSilentAnalyticsGrant().pipe(
+      Effect.map(
+        Option.match({
+          onNone: () => null,
+          // Truncated to the millisecond the consent cookie holds, so the
+          // device's copy is never newer than the grant it copies.
+          onSome: (grantedAt) =>
+            grantedAt
+              .round({ smallestUnit: "millisecond", roundingMode: "trunc" })
+              .toString(),
+        })
+      ),
+      Effect.provide(
+        Layer.mergeAll(
+          AnalyticsConsentLedger.Live,
+          CustomerAuthentication.Default
+        )
+      )
+    )
+);
+
+/**
+ * When this device holds no consent cookie and the signed-in account's
+ * current decision is a grant for the current privacy notice, the instant of
+ * that grant (ISO 8601), which the device takes without asking; else null.
+ * Null when signed out.
+ */
+export const resolveSilentAnalyticsGrantForDevice: typeof silentAnalyticsGrantAction =
+  async (...args: Parameters<typeof silentAnalyticsGrantAction>) => {
+    "use server";
+    return await silentAnalyticsGrantAction(...args);
   };

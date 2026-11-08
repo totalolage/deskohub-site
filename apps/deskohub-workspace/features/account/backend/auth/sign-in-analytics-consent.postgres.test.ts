@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { AnalyticsConsentUnavailable } from "@/features/legal/backend/analytics-consent-ledger";
+import { savedConsentCookie } from "@/shared/testing/consent-cookie.test-utils";
 import { getAuthCallbackPath } from "../../routes";
 import {
   type CapturedMagicLink,
@@ -17,13 +18,11 @@ import {
   userIdForEmail,
 } from "./auth-handler.test-utils";
 
-const consentCookie = `cc_cookie=${encodeURIComponent(
-  JSON.stringify({
-    categories: ["necessary", "analytics"],
-    lastConsentTimestamp: "2026-11-02T09:30:00.000Z",
-    languageCode: "en-US",
-  })
-)}`;
+const consentCookie = savedConsentCookie({
+  categories: ["necessary", "analytics"],
+  lastConsentTimestamp: "2026-11-02T09:30:00.000Z",
+  languageCode: "en-US",
+});
 
 /** Signs in through a magic link whose verification request carries `cookie`. */
 const signInWithCookie = async (

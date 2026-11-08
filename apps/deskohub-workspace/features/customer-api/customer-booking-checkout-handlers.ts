@@ -50,6 +50,7 @@ import {
   resolveBookingQuoteSelection,
 } from "@/features/reservation/backend/booking-selection";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
+import { providePerRequest } from "@/shared/backend/provide-per-request";
 import { getFirstInvalidFieldPath } from "@/shared/utils/schema-issue";
 import { currentInstant } from "@/shared/utils/temporal";
 import {
@@ -128,7 +129,7 @@ export const handleCustomerBookingCheckout = <R>(
     return handlers
       .handle("createCheckout", ({ payload, headers }) =>
         createCheckout(payload).pipe(
-          Effect.provide(
+          providePerRequest(
             forRequest(headers[customerReferralCodeHeader], Layer.empty)
           ),
           withDeadline(
@@ -139,7 +140,7 @@ export const handleCustomerBookingCheckout = <R>(
       )
       .handle("applyCheckoutDiscountCode", ({ payload, headers }) =>
         applyDiscountCode(payload).pipe(
-          Effect.provide(
+          providePerRequest(
             forRequest(headers[customerReferralCodeHeader], Layer.empty)
           ),
           withDeadline(
@@ -150,12 +151,12 @@ export const handleCustomerBookingCheckout = <R>(
       )
       .handle("acceptCheckoutPriceChange", ({ payload }) =>
         acceptPriceChange(payload).pipe(
-          Effect.provide(forRequest(undefined, Layer.empty))
+          providePerRequest(forRequest(undefined, Layer.empty))
         )
       )
       .handle("submitCheckout", ({ payload, headers }) =>
         submitCheckout(payload).pipe(
-          Effect.provide(
+          providePerRequest(
             forRequest(
               headers[customerReferralCodeHeader],
               CheckoutServicesUnavailable.whenUnbuilt(checkout)

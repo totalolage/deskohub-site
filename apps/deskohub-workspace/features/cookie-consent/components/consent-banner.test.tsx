@@ -21,24 +21,62 @@ type ConsentCallbacks = {
 };
 
 let callbacks: ConsentCallbacks | undefined;
+let bannerShows = 0;
 
 mock.module("vanilla-cookieconsent", () => ({
   acceptCategory: () => undefined,
   run: (config: ConsentCallbacks) => {
     callbacks = config;
+    // The vendor renders its banner root for an ordinary browser.
+    if (!document.getElementById("cc-main")) {
+      document.body.append(
+        Object.assign(document.createElement("div"), { id: "cc-main" })
+      );
+    }
     return Promise.resolve();
   },
+  show: () => {
+    bannerShows += 1;
+  },
+  hide: () => undefined,
 }));
+
+mock.module("@/features/account/analytics-identity", () => ({
+  getAnalyticsAccountIdentity: () => ({ status: "anonymous" }),
+  subscribeAnalyticsAccountIdentity: () => () => undefined,
+}));
+
+const resolveSilentAnalyticsGrantForDevice = mock(() =>
+  Promise.resolve({ data: null })
+);
+mock.module("@/features/legal/actions", () => ({
+  recordDeviceAnalyticsConsent: () => Promise.resolve({ data: false }),
+  resolveSilentAnalyticsGrantForDevice,
+}));
+mock.module("@/shared/utils/use-workspace-action", () => ({
+  useWorkspaceAction: (
+    action: () => Promise<{ readonly data: string | null }>
+  ) => ({
+    execute: () => void action(),
+    executeAsync: action,
+  }),
+}));
+
+// The banner revision the page is served with in these tests.
+const revision = 7;
 
 const { CONSENT_UPDATED_EVENT, CONSENT_UPDATED_STORAGE_KEY } = await import(
   "../visitor-consent"
 );
 const { ConsentBanner } = await import("./consent-banner");
 
-function setConsentCookie(categories: readonly string[]) {
+function setConsentCookie(
+  categories: readonly string[],
+  savedRevision = revision
+) {
   // biome-ignore lint/suspicious/noDocumentCookie: The browser test needs to control consent synchronously.
   document.cookie = `${CONSENT_COOKIE_NAME}=${encodeURIComponent(
-    JSON.stringify({ categories })
+    JSON.stringify({ categories, revision: savedRevision })
   )}; Path=/`;
 }
 
@@ -72,6 +110,8 @@ beforeAll(registerWorkspaceComponentTestEnv);
 beforeEach(() => {
   window.happyDOM.setURL("https://deskohub.test/en-US");
   callbacks = undefined;
+  bannerShows = 0;
+  resolveSilentAnalyticsGrantForDevice.mockClear();
   order = [];
   window.dataLayer = [];
   window.gtag = undefined;
@@ -79,6 +119,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  document.getElementById("cc-main")?.remove();
   window.removeEventListener(CONSENT_UPDATED_EVENT, recordAppEvent);
   // biome-ignore lint/suspicious/noDocumentCookie: The browser test needs to clear consent synchronously.
   document.cookie = `${CONSENT_COOKIE_NAME}=; Path=/; Max-Age=0`;
@@ -86,7 +127,7 @@ afterEach(() => {
 afterAll(unregisterWorkspaceComponentTestEnv);
 
 test("denies Google consent by default before any consent and announces without a tag manager event", async () => {
-  render(<ConsentBanner locale="en-US" />);
+  render(<ConsentBanner locale="en-US" revision={revision} />);
   await flushMicrotasks();
 
   expect(consentUpdates()).toEqual([
@@ -109,7 +150,7 @@ test("denies Google consent by default before any consent and announces without 
 });
 
 test("a change grants each accepted category, then fires the app event before the queued consent_update", async () => {
-  render(<ConsentBanner locale="en-US" />);
+  render(<ConsentBanner locale="en-US" revision={revision} />);
   await flushMicrotasks();
   window.dataLayer = [];
   order = [];
@@ -134,7 +175,7 @@ test("a change grants each accepted category, then fires the app event before th
 });
 
 test("first consent queues consent_update; a restored consent does not", async () => {
-  render(<ConsentBanner locale="en-US" />);
+  render(<ConsentBanner locale="en-US" revision={revision} />);
   await flushMicrotasks();
   setConsentCookie(["necessary", "marketing"]);
 
@@ -163,7 +204,7 @@ test("a malformed duplicate consent cookie keeps Google consent denied", async (
   document.cookie = `${CONSENT_COOKIE_NAME}=not-json; Path=/en-US`;
 
   try {
-    render(<ConsentBanner locale="en-US" />);
+    render(<ConsentBanner locale="en-US" revision={revision} />);
     await flushMicrotasks();
 
     expect(consentUpdates().slice(1)).toEqual(deniedUpdates);
@@ -175,7 +216,7 @@ test("a malformed duplicate consent cookie keeps Google consent denied", async (
 
 test("another tab's withdrawal reaches Google consent mode without re-announcing", async () => {
   setConsentCookie(["necessary", "analytics"]);
-  render(<ConsentBanner locale="en-US" />);
+  render(<ConsentBanner locale="en-US" revision={revision} />);
   await flushMicrotasks();
   window.dataLayer = [];
   order = [];
@@ -195,4 +236,24 @@ test("another tab's withdrawal reaches Google consent mode without re-announcing
   expect(window.dataLayer).not.toContainEqual({ event: "consent_update" });
   expect(order).toEqual([]);
   expect(window.localStorage.getItem(CONSENT_UPDATED_STORAGE_KEY)).toBe(nonce);
+});
+
+test("a consent cookie saved under an earlier revision keeps Google consent denied and opens the banner without asking the account", async () => {
+  setConsentCookie(["necessary", "analytics", "marketing", "preferences"], 0);
+
+  render(<ConsentBanner locale="en-US" revision={revision} />);
+  await flushMicrotasks();
+
+  expect(consentUpdates().slice(1)).toEqual(deniedUpdates);
+  expect(bannerShows).toBe(1);
+  expect(resolveSilentAnalyticsGrantForDevice).not.toHaveBeenCalled();
+});
+
+test("a device with a choice under the current revision never opens the banner", async () => {
+  setConsentCookie(["necessary"]);
+
+  render(<ConsentBanner locale="en-US" revision={revision} />);
+  await flushMicrotasks();
+
+  expect(bannerShows).toBe(0);
 });

@@ -8,9 +8,12 @@ import type {
   AnalyticsConsentDecision,
   AnalyticsConsentMirrorSource,
 } from "@/features/legal/analytics-consent-decision";
+import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
+import { getLegalDocumentVersion } from "@/features/legal/document-version";
 import { currentRequestHeaders } from "@/shared/backend/workspace-request-context";
 import {
   type ConsentCookieChoice,
+  getConsentCookieValuesFromCookie,
   readConsentCookieChoice,
 } from "@/shared/utils/consent-cookie";
 import { AnalyticsConsentLedger } from "./analytics-consent-ledger";
@@ -26,6 +29,17 @@ export type DeviceAnalyticsConsent = {
    */
   readonly locale: Locale;
 };
+
+/**
+ * The device's banner choice. A cookie saved under an earlier banner
+ * revision, before the current privacy notice or cookie policy, holds none:
+ * the banner asks again, so it is never taken as a decision under the
+ * current notice.
+ */
+const deviceChoiceOf = (cookieHeader: string) =>
+  readConsentCookieChoice(cookieHeader, {
+    revision: getConsentBannerRevision(),
+  });
 
 /** The analytics decision a device's banner choice holds. */
 const decisionOf = (choice: ConsentCookieChoice): AnalyticsConsentDecision =>
@@ -54,7 +68,7 @@ export const mirrorDeviceAnalyticsConsent = Effect.fn(
     readonly source: AnalyticsConsentMirrorSource;
   }
 ) {
-  const choice = readConsentCookieChoice(input.cookieHeader);
+  const choice = deviceChoiceOf(input.cookieHeader);
   if (Option.isNone(choice)) return false;
 
   const ledger = yield* AnalyticsConsentLedger;
@@ -75,7 +89,7 @@ export const mirrorDeviceAnalyticsConsent = Effect.fn(
 export const recordBannerAnalyticsConsent = Effect.fn(
   "AnalyticsConsent.recordBannerSave"
 )(function* (input: DeviceAnalyticsConsent) {
-  const choice = readConsentCookieChoice(input.cookieHeader);
+  const choice = deviceChoiceOf(input.cookieHeader);
   if (Option.isNone(choice)) return false;
 
   const ledger = yield* AnalyticsConsentLedger;
@@ -86,6 +100,59 @@ export const recordBannerAnalyticsConsent = Effect.fn(
     source: "banner",
   });
   return true;
+});
+
+/**
+ * The decision's instant when it is a grant for the privacy notice now
+ * published in its locale. None for a grant for an earlier notice, a
+ * withdrawal, or no decision.
+ */
+const currentNoticeGrantInstant = (
+  decision: Option.Option<{
+    readonly decision: AnalyticsConsentDecision;
+    readonly documentHash: string;
+    readonly locale: Locale;
+    readonly decidedAt: Temporal.Instant;
+  }>
+) =>
+  Option.map(
+    Option.filter(
+      decision,
+      (current) =>
+        current.decision === "grant" &&
+        current.documentHash ===
+          getLegalDocumentVersion(current.locale, "privacy-policy")
+    ),
+    (grant) => grant.decidedAt
+  );
+
+/**
+ * The signed-in account's grant the request's device takes without asking (a
+ * silent grant), as the instant the account gave it: when the device holds
+ * no consent cookie at all and the account's current decision is a grant for
+ * the current privacy notice. A device holding a cookie, even one saved under
+ * an earlier banner revision, is asked again instead, so a change to the
+ * privacy notice or the cookie policy reaches every device that saw the old
+ * one. None for a signed-out request or an account being deleted. Records
+ * nothing: the grant is already the account's decision.
+ */
+export const resolveSilentAnalyticsGrant = Effect.fn(
+  "AnalyticsConsent.resolveSilentGrant"
+)(function* () {
+  const authentication = yield* CustomerAuthentication;
+  const session = yield* authentication.currentUser;
+  if (!session || session.deletionRequested) return Option.none();
+
+  const headers = yield* currentRequestHeaders;
+  const cookieHeader = headers.get("cookie") ?? "";
+  if (getConsentCookieValuesFromCookie(cookieHeader).length > 0) {
+    return Option.none();
+  }
+
+  const ledger = yield* AnalyticsConsentLedger;
+  return currentNoticeGrantInstant(
+    yield* ledger.currentDecision(session.accountId)
+  );
 });
 
 /**

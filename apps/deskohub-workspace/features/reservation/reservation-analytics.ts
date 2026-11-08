@@ -25,12 +25,6 @@ const reservationPrePaymentOutcomes = [
 export type ReservationPrePaymentOutcome =
   (typeof reservationPrePaymentOutcomes)[number];
 
-/**
- * The consented browser saw the status page show a status; its only property
- * is `status`, the page's `CheckoutStatusKind`.
- */
-export const CHECKOUT_STATUS_VIEWED_EVENT = "checkout status viewed";
-
 export type ReservationAnalyticsProperties = Partial<
   Record<ReservationAnalyticsUtmKey, string>
 >;

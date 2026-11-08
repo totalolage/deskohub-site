@@ -32,6 +32,7 @@ import {
   ReservationAccessService,
   type ReservationAccessViewModel,
 } from "@/features/reservation/backend/reservation-access.service";
+import { providePerRequest } from "@/shared/backend/provide-per-request";
 import { runToCompletion } from "@/shared/backend/run-to-completion";
 import {
   answerCustomerApiFailure,
@@ -89,7 +90,7 @@ export const CustomerReservationsApiHandlers = HttpApiBuilder.group(
             locale: defaultLocale,
             returnOutcome: "unknown",
           }).pipe(
-            Effect.provide(
+            providePerRequest(
               Layer.mergeAll(reservations.checkoutStatus, authorization)
             ),
             runToCompletion,
