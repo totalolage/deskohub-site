@@ -177,7 +177,7 @@ test.skipIf(!chromiumAvailable)(
       // first runs, so a stub stands in for a page whose event loop stalls
       // between protocol commands: the in-page poll checks once on arrival.
       await page.addInitScript(() => {
-        window.setTimeout = (() => 0) as unknown as typeof window.setTimeout;
+        Reflect.set(window, "setTimeout", () => 0);
       });
       const origin = "http://react-handlers.test";
       await page.route(`${origin}/`, (route) =>
