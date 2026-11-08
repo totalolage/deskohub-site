@@ -1,11 +1,8 @@
-import { Context, Effect, Layer, Schema } from "effect";
-import {
-  FetchHttpClient,
-  HttpClient,
-  HttpClientRequest,
-} from "effect/unstable/http";
-import { type FeatureFlag, make } from "../generated/effect.gen";
+import { Context, Effect, Layer, Redacted, Schema } from "effect";
+import { FetchHttpClient, HttpClient } from "effect/unstable/http";
+import type { FeatureFlag } from "../generated/effect.gen";
 import type { PostHogProjectId } from "../identifiers";
+import { makePostHogManagementClient } from "../management-client";
 import {
   PostHogFeatureFlagConfig,
   type PostHogFeatureFlagConfigInput,
@@ -89,18 +86,10 @@ export class PostHogFeatureFlagService extends Context.Service<
     Effect.gen(function* () {
       const config = yield* PostHogFeatureFlagConfig;
       const httpClient = yield* HttpClient.HttpClient;
-      const authenticatedClient = httpClient.pipe(
-        HttpClient.mapRequestInput((request) =>
-          request.pipe(
-            HttpClientRequest.prependUrl(config.host.origin),
-            HttpClientRequest.setHeader(
-              "Authorization",
-              `Bearer ${config.apiKey}`
-            )
-          )
-        )
-      );
-      const client = make(authenticatedClient);
+      const client = makePostHogManagementClient(httpClient, {
+        apiKey: Redacted.make(config.apiKey),
+        host: config.host,
+      });
 
       return {
         listDefinitions: listPostHogFeatureFlagDefinitions(
