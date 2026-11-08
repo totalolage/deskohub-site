@@ -1,4 +1,5 @@
 import { errors, type Locator, type Page } from "@playwright/test";
+import { waitForPageFunction } from "./page-function-wait";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
 
 const reactClickHandlerTimeoutMs = 15_000;
@@ -62,13 +63,11 @@ export const waitForReactClickHandler = async (
       throw new Error("React click control was not rendered");
 
     try {
-      const state = await page.waitForFunction(
+      const state = await waitForPageFunction(
+        page,
         reactClickHandlerState,
         element,
-        {
-          polling: workspaceE2EPollIntervalMs.reactHandler,
-          timeout: remainingBudgetMs(),
-        }
+        { deadline, polling: workspaceE2EPollIntervalMs.reactHandler }
       );
       try {
         if ((await state.jsonValue()) !== "detached") return;
@@ -95,8 +94,9 @@ export const waitForReactSubmitHandler = async (
   const element = await form.elementHandle({ timeout: timeoutMs });
   if (element === null) throw new Error("React form was not rendered");
   try {
-    const state = await page.waitForFunction(
-      (node) => {
+    const state = await waitForPageFunction(
+      page,
+      (node: Element) => {
         const reactPropsKey = Object.keys(node).find((key) =>
           key.startsWith("__reactProps$")
         );
@@ -112,7 +112,10 @@ export const waitForReactSubmitHandler = async (
         );
       },
       element,
-      { polling: workspaceE2EPollIntervalMs.reactHandler, timeout: timeoutMs }
+      {
+        deadline: Date.now() + timeoutMs,
+        polling: workspaceE2EPollIntervalMs.reactHandler,
+      }
     );
     await state.dispose();
   } finally {
