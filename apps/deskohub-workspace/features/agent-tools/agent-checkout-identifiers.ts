@@ -12,7 +12,7 @@ import {
   agentSelectionKeySchema,
   deriveAgentCheckoutAttemptId,
 } from "@/features/reservation/backend/booking-agent";
-import type { SelectedReservation } from "./quote-selection";
+import type { SelectedReservation } from "@/features/reservation/backend/booking-selection";
 
 /**
  * The checkout IDs of an agent's booking, derived instead of generated so a

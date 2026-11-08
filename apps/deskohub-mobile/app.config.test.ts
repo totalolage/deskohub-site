@@ -124,6 +124,88 @@ describe("app config", () => {
   });
 });
 
+describe("development App Links", () => {
+  const productionFilter = {
+    action: "VIEW",
+    autoVerify: true,
+    data: [
+      { scheme: "https", host: "workspace.deskohub.cz", pathPrefix: "/app/" },
+    ],
+    category: ["BROWSABLE", "DEFAULT"],
+  };
+  const base: ConfigContext["config"] = {
+    name: "Deskohub",
+    slug: "deskohub-mobile",
+    version: "1.2.3",
+    android: { intentFilters: [productionFilter] },
+  };
+  const context = (config: ConfigContext["config"]): ConfigContext => ({
+    config,
+    projectRoot: import.meta.dir,
+    staticConfigPath: null,
+    packageJsonPath: null,
+  });
+  const preview = "https://deskohub-workspace-site-abc.vercel.app";
+
+  test("keeps only the production host without a configured API origin", () => {
+    expect(appConfig(context(base), {}).android?.intentFilters).toEqual([
+      productionFilter,
+    ]);
+  });
+
+  test("keeps only the production host when the API origin is production", () => {
+    expect(
+      appConfig(context(base), {
+        EXPO_PUBLIC_API_ORIGIN: "https://workspace.deskohub.cz/",
+      }).android?.intentFilters
+    ).toEqual([productionFilter]);
+  });
+
+  test("adds an unverified link filter for a preview API origin in a development build", () => {
+    expect(
+      appConfig(context(base), { EXPO_PUBLIC_API_ORIGIN: preview }).android
+        ?.intentFilters
+    ).toEqual([
+      productionFilter,
+      {
+        action: "VIEW",
+        autoVerify: false,
+        data: [
+          {
+            scheme: "https",
+            host: "deskohub-workspace-site-abc.vercel.app",
+            pathPrefix: "/app/",
+          },
+        ],
+        category: ["BROWSABLE", "DEFAULT"],
+      },
+    ]);
+  });
+
+  test("never adds the preview host to a production build", () => {
+    expect(
+      appConfig(context(base), {
+        EXPO_PUBLIC_API_ORIGIN: preview,
+        EAS_BUILD_PROFILE: "production",
+      }).android?.intentFilters
+    ).toEqual([productionFilter]);
+  });
+
+  test("ignores a local plain-http API origin, which App Links can't open", () => {
+    expect(
+      appConfig(context(base), {
+        EXPO_PUBLIC_API_ORIGIN: "http://10.0.2.2:3000",
+      }).android?.intentFilters
+    ).toEqual([productionFilter]);
+  });
+
+  test("points updates at the same API origin as the link filter", () => {
+    expect(
+      appConfig(context(base), { EXPO_PUBLIC_API_ORIGIN: preview }).updates?.url
+    ).toBe(`${preview}/api/mobile/updates/manifest`);
+  });
+});
+
 describe("updatesManifestUrl", () => {
   test("uses the production manifest when no origin is configured", () => {
     expect(updatesManifestUrl(undefined)).toBe(

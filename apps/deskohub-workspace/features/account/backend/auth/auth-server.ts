@@ -75,9 +75,11 @@ import {
 import { renderMagicLinkEmail } from "./magic-link-email";
 import { nativeAppOrigin } from "./native-app";
 import {
+  appSignInLocale,
   nativeAppLinkFor,
   nativeSignIn,
   refuseMagicLinkAccountSwitch,
+  refuseUnsupportedAppLocale,
 } from "./native-sign-in";
 import {
   findReviewAccountCredential,
@@ -322,7 +324,18 @@ const callbackLocaleFromAuthContext = (
 };
 
 /**
- * Captures the sign-in callback locale as the preference of an account that
+ * The sign-in's locale: its localized callback URL's, else the app's locale
+ * on its sign-in code or magic-link verification.
+ */
+const signInLocaleFromAuthContext = (
+  ctx: Parameters<typeof appSignInLocale>[0]
+): Locale | undefined =>
+  callbackLocaleFromAuthContext(
+    Option.getOrElse(decodeAuthContext(ctx), () => ({}))
+  ) ?? appSignInLocale(ctx);
+
+/**
+ * Captures the sign-in locale as the preference of an account that
  * has none, such as one created before preferences existed. The update never
  * overwrites a saved preference. A failure is logged with a fixed code and
  * never blocks the login: readers fall back without a preference, and the
@@ -371,6 +384,7 @@ type GuardedAuthRequest = {
   readonly path: string;
   /** The HTTP request; a server-side `auth.api` call has none. */
   readonly request?: Request;
+  readonly headers?: Headers;
   readonly body?: unknown;
   readonly query?: unknown;
   readonly json: (body: PasswordSignInStep) => unknown;
@@ -655,13 +669,14 @@ const guardSignInPath = (guard: AuthRequestGuard) =>
  * flag counts as disabled) or for a review account, any request carrying
  * profile fields, the password reset token route, code sign-ins carrying
  * anything beyond the email, code, and callback URL, and password sign-ins
- * outside the review logins.
+ * outside the review logins, and an app sign-in naming an unsupported locale.
  */
 const guardAuthRequest = (guard: AuthRequestGuard) =>
   Effect.succeed(guard).pipe(
     Effect.tap(requirePasskeyRegistration),
     Effect.tap(rejectProfileFields),
     Effect.tap(rejectPasswordResetToken),
+    Effect.tap(({ request }) => refuseUnsupportedAppLocale(request)),
     Effect.flatMap(guardSignInPath),
     Effect.withSpan("WorkspaceAuth.guardRequest")
   );
@@ -797,7 +812,7 @@ const dateRestoredSignInCode = ({
   );
 
 /**
- * Captures the sign-in callback locale for the session's account, when both
+ * Captures the sign-in locale for the session's account, when both
  * are known.
  */
 const captureSessionLocale = ({
@@ -811,11 +826,7 @@ const captureSessionLocale = ({
 }) =>
   Option.all({
     accountId: Option.fromNullishOr(decodeAccountId(session.userId)),
-    locale: Option.fromNullishOr(
-      callbackLocaleFromAuthContext(
-        Option.getOrElse(decodeAuthContext(ctx), () => ({}))
-      )
-    ),
+    locale: Option.fromNullishOr(signInLocaleFromAuthContext(ctx)),
   }).pipe(
     Option.match({
       onNone: () => Effect.void,
@@ -1191,7 +1202,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
           // The locale preference is part of the user insert, so no account
           // exists without one. A server-side creation supplies it; otherwise
           // it comes from the initiating site locale in the callback URL, else
-          // the site default.
+          // the app's locale header, else the site default.
           before: (user, ctx) =>
             runWorkspaceEffect("account.customer-account.create", {
               boundary: "route",
@@ -1207,9 +1218,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
                 const locale =
                   Predicate.isString(user.locale) && isLocale(user.locale)
                     ? user.locale
-                    : (callbackLocaleFromAuthContext(
-                        Option.getOrElse(decodeAuthContext(ctx), () => ({}))
-                      ) ?? defaultLocale);
+                    : (signInLocaleFromAuthContext(ctx) ?? defaultLocale);
                 return { data: { ...user, id: accountId, locale } };
               })
             ),
