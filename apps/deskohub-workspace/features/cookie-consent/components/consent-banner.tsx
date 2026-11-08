@@ -63,6 +63,12 @@ export function ConsentBanner({ locale, revision }: ConsentBannerProps) {
     let stopPrompting: (() => void) | undefined;
     let active = true;
 
+    // The vendor runs once per page; a page served with a new revision, as
+    // after a deployment, starts it again so it saves under that revision.
+    if (vendorRevision !== undefined && vendorRevision !== revision) {
+      CookieConsent.reset();
+    }
+    vendorRevision = revision;
     vendorRuns = Promise.all([
       vendorRuns,
       CookieConsent.run({
@@ -103,6 +109,8 @@ export function ConsentBanner({ locale, revision }: ConsentBannerProps) {
 // The vendor's run is asynchronous, and a run while it already runs (a
 // re-run effect) returns at once, so prompting waits for every earlier run.
 let vendorRuns: Promise<unknown> = Promise.resolve();
+// The revision the vendor last ran with.
+let vendorRevision: number | undefined;
 
 // The accepted set Google consent mode last received in this tab.
 let appliedCategories: string | undefined;
@@ -151,58 +159,54 @@ function promptForConsentChoice(
   let stopped = false;
   let shown = false;
   let askedAccount: CustomerAccountId | undefined;
+  // The server's answer for an account, kept so the session can briefly
+  // leave the account (a refetch) and return to it.
+  let answer:
+    | {
+        readonly accountId: CustomerAccountId;
+        readonly grantedAt: string | null;
+      }
+    | undefined;
 
   const show = () => {
-    if (stopped || shown || visitorConsent.hasChoice()) return;
+    if (shown) return;
     shown = true;
     CookieConsent.show(true);
   };
 
-  if (visitorConsent.hasChoice()) return () => undefined;
-  if (visitorConsent.saveMark() !== "") {
-    show();
-    return () => undefined;
-  }
-
-  const stillSignedInAs = (accountId: CustomerAccountId) => {
-    const identity = getAnalyticsAccountIdentity();
-    return (
-      identity.status === "authenticated" && identity.accountId === accountId
-    );
-  };
-
-  // A late answer for an account the session no longer holds, or for a
-  // device that saved a cookie meanwhile, changes nothing.
-  const applyAccountGrant =
-    (accountId: CustomerAccountId) => (grantedAt: string | null) => {
-      if (
-        stopped ||
-        !stillSignedInAs(accountId) ||
-        visitorConsent.saveMark() !== ""
-      ) {
-        return;
-      }
-      if (grantedAt === null) return show();
-      if (shown) CookieConsent.hide();
-      visitorConsent.applyAccountGrant(grantedAt);
-    };
-
-  const follow = () => {
+  const settle = () => {
     if (stopped || visitorConsent.hasChoice()) return;
+    // A cookie from an earlier revision, here at the start or saved by
+    // another tab meanwhile, is asked again, never silently granted.
+    if (visitorConsent.saveMark() !== "") return show();
+
     const identity = getAnalyticsAccountIdentity();
     if (identity.status === "pending") return;
     if (identity.status !== "authenticated") return show();
-    if (identity.accountId === askedAccount) return;
 
-    askedAccount = identity.accountId;
-    void askForAccountGrant().then(applyAccountGrant(identity.accountId));
+    if (answer?.accountId === identity.accountId) {
+      if (answer.grantedAt === null) return show();
+      if (shown) CookieConsent.hide();
+      visitorConsent.applyAccountGrant(answer.grantedAt);
+      return;
+    }
+    if (askedAccount === identity.accountId) return;
+
+    const { accountId } = identity;
+    askedAccount = accountId;
+    void askForAccountGrant().then((grantedAt) => {
+      answer = { accountId, grantedAt };
+      settle();
+    });
   };
 
   const sessionWait = setTimeout(() => {
-    if (getAnalyticsAccountIdentity().status === "pending") show();
+    if (getAnalyticsAccountIdentity().status === "pending") {
+      if (!stopped && !visitorConsent.hasChoice()) show();
+    }
   }, sessionWaitMs);
-  const stopFollowingIdentity = subscribeAnalyticsAccountIdentity(follow);
-  follow();
+  const stopFollowingIdentity = subscribeAnalyticsAccountIdentity(settle);
+  settle();
   return () => {
     stopped = true;
     clearTimeout(sessionWait);

@@ -388,6 +388,27 @@ describe("silent grant", () => {
     expect(bannerOpen()).toBe(true);
   });
 
+  test("an answer that arrives while the session refetches applies once the session returns to the account", async () => {
+    let answer: (value: SilentGrantAnswer) => void = () => undefined;
+    answerSilentGrant = () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      });
+    await renderSignedIn();
+
+    await publishIdentity({ status: "pending" });
+    await act(async () => {
+      answer({ data: grantedAt });
+      await flushMicrotasks();
+    });
+    expect(accepted()).toEqual([]);
+    await publishIdentity(signedIn);
+
+    expect(accepted()).toEqual(["necessary", "analytics"]);
+    expect(bannerOpen()).toBe(false);
+    expect(resolveSilentAnalyticsGrantForDevice).toHaveBeenCalledTimes(1);
+  });
+
   test("a device holding a cookie from an earlier revision sees the banner without asking the account", async () => {
     answerSilentGrant = () => Promise.resolve({ data: grantedAt });
     // biome-ignore lint/suspicious/noDocumentCookie: The test seeds a choice saved before the banner was bound to the documents.
@@ -407,4 +428,24 @@ describe("silent grant", () => {
     expect(accepted()).toEqual([]);
     expect(resolveSilentAnalyticsGrantForDevice).not.toHaveBeenCalled();
   });
+});
+
+test("a page served with a new revision saves the next choice under it", async () => {
+  const view = render(<ConsentBanner locale="en-US" revision={revision} />);
+  await act(flushMicrotasks);
+
+  view.rerender(<ConsentBanner locale="en-US" revision={revision + 1} />);
+  await act(async () => {
+    await flushMicrotasks();
+    vendor.acceptCategory([]);
+    await flushMicrotasks();
+  });
+
+  expect(vendor.getCookie("revision")).toBe(revision + 1);
+  expect(visitorConsent.hasChoice()).toBe(true);
+  expect(
+    getAcceptedConsentCategoriesFromCookie(document.cookie, {
+      revision: revision + 1,
+    })
+  ).toEqual(["necessary"]);
 });
