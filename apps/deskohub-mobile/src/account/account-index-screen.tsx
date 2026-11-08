@@ -13,6 +13,7 @@ import { LiveMessage } from "../ui/controls";
 import { ListGroup, ListRow } from "../ui/list";
 import { Notice } from "../ui/notice";
 import { ScrollScreen } from "../ui/scroll-screen";
+import { SignupReferralNotice } from "./profile/signup-referral-notice";
 import {
   type AccountNotice,
   type AccountSection,
@@ -106,6 +107,7 @@ export function AccountIndexScreen() {
       <AsyncView result={account} onRetry={refresh}>
         {(current) => (
           <>
+            <SignupReferralNotice account={current} />
             <ListGroup>
               {accountIndexModel(current).sections.map((section) => (
                 <ListRow
