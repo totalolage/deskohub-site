@@ -7,7 +7,6 @@ import {
   type CustomerAccountState,
   type CustomerAuthEndpoints,
   CustomerAuthApi as CustomerAuthHttpApi,
-  CustomerAuthRejected,
   CustomerFeatureUnavailable,
   CustomerInvoiceNotIssued,
   CustomerMarketingPreferencesRejected,
@@ -390,40 +389,54 @@ const serverLayer = (workspace: FakeWorkspace) => {
         })
       )
       .handle("updatePasskey", ({ payload }) =>
-        Effect.suspend(() => {
-          const passkey = workspace.data.passkeys.find(
-            (candidate) => candidate.id === payload.id
-          );
-          if (passkey === undefined) {
-            return Effect.fail(
-              new CustomerAuthRejected({ reason: "not-found" })
+        Effect.suspend(
+          (): BetterAuthAnswer<{
+            readonly passkey: {
+              readonly id: string;
+              readonly name: string;
+              readonly createdAt: string;
+            };
+          }> => {
+            const passkey = workspace.data.passkeys.find(
+              (candidate) => candidate.id === payload.id
             );
+            if (passkey === undefined)
+              return betterAuthNotFound({ code: "PASSKEY_NOT_FOUND" });
+            return update((data) => ({
+              ...data,
+              passkeys: data.passkeys.map((candidate) =>
+                candidate.id === payload.id
+                  ? { ...candidate, name: payload.name }
+                  : candidate
+              ),
+            })).pipe(
+              Effect.as({
+                passkey: {
+                  id: passkey.id,
+                  name: payload.name,
+                  createdAt: passkey.createdAt,
+                },
+              })
+            );
+          }
+        )
+      )
+      .handle("deletePasskey", ({ payload }) =>
+        Effect.suspend((): BetterAuthAnswer<{ readonly status: boolean }> => {
+          if (
+            !workspace.data.passkeys.some(
+              (candidate) => candidate.id === payload.id
+            )
+          ) {
+            return betterAuthNotFound({ code: "PASSKEY_NOT_FOUND" });
           }
           return update((data) => ({
             ...data,
-            passkeys: data.passkeys.map((candidate) =>
-              candidate.id === payload.id
-                ? { ...candidate, name: payload.name }
-                : candidate
+            passkeys: data.passkeys.filter(
+              (candidate) => candidate.id !== payload.id
             ),
-          })).pipe(
-            Effect.as({
-              passkey: {
-                id: passkey.id,
-                name: payload.name,
-                createdAt: passkey.createdAt,
-              },
-            })
-          );
+          })).pipe(Effect.as({ status: true }));
         })
-      )
-      .handle("deletePasskey", ({ payload }) =>
-        update((data) => ({
-          ...data,
-          passkeys: data.passkeys.filter(
-            (candidate) => candidate.id !== payload.id
-          ),
-        })).pipe(Effect.as({ status: true }))
       )
       .handle("deleteConsent", ({ payload }) =>
         update((data) => ({
@@ -490,6 +503,18 @@ const serverLayer = (workspace: FakeWorkspace) => {
     HttpApiBuilder.layer(CustomerAuthHttpApi).pipe(Layer.provide(auth))
   ).pipe(Layer.provide(HttpServer.layerServices));
 };
+
+// Better Auth refuses a missing resource with 404 and its own body, such as
+// `{ code: "PASSKEY_NOT_FOUND" }`. Failing with `CustomerAuthRejected` would
+// not do: every reason shares that class, so the server encodes it with the
+// first schema, as 400 invalid-request.
+const betterAuthNotFound = (body: Readonly<Record<string, string>>) =>
+  Effect.succeed(HttpServerResponse.jsonUnsafe(body, { status: 404 }));
+
+/** A handler's answer, or a response it gives as Better Auth would. */
+type BetterAuthAnswer<A> = Effect.Effect<
+  A | HttpServerResponse.HttpServerResponse
+>;
 
 // The server marks a response whose connection the client must see break.
 const brokenConnectionHeader = "x-fake-workspace-broken-connection";

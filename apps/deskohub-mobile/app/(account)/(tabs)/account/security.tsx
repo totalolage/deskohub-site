@@ -1,5 +1,5 @@
-import { PlaceholderScreen } from "../../../../src/ui/placeholder-screen";
+import { SecurityScreen } from "../../../../src/account/security/security-screen";
 
 export default function SecurityRoute() {
-  return <PlaceholderScreen />;
+  return <SecurityScreen />;
 }
