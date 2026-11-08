@@ -1,8 +1,11 @@
+import { DotyposUnavailable } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
+import { SqlError } from "effect/unstable/sql";
+import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import {
   buildCoworkReservationQuote,
@@ -38,6 +41,7 @@ import { parseReferralCode } from "@/features/referrals/client";
 import {
   type CheckoutReferralEvaluation,
   ReferralError,
+  type ReferralOutage,
 } from "@/features/referrals/contracts";
 import { getReferralBenefitIds } from "@/features/referrals/referral-benefits";
 import { calculateReferrerDiscountAmount } from "@/features/referrals/referrer-discount";
@@ -82,6 +86,13 @@ const money = (value: number) => ({
 });
 
 const referralCode = parseReferralCode("RFL12345")!;
+const registryOutage = new SqlError.SqlError({
+  reason: new SqlError.UnknownError({
+    cause: new Error("synthetic connection refused"),
+    message: "synthetic connection refused",
+    operation: "query",
+  }),
+});
 const eligible: CheckoutReferralEvaluation = {
   kind: "eligible",
   code: referralCode,
@@ -335,7 +346,10 @@ const makeServiceLayer = (input: {
   readonly evaluateCheckoutReferral: (input: {
     readonly code: unknown;
     readonly dotyposCustomerId: typeof dotyposCustomerId;
-  }) => Effect.Effect<CheckoutReferralEvaluation, ReferralError>;
+  }) => Effect.Effect<
+    CheckoutReferralEvaluation,
+    ReferralError | ReferralOutage
+  >;
   readonly payableReservationCustomerId?: typeof dotyposCustomerId;
   readonly onPricingAffirmation?: (input: PaymentPriceAffirmationInput) => void;
   readonly pricingFailure?:
@@ -343,7 +357,7 @@ const makeServiceLayer = (input: {
     | DiscountProviderError;
   readonly codeKind?: "referral" | "discount";
   /** The code-kind lookup fails, as when the referral registry is down. */
-  readonly codeKindFailure?: ReferralError;
+  readonly codeKindFailure?: DatabaseQueryError;
   readonly payableReservationFailure?: PayableReservationUnavailableError;
 }) => {
   const dependencies = Layer.mergeAll(
@@ -954,12 +968,12 @@ describe("CheckoutReferralService", () => {
     ["ineligible", { status: "ineligible" }],
     ["self_referral", { status: "unavailable", reason: "code" }],
     ["invalid_code", { status: "unavailable", reason: "code" }],
-    // No active target and a failed lookup share this reason today.
     ["unavailable", { status: "unavailable", reason: "code" }],
     ["pending_payment", { status: "unavailable", reason: "code" }],
     ["cycle", { status: "unavailable", reason: "code" }],
     ["disabled", { status: "unavailable", reason: "code" }],
     ["account_unavailable", { status: "unavailable", reason: "provider" }],
+    ["referrer_changed", { status: "unavailable", reason: "provider" }],
   ] as const)(
     "reports the %s evaluation failure as %o without a refreshed Pay URL",
     async (reason, expected) => {
@@ -990,6 +1004,44 @@ describe("CheckoutReferralService", () => {
     }
   );
 
+  test.each([
+    ["database", registryOutage],
+    [
+      "Dotypos",
+      new DotyposUnavailable({
+        operation: "listReservations",
+        reason: "server",
+      }),
+    ],
+  ] as const)(
+    "reports a %s outage during evaluation as a provider failure, never a code verdict",
+    async (_source, outage) => {
+      const quote = Effect.runSync(buildCoworkReservationQuote(reservation));
+      let pricingAffirmationCount = 0;
+      const layer = makeServiceLayer({
+        affirmation: {
+          kind: "cowork",
+          reservation,
+          quote,
+          commitment: makeCommitment(coworkProduct, []),
+        },
+        evaluateCheckoutReferral: () => Effect.fail(outage),
+        onPricingAffirmation: () => {
+          pricingAffirmationCount += 1;
+        },
+      });
+
+      const result = await Effect.runPromise(
+        runAcceptCode(
+          layer,
+          tokenFor({ reservation, quote, bookedAt: payStateBookedAt })
+        )
+      );
+      expect(result).toEqual({ status: "unavailable", reason: "provider" });
+      expect(pricingAffirmationCount).toBe(0);
+    }
+  );
+
   test("reports an outage of the referral registry as a provider failure", async () => {
     const quote = Effect.runSync(buildCoworkReservationQuote(reservation));
     let evaluationCount = 0;
@@ -1000,7 +1052,7 @@ describe("CheckoutReferralService", () => {
         quote,
         commitment: makeCommitment(coworkProduct, []),
       },
-      codeKindFailure: new ReferralError({ reason: "unavailable" }),
+      codeKindFailure: registryOutage,
       evaluateCheckoutReferral: () =>
         Effect.sync(() => {
           evaluationCount += 1;

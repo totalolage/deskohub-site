@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import type { DotyposCustomerId } from "@deskohub/dotypos";
+import { type DotyposCustomerId, DotyposUnavailable } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Exit, Layer } from "effect";
 import { redirect } from "next/navigation";
@@ -373,7 +373,12 @@ describe("RememberedReferral.forgetIfSettled", () => {
         cookie: sharedCode,
         referrals: {
           hasSettledReferral: () =>
-            Effect.fail(new ReferralError({ reason: "unavailable" })),
+            Effect.fail(
+              new DotyposUnavailable({
+                operation: "listReservations",
+                reason: "server",
+              })
+            ),
         },
       }
     );

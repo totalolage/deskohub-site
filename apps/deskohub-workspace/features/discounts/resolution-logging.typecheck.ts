@@ -13,7 +13,10 @@ export type DiscountResolutionFailureTagsStayExact = AssertTrue<
   IsExact<
     Parameters<typeof logDiscountResolutionFailure>[0]["cause"]["_tag"],
     | "CalendarSaleConfigurationError"
-    | "ReferralError"
+    | "EffectDrizzleQueryError"
+    | "SqlError"
+    | "DotyposUnavailable"
+    | "DotyposRejected"
     | "DiscountCalculationError"
     | "PromotionCodeUnavailableError"
     | "DiscountProviderError"

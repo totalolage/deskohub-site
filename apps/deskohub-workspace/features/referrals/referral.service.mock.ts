@@ -6,7 +6,7 @@ import {
 } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { type IReferralService, ReferralService } from "./referral.service";
 import { ReferralReleaseGate } from "./referral-release-gate";
 
@@ -43,7 +43,7 @@ export const ReferralServiceWithoutData = ReferralService.Default.pipe(
       }),
       Layer.mock(WorkspaceDatabaseAdvisoryLock, {}),
       Layer.mock(DotyposService, {}),
-      Layer.mock(CustomerAccountResolver, {}),
+      Layer.mock(CustomerAuthentication, {}),
       Layer.mock(CustomerAccountLinkRepository, {})
     )
   )
