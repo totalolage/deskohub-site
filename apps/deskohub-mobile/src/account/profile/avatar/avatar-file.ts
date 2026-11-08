@@ -38,7 +38,8 @@ const extensionOf = (path: string) =>
 
 /**
  * The picked image's media type: the one the picker reported, else the one
- * its name's (or URI's) extension implies.
+ * its name's (or URI's) extension implies. Only the checks use it: on native,
+ * `expo/fetch` sends the part with the type of the file's own extension.
  */
 export const avatarMediaTypeOf = (picked: PickedImage): Option.Option<string> =>
   Option.fromNullishOr(picked.mimeType?.toLowerCase()).pipe(
