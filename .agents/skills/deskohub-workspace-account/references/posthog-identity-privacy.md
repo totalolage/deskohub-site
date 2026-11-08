@@ -205,8 +205,8 @@ non-production traffic apart:
   [Reservation and payment lifecycle events](#reservation-and-payment-lifecycle-events).
   The consented request events (`availability result`, `pre-payment outcome`)
   use the browser's `distinct_id` and `$session_id`, and are skipped without
-  analytics consent. Webhooks join no browser; their lifecycle events follow
-  the author's ledger decision like every other capture.
+  analytics consent. Webhooks carry no browser session ID; their lifecycle
+  events follow the author's ledger decision like every other capture.
 - Sign-in analytics live in `features/account/sign-in-analytics.ts`:
   `sign-in completed` with `method: "link" | "code" | "passkey"`, `sign-in
   code rejected` with `reason`, `passkey added` with `source: "prompt" |
@@ -252,7 +252,8 @@ they carry the traffic category and the name of a recognized assistant.
   `$process_person_profile: false`. Neither carries `$session_id`.
 - The capture-time rule picks the branch for every event, webhook captures
   included: the reservation author's current decision in the ledger when the
-  event is captured, read once per request. A grant links, including a grant
+  event is captured (one read serves every event a request captures). A
+  grant links, including a grant
   under an older notice hash, until the account answers again. A withdrawal or
   no decision keeps the event reservation-keyed, and so does a ledger read
   failure. So a withdrawal after `reservation started` makes the later events
@@ -292,7 +293,7 @@ they carry the traffic category and the name of a recognized assistant.
 - Objections are handled manually; there's no opt-out code path. A customer
   objects by email to the controller's contact address with their
   reservation. An operator then has the reservation's events deleted in
-  PostHog. These events have no person profile, so the Persons UI and the
+  PostHog. Reservation-keyed events have no person profile, so the Persons UI and the
   person delete API (`delete_events=true`) can't reach them, and PostHog
   documents no self-serve deletion of personless events. Ask PostHog support
   to delete events with `distinct_id` equal to the reservation ID in project
@@ -302,9 +303,9 @@ they carry the traffic category and the name of a recognized assistant.
   settles, since an open reservation can still emit events.
 - Person-linked events have a person, so an objection to them is handled by
   deleting the PostHog person `workspace-account:<accountId>` with its events
-  (`delete_events=true`). That reaches only person-linked events; the
-  reservation-keyed events from before the consent still go through the
-  support request above. Until the self-serve account preference (#1044)
+  (`delete_events=true`). That reaches only person-linked events; all
+  reservation-keyed events, from before a grant, after a withdrawal, or from
+  a failed ledger read, still go through the support request above. Until the self-serve account preference (#1044)
   lands, the customer also withdraws analytics consent in cookie settings
   while signed in, so later events stay reservation-keyed.
 
@@ -380,7 +381,7 @@ Filter every step to `deployment.environment.name = production`.
   `withWorkspaceRequestContext`. Work that serves no customer request is `unclassified`
   without a name: tasks, and `service` routes (webhooks, crons, warehouse
   pulls). Attribute those events to the customer's traffic in PostHog through
-  the reservation's shared distinct ID; never persist a category on the
+  the shared `reservation_id` property; never persist a category on the
   reservation.
 
 ## Flag-request gotcha
