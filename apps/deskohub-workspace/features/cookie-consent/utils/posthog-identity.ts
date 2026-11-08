@@ -2,11 +2,8 @@ import type { DotyposCustomerId } from "@deskohub/dotypos/types";
 import type { PostHog } from "posthog-js";
 import type { AnalyticsAccountIdentity } from "@/features/account/analytics-identity";
 import type { CustomerAccountId } from "@/features/account/customer-account";
+import { getPostHogAccountDistinctId } from "@/features/account/posthog-account-distinct-id";
 import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
-
-export const getPostHogAccountDistinctId = (
-  accountId: CustomerAccountId
-): string => `workspace-account:${accountId}`;
 
 /**
  * Person property holding the account's opaque Dotypos customer ID, which
