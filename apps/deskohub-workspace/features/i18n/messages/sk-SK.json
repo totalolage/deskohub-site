@@ -34,13 +34,8 @@
   "accountReferralsHowCompound": "Za každého pozvaného, ktorý nás navštívil za posledných {duration}, získaš ďalšiu zľavu {discount}. Zľavy sa sčítavajú!",
   "accountReferralsHowBenchmark": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "To znamená, že stačí len {count} odporúčanie a máš zľavu viac ako {benchmark}!",
         "countPlural=few": "To znamená, že stačia len {count} odporúčania a máš zľavu viac ako {benchmark}!",
@@ -82,8 +77,8 @@
   "accountBillingInvoiceHistoryUnavailable": "História faktúr a ich sťahovanie nie sú pre tento účet dostupné.",
   "accountBillingDownloadInvoice": "Stiahnuť PDF",
   "accountBillingExportInvoices": "Exportovať všetko",
-  "accountLegalTitle": "Právne informácie, súkromie a súhlasy GDPR",
-  "legalScreenTitle": "Právne informácie, súkromie a súhlasy GDPR",
+  "accountLegalTitle": "Právne informácie, súkromie a súhlasy",
+  "legalScreenTitle": "Právne informácie, súkromie a súhlasy",
   "legalScreenAnalyticsTitle": "Analytika webu a používania",
   "legalScreenAnalyticsDescription": "Analytické a marketingové cookies tohto prehliadača spravuj v nastaveniach cookies. Nastavenia prehliadača sú oddelené od súhlasu s marketingovou komunikáciou.",
   "legalScreenMarketingTitle": "Marketingové a komunitné správy",
@@ -100,7 +95,7 @@
   "marketingPreferencesFormAccountContext": "Spravuješ zákaznícku preferenciu pre tento prihlásený účet.",
   "marketingPreferencesFormLinkContext": "Zákaznícku preferenciu spravuješ cez tento vyhradený odkaz pre marketingové správy, nie z prihláseného účtu.",
   "marketingPreferencesFormStatusActive": "Marketingové správy sú teraz povolené.",
-  "marketingPreferencesFormStatusWithdrawn": "Zasielanie marketingových správ je teraz odvolané.",
+  "marketingPreferencesFormStatusWithdrawn": "Súhlas so zasielaním marketingových správ je teraz odvolaný.",
   "marketingPreferencesFormSaved": "Tvoja marketingová preferencia bola uložená.",
   "marketingPreferencesFormSaveError": "Marketingovú preferenciu sa nepodarilo uložiť. Skús to, prosím, znova.",
   "marketingPreferencesFormPendingDescription": "Pokračuj overením tohto vyhradeného odkazu pre marketingové správy, až potom bude možné zobraziť alebo zmeniť zákaznícku preferenciu.",
@@ -385,7 +380,7 @@
   "faqAnswerFood": "Áno, jedlo si môžeš priniesť a môžeš si tiež kúpiť nápoje z našej chladničky. Máme dokonca taniere, príbory a malú rúru na ohriatie jedla!",
   "faqQuestionCalls": "Je tu priestor na telefonovanie?",
   "faqAnswerCalls": "Telefónne búdky zatiaľ nemáme. Keď potrebuješ dlhší hovor alebo chvíľu mimo ostatných, zarezervuj si <meetingRoomReservation>zasadaciu miestnosť</meetingRoomReservation>.",
-  "faqQuestionBusyness": "Aký plný býva coworking?",
+  "faqQuestionBusyness": "Koľko ľudí zvyčajne býva v coworkingu?",
   "faqAnswerBusyness": "Momentálne máme v priemere {average} návštevníkov denne a kapacitu až {capacity}.",
   "landingFooterContactTitle": "Chceš rezerváciu, prehliadku alebo firemný dopyt?",
   "landingFooterContactLead": "Napíš nám, čo potrebuješ. Prehliadku aj firemné podujatie dohodneme individuálne.",
@@ -483,13 +478,8 @@
   "reservationTierMeetingRoomDescription": "Súkromná miestnosť na hovory, workshopy alebo sústredené skupinové stretnutie.",
   "reservationMeetingRoomDurationHours": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} hodina",
         "countPlural=few": "{count} hodiny",
@@ -538,9 +528,7 @@
         "input dayCount",
         "local dayCountPlural = dayCount: plural"
       ],
-      "selectors": [
-        "dayCountPlural"
-      ],
+      "selectors": ["dayCountPlural"],
       "match": {
         "dayCountPlural=one": "Súkromná kancelária - {dayCount} deň",
         "dayCountPlural=few": "Súkromná kancelária - {dayCount} dni",
@@ -559,13 +547,8 @@
   "reservationOfficeSeatCountLabel": "Koľko miest v kancelárii potrebuješ?",
   "reservationOfficeSeatCountOption": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} miesto",
         "countPlural=few": "{count} miesta",
@@ -710,9 +693,7 @@
         "input dayCount",
         "local dayCountPlural = dayCount: plural"
       ],
-      "selectors": [
-        "dayCountPlural"
-      ],
+      "selectors": ["dayCountPlural"],
       "match": {
         "dayCountPlural=one": "Prístup do súkromnej kancelárie · {dayCount} deň",
         "dayCountPlural=few": "Prístup do súkromnej kancelárie · {dayCount} dni",
@@ -727,9 +708,7 @@
         "input seatCount",
         "local seatCountPlural = seatCount: plural"
       ],
-      "selectors": [
-        "seatCountPlural"
-      ],
+      "selectors": ["seatCountPlural"],
       "match": {
         "seatCountPlural=one": "{seatCount} miesto v kancelárii",
         "seatCountPlural=few": "{seatCount} miesta v kancelárii",
@@ -744,9 +723,7 @@
         "input dayCount",
         "local dayCountPlural = dayCount: plural"
       ],
-      "selectors": [
-        "dayCountPlural"
-      ],
+      "selectors": ["dayCountPlural"],
       "match": {
         "dayCountPlural=one": "{dayCount} deň",
         "dayCountPlural=few": "{dayCount} dni",
@@ -986,13 +963,8 @@
   "reservationValidationOfficeMaximumEnd": "Posledný deň rezervácie nesmie byť neskôr ako o mesiac odo dneška.",
   "reservationValidationOfficeMaximumDuration": [
     {
-      "declarations": [
-        "input hours",
-        "local hoursPlural = hours: plural"
-      ],
-      "selectors": [
-        "hoursPlural"
-      ],
+      "declarations": ["input hours", "local hoursPlural = hours: plural"],
+      "selectors": ["hoursPlural"],
       "match": {
         "hoursPlural=one": "Rezervácia kancelárie nesmie presiahnuť {hours} hodinu.",
         "hoursPlural=few": "Rezervácia kancelárie nesmie presiahnuť {hours} hodiny.",
@@ -1084,7 +1056,7 @@
   "accountSignInAcceptedTitle": "Skontroluj si schránku",
   "accountSignInAcceptedBody": "Ak sa dá na adresu doručiť správa, čoskoro príde jednorazový odkaz. Odkaz platí raz a vyprší po 10 minútach.",
   "accountSignInAcceptedAgain": "Poslať ďalší odkaz",
-  "accountSignInAcceptedSameBrowser": "Otvor odkaz v tomto prehliadači a nadviažeš tam, kde si teraz.",
+  "accountSignInAcceptedSameBrowser": "Otvor odkaz v tomto prehliadači a môžeš rovno pokračovať.",
   "accountSignInAssistantBrowserHint": "Ak za teba rezervuje asistent vo vlastnom prehliadači, prevezmi jeho prehliadač a odkaz otvor v ňom, alebo rezerváciu dokonči v prehliadači, v ktorom odkaz otvoríš – tvoj výber zostane zachovaný.",
   "accountSignInCodeTitle": "Zadaj prihlasovací kód",
   "accountSignInCodeBody": "Na adresu {email} sme poslali šesťmiestny kód. Platí 10 minút.",
@@ -1204,13 +1176,8 @@
   "accountReservationOtherProduct": "Rezervácia vo Workspace",
   "accountReservationSeats": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} miesto",
         "countPlural=few": "{count} miesta",
@@ -1442,13 +1409,8 @@
   "bookingWidgetStartTimeRequired": "Vyber čas začiatku.",
   "bookingWidgetDayCountRange": [
     {
-      "declarations": [
-        "input max",
-        "local maxPlural = max: plural"
-      ],
-      "selectors": [
-        "maxPlural"
-      ],
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
       "match": {
         "maxPlural=one": "Zvoľ 1 deň.",
         "maxPlural=few": "Zvoľ 1 až {max} dni.",
@@ -1459,13 +1421,8 @@
   ],
   "bookingWidgetSeatCountRange": [
     {
-      "declarations": [
-        "input max",
-        "local maxPlural = max: plural"
-      ],
-      "selectors": [
-        "maxPlural"
-      ],
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
       "match": {
         "maxPlural=one": "Zvoľ 1 miesto.",
         "maxPlural=few": "Zvoľ 1 až {max} miesta.",
@@ -1480,7 +1437,7 @@
   "breadcrumbHome": "Deskohub Workspace",
   "coworkingBreadcrumb": "Coworking",
   "reservationCoworkBreadcrumb": "Rezervácia",
-  "coworkingMetadataTitle": "Coworking na Palmovke: zdieľané a vyhradené miesto",
+  "coworkingMetadataTitle": "Zdieľané a vyhradené miesto na Palmovke",
   "coworkingMetadataDescription": "Zdieľané miesto do 17:00 alebo vlastný stôl s prístupom 24/7 a kávou v cene. Samoobslužný coworking pri metre Palmovka v Prahe 8, rezervácia online na deň.",
   "coworkingHeroTitle": "Coworking na Palmovke",
   "coworkingHeroIntro": "Príď pracovať v dni, keď ti to vyhovuje. Miesto si zarezervuješ online, odkaz na PIN k dverám ti príde e-mailom a na recepciu ani na kľúče nečakáš.",
