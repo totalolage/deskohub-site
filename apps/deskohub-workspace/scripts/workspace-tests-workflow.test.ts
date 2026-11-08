@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { testEmailAddress } from "@deskohub/test-email";
 import { shardTimingsArtifactPattern } from "./refresh-test-timings";
 import { commandOutput, runCommand } from "./shared/command";
 import { identifierNames, parseTrackedSource } from "./shared/source-ast";
@@ -269,7 +270,7 @@ describe("shard selection step", () => {
         "-c",
         "user.name=CI",
         "-c",
-        "user.email=ci@example.test",
+        `user.email=${testEmailAddress("ci")}`,
         ...args,
       ],
       { cwd: join(repositories, repository) }
