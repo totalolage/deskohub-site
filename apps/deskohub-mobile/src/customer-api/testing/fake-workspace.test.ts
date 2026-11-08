@@ -46,3 +46,21 @@ describe("the fake Workspace's Better Auth passkey endpoints", () => {
     expect(workspace.data.passkeys).toEqual(passkeys);
   });
 });
+
+describe("the fake Workspace's Better Auth consent endpoint", () => {
+  test("refuses disconnecting an unknown assistant as Better Auth does", async () => {
+    const workspace = FakeWorkspace.forKind("linked");
+    const assistants = workspace.data.assistants;
+
+    expect(
+      await refusal(workspace, (auth) =>
+        auth.auth.deleteConsent({ payload: { id: "unknown" } })
+      )
+    ).toMatchObject({
+      _tag: "CustomerAuthRejected",
+      reason: "not-found",
+      code: "not_found",
+    });
+    expect(workspace.data.assistants).toEqual(assistants);
+  });
+});

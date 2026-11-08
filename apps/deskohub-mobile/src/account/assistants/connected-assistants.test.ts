@@ -1,34 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import {
-  type CustomerAgentConnection,
-  CustomerAuthRejected,
-} from "@deskohub/workspace-customer-api";
-import { Effect, Layer, Option } from "effect";
+import type { CustomerAgentConnection } from "@deskohub/workspace-customer-api";
+import { Effect, Option } from "effect";
 import {
   AsyncResult,
   type Atom,
   AtomRegistry,
 } from "effect/unstable/reactivity";
-import {
-  AccountExitFence,
-  makeAccountExitFence,
-} from "../../customer-api/account-scoped-storage";
 import { viewErrorOf } from "../../customer-api/async-view";
-import { CustomerAuthApi } from "../../customer-api/customer-api.service";
 import {
   CustomerViewError,
   isRetryableViewError,
 } from "../../customer-api/customer-view-error";
 import {
-  makeCustomerDataRegistry,
   makeFakeCustomerData,
   settle,
 } from "../../customer-api/testing/customer-data-test-registry";
-import {
-  fakeCustomerDataLayer,
-  makeFakeDevice,
-} from "../../customer-api/testing/fake-customer-data";
-import { FakeWorkspace } from "../../customer-api/testing/fake-workspace";
 import { formatInstant, parseInstant } from "../../i18n/date-time-format";
 import {
   assistantConnectionsAtom,
@@ -373,41 +359,25 @@ describe("disconnectAssistantAtom", () => {
   });
 
   test("an assistant already disconnected elsewhere counts as disconnected", async () => {
-    const workspace = FakeWorkspace.forKind("linked");
-    workspace.data = { ...workspace.data, assistants: [connection()] };
-    // Better Auth answers 404 for a consent that no longer exists.
-    const consentGone = Layer.effect(
-      CustomerAuthApi,
-      Effect.map(Effect.service(CustomerAuthApi), (client) => ({
-        ...client,
-        auth: {
-          ...client.auth,
-          deleteConsent: (() =>
-            Effect.fail(
-              new CustomerAuthRejected({ reason: "not-found" })
-            )) as unknown as typeof client.auth.deleteConsent,
-        },
-      }))
-    );
-    const base = fakeCustomerDataLayer({
-      workspace,
-      device: makeFakeDevice(),
-      fence: Layer.succeed(AccountExitFence, makeAccountExitFence()),
-    });
-    const registry = makeCustomerDataRegistry(
-      Layer.merge(base, consentGone.pipe(Layer.provide(base)))
-    );
-    const close = await openScreen(registry);
+    const data = makeFakeCustomerData("linked");
+    withAssistants(data, [connection()]);
+    const close = await openScreen(data.registry);
+    // Disconnected on another device after this screen read the list.
+    withAssistants(data, []);
 
-    const { outcome, view, rows } = await disconnect(registry, "consent-a");
+    const { outcome, view, rows } = await disconnect(
+      data.registry,
+      "consent-a"
+    );
     close();
 
     expect(outcome._tag).toBe("Success");
     expect(view.outcome).toBe("disconnected");
     expect(rows).toEqual([]);
     // The list is read again to show what the server holds.
-    expect(workspace.calls).toEqual([
+    expect(data.workspace.calls).toEqual([
       "listAssistantConnections",
+      "deleteConsent",
       "listAssistantConnections",
     ]);
   });

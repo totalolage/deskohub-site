@@ -103,9 +103,9 @@ export interface AssistantRow {
     | { readonly kind: "none" };
   /**
    * What it may do, in the API's order. The Workspace lists only the scopes
-   * its consent page explains; one this app doesn't know yet comes from a
-   * newer Workspace and has no wording here, so it is left out, as on the
-   * site.
+   * its consent page explains; one this app doesn't know comes from a newer
+   * Workspace than the app and has no wording here, so it is left out rather
+   * than shown as a raw token.
    */
   readonly scopes: ReadonlyArray<AssistantScope>;
   /** Whether it may also use the administration. */

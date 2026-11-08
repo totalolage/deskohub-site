@@ -431,12 +431,24 @@ const serverLayer = (workspace: FakeWorkspace) => {
         })
       )
       .handle("deleteConsent", ({ payload }) =>
-        update((data) => ({
-          ...data,
-          assistants: data.assistants.filter(
-            (candidate) => candidate.id !== payload.id
-          ),
-        }))
+        Effect.suspend(() => {
+          if (
+            !workspace.data.assistants.some(
+              (candidate) => candidate.id === payload.id
+            )
+          ) {
+            return betterAuthNotFound({
+              error: "not_found",
+              error_description: "no consent",
+            });
+          }
+          return update((data) => ({
+            ...data,
+            assistants: data.assistants.filter(
+              (candidate) => candidate.id !== payload.id
+            ),
+          }));
+        })
       )
   );
 
