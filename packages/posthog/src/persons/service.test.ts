@@ -58,7 +58,7 @@ const deletionResponse = (
     persons_found: number;
     persons_deleted: number;
     persons_queued_for_deletion: number;
-    deletion_errors: readonly Record<string, string>[];
+    deletion_errors: readonly Record<string, string | null>[];
   }> = {}
 ) =>
   Response.json(
@@ -290,6 +290,23 @@ describe("PostHogPersonsService.deletePersonKeepingEvents", () => {
       "PostHogPersonsUncertain",
       "invalid-response",
       200,
+    ],
+    [
+      "deletion errors that name no step",
+      deletionResponse({ persons_deleted: 0, deletion_errors: [{}] }),
+      "PostHogPersonsUncertain",
+      "invalid-response",
+      undefined,
+    ],
+    [
+      "deletion errors whose step is not text",
+      deletionResponse({
+        persons_deleted: 0,
+        deletion_errors: [{ step: null }],
+      }),
+      "PostHogPersonsUncertain",
+      "invalid-response",
+      undefined,
     ],
     [
       "a transport error",

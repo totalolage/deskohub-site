@@ -139,23 +139,39 @@ const stepsAfterPersonDeleted: ReadonlySet<string> = new Set([
   "publish_clickhouse_tombstone",
 ]);
 
+/**
+ * Only deletion errors that name a step before the person was deleted prove
+ * it still exists and can be retried; an entry without a step proves nothing.
+ */
 const toDeletion = (
   response: PersonBulkDeleteResponse
-): Effect.Effect<"deleted" | "absent", PostHogPersonsUnavailable> => {
+): Effect.Effect<
+  "deleted" | "absent",
+  PostHogPersonsUnavailable | PostHogPersonsUncertain
+> => {
   if (response.persons_found === 0) return Effect.succeed("absent");
-  const incomplete = (response.deletion_errors ?? []).some(
-    (entry) =>
-      typeof entry.step !== "string" || !stepsAfterPersonDeleted.has(entry.step)
+  const steps = (response.deletion_errors ?? []).map((entry) => entry.step);
+  const namedSteps = steps.filter(
+    (step): step is string => typeof step === "string"
   );
-  return incomplete
-    ? Effect.fail(
+  if (namedSteps.length < steps.length) {
+    return Effect.fail(
+      new PostHogPersonsUncertain({
+        ...bulkDelete,
+        reason: "invalid-response",
+        message: "PostHog reported a deletion error without its step.",
+      })
+    );
+  }
+  return namedSteps.every((step) => stepsAfterPersonDeleted.has(step))
+    ? Effect.succeed("deleted")
+    : Effect.fail(
         new PostHogPersonsUnavailable({
           ...bulkDelete,
           reason: "deletion-incomplete",
           message: "PostHog did not finish deleting the person.",
         })
-      )
-    : Effect.succeed("deleted");
+      );
 };
 
 const isUnavailable = (
