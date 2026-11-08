@@ -20,6 +20,7 @@ import {
   refreshAnalyticsAccountIdentity,
   subscribeAnalyticsAccountIdentity,
 } from "@/features/account/analytics-identity";
+import { getPostHogAccountDistinctId } from "@/features/account/posthog-account-distinct-id";
 import { captureRecordedSignInCompletion } from "@/features/account/sign-in-analytics";
 import type { PostHogFeatureFlagDefinitions } from "@/features/feature-flags/generated/contract";
 import { applyFeatureFlagOverrides } from "@/features/feature-flags/react";
@@ -44,10 +45,7 @@ import {
   isPostHogTelemetryHostAllowed,
 } from "../utils/posthog-config";
 import { preparePostHogEvent } from "../utils/posthog-event";
-import {
-  createPostHogIdentityController,
-  getPostHogAccountDistinctId,
-} from "../utils/posthog-identity";
+import { createPostHogIdentityController } from "../utils/posthog-identity";
 import { createPostHogPageUrl } from "../utils/posthog-url";
 import { type VisitorConsentChange, visitorConsent } from "../visitor-consent";
 import { loadPostHogSdk } from "./posthog-sdk-load";

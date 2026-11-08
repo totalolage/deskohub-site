@@ -1,7 +1,12 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Logger, Option } from "effect";
+import {
+  type CustomerAccountId,
+  customerAccountIdSchema,
+} from "@/features/account/customer-account";
+import { AnalyticsConsentUnavailable } from "@/features/legal/backend/analytics-consent-ledger";
 import {
   classifyAgentTraffic,
   unclassifiedTraffic,
@@ -14,6 +19,7 @@ import {
 } from "@/shared/utils/posthog-session-cookies";
 import { reservationLifecycleEvents } from "../../reservation-lifecycle-events";
 import type { ICheckoutAnalytics } from "./checkout-analytics.service";
+import type { IReservationAnalyticsPerson } from "./reservation-analytics-person";
 
 const { CheckoutAnalytics } = await import("./checkout-analytics.service");
 const { recordCheckoutAnalytics } = await import(
@@ -61,9 +67,10 @@ const chatGptUserAgent =
 const capture = <A>(
   operation: (analytics: ICheckoutAnalytics) => Effect.Effect<A>,
   context: <B>(effect: Effect.Effect<B>) => Effect.Effect<B> = (effect) =>
-    effect
+    effect,
+  linkedAccount?: IReservationAnalyticsPerson["linkedAccount"]
 ) => {
-  const recorder = recordCheckoutAnalytics();
+  const recorder = recordCheckoutAnalytics(linkedAccount);
   return Effect.flatMap(CheckoutAnalytics, operation).pipe(
     Effect.provide(recorder.layer),
     context,
@@ -390,5 +397,213 @@ describe("Checkout analytics", () => {
     );
 
     expect(messages).toEqual([]);
+  });
+});
+
+/**
+ * Every lifecycle event of one reservation and its payment attempt, captured
+ * at once.
+ */
+const everyLifecycleEvent =
+  (reservationId: string, attemptId: string) =>
+  (analytics: ICheckoutAnalytics) => {
+    const reservation = { id: reservationId };
+    const attempt = {
+      id: attemptId,
+      workspaceReservationId: reservationId,
+      provider: "nexi" as const,
+      amount: { value: 12_500, exponent: 2, currency: "CZK" },
+    };
+    return Effect.all(
+      [
+        analytics.reservationStarted({ reservation, timestamp: lifecycleAt }),
+        analytics.paymentStarted({ attempt, timestamp: lifecycleAt }),
+        analytics.paymentFailed({
+          attempt,
+          failureReason: "nexi_payment_failed",
+          timestamp: lifecycleAt,
+        }),
+        analytics.paymentAbandoned({ attempt, timestamp: lifecycleAt }),
+        analytics.paymentCompleted({ attempt, timestamp: lifecycleAt }),
+        analytics.reservationCompleted({ reservation, timestamp: lifecycleAt }),
+        analytics.reservationFulfilled({ reservation, timestamp: lifecycleAt }),
+        analytics.reservationAbandoned({ reservation, timestamp: lifecycleAt }),
+      ],
+      { concurrency: "unbounded" }
+    );
+  };
+
+const lifecycleAt = Temporal.Instant.from("2099-06-17T12:00:00.000Z");
+
+/** The keys a personless lifecycle event sends. */
+const lifecycleKeys = (event: string) => {
+  if (event === "payment failed") {
+    return [...paymentEventKeys, "failure_reason"].sort();
+  }
+  return event.startsWith("payment ") ? paymentEventKeys : reservationEventKeys;
+};
+
+/** A lookup that links only `reservationId` to `accountId`, counting reads. */
+const linkingOnly = (reservationId: string, accountId: CustomerAccountId) => {
+  const reads: string[] = [];
+  const linkedAccount: IReservationAnalyticsPerson["linkedAccount"] = (id) =>
+    Effect.sync(() => {
+      reads.push(id);
+      return id === reservationId ? Option.some(accountId) : Option.none();
+    });
+  return { linkedAccount, reads };
+};
+
+describe("Lifecycle events of a consenting author", () => {
+  const reservationId = "synthetic-linked-reservation-id";
+  const attemptId = "synthetic-linked-payment-attempt-id";
+  const accountId = customerAccountIdSchema.make("synthetic-account-id");
+  const browserId = "synthetic-browser-id";
+  const requestHeaders = new Headers({
+    cookie: `${consentCookie(["necessary", "analytics"])}; ${POSTHOG_DISTINCT_ID_COOKIE}=${browserId}; ${POSTHOG_SESSION_ID_COOKIE}=synthetic-session-id`,
+    "user-agent": chatGptUserAgent,
+    "signature-agent": '"https://chatgpt.com"',
+  });
+  const inRequest = withWorkspaceRequestContext(
+    requestHeaders,
+    classifyAgentTraffic(requestHeaders)
+  );
+
+  test("go out under the author's person with only the account ID added", async () => {
+    const lookup = linkingOnly(reservationId, accountId);
+
+    const messages = await capture(
+      everyLifecycleEvent(reservationId, attemptId),
+      inRequest,
+      lookup.linkedAccount
+    );
+
+    expect(messages.map(({ event }) => event).sort()).toEqual(
+      [...reservationLifecycleEvents].sort()
+    );
+    for (const message of messages) {
+      expect(message.distinctId).toBe(`workspace-account:${accountId}`);
+      expect(message.uuid).toBe(
+        message.event.startsWith("payment ")
+          ? `${attemptId}:${message.event}`
+          : `${reservationId}:${message.event}`
+      );
+      expect(message.properties.reservation_id).toBe(reservationId);
+      // Person processing stays on; nothing else joins the allowed keys.
+      expect(sentPropertyKeys(message)).toEqual(
+        lifecycleKeys(message.event).filter(
+          (key) => key !== "$process_person_profile"
+        )
+      );
+      expect(Object.values(message.properties)).not.toContain(browserId);
+      expect(Object.values(message.properties)).not.toContain(
+        "synthetic-session-id"
+      );
+    }
+  });
+
+  test("of another author go out under the reservation without a person", async () => {
+    const lookup = linkingOnly("synthetic-other-reservation-id", accountId);
+
+    const messages = await capture(
+      everyLifecycleEvent(reservationId, attemptId),
+      inRequest,
+      lookup.linkedAccount
+    );
+
+    expect(messages).toHaveLength(reservationLifecycleEvents.length);
+    for (const message of messages) {
+      expect(message.distinctId).toBe(reservationId);
+      expect(message.uuid).toBe(
+        message.event.startsWith("payment ")
+          ? `${attemptId}:${message.event}`
+          : `${reservationId}:${message.event}`
+      );
+      expect(message.properties.$process_person_profile).toBe(false);
+      expect(sentPropertyKeys(message)).toEqual(lifecycleKeys(message.event));
+    }
+  });
+
+  test("read the author's consent once per reservation in a run", async () => {
+    const lookup = linkingOnly(reservationId, accountId);
+
+    await capture(
+      everyLifecycleEvent(reservationId, attemptId),
+      inRequest,
+      lookup.linkedAccount
+    );
+    await capture(
+      everyLifecycleEvent(reservationId, attemptId),
+      inRequest,
+      lookup.linkedAccount
+    );
+
+    // Concurrent events share one read; each run reads again, so a
+    // withdrawal applies to the next request.
+    expect(lookup.reads).toEqual([reservationId, reservationId]);
+  });
+
+  test("go out without a person when the consent can't be read, and read again", async () => {
+    const reads: string[] = [];
+    const linkedAccount: IReservationAnalyticsPerson["linkedAccount"] = (id) =>
+      Effect.suspend(() => {
+        reads.push(id);
+        return reads.length === 1
+          ? Effect.fail(
+              new AnalyticsConsentUnavailable({ cause: "synthetic outage" })
+            )
+          : Effect.succeed(Option.some(accountId));
+      });
+    const warnings: unknown[] = [];
+    const recordingWarnings = Logger.layer([
+      Logger.make(({ logLevel }) => {
+        if (logLevel === "Warn") warnings.push(logLevel);
+      }),
+    ]);
+
+    const messages = await capture(
+      (analytics) =>
+        Effect.gen(function* () {
+          yield* analytics.reservationStarted({
+            reservation: { id: reservationId },
+            timestamp: lifecycleAt,
+          });
+          yield* analytics.reservationCompleted({
+            reservation: { id: reservationId },
+            timestamp: lifecycleAt,
+          });
+        }),
+      (effect) => inRequest(effect).pipe(Effect.provide(recordingWarnings)),
+      linkedAccount
+    );
+
+    expect(warnings).toHaveLength(1);
+    expect(
+      messages.map(({ event, distinctId }) => [event, distinctId])
+    ).toEqual([
+      ["reservation started", reservationId],
+      ["reservation completed", `workspace-account:${accountId}`],
+    ]);
+    expect(messages[0]?.properties.$process_person_profile).toBe(false);
+    expect(reads).toEqual([reservationId, reservationId]);
+  });
+
+  test("go out without a person when the consent read dies", async () => {
+    const messages = await capture(
+      (analytics) =>
+        analytics.reservationFulfilled({
+          reservation: { id: reservationId },
+          timestamp: lifecycleAt,
+        }),
+      inRequest,
+      () => Effect.die("synthetic defect")
+    );
+
+    expect(messages).toMatchObject([
+      {
+        distinctId: reservationId,
+        properties: { $process_person_profile: false },
+      },
+    ]);
   });
 });

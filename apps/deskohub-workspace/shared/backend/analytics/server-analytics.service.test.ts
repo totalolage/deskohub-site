@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { PostHog } from "posthog-node";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { unclassifiedTraffic } from "@/shared/agent-traffic/agent-traffic";
 import { PostHogRuntimeConfig } from "@/shared/backend/config/posthog.config";
 import { withWorkspaceRequestContext } from "@/shared/backend/workspace-request-context";
@@ -127,6 +128,43 @@ describe("ServerAnalytics", () => {
     expect(Object.values(messages[0]?.properties ?? {})).not.toContain(
       "synthetic-browser-id"
     );
+  });
+
+  test("sends an account's event under its person, without the visitor or session", async () => {
+    const messages = await captureAll(
+      [
+        {
+          name: "payment started",
+          subject: {
+            kind: "account",
+            accountId: customerAccountIdSchema.make("account-a"),
+            occurrenceId: "payment-attempt-id",
+          },
+          properties: { reservation_id: "reservation-id" },
+          timestamp,
+        },
+      ],
+      withWorkspaceRequestContext(consentedVisitorHeaders, unclassifiedTraffic)
+    );
+
+    expect(messages).toEqual([
+      {
+        distinctId: "workspace-account:account-a",
+        event: "payment started",
+        // Person processing stays on: no `$process_person_profile`.
+        properties: {
+          agent_category: "unclassified",
+          "deployment.environment.name": "development",
+          "effect.span_id": expect.any(String),
+          "effect.trace_id": expect.any(String),
+          reservation_id: "reservation-id",
+          "service.name": "workspace-test",
+          "service.namespace": "deskohub-test",
+        },
+        timestamp,
+        uuid: "payment-attempt-id:payment started",
+      },
+    ]);
   });
 
   test("sends a visitor's event under the consented visitor and session", async () => {
