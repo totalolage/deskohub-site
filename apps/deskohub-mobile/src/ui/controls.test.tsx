@@ -60,7 +60,7 @@ describe("TextField", () => {
     expect(errorRegion?.style).not.toBe(idleLiveRegionLayout);
   });
 
-  test("the error region is live on every platform, idle or shown", () => {
+  test("the error region declares a polite live region, idle or shown", () => {
     for (const error of [undefined, "x"]) {
       const { errorRegion } = field({ error });
       expect(errorRegion?.role).toBe("status");

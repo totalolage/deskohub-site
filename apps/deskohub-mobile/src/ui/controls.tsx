@@ -122,7 +122,7 @@ export function TextField({
   const errorId = useId();
   const { invalid, description, role, live, idleLayout } =
     fieldErrorPresentation(error);
-  useLiveRegionAnnouncement(description);
+  useLiveRegionAnnouncement(description, live);
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
@@ -166,7 +166,7 @@ export function LiveMessage({
   readonly role: "status" | "alert";
   readonly message: string | undefined;
 }) {
-  useLiveRegionAnnouncement(message);
+  useLiveRegionAnnouncement(message, role === "alert" ? "assertive" : "polite");
   return (
     <Text
       role={role}

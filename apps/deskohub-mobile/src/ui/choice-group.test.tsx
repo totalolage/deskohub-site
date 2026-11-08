@@ -1,7 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
 import { theme } from "../theme";
 import { ChoiceGroup } from "./choice-group";
-import { elementTree, find, findAll } from "./testing/element-tree";
+import {
+  elementTree,
+  find,
+  findAll,
+  type HostProps,
+} from "./testing/element-tree";
 
 type Value = "a" | "b" | "c";
 
@@ -32,6 +37,29 @@ const group = ({
   };
 };
 
+/** A radio's handler prop; a missing one fails the test. */
+const handler = (radio: HostProps | undefined, name: string) => {
+  const prop = radio?.[name];
+  if (typeof prop !== "function") throw new Error(`The radio has no ${name}`);
+  return prop as (event?: unknown) => void;
+};
+
+const press = (radio: HostProps | undefined) => handler(radio, "onPress")();
+
+/** Attaches a stand-in host instance to each radio, as a renderer would. */
+const attach = (radios: ReadonlyArray<HostProps>) =>
+  radios.map((radio) => {
+    const instance = { focus: mock(() => undefined) };
+    (radio.ref as (node: unknown) => void)(instance);
+    return instance;
+  });
+
+const keyDown = (radio: HostProps | undefined, key: string) => {
+  const event = { nativeEvent: { key }, preventDefault: mock(() => undefined) };
+  handler(radio, "onKeyDown")(event);
+  return event;
+};
+
 describe("ChoiceGroup", () => {
   test("its visible label names the radio group", () => {
     const { group: radioGroup, label } = group();
@@ -54,20 +82,57 @@ describe("ChoiceGroup", () => {
     ]);
   });
 
-  test("pressing an option chooses its value", () => {
+  test("pressing another option chooses it; pressing the chosen one doesn't", () => {
     const onChange = mock((_value: Value) => undefined);
     const { radios } = group({ onChange });
-    const onPress = radios[2]?.onPress;
-    expect(onPress).toBeInstanceOf(Function);
-    (onPress as () => void)();
+    press(radios[1]);
+    expect(onChange).not.toHaveBeenCalled();
+    press(radios[2]);
     expect(onChange).toHaveBeenCalledWith("c");
   });
 
-  test("a disabled group disables every option", () => {
-    for (const radio of group({ disabled: true }).radios) {
+  test("only the chosen option is a keyboard tab stop", () => {
+    expect(group().radios.map((radio) => radio.tabIndex)).toEqual([-1, 0, -1]);
+  });
+
+  test("an arrow key moves focus and the choice to the next option", () => {
+    const onChange = mock((_value: Value) => undefined);
+    const { radios } = group({ onChange });
+    const instances = attach(radios);
+    const event = keyDown(radios[1], "ArrowDown");
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(instances[2]?.focus).toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledWith("c");
+  });
+
+  test("Space chooses the focused option", () => {
+    const onChange = mock((_value: Value) => undefined);
+    const { radios } = group({ onChange });
+    attach(radios);
+    expect(keyDown(radios[0], " ").preventDefault).toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledWith("a");
+  });
+
+  test("other keys are left alone", () => {
+    const onChange = mock((_value: Value) => undefined);
+    const { radios } = group({ onChange });
+    attach(radios);
+    expect(keyDown(radios[0], "Tab").preventDefault).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("a disabled group disables every option and ignores keys", () => {
+    const onChange = mock((_value: Value) => undefined);
+    const { radios } = group({ onChange, disabled: true });
+    const instances = attach(radios);
+    for (const radio of radios) {
       expect(radio.disabled).toBe(true);
       expect(radio["aria-disabled"]).toBe(true);
+      expect(radio.tabIndex).toBe(-1);
     }
+    keyDown(radios[1], "ArrowDown");
+    expect(instances[2]?.focus).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
     for (const radio of group().radios) {
       expect(radio.disabled).toBe(false);
     }
