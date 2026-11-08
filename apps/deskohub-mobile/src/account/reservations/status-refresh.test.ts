@@ -16,8 +16,8 @@ import { sampleOrderIds } from "../../customer-api/testing/sample-fixtures";
 import { eventually, quietly } from "../../testing/eventually";
 import { readOrderStatus, remainingReadBudget } from "./order-status-state";
 import {
-  type StatusRefreshState,
   canRefreshManually,
+  type StatusRefreshState,
   statusRefreshes,
 } from "./status-refresh";
 import { AutomaticRefresh, type StatusVisit } from "./status-refresh-rules";
@@ -71,7 +71,9 @@ const harness = ({
         last()?.reading === false
     );
   const run = <A, E>(
-    script: (manual: Queue.Queue<void>) => Effect.Effect<A, E, DotyposReadBudget>
+    script: (
+      manual: Queue.Queue<void>
+    ) => Effect.Effect<A, E, DotyposReadBudget>
   ) =>
     Effect.gen(function* () {
       const manual = yield* Queue.unbounded<void>();

@@ -10,8 +10,8 @@ import {
 } from "../../booking/payment-return-polling";
 import {
   AutomaticRefresh,
-  type StatusVisit,
   nextAutomaticRefresh,
+  type StatusVisit,
   statusVisitOf,
 } from "./status-refresh-rules";
 

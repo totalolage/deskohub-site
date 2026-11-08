@@ -78,11 +78,8 @@ export const nextAutomaticRefresh = ({
   if (!allowsAutomaticRefresh(remainingBudget)) {
     return AutomaticRefresh.Stopped({ reason: "budget" });
   }
-  return Option.match(
-    scheduledDelay(visit, attempt, remainingBudget, status),
-    {
-      onNone: () => AutomaticRefresh.Stopped({ reason: "exhausted" }),
-      onSome: (delay) => AutomaticRefresh.After({ delay }),
-    }
-  );
+  return Option.match(scheduledDelay(visit, attempt, remainingBudget, status), {
+    onNone: () => AutomaticRefresh.Stopped({ reason: "exhausted" }),
+    onSome: (delay) => AutomaticRefresh.After({ delay }),
+  });
 };

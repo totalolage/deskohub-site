@@ -22,8 +22,12 @@ describe("makeAppForegroundAtom", () => {
   test("starts from the current app state", () => {
     const registry = AtomRegistry.make();
 
-    expect(registry.get(makeAppForegroundAtom(fakeAppState("active").source))).toBe(true);
-    expect(registry.get(makeAppForegroundAtom(fakeAppState("background").source))).toBe(false);
+    expect(
+      registry.get(makeAppForegroundAtom(fakeAppState("active").source))
+    ).toBe(true);
+    expect(
+      registry.get(makeAppForegroundAtom(fakeAppState("background").source))
+    ).toBe(false);
   });
 
   test("follows the app into the background and back", () => {
@@ -31,9 +35,13 @@ describe("makeAppForegroundAtom", () => {
     const foreground = makeAppForegroundAtom(appState.source);
     const registry = AtomRegistry.make();
     const seen: Array<boolean> = [];
-    const unmount = registry.subscribe(foreground, (value) => seen.push(value), {
-      immediate: true,
-    });
+    const unmount = registry.subscribe(
+      foreground,
+      (value) => seen.push(value),
+      {
+        immediate: true,
+      }
+    );
 
     appState.change("background");
     appState.change("inactive");

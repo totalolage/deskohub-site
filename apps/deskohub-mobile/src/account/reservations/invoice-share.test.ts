@@ -49,7 +49,10 @@ const share = (
     Effect.exit(
       shareInvoice(orderId).pipe(
         Effect.provide(
-          Layer.mergeAll(fakeCustomerDataLayer({ workspace, device }), sheet.layer)
+          Layer.mergeAll(
+            fakeCustomerDataLayer({ workspace, device }),
+            sheet.layer
+          )
         )
       )
     )

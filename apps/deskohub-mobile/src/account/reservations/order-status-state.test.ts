@@ -33,7 +33,10 @@ const harness = (visit: StatusVisit = "normal") => {
   const atoms = makeOrderStatusAtoms(foreground);
   const status = atoms.status(orderId);
   // Each state the screen saw, with the number of reads sent by then.
-  const seen: Array<{ readonly state: StatusRefreshState; readonly reads: number }> = [];
+  const seen: Array<{
+    readonly state: StatusRefreshState;
+    readonly reads: number;
+  }> = [];
   const reads = () =>
     workspace.calls.filter((call) => call === "getReservationStatus").length;
   // Keeps the runtime (and its test clock) alive like a mounted screen does.
@@ -51,25 +54,27 @@ const harness = (visit: StatusVisit = "normal") => {
    * the last one, then lets the refreshes reach their next wait.
    */
   const readsSettled = (count: number) =>
-    eventually(() => {
-      const last = seen.at(-1);
-      return (
-        reads() === count &&
-        last !== undefined &&
-        last.reads === count &&
-        !last.state.reading
-      );
-    }, () =>
-      JSON.stringify({
-        expected: count,
-        reads: reads(),
-        seen: seen.map(({ state, reads }) => [
-          reads,
-          state.reading,
-          state.attempt,
-          state.automatic._tag,
-        ]),
-      })
+    eventually(
+      () => {
+        const last = seen.at(-1);
+        return (
+          reads() === count &&
+          last !== undefined &&
+          last.reads === count &&
+          !last.state.reading
+        );
+      },
+      () =>
+        JSON.stringify({
+          expected: count,
+          reads: reads(),
+          seen: seen.map(({ state, reads }) => [
+            reads,
+            state.reading,
+            state.attempt,
+            state.automatic._tag,
+          ]),
+        })
     ).pipe(Effect.andThen(quietly));
   const adjust = (duration: Duration.Input) =>
     Effect.runPromise(
@@ -124,9 +129,9 @@ describe("order status atoms", () => {
     await h.quietly();
 
     expect(h.reads()).toBe(1);
-    expect(
-      Option.isSome(AsyncResult.value(h.registry.get(h.status)))
-    ).toBe(true);
+    expect(Option.isSome(AsyncResult.value(h.registry.get(h.status)))).toBe(
+      true
+    );
     h.dispose();
   });
 

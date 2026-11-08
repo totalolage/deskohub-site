@@ -1,13 +1,13 @@
 import type { CustomerReservationOrderId } from "@deskohub/workspace-customer-api";
-import { Effect, Option, Stream } from "effect";
+import { Cause, Effect, Option, Stream } from "effect";
 import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { CustomerApi } from "../../customer-api/customer-api.service";
 import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
 import { customerRead } from "../../customer-api/customer-request";
 import { DotyposReadBudget } from "../../customer-api/dotypos-read-budget";
 import { appForegroundAtom } from "../../platform/app-foreground";
-import type { StatusVisit } from "./status-refresh-rules";
 import { type StatusRefreshState, statusRefreshes } from "./status-refresh";
+import type { StatusVisit } from "./status-refresh-rules";
 
 /** One status read: the server refreshes the order and it spends the budget. */
 export const readOrderStatus = (orderId: CustomerReservationOrderId) =>
@@ -71,16 +71,42 @@ interface StatusProgress {
   readonly state: StatusRefreshState;
 }
 
-// A stream atom reports every value as waiting until the stream ends, which
-// this one never does; the screen is waiting only while a read is under way.
+// A stream atom fails with NoSuchElementError when its stream ends without a
+// value; these refreshes never end, so that would be a defect.
+const endedAsDefect = <E>(
+  cause: Cause.Cause<E | Cause.NoSuchElementError>
+): Cause.Cause<E> =>
+  Cause.fromReasons(
+    cause.reasons.map((reason): Cause.Reason<E> => {
+      if (!Cause.isFailReason(reason)) return reason;
+      const { error } = reason;
+      return Cause.isNoSuchElementError(error)
+        ? Cause.makeDieReason(error)
+        : Cause.makeFailReason(error);
+    })
+  );
+
+// A stream atom also reports every value as waiting until the stream ends,
+// which this one never does; the screen is waiting only while a read is
+// under way.
 const shownProgress = <E>(
-  result: AsyncResult.AsyncResult<StatusProgress, E>
+  result: AsyncResult.AsyncResult<StatusProgress, E | Cause.NoSuchElementError>
 ): AsyncResult.AsyncResult<StatusRefreshState, E> =>
-  AsyncResult.isSuccess(result)
-    ? AsyncResult.success(result.value.state, {
-        waiting: result.value.state.reading,
-      })
-    : AsyncResult.map(result, ({ state }) => state);
+  AsyncResult.match(result, {
+    onInitial: ({ waiting }) =>
+      AsyncResult.initial<StatusRefreshState, E>(waiting),
+    onSuccess: ({ value }) =>
+      AsyncResult.success<StatusRefreshState, E>(value.state, {
+        waiting: value.state.reading,
+      }),
+    onFailure: ({ cause, previousSuccess, waiting }) =>
+      AsyncResult.failure<StatusRefreshState, E>(endedAsDefect(cause), {
+        previousSuccess: Option.map(previousSuccess, ({ value }) =>
+          AsyncResult.success<StatusRefreshState, E>(value.state)
+        ),
+        waiting,
+      }),
+  });
 
 /**
  * The status screen's atoms, over `foreground` (whether the app is in the

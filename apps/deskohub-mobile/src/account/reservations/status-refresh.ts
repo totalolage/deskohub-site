@@ -9,8 +9,8 @@ import { allowsAutomaticRefresh } from "../../customer-api/dotypos-read-budget";
 import {
   AutomaticRefresh,
   type AutomaticRefreshStop,
-  type StatusVisit,
   nextAutomaticRefresh,
+  type StatusVisit,
 } from "./status-refresh-rules";
 
 /** What the status screen shows while it keeps an order up to date. */
