@@ -6,8 +6,15 @@ import {
   customerAccountUnavailable,
   mapCustomerAccountFailure,
 } from "../customer-account";
-import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import {
+  type CustomerAccountActivityState,
+  CustomerAccountLinkRepository,
+} from "./customer-account-link.repository";
 import { CustomerAuthentication } from "./customer-authentication.service";
+
+/** The account still exists and awaits no deletion. */
+export const isAccountActive = (activity: CustomerAccountActivityState) =>
+  activity.kind === "active" && activity.deletionRequestedAt == null;
 
 /**
  * Shared authoritative account activity guard. Every account-authenticated

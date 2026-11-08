@@ -20,18 +20,30 @@ stays the place where the choice is made; the account copies it.
   page hydration or an authenticated action that reads the cookie, such as
   Pay-state preparation), `backfill` (the one-off seeding of earlier
   consent), and `preference` (account preferences).
+- **Silent grant**: applying the account's grant to a signed-in device that
+  holds no consent cookie at all, when the current decision is a grant under
+  the current privacy notice of the decision's locale: the cookie accepts
+  analytics and declines every other optional category, and no banner shows. A device holding a
+  cookie from an earlier banner revision gets the banner instead.
+- **Person-linked**: a reservation or payment lifecycle event captured under
+  the author's account person (`workspace-account:<accountId>`) because the
+  author's current decision was a grant when it was captured.
+- **Reservation-keyed**: a lifecycle event captured under the reservation ID
+  with no person: the author's current decision was a withdrawal or none, or
+  the ledger couldn't be read.
 
 ## Invariants
 
 - The ledger is append-only. Nothing updates or deletes a decision except
   account deletion: rows reference `auth.user` with `ON DELETE CASCADE`.
 - A decision records `getLegalDocumentVersion(locale, "privacy-policy")` at
-  the moment it is written: the notice current when the decision was
-  recorded. For a mirror of an older cookie that need not be the notice the
-  visitor saw when choosing; the cookie carries no notice version until the
-  banner revision is bound to the notice. A mirror uses the banner language
-  the cookie holds (`languageCode`) when it is a site locale, else the
-  request's locale.
+  the moment it is written: the notice current when the decision was recorded.
+  For a mirror of an older cookie that need not be the notice the visitor saw
+  when choosing. The banner revision derives from the privacy notice and
+  cookie policy versions, and the server treats a cookie saved under an older
+  revision as no choice, so a mirror records nothing from it. A mirror uses
+  the banner language the cookie holds (`languageCode`) when it is a site
+  locale, else the request's locale.
 - A mirror is appended only when the account has no decision at that
   instant or later, so a stale cookie never overrides a newer decision. A
   cookie without a valid timestamp, or dated in the future (a device clock
@@ -52,6 +64,12 @@ stays the place where the choice is made; the account copies it.
   unreadable cookie is never read as a withdrawal.
 - Recording never changes what the visitor sees and never blocks sign-in or
   checkout: failures are logged and dropped.
+- A grant keeps linking lifecycle events even under an older notice hash,
+  until the account answers again; only a current-notice grant gives a silent
+  grant. A decision records no cookie policy version, so a grant given before
+  a cookie-policy-only change still gives a new device a silent grant. The
+  PostHog side is in the `deskohub-workspace-account` skill's PostHog
+  identity and privacy reference.
 
 Code: `features/legal/backend/analytics-consent-ledger.ts` (ledger),
 `features/legal/backend/analytics-consent-mirror.ts` (cookie to decision),

@@ -9,6 +9,7 @@ import {
   CustomerCheckoutDetailsInvalid,
   type CustomerCheckoutDiscountCodeResult,
   CustomerCheckoutNotFound,
+  type CustomerCheckoutReturnTarget,
   type CustomerCheckoutStart,
   type CustomerCheckoutSubmission,
   CustomerCheckoutUnavailable,
@@ -36,6 +37,7 @@ import { env } from "@/env";
 import { getApplyDiscountCodeDeadline } from "@/features/checkout/actions/apply-discount-code-to-pay-state";
 import {
   CheckoutService,
+  getPaymentReturnDestination,
   getPayStateCheckoutView,
   type PayStateTokenError,
 } from "@/features/checkout/backend/checkout";
@@ -50,6 +52,7 @@ import {
   resolveBookingQuoteSelection,
 } from "@/features/reservation/backend/booking-selection";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
+import { providePerRequest } from "@/shared/backend/provide-per-request";
 import { getFirstInvalidFieldPath } from "@/shared/utils/schema-issue";
 import { currentInstant } from "@/shared/utils/temporal";
 import {
@@ -128,7 +131,7 @@ export const handleCustomerBookingCheckout = <R>(
     return handlers
       .handle("createCheckout", ({ payload, headers }) =>
         createCheckout(payload).pipe(
-          Effect.provide(
+          providePerRequest(
             forRequest(headers[customerReferralCodeHeader], Layer.empty)
           ),
           withDeadline(
@@ -139,7 +142,7 @@ export const handleCustomerBookingCheckout = <R>(
       )
       .handle("applyCheckoutDiscountCode", ({ payload, headers }) =>
         applyDiscountCode(payload).pipe(
-          Effect.provide(
+          providePerRequest(
             forRequest(headers[customerReferralCodeHeader], Layer.empty)
           ),
           withDeadline(
@@ -150,12 +153,12 @@ export const handleCustomerBookingCheckout = <R>(
       )
       .handle("acceptCheckoutPriceChange", ({ payload }) =>
         acceptPriceChange(payload).pipe(
-          Effect.provide(forRequest(undefined, Layer.empty))
+          providePerRequest(forRequest(undefined, Layer.empty))
         )
       )
       .handle("submitCheckout", ({ payload, headers }) =>
         submitCheckout(payload).pipe(
-          Effect.provide(
+          providePerRequest(
             forRequest(
               headers[customerReferralCodeHeader],
               CheckoutServicesUnavailable.whenUnbuilt(checkout)
@@ -562,6 +565,9 @@ const submitCheckout = Effect.fn("customerApi.submitCheckout")(function* (
           ...(payload.earlyPerformanceConsent !== undefined && {
             earlyPerformanceConsent: payload.earlyPerformanceConsent,
           }),
+          ...(payload.returnTarget !== undefined && {
+            returnTarget: payload.returnTarget,
+          }),
         },
         payload.locale
       )
@@ -569,12 +575,13 @@ const submitCheckout = Effect.fn("customerApi.submitCheckout")(function* (
     Effect.catchTag("CheckoutError", answerSubmissionFailure(operation))
   );
 
-  return yield* toSubmissionAnswer(operation, submission);
+  return yield* toSubmissionAnswer(operation, submission, payload.returnTarget);
 });
 
 const toSubmissionAnswer = (
   operation: string,
-  submission: CheckoutSubmission
+  submission: CheckoutSubmission,
+  returnTarget: CustomerCheckoutReturnTarget | undefined
 ): Effect.Effect<
   CustomerCheckoutSubmission,
   CustomerCheckoutUnavailable | CustomerServiceUnavailableAnswer,
@@ -582,7 +589,8 @@ const toSubmissionAnswer = (
 > =>
   Match.value(submission).pipe(
     Match.discriminatorsExhaustive("status")({
-      redirect: (redirect) => toRedirectAnswer(operation, redirect),
+      redirect: (redirect) =>
+        toRedirectAnswer(operation, redirect, returnTarget),
       pricing_changed: (changed) => checkoutAt(changed.freshPayStateToken),
       // A payment underway, or a hold that's no longer payable: the status
       // screen tells which.
@@ -593,16 +601,26 @@ const toSubmissionAnswer = (
 
 /**
  * A submission that left nothing to pay, or the payment gateway to open,
- * with absolute links: the client isn't on the Workspace site.
+ * with absolute links: the client isn't on the Workspace site. An app's
+ * `returnTarget` makes `statusUrl` the app screen the payment's return
+ * redirects to.
  */
 const toRedirectAnswer = Effect.fn("customerApi.submitCheckout.redirect")(
   function* (
     operation: string,
-    redirect: Extract<CheckoutSubmission, { readonly status: "redirect" }>
+    redirect: Extract<CheckoutSubmission, { readonly status: "redirect" }>,
+    returnTarget: CustomerCheckoutReturnTarget | undefined
   ) {
     const origin = yield* getWorkspaceRuntimeCallbackOrigin.pipe(
       Effect.catch(retryable(operation))
     );
+    const toStatusUrl = (sitePath: string) =>
+      returnTarget === undefined
+        ? Effect.succeed(new URL(sitePath, origin).toString())
+        : getPaymentReturnDestination({
+            target: returnTarget,
+            orderId: redirect.orderId,
+          }).pipe(Effect.catch(retryable(operation)));
     if (redirect.paid === true) {
       const operations = yield* CustomerCheckoutOperations;
       yield* operations
@@ -615,7 +633,7 @@ const toRedirectAnswer = Effect.fn("customerApi.submitCheckout.redirect")(
       return {
         status: "paid" as const,
         orderId: redirect.orderId,
-        statusUrl: new URL(redirect.redirectUrl, origin).toString(),
+        statusUrl: yield* toStatusUrl(redirect.redirectUrl),
         ...(rememberedReferralCodeUsed && { rememberedReferralCodeUsed }),
       };
     }
@@ -628,7 +646,7 @@ const toRedirectAnswer = Effect.fn("customerApi.submitCheckout.redirect")(
       status: "payment_required" as const,
       orderId: redirect.orderId,
       paymentUrl: redirect.redirectUrl,
-      statusUrl: new URL(redirect.statusUrl, origin).toString(),
+      statusUrl: yield* toStatusUrl(redirect.statusUrl),
     };
   }
 );

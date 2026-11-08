@@ -19,6 +19,10 @@ import type {
   CheckoutSessionKey,
   PaymentAttemptId,
 } from "@/features/checkout/checkout-identifiers";
+import {
+  type PaymentReturnTarget,
+  paymentReturnTargets,
+} from "@/features/checkout/payment-return-target";
 import type { Locale } from "@/features/i18n";
 import type { AgentSelectionKey } from "@/features/reservation/backend/booking-agent";
 import type {
@@ -146,6 +150,13 @@ export const workspaceReservations = pgTable(
       .$type<StoredWorkspaceReservationDetails>()
       .notNull(),
     locale: text("locale").notNull(),
+    /**
+     * The app the last submission that returned a payment page asked the
+     * hosted payment to return to; null returns to the site's status page.
+     */
+    paymentReturnTarget: text(
+      "payment_return_target"
+    ).$type<PaymentReturnTarget>(),
     reservationHoldExpiresAt: instant("reservation_hold_expires_at"),
     reservationHoldExpiredAt: instant("reservation_hold_expired_at"),
     reservationCreatedAt: instant("reservation_created_at"),
@@ -179,6 +190,10 @@ export const workspaceReservations = pgTable(
     check(
       "workspace_reservations_purpose_check",
       sql`${t.reservationPurpose} is null or ${t.reservationPurpose} in (${quotedSqlList(reservationPurposeSchema.literals)})`
+    ),
+    check(
+      "workspace_reservations_payment_return_target_check",
+      sql`${t.paymentReturnTarget} is null or ${t.paymentReturnTarget} in (${quotedSqlList(paymentReturnTargets)})`
     ),
     check(
       "workspace_reservations_hold_id_check",

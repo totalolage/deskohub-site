@@ -607,7 +607,7 @@ const operatingRulesSectionsEn: LegalSection[] = [
 const legalDocuments = {
   "en-US": {
     "privacy-policy": {
-      updatedAt: "21 October 2026",
+      updatedAt: "8 November 2026",
       sections: [
         {
           heading: "1. Controller",
@@ -684,7 +684,9 @@ const legalDocuments = {
               and our analytics service providers may process website usage and
               campaign measurement data, such as pageviews, browser and device
               information, IP-derived technical data, event types, and standard
-              campaign parameters from links.
+              campaign parameters from links. With your analytics consent, we
+              also add the records of your reservations and payments described
+              in section 3 to your account's analytics profile.
             </>,
             <>
               If you separately opt in to future marketing communications, we
@@ -740,7 +742,9 @@ const legalDocuments = {
               such as a started, completed, failed, or abandoned payment and its
               amount. We use these records to measure how reservations and
               payments go and to spot payment problems. They are linked to your
-              reservation but don't include your name or contact details.
+              reservation and, with your analytics consent, to your account's
+              analytics profile. They don't include your name or contact
+              details.
             </>,
             <>
               We also send selected customer data from our booking system
@@ -800,7 +804,8 @@ const legalDocuments = {
               interest in measuring how reservations and payments go and
               spotting failed or abandoned payments, where that interest is not
               overridden by your rights. You can object to this processing at
-              any time.
+              any time. Linking these records to your account's analytics
+              profile is based on your analytics consent.
             </>,
             <>
               Sending customer data from our booking system to our analytics
@@ -1045,7 +1050,7 @@ const legalDocuments = {
       sections: termsAndConditionsSectionsEn,
     },
     "cookie-policy": {
-      updatedAt: "13 October 2026",
+      updatedAt: "8 November 2026",
       sections: [
         {
           heading: "1. What cookies are",
@@ -1112,6 +1117,18 @@ const legalDocuments = {
               utm_medium, utm_campaign, utm_content, and utm_term.
             </>,
             <>
+              With your analytics consent, we also add the records of your
+              reservations and payments to your account's analytics profile, as
+              described in our{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href="/en-US/privacy-policy"
+              >
+                Privacy Policy
+              </a>
+              .
+            </>,
+            <>
               Reservation submitted conversion events do not include reservation
               form values or personal details such as name, email, phone,
               message, reservation dates or times, duration, seat count,
@@ -1138,7 +1155,7 @@ const legalDocuments = {
   },
   "cs-CZ": {
     "privacy-policy": {
-      updatedAt: "21. října 2026",
+      updatedAt: "8. listopadu 2026",
       sections: [
         {
           heading: "1. Správce",
@@ -1218,7 +1235,9 @@ const legalDocuments = {
               zpracovávat údaje o používání webu a měření kampaní, například
               zobrazení stránek, informace o prohlížeči a zařízení, technické
               údaje odvozené z IP adresy, typy událostí a standardní kampanové
-              parametry z odkazů.
+              parametry z odkazů. S vaším analytickým souhlasem přiřazujeme k
+              analytickému profilu vašeho účtu také záznamy o vašich rezervacích
+              a platbách popsané v bodě 3.
             </>,
             <>
               Pokud se samostatně přihlásíte k odběru budoucích marketingových
@@ -1275,8 +1294,9 @@ const legalDocuments = {
               platby, například o zahájené, dokončené, neúspěšné nebo opuštěné
               platbě a její částce. Tyto záznamy používáme k měření průběhu
               rezervací a plateb a k odhalování problémů s platbami. Jsou
-              spojené s vaší rezervací, ale neobsahují vaše jméno ani kontaktní
-              údaje.
+              spojené s vaší rezervací a s vaším analytickým souhlasem také s
+              analytickým profilem vašeho účtu. Neobsahují vaše jméno ani
+              kontaktní údaje.
             </>,
             <>
               Vybrané zákaznické údaje z našeho rezervačního systému Dotypos
@@ -1337,7 +1357,9 @@ const legalDocuments = {
               Zaznamenávání kroků rezervace a platby vychází z našeho
               oprávněného zájmu měřit průběh rezervací a plateb a odhalovat
               neúspěšné nebo opuštěné platby, nepřevažují-li nad ním vaše práva.
-              Proti tomuto zpracování můžete kdykoli vznést námitku.
+              Proti tomuto zpracování můžete kdykoli vznést námitku. Propojení
+              těchto záznamů s analytickým profilem vašeho účtu vychází z vašeho
+              analytického souhlasu.
             </>,
             <>
               Předávání zákaznických údajů z našeho rezervačního systému
@@ -1583,7 +1605,7 @@ const legalDocuments = {
       sections: termsAndConditionsSections,
     },
     "cookie-policy": {
-      updatedAt: "13. října 2026",
+      updatedAt: "8. listopadu 2026",
       sections: [
         {
           heading: "1. Co jsou cookies",
@@ -1647,6 +1669,18 @@ const legalDocuments = {
               odvozené z IP adresy, typy událostí a standardní kampanové
               parametry z URL: utm_source, utm_medium, utm_campaign, utm_content
               a utm_term.
+            </>,
+            <>
+              S vaším analytickým souhlasem přiřazujeme k analytickému profilu
+              vašeho účtu také záznamy o vašich rezervacích a platbách, jak
+              popisují naše{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href="/cs-CZ/privacy-policy"
+              >
+                zásady ochrany osobních údajů
+              </a>
+              .
             </>,
             <>
               Konverzní události o odeslání rezervace neobsahují hodnoty z

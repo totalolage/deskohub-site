@@ -5586,6 +5586,10 @@
         "required": ["locale", "payStateToken"],
         "additionalProperties": false
       },
+      "CustomerCheckoutReturnTarget": {
+        "type": "string",
+        "enum": ["native-app", "web-app"]
+      },
       "SubmitCustomerCheckout": {
         "type": "object",
         "properties": {
@@ -5621,6 +5625,9 @@
               "required": ["key", "hash"],
               "additionalProperties": false
             }
+          },
+          "returnTarget": {
+            "$ref": "#/components/schemas/CustomerCheckoutReturnTarget"
           }
         },
         "required": [

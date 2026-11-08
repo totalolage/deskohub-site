@@ -16,6 +16,7 @@ import {
   referralCodeCookieName,
   setReferralCodeCookie,
 } from "./referral-code-cookie";
+import { referralFailureLogFields } from "./referral-failure";
 import { ReferralReleaseGate } from "./referral-release-gate";
 
 /**
@@ -229,9 +230,10 @@ function makeRememberedReferral(jar: ReferralCodeJar) {
             })
             .pipe(
               Effect.catch((error) =>
-                Effect.logInfo("Checkout referral code was not carried", {
-                  reason: error.reason,
-                }).pipe(Effect.as(undefined))
+                Effect.logInfo(
+                  "Checkout referral code was not carried",
+                  referralFailureLogFields(error)
+                ).pipe(Effect.as(undefined))
               )
             );
           if (evaluation === undefined) return none;
@@ -246,13 +248,16 @@ function makeRememberedReferral(jar: ReferralCodeJar) {
               : { kind: "carried" }
           ) satisfies RememberedReferralForBooking;
         }
-        const availableCode = yield* referrals.findAvailableCode({ code }).pipe(
-          Effect.catch((error) =>
-            Effect.logInfo("Checkout referral code prefill was skipped", {
-              reason: error.reason,
-            }).pipe(Effect.as(undefined))
-          )
-        );
+        const availableCode = yield* referrals
+          .findAvailableCode({ code })
+          .pipe(
+            Effect.catch((error) =>
+              Effect.logInfo(
+                "Checkout referral code prefill was skipped",
+                referralFailureLogFields(error)
+              ).pipe(Effect.as(undefined))
+            )
+          );
         if (availableCode === undefined) return none;
         return {
           kind: "prefill",

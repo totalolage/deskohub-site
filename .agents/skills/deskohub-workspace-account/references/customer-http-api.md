@@ -168,6 +168,22 @@ Flow:
    started or that can no longer be paid answers 409 reason `not_payable`:
    open the status screen.
 
+   Optional `returnTarget` (`native-app` or `web-app`, never a URL) sends the
+   payment's return to the app instead:
+   `deskohub://reservations/{orderId}?after=payment` (`nativeApp.scheme`; it
+   ends the app's auth-session browser) or
+   `{callback origin}/app/reservations/{orderId}?after=payment` (with the
+   Preview protection bypass on Preview). `after=payment` switches the app's
+   reservation screen to its post-payment polling, also on a cold start. `statusUrl`, `paid` included, is that same URL, built
+   by `getPaymentReturnDestination`. Nexi's result and cancel URLs stay the
+   https return route; the target travels in
+   `workspace_reservations.payment_return_target`, which every submission that
+   hands out a payment page overwrites (a site submission clears it), so a
+   reused hosted page returns where the latest answer points. The route reads
+   it by order id without a session and falls back to the site status page
+   when the lookup fails; nothing in its query picks the destination. The
+   app's status call (`returnOutcome: "unknown"`) reconciles the payment.
+
 Author check: discount-code, price-acceptance and submit open the token and
 answer 404 `CustomerCheckoutNotFound` unless the signed-in account authored
 the held reservation (`authorAccountId`), so a token alone never acts for

@@ -27,6 +27,7 @@ import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-c
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import type { LegalEvidenceMap } from "@/features/checkout/legal-evidence";
+import type { PaymentReturnTarget } from "@/features/checkout/payment-return-target";
 import {
   isWorkspaceCoworkCurrentProductTier,
   type WorkspaceCoworkProductTier,
@@ -211,6 +212,11 @@ export interface ICheckoutService {
       readonly payStateToken: string;
       readonly legalConsent?: boolean;
       readonly earlyPerformanceConsent?: boolean;
+      /**
+       * The app the hosted payment returns to; none returns to the site's
+       * status page.
+       */
+      readonly returnTarget?: PaymentReturnTarget;
     },
     locale: Locale
   ) => Effect.Effect<
@@ -525,6 +531,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           readonly customer: HostedPaymentCustomer;
           readonly accountingSnapshot: AccountingDocumentSnapshot;
           readonly reservation: SignedPayState["reservation"];
+          readonly returnTarget: PaymentReturnTarget | undefined;
         }) {
           yield* Effect.annotateLogsScoped({
             providerSessionInput: {
@@ -570,6 +577,11 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           yield* Effect.logDebug("Checkout provider session inputs prepared");
 
           yield* ensureReservationHasNotEnded(input.reservation);
+
+          yield* reservations.recordPaymentReturnTarget({
+            id: input.workspaceReservationId,
+            paymentReturnTarget: input.returnTarget,
+          });
 
           // Once the attempt exists, finish creating and attaching its hosted
           // page even when the action deadline passes. Nexi has no idempotency
@@ -808,6 +820,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         readonly reservation: WorkspaceReservation;
         readonly state: SignedPayState;
         readonly locale: Locale;
+        readonly returnTarget: PaymentReturnTarget | undefined;
       };
 
       /**
@@ -871,6 +884,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         reservation,
         state,
         locale,
+        returnTarget,
       }: ReservationProgressInput) {
         if (!reservation.activePaymentAttemptId) return undefined;
 
@@ -899,6 +913,11 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           yield* Effect.logInfo(
             "Hosted payment checkout reused active provider session"
           );
+          // The reused page returns where this submission's answer points.
+          yield* reservations.recordPaymentReturnTarget({
+            id: reservation.id,
+            paymentReturnTarget: returnTarget,
+          });
           return getHostedPaymentCheckoutResult({
             locale,
             providerRedirectUrl: attempt.providerRedirectUrl,
@@ -1049,6 +1068,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
               hasPayStateToken: input.payStateToken.length > 0,
               legalConsent: input.legalConsent === true,
               earlyPerformanceConsent: input.earlyPerformanceConsent === true,
+              returnTarget: input.returnTarget,
             });
             yield* Effect.logInfo("Hosted payment checkout creation started");
 
@@ -1088,6 +1108,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
               reservation,
               state,
               locale,
+              returnTarget: input.returnTarget,
             });
             if (progressResult) return progressResult;
 
@@ -1242,6 +1263,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                           }),
                           accountingSnapshot,
                           reservation: state.reservation,
+                          returnTarget: input.returnTarget,
                         });
 
                   return yield* startPayment.pipe(
