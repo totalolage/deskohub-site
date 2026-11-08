@@ -5,6 +5,7 @@ import type {
 import { useAtom, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { type Duration, Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
+import { useIsFocused } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 import { AsyncView } from "../../customer-api/async-view";
 import type { AppLocale } from "../../i18n/app-locale";
@@ -18,8 +19,10 @@ import { ScrollScreen } from "../../ui/scroll-screen";
 import {
   accessCountdownAtom,
   accessErrorMessage,
+  accessWindowKey,
   copyAccessCodeAtom,
   reservationAccessAtom,
+  shownAccess,
 } from "./access-screen-state";
 import {
   type AccessWindowState,
@@ -39,10 +42,13 @@ export function ReservationAccessScreen({
   readonly orderId: CustomerReservationOrderId;
 }) {
   const locale = useAppLocale();
-  const access = useAtomValue(reservationAccessAtom(orderId));
+  const access = shownAccess(useAtomValue(reservationAccessAtom(orderId)));
   const refresh = useAtomRefresh(reservationAccessAtom(orderId));
   return (
-    <ScrollScreen onRefresh={refresh}>
+    <ScrollScreen
+      refreshing={!AsyncResult.isInitial(access) && access.waiting}
+      onRefresh={refresh}
+    >
       <AsyncView
         result={access}
         onRetry={refresh}
@@ -62,8 +68,11 @@ function AccessDetails({
   readonly access: CustomerReservationAccess;
 }) {
   const locale = useAppLocale();
-  const windowState = AsyncResult.value(
-    useAtomValue(accessCountdownAtom(orderId))
+  const focused = useIsFocused();
+  const windowState = Option.flatten(
+    AsyncResult.value(
+      useAtomValue(accessCountdownAtom(accessWindowKey(access)))
+    )
   );
   const [copied, copy] = useAtom(copyAccessCodeAtom(orderId));
   const ended = Option.exists(windowState, (state) => state._tag === "Ended");
@@ -89,17 +98,20 @@ function AccessDetails({
           })}
         </Text>
       </View>
-      {/* Kept mounted so the window's end is announced when it comes. */}
+      {/* Kept mounted so the window's end is announced when it comes, or
+          on return when it ended while another screen was in front. */}
       <Notice
         tone="warning"
         message={
-          ended ? m.reservations_access_expired({}, { locale }) : undefined
+          ended && focused
+            ? m.reservations_access_expired({}, { locale })
+            : undefined
         }
       />
       <Button
         label={m.reservations_access_copy({}, { locale })}
         variant="secondary"
-        onPress={() => copy(undefined)}
+        onPress={() => copy(access.code)}
         disabled={copied.waiting}
       />
       <LiveMessage
@@ -150,7 +162,10 @@ function AccessCode({
           key={`${index}-${character}`}
           style={styles.digit}
         >
-          <Text style={[styles.digitText, ended && styles.digitTextEnded]}>
+          <Text
+            maxFontSizeMultiplier={2}
+            style={[styles.digitText, ended && styles.digitTextEnded]}
+          >
             {character}
           </Text>
         </View>
@@ -211,20 +226,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.lg,
   },
+  // Boxes size to their digit, so large accessibility text grows them and
+  // wraps the row instead of overlapping digits.
   code: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: theme.spacing.sm,
     justifyContent: "center",
   },
   digit: {
     alignItems: "center",
-    aspectRatio: 0.75,
     backgroundColor: theme.colors.surfacePressed,
     borderRadius: theme.radius.md,
-    flexBasis: 0,
-    flexGrow: 1,
     justifyContent: "center",
-    maxWidth: 56,
+    minWidth: 40,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm + theme.spacing.xs,
   },
   digitText: {
     color: theme.colors.accent,
