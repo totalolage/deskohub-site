@@ -29,7 +29,11 @@ export const avatarFormData = (
       const body = new FormData();
       // `File` implements Blob at runtime; the app's merged global Blob type
       // declares members it lacks, so only the type needs widening.
-      body.append(customerAvatarFileField, picked as unknown as Blob, file.name);
+      body.append(
+        customerAvatarFileField,
+        picked as unknown as Blob,
+        file.name
+      );
       return body;
     })
   );
