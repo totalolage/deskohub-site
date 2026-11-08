@@ -80,7 +80,7 @@ describe("groupCustomerReservations", () => {
 });
 
 describe("customer profile input", () => {
-  test("rejects a nonblank phone that cannot be normalized instead of silently clearing it", async () => {
+  test("rejects a nonblank phone without a phone number instead of silently clearing it", async () => {
     const outcome = await validateProfileInput({
       firstName: "Ada",
       phone: "call me maybe",
@@ -104,27 +104,25 @@ describe("customer profile input", () => {
     ).toBe("");
   });
 
-  test("accepts a local phone format", async () => {
-    const outcome = await validateProfileInput({
-      firstName: "Ada",
-      phone: "601123456",
-    });
+  test.each([
+    ["a local", "601123456"],
+    ["an international", "+420 601 123 456"],
+    ["a labelled", "601 123 456 (mobile)"],
+  ])("decodes %s phone format to its E.164 number", async (_, phone) => {
+    const outcome = await validateProfileInput({ firstName: "Ada", phone });
 
     expect(outcome).toHaveProperty("value");
     expect(
       (outcome as { readonly value: { readonly phone: string } }).value.phone
-    ).toBe("601123456");
+    ).toBe("+420601123456");
   });
 
-  test("accepts an international phone format", async () => {
+  test("rejects a phone longer than 32 characters", async () => {
     const outcome = await validateProfileInput({
       firstName: "Ada",
-      phone: "+420 601 123 456",
+      phone: `601 123 456 ${"x".repeat(21)}`,
     });
 
-    expect(outcome).toHaveProperty("value");
-    expect(
-      (outcome as { readonly value: { readonly phone: string } }).value.phone
-    ).toBe("+420 601 123 456");
+    expect(outcome).toHaveProperty("issues");
   });
 });

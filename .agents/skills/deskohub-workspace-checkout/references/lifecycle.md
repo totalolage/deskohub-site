@@ -100,6 +100,7 @@ State types and check constraints are in `db/schema`. Repositories guard every t
 - `checkoutAttemptId` identifies one mounted-form submission and its immediate transport retries. A changed value or new mount is a new attempt.
 - Neither identifies a Dotypos reservation. Only HMAC digests are stored, in `checkout_session_key` and `checkout_attempt_key`.
 - The attempt key binds the normalized reservation, including contact and billing details, so replaying an opaque ID with different inputs can't reuse a hold. Marketing consent is excluded.
+- The normalized reservation, and so the attempt key and signed Pay state, keeps the phone as the customer entered it (trimmed). Parse it to a `PhoneNumber` only where a provider call or profile write needs one (Nexi customer, Dotypos lookup, first profile); normalizing it earlier would change in-flight keys and Pay state.
 - Both payloads are `JSON.stringify` of a fixed object shape. Never sort keys or join a tuple.
 
 Lookup keys survive `CHECKOUT_PAY_STATE_KEYS` rotation. Each configured key derives an HKDF subkey; new rows store the active key's `<kid>:<hex>` digest. Lookups accept every configured key's prefixed digest plus the legacy ring-keyed digest: an unprefixed hex HMAC keyed by the whole configured string. Never look up a single freshly derived key.

@@ -1,7 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Result } from "effect";
 import {
+  HttpClient,
+  HttpClientRequest,
+  HttpClientResponse,
   HttpRouter,
   HttpServer,
   HttpServerRequest,
@@ -12,8 +15,12 @@ import {
   type HttpApiEndpoint,
   HttpApiGroup,
 } from "effect/unstable/httpapi";
+import { makeWorkspaceCustomerApiClient } from "./client";
 import { CustomerAccountApi } from "./customer-account-api";
-import type { CustomerProfileInput } from "./customer-profile";
+import type {
+  CustomerProfileCompletionInput,
+  CustomerProfileInput,
+} from "./customer-profile";
 import {
   CurrentCustomerSession,
   CustomerAccountId,
@@ -24,26 +31,33 @@ import {
 } from "./customer-session";
 
 /**
- * Serves the real `updateProfile` endpoint behind both middlewares, added in
- * the order `WorkspaceCustomerApi` adds them (its test pins that order), to
- * show what that order and the payload's parse options do at runtime.
+ * Serves the real profile endpoints behind both middlewares, added in the
+ * order `WorkspaceCustomerApi` adds them (its test pins that order), to show
+ * what that order and the payloads' parse options do at runtime.
  */
-// A group's `endpoints` record is typed loosely; this names the endpoint's
+// A group's `endpoints` record is typed loosely; this names each endpoint's
 // declared type.
-const updateProfileEndpoint = CustomerAccountApi.endpoints
-  .updateProfile as HttpApiEndpoint.WithName<
+type AccountEndpoint<Name extends string> = HttpApiEndpoint.WithName<
   HttpApiGroup.Endpoints<typeof CustomerAccountApi>,
-  "updateProfile"
+  Name
 >;
+const updateProfileEndpoint = CustomerAccountApi.endpoints
+  .updateProfile as AccountEndpoint<"updateProfile">;
+const completeProfileEndpoint = CustomerAccountApi.endpoints
+  .completeProfile as AccountEndpoint<"completeProfile">;
 
 const api = HttpApi.make("customerRequestPipeline")
-  .add(HttpApiGroup.make("account").add(updateProfileEndpoint))
+  .add(
+    HttpApiGroup.make("account")
+      .add(updateProfileEndpoint)
+      .add(completeProfileEndpoint)
+  )
   .prefix("/api/customer")
   .middleware(CustomerSessionAuthentication)
   .middleware(CustomerRequestOriginCheck);
 
 const ran: string[] = [];
-const received: CustomerProfileInput[] = [];
+const received: (CustomerProfileInput | CustomerProfileCompletionInput)[] = [];
 const customerEmail = testEmailAddress("customer");
 const otherEmail = testEmailAddress("other");
 
@@ -51,12 +65,19 @@ const server = HttpRouter.toWebHandler(
   HttpApiBuilder.layer(api).pipe(
     Layer.provide(
       HttpApiBuilder.group(api, "account", (handlers) =>
-        handlers.handle("updateProfile", ({ payload }) =>
-          Effect.sync(() => {
-            received.push(payload);
-            return { status: "updated" } as const;
-          })
-        )
+        handlers
+          .handle("updateProfile", ({ payload }) =>
+            Effect.sync(() => {
+              received.push(payload);
+              return { status: "updated" } as const;
+            })
+          )
+          .handle("completeProfile", ({ payload }) =>
+            Effect.sync(() => {
+              received.push(payload);
+              return { status: "completed" } as const;
+            })
+          )
       )
     ),
     Layer.provide(
@@ -102,6 +123,34 @@ const updateProfile = (body: unknown, headers: Record<string, string> = {}) => {
         body: JSON.stringify(body),
       }
     )
+  );
+};
+
+/** The customer API's typed client, answered by the served endpoints. */
+const typedClient = makeWorkspaceCustomerApiClient({
+  baseUrl: "https://workspace.deskohub.test",
+}).pipe(
+  Effect.provideService(
+    HttpClient.HttpClient,
+    HttpClient.make((request) =>
+      HttpClientRequest.toWeb(request).pipe(
+        Effect.flatMap((webRequest) =>
+          Effect.promise(() => server.handler(webRequest))
+        ),
+        Effect.map((response) => HttpClientResponse.fromWeb(request, response)),
+        Effect.orDie
+      )
+    )
+  )
+);
+
+const callTypedClient = <A, E>(
+  call: (client: Effect.Success<typeof typedClient>) => Effect.Effect<A, E>
+) => {
+  ran.length = 0;
+  received.length = 0;
+  return Effect.runPromise(
+    typedClient.pipe(Effect.flatMap(call), Effect.result)
   );
 };
 
@@ -152,6 +201,63 @@ describe("customer request pipeline", () => {
     );
 
     expect(response.status).toBe(400);
+    expect(received).toEqual([]);
+  });
+});
+
+describe("the typed client's profile phone", () => {
+  test("sends a national phone as the entered text, which the update and the completion accept", async () => {
+    const updated = await callTypedClient((client) =>
+      client.account.updateProfile({
+        payload: { firstName: "Ada", phone: "601 123 456" },
+      })
+    );
+    const updateReceived = [...received];
+    const completed = await callTypedClient((client) =>
+      client.account.completeProfile({
+        headers: {},
+        payload: { firstName: "Ada", phone: "601 123 456" },
+      })
+    );
+
+    expect([updated, completed]).toEqual([
+      Result.succeed({ status: "updated" }),
+      Result.succeed({ status: "completed" }),
+    ]);
+    expect([...updateReceived, ...received]).toEqual([
+      { firstName: "Ada", phone: "601 123 456" },
+      { firstName: "Ada", phone: "601 123 456" },
+    ]);
+  });
+
+  test("sends a blank phone, which clears the stored phone", async () => {
+    const updated = await callTypedClient((client) =>
+      client.account.updateProfile({
+        payload: { firstName: "Ada", phone: "" },
+      })
+    );
+
+    expect(updated).toEqual(Result.succeed({ status: "updated" }));
+    expect(received).toEqual([{ firstName: "Ada", phone: "" }]);
+  });
+
+  test("never delivers a phone without a phone number", async () => {
+    const updated = await callTypedClient((client) =>
+      client.account.updateProfile({
+        payload: { firstName: "Ada", phone: "not a phone" },
+      })
+    );
+    const completed = await callTypedClient((client) =>
+      client.account.completeProfile({
+        headers: {},
+        payload: { firstName: "Ada", phone: "not a phone" },
+      })
+    );
+
+    expect([Result.isFailure(updated), Result.isFailure(completed)]).toEqual([
+      true,
+      true,
+    ]);
     expect(received).toEqual([]);
   });
 });

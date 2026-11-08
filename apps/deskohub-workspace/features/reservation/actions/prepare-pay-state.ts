@@ -2,6 +2,7 @@
 
 import { type DotyposReservationId, DotyposService } from "@deskohub/dotypos";
 import { EmailRecipientDomainService } from "@deskohub/email/backend/recipient-domain.service";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import {
   Data,
   Duration,
@@ -1398,7 +1399,7 @@ const resolveBookedCustomerId = Effect.fnUntraced(function* (
         {
           ...splitCustomerName(reservation.name),
           email: reservation.email,
-          phone: reservation.phone,
+          phone: Option.getOrUndefined(parsePhoneNumber(reservation.phone)),
         },
         { lookupFields: ["email"] }
       )
