@@ -37,13 +37,74 @@ mock.module("@/features/legal/actions", () => ({
   resolveSilentAnalyticsGrantForDevice: () => Promise.resolve({ data: null }),
 }));
 
+type HydrationResult = { readonly data?: string | null } | undefined;
+
+// What the next hydration request settles with: the account's withdrawal to
+// apply on this device (ISO 8601), or null when there is none.
+let respondToHydration: () => Promise<HydrationResult> = () =>
+  Promise.resolve({ data: null });
+
 mock.module("@/shared/utils/use-workspace-action", () => ({
   useWorkspaceAction: () => ({
     execute: ({ occasion }: { readonly occasion: Occasion }) => {
       occasions.push(occasion);
     },
-    executeAsync: () => Promise.resolve({ data: null }),
+    executeAsync: ({ occasion }: { readonly occasion: Occasion }) => {
+      occasions.push(occasion);
+      return occasion === "hydration"
+        ? respondToHydration()
+        : Promise.resolve({ data: null });
+    },
   }),
+}));
+
+// vanilla-cookieconsent 3.1.0 as the device's consent writer sees it: it
+// saves a changed category set to the consent cookie, stamped now, and the
+// banner then announces the save through its change callback.
+let rememberedCategories: string[] = ["necessary"];
+
+const readSavedCookie = () => {
+  const entry = document.cookie
+    .split("; ")
+    .find((cookie) => cookie.startsWith("cc_cookie="));
+  return entry
+    ? (JSON.parse(decodeURIComponent(entry.slice("cc_cookie=".length))) as {
+        readonly categories: string[];
+        readonly lastConsentTimestamp: string;
+      })
+    : undefined;
+};
+
+const vendorSave = (categories: string[]) => {
+  rememberedCategories = categories;
+  writeConsentCookie(categories, new Date().toISOString());
+  announceVisitorConsentChange();
+};
+
+mock.module("vanilla-cookieconsent", () => ({
+  acceptCategory: (categories: string | string[]) => {
+    const requested = [
+      ...new Set([
+        "necessary",
+        ...(Array.isArray(categories) ? categories : [categories]),
+      ]),
+    ];
+    const unchanged =
+      requested.length === rememberedCategories.length &&
+      requested.every((category) => rememberedCategories.includes(category));
+    if (!unchanged) vendorSave(requested);
+  },
+  getConfig: () => undefined,
+  getCookie: () => ({
+    ...readSavedCookie(),
+    expirationTime: Date.parse("2027-11-08T00:00:00.000Z"),
+  }),
+  getUserPreferences: () => ({ acceptedCategories: rememberedCategories }),
+  hide: () => undefined,
+  setCookieData: () => {
+    vendorSave(rememberedCategories);
+    return true;
+  },
 }));
 
 mock.module("@/features/account/analytics-identity", () => ({
@@ -65,6 +126,7 @@ const {
   CONSENT_UPDATED_EVENT,
   announceVisitorConsentChange,
   bindVisitorConsentRevision,
+  visitorConsent,
 } = await import("@/features/cookie-consent/visitor-consent");
 
 // The banner revision the page was served with in these tests.
@@ -82,16 +144,47 @@ const publishIdentity = (next: Identity) =>
     for (const listener of identityListeners) listener();
   });
 
-/** Saves a consent cookie as the banner does, stamped at `savedAt`. */
-const saveConsentCookie = (savedAt: string) => {
+function writeConsentCookie(categories: string[], savedAt: string) {
   // biome-ignore lint/suspicious/noDocumentCookie: The test saves the consent cookie the banner would.
   document.cookie = `cc_cookie=${encodeURIComponent(
-    JSON.stringify({
-      categories: ["necessary", "analytics"],
-      revision,
-      lastConsentTimestamp: savedAt,
-    })
+    JSON.stringify({ categories, revision, lastConsentTimestamp: savedAt })
   )}; path=/`;
+}
+
+/**
+ * Saves a consent cookie accepting analytics as the banner does, stamped at
+ * `savedAt`.
+ */
+const saveConsentCookie = (savedAt: string) => {
+  rememberedCategories = ["necessary", "analytics"];
+  writeConsentCookie(rememberedCategories, savedAt);
+};
+
+/** Settles the next hydration request when the returned function runs. */
+const deferHydration = () => {
+  let settle!: (result: HydrationResult) => void;
+  respondToHydration = () =>
+    new Promise<HydrationResult>((resolve) => {
+      settle = resolve;
+    });
+  return async (result: HydrationResult) => {
+    await act(async () => settle(result));
+    await flushWorkspaceComponentWork();
+  };
+};
+
+/** Every change this tab announced while `run` ran. */
+const announcedChanges = async (run: () => Promise<void> | void) => {
+  const changes: string[] = [];
+  const record = (event: Event) =>
+    changes.push((event as CustomEvent<{ change: string }>).detail.change);
+  window.addEventListener(CONSENT_UPDATED_EVENT, record);
+  try {
+    await run();
+  } finally {
+    window.removeEventListener(CONSENT_UPDATED_EVENT, record);
+  }
+  return changes;
 };
 
 const clearConsentCookie = () => {
@@ -116,6 +209,8 @@ beforeEach(() => {
   bindVisitorConsentRevision(revision);
   window.happyDOM.setURL("https://deskohub.test/en-US/account");
   occasions = [];
+  respondToHydration = () => Promise.resolve({ data: null });
+  rememberedCategories = ["necessary"];
   identity = { status: "anonymous" };
   identityListeners = [];
   clearConsentCookie();
@@ -215,4 +310,100 @@ describe("AccountAnalyticsConsentMirror", () => {
 
     expect(occasions).toEqual([]);
   });
+
+  test("declines analytics on the device when the account withdrew after its choice", async () => {
+    const withdrawnAt = "2026-11-08T10:15:30.123Z";
+    saveConsentCookie("2026-11-02T09:30:00.000Z");
+    identity = signedIn("account-a");
+    respondToHydration = () => Promise.resolve({ data: withdrawnAt });
+
+    const changes = await announcedChanges(mountMirror);
+
+    expect(visitorConsent.accepts("analytics")).toBe(false);
+    expect(readSavedCookie()).toMatchObject({
+      categories: ["necessary"],
+      revision,
+      lastConsentTimestamp: withdrawnAt,
+    });
+    // Applied once as the account's decision, never as a banner save.
+    expect(changes).toEqual(["account"]);
+    expect(occasions).toEqual(["hydration"]);
+  });
+
+  test("leaves the device as it is when the account has no newer withdrawal", async () => {
+    saveConsentCookie("2026-11-02T09:30:00.000Z");
+    const saved = visitorConsent.saveMark();
+    identity = signedIn("account-a");
+
+    const changes = await announcedChanges(mountMirror);
+
+    expect(visitorConsent.saveMark()).toBe(saved);
+    expect(visitorConsent.accepts("analytics")).toBe(true);
+    expect(changes).toEqual([]);
+    expect(occasions).toEqual(["hydration"]);
+  });
+
+  test("leaves the device as it is when the mirror request fails", async () => {
+    saveConsentCookie("2026-11-02T09:30:00.000Z");
+    const saved = visitorConsent.saveMark();
+    identity = signedIn("account-a");
+    respondToHydration = () =>
+      Promise.reject(new Error("Synthetic mirror failure"));
+
+    const changes = await announcedChanges(mountMirror);
+
+    expect(visitorConsent.saveMark()).toBe(saved);
+    expect(changes).toEqual([]);
+  });
+
+  test("keeps a choice saved while the mirror request was in flight", async () => {
+    saveConsentCookie("2026-11-02T09:30:00.000Z");
+    identity = signedIn("account-a");
+    const respond = deferHydration();
+    await mountMirror();
+
+    // Another tab saves a newer choice before the response arrives.
+    saveConsentCookie("2026-11-08T10:20:00.000Z");
+    const savedMeanwhile = visitorConsent.saveMark();
+    const changes = await announcedChanges(() =>
+      respond({ data: "2026-11-08T10:15:30.123Z" })
+    );
+
+    expect(visitorConsent.saveMark()).toBe(savedMeanwhile);
+    expect(visitorConsent.accepts("analytics")).toBe(true);
+    expect(changes).toEqual([]);
+    expect(occasions).toEqual(["hydration"]);
+  });
+
+  test.each([
+    { analytics: true, change: "account" },
+    { analytics: false, change: "account" },
+    { analytics: true, change: "preference" },
+    { analytics: false, change: "preference" },
+  ] as const)(
+    "records no banner save for an account decision applied to the device ($change, analytics $analytics)",
+    async ({ analytics, change }) => {
+      saveConsentCookie("2026-11-02T09:30:00.000Z");
+      rememberedCategories = analytics
+        ? ["necessary"]
+        : ["necessary", "analytics"];
+      writeConsentCookie(rememberedCategories, "2026-11-02T09:30:00.000Z");
+      identity = signedIn("account-a");
+      await mountMirror();
+
+      const changes = await announcedChanges(() =>
+        act(() =>
+          visitorConsent.applyAccountDecision({
+            analytics,
+            decidedAt: "2026-11-08T10:15:30.123Z",
+            change,
+          })
+        )
+      );
+
+      expect(visitorConsent.accepts("analytics")).toBe(analytics);
+      expect(changes).toEqual([change]);
+      expect(occasions).toEqual(["hydration"]);
+    }
+  );
 });

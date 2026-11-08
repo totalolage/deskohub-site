@@ -60,6 +60,8 @@ mock.module("@/features/legal/actions", () => ({
     Promise.resolve<MarketingActionResult>({ data: { status: "confirmed" } }),
   saveMarketingPreferencesAction: (_input: MarketingActionInput) =>
     Promise.resolve<MarketingActionResult>({ data: { status: "saved" } }),
+  saveAccountAnalyticsPreference: (_input: { readonly granted: boolean }) =>
+    Promise.resolve<MarketingActionResult>({ data: null }),
   resolveSilentAnalyticsGrantForDevice: () =>
     Promise.resolve<MarketingActionResult>({ data: null }),
 }));
@@ -151,6 +153,9 @@ const { ConsentBanner } = await import(
   "@/features/cookie-consent/components/consent-banner"
 );
 const { LegalScreen } = await import("./legal-screen");
+const { LegalPreferenceSettings } = await import(
+  "./legal-preference-settings"
+);
 
 beforeAll(registerWorkspaceComponentTestEnv);
 beforeEach(() => {
@@ -184,12 +189,13 @@ const linkMarketingState = {
 } as const;
 
 test.each(["en-US", "cs-CZ"] as const)(
-  "renders five peer preference rows with the marketing feedback inside the fifth card in %s",
+  "renders six peer preference rows with the marketing feedback inside the last card in %s",
   (locale) => {
     const view = render(
       <>
         <ConsentBanner locale={locale} revision={1} />
         <LegalScreen
+          analyticsPreference={{ status: "available", granted: true }}
           locale={locale}
           marketingPreferences={{ ...linkMarketingState }}
         />
@@ -201,12 +207,13 @@ test.each(["en-US", "cs-CZ"] as const)(
     );
     expect(group).toBeTruthy();
 
-    // The group's DOM children are EXACTLY the five row cards: the four
-    // cookie categories followed by the managed marketing messages row.
-    // Fragments flatten, so no sixth sibling (feedback or wrapper) may appear,
-    // even while a save is in flight or after success/error.
+    // The group's DOM children are EXACTLY the six row cards: the four
+    // cookie categories, the account's analytics preference, then the
+    // managed marketing messages row. Fragments flatten, so no seventh
+    // sibling (feedback or wrapper) may appear, even while a save is in
+    // flight or after success/error.
     const rows = Array.from(group.children);
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(6);
     for (const row of rows) {
       expect(row.tagName.toLowerCase()).toBe("article");
       expect(row.getAttribute("data-slot")).toBe("preference-row");
@@ -219,6 +226,7 @@ test.each(["en-US", "cs-CZ"] as const)(
       m.cookieSettingsAnalyticsTitle({}, { locale }),
       m.cookieSettingsMarketingTitle({}, { locale }),
       m.cookieSettingsPreferencesTitle({}, { locale }),
+      m.analyticsPreferenceTitle({}, { locale }),
       m.marketingPreferencesFormRowTitle({}, { locale }),
     ]);
 
@@ -227,7 +235,19 @@ test.each(["en-US", "cs-CZ"] as const)(
 
     // The marketing row itself carries the state markers: semantically they
     // describe that row, not an outer shell.
-    const marketingRow = rows[4];
+    const analyticsRow = rows[4];
+    expect(analyticsRow.getAttribute("data-analytics-preference")).toBe(
+      "available"
+    );
+    expect(
+      view
+        .getByRole("switch", {
+          name: m.analyticsPreferenceTitle({}, { locale }),
+        })
+        .getAttribute("aria-checked")
+    ).toBe("true");
+
+    const marketingRow = rows[5];
     expect(marketingRow.getAttribute("data-marketing-preferences")).toBe(
       "active"
     );
@@ -235,7 +255,7 @@ test.each(["en-US", "cs-CZ"] as const)(
       "link"
     );
 
-    // Marketing feedback lives inside the fifth card's support column, never
+    // Marketing feedback lives inside the last card's support column, never
     // as a loose group item or reserved blank space outside the cards.
     const feedback = group.querySelector("#marketing-preferences-feedback");
     expect(feedback).toBeTruthy();
@@ -292,4 +312,77 @@ test("defaults the optional marketing preference state to unavailable", () => {
       })
       .getAttribute("href")
   ).toBe("/en-US/auth/sign-in");
+});
+
+test.each([
+  { name: "available", state: { status: "available", granted: false } },
+  { name: "unavailable", state: { status: "unavailable" } },
+] as const)(
+  "places the $name analytics preference after the cookie rows when marketing falls back",
+  ({ name, state }) => {
+    const locale = "en-US" as const;
+    const view = render(
+      <>
+        <ConsentBanner locale={locale} revision={1} />
+        <LegalScreen analyticsPreference={state} locale={locale} />
+      </>
+    );
+
+    const group = view.container.querySelector(
+      '[data-slot="preference-row-group"]'
+    );
+    expect(group).toBeTruthy();
+    const rows = Array.from(group.children);
+    expect(rows).toHaveLength(5);
+    expect(rows[4].getAttribute("data-analytics-preference")).toBe(name);
+    expect(
+      view.container.querySelectorAll("[data-analytics-preference]")
+    ).toHaveLength(1);
+  }
+);
+
+test.each([
+  {
+    name: "a managed marketing state",
+    marketingPreferences: { ...linkMarketingState },
+    rowCount: 5,
+  },
+  { name: "the marketing fallback", marketingPreferences: undefined, rowCount: 4 },
+])(
+  "renders no analytics preference row for a signed-out visitor with $name",
+  ({ marketingPreferences, rowCount }) => {
+    const locale = "en-US" as const;
+    const view = render(
+      <>
+        <ConsentBanner locale={locale} revision={1} />
+        <LegalPreferenceSettings
+          analyticsPreference={{ status: "signed-out" }}
+          locale={locale}
+          marketingPreferences={marketingPreferences}
+        />
+      </>
+    );
+
+    const group = view.container.querySelector(
+      '[data-slot="preference-row-group"]'
+    );
+    expect(group).toBeTruthy();
+    expect(group.children).toHaveLength(rowCount);
+    expect(
+      view.container.querySelector("[data-analytics-preference]")
+    ).toBeNull();
+    expect(
+      view.queryByRole("switch", {
+        name: m.analyticsPreferenceTitle({}, { locale }),
+      })
+    ).toBeNull();
+  }
+);
+
+test("defaults the optional analytics preference to signed out", () => {
+  const view = renderLegalScreen("en-US");
+
+  expect(
+    view.container.querySelector("[data-analytics-preference]")
+  ).toBeNull();
 });
