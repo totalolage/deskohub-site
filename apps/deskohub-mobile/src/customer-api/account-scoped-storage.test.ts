@@ -226,6 +226,28 @@ describe("AccountScopedStorage", () => {
     expect(setup.device.files.size).toBe(0);
   });
 
+  test("a launch sweep that waited for a held file runs when its scope closes", async () => {
+    const setup = deviceWithFence();
+    const orphan = "file:///cache/deskohub-share/b/0/invoice.pdf";
+    setup.device.files.set(orphan, new Uint8Array());
+    const storage = await openStorage(setup, sessionA1);
+    const launchSweep = customerDataExitCleanup({ scope: "shared-files" }).pipe(
+      Effect.provide(Layer.merge(setup.capabilities, setup.fence))
+    );
+
+    await run(
+      Effect.scoped(
+        Effect.gen(function* () {
+          yield* storage.temporaryFile("invoice.pdf", new Uint8Array());
+          yield* launchSweep;
+          expect(setup.device.files.has(orphan)).toBe(true);
+        })
+      )
+    );
+
+    expect(setup.device.files.size).toBe(0);
+  });
+
   test("temporary files of one name are separate files, each removed with its own scope", async () => {
     const setup = deviceWithFence();
     const storage = await openStorage(setup, sessionA1);
