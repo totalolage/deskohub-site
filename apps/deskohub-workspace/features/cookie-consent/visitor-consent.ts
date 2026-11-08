@@ -9,6 +9,7 @@ import {
 import {
   type ConsentCategory,
   getAcceptedConsentCategoriesFromCookie,
+  getConsentCookieValuesFromCookie,
 } from "@/shared/utils/consent-cookie";
 
 export type { ConsentCategory } from "@/shared/utils/consent-cookie";
@@ -51,6 +52,16 @@ export const visitorConsent = {
 
   /** Every accepted category, in display order. */
   acceptedCategories,
+
+  /**
+   * An opaque mark of the consent the device saved, empty without one. Every
+   * save rewrites the cookie with a new last-consent timestamp, so the mark
+   * changes with each save and stays put across page loads.
+   */
+  saveMark: (): string =>
+    globalThis.document === undefined
+      ? ""
+      : getConsentCookieValuesFromCookie(globalThis.document.cookie).join("\n"),
 
   /**
    * Calls `onChange` after consent may have changed. Read `accepts` again

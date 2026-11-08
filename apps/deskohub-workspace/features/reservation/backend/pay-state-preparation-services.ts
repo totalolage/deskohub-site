@@ -5,6 +5,7 @@ import { CheckoutAnalytics } from "@/features/checkout/backend/analytics";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import { WorkspaceTableAssignmentService } from "@/features/checkout/backend/reservation";
+import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { ReferralService } from "@/features/referrals";
@@ -20,6 +21,7 @@ const payStatePreparationServiceSet = Layer.mergeAll(
   Layer.mergeAll(
     WorkspaceReservationRepository.Default,
     MarketingConsentLedger.Default,
+    AnalyticsConsentLedger.Default,
     ReviewAccounts.Default,
     ReviewSandbox.Default
   ).pipe(Layer.provide(WorkspaceDatabase.Default)),

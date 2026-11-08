@@ -261,8 +261,8 @@ describe("Nexi sandbox payment restart", () => {
   } as CheckoutRow;
   const hostedPaymentPage = {
     checkoutPageUrl: "https://workspace.test/en-US/reservation/order-id",
-    checkoutTabId: "checkout-tab",
-    hostedPaymentTabId: "checkout-tab",
+    checkoutPage: {} as never,
+    page: {} as never,
     url: "https://xpay.nexigroup.com/hpp/nexi/",
   };
   const sandboxRejection = () =>

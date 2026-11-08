@@ -80,10 +80,10 @@ export const parseNexiSnapshot = (
     const frameRef = frames[0]?.ref;
     nodes.push({
       disabled: /\[[^\]]*\bdisabled\b[^\]]*\]/i.test(rest),
-      ...(frameRef ? { frameRef: `@${frameRef}` } : {}),
+      ...(frameRef ? { frameRef } : {}),
       indent,
       ...(match[3] === undefined ? {} : { name: match[3].trim() }),
-      ...(ref ? { ref: `@${ref}` } : {}),
+      ...(ref ? { ref } : {}),
       role,
     });
     if (role === "iframe") frames.push({ indent, ref });

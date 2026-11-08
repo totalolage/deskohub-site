@@ -2,21 +2,23 @@ import { Effect } from "effect";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
-  activateHydratedBrowserElement,
-  openBrowserPage,
-  readBrowserUrl,
-  switchToBrowserTab,
-  switchToMainFrame,
-  waitForBrowserCondition,
-  waitForBrowserText,
-  waitForBrowserUrl,
+  activateHydratedElement,
+  openPage,
+  readPageUrl,
+  waitForPageCondition,
+  waitForPageText,
+  waitForPageUrl,
 } from "../browser";
-import { getPrefilledReservationConditionScript } from "../browser-scripts";
+import type { E2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
   prepareCheckoutPaymentAttempt,
   submitPaymentAndWaitForHostedPage,
 } from "../checkout/payment";
+import {
+  isPrefilledReservation,
+  toPrefilledReservation,
+} from "../checkout/prefilled-reservation";
 import type { ReservationFormPreparation } from "../checkout/reservation-form-preparation";
 import type { WorkspaceE2EConfig } from "../config";
 import { WorkspaceE2EHostedPaymentPermitService } from "../coordination/hosted-payment-permit.service";
@@ -117,13 +119,14 @@ export const assertPaymentTerminalPath = ({
       });
       // The status page reconciles the order with Nexi; no webhook replay.
       yield* runStep({
-        execute: assertReturnedTerminalStatusPage({
-          orderId,
-          run,
-          scenario,
-          session,
-          timeouts: config.timeouts,
-        }),
+        execute: Effect.flatMap(browserSessionFor(run, session), (browser) =>
+          assertReturnedTerminalStatusPage({
+            orderId,
+            scenario,
+            session: browser,
+            timeouts: config.timeouts,
+          })
+        ),
         id: `assert-${scenario.state}-status-page`,
         timeoutMs: config.timeouts.uiTransition,
       });
@@ -143,26 +146,28 @@ export const assertPaymentTerminalPath = ({
         state,
       });
       yield* runStep({
-        execute: assertTerminalStatusPage({
-          config,
-          orderId,
-          run,
-          scenario,
-          session,
-        }),
+        execute: Effect.flatMap(browserSessionFor(run, session), (browser) =>
+          assertTerminalStatusPage({
+            config,
+            orderId,
+            scenario,
+            session: browser,
+          })
+        ),
         id: `assert-${scenario.state}-status-page`,
         timeoutMs: config.timeouts.uiTransition,
       });
     }
     yield* runStep({
-      execute: retryReservation({
-        data,
-        reservationPath,
-        run,
-        scenario,
-        session,
-        timeouts: config.timeouts,
-      }),
+      execute: Effect.flatMap(browserSessionFor(run, session), (browser) =>
+        retryReservation({
+          data,
+          reservationPath,
+          scenario,
+          session: browser,
+          timeouts: config.timeouts,
+        })
+      ),
       id: "retry-reservation",
       timeoutMs: config.timeouts.uiTransition,
     });
@@ -198,15 +203,14 @@ const injectPaymentTerminalState = ({
       session,
       Effect.gen(function* () {
         yield* runStep({
-          execute: submitPaymentAndWaitForHostedPage({
-            run,
-            session,
-            timeouts: config.timeouts,
-          }).pipe(
-            Effect.tap(({ checkoutTabId }) =>
-              switchToBrowserTab(run, session, checkoutTabId)
-            )
-          ),
+          execute: Effect.gen(function* () {
+            const browser = yield* browserSessionFor(run, session);
+            const { checkoutPage } = yield* submitPaymentAndWaitForHostedPage({
+              session: browser,
+              timeouts: config.timeouts,
+            });
+            yield* browser.activate(checkoutPage);
+          }),
           id: "start-hosted-payment",
           timeoutMs: config.timeouts.providerTransition,
         });
@@ -235,7 +239,7 @@ const preparePaymentTerminalState = ({
   scenario: PaymentTerminalScenario;
   state: CheckoutFlowState;
   timeoutMs: number;
-}) =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const providerSessionRow = yield* requireProviderSessionRowAfterRedirect(
       orderId,
@@ -298,53 +302,52 @@ const isRetryReservationUrl = (
   );
 };
 
-const retryReservation = ({
+export const retryReservation = ({
   data,
   reservationPath,
-  run,
   scenario,
   session,
   timeouts,
 }: {
   data: CheckoutData;
   reservationPath: string;
-  run: Runner;
   scenario: PaymentTerminalScenario;
-  session: string;
+  session: E2EBrowserSession;
   timeouts: WorkspaceE2ETimeouts;
-}) =>
+}): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const expectedSelection = getExpectedRetrySelection(data);
-    yield* activateStatusRetry(run, session, reservationPath, timeouts);
-    yield* waitForBrowserUrl({
+    yield* activateHydratedElement(
+      session,
+      `#checkout-status-reserve-again[href^="${reservationPath}?"]`,
+      { timeoutMs: timeouts.uiTransition }
+    );
+    yield* waitForPageUrl({
       description: `${scenario.state} payment retry page with the original selection`,
       matches: (url) =>
         isRetryReservationUrl(url, reservationPath, expectedSelection),
-      run,
       session,
       timeoutMs: timeouts.uiTransition,
     });
-    yield* waitForBrowserCondition(
-      run,
+    yield* waitForPageCondition(
       session,
       `${scenario.state} payment retry form shows the original selection`,
-      getPrefilledReservationConditionScript(data, { includeContact: false }),
+      isPrefilledReservation,
+      toPrefilledReservation(data, { includeContact: false }),
       { timeoutMs: timeouts.uiTransition }
     );
   });
 
-const assertTerminalStatusPage = ({
+export const assertTerminalStatusPage = ({
   config,
   orderId,
-  run,
   scenario,
   session,
 }: {
-  config: WorkspaceE2EConfig;
+  config: Pick<WorkspaceE2EConfig, "baseUrl" | "bypassSecret" | "timeouts">;
   orderId: WorkspaceReservationId;
-  run: Runner;
   scenario: PaymentTerminalScenario;
-  session: string;
+  session: E2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const url = yield* makeUrl(
@@ -353,15 +356,11 @@ const assertTerminalStatusPage = ({
     );
     yield* setSearchParams(url, { e2eAt: String(Date.now()) });
 
-    yield* switchToMainFrame(run, session);
-    yield* openBrowserPage(config, run, session, url.toString(), {
-      timeoutMs: 60_000,
-    });
-    yield* waitForBrowserText({
+    yield* openPage(session, config, url.toString(), { timeoutMs: 60_000 });
+    yield* waitForPageText({
       description: `${scenario.state} checkout status copy`,
       matches: (text) =>
         scenario.titlePattern.test(text) && /Try again/i.test(text),
-      run,
       session,
       timeoutMs: config.timeouts.uiTransition,
     });
@@ -374,32 +373,29 @@ const isOrderStatusUrl = (value: string, orderId: WorkspaceReservationId) =>
 
 // The customer stays on the status page Nexi returned to; it refreshes while
 // the payment is pending and reconciles the order with Nexi.
-const assertReturnedTerminalStatusPage = ({
+export const assertReturnedTerminalStatusPage = ({
   orderId,
-  run,
   scenario,
   session,
   timeouts,
 }: {
   orderId: WorkspaceReservationId;
-  run: Runner;
   scenario: PaymentTerminalScenario;
-  session: string;
+  session: E2EBrowserSession;
   timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const url = yield* readBrowserUrl(run, session);
+    const url = yield* readPageUrl(session);
     yield* tryWorkspaceE2ESync("assert returned checkout status order", () =>
       assert(
         url && isOrderStatusUrl(url, orderId),
         "Nexi returned to a different checkout status page"
       )
     );
-    yield* waitForBrowserText({
+    yield* waitForPageText({
       description: `${scenario.state} checkout status copy after the Nexi return`,
       matches: (text) =>
         scenario.titlePattern.test(text) && /Try again/i.test(text),
-      run,
       session,
       timeoutMs: timeouts.uiTransition,
     });
@@ -430,16 +426,3 @@ const validateReconciledTerminalRow = ({
     state.checkoutRow = checkoutRow;
     yield* assertPaymentTerminalRow(checkoutRow, scenario);
   });
-
-const activateStatusRetry = (
-  run: Runner,
-  session: string,
-  reservationPath: string,
-  timeouts: WorkspaceE2ETimeouts
-) => {
-  const selector = `#checkout-status-reserve-again[href^="${reservationPath}?"]`;
-
-  return activateHydratedBrowserElement(run, session, selector, {
-    timeoutMs: timeouts.uiTransition,
-  });
-};

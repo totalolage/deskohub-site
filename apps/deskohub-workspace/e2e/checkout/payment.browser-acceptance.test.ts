@@ -3,7 +3,7 @@ import { type Browser, chromium, type Page } from "@playwright/test";
 import { Effect, Schema } from "effect";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
-import { readActiveBrowserTabId, waitForPageUrl } from "../browser";
+import { readActivePage, waitForPageUrl } from "../browser";
 import {
   failedStepAnnotation,
   runBrowserStep,
@@ -266,9 +266,17 @@ function payPage(scenario: string, id: string) {
           if (window.paymentClicks !== undefined) window.paymentClicks++;
           const handler = control.dataset.handler;
           void fetch('/payment-click?scenario=' + scenario + '&handler=' + handler, { method: 'POST' });
-          if (scenario === 'hosted-popup' || scenario === 'popup-status') {
-            window.open('/hpp/nexi/${id}?scenario=' + scenario, '_blank');
-            setTimeout(() => location.assign('/reservation/status/${id}?scenario=' + scenario), 100);
+          if (scenario.startsWith('hosted-popup') || scenario === 'popup-status') {
+            const openHosted = () => {
+              const target = '/hpp/nexi/${id}?scenario=' + scenario;
+              if (scenario === 'hosted-popup-delayed-navigation') {
+                const popup = window.open('about:blank', '_blank');
+                setTimeout(() => { popup.location.href = target; }, 350);
+              } else window.open(target, '_blank');
+            };
+            if (scenario === 'hosted-popup-delayed-open') setTimeout(openHosted, 350);
+            else openHosted();
+            setTimeout(() => location.assign('/reservation/status/${id}?scenario=' + scenario), scenario === 'hosted-popup-delayed-open' || scenario === 'hosted-popup-delayed-navigation' ? 600 : 100);
           } else if (scenario === 'hosted-same-tab') {
             location.assign('/hpp/nexi/${id}?scenario=' + scenario);
           }
@@ -383,6 +391,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           onOrderId: (value) => receivedOrderIds.push(value),
           preparation: preparationFor(data),
           session,
@@ -415,6 +424,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data),
           session,
           timeouts: shortTimeouts,
@@ -439,6 +449,7 @@ test.skipIf(!chromiumAvailable)(
       drive: ({ session }) => {
         addRedaction(redactedOrderId);
         return submitReservationForPayPage({
+          data,
           onOrderId: (value) => receivedOrderIds.push(value),
           preparation: preparationFor(data),
           session,
@@ -465,6 +476,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data),
           session,
           timeouts: shortTimeouts,
@@ -512,6 +524,7 @@ test.skipIf(!chromiumAvailable)(
         ),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data),
           session,
           timeouts: shortTimeouts,
@@ -539,6 +552,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data),
           session,
           timeouts: shortTimeouts,
@@ -577,6 +591,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           onOrderId: (value) => receivedOrderIds.push(value),
           preparation: preparationFor(data),
           session,
@@ -602,6 +617,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data, 6_000),
           session,
           timeouts: shortTimeouts,
@@ -625,6 +641,7 @@ test.skipIf(!chromiumAvailable)(
       drive: ({ session }) => {
         addRedaction(syntheticIdSecret);
         return submitReservationForPayPage({
+          data,
           preparation: preparationFor(data, 500),
           session,
           timeouts: shortTimeouts,
@@ -650,6 +667,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data, 8_000),
           session,
           timeouts: { ...shortTimeouts, checkoutStart: 1_200 },
@@ -672,6 +690,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data),
           session,
           timeouts: shortTimeouts,
@@ -694,6 +713,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data, 48_000),
           session,
           timeouts: { ...shortTimeouts, checkoutStart: 52_000 },
@@ -722,6 +742,7 @@ test.skipIf(!chromiumAvailable)(
       drive: ({ session }) => {
         addRedaction(diagnosticSecret);
         return submitReservationForPayPage({
+          data,
           preparation: preparationFor(data),
           session,
           timeouts: { ...shortTimeouts, checkoutStart: 1_200 },
@@ -750,6 +771,7 @@ test.skipIf(!chromiumAvailable)(
       prepare: showReservation(scenario),
       drive: ({ session }) =>
         submitReservationForPayPage({
+          data,
           preparation: preparationFor(data, 8_000),
           session,
           timeouts: { ...shortTimeouts, checkoutStart: 10_000 },
@@ -1095,16 +1117,27 @@ test.skipIf(!chromiumAvailable)(
 const runHostedCrossing = (scenario: string) => {
   return runBrowserStep({
     browser: requireBrowser(),
-    prepare: showPayPage(scenario),
-    drive: ({ id, run }) =>
+    prepare: (session) =>
+      showPayPage(scenario)(session).pipe(
+        Effect.andThen(
+          session.use("delay checkout activation", async (page) => {
+            if (scenario !== "hosted-popup-delayed-activation") return;
+            const bringToFront = page.bringToFront.bind(page);
+            page.bringToFront = async () => {
+              await new Promise<void>((resolve) => setTimeout(resolve, 350));
+              await bringToFront();
+            };
+          })
+        )
+      ),
+    drive: ({ session }) =>
       Effect.gen(function* () {
         const hosted = yield* submitPaymentAndWaitForHostedPage({
-          run,
-          session: id,
+          session,
           timeouts: shortTimeouts,
         });
-        const activeTabId = yield* readActiveBrowserTabId(run, id);
-        return { ...hosted, activeTabId };
+        const activePage = yield* readActivePage(session);
+        return { ...hosted, activePage };
       }),
   });
 };
@@ -1117,16 +1150,37 @@ test.skipIf(!chromiumAvailable)(
     const result = await runHostedCrossing(scenario);
 
     expectSucceeded(result);
-    expect(result.value?.checkoutTabId).not.toBe(
-      result.value?.hostedPaymentTabId
-    );
-    expect(result.value?.activeTabId).toBe(result.value?.hostedPaymentTabId);
+    expect(result.value?.checkoutPage).not.toBe(result.value?.page);
+    expect(result.value?.activePage).toBe(result.value?.page);
     expect(result.value?.checkoutPageUrl).toBe(payUrlFor(scenario));
     expect(result.value?.url).toContain("/hpp/nexi/");
-    expect(result.value?.hostedPaymentTabId).toBeTruthy();
+    expect(result.value?.page).toBeTruthy();
     expect(state.paymentHandlers).toEqual(["pay"]);
   }
 );
+
+for (const scenario of [
+  "hosted-popup-delayed-open",
+  "hosted-popup-delayed-navigation",
+  "hosted-popup-delayed-activation",
+]) {
+  test.skipIf(!chromiumAvailable)(
+    `keeps the hosted page active with ${scenario}`,
+    async () => {
+      const state = resetScenario(scenario);
+      const result = await runHostedCrossing(scenario);
+
+      expectSucceeded(result);
+      expect(result.value?.page).not.toBe(result.value?.checkoutPage);
+      expect(result.value?.activePage).toBe(result.value?.page);
+      expect(result.value?.checkoutPage.url()).toContain(
+        "/reservation/status/"
+      );
+      expect(result.value?.page.url()).toContain("/hpp/nexi/");
+      expect(state.paymentHandlers).toEqual(["pay"]);
+    }
+  );
+}
 
 test.skipIf(!chromiumAvailable)(
   "tracks hosted payment when checkout navigates in the same tab",
@@ -1136,11 +1190,11 @@ test.skipIf(!chromiumAvailable)(
     const result = await runHostedCrossing(scenario);
 
     expectSucceeded(result);
-    expect(result.value?.checkoutTabId).toBe(result.value?.hostedPaymentTabId);
-    expect(result.value?.activeTabId).toBe(result.value?.hostedPaymentTabId);
+    expect(result.value?.checkoutPage).toBe(result.value?.page);
+    expect(result.value?.activePage).toBe(result.value?.page);
     expect(result.value?.checkoutPageUrl).toBe(payUrlFor(scenario));
     expect(result.value?.url).toContain("/hpp/nexi/");
-    expect(result.value?.hostedPaymentTabId).toBeTruthy();
+    expect(result.value?.page).toBeTruthy();
     expect(state.paymentHandlers).toEqual(["pay"]);
   }
 );

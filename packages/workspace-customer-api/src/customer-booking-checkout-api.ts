@@ -1,9 +1,6 @@
 import { Schema } from "effect";
 import { HttpApiEndpoint, HttpApiSchema } from "effect/unstable/httpapi";
-import {
-  CustomerAccountLinkRequired,
-  CustomerLocale,
-} from "./customer-account-api";
+import { CustomerAccountLinkRequired } from "./customer-account-api";
 import {
   CustomerBookingDateOutOfRange,
   CustomerBookingSelection,
@@ -11,6 +8,7 @@ import {
   CustomerOfferingUnavailable,
 } from "./customer-booking-selection";
 import { CustomerCheckoutSummary } from "./customer-checkout-summary";
+import { CustomerLocale } from "./customer-locale";
 import { customerInputParseOptions } from "./customer-profile";
 import {
   CustomerServiceUnavailable,
