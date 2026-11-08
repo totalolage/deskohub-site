@@ -4,11 +4,7 @@ import type {
   ProfileCompletionReferralOutcome,
 } from "@deskohub/workspace-customer-api";
 import { Cause, Data, Effect, Match, Option, Predicate } from "effect";
-import {
-  type AsyncResult,
-  Atom,
-  AtomRegistry,
-} from "effect/unstable/reactivity";
+import { type AsyncResult, Atom } from "effect/unstable/reactivity";
 import { CustomerApi } from "../../customer-api/customer-api.service";
 import {
   accountAtom,
@@ -80,9 +76,7 @@ export const editedDraft = (
 
 // The account as read again after a write; a failed read leaves `None`.
 const rereadAccount = (get: Atom.FnContext) =>
-  AtomRegistry.getResult(get.registry, accountAtom, {
-    suspendOnWaiting: true,
-  }).pipe(Effect.option);
+  get.result(accountAtom, { suspendOnWaiting: true }).pipe(Effect.option);
 
 const isLinkRequired = (error: unknown) =>
   Predicate.isTagged(error, "CustomerAccountLinkRequired");
@@ -98,14 +92,24 @@ const refreshAccountWhenLinkRequired =
       )
     );
 
-// Once the server holds the save, the form shows what it stored (it may have
-// normalized a value), so the edits go. An unconfirmed save keeps them: they
-// stop counting as unsaved once the account read again holds the same values.
-const settleEdits = (get: Atom.FnContext) =>
+// Once the account read again shows the saved state, the form shows what the
+// server stored (it may have normalized a value), so the edits go. They stay
+// when that read fails, or (for a completion) still shows no profile, so
+// nothing typed is lost. An unconfirmed save keeps them too: they stop
+// counting as unsaved once the account read again holds the same values.
+const clearEditsOnceShown = <D>({
+  get,
+  edits,
+  shown,
+}: {
+  readonly get: Atom.FnContext;
+  readonly edits: Atom.Writable<Option.Option<D>>;
+  readonly shown: (account: CustomerAccountState) => boolean;
+}) =>
   rereadAccount(get).pipe(
     Effect.tap((account) =>
-      Effect.sync(() => get.set(profileEditsAtom, Option.none())).pipe(
-        Effect.when(Effect.succeed(Option.isSome(account)))
+      Effect.sync(() => get.set(edits, Option.none())).pipe(
+        Effect.when(Effect.succeed(Option.exists(account, shown)))
       )
     ),
     Effect.asVoid
@@ -146,7 +150,9 @@ export const saveProfileAtom = customerDataRuntime
           waitForReread(get)
         )
       ),
-      Effect.tap(() => settleEdits(get)),
+      Effect.tap(() =>
+        clearEditsOnceShown({ get, edits: profileEditsAtom, shown: () => true })
+      ),
       // A save has no referral outcome, unlike a completion.
       Effect.as(Option.none<ProfileCompletionReferralOutcome>())
     )
@@ -196,11 +202,11 @@ export const completeProfileAtom = customerDataRuntime
         )
       ),
       Effect.tap(() =>
-        rereadAccount(get).pipe(
-          Effect.andThen(
-            Effect.sync(() => get.set(completionEditsAtom, Option.none()))
-          )
-        )
+        clearEditsOnceShown({
+          get,
+          edits: completionEditsAtom,
+          shown: (account) => account.kind === "linked",
+        })
       )
     )
   )
@@ -223,8 +229,14 @@ export type ProfileSubmitState = Data.TaggedEnum<{
   Done: {
     readonly referral: Option.Option<ProfileCompletionReferralOutcome>;
   };
-  /** Fields to fix; nothing was sent or created. */
-  Invalid: { readonly invalid: ProfileDraftInvalid<CompletionTextField> };
+  /**
+   * Fields to fix; nothing was sent or created. `attempt` tells refusals
+   * apart, so a form can focus again after the same refusal.
+   */
+  Invalid: {
+    readonly invalid: ProfileDraftInvalid<CompletionTextField>;
+    readonly attempt: object;
+  };
   /**
    * The request failed. `LinkRequired` means the account was read again and
    * gates anew; `Unconfirmed` that the form shows the account read again.
@@ -268,7 +280,10 @@ const failureState = (cause: Cause.Cause<SubmitFailure>) =>
       ProfileSubmitState.Failed({ error: CustomerViewError.Unexpected() }),
     onSome: (error) =>
       isDraftRefusal(error)
-        ? ProfileSubmitState.Invalid({ invalid: invalidOf(error) })
+        ? ProfileSubmitState.Invalid({
+            invalid: invalidOf(error),
+            attempt: error,
+          })
         : ProfileSubmitState.Failed({ error: toCustomerViewError(error) }),
   });
 

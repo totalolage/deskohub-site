@@ -18,6 +18,7 @@ import {
 import { completionDraftOf, profileDraftOf } from "./profile-draft";
 import {
   completeProfileAtom,
+  completionEditsAtom,
   currentDraft,
   editedDraft,
   hasUnsavedChanges,
@@ -285,7 +286,7 @@ describe("completeProfileAtom", () => {
       completion("NOPE")
     );
 
-    expect(state).toEqual({
+    expect(state).toMatchObject({
       _tag: "Invalid",
       invalid: {
         fields: { referralCode: "invalid" },
@@ -294,6 +295,42 @@ describe("completeProfileAtom", () => {
     });
     expect(workspace.calls).toEqual(["getAccount", "completeProfile"]);
     expect(storedAccount(workspace).kind).toBe("completion-required");
+  });
+
+  test("a completion whose account read fails keeps the draft and can't be sent twice", async () => {
+    const { registry, workspace } = makeFakeCustomerData("completion-required");
+    await settle(registry, accountAtom);
+    const { draft } = completion("");
+    registry.set(completionEditsAtom, Option.some(draft));
+    workspace.fail("getAccount", "rate-limited");
+
+    const state = await submit(registry, completeProfileAtom, {
+      draft,
+      invitationCode: undefined,
+    });
+
+    expect(state._tag).toBe("Done");
+    expect(storedAccount(workspace).kind).toBe("linked");
+    expect(registry.get(completionEditsAtom)).toEqual(Option.some(draft));
+  });
+
+  test("each refusal is a new attempt to focus", async () => {
+    const { registry } = makeFakeCustomerData("completion-required");
+    await settle(registry, accountAtom);
+    const empty = {
+      draft: completionDraftOf(undefined),
+      invitationCode: undefined,
+    };
+
+    const first = await submit(registry, completeProfileAtom, empty);
+    const second = await submit(registry, completeProfileAtom, empty);
+
+    expect(first._tag === "Invalid" && second._tag === "Invalid").toBe(true);
+    expect(
+      first._tag === "Invalid" &&
+        second._tag === "Invalid" &&
+        first.attempt !== second.attempt
+    ).toBe(true);
   });
 
   test("an invalid draft sends nothing", async () => {

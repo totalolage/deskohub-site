@@ -5,7 +5,7 @@ import {
   useAtomSet,
   useAtomValue,
 } from "@effect/atom-react";
-import { Option } from "effect";
+import { Match, Option } from "effect";
 import { Atom } from "effect/unstable/reactivity";
 import { Redirect, useRouter } from "expo-router";
 import { AsyncView } from "../../customer-api/async-view";
@@ -35,6 +35,7 @@ import {
   completionEditsAtom,
   currentCompletionDraft,
   invitationCodeOf,
+  type ProfileSubmitState,
   profileSubmitState,
 } from "./profile-save";
 import { ProfileSubmitFooter } from "./profile-submit-footer";
@@ -46,6 +47,22 @@ import { SignupReferralNotice } from "./signup-referral-notice";
  * optional billing details in one form. Once created, the account reads as
  * linked and the Account tab opens every section.
  */
+/**
+ * Whether this screen's completion made the account linked: it succeeded,
+ * is still reading the account again, or couldn't be confirmed although the
+ * account read again shows it applied.
+ */
+const createdHere = (completion: ProfileSubmitState) =>
+  Match.value(completion).pipe(
+    Match.tagsExhaustive({
+      Idle: () => false,
+      Submitting: () => true,
+      Done: () => true,
+      Invalid: () => false,
+      Failed: ({ error }) => error._tag === "Unconfirmed",
+    })
+  );
+
 export function CompletionScreen() {
   const account = useAtomValue(accountAtom);
   const refresh = useAtomRefresh(accountAtom);
@@ -57,7 +74,7 @@ export function CompletionScreen() {
         {(current) => {
           if (current.kind === "completion-required")
             return <CompletionForm account={current} />;
-          if (current.kind === "linked" && completion._tag === "Done")
+          if (current.kind === "linked" && createdHere(completion))
             return <CompletionDone account={current} />;
           return <Redirect href="/account" />;
         }}
@@ -176,7 +193,8 @@ function CompletionForm({
       />
       <ProfileSubmitFooter
         state={state}
-        unsaved
+        // Created, but the account wasn't read again yet: don't create twice.
+        unsaved={state._tag !== "Done"}
         onSubmit={() => complete({ draft, invitationCode })}
         submitLabel={m.profile_complete_submit({}, { locale })}
         submittingLabel={m.profile_complete_submitting({}, { locale })}

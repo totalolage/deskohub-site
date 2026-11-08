@@ -7,7 +7,12 @@ import {
 } from "@effect/atom-react";
 import { Option } from "effect";
 import { Atom } from "effect/unstable/reactivity";
-import { usePreventRemove } from "expo-router";
+import {
+  useIsFocused,
+  useNavigation,
+  usePreventRemove,
+  useRoute,
+} from "expo-router";
 import { useContext, useEffect, useRef, useState } from "react";
 import type { TextInputInstance } from "react-native";
 import type { AppLocale } from "../../i18n/app-locale";
@@ -75,7 +80,11 @@ export function useSettledResultReset(
   );
 }
 
-/** The first invalid field to focus after a submit, if this form shows it. */
+/**
+ * Focuses the first invalid field after each refused submit, when this
+ * screen is the one showing and the field is on it. Otherwise the form
+ * points at the screen that has it.
+ */
 export function useFocusFirstInvalid<F extends CompletionTextField>(
   state: ProfileSubmitState,
   fields: ReadonlyArray<F>
@@ -83,14 +92,21 @@ export function useFocusFirstInvalid<F extends CompletionTextField>(
   const inputs: ProfileFieldRefs = useRef(
     new Map<CompletionTextField, TextInputInstance | null>()
   );
-  const first =
-    state._tag === "Invalid"
-      ? Option.getOrUndefined(state.invalid.first)
-      : undefined;
+  const focused = useIsFocused();
+  const refusal = state._tag === "Invalid" ? state : undefined;
+  const first = Option.getOrUndefined(
+    Option.flatMap(
+      Option.fromNullishOr(refusal),
+      ({ invalid }) => invalid.first
+    )
+  );
   const shown = first !== undefined && fields.includes(first as F);
+  // Each refusal is a new attempt, even when it names the same field again.
+  const attempt = refusal?.attempt;
   useEffect(() => {
-    if (shown && first !== undefined) inputs.current.get(first)?.focus();
-  }, [shown, first]);
+    if (focused && shown && first !== undefined && attempt !== undefined)
+      inputs.current.get(first)?.focus();
+  }, [focused, shown, first, attempt]);
   return { inputs, invalidElsewhere: first !== undefined && !shown };
 }
 
@@ -100,19 +116,32 @@ export const invalidOf = (state: ProfileSubmitState) =>
 
 /**
  * Asks before leaving with unsaved changes; discarding drops the edits and
- * then completes the navigation the customer started.
+ * then completes the navigation the customer started. Going back to another
+ * screen in `sharedWith`, which edits the same draft, keeps the edits: that
+ * screen guards them in turn.
  */
 export function UnsavedChangesGuard({
   unsaved,
   onDiscard,
+  sharedWith = [],
   locale,
 }: {
   readonly unsaved: boolean;
   readonly onDiscard: () => void;
+  readonly sharedWith?: ReadonlyArray<string>;
   readonly locale: AppLocale;
 }) {
   const [leave, setLeave] = useState<(() => void) | undefined>(undefined);
-  usePreventRemove(unsaved, ({ repeat }) => setLeave(() => repeat));
+  const navigation = useNavigation();
+  const route = useRoute();
+  const routes = navigation.getState()?.routes ?? [];
+  const below = routes[routes.findIndex(({ key }) => key === route.key) - 1];
+  const returnsToSharedDraft =
+    below !== undefined && sharedWith.includes(below.name);
+  // An action that also removes the screen below asks there.
+  usePreventRemove(unsaved && !returnsToSharedDraft, ({ repeat }) =>
+    setLeave(() => repeat)
+  );
   useEffect(() => {
     if (!unsaved && leave !== undefined) {
       setLeave(undefined);

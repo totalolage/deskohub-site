@@ -60,6 +60,7 @@ function BillingForm({
       <UnsavedChangesGuard
         unsaved={form.unsaved}
         onDiscard={form.discard}
+        sharedWith={["profile"]}
         locale={locale}
       />
       <SectionHeader

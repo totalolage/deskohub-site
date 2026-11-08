@@ -74,6 +74,7 @@ function ProfileForm({
       <UnsavedChangesGuard
         unsaved={form.unsaved}
         onDiscard={form.discard}
+        sharedWith={["billing"]}
         locale={locale}
       />
       <AvatarSection
