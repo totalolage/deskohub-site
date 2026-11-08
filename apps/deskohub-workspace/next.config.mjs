@@ -61,11 +61,13 @@ const nextConfig = {
     cpus: 1,
     // Next's TS CLI integration needs bin tsc, which the official TS6 wrapper (tsc6-only) must not provide.
     useTypeScriptCli: false,
-    // Turbopack's build filesystem cache is on by default; the separate
-    // `build:compile` and `build:generate` tasks keep writing it apart from
-    // prerendering to fit Vercel's 8 GB machine.
-    // Garbage collection drops unreachable work from it, which slows its growth
-    // toward Vercel's 1.5 GB build-cache limit, past which Vercel discards it.
+    // Vercel's build cache holds every `node_modules` (about 1 GB compressed)
+    // and `.next/cache`, and Vercel drops all of it past 1.5 GB. Turbopack's
+    // build filesystem cache (`.next/cache/turbopack`, about 0.8 GB) doesn't fit
+    // beside them, so with it on every build ran cold, installs included.
+    // `build:compile` deletes a restored copy, which Next would keep.
+    turbopackFileSystemCacheForBuild: false,
+    // Garbage collection drops unreachable work from `next dev`'s cache.
     turbopackGc: true,
     // Customer avatar uploads carry up to 2 MiB of raw image bytes plus the
     // Server Action / multipart envelope, so the 1 MiB default body limit is
