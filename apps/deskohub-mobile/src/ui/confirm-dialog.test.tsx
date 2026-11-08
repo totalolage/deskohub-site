@@ -1,28 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import {
-  Children,
-  createElement,
-  isValidElement,
-  type ReactElement,
-  type ReactNode,
-} from "react";
+import { Children, createElement, isValidElement, type ReactNode } from "react";
 import { ConfirmDialog } from "./confirm-dialog";
-
-type Props = { readonly children?: ReactNode };
-
-/** The first host element of `type` in a returned element tree. */
-const find = (
-  node: ReactNode,
-  type: string
-): ReactElement<Props> | undefined => {
-  if (!isValidElement<Props>(node)) return undefined;
-  if (node.type === type) return node;
-  for (const child of Children.toArray(node.props.children)) {
-    const found = find(child, type);
-    if (found !== undefined) return found;
-  }
-  return undefined;
-};
+import { find } from "./testing/element-tree";
 
 const dialog = (children?: ReactNode) =>
   ConfirmDialog({

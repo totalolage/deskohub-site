@@ -22,8 +22,8 @@ export function Notice({
   readonly tone: NoticeTone;
   readonly message: string | undefined;
 }) {
-  useLiveRegionAnnouncement(message);
   const { shown, role, live, glyph } = noticePresentation(tone, message);
+  useLiveRegionAnnouncement(message, live);
   return (
     <View
       style={shown ? [styles.box, toneStyles[tone].box] : idleLiveRegionLayout}
