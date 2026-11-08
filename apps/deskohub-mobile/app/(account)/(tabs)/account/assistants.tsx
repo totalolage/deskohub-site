@@ -1,5 +1,5 @@
-import { PlaceholderScreen } from "../../../../src/ui/placeholder-screen";
+import { AssistantsScreen } from "../../../../src/account/assistants/assistants-screen";
 
 export default function AssistantsRoute() {
-  return <PlaceholderScreen />;
+  return <AssistantsScreen />;
 }
