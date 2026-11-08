@@ -135,7 +135,9 @@ export function createConsentConfig(
                   ),
                 linkedCategory: "preferences",
               },
-              { description: links },
+              // The vendor spaces a link group only in the consent modal's
+              // footer, which wraps the footer in one itself.
+              { description: `<span class="cm__link-group">${links}</span>` },
             ],
           },
         },

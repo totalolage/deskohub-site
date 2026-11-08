@@ -18,6 +18,7 @@ import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-conse
 import { resolveSilentAnalyticsGrant } from "@/features/legal/backend/analytics-consent-mirror";
 import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
 import { getLegalDocumentVersion } from "@/features/legal/document-version";
+import { getLegalDocumentPath } from "@/features/legal/legal-document-path";
 import { CurrentWorkspaceRequestHeaders } from "@/shared/backend/workspace-request-context";
 import {
   registerWorkspaceComponentTestEnv,
@@ -463,6 +464,27 @@ describe("silent grant", () => {
     expect(accepted()).toEqual([]);
     expect(resolveSilentAnalyticsGrantForDevice).not.toHaveBeenCalled();
   });
+});
+
+test("both modals link the privacy notice and the cookie policy of the page's locale as separate links of a link group", async () => {
+  render(<ConsentBanner locale="cs-CZ" revision={revision} />);
+  await act(async () => {
+    vendor.show(true);
+    vendor.showPreferences();
+    await flushMicrotasks();
+  });
+
+  const documentPaths = [
+    getLegalDocumentPath("cs-CZ", "privacy-policy"),
+    getLegalDocumentPath("cs-CZ", "cookie-policy"),
+  ];
+  for (const modal of [".cm__footer", ".pm__body"]) {
+    const groups = document.querySelectorAll(`#cc-main ${modal} .cm__link-group`);
+    expect(groups).toHaveLength(1);
+    expect(
+      [...(groups[0]?.children ?? [])].map((link) => link.getAttribute("href"))
+    ).toEqual(documentPaths);
+  }
 });
 
 test("a page served with a new revision saves the next choice under it", async () => {

@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { type Locale, locales } from "@/features/i18n";
-import { getLegalDocumentVersion } from "./document-version";
 import type { LegalDocumentKey } from "./legal-document-summaries";
 
 /** The documents a cookie consent choice is made under. */
@@ -8,6 +7,36 @@ const consentBannerDocuments = [
   "privacy-policy",
   "cookie-policy",
 ] as const satisfies readonly LegalDocumentKey[];
+
+type ConsentBannerDocument = (typeof consentBannerDocuments)[number];
+
+/**
+ * The published version (`getLegalDocumentVersion`) of each document the
+ * banner is bound to. A copy, so the server's consent cookie readers, which
+ * every request loads, never load the legal texts or React; a test fails
+ * with the current versions whenever either document changes in any locale.
+ */
+export const consentBannerDocumentVersions: Readonly<
+  Record<Locale, Readonly<Record<ConsentBannerDocument, string>>>
+> = {
+  "en-US": {
+    "privacy-policy":
+      "d783addd2d40a3221f65c18a560d29c9caf2eadbe677315b9e204c1b08d3c357",
+    "cookie-policy":
+      "b5b9dbefd033c1e03fadf088aadab6e2081a518f4d09d9a4f3bc833dae1a5b07",
+  },
+  "cs-CZ": {
+    "privacy-policy":
+      "8a2a8f97a98f550859993a6c0884422796d86310d054b85198c2cea5aaaf7597",
+    "cookie-policy":
+      "9e1622d98ffc2f8879400494842ee8e2ee3f096a5e023636388c65c220dc3801",
+  },
+};
+
+const publishedVersionOf = (
+  locale: Locale,
+  documentKey: ConsentBannerDocument
+) => consentBannerDocumentVersions[locale][documentKey];
 
 /**
  * The cookie banner revision of the privacy notice and cookie policy in every
@@ -20,8 +49,8 @@ const consentBannerDocuments = [
 export function getConsentBannerRevision(
   versionOf: (
     locale: Locale,
-    documentKey: LegalDocumentKey
-  ) => string = getLegalDocumentVersion
+    documentKey: ConsentBannerDocument
+  ) => string = publishedVersionOf
 ): number {
   const versions = locales.flatMap((locale) =>
     consentBannerDocuments.map((documentKey) => versionOf(locale, documentKey))

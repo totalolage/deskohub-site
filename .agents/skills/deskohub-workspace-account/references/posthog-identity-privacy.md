@@ -24,7 +24,12 @@ Code: `features/account/analytics-identity.ts`,
 - `getConsentBannerRevision` (`features/legal/consent-banner-revision.ts`)
   derives the banner's `revision` from the privacy notice and cookie policy
   versions of every locale, so a change to either document re-prompts every
-  visitor. The `shared/utils/consent-cookie.ts` readers take that revision,
+  visitor. It hashes the committed `consentBannerDocumentVersions` copy, not
+  the legal texts, because the server's consent readers sit in graphs (such
+  as the release-gate runs) that must not load React or `content.tsx`. When
+  either document changes, paste the versions the failing
+  `consent-banner-revision.test.ts` parity test prints into that table in the
+  same change; never import `document-version.ts` there. The `shared/utils/consent-cookie.ts` readers take that revision,
   and a cookie copy saved under another revision holds no choice: the browser
   shows the banner again, and the server mirrors nothing from it into the
   ledger and lets no visitor capture through. The consent modal footer and

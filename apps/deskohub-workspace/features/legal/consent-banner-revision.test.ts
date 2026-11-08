@@ -2,7 +2,11 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { type Locale, locales } from "@/features/i18n";
-import { getConsentBannerRevision } from "./consent-banner-revision";
+import {
+  consentBannerDocumentVersions,
+  getConsentBannerRevision,
+} from "./consent-banner-revision";
+import { getLegalDocumentVersion } from "./document-version";
 import type { LegalDocumentKey } from "./legal-document-summaries";
 
 const documentKeys: readonly LegalDocumentKey[] = [
@@ -20,6 +24,21 @@ const versionsWithEdit =
     edited?.locale === locale && edited.documentKey === documentKey
       ? `${locale}-${documentKey}-edited`
       : `${locale}-${documentKey}`;
+
+test("the banner is bound to the published privacy notice and cookie policy of every locale", () => {
+  // On failure, copy the received versions into the table.
+  expect(consentBannerDocumentVersions).toEqual(
+    Object.fromEntries(
+      locales.map((locale) => [
+        locale,
+        {
+          "privacy-policy": getLegalDocumentVersion(locale, "privacy-policy"),
+          "cookie-policy": getLegalDocumentVersion(locale, "cookie-policy"),
+        },
+      ])
+    )
+  );
+});
 
 describe("getConsentBannerRevision", () => {
   const published = getConsentBannerRevision(versionsWithEdit());
