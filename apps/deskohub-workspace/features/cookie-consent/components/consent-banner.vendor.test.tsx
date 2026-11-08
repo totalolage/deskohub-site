@@ -591,6 +591,42 @@ describe("account decision", () => {
     expect(savedAt()).toBe(decidedAt);
     expect(changes).toEqual(["account"]);
   });
+
+  test.each([
+    ["an accept", true, ["necessary", "analytics"]],
+    ["a decline", false, ["necessary"]],
+  ] as const)(
+    "%s on a device whose cookie another tab removed while this tab's vendor still holds its consent rewrites a whole cookie",
+    async (_decision, analytics, expected) => {
+      await renderDevice();
+      await act(async () => {
+        vendor.acceptCategory(["analytics"]);
+        await flushMicrotasks();
+      });
+      // Another tab of the same browser removes the shared cookie.
+      for (const scope of ["Path=/", `Path=/; Domain=${location.hostname}`]) {
+        // biome-ignore lint/suspicious/noDocumentCookie: The test plays another tab removing the shared consent cookie.
+        document.cookie = `${CONSENT_COOKIE_NAME}=; ${scope}; Max-Age=0`;
+      }
+      expect(vendor.validConsent()).toBe(true);
+      expect(visitorConsent.hasChoice()).toBe(false);
+
+      const changes = await applyDecision({
+        analytics,
+        decidedAt,
+        change: "preference",
+      });
+
+      expect(vendor.getCookie()).toMatchObject({
+        categories: expect.any(Array),
+        revision,
+        lastConsentTimestamp: decidedAt,
+      });
+      expect(accepted()).toEqual([...expected]);
+      expect(savedAt()).toBe(decidedAt);
+      expect(changes).toEqual(["preference"]);
+    }
+  );
 });
 
 test("both modals link the privacy notice and the cookie policy of the page's locale as separate links of a link group", async () => {
