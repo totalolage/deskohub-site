@@ -47,6 +47,33 @@ let browser: Browser | undefined;
 let server: ReturnType<typeof Bun.serve> | undefined;
 let artifactRoot = "";
 
+/** Pages blocked on `/held?id=…`, which answers once the test releases it. */
+const pageHolds = new Map<
+  string,
+  {
+    readonly blocked: PromiseWithResolvers<void>;
+    readonly released: PromiseWithResolvers<void>;
+  }
+>();
+
+/**
+ * A page path whose main thread blocks once loaded. `blocked` settles when
+ * the page is stuck, `release` lets it go.
+ */
+const holdPage = () => {
+  const id = randomUUID();
+  const hold = {
+    blocked: Promise.withResolvers<void>(),
+    released: Promise.withResolvers<void>(),
+  };
+  pageHolds.set(id, hold);
+  return {
+    blocked: hold.blocked.promise,
+    path: `/busy?id=${id}`,
+    release: () => hold.released.resolve(),
+  };
+};
+
 beforeAll(async () => {
   if (!chromiumAvailable) return;
   addRedaction(pageSecret);
@@ -54,13 +81,29 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true });
   server = Bun.serve({
     port: 0,
-    fetch: (request) => {
-      const { pathname } = new URL(request.url);
+    fetch: async (request, httpServer) => {
+      const { pathname, searchParams } = new URL(request.url);
       if (pathname === "/api")
         return Response.json({ echoed: request.headers.get("authorization") });
+      if (pathname === "/held") {
+        const hold = pageHolds.get(searchParams.get("id") ?? "");
+        if (!hold) return new Response("unknown hold", { status: 404 });
+        // Bun ends an idle request after 10 s, which would let the page go.
+        httpServer.timeout(request, 0);
+        hold.blocked.resolve();
+        await hold.released.promise;
+        return new Response("released");
+      }
+      // After load, which the open waits for, a synchronous request holds
+      // the page's main thread, so a script evaluated in the page, as the
+      // artifact capture's reads are, can't run until the test answers it.
       const script =
         pathname === "/busy"
-          ? "setTimeout(() => { for (;;) {} }, 50);"
+          ? `addEventListener("load", () => setTimeout(() => {
+               const request = new XMLHttpRequest();
+               request.open("GET", "/held" + location.search, false);
+               request.send();
+             }));`
           : `console.log(location.search);
              fetch("/api?token=${pageSecret}", { headers: { authorization: "${pageSecret}" } });`;
       return new Response(
@@ -73,6 +116,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  for (const hold of pageHolds.values()) hold.released.resolve();
   await browser?.close();
   await server?.stop(true);
   if (artifactRoot) await rm(artifactRoot, { force: true, recursive: true });
@@ -195,15 +239,21 @@ const stallingContextClose = () => {
   const real = realBrowser();
   const held = Promise.withResolvers<void>();
   const contexts: BrowserContext[] = [];
+  let closes = 0;
   return {
     browser: {
       newContext: async (options?: Parameters<Browser["newContext"]>[0]) => {
         const context = await real.newContext(options);
         contexts.push(context);
-        context.close = () => held.promise;
+        context.close = () => {
+          closes += 1;
+          return held.promise;
+        };
         return context;
       },
     } as unknown as Browser,
+    /** Context closes called so far, each held until `release`. */
+    closes: () => closes,
     release: async () => {
       await Promise.all(
         contexts.map((context) =>
@@ -217,6 +267,22 @@ const stallingContextClose = () => {
       held.resolve();
     },
   };
+};
+
+/** A real browser whose contexts run `beforeClose` as they start closing. */
+const browserClosingWith = (beforeClose: () => void) => {
+  const real = realBrowser();
+  return {
+    newContext: async (options?: Parameters<Browser["newContext"]>[0]) => {
+      const context = await real.newContext(options);
+      const close = context.close.bind(context);
+      context.close = (closeOptions) => {
+        beforeClose();
+        return close(closeOptions);
+      };
+      return context;
+    },
+  } as unknown as Browser;
 };
 
 test.skipIf(!chromiumAvailable)(
@@ -568,7 +634,6 @@ test.skipIf(!chromiumAvailable)(
   "fails finalization when the context close outlasts the cleanup bound",
   async () => {
     const stalling = stallingContextClose();
-    const startedAt = Date.now();
     const result = await runCase({
       browser: stalling.browser,
       execute: ({ run, runStep, session }) =>
@@ -578,8 +643,14 @@ test.skipIf(!chromiumAvailable)(
           timeoutMs: 10_000,
         }),
       timeouts: testTimeouts({ cleanupAction: 1000 }),
-    }).finally(stalling.release);
-    const elapsed = Date.now() - startedAt;
+    }).catch(async (error: unknown) => {
+      await stalling.release();
+      throw error;
+    });
+    // The case settled while its context close was still held, so the
+    // cleanup bound, not the close, ended finalization.
+    const heldCloses = stalling.closes();
+    await stalling.release();
     await result.closeScope();
 
     expect(Exit.isFailure(result.exit)).toBe(true);
@@ -595,7 +666,7 @@ test.skipIf(!chromiumAvailable)(
         scope: "annotation",
       },
     ]);
-    expect(elapsed).toBeLessThan(10_000);
+    expect(heldCloses).toBe(1);
   },
   caseTestTimeoutMs
 );
@@ -648,22 +719,25 @@ test.skipIf(!chromiumAvailable)(
 test.skipIf(!chromiumAvailable)(
   "cuts a capture that hangs on the page at its bound and keeps the failure",
   async () => {
-    const startedAt = Date.now();
+    const hold = holdPage();
+    // The page stays stuck until the case starts closing its context, so
+    // only the capture's own bound can end the capture.
     const result = await runCase({
+      browser: browserClosingWith(hold.release),
       execute: ({ run, runStep, session }) =>
         runStep({
           execute: Effect.gen(function* () {
-            yield* openPage(run, session, `${origin()}/busy`);
-            // The page's main thread is now stuck, so no page read returns.
-            yield* Effect.sleep("300 millis");
+            yield* openPage(run, session, `${origin()}${hold.path}`);
+            // The page's main thread is now stuck, so the capture's page
+            // reads can't return.
+            yield* Effect.promise(() => hold.blocked);
             return yield* workspaceE2EError("synthetic checkout failure");
           }),
           id: "submit-checkout",
           timeoutMs: 10_000,
         }),
       timeouts: testTimeouts({ artifactCapture: 1500 }),
-    });
-    const elapsed = Date.now() - startedAt;
+    }).finally(hold.release);
     await result.closeScope();
 
     expect(annotation(result.observations)).toEqual([
@@ -676,7 +750,6 @@ test.skipIf(!chromiumAvailable)(
       },
     ]);
     expect(await artifactFiles(result.artifactDir)).toEqual(["error.txt"]);
-    expect(elapsed).toBeLessThan(15_000);
   },
   caseTestTimeoutMs
 );

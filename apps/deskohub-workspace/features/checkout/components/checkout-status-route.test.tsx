@@ -156,6 +156,11 @@ mock.module("@/shared/components/route-auto-refresh", () => ({
     <meta data-auto-refresh={String(enabled)} />
   ),
 }));
+mock.module("@/features/checkout/components/checkout-status-analytics", () => ({
+  CheckoutStatusAnalytics: ({ status }: { readonly status: string }) => (
+    <s data-status-analytics={status} />
+  ),
+}));
 const referralSettlement = await import(
   "@/features/checkout/components/checkout-status-referral-code-settlement"
 );
@@ -283,6 +288,7 @@ describe("CheckoutStatusRoute", () => {
     ]);
     expect(html).toContain('data-payment-window=""');
     expect(html).toContain('data-auto-refresh="true"');
+    expect(html).toContain('data-status-analytics="pending"');
     expect(html).toContain('data-referral-settlement="pending"');
     expect(html).toContain(
       `data-locale="en-US" data-order="${orderId}" data-presentation="page" data-status="pending"`

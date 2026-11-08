@@ -2,20 +2,20 @@ import "server-only";
 
 import { releaseGateForRequest } from "@/features/feature-flags/backend/release-gate.server";
 import {
+  accountReleaseRunPolicy,
   PasskeyReleaseGate,
   SignInCodeReleaseGate,
 } from "../backend/account-release-gates";
 
-// A run that fails beyond a gate's own fail-closed policy, such as a runtime
-// that cannot start, rejects; the auth guard then refuses the request.
+// A run failure rejects; the auth guard then refuses the request.
 const signInCodeRequest = releaseGateForRequest(SignInCodeReleaseGate, {
   operation: "account.sign-in-code-enabled",
-  whenRunFails: "reject",
+  ...accountReleaseRunPolicy,
 });
 
 const passkeyRequest = releaseGateForRequest(PasskeyReleaseGate, {
   operation: "account.passkeys-enabled",
-  whenRunFails: "reject",
+  ...accountReleaseRunPolicy,
 });
 
 /** Read once per sign-in email by the send request's auth guard. */

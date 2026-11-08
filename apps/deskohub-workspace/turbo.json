@@ -34,7 +34,7 @@
         "i18n:compile",
         "booking-widget:build",
         "temporal-polyfill:build",
-        "typecheck"
+        "mobile-web-app:build"
       ],
       "passThroughEnv": ["BETTER_AUTH_SECRETS", "REVIEW_ACCOUNT_CREDENTIALS"]
     },
@@ -145,6 +145,14 @@
         "!**/generated/**"
       ],
       "outputs": ["features/agent-tools/booking-widget/generated/**"]
+    },
+    "mobile-web-app:build": {
+      "dependsOn": ["deskohub-mobile#build:web"],
+      "inputs": [
+        "features/mobile-web-app/*.{js,ts}",
+        "!features/mobile-web-app/*.test.ts"
+      ],
+      "outputs": ["public/app/**"]
     },
     "temporal-polyfill:build": {
       "env": ["!NEXT_PUBLIC_VERCEL_*"],

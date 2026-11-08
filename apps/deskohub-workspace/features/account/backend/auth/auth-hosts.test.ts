@@ -141,6 +141,13 @@ describe("Better Auth allowed hosts resolution", () => {
 });
 
 describe("passkey relying party resolution", () => {
+  // A synthetic debug certificate and the origin Android derives from it:
+  // the SHA-256 bytes 00, 01, ..., 1F in unpadded base64url.
+  const debugCertificate = Array.from({ length: 32 }, (_, index) =>
+    index.toString(16).padStart(2, "0").toUpperCase()
+  ).join(":");
+  const debugCertificateOrigin =
+    "android:apk-key-hash:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
   const vercelHosts = {
     customerFacingHost: "workspace.deskohub.cz",
     projectProductionUrl: "deskohub-workspace.vercel.app",
@@ -153,11 +160,26 @@ describe("passkey relying party resolution", () => {
     return result.kind === "valid" ? result.relyingParty : result.message;
   };
 
-  test("binds production to the canonical customer-facing host", () => {
+  test("binds production to the canonical customer-facing host and the release-signed app", () => {
     expect(relyingParty({ vercelEnv: "production", ...vercelHosts })).toEqual({
       rpID: "workspace.deskohub.cz",
-      origins: ["https://workspace.deskohub.cz"],
+      origins: [
+        "https://workspace.deskohub.cz",
+        "android:apk-key-hash:aUKOcRUBdfwOhFIDVEKooRmGTCHQq-nI4jOgVC7JSqA",
+      ],
     });
+  });
+
+  test("never accepts a debug-signed app outside development", () => {
+    for (const vercelEnv of ["production", "preview"] as const) {
+      const result = resolvePasskeyRelyingParty(
+        { vercelEnv, ...vercelHosts },
+        { androidDebugCertificate: debugCertificate }
+      );
+      expect(
+        result.kind === "valid" ? result.relyingParty.origins : result.message
+      ).not.toContain(debugCertificateOrigin);
+    }
   });
 
   test("normalizes the canonical host before deriving the RP ID", () => {
@@ -169,7 +191,10 @@ describe("passkey relying party resolution", () => {
       })
     ).toEqual({
       rpID: "workspace.deskohub.cz",
-      origins: ["https://workspace.deskohub.cz"],
+      origins: [
+        "https://workspace.deskohub.cz",
+        "android:apk-key-hash:aUKOcRUBdfwOhFIDVEKooRmGTCHQq-nI4jOgVC7JSqA",
+      ],
     });
   });
 
@@ -200,6 +225,26 @@ describe("passkey relying party resolution", () => {
         branchUrl: undefined,
       })
     ).toEqual({ rpID: "localhost", origins: ["http://localhost:3000"] });
+  });
+
+  test("adds a configured debug-signed app in development", () => {
+    const result = resolvePasskeyRelyingParty(
+      {
+        vercelEnv: "development",
+        customerFacingHost: "workspace.deskohub.cz",
+        projectProductionUrl: undefined,
+        deploymentUrl: undefined,
+        branchUrl: undefined,
+      },
+      { androidDebugCertificate: debugCertificate }
+    );
+    expect(result).toEqual({
+      kind: "valid",
+      relyingParty: {
+        rpID: "localhost",
+        origins: ["http://localhost:3000", debugCertificateOrigin],
+      },
+    });
   });
 
   test("fails closed with the allowed-hosts errors", () => {

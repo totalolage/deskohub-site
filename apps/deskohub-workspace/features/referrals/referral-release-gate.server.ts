@@ -1,14 +1,14 @@
 import "server-only";
 
 import { releaseGateForRequest } from "@/features/feature-flags/backend/release-gate.server";
-import { ReferralReleaseGate } from "./referral-release-gate";
+import {
+  ReferralReleaseGate,
+  referralReleaseRunPolicy,
+} from "./referral-release-gate";
 
-// Any run failure, including a defect or a runtime that cannot start,
-// withholds the program.
 const referralRequest = releaseGateForRequest(ReferralReleaseGate, {
   operation: "referrals.enabled",
-  whenRunFails: "close",
-  failureCode: "referral_feature_flag_unavailable",
+  ...referralReleaseRunPolicy,
 });
 
 /** Whether the referral program is released for this request. */

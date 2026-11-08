@@ -192,6 +192,41 @@
           }
         }
       }
+    },
+    {
+      "includes": ["apps/deskohub-mobile/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["next", "next/**"],
+                    "message": "The mobile app does not run on Next.js. Next.js modules are bound to its server and router."
+                  },
+                  {
+                    "group": [
+                      "@deskohub/next-effect",
+                      "@deskohub/next-effect/**"
+                    ],
+                    "message": "@deskohub/next-effect runs Effects inside the Next.js request lifecycle, which the mobile app does not have."
+                  },
+                  {
+                    "group": [
+                      "@deskohub/i18n/next",
+                      "@deskohub/i18n/action",
+                      "@deskohub/i18n/request-locale"
+                    ],
+                    "message": "This @deskohub/i18n entry is bound to the Next.js server. The mobile app may use the root, core, pathname, translatable, effect, and currency entries."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "javascript": {

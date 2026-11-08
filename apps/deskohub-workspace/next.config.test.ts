@@ -1,9 +1,13 @@
 import { afterEach, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   getRewrittenUrl,
   unstable_getResponseFromNextConfig,
 } from "next/experimental/testing/server";
 import nextConfig from "./next.config.mjs";
+import packageJson from "./package.json" with { type: "json" };
 
 const resolveHeaders = async (path: string) =>
   (
@@ -107,4 +111,80 @@ test("leaves locale, API, build asset and undotted paths to their routes", async
   ]) {
     expect(await resolveRewrite(path)).toBeNull();
   }
+});
+
+test("loads the mobile web app for every undotted path under /app/", async () => {
+  for (const path of [
+    "/app/",
+    "/app/account",
+    "/app/account/",
+    "/app/account/security",
+  ]) {
+    expect(await resolveRewrite(path)).toBe(
+      "https://workspace.example/app/index.html"
+    );
+  }
+  expect(await resolveRewrite("/application")).toBeNull();
+});
+
+test("keeps the mobile web app out of search results without blocking crawlers", async () => {
+  for (const path of ["/app", "/app/", "/app/account", "/app/sw.js"]) {
+    expect((await resolveHeaders(path)).get("x-robots-tag")).toBe("noindex");
+  }
+  for (const path of ["/", "/cs-CZ", "/application"]) {
+    expect((await resolveHeaders(path)).has("x-robots-tag")).toBe(false);
+  }
+});
+
+const resolveRedirect = async (path: string) => {
+  const response = await unstable_getResponseFromNextConfig({
+    url: `https://workspace.example${path}`,
+    nextConfig,
+  });
+  return {
+    status: response.status,
+    location: response.headers.get("location"),
+  };
+};
+
+test("drops a trailing slash everywhere except inside the installed app's scope", async () => {
+  for (const [path, location] of [
+    ["/cs-CZ/faq/", "/cs-CZ/faq"],
+    ["/en-US/", "/en-US"],
+    ["/apple/", "/apple"],
+    ["/application/", "/application"],
+  ]) {
+    expect(await resolveRedirect(path)).toEqual({
+      status: 308,
+      location: `https://workspace.example${location}`,
+    });
+  }
+  for (const path of ["/app/", "/app/account/", "/"]) {
+    expect((await resolveRedirect(path)).location).toBeNull();
+  }
+});
+
+test("fails a production compile without the mobile web export", async () => {
+  const projectDir = mkdtempSync(join(tmpdir(), "next-config-"));
+  try {
+    await expect(
+      Promise.resolve(
+        nextConfig.compiler?.runAfterProductionCompile?.({
+          projectDir,
+          distDir: join(projectDir, ".next"),
+        })
+      )
+    ).rejects.toThrow(/mobile-web-app:build/);
+  } finally {
+    rmSync(projectDir, { recursive: true, force: true });
+  }
+});
+
+test("keeps Turbopack's build cache out of Vercel's build cache", () => {
+  expect(nextConfig.experimental?.turbopackFileSystemCacheForBuild).toBe(false);
+  // Next keeps a copy restored from an older Vercel build cache, which would
+  // be uploaded again.
+  expect(packageJson.scripts["build:compile"]).toStartWith(
+    "rm -rf .next/cache/turbopack && "
+  );
 });
