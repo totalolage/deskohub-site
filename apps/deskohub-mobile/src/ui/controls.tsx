@@ -1,14 +1,16 @@
-import type { ReactNode } from "react";
+import { type ReactNode, type Ref, useId } from "react";
 import {
   Pressable,
   StyleSheet,
   Text,
   TextInput,
+  type TextInputInstance,
   type TextInputProps,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../theme";
+import { fieldErrorPresentation } from "./field-error-presentation";
 import { useLiveRegionAnnouncement } from "./live-announcement";
 import { textFieldSubmit } from "./text-field-submit";
 
@@ -41,15 +43,19 @@ export function Button({
   onPress,
   disabled = false,
   variant = "primary",
+  accessibilityLabel,
 }: {
   readonly label: string;
   readonly onPress: () => void;
   readonly disabled?: boolean;
   readonly variant?: "primary" | "secondary" | "destructive";
+  /** The accessible name when the visible label alone is ambiguous, such as "Delete" in a list. */
+  readonly accessibilityLabel?: string;
 }) {
   return (
     <Pressable
       role="button"
+      aria-label={accessibilityLabel}
       aria-disabled={disabled}
       disabled={disabled}
       onPress={onPress}
@@ -80,34 +86,70 @@ export function Button({
   );
 }
 
+/**
+ * A labelled text input. With an `error` the input turns invalid and shows
+ * the error beneath it, in a live region that stays mounted so assistive
+ * tech announces each new error, and in the input's description, so it is
+ * read again when the input gains focus.
+ */
 export function TextField({
   label,
+  error,
+  autoCapitalize = "none",
   onSubmitEditing,
   ...input
-}: { readonly label: string } & Pick<
+}: {
+  readonly label: string;
+  readonly error?: string;
+  /** Lets a form focus the field, such as its first invalid one. */
+  readonly ref?: Ref<TextInputInstance>;
+} & Pick<
   TextInputProps,
   | "value"
   | "onChangeText"
   | "onSubmitEditing"
+  | "onBlur"
+  | "autoCapitalize"
   | "autoComplete"
   | "keyboardType"
   | "inputMode"
   | "textContentType"
+  | "returnKeyType"
+  | "maxLength"
   | "autoFocus"
   | "editable"
 >) {
+  const errorId = useId();
+  const { invalid, description, role, live, idleLayout } =
+    fieldErrorPresentation(error);
+  useLiveRegionAnnouncement(description, live);
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
         aria-label={label}
-        autoCapitalize="none"
+        // Native platforms read the hint; the web reads `aria-describedby`
+        // and `aria-invalid`, which react-native-web maps and RN ignores.
+        accessibilityHint={description}
+        aria-describedby={invalid ? errorId : undefined}
+        aria-invalid={invalid}
+        autoCapitalize={autoCapitalize}
         autoCorrect={false}
-        style={styles.input}
+        style={[styles.input, invalid && styles.invalidInput]}
         placeholderTextColor={theme.colors.textMuted}
         {...input}
         onSubmitEditing={textFieldSubmit(input.editable, onSubmitEditing)}
       />
+      <Text
+        id={errorId}
+        role={role}
+        aria-live={live}
+        // Text doesn't map `aria-live` to Android's live region; View does.
+        accessibilityLiveRegion={live}
+        style={idleLayout ?? styles.fieldError}
+      >
+        {description ?? ""}
+      </Text>
     </View>
   );
 }
@@ -124,7 +166,7 @@ export function LiveMessage({
   readonly role: "status" | "alert";
   readonly message: string | undefined;
 }) {
-  useLiveRegionAnnouncement(message);
+  useLiveRegionAnnouncement(message, role === "alert" ? "assertive" : "polite");
   return (
     <Text
       role={role}
@@ -186,6 +228,8 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.sm + 4,
     ...theme.type.body,
   },
+  invalidInput: { borderColor: theme.colors.danger },
+  fieldError: { color: theme.colors.danger, ...theme.type.caption },
   status: { color: theme.colors.textMuted, ...theme.type.body },
   alert: { color: theme.colors.accent, ...theme.type.body },
 });
