@@ -191,6 +191,8 @@ export const disconnectView = ({
   return {
     dialogOpen: target !== undefined && !settled,
     busy: result.waiting,
+    // No reauthentication here: Better Auth's delete-consent needs a session,
+    // not a fresh one, so it never answers SESSION_NOT_FRESH.
     failed: !result.waiting && AsyncResult.isFailure(result) && !unconfirmed,
     outcome: settled ? settledOutcome : undefined,
   };
