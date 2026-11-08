@@ -35,11 +35,11 @@ import {
   requestAccountDeletionAtom,
 } from "./account-deletion";
 import { ConfirmationCheckbox } from "./confirmation-checkbox";
-import { leaveDeletedAccount } from "./deleted-account-exit";
+import { deletedAccountExit } from "./deleted-account-exit";
 
 // The global router: these screens unmount as the replace takes the
 // signed-in routes away, and the exit outlives them.
-const leaveDeletedAccountScreens = leaveDeletedAccount({
+const leaveDeletedAccountScreens = deletedAccountExit.leave({
   leave: Effect.sync(() => router.replace("/account-deleted")),
   signOut,
 });
