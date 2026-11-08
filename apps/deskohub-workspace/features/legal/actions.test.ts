@@ -66,6 +66,7 @@ const {
   confirmMarketingManagementAction,
   clearMarketingManagementAction,
   recordDeviceAnalyticsConsent,
+  saveAccountAnalyticsPreference,
 } = await import("./actions");
 
 describe("marketing Server Action edges", () => {
@@ -98,6 +99,10 @@ describe("marketing Server Action edges", () => {
         operation: "legal.analytics-consent.resolve-silent-grant",
         logInput: false,
       },
+      {
+        operation: "legal.analytics-consent.save-preference",
+        logInput: false,
+      },
     ]);
     for (const invalid of [
       { ...input, confirmed: false },
@@ -119,6 +124,18 @@ describe("marketing Server Action edges", () => {
     ]) {
       expect(
         await recordDeviceAnalyticsConsent(invalid as never)
+      ).toHaveProperty("validationErrors");
+    }
+  });
+
+  test("accepts only a boolean analytics preference", async () => {
+    for (const invalid of [
+      { granted: "true" },
+      { granted: true, accountId: "browser-account" },
+      {},
+    ]) {
+      expect(
+        await saveAccountAnalyticsPreference(invalid as never)
       ).toHaveProperty("validationErrors");
     }
   });

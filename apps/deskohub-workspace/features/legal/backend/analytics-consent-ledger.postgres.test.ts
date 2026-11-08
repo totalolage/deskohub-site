@@ -138,6 +138,30 @@ describe.skipIf(!testDatabase)("AnalyticsConsentLedger", () => {
     });
   });
 
+  test("returns the instant it stored, truncated to the microsecond the database holds", async () => {
+    const accountId = await newAccount();
+
+    const recordedAt = await runLedgerAt(
+      "2026-11-07T10:00:00.123456789Z",
+      (ledger) =>
+        ledger.record({
+          accountId,
+          decision: "withdraw",
+          locale: "cs-CZ",
+          source: "preference",
+        })
+    );
+
+    expect(recordedAt.toString()).toBe("2026-11-07T10:00:00.123456Z");
+    expect(await storedDecisionsOf(accountId)).toEqual([
+      {
+        decision: "withdraw",
+        decidedAt: recordedAt.toString(),
+        source: "preference",
+      },
+    ]);
+  });
+
   test("keeps every decision and takes the latest as current, so a later grant restores consent", async () => {
     const accountId = await newAccount();
     const decide = (at: string, decision: "grant" | "withdraw") =>
