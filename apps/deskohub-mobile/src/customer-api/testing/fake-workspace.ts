@@ -19,11 +19,11 @@ import {
   CustomerRequestRejected,
   CustomerReservationNotFound,
   type CustomerReservationsApi,
-  type ProfileCompletionReferralOutcome,
   CustomerServiceUnavailable,
   CustomerSessionAuthentication,
   CustomerSessionRequired,
   customerApiClientHeader,
+  type ProfileCompletionReferralOutcome,
   WorkspaceCustomerApi,
 } from "@deskohub/workspace-customer-api";
 import { Effect, Layer, Stream } from "effect";
@@ -271,52 +271,57 @@ const serverLayer = (workspace: FakeWorkspace) => {
           ).pipe(Effect.as({ status: "updated" as const }))
         )
         .handle("completeProfile", ({ payload }) =>
-          Effect.suspend((): Effect.Effect<
-            | {
-                readonly status: "completed";
-                readonly referral?: ProfileCompletionReferralOutcome;
+          Effect.suspend(
+            (): Effect.Effect<
+              | {
+                  readonly status: "completed";
+                  readonly referral?: ProfileCompletionReferralOutcome;
+                }
+              | { readonly status: "referral-code-unavailable" },
+              CustomerAccountLinkRequired
+            > => {
+              const current = workspace.data.account;
+              if (current.kind !== "completion-required") {
+                return Effect.fail(
+                  new CustomerAccountLinkRequired({
+                    reason: linkRequiredReason(current),
+                  })
+                );
               }
-            | { readonly status: "referral-code-unavailable" },
-            CustomerAccountLinkRequired
-          > => {
-            const current = workspace.data.account;
-            if (current.kind !== "completion-required") {
-              return Effect.fail(
-                new CustomerAccountLinkRequired({
-                  reason: linkRequiredReason(current),
+              const answer = workspace.referralCodeAnswer;
+              if (
+                payload.referralCode !== undefined &&
+                answer === "unavailable"
+              )
+                return Effect.succeed({
+                  status: "referral-code-unavailable" as const,
+                });
+              const referral =
+                payload.referralCode === undefined || answer === "unavailable"
+                  ? undefined
+                  : answer;
+              return update((data) => ({
+                ...data,
+                account: {
+                  kind: "linked",
+                  email: current.email,
+                  deletion: current.deletion,
+                  passkeys: current.passkeys,
+                  assistants: current.assistants,
+                  profile: storedProfile(payload),
+                  avatar: { kind: "available", avatar: null },
+                  referralsEnabled: current.referralsEnabled,
+                  referrals: data.referrals,
+                  ...(referral && { signupReferral: referral }),
+                },
+              })).pipe(
+                Effect.as({
+                  status: "completed" as const,
+                  ...(referral && { referral }),
                 })
               );
             }
-            const answer = workspace.referralCodeAnswer;
-            if (payload.referralCode !== undefined && answer === "unavailable")
-              return Effect.succeed({
-                status: "referral-code-unavailable" as const,
-              });
-            const referral =
-              payload.referralCode === undefined || answer === "unavailable"
-                ? undefined
-                : answer;
-            return update((data) => ({
-              ...data,
-              account: {
-                kind: "linked",
-                email: current.email,
-                deletion: current.deletion,
-                passkeys: current.passkeys,
-                assistants: current.assistants,
-                profile: storedProfile(payload),
-                avatar: { kind: "available", avatar: null },
-                referralsEnabled: current.referralsEnabled,
-                referrals: data.referrals,
-                ...(referral && { signupReferral: referral }),
-              },
-            })).pipe(
-              Effect.as({
-                status: "completed" as const,
-                ...(referral && { referral }),
-              })
-            );
-          })
+          )
         )
         .handle("uploadAvatar", ({ payload }) =>
           Effect.Do.pipe(
