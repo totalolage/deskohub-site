@@ -146,9 +146,9 @@ describe("createWorkspaceDotyposReservation", () => {
 
     expect(input.startDate).toEqual(new Date("2099-06-10T07:45:00Z"));
     expect(input.endDate).toEqual(new Date("2099-06-10T09:00:00Z"));
-    expect(
-      input.note.split("\n").some((line) => line.endsWith("09:45"))
-    ).toBe(true);
+    expect(input.note.split("\n").some((line) => line.endsWith("09:45"))).toBe(
+      true
+    );
   });
 
   test("keeps a meeting-room reservation start unchanged without early setup", async () => {
@@ -156,9 +156,9 @@ describe("createWorkspaceDotyposReservation", () => {
 
     expect(input.startDate).toEqual(new Date("2099-06-10T08:00:00Z"));
     expect(input.endDate).toEqual(new Date("2099-06-10T09:00:00Z"));
-    expect(
-      input.note.split("\n").some((line) => line.endsWith("09:45"))
-    ).toBe(false);
+    expect(input.note.split("\n").some((line) => line.endsWith("09:45"))).toBe(
+      false
+    );
   });
 });
 
@@ -236,7 +236,9 @@ describe("formatWorkspaceReservationNote", () => {
     );
     const officeNote = formatNote("en-US", noteReservations.office);
 
-    expect(coworkNote).toContain(getWorkspaceProductTierTitle("profi", "cs-CZ"));
+    expect(coworkNote).toContain(
+      getWorkspaceProductTierTitle("profi", "cs-CZ")
+    );
     expect(coworkNote).toContain(
       getWorkspaceProductMonitorTitle("2x27-4k", "cs-CZ")
     );
