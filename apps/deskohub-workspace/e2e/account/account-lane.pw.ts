@@ -6,6 +6,7 @@ import {
 } from "@deskohub/dotypos";
 import type { Browser } from "@playwright/test";
 import { Effect } from "effect";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceE2EStep } from "../case-runner";
 import { WorkspaceE2EError, workspaceE2EError } from "../errors";
@@ -15,6 +16,7 @@ import { runtimeTest } from "../playwright-checkout/runtime-fixtures";
 import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { verifyAccountLayoutNavigation } from "./account-layout-navigation";
+import { verifyWorkspaceE2EAnalyticsPreference } from "./analytics-preference";
 import {
   findAuthUserIdByEmail,
   findLinkedDotyposCustomerId,
@@ -378,8 +380,8 @@ for (const caseId of workspaceE2EAccountCaseIds) {
           },
         ];
       } else if (caseId === "account-reservation-transitions") {
-        const readAccountReservationCustomerId = Effect.fn(
-          "readAccountReservationCustomerId"
+        const readAccountReservationUserId = Effect.fn(
+          "readAccountReservationUserId"
         )(function* () {
           const recipient = makeWorkspaceE2EAccountRecipient(
             accountLane.config,
@@ -395,6 +397,12 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               }
             );
           }
+          return customerAccountIdSchema.make(userId);
+        });
+        const readAccountReservationCustomerId = Effect.fn(
+          "readAccountReservationCustomerId"
+        )(function* () {
+          const userId = yield* readAccountReservationUserId();
           const customerId = yield* findLinkedDotyposCustomerId(userId);
           if (!customerId) {
             return yield* workspaceE2EError(
@@ -468,6 +476,18 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               });
             }),
             id: "verify-account-marketing-preferences",
+            timeoutMs: workspaceE2ETimeouts.providerTransition,
+          },
+          {
+            execute: Effect.gen(function* () {
+              yield* verifyWorkspaceE2EAnalyticsPreference({
+                accountId: yield* readAccountReservationUserId(),
+                baseUrl: accountLane.config.baseUrl,
+                browser,
+                page: getOwnedPage(),
+              });
+            }),
+            id: "verify-account-analytics-preference",
             timeoutMs: workspaceE2ETimeouts.providerTransition,
           },
           {

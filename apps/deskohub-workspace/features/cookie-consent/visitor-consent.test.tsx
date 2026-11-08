@@ -50,7 +50,9 @@ mock.module("vanilla-cookieconsent", () => ({
   acceptCategory: acceptCategoryMock,
   getCookie: () => null,
   getUserPreferences: () => ({ acceptedCategories: rememberedCategories }),
+  hide: () => undefined,
   setCookieData: setCookieDataMock,
+  validConsent: () => true,
 }));
 
 const {

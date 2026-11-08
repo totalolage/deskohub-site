@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-account
-description: Workspace customer account, Better Auth, magic link, sign-in, session, auth persistence, customer account link, durable customer account, customer_accounts, deleted-account tombstone, reservation author storage, profile, avatar, account deletion, reservation history, saved language preference, signed-in locale, auth retention or PII, PostHog identity, OAuth server, MCP authorization, customer HTTP API, /api/customer, AI agent or assistant connection, consent page, CIMD, access token, well-known discovery, data transfers outside the EU, third-country transfer, DPF, SCC, provider region.
+description: Workspace customer account, Better Auth, magic link, sign-in, session, auth persistence, customer account link, durable customer account, customer_accounts, deleted-account tombstone, reservation author storage, profile, avatar, account deletion, reservation history, /account/legal preferences, account analytics preference, analytics opt-out, saved language preference, signed-in locale, auth retention or PII, PostHog identity, OAuth server, MCP authorization, customer HTTP API, /api/customer, AI agent or assistant connection, consent page, CIMD, access token, well-known discovery, data transfers outside the EU, third-country transfer, DPF, SCC, provider region.
 ---
 
 # Workspace customer accounts
@@ -64,7 +64,9 @@ Read the reference that matches your change before editing:
 - [Account domain and routes](references/account-domain-and-routes.md):
   customer resolution, link claims, the durable customer account and
   reservation authors, the public error contract, account pages
-  and modals, header sign-in state, profile edits, and deletion.
+  and modals, the `/account/legal` preferences (account analytics
+  preference, opt-out, cross-device withdrawal), header sign-in state,
+  profile edits, and deletion.
 - [Better Auth configuration](references/better-auth-configuration.md):
   persistence, adapter and pool, schema generation, session, magic-link and
   rate-limit settings, PII minimization, hosts, secrets, cleanup cron, and

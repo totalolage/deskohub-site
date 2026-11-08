@@ -63,11 +63,12 @@ type StoredAnalyticsConsentDecision = {
 export interface IAnalyticsConsentLedger {
   /**
    * Appends the decision, made at the current instant, against the current
-   * privacy notice of the locale.
+   * privacy notice of the locale. Returns the instant it stored, so a copy
+   * of the decision, such as the device's consent cookie, can carry it.
    */
   readonly record: (
     input: AnalyticsConsentDecisionRecord
-  ) => Effect.Effect<void, AnalyticsConsentUnavailable>;
+  ) => Effect.Effect<Temporal.Instant, AnalyticsConsentUnavailable>;
   /**
    * Appends the decision, against the current privacy notice of the locale,
    * only when it is newer than every decision the account made, so a stale
@@ -165,9 +166,12 @@ export class AnalyticsConsentLedger extends Context.Service<
       return {
         record: Effect.fn("AnalyticsConsentLedger.record")(
           (input) =>
-            underLedgerLock(input.accountId, (now) =>
-              append(storedDecision(input, now))
-            ),
+            underLedgerLock(input.accountId, (now) => {
+              const decidedAt = toStoredInstant(now);
+              return append(storedDecision(input, decidedAt)).pipe(
+                Effect.as(decidedAt)
+              );
+            }),
           Effect.mapError(unavailable)
         ),
         mirror: Effect.fn("AnalyticsConsentLedger.mirror")(
