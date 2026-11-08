@@ -167,6 +167,45 @@ test.skipIf(!chromiumAvailable)(
   }
 );
 
+test.skipIf(!chromiumAvailable)(
+  "sees a control hydrated while the page runs no timers",
+  async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      // Playwright's injected script takes the page's setTimeout when it
+      // first runs, so a stub stands in for a page whose event loop stalls
+      // between protocol commands: the in-page poll checks once on arrival.
+      await page.addInitScript(() => {
+        window.setTimeout = (() => 0) as unknown as typeof window.setTimeout;
+      });
+      const origin = "http://react-handlers.test";
+      await page.route(`${origin}/`, (route) =>
+        route.fulfill({
+          body: `<button type="button">${controlLabel}</button>`,
+          contentType: "text/html",
+        })
+      );
+      await page.goto(`${origin}/`);
+      const control = page.getByRole("button", { name: controlLabel });
+
+      const startedAt = performance.now();
+      const handlerReady = waitForReactClickHandler(page, control);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await control.evaluate((element) => {
+        Object.assign(element, {
+          __reactProps$late: { onClick: () => undefined },
+        });
+      });
+
+      await handlerReady;
+      expect(performance.now() - startedAt).toBeLessThan(5_000);
+    } finally {
+      await browser.close();
+    }
+  }
+);
+
 test("rejects within its deadline when a detached control is never replaced", async () => {
   const startedAt = Date.parse("2026-10-11T12:00:00.000Z");
   let now = startedAt;

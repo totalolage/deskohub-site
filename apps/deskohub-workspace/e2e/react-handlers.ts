@@ -64,10 +64,12 @@ export const waitForReactClickHandler = async (
 
     try {
       const state = await waitForPageFunction(
-        page,
-        reactClickHandlerState,
-        element,
-        { deadline, polling: workspaceE2EPollIntervalMs.reactHandler }
+        (timeout) =>
+          page.waitForFunction(reactClickHandlerState, element, {
+            polling: workspaceE2EPollIntervalMs.reactHandler,
+            timeout,
+          }),
+        deadline
       );
       try {
         if ((await state.jsonValue()) !== "detached") return;
@@ -94,28 +96,29 @@ export const waitForReactSubmitHandler = async (
   const element = await form.elementHandle({ timeout: timeoutMs });
   if (element === null) throw new Error("React form was not rendered");
   try {
+    const deadline = Date.now() + timeoutMs;
     const state = await waitForPageFunction(
-      page,
-      (node: Element) => {
-        const reactPropsKey = Object.keys(node).find((key) =>
-          key.startsWith("__reactProps$")
-        );
-        const reactProps =
-          reactPropsKey === undefined
-            ? undefined
-            : Object.getOwnPropertyDescriptor(node, reactPropsKey)?.value;
-        return (
-          typeof reactProps === "object" &&
-          reactProps !== null &&
-          typeof (reactProps as { readonly onSubmit?: unknown }).onSubmit ===
-            "function"
-        );
-      },
-      element,
-      {
-        deadline: Date.now() + timeoutMs,
-        polling: workspaceE2EPollIntervalMs.reactHandler,
-      }
+      (timeout) =>
+        page.waitForFunction(
+          (node) => {
+            const reactPropsKey = Object.keys(node).find((key) =>
+              key.startsWith("__reactProps$")
+            );
+            const reactProps =
+              reactPropsKey === undefined
+                ? undefined
+                : Object.getOwnPropertyDescriptor(node, reactPropsKey)?.value;
+            return (
+              typeof reactProps === "object" &&
+              reactProps !== null &&
+              typeof (reactProps as { readonly onSubmit?: unknown })
+                .onSubmit === "function"
+            );
+          },
+          element,
+          { polling: workspaceE2EPollIntervalMs.reactHandler, timeout }
+        ),
+      deadline
     );
     await state.dispose();
   } finally {

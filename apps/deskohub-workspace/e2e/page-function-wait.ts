@@ -1,22 +1,20 @@
-import { errors, type JSHandle, type Page } from "@playwright/test";
+import { errors } from "@playwright/test";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
 
 /**
- * Waits until `pageFunction`, run in the page with `arg`, returns a truthy
- * value, as `page.waitForFunction` does, polling every `polling` ms until
- * `deadline` (a `Date.now()` timestamp).
+ * Runs an in-page wait, such as a `page.waitForFunction` call given the slice
+ * timeout, in slices of at most `pageFunctionWake` ms until it resolves or
+ * `deadline` (a `Date.now()` timestamp) passes.
  *
- * The in-page wait is re-issued every `pageFunctionWake` ms. A WebKit page on
- * a loaded runner can stall its event loop, timers and network reads
- * included, until it receives a protocol command; a single long
- * `waitForFunction` then sees nothing until its own timeout aborts it.
+ * A WebKit page on a loaded runner has been seen to stall its event loop,
+ * timers and network reads included, until the long `waitForFunction`
+ * waiting on it timed out and Playwright sent it an abort. Each new slice
+ * sends the page fresh commands and runs the page function once on arrival.
  */
-export const waitForPageFunction = async <Arg, Result>(
-  page: Pick<Page, "waitForFunction">,
-  pageFunction: (arg: Arg) => Result,
-  arg: Arg,
-  { deadline, polling }: { readonly deadline: number; readonly polling: number }
-): Promise<JSHandle<Result>> => {
+export const waitForPageFunction = async <Result>(
+  waitSlice: (timeoutMs: number) => Promise<Result>,
+  deadline: number
+): Promise<Result> => {
   const startedAt = Date.now();
   let reissues = 0;
   for (;;) {
@@ -26,19 +24,9 @@ export const waitForPageFunction = async <Arg, Result>(
         `Page function wait timed out after ${Date.now() - startedAt}ms (re-issued ${reissues} times)`
       );
     try {
-      // Playwright types the argument as its serialized form; plain data and
-      // element handles are the same shape.
-      return (await page.waitForFunction(
-        pageFunction as (arg: unknown) => Result,
-        arg,
-        {
-          polling,
-          timeout: Math.min(
-            remainingMs,
-            workspaceE2EPollIntervalMs.pageFunctionWake
-          ),
-        }
-      )) as JSHandle<Result>;
+      return await waitSlice(
+        Math.min(remainingMs, workspaceE2EPollIntervalMs.pageFunctionWake)
+      );
     } catch (error) {
       if (!(error instanceof errors.TimeoutError)) throw error;
       reissues += 1;
