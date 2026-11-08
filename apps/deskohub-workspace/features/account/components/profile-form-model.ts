@@ -10,6 +10,8 @@ import {
 } from "effect";
 import {
   type CustomerProfile,
+  type CustomerProfileCompletionInput,
+  type CustomerProfileInput,
   completeCustomerProfileSchema,
   updateCustomerProfileSchema,
 } from "@/features/account/contracts";
@@ -248,12 +250,9 @@ const trimmedToUndefined = (value: string) => {
   return text ? text : undefined;
 };
 
-/** The profile contract input, whose phone is still the entered text. */
-type CustomerProfileFormInput = typeof updateCustomerProfileSchema.Encoded;
-
 const toCustomerProfileInput = (
   values: ProfileFormValues
-): CustomerProfileFormInput => {
+): CustomerProfileInput => {
   const base = {
     firstName: values.firstName.trim(),
     lastName: trimmedToUndefined(values.lastName),
@@ -298,7 +297,7 @@ const toCustomerProfileInput = (
 const toCustomerProfileCompletionInput = (
   values: ProfileFormValues,
   prefilledReferralCode: string | undefined
-): typeof completeCustomerProfileSchema.Encoded => {
+): CustomerProfileCompletionInput => {
   const referralCode = trimmedToUndefined(values.referralCode);
   return {
     ...toCustomerProfileInput(values),

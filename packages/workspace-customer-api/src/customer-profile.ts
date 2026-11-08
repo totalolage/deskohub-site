@@ -1,5 +1,5 @@
-import { PhoneNumberSchema } from "@deskohub/phone-number";
-import { Schema, type SchemaAST } from "effect";
+import { PhoneNumberSchema, parsePhoneNumber } from "@deskohub/phone-number";
+import { Option, Schema, type SchemaAST } from "effect";
 
 /**
  * Every customer API payload reports all of its issues and refuses fields it
@@ -20,15 +20,27 @@ const trimmedOptionalText = (maximumLength: number) =>
 
 /**
  * Dotypos owns the stored phone, so a blank value only means "clear the
- * field". Any other value decodes to the phone number it holds, and one
- * without a phone number is rejected at this boundary: accepting it would let
- * a profile save silently clear the phone, including a legacy stored value
- * that the user was merely rendering back. The form therefore forces an
- * explicit correction or an explicit clearing.
+ * field". Any other value must hold a phone number, and one without is
+ * rejected at this boundary: accepting it would let a profile save silently
+ * clear the phone, including a legacy stored value that the user was merely
+ * rendering back. The form therefore forces an explicit correction or an
+ * explicit clearing.
+ *
+ * Clients and the form send the phone as entered text, which this field keeps.
  */
-const customerProfilePhoneField = Schema.Trim.check(
-  Schema.isMaxLength(32)
-).pipe(Schema.decodeTo(Schema.Union([Schema.Literal(""), PhoneNumberSchema])));
+const customerProfilePhoneText = Schema.Trim.check(
+  Schema.isMaxLength(32),
+  Schema.makeFilter((value: string): boolean | string =>
+    value === "" || Option.isSome(parsePhoneNumber(value))
+      ? true
+      : "Invalid phone number"
+  )
+);
+
+/** The Workspace's reading of the entered phone: blank, or its phone number. */
+const customerProfilePhoneNumber = customerProfilePhoneText.pipe(
+  Schema.decodeTo(Schema.Union([Schema.Literal(""), PhoneNumberSchema]))
+);
 
 const customerProfileAddressFields = {
   addressLine1: trimmedOptionalText(200),
@@ -65,18 +77,12 @@ const CustomerProfileBillingInput = Schema.Union([
   }),
 ]);
 
-/**
- * Dotypos owns the customer profile, so the login email is deliberately
- * absent from the profile input: the verified email is the immutable
- * reservation-linking trust boundary and is never an editable field.
- */
-export const CustomerProfileInput = Schema.Struct({
+const customerProfileFields = <Phone extends Schema.Top>(phone: Phone) => ({
   firstName: trimmedRequiredText(100),
   lastName: trimmedOptionalText(100),
-  phone: Schema.optional(customerProfilePhoneField),
+  phone: Schema.optional(phone),
   billing: Schema.optional(CustomerProfileBillingInput),
 });
-export type CustomerProfileInput = typeof CustomerProfileInput.Type;
 
 /**
  * First-time completion may also carry the referral code the new customer was
@@ -85,13 +91,50 @@ export type CustomerProfileInput = typeof CustomerProfileInput.Type;
  * code the form was prefilled with from the shared link; a submitted code
  * equal to it came from the link rather than from typing.
  */
-export const CustomerProfileCompletionInput = Schema.Struct({
-  ...CustomerProfileInput.fields,
+const profileCompletionReferralFields = {
   referralCode: trimmedOptionalText(64),
   prefilledReferralCode: trimmedOptionalText(64),
+};
+
+/**
+ * Dotypos owns the customer profile, so the login email is deliberately
+ * absent from the profile input: the verified email is the immutable
+ * reservation-linking trust boundary and is never an editable field.
+ *
+ * This is the profile as a client sends it, with the phone as entered text.
+ */
+export const CustomerProfileInput = Schema.Struct(
+  customerProfileFields(customerProfilePhoneText)
+);
+export type CustomerProfileInput = typeof CustomerProfileInput.Type;
+
+/** The first-time completion as a client sends it. */
+export const CustomerProfileCompletionInput = Schema.Struct({
+  ...CustomerProfileInput.fields,
+  ...profileCompletionReferralFields,
 });
 export type CustomerProfileCompletionInput =
   typeof CustomerProfileCompletionInput.Type;
+
+/**
+ * The profile save the Workspace reads from a `CustomerProfileInput`: the
+ * same rules, with the entered phone decoded to its phone number.
+ */
+export const CustomerProfileSave = Schema.Struct(
+  customerProfileFields(customerProfilePhoneNumber)
+);
+export type CustomerProfileSave = typeof CustomerProfileSave.Type;
+
+/**
+ * The first-time completion the Workspace reads from a
+ * `CustomerProfileCompletionInput`.
+ */
+export const CustomerProfileCompletionSave = Schema.Struct({
+  ...CustomerProfileSave.fields,
+  ...profileCompletionReferralFields,
+});
+export type CustomerProfileCompletionSave =
+  typeof CustomerProfileCompletionSave.Type;
 
 const storedText = Schema.NullOr(Schema.String);
 

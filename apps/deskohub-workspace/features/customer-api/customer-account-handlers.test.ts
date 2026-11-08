@@ -23,7 +23,10 @@ import {
   CustomerAvatarService,
 } from "@/features/account/backend/customer-avatar.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
-import type { CustomerProfileInput } from "@/features/account/contracts";
+import type {
+  CustomerProfileInput,
+  CustomerProfileSave,
+} from "@/features/account/contracts";
 import {
   CustomerAccountAccessError,
   customerAccountUnavailable,
@@ -146,7 +149,7 @@ describe("updateProfile", () => {
 
   /** The linked account's services, recording every profile update. */
   const recordingUpdates = () => {
-    const updates: CustomerProfileInput[] = [];
+    const updates: CustomerProfileSave[] = [];
     const services = {
       ...linkedAccountServices,
       profile: Layer.mock(CustomerProfileService, {
@@ -171,6 +174,42 @@ describe("updateProfile", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ status: "updated" });
     expect(updates).toEqual([input]);
+  });
+
+  test("saves an entered phone as its phone number, and a blank one as clearing it", async () => {
+    const { updates, services } = recordingUpdates();
+    const api = makeCustomerApiTestServer({ services });
+
+    const save = (phone: string) =>
+      api.handle(
+        customerApiRequest({
+          ...updateProfile,
+          body: { firstName: "Grace", phone },
+        })
+      );
+    const entered = await save("601 123 456");
+    const cleared = await save("");
+
+    expect([entered.status, cleared.status]).toEqual([200, 200]);
+    expect(updates).toEqual([
+      { firstName: "Grace", phone: "+420601123456" },
+      { firstName: "Grace", phone: "" },
+    ]);
+  });
+
+  test("refuses a phone without a phone number", async () => {
+    const { updates, services } = recordingUpdates();
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest({
+        ...updateProfile,
+        body: { firstName: "Grace", phone: "call me maybe" },
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(updates).toEqual([]);
   });
 
   test("refuses an account whose deletion is pending", async () => {
@@ -221,7 +260,7 @@ describe("updateProfile", () => {
   test("keeps saving after its client disconnects", async () => {
     const started = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    const updates: CustomerProfileInput[] = [];
+    const updates: CustomerProfileSave[] = [];
     const api = makeCustomerApiTestServer({
       services: {
         ...linkedAccountServices,
@@ -302,7 +341,7 @@ describe("completeProfile", () => {
 
   /** An account without a Dotypos customer yet, recording every creation. */
   const unlinkedServices = () => {
-    const created: CustomerProfileInput[] = [];
+    const created: CustomerProfileSave[] = [];
     const services = {
       ...linkedAccountServices,
       resolver: Layer.mock(CustomerAccountResolver, {
@@ -334,6 +373,21 @@ describe("completeProfile", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ status: "completed" });
     expect(created).toEqual([{ firstName: "Grace", lastName: "Hopper" }]);
+  });
+
+  test("creates the customer with the entered phone's phone number", async () => {
+    const { created, services } = unlinkedServices();
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest({
+        ...completeProfile,
+        body: { firstName: "Grace", phone: "601 123 456" },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(created).toEqual([{ firstName: "Grace", phone: "+420601123456" }]);
   });
 
   test("saves nothing for a referral code that can't be used", async () => {
