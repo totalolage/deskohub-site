@@ -49,7 +49,13 @@ export const reservationHistoryAtom = customerDataRuntime.atom((get) =>
   Effect.service(CustomerApi).pipe(
     Effect.flatMap((api) => api.reservations.listReservations({})),
     customerRead({ dotyposBacked: true }),
-    Effect.tap(saveReservations),
+    // Saved only after the saved read, which may remove an unreadable or
+    // expired entry: that removal must never delete this save.
+    Effect.tap((history) =>
+      get
+        .resultOnce(savedReservationsAtom)
+        .pipe(Effect.andThen(saveReservations(history)))
+    ),
     Effect.tapError((error) =>
       Effect.sync(() => get.refresh(accountAtom)).pipe(
         Effect.when(
@@ -105,5 +111,27 @@ export const reservationsListAtom = Atom.make((get) =>
   reservationsListResult(
     get(savedReservationsAtom),
     get(reservationHistoryAtom)
+  )
+);
+
+// The account's result where it has no value yet: still loading, or failed.
+const withoutValue = <E>(
+  result: AsyncResult.AsyncResult<unknown, E>
+): AsyncResult.AsyncResult<ReservationsList, E> =>
+  AsyncResult.isFailure(result)
+    ? AsyncResult.failure(result.cause, { waiting: result.waiting })
+    : AsyncResult.initial(result.waiting);
+
+/**
+ * Before the account could be read (it is loading, or unreachable, as when
+ * the app starts offline): the reservations saved on this device, under the
+ * account's loading state or failure. Saved reservations exist only for an
+ * account that could list them, and leave with the account on exit. Once the
+ * account is read, its gate decides.
+ */
+export const savedReservationsBeforeAccountAtom = Atom.make((get) =>
+  reservationsListResult(
+    get(savedReservationsAtom),
+    withoutValue(get(accountAtom))
   )
 );

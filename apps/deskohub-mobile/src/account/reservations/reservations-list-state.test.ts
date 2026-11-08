@@ -30,6 +30,7 @@ import {
   settle,
 } from "../../customer-api/testing/customer-data-test-registry";
 import {
+  type FakeDevice,
   fakeCustomerDataLayer,
   fakeDeviceCapabilities,
   makeFakeDevice,
@@ -38,12 +39,16 @@ import {
   FakeWorkspace,
   fakeWorkspaceOrigin,
 } from "../../customer-api/testing/fake-workspace";
-import { sampleWorkspaceData } from "../../customer-api/testing/sample-fixtures";
+import {
+  type sampleAccountId,
+  sampleWorkspaceData,
+} from "../../customer-api/testing/sample-fixtures";
 import { reservationsCacheName, SavedReservations } from "./reservations-cache";
 import {
   type ReservationsList,
   reservationHistoryAtom,
   reservationsListAtom,
+  savedReservationsBeforeAccountAtom,
 } from "./reservations-list-state";
 
 const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect);
@@ -51,18 +56,27 @@ const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect);
 /**
  * A registry over a fake Workspace whose history answers wait for `release`
  * after they arrived (announced on `answered`), as a slow network would.
+ * Pass a device and fence to share them with another account.
  */
-const setup = async ({ gated = false } = {}) => {
-  const workspace = FakeWorkspace.forKind("linked");
-  const device = makeFakeDevice();
-  const fence = makeAccountExitFence();
+const setup = async ({
+  gated = false,
+  workspace = FakeWorkspace.forKind("linked"),
+  device = makeFakeDevice(),
+  fence = makeAccountExitFence(),
+}: {
+  readonly gated?: boolean;
+  readonly workspace?: FakeWorkspace;
+  readonly device?: FakeDevice;
+  readonly fence?: ReturnType<typeof makeAccountExitFence>;
+} = {}) => {
   const answered = await run(Deferred.make<void>());
   const release = await run(Deferred.make<void>());
   if (!gated) await run(Deferred.succeed(release, undefined));
+  const fenceLayer = Layer.succeed(AccountExitFence, fence);
   const base = fakeCustomerDataLayer({
     workspace,
     device,
-    fence: Layer.succeed(AccountExitFence, fence),
+    fence: fenceLayer,
   });
   const slowHistory = Layer.effect(
     CustomerApi,
@@ -315,5 +329,78 @@ describe("reservationsListAtom", () => {
     expect(
       context.workspace.calls.filter((call) => call === "getAccount")
     ).toHaveLength(2);
+  });
+
+  test("a saved-only list refreshed after a failure shows the fresh read", async () => {
+    const context = await setup();
+    context.seedSaved(savedHistory);
+    context.workspace.fail("listReservations", "service-unavailable");
+    const unmount = context.registry.mount(reservationsListAtom);
+    await settle(context.registry, reservationHistoryAtom);
+    expect(context.registry.get(reservationsListAtom)._tag).toBe("Failure");
+
+    context.registry.refresh(reservationHistoryAtom);
+    const result = await settle(context.registry, reservationsListAtom);
+    unmount();
+
+    const fresh = (result as { success: ReservationsList }).success;
+    expect(Option.isNone(fresh.savedAt)).toBe(true);
+    expect(shownIds(fresh)).not.toContain("saved-only");
+  });
+
+  test("another account on the device never sees this account's saved list", async () => {
+    const first = await setup();
+    await settle(first.registry, reservationsListAtom);
+    expect(first.device.storage.has(first.cacheKey)).toBe(true);
+
+    const other = new FakeWorkspace({
+      ...sampleWorkspaceData("linked"),
+      accountId: "other-account" as typeof sampleAccountId,
+    });
+    other.fail("listReservations", "service-unavailable");
+    const second = await setup({
+      workspace: other,
+      device: first.device,
+      gated: false,
+    });
+    const result = await settle(second.registry, reservationsListAtom);
+
+    expect(result._tag).toBe("Failure");
+    expect(Option.isNone(shown(second.registry))).toBe(true);
+  });
+});
+
+describe("savedReservationsBeforeAccountAtom", () => {
+  test("shows the saved list under the failure when the account can't be read", async () => {
+    const context = await setup();
+    context.seedSaved(savedHistory);
+    context.workspace.fail("getAccount", "service-unavailable");
+    const unmount = context.registry.mount(savedReservationsBeforeAccountAtom);
+
+    await settle(context.registry, accountAtom);
+    const result = context.registry.get(savedReservationsBeforeAccountAtom);
+    unmount();
+
+    expect(result._tag).toBe("Failure");
+    expect(viewErrorOf(result)).toEqual(
+      Option.some(CustomerViewError.Unavailable())
+    );
+    const list = Option.getOrThrow(AsyncResult.value(result));
+    expect(Option.isSome(list.savedAt)).toBe(true);
+    expect(shownIds(list)).toEqual(["saved-only"]);
+    expect(context.workspace.calls).toEqual(["getAccount"]);
+  });
+
+  test("fails with the account's failure when nothing was saved", async () => {
+    const context = await setup();
+    context.workspace.fail("getAccount", "service-unavailable");
+
+    const result = await settle(
+      context.registry,
+      savedReservationsBeforeAccountAtom
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(context.workspace.calls).toEqual(["getAccount"]);
   });
 });

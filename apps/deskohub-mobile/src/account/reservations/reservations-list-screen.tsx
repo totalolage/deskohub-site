@@ -1,11 +1,12 @@
 import type { CustomerReservationOrderId } from "@deskohub/workspace-customer-api";
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { useAtomMount, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { Stack, useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { AsyncView } from "../../customer-api/async-view";
 import { accountAtom } from "../../customer-api/customer-data-runtime";
+import type { CustomerRequestFailure } from "../../customer-api/customer-view-error";
 import type { AppLocale } from "../../i18n/app-locale";
 import { formatInstant } from "../../i18n/date-time-format";
 import { useAppLocale } from "../../i18n/locale-context";
@@ -29,8 +30,11 @@ import {
   reservationStatusTarget,
 } from "./reservation-list-model";
 import {
+  type ReservationsList,
   reservationHistoryAtom,
   reservationsListAtom,
+  savedReservationsAtom,
+  savedReservationsBeforeAccountAtom,
 } from "./reservations-list-state";
 
 const gateNotice: Record<AccountNotice, (locale: AppLocale) => string> = {
@@ -77,54 +81,54 @@ function BookHeaderAction() {
 /**
  * The Reservations tab: the account's reservations (GET /reservations)
  * grouped as the site groups them, gated by the account's state. Saved
- * reservations show at once while the list loads, and stay when it can't.
+ * reservations show at once while the list loads, and stay when it can't;
+ * they also show while the account itself can't be read (offline at launch).
  */
 export function ReservationsListScreen() {
+  // Read once for the screen, whichever of the views below shows it.
+  useAtomMount(savedReservationsAtom);
   const account = useAtomValue(accountAtom);
-  const access = Option.map(AsyncResult.value(account), reservationsAccess);
   return (
     <>
       <Stack.Screen
         options={{
-          headerRight: bookingEntryEnabled ? BookHeaderAction : undefined,
+          headerRight: bookingEntryEnabled
+            ? () => <BookHeaderAction />
+            : undefined,
         }}
       />
-      {Option.exists(access, ({ kind }) => kind === "available") ? (
-        <ReservationsHistory />
-      ) : (
-        <ReservationsGate />
+      {Option.match(
+        Option.map(AsyncResult.value(account), reservationsAccess),
+        {
+          onNone: () => <ReservationsBeforeAccount />,
+          onSome: (access) =>
+            access.kind === "available" ? (
+              <ReservationsHistory />
+            ) : (
+              <ReservationsGate access={access} />
+            ),
+        }
       )}
     </>
   );
 }
 
-/** While the account loads, or when it may not see reservations. */
-function ReservationsGate() {
+/** When the account may not see reservations. */
+function ReservationsGate({ access }: { readonly access: ReservationsAccess }) {
   const locale = useAppLocale();
   const router = useRouter();
   const account = useAtomValue(accountAtom);
   const refresh = useAtomRefresh(accountAtom);
-  const access: Option.Option<ReservationsAccess> = Option.map(
-    AsyncResult.value(account),
-    reservationsAccess
-  );
-  const notice = Option.getOrUndefined(
-    Option.flatMap(access, (gate) =>
-      Option.map(Option.fromNullishOr(gateNoticeOf(gate)), (shown) =>
-        gateNotice[shown](locale)
-      )
-    )
-  );
+  const shownNotice = gateNoticeOf(access);
+  const notice =
+    shownNotice === undefined ? undefined : gateNotice[shownNotice](locale);
   return (
     <ScrollScreen refreshing={account.waiting} onRefresh={refresh}>
       {/* Kept mounted so assistive tech announces each change. */}
       <Notice tone="info" message={notice} />
       <AsyncView result={account} onRetry={refresh}>
         {() =>
-          Option.exists(
-            access,
-            ({ kind }) => kind === "completion-required"
-          ) && (
+          access.kind === "completion-required" && (
             <ListGroup>
               <ListRow
                 label={m.account_section_complete({}, { locale })}
@@ -138,10 +142,34 @@ function ReservationsGate() {
   );
 }
 
+/** Before the account is read: the saved reservations, if any. */
+function ReservationsBeforeAccount() {
+  return (
+    <ReservationsListView
+      result={useAtomValue(savedReservationsBeforeAccountAtom)}
+      onRefresh={useAtomRefresh(accountAtom)}
+    />
+  );
+}
+
+/** The account may see reservations: the list, saved then fresh. */
 function ReservationsHistory() {
+  return (
+    <ReservationsListView
+      result={useAtomValue(reservationsListAtom)}
+      onRefresh={useAtomRefresh(reservationHistoryAtom)}
+    />
+  );
+}
+
+function ReservationsListView<E extends CustomerRequestFailure>({
+  result: list,
+  onRefresh: refresh,
+}: {
+  readonly result: AsyncResult.AsyncResult<ReservationsList, E>;
+  readonly onRefresh: () => void;
+}) {
   const locale = useAppLocale();
-  const list = useAtomValue(reservationsListAtom);
-  const refresh = useAtomRefresh(reservationHistoryAtom);
   const savedAt = Option.flatMap(
     AsyncResult.value(list),
     (shown) => shown.savedAt
