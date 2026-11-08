@@ -337,26 +337,29 @@ they carry the traffic category and the name of a recognized assistant.
   privacy-policy change and the user's approval. If the agent fields change,
   such as dropping `agent_name` or adding another one, change the section 2
   wording to match.
-- Objections are handled manually; there's no opt-out code path. A customer
-  objects by email to the controller's contact address with their
-  reservation. An operator then has the reservation's events deleted in
-  PostHog. Reservation-keyed events have no person profile, so the Persons
-  UI and the person delete API (`delete_events=true`) can't reach them, and
-  PostHog documents no self-serve deletion of personless events. Ask PostHog
-  support to delete events whose `properties.reservation_id` equals the
-  reservation ID in project `204184`; matching `distinct_id` misses the
-  reservation's person-linked events. Confirm with a HogQL count of `events`
-  for that property once the deletion has run (PostHog deletes event data
-  asynchronously, on weekends on Cloud). Recheck after the reservation
-  settles, since an open reservation can still emit events.
-- Person-linked events have a person, so an objection to them is handled by
-  deleting the PostHog person `workspace-account:<accountId>` with its events
-  (`delete_events=true`). That reaches only person-linked events; all
-  reservation-keyed events, from before a grant, after a withdrawal, or from
-  a failed ledger read, still go through the support request above. Until
-  the self-serve account preference (#1044) lands, the customer also
-  withdraws analytics consent in cookie settings while signed in, so later
-  events stay reservation-keyed.
+- An objection to person-linked events is self-serve. The customer turns
+  analytics off in the account preference on `/account/legal`, which records
+  the withdrawal, makes the account's later lifecycle events
+  reservation-keyed, and deletes the account's PostHog person while keeping
+  its events ([person anonymisation](#person-anonymisation)). Account deletion
+  deletes the person the same way.
+- Reservation-keyed events have no person profile, so neither the preference
+  nor the Persons UI or person delete API can reach them, and PostHog
+  documents no self-serve deletion of personless events. A customer objects
+  to them by email to the controller's contact address with their
+  reservation. An operator then asks PostHog support to delete events whose
+  `properties.reservation_id` equals the reservation ID in project `204184`;
+  matching `distinct_id` misses the reservation's person-linked events.
+  Confirm with a HogQL count of `events` for that property once the deletion
+  has run (PostHog deletes event data asynchronously, on weekends on Cloud).
+  Recheck after the reservation settles, since an open reservation can still
+  emit events. This covers every reservation-keyed event: from before a
+  grant, after a withdrawal, or from a failed ledger read.
+- After anonymisation the person is gone, so the retained person-linked
+  events can't be deleted through the person delete API
+  (`delete_events=true`) either. A request to erase them goes through the
+  same support request, matching `distinct_id`
+  `workspace-account:<accountId>`.
 
 ## Funnel insights
 
@@ -484,13 +487,73 @@ blanks the row and marks it deleted on the next sync.
   Changing the distinct ID can move a percentage-rollout bucket, so keep
   account rollouts global on or off.
 
+## Person anonymisation
+
+`AnalyticsPersonAnonymisation`
+(`features/account/backend/analytics-person-anonymisation.ts`) deletes the
+PostHog person `workspace-account:<accountId>`, with its person properties
+and distinct IDs, and keeps its events and recordings. It calls
+`PostHogPersonsService.deletePersonKeepingEvents` from
+`@deskohub/posthog/persons`, which sends `POST
+/api/projects/<projectId>/persons/bulk_delete/` with `delete_events: false`
+and `delete_recordings: false`. The kept events stay queryable as
+pseudonymous records keyed by the account's distinct ID and, on lifecycle
+events, `properties.reservation_id`. It sends nothing else to PostHog.
+
+- Two entry points. Account deletion calls `anonymiseDeletedAccount` after
+  the tombstone, and only when every earlier step succeeded
+  (`customer-account-deletion.ts`); the deletion is unconditional. Turning
+  the account preference off calls `anonymiseWithdrawnAccount`; the
+  preference, the device cookie, and cross-device withdrawal on the next
+  signed-in page load are in [account domain and
+  routes](account-domain-and-routes.md) and the `deskohub-workspace-domain`
+  skill's
+  [analytics consent](../../deskohub-workspace-domain/references/analytics-consent.md)
+  reference.
+- A withdrawal's deletion re-reads the ledger before each attempt and sends
+  nothing unless the account's current decision is still a withdrawal. A
+  later grant, an empty ledger (its rows went with a deleted account), or a
+  failed read skips it.
+- Best effort: both run after the response through
+  `runWorkspaceEffectAfterResponse`, and neither fails nor delays its caller.
+  Each outcome logs a stable `code` and never the account ID, distinct ID,
+  key, or response body: `posthog_person_anonymised`, `…_absent` (no person),
+  `…_skipped`, `…_ledger_unavailable`, `…_uncertain`, `…_failed`, and
+  `…_unavailable`.
+- Retries cover only failures that prove nothing was applied: 429, and a 202
+  whose `deletion_errors` name a step other than `log_activity` or
+  `publish_clickhouse_tombstone`. The ceiling is the private table in
+  `packages/posthog/src/persons`. A server error, timeout, or lost
+  connection may have applied, so it runs once and logs `…_uncertain`. An
+  attempt waits 5 seconds in production and 30 elsewhere, and
+  `posthog-person-privacy.config.test.ts` keeps the retried worst case inside
+  the 240-second after-response budget.
+- Configuration: `POSTHOG_PERSON_PRIVACY_API_KEY`, a dedicated personal API
+  key with only `person:write`, read at runtime on the server with
+  `POSTHOG_API_HOST` and `POSTHOG_PROJECT_ID`. It isn't a build input or in
+  the `feature-flags:sync` task env, so `POSTHOG_API_KEY` never gains
+  `person:write`. Without the key or the project, nothing is sent and each
+  request logs `posthog_person_anonymisation_unavailable`.
+- A grant makes no PostHog call. PostHog removed its "reset deleted person"
+  endpoint (PostHog PR #125747): ingestion revives a deleted distinct ID on
+  the next identified event, so the profile re-forms on its own. The revived
+  person reuses the old person row, so events kept under the same distinct ID
+  may reattach to it; don't promise clean historical separation.
+- Races: a deletion already in flight when the account grants again still
+  deletes the re-forming profile, which re-forms on the next identified
+  event. A device that hasn't loaded a signed-in page since the withdrawal
+  keeps identifying until its next signed-in page load, and its events
+  re-form the profile; nothing deletes it again until a later withdrawal or
+  account deletion.
+
 ## Retention
 
 PostHog `reset` changes only local identity state; it doesn't delete remote
 events or unmerge aliases. Public legal copy uses generic provider-settings
 language for analytics retention; don't promise deletion deadlines. How
 PostHog erasure requests are handled is the project owner's decision and must
-not block account deletion. Better Auth retention is in
+not block account deletion; account deletion only schedules the
+[person anonymisation](#person-anonymisation). Better Auth retention is in
 [privacy and retention](privacy-and-retention.md).
 
 ## Verification

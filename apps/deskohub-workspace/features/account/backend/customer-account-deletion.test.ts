@@ -70,6 +70,10 @@ const makeDependencies = (
         Effect.ensuring(Effect.sync(() => calls.push("lock-release")))
       );
     },
+    anonymiseAnalyticsPerson: () => {
+      calls.push("anonymise-analytics-person");
+      return Effect.void;
+    },
     ...overrides,
   };
   return { dependencies, calls };
@@ -92,6 +96,7 @@ describe("Customer account deletion", () => {
       "destroy-avatar",
       "tombstone",
       "lock-release",
+      "anonymise-analytics-person",
     ]);
   });
 
@@ -145,6 +150,46 @@ describe("Customer account deletion", () => {
 
     expect(outcome._tag).toBe("Failure");
     expect(calls).not.toContain("tombstone");
+    expect(calls).not.toContain("anonymise-analytics-person");
+  });
+
+  test("requests no PostHog person anonymisation when the provider cleanup fails", async () => {
+    const { dependencies, calls } = makeDependencies({
+      expireOutcome: Effect.fail(
+        new DotyposUnavailable({
+          operation: "expireCustomer",
+          reason: "server",
+        })
+      ),
+    });
+
+    const outcome = await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(Effect.result)
+    );
+
+    expect(outcome._tag).toBe("Failure");
+    expect(calls).not.toContain("anonymise-analytics-person");
+  });
+
+  test("completes the deletion when the PostHog person anonymisation dies", async () => {
+    let anonymisationRequests = 0;
+    const { dependencies, calls } = makeDependencies({
+      anonymiseAnalyticsPerson: () => {
+        anonymisationRequests += 1;
+        return Effect.die(new Error("synthetic anonymisation defect"));
+      },
+    });
+
+    const outcome = await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(
+        Effect.result,
+        Effect.provide(Logger.layer([]))
+      )
+    );
+
+    expect(outcome._tag).toBe("Success");
+    expect(anonymisationRequests).toBe(1);
+    expect(calls.slice(-2)).toEqual(["tombstone", "lock-release"]);
   });
 
   test("tolerates a definitively missing provider profile", async () => {
@@ -176,6 +221,7 @@ describe("Customer account deletion", () => {
       "destroy-avatar",
       "tombstone",
       "lock-release",
+      "anonymise-analytics-person",
     ]);
   });
 

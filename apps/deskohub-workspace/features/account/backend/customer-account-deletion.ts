@@ -3,6 +3,7 @@ import { Context, Data, Effect, Layer, Option } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { ReviewAccounts } from "@/features/review-accounts";
 import type { CustomerAccountId } from "../customer-account";
+import { AnalyticsPersonAnonymisation } from "./analytics-person-anonymisation";
 import { CustomerAccountRepository } from "./customer-account.repository";
 import {
   type CustomerAccountLinkError,
@@ -64,6 +65,10 @@ export type CustomerAccountDeletionDependencies = {
     accountId: CustomerAccountId,
     effect: Effect.Effect<A, E, R>
   ) => Effect.Effect<A, E | SqlError.SqlError, R>;
+  /** Schedules deletion of the account's PostHog person; never fails. */
+  readonly anonymiseAnalyticsPerson: (
+    accountId: CustomerAccountId
+  ) => Effect.Effect<void>;
 };
 
 /**
@@ -72,6 +77,8 @@ export type CustomerAccountDeletionDependencies = {
  * transaction under the session-level account lock, never in the same
  * transaction as the provider call. A review account is refused before
  * anything changes; its marker never goes away, so the check needs no lock.
+ * Once the account is tombstoned, the deletion of its PostHog person is
+ * requested; that request never fails the deletion.
  */
 export const expireLinkedDotyposProfile = (
   dependencies: CustomerAccountDeletionDependencies
@@ -82,7 +89,7 @@ export const expireLinkedDotyposProfile = (
     if (yield* dependencies.isReviewAccount(accountId)) {
       return yield* new ReviewAccountDeletionRefusedError();
     }
-    return yield* dependencies
+    yield* dependencies
       .withAccountLock(
         accountId,
         Effect.gen(function* () {
@@ -123,6 +130,20 @@ export const expireLinkedDotyposProfile = (
           )
         )
       );
+
+    // Only a tombstoned account loses its PostHog person. The deletion runs
+    // after the response and never fails, so it can't undo the tombstone by
+    // keeping Better Auth from removing the identity rows.
+    yield* dependencies
+      .anonymiseAnalyticsPerson(accountId)
+      .pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning(
+            "Customer account deletion: PostHog person anonymisation not scheduled.",
+            { code: "account.deletion.analytics-person-not-scheduled", cause }
+          )
+        )
+      );
   });
 
 interface ICustomerAccountDeletionService {
@@ -143,6 +164,7 @@ export class CustomerAccountDeletionService extends Context.Service<
       const dotypos = yield* CustomerDotyposAdapter;
       const avatars = yield* CustomerAvatarService;
       const reviewAccounts = yield* ReviewAccounts;
+      const analyticsPersons = yield* AnalyticsPersonAnonymisation;
 
       const requestDeletion = expireLinkedDotyposProfile({
         isReviewAccount: reviewAccounts.isReviewAccount,
@@ -152,6 +174,7 @@ export class CustomerAccountDeletionService extends Context.Service<
         destroyAvatar: avatars.destroy,
         tombstone: accounts.tombstone,
         withAccountLock: links.withAccountLock,
+        anonymiseAnalyticsPerson: analyticsPersons.anonymiseDeletedAccount,
       });
 
       return { requestDeletion } satisfies ICustomerAccountDeletionService;
@@ -165,7 +188,8 @@ export class CustomerAccountDeletionService extends Context.Service<
         CustomerAccountRepository.Live,
         CustomerDotyposAdapter.Live,
         CustomerAvatarService.Live,
-        ReviewAccounts.Live
+        ReviewAccounts.Live,
+        AnalyticsPersonAnonymisation.Live
       )
     )
   );
