@@ -2,6 +2,7 @@
 
 Code: `features/account/analytics-identity.ts`,
 `features/account/analytics-customer-link.ts`,
+`features/account/posthog-account-distinct-id.ts`,
 `features/cookie-consent/components/posthog-analytics.tsx`, and
 `features/cookie-consent/utils/` (`posthog-config.ts`, `posthog-identity.ts`).
 
@@ -252,18 +253,22 @@ contact details. Section 2's automated-traffic paragraph also discloses that
 they carry the traffic category and the name of a recognized assistant.
 
 - Each event is either person-linked or reservation-keyed. A person-linked
-  event has the distinct ID `workspace-account:<authorAccountId>` (the
-  browser's identity for the same account) with person processing on, and
-  keeps `reservation_id` as a property. A reservation-keyed event has the
-  Workspace reservation ID as distinct ID and sets
+  event (`ServerAnalytics` subject `account`) has the distinct ID
+  `workspace-account:<authorAccountId>` from `getPostHogAccountDistinctId`,
+  the browser's identity for the same account. It omits
+  `$process_person_profile`, so PostHog processes the person, and keeps
+  `reservation_id` as a property. A reservation-keyed event (subject
+  `record`) has the Workspace reservation ID as distinct ID and sets
   `$process_person_profile: false`. Neither carries `$session_id`.
 - The capture-time rule picks the branch for every event, webhook captures
-  included: the reservation author's current decision in the ledger when the
-  event is captured (one read serves every event a request captures). A
-  grant links, including a grant
-  under an older notice hash, until the account answers again. A withdrawal or
-  no decision keeps the event reservation-keyed, and so does a ledger read
-  failure. So a withdrawal after `reservation started` makes the later events
+  included. `ReservationAnalyticsPerson.linkedAccount`
+  (`features/checkout/backend/analytics/reservation-analytics-person.ts`)
+  reads the reservation's stored author, then the author's current decision
+  in the ledger, once per reservation per Workspace run. A grant links,
+  including a grant under an older notice hash, until the account answers
+  again. A withdrawal or no decision keeps the event reservation-keyed. A
+  failed read does too, and logs a warning. So a withdrawal after
+  `reservation started` makes events captured in later runs
   reservation-keyed, and a reservation's events can mix both branches.
 - The capture hands `posthog-node` the
   event UUID `<reservation or payment attempt ID>:<event>`, but the SDK sends
@@ -300,21 +305,23 @@ they carry the traffic category and the name of a recognized assistant.
 - Objections are handled manually; there's no opt-out code path. A customer
   objects by email to the controller's contact address with their
   reservation. An operator then has the reservation's events deleted in
-  PostHog. Reservation-keyed events have no person profile, so the Persons UI and the
-  person delete API (`delete_events=true`) can't reach them, and PostHog
-  documents no self-serve deletion of personless events. Ask PostHog support
-  to delete events with `distinct_id` equal to the reservation ID in project
-  `204184`, then confirm with a HogQL count of `events` for that
-  `distinct_id` once the deletion has run (PostHog deletes event data
+  PostHog. Reservation-keyed events have no person profile, so the Persons
+  UI and the person delete API (`delete_events=true`) can't reach them, and
+  PostHog documents no self-serve deletion of personless events. Ask PostHog
+  support to delete events whose `properties.reservation_id` equals the
+  reservation ID in project `204184`; matching `distinct_id` misses the
+  reservation's person-linked events. Confirm with a HogQL count of `events`
+  for that property once the deletion has run (PostHog deletes event data
   asynchronously, on weekends on Cloud). Recheck after the reservation
   settles, since an open reservation can still emit events.
 - Person-linked events have a person, so an objection to them is handled by
   deleting the PostHog person `workspace-account:<accountId>` with its events
   (`delete_events=true`). That reaches only person-linked events; all
   reservation-keyed events, from before a grant, after a withdrawal, or from
-  a failed ledger read, still go through the support request above. Until the self-serve account preference (#1044)
-  lands, the customer also withdraws analytics consent in cookie settings
-  while signed in, so later events stay reservation-keyed.
+  a failed ledger read, still go through the support request above. Until
+  the self-serve account preference (#1044) lands, the customer also
+  withdraws analytics consent in cookie settings while signed in, so later
+  events stay reservation-keyed.
 
 ## Funnel insights
 
@@ -339,10 +346,11 @@ Filter every step to `deployment.environment.name = production`.
   take only the identifiers the event may carry. Each wraps
   `ServerAnalytics` (`shared/backend/analytics/server-analytics.service.ts`),
   whose subject policy sets the distinct ID, UUID, agent fields,
-  `$session_id`, and person processing: a reservation lifecycle subject
-  (person-linked or reservation-keyed by the capture-time rule), the
+  `$session_id`, and person processing: `account` (a person-linked
+  lifecycle event), `record` (a reservation-keyed lifecycle event), the
   request's consented `visitor` (skipped without one), or `anonymous` (a
-  random distinct ID per event). Don't call
+  random distinct ID per event). `CheckoutAnalytics` picks `account` or
+  `record` by the capture-time rule. Don't call
   `ServerAnalytics` from anywhere else; add a domain operation instead.
 - Capture never fails the work it's part of and never waits for PostHog: it
   queues the event on one `posthog-node` client per process
