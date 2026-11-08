@@ -4,6 +4,9 @@ import {
   deliverAnalyticsEvents,
   discardAnalyticsEvents,
 } from "@/features/cookie-consent/analytics-events";
+import { bindVisitorConsentRevision } from "@/features/cookie-consent/visitor-consent";
+import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   noteEmailSignInForPasskeyPrompt,
   shouldOfferPasskeyPrompt,
@@ -19,9 +22,7 @@ import {
  * DOM on an http(s) URL, where the consent cookie can be set.
  */
 
-const consentCookie = `cc_cookie=${encodeURIComponent(
-  JSON.stringify({ categories: ["necessary", "analytics"] })
-)}; path=/`;
+const consentCookie = `cc_cookie=${savedConsentCookieValue({ categories: ["necessary", "analytics"] })}; path=/`;
 const pendingRequestStorageKey = "deskohub:account-sign-in-code";
 
 /**
@@ -29,6 +30,7 @@ const pendingRequestStorageKey = "deskohub:account-sign-in-code";
  * it captures until `stop`.
  */
 export const observeSignInAnalytics = () => {
+  bindVisitorConsentRevision(getConsentBannerRevision());
   // biome-ignore lint/suspicious/noDocumentCookie: Tests set the cookie the analytics consent boundary reads.
   document.cookie = consentCookie;
   const events: AnalyticsEvent[] = [];

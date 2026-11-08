@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Locale } from "@/features/i18n";
 import { getCanonicalLegalDocument } from "./canonical-document";
 import { getLegalDocument, type LegalDocumentContent } from "./content";
+import { getLegalDocumentPath } from "./legal-document-path";
 import type { LegalDocumentKey } from "./legal-document-summaries";
 
 export const legalDocumentHashAlgorithm = "sha256";
@@ -15,13 +16,6 @@ export function hashLegalDocument(document: LegalDocumentContent): string {
   return createHash(legalDocumentHashAlgorithm)
     .update(getCanonicalLegalDocument(document))
     .digest("hex");
-}
-
-export function getLegalDocumentPath(
-  locale: Locale,
-  documentKey: LegalDocumentKey
-): string {
-  return `/${locale}/${documentKey}`;
 }
 
 const documentVersions = new Map<string, string>();

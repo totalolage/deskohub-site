@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import { testEmailAddress } from "@deskohub/test-email";
+import { Option } from "effect";
 import { getNexiHostedPaymentCustomer } from "./nexi-customer-info";
 
 const testEmailAddressForAda = testEmailAddress("ada");
@@ -11,7 +13,7 @@ describe("getNexiHostedPaymentCustomer", () => {
         id: "dotypos-customer-id",
         name: "Ada Lovelace",
         email: testEmailAddressForAda,
-        phone: "+420 777 777 777",
+        phone: parsePhoneNumber("+420 777 777 777"),
       })
     ).toEqual({
       id: "dotypos-customer-id",
@@ -21,6 +23,21 @@ describe("getNexiHostedPaymentCustomer", () => {
         countryCallingCode: "420",
         nationalNumber: "777777777",
       },
+    });
+  });
+
+  test("leaves out the mobile phone without a phone number", () => {
+    expect(
+      getNexiHostedPaymentCustomer({
+        id: "dotypos-customer-id",
+        name: "Ada Lovelace",
+        email: testEmailAddressForAda,
+        phone: Option.none(),
+      })
+    ).toEqual({
+      id: "dotypos-customer-id",
+      name: "Ada Lovelace",
+      email: testEmailAddressForAda,
     });
   });
 });

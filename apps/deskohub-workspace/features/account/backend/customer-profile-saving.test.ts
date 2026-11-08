@@ -7,7 +7,7 @@ import { ReferralServiceMock } from "@/features/referrals/referral.service.mock"
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
-import type { CustomerProfile, CustomerProfileInput } from "../contracts";
+import type { CustomerProfile, CustomerProfileSave } from "../contracts";
 import { CustomerAccountAccessError } from "../customer-account";
 import {
   authenticatedAs,
@@ -22,7 +22,7 @@ import {
   updateCurrentCustomerProfile,
 } from "./customer-profile-saving";
 
-const input: CustomerProfileInput = { firstName: "Ada", lastName: "Lovelace" };
+const input: CustomerProfileSave = { firstName: "Ada", lastName: "Lovelace" };
 const savedProfile: CustomerProfile = {
   firstName: "Ada",
   lastName: "Lovelace",
@@ -46,7 +46,7 @@ type RunOptions = {
 type Records = {
   readonly writes: Array<{
     readonly kind: "update" | "create";
-    readonly input: CustomerProfileInput;
+    readonly input: CustomerProfileSave;
     readonly signupReferral?: unknown;
   }>;
   readonly codeLookups: string[];

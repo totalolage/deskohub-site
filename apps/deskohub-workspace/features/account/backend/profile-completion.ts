@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import type {
-  CustomerProfileInput,
+  CustomerProfileSave,
   ProfileCompletionReferralOutcome,
 } from "../contracts";
 import type {
@@ -38,7 +38,7 @@ export const completeNewCustomerProfile = Effect.fn(
   "account.completeNewCustomerProfile"
 )(function* (
   user: { readonly accountId: CustomerAccountId; readonly email: string },
-  input: CustomerProfileInput,
+  input: CustomerProfileSave,
   referral: {
     readonly code: string | undefined;
     readonly prefilledCode: string | undefined;

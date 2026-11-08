@@ -475,6 +475,43 @@ describe.skipIf(!testDatabase)(
         );
         expect(calls.complete).toHaveBeenCalledTimes(1);
       });
+
+      test.each([
+        {
+          label: "the phone number its phone text holds",
+          phone: " 777 000 000 ",
+          written: "+420777000000",
+        },
+        {
+          label: "no phone when its phone text holds no phone number",
+          phone: "call reception",
+          written: undefined,
+        },
+      ])(
+        "updates a selected customer with $label",
+        async ({ phone, written }) => {
+          const { calls, layer } = claimLayer("claimed", null);
+          const withPhone = Schema.decodeUnknownSync(
+            AdministrationInvoiceCreateInput
+          )({
+            ...existingCustomerInput,
+            customer: {
+              ...existingCustomerInput.customer,
+              details: { ...input.customer.details, phone },
+            },
+          });
+
+          await Effect.gen(function* () {
+            const service = yield* InvoiceAdministrationService;
+            return yield* create(service, withPhone);
+          }).pipe(Effect.provide(layer), Effect.runPromise);
+
+          expect(calls.updateCustomerDetails).toHaveBeenCalledWith(
+            "dotypos-customer-selected",
+            expect.objectContaining({ phone: written })
+          );
+        }
+      );
     });
 
     test("the creation lock serializes creation per invoice ID", async () => {

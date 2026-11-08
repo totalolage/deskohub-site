@@ -1,8 +1,8 @@
 import { Effect, Match } from "effect";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import type {
-  CustomerProfileCompletionInput,
-  CustomerProfileInput,
+  CustomerProfileCompletionSave,
+  CustomerProfileSave,
 } from "../contracts";
 import {
   isCustomerProfileMissing,
@@ -18,7 +18,7 @@ import { requireVerifiedSession } from "./verified-customer-session";
  * account updates its Dotypos customer, a not-yet-linked one creates and
  * claims it without a referral code.
  */
-export const updateCurrentCustomerProfile = (input: CustomerProfileInput) =>
+export const updateCurrentCustomerProfile = (input: CustomerProfileSave) =>
   saveCustomerProfile(input, noReferral).pipe(
     Effect.as({ status: "updated" } as const),
     Effect.withSpan("account.updateCurrentCustomerProfile")
@@ -43,7 +43,7 @@ export const completeCurrentCustomerProfile = ({
   referralCode,
   prefilledReferralCode,
   ...input
-}: CustomerProfileCompletionInput) =>
+}: CustomerProfileCompletionSave) =>
   saveCustomerProfile(input, {
     code: referralCode,
     prefilledCode: prefilledReferralCode,
@@ -90,7 +90,7 @@ const noReferral: ProfileCompletionReferral = {
  * from the session.
  */
 const saveCustomerProfile = (
-  input: CustomerProfileInput,
+  input: CustomerProfileSave,
   referral: ProfileCompletionReferral
 ) =>
   Effect.Do.pipe(
@@ -123,7 +123,7 @@ const resolveSavingAccount = Effect.flatMap(
 
 const updateLinkedProfile = (
   account: LinkedCustomerAccount,
-  input: CustomerProfileInput
+  input: CustomerProfileSave
 ) =>
   Effect.flatMap(CustomerProfileService, (profile) =>
     profile.update(account, input)

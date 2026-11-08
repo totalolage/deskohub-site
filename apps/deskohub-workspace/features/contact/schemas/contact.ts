@@ -1,5 +1,5 @@
+import { isPhoneNumber } from "@deskohub/phone-number";
 import { Schema } from "effect";
-import { isValidPhoneNumber } from "libphonenumber-js";
 import isEmail from "validator/lib/isEmail.js";
 import { type Locale, m } from "@/features/i18n";
 
@@ -57,12 +57,9 @@ export const createContactSchema = (locale: Locale) =>
           { locale }
         ),
       }),
-      Schema.makeFilter(
-        (phone) => phone === "" || isValidPhoneNumber(phone, "CZ"),
-        {
-          message: m.contactValidationPhoneInvalid({}, { locale }),
-        }
-      )
+      Schema.makeFilter((phone) => phone === "" || isPhoneNumber(phone), {
+        message: m.contactValidationPhoneInvalid({}, { locale }),
+      })
     ),
     message: Schema.Trim.check(
       Schema.isMinLength(CONTACT_VALIDATION.message.min, {

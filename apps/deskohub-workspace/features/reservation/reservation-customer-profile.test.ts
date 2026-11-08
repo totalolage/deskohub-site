@@ -15,7 +15,7 @@ const address = {
 const contact = { name: "Ada Lovelace", phone: "+420 777 777 777" };
 
 describe("getReservationCustomerProfile", () => {
-  test("splits the contact name and keeps the phone", () => {
+  test("splits the contact name and reads the phone number", () => {
     expect(
       getReservationCustomerProfile({
         name: "  Ada   King Lovelace ",
@@ -24,7 +24,7 @@ describe("getReservationCustomerProfile", () => {
     ).toEqual({
       firstName: "Ada",
       lastName: "King Lovelace",
-      phone: "+420 777 777 777",
+      phone: "+420777777777",
     });
   });
 
