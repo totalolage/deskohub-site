@@ -38,7 +38,7 @@ mock.module("@/features/legal/actions", () => ({
 }));
 
 type Identity =
-  | { readonly status: "anonymous" }
+  | { readonly status: "pending" | "anonymous" }
   | {
       readonly status: "authenticated";
       readonly accountId: ReturnType<typeof customerAccountIdSchema.make>;
@@ -251,6 +251,28 @@ test.each([
     expect(applyAccountDecision).not.toHaveBeenCalled();
   }
 );
+
+test("applies the saved decision to the device when the account was verified during the save", async () => {
+  identity = { status: "pending" };
+  const settle = deferSave();
+  const view = renderRow({ status: "available", granted: true });
+  const preferenceSwitch = getSwitch(view);
+
+  fireEvent.click(preferenceSwitch);
+  await waitFor(() =>
+    expect(saveAccountAnalyticsPreference).toHaveBeenCalledTimes(1)
+  );
+  identity = signedIn("account-a");
+  settle({ data: "2026-11-08T10:15:30.123Z" });
+
+  await waitForSavedFeedback(view);
+  expect(applyAccountDecision).toHaveBeenCalledTimes(1);
+  expect(applyAccountDecision).toHaveBeenCalledWith({
+    analytics: false,
+    decidedAt: "2026-11-08T10:15:30.123Z",
+    change: "preference",
+  });
+});
 
 test("reverts to the last saved decision, not the initial one", async () => {
   const view = renderRow({ status: "available", granted: false });

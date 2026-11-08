@@ -55,7 +55,9 @@ export function AnalyticsPreferenceRow({
   // This device's saved choice and the signed-in account when the save was
   // sent. A choice saved on the device meanwhile, as with its own analytics
   // switch, is newer than the account's decision, and another account's
-  // decision never applies, so either leaves the device as it is.
+  // decision never applies, so either leaves the device as it is, as does a
+  // signed-out session. A save sent before the session's account was verified
+  // applies to the account verified by then.
   const sentFrom = useRef<{
     readonly accountId: ReturnType<typeof signedInAccount>;
     readonly savedChoice: string;
@@ -72,9 +74,12 @@ export function AnalyticsPreferenceRow({
       onSuccess: ({ data, input }) => {
         // Null when the session ended meanwhile: nothing was recorded.
         if (!data) return fail();
+        const account = signedInAccount();
         if (
           sentFrom.current?.savedChoice === visitorConsent.saveMark() &&
-          sentFrom.current.accountId === signedInAccount()
+          account !== undefined &&
+          (sentFrom.current.accountId === undefined ||
+            sentFrom.current.accountId === account)
         ) {
           visitorConsent.applyAccountDecision({
             analytics: input.granted,
