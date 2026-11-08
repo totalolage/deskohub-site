@@ -63,6 +63,9 @@ export const sampleProfile: CustomerProfile = {
   },
 };
 
+/** The code a completion-required sample customer was invited with. */
+export const sampleInvitationCode = ReferralCode.make("SAMPLE-FRIEND");
+
 export const sampleOrderIds = {
   fulfilled: CustomerReservationOrderId.make("sample-order-fulfilled"),
   pending: CustomerReservationOrderId.make("sample-order-pending"),
@@ -456,6 +459,7 @@ const sampleAccount = (
         ...sessionSettings,
         deletion: "offered",
         referralsEnabled: true,
+        referralCode: sampleInvitationCode,
       };
     case "support-required":
     case "authenticated-unavailable":

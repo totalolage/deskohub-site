@@ -18,6 +18,7 @@ import {
   type AccountSection,
   accountIndexModel,
 } from "./account-gating";
+import { SignupReferralNotice } from "./profile/signup-referral-notice";
 
 const runSignOut = () => signOut;
 const unexpectedSignOutFailure = () => new SignOutFailure();
@@ -106,6 +107,7 @@ export function AccountIndexScreen() {
       <AsyncView result={account} onRetry={refresh}>
         {(current) => (
           <>
+            <SignupReferralNotice account={current} />
             <ListGroup>
               {accountIndexModel(current).sections.map((section) => (
                 <ListRow

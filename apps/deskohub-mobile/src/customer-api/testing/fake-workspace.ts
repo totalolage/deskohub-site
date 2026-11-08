@@ -7,6 +7,8 @@ import {
   type CustomerAuthEndpoints,
   CustomerAuthApi as CustomerAuthHttpApi,
   CustomerAuthRejected,
+  CustomerAvatarRejected,
+  type CustomerAvatarRejectionReason,
   CustomerFeatureUnavailable,
   CustomerInvoiceNotIssued,
   CustomerMarketingPreferencesRejected,
@@ -21,9 +23,10 @@ import {
   CustomerSessionAuthentication,
   CustomerSessionRequired,
   customerApiClientHeader,
+  type ProfileCompletionReferralOutcome,
   WorkspaceCustomerApi,
 } from "@deskohub/workspace-customer-api";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import {
   HttpClient,
   HttpClientError,
@@ -33,6 +36,7 @@ import {
   HttpServer,
   HttpServerRequest,
   HttpServerResponse,
+  Multipart,
 } from "effect/unstable/http";
 import {
   HttpApiBuilder,
@@ -78,6 +82,14 @@ type EndpointName = HttpApiEndpoint.Name<
 export class FakeWorkspace {
   data: FakeWorkspaceData;
   signedIn = true;
+  /**
+   * How first-time completion answers a submitted referral code: the outcome
+   * it reports (and stores on the linked account), or `"unavailable"`, which
+   * refuses the completion and creates nothing.
+   */
+  referralCodeAnswer: ProfileCompletionReferralOutcome | "unavailable" = {
+    status: "applied",
+  };
   /** Endpoint names in the order requests reached them. */
   readonly calls: EndpointName[] = [];
   private readonly outcomes = new Map<EndpointName, FakeRequestOutcome[]>();
@@ -111,7 +123,59 @@ export class FakeWorkspace {
     if (queued?.length === 0) this.outcomes.delete(endpoint);
     return next;
   }
+
+  /** The parts of each avatar upload the Workspace admitted, in order. */
+  readonly avatarUploads: Array<ReadonlyArray<FakeAvatarUploadPart>> = [];
+  private readonly avatarRejections: CustomerAvatarRejectionReason[] = [];
+
+  /** Refuses the next admitted avatar upload with `reason` (422). */
+  rejectNextAvatar(reason: CustomerAvatarRejectionReason) {
+    this.avatarRejections.push(reason);
+  }
+
+  /** @internal Takes the next queued avatar refusal. */
+  nextAvatarRejection(): CustomerAvatarRejectionReason | undefined {
+    return this.avatarRejections.shift();
+  }
 }
+
+/** One part of an avatar upload body, as the fake Workspace read it. */
+export type FakeAvatarUploadPart =
+  | {
+      readonly _tag: "File";
+      readonly field: string;
+      readonly name: string;
+      readonly contentType: string;
+      readonly bytes: Uint8Array;
+    }
+  | { readonly _tag: "Field"; readonly field: string; readonly value: string };
+
+// Reads every part of an upload body. A body the multipart parser can't read,
+// such as a React Native URI part in the on-device sample-data mode, records
+// no parts; other failures surface.
+const avatarUploadParts = (
+  payload: Stream.Stream<Multipart.Part, Multipart.MultipartError>
+) =>
+  payload.pipe(
+    Stream.mapEffect(
+      (part): Effect.Effect<FakeAvatarUploadPart, Multipart.MultipartError> =>
+        Multipart.isFile(part)
+          ? Effect.map(part.contentEffect, (bytes) => ({
+              _tag: "File" as const,
+              field: part.key,
+              name: part.name,
+              contentType: part.contentType,
+              bytes,
+            }))
+          : Effect.succeed({
+              _tag: "Field" as const,
+              field: part.key,
+              value: Multipart.isField(part) ? part.value : "",
+            })
+    ),
+    Stream.runCollect,
+    Effect.catchTag("MultipartError", () => Effect.succeed([]))
+  );
 
 const storedProfile = (input: CustomerProfileInput): CustomerProfile => ({
   firstName: input.firstName,
@@ -207,52 +271,107 @@ const serverLayer = (workspace: FakeWorkspace) => {
           ).pipe(Effect.as({ status: "updated" as const }))
         )
         .handle("completeProfile", ({ payload }) =>
-          Effect.suspend(() => {
-            const current = workspace.data.account;
-            if (current.kind !== "completion-required") {
-              return Effect.fail(
-                new CustomerAccountLinkRequired({
-                  reason: linkRequiredReason(current),
+          Effect.suspend(
+            (): Effect.Effect<
+              | {
+                  readonly status: "completed";
+                  readonly referral?: ProfileCompletionReferralOutcome;
+                }
+              | { readonly status: "referral-code-unavailable" },
+              CustomerAccountLinkRequired
+            > => {
+              const current = workspace.data.account;
+              if (current.kind !== "completion-required") {
+                return Effect.fail(
+                  new CustomerAccountLinkRequired({
+                    reason: linkRequiredReason(current),
+                  })
+                );
+              }
+              const answer = workspace.referralCodeAnswer;
+              if (
+                payload.referralCode !== undefined &&
+                answer === "unavailable"
+              )
+                return Effect.succeed({
+                  status: "referral-code-unavailable" as const,
+                });
+              const referral =
+                payload.referralCode === undefined || answer === "unavailable"
+                  ? undefined
+                  : answer;
+              return update((data) => ({
+                ...data,
+                account: {
+                  kind: "linked",
+                  email: current.email,
+                  deletion: current.deletion,
+                  passkeys: current.passkeys,
+                  assistants: current.assistants,
+                  profile: storedProfile(payload),
+                  avatar: { kind: "available", avatar: null },
+                  referralsEnabled: current.referralsEnabled,
+                  referrals: data.referrals,
+                  ...(referral && { signupReferral: referral }),
+                },
+              })).pipe(
+                Effect.as({
+                  status: "completed" as const,
+                  ...(referral && { referral }),
                 })
               );
             }
-            return update((data) => ({
-              ...data,
-              account: {
-                kind: "linked",
-                email: current.email,
-                deletion: current.deletion,
-                passkeys: current.passkeys,
-                assistants: current.assistants,
-                profile: storedProfile(payload),
-                avatar: { kind: "available", avatar: null },
-                referralsEnabled: current.referralsEnabled,
-                referrals: data.referrals,
-              },
-            })).pipe(Effect.as({ status: "completed" as const }));
-          })
+          )
         )
-        .handle("uploadAvatar", () =>
-          Effect.flatMap(linkedAccount, (current) => {
-            const avatar = {
-              url: `${fakeWorkspaceOrigin}/avatars/sample.png`,
-              version: Date.now(),
-            };
-            return update((data) => ({
-              ...data,
-              account: { ...current, avatar: { kind: "available", avatar } },
-            })).pipe(Effect.as(avatar));
-          })
+        .handle("uploadAvatar", ({ payload }) =>
+          Effect.Do.pipe(
+            // Admitted only while avatars are released for a linked account.
+            Effect.bind("current", () =>
+              Effect.filterOrFail(
+                linkedAccount,
+                (account) => account.avatar.kind !== "hidden",
+                () => new CustomerFeatureUnavailable({ feature: "avatars" })
+              )
+            ),
+            Effect.bind("parts", () => avatarUploadParts(payload)),
+            Effect.tap(({ parts }) =>
+              Effect.sync(() => workspace.avatarUploads.push(parts))
+            ),
+            Effect.tap(() =>
+              Effect.suspend(() => {
+                const reason = workspace.nextAvatarRejection();
+                return reason === undefined
+                  ? Effect.void
+                  : Effect.fail(new CustomerAvatarRejected({ reason }));
+              })
+            ),
+            Effect.flatMap(({ current }) => {
+              const avatar = {
+                url: `${fakeWorkspaceOrigin}/avatars/sample.png`,
+                version: Date.now(),
+              };
+              return update((data) => ({
+                ...data,
+                account: { ...current, avatar: { kind: "available", avatar } },
+              })).pipe(Effect.as(avatar));
+            })
+          )
         )
         .handle("removeAvatar", () =>
-          Effect.flatMap(linkedAccount, (current) =>
-            update((data) => ({
-              ...data,
-              account: {
-                ...current,
-                avatar: { kind: "available", avatar: null },
-              },
-            }))
+          Effect.filterOrFail(
+            linkedAccount,
+            (account) => account.avatar.kind !== "hidden",
+            () => new CustomerFeatureUnavailable({ feature: "avatars" })
+          ).pipe(
+            Effect.flatMap((current) =>
+              update((data) => ({
+                ...data,
+                account: {
+                  ...current,
+                  avatar: { kind: "available", avatar: null },
+                },
+              }))
+            )
           )
         )
         .handle("listPasskeys", () =>
@@ -298,7 +417,11 @@ const serverLayer = (workspace: FakeWorkspace) => {
                 )
           )
         )
-        .handle("acknowledgeSignupReferral", () => Effect.void)
+        .handle("acknowledgeSignupReferral", () =>
+          Effect.flatMap(linkedAccount, ({ signupReferral: _, ...current }) =>
+            update((data) => ({ ...data, account: current }))
+          )
+        )
         .handle("requestDeletion", () =>
           Effect.sync(() => {
             workspace.signedIn = false;
