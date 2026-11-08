@@ -77,6 +77,7 @@ The root `patchedDependencies` patch `effect`, `@effect/sql-pg`, `@effect/openap
 - Regenerate OpenAPI clients with the package's `generate` task from its checked-in contract. Don't edit `src/generated/`.
 - The Games and Igloohome clients are gitignored. Run their tests through `bun turbo test --filter=<package-name>`, or run `bun run generate` in the package once before a bare `bun test`.
 - Generate Workspace migrations and metadata with `bun turbo db:generate --filter=deskohub-workspace`. Never hand-write the Drizzle journal or snapshots.
+- Drizzle records applied migrations by folder name, and `drizzle-kit generate` diffs against the last folder by name. When main adds a migration while a branch carries one, regenerate the branch's migration. Keep its folder name only if it still sorts after main's newest. Then run `generate` once more: it must report no schema changes (`drizzle-kit check` alone doesn't catch a fork). If main's migration sorts later, use the regenerated timestamped name instead, and reset the branch's preview Neon branch from its parent. The preview has already applied the old name, and the reset needs an explicit OK because the Neon integration owns that branch.
 
 ## Branch integration
 
