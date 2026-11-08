@@ -12,9 +12,13 @@ import {
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
-import { Effect, Layer, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { customerMarketingConsents } from "@/db/schema";
+import {
+  holdPostgresTransaction,
+  waitForPostgresLockWaiter,
+} from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import { campaignEmailKind } from "../campaign-email";
 import type { CampaignId } from "../campaign-identifiers";
 import type { CampaignDeliveryEvent } from "./campaign-delivery-status.service";
@@ -131,6 +135,7 @@ const { processCampaignSendMessage } = await import(
 const { CampaignUnsubscribeService } = await import(
   "./campaign-unsubscribe.service"
 );
+const { OnceCampaignLifecycle } = await import("./once-campaign-lifecycle");
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -1161,6 +1166,71 @@ describe.skipIf(!testDatabase)(
         [sendId]
       );
       expect(lease.delivery_lease_id).toBeNull();
+    });
+
+    test("a retry queued on a failing campaign and the run still holding its send never deadlock", async () => {
+      const id = customerId("retry-beside-run");
+      profiles = [profile(id)];
+      const { campaignId, sendId } = await seedSend({
+        purpose: "operational",
+        recipients: [{ dotyposCustomerId: id }],
+      });
+      // The run takes the send's lease, then stops reading its recipients'
+      // profiles until the test lets it go, before it persists any batch.
+      const stalled = pause();
+      readCustomers = (ids) =>
+        Effect.promise(async () => {
+          stalled.reach();
+          await stalled.released;
+        }).pipe(Effect.andThen(readProfiles(ids)));
+
+      const delivery = consumeConcurrently({ sendId, deliveryAttempt: 1 });
+      await stalled.reached;
+      // Another transaction is failing the campaign and holds its row.
+      const failing = await holdPostgresTransaction(
+        testDatabase.pool,
+        "update email_campaigns set status = 'failed' where id = $1",
+        [campaignId]
+      );
+      const retry = Effect.runPromiseExit(
+        Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+          transaction(
+            OnceCampaignLifecycle.retry({
+              campaignId,
+              includeUnconfirmed: false,
+              now: Temporal.Now.instant(),
+            })
+          )
+        ).pipe(Effect.provide(testDatabase.layer))
+      );
+      await waitForPostgresLockWaiter(testDatabase.pool, {
+        condition: "$1 = any(pg_blocking_pids(pid))",
+        values: [failing.pid],
+        description: "the retry to queue on the campaign row",
+      });
+      stalled.release();
+      await waitForPostgresLockWaiter(testDatabase.pool, {
+        condition: "not (pg_blocking_pids(pid) <@ array[$1]::int[])",
+        values: [failing.pid],
+        description: "the run to wait on a lock the retry holds or queues for",
+      });
+      await failing.commit();
+
+      const retried = await retry;
+      if (Exit.isFailure(retried)) throw Cause.squash(retried.cause);
+      expect(retried.value).toMatchObject({ deliveryAttempt: 2 });
+      const delivered = await delivery;
+      expect(
+        Exit.isFailure(delivered) ? Cause.squash(delivered.cause) : undefined
+      ).toMatchObject({ _tag: "CampaignDeliveryIncomplete" });
+      expect(mailed).toEqual([]);
+
+      readCustomers = readProfiles;
+      expect(await consume({ sendId, deliveryAttempt: 2 })).toBe("sent");
+      expect(mailed).toEqual([testEmailAddress(id)]);
+      const { recipients, campaign } = await stored(sendId);
+      expect(statusesOf(recipients)).toEqual({ [id]: "sent" });
+      expect(campaign.status).toBe("sent");
     });
   }
 );
