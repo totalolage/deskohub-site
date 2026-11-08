@@ -2,6 +2,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import * as nextHeaders from "next/headers";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   POSTHOG_DISTINCT_ID_COOKIE,
   POSTHOG_SESSION_ID_COOKIE,
@@ -13,9 +14,7 @@ import {
 } from "./workspace-request-context";
 import { WorkspaceRouterRequestContext } from "./workspace-router-request-context";
 
-const analyticsConsentCookie = `cc_cookie=${encodeURIComponent(
-  JSON.stringify({ categories: ["necessary", "analytics"] })
-)}`;
+const analyticsConsentCookie = `cc_cookie=${savedConsentCookieValue({ categories: ["necessary", "analytics"] })}`;
 
 /** A request from `caller`, a consented visitor its PostHog cookies name. */
 const request = (caller: string) =>

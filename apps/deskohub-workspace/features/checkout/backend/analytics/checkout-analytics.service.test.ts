@@ -8,6 +8,7 @@ import {
 } from "@/shared/agent-traffic/agent-traffic";
 import type { AnalyticsEventMessage } from "@/shared/backend/analytics/analytics-event-delivery.service";
 import { withWorkspaceRequestContext } from "@/shared/backend/workspace-request-context";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   POSTHOG_DISTINCT_ID_COOKIE,
   POSTHOG_SESSION_ID_COOKIE,
@@ -21,7 +22,7 @@ const { recordCheckoutAnalytics } = await import(
 );
 
 const consentCookie = (categories: readonly string[]) =>
-  `cc_cookie=${encodeURIComponent(JSON.stringify({ categories }))}`;
+  `cc_cookie=${savedConsentCookieValue({ categories })}`;
 
 const sentPropertyKeys = (message: AnalyticsEventMessage | undefined) =>
   Object.keys(message?.properties ?? {}).sort();

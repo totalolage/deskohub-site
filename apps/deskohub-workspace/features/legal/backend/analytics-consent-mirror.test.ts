@@ -6,6 +6,8 @@ import {
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
+import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
+import { getLegalDocumentVersion } from "@/features/legal/document-version";
 import { CurrentWorkspaceRequestHeaders } from "@/shared/backend/workspace-request-context";
 import {
   type AnalyticsConsentDecisionRecord,
@@ -16,29 +18,48 @@ import {
   mirrorDeviceAnalyticsConsent,
   recordBannerAnalyticsConsent,
   recordSignedInDeviceAnalyticsConsent,
+  resolveSilentAnalyticsGrant,
 } from "./analytics-consent-mirror";
 
 const accountId = customerAccountIdSchema.make("analytics-mirror-account");
 
+type CurrentDecision = Effect.Success<
+  ReturnType<AnalyticsConsentLedger["Service"]["currentDecision"]>
+>;
+
 let mirrored: AnalyticsConsentMirrorRecord[] = [];
 let recorded: AnalyticsConsentDecisionRecord[] = [];
+let currentDecision: CurrentDecision = Option.none();
 
 const ledger = Layer.succeed(AnalyticsConsentLedger, {
   record: (input) => Effect.sync(() => void recorded.push(input)),
   mirror: (input) => Effect.sync(() => mirrored.push(input) > 0),
-  currentDecision: () => Effect.die("unused"),
+  currentDecision: () => Effect.sync(() => currentDecision),
 });
 
 beforeEach(() => {
   mirrored = [];
   recorded = [];
+  currentDecision = Option.none();
 });
 
+/** A consent cookie as the banner saves it, under the current revision by default. */
 const consentCookie = (value: {
   readonly categories: readonly string[];
+  readonly revision?: number;
   readonly lastConsentTimestamp?: string;
   readonly languageCode?: string;
-}) => `theme=dark; cc_cookie=${encodeURIComponent(JSON.stringify(value))}`;
+}) =>
+  `theme=dark; cc_cookie=${encodeURIComponent(
+    JSON.stringify({ revision: getConsentBannerRevision(), ...value })
+  )}`;
+
+// A choice saved before the banner was bound to the legal documents.
+const preBindingCookie = consentCookie({
+  categories: ["necessary", "analytics"],
+  revision: 0,
+  lastConsentTimestamp: "2026-11-02T09:30:00.000Z",
+});
 
 const device = (cookieHeader: string) => ({
   accountId,
@@ -115,12 +136,16 @@ describe("mirrorDeviceAnalyticsConsent", () => {
     expect(mirrored.map(({ locale }) => locale)).toEqual(["cs-CZ"]);
   });
 
-  test("mirrors nothing without a saved choice or with a malformed one", async () => {
+  test("mirrors nothing without a saved choice, with a malformed one, or with one saved under an earlier banner revision", async () => {
     for (const cookieHeader of [
       "",
       "theme=dark",
       "cc_cookie=",
       `cc_cookie=${encodeURIComponent("{")}`,
+      preBindingCookie,
+      `cc_cookie=${encodeURIComponent(
+        JSON.stringify({ categories: ["necessary", "analytics"] })
+      )}`,
     ]) {
       expect(
         await run(
@@ -156,8 +181,11 @@ describe("recordBannerAnalyticsConsent", () => {
     ]);
   });
 
-  test("records nothing without a saved choice", async () => {
+  test("records nothing without a saved choice under the current revision", async () => {
     expect(await run(recordBannerAnalyticsConsent(device("")))).toBe(false);
+    expect(
+      await run(recordBannerAnalyticsConsent(device(preBindingCookie)))
+    ).toBe(false);
     expect(recorded).toEqual([]);
   });
 });
@@ -224,5 +252,86 @@ describe("recordSignedInDeviceAnalyticsConsent", () => {
     }
     expect(mirrored).toEqual([]);
     expect(recorded).toEqual([]);
+  });
+});
+
+describe("resolveSilentAnalyticsGrant", () => {
+  const grantedAt = Temporal.Instant.from("2026-11-02T09:30:00.123456Z");
+  const decision = (
+    overrides: Partial<NonNullable<Option.Option.Value<CurrentDecision>>>
+  ): CurrentDecision =>
+    Option.some({
+      decision: "grant",
+      documentHash: getLegalDocumentVersion("cs-CZ", "privacy-policy"),
+      locale: "cs-CZ",
+      decidedAt: grantedAt,
+      source: "banner",
+      ...overrides,
+    });
+
+  const resolve = (
+    cookieHeader: string,
+    session: {
+      readonly accountId: CustomerAccountId;
+      readonly deletionRequested: boolean;
+    } | null = { accountId, deletionRequested: false }
+  ) =>
+    run(
+      resolveSilentAnalyticsGrant().pipe(
+        Effect.map(Option.map(String)),
+        Effect.map(Option.getOrUndefined),
+        Effect.provideService(
+          CurrentWorkspaceRequestHeaders,
+          new Headers({ cookie: cookieHeader })
+        ),
+        Effect.provide(
+          Layer.succeed(CustomerAuthentication, {
+            currentUser: Effect.succeed(
+              session && { ...session, email: testEmailAddress("silent") }
+            ),
+          })
+        )
+      )
+    );
+
+  test("a device without a consent cookie takes the account's grant for the current notice, at the grant's instant", async () => {
+    currentDecision = decision({});
+
+    expect(await resolve("theme=dark")).toBe(String(grantedAt));
+    expect(mirrored).toEqual([]);
+    expect(recorded).toEqual([]);
+  });
+
+  test("a withdrawal, a grant for an earlier notice, or no decision gives no silent grant", async () => {
+    for (const current of [
+      decision({ decision: "withdraw" }),
+      decision({ documentHash: "an-earlier-privacy-notice" }),
+      decision({ locale: "en-US" }),
+      Option.none(),
+    ]) {
+      currentDecision = current;
+      expect(await resolve("theme=dark")).toBeUndefined();
+    }
+  });
+
+  test("a device holding a consent cookie, even one from an earlier revision, is asked again instead", async () => {
+    currentDecision = decision({});
+
+    for (const cookieHeader of [
+      preBindingCookie,
+      consentCookie({ categories: ["necessary"] }),
+      "cc_cookie=",
+    ]) {
+      expect(await resolve(cookieHeader)).toBeUndefined();
+    }
+  });
+
+  test("a signed-out request or an account being deleted gives no silent grant", async () => {
+    currentDecision = decision({});
+
+    expect(await resolve("theme=dark", null)).toBeUndefined();
+    expect(
+      await resolve("theme=dark", { accountId, deletionRequested: true })
+    ).toBeUndefined();
   });
 });

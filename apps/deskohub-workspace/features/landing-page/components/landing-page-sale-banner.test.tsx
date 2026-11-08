@@ -16,6 +16,8 @@ import {
 } from "@/features/discounts/contracts";
 import { workspaceProductFamilies } from "@/features/discounts/product-target";
 import { type Locale, m } from "@/features/i18n";
+import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -23,6 +25,7 @@ import {
 import { SALE_BANNER_CLICKED_EVENT } from "../landing-page-sale-banner-analytics";
 import { getLandingPageSaleBannerContent } from "../landing-page-sale-banner-content";
 import { LandingPageSaleBanner } from "./landing-page-sale-banner";
+import { bindVisitorConsentRevision } from "@/features/cookie-consent/visitor-consent";
 
 type SaleBannerClickProperties = {
   readonly discount_id: string;
@@ -48,10 +51,9 @@ mock.module("next/link", () => ({
 }));
 
 const setAnalyticsConsent = () => {
+  bindVisitorConsentRevision(getConsentBannerRevision());
   // biome-ignore lint/suspicious/noDocumentCookie: This test sets the cookie consumed by the analytics boundary.
-  document.cookie = `cc_cookie=${encodeURIComponent(
-    JSON.stringify({ categories: ["necessary", "analytics"] })
-  )}; Path=/`;
+  document.cookie = `cc_cookie=${savedConsentCookieValue({ categories: ["necessary", "analytics"] })}; Path=/`;
 };
 
 const clearAnalyticsConsent = () => {

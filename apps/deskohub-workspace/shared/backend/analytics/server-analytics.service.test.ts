@@ -7,6 +7,7 @@ import { PostHog } from "posthog-node";
 import { unclassifiedTraffic } from "@/shared/agent-traffic/agent-traffic";
 import { PostHogRuntimeConfig } from "@/shared/backend/config/posthog.config";
 import { withWorkspaceRequestContext } from "@/shared/backend/workspace-request-context";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   POSTHOG_DISTINCT_ID_COOKIE,
   POSTHOG_SESSION_ID_COOKIE,
@@ -24,9 +25,7 @@ const { recordServerAnalytics, serverAnalyticsTestConfig } = await import(
 const timestamp = Temporal.Instant.from("2026-06-17T10:00:00.000Z");
 
 const consentedVisitorHeaders = new Headers({
-  cookie: `cc_cookie=${encodeURIComponent(
-    JSON.stringify({ categories: ["necessary", "analytics"] })
-  )}; ${POSTHOG_DISTINCT_ID_COOKIE}=synthetic-browser-id; ${POSTHOG_SESSION_ID_COOKIE}=synthetic-session-id`,
+  cookie: `cc_cookie=${savedConsentCookieValue({ categories: ["necessary", "analytics"] })}; ${POSTHOG_DISTINCT_ID_COOKIE}=synthetic-browser-id; ${POSTHOG_SESSION_ID_COOKIE}=synthetic-session-id`,
 });
 
 const captureAll = (

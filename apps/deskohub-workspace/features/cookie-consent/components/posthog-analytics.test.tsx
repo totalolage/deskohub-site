@@ -14,11 +14,13 @@ import type {
   CaptureResult,
   PostHogConfig,
 } from "posthog-js";
+import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
 import { runWorkspaceBrowserEffect } from "@/shared/browser/workspace-browser-effect";
 import {
   discardWorkspaceBrowserLogs,
   reportWorkspaceBrowserFailure,
 } from "@/shared/browser/workspace-browser-logs";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -28,6 +30,7 @@ import {
   discardAnalyticsEvents,
 } from "../analytics-events";
 import {
+  bindVisitorConsentRevision,
   CONSENT_UPDATED_EVENT,
   CONSENT_UPDATED_STORAGE_KEY,
 } from "../visitor-consent";
@@ -260,7 +263,7 @@ const setConsentCookie = (categories: readonly unknown[]) => {
 };
 
 const createConsentCookieString = (categories: readonly unknown[]) =>
-  `cc_cookie=${encodeURIComponent(JSON.stringify({ categories }))}`;
+  `cc_cookie=${savedConsentCookieValue({ categories })}`;
 
 const clearConsentCookie = () => {
   // biome-ignore lint/suspicious/noDocumentCookie: The browser test needs to simulate another tab removing consent.
@@ -311,6 +314,7 @@ describe("PostHogAnalytics", () => {
   });
 
   beforeEach(() => {
+    bindVisitorConsentRevision(getConsentBannerRevision());
     window.happyDOM.setURL("https://deskohub.test/account");
     posthogHost = "https://posthog.example";
     analyticsAccountIdentity = { status: "pending" };
@@ -889,7 +893,11 @@ describe("PostHogAnalytics", () => {
     setConsentCookie(["necessary"]);
     window.dispatchEvent(
       new CustomEvent(CONSENT_UPDATED_EVENT, {
-        detail: { _tag: "ConsentUpdated", acceptedCategories: ["necessary"] },
+        detail: {
+          change: "local",
+          _tag: "ConsentUpdated",
+          acceptedCategories: ["necessary"],
+        },
       })
     );
     expect(document.cookie).not.toContain(
@@ -911,6 +919,7 @@ describe("PostHogAnalytics", () => {
     window.dispatchEvent(
       new CustomEvent(CONSENT_UPDATED_EVENT, {
         detail: {
+          change: "local",
           _tag: "ConsentUpdated",
           acceptedCategories: ["necessary", "analytics"],
         },
@@ -929,6 +938,7 @@ describe("PostHogAnalytics", () => {
     window.dispatchEvent(
       new CustomEvent(CONSENT_UPDATED_EVENT, {
         detail: {
+          change: "local",
           _tag: "ConsentUpdated",
           acceptedCategories: ["necessary", "analytics"],
         },

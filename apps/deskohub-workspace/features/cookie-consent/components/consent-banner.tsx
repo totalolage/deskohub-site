@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect } from "react";
 import * as CookieConsent from "vanilla-cookieconsent";
 import "vanilla-cookieconsent/dist/cookieconsent.css";
+import {
+  getAnalyticsAccountIdentity,
+  subscribeAnalyticsAccountIdentity,
+} from "@/features/account/analytics-identity";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
+import { resolveSilentAnalyticsGrantForDevice } from "@/features/legal/actions";
 import type { ConsentCategory } from "@/shared/utils/consent-cookie";
+import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { createConsentConfig } from "../config/consent-config";
 import {
   type GoogleConsentUpdateOptions,
@@ -13,28 +20,62 @@ import {
 } from "../utils/google-consent-mode";
 import {
   announceVisitorConsentChange,
+  bindVisitorConsentRevision,
   onVisitorConsentSaved,
   visitorConsent,
 } from "../visitor-consent";
 
 type ConsentBannerProps = {
   locale: Locale;
+  /**
+   * The banner revision of the current privacy notice and cookie policy. A
+   * choice saved under another revision counts as none.
+   */
+  revision: number;
 };
 
 /**
  * Runs the vanilla-cookieconsent banner and preferences modal, and applies
- * each saved consent to Google consent mode before announcing it.
+ * each saved consent to Google consent mode before announcing it. A device
+ * without a choice under the current revision sees the banner once its
+ * session is known, unless the signed-in account's current decision is a
+ * grant for the current privacy notice: the device then accepts analytics
+ * only, without the banner (a silent grant).
  */
-export function ConsentBanner({ locale }: ConsentBannerProps) {
+export function ConsentBanner({ locale, revision }: ConsentBannerProps) {
+  // Layout effects run before every passive effect, where consent is read.
+  useLayoutEffect(() => bindVisitorConsentRevision(revision), [revision]);
+
+  const silentGrant = useWorkspaceAction(
+    resolveSilentAnalyticsGrantForDevice,
+    {}
+  );
+  const askForAccountGrant = useEffectEvent(() =>
+    silentGrant.executeAsync({}).then(
+      (result) => result?.data ?? null,
+      () => null
+    )
+  );
+
   useEffect(() => {
     setGoogleConsentDefaults();
     const stopApplyingSavedConsent = onVisitorConsentSaved(applyConsent);
+    let stopPrompting: (() => void) | undefined;
+    let active = true;
 
-    CookieConsent.run({
-      ...createConsentConfig(locale),
-      onFirstConsent: () => applyConsent({ announceToTagManager: true }),
-      onConsent: () => applyConsent({ announceToTagManager: false }),
-      onChange: () => applyConsent({ announceToTagManager: true }),
+    vendorRuns = Promise.all([
+      vendorRuns,
+      CookieConsent.run({
+        ...createConsentConfig(locale, revision),
+        onFirstConsent: () => applyConsent({ announceToTagManager: true }),
+        onConsent: () => applyConsent({ announceToTagManager: false }),
+        onChange: () => applyConsent({ announceToTagManager: true }),
+      }),
+    ]);
+    void vendorRuns.then(() => {
+      if (active && vendorRendered()) {
+        stopPrompting = promptForConsentChoice(askForAccountGrant);
+      }
     });
 
     applyConsent({ announceToTagManager: false });
@@ -49,13 +90,19 @@ export function ConsentBanner({ locale }: ConsentBannerProps) {
     });
 
     return () => {
+      active = false;
+      stopPrompting?.();
       stopFollowingConsent();
       stopApplyingSavedConsent();
     };
-  }, [locale]);
+  }, [locale, revision]);
 
   return null;
 }
+
+// The vendor's run is asynchronous, and a run while it already runs (a
+// re-run effect) returns at once, so prompting waits for every earlier run.
+let vendorRuns: Promise<unknown> = Promise.resolve();
 
 // The accepted set Google consent mode last received in this tab.
 let appliedCategories: string | undefined;
@@ -75,4 +122,90 @@ function applyGoogleConsent(
 function applyConsent(options: GoogleConsentUpdateOptions) {
   applyGoogleConsent(visitorConsent.acceptedCategories(), options);
   announceVisitorConsentChange();
+}
+
+/**
+ * Whether the vendor rendered its banner root, `#cc-main`. With its default
+ * `hideFromBots`, it stops before rendering for crawlers and automated
+ * browsers (`navigator.webdriver`), which are then never prompted.
+ */
+const vendorRendered = () => document.getElementById("cc-main") !== null;
+
+// How long a device without a consent cookie waits for its session before
+// the banner opens anyway.
+const sessionWaitMs = 5000;
+
+/**
+ * Shows the banner while the device has no choice under the current
+ * revision. A device holding a consent cookie from an earlier revision sees
+ * it at once. A device without any consent cookie waits until its session is
+ * known: for each signed-in account the session verifies, the server says
+ * whether the account's grant applies (a silent grant); if it does, the
+ * device accepts analytics only and the banner stays closed (or closes),
+ * else it opens. A session still unknown after `sessionWaitMs` opens it.
+ * Stops once the device holds a choice.
+ */
+function promptForConsentChoice(
+  askForAccountGrant: () => Promise<string | null>
+): () => void {
+  let stopped = false;
+  let shown = false;
+  let askedAccount: CustomerAccountId | undefined;
+
+  const show = () => {
+    if (stopped || shown || visitorConsent.hasChoice()) return;
+    shown = true;
+    CookieConsent.show(true);
+  };
+
+  if (visitorConsent.hasChoice()) return () => undefined;
+  if (visitorConsent.saveMark() !== "") {
+    show();
+    return () => undefined;
+  }
+
+  const stillSignedInAs = (accountId: CustomerAccountId) => {
+    const identity = getAnalyticsAccountIdentity();
+    return (
+      identity.status === "authenticated" && identity.accountId === accountId
+    );
+  };
+
+  // A late answer for an account the session no longer holds, or for a
+  // device that saved a cookie meanwhile, changes nothing.
+  const applyAccountGrant =
+    (accountId: CustomerAccountId) => (grantedAt: string | null) => {
+      if (
+        stopped ||
+        !stillSignedInAs(accountId) ||
+        visitorConsent.saveMark() !== ""
+      ) {
+        return;
+      }
+      if (grantedAt === null) return show();
+      if (shown) CookieConsent.hide();
+      visitorConsent.applyAccountGrant(grantedAt);
+    };
+
+  const follow = () => {
+    if (stopped || visitorConsent.hasChoice()) return;
+    const identity = getAnalyticsAccountIdentity();
+    if (identity.status === "pending") return;
+    if (identity.status !== "authenticated") return show();
+    if (identity.accountId === askedAccount) return;
+
+    askedAccount = identity.accountId;
+    void askForAccountGrant().then(applyAccountGrant(identity.accountId));
+  };
+
+  const sessionWait = setTimeout(() => {
+    if (getAnalyticsAccountIdentity().status === "pending") show();
+  }, sessionWaitMs);
+  const stopFollowingIdentity = subscribeAnalyticsAccountIdentity(follow);
+  follow();
+  return () => {
+    stopped = true;
+    clearTimeout(sessionWait);
+    stopFollowingIdentity();
+  };
 }

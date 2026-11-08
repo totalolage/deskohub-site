@@ -25,6 +25,17 @@ type ConsentCookieDiagnostics = {
   readonly onUnexpectedValue?: (reason: UnexpectedConsentCookieReason) => void;
 };
 
+/** How to read the consent cookie. */
+export type ConsentCookieReading = ConsentCookieDiagnostics & {
+  /**
+   * The banner's current revision. A copy saved under another revision, or
+   * under none, holds no choice: the banner asks again, as
+   * vanilla-cookieconsent does when the cookie's revision differs from its
+   * configured one.
+   */
+  readonly revision: number;
+};
+
 export function getConsentCookieValuesFromCookie(cookieString: string) {
   return new URLSearchParams(cookieString.replace(/;\s*/g, "&")).getAll(
     CONSENT_COOKIE_NAME
@@ -51,14 +62,15 @@ export interface ConsentCookieChoice {
 
 /**
  * The device's saved choice. None without a consent cookie, when a copy is
- * emptied, or when any copy is malformed, so only a well-formed save counts
- * as a choice. Several copies read as the categories every copy accepts,
+ * emptied or saved under another banner revision, or when any copy is
+ * malformed, so only a well-formed save under the current revision counts as
+ * a choice. Several copies read as the categories every copy accepts,
  * dated at the oldest save, and as undated when any copy is. Every copy is
  * read, so diagnostics see each unexpected value.
  */
 export function readConsentCookieChoice(
   cookieString: string,
-  diagnostics?: ConsentCookieDiagnostics
+  reading: ConsentCookieReading
 ): Option.Option<ConsentCookieChoice> {
   const consentCookieValues = getConsentCookieValuesFromCookie(cookieString);
   if (consentCookieValues.length === 0) return Option.none();
@@ -66,9 +78,10 @@ export function readConsentCookieChoice(
   let hasUnexpectedValue = false;
   const copies = consentCookieValues.map((cookieValue) =>
     readConsentCookieCopy(cookieValue, {
+      revision: reading.revision,
       onUnexpectedValue: (reason) => {
         hasUnexpectedValue = true;
-        diagnostics?.onUnexpectedValue?.(reason);
+        reading.onUnexpectedValue?.(reason);
       },
     })
   );
@@ -97,14 +110,15 @@ export function readConsentCookieChoice(
 
 /**
  * The categories every copy of the consent cookie accepts. Empty without a
- * consent cookie or when any copy is malformed, so an unexpected value reads
- * as declined. Every copy is read, so diagnostics see each unexpected value.
+ * choice under the current revision or when any copy is malformed, so an
+ * unexpected value reads as declined. Every copy is read, so diagnostics see
+ * each unexpected value.
  */
 export function getAcceptedConsentCategoriesFromCookie(
   cookieString: string,
-  diagnostics?: ConsentCookieDiagnostics
+  reading: ConsentCookieReading
 ): ConsentCategory[] {
-  return Option.match(readConsentCookieChoice(cookieString, diagnostics), {
+  return Option.match(readConsentCookieChoice(cookieString, reading), {
     onNone: () => [],
     onSome: (choice) => [...choice.acceptedCategories],
   });
@@ -112,36 +126,38 @@ export function getAcceptedConsentCategoriesFromCookie(
 
 /**
  * True only when the browser holds a consent cookie and every copy of it is
- * well-formed and accepts the category. A malformed copy reads as declined.
+ * well-formed, saved under the current revision, and accepts the category. A
+ * malformed or earlier-revision copy reads as declined.
  */
 export function isConsentCategoryAcceptedInCookie(
   cookieString: string,
   category: ConsentCategory,
-  diagnostics?: ConsentCookieDiagnostics
+  reading: ConsentCookieReading
 ): boolean {
-  return getAcceptedConsentCategoriesFromCookie(
-    cookieString,
-    diagnostics
-  ).includes(category);
+  return getAcceptedConsentCategoriesFromCookie(cookieString, reading).includes(
+    category
+  );
 }
 
 /**
- * One copy's saved choice. None for an emptied copy, which accepts nothing
- * without being unexpected, and for a malformed one, which it reports.
+ * One copy's saved choice. None for an emptied copy or one saved under
+ * another revision, which accept nothing without being unexpected, and for a
+ * malformed one, which it reports.
  */
 function readConsentCookieCopy(
   cookieValue: string,
-  diagnostics: ConsentCookieDiagnostics
+  reading: ConsentCookieReading
 ): Option.Option<ConsentCookieChoice> {
   if (!cookieValue) return Option.none();
   const reportUnexpectedValue = (reason: UnexpectedConsentCookieReason) =>
-    diagnostics.onUnexpectedValue?.(reason);
+    reading.onUnexpectedValue?.(reason);
 
   const savedValue = readSavedConsentCookieValue(cookieValue);
   if (Result.isFailure(savedValue)) {
     reportUnexpectedValue(savedValue.failure);
     return Option.none();
   }
+  if (savedValue.success.revision !== reading.revision) return Option.none();
 
   const acceptedCategories: ConsentCategory[] = [];
   let hasUnexpectedCategory = false;
@@ -175,14 +191,15 @@ function readConsentCookieCopy(
 }
 
 /**
- * The categories list, last-consent timestamp, and language a consent cookie
- * value holds, or why it holds no categories list.
+ * The categories list, revision, last-consent timestamp, and language a
+ * consent cookie value holds, or why it holds no categories list.
  */
 const readSavedConsentCookieValue = (
   cookieValue: string
 ): Result.Result<
   {
     readonly categories: readonly unknown[];
+    readonly revision: unknown;
     readonly lastConsentTimestamp: unknown;
     readonly languageCode: unknown;
   },
@@ -193,13 +210,20 @@ const readSavedConsentCookieValue = (
   const value = parsedValue.value;
   if (!Predicate.isObject(value)) return Result.fail("invalid_value_type");
 
-  const { categories, lastConsentTimestamp, languageCode } = value as {
-    categories?: unknown;
-    lastConsentTimestamp?: unknown;
-    languageCode?: unknown;
-  };
+  const { categories, revision, lastConsentTimestamp, languageCode } =
+    value as {
+      categories?: unknown;
+      revision?: unknown;
+      lastConsentTimestamp?: unknown;
+      languageCode?: unknown;
+    };
   return Array.isArray(categories)
-    ? Result.succeed({ categories, lastConsentTimestamp, languageCode })
+    ? Result.succeed({
+        categories,
+        revision,
+        lastConsentTimestamp,
+        languageCode,
+      })
     : Result.fail("invalid_categories_type");
 };
 
