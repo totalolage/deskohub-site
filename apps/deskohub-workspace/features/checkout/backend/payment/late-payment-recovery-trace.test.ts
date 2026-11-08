@@ -476,12 +476,12 @@ describe("LatePaymentRecoveryService.recover original hold reuse", () => {
         "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
-      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
-      Payment order: reservation-id
-      Product: Basic Day Pass
-      Date: 2099-01-01
-      Coffee: yes
-      Price: CZK 340)"
+      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Rezervace z Deskohub Workspace po zaplacení
+      Platební objednávka: reservation-id
+      Produkt: Basic Day Pass
+      Datum: 2099-01-01
+      Káva: ano
+      Cena: 340 Kč)"
       ,
         "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
@@ -721,12 +721,12 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
         "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
-      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
-      Payment order: reservation-id
-      Product: Basic Day Pass
-      Date: 2099-01-01
-      Coffee: yes
-      Price: CZK 340)"
+      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Rezervace z Deskohub Workspace po zaplacení
+      Platební objednávka: reservation-id
+      Produkt: Basic Day Pass
+      Datum: 2099-01-01
+      Káva: ano
+      Cena: 340 Kč)"
       ,
         "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
@@ -816,12 +816,12 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
         "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
-      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
-      Payment order: reservation-id
-      Product: Basic Day Pass
-      Date: 2099-01-01
-      Coffee: yes
-      Price: CZK 340)"
+      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Rezervace z Deskohub Workspace po zaplacení
+      Platební objednávka: reservation-id
+      Produkt: Basic Day Pass
+      Datum: 2099-01-01
+      Káva: ano
+      Cena: 340 Kč)"
       ,
         "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
@@ -926,12 +926,12 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
         "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
-      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
-      Payment order: reservation-id
-      Product: Basic Day Pass
-      Date: 2099-01-01
-      Coffee: yes
-      Price: CZK 340)"
+      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Rezervace z Deskohub Workspace po zaplacení
+      Platební objednávka: reservation-id
+      Produkt: Basic Day Pass
+      Datum: 2099-01-01
+      Káva: ano
+      Cena: 340 Kč)"
       ,
         "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
@@ -1010,12 +1010,12 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
         "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
-      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
-      Payment order: reservation-id
-      Product: Basic Day Pass
-      Date: 2099-01-01
-      Coffee: yes
-      Price: CZK 340)"
+      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Rezervace z Deskohub Workspace po zaplacení
+      Platební objednávka: reservation-id
+      Produkt: Basic Day Pass
+      Datum: 2099-01-01
+      Káva: ano
+      Cena: 340 Kč)"
       ,
         "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
@@ -1076,12 +1076,12 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
             "customerId": "dotypos-customer-id",
             "endDate": 2099-01-01T23:00:00.000Z,
             "note": 
-      "Deskohub workspace post-payment reservation
-      Payment order: reservation-id
-      Product: Basic Day Pass
-      Date: 2099-01-01
-      Coffee: yes
-      Price: CZK 340"
+      "Rezervace z Deskohub Workspace po zaplacení
+      Platební objednávka: reservation-id
+      Produkt: Basic Day Pass
+      Datum: 2099-01-01
+      Káva: ano
+      Cena: 340 Kč"
       ,
             "seats": 1,
             "startDate": 2098-12-31T23:00:00.000Z,
@@ -1119,12 +1119,12 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
-      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
-      Payment order: reservation-id
-      Product: Basic Day Pass
-      Date: 2099-01-01
-      Coffee: yes
-      Price: CZK 340)"
+      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Rezervace z Deskohub Workspace po zaplacení
+      Platební objednávka: reservation-id
+      Produkt: Basic Day Pass
+      Datum: 2099-01-01
+      Káva: ano
+      Cena: 340 Kč)"
       ,
         "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
@@ -1166,14 +1166,14 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
             "customerId": "dotypos-customer-id",
             "endDate": 2099-02-03T12:00:00.000Z,
             "note": 
-      "Deskohub workspace post-payment reservation
-      Payment order: reservation-id
-      Product: Zasedací místnost
-      Date: 2099-02-03
-      Time: 2099-02-03T08:00:00Z-2099-02-03T12:00:00Z
-      Duration: 4 hodiny
-      Setup from: 08:45
-      Price: 980 Kč"
+      "Rezervace z Deskohub Workspace po zaplacení
+      Platební objednávka: reservation-id
+      Produkt: Zasedací místnost
+      Datum: 2099-02-03
+      Čas: 2099-02-03T08:00:00Z-2099-02-03T12:00:00Z
+      Délka: 4 hodiny
+      Příprava od: 08:45
+      Cena: 980 Kč"
       ,
             "seats": 1,
             "startDate": 2099-02-03T07:45:00.000Z,
@@ -1214,12 +1214,12 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
             "customerId": "dotypos-customer-id",
             "endDate": 2099-06-21T22:00:00.000Z,
             "note": 
-      "Deskohub workspace post-payment reservation
-      Payment order: reservation-id
-      Product: Private office
-      Dates: 2099-06-20-2099-06-21
-      Seats: 3
-      Price: CZK 2,950"
+      "Rezervace z Deskohub Workspace po zaplacení
+      Platební objednávka: reservation-id
+      Produkt: Soukromá kancelář
+      Termín: 2099-06-20-2099-06-21
+      Počet míst: 3
+      Cena: 2 950 Kč"
       ,
             "seats": 3,
             "startDate": 2099-06-19T22:00:00.000Z,
@@ -1435,7 +1435,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         {
           id: "replacement-id",
           status: "NEW",
-          note: "Payment order: reservation-id",
+          note: "Platební objednávka: reservation-id",
         },
       ],
     });
@@ -1474,7 +1474,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         {
           id: "replacement-id",
           status: "CONFIRMED",
-          note: "Payment order: reservation-id",
+          note: "Platební objednávka: reservation-id",
         },
       ],
     });
@@ -1618,12 +1618,12 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
-      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
-      Payment order: reservation-id
-      Product: Basic Day Pass
-      Date: 2099-01-01
-      Coffee: yes
-      Price: CZK 340)"
+      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Rezervace z Deskohub Workspace po zaplacení
+      Platební objednávka: reservation-id
+      Produkt: Basic Day Pass
+      Datum: 2099-01-01
+      Káva: ano
+      Cena: 340 Kč)"
       ,
         "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.requireReview(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, failureCode=late_payment_replacement_id_missing, completedAt=<Instant>)",
@@ -1666,12 +1666,12 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
-      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
-      Payment order: reservation-id
-      Product: Basic Day Pass
-      Date: 2099-01-01
-      Coffee: yes
-      Price: CZK 340)"
+      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Rezervace z Deskohub Workspace po zaplacení
+      Platební objednávka: reservation-id
+      Produkt: Basic Day Pass
+      Datum: 2099-01-01
+      Káva: ano
+      Cena: 340 Kč)"
       ,
         "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
@@ -1717,12 +1717,12 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
-      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
-      Payment order: reservation-id
-      Product: Basic Day Pass
-      Date: 2099-01-01
-      Coffee: yes
-      Price: CZK 340)"
+      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Rezervace z Deskohub Workspace po zaplacení
+      Platební objednávka: reservation-id
+      Produkt: Basic Day Pass
+      Datum: 2099-01-01
+      Káva: ano
+      Cena: 340 Kč)"
       ,
         "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",
@@ -1765,12 +1765,12 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "Info Workspace Dotypos reservation input built {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation started {date,entryTier,input,locale,paymentOrderId,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         
-      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Deskohub workspace post-payment reservation
-      Payment order: reservation-id
-      Product: Basic Day Pass
-      Date: 2099-01-01
-      Coffee: yes
-      Price: CZK 340)"
+      "call dotypos.createReservation(customerId=dotypos-customer-id, startDate=<Date>, endDate=<Date>, seats=1, tableId=table-id, status=CONFIRMED, note=Rezervace z Deskohub Workspace po zaplacení
+      Platební objednávka: reservation-id
+      Produkt: Basic Day Pass
+      Datum: 2099-01-01
+      Káva: ano
+      Cena: 340 Kč)"
       ,
         "Info Workspace Dotypos reservation creation completed {date,entryTier,input,locale,paymentOrderId,reservation,reservationInput,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "call recoveries.completeWithReplacement(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, recoveredDotyposReservationId=replacement-id, reservationState=confirmed, completedAt=<Instant>)",

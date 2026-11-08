@@ -2729,8 +2729,8 @@ describe("CheckoutService", () => {
     expect(events).toEqual(["note-updated", "provider-created"]);
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
     const note = harness.updateReservation.mock.calls[0]?.[0]?.note;
-    expect(note).toContain("Discount: Letni sleva 50 % (");
-    expect(note).toContain("-CZK\u00a0205");
+    expect(note).toContain("Sleva: Letni sleva 50 % (");
+    expect(note).toContain("-205\u00a0Kč");
     expect(note).not.toContain("public-summer-sale");
     expect(note).not.toContain("private-provider-namespace");
     expect(note).not.toContain("private-provider-reference");
