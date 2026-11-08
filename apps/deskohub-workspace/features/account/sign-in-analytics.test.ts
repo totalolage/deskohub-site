@@ -13,11 +13,12 @@ import {
   deliverAnalyticsEvents,
   discardAnalyticsEvents,
 } from "@/features/cookie-consent/analytics-events";
+import { bindVisitorConsentRevision } from "@/features/cookie-consent/visitor-consent";
+import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 
 const completionStorageKey = "deskohub:account-sign-in-completion";
-const consentCookie = `cc_cookie=${encodeURIComponent(
-  JSON.stringify({ categories: ["necessary", "analytics"] })
-)}; path=/`;
+const consentCookie = `cc_cookie=${savedConsentCookieValue({ categories: ["necessary", "analytics"] })}; path=/`;
 let signInAnalytics: typeof import("./sign-in-analytics");
 let originalDateNow: typeof Date.now;
 let currentTime: number;
@@ -42,6 +43,7 @@ describe("sign-in analytics", () => {
   });
 
   beforeEach(() => {
+    bindVisitorConsentRevision(getConsentBannerRevision());
     window.happyDOM.setURL("https://deskohub.test/account");
     currentTime = Date.parse("2026-10-15T12:00:00.000Z");
     Date.now = () => currentTime;

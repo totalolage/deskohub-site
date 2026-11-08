@@ -6,10 +6,10 @@ import {
 } from "@/features/checkout/legal-evidence";
 import type { Locale } from "@/features/i18n";
 import {
-  getLegalDocumentPath,
   getLegalDocumentVersion,
   legalDocumentHashAlgorithm,
 } from "./document-version";
+import { getLegalDocumentPath } from "./legal-document-path";
 import type { LegalDocumentKey } from "./legal-document-summaries";
 
 const decodeLegalEvidenceMap = Schema.decodeUnknownSync(

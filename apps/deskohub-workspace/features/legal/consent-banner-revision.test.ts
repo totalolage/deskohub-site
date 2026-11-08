@@ -1,0 +1,54 @@
+import "@/shared/testing/workspace-test-env";
+
+import { describe, expect, test } from "bun:test";
+import { type Locale, locales } from "@/features/i18n";
+import { getConsentBannerRevision } from "./consent-banner-revision";
+import type { LegalDocumentKey } from "./legal-document-summaries";
+
+const documentKeys: readonly LegalDocumentKey[] = [
+  "privacy-policy",
+  "cookie-policy",
+  "terms-and-conditions",
+  "marketing-communications",
+  "operating-rules",
+];
+
+/** Published versions where one document of one locale was edited. */
+const versionsWithEdit =
+  (edited?: { readonly locale: Locale; readonly documentKey: string }) =>
+  (locale: Locale, documentKey: LegalDocumentKey) =>
+    edited?.locale === locale && edited.documentKey === documentKey
+      ? `${locale}-${documentKey}-edited`
+      : `${locale}-${documentKey}`;
+
+describe("getConsentBannerRevision", () => {
+  const published = getConsentBannerRevision(versionsWithEdit());
+
+  test("an edit to the privacy notice or the cookie policy in any locale gives a new revision", () => {
+    for (const locale of locales) {
+      for (const documentKey of ["privacy-policy", "cookie-policy"] as const) {
+        expect(
+          getConsentBannerRevision(versionsWithEdit({ locale, documentKey }))
+        ).not.toBe(published);
+      }
+    }
+  });
+
+  test("an edit to any other legal document keeps the revision", () => {
+    for (const locale of locales) {
+      for (const documentKey of documentKeys.slice(2)) {
+        expect(
+          getConsentBannerRevision(versionsWithEdit({ locale, documentKey }))
+        ).toBe(published);
+      }
+    }
+  });
+
+  test("the published revision is a positive safe integer, so no cookie saved before the binding matches it", () => {
+    const revision = getConsentBannerRevision();
+
+    expect(Number.isSafeInteger(revision)).toBe(true);
+    expect(revision).toBeGreaterThan(0);
+    expect(getConsentBannerRevision()).toBe(revision);
+  });
+});

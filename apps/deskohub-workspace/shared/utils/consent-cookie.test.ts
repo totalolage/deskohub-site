@@ -7,12 +7,17 @@ import {
   type UnexpectedConsentCookieReason,
 } from "./consent-cookie";
 
+// The banner revision current in these tests.
+const revision = 7;
+const current = { revision };
+
 const cookieWithCategories = (...categories: readonly unknown[]) =>
-  `cc_cookie=${encodeURIComponent(JSON.stringify({ categories }))}`;
+  `cc_cookie=${encodeURIComponent(JSON.stringify({ categories, revision }))}`;
 
 const readReasons = (cookie: string) => {
   const reasons: UnexpectedConsentCookieReason[] = [];
   const accepted = getAcceptedConsentCategoriesFromCookie(cookie, {
+    revision,
     onUnexpectedValue: (reason) => reasons.push(reason),
   });
   return { accepted, reasons };
@@ -22,7 +27,7 @@ describe("getAcceptedConsentCategoriesFromCookie", () => {
   test("reads accepted categories from the CookieConsent cookie", () => {
     const cookie = `foo=bar; ${cookieWithCategories("analytics", "necessary")}`;
 
-    expect(getAcceptedConsentCategoriesFromCookie(cookie)).toEqual([
+    expect(getAcceptedConsentCategoriesFromCookie(cookie, current)).toEqual([
       "necessary",
       "analytics",
     ]);
@@ -58,14 +63,15 @@ describe("getAcceptedConsentCategoriesFromCookie", () => {
   });
 
   test("reads raw JSON values and URI-encoded JSON values", () => {
-    const categories = JSON.stringify({ categories: ["marketing"] });
+    const categories = JSON.stringify({ categories: ["marketing"], revision });
 
     expect(
-      getAcceptedConsentCategoriesFromCookie(`cc_cookie=${categories}`)
+      getAcceptedConsentCategoriesFromCookie(`cc_cookie=${categories}`, current)
     ).toEqual(["marketing"]);
     expect(
       getAcceptedConsentCategoriesFromCookie(
-        `cc_cookie=${encodeURIComponent(categories)}`
+        `cc_cookie=${encodeURIComponent(categories)}`,
+        current
       )
     ).toEqual(["marketing"]);
   });
@@ -89,7 +95,7 @@ describe("getAcceptedConsentCategoriesFromCookie", () => {
       cookieWithCategories("necessary", "marketing"),
     ].join("; ");
 
-    expect(getAcceptedConsentCategoriesFromCookie(cookie)).toEqual([
+    expect(getAcceptedConsentCategoriesFromCookie(cookie, current)).toEqual([
       "necessary",
       "marketing",
     ]);
@@ -110,20 +116,38 @@ describe("getAcceptedConsentCategoriesFromCookie", () => {
 
 describe("isConsentCategoryAcceptedInCookie", () => {
   test("returns false when there is no consent cookie", () => {
-    expect(isConsentCategoryAcceptedInCookie("", "analytics")).toBe(false);
+    expect(isConsentCategoryAcceptedInCookie("", "analytics", current)).toBe(
+      false
+    );
   });
 
   test("checks whether the cookie accepts the requested category", () => {
     const cookie = cookieWithCategories("necessary", "analytics");
 
-    expect(isConsentCategoryAcceptedInCookie(cookie, "analytics")).toBe(true);
-    expect(isConsentCategoryAcceptedInCookie(cookie, "marketing")).toBe(false);
+    expect(
+      isConsentCategoryAcceptedInCookie(cookie, "analytics", current)
+    ).toBe(true);
+    expect(
+      isConsentCategoryAcceptedInCookie(cookie, "marketing", current)
+    ).toBe(false);
+  });
+
+  test("returns false for a copy saved under an earlier banner revision", () => {
+    const cookie = `cc_cookie=${encodeURIComponent(
+      JSON.stringify({ categories: ["necessary", "analytics"], revision: 0 })
+    )}`;
+
+    expect(
+      isConsentCategoryAcceptedInCookie(cookie, "analytics", current)
+    ).toBe(false);
   });
 
   test("returns false for malformed JSON", () => {
     const cookie = `cc_cookie=${encodeURIComponent("{")}`;
 
-    expect(isConsentCategoryAcceptedInCookie(cookie, "analytics")).toBe(false);
+    expect(
+      isConsentCategoryAcceptedInCookie(cookie, "analytics", current)
+    ).toBe(false);
   });
 
   test("requires every copy of the consent cookie to accept the category", () => {
@@ -132,7 +156,9 @@ describe("isConsentCategoryAcceptedInCookie", () => {
       cookieWithCategories("necessary"),
     ].join("; ");
 
-    expect(isConsentCategoryAcceptedInCookie(cookie, "analytics")).toBe(false);
+    expect(
+      isConsentCategoryAcceptedInCookie(cookie, "analytics", current)
+    ).toBe(false);
   });
 });
 
@@ -140,13 +166,14 @@ describe("readConsentCookieChoice", () => {
   /** A saved copy as the banner writes it, with fields a test may break. */
   type SavedCookieValue = {
     readonly categories: readonly unknown[];
+    readonly revision?: unknown;
     readonly consentTimestamp?: string;
     readonly lastConsentTimestamp?: unknown;
     readonly languageCode?: string;
   };
 
   const savedCookie = (value: SavedCookieValue) =>
-    `cc_cookie=${encodeURIComponent(JSON.stringify(value))}`;
+    `cc_cookie=${encodeURIComponent(JSON.stringify({ revision, ...value }))}`;
 
   /** The choice as plain values, since instants compare by value only through `equals`. */
   const readChoice = (
@@ -156,6 +183,7 @@ describe("readConsentCookieChoice", () => {
     Option.getOrUndefined(
       Option.map(
         readConsentCookieChoice(cookie, {
+          revision,
           onUnexpectedValue: (reason) => reasons.push(reason),
         }),
         (choice) => ({
@@ -221,6 +249,32 @@ describe("readConsentCookieChoice", () => {
     expect(
       readChoice(`cc_cookie=; ${cookieWithCategories("analytics")}`)
     ).toBeUndefined();
+  });
+
+  test("holds no choice, without a diagnostic, when a copy was saved under another banner revision or none", () => {
+    const reasons: UnexpectedConsentCookieReason[] = [];
+    const saved = {
+      categories: ["necessary", "analytics"],
+      lastConsentTimestamp: "2026-11-02T09:30:00.000Z",
+    };
+
+    for (const staleRevision of [
+      0,
+      revision - 1,
+      String(revision),
+      undefined,
+    ]) {
+      expect(
+        readChoice(savedCookie({ ...saved, revision: staleRevision }), reasons)
+      ).toBeUndefined();
+    }
+    expect(
+      readChoice(
+        [savedCookie(saved), savedCookie({ ...saved, revision: 0 })].join("; "),
+        reasons
+      )
+    ).toBeUndefined();
+    expect(reasons).toEqual([]);
   });
 
   test("holds no choice when any copy is malformed and reports it", () => {

@@ -15,7 +15,12 @@ import {
   deliverAnalyticsEvents,
   discardAnalyticsEvents,
 } from "@/features/cookie-consent/analytics-events";
-import { announceVisitorConsentChange } from "@/features/cookie-consent/visitor-consent";
+import {
+  announceVisitorConsentChange,
+  bindVisitorConsentRevision,
+} from "@/features/cookie-consent/visitor-consent";
+import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -24,9 +29,7 @@ import { CheckoutStatusAnalytics } from "./checkout-status-analytics";
 
 const setConsentCookie = (categories: readonly string[]) => {
   // biome-ignore lint/suspicious/noDocumentCookie: The test controls the consent cookie the analytics boundary reads.
-  document.cookie = `cc_cookie=${encodeURIComponent(
-    JSON.stringify({ categories })
-  )}; Path=/`;
+  document.cookie = `cc_cookie=${savedConsentCookieValue({ categories })}; Path=/`;
 };
 
 const page = (status: CheckoutStatusKind) => (
@@ -44,6 +47,7 @@ describe("CheckoutStatusAnalytics", () => {
   });
 
   beforeEach(() => {
+    bindVisitorConsentRevision(getConsentBannerRevision());
     window.happyDOM.setURL("https://deskohub.test/en-US/reservation/status/x");
     events = [];
     detach = deliverAnalyticsEvents((event) => {
