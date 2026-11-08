@@ -6,6 +6,11 @@ import {
   accountSectionOrder,
 } from "../account/account-gating";
 import { screenPathPattern } from "../analytics/screen-path";
+import {
+  bookCheckoutHref,
+  bookFamilyHref,
+  paymentStatusHref,
+} from "../booking/booking-routes";
 import { appLinkRoute } from "./app-link";
 
 const appDir = join(import.meta.dir, "../../app");
@@ -60,6 +65,11 @@ describe("app route tree", () => {
         "/account/referrals",
         "/account/security",
         "/auth/callback",
+        "/book",
+        "/book/checkout",
+        "/book/cowork",
+        "/book/meeting-room",
+        "/book/office",
         "/dev/effect-smoke",
         "/reservations",
         "/reservations/[orderId]",
@@ -101,6 +111,22 @@ describe("app route tree", () => {
       });
     }
     expect(resolves("deskohub://no-such-screen")).toBe(false);
+  });
+
+  test("booking's links name a screen", () => {
+    for (const href of [
+      "/book",
+      bookFamilyHref("cowork"),
+      bookFamilyHref("meeting-room"),
+      bookFamilyHref("office", "quote_expired"),
+      bookCheckoutHref,
+      paymentStatusHref("synthetic-order"),
+    ]) {
+      expect({ href, resolves: resolves(href) }).toEqual({
+        href,
+        resolves: true,
+      });
+    }
   });
 
   test("every Account section links to a screen", () => {
