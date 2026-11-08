@@ -91,6 +91,16 @@ const betterAuthPasskeyRateLimits = {
 } as const;
 
 /**
+ * Per-IP limits on the native app's sign-in handoff, in line with code
+ * sign-in. Minting needs a fresh browser session; redeeming needs the app's
+ * PKCE verifier.
+ */
+const betterAuthNativeHandoffRateLimits = {
+  "/native-handoff/mint": { window: 600, max: 10 },
+  "/native-handoff/exchange": { window: 600, max: 10 },
+} as const;
+
+/**
  * Connectionless Better Auth options shared between schema generation and the
  * runtime instance. The runtime singleton adds the database adapter, dynamic
  * `baseURL`, secrets, plugins, and lifecycle hooks on top of this object.
@@ -137,6 +147,7 @@ export const authOptions = {
     customRules: {
       ...betterAuthPasswordSignInRateLimit,
       ...betterAuthPasskeyRateLimits,
+      ...betterAuthNativeHandoffRateLimits,
     },
   },
   advanced: {

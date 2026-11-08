@@ -683,7 +683,9 @@ jobs:
       - name: Resolve Workspace Playwright version
         id: playwright
         working-directory: apps/deskohub-workspace
-        run: echo "version=$(bun -p 'require("@playwright/test/package.json").version')" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "image-os=${ImageOS:?The hosted runner must provide ImageOS}" >> "$GITHUB_OUTPUT"
+          echo "version=$(bun -p 'require("@playwright/test/package.json").version')" >> "$GITHUB_OUTPUT"
 
       # The WebKit project covers Safari and iOS, which get the Temporal
       # polyfill. Restores only the browser download; the install step below
@@ -692,7 +694,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-webkit-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+          key: playwright-webkit-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.image-os }}-${{ steps.playwright.outputs.version }}
 
       - name: Install Workspace Playwright WebKit
         working-directory: apps/deskohub-workspace

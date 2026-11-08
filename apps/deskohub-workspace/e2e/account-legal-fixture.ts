@@ -79,7 +79,7 @@ import type { ReactNode } from "react";
 import { FixtureHydration } from "@/fixture/hydration";
 ${
   realCookieConsent
-    ? 'import { ConsentBanner } from "@/features/cookie-consent/components/consent-banner";\n'
+    ? 'import { ConsentBanner } from "@/features/cookie-consent/components/consent-banner";\nimport { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";\n'
     : ""
 }import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guard";
 import "../globals.css";
@@ -105,7 +105,9 @@ export default async function LocaleLayout({
     <html lang={locale} data-scroll-behavior="smooth">
       <body>
 ${
-  realCookieConsent ? "        <ConsentBanner locale={locale} />\n" : ""
+  realCookieConsent
+    ? "        <ConsentBanner locale={locale} revision={getConsentBannerRevision()} />\n"
+    : ""
 }        <UnsavedChangesProvider>
           <FixtureHydration>{children}</FixtureHydration>
         </UnsavedChangesProvider>
@@ -277,6 +279,13 @@ export async function clearMarketingManagementAction(
   _input: unknown
 ): Promise<UnavailableActionResult> {
   return { serverError: unavailableMessage };
+}
+
+// The fixture has no accounts, so no device takes a silent grant.
+export async function resolveSilentAnalyticsGrantForDevice(
+  _input: unknown
+): Promise<{ readonly data: false }> {
+  return { data: false };
 }
 `;
 

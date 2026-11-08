@@ -17,7 +17,7 @@ import { GET, POST } from "./route";
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
 const run = crypto.randomUUID().slice(0, 8);
-const [signingKey] = await Effect.runPromise(
+const signingKeys = await Effect.runPromise(
   loadCampaignSigningKeys("unsubscribe-token")
 );
 
@@ -77,10 +77,12 @@ describe.skipIf(!testDatabase)(
       );
       return {
         dotyposCustomerId,
-        token: signCampaignUnsubscribeToken(signingKey, {
-          sendId,
-          dotyposCustomerId,
-        }),
+        token: await Effect.runPromise(
+          signCampaignUnsubscribeToken(signingKeys, {
+            sendId,
+            dotyposCustomerId,
+          })
+        ),
       };
     };
 
@@ -122,10 +124,12 @@ describe.skipIf(!testDatabase)(
           sendId: "unknown" as CampaignSendId,
           dotyposCustomerId,
         }),
-        signCampaignUnsubscribeToken(signingKey, {
-          sendId: "unknown" as CampaignSendId,
-          dotyposCustomerId,
-        }),
+        await Effect.runPromise(
+          signCampaignUnsubscribeToken(signingKeys, {
+            sendId: "unknown" as CampaignSendId,
+            dotyposCustomerId,
+          })
+        ),
         operational.token,
         "",
       ]) {

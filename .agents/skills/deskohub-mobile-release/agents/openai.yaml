@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Mobile Release"
+  short_description: "Cut, build, and verify Android APK releases of the mobile app"
+  default_prompt: "Use $deskohub-mobile-release to cut or verify a mobile-v release of the Android app."

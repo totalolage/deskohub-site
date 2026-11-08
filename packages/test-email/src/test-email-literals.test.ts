@@ -326,6 +326,49 @@ describe("isTestEmailLiteralPath", () => {
   });
 });
 
+/**
+ * Git-ignored build and tool output under the scanned roots. Git never lists
+ * it, so the scan never reads it, but Turbo hashes files outside the package
+ * without applying ignore rules: unexcluded, a local build or compile would
+ * change this task's hash and the hash of every task that depends on it.
+ */
+const ignoredOutputs = [
+  "apps/deskohub-portal/.astro",
+  "apps/deskohub-portal/.build",
+  "apps/deskohub-portal/dist",
+  "apps/deskohub-workspace/.next",
+  "apps/deskohub-mobile/.expo",
+  "apps/deskohub-mobile/android",
+  "apps/deskohub-mobile/dist",
+  "apps/deskohub-mobile/ios",
+  "apps/deskohub-mobile/web-build",
+  "apps/deskohub-mobile/src/i18n/paraglide",
+  "apps/deskohub-workspace/e2e-artifacts",
+  "apps/deskohub-workspace/public/app",
+  "apps/deskohub-workspace/public/polyfills",
+  "apps/deskohub-workspace/shared/polyfills/generated",
+  "apps/deskohub-workspace/features/administration/i18n/paraglide",
+  "apps/deskohub-workspace/features/i18n/paraglide",
+  "apps/deskohub-workspace/features/agent-tools/booking-widget/generated",
+  "packages/games/src/generated",
+  "packages/igloohome/src/generated",
+] as const;
+
+const repositoryRoot = new URL("../../..", import.meta.url).pathname;
+
+const gitOutput = async (args: readonly string[]) => {
+  const child = Bun.spawn(["git", ...args], {
+    cwd: repositoryRoot,
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  const [stdout, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    child.exited,
+  ]);
+  return { exitCode, stdout };
+};
+
 describe("Turbo inputs", () => {
   test("hash every module the check scans, so a cached pass cannot miss one", async () => {
     const turbo = (await Bun.file(
@@ -342,7 +385,38 @@ describe("Turbo inputs", () => {
       "$TURBO_DEFAULT$",
       ...scanned,
       ...excludedRoots.map((root) => `!$TURBO_ROOT$/${root}/**`),
+      ...ignoredOutputs.map((output) => `!$TURBO_ROOT$/${output}/**`),
       "!$TURBO_ROOT$/**/node_modules/**",
     ]);
+  });
+
+  test("exclude only git-ignored output, never a module the check scans", async () => {
+    for (const output of ignoredOutputs) {
+      const probe = await gitOutput([
+        "check-ignore",
+        "--quiet",
+        "--no-index",
+        `${output}/probe.ts`,
+      ]);
+      expect({ output, ignored: probe.exitCode === 0 }).toEqual({
+        output,
+        ignored: true,
+      });
+    }
+    const listed = await gitOutput([
+      "ls-files",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "--",
+      ...scannedRoots,
+    ]);
+    expect(listed.exitCode).toBe(0);
+    const hidden = listed.stdout
+      .split("\n")
+      .filter((file) =>
+        ignoredOutputs.some((output) => file.startsWith(`${output}/`))
+      );
+    expect(hidden).toEqual([]);
   });
 });

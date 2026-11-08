@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Logger } from "effect";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   POSTHOG_DISTINCT_ID_COOKIE,
   POSTHOG_SESSION_ID_COOKIE,
@@ -7,7 +8,7 @@ import {
 import { readVisitorIdentity } from "./visitor-identity";
 
 const consentCookie = (categories: readonly unknown[]) =>
-  `cc_cookie=${encodeURIComponent(JSON.stringify({ categories }))}`;
+  `cc_cookie=${savedConsentCookieValue({ categories })}`;
 const analyticsConsentCookie = consentCookie(["necessary", "analytics"]);
 const necessaryConsentCookie = consentCookie(["necessary"]);
 const visitorCookies = `${POSTHOG_DISTINCT_ID_COOKIE}=cookie-distinct-id; ${POSTHOG_SESSION_ID_COOKIE}=cookie-session-id`;

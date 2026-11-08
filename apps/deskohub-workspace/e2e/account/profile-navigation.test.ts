@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { createServer } from "node:http";
-import { normalizePhoneNumber } from "@deskohub/dotypos";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import { chromium, errors, type Page } from "@playwright/test";
+import { Option } from "effect";
 import {
   accountSectionLabel,
   accountSections,
@@ -62,9 +63,10 @@ const makeProfileNavigationFakePage = (
     lastName: "Example",
     phone: "+420 555 000 111",
   };
-  const normalizedPhone = normalizePhoneNumber(originalProfile.phone);
-  if (normalizedPhone === null)
-    throw new Error("fake profile phone is not a valid canonical phone number");
+  const normalizedPhone = Option.getOrThrowWith(
+    parsePhoneNumber(originalProfile.phone),
+    () => new Error("fake profile phone is not a valid canonical phone number")
+  );
   const serverSnapshot = {
     ...originalProfile,
     phone: normalizedPhone,

@@ -20,6 +20,8 @@ import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { drizzleAuthTables } from "@/db/schema/auth";
 import { WorkspaceLockSections } from "@/db/workspace-locks";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
+import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
+import { mirrorDeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { captureWorkspaceLogs } from "@/shared/testing/workspace-telemetry.test-utils";
@@ -31,6 +33,7 @@ import type {
   SignInEmail,
   WorkspaceAuthConfig,
 } from "./auth-server";
+import { nativeAppOrigin } from "./native-app";
 
 /**
  * The Workspace Better Auth instance under test, against the migrated
@@ -71,11 +74,14 @@ export type TestAuthOptions = {
   readonly database?: WorkspaceAuthConfig["database"];
   readonly secrets?: { readonly version: number; readonly value: string }[];
   readonly sentLinks?: CapturedMagicLink[];
+  readonly nativeAppLinkOrigin?: WorkspaceAuthConfig["nativeAppLinkOrigin"];
   readonly isSignInCodeEnabled?: WorkspaceAuthConfig["isSignInCodeEnabled"];
   readonly arePasskeysEnabled?: WorkspaceAuthConfig["arePasskeysEnabled"];
+  readonly passkeyRelyingParty?: WorkspaceAuthConfig["passkeyRelyingParty"];
   readonly verifyHuman?: WorkspaceAuthConfig["verifyHuman"];
   readonly beforeDeleteUser?: WorkspaceAuthConfig["beforeDeleteUser"];
   readonly captureAccountLocalePreference?: WorkspaceAuthConfig["captureAccountLocalePreference"];
+  readonly mirrorSignInAnalyticsConsent?: WorkspaceAuthConfig["mirrorSignInAnalyticsConsent"];
   readonly clientMetadataTransport?: WorkspaceAuthConfig["clientMetadataTransport"];
   readonly createCustomerAccount?: WorkspaceAuthConfig["createCustomerAccount"];
   readonly hasAdministratorGrant?: WorkspaceAuthConfig["hasAdministratorGrant"];
@@ -186,7 +192,11 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
     database: options.database ?? buildDatabaseAdapter(),
     secrets: options.secrets ?? [{ version: 1, value: SECRET_V1 }],
     allowedHosts: [HOST],
-    passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
+    nativeAppLinkOrigin: options.nativeAppLinkOrigin ?? `https://${HOST}`,
+    passkeyRelyingParty: options.passkeyRelyingParty ?? {
+      rpID: HOST,
+      origins: [`https://${HOST}`],
+    },
     customerMcpResource: `https://${HOST}/api/mcp`,
     clientMetadataTransport: options.clientMetadataTransport,
     httpsOnly: true,
@@ -216,6 +226,22 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
             )
         : () => Effect.void,
     captureAccountLocalePreference,
+    mirrorSignInAnalyticsConsent:
+      options.mirrorSignInAnalyticsConsent ??
+      // Memory-backed instances have no consent ledger.
+      (testDatabase && !options.database
+        ? (device) =>
+            mirrorDeviceAnalyticsConsent({
+              ...device,
+              source: "sign_in_mirror",
+            }).pipe(
+              Effect.provide(
+                AnalyticsConsentLedger.Default.pipe(
+                  Layer.provide(testDatabaseLayer())
+                )
+              )
+            )
+        : () => Effect.void),
     reviewAccountCredentials: options.reviewAccountCredentials ?? [],
     // Memory-backed instances have no customer_accounts table.
     isReviewAccount:
@@ -294,6 +320,27 @@ export const callHandler = (
       },
     })
   );
+
+/**
+ * Calls the handler as the native app's Better Auth Expo client does: no
+ * browser `Origin` header, and the app scheme in `expo-origin`, which the
+ * Expo server plugin turns into the origin. Pass `null` to send neither.
+ */
+export const callNativeHandler = (
+  auth: TestAuth,
+  path: string,
+  init: RequestInit = {},
+  expoOrigin: string | null = nativeAppOrigin
+) => {
+  const headers = new Headers(init.headers);
+  if (!headers.has("x-vercel-forwarded-for")) {
+    headers.set("x-vercel-forwarded-for", "192.0.2.1");
+  }
+  if (expoOrigin !== null) headers.set("expo-origin", expoOrigin);
+  return auth.handler(
+    new Request(`https://${HOST}/api/auth${path}`, { ...init, headers })
+  );
+};
 
 const runIpOctet = Math.floor(Math.random() * 200) + 20;
 let ipCounter = 0;

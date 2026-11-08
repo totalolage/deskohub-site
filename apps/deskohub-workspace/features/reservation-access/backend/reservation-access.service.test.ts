@@ -135,8 +135,11 @@ describe("reservation access interval", () => {
     );
 
     expect(Result.isSuccess(accepted)).toBe(true);
-    expect(Result.isFailure(rejected)).toBe(true);
-    expect(Result.isFailure(rejectedAfterRounding)).toBe(true);
+    for (const result of [rejected, rejectedAfterRounding]) {
+      expect(Result.isFailure(result) && result.failure.refusal).toBe(
+        "unrepresentable-interval"
+      );
+    }
   });
 
   test("rounds reservation boundaries outward to Prague hours", () => {
@@ -163,7 +166,9 @@ describe("reservation access interval", () => {
       }).pipe(Effect.result)
     );
 
-    expect(Result.isFailure(result)).toBe(true);
+    expect(Result.isFailure(result) && result.failure.refusal).toBe(
+      "reservation-ended"
+    );
   });
 });
 

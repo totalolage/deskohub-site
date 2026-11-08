@@ -4,6 +4,7 @@ import {
   makeReviewScreenshotEnvironment,
   reviewScreenshotsEnabled,
 } from "../e2e-env";
+import { waitForReactClickHandler } from "../react-handlers";
 
 /** The review screenshot opt-in, decoded once through the E2E environment. */
 export const reviewScreenshots = reviewScreenshotsEnabled(
@@ -67,7 +68,11 @@ export async function prefetchRoute(page: Page, pathname: string) {
   page.on("requestfinished", onSettled);
   page.on("requestfailed", onSettled);
   try {
-    await page.waitForFunction(() => window.next?.router !== undefined);
+    // Next exposes its router before hydration creates the action queue.
+    await waitForReactClickHandler(
+      page,
+      page.getByRole("banner").getByRole("link", { name: "Deskohub Workspace" })
+    );
     await page.evaluate(
       (target) => window.next?.router?.prefetch(target),
       pathname

@@ -2,11 +2,8 @@ import type { DotyposCustomerId } from "@deskohub/dotypos/types";
 import type { PostHog } from "posthog-js";
 import type { AnalyticsAccountIdentity } from "@/features/account/analytics-identity";
 import type { CustomerAccountId } from "@/features/account/customer-account";
+import { getPostHogAccountDistinctId } from "@/features/account/posthog-account-distinct-id";
 import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
-
-export const getPostHogAccountDistinctId = (
-  accountId: CustomerAccountId
-): string => `workspace-account:${accountId}`;
 
 /**
  * Person property holding the account's opaque Dotypos customer ID, which
@@ -27,7 +24,11 @@ export type PostHogIdentityClient = Pick<
 >;
 
 export type PostHogIdentityController = {
-  readonly isReady: () => boolean;
+  /**
+   * Whether analytics is ready for `identity`: the controller settled on it
+   * and the SDK still holds it.
+   */
+  readonly isReadyFor: (identity: AnalyticsAccountIdentity) => boolean;
   readonly reconcile: (
     consented: boolean,
     identity: AnalyticsAccountIdentity
@@ -44,17 +45,24 @@ export type PostHogIdentityControllerOptions = {
   ) => DotyposCustomerId | undefined;
 };
 
-type SettledAnalyticsAccountIdentity = Extract<
+/** An account identity analytics can settle on. */
+export type SettledAnalyticsAccountIdentity = Extract<
   AnalyticsAccountIdentity,
   { readonly status: "anonymous" | "authenticated" }
 >;
 
 type PostHogUserState = ReturnType<PostHogIdentityClient["get_property"]>;
 
-const sameSettledIdentity = (
+export const isSettledAnalyticsAccountIdentity = (
+  identity: AnalyticsAccountIdentity
+): identity is SettledAnalyticsAccountIdentity =>
+  identity.status === "anonymous" || identity.status === "authenticated";
+
+/** Whether both name the anonymous visitor or the same account. */
+export const sameSettledAnalyticsAccountIdentity = (
   left: SettledAnalyticsAccountIdentity,
   right: SettledAnalyticsAccountIdentity
-) => {
+): boolean => {
   if (left.status !== right.status) return false;
   if (left.status === "anonymous") return true;
   return right.status === "authenticated" && left.accountId === right.accountId;
@@ -189,7 +197,7 @@ export function createPostHogIdentityController(
     if (
       !ready ||
       !readyIdentity ||
-      !sameSettledIdentity(readyIdentity, identity) ||
+      !sameSettledAnalyticsAccountIdentity(readyIdentity, identity) ||
       !sdkMatchesSettledIdentity(
         identity,
         sdk.readDistinctId,
@@ -246,7 +254,10 @@ export function createPostHogIdentityController(
 
     client.opt_in_capturing({ captureEventName: false });
 
+    // The $identify event, and anything else the SDK emits while settling,
+    // already belongs to the ready account.
     ready = true;
+    readyIdentity = identity;
     if (shouldIdentify) {
       client.identify(desiredDistinctId);
     }
@@ -286,8 +297,22 @@ export function createPostHogIdentityController(
     }
   };
 
+  const isReadyFor = (identity: AnalyticsAccountIdentity) => {
+    if (!ready || !readyIdentity) return false;
+    if (!isSettledAnalyticsAccountIdentity(identity)) return false;
+    if (!sameSettledAnalyticsAccountIdentity(readyIdentity, identity)) {
+      return false;
+    }
+    const sdk = observeSdkIdentity(client);
+    return sdkMatchesSettledIdentity(
+      identity,
+      sdk.readDistinctId,
+      sdk.readUserState
+    );
+  };
+
   return {
-    isReady: () => ready,
+    isReadyFor,
     reconcile,
   };
 }

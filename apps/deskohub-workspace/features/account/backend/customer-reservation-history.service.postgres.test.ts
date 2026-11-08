@@ -1,7 +1,4 @@
-import {
-  seededCustomerReads,
-  seededReservationReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
@@ -225,7 +222,9 @@ const makeHistoryLayer = (
                     )
                 ).pipe(
                   Effect.flatMap((records) =>
-                    seededReservationReads(records).getReservationsByIds(ids)
+                    makeInMemoryDotypos({
+                      reservations: records,
+                    }).service.getReservationsByIds(ids)
                   )
                 );
               },
@@ -246,7 +245,9 @@ const makeHistoryLayer = (
                       )
                 ).pipe(
                   Effect.flatMap((records) =>
-                    seededCustomerReads(records).getCustomersByIds(ids)
+                    makeInMemoryDotypos({
+                      customers: records,
+                    }).service.getCustomersByIds(ids)
                   )
                 );
               },

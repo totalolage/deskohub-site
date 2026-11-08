@@ -1,0 +1,2 @@
+ALTER TABLE "workspace_reservations" ADD COLUMN "payment_return_target" text;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_payment_return_target_check" CHECK ("payment_return_target" is null or "payment_return_target" in ('native-app', 'web-app'));

@@ -1,4 +1,4 @@
-import { seededReservationReads } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
@@ -285,6 +285,10 @@ describe.skipIf(!database)(
         getReviewPaymentDisabledPath("en-US", first.orderId)
       );
       expect(repeat).toEqual(first);
+      // A sandbox hold has no Pay state to hand out and prices no referral.
+      expect(first.reviewSandbox).toBe(true);
+      expect(first).not.toHaveProperty("payStateToken");
+      expect(first).not.toHaveProperty("referralApplied");
       expect((await statusOf(first.orderId)).status).toBe("created");
     });
 
@@ -384,9 +388,9 @@ describe.skipIf(!database)(
                     getReservationsByIds: (ids) =>
                       Effect.succeed([]).pipe(
                         Effect.flatMap((records) =>
-                          seededReservationReads(records).getReservationsByIds(
-                            ids
-                          )
+                          makeInMemoryDotypos({
+                            reservations: records,
+                          }).service.getReservationsByIds(ids)
                         )
                       ),
                   }),

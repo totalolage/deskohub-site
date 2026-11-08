@@ -1,7 +1,9 @@
 import inlangSettings from "./project.inlang/settings.json" with {
   type: "json",
 };
+import { join } from "node:path";
 import { withBotId } from "botid/next/config";
+import { assertMobileWebAppExported } from "./features/mobile-web-app/mobile-web-app-export.js";
 import { configureWorkspaceBotId } from "./shared/bot-protection/bot-protection.policy.js";
 
 const localeRedirectPattern = inlangSettings.locales.join("|");
@@ -46,6 +48,12 @@ const nextConfig = {
     reservationRecords: { stale: 30, revalidate: 60, expire: 60 * 5 },
   },
   cacheComponents: true,
+  compiler: {
+    // `next typegen` loads this config for a production build too, so the
+    // check waits for a real compile.
+    runAfterProductionCompile: async ({ projectDir }) =>
+      assertMobileWebAppExported(join(projectDir, "public/app")),
+  },
   experimental: {
     // `next build` holds 4–5 GB on Vercel's 8 GB build machine until a few
     // seconds after compiling, while the page-data and static-generation workers
@@ -53,11 +61,13 @@ const nextConfig = {
     cpus: 1,
     // Next's TS CLI integration needs bin tsc, which the official TS6 wrapper (tsc6-only) must not provide.
     useTypeScriptCli: false,
-    // Turbopack's build filesystem cache is on by default; the separate
-    // `build:compile` and `build:generate` tasks keep writing it apart from
-    // prerendering to fit Vercel's 8 GB machine.
-    // Garbage collection drops unreachable work from it, which slows its growth
-    // toward Vercel's 1.5 GB build-cache limit, past which Vercel discards it.
+    // Vercel's build cache holds every `node_modules` (about 1 GB compressed)
+    // and `.next/cache`, and Vercel drops all of it past 1.5 GB. Turbopack's
+    // build filesystem cache (`.next/cache/turbopack`, about 0.8 GB) doesn't fit
+    // beside them, so with it on every build ran cold, installs included.
+    // `build:compile` deletes a restored copy, which Next would keep.
+    turbopackFileSystemCacheForBuild: false,
+    // Garbage collection drops unreachable work from `next dev`'s cache.
     turbopackGc: true,
     // Customer avatar uploads carry up to 2 MiB of raw image bytes plus the
     // Server Action / multipart envelope, so the 1 MiB default body limit is
@@ -76,7 +86,12 @@ const nextConfig = {
   // deletes them before generation, so they are never deployed.
   productionBrowserSourceMaps: process.env.VERCEL_ENV === "production",
   reactCompiler: true,
-  // The `typecheck` task runs the native compiler before `build:compile`.
+  // The app installed under /app/ has the scope `/app/`, which Next's built-in
+  // redirect would strip to `/app`. `redirects()` repeats that redirect for
+  // every other path.
+  skipTrailingSlashRedirect: true,
+  // Pull request CI and the production release workflow run the native compiler
+  // (`typecheck`); the Vercel build itself doesn't type-check.
   // Next's own check runs the TS6 compiler in a worker that needs 3–3.5 GB beside
   // the `next build` process, so it hung or got OOM-killed on Vercel.
   typescript: {
@@ -86,9 +101,15 @@ const nextConfig = {
     "@deskohub/cloudinary",
     "@deskohub/cloudinary-image",
     "@deskohub/workspace-admin-api",
+    "@deskohub/workspace-customer-api",
   ],
   async redirects() {
     return [
+      {
+        source: "/:path((?!app(?:/|$)).+)/",
+        destination: "/:path",
+        permanent: true,
+      },
       {
         source: `/:locale(${localeRedirectPattern})/reservation`,
         destination: `/:locale/reservation/cowork?${new URLSearchParams({
@@ -133,6 +154,12 @@ const nextConfig = {
       // skips a dotted path under a wrong-case locale (`/en-us/x.html`); the
       // proxy's matcher catches that one and moves it to the exact locale.
       afterFiles: [
+        // The mobile web export is one page that routes on the client, so
+        // every undotted path under /app/ that isn't a file loads it.
+        {
+          source: "/app/:path([^.]*)",
+          destination: "/app/index.html",
+        },
         {
           source: `/:path((?!(?:${localeRedirectPattern})(?:/|$|\\.(?:prefetch\\.)?rsc$|\\.segments/)|api/|_next/|_vercel/|page-markdown/|workspace-location-map/).*\\..*)`,
           destination: "/locale-redirect/:path",
@@ -155,6 +182,12 @@ const nextConfig = {
             value: "no-referrer",
           },
         ],
+      },
+      {
+        // Crawlable but kept out of search: robots.txt must not block it, or
+        // crawlers never see this header.
+        source: "/app/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex" }],
       },
       ...(originTrialTokens.length > 0
         ? [

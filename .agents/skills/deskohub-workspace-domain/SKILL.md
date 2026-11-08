@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-domain
-description: Workspace reservation families, reservation author, reservation customer, customer account, deleted-account tombstone, booked by, cowork, meeting room, office, product identity, product keys, discount targets, Temporal, timezone, Prague dates, DST, Calendar sales, discount definitions, email campaigns, campaign audiences, recipients, test send, confirmation code.
+description: Workspace reservation families, reservation author, reservation customer, customer account, deleted-account tombstone, booked by, cowork, meeting room, office, product identity, product keys, discount targets, Temporal, timezone, Prague dates, DST, Calendar sales, discount definitions, email campaigns, campaign audiences, recipients, test send, confirmation code, analytics consent decision, current decision, consent mirror, analytics consent ledger, silent grant, person-linked, reservation-keyed.
 ---
 
 # Deskohub Workspace domain
@@ -12,6 +12,7 @@ Read the reference that matches the change:
 - [references/temporal.md](references/temporal.md): timezone, Temporal types, formatting, Dotypos interval decoding, and stored instant precision.
 - [references/sales-calendar.md](references/sales-calendar.md): Calendar sales, stored discount definitions, sale eligibility, and the sale source cache.
 - [references/email-campaigns.md](references/email-campaigns.md): campaign glossary, audience filters, recipient resolution, and send confirmation.
+- [references/analytics-consent.md](references/analytics-consent.md): consent decision, current decision, mirror, decision sources, silent grant, person-linked and reservation-keyed events, and the ledger's ordering rules.
 
 Read the business [reservation product](../../../apps/deskohub-workspace/docs/reservation-products.md) and [discount](../../../apps/deskohub-workspace/docs/discount-codes.md) specifications before changing customer-visible eligibility, duration, pricing, or availability.
 

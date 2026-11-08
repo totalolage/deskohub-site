@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from "effect";
+import { Cache, Context, Duration, Effect, Exit, Layer, Option } from "effect";
 import type { WorkspaceReservationRow } from "@/db/schema";
 import type { PaymentAttempt } from "@/features/checkout/backend/repositories/payment-attempt.repository";
 import type { CheckoutAttemptId } from "@/features/checkout/checkout-identifiers";
@@ -11,7 +11,9 @@ import {
   ServerAnalytics,
   type ServerEventProperties,
 } from "@/shared/backend/analytics/server-analytics.service";
+import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
 import { moneyMajorAmount } from "@/shared/money/money";
+import { ReservationAnalyticsPerson } from "./reservation-analytics-person";
 
 type CheckoutEventTimestamp = WorkspaceReservationRow["createdAt"];
 
@@ -39,10 +41,12 @@ type PaymentFailureReason =
 
 /**
  * The checkout's analytics. Reservation and payment lifecycle events go out
- * regardless of consent under the reservation's ID, and the inputs take only
- * the reservation ID and the payment attempt fields they send. Request events
- * go out only for the request's consented visitor. Every operation is best
- * effort and never fails.
+ * regardless of consent: under the author's account person while the
+ * author's current analytics consent decision is a grant, otherwise under
+ * the reservation's ID with no person. The inputs take only the reservation
+ * ID and the payment attempt fields they send. Request events go out only for
+ * the request's consented visitor. Every operation is best effort and never
+ * fails.
  */
 export interface ICheckoutAnalytics {
   readonly reservationStarted: (
@@ -83,24 +87,68 @@ export class CheckoutAnalytics extends Context.Service<
     this,
     Effect.gen(function* () {
       const analytics = yield* ServerAnalytics;
+      const person = yield* ReservationAnalyticsPerson;
 
-      const captureLifecycleEvent = (input: {
+      // Read once per reservation for the run this layer is built for, so
+      // a withdrawal applies from the next request on. A failed read isn't
+      // kept, so the next event reads again.
+      const linkedAccounts = yield* Cache.makeWith(person.linkedAccount, {
+        capacity: Number.POSITIVE_INFINITY,
+        timeToLive: (exit) =>
+          Exit.isSuccess(exit) ? Duration.infinity : Duration.zero,
+      });
+
+      /**
+       * The account the reservation's events join; none, so the event goes
+       * out without a person, when its author's consent can't be read.
+       * Payment, webhook, and fulfillment work captures on its way, so no
+       * failure of the read, a defect included, fails it.
+       */
+      const linkedAccount = Effect.fn("CheckoutAnalytics.linkedAccount")(
+        (
+          reservationId: LifecycleReservation["id"],
+          _event: ReservationLifecycleEvent
+        ) => Cache.get(linkedAccounts, reservationId),
+        (effect, _reservationId, event) =>
+          effect.pipe(
+            catchRecoverableCause((cause) =>
+              Effect.as(
+                Effect.logWarning(
+                  "Lifecycle event captured without a person: the author's analytics consent couldn't be read",
+                  { event, cause }
+                ),
+                Option.none()
+              )
+            )
+          )
+      );
+
+      const captureLifecycleEvent = Effect.fnUntraced(function* (input: {
         readonly event: ReservationLifecycleEvent;
         readonly reservationId: LifecycleReservation["id"];
         readonly occurrenceId: string;
         readonly properties: ServerEventProperties;
         readonly timestamp: CheckoutEventTimestamp;
-      }) =>
-        analytics.capture({
+      }) {
+        const account = yield* linkedAccount(input.reservationId, input.event);
+        yield* analytics.capture({
           name: input.event,
-          subject: {
-            kind: "record",
-            recordId: input.reservationId,
-            occurrenceId: input.occurrenceId,
-          },
+          subject: Option.match(account, {
+            onNone: () => ({
+              kind: "record" as const,
+              recordId: input.reservationId,
+              occurrenceId: input.occurrenceId,
+            }),
+            onSome: (accountId) => ({
+              kind: "account" as const,
+              accountId,
+              occurrenceId: input.occurrenceId,
+            }),
+          }),
           properties: input.properties,
           timestamp: input.timestamp,
         });
+      });
 
       const reservationEvent =
         (event: ReservationLifecycleEvent) =>
@@ -177,7 +225,11 @@ export class CheckoutAnalytics extends Context.Service<
     })
   );
 
-  static Live = this.Default.pipe(Layer.provide(ServerAnalytics.Live));
+  static Live = this.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(ServerAnalytics.Live, ReservationAnalyticsPerson.Live)
+    )
+  );
 }
 
 const paymentProperties = (

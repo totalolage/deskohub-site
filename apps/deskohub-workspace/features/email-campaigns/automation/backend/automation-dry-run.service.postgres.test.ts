@@ -9,11 +9,8 @@ import {
   DotyposReservationIdSchema,
   DotyposUnavailable,
 } from "@deskohub/dotypos";
-import {
-  DotyposServiceMock,
-  seededCustomerReads,
-  seededReservationReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
   type AutomationConditionFilter,
@@ -169,36 +166,33 @@ const dotypos = DotyposServiceMock({
         })
       );
     }
-    return seededCustomerReads(dotyposState.customers).getCustomersByIds(ids);
+    return makeInMemoryDotypos({
+      customers: dotyposState.customers,
+    }).service.getCustomersByIds(ids);
   },
 
   listReservations: (options) => {
     dotyposState.reservationReads += 1;
-    return seededReservationReads(dotyposState.reservations).listReservations(
-      options
-    );
+    return makeInMemoryDotypos({
+      reservations: dotyposState.reservations,
+    }).service.listReservations(options);
   },
   getReservationsByIds: (ids, readOptions) => {
-    const options = { ...readOptions, ids: [...ids] };
     dotyposState.reservationReads += 1;
-    return seededReservationReads(dotyposState.reservations)
-      .listReservations(options)
-      .pipe(
-        Effect.flatMap((records) =>
-          seededReservationReads(records).getReservationsByIds(ids)
-        )
-      );
+    return makeInMemoryDotypos({
+      reservations: dotyposState.reservations,
+    }).service.getReservationsByIds(ids, readOptions);
   },
   listReservationsPage: (options) => {
     dotyposState.reservationReads += 1;
-    return seededReservationReads(
-      dotyposState.reservations
-    ).listReservationsPage(options);
+    return makeInMemoryDotypos({
+      reservations: dotyposState.reservations,
+    }).service.listReservationsPage(options);
   },
   listActiveReservationsPage: (interval, page) =>
-    seededReservationReads(
-      dotyposState.reservations
-    ).listActiveReservationsPage(interval, page),
+    makeInMemoryDotypos({
+      reservations: dotyposState.reservations,
+    }).service.listActiveReservationsPage(interval, page),
 });
 
 describe.skipIf(!testDatabase)(

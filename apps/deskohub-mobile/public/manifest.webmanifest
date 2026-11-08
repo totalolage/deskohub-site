@@ -1,0 +1,46 @@
+{
+  "id": "/app/",
+  "name": "Deskohub",
+  "short_name": "Deskohub",
+  "lang": "cs",
+  "start_url": "/app/",
+  "scope": "/app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#00024f",
+  "theme_color": "#00024f",
+  "icons": [
+    {
+      "src": "/app/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/app/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/app/icons/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/app/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "related_applications": [
+    {
+      "platform": "play",
+      "id": "cz.deskohub.workspace",
+      "url": "https://play.google.com/store/apps/details?id=cz.deskohub.workspace"
+    }
+  ],
+  "prefer_related_applications": false
+}

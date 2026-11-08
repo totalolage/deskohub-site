@@ -3,22 +3,18 @@ import {
   type DotyposCustomer,
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
-  type DotyposIdReadOptions,
+  type DotyposOperation,
   type DotyposReadFailure,
   type DotyposReservation,
   DotyposReservationIdSchema,
-  dotyposIdReadBatchSize,
 } from "@deskohub/dotypos";
-import {
-  DotyposServiceMock,
-  seededCustomerReads,
-  seededReservationReads,
-} from "@deskohub/dotypos/backend/service.mock";
+import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { makeInMemoryDotypos } from "@deskohub/dotypos/testing";
 import { EmailConfigTag, EmailServiceTag } from "@deskohub/email";
 import { makeEmailProviderFake } from "@deskohub/email/testing";
 import { testEmailAddress } from "@deskohub/test-email";
 import { emailAutomationTickMinutes } from "@deskohub/workspace-admin-api";
-import { Array as Arr, Effect, Fiber, Layer, Result } from "effect";
+import { Effect, Fiber, Layer, Result, Struct } from "effect";
 import { TestClock } from "effect/testing";
 import { customerEvents, customerMarketingConsents } from "@/db/schema";
 import type { CustomerAccountId } from "@/features/account/customer-account";
@@ -109,22 +105,26 @@ export type EngineDotyposRequestHook = (request: {
   readonly ids?: readonly string[];
 }) => Effect.Effect<void, EngineDotyposFailure>;
 
-const engineDotyposMethods: readonly EngineDotyposMethod[] = [
+const engineDotyposMethods = [
   "getCustomersByIds",
   "getReservationsByIds",
   "listReservationsPage",
   "listReservations",
   "listActiveReservationsPage",
-];
+] as const satisfies readonly EngineDotyposMethod[];
+
+const isEngineDotyposMethod = (
+  operation: DotyposOperation
+): operation is EngineDotyposMethod =>
+  (engineDotyposMethods as readonly DotyposOperation[]).includes(operation);
 
 /**
  * A Dotypos fake whose customers and visits tests change between
- * invocations, as Dotypos would. It counts every request by method, and a
+ * invocations, as Dotypos would. It answers the engine's reads from the
+ * in-memory Dotypos, counts every request by method (one per ID batch), and a
  * test can gate, delay or fail requests.
  */
 export const makeEngineDotypos = () => {
-  const customers = new Map<DotyposCustomerId, DotyposCustomer>();
-  const reservations = new Map<string, DotyposReservation>();
   const calls = Object.fromEntries(
     engineDotyposMethods.map((method) => [method, 0])
   ) as Record<EngineDotyposMethod, number>;
@@ -135,11 +135,10 @@ export const makeEngineDotypos = () => {
     readonly released: Promise<void>;
   }> = [];
 
-  const request = <A, E>(
+  const request = (
     method: EngineDotyposMethod,
-    answer: () => Effect.Effect<A, E>,
     ids?: readonly string[]
-  ): Effect.Effect<A, E | EngineDotyposFailure> =>
+  ): Effect.Effect<void, EngineDotyposFailure> =>
     Effect.suspend(() => {
       calls[method] += 1;
       const index = gates.findIndex(
@@ -149,71 +148,22 @@ export const makeEngineDotypos = () => {
       gate?.reached();
       return (
         gate === undefined ? Effect.void : Effect.promise(() => gate.released)
-      ).pipe(
-        Effect.andThen(hook?.({ method, ids }) ?? Effect.void),
-        Effect.andThen(Effect.suspend(answer))
-      );
+      ).pipe(Effect.andThen(hook?.({ method, ids }) ?? Effect.void));
     });
 
-  const reservationReads = () =>
-    seededReservationReads([...reservations.values()]);
-
-  const readIds = <Id extends string, A>(
-    method: "getCustomersByIds" | "getReservationsByIds",
-    ids: Iterable<Id>,
-    read: (
-      batch: readonly Id[]
-    ) => Effect.Effect<ReadonlyMap<Id, A>, DotyposReadFailure>,
-    options: DotyposIdReadOptions = {}
-  ) =>
-    Effect.suspend(() =>
-      Effect.forEach(
-        Arr.chunksOf([...new Set(ids)], dotyposIdReadBatchSize),
-        (batch) =>
-          request(method, () => read(batch), batch).pipe(
-            Effect.catch((failure) =>
-              options.onBatchFailure
-                ? options
-                    .onBatchFailure(failure)
-                    .pipe(Effect.as(new Map<Id, A>()))
-                : Effect.fail(failure)
-            )
-          ),
-        { concurrency: options.concurrency ?? "inherit" }
-      ).pipe(
-        Effect.map((batches) => new Map(batches.flatMap((batch) => [...batch])))
-      )
-    );
-
-  const layer = DotyposServiceMock({
-    getCustomersByIds: (ids, options) =>
-      readIds(
-        "getCustomersByIds",
-        ids,
-        (batch) =>
-          seededCustomerReads([...customers.values()]).getCustomersByIds(batch),
-        options
-      ),
-    listReservationsPage: (options) =>
-      request("listReservationsPage", () =>
-        reservationReads().listReservationsPage(options)
-      ),
-    listReservations: (options) =>
-      request("listReservations", () =>
-        reservationReads().listReservations(options)
-      ),
-    getReservationsByIds: (ids, options) =>
-      readIds(
-        "getReservationsByIds",
-        ids,
-        (batch) => reservationReads().getReservationsByIds(batch, options),
-        options
-      ),
-    listActiveReservationsPage: (interval, page) =>
-      request("listActiveReservationsPage", () =>
-        reservationReads().listActiveReservationsPage(interval, page)
-      ),
-  });
+  const dotypos = makeInMemoryDotypos(
+    {},
+    {
+      onRequest: ({ operation, ids }) =>
+        isEngineDotyposMethod(operation)
+          ? request(operation, ids)
+          : Effect.void,
+    }
+  );
+  const { customers, reservations } = dotypos;
+  const layer = DotyposServiceMock(
+    Struct.pick(dotypos.service, engineDotyposMethods)
+  );
 
   return {
     layer,
@@ -228,16 +178,12 @@ export const makeEngineDotypos = () => {
     },
     setCustomers: (next: readonly DotyposCustomer[]) => {
       customers.clear();
-      for (const customer of next) {
-        customers.set(customer.id as DotyposCustomerId, customer);
-      }
+      for (const customer of next) customers.set(customer.id, customer);
     },
     setReservations: (next: readonly DotyposReservation[]) => {
       reservations.clear();
       for (const reservation of next) {
-        if (reservation.id !== undefined) {
-          reservations.set(reservation.id, reservation);
-        }
+        reservations.set(reservation.id, reservation);
       }
     },
     /** Sets (or with `undefined` clears) the hook every request runs first. */

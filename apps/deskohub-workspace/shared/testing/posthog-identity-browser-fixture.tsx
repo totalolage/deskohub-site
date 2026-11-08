@@ -18,6 +18,7 @@ import {
 } from "@/features/cookie-consent/components/posthog-analytics";
 import {
   announceVisitorConsentChange,
+  bindVisitorConsentRevision,
   useVisitorConsent,
 } from "@/features/cookie-consent/visitor-consent";
 import {
@@ -35,17 +36,23 @@ const legacyInitialRawQueryToken = "posthog-identity-legacy-raw-query-token";
 const legacyInitialReferrerToken = "posthog-identity-legacy-referrer-token";
 const legacyInitialUtmToken = "posthog-identity-legacy-utm-token";
 
+// The fixture page serves no legal documents, so it binds a banner revision
+// of its own.
+const fixtureConsentRevision = 1;
+
 const writeAnalyticsConsentCookie = (accepted: boolean) => {
   // biome-ignore lint/suspicious/noDocumentCookie: The browser fixture controls synthetic consent synchronously.
   document.cookie = `cc_cookie=${encodeURIComponent(
     JSON.stringify({
       categories: accepted ? ["necessary", "analytics"] : ["necessary"],
+      revision: fixtureConsentRevision,
     })
   )}; Path=/`;
 };
 
 const initializeAnalyticsConsentCookie = () => {
   if (globalThis.window === undefined) return;
+  bindVisitorConsentRevision(fixtureConsentRevision);
   const accepted =
     new URLSearchParams(window.location.search).get("consent") === "on";
   writeAnalyticsConsentCookie(accepted);
@@ -141,7 +148,8 @@ const readIdentityState = (): FixtureIdentityState => ({
 
 const readConsentState = (): FixtureConsentState => {
   const acceptedCategories = getAcceptedConsentCategoriesFromCookie(
-    document.cookie
+    document.cookie,
+    { revision: fixtureConsentRevision }
   );
   return {
     analyticsAccepted: acceptedCategories.includes("analytics"),

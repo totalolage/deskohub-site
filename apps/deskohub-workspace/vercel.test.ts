@@ -62,6 +62,28 @@ test("lets browsers keep the Temporal polyfill, whose URL carries its hash", () 
   expect(polyfillRoute?.headers?.["Cache-Control"]).toContain("immutable");
 });
 
+test("lets browsers keep the mobile web app's hashed build files, and nothing else under /app/", () => {
+  // Vercel anchors a route's `src` at the end, as `normalizeRoutes` does.
+  const cachedForever = (pathname: string) =>
+    vercelConfig.routes.some(
+      ({ src, headers }) =>
+        headers?.["Cache-Control"]?.includes("immutable") &&
+        new RegExp(src.endsWith("$") ? src : `${src}$`).test(pathname)
+    );
+
+  expect(cachedForever("/app/_expo/static/js/web/entry-0123abcd.js")).toBe(
+    true
+  );
+  for (const pathname of [
+    "/app/",
+    "/app/index.html",
+    "/app/sw.js",
+    "/app/manifest.webmanifest",
+  ]) {
+    expect(cachedForever(pathname)).toBe(false);
+  }
+});
+
 // Vercel reads queue triggers from the literal `vercel.json`, so this ties
 // each topic definition to the trigger of its route.
 const queueTopics = [

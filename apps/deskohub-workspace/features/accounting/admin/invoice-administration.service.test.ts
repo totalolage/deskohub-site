@@ -385,6 +385,50 @@ describe("InvoiceAdministrationService", () => {
     expect(deliveryMutation).not.toHaveBeenCalled();
     expect(claimMutation).not.toHaveBeenCalled();
   });
+
+  test("downloads a stored invoice as a PDF named by its number", async () => {
+    const document = makeCoworkInvoiceDocument("en-US");
+    const invoice = {
+      id: invoiceIdSchema.make("01980000-0000-7000-8000-000000000010"),
+      workspaceReservationId: "workspace-reservation",
+      paymentAttemptId: "payment-attempt",
+      dotyposCustomerId: "dotypos-customer",
+      invoiceNumber: document.invoiceNumber,
+      issuedAt: Temporal.Instant.from(document.issuedAt),
+      document,
+    } satisfies Invoice;
+    const findById = mock((id: string) =>
+      Effect.succeed(id === invoice.id ? invoice : null)
+    );
+    const layer = InvoiceAdministrationService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(DotyposService, {}),
+          Layer.mock(InvoiceRepository, { findById }),
+          Layer.mock(InvoiceEmailDeliveryRepository, {}),
+          Layer.mock(InvoiceEmailDeliveryService, {}),
+          Layer.mock(ManualInvoiceCreationRequests, {}),
+          Layer.mock(WorkspaceDatabase, {})
+        )
+      )
+    );
+    const missingId = "01980000-0000-7000-8000-000000000011";
+
+    const [pdf, missing] = await Effect.gen(function* () {
+      const service = yield* InvoiceAdministrationService;
+      return yield* Effect.all([
+        service.getPdf(invoice.id),
+        Effect.flip(service.getPdf(missingId)),
+      ]);
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(Buffer.from(pdf.bytes).subarray(0, 5).toString()).toBe("%PDF-");
+    expect(pdf.fileName).toBe(`${document.invoiceNumber}.pdf`);
+    expect(missing).toMatchObject({
+      _tag: "InvoiceAdministrationNotFoundError",
+      invoiceId: missingId,
+    });
+  });
 });
 
 const item = (
