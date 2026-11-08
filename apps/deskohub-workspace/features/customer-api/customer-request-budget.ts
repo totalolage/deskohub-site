@@ -26,6 +26,7 @@ import { budgetKeyDigest } from "@/shared/backend/request-budget/request-budget-
  */
 export type CustomerRequestBudgetClass =
   | "workspace-only"
+  | "catalog-read"
   | "dotypos-read"
   | "dotypos-mutation";
 
@@ -49,7 +50,9 @@ export type CustomerApiEndpointClassification = {
  * account that isn't linked yet looks its customer up, and may reactivate
  * an expired one. A Dotypos-backed GET is a read; every other method is a
  * mutation (`customer-request-budget.test.ts` checks it against the
- * contract).
+ * contract). The booking catalog's reads are catalog reads: they read the
+ * shared snapshots, which call Dotypos only when they miss, and a booking
+ * compares several dates and prices before it checks out.
  */
 export const customerRequestBudgetClasses = {
   account: {
@@ -84,13 +87,13 @@ export const customerRequestBudgetClasses = {
   booking: {
     // The office's seat maximum reads the shared table snapshot, which
     // reads Dotypos when it misses.
-    listOfferings: "dotypos-read",
+    listOfferings: "catalog-read",
     // The shared table and reservation snapshots, read from Dotypos on a
     // miss.
-    getAvailability: "dotypos-read",
-    getMeetingRoomStartTimes: "dotypos-read",
+    getAvailability: "catalog-read",
+    getMeetingRoomStartTimes: "catalog-read",
     // An office quote checks the seats against the shared table snapshot.
-    getQuote: "dotypos-read",
+    getQuote: "catalog-read",
     // The published documents' versions.
     listLegalDocuments: "workspace-only",
     // A booking spends two to four Dotypos mutations: the hold, an
@@ -106,23 +109,37 @@ export const customerRequestBudgetClasses = {
 /**
  * Requests one account may make, whatever they cost: a bound for a runaway
  * or looping client. Opening the account and its sections takes about six
- * requests, so this leaves room for a busy session and stops a loop within
- * minutes.
+ * requests, and comparing dates and prices before a booking takes a few per
+ * date, so this leaves room for a busy session, never binds before the
+ * catalog budget, and stops a loop within minutes.
  */
-const generalBudget = { limit: 60, window: Duration.minutes(10) };
+const generalBudget = { limit: 120, window: Duration.minutes(10) };
+
+/**
+ * Booking catalog reads one account may make: offerings, availability,
+ * meeting-room start times and quotes. One date costs about three, so this
+ * covers comparing dozens of dates. They read the shared snapshots, which
+ * call Dotypos only when they miss, so they leave the Dotypos read budget to
+ * the account and its reservations.
+ */
+const catalogReadBudget = { limit: 120, window: Duration.minutes(10) };
 
 /**
  * Dotypos-backed requests one account may make, reads and mutations apart so
- * an app that reloads its account screens can't spend the allowance its edits
- * and its deletion need. Opening the app reads up to three Dotypos-backed
- * endpoints; editing the profile or the avatar, saving consent and deleting
- * the account are mutations.
+ * an app that reloads its account screens can't spend the allowance its edits,
+ * its bookings and its deletion need. Opening the app reads up to three
+ * Dotypos-backed endpoints; editing the profile or the avatar, saving consent,
+ * deleting the account and each checkout step that calls Dotypos are
+ * mutations. A booking spends up to four (the hold, a rejected and an
+ * applied code, and the submission; accepting a changed price spends none),
+ * so two bookings fit beside the account's edits.
  *
  * The whole site shares 150 Dotypos requests per 30 minutes. A linked
  * account's request costs one or two Dotypos requests; resolving an unlinked
  * account and retrying a version conflict can reach four. An account that
- * spends both budgets makes about 52 Dotypos requests (20 reads and 6
- * mutations at two each), a third of the allowance, and at most 104. These
+ * spends both budgets makes about 70 Dotypos requests (20 reads and 15
+ * mutations at two each), under half the allowance, and at most 140. Catalog
+ * reads call Dotypos only when a shared snapshot misses. These
  * per-account budgets bound what one account, such as a looping client, can
  * take; they can't keep the site within the shared allowance, since enough
  * accounts each within their budgets still exceed it. The site, assistant
@@ -130,11 +147,12 @@ const generalBudget = { limit: 60, window: Duration.minutes(10) };
  * rest.
  */
 const dotyposReadBudget = { limit: 20, window: Duration.minutes(30) };
-const dotyposMutationBudget = { limit: 6, window: Duration.minutes(30) };
+const dotyposMutationBudget = { limit: 15, window: Duration.minutes(30) };
 
 /**
- * Spends the account's general budget, then its Dotypos read or mutation
- * budget when the endpoint is Dotypos-backed. An exhausted budget refuses
+ * Spends the account's general budget, then its catalog budget for a booking
+ * catalog read, or its Dotypos read or mutation budget when the endpoint is
+ * Dotypos-backed. An exhausted budget refuses
  * the request as rate limited; a budget that can't be checked fails closed.
  * An endpoint the classification doesn't know spends the mutation budget,
  * though the type keeps that from happening.
@@ -156,6 +174,12 @@ export const spendCustomerRequestBudgets = Effect.fn(
     ...Match.value(budgetClassOf(group, endpoint)).pipe(
       Match.withReturnType<RequestBudgetPolicy[]>(),
       Match.when("workspace-only", () => []),
+      Match.when("catalog-read", () => [
+        {
+          key: `customer-api:catalog-read:account:${account}`,
+          ...catalogReadBudget,
+        },
+      ]),
       Match.when("dotypos-read", () => [
         {
           key: `customer-api:dotypos-read:account:${account}`,

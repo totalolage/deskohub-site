@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { Deferred, Effect, Exit, Layer, ManagedRuntime } from "effect";
 import { makeCeremonyRun } from "./ceremony-run";
 import { PasskeyCeremonies, type PasskeyCeremonyApi } from "./passkey-ceremony";
-import { passkeyCeremonyAttempt } from "./passkey-ceremony-attempt";
+import {
+  type PasskeyCeremonyState,
+  passkeyCeremonyAttempt,
+  withoutEarlierFailure,
+} from "./passkey-ceremony-attempt";
 import {
   PasskeyCancelled,
   type PasskeyFailure,
@@ -111,5 +115,28 @@ describe("passkeyCeremonyAttempt", () => {
     Deferred.doneUnsafe(settle, Exit.void);
     await settled();
     expect(events).toEqual(["state:pending", "pending:true", "pending:false"]);
+  });
+});
+
+describe("withoutEarlierFailure", () => {
+  // Another sign-in method starting replaces the control's earlier failure,
+  // so its alert doesn't stay up beside the new attempt.
+  test("returns a failed control to idle", () => {
+    const failed: PasskeyCeremonyState<void> = {
+      status: "failed",
+      failure: new PasskeyNoCredential(),
+    };
+    expect(withoutEarlierFailure(failed)).toEqual({ status: "idle" });
+  });
+
+  test("leaves a running or finished ceremony as it is", () => {
+    const states: ReadonlyArray<PasskeyCeremonyState<string>> = [
+      { status: "idle" },
+      { status: "pending" },
+      { status: "succeeded", value: "passkey" },
+    ];
+    for (const state of states) {
+      expect(withoutEarlierFailure(state)).toBe(state);
+    }
   });
 });

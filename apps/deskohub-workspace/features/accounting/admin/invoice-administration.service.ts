@@ -5,6 +5,7 @@ import {
   DotyposCustomerIdSchema,
   DotyposService,
 } from "@deskohub/dotypos";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import type {
   AdministrationDotyposCustomerIdType,
   AdministrationInvoiceCreateInputType,
@@ -575,7 +576,7 @@ const toDotyposDetails = (
   firstName: details.firstName ?? "",
   lastName: details.lastName ?? "",
   email: details.email,
-  ...(details.phone && { phone: details.phone }),
+  phone: Option.getOrUndefined(parsePhoneNumber(details.phone ?? "")),
   addressLine1: details.address.line1,
   addressLine2: details.address.line2 ?? "",
   city: details.address.city,

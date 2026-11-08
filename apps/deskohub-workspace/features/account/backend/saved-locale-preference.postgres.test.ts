@@ -63,6 +63,7 @@ describe.skipIf(!testDatabase)(
             Effect.provide(testDatabase!.layer)
           ),
         captureAccountLocalePreference: () => Effect.void,
+        mirrorSignInAnalyticsConsent: () => Effect.void,
         reviewAccountCredentials: [],
         isReviewAccount: () => Effect.succeed(false),
         registerReviewAccount: () => Effect.void,

@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { ConfigContext } from "expo/config";
-import appConfig, { androidVersionCode, parseAppVersion } from "./app.config";
+import appConfig, {
+  androidVersionCode,
+  parseAppVersion,
+  updatesManifestUrl,
+} from "./app.config";
+import { resolveApiOrigin } from "./src/auth/api-origin";
 
 describe("parseAppVersion", () => {
   test("reads a plain major.minor.patch version", () => {
@@ -88,9 +93,211 @@ describe("app config", () => {
     expect(resolved.version).toBe("1.2.3");
   });
 
+  const staticConfig = {
+    name: "Deskohub",
+    slug: "deskohub-mobile",
+    version: "1.2.3",
+  };
+  const updatesWithoutSigning = {
+    enabled: true,
+    url: updatesManifestUrl(undefined),
+    checkAutomatically: "ON_ERROR_RECOVERY",
+    fallbackToCacheTimeout: 0,
+  } as const;
+
+  test("configures updates without signing for development clients and Metro", () => {
+    expect(appConfig(context(staticConfig), {}).updates).toEqual(
+      updatesWithoutSigning
+    );
+    expect(
+      appConfig(context(staticConfig), { MOBILE_UPDATES_CODE_SIGNING: "" })
+        .updates
+    ).toEqual(updatesWithoutSigning);
+  });
+
+  test("configures signed updates when code signing is required", () => {
+    expect(
+      appConfig(context(staticConfig), {
+        MOBILE_UPDATES_CODE_SIGNING: "required",
+      }).updates
+    ).toEqual({
+      ...updatesWithoutSigning,
+      codeSigningCertificate: "./code-signing/code-signing-certificate.pem",
+      codeSigningMetadata: { keyid: "main", alg: "rsa-v1_5-sha256" },
+    });
+  });
+
+  test.each(["true", "1", "Required", "off"])(
+    "rejects code signing setting %p",
+    (value) => {
+      expect(() =>
+        appConfig(context(staticConfig), { MOBILE_UPDATES_CODE_SIGNING: value })
+      ).toThrow();
+    }
+  );
+
+  test("points the embedded certificate at a file in the app", async () => {
+    const resolved = appConfig(context(staticConfig), {
+      MOBILE_UPDATES_CODE_SIGNING: "required",
+    });
+    const certificate = resolved.updates?.codeSigningCertificate ?? "";
+    expect(certificate).not.toBe("");
+    expect(
+      await Bun.file(`${import.meta.dir}/${certificate}`).exists()
+    ).toBeTrue();
+  });
+
+  // `eas build` applies a profile's env to every evaluation of this config,
+  // the CLI's and the native build's, so the profile decides the signing.
+  const easProfileEnv = async (profile: string) => {
+    const eas = (await Bun.file(`${import.meta.dir}/eas.json`).json()) as {
+      build: Record<string, { env?: Record<string, string> }>;
+    };
+    const build = eas.build[profile];
+    if (build === undefined) {
+      throw new Error(`eas.json has no ${profile} build profile.`);
+    }
+    return build.env ?? {};
+  };
+
+  test("signs the production build, which the release APK uses", async () => {
+    const resolved = appConfig(
+      context(staticConfig),
+      await easProfileEnv("production")
+    );
+    expect(resolved.updates?.codeSigningCertificate).toBe(
+      "./code-signing/code-signing-certificate.pem"
+    );
+  });
+
+  test("leaves the development client build unsigned, so Metro serves it", async () => {
+    const resolved = appConfig(
+      context(staticConfig),
+      await easProfileEnv("development")
+    );
+    expect(resolved.updates?.codeSigningCertificate).toBeUndefined();
+    expect(resolved.updates?.codeSigningMetadata).toBeUndefined();
+  });
+
   test("fails when the static config has no usable version", () => {
     expect(() =>
       appConfig(context({ name: "Deskohub", slug: "deskohub-mobile" }))
     ).toThrow();
+  });
+});
+
+describe("development App Links", () => {
+  const productionFilter = {
+    action: "VIEW",
+    autoVerify: true,
+    data: [
+      { scheme: "https", host: "workspace.deskohub.cz", pathPrefix: "/app/" },
+    ],
+    category: ["BROWSABLE", "DEFAULT"],
+  };
+  const base: ConfigContext["config"] = {
+    name: "Deskohub",
+    slug: "deskohub-mobile",
+    version: "1.2.3",
+    android: { intentFilters: [productionFilter] },
+  };
+  const context = (config: ConfigContext["config"]): ConfigContext => ({
+    config,
+    projectRoot: import.meta.dir,
+    staticConfigPath: null,
+    packageJsonPath: null,
+  });
+  const preview = "https://deskohub-workspace-site-abc.vercel.app";
+
+  test("keeps only the production host without a configured API origin", () => {
+    expect(appConfig(context(base), {}).android?.intentFilters).toEqual([
+      productionFilter,
+    ]);
+  });
+
+  test("keeps only the production host when the API origin is production", () => {
+    expect(
+      appConfig(context(base), {
+        EXPO_PUBLIC_API_ORIGIN: "https://workspace.deskohub.cz/",
+      }).android?.intentFilters
+    ).toEqual([productionFilter]);
+  });
+
+  test("adds an unverified link filter for a preview API origin in a development build", () => {
+    expect(
+      appConfig(context(base), { EXPO_PUBLIC_API_ORIGIN: preview }).android
+        ?.intentFilters
+    ).toEqual([
+      productionFilter,
+      {
+        action: "VIEW",
+        autoVerify: false,
+        data: [
+          {
+            scheme: "https",
+            host: "deskohub-workspace-site-abc.vercel.app",
+            pathPrefix: "/app/",
+          },
+        ],
+        category: ["BROWSABLE", "DEFAULT"],
+      },
+    ]);
+  });
+
+  test("never adds the preview host to a production build", () => {
+    expect(
+      appConfig(context(base), {
+        EXPO_PUBLIC_API_ORIGIN: preview,
+        EAS_BUILD_PROFILE: "production",
+      }).android?.intentFilters
+    ).toEqual([productionFilter]);
+  });
+
+  test("ignores a local plain-http API origin, which App Links can't open", () => {
+    expect(
+      appConfig(context(base), {
+        EXPO_PUBLIC_API_ORIGIN: "http://10.0.2.2:3000",
+      }).android?.intentFilters
+    ).toEqual([productionFilter]);
+  });
+
+  test("points updates at the same API origin as the link filter", () => {
+    expect(
+      appConfig(context(base), { EXPO_PUBLIC_API_ORIGIN: preview }).updates?.url
+    ).toBe(`${preview}/api/mobile/updates/manifest`);
+  });
+});
+
+describe("updatesManifestUrl", () => {
+  test("uses the production manifest when no origin is configured", () => {
+    expect(updatesManifestUrl(undefined)).toBe(
+      "https://workspace.deskohub.cz/api/mobile/updates/manifest"
+    );
+  });
+
+  // app.config.ts cannot import src/auth/api-origin.ts, so it repeats the
+  // origin rules; the app's runtime requests must reach the same host.
+  test.each([
+    undefined,
+    "",
+    "  ",
+    "https://deskohub-workspace-site-abc.vercel.app/",
+    "https://workspace.deskohub.cz/some/path?query=1",
+    "http://localhost:3000",
+    "http://10.0.2.2:3000",
+    "http://127.0.0.1:3000",
+  ])("follows the app's API origin for %p", (configured) => {
+    expect(updatesManifestUrl(configured)).toBe(
+      `${resolveApiOrigin(configured, undefined)}/api/mobile/updates/manifest`
+    );
+  });
+
+  test.each([
+    "http://deskohub-workspace-site-abc.vercel.app",
+    "ftp://workspace.deskohub.cz",
+    "workspace.deskohub.cz",
+  ])("rejects %p like the app's API origin does", (configured) => {
+    expect(() => resolveApiOrigin(configured, undefined)).toThrow();
+    expect(() => updatesManifestUrl(configured)).toThrow();
   });
 });

@@ -41,10 +41,16 @@ export function ErrorState({
 }) {
   const [alert, setAlert] = useState<string>();
   useEffect(() => setAlert(message), [message]);
-  useLiveRegionAnnouncement(alert);
+  useLiveRegionAnnouncement(alert, "assertive");
   return (
     <View style={styles.centered}>
-      <Text role="alert" aria-live="assertive" style={styles.message}>
+      <Text
+        role="alert"
+        aria-live="assertive"
+        // Text doesn't map `aria-live` to Android's live region; View does.
+        accessibilityLiveRegion="assertive"
+        style={styles.message}
+      >
         {alert ?? ""}
       </Text>
       <Button
@@ -70,7 +76,7 @@ export function RefreshingIndicator({
   readonly label: string;
 }) {
   const message = refreshing ? label : undefined;
-  useLiveRegionAnnouncement(message);
+  useLiveRegionAnnouncement(message, "polite");
   return (
     <View style={styles.refreshing}>
       {refreshing && (
@@ -80,7 +86,13 @@ export function RefreshingIndicator({
           color={theme.colors.textMuted}
         />
       )}
-      <Text role="status" aria-live="polite" style={styles.refreshingLabel}>
+      <Text
+        role="status"
+        aria-live="polite"
+        // Text doesn't map `aria-live` to Android's live region; View does.
+        accessibilityLiveRegion="polite"
+        style={styles.refreshingLabel}
+      >
         {message ?? ""}
       </Text>
     </View>

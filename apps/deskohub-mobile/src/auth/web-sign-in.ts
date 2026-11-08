@@ -2,7 +2,9 @@ import { Effect, Match, Option } from "effect";
 import type { AppLocale } from "../i18n/app-locale";
 import { webCallbackPath } from "./auth-callback";
 import { authClient } from "./auth-client.web";
+import type { AuthUser } from "./auth-session-state";
 import type { NativeHandoffRequest } from "./native-handoff-request";
+import { signInLocaleHeaders } from "./sign-in-locale";
 import {
   clearReauthenticatingUser,
   saveReauthenticatingUser,
@@ -45,29 +47,65 @@ const call = <A>(
     )
   );
 
+/** A sent sign-in email, and whether it carries a sign-in code. */
+export interface SentSignInEmail {
+  readonly email: string;
+  readonly signInCode: boolean;
+}
+
 /**
  * Sends the sign-in email. The relative `/app/auth/callback` (and no other
- * callback) makes the server send the App Link with the bare token.
+ * callback) makes the server send the App Link with the bare token. The
+ * server answers whether the email also carries a sign-in code; anything but
+ * a clear yes means the link alone.
  */
 export const sendSignInEmail = (email: string, locale: AppLocale) =>
-  call("send-email", (signal) =>
-    authClient.signIn.magicLink({
-      email,
-      callbackURL: webCallbackPath,
-      metadata: { locale },
-      fetchOptions: { signal },
-    })
-  ).pipe(Effect.asVoid, Effect.withSpan("WebSignIn.sendSignInEmail"));
+  call<{ readonly status: boolean; readonly signInCode?: unknown }>(
+    "send-email",
+    (signal) =>
+      authClient.signIn.magicLink({
+        email,
+        callbackURL: webCallbackPath,
+        metadata: { locale },
+        fetchOptions: { signal },
+      })
+  ).pipe(
+    Effect.map(
+      (data): SentSignInEmail => ({
+        email,
+        signInCode: data?.signInCode === true,
+      })
+    ),
+    Effect.withSpan("WebSignIn.sendSignInEmail")
+  );
 
-export const verifySignInCode = (email: string, code: string) =>
+/**
+ * Signs in with the email's code. The request names the app's locale, which
+ * an account it creates takes as its language.
+ */
+export const verifySignInCode = (
+  email: string,
+  code: string,
+  locale: AppLocale
+) =>
   call("verify-code", (signal) =>
-    authClient.signIn.emailOtp({ email, otp: code, fetchOptions: { signal } })
+    authClient.signIn.emailOtp({
+      email,
+      otp: code,
+      fetchOptions: { signal, headers: signInLocaleHeaders(locale) },
+    })
   ).pipe(Effect.asVoid, Effect.withSpan("WebSignIn.verifySignInCode"));
 
-/** Claims a magic-link token without a callback, for a JSON answer. */
-export const verifyMagicLinkToken = (token: string) =>
+/**
+ * Claims a magic-link token without a callback, for a JSON answer. The
+ * request names the app's locale, as the sign-in code does.
+ */
+export const verifyMagicLinkToken = (token: string, locale: AppLocale) =>
   call("verify-link", (signal) =>
-    authClient.magicLink.verify({ query: { token }, fetchOptions: { signal } })
+    authClient.magicLink.verify({
+      query: { token },
+      fetchOptions: { signal, headers: signInLocaleHeaders(locale) },
+    })
   ).pipe(Effect.asVoid, Effect.withSpan("WebSignIn.verifyMagicLinkToken"));
 
 /**
@@ -129,6 +167,33 @@ export const reauthenticationExpectation = ({
     : { kind: "account", userId };
 };
 
+/**
+ * The sign-in page's email field. A web reauthentication's email goes only to
+ * the account this page's browser session had when the page first read it:
+ * a code or link for any other address would sign in to that account and
+ * replace the browser's session cookie, which the page can't restore. Until
+ * that first read nothing is sent, so an address entered early can't slip
+ * past the lock. Without a session there is nothing to keep, and the account
+ * check still refuses a switch.
+ */
+export type SignInEmailField =
+  | { readonly kind: "waiting" }
+  | { readonly kind: "locked"; readonly email: string }
+  | { readonly kind: "free" };
+
+export const signInEmailField = ({
+  reauthenticating,
+  pageSession,
+}: {
+  readonly reauthenticating: boolean;
+  readonly pageSession: { readonly user: AuthUser | undefined } | undefined;
+}): SignInEmailField => {
+  if (pageSession === undefined) return { kind: "waiting" };
+  return reauthenticating && pageSession.user !== undefined
+    ? { kind: "locked", email: pageSession.user.email }
+    : { kind: "free" };
+};
+
 const refuseAccount = (
   reason: "account-switch" | "reauthentication-unconfirmed"
 ) =>
@@ -174,18 +239,22 @@ export const confirmWebAccount = (expectation: WebAccountExpectation) =>
 
 /**
  * Before a reauthentication's email goes out, stores the account it must
- * come back as, so the email's link can be checked in any tab. An account
- * that can't be recovered or stored stops the email.
+ * come back as and the screen it returns to, so the email's link can be
+ * checked, and finish, in any tab. An account that can't be recovered or
+ * stored stops the email.
  */
 export const prepareReauthenticationEmail = (
-  expectation: WebAccountExpectation
+  expectation: WebAccountExpectation,
+  returnPath: string
 ) =>
   Match.value(expectation).pipe(
     Match.discriminatorsExhaustive("kind")({
       none: () => Effect.void,
       unrecoverable: () => Effect.fail(reauthenticationUnavailable()),
       account: ({ userId }) =>
-        Effect.sync(() => saveReauthenticatingUser(userId, Date.now())).pipe(
+        Effect.sync(() =>
+          saveReauthenticatingUser({ userId, returnPath }, Date.now())
+        ).pipe(
           Effect.filterOrFail(
             (saved) => saved,
             () => reauthenticationUnavailable()
@@ -268,14 +337,21 @@ export const magicLinkExpectation = ({
  */
 const clearOnceConfirmed = Effect.sync(clearReauthenticatingUser);
 
-/** Signs the browser in with a magic link, refusing an account switch. */
+/**
+ * Signs the browser in with a magic link, refusing an account switch. The
+ * server refuses another account's link while the browser is signed in
+ * (`403 ACCOUNT_SWITCH_REFUSED`) and keeps its session, so that refusal
+ * signs nothing out; a link that still signs in as another account is
+ * signed out again by the account check.
+ */
 export const completeWebMagicLink = (
   token: string,
-  context: Parameters<typeof magicLinkExpectation>[0]
+  context: Parameters<typeof magicLinkExpectation>[0],
+  locale: AppLocale
 ) =>
   magicLinkExpectation(context).pipe(
     Effect.flatMap((expectation) =>
-      verifyMagicLinkToken(token).pipe(
+      verifyMagicLinkToken(token, locale).pipe(
         Effect.andThen(confirmWebAccount(expectation))
       )
     ),
@@ -298,9 +374,10 @@ export const completeWebPasskeySignIn = (expectation: WebAccountExpectation) =>
 export const completeWebCodeSignIn = (
   email: string,
   code: string,
-  expectation: WebAccountExpectation
+  expectation: WebAccountExpectation,
+  locale: AppLocale
 ) =>
-  verifySignInCode(email, code).pipe(
+  verifySignInCode(email, code, locale).pipe(
     Effect.andThen(confirmWebAccount(expectation)),
     Effect.tap(() => clearOnceConfirmed),
     Effect.withSpan("WebSignIn.completeWebCodeSignIn")

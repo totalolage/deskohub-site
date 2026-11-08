@@ -1,7 +1,7 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
-import { type Href, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { SignOutFailure, signOut } from "../auth/sign-out";
 import { standaloneTaskRuntime, useAuthTask } from "../auth/use-auth-task";
 import { AsyncView } from "../customer-api/async-view";
@@ -17,21 +17,12 @@ import {
   type AccountNotice,
   type AccountSection,
   accountIndexModel,
+  accountSectionHref,
 } from "./account-gating";
+import { SignupReferralNotice } from "./profile/signup-referral-notice";
 
 const runSignOut = () => signOut;
 const unexpectedSignOutFailure = () => new SignOutFailure();
-
-const sectionHref: Record<AccountSection, Href> = {
-  referrals: "/account/referrals",
-  complete: "/account/complete",
-  profile: "/account/profile",
-  security: "/account/security",
-  assistants: "/account/assistants",
-  billing: "/account/billing",
-  legal: "/account/legal",
-  danger: "/account/danger",
-};
 
 const sectionLabel = (section: AccountSection, locale: AppLocale) =>
   ({
@@ -106,13 +97,14 @@ export function AccountIndexScreen() {
       <AsyncView result={account} onRetry={refresh}>
         {(current) => (
           <>
+            <SignupReferralNotice account={current} />
             <ListGroup>
               {accountIndexModel(current).sections.map((section) => (
                 <ListRow
                   key={section}
                   label={sectionLabel(section, locale)}
                   destructive={section === "danger"}
-                  onPress={() => router.push(sectionHref[section])}
+                  onPress={() => router.push(accountSectionHref[section])}
                 />
               ))}
             </ListGroup>

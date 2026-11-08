@@ -12,7 +12,6 @@ export {
   CustomerAvatarRejectionReason,
   CustomerAvatarUpload,
   CustomerFeatureUnavailable,
-  CustomerLocale,
   CustomerMarketingConsentStatus,
   CustomerMarketingPreferences,
   CustomerMarketingPreferencesRejected,
@@ -91,11 +90,14 @@ export {
   CustomerCheckoutSummaryDiscount,
   CustomerCheckoutSummaryItem,
 } from "./customer-checkout-summary";
+export { CustomerLocale, customerSignInLocaleHeader } from "./customer-locale";
 export {
   CustomerProfile,
   CustomerProfileBilling,
   CustomerProfileCompletionInput,
+  CustomerProfileCompletionSave,
   CustomerProfileInput,
+  CustomerProfileSave,
   customerInputParseOptions,
   customerProfileBusinessBillingFields,
   ProfileCompletionReferralOutcome,

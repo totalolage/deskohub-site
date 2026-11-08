@@ -1,6 +1,6 @@
 ---
 name: deskohub-mobile-release
-description: Mobile release, Android APK, mobile-v tag, mobile-release.yml, versionCode, expo.version bump, mobile CHANGELOG, release signing keystore, apksigner fingerprint, eas build --local, local APK build on a developer machine.
+description: Mobile release, Android APK, mobile-v tag, mobile-release.yml, versionCode, expo.version bump, mobile CHANGELOG, release signing keystore, apksigner fingerprint, eas build --local, local APK build on a developer machine, latest Android release lookup, /api/mobile/releases/latest, native version endpoint, loadLatestAndroidRelease, GitHub API rate limit, first public release, Sculpin brand font licence, update code signing, codeSigningCertificate, MOBILE_UPDATES_CODE_SIGNING, signed development manifest, --private-key-path, dev client cannot load from Metro, debug dev-client APK.
 ---
 
 # Deskohub mobile release
@@ -12,6 +12,10 @@ description: Mobile release, Android APK, mobile-v tag, mobile-release.yml, vers
 - `expo.version` in `apps/deskohub-mobile/app.json` is the one version source. `app.config.ts` derives `android.versionCode` from it as `major * 1_000_000 + minor * 1_000 + patch` (minor and patch below 1000, major below 2100), so a later version always installs over an earlier one. Keep `appVersionSource: local` in `eas.json`.
 - Versions are plain `X.Y.Z`; the tag is `mobile-vX.Y.Z`, mirroring dhw's `dhw-vX.Y.Z`.
 - `app.config.ts` imports no local modules: Expo transpiles only that file, so a TypeScript import from it fails on Node without type stripping. Release scripts import from it instead.
+
+## Brand font licence
+
+The app embeds the site's Sculpin face: `apps/deskohub-mobile/assets/fonts/Sculpin.ttf` is a copy of the site's `regular.ttf`, linked by the `expo-font` plugin entry in `app.json`. The user decided on 2026-11-07 to embed it now and to obtain the app-embedding licence manually before the first public release. Before cutting that release, ask the user to confirm the licence is in place.
 
 ## Cutting a release
 
@@ -37,3 +41,24 @@ EXPO_TOKEN=... ANDROID_KEYSTORE_PATH=<release.keystore> ANDROID_KEYSTORE_PASSWOR
 `ANDROID_KEYSTORE_BASE64` replaces `ANDROID_KEYSTORE_PATH` in CI. Without the release keystore, `bun run release:apk --signing debug --out-dir <dir>` builds the same APK signed with a throwaway key (JDK `keytool` from `JAVA_HOME` or `PATH`); it refuses `--tag`. The script writes `credentials.json` (git-ignored) for the build and removes it afterwards; it refuses to run when one already exists. It sets `GRADLE_OPTS=-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4` unless `GRADLE_OPTS` is set, because a Gradle daemon killed mid-build on a shared machine fails the build with "Gradle build daemon disappeared". EAS works in the system temporary directory, so point `TMPDIR` at a disk with room for a full Android build.
 
 The release certificate SHA-256 is `releaseCertificateSha256` in `scripts/release/apk-signature.ts`; `/.well-known/assetlinks.json` and the passkey `android:apk-key-hash` origin use the same key.
+
+## Update code signing and development clients
+
+`app.config.ts` embeds the update code-signing certificate (`code-signing/code-signing-certificate.pem`, keyid `main`) only when `MOBILE_UPDATES_CODE_SIGNING=required`; unset or empty leaves it out, and any other value fails the config. The `production` profile in `eas.json` sets it, so every release, dry-run and `release:apk` build verifies update signatures. The `ota-update` job sets it as job env for the runtime-version check and the publish: the signing fields feed the fingerprint runtime version, so a publish without the variable resolves a runtime no release has. Set it for a manual `publish-mobile-update.ts` run too. `app.config.test.ts` pins both config shapes and the two `eas.json` profiles; `mobile-release-workflow.test.ts` pins the `ota-update` job env to the production profile's env.
+
+Development clients and Metro run without it. A build that embeds the certificate asks Metro for a signed development manifest, and Metro refuses with "Must specify --private-key-path argument to sign development manifest" unless started with the private key; never point Metro at the key. Build a debug dev client for local work or the emulator from `apps/deskohub-mobile`, with `MOBILE_UPDATES_CODE_SIGNING` unset:
+
+```bash
+CI=1 bunx expo prebuild --platform android --no-install --clean
+(cd android && ./gradlew assembleDebug --no-daemon --max-workers=4 -PreactNativeArchitectures=x86_64)
+```
+
+Install `android/app/build/outputs/apk/debug/app-debug.apk`, run `bun run dev`, and open the app: it loads from Metro (`adb reverse tcp:8081 tcp:8081` on an emulator).
+
+## Latest-release endpoint
+
+`GET /api/mobile/releases/latest` tells the app, and the `/android` page through `loadLatestAndroidRelease`, which APK is the newest. The code is in `apps/deskohub-workspace/features/mobile-releases`: the release-note rules in `android-release.ts`, and the cached lookup in `backend/latest-android-release.server.ts`. It answers the release as JSON, 404 `{ "error": "no-release" }`, or an uncached 502 `{ "error": "lookup-failed" }`.
+
+- It reads GitHub's REST API without a token: `git/matching-refs/tags/mobile-v`, then `releases/tags/<tag>` for the three highest versions until one is usable. A 404 there means the tag has no published release yet. Paging the release list could miss mobile releases behind dhw releases; the tag list can't.
+- A release counts only if `renderReleaseNotes` wrote it: tag `mobile-vX.Y.Z`, title `mobile: vX.Y.Z`, asset `deskohub-X.Y.Z.apk`, and an `### Android APK` section whose `File` line names that asset with its version code, with a `File SHA-256` line and a `Signing certificate SHA-256` line equal to `nativeApp.androidReleaseCertificate` (`features/account/backend/auth/native-app.ts`). Change `android-release.ts` with any change to those lines. Keep `nativeApp.androidReleaseCertificate` equal to `releaseCertificateSha256` in `scripts/release/apk-signature.ts`.
+- Unauthenticated requests are limited to 60 an hour per IP address, and Vercel functions share egress addresses. The lookup is shared with `"use cache: remote"` for ten minutes, and a lookup takes two requests in the usual case. A failed lookup, including a refresh of a good result, is shared for two minutes as a failure, never as "no release", and never thrown, because a throwing cached function fails the `/android` prerender. During a GitHub outage the route answers 502 and `/android` shows no download until a lookup succeeds. If the three highest `mobile-v` tags have no usable release while older tags exist, the lookup fails instead of reporting none: publish or fix those releases. The route sends `s-maxage=600, stale-while-revalidate=3600` on 200 and 404 and `no-store` on 502. A spell of 502s with `mobile_releases.latest_android.lookup_failed` logged usually means the rate limit is spent; it clears within the hour.

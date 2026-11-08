@@ -150,8 +150,10 @@
         "react-native-web": "^0.21.4",
       },
       "devDependencies": {
+        "@happy-dom/global-registrator": "^20.10.1",
         "@inlang/paraglide-js": "^2.26.0",
         "@types/react": "^19.3.0",
+        "@types/react-dom": "^19.3.0",
         "chokidar-cli": "^3.0.0",
         "typescript": "npm:@typescript/typescript6@6.0.2",
       },
@@ -193,6 +195,7 @@
         "@deskohub/igloohome": "workspace:*",
         "@deskohub/nexi": "workspace:*",
         "@deskohub/next-effect": "workspace:*",
+        "@deskohub/phone-number": "workspace:*",
         "@deskohub/posthog": "workspace:*",
         "@deskohub/qr-code": "workspace:*",
         "@deskohub/secret-comparison": "workspace:*",
@@ -270,7 +273,6 @@
         "effect": "4.0.0-beta.85",
         "input-otp": "^1.5.0",
         "leaflet": "^1.9.4",
-        "libphonenumber-js": "^1.13.15",
         "lucide-react": "^1.53.0",
         "marked": "17.0.6",
         "mdast-util-to-markdown": "^2.2.0",
@@ -416,9 +418,9 @@
       "name": "@deskohub/dotypos",
       "version": "0.1.0",
       "dependencies": {
+        "@deskohub/phone-number": "workspace:*",
         "@deskohub/provider-request": "workspace:*",
         "effect": "4.0.0-beta.85",
-        "libphonenumber-js": "^1.13.15",
       },
       "devDependencies": {
         "@deskohub/test-email": "workspace:*",
@@ -555,6 +557,17 @@
         "typescript": "npm:@typescript/typescript6@6.0.2",
       },
     },
+    "packages/phone-number": {
+      "name": "@deskohub/phone-number",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "4.0.0-beta.85",
+        "libphonenumber-js": "^1.13.15",
+      },
+      "devDependencies": {
+        "typescript": "npm:@typescript/typescript6@6.0.2",
+      },
+    },
     "packages/posthog": {
       "name": "@deskohub/posthog",
       "version": "0.1.0",
@@ -659,7 +672,7 @@
       "name": "@deskohub/workspace-customer-api",
       "version": "0.1.0",
       "dependencies": {
-        "@deskohub/dotypos": "workspace:*",
+        "@deskohub/phone-number": "workspace:*",
         "effect": "4.0.0-beta.85",
       },
       "devDependencies": {
@@ -1013,6 +1026,8 @@
     "@deskohub/nexi": ["@deskohub/nexi@workspace:packages/nexi"],
 
     "@deskohub/next-effect": ["@deskohub/next-effect@workspace:packages/next-effect"],
+
+    "@deskohub/phone-number": ["@deskohub/phone-number@workspace:packages/phone-number"],
 
     "@deskohub/posthog": ["@deskohub/posthog@workspace:packages/posthog"],
 

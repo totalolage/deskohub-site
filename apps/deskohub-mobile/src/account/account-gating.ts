@@ -4,6 +4,7 @@ import type {
   CustomerReservationSummary,
 } from "@deskohub/workspace-customer-api";
 import { Match } from "effect";
+import type { Href } from "expo-router";
 
 /**
  * The Account tab's sections, in the site's navigation order (reservations
@@ -21,6 +22,18 @@ export const accountSectionOrder = [
   "danger",
 ] as const;
 export type AccountSection = (typeof accountSectionOrder)[number];
+
+/** Where each section's row on the Account tab leads. */
+export const accountSectionHref = {
+  referrals: "/account/referrals",
+  complete: "/account/complete",
+  profile: "/account/profile",
+  security: "/account/security",
+  assistants: "/account/assistants",
+  billing: "/account/billing",
+  legal: "/account/legal",
+  danger: "/account/danger",
+} as const satisfies Record<AccountSection, Href>;
 
 /** Why the account can't show its profile and reservations, if it can't. */
 export type AccountNotice =

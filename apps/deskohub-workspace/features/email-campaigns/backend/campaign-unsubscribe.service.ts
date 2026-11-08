@@ -91,12 +91,13 @@ export class CampaignUnsubscribeService extends Context.Service<
       const findRecipient = Effect.fn(
         "CampaignUnsubscribeService.findRecipient"
       )(function* (token: string) {
-        const recipient = yield* Option.match(
-          openCampaignUnsubscribeToken(keys, token),
-          {
-            onNone: () => Effect.fail(new CampaignUnsubscribeTokenInvalid()),
-            onSome: Effect.succeed,
-          }
+        const recipient = yield* openCampaignUnsubscribeToken(keys, token).pipe(
+          Effect.flatMap(
+            Option.match({
+              onNone: () => Effect.fail(new CampaignUnsubscribeTokenInvalid()),
+              onSome: Effect.succeed,
+            })
+          )
         );
         const [row] = yield* db
           .select({ purpose: sendPurpose })
@@ -134,7 +135,7 @@ export class CampaignUnsubscribeService extends Context.Service<
             );
             url.searchParams.set(
               "token",
-              signCampaignUnsubscribeToken(keys[0], recipient)
+              yield* signCampaignUnsubscribeToken(keys, recipient)
             );
             appendVercelPreviewProtectionBypass(url);
             return url.href;

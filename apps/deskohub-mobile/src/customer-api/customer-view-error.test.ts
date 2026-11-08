@@ -13,6 +13,7 @@ import {
   CustomerServiceUnavailable,
   CustomerSessionRequired,
 } from "@deskohub/workspace-customer-api";
+import { Cause } from "effect";
 import {
   HttpClientError,
   HttpClientRequest,
@@ -27,6 +28,7 @@ import {
   type CustomerViewError,
   isRetryableViewError,
   toCustomerViewError,
+  viewErrorOf,
 } from "./customer-view-error";
 
 const request = HttpClientRequest.get("https://workspace.deskohub.test/x");
@@ -90,5 +92,18 @@ describe("toCustomerViewError", () => {
         })
       )
     ).toMatchObject({ reason: "forbidden", code: "SESSION_NOT_FRESH" });
+  });
+});
+
+describe("viewErrorOf", () => {
+  test("maps the failure a cause carries", () => {
+    expect(viewErrorOf(Cause.fail(new CustomerRateLimited()))._tag).toBe(
+      "RateLimited"
+    );
+  });
+
+  test("treats a defect or an interruption as unexpected", () => {
+    expect(viewErrorOf(Cause.die(new Error("boom")))._tag).toBe("Unexpected");
+    expect(viewErrorOf(Cause.interrupt())._tag).toBe("Unexpected");
   });
 });

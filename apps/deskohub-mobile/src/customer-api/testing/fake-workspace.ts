@@ -2,16 +2,19 @@ import {
   CurrentCustomerSession,
   CustomerAccessCodeUnavailable,
   type CustomerAccountApi,
+  type CustomerAccountDeletionResult,
   CustomerAccountLinkRequired,
   type CustomerAccountState,
   type CustomerAuthEndpoints,
   CustomerAuthApi as CustomerAuthHttpApi,
-  CustomerAuthRejected,
+  CustomerAvatarRejected,
+  type CustomerAvatarRejectionReason,
   CustomerFeatureUnavailable,
   CustomerInvoiceNotIssued,
   CustomerMarketingPreferencesRejected,
   type CustomerProfile,
-  type CustomerProfileInput,
+  CustomerProfileCompletionSave,
+  CustomerProfileSave,
   CustomerRateLimited,
   CustomerRequestOriginCheck,
   CustomerRequestRejected,
@@ -21,9 +24,10 @@ import {
   CustomerSessionAuthentication,
   CustomerSessionRequired,
   customerApiClientHeader,
+  type ProfileCompletionReferralOutcome,
   WorkspaceCustomerApi,
 } from "@deskohub/workspace-customer-api";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 import {
   HttpClient,
   HttpClientError,
@@ -33,6 +37,7 @@ import {
   HttpServer,
   HttpServerRequest,
   HttpServerResponse,
+  Multipart,
 } from "effect/unstable/http";
 import {
   HttpApiBuilder,
@@ -62,7 +67,12 @@ export type FakeRequestOutcome =
   /** No answer ever comes; the client's timeout decides. */
   | "hang"
   /** The server handles the request, then answers a body nobody can read. */
-  | "unreadable-answer";
+  | "unreadable-answer"
+  /**
+   * Better Auth endpoints only: the session is too old for this change
+   * (403 `SESSION_NOT_FRESH`), so the customer must confirm it's them.
+   */
+  | "session-not-fresh";
 
 type EndpointName = HttpApiEndpoint.Name<
   | HttpApiGroup.Endpoints<typeof CustomerAccountApi>
@@ -79,6 +89,19 @@ type EndpointName = HttpApiEndpoint.Name<
 export class FakeWorkspace {
   data: FakeWorkspaceData;
   signedIn = true;
+  /**
+   * How first-time completion answers a submitted referral code: the outcome
+   * it reports (and stores on the linked account), or `"unavailable"`, which
+   * refuses the completion and creates nothing.
+   */
+  referralCodeAnswer: ProfileCompletionReferralOutcome | "unavailable" = {
+    status: "applied",
+  };
+  /**
+   * How the next deletion request ends. Only `deleted` deletes the account
+   * and ends the session.
+   */
+  deletionOutcome: CustomerAccountDeletionResult["status"] = "deleted";
   /** Endpoint names in the order requests reached them. */
   readonly calls: EndpointName[] = [];
   private readonly outcomes = new Map<EndpointName, FakeRequestOutcome[]>();
@@ -112,12 +135,77 @@ export class FakeWorkspace {
     if (queued?.length === 0) this.outcomes.delete(endpoint);
     return next;
   }
+
+  /** The parts of each avatar upload the Workspace admitted, in order. */
+  readonly avatarUploads: Array<ReadonlyArray<FakeAvatarUploadPart>> = [];
+  private readonly avatarRejections: CustomerAvatarRejectionReason[] = [];
+
+  /** Refuses the next admitted avatar upload with `reason` (422). */
+  rejectNextAvatar(reason: CustomerAvatarRejectionReason) {
+    this.avatarRejections.push(reason);
+  }
+
+  /** @internal Takes the next queued avatar refusal. */
+  nextAvatarRejection(): CustomerAvatarRejectionReason | undefined {
+    return this.avatarRejections.shift();
+  }
 }
 
-const storedProfile = (input: CustomerProfileInput): CustomerProfile => ({
+/** One part of an avatar upload body, as the fake Workspace read it. */
+export type FakeAvatarUploadPart =
+  | {
+      readonly _tag: "File";
+      readonly field: string;
+      readonly name: string;
+      readonly contentType: string;
+      readonly bytes: Uint8Array;
+    }
+  | { readonly _tag: "Field"; readonly field: string; readonly value: string };
+
+// Reads every part of an upload body. A body the multipart parser can't read,
+// such as a React Native URI part in the on-device sample-data mode, records
+// no parts; other failures surface.
+const avatarUploadParts = (
+  payload: Stream.Stream<Multipart.Part, Multipart.MultipartError>
+) =>
+  payload.pipe(
+    Stream.mapEffect(
+      (part): Effect.Effect<FakeAvatarUploadPart, Multipart.MultipartError> =>
+        Multipart.isFile(part)
+          ? Effect.map(part.contentEffect, (bytes) => ({
+              _tag: "File" as const,
+              field: part.key,
+              name: part.name,
+              contentType: part.contentType,
+              bytes,
+            }))
+          : Effect.succeed({
+              _tag: "Field" as const,
+              field: part.key,
+              value: Multipart.isField(part) ? part.value : "",
+            })
+    ),
+    Stream.runCollect,
+    Effect.catchTag("MultipartError", () => Effect.succeed([]))
+  );
+
+/**
+ * The save a profile payload asks for, read as the Workspace's handlers read
+ * it: the entered phone decoded to the phone number it holds. The payload
+ * already passed the same rules, so a failure here is a defect.
+ */
+const readProfileSave = <S extends Schema.Top>(schema: S) => {
+  const decode = Schema.decodeEffect(schema);
+  return (payload: S["Encoded"]) => decode(payload).pipe(Effect.orDie);
+};
+const readProfileUpdate = readProfileSave(CustomerProfileSave);
+const readProfileCompletion = readProfileSave(CustomerProfileCompletionSave);
+
+// Dotypos stores a cleared phone as blank, which reads back as no phone.
+const storedProfile = (input: CustomerProfileSave): CustomerProfile => ({
   firstName: input.firstName,
   lastName: input.lastName ?? null,
-  phone: input.phone ?? null,
+  phone: input.phone || null,
   billing:
     input.billing === undefined
       ? null
@@ -200,60 +288,117 @@ const serverLayer = (workspace: FakeWorkspace) => {
           Effect.sync(() => accountView(workspace.data))
         )
         .handle("updateProfile", ({ payload }) =>
-          Effect.flatMap(linkedAccount, (current) =>
-            update((data) => ({
-              ...data,
-              account: { ...current, profile: storedProfile(payload) },
-            }))
-          ).pipe(Effect.as({ status: "updated" as const }))
+          Effect.all([linkedAccount, readProfileUpdate(payload)]).pipe(
+            Effect.flatMap(([current, save]) =>
+              update((data) => ({
+                ...data,
+                account: { ...current, profile: storedProfile(save) },
+              }))
+            ),
+            Effect.as({ status: "updated" as const })
+          )
         )
         .handle("completeProfile", ({ payload }) =>
-          Effect.suspend(() => {
-            const current = workspace.data.account;
-            if (current.kind !== "completion-required") {
-              return Effect.fail(
-                new CustomerAccountLinkRequired({
-                  reason: linkRequiredReason(current),
-                })
-              );
-            }
-            return update((data) => ({
-              ...data,
-              account: {
-                kind: "linked",
-                email: current.email,
-                deletion: current.deletion,
-                passkeys: current.passkeys,
-                assistants: current.assistants,
-                profile: storedProfile(payload),
-                avatar: { kind: "available", avatar: null },
-                referralsEnabled: current.referralsEnabled,
-                referrals: data.referrals,
-              },
-            })).pipe(Effect.as({ status: "completed" as const }));
-          })
+          Effect.flatMap(readProfileCompletion(payload), (save) =>
+            Effect.suspend(
+              (): Effect.Effect<
+                | {
+                    readonly status: "completed";
+                    readonly referral?: ProfileCompletionReferralOutcome;
+                  }
+                | { readonly status: "referral-code-unavailable" },
+                CustomerAccountLinkRequired
+              > => {
+                const current = workspace.data.account;
+                if (current.kind !== "completion-required") {
+                  return Effect.fail(
+                    new CustomerAccountLinkRequired({
+                      reason: linkRequiredReason(current),
+                    })
+                  );
+                }
+                const answer = workspace.referralCodeAnswer;
+                if (save.referralCode !== undefined && answer === "unavailable")
+                  return Effect.succeed({
+                    status: "referral-code-unavailable" as const,
+                  });
+                const referral =
+                  save.referralCode === undefined || answer === "unavailable"
+                    ? undefined
+                    : answer;
+                return update((data) => ({
+                  ...data,
+                  account: {
+                    kind: "linked",
+                    email: current.email,
+                    deletion: current.deletion,
+                    passkeys: current.passkeys,
+                    assistants: current.assistants,
+                    profile: storedProfile(save),
+                    avatar: { kind: "available", avatar: null },
+                    referralsEnabled: current.referralsEnabled,
+                    referrals: data.referrals,
+                    ...(referral && { signupReferral: referral }),
+                  },
+                })).pipe(
+                  Effect.as({
+                    status: "completed" as const,
+                    ...(referral && { referral }),
+                  })
+                );
+              }
+            )
+          )
         )
-        .handle("uploadAvatar", () =>
-          Effect.flatMap(linkedAccount, (current) => {
-            const avatar = {
-              url: `${fakeWorkspaceOrigin}/avatars/sample.png`,
-              version: Date.now(),
-            };
-            return update((data) => ({
-              ...data,
-              account: { ...current, avatar: { kind: "available", avatar } },
-            })).pipe(Effect.as(avatar));
-          })
+        .handle("uploadAvatar", ({ payload }) =>
+          Effect.Do.pipe(
+            // Admitted only while avatars are released for a linked account.
+            Effect.bind("current", () =>
+              Effect.filterOrFail(
+                linkedAccount,
+                (account) => account.avatar.kind !== "hidden",
+                () => new CustomerFeatureUnavailable({ feature: "avatars" })
+              )
+            ),
+            Effect.bind("parts", () => avatarUploadParts(payload)),
+            Effect.tap(({ parts }) =>
+              Effect.sync(() => workspace.avatarUploads.push(parts))
+            ),
+            Effect.tap(() =>
+              Effect.suspend(() => {
+                const reason = workspace.nextAvatarRejection();
+                return reason === undefined
+                  ? Effect.void
+                  : Effect.fail(new CustomerAvatarRejected({ reason }));
+              })
+            ),
+            Effect.flatMap(({ current }) => {
+              const avatar = {
+                url: `${fakeWorkspaceOrigin}/avatars/sample.png`,
+                version: Date.now(),
+              };
+              return update((data) => ({
+                ...data,
+                account: { ...current, avatar: { kind: "available", avatar } },
+              })).pipe(Effect.as(avatar));
+            })
+          )
         )
         .handle("removeAvatar", () =>
-          Effect.flatMap(linkedAccount, (current) =>
-            update((data) => ({
-              ...data,
-              account: {
-                ...current,
-                avatar: { kind: "available", avatar: null },
-              },
-            }))
+          Effect.filterOrFail(
+            linkedAccount,
+            (account) => account.avatar.kind !== "hidden",
+            () => new CustomerFeatureUnavailable({ feature: "avatars" })
+          ).pipe(
+            Effect.flatMap((current) =>
+              update((data) => ({
+                ...data,
+                account: {
+                  ...current,
+                  avatar: { kind: "available", avatar: null },
+                },
+              }))
+            )
           )
         )
         .handle("listPasskeys", () =>
@@ -299,11 +444,16 @@ const serverLayer = (workspace: FakeWorkspace) => {
                 )
           )
         )
-        .handle("acknowledgeSignupReferral", () => Effect.void)
+        .handle("acknowledgeSignupReferral", () =>
+          Effect.flatMap(linkedAccount, ({ signupReferral: _, ...current }) =>
+            update((data) => ({ ...data, account: current }))
+          )
+        )
         .handle("requestDeletion", () =>
           Effect.sync(() => {
-            workspace.signedIn = false;
-            return { status: "deleted" as const };
+            const status = workspace.deletionOutcome;
+            if (status === "deleted") workspace.signedIn = false;
+            return { status };
           })
         )
   );
@@ -375,48 +525,74 @@ const serverLayer = (workspace: FakeWorkspace) => {
         })
       )
       .handle("updatePasskey", ({ payload }) =>
-        Effect.suspend(() => {
-          const passkey = workspace.data.passkeys.find(
-            (candidate) => candidate.id === payload.id
-          );
-          if (passkey === undefined) {
-            return Effect.fail(
-              new CustomerAuthRejected({ reason: "not-found" })
+        Effect.suspend(
+          (): BetterAuthAnswer<{
+            readonly passkey: {
+              readonly id: string;
+              readonly name: string;
+              readonly createdAt: string;
+            };
+          }> => {
+            const passkey = workspace.data.passkeys.find(
+              (candidate) => candidate.id === payload.id
             );
+            if (passkey === undefined)
+              return betterAuthNotFound({ code: "PASSKEY_NOT_FOUND" });
+            return update((data) => ({
+              ...data,
+              passkeys: data.passkeys.map((candidate) =>
+                candidate.id === payload.id
+                  ? { ...candidate, name: payload.name }
+                  : candidate
+              ),
+            })).pipe(
+              Effect.as({
+                passkey: {
+                  id: passkey.id,
+                  name: payload.name,
+                  createdAt: passkey.createdAt,
+                },
+              })
+            );
+          }
+        )
+      )
+      .handle("deletePasskey", ({ payload }) =>
+        Effect.suspend((): BetterAuthAnswer<{ readonly status: boolean }> => {
+          if (
+            !workspace.data.passkeys.some(
+              (candidate) => candidate.id === payload.id
+            )
+          ) {
+            return betterAuthNotFound({ code: "PASSKEY_NOT_FOUND" });
           }
           return update((data) => ({
             ...data,
-            passkeys: data.passkeys.map((candidate) =>
-              candidate.id === payload.id
-                ? { ...candidate, name: payload.name }
-                : candidate
+            passkeys: data.passkeys.filter(
+              (candidate) => candidate.id !== payload.id
             ),
-          })).pipe(
-            Effect.as({
-              passkey: {
-                id: passkey.id,
-                name: payload.name,
-                createdAt: passkey.createdAt,
-              },
-            })
-          );
+          })).pipe(Effect.as({ status: true }));
         })
       )
-      .handle("deletePasskey", ({ payload }) =>
-        update((data) => ({
-          ...data,
-          passkeys: data.passkeys.filter(
-            (candidate) => candidate.id !== payload.id
-          ),
-        })).pipe(Effect.as({ status: true }))
-      )
       .handle("deleteConsent", ({ payload }) =>
-        update((data) => ({
-          ...data,
-          assistants: data.assistants.filter(
-            (candidate) => candidate.id !== payload.id
-          ),
-        }))
+        Effect.suspend((): BetterAuthAnswer<void> => {
+          if (
+            !workspace.data.assistants.some(
+              (candidate) => candidate.id === payload.id
+            )
+          ) {
+            return betterAuthNotFound({
+              error: "not_found",
+              error_description: "no consent",
+            });
+          }
+          return update((data) => ({
+            ...data,
+            assistants: data.assistants.filter(
+              (candidate) => candidate.id !== payload.id
+            ),
+          }));
+        })
       )
   );
 
@@ -476,6 +652,18 @@ const serverLayer = (workspace: FakeWorkspace) => {
   ).pipe(Layer.provide(HttpServer.layerServices));
 };
 
+// Better Auth refuses a missing resource with 404 and its own body, such as
+// `{ code: "PASSKEY_NOT_FOUND" }`. Failing with `CustomerAuthRejected` would
+// not do: every reason shares that class, so the server encodes it with the
+// first schema, as 400 invalid-request.
+const betterAuthNotFound = (body: Readonly<Record<string, string>>) =>
+  Effect.succeed(HttpServerResponse.jsonUnsafe(body, { status: 404 }));
+
+/** A handler's answer, or a response it gives as Better Auth would. */
+type BetterAuthAnswer<A> = Effect.Effect<
+  A | HttpServerResponse.HttpServerResponse
+>;
+
 // The server marks a response whose connection the client must see break.
 const brokenConnectionHeader = "x-fake-workspace-broken-connection";
 const brokenConnection = () =>
@@ -509,6 +697,9 @@ const betterAuthRefusal = (
   }
   if (outcome === "rate-limited") return json(429, {});
   if (outcome === "service-unavailable") return json(503, {});
+  if (outcome === "session-not-fresh") {
+    return json(403, { code: "SESSION_NOT_FRESH" });
+  }
   return undefined;
 };
 

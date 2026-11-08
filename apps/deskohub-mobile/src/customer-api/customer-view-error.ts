@@ -12,7 +12,7 @@ import type {
   CustomerServiceUnavailable,
   CustomerSessionRequired,
 } from "@deskohub/workspace-customer-api";
-import { Data, Match, type Schema } from "effect";
+import { Cause, Data, Match, Option, type Schema } from "effect";
 import type { HttpClientError } from "effect/unstable/http";
 import type {
   CustomerRequestTimedOut,
@@ -114,6 +114,15 @@ export const toCustomerViewError = (
       SchemaError: () => CustomerViewError.Unexpected(),
     })
   );
+
+/** The view error of a failed result; a defect or interruption is unexpected. */
+export const viewErrorOf = <E extends CustomerRequestFailure>(
+  cause: Cause.Cause<E>
+): CustomerViewError =>
+  Option.match(Cause.findErrorOption(cause), {
+    onNone: () => CustomerViewError.Unexpected(),
+    onSome: toCustomerViewError,
+  });
 
 /** Whether a "Try again" action makes sense for the failure. */
 export const isRetryableViewError = (error: CustomerViewError) =>

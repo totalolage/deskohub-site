@@ -47,7 +47,6 @@ const styles = StyleSheet.create({
   },
   text: {
     color: theme.colors.background,
-    ...theme.type.caption,
-    fontWeight: "600",
+    ...theme.type.captionStrong,
   },
 });

@@ -7,6 +7,7 @@ import {
   unstable_getResponseFromNextConfig,
 } from "next/experimental/testing/server";
 import nextConfig from "./next.config.mjs";
+import packageJson from "./package.json" with { type: "json" };
 
 const resolveHeaders = async (path: string) =>
   (
@@ -177,4 +178,13 @@ test("fails a production compile without the mobile web export", async () => {
   } finally {
     rmSync(projectDir, { recursive: true, force: true });
   }
+});
+
+test("keeps Turbopack's build cache out of Vercel's build cache", () => {
+  expect(nextConfig.experimental?.turbopackFileSystemCacheForBuild).toBe(false);
+  // Next keeps a copy restored from an older Vercel build cache, which would
+  // be uploaded again.
+  expect(packageJson.scripts["build:compile"]).toStartWith(
+    "rm -rf .next/cache/turbopack && "
+  );
 });

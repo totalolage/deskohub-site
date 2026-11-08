@@ -39,6 +39,8 @@ import {
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
 import { defaultLocale, isLocale, type Locale, locales } from "@/features/i18n";
+import type { AnalyticsConsentUnavailable } from "@/features/legal/backend/analytics-consent-ledger";
+import type { DeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
 import {
   classifyAgentTraffic,
   unclassifiedTraffic,
@@ -48,7 +50,10 @@ import type {
   BotVerificationError,
   VerifyHumanInput,
 } from "@/shared/backend/bot-protection/bot-protection.service";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import {
+  runWorkspaceEffect,
+  runWorkspaceEffectOrElse,
+} from "@/shared/backend/workspace-effect";
 import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import {
@@ -75,9 +80,11 @@ import {
 import { renderMagicLinkEmail } from "./magic-link-email";
 import { nativeAppOrigin } from "./native-app";
 import {
+  appSignInLocale,
   nativeAppLinkFor,
   nativeSignIn,
   refuseMagicLinkAccountSwitch,
+  refuseUnsupportedAppLocale,
 } from "./native-sign-in";
 import {
   findReviewAccountCredential,
@@ -177,6 +184,13 @@ export type WorkspaceAuthConfig = ReviewLoginConfig & {
     accountId: CustomerAccountId,
     locale: Locale
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
+  /**
+   * Mirrors the signing-in device's analytics consent choice into the
+   * account's ledger once Better Auth has created the session.
+   */
+  readonly mirrorSignInAnalyticsConsent: (
+    device: DeviceAnalyticsConsent
+  ) => Effect.Effect<unknown, AnalyticsConsentUnavailable>;
 };
 
 /** Both steps of adding a passkey; `login_passkeys` gates them. */
@@ -322,7 +336,18 @@ const callbackLocaleFromAuthContext = (
 };
 
 /**
- * Captures the sign-in callback locale as the preference of an account that
+ * The sign-in's locale: its localized callback URL's, else the app's locale
+ * on its sign-in code or magic-link verification.
+ */
+const signInLocaleFromAuthContext = (
+  ctx: Parameters<typeof appSignInLocale>[0]
+): Locale | undefined =>
+  callbackLocaleFromAuthContext(
+    Option.getOrElse(decodeAuthContext(ctx), () => ({}))
+  ) ?? appSignInLocale(ctx);
+
+/**
+ * Captures the sign-in locale as the preference of an account that
  * has none, such as one created before preferences existed. The update never
  * overwrites a saved preference. A failure is logged with a fixed code and
  * never blocks the login: readers fall back without a preference, and the
@@ -371,6 +396,7 @@ type GuardedAuthRequest = {
   readonly path: string;
   /** The HTTP request; a server-side `auth.api` call has none. */
   readonly request?: Request;
+  readonly headers?: Headers;
   readonly body?: unknown;
   readonly query?: unknown;
   readonly json: (body: PasswordSignInStep) => unknown;
@@ -655,13 +681,14 @@ const guardSignInPath = (guard: AuthRequestGuard) =>
  * flag counts as disabled) or for a review account, any request carrying
  * profile fields, the password reset token route, code sign-ins carrying
  * anything beyond the email, code, and callback URL, and password sign-ins
- * outside the review logins.
+ * outside the review logins, and an app sign-in naming an unsupported locale.
  */
 const guardAuthRequest = (guard: AuthRequestGuard) =>
   Effect.succeed(guard).pipe(
     Effect.tap(requirePasskeyRegistration),
     Effect.tap(rejectProfileFields),
     Effect.tap(rejectPasswordResetToken),
+    Effect.tap(({ request }) => refuseUnsupportedAppLocale(request)),
     Effect.flatMap(guardSignInPath),
     Effect.withSpan("WorkspaceAuth.guardRequest")
   );
@@ -731,6 +758,8 @@ const signInCodeBodySchema = Schema.Struct({
 type AuthEndpointContext = {
   readonly path?: string;
   readonly body?: unknown;
+  /** The HTTP request's headers; a server-side `auth.api` call may have none. */
+  readonly headers?: Headers;
   readonly context: { readonly adapter: DBAdapter };
 } | null;
 
@@ -797,7 +826,7 @@ const dateRestoredSignInCode = ({
   );
 
 /**
- * Captures the sign-in callback locale for the session's account, when both
+ * Captures the sign-in locale for the session's account, when both
  * are known.
  */
 const captureSessionLocale = ({
@@ -811,11 +840,7 @@ const captureSessionLocale = ({
 }) =>
   Option.all({
     accountId: Option.fromNullishOr(decodeAccountId(session.userId)),
-    locale: Option.fromNullishOr(
-      callbackLocaleFromAuthContext(
-        Option.getOrElse(decodeAuthContext(ctx), () => ({}))
-      )
-    ),
+    locale: Option.fromNullishOr(signInLocaleFromAuthContext(ctx)),
   }).pipe(
     Option.match({
       onNone: () => Effect.void,
@@ -841,6 +866,36 @@ const prepareSession = <Session extends { readonly userId: string }>(request: {
       data: { ...session, ipAddress: null, userAgent: null },
     }))
   );
+
+/**
+ * Mirrors the signing-in device's analytics consent choice for the account
+ * of the session Better Auth just created, in the banner language the choice
+ * was saved in, else the sign-in callback locale. A session created without
+ * a request cookie, such as a server-side one, mirrors nothing.
+ */
+const mirrorSessionAnalyticsConsent = ({
+  config,
+  session,
+  ctx,
+}: {
+  readonly config: WorkspaceAuthConfig;
+  readonly session: { readonly userId: string };
+  readonly ctx: AuthEndpointContext;
+}) => {
+  const accountId = decodeAccountId(session.userId);
+  const cookieHeader = ctx?.headers?.get("cookie");
+  if (!accountId || !cookieHeader) return Effect.void;
+  return config
+    .mirrorSignInAnalyticsConsent({
+      accountId,
+      cookieHeader,
+      locale:
+        callbackLocaleFromAuthContext(
+          Option.getOrElse(decodeAuthContext(ctx), () => ({}))
+        ) ?? defaultLocale,
+    })
+    .pipe(Effect.asVoid);
+};
 
 type SignInEmailCompletion = {
   readonly status: true;
@@ -1169,6 +1224,14 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
             runWorkspaceEffect("account.auth.capture-locale", {
               boundary: "route",
             })(prepareSession({ config, session, ctx })),
+          // A failed mirror is logged and never fails the sign-in; the next
+          // hydration of the session mirrors the choice again.
+          after: (session, ctx) =>
+            runWorkspaceEffectOrElse("account.auth.mirror-analytics-consent", {
+              boundary: "route",
+              failureCode: "analytics-consent.sign-in-mirror-failed",
+              orElse: () => undefined,
+            })(mirrorSessionAnalyticsConsent({ config, session, ctx })),
         },
       },
       verification: {
@@ -1191,7 +1254,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
           // The locale preference is part of the user insert, so no account
           // exists without one. A server-side creation supplies it; otherwise
           // it comes from the initiating site locale in the callback URL, else
-          // the site default.
+          // the app's locale header, else the site default.
           before: (user, ctx) =>
             runWorkspaceEffect("account.customer-account.create", {
               boundary: "route",
@@ -1207,9 +1270,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
                 const locale =
                   Predicate.isString(user.locale) && isLocale(user.locale)
                     ? user.locale
-                    : (callbackLocaleFromAuthContext(
-                        Option.getOrElse(decodeAuthContext(ctx), () => ({}))
-                      ) ?? defaultLocale);
+                    : (signInLocaleFromAuthContext(ctx) ?? defaultLocale);
                 return { data: { ...user, id: accountId, locale } };
               })
             ),

@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client.ts",
+    "./customer-locale": "./src/customer-locale.ts",
     "./referral-code": "./src/referral-code.ts"
   },
   "scripts": {
@@ -14,7 +15,7 @@
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
-    "@deskohub/dotypos": "workspace:*",
+    "@deskohub/phone-number": "workspace:*",
     "effect": "4.0.0-beta.85"
   },
   "devDependencies": {

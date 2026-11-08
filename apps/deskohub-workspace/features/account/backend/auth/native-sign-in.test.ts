@@ -2,6 +2,9 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+import { customerSignInLocaleHeader } from "@deskohub/workspace-customer-api/customer-locale";
+import { Effect } from "effect";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   type CapturedMagicLink,
   callHandler,
@@ -16,6 +19,7 @@ import {
   testDatabase,
   uniqueEmail,
   uniqueIp,
+  userIdForEmail,
   verifyMagicLink,
   workspaceLogs,
 } from "./auth-handler.test-utils";
@@ -771,5 +775,187 @@ describe.skipIf(!testDatabase)("native sign-in handoff", () => {
     }
     expect(statuses.slice(0, 10)).toEqual(Array(10).fill(400));
     expect(statuses[10]).toBe(429);
+  });
+});
+
+/**
+ * The app names its locale on the requests that can create its account,
+ * since `/app/` callbacks carry no locale segment.
+ */
+describe.skipIf(!testDatabase)("app sign-in locale", () => {
+  const localeHeader = (locale: string | undefined) =>
+    locale === undefined ? {} : { [customerSignInLocaleHeader]: locale };
+
+  const appSignIns = ({ signInCodes = false } = {}) => {
+    const sentLinks: CapturedMagicLink[] = [];
+    const auth = makeTestAuth({
+      sentLinks,
+      isSignInCodeEnabled: async () => signInCodes,
+    });
+    const send = async (email: string, callbackURL = "/app/auth/callback") => {
+      const sent = await callHandler(auth, "/sign-in/magic-link", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-vercel-forwarded-for": uniqueIp(),
+        },
+        body: JSON.stringify({ email, callbackURL }),
+      });
+      expect(sent.status).toBe(200);
+      return sentLinks.at(-1)!;
+    };
+    const tokenOf = (link: CapturedMagicLink) =>
+      new URL(link.url).searchParams.get("token")!;
+    /** The native app verifying its App Link. */
+    const verifyInApp = (link: CapturedMagicLink, locale?: string) =>
+      callNativeHandler(
+        auth,
+        `/magic-link/verify?token=${encodeURIComponent(tokenOf(link))}`,
+        {
+          headers: {
+            "x-vercel-forwarded-for": uniqueIp(),
+            ...localeHeader(locale),
+          },
+        }
+      );
+    /** The `/app/` page signing in with the emailed code. */
+    const signInWithCode = (
+      email: string,
+      link: CapturedMagicLink,
+      locale?: string
+    ) =>
+      callHandler(auth, "/sign-in/email-otp", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-vercel-forwarded-for": uniqueIp(),
+          ...localeHeader(locale),
+        },
+        body: JSON.stringify({ email, otp: link.code }),
+      });
+    return { auth, send, verifyInApp, signInWithCode };
+  };
+
+  const savedLocale = async (email: string) => {
+    const id = await userIdForEmail(email);
+    expect(id).toBeDefined();
+    return (
+      await testDatabase!.pool.query<{ locale: string | null }>(
+        `select locale from auth."user" where id = $1`,
+        [id]
+      )
+    ).rows[0]?.locale;
+  };
+
+  const insertAccountWithoutLocale = (email: string) =>
+    workspaceFixtures(testDatabase!.db)
+      .account("legacy", { email })
+      .pipe(Effect.runPromise);
+
+  test("gives an account the app's App Link creates the app's locale", async () => {
+    const { send, verifyInApp } = appSignIns();
+    const email = uniqueEmail("app-locale-link");
+
+    const verified = await verifyInApp(await send(email), "cs-CZ");
+
+    expect(verified.status).toBe(200);
+    expect(await savedLocale(email)).toBe("cs-CZ");
+  });
+
+  test("gives an account the app's sign-in code creates the app's locale", async () => {
+    const { send, signInWithCode } = appSignIns({ signInCodes: true });
+    const email = uniqueEmail("app-locale-code");
+    const link = await send(email);
+
+    const signedIn = await signInWithCode(email, link, "cs-CZ");
+
+    expect(signedIn.status).toBe(200);
+    expect(await savedLocale(email)).toBe("cs-CZ");
+  });
+
+  test("keeps the default for an app sign-in that names no locale", async () => {
+    const { send, verifyInApp } = appSignIns();
+    const email = uniqueEmail("app-locale-none");
+
+    expect((await verifyInApp(await send(email))).status).toBe(200);
+    expect(await savedLocale(email)).toBe("en-US");
+  });
+
+  test("never replaces a saved locale", async () => {
+    const { auth, send, verifyInApp } = appSignIns();
+    const email = uniqueEmail("app-locale-kept");
+    await verifyMagicLink(auth, await send(email, "/en-US/account"));
+    expect(await savedLocale(email)).toBe("en-US");
+
+    const verified = await verifyInApp(await send(email), "cs-CZ");
+
+    expect(verified.status).toBe(200);
+    expect(await savedLocale(email)).toBe("en-US");
+  });
+
+  test("gives an account without a locale the app's at its sign-in", async () => {
+    const { send, verifyInApp } = appSignIns();
+    const email = uniqueEmail("app-locale-capture");
+    await insertAccountWithoutLocale(email);
+
+    expect((await verifyInApp(await send(email), "cs-CZ")).status).toBe(200);
+    expect(await savedLocale(email)).toBe("cs-CZ");
+  });
+
+  test("takes a localized callback's locale over the app's", async () => {
+    const { auth, send } = appSignIns();
+    const email = uniqueEmail("app-locale-callback");
+    const link = await send(email, "/en-US/account");
+
+    const verified = await callHandler(
+      auth,
+      link.url.slice(`https://${HOST}/api/auth`.length),
+      {
+        headers: {
+          "x-vercel-forwarded-for": uniqueIp(),
+          ...localeHeader("cs-CZ"),
+        },
+      }
+    );
+
+    expect(verified.status).toBe(302);
+    expect(await savedLocale(email)).toBe("en-US");
+  });
+
+  test("refuses an unsupported locale on the App Link and keeps the link", async () => {
+    // With sign-in codes on, the guard claims the link before Better Auth
+    // verifies it; the refusal must come first.
+    const { send, verifyInApp } = appSignIns({ signInCodes: true });
+    const email = uniqueEmail("app-locale-link-refused");
+    const link = await send(email);
+
+    for (const locale of ["de-DE", "cs", "", "cs-CZ,en-US"]) {
+      workspaceLogs.reset();
+      const refused = await verifyInApp(link, locale);
+      expect(refused.status).toBe(400);
+      expect(await errorCode(refused)).toBe("INVALID_LOCALE");
+      expect(getSessionCookie(refused)).toBeUndefined();
+      expect(JSON.stringify(workspaceLogs.records())).toContain(
+        "unsupported-locale"
+      );
+    }
+    expect(await userIdForEmail(email)).toBeUndefined();
+
+    expect((await verifyInApp(link, "cs-CZ")).status).toBe(200);
+    expect(await savedLocale(email)).toBe("cs-CZ");
+  });
+
+  test("refuses an unsupported locale on the sign-in code and keeps the code", async () => {
+    const { send, signInWithCode } = appSignIns({ signInCodes: true });
+    const email = uniqueEmail("app-locale-code-refused");
+    const link = await send(email);
+
+    const refused = await signInWithCode(email, link, "fr-FR");
+    expect(refused.status).toBe(400);
+    expect(await errorCode(refused)).toBe("INVALID_LOCALE");
+    expect(await userIdForEmail(email)).toBeUndefined();
+
+    expect((await signInWithCode(email, link, "cs-CZ")).status).toBe(200);
+    expect(await savedLocale(email)).toBe("cs-CZ");
   });
 });

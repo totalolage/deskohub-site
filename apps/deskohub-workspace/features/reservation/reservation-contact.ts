@@ -1,5 +1,5 @@
+import { isPhoneNumber } from "@deskohub/phone-number";
 import { Predicate, Schema, SchemaGetter } from "effect";
-import { isValidPhoneNumber } from "libphonenumber-js";
 import isEmail from "validator/lib/isEmail.js";
 import { m } from "@/features/i18n";
 
@@ -41,7 +41,7 @@ export const reservationCustomerPhoneSchema = Schema.Trim.check(
       max: RESERVATION_VALIDATION.phone.max,
     }),
   }),
-  Schema.makeFilter((phone) => isValidPhoneNumber(phone, "CZ"), {
+  Schema.makeFilter(isPhoneNumber, {
     message: m.contactValidationPhoneInvalid(),
   })
 );

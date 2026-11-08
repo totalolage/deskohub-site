@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { NotSignedIn, SignInCancelled } from "./native-sign-in-errors";
 import { reauthenticationNotice } from "./reauthentication-notice";
 
-const user = { id: "user-ada", email: "ada@example.test" };
+const user = { id: "user-ada", email: testEmailAddress("ada") };
 const cancelled = new SignInCancelled();
 
 describe("reauthenticationNotice", () => {

@@ -7,6 +7,7 @@ import { DeferredTagManager } from "@/features/cookie-consent/components/deferre
 import { PostHogProvider } from "@/features/cookie-consent/components/posthog-analytics";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import heroImage from "@/features/landing-page/images/hero.jpeg";
+import { AccountAnalyticsConsentMirror } from "@/features/legal/components/account-analytics-consent-mirror";
 import { getCatalogPriceRange } from "@/features/pricing/price-range";
 import { RememberSharedReferralCodeWhenEnabled } from "@/features/referrals/remember-shared-referral-code-when-enabled";
 import { postHogRuntimeConfig } from "@/shared/backend/config/posthog.config";
@@ -35,6 +36,7 @@ export default async function SiteLayout({
       {gtmId && <DeferredTagManager gtmId={gtmId} />}
       <PostHogProvider>
         <ConsentBanner locale={locale} />
+        <AccountAnalyticsConsentMirror />
         <RememberSharedReferralCodeWhenEnabled />
         <SiteToolsWhenEnabled locale={locale} />
         <Suspense fallback={null}>

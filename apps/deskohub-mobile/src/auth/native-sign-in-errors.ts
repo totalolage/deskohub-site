@@ -28,8 +28,9 @@ export class SignInUnavailable extends Data.TaggedError("SignInUnavailable")<{
 }> {}
 
 /**
- * A reauthentication signed in to a different account. The new session was
- * signed out; the app never switches accounts silently.
+ * A sign-in reached a different account than the app's: the server refused
+ * the link, or the app signed the new session out. The app's own session
+ * stays; it never switches accounts silently.
  */
 export class AccountSwitchRefused extends Data.TaggedError(
   "AccountSwitchRefused"

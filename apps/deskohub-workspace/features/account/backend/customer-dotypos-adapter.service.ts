@@ -7,12 +7,11 @@ import {
   type DotyposCustomerWriteRecord,
   DotyposService,
   type FindCustomerResult,
-  normalizePhoneNumber,
 } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Option, Schedule } from "effect";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
-import type { CustomerProfile, CustomerProfileInput } from "../contracts";
+import type { CustomerProfile, CustomerProfileSave } from "../contracts";
 
 /** A profile update or reactivation addressed a Dotypos customer that does not exist. */
 class DotyposCustomerMissing extends Data.TaggedError(
@@ -84,7 +83,7 @@ type BillingTextField =
   | (typeof billingAddressFields)[number]
   | (typeof businessBillingFields)[number];
 
-type BillingInput = CustomerProfileInput["billing"];
+type BillingInput = CustomerProfileSave["billing"];
 
 type StoredBilling = NonNullable<CustomerProfile["billing"]>;
 
@@ -140,11 +139,11 @@ const toCustomerProfile = (
  * The provider profile write, with every editable field explicit: optional
  * fields the user cleared send the provider's clearing value instead of being
  * omitted, which would leave the previous provider state in place. The
- * contract already rejects a nonblank phone the normalizer can't parse, so a
- * blank phone here is the customer's explicit clearing.
+ * contract decodes any nonblank phone to a phone number, so a blank phone
+ * here is the customer's explicit clearing.
  */
 const toProviderProfile = (
-  input: CustomerProfileInput
+  input: CustomerProfileSave
 ): DotyposCustomerProfile => ({
   firstName: input.firstName,
   lastName: input.lastName ?? "",
@@ -155,14 +154,12 @@ const toProviderProfile = (
 
 const toCustomerDetails = (input: {
   readonly email: string;
-  readonly profile: CustomerProfileInput;
+  readonly profile: CustomerProfileSave;
 }) => ({
   firstName: input.profile.firstName,
   lastName: input.profile.lastName ?? "",
   email: input.email,
-  phone: input.profile.phone
-    ? normalizePhoneNumber(input.profile.phone) || undefined
-    : undefined,
+  phone: input.profile.phone || undefined,
   ...toProviderText(billingAddressFields, input.profile.billing),
   ...toProviderText(
     businessBillingFields,
@@ -196,11 +193,11 @@ interface ICustomerDotyposAdapter {
   ) => Effect.Effect<CustomerProfile | null, DotyposCustomerError>;
   readonly createCustomerProfile: (input: {
     readonly email: string;
-    readonly profile: CustomerProfileInput;
+    readonly profile: CustomerProfileSave;
   }) => Effect.Effect<CreatedCustomerProfile, DotyposCustomerError>;
   readonly updateCustomerProfile: (
     customerId: DotyposCustomerId,
-    profile: CustomerProfileInput
+    profile: CustomerProfileSave
   ) => Effect.Effect<void, DotyposCustomerError>;
   /** None means the Dotypos customer is already missing. */
   readonly expireCustomer: (
@@ -253,7 +250,7 @@ export class CustomerDotyposAdapter extends Context.Service<
         "CustomerDotyposAdapter.createCustomerProfile"
       )(function* (input: {
         readonly email: string;
-        readonly profile: CustomerProfileInput;
+        readonly profile: CustomerProfileSave;
       }) {
         const customer = yield* dotypos.createCustomer(
           toCustomerDetails(input)
@@ -318,7 +315,7 @@ export class CustomerDotyposAdapter extends Context.Service<
 
       const updateCustomerProfile = Effect.fn(
         "CustomerDotyposAdapter.updateCustomerProfile"
-      )((customerId: DotyposCustomerId, profile: CustomerProfileInput) =>
+      )((customerId: DotyposCustomerId, profile: CustomerProfileSave) =>
         refreshOnceOnVersionConflict(() =>
           dotypos.updateCustomerProfile(customerId, toProviderProfile(profile))
         ).pipe(Effect.flatMap(requireExisting(customerId)))

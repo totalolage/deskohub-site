@@ -34,8 +34,7 @@
         "i18n:compile",
         "booking-widget:build",
         "temporal-polyfill:build",
-        "mobile-web-app:build",
-        "typecheck"
+        "mobile-web-app:build"
       ],
       "passThroughEnv": ["BETTER_AUTH_SECRETS", "REVIEW_ACCOUNT_CREDENTIALS"]
     },
@@ -109,6 +108,150 @@
       ],
       "passThroughEnv": ["WORKSPACE_TEST_DATABASE_URL"]
     },
+    "test:shard-1": {
+      "dependsOn": [
+        "^test",
+        "@deskohub/dotypos#generate",
+        "@deskohub/igloohome#generate",
+        "@deskohub/nexi#generate",
+        "i18n:compile",
+        "booking-widget:build",
+        "temporal-polyfill:build"
+      ],
+      "env": ["CI", "TZ"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!test-timings.shard-*.json",
+        "$TURBO_ROOT$/.github/workflows/**",
+        "$TURBO_ROOT$/biome.json",
+        "$TURBO_ROOT$/lint/*.grit",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/turbo.json",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/patches/*.patch",
+        "$TURBO_ROOT$/{.agents,apps/*,packages/*}/package.json",
+        "$TURBO_ROOT$/apps/deskohub-mobile/app.json",
+        "$TURBO_ROOT$/apps/deskohub-mobile/public/**",
+        "$TURBO_ROOT$/*.test.{ts,tsx}",
+        "$TURBO_ROOT$/{.agents,.github,apps,lint,packages,patches,scripts}/**/*.test.{ts,tsx}",
+        "$TURBO_ROOT$/.gitignore",
+        "$TURBO_ROOT$/{apps,packages}/*/.gitignore",
+        "!$TURBO_ROOT$/**/node_modules/**"
+      ],
+      "outputs": ["test-timings.shard-1.json"],
+      "passThroughEnv": [
+        "WORKSPACE_TEST_DATABASE_URL",
+        "WORKSPACE_TEST_DATABASE_URL_SHARD_1"
+      ]
+    },
+    "test:shard-2": {
+      "dependsOn": [
+        "^test",
+        "@deskohub/dotypos#generate",
+        "@deskohub/igloohome#generate",
+        "@deskohub/nexi#generate",
+        "i18n:compile",
+        "booking-widget:build",
+        "temporal-polyfill:build"
+      ],
+      "env": ["CI", "TZ"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!test-timings.shard-*.json",
+        "$TURBO_ROOT$/.github/workflows/**",
+        "$TURBO_ROOT$/biome.json",
+        "$TURBO_ROOT$/lint/*.grit",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/turbo.json",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/patches/*.patch",
+        "$TURBO_ROOT$/{.agents,apps/*,packages/*}/package.json",
+        "$TURBO_ROOT$/apps/deskohub-mobile/app.json",
+        "$TURBO_ROOT$/apps/deskohub-mobile/public/**",
+        "$TURBO_ROOT$/*.test.{ts,tsx}",
+        "$TURBO_ROOT$/{.agents,.github,apps,lint,packages,patches,scripts}/**/*.test.{ts,tsx}",
+        "$TURBO_ROOT$/.gitignore",
+        "$TURBO_ROOT$/{apps,packages}/*/.gitignore",
+        "!$TURBO_ROOT$/**/node_modules/**"
+      ],
+      "outputs": ["test-timings.shard-2.json"],
+      "passThroughEnv": [
+        "WORKSPACE_TEST_DATABASE_URL",
+        "WORKSPACE_TEST_DATABASE_URL_SHARD_2"
+      ]
+    },
+    "test:shard-3": {
+      "dependsOn": [
+        "^test",
+        "@deskohub/dotypos#generate",
+        "@deskohub/igloohome#generate",
+        "@deskohub/nexi#generate",
+        "i18n:compile",
+        "booking-widget:build",
+        "temporal-polyfill:build"
+      ],
+      "env": ["CI", "TZ"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!test-timings.shard-*.json",
+        "$TURBO_ROOT$/.github/workflows/**",
+        "$TURBO_ROOT$/biome.json",
+        "$TURBO_ROOT$/lint/*.grit",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/turbo.json",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/patches/*.patch",
+        "$TURBO_ROOT$/{.agents,apps/*,packages/*}/package.json",
+        "$TURBO_ROOT$/apps/deskohub-mobile/app.json",
+        "$TURBO_ROOT$/apps/deskohub-mobile/public/**",
+        "$TURBO_ROOT$/*.test.{ts,tsx}",
+        "$TURBO_ROOT$/{.agents,.github,apps,lint,packages,patches,scripts}/**/*.test.{ts,tsx}",
+        "$TURBO_ROOT$/.gitignore",
+        "$TURBO_ROOT$/{apps,packages}/*/.gitignore",
+        "!$TURBO_ROOT$/**/node_modules/**"
+      ],
+      "outputs": ["test-timings.shard-3.json"],
+      "passThroughEnv": [
+        "WORKSPACE_TEST_DATABASE_URL",
+        "WORKSPACE_TEST_DATABASE_URL_SHARD_3"
+      ]
+    },
+    "test:shard-4": {
+      "dependsOn": [
+        "^test",
+        "@deskohub/dotypos#generate",
+        "@deskohub/igloohome#generate",
+        "@deskohub/nexi#generate",
+        "i18n:compile",
+        "booking-widget:build",
+        "temporal-polyfill:build"
+      ],
+      "env": ["CI", "TZ"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!test-timings.shard-*.json",
+        "$TURBO_ROOT$/.github/workflows/**",
+        "$TURBO_ROOT$/biome.json",
+        "$TURBO_ROOT$/lint/*.grit",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/turbo.json",
+        "$TURBO_ROOT$/tsconfig.json",
+        "$TURBO_ROOT$/patches/*.patch",
+        "$TURBO_ROOT$/{.agents,apps/*,packages/*}/package.json",
+        "$TURBO_ROOT$/apps/deskohub-mobile/app.json",
+        "$TURBO_ROOT$/apps/deskohub-mobile/public/**",
+        "$TURBO_ROOT$/*.test.{ts,tsx}",
+        "$TURBO_ROOT$/{.agents,.github,apps,lint,packages,patches,scripts}/**/*.test.{ts,tsx}",
+        "$TURBO_ROOT$/.gitignore",
+        "$TURBO_ROOT$/{apps,packages}/*/.gitignore",
+        "!$TURBO_ROOT$/**/node_modules/**"
+      ],
+      "outputs": ["test-timings.shard-4.json"],
+      "passThroughEnv": [
+        "WORKSPACE_TEST_DATABASE_URL",
+        "WORKSPACE_TEST_DATABASE_URL_SHARD_4"
+      ]
+    },
     "test:e2e": {
       "dependsOn": ["$TURBO_EXTENDS$", "@deskohub/igloohome#generate"]
     },
@@ -166,10 +309,7 @@
         "!public/polyfills/**",
         "$TURBO_ROOT$/packages/workspace-admin-api/src/site-time-zone.ts"
       ],
-      "outputs": [
-        "public/polyfills/**",
-        "shared/polyfills/generated/**"
-      ]
+      "outputs": ["public/polyfills/**", "shared/polyfills/generated/**"]
     }
   }
 }
