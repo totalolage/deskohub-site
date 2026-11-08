@@ -6,10 +6,11 @@ import { workspaceE2EPollIntervalMs } from "./timeouts";
  * timeout, in slices of at most `pageFunctionWake` ms until it resolves or
  * `deadline` (a `Date.now()` timestamp) passes.
  *
- * A WebKit page on a loaded runner has been seen to stall its event loop,
+ * A WebKit page on a loaded runner has been seen to stop making progress,
  * timers and network reads included, until the long `waitForFunction`
- * waiting on it timed out and Playwright sent it an abort. Each new slice
- * sends the page fresh commands and runs the page function once on arrival.
+ * waiting on it timed out and Playwright sent it an abort. The working
+ * hypothesis is that the inbound command resumed it; each new slice sends the
+ * page fresh commands and runs the page function once on arrival.
  */
 export const waitForPageFunction = async <Result>(
   waitSlice: (timeoutMs: number) => Promise<Result>,
