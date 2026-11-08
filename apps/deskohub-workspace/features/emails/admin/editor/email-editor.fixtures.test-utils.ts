@@ -98,5 +98,59 @@ export const fixtureDraft: EmailDraftFormValues = {
         "heading-1-text": [{ _tag: "Text", text: "Vítejte zpět" }],
       },
     },
+    "de-DE": {
+      subject: [
+        { _tag: "Text", text: "Hallo " },
+        { _tag: "Value", name: "customer_name" },
+      ],
+      preheader: [{ _tag: "Text", text: "Eine synthetische Neuigkeit" }],
+      texts: {
+        "heading-1-text": [{ _tag: "Text", text: "Willkommen zurück" }],
+        "paragraph-1-text": [
+          { _tag: "Text", text: "Hallo " },
+          { _tag: "Value", name: "customer_name" },
+          { _tag: "Text", text: ", hier sind " },
+          { _tag: "Text", text: "unsere Räume", bold: true, link: "link-1" },
+        ],
+        "offer-1-label": [{ _tag: "Text", text: "Sichere dir das Angebot" }],
+        "paragraph-2-text": [{ _tag: "Text", text: "Bis bald" }],
+      },
+    },
+    "uk-UA": {
+      subject: [
+        { _tag: "Text", text: "Вітаємо, " },
+        { _tag: "Value", name: "customer_name" },
+      ],
+      preheader: [{ _tag: "Text", text: "Синтетичне оновлення" }],
+      texts: {
+        "heading-1-text": [{ _tag: "Text", text: "З поверненням" }],
+        "paragraph-1-text": [
+          { _tag: "Text", text: "Вітаємо, " },
+          { _tag: "Value", name: "customer_name" },
+          { _tag: "Text", text: ", перегляньте " },
+          { _tag: "Text", text: "наші простори", bold: true, link: "link-1" },
+        ],
+        "offer-1-label": [{ _tag: "Text", text: "Отримайте пропозицію" }],
+        "paragraph-2-text": [{ _tag: "Text", text: "До зустрічі" }],
+      },
+    },
+    "sk-SK": {
+      subject: [
+        { _tag: "Text", text: "Ahoj " },
+        { _tag: "Value", name: "customer_name" },
+      ],
+      preheader: [{ _tag: "Text", text: "Syntetická novinka" }],
+      texts: {
+        "heading-1-text": [{ _tag: "Text", text: "Vitaj späť" }],
+        "paragraph-1-text": [
+          { _tag: "Text", text: "Ahoj " },
+          { _tag: "Value", name: "customer_name" },
+          { _tag: "Text", text: ", pozri si " },
+          { _tag: "Text", text: "naše priestory", bold: true, link: "link-1" },
+        ],
+        "offer-1-label": [{ _tag: "Text", text: "Získaj ponuku" }],
+        "paragraph-2-text": [{ _tag: "Text", text: "Dovidenia" }],
+      },
+    },
   } satisfies Record<Locale, EmailDraftTranslation>,
 };

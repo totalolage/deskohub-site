@@ -13,6 +13,7 @@ import type { CanonicalPromotionCode, DiscountQuoteInput } from "./contracts";
 import type { DiscountDefinition } from "./discount-definition";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import { toDiscountDefinitionProviderError } from "./discount-definition-provider-error";
+import { discountLabelFor } from "./discount-label";
 import {
   DiscountCalculationError,
   DiscountProviderError,
@@ -395,7 +396,7 @@ const toDiscountCodeCandidate = (input: {
   return {
     discount: {
       id: input.definition.id,
-      label: input.definition.labels[input.locale],
+      label: discountLabelFor(input.definition.labels, input.locale),
       adjustment: input.definition.adjustment,
       ...timing,
     },

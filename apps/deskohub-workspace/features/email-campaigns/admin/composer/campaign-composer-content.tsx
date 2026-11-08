@@ -40,11 +40,17 @@ import type { CampaignComposerControl } from "./campaign-composer-form";
 const singleLocaleAudienceMessages = {
   "cs-CZ": m.emailCampaignsComposerSingleLocaleAudienceCzech,
   "en-US": m.emailCampaignsComposerSingleLocaleAudienceEnglish,
+  "de-DE": m.emailCampaignsComposerSingleLocaleAudienceGerman,
+  "uk-UA": m.emailCampaignsComposerSingleLocaleAudienceUkrainian,
+  "sk-SK": m.emailCampaignsComposerSingleLocaleAudienceSlovak,
 } as const satisfies Record<Locale, (...args: never) => string>;
 
 const hiddenContentMessages = {
   "cs-CZ": m.emailCampaignsComposerHiddenContentCzech,
   "en-US": m.emailCampaignsComposerHiddenContentEnglish,
+  "de-DE": m.emailCampaignsComposerHiddenContentGerman,
+  "uk-UA": m.emailCampaignsComposerHiddenContentUkrainian,
+  "sk-SK": m.emailCampaignsComposerHiddenContentSlovak,
 } as const satisfies Record<Locale, (...args: never) => string>;
 
 /**

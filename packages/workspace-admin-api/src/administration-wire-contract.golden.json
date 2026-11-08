@@ -15723,7 +15723,10 @@
                         "type": "string",
                         "enum": [
                           "en-US",
-                          "cs-CZ"
+                          "cs-CZ",
+                          "de-DE",
+                          "uk-UA",
+                          "sk-SK"
                         ]
                       },
                       "serviceDate": {
@@ -16789,7 +16792,10 @@
                       "type": "string",
                       "enum": [
                         "en-US",
-                        "cs-CZ"
+                        "cs-CZ",
+                        "de-DE",
+                        "uk-UA",
+                        "sk-SK"
                       ]
                     },
                     "serviceDate": {
@@ -17437,7 +17443,10 @@
                       "type": "string",
                       "enum": [
                         "en-US",
-                        "cs-CZ"
+                        "cs-CZ",
+                        "de-DE",
+                        "uk-UA",
+                        "sk-SK"
                       ]
                     },
                     "serviceDate": {
@@ -22723,7 +22732,10 @@
                           "type": "string",
                           "enum": [
                             "en-US",
-                            "cs-CZ"
+                            "cs-CZ",
+                            "de-DE",
+                            "uk-UA",
+                            "sk-SK"
                           ]
                         },
                         "content": {
@@ -22821,7 +22833,10 @@
                           "type": "string",
                           "enum": [
                             "en-US",
-                            "cs-CZ"
+                            "cs-CZ",
+                            "de-DE",
+                            "uk-UA",
+                            "sk-SK"
                           ]
                         },
                         "content": {
@@ -22915,7 +22930,10 @@
                           "type": "string",
                           "enum": [
                             "en-US",
-                            "cs-CZ"
+                            "cs-CZ",
+                            "de-DE",
+                            "uk-UA",
+                            "sk-SK"
                           ]
                         }
                       },
@@ -23049,7 +23067,10 @@
                             "type": "string",
                             "enum": [
                               "en-US",
-                              "cs-CZ"
+                              "cs-CZ",
+                              "de-DE",
+                              "uk-UA",
+                              "sk-SK"
                             ]
                           }
                         },
@@ -23298,7 +23319,10 @@
                           "type": "string",
                           "enum": [
                             "en-US",
-                            "cs-CZ"
+                            "cs-CZ",
+                            "de-DE",
+                            "uk-UA",
+                            "sk-SK"
                           ]
                         }
                       },
@@ -23335,6 +23359,75 @@
                             "additionalProperties": false
                           },
                           "cs-CZ": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "de-DE": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "uk-UA": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "sk-SK": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -23599,7 +23692,10 @@
                           "type": "string",
                           "enum": [
                             "en-US",
-                            "cs-CZ"
+                            "cs-CZ",
+                            "de-DE",
+                            "uk-UA",
+                            "sk-SK"
                           ]
                         }
                       },
@@ -23652,6 +23748,123 @@
                             "additionalProperties": false
                           },
                           "cs-CZ": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyDocument": {
+                                "type": "object",
+                                "properties": {
+                                  "formatVersion": {
+                                    "type": "number",
+                                    "enum": [
+                                      1
+                                    ]
+                                  },
+                                  "doc": {
+                                    "$ref": "#/components/schemas/AdministrationCampaignBodyNode"
+                                  }
+                                },
+                                "required": [
+                                  "formatVersion",
+                                  "doc"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyDocument"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "de-DE": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyDocument": {
+                                "type": "object",
+                                "properties": {
+                                  "formatVersion": {
+                                    "type": "number",
+                                    "enum": [
+                                      1
+                                    ]
+                                  },
+                                  "doc": {
+                                    "$ref": "#/components/schemas/AdministrationCampaignBodyNode"
+                                  }
+                                },
+                                "required": [
+                                  "formatVersion",
+                                  "doc"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyDocument"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "uk-UA": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyDocument": {
+                                "type": "object",
+                                "properties": {
+                                  "formatVersion": {
+                                    "type": "number",
+                                    "enum": [
+                                      1
+                                    ]
+                                  },
+                                  "doc": {
+                                    "$ref": "#/components/schemas/AdministrationCampaignBodyNode"
+                                  }
+                                },
+                                "required": [
+                                  "formatVersion",
+                                  "doc"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyDocument"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "sk-SK": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -23905,7 +24118,10 @@
                           "type": "string",
                           "enum": [
                             "en-US",
-                            "cs-CZ"
+                            "cs-CZ",
+                            "de-DE",
+                            "uk-UA",
+                            "sk-SK"
                           ]
                         }
                       },
@@ -23942,6 +24158,75 @@
                             "additionalProperties": false
                           },
                           "cs-CZ": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "de-DE": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "uk-UA": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "sk-SK": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -24240,6 +24525,204 @@
                                   "additionalProperties": false
                                 }
                               ]
+                            },
+                            "de-DE": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "subject": {
+                                      "type": "string"
+                                    },
+                                    "preheader": {
+                                      "type": "string"
+                                    },
+                                    "operationalReason": {
+                                      "type": "string"
+                                    },
+                                    "bodyMarkdown": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "subject",
+                                    "preheader",
+                                    "bodyMarkdown"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "subject": {
+                                      "type": "string"
+                                    },
+                                    "preheader": {
+                                      "type": "string"
+                                    },
+                                    "operationalReason": {
+                                      "type": "string"
+                                    },
+                                    "bodyDocument": {
+                                      "type": "object",
+                                      "properties": {
+                                        "formatVersion": {
+                                          "type": "number",
+                                          "enum": [
+                                            1
+                                          ]
+                                        },
+                                        "doc": {
+                                          "$ref": "#/components/schemas/AdministrationCampaignBodyNode"
+                                        }
+                                      },
+                                      "required": [
+                                        "formatVersion",
+                                        "doc"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "required": [
+                                    "subject",
+                                    "preheader",
+                                    "bodyDocument"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            },
+                            "uk-UA": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "subject": {
+                                      "type": "string"
+                                    },
+                                    "preheader": {
+                                      "type": "string"
+                                    },
+                                    "operationalReason": {
+                                      "type": "string"
+                                    },
+                                    "bodyMarkdown": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "subject",
+                                    "preheader",
+                                    "bodyMarkdown"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "subject": {
+                                      "type": "string"
+                                    },
+                                    "preheader": {
+                                      "type": "string"
+                                    },
+                                    "operationalReason": {
+                                      "type": "string"
+                                    },
+                                    "bodyDocument": {
+                                      "type": "object",
+                                      "properties": {
+                                        "formatVersion": {
+                                          "type": "number",
+                                          "enum": [
+                                            1
+                                          ]
+                                        },
+                                        "doc": {
+                                          "$ref": "#/components/schemas/AdministrationCampaignBodyNode"
+                                        }
+                                      },
+                                      "required": [
+                                        "formatVersion",
+                                        "doc"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "required": [
+                                    "subject",
+                                    "preheader",
+                                    "bodyDocument"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            },
+                            "sk-SK": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "subject": {
+                                      "type": "string"
+                                    },
+                                    "preheader": {
+                                      "type": "string"
+                                    },
+                                    "operationalReason": {
+                                      "type": "string"
+                                    },
+                                    "bodyMarkdown": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "subject",
+                                    "preheader",
+                                    "bodyMarkdown"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "subject": {
+                                      "type": "string"
+                                    },
+                                    "preheader": {
+                                      "type": "string"
+                                    },
+                                    "operationalReason": {
+                                      "type": "string"
+                                    },
+                                    "bodyDocument": {
+                                      "type": "object",
+                                      "properties": {
+                                        "formatVersion": {
+                                          "type": "number",
+                                          "enum": [
+                                            1
+                                          ]
+                                        },
+                                        "doc": {
+                                          "$ref": "#/components/schemas/AdministrationCampaignBodyNode"
+                                        }
+                                      },
+                                      "required": [
+                                        "formatVersion",
+                                        "doc"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
+                                  "required": [
+                                    "subject",
+                                    "preheader",
+                                    "bodyDocument"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
                             }
                           },
                           "additionalProperties": false
@@ -24421,7 +24904,10 @@
                           "type": "string",
                           "enum": [
                             "en-US",
-                            "cs-CZ"
+                            "cs-CZ",
+                            "de-DE",
+                            "uk-UA",
+                            "sk-SK"
                           ]
                         }
                       },
@@ -24458,6 +24944,75 @@
                             "additionalProperties": false
                           },
                           "cs-CZ": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "de-DE": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "uk-UA": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "sk-SK": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -24713,6 +25268,159 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "de-DE": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "subject": {
+                                  "type": "string"
+                                },
+                                "preheader": {
+                                  "type": "string"
+                                },
+                                "bodyMarkdown": {
+                                  "type": "string"
+                                },
+                                "bodyDocument": {
+                                  "type": "object",
+                                  "properties": {
+                                    "formatVersion": {
+                                      "type": "number",
+                                      "enum": [
+                                        1
+                                      ]
+                                    },
+                                    "doc": {
+                                      "$ref": "#/components/schemas/AdministrationCampaignBodyNode"
+                                    }
+                                  },
+                                  "required": [
+                                    "formatVersion",
+                                    "doc"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "operationalReason": {
+                                  "anyOf": [
+                                    {
+                                      "$ref": "#/components/schemas/AdministrationActorName"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "uk-UA": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "subject": {
+                                  "type": "string"
+                                },
+                                "preheader": {
+                                  "type": "string"
+                                },
+                                "bodyMarkdown": {
+                                  "type": "string"
+                                },
+                                "bodyDocument": {
+                                  "type": "object",
+                                  "properties": {
+                                    "formatVersion": {
+                                      "type": "number",
+                                      "enum": [
+                                        1
+                                      ]
+                                    },
+                                    "doc": {
+                                      "$ref": "#/components/schemas/AdministrationCampaignBodyNode"
+                                    }
+                                  },
+                                  "required": [
+                                    "formatVersion",
+                                    "doc"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "operationalReason": {
+                                  "anyOf": [
+                                    {
+                                      "$ref": "#/components/schemas/AdministrationActorName"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "sk-SK": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "subject": {
+                                  "type": "string"
+                                },
+                                "preheader": {
+                                  "type": "string"
+                                },
+                                "bodyMarkdown": {
+                                  "type": "string"
+                                },
+                                "bodyDocument": {
+                                  "type": "object",
+                                  "properties": {
+                                    "formatVersion": {
+                                      "type": "number",
+                                      "enum": [
+                                        1
+                                      ]
+                                    },
+                                    "doc": {
+                                      "$ref": "#/components/schemas/AdministrationCampaignBodyNode"
+                                    }
+                                  },
+                                  "required": [
+                                    "formatVersion",
+                                    "doc"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "operationalReason": {
+                                  "anyOf": [
+                                    {
+                                      "$ref": "#/components/schemas/AdministrationActorName"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "additionalProperties": false
@@ -24880,7 +25588,10 @@
                           "type": "string",
                           "enum": [
                             "en-US",
-                            "cs-CZ"
+                            "cs-CZ",
+                            "de-DE",
+                            "uk-UA",
+                            "sk-SK"
                           ]
                         }
                       },
@@ -24917,6 +25628,75 @@
                             "additionalProperties": false
                           },
                           "cs-CZ": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "de-DE": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "uk-UA": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "sk-SK": {
                             "type": "object",
                             "properties": {
                               "subject": {
@@ -25335,7 +26115,10 @@
                               "type": "string",
                               "enum": [
                                 "en-US",
-                                "cs-CZ"
+                                "cs-CZ",
+                                "de-DE",
+                                "uk-UA",
+                                "sk-SK"
                               ]
                             },
                             "email": {
@@ -25742,7 +26525,10 @@
                           "type": "string",
                           "enum": [
                             "en-US",
-                            "cs-CZ"
+                            "cs-CZ",
+                            "de-DE",
+                            "uk-UA",
+                            "sk-SK"
                           ]
                         }
                       },
@@ -26504,7 +27290,10 @@
                                       "type": "string",
                                       "enum": [
                                         "en-US",
-                                        "cs-CZ"
+                                        "cs-CZ",
+                                        "de-DE",
+                                        "uk-UA",
+                                        "sk-SK"
                                       ]
                                     },
                                     "status": {
@@ -28105,7 +28894,10 @@
                               "type": "string",
                               "enum": [
                                 "en-US",
-                                "cs-CZ"
+                                "cs-CZ",
+                                "de-DE",
+                                "uk-UA",
+                                "sk-SK"
                               ]
                             },
                             "subject": {
@@ -30119,6 +30911,75 @@
                               "bodyMarkdown"
                             ],
                             "additionalProperties": false
+                          },
+                          "de-DE": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "uk-UA": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "sk-SK": {
+                            "type": "object",
+                            "properties": {
+                              "subject": {
+                                "type": "string"
+                              },
+                              "preheader": {
+                                "type": "string"
+                              },
+                              "operationalReason": {
+                                "type": "string"
+                              },
+                              "bodyMarkdown": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "subject",
+                              "preheader",
+                              "bodyMarkdown"
+                            ],
+                            "additionalProperties": false
                           }
                         },
                         "additionalProperties": false
@@ -31759,7 +32620,10 @@
                       "type": "string",
                       "enum": [
                         "en-US",
-                        "cs-CZ"
+                        "cs-CZ",
+                        "de-DE",
+                        "uk-UA",
+                        "sk-SK"
                       ]
                     }
                   },
@@ -33586,7 +34450,10 @@
                   "type": "string",
                   "enum": [
                     "en-US",
-                    "cs-CZ"
+                    "cs-CZ",
+                    "de-DE",
+                    "uk-UA",
+                    "sk-SK"
                   ]
                 },
                 "allOf": [
@@ -34177,7 +35044,10 @@
                   "type": "string",
                   "enum": [
                     "en-US",
-                    "cs-CZ"
+                    "cs-CZ",
+                    "de-DE",
+                    "uk-UA",
+                    "sk-SK"
                   ]
                 },
                 "allOf": [
@@ -34838,7 +35708,10 @@
                   "type": "string",
                   "enum": [
                     "en-US",
-                    "cs-CZ"
+                    "cs-CZ",
+                    "de-DE",
+                    "uk-UA",
+                    "sk-SK"
                   ]
                 },
                 "allOf": [

@@ -104,7 +104,7 @@ describe("getWebSiteStructuredData", () => {
       "@id": "https://workspace.deskohub.cz/#website",
       name: workspaceSiteConstants.brand.name,
       url: "https://workspace.deskohub.cz/",
-      inLanguage: ["en-US", "cs-CZ"],
+      inLanguage: ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK"],
       publisher: { "@id": workspaceBusinessId },
     });
     expect(getWebSiteStructuredData()["@id"]).toBe(workspaceWebSiteId);

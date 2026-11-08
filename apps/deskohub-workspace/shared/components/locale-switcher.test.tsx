@@ -102,9 +102,15 @@ test.each(["stacked", "inline"] as const)(
         ? [
             ["SPAN", 0],
             ["SPAN", 1],
+            ["SPAN", 1],
+            ["SPAN", 1],
+            ["SPAN", 1],
           ]
         : [
             ["STRONG", 0],
+            ["SPAN", 0],
+            ["SPAN", 0],
+            ["SPAN", 0],
             ["SPAN", 0],
           ]
     );

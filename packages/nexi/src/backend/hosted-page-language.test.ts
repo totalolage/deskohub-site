@@ -14,12 +14,18 @@ describe("toHostedPageLanguage", () => {
     expect(toHostedPageLanguage("ukr")).toBe("ENG");
   });
 
-  test("keeps the hosted page language of each current locale", () => {
-    expect(
-      toHostedPageLanguage(getLocaleDefinition("cs-CZ").nexiLanguage)
-    ).toBe("CZE");
-    expect(
-      toHostedPageLanguage(getLocaleDefinition("en-US").nexiLanguage)
-    ).toBe("ENG");
+  test("shows each supported locale's hosted page language", () => {
+    for (const [locale, language] of [
+      ["cs-CZ", "CZE"],
+      ["en-US", "ENG"],
+      ["de-DE", "DEU"],
+      ["sk-SK", "SLK"],
+      // Nexi offers no Ukrainian.
+      ["uk-UA", "ENG"],
+    ] as const) {
+      expect(
+        toHostedPageLanguage(getLocaleDefinition(locale).nexiLanguage)
+      ).toBe(language);
+    }
   });
 });

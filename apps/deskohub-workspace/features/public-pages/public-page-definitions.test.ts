@@ -36,6 +36,9 @@ const legalDocumentKeys = [
 const dateFormatLocale = {
   "en-US": "en-GB",
   "cs-CZ": "cs-CZ",
+  "de-DE": "de-DE",
+  "uk-UA": "uk-UA",
+  "sk-SK": "sk-SK",
 } as const satisfies Record<Locale, string>;
 
 const longDate = (isoDate: string, locale: Locale) =>

@@ -31,7 +31,7 @@ const withSubject = (
 describe("composerLocales", () => {
   test("without a single-locale audience, every locale shows and Czech is required", () => {
     expect(composerLocales(undefined)).toEqual({
-      editable: ["cs-CZ", "en-US"],
+      editable: ["cs-CZ", "en-US", "de-DE", "uk-UA", "sk-SK"],
       required: "cs-CZ",
     });
   });
@@ -198,6 +198,9 @@ describe("editor round trip", () => {
     ).toEqual({
       "cs-CZ": { ...saved.content["cs-CZ"] },
       "en-US": { operationalReason: null, ...saved.content["en-US"] },
+      "de-DE": null,
+      "uk-UA": null,
+      "sk-SK": null,
     });
   });
 });

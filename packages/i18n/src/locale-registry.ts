@@ -66,6 +66,40 @@ const localeEntries = defineLocaleRegistry([
     nexiLanguage: "cze",
     phoneRegion: "CZ",
   },
+  {
+    tag: "de-DE",
+    language: "de",
+    region: "DE",
+    nativeName: "Deutsch",
+    direction: "ltr",
+    script: "latin",
+    fallbackChain: ["en-US", "cs-CZ"],
+    nexiLanguage: "deu",
+    phoneRegion: "DE",
+  },
+  {
+    tag: "uk-UA",
+    language: "uk",
+    region: "UA",
+    nativeName: "Українська",
+    direction: "ltr",
+    script: "cyrillic",
+    fallbackChain: ["en-US", "cs-CZ"],
+    // Nexi's hosted page offers no Ukrainian.
+    nexiLanguage: "eng",
+    phoneRegion: "UA",
+  },
+  {
+    tag: "sk-SK",
+    language: "sk",
+    region: "SK",
+    nativeName: "Slovenčina",
+    direction: "ltr",
+    script: "latin",
+    fallbackChain: ["cs-CZ", "en-US"],
+    nexiLanguage: "slk",
+    phoneRegion: "SK",
+  },
 ]);
 
 /** A locale Deskohub serves. */

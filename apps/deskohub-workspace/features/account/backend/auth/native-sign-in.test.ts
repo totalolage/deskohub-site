@@ -929,7 +929,7 @@ describe.skipIf(!testDatabase)("app sign-in locale", () => {
     const email = uniqueEmail("app-locale-link-refused");
     const link = await send(email);
 
-    for (const locale of ["de-DE", "cs", "", "cs-CZ,en-US"]) {
+    for (const locale of ["fr-FR", "cs", "", "cs-CZ,en-US"]) {
       workspaceLogs.reset();
       const refused = await verifyInApp(link, locale);
       expect(refused.status).toBe(400);

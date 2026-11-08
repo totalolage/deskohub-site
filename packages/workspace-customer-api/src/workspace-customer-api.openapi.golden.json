@@ -3924,7 +3924,7 @@
       },
       "CustomerLocale": {
         "type": "string",
-        "enum": ["en-US", "cs-CZ"]
+        "enum": ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK"]
       },
       "SaveCustomerMarketingPreferences": {
         "type": "object",

@@ -26,6 +26,10 @@ import {
 import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
+import {
+  type DiscountLabels,
+  discountLabelFor,
+} from "@/features/discounts/discount-label";
 import type {
   DiscountCodeId,
   StoredDiscountId,
@@ -98,7 +102,7 @@ import { formatDiscountUsageLimit } from "./usage-limit";
 
 export type DiscountTableItem = {
   readonly id: StoredDiscountId;
-  readonly labels: Readonly<Record<Locale, string>>;
+  readonly labels: DiscountLabels;
   readonly adjustment: DiscountAdjustment;
   readonly products: readonly WorkspaceProductTarget[];
   readonly codeCount: number;
@@ -166,7 +170,10 @@ export function DiscountCodesAdminTable({
   const discountLabels = useMemo(
     () =>
       new Map(
-        discounts.map((discount) => [discount.id, discount.labels[locale]])
+        discounts.map((discount) => [
+          discount.id,
+          discountLabelFor(discount.labels, locale),
+        ])
       ),
     [discounts, locale]
   );
@@ -856,11 +863,11 @@ function DiscountEditor({
           deletable ? (
             <DeleteButton
               confirmation={m.discountsDiscountDeleteConfirmation(
-                { label: discount.labels[locale] },
+                { label: discountLabelFor(discount.labels, locale) },
                 { locale }
               )}
               label={m.discountsDeleteItemLabel(
-                { name: discount.labels[locale] },
+                { name: discountLabelFor(discount.labels, locale) },
                 { locale }
               )}
               mutation={() => ({ kind: "delete-discount", id: discount.id })}
@@ -1390,7 +1397,7 @@ function DiscountCodeFields({
               >
                 {discounts.map((discount) => (
                   <option key={discount.id} value={discount.id}>
-                    {discount.labels[locale]}
+                    {discountLabelFor(discount.labels, locale)}
                   </option>
                 ))}
               </select>

@@ -86,6 +86,53 @@ describe("locale registry", () => {
       phoneRegion: "CZ",
     });
   });
+
+  test("records German, Ukrainian and Slovak", () => {
+    expect(getLocaleDefinition("de-DE")).toEqual({
+      tag: "de-DE",
+      language: "de",
+      region: "DE",
+      nativeName: "Deutsch",
+      direction: "ltr",
+      script: "latin",
+      fallbackChain: ["en-US", "cs-CZ"],
+      nexiLanguage: "deu",
+      phoneRegion: "DE",
+    });
+    // Nexi's hosted page has no Ukrainian, so Ukrainian readers pay in English.
+    expect(getLocaleDefinition("uk-UA")).toEqual({
+      tag: "uk-UA",
+      language: "uk",
+      region: "UA",
+      nativeName: "Українська",
+      direction: "ltr",
+      script: "cyrillic",
+      fallbackChain: ["en-US", "cs-CZ"],
+      nexiLanguage: "eng",
+      phoneRegion: "UA",
+    });
+    expect(getLocaleDefinition("sk-SK")).toEqual({
+      tag: "sk-SK",
+      language: "sk",
+      region: "SK",
+      nativeName: "Slovenčina",
+      direction: "ltr",
+      script: "latin",
+      fallbackChain: ["cs-CZ", "en-US"],
+      nexiLanguage: "slk",
+      phoneRegion: "SK",
+    });
+  });
+
+  test("lists the served locales in registry order", () => {
+    expect([...supportedLocales]).toEqual([
+      "en-US",
+      "cs-CZ",
+      "de-DE",
+      "uk-UA",
+      "sk-SK",
+    ]);
+  });
 });
 
 describe("isSupportedLocale", () => {
@@ -106,6 +153,9 @@ describe("matchSupportedLocale", () => {
     expect(matchSupportedLocale("en-GB")).toBe("en-US");
     expect(matchSupportedLocale("en_AU")).toBe("en-US");
     expect(matchSupportedLocale(" en ")).toBe("en-US");
+    expect(matchSupportedLocale("de-AT")).toBe("de-DE");
+    expect(matchSupportedLocale("sk")).toBe("sk-SK");
+    expect(matchSupportedLocale("uk")).toBe("uk-UA");
   });
 
   test("matches nothing for a language Deskohub doesn't serve", () => {

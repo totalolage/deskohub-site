@@ -73,7 +73,7 @@ describe("Workspace locale resolution", () => {
     ).toBe("cs-CZ");
     expect(
       resolveWorkspaceLocale(
-        sources({ cookie: "sk-SK", acceptLanguage: "de" }),
+        sources({ cookie: "fr-FR", acceptLanguage: "ru" }),
         undefined
       )
     ).toBe("en-US");
@@ -95,6 +95,10 @@ describe("Workspace locale resolution", () => {
       ["en-GB", "en-US"],
       ["cs-SK", "cs-CZ"],
       ["en-GB,cs;q=0.5", "en-US"],
+      ["de-AT,de;q=0.9", "de-DE"],
+      ["sk", "sk-SK"],
+      ["uk", "uk-UA"],
+      ["uk-UA,uk;q=0.9,ru;q=0.8", "uk-UA"],
     ] as const) {
       expect(
         resolveWorkspaceLocale(
@@ -106,7 +110,7 @@ describe("Workspace locale resolution", () => {
   });
 
   test("a reader of only unserved languages gets English", () => {
-    for (const acceptLanguage of ["sk-SK,sk;q=0.9", "ru", "de-AT,de;q=0.9"]) {
+    for (const acceptLanguage of ["ru", "fr-FR,fr;q=0.9", "pl-PL,pl;q=0.9"]) {
       expect(
         resolveWorkspaceLocale(
           sources({ pathname: "/faq", acceptLanguage }),
@@ -116,7 +120,7 @@ describe("Workspace locale resolution", () => {
     }
   });
 
-  test("Slovak readers who also read English get English", () => {
+  test("Slovak readers get Slovak before the Czech and English they also read", () => {
     expect(
       resolveWorkspaceLocale(
         sources({
@@ -125,6 +129,6 @@ describe("Workspace locale resolution", () => {
         }),
         undefined
       )
-    ).toBe("en-US");
+    ).toBe("sk-SK");
   });
 });

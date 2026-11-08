@@ -215,6 +215,9 @@ const optionOf = <Options extends object>(
 const audienceLocaleNames = {
   "cs-CZ": m.emailCampaignsAudienceLocaleNameCzech,
   "en-US": m.emailCampaignsAudienceLocaleNameEnglish,
+  "de-DE": m.emailCampaignsAudienceLocaleNameGerman,
+  "uk-UA": m.emailCampaignsAudienceLocaleNameUkrainian,
+  "sk-SK": m.emailCampaignsAudienceLocaleNameSlovak,
 } as const satisfies Record<Locale, AudienceMessage>;
 
 /**

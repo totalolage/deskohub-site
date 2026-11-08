@@ -27,6 +27,7 @@ import type {
   DiscountQuoteInput,
 } from "./contracts";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
+import { discountLabelFor } from "./discount-label";
 import { DiscountProviderError } from "./errors";
 import { deriveOpaqueDiscountId } from "./opaque-discount-id";
 import type {
@@ -278,7 +279,7 @@ const toCalendarDiscountCandidate = (input: {
       providerNamespace,
       providerReference: input.resolvedSale.sale.occurrenceReference,
     }),
-    label: input.resolvedSale.definition.labels[input.locale],
+    label: discountLabelFor(input.resolvedSale.definition.labels, input.locale),
     adjustment: input.resolvedSale.definition.adjustment,
     expiresAt: input.resolvedSale.sale.expiresAt,
     countdownStartsAt: input.resolvedSale.sale.countdownStartsAt,
