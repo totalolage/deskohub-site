@@ -17,21 +17,15 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type CampaignRow,
   emailCampaignConfirmationCodes,
-  emailCampaignRecipients,
-  emailCampaignSends,
   emailCampaigns,
 } from "@/db/schema";
 import "@/shared/polyfills/temporal";
-import type { DotyposCustomerId } from "@deskohub/dotypos";
-import type { Locale } from "@/features/i18n";
 import { currentInstant } from "@/shared/utils/temporal";
-import type { AudienceFilter } from "../audience-filter";
 import {
   type CampaignContentHash,
   hashCampaignContent,
 } from "../body/campaign-content-hash";
 import {
-  type CampaignAudienceId,
   type CampaignConfirmationCode,
   type CampaignId,
   type CampaignSendId,
@@ -46,6 +40,10 @@ import {
   CampaignReadOnly,
 } from "../errors";
 import { loadCampaignSigningKeys } from "./campaign-signing-keys";
+import {
+  type CampaignSendFreeze,
+  OnceCampaignLifecycle,
+} from "./once-campaign-lifecycle";
 
 const campaignConfirmationCodeLifetime = Temporal.Duration.from({
   hours: 24,
@@ -74,16 +72,6 @@ const loadCodeHashKey = loadCampaignSigningKeys("confirmation-code").pipe(
 type IssuedCampaignConfirmationCode = {
   readonly code: CampaignConfirmationCode;
   readonly expiresAt: Temporal.Instant;
-};
-
-/** The recipients and audience snapshot a confirmed send freezes. */
-export type CampaignSendFreeze = {
-  readonly audienceId: CampaignAudienceId | null;
-  readonly audienceFilter: AudienceFilter;
-  readonly recipients: readonly {
-    readonly dotyposCustomerId: DotyposCustomerId;
-    readonly locale: Locale;
-  }[];
 };
 
 type ConfirmedCampaignSend = {
@@ -295,7 +283,6 @@ export class CampaignConfirmationCodeService extends Context.Service<
         readonly codeHash: string;
         readonly contentHash: CampaignContentHash;
         readonly now: Temporal.Instant;
-        readonly send: CampaignSendFreeze;
       }) =>
         db
           .update(emailCampaignConfirmationCodes)
@@ -307,47 +294,12 @@ export class CampaignConfirmationCodeService extends Context.Service<
             )
           )
           .pipe(
-            Effect.andThen(
-              db
-                .update(emailCampaigns)
-                .set({ status: "sending", updatedAt: input.now })
-                .where(eq(emailCampaigns.id, input.campaign.id))
-                .returning()
-            ),
-            Effect.map(([campaign]) => campaign!),
-            Effect.bindTo("campaign"),
-            Effect.bind("sendId", () => freezeSend(input))
+            Effect.as({
+              _tag: "Confirm" as const,
+              contentHash: input.contentHash,
+              now: input.now,
+            })
           );
-
-      const freezeSend = Effect.fn(
-        "CampaignConfirmationCodeService.freezeSend"
-      )(function* (input: {
-        readonly campaign: CampaignRow;
-        readonly contentHash: CampaignContentHash;
-        readonly now: Temporal.Instant;
-        readonly send: CampaignSendFreeze;
-      }) {
-        const [send] = yield* db
-          .insert(emailCampaignSends)
-          .values({
-            campaignId: input.campaign.id,
-            audienceId: input.send.audienceId,
-            audienceFilter: input.send.audienceFilter,
-            contentHash: input.contentHash,
-            createdAt: input.now,
-          })
-          .returning({ id: emailCampaignSends.id });
-        if (input.send.recipients.length > 0) {
-          yield* db.insert(emailCampaignRecipients).values(
-            input.send.recipients.map((recipient) => ({
-              ...recipient,
-              sendId: send!.id,
-              statusUpdatedAt: input.now,
-            }))
-          );
-        }
-        return send!.id;
-      });
 
       /** Counts a failed attempt; the last allowed one supersedes the code. */
       const recordFailedAttempt = Effect.fn(
@@ -393,50 +345,48 @@ export class CampaignConfirmationCodeService extends Context.Service<
         readonly codeHash: string;
         readonly send: CampaignSendFreeze;
       }) =>
-        Effect.succeed(input).pipe(
-          Effect.bind("campaign", ({ campaignId }) => lockDraft(campaignId)),
-          Effect.let("contentHash", ({ campaign }) =>
-            hashCampaignContent({
-              purpose: campaign.purpose,
-              templateKey: campaign.templateKey,
-              locales: campaign.content,
-            })
-          ),
-          Effect.bind("now", () => currentInstant),
-          Effect.bind("current", ({ campaignId }) =>
-            findCurrentCode(campaignId)
-          ),
-          Effect.let("verdict", judgeConfirmation),
-          Effect.flatMap(({ verdict, ...confirmation }) =>
-            Match.value(verdict).pipe(
-              Match.tagsExhaustive({
-                Confirm: () =>
-                  consumeCode(confirmation).pipe(
-                    Effect.map((confirmed) => ({
-                      _tag: "Confirmed" as const,
-                      ...confirmed,
-                    }))
-                  ),
-                Reject: ({ reason }) =>
-                  Effect.succeed({ _tag: "Rejected" as const, reason }),
-                FailAttempt: ({ current }) =>
-                  recordFailedAttempt({ ...confirmation, current }).pipe(
-                    Effect.map((reason) => ({
-                      _tag: "Rejected" as const,
-                      reason,
-                    }))
-                  ),
-                NoCurrentCode: () =>
-                  explainStaleCode(confirmation).pipe(
-                    Effect.map((reason) => ({
-                      _tag: "Rejected" as const,
-                      reason,
-                    }))
-                  ),
-              })
-            )
-          )
-        );
+        OnceCampaignLifecycle.startSending({
+          campaignId: input.campaignId,
+          send: input.send,
+          check: (campaign) =>
+            Effect.succeed({ ...input, campaign }).pipe(
+              Effect.let("contentHash", ({ campaign }) =>
+                hashCampaignContent({
+                  purpose: campaign.purpose,
+                  templateKey: campaign.templateKey,
+                  locales: campaign.content,
+                })
+              ),
+              Effect.bind("now", () => currentInstant),
+              Effect.bind("current", ({ campaignId }) =>
+                findCurrentCode(campaignId)
+              ),
+              Effect.let("verdict", judgeConfirmation),
+              Effect.flatMap(({ verdict, ...confirmation }) =>
+                Match.value(verdict).pipe(
+                  Match.tagsExhaustive({
+                    Confirm: () => consumeCode(confirmation),
+                    Reject: ({ reason }) =>
+                      Effect.succeed({ _tag: "Rejected" as const, reason }),
+                    FailAttempt: ({ current }) =>
+                      recordFailedAttempt({ ...confirmation, current }).pipe(
+                        Effect.map((reason) => ({
+                          _tag: "Rejected" as const,
+                          reason,
+                        }))
+                      ),
+                    NoCurrentCode: () =>
+                      explainStaleCode(confirmation).pipe(
+                        Effect.map((reason) => ({
+                          _tag: "Rejected" as const,
+                          reason,
+                        }))
+                      ),
+                  })
+                )
+              )
+            ),
+        });
 
       return {
         issue: (input) =>

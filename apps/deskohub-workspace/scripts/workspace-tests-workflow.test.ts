@@ -1,8 +1,10 @@
-import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { testEmailAddress } from "@deskohub/test-email";
 import { shardTimingsArtifactPattern } from "./refresh-test-timings";
-import { runCommand } from "./shared/command";
+import { commandOutput, runCommand } from "./shared/command";
 import { identifierNames, parseTrackedSource } from "./shared/source-ast";
 import {
   findStepByName,
@@ -10,6 +12,7 @@ import {
   type WorkflowStep,
   workflowSteps,
 } from "./shared/workflow-contract";
+import { createWorkflowStepRunner } from "./shared/workflow-step-runner";
 import { shardTimingsRecording, testShardCount } from "./test-shard";
 
 const workflowPath = resolve(
@@ -26,6 +29,8 @@ const shardContract = testJob as typeof testJob & {
     readonly matrix?: { readonly shard?: readonly number[] };
   };
 };
+
+const affectedName = "WORKSPACE_SHARDS_AFFECTED";
 
 const stepByName = (name: string): WorkflowStep => {
   const step = findStepByName(doc, name);
@@ -140,36 +145,238 @@ test("splits the suite across every matrix shard and keeps test-functional as a 
   expect(gateNeeds).toEqual([
     "validate-workspace",
     "validate-workspace-migrations",
+    "select-workspace-shards",
     "test-functional-shards",
     "validate-administration-messages",
   ]);
   expect(gate.if).toContain("always()");
 
-  // Every needed job's result reaches the gate script.
+  // Every needed job's result, and the selection's verdict, reach the gate
+  // script.
   const gateStep = workflowSteps(doc, "test-functional")[0];
-  const gateEnv = gateStep?.env ?? {};
-  expect(
-    Object.values(gateEnv)
-      .map((value) => value.match(/^\$\{\{ needs\.([\w-]+)\.result \}\}$/)?.[1])
-      .sort()
-  ).toEqual([...gateNeeds].sort());
+  const { [affectedName]: affectedValue, ...resultEnv } = gateStep?.env ?? {};
+  expect(affectedValue).toBe(
+    "$" + "{{ needs.select-workspace-shards.outputs.affected }}"
+  );
+  const resultJobs = Object.fromEntries(
+    Object.entries(resultEnv).map(([name, value]) => [
+      name,
+      value.match(/^\$\{\{ needs\.([\w-]+)\.result \}\}$/)?.[1],
+    ])
+  );
+  expect(Object.values(resultJobs).sort()).toEqual([...gateNeeds].sort());
+  const shardsResultName = Object.keys(resultJobs).find(
+    (name) => resultJobs[name] === "test-functional-shards"
+  ) as string;
 
-  const resultNames = Object.keys(gateEnv);
   const successfulResults = Object.fromEntries(
-    resultNames.map((resultName) => [resultName, "success"])
+    Object.keys(resultEnv).map((resultName) => [resultName, "success"])
   );
   const gateScript = gateStep?.run ?? "";
-  expect(await workflowScriptExitCode(gateScript, successfulResults)).toBe(0);
-  for (const resultName of resultNames) {
-    for (const result of ["failure", "cancelled", "skipped"]) {
-      expect(
-        await workflowScriptExitCode(gateScript, {
-          ...successfulResults,
-          [resultName]: result,
-        })
-      ).not.toBe(0);
+  // A missing job output renders as the empty string.
+  const gateExitCode = (affected: string, results: Record<string, string>) =>
+    workflowScriptExitCode(gateScript, {
+      ...successfulResults,
+      ...results,
+      [affectedName]: affected,
+    });
+
+  // The shards pass only by running when affected, or by being skipped when
+  // not; a missing or unexpected verdict never passes.
+  for (const affected of ["true", "false", "", "yes"]) {
+    for (const result of ["success", "failure", "cancelled", "skipped"]) {
+      const passes =
+        (affected === "true" && result === "success") ||
+        (affected === "false" && result === "skipped");
+      expect(await gateExitCode(affected, { [shardsResultName]: result })).toBe(
+        passes ? 0 : 1
+      );
     }
   }
+
+  // Every other job, the selection included, must succeed either way.
+  for (const resultName of Object.keys(resultEnv)) {
+    if (resultName === shardsResultName) {
+      continue;
+    }
+    for (const result of ["failure", "cancelled", "skipped"]) {
+      for (const [affected, shards] of [
+        ["true", "success"],
+        ["false", "skipped"],
+      ] as const) {
+        expect(
+          await gateExitCode(affected, {
+            [shardsResultName]: shards,
+            [resultName]: result,
+          })
+        ).not.toBe(0);
+      }
+    }
+  }
+});
+
+test("runs the shards only when the selection finds an affected shard task", () => {
+  const selectJob = doc.jobs["select-workspace-shards"];
+  const select = stepByName("Select the affected Workspace test shards");
+  expect(selectJob.outputs?.affected).toBe(
+    `\${{ steps.${select.id}.outputs.affected }}`
+  );
+  expect(selectJob.if).toBe(testJob.if?.split(" &&")[0]);
+
+  // A skipped needed job skips its dependents, so a failed selection can
+  // never run (or pass) the shards.
+  expect(testJob.needs).toBe("select-workspace-shards");
+  expect(testJob.if).toBe(
+    "github.event.action != 'converted_to_draft' && " +
+      "needs.select-workspace-shards.outputs.affected == 'true'"
+  );
+
+  // The merge commit's first parent must be in the checkout.
+  const checkout = workflowSteps(doc, "select-workspace-shards").find((step) =>
+    step.uses?.startsWith("actions/checkout@")
+  );
+  expect(Number(checkout?.with?.["fetch-depth"])).toBeGreaterThanOrEqual(2);
+
+  // The selection asks about every shard task, with the Turbo the lockfile
+  // installs, and matches changes against task inputs.
+  const installedTurbo = JSON.parse(
+    readFileSync(
+      resolve(import.meta.dir, "../../../node_modules/turbo/package.json"),
+      "utf8"
+    )
+  ) as { readonly version: string };
+  expect(select.run).toContain(`bunx turbo@${installedTurbo.version} run`);
+  const shardTasks = Array.from(
+    { length: testShardCount },
+    (_, index) => `test:shard-${index + 1}`
+  );
+  expect(select.run).toContain(` ${shardTasks.join(" ")} `);
+  const rootTurbo = JSON.parse(
+    readFileSync(resolve(import.meta.dir, "../../../turbo.json"), "utf8")
+  ) as {
+    readonly futureFlags?: { readonly affectedUsingTaskInputs?: boolean };
+  };
+  expect(rootTurbo.futureFlags?.affectedUsingTaskInputs).toBe(true);
+});
+
+describe("shard selection step", () => {
+  const select = stepByName("Select the affected Workspace test shards");
+  const runner = createWorkflowStepRunner("workspace-shard-selection-");
+  const repositories = mkdtempSync(join(tmpdir(), "workspace-shard-repo-"));
+  const git = (repository: string, ...args: string[]) =>
+    commandOutput(
+      [
+        "git",
+        "-c",
+        "user.name=CI",
+        "-c",
+        `user.email=${testEmailAddress("ci")}`,
+        ...args,
+      ],
+      { cwd: join(repositories, repository) }
+    ).then((output) => output.trim());
+  let base = "";
+  let merge = "";
+  let linear = "";
+
+  beforeAll(async () => {
+    // A pull request's merge commit, and a checkout that is not one.
+    for (const repository of ["merge", "linear"]) {
+      await commandOutput(["git", "init", "--quiet", repository], {
+        cwd: repositories,
+      });
+      await git(repository, "commit", "--quiet", "--allow-empty", "-m", "base");
+    }
+    base = await git("merge", "rev-parse", "HEAD");
+    await git("merge", "switch", "--quiet", "-c", "change");
+    await git("merge", "commit", "--quiet", "--allow-empty", "-m", "change");
+    await git("merge", "switch", "--quiet", "-");
+    await git("merge", "merge", "--quiet", "--no-ff", "-m", "merge", "change");
+    merge = await git("merge", "rev-parse", "HEAD");
+    // A parent to compare with, but no merge.
+    await git("linear", "commit", "--quiet", "--allow-empty", "-m", "change");
+    linear = await git("linear", "rev-parse", "HEAD");
+  });
+
+  afterAll(() => {
+    runner.cleanup();
+    rmSync(repositories, { force: true, recursive: true });
+  });
+
+  // Stands in for bunx: logs the range and arguments Turbo would get and
+  // prints the given dry run.
+  const fakeBunx = (dryRun: string, exitCode = 0) => `#!/usr/bin/env bash
+printf '%s %s %s\\n' "$TURBO_SCM_BASE" "$TURBO_SCM_HEAD" "$*" >> "$GH_FIXTURES/calls.log"
+cat <<'DRY_RUN'
+${dryRun}
+DRY_RUN
+exit ${exitCode}
+`;
+
+  const runSelection = (
+    dryRun: string,
+    { exitCode = 0, repository = "merge", head = merge } = {}
+  ) =>
+    runner.runStep(
+      select,
+      {},
+      {
+        GIT_DIR: join(repositories, repository, ".git"),
+        GITHUB_SHA: head,
+      },
+      { bunx: fakeBunx(dryRun, exitCode) }
+    );
+
+  const dryRunOf = (taskIds: readonly string[]) =>
+    JSON.stringify({ tasks: taskIds.map((taskId) => ({ taskId })) });
+
+  test("compares the merge commit with its first parent", async () => {
+    const { calls, outputs, result } = await runSelection(dryRunOf([]));
+    expect(result.exitCode).toBe(0);
+    expect(outputs.affected).toBe("false");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toStartWith(`${base} HEAD turbo@`);
+    expect(calls[0]).toEndWith(" --affected --dry-run=json");
+  });
+
+  test("reports the shards affected when the dry run selects a shard task", async () => {
+    const { outputs, result } = await runSelection(
+      dryRunOf([
+        "@deskohub/i18n#test",
+        `deskohub-workspace#test:shard-${testShardCount}`,
+      ])
+    );
+    expect(result.exitCode).toBe(0);
+    expect(outputs.affected).toBe("true");
+  });
+
+  test("reports the shards unaffected when only other tasks are selected", async () => {
+    const { outputs, result } = await runSelection(
+      dryRunOf(["@deskohub/i18n#test"])
+    );
+    expect(result.exitCode).toBe(0);
+    expect(outputs.affected).toBe("false");
+  });
+
+  test("fails without a verdict when the selection cannot be trusted", async () => {
+    const untrusted = [
+      runSelection(dryRunOf([]), { exitCode: 1 }),
+      runSelection("not json"),
+      runSelection("{}"),
+      runSelection(JSON.stringify({ tasks: {} })),
+      runSelection(JSON.stringify({ tasks: [{ task: "test:shard-1" }] })),
+      runSelection(
+        `${dryRunOf([])}\n${dryRunOf(["deskohub-workspace#test:shard-1"])}`
+      ),
+      // Not the commit the run is for, or not a merge commit.
+      runSelection(dryRunOf([]), { head: base }),
+      runSelection(dryRunOf([]), { repository: "linear", head: linear }),
+    ];
+    for (const { outputs, result } of await Promise.all(untrusted)) {
+      expect(result.exitCode).not.toBe(0);
+      expect(outputs.affected).toBeUndefined();
+    }
+  });
 });
 
 test("passes the disposable test database through Turborepo at the test task only", () => {
