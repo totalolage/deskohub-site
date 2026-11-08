@@ -38,7 +38,13 @@ export function Notice({
           </Text>
         </View>
       )}
-      <Text role={role} aria-live={live} style={styles.message}>
+      <Text
+        role={role}
+        aria-live={live}
+        // Text doesn't map `aria-live` to Android's live region; View does.
+        accessibilityLiveRegion={live}
+        style={styles.message}
+      >
         {message ?? ""}
       </Text>
     </View>

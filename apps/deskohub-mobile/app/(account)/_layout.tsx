@@ -4,8 +4,9 @@ import { CustomerDataProvider } from "../../src/customer-api/customer-data-provi
 
 /**
  * The signed-in app over the signed-in account's own data registry: the
- * Reservations and Account tabs, with booking stacked above them so it stays
- * out of the tab bar.
+ * Reservations and Account tabs, with booking (`book/`) stacked above them
+ * so it stays out of the tab bar. The Stack registers routes it doesn't
+ * declare, so `book/` needs no screen here.
  */
 export default function AccountLayout() {
   const session = useAuthSession();
@@ -20,7 +21,6 @@ export default function AccountLayout() {
     >
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="book" />
       </Stack>
     </CustomerDataProvider>
   );

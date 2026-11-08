@@ -136,6 +136,8 @@ export function LiveMessage({
     <Text
       role={role}
       aria-live={role === "alert" ? "assertive" : "polite"}
+      // Text doesn't map `aria-live` to Android's live region; View does.
+      accessibilityLiveRegion={role === "alert" ? "assertive" : "polite"}
       style={role === "alert" ? styles.alert : styles.status}
     >
       {message ?? ""}
