@@ -1,15 +1,14 @@
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type { CustomerAccountState } from "@deskohub/workspace-customer-api";
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Redirect, useRouter } from "expo-router";
 import { AsyncView } from "../../customer-api/async-view";
 import { accountAtom } from "../../customer-api/customer-data-runtime";
-import type { AppLocale } from "../../i18n/app-locale";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { Button } from "../../ui/controls";
 import { ListGroup, ListRow, SectionHeader } from "../../ui/list";
 import { ScrollScreen } from "../../ui/scroll-screen";
-import { type BillingChoice, billingFieldsOf } from "./profile-draft";
+import { billingFieldsOf } from "./profile-draft";
 import { BillingChoiceField, ProfileTextFields } from "./profile-fields";
 import {
   invalidOf,
@@ -36,7 +35,11 @@ export function BillingScreen() {
   );
 }
 
-function LinkedBilling({ account }: { readonly account: CustomerAccountState }) {
+function LinkedBilling({
+  account,
+}: {
+  readonly account: CustomerAccountState;
+}) {
   if (account.kind !== "linked") return <Redirect href="/account" />;
   return <BillingForm account={account} />;
 }
@@ -50,10 +53,7 @@ function BillingForm({
   const router = useRouter();
   const form = useProfileForm(account.profile);
   const fields = billingFieldsOf(form.draft.billingKind);
-  const { inputs, invalidElsewhere } = useFocusFirstInvalid(
-    form.state,
-    fields
-  );
+  const { inputs, invalidElsewhere } = useFocusFirstInvalid(form.state, fields);
   const submitting = form.state._tag === "Submitting";
   return (
     <>
@@ -62,11 +62,17 @@ function BillingForm({
         onDiscard={form.discard}
         locale={locale}
       />
-      <SectionHeader title={m.profile_payment_methods_section({}, { locale })} />
+      <SectionHeader
+        title={m.profile_payment_methods_section({}, { locale })}
+      />
       <ListGroup>
-        <ListRow label={m.profile_payment_methods_unavailable({}, { locale })} />
+        <ListRow
+          label={m.profile_payment_methods_unavailable({}, { locale })}
+        />
       </ListGroup>
-      <SectionHeader title={m.profile_billing_details_section({}, { locale })} />
+      <SectionHeader
+        title={m.profile_billing_details_section({}, { locale })}
+      />
       <BillingChoiceField
         value={form.draft.billingKind}
         onChange={form.setBillingKind}
@@ -103,9 +109,13 @@ function BillingForm({
           onPress={() => router.push("/account/profile")}
         />
       )}
-      <SectionHeader title={m.profile_invoice_history_section({}, { locale })} />
+      <SectionHeader
+        title={m.profile_invoice_history_section({}, { locale })}
+      />
       <ListGroup>
-        <ListRow label={m.profile_invoice_history_unavailable({}, { locale })} />
+        <ListRow
+          label={m.profile_invoice_history_unavailable({}, { locale })}
+        />
       </ListGroup>
     </>
   );

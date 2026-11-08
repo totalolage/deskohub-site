@@ -1,10 +1,10 @@
+import type { CustomerProfile } from "@deskohub/workspace-customer-api";
 import {
   RegistryContext,
   useAtom,
   useAtomSet,
   useAtomValue,
 } from "@effect/atom-react";
-import type { CustomerProfile } from "@deskohub/workspace-customer-api";
 import { Match, Option } from "effect";
 import { Atom } from "effect/unstable/reactivity";
 import { usePreventRemove } from "expo-router";
@@ -87,7 +87,9 @@ export function useFocusFirstInvalid<F extends CompletionTextField>(
     new Map<CompletionTextField, TextInputInstance | null>()
   );
   const first =
-    state._tag === "Invalid" ? Option.getOrUndefined(state.invalid.first) : undefined;
+    state._tag === "Invalid"
+      ? Option.getOrUndefined(state.invalid.first)
+      : undefined;
   const shown = first !== undefined && fields.includes(first as F);
   useEffect(() => {
     if (shown && first !== undefined) inputs.current.get(first)?.focus();

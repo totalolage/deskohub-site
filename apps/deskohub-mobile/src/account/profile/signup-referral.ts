@@ -53,7 +53,7 @@ export const isDismissible = (outcome: ProfileCompletionReferralOutcome) =>
  * and reads the account again, which no longer carries it.
  */
 export const acknowledgeSignupReferralAtom = customerDataRuntime.fn(
-  (_: void, get) =>
+  (_: undefined, get) =>
     Effect.flatMap(Effect.service(CustomerApi), (api) =>
       api.account.acknowledgeSignupReferral()
     ).pipe(customerWrite, refreshAfterWrite(get, [accountAtom]))

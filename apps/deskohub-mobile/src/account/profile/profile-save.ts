@@ -5,8 +5,8 @@ import type {
 } from "@deskohub/workspace-customer-api";
 import { Cause, Data, Effect, Match, Option, Predicate } from "effect";
 import {
-  Atom,
   type AsyncResult,
+  Atom,
   AtomRegistry,
 } from "effect/unstable/reactivity";
 import { CustomerApi } from "../../customer-api/customer-api.service";
@@ -67,7 +67,8 @@ export const currentDraft = (
 export const hasUnsavedChanges = (
   edits: Option.Option<ProfileDraft>,
   profile: CustomerProfile
-) => Option.exists(edits, (draft) => !sameDraft(draft, profileDraftOf(profile)));
+) =>
+  Option.exists(edits, (draft) => !sameDraft(draft, profileDraftOf(profile)));
 
 /** The draft after a change to some of its fields. */
 export const editedDraft = (
@@ -146,7 +147,8 @@ export const saveProfileAtom = customerDataRuntime
         )
       ),
       Effect.tap(() => settleEdits(get)),
-      Effect.asVoid
+      // A save has no referral outcome, unlike a completion.
+      Effect.as(Option.none<ProfileCompletionReferralOutcome>())
     )
   )
   .pipe(Atom.keepAlive);
@@ -244,7 +246,9 @@ type SubmitFailure =
 
 const isDraftRefusal = (
   error: SubmitFailure
-): error is ProfileDraftRejected<CompletionTextField> | ReferralCodeUnavailable =>
+): error is
+  | ProfileDraftRejected<CompletionTextField>
+  | ReferralCodeUnavailable =>
   Predicate.isTagged(error, "ProfileDraftRejected") ||
   Predicate.isTagged(error, "ReferralCodeUnavailable");
 
@@ -274,7 +278,7 @@ const failureState = (cause: Cause.Cause<SubmitFailure>) =>
  */
 export const profileSubmitState = (
   result: AsyncResult.AsyncResult<
-    void | Option.Option<ProfileCompletionReferralOutcome>,
+    Option.Option<ProfileCompletionReferralOutcome>,
     SubmitFailure
   >
 ): ProfileSubmitState =>
@@ -284,11 +288,7 @@ export const profileSubmitState = (
         Match.tagsExhaustive({
           Initial: () => ProfileSubmitState.Idle(),
           Success: ({ value }) =>
-            ProfileSubmitState.Done({
-              referral: Option.isOption(value)
-                ? value
-                : Option.none<ProfileCompletionReferralOutcome>(),
-            }),
+            ProfileSubmitState.Done({ referral: value }),
           Failure: ({ cause }) => failureState(cause),
         })
       );

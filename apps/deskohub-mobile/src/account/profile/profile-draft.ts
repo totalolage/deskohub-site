@@ -140,8 +140,7 @@ export interface ProfileDraftInvalid<F extends string> {
 
 // Optional text the customer left blank is left out: the Workspace then
 // clears the stored value, which is what an emptied field means.
-const entered = (value: string) =>
-  value.trim() === "" ? undefined : value;
+const entered = (value: string) => (value.trim() === "" ? undefined : value);
 
 const billingInputOf = (draft: ProfileDraft) =>
   ({
@@ -189,10 +188,7 @@ const fieldOfPath = <F extends string>(
   );
 };
 
-const problemOf = (
-  field: string,
-  value: string
-): ProfileFieldProblem => {
+const problemOf = (field: string, value: string): ProfileFieldProblem => {
   if (field === "phone") return "invalid-phone";
   return value.trim() === "" ? "required" : "invalid";
 };

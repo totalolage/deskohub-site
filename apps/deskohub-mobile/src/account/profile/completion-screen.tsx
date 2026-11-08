@@ -1,23 +1,21 @@
+import type { CustomerAccountState } from "@deskohub/workspace-customer-api";
 import {
   useAtom,
   useAtomRefresh,
   useAtomSet,
   useAtomValue,
 } from "@effect/atom-react";
-import type { CustomerAccountState } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
 import { Atom } from "effect/unstable/reactivity";
 import { Redirect, useRouter } from "expo-router";
 import { AsyncView } from "../../customer-api/async-view";
 import { accountAtom } from "../../customer-api/customer-data-runtime";
-import type { AppLocale } from "../../i18n/app-locale";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { BodyText, Button, LiveMessage } from "../../ui/controls";
 import { ListGroup, ListRow, SectionHeader } from "../../ui/list";
 import { ScrollScreen } from "../../ui/scroll-screen";
 import {
-  type BillingChoice,
   billingFieldsOf,
   type CompletionDraft,
   type CompletionTextField,
@@ -68,7 +66,11 @@ export function CompletionScreen() {
   );
 }
 
-function CompletionDone({ account }: { readonly account: CustomerAccountState }) {
+function CompletionDone({
+  account,
+}: {
+  readonly account: CustomerAccountState;
+}) {
   const locale = useAppLocale();
   const router = useRouter();
   return (
@@ -89,7 +91,10 @@ function CompletionDone({ account }: { readonly account: CustomerAccountState })
 function CompletionForm({
   account,
 }: {
-  readonly account: Extract<CustomerAccountState, { kind: "completion-required" }>;
+  readonly account: Extract<
+    CustomerAccountState,
+    { kind: "completion-required" }
+  >;
 }) {
   const locale = useAppLocale();
   const invitationCode = invitationCodeOf(account);
@@ -151,7 +156,9 @@ function CompletionForm({
           <BodyText>{m.profile_referral_code_hint({}, { locale })}</BodyText>
         </>
       )}
-      <SectionHeader title={m.profile_billing_optional_section({}, { locale })} />
+      <SectionHeader
+        title={m.profile_billing_optional_section({}, { locale })}
+      />
       <BillingChoiceField
         value={draft.billingKind}
         onChange={(billingKind) => change({ billingKind })}

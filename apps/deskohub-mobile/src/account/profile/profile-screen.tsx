@@ -1,8 +1,8 @@
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import type {
   CustomerAccountState,
   CustomerProfile,
 } from "@deskohub/workspace-customer-api";
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Redirect, useRouter } from "expo-router";
 import { AsyncView } from "../../customer-api/async-view";
 import { accountAtom } from "../../customer-api/customer-data-runtime";
@@ -46,7 +46,11 @@ export function ProfileScreen() {
   );
 }
 
-function LinkedProfile({ account }: { readonly account: CustomerAccountState }) {
+function LinkedProfile({
+  account,
+}: {
+  readonly account: CustomerAccountState;
+}) {
   // The Account tab explains why an account without a profile can't edit it.
   if (account.kind !== "linked") return <Redirect href="/account" />;
   return <ProfileForm account={account} />;

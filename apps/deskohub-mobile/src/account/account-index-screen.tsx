@@ -13,12 +13,12 @@ import { LiveMessage } from "../ui/controls";
 import { ListGroup, ListRow } from "../ui/list";
 import { Notice } from "../ui/notice";
 import { ScrollScreen } from "../ui/scroll-screen";
-import { SignupReferralNotice } from "./profile/signup-referral-notice";
 import {
   type AccountNotice,
   type AccountSection,
   accountIndexModel,
 } from "./account-gating";
+import { SignupReferralNotice } from "./profile/signup-referral-notice";
 
 const runSignOut = () => signOut;
 const unexpectedSignOutFailure = () => new SignOutFailure();

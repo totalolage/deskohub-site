@@ -36,9 +36,9 @@ describe("signupReferralOf", () => {
 
   test("shows nothing without an outcome, with referrals off or before linking", () => {
     expect(signupReferralOf(linkedWith(undefined))).toEqual(Option.none());
-    expect(
-      signupReferralOf(linkedWith({ status: "applied" }, false))
-    ).toEqual(Option.none());
+    expect(signupReferralOf(linkedWith({ status: "applied" }, false))).toEqual(
+      Option.none()
+    );
     expect(
       signupReferralOf(sampleWorkspaceData("completion-required").account)
     ).toEqual(Option.none());
@@ -114,6 +114,9 @@ describe("acknowledgeSignupReferralAtom", () => {
     );
 
     expect(result._tag).toBe("Failure");
-    expect(workspace.calls).toEqual(["getAccount", "acknowledgeSignupReferral"]);
+    expect(workspace.calls).toEqual([
+      "getAccount",
+      "acknowledgeSignupReferral",
+    ]);
   });
 });

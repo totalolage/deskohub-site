@@ -1,5 +1,5 @@
-import { useAtom } from "@effect/atom-react";
 import type { CustomerAccountState } from "@deskohub/workspace-customer-api";
+import { useAtom } from "@effect/atom-react";
 import { Option } from "effect";
 import type { AppLocale } from "../../i18n/app-locale";
 import { useAppLocale } from "../../i18n/locale-context";
@@ -58,7 +58,7 @@ export function SignupReferralNotice({
           label={m.profile_referral_dismiss({}, { locale })}
           variant="secondary"
           disabled={dismissing}
-          onPress={() => dismiss()}
+          onPress={() => dismiss(undefined)}
         />
       )}
       <Notice

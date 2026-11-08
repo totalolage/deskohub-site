@@ -44,8 +44,9 @@ const submit = async <A, E, W>(
   );
 };
 
-const storedAccount = (workspace: { data: { account: CustomerAccountState } }) =>
-  workspace.data.account;
+const storedAccount = (workspace: {
+  data: { account: CustomerAccountState };
+}) => workspace.data.account;
 
 const linkedProfileOf = (account: CustomerAccountState) => {
   if (account.kind !== "linked") throw new Error(`not linked: ${account.kind}`);
@@ -61,14 +62,18 @@ describe("unsaved changes", () => {
   });
 
   test("a change counts as unsaved until it matches the saved profile again", () => {
-    const edits = editedDraft(Option.none(), sampleProfile, { city: "Elsewhere" });
+    const edits = editedDraft(Option.none(), sampleProfile, {
+      city: "Elsewhere",
+    });
     expect(hasUnsavedChanges(edits, sampleProfile)).toBe(true);
     const reverted = editedDraft(edits, sampleProfile, { city: "Sampletown" });
     expect(hasUnsavedChanges(reverted, sampleProfile)).toBe(false);
   });
 
   test("a change keeps every other field of the draft", () => {
-    const edits = editedDraft(Option.none(), sampleProfile, { firstName: "Al" });
+    const edits = editedDraft(Option.none(), sampleProfile, {
+      firstName: "Al",
+    });
     expect(currentDraft(edits, sampleProfile)).toEqual({
       ...profileDraftOf(sampleProfile),
       firstName: "Al",
@@ -90,7 +95,11 @@ describe("saveProfileAtom", () => {
       ...sampleProfile,
       firstName: "Alexa",
     });
-    expect(workspace.calls).toEqual(["getAccount", "updateProfile", "getAccount"]);
+    expect(workspace.calls).toEqual([
+      "getAccount",
+      "updateProfile",
+      "getAccount",
+    ]);
     expect(registry.get(profileEditsAtom)).toEqual(Option.none());
   });
 
@@ -146,7 +155,11 @@ describe("saveProfileAtom", () => {
       _tag: "Failed",
       error: { _tag: "Unconfirmed" },
     });
-    expect(workspace.calls).toEqual(["getAccount", "updateProfile", "getAccount"]);
+    expect(workspace.calls).toEqual([
+      "getAccount",
+      "updateProfile",
+      "getAccount",
+    ]);
     expect(await settle(registry, accountAtom)).toMatchObject({
       success: { profile: { firstName: "Alexa" } },
     });
@@ -210,7 +223,11 @@ describe("saveProfileAtom", () => {
     expect(await settle(registry, accountAtom)).toMatchObject({
       success: { kind: "support-required" },
     });
-    expect(workspace.calls).toEqual(["getAccount", "updateProfile", "getAccount"]);
+    expect(workspace.calls).toEqual([
+      "getAccount",
+      "updateProfile",
+      "getAccount",
+    ]);
   });
 });
 
