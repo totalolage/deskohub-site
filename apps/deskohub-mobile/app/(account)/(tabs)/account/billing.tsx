@@ -1,5 +1,5 @@
-import { PlaceholderScreen } from "../../../../src/ui/placeholder-screen";
+import { BillingScreen } from "../../../../src/account/profile/billing-screen";
 
 export default function BillingRoute() {
-  return <PlaceholderScreen />;
+  return <BillingScreen />;
 }

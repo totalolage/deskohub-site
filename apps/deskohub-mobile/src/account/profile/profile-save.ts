@@ -110,14 +110,18 @@ const settleEdits = (get: Atom.FnContext) =>
     Effect.asVoid
   );
 
-const waitForReread = (get: Atom.FnContext) =>
-  Effect.tapError((error: unknown) =>
-    rereadAccount(get).pipe(
-      Effect.when(
-        Effect.succeed(Predicate.isTagged(error, "CustomerWriteUnconfirmed"))
+// An unconfirmed write keeps its failure until the account read again shows
+// what the server holds.
+const waitForReread =
+  (get: Atom.FnContext) =>
+  <A, E, R>(write: Effect.Effect<A, E, R>) =>
+    Effect.tapError(write, (error) =>
+      rereadAccount(get).pipe(
+        Effect.when(
+          Effect.succeed(Predicate.isTagged(error, "CustomerWriteUnconfirmed"))
+        )
       )
-    )
-  );
+    );
 
 /**
  * Saves the complete profile (PUT /account/profile) from a draft. Invalid
