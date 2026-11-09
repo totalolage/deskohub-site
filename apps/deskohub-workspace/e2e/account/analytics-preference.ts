@@ -227,12 +227,12 @@ const waitForAccountPreference = async (page: Page) => {
 };
 
 /**
- * Signs the device's page in by reloading it until the mirror's hydration
- * request is sent, then waits until the account preference is visible and
- * interactive. A rate-limited session read is retried after the delay
- * Better Auth asks for.
+ * Reloads the device until the mirror's hydration request is sent. A
+ * rate-limited session read is retried after the delay Better Auth asks for,
+ * at most twice; each reload, including the wait for a mirror request already
+ * sent, is bounded by one navigation. Exported for its colocated test.
  */
-const reloadSignedIn = (device: E2EBrowserSession) =>
+export const reloadDeviceUntilMirrored = (device: E2EBrowserSession) =>
   driveDevice(
     device,
     "sign in analytics preference device",
@@ -267,7 +267,16 @@ const reloadSignedIn = (device: E2EBrowserSession) =>
           { operation: "sign in analytics preference device" }
         )
       )
-    ),
+    )
+  );
+
+/**
+ * Signs the device's page in by reloading it until the mirror's hydration
+ * request is sent, then waits until the account preference is visible and
+ * interactive.
+ */
+const reloadSignedIn = (device: E2EBrowserSession) =>
+  reloadDeviceUntilMirrored(device).pipe(
     Effect.andThen(
       driveDevice(
         device,
