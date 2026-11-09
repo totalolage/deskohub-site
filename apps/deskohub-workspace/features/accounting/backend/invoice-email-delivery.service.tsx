@@ -1,7 +1,6 @@
 import type { EmailMessage, EmailRecipient } from "@deskohub/email";
 import {
   EmailConfigTag,
-  EmailServiceError,
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
 import { Context, Data, Effect, Layer } from "effect";
@@ -176,10 +175,6 @@ export class InvoiceEmailDeliveryService extends Context.Service<
         };
 
         const sendResult = yield* emailService.send(message).pipe(
-          Effect.filterOrFail(
-            (result) => result.status !== "failed",
-            () => new EmailServiceError("Email provider rejected delivery.")
-          ),
           Effect.catch((cause) =>
             failDelivery({
               deliveries,

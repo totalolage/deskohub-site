@@ -198,7 +198,7 @@ const makeEmailService = (options: {
             const groupResults = yield* sendBatchThroughChain(
               chainOf(route),
               indices.map((index) => finalMessages[index]!),
-              { idempotencyKey: keyOf(route) },
+              { ...batchOptions, idempotencyKey: keyOf(route) },
               context
             );
             for (const [position, index] of indices.entries()) {

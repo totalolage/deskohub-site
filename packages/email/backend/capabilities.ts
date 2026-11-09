@@ -70,6 +70,13 @@ export const continuesEmailChain = (error: EmailSendError): boolean =>
 /** Options of one batch request; the key stays the same across retries. */
 export interface EmailBatchOptions {
   readonly idempotencyKey: string;
+  /**
+   * A repeat of a request whose outcome is unknown. Each message stays with
+   * the first provider in its chain: a provider-level failure is returned as
+   * that message's failure instead of moving it to the next provider, since
+   * the earlier request may have reached the provider that answered it.
+   */
+  readonly replay?: boolean;
 }
 
 /**

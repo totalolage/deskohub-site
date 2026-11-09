@@ -36,9 +36,12 @@ export interface EmailDeliveryObserver {
   readonly onFallback: (event: EmailFallbackEvent) => Effect.Effect<void>;
 }
 
-/** Runs one observer call; a failure or defect is logged, never raised. */
-export const observeEmailDelivery = (observation: Effect.Effect<void>) =>
-  observation.pipe(
+/**
+ * Runs one observer call; a failure, a defect, or a synchronous throw while
+ * building the call is logged, never raised.
+ */
+export const observeEmailDelivery = (observation: () => Effect.Effect<void>) =>
+  Effect.suspend(observation).pipe(
     Effect.catchCause(() => Effect.logWarning("Email delivery observer failed"))
   );
 
@@ -73,13 +76,13 @@ const all = (
   onSent: (event) =>
     Effect.forEach(
       observers,
-      (observer) => observeEmailDelivery(observer.onSent(event)),
+      (observer) => observeEmailDelivery(() => observer.onSent(event)),
       { discard: true }
     ),
   onFallback: (event) =>
     Effect.forEach(
       observers,
-      (observer) => observeEmailDelivery(observer.onFallback(event)),
+      (observer) => observeEmailDelivery(() => observer.onFallback(event)),
       { discard: true }
     ),
 });
