@@ -36,7 +36,7 @@ Only a separate project keeps this copy out of customer bundles. Every client-us
 ### Catalogs
 
 - Each screen area has its own catalog folder, `messages/<area>/<locale>.json` with one file per locale, usually named after the feature directory that owns the screens: `shell` holds `admin-shell.tsx`, breadcrumbs, and the switcher; `administration` the overview, reservations, customers, bookings, orders, and operations; `discounts` codes, vouchers, sales, and customer codes. The folders under `features/administration/i18n/messages/` and the `pathPattern` entries in its `project.inlang/settings.json` list every area. Parallel work on different areas then never edits the same file.
-- Prefix every key with its area in camelCase (`administrationReservationListTitle`, `discountsCodeFormSubmit`, `emailCampaignsSendConfirm`). Keys must be unique across all catalogs. Don't put shared words in a common catalog; each area owns its own copy even when the words repeat.
+- Prefix every key with its area in camelCase (`administrationReservationListTitle`, `discountsCodeFormSubmit`, `emailCampaignsSendConfirm`). Within one locale, keys must be unique across all area catalogs. Don't put shared words in a common catalog; each area owns its own copy even when the words repeat.
 - A new area adds its folder and a `pathPattern` entry in `project.inlang/settings.json`.
 - Write full sentences in every locale. Czech copy follows the customer catalog (`features/i18n/messages/cs-CZ.json`) for terms such as rezervace, poukaz, faktura, and přístupový kód; operator copy addresses the reader formally. Before writing the other locales, load `$deskohub-i18n` for the catalog format, the translation workflow, and the glossary.
 

@@ -29,7 +29,7 @@ Workspace code mostly uses the `Locale` type and `locales` list that Paraglide g
 
 Operator-written content exists in fewer locales than the catalogs, and the registry's `fallbackChain` picks a stand-in. Every chain reaches `cs-CZ`.
 
-- Campaigns: `features/email-campaigns/recipient-locale.ts` picks the recipient's locale (account preference, then latest reservation, then consent, then Czech) and resolves the text through that locale's chain.
+- Campaigns and automations: `features/email-campaigns/recipient-locale.ts` picks the recipient's locale (account preference, then latest reservation, then consent, then Czech), then the first locale on its chain that has content. Rendering (`features/emails/body/email-content.tsx`) takes the translation for exactly that locale, so the fallback happens before it.
 - Reusable emails: publication requires `cs-CZ` content (`packages/workspace-admin-api/src/email-publication.ts`). A test checks that every chain reaches it.
 - Discount labels: operators write them in `en-US` and `cs-CZ` only. Other locales read the first of those on their chain (`features/discounts/discount-label.ts`).
 - Staff-facing text stays Czech for every customer locale: staff notifications and Dotypos reservation notes use `staffLocale` (`shared/backend/staff-locale.ts`). Product names shown to customers come from the customer catalog, not from Dotypos.

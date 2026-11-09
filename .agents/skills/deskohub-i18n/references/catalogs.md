@@ -12,7 +12,7 @@ Workspace paths are relative to `apps/deskohub-workspace`. Both Workspace projec
 
 ## Format
 
-- Each catalog is one JSON object of flat root keys, in the same order as `cs-CZ`. Keys are unique across all catalogs of a project. Administration keys start with their area in camelCase.
+- Each catalog is one JSON object of flat root keys, in the same order as `cs-CZ`. Within one locale, keys are unique across all of a project's catalogs. Administration keys start with their area in camelCase.
 - A plain message is a string. Placeholders are `{name}`, keep their exact name, and are never translated. A literal brace is escaped with a backslash, written `\\{` and `\\}` inside the JSON string; Paraglide renders `"Use \\{name\\}"` as `Use {name}`.
 - A message with variants is a one-element array holding `declarations`, `selectors`, and `match`. Translations keep the declarations and selectors exactly as in `cs-CZ`.
 
@@ -32,7 +32,7 @@ Workspace paths are relative to `apps/deskohub-workspace`. Both Workspace projec
 ]
 ```
 
-Each locale's catalog carries its own CLDR plural categories, not the Czech ones:
+Each locale's catalog carries its own CLDR cardinal plural categories, not the Czech ones (a few English administration messages also select on ordinal categories such as `two`):
 
 | Locale | Match keys |
 | --- | --- |
