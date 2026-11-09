@@ -70,8 +70,8 @@ import {
   voucherFormDefaults,
 } from "./form-defaults";
 import {
-  toCreateDiscountCodeInput,
   toCreateDiscountInput,
+  toDiscountCodeUpdateInput,
   toVoucherConfigurationInput,
   toVoucherCreditInput,
 } from "./form-input";
@@ -94,7 +94,6 @@ import {
   getDiscountProductTargetLabel,
 } from "./product-target-options";
 import { PromotionCustomersPanel } from "./promotion-customers";
-import { formatDiscountCodeServiceDates } from "./service-date-display";
 import { DiscountCodeServiceDateFields } from "./service-date-fields";
 import { formatDiscountUsageLimit } from "./usage-limit";
 
@@ -120,6 +119,8 @@ export type DiscountCodeTableItem = {
   readonly maxUsesPerCustomer: number | null;
   readonly serviceDateFrom: string | null;
   readonly serviceDateUntil: string | null;
+  /** The reservation dates, already formatted on the server. */
+  readonly serviceDates: string;
   readonly audienceSize: number;
   readonly audienceCustomerIds: readonly DotyposCustomerId[];
   readonly reservedUses: number;
@@ -219,7 +220,7 @@ export function DiscountCodesAdminTable({
         accessorFn: (code) => code.serviceDateFrom ?? "",
         id: "serviceDates",
         header: m.discountsColumnServiceDates({}, { locale }),
-        cell: ({ row }) => formatDiscountCodeServiceDates(row.original, locale),
+        cell: ({ row }) => row.original.serviceDates,
       },
       {
         accessorFn: (code) => getStatusLabel(code.enabled, locale),
@@ -911,7 +912,7 @@ function DiscountCodeEditor({
             kind: "update-code",
             code: {
               id: code.id,
-              ...toCreateDiscountCodeInput(values),
+              ...toDiscountCodeUpdateInput(values, code),
             },
           })
         }

@@ -6,6 +6,7 @@ import {
   localDateTimeToTemporalInstantString,
   workspaceSiteConstants,
 } from "@/shared/utils";
+import type { DiscountCodeTableItem } from "./admin-tables";
 import type {
   CreateCustomerDiscountCodeAdminInput,
   CreateDiscountAdminInput,
@@ -70,6 +71,30 @@ export const toDiscountCodeConfigurationInput = (
   serviceDateFrom: toOptionalValue(values.serviceDateFrom),
   serviceDateUntil: toOptionalValue(values.serviceDateUntil),
 });
+
+/**
+ * An edited code's configuration. Reservation dates the editor still shows as
+ * loaded are left out, so the update keeps whatever dates the code has now
+ * instead of restoring the ones the editor opened with.
+ */
+export const toDiscountCodeUpdateInput = (
+  values: DiscountCodeFormValues,
+  loaded: Pick<DiscountCodeTableItem, "serviceDateFrom" | "serviceDateUntil">
+): CreateDiscountCodeAdminInput => {
+  const input = toCreateDiscountCodeInput(values);
+  if (
+    values.serviceDateFrom !== (loaded.serviceDateFrom ?? "") ||
+    values.serviceDateUntil !== (loaded.serviceDateUntil ?? "")
+  ) {
+    return input;
+  }
+  const {
+    serviceDateFrom: _serviceDateFrom,
+    serviceDateUntil: _serviceDateUntil,
+    ...unchangedDates
+  } = input;
+  return unchangedDates;
+};
 
 /** The code value, its switch, and its redemption window. */
 const toPromotionConfigurationInput = (

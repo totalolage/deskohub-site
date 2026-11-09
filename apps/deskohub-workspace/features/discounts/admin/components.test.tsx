@@ -1683,8 +1683,6 @@ describe("discount administration pages", () => {
           validUntil: "2026-09-01T08:00:00Z",
           maxUses: 100,
           maxUsesPerCustomer: 2,
-          serviceDateFrom: "2026-07-01",
-          serviceDateUntil: "2026-07-31",
         },
       })
     );

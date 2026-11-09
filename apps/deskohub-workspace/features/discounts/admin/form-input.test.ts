@@ -4,6 +4,7 @@ import "@/shared/polyfills/temporal";
 import {
   toCreateDiscountCodeInput,
   toCreateDiscountInput,
+  toDiscountCodeUpdateInput,
   toVoucherConfigurationInput,
   toVoucherCreditInput,
 } from "./form-input";
@@ -142,6 +143,52 @@ describe("discount administration form input", () => {
         serviceDateUntil: "",
       })
     ).toMatchObject({ serviceDateFrom: null, serviceDateUntil: null });
+  });
+
+  test("leaves reservation dates out of an edit that kept them", () => {
+    const values: DiscountCodeFormValues = {
+      discountId: "019c91dd-c560-7e55-b9d8-c95065efd51d",
+      code: "SUMMER10",
+      enabled: true,
+      validFrom: "",
+      validUntil: "",
+      maxUses: "",
+      maxUsesPerCustomer: "",
+      serviceDateFrom: "2026-07-01",
+      serviceDateUntil: "2026-07-31",
+    };
+    const loaded = {
+      serviceDateFrom: "2026-07-01",
+      serviceDateUntil: "2026-07-31",
+    };
+
+    const kept = toDiscountCodeUpdateInput(values, loaded);
+    expect(Object.keys(kept)).not.toContain("serviceDateFrom");
+    expect(Object.keys(kept)).not.toContain("serviceDateUntil");
+    expect(
+      toDiscountCodeUpdateInput(
+        { ...values, serviceDateUntil: "2026-08-15" },
+        loaded
+      )
+    ).toMatchObject({
+      serviceDateFrom: "2026-07-01",
+      serviceDateUntil: "2026-08-15",
+    });
+    expect(
+      toDiscountCodeUpdateInput(
+        { ...values, serviceDateFrom: "", serviceDateUntil: "" },
+        loaded
+      )
+    ).toMatchObject({ serviceDateFrom: null, serviceDateUntil: null });
+    // A code without dates that stays without them sends nothing either.
+    expect(
+      Object.keys(
+        toDiscountCodeUpdateInput(
+          { ...values, serviceDateFrom: "", serviceDateUntil: "" },
+          { serviceDateFrom: null, serviceDateUntil: null }
+        )
+      )
+    ).not.toContain("serviceDateFrom");
   });
 
   test("gives vouchers no usage limits or reservation dates", () => {

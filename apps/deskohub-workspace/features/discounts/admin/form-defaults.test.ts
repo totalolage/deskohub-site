@@ -37,6 +37,7 @@ const code: DiscountCodeTableItem = {
   maxUsesPerCustomer: 2,
   serviceDateFrom: "2026-07-01",
   serviceDateUntil: "2026-07-31",
+  serviceDates: "Jul 1 – 31, 2026",
   audienceSize: 0,
   reservedUses: 0,
   redeemedUses: 0,
