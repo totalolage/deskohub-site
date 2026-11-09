@@ -29,7 +29,8 @@ export interface SummaryLineView {
     readonly dayCount: number;
     readonly seats: number;
     readonly accessAmount: Option.Option<Money>;
-    readonly seatAmount: Option.Option<Money>;
+    /** Every seat for every day booked. */
+    readonly seatTotal: Option.Option<Money>;
   }>;
   /** The price review names this line as changed. */
   readonly changed: boolean;
@@ -165,9 +166,9 @@ function OfficeBreakdown({
             { locale }
           )}
         </Text>
-        {Option.isSome(office.seatAmount) && (
+        {Option.isSome(office.seatTotal) && (
           <Text style={styles.detail}>
-            {formatMoney(office.seatAmount.value, locale)}
+            {formatMoney(office.seatTotal.value, locale)}
           </Text>
         )}
       </View>
