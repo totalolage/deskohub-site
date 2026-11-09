@@ -142,7 +142,7 @@ const unmatchedBatchAnswer = (provider: EmailProvider) =>
  * whole batch and the chain ends there, as a single provider's batch always
  * did; once a message fell through, every failure comes back per message,
  * so a caller's replay of the batch never repeats a fallback that may have
- * delivered.
+ * delivered. A replay (`options.replay`) tries only the first provider.
  */
 export const sendBatchThroughChain = (
   chain: ReadonlyArray<EmailProvider>,
@@ -154,9 +154,10 @@ export const sendBatchThroughChain = (
     const results: EmailBatchResult[] = [];
     let pending = messages.map((_, index) => index);
 
-    for (const [providerIndex, provider] of chain.entries()) {
+    const providers = options.replay ? chain.slice(0, 1) : chain;
+    for (const [providerIndex, provider] of providers.entries()) {
       if (pending.length === 0) break;
-      const next = chain[providerIndex + 1];
+      const next = providers[providerIndex + 1];
       const outcome = yield* Effect.result(
         provider.sendBatch(
           pending.map((index) => messages[index]!),

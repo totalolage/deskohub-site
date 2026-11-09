@@ -523,6 +523,37 @@ describe("batch failover", () => {
     }
   });
 
+  test("a replay keeps every message with the first provider of its chain", async () => {
+    const first = scriptedProvider("posthog", firstAnswer);
+    const second = scriptedProvider("resend", () => "accept");
+    const recorded = recordingObserver();
+
+    const results = await runWithEmail(
+      Effect.gen(function* () {
+        const email = yield* EmailServiceTag;
+        return yield* email.sendBatch(recipients, {
+          idempotencyKey: "batch-1",
+          replay: true,
+        });
+      }),
+      chains({ marketing: [first.provider, second.provider] }),
+      { observer: recorded.observer }
+    );
+
+    expect(results.map((result) => [result.status, result.provider])).toEqual([
+      ["sent", "posthog"],
+      ["failed", "posthog"],
+      ["failed", "posthog"],
+      ["failed", "posthog"],
+    ]);
+    expect(results[1]).toMatchObject({ error: { code: "http-429" } });
+    expect(first.batches.map((batch) => batch.idempotencyKey)).toEqual([
+      "batch-1",
+    ]);
+    expect(second.batches).toEqual([]);
+    expect(recorded.fallbacks).toEqual([]);
+  });
+
   test("an empty batch sends nothing", async () => {
     const provider = scriptedProvider("resend", () => "accept");
 
