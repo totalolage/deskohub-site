@@ -178,7 +178,6 @@ export type E2EBrowserSession = {
 
 type SessionState = {
   active: Page;
-  readonly onActivate?: (page: Page) => void;
   readonly diagnostics: {
     readonly console: string[];
     readonly errors: string[];
@@ -206,11 +205,6 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
   readonly fetch?: typeof fetch;
   /** Names the raw HAR file; any characters are safe. */
   readonly id: string;
-  /**
-   * Hears every change of the active page. Only the argv runner uses it, to
-   * drop its selected iframe.
-   */
-  readonly onActivate?: (page: Page) => void;
   /** Records a HAR for `close({ harPath })`; on by default. */
   readonly recordHar?: boolean;
 }): Effect.fn.Return<E2EBrowserSession, WorkspaceE2EError, Scope.Scope> {
@@ -315,7 +309,6 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
   });
   const state: SessionState = {
     active: initialPage,
-    onActivate: options.onActivate,
     diagnostics: { console: [], errors: [], requests: [] },
     previewAccess: new Map(),
     registeredPages: new WeakSet(),
@@ -592,8 +585,8 @@ const describeCookie = (
         secure: cookie.secure,
       };
 
-// The capture logs keep the layout the argv runner gave them, which failure
-// triage reads: an exit code, then the log when it has entries.
+// The capture logs keep the layout failure triage reads: an exit code, then
+// the log when it has entries.
 const asCapturedLog = (text: string) =>
   text ? `exitCode: 0\n\nstdout:\n${text}` : "exitCode: 0";
 
@@ -643,7 +636,6 @@ const registerPage = (
 
 const setActive = (state: SessionState, page: Page) => {
   state.active = page;
-  state.onActivate?.(page);
 };
 
 const pushDiagnostic = (entries: string[], value: string) => {

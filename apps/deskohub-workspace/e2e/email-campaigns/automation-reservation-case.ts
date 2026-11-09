@@ -2,9 +2,9 @@ import "../../shared/polyfills/temporal";
 
 import { deepEqual, equal, ok } from "node:assert/strict";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import { AutomationFlow } from "@deskohub/workspace-admin-api";
 import { type Browser, expect, type Page } from "@playwright/test";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { AutomationFlow } from "@deskohub/workspace-admin-api";
 import { Effect, Schema } from "effect";
 import type { DatabaseClient, RootDatabaseClient } from "@/db/database-client";
 import {
@@ -16,8 +16,8 @@ import {
   emailCampaignAutomations,
   emailCampaigns,
 } from "@/db/schema";
-import { deleteAutomatedCampaigns } from "@/features/email-campaigns/backend/email-campaigns.test-utils";
 import { automationTickAtOrAfter } from "@/features/email-campaigns/automation/automation-ticks";
+import { deleteAutomatedCampaigns } from "@/features/email-campaigns/backend/email-campaigns.test-utils";
 import {
   type CampaignId,
   campaignIdSchema,
@@ -51,8 +51,8 @@ import {
   waitForReactClickHandler,
   waitForReactSubmitHandler,
 } from "../react-handlers";
+import { addRedaction } from "../redaction";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
-import { addRedaction } from "../runtime";
 import {
   workspaceE2EAutomationJourneyCleanupTimeout,
   workspaceE2EPollInitialIntervalMs,

@@ -120,7 +120,7 @@ export const isLinkedProfileEditForm = ({
 
 /**
  * Completes the profile with the account's name and phone and waits for the
- * linked edit form. One browser action per former argv command, so a step
+ * linked edit form. One browser action per `session.use`, so a step
  * deadline that interrupts one starts no later action.
  */
 export const completeReferralProfile = (

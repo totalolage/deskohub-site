@@ -1,13 +1,11 @@
 import { expect, test } from "bun:test";
 import type { Browser } from "@playwright/test";
 import { Effect } from "effect";
+import { addDatabaseUrlRedactions, addRedaction, redact } from "./redaction";
 import {
-  addDatabaseUrlRedactions,
-  addRedaction,
   browserSessionFor,
   makePlaywrightBrowserRunner,
   type Runner,
-  redact,
 } from "./runtime";
 
 type EvaluationFrame = {

@@ -4,7 +4,7 @@ import { WorkspaceE2EAccountResourceService } from "../account/resources.service
 import { getDatasourceConfig } from "../config";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
 import type { E2EDatabase } from "../integrations/database.service";
-import { addDatabaseUrlRedactions } from "../runtime";
+import { addDatabaseUrlRedactions } from "../redaction";
 import { type E2EEffectRunner, withE2ERuntime } from "../runtime-fixture";
 import {
   type E2ERunContext,

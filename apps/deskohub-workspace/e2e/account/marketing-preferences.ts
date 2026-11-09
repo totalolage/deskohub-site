@@ -15,7 +15,8 @@ import { runDatabaseOperation } from "../integrations/database-operation";
 import { dismissLegalCookieConsent } from "../legal-cookie-consent";
 import { pollUntil } from "../polling";
 import { primePreviewAccess } from "../preview-access";
-import { addRedaction, assert } from "../runtime";
+import { addRedaction } from "../redaction";
+import { assert } from "../runtime";
 import {
   workspaceE2EPollInitialIntervalMs,
   workspaceE2EPollIntervalMs,
