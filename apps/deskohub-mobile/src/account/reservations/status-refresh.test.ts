@@ -22,22 +22,6 @@ import {
 } from "./status-refresh";
 import { AutomaticRefresh, type StatusVisit } from "./status-refresh-rules";
 
-const setOrderStatus = (
-  workspace: FakeWorkspace,
-  orderId: CustomerReservationOrderId,
-  status: CustomerOrderStatus
-) => {
-  const order = workspace.data.orders.get(orderId);
-  if (order === undefined) throw new Error(`no sample order ${orderId}`);
-  workspace.data = {
-    ...workspace.data,
-    orders: new Map([
-      ...workspace.data.orders,
-      [orderId, { ...order, state: { ...order.state, status } }],
-    ]),
-  };
-};
-
 const statusReads = (workspace: FakeWorkspace) =>
   workspace.calls.filter((call) => call === "getReservationStatus").length;
 
@@ -45,10 +29,12 @@ const harness = ({
   visit = "normal",
   orderId = sampleOrderIds.pending,
   resume = Option.none(),
+  previousStatus = Option.none(),
 }: {
   readonly visit?: StatusVisit;
   readonly orderId?: CustomerReservationOrderId;
   readonly resume?: Option.Option<StatusRefreshState>;
+  readonly previousStatus?: Option.Option<CustomerOrderStatus>;
 } = {}) => {
   const workspace = FakeWorkspace.forKind("linked");
   const layer = Layer.mergeAll(
@@ -57,6 +43,8 @@ const harness = ({
   );
   const states: Array<StatusRefreshState> = [];
   const last = () => states.at(-1);
+  let settledRuns = 0;
+  const settled = () => settledRuns;
   const reads = () => statusReads(workspace);
   /**
    * Settles once `count` reads were made and the stream reported each: every
@@ -83,6 +71,10 @@ const harness = ({
         visit,
         manualRequests: Stream.fromQueue(manual),
         resume,
+        previousStatus,
+        onSettled: Effect.sync(() => {
+          settledRuns += 1;
+        }),
       }).pipe(
         Stream.runForEach((state) => Effect.sync(() => states.push(state))),
         Effect.forkChild
@@ -91,7 +83,16 @@ const harness = ({
       yield* Fiber.interrupt(fiber);
       return outcome;
     }).pipe(Effect.provide(layer), Effect.runPromise);
-  return { workspace, states, last, reads, readsSettled, run, orderId };
+  return {
+    workspace,
+    states,
+    last,
+    reads,
+    readsSettled,
+    run,
+    orderId,
+    settled,
+  };
 };
 
 const stopped = (state: StatusRefreshState | undefined) =>
@@ -149,7 +150,7 @@ describe("statusRefreshes", () => {
     await h.run(() =>
       Effect.gen(function* () {
         yield* h.readsSettled(1);
-        setOrderStatus(h.workspace, h.orderId, "fulfilled");
+        h.workspace.setOrderStatus(h.orderId, "fulfilled");
         yield* TestClock.adjust("10 seconds");
         yield* h.readsSettled(2);
         yield* TestClock.adjust("30 minutes");
@@ -249,6 +250,8 @@ describe("statusRefreshes", () => {
           visit: "normal",
           manualRequests: Stream.never,
           resume: Option.none(),
+          previousStatus: Option.none(),
+          onSettled: Effect.void,
         }).pipe(
           Stream.runCollect,
           Effect.provide(
@@ -396,5 +399,198 @@ describe("statusRefreshes", () => {
         yield* eventually(() => h.reads() === 1 && h.last()?.reading === false);
       })
     );
+  });
+});
+
+describe("statusRefreshes when the order settles", () => {
+  test("an automatic read that settles the order runs onSettled once", async () => {
+    const h = harness({ visit: "after-payment" });
+
+    await h.run(() =>
+      Effect.gen(function* () {
+        yield* h.readsSettled(1);
+        yield* TestClock.adjust("3 seconds");
+        yield* h.readsSettled(2);
+        expect(h.settled()).toBe(0);
+        h.workspace.setOrderStatus(h.orderId, "fulfilled");
+        yield* TestClock.adjust("3 seconds");
+        yield* h.readsSettled(3);
+        expect(h.settled()).toBe(1);
+        yield* TestClock.adjust("30 minutes");
+        yield* quietly;
+      })
+    );
+
+    expect(h.settled()).toBe(1);
+  });
+
+  test("a normal visit runs onSettled when a read settles the order", async () => {
+    const h = harness();
+
+    await h.run(() =>
+      Effect.gen(function* () {
+        yield* h.readsSettled(1);
+        h.workspace.setOrderStatus(h.orderId, "fulfilled");
+        yield* TestClock.adjust("10 seconds");
+        yield* h.readsSettled(2);
+      })
+    );
+
+    expect(h.settled()).toBe(1);
+  });
+
+  test("an order that ends without a booking counts as settled too", async () => {
+    const h = harness({ visit: "after-payment" });
+
+    await h.run(() =>
+      Effect.gen(function* () {
+        yield* h.readsSettled(1);
+        h.workspace.setOrderStatus(h.orderId, "payment_failed");
+        yield* TestClock.adjust("3 seconds");
+        yield* h.readsSettled(2);
+      })
+    );
+
+    expect(h.settled()).toBe(1);
+  });
+
+  test("a read that finds the order still settling doesn't run onSettled", async () => {
+    const h = harness({ visit: "after-payment" });
+
+    await h.run(() =>
+      Effect.gen(function* () {
+        yield* h.readsSettled(1);
+        h.workspace.setOrderStatus(h.orderId, "paid_waiting_fulfillment");
+        yield* TestClock.adjust("3 seconds");
+        yield* h.readsSettled(2);
+      })
+    );
+
+    expect(h.settled()).toBe(0);
+  });
+
+  test("after payment, a first read that finds the order settled runs onSettled", async () => {
+    const h = harness({
+      visit: "after-payment",
+      orderId: sampleOrderIds.fulfilled,
+    });
+
+    await h.run(() =>
+      Effect.gen(function* () {
+        yield* h.readsSettled(1);
+        yield* TestClock.adjust("30 minutes");
+        yield* quietly;
+      })
+    );
+
+    expect(h.settled()).toBe(1);
+  });
+
+  test("a first read compares with the status an earlier session showed", async () => {
+    const shown = (previousStatus: CustomerOrderStatus) =>
+      harness({
+        visit: "after-payment",
+        orderId: sampleOrderIds.fulfilled,
+        previousStatus: Option.some(previousStatus),
+      });
+    const unchanged = shown("fulfilled");
+    const settling = shown("pending");
+
+    await unchanged.run(() => unchanged.readsSettled(1));
+    await settling.run(() => settling.readsSettled(1));
+
+    expect(unchanged.settled()).toBe(0);
+    expect(settling.settled()).toBe(1);
+  });
+
+  test("a manual read that finds a delayed order confirmed runs onSettled", async () => {
+    const h = harness();
+    h.workspace.setOrderStatus(h.orderId, "paid_fulfillment_delayed");
+
+    await h.run((manual) =>
+      Effect.gen(function* () {
+        yield* h.readsSettled(1);
+        expect(stopped(h.last())).toBe("settled");
+        h.workspace.setOrderStatus(h.orderId, "fulfilled");
+        yield* Queue.offer(manual, undefined);
+        yield* h.readsSettled(2);
+      })
+    );
+
+    expect(h.settled()).toBe(1);
+  });
+
+  test("a normal visit to a settled order doesn't run onSettled", async () => {
+    const h = harness({ orderId: sampleOrderIds.fulfilled });
+
+    await h.run((manual) =>
+      Effect.gen(function* () {
+        yield* h.readsSettled(1);
+        yield* Queue.offer(manual, undefined);
+        yield* h.readsSettled(2);
+      })
+    );
+
+    expect(h.settled()).toBe(0);
+  });
+
+  test("a manual read that settles the order runs onSettled", async () => {
+    const h = harness();
+
+    await h.run((manual) =>
+      Effect.gen(function* () {
+        yield* h.readsSettled(1);
+        yield* TestClock.adjust("10 seconds");
+        yield* h.readsSettled(2);
+        yield* TestClock.adjust("20 seconds");
+        yield* h.readsSettled(3);
+        yield* TestClock.adjust("40 seconds");
+        yield* h.readsSettled(4);
+        expect(stopped(h.last())).toBe("exhausted");
+        h.workspace.setOrderStatus(h.orderId, "fulfilled");
+        yield* Queue.offer(manual, undefined);
+        yield* h.readsSettled(5);
+      })
+    );
+
+    expect(h.settled()).toBe(1);
+  });
+
+  test("a failed read doesn't run onSettled", async () => {
+    const h = harness({ visit: "after-payment" });
+
+    await h.run(() =>
+      Effect.gen(function* () {
+        yield* h.readsSettled(1);
+        h.workspace.fail("getReservationStatus", "service-unavailable");
+        yield* TestClock.adjust("3 seconds");
+        yield* h.readsSettled(2);
+      })
+    );
+
+    expect(h.settled()).toBe(0);
+  });
+
+  test("a resumed run of an order that had settled doesn't run onSettled again", async () => {
+    const first = harness({
+      visit: "after-payment",
+      orderId: sampleOrderIds.fulfilled,
+    });
+    await first.run(() => first.readsSettled(1));
+    expect(first.settled()).toBe(1);
+
+    const h = harness({
+      visit: "after-payment",
+      orderId: sampleOrderIds.fulfilled,
+      resume: Option.fromUndefinedOr(first.last()),
+    });
+    await h.run((manual) =>
+      Effect.gen(function* () {
+        yield* Queue.offer(manual, undefined);
+        yield* eventually(() => h.reads() === 1 && h.last()?.reading === false);
+      })
+    );
+
+    expect(h.settled()).toBe(0);
   });
 });
