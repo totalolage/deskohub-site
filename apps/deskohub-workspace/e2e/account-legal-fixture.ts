@@ -186,7 +186,7 @@ export async function getSiteHeaderConfig(locale: Locale) {
     closeNavigationMenuLabel: "Close navigation menu",
     contactHref: ${contactHrefExpression},
     contactLabel: "Contact",
-    languageSwitcherLabel: "Language",
+    languageMenuTriggerLabel: "Language",
     links,
     mobilePrimaryNavigationLabel: "Mobile primary navigation",
     openNavigationMenuLabel: "Open navigation menu",

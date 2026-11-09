@@ -1,5 +1,11 @@
 import { Effect } from "effect";
-import { activateHydratedElement, openPage, waitForPageUrl } from "../browser";
+import {
+  activateElement,
+  activateHydratedElement,
+  openPage,
+  waitForPageUrl,
+  waitForReactHandler,
+} from "../browser";
 import type {
   E2EBrowserSession,
   OpenE2EBrowserSession,
@@ -52,12 +58,14 @@ export const assertLocaleSwitcher = ({
 
 type SwitchLocale = CheckoutData["locale"] | "cs-CZ";
 
+const languageMenuTriggerSelector = "button[data-language-menu-trigger]";
 const localeSwitchLinkSelector = (locale: SwitchLocale) =>
   `[data-locale-switcher] a[href^="/${locale}"]`;
 
 /**
- * Switches the locale through the header with a native activation of the
- * hydrated link. For a signed-in visitor the switcher saves the language
+ * Switches the locale through the header's language menu: opens it from the
+ * keyboard once the trigger's handler has hydrated, then natively activates
+ * the hydrated link. For a signed-in visitor the switcher saves the language
  * preference before the document navigation, waiting for the streamed
  * session check if needed, so the URL wait also proves the save: without it
  * the proxy would redirect back to the old preference.
@@ -68,6 +76,17 @@ export const switchLocale = (
   timeouts: Pick<WorkspaceE2ETimeouts, "browserNavigation">
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
+    yield* waitForReactHandler(
+      session,
+      languageMenuTriggerSelector,
+      "onKeyDown",
+      {
+        timeoutMs: timeouts.browserNavigation,
+      }
+    );
+    yield* activateElement(session, languageMenuTriggerSelector, {
+      timeoutMs: timeouts.browserNavigation,
+    });
     yield* activateHydratedElement(session, localeSwitchLinkSelector(locale), {
       timeoutMs: timeouts.browserNavigation,
     });

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
+import { locales } from "@/features/i18n";
+import { languageNames } from "@/features/i18n/language-labels";
 import { MeetingRoomPageReleaseGate } from "@/features/meeting-room/backend/meeting-room-page-release-gate";
 import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 
@@ -160,4 +162,15 @@ describe("getSiteHeaderConfig", () => {
 
     expect(await config.administrator.visible).toBe(false);
   });
+
+  test.each([...locales])(
+    "names the current language in the %s language menu trigger label",
+    async (locale) => {
+      const { getSiteHeaderConfig } = await import("./site-header-config");
+
+      const config = await getSiteHeaderConfig(locale);
+
+      expect(config.languageMenuTriggerLabel).toContain(languageNames[locale]);
+    }
+  );
 });

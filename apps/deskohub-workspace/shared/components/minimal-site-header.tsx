@@ -1,18 +1,18 @@
 import Link from "next/link";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import type { Locale } from "@/features/i18n";
-import { LocaleSwitcher } from "@/shared/components/locale-switcher";
+import { LanguageMenu } from "@/shared/components/locale-switcher";
 import { SiteHeaderLogo } from "@/shared/components/site-header-logo";
 
 type MinimalSiteHeaderProps = {
   currentLocale: Locale;
-  languageSwitcherLabel: string;
+  languageMenuTriggerLabel: string;
   localePreference?: LocalePreferenceSaving;
 };
 
 export function MinimalSiteHeader({
   currentLocale,
-  languageSwitcherLabel,
+  languageMenuTriggerLabel,
   localePreference,
 }: MinimalSiteHeaderProps) {
   return (
@@ -27,17 +27,12 @@ export function MinimalSiteHeader({
           <SiteHeaderLogo />
         </Link>
 
-        <nav
-          aria-label={languageSwitcherLabel}
-          data-locale-switcher
-          className="rounded-full border border-white/12 bg-white/6 px-6 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72"
-        >
-          <LocaleSwitcher
-            locale={currentLocale}
-            appearance="stacked"
-            localePreference={localePreference}
-          />
-        </nav>
+        <LanguageMenu
+          locale={currentLocale}
+          triggerLabel={languageMenuTriggerLabel}
+          tone="inverse"
+          localePreference={localePreference}
+        />
       </div>
     </header>
   );
