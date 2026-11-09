@@ -9,7 +9,9 @@ export const stackScreenOptions = {
   headerShadowVisible: false,
   headerStyle: { backgroundColor: theme.colors.background },
   headerTintColor: theme.colors.text,
-  headerTitleStyle: { color: theme.colors.text, fontWeight: "600" },
+  // Native headers read only the family, size and weight; the web header
+  // also applies the variation setting that draws the weight.
+  headerTitleStyle: { ...theme.type.bodyStrong, color: theme.colors.text },
 } satisfies NativeStackNavigationOptions;
 
 /**

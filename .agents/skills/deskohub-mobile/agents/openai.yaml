@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Mobile"
+  short_description: "Build, run and test the Expo mobile app"
+  default_prompt: "Use $deskohub-mobile to change, build, run or test the Deskohub Expo app and its /app/ web export."
