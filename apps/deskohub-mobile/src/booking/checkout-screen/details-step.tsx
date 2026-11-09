@@ -1,7 +1,7 @@
-import type { CustomerLocale } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
 import { BodyText, Button, TextField } from "../../ui/controls";
@@ -26,7 +26,7 @@ import {
   withRejectedSavedFields,
 } from "./details-form";
 
-type Locale = { readonly locale: CustomerLocale };
+type Locale = { readonly locale: AppLocale };
 
 /**
  * Who books and what the invoice needs. A linked profile books "as" itself
@@ -211,7 +211,7 @@ export function DetailsStep({
 type FieldPropsOf = (field: DetailsField) => {
   readonly problem: FieldProblem | undefined;
   readonly editable: boolean;
-  readonly locale: CustomerLocale;
+  readonly locale: AppLocale;
 };
 
 function SelfFields({
@@ -401,7 +401,7 @@ function Field({
   );
 }
 
-const fieldProblemMessage = (problem: FieldProblem, locale: CustomerLocale) =>
+const fieldProblemMessage = (problem: FieldProblem, locale: AppLocale) =>
   ({
     required: () => m.booking_checkout_field_required({}, { locale }),
     too_short: () => m.booking_checkout_field_too_short({}, { locale }),

@@ -1,9 +1,7 @@
-import type {
-  CustomerBookingSelection,
-  CustomerLocale,
-} from "@deskohub/workspace-customer-api";
+import type { CustomerBookingSelection } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
 import { StyleSheet, Text, View } from "react-native";
+import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
 import { formatPragueDate, formatPragueTime } from "../ui/prague-date-format";
@@ -16,15 +14,15 @@ import { productLabel } from "./checkout-copy";
 
 type Row = { readonly label: string; readonly value: string };
 
-const range = (start: string, end: string, locale: CustomerLocale) =>
+const range = (start: string, end: string, locale: AppLocale) =>
   m.booking_checkout_overview_range({ start, end }, { locale });
 
-const dateRow = (date: string, locale: CustomerLocale): Row => ({
+const dateRow = (date: string, locale: AppLocale): Row => ({
   label: m.booking_checkout_overview_date({}, { locale }),
   value: formatPragueDate(date, locale),
 });
 
-const timeText = (time: MeetingRoomTime, locale: CustomerLocale) => {
+const timeText = (time: MeetingRoomTime, locale: AppLocale) => {
   if (time._tag === "WholeDay") {
     return m.booking_checkout_overview_whole_day({}, { locale });
   }
@@ -45,7 +43,7 @@ const timeText = (time: MeetingRoomTime, locale: CustomerLocale) => {
 
 const overviewRows = (
   overview: Overview,
-  locale: CustomerLocale
+  locale: AppLocale
 ): ReadonlyArray<Row> => {
   switch (overview._tag) {
     case "Cowork":
@@ -91,7 +89,7 @@ export function BookingOverviewView({
 }: {
   readonly selection: CustomerBookingSelection;
   readonly earlySetup: boolean;
-  readonly locale: CustomerLocale;
+  readonly locale: AppLocale;
 }) {
   const overview = bookingOverviewOf(selection, earlySetup);
   return (

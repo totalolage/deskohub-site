@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  CustomerCheckoutSummary,
-  CustomerLocale,
-} from "@deskohub/workspace-customer-api";
+import type { CustomerCheckoutSummary } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
+import type { AppLocale } from "../../i18n/app-locale";
 import {
   elementTree,
   findAll,
@@ -53,7 +51,7 @@ const officeSummary = ({
 };
 
 /** Every Text's content in render order. */
-const texts = (summary: CustomerCheckoutSummary, locale: CustomerLocale) =>
+const texts = (summary: CustomerCheckoutSummary, locale: AppLocale) =>
   findAll(
     hostTree(
       elementTree(PriceSummary, {

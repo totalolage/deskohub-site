@@ -1,5 +1,5 @@
-import type { CustomerLocale } from "@deskohub/workspace-customer-api";
 import { StyleSheet, Text, View } from "react-native";
+import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
 
@@ -19,7 +19,7 @@ export function HoldCountdown({
 }: {
   /** Whole seconds until the hold expires, from the flow clock's tick. */
   readonly secondsLeft: number;
-  readonly locale: CustomerLocale;
+  readonly locale: AppLocale;
 }) {
   const warning = seconds <= warningSeconds;
   return (

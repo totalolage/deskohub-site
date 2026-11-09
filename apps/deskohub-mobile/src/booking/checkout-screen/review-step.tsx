@@ -1,12 +1,12 @@
 import type {
   CustomerBookingSelection,
   CustomerLegalDocument,
-  CustomerLocale,
 } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
 import * as WebBrowser from "expo-web-browser";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { apiOrigin } from "../../auth/auth-client";
+import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
 import { ErrorState, LoadingState } from "../../ui/async-states";
@@ -32,7 +32,7 @@ import {
 } from "./review-view";
 
 type Send = (intent: CheckoutIntent) => void;
-type Locale = { readonly locale: CustomerLocale };
+type Locale = { readonly locale: AppLocale };
 
 /**
  * The held order before payment: what is booked and when, the hold
@@ -150,7 +150,7 @@ function CodeField({
 
 const codeMessageText = (
   code: CodeFieldView,
-  locale: CustomerLocale
+  locale: AppLocale
 ): string | undefined => {
   const { message } = code;
   switch (message._tag) {
@@ -272,7 +272,7 @@ function ReviewNoticeView({
   );
 }
 
-const reviewNoticeMessage = (notice: ReviewNotice, locale: CustomerLocale) => {
+const reviewNoticeMessage = (notice: ReviewNotice, locale: AppLocale) => {
   switch (notice._tag) {
     case "Retryable":
       return retryMessage(notice.kind, locale);
