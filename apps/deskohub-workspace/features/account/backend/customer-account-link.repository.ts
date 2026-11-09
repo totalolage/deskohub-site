@@ -32,11 +32,16 @@ export type CustomerAccountLinkClaim =
 /**
  * Authoritative account activity facts read from the auth schema. A missing
  * auth row means the identity no longer exists, so it is never conflated with
- * an active account that simply has no deletion marker.
+ * an active account that simply has no deletion marker. `email` is the
+ * account's immutable login email.
  */
 export type CustomerAccountActivityState =
   | { readonly kind: "missing" }
-  | { readonly kind: "active"; readonly deletionRequestedAt: Date | null };
+  | {
+      readonly kind: "active";
+      readonly email: string;
+      readonly deletionRequestedAt: Date | null;
+    };
 
 export type CustomerAccountLinkError =
   | EffectDrizzleQueryError
@@ -168,13 +173,17 @@ export class CustomerAccountLinkRepository extends Context.Service<
         "CustomerAccountLinkRepository.findActivityState"
       )(function* (accountId: CustomerAccountId) {
         const [row] = yield* db
-          .select({ deletionRequestedAt: authUser.deletionRequestedAt })
+          .select({
+            email: authUser.email,
+            deletionRequestedAt: authUser.deletionRequestedAt,
+          })
           .from(authUser)
           .where(eq(authUser.id, accountId))
           .limit(1);
         if (!row) return { kind: "missing" } as const;
         return {
           kind: "active",
+          email: row.email,
           deletionRequestedAt: row.deletionRequestedAt ?? null,
         } as const;
       });
