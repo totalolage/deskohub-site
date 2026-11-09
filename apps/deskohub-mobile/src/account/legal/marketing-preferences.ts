@@ -26,7 +26,7 @@ import type { AppLocale } from "../../i18n/app-locale";
 export const marketingPreferencesAtom = customerDataRuntime.atom(
   Effect.flatMap(Effect.service(CustomerApi), (api) =>
     api.account.getMarketingPreferences()
-  ).pipe(customerRead({ dotyposBacked: true }))
+  ).pipe(customerRead({ accountRead: false }))
 );
 
 /**

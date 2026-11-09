@@ -22,7 +22,7 @@ export const invoiceFileName = (orderId: CustomerReservationOrderId) =>
 const readInvoice = (orderId: CustomerReservationOrderId) =>
   Effect.flatMap(Effect.service(CustomerApi), (api) =>
     api.reservations.getReservationInvoice({ params: { orderId } })
-  ).pipe(customerRead({ dotyposBacked: true }));
+  ).pipe(customerRead({ accountRead: false }));
 
 // The PDF lives until sharing ends; an account exit meanwhile leaves it to
 // this share (see `AccountScopedStorage.temporaryFile`).

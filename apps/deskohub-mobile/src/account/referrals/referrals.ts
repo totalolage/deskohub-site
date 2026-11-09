@@ -15,7 +15,7 @@ import { formatMoney } from "../../i18n/money-format";
 export const referralsAtom = customerDataRuntime.atom(
   Effect.flatMap(Effect.service(CustomerApi), (api) =>
     api.account.getReferrals()
-  ).pipe(customerRead({ dotyposBacked: true }))
+  ).pipe(customerRead({ accountRead: false }))
 );
 
 /** Copies the referral code. It is meant to be passed on, so not sensitive. */

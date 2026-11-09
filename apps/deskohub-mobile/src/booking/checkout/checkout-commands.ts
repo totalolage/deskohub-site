@@ -62,7 +62,7 @@ export const runCheckoutCommand = (
         Effect.flatMap((booking) =>
           booking.listLegalDocuments({ query: { locale } })
         ),
-        customerRead({ dotyposBacked: false }),
+        customerRead({ accountRead: false }),
         Effect.map(({ documents }) =>
           CheckoutEvent.LegalDocumentsLoaded({ operationId, documents })
         ),

@@ -45,17 +45,27 @@ authenticates every request.
    Every endpoint spends the account's general budget (120 per 10 minutes).
    An endpoint is Dotypos-backed when it, or the account resolution it starts
    with, can call Dotypos (resolving an unlinked account looks its customer up
-   and may reactivate an expired one): a GET is `dotypos-read` (20 per 30
-   minutes), any other method `dotypos-mutation` (15 per 30 minutes, which
-   account edits and checkout steps share; two bookings fit), each with its
-   own per-account budget so reads can't use up what edits, bookings and
-   deletion need; the test checks the method. The booking catalog's reads
+   and may reactivate an expired one). A GET the app repeats on every load,
+   history visit or status poll (the account, the reservation history, an
+   order's status and its door code) is `account-read` (40 per 30 minutes);
+   any other Dotypos-backed GET (consent, referrals, the invoice) is
+   `dotypos-read` (20 per 30 minutes); any other method is `dotypos-mutation`
+   (15 per 30 minutes, which account edits and checkout steps share; two
+   bookings fit). Each has its own per-account budget so reads can't use up
+   what edits, bookings and deletion need; the test checks the method.
+   Opening the app costs two account reads and a booking up to thirteen (the
+   account, the status once plus up to nine payment-return polls, the history
+   and the door code), so two bookings and a session's navigation (about 38)
+   fit; `customer-request-checks.test.ts` replays that session. The app's
+   advisory counter (`apps/deskohub-mobile/src/customer-api/account-read-budget.ts`)
+   mirrors the `account-read` budget and stops automatic status polling while
+   fewer than eight reads are left: change both together. The booking catalog's reads
    (offerings, availability, meeting-room start times, quotes) are
    `catalog-read` (120 per 10 minutes): they read the shared snapshots, which
    call Dotypos only on a miss, and a booking compares several dates before it
-   checks out, so they keep off the Dotypos read budget the account and its
-   reservations use. `workspace-only` reads only the Workspace database and
-   Better Auth. Reservation reads count: they read Dotypos live. If the
+   checks out, so they keep off the account read budget. `workspace-only` reads only the Workspace database and
+   Better Auth. Account reads count as Dotypos-backed: they read Dotypos live,
+   with no response cache. If the
    endpoint changes the Dotypos call rate, recheck the budget numbers against
    the site's shared 150 requests per 30 minutes. Per-account budgets bound one account's share;
    they can't keep the whole site within that allowance.

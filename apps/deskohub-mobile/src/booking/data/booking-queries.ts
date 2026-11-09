@@ -18,13 +18,13 @@ import {
 /**
  * What the booking selection and review screens read before checkout, on the
  * account's data runtime. Every read goes through `customerRead`; the
- * `dotyposBacked` flag follows the server's budget class for the endpoint
+ * `accountRead` flag follows the server's budget class for the endpoint
  * (`customerRequestBudgetClasses.booking` in
  * apps/deskohub-workspace/features/customer-api/customer-request-budget.ts):
  * offerings, availability, meeting-room start times and quotes are
  * `catalog-read`, with their own per-account budget beside the general one,
- * and legal documents are `workspace-only`. Neither shares the Dotypos read
- * budget, so neither spends the app's advisory `DotyposReadBudget`. Each
+ * and legal documents are `workspace-only`. Neither shares the account read
+ * budget, so neither spends the app's advisory `AccountReadBudget`. Each
  * catalog read stays cached for its `catalogIdleTTL` after the last screen
  * showing it leaves. Errors stay typed; screens map them with
  * `toBookingQueryError`.
@@ -66,11 +66,11 @@ export const catalogIdleTTL = {
 
 /**
  * Offerings, availability, start times and quotes spend the server's
- * `catalog-read` budget, not the Dotypos read budget.
+ * `catalog-read` budget, not the account read budget.
  */
-const catalogRead = customerRead({ dotyposBacked: false });
+const catalogRead = customerRead({ accountRead: false });
 /** The legal documents' versions are Workspace data. */
-const workspaceRead = customerRead({ dotyposBacked: false });
+const workspaceRead = customerRead({ accountRead: false });
 
 const bookingApi = Effect.map(
   Effect.service(CustomerApi),

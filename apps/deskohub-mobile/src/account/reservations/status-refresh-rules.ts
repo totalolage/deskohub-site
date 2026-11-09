@@ -4,7 +4,7 @@ import {
   nextPaymentReturnPoll,
   paymentReturnPollingStatuses,
 } from "../../booking/payment-return-polling";
-import { allowsAutomaticRefresh } from "../../customer-api/dotypos-read-budget";
+import { allowsAutomaticRefresh } from "../../customer-api/account-read-budget";
 
 /**
  * How the customer reached the status screen: straight from payment
@@ -24,6 +24,30 @@ export const normalRefreshDelays: ReadonlyArray<Duration.Duration> = [
   Duration.seconds(20),
   Duration.seconds(40),
 ];
+
+/**
+ * Whether a read that found the order in `status` settled it: the status is
+ * one the screen doesn't refresh on its own, and differs from the status the
+ * screen last showed (`previous`), whether that one was settling or, like a
+ * delayed confirmation, waiting longer. When the screen hasn't shown the
+ * order yet, only a visit after payment counts: the order was settling when
+ * the customer left for payment. Other views of the order, read before, are
+ * then out of date.
+ */
+export const readSettlesOrder = ({
+  visit,
+  previous,
+  status,
+}: {
+  readonly visit: StatusVisit;
+  readonly previous: Option.Option<CustomerOrderStatus>;
+  readonly status: CustomerOrderStatus;
+}): boolean =>
+  !paymentReturnPollingStatuses.has(status) &&
+  Option.match(previous, {
+    onNone: () => visit === "after-payment",
+    onSome: (shown) => shown !== status,
+  });
 
 /** Why the screen no longer refreshes on its own. */
 export type AutomaticRefreshStop =

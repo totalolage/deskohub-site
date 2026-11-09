@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { CustomerBookingQuote } from "@deskohub/workspace-customer-api";
+import {
+  type CustomerAccountState,
+  type CustomerBookingQuote,
+  CustomerRateLimited,
+  CustomerServiceUnavailable,
+} from "@deskohub/workspace-customer-api";
 import { Cause, Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { CustomerViewError } from "../../customer-api/customer-view-error";
@@ -14,6 +19,7 @@ import {
   checkoutRequestOf,
   freshValue,
   isRetryableBookingQueryError,
+  opensWithoutAccount,
   quotableSelection,
   quoteFailureRepeats,
   restartReasonOf,
@@ -234,5 +240,37 @@ describe("quoteFailureRepeats", () => {
     expect(quoteFailureRepeats(Option.none(), [rateLimited], sentence)).toBe(
       false
     );
+  });
+});
+
+describe("opensWithoutAccount", () => {
+  const linked = { kind: "linked" } as unknown as CustomerAccountState;
+
+  // Browsing the catalog spends its own budget and the checkout still
+  // refuses an account that can't book, so a spent account read budget
+  // alone doesn't keep the booking screens closed.
+  test("opens the booking screens when the account's first read was rate limited", () => {
+    expect(
+      opensWithoutAccount(
+        AsyncResult.failure(Cause.fail(new CustomerRateLimited()))
+      )
+    ).toBe(true);
+  });
+
+  test("keeps them behind the account's own states otherwise", () => {
+    expect(opensWithoutAccount(AsyncResult.initial())).toBe(false);
+    expect(opensWithoutAccount(AsyncResult.success(linked))).toBe(false);
+    expect(
+      opensWithoutAccount(
+        AsyncResult.failure(Cause.fail(new CustomerServiceUnavailable()))
+      )
+    ).toBe(false);
+    expect(
+      opensWithoutAccount(
+        AsyncResult.failure(Cause.fail(new CustomerRateLimited()), {
+          previousSuccess: Option.some(AsyncResult.success(linked)),
+        })
+      )
+    ).toBe(false);
   });
 });

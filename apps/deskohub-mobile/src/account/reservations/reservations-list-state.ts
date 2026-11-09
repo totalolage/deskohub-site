@@ -48,7 +48,7 @@ export const savedReservationsAtom = customerDataRuntime.atom(
 export const reservationHistoryAtom = customerDataRuntime.atom((get) =>
   Effect.service(CustomerApi).pipe(
     Effect.flatMap((api) => api.reservations.listReservations({})),
-    customerRead({ dotyposBacked: true }),
+    customerRead({ accountRead: true }),
     // Saved only after the saved read, which may remove an unreadable or
     // expired entry: that removal must never delete this save.
     Effect.tap((history) =>
