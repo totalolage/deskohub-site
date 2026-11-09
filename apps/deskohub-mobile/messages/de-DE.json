@@ -157,7 +157,7 @@
   "consent_prompt_message": "Dürfen wir messen, wie du die App nutzt, damit wir sie verbessern können?",
   "consent_prompt_accept": "Analyse erlauben",
   "consent_prompt_decline": "Ablehnen",
-  "signin_error_reauth_unconfirmed": "Wir konnten nicht verifizieren, dass es dasselbe Konto ist, und dich abgemeldet. Melde dich neu an.",
+  "signin_error_reauth_unconfirmed": "Dasselbe Konto ließ sich nicht verifizieren, deshalb haben wir dich abgemeldet. Melde dich neu an.",
   "signin_error_reauth_storage": "Dieser Browser speichert nicht, was wir zur Bestätigung deiner Identität brauchen. Erlaube Deskohub, Daten zu speichern, und versuch es erneut.",
   "passkey_sign_in": "Mit Passkey anmelden",
   "passkey_sign_in_pending": "Wir warten auf deinen Passkey.",
