@@ -230,6 +230,38 @@ describe("fetchPostHogEmailStatus", () => {
     expect(error.reason).toBe("unavailable");
   });
 
+  test("fails as unavailable when the connection drops during the body", async () => {
+    const { fetch } = stubFetch(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start: (controller) =>
+              controller.error(new TypeError("terminated")),
+          }),
+          { status: 200 }
+        )
+    );
+
+    const error = await Effect.runPromise(Effect.flip(lookup(fetch)));
+
+    expect(error.reason).toBe("unavailable");
+  });
+
+  test("gives up on a body PostHog stops sending and cancels the request", async () => {
+    const signals: AbortSignal[] = [];
+    const { fetch } = stubFetch(async (request) => {
+      signals.push(request.signal);
+      return new Response(new ReadableStream(), { status: 200 });
+    });
+
+    const error = await Effect.runPromise(
+      withInstantSleeps(Effect.flip(lookup(fetch)))
+    );
+
+    expect(error.reason).toBe("unavailable");
+    expect(signals.map((signal) => signal.aborted)).toEqual([true]);
+  });
+
   test("fails as unavailable when PostHog does not answer in time", async () => {
     const { fetch } = hang();
 
@@ -292,6 +324,26 @@ describe("fetchPostHogEmailStatus", () => {
           reason: null,
         }),
     ],
+    [
+      "a missing status time",
+      () =>
+        Response.json({
+          id: "message-1",
+          status: "sent",
+          created_at: "2026-11-09T10:00:00Z",
+          reason: null,
+        }),
+    ],
+    [
+      "a missing reason",
+      () =>
+        Response.json({
+          id: "message-1",
+          status: "sent",
+          created_at: "2026-11-09T10:00:00Z",
+          status_at: null,
+        }),
+    ],
     ["an empty success", () => new Response(null, { status: 204 })],
   ])("fails %s as an invalid response", async (_, respond) => {
     const { fetch } = stubFetch(async () => respond());
@@ -312,6 +364,19 @@ describe("fetchPostHogEmailStatus", () => {
         }),
     ],
     ["an unreadable body", () => stubFetch(async () => new Response("{"))],
+    [
+      "a body cut off by the connection",
+      () =>
+        stubFetch(
+          async () =>
+            new Response(
+              new ReadableStream({
+                start: (controller) =>
+                  controller.error(new TypeError("terminated")),
+              })
+            )
+        ),
+    ],
     [
       "an unexpected body",
       () => answer(200, { id: "message-1", status: "opened" }),

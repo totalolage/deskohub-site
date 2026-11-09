@@ -89,8 +89,24 @@ const defaultTimeout: Duration.Input = "10 seconds";
 const requestFreeCause = (error: HttpClientError.HttpClientError) =>
   error.reason.cause ?? error.reason._tag;
 
+const decodeStatusBody = Schema.decodeEffect(
+  Schema.fromJsonString(statusResponseSchema)
+);
+
+/**
+ * Reads a status body. A body that stops arriving fails like any other
+ * transport failure; one that arrives but does not parse is invalid.
+ */
 const readReport = (response: HttpClientResponse.HttpClientResponse) =>
-  HttpClientResponse.schemaBodyJson(statusResponseSchema)(response).pipe(
+  response.text.pipe(
+    Effect.flatMap((text) =>
+      decodeStatusBody(text).pipe(
+        Effect.mapError(
+          (cause) =>
+            new PostHogEmailStatusError({ reason: "invalid-response", cause })
+        )
+      )
+    ),
     Effect.map(
       (body): PostHogEmailStatusLookup => ({
         _tag: "Found",
@@ -102,20 +118,7 @@ const readReport = (response: HttpClientResponse.HttpClientResponse) =>
           reason: body.reason,
         },
       })
-    ),
-    Effect.catchTags({
-      HttpClientError: (error) =>
-        Effect.fail(
-          new PostHogEmailStatusError({
-            reason: "invalid-response",
-            cause: requestFreeCause(error),
-          })
-        ),
-      SchemaError: (cause) =>
-        Effect.fail(
-          new PostHogEmailStatusError({ reason: "invalid-response", cause })
-        ),
-    })
+    )
   );
 
 const statusFailure =
