@@ -427,13 +427,17 @@ jobs:
           fi
           echo "Checked out exact deployment SHA $actual_sha"
 
-      - name: Checkout allocation action
+      # The job's local actions come from the workflow commit, never from the
+      # exact-SHA checkout.
+      - name: Checkout workflow actions
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           path: .workspace-e2e-coordinator
           persist-credentials: false
-          sparse-checkout: .github/actions/workspace-e2e-allocation
+          sparse-checkout: |
+            .github/actions/workspace-e2e-allocation
+            .github/actions/setup-bun
 
       - name: Select preferred date shard
         id: preferred-shard
@@ -506,13 +510,19 @@ jobs:
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             >/dev/null
 
-      # setup-bun saves its binary cache after the job, once exact-SHA code
-      # has run, into the default-branch scope every workflow restores from,
-      # so this job downloads Bun without that cache.
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      # setup-bun's own cache would save the binary after the job, once
+      # exact-SHA code has run, into the default-branch scope every workflow
+      # restores from. This action only restores the release archive that
+      # bun-release-cache.yml saves from main's code, and on a miss downloads
+      # it with retries instead of failing on a releases outage. It runs
+      # before any exact-SHA code and installs the archive only if it matches
+      # the pinned digest, the bun-linux-x64.zip line of the release's
+      # SHASUMS256.txt.
+      - name: Set up Bun
+        uses: ./.workspace-e2e-coordinator/.github/actions/setup-bun
         with:
           bun-version: 1.4.2
-          no-cache: true
+          bun-sha256: 36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913
 
       # Exact, workflow-scoped key without restore-keys. A miss is filled and
       # saved before any exact-SHA code or Bun configuration takes effect.
