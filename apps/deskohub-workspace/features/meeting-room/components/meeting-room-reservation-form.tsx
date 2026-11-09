@@ -11,7 +11,7 @@ import {
   getWorkspaceMeetingRoomDurationTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import type { CanonicalPromotionCode } from "@/features/discounts";
-import { type Locale, m } from "@/features/i18n";
+import { defaultPhoneRegion, type Locale, m } from "@/features/i18n";
 import { MeetingRoomEarlySetupField } from "@/features/meeting-room/components/meeting-room-early-setup-field";
 import { MeetingRoomStartTimeOptions } from "@/features/meeting-room/components/meeting-room-start-time-options";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
@@ -117,7 +117,9 @@ export function MeetingRoomReservationForm({
     unknown,
     MeetingRoomReservationData
   >({
-    resolver: effectSchemaResolver(meetingRoomReservationSchema),
+    resolver: effectSchemaResolver(
+      meetingRoomReservationSchema(defaultPhoneRegion(locale))
+    ),
     defaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -222,7 +224,7 @@ export function MeetingRoomReservationForm({
       selection={{
         kind: meetingRoomSelectionLink.kind,
         fromSearchParams: (searchParams) =>
-          meetingRoomSelectionLink.readSelection(searchParams),
+          meetingRoomSelectionLink.readSelection(searchParams, { locale }),
       }}
     >
       <FormField

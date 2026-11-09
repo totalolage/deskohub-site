@@ -7,6 +7,7 @@ import type { Customer } from "@deskohub/dotypos/generated";
 import { parsePhoneNumber } from "@deskohub/phone-number";
 import { Temporal } from "@js-temporal/polyfill";
 import { Effect, Option } from "effect";
+import { baseLocale, defaultPhoneRegion } from "@/features/i18n";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -60,7 +61,9 @@ export const createSyntheticCustomerProfile = (
       email: profile.email,
       firstName: profile.firstName,
       lastName: "E2E",
-      phone: Option.getOrUndefined(parsePhoneNumber(profile.phone ?? "")),
+      phone: Option.getOrUndefined(
+        parsePhoneNumber(profile.phone ?? "", defaultPhoneRegion(baseLocale))
+      ),
     });
     assert(customer.id, "created synthetic Dotypos profile has no id");
     log("Synthetic Dotypos profile created");

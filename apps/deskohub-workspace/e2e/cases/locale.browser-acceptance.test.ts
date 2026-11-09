@@ -28,18 +28,31 @@ afterAll(async () => {
 /**
  * Home pages whose header language menu links to the other locale.
  * `hydrated: false` leaves the menu's trigger as the server-rendered
- * fallback; `czechLands` is where the Czech link's navigation ends up.
+ * fallback; `czechLands` is where the Czech link's navigation ends up, and
+ * `unservedLands` where the root redirects a Russian-speaking visitor.
  */
 const serveHomePages = ({
   czechLands = "/cs-CZ",
   hydrated = true,
+  unservedLands = "/en-US",
 }: {
   readonly czechLands?: string;
   readonly hydrated?: boolean;
+  readonly unservedLands?: string;
 }) =>
   Bun.serve({
     fetch: (request) => {
       const { pathname } = new URL(request.url);
+      if (pathname === "/")
+        return new Response(null, {
+          headers: {
+            location:
+              request.headers.get("accept-language") === "ru"
+                ? unservedLands
+                : "/cs-CZ",
+          },
+          status: 307,
+        });
       if (pathname === "/cs-CZ/switch" && czechLands !== "/cs-CZ")
         return new Response(null, {
           headers: { location: czechLands },
@@ -142,6 +155,22 @@ test.skipIf(!chromiumAvailable)(
         failureKind: "timeout",
         outcome: "timed_out",
         stepId: "switch-to-czech",
+      },
+    ]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "fails the redirect step when an unserved language lands on Czech",
+  async () => {
+    const { annotations } = await runLocaleCase({ unservedLands: "/cs-CZ" });
+
+    expect(annotations).toEqual([
+      {
+        caseId: "locale-switch",
+        failureKind: "error",
+        outcome: "failed",
+        stepId: "redirect-accept-language-ru",
       },
     ]);
   }

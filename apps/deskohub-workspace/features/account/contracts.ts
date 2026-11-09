@@ -1,38 +1,51 @@
 import {
-  CustomerProfileCompletionSave,
-  CustomerProfileSave,
   customerInputParseOptions,
+  customerProfileSchemas,
 } from "@deskohub/workspace-customer-api";
 import { Option, Schema } from "effect";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
+import { defaultPhoneRegion, type Locale } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 
 /*
  * The profile schemas are the customer API's, so the account forms and the
- * mobile app validate a profile identically. The forms keep the phone as
- * entered text; the profile actions decode it to its phone number.
+ * mobile app validate a profile identically. A phone typed without a country
+ * calling code reads in the default region of the visitor's locale. The forms
+ * submit the phone number they read in the page's locale, so an action whose
+ * locale has since moved to a saved preference still saves that number.
  */
 export {
   type CustomerProfile,
-  CustomerProfileCompletionInput as completeCustomerProfileSchema,
   type CustomerProfileCompletionInput,
   type CustomerProfileCompletionSave,
-  CustomerProfileInput as updateCustomerProfileSchema,
   type CustomerProfileInput,
   type CustomerProfileSave,
   customerProfileBusinessBillingFields,
   type ProfileCompletionReferralOutcome,
 } from "@deskohub/workspace-customer-api";
 
-export const updateCustomerProfileStandardSchema = Schema.toStandardSchemaV1(
-  CustomerProfileSave,
-  { parseOptions: customerInputParseOptions }
-);
+const customerProfileContracts = (locale: Locale) =>
+  customerProfileSchemas(defaultPhoneRegion(locale));
 
-export const completeCustomerProfileStandardSchema = Schema.toStandardSchemaV1(
-  CustomerProfileCompletionSave,
-  { parseOptions: customerInputParseOptions }
-);
+/** The profile save a visitor in `locale` submits. */
+export const updateCustomerProfileSchema = (locale: Locale) =>
+  customerProfileContracts(locale).save;
+
+/** The first-time completion a visitor in `locale` submits. */
+export const completeCustomerProfileSchema = (locale: Locale) =>
+  customerProfileContracts(locale).completionSave;
+
+/** The profile save the update action reads from a request in `locale`. */
+export const updateCustomerProfileStandardSchema = (locale: Locale) =>
+  Schema.toStandardSchemaV1(updateCustomerProfileSchema(locale), {
+    parseOptions: customerInputParseOptions,
+  });
+
+/** The completion save the completion action reads from a request in `locale`. */
+export const completeCustomerProfileStandardSchema = (locale: Locale) =>
+  Schema.toStandardSchemaV1(completeCustomerProfileSchema(locale), {
+    parseOptions: customerInputParseOptions,
+  });
 
 export type CustomerReservationStatus =
   | "cancelled"

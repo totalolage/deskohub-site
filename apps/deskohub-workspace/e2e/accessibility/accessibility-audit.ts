@@ -29,6 +29,9 @@ export const ariaSnapshotLocales = [
   "cs-CZ",
 ] as const satisfies readonly AuditedLocale[];
 
+export const hasAriaSnapshots = (locale: AuditedLocale) =>
+  (ariaSnapshotLocales as readonly AuditedLocale[]).includes(locale);
+
 const supportedDocumentLanguage = new RegExp(
   `^(${supportedLocales.join("|")})$`
 );

@@ -10,6 +10,7 @@ export {
   type Locale,
   locales,
 } from "./paraglide/runtime.js";
+export { defaultPhoneRegion } from "./phone-region";
 export {
   defaultLocale,
   getLocalizedPagePath,

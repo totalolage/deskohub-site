@@ -1,18 +1,29 @@
 import { describe, expect, test } from "bun:test";
 import { Temporal } from "@js-temporal/polyfill";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { type Locale, locales } from "@/features/i18n";
 import {
   type CustomerReservationSummary,
+  completeCustomerProfileStandardSchema,
   groupCustomerReservations,
   updateCustomerProfileStandardSchema,
 } from "./contracts";
 
-const validateProfileInput = async (input: {
-  readonly firstName: string;
-  readonly phone?: string;
-}) => {
-  const outcome =
-    await updateCustomerProfileStandardSchema["~standard"].validate(input);
-  return outcome;
+const validateProfileInput = async (
+  input: { readonly firstName: string; readonly phone?: string },
+  locale: Locale = "cs-CZ"
+) => updateCustomerProfileStandardSchema(locale)["~standard"].validate(input);
+
+const validateCompletionInput = async (
+  input: { readonly firstName: string; readonly phone?: string },
+  locale: Locale
+) => completeCustomerProfileStandardSchema(locale)["~standard"].validate(input);
+
+const savedPhone = (
+  outcome: StandardSchemaV1.Result<{ readonly phone?: string }>
+) => {
+  if (outcome.issues) throw new Error("Expected the phone to be accepted");
+  return outcome.value.phone;
 };
 
 const now = Temporal.Instant.from("2026-09-03T12:00:00Z");
@@ -125,4 +136,45 @@ describe("customer profile input", () => {
 
     expect(outcome).toHaveProperty("issues");
   });
+});
+
+describe("customer profile phone in the visitor's locale", () => {
+  const germanMobile = "0151 23456789";
+
+  test.each([
+    ["profile", validateProfileInput],
+    ["completion", validateCompletionInput],
+  ] as const)(
+    "reads a %s phone without a country calling code in the locale's region",
+    async (_, validate) => {
+      for (const [locale, phone, saved] of [
+        ["cs-CZ", "601 123 456", "+420601123456"],
+        ["en-US", "601 123 456", "+420601123456"],
+        ["de-DE", germanMobile, "+4915123456789"],
+        ["uk-UA", "050 123 4567", "+380501234567"],
+        ["sk-SK", "0905 123 456", "+421905123456"],
+      ] as const) {
+        expect(
+          savedPhone(await validate({ firstName: "Ada", phone }, locale))
+        ).toBe(saved);
+      }
+      expect(
+        await validate({ firstName: "Ada", phone: germanMobile }, "cs-CZ")
+      ).toHaveProperty("issues");
+    }
+  );
+
+  test.each(locales)(
+    "accepts a phone with a country calling code in %s",
+    async (locale) => {
+      expect(
+        savedPhone(
+          await validateProfileInput(
+            { firstName: "Ada", phone: "+420 777 123 456" },
+            locale
+          )
+        )
+      ).toBe("+420777123456");
+    }
+  );
 });
