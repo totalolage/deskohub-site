@@ -3,7 +3,10 @@ import "@/shared/testing/workspace-test-env";
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { type EmailDeliveryId, EmailDeliveryIdSchema } from "@deskohub/email";
 import { eq, inArray } from "drizzle-orm";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import {
+  Context,
+  Deferred,
   Effect,
   type Fiber,
   Layer,
@@ -83,13 +86,27 @@ type RecordedReport = DeliveryReport<
 let reports: RecordedReport[];
 let flakyFailuresLeft: number;
 
-const handlers = [
-  deliveryReportHandler(noteKind, finalEvents, (report) =>
+/** The handlers' own service, which the polling layer must provide them. */
+class ReportLedger extends Context.Service<
+  ReportLedger,
+  { readonly record: (report: RecordedReport) => Effect.Effect<void> }
+>()("test/PostHogPollReportLedger") {}
+
+const reportLedger = Layer.succeed(ReportLedger, {
+  record: (report) =>
     Effect.sync(() => {
       reports.push(report);
-      return processedDeliveryReport;
-    })
-  ),
+    }),
+});
+
+const recordReport = (report: RecordedReport) =>
+  Effect.service(ReportLedger).pipe(
+    Effect.flatMap((ledger) => ledger.record(report)),
+    Effect.as(processedDeliveryReport)
+  );
+
+const handlers = [
+  deliveryReportHandler(noteKind, finalEvents, recordReport),
   deliveryReportHandler(flakyKind, finalEvents, (report) =>
     flakyFailuresLeft-- > 0
       ? Effect.fail(
@@ -98,14 +115,18 @@ const handlers = [
             message: "Synthetic handler failure.",
           })
         )
-      : Effect.sync(() => {
-          reports.push(report);
-          return processedDeliveryReport;
-        })
+      : recordReport(report)
   ),
 ];
 
-type ScriptedRead = PostHogEmailStatusLookup | PostHogEmailStatusError;
+type StatusRead = Effect.Effect<
+  PostHogEmailStatusLookup,
+  PostHogEmailStatusError
+>;
+type ScriptedRead =
+  | PostHogEmailStatusLookup
+  | PostHogEmailStatusError
+  | StatusRead;
 /** Each message's reads in order; a message without one is not found yet. */
 let script: Map<EmailDeliveryId, ScriptedRead[]>;
 let reads: EmailDeliveryId[];
@@ -135,14 +156,34 @@ const scriptedReader = Layer.succeed(PostHogEmailStatusReader, {
     Effect.suspend(() => {
       reads.push(messageId);
       const next = script.get(messageId)?.shift() ?? notFoundYet;
-      return next instanceof PostHogEmailStatusError
-        ? Effect.fail(next)
-        : Effect.succeed(next);
+      if (next instanceof PostHogEmailStatusError) return Effect.fail(next);
+      return Effect.isEffect(next) ? next : Effect.succeed(next);
     })
   ),
 });
 const unconfiguredReader = Layer.succeed(PostHogEmailStatusReader, {
   read: Option.none(),
+});
+
+const unusableRepository = Layer.succeed(PostHogEmailDeliveryRepository, {
+  expireRetentionEnded: () => Effect.die("unexpected database access"),
+  claim: () => Effect.die("unexpected database access"),
+  recordPoll: () => Effect.die("unexpected database access"),
+  settle: () => Effect.die("unexpected database access"),
+  deleteSettled: () => Effect.die("unexpected database access"),
+});
+
+const queryError = new EffectDrizzleQueryError({
+  query: "select synthetic",
+  params: [],
+  cause: new Error("synthetic connection failure"),
+});
+const failingClaimRepository = Layer.succeed(PostHogEmailDeliveryRepository, {
+  expireRetentionEnded: () => Effect.succeed(0),
+  claim: () => Effect.fail(queryError),
+  recordPoll: () => Effect.die("unexpected recordPoll"),
+  settle: () => Effect.die("unexpected settle"),
+  deleteSettled: () => Effect.die("unexpected deleteSettled"),
 });
 
 const runId = crypto.randomUUID();
@@ -190,7 +231,15 @@ describe.skipIf(!database)("PostHog email delivery polling", () => {
   const pollAt = (
     trigger: PostHogEmailDeliveryPollTrigger,
     at: Temporal.Instant,
-    reader: Layer.Layer<PostHogEmailStatusReader> = scriptedReader
+    {
+      reader = scriptedReader,
+      repository = PostHogEmailDeliveryRepository.Default.pipe(
+        Layer.provide(database.layer)
+      ),
+    }: {
+      readonly reader?: Layer.Layer<PostHogEmailStatusReader>;
+      readonly repository?: Layer.Layer<PostHogEmailDeliveryRepository>;
+    } = {}
   ): Promise<PostHogEmailDeliveryPollSummary> =>
     Effect.runPromise(
       Effect.gen(function* () {
@@ -204,14 +253,7 @@ describe.skipIf(!database)("PostHog email delivery polling", () => {
               handlers,
               deploymentEnvironment
             ).pipe(
-              Layer.provide(
-                Layer.mergeAll(
-                  PostHogEmailDeliveryRepository.Default.pipe(
-                    Layer.provide(database.layer)
-                  ),
-                  reader
-                )
-              )
+              Layer.provide(Layer.mergeAll(repository, reader, reportLedger))
             ),
             TestClock.layer(),
             capturingLogger
@@ -572,20 +614,102 @@ describe.skipIf(!database)("PostHog email delivery polling", () => {
       }
     );
 
-    test("names the first stopping answer when several arrive", async () => {
-      await insertDelivery({
-        nextPollAt: start.subtract({ seconds: 2 }),
-        reads: [statusError("rate-limited")],
-      });
-      await insertDelivery({
-        nextPollAt: start.subtract({ seconds: 1 }),
-        reads: [statusError("unauthorized")],
-      });
+    test("names the first refusal and lets reads already running finish", async () => {
+      const allStarted = Deferred.makeUnsafe<void>();
+      const firstRefused = Deferred.makeUnsafe<void>();
+      let inFlight = 0;
+      let mostInFlight = 0;
+      const gated = (answer: StatusRead): StatusRead =>
+        Effect.suspend(() => {
+          inFlight += 1;
+          mostInFlight = Math.max(mostInFlight, inFlight);
+          return Effect.when(
+            Deferred.succeed(allStarted, undefined),
+            Effect.sync(() => inFlight === 10)
+          ).pipe(
+            Effect.andThen(Deferred.await(allStarted)),
+            Effect.andThen(answer),
+            Effect.ensuring(
+              Effect.sync(() => {
+                inFlight -= 1;
+              })
+            )
+          );
+        });
+      const afterFirstRefusal = <A, E>(answer: Effect.Effect<A, E>) =>
+        Deferred.await(firstRefused).pipe(
+          Effect.andThen(Effect.yieldNow),
+          Effect.andThen(answer)
+        );
 
-      expect(await pollAt("schedule", start)).toMatchObject({
+      // The first ten reads wait for each other; the first refuses, the
+      // second refuses after it, the other eight answer after the refusal.
+      const gatedReads: readonly StatusRead[] = [
+        gated(
+          Deferred.succeed(firstRefused, undefined).pipe(
+            Effect.andThen(Effect.fail(statusError("rate-limited")))
+          )
+        ),
+        gated(afterFirstRefusal(Effect.fail(statusError("unauthorized")))),
+        ...Array.from({ length: 8 }, () =>
+          gated(afterFirstRefusal(Effect.succeed(notFoundYet)))
+        ),
+      ];
+      const ids = await insertDeliveries(
+        Array.from({ length: 12 }, (_, index) => ({
+          nextPollAt: start.subtract({ seconds: 12 - index }),
+          reads: [gatedReads[index] ?? notFoundYet],
+        }))
+      );
+
+      expect(await pollAt("schedule", start)).toEqual({
+        outcome: "polled",
+        trigger: "schedule",
+        polled: 10,
+        settled: 0,
+        expired: 0,
         stoppedBy: "rate-limited",
       });
+
+      expect(mostInFlight).toBe(10);
+      expect(reads.toSorted()).toEqual(ids.slice(0, 10).toSorted());
+      const rows = new Map(
+        (await readDeliveries(ids)).map((row) => [row.messageId, row])
+      );
+      expect(ids.map((id) => rows.get(id)?.pollCount)).toEqual([
+        0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0,
+      ]);
     });
+  });
+
+  test("keeps at most ten reads in flight", async () => {
+    const release = Deferred.makeUnsafe<void>();
+    let inFlight = 0;
+    const held: StatusRead = Effect.sync(() => {
+      inFlight += 1;
+    }).pipe(
+      Effect.andThen(Deferred.await(release)),
+      Effect.as(notFoundYet),
+      Effect.ensuring(
+        Effect.sync(() => {
+          inFlight -= 1;
+        })
+      )
+    );
+    await insertDeliveries(
+      Array.from({ length: 15 }, () => ({ reads: [held] }))
+    );
+
+    const poll = pollAt("schedule", start);
+    for (let waited = 0; reads.length < 10 && waited < 5000; waited += 10) {
+      await Bun.sleep(10);
+    }
+    await Bun.sleep(50);
+    const heldReads = { inFlight, reads: reads.length };
+    Effect.runSync(Deferred.succeed(release, undefined));
+
+    expect(heldReads).toEqual({ inFlight: 10, reads: 10 });
+    expect(await poll).toMatchObject({ polled: 15 });
   });
 
   describe("scheduling", () => {
@@ -686,18 +810,18 @@ describe.skipIf(!database)("PostHog email delivery polling", () => {
   });
 
   test("does nothing without a PostHog email secret key", async () => {
-    const ids = await insertDeliveries([
-      {},
-      { sentAt: hoursBefore(30 * 24) },
-      { status: "delivered", settledAt: hoursBefore(30 * 24) },
-    ]);
-    const before = await readDeliveries(ids);
+    expect(
+      await pollAt("schedule", start, {
+        reader: unconfiguredReader,
+        repository: unusableRepository,
+      })
+    ).toEqual({ outcome: "not-configured" });
+  });
 
-    expect(await pollAt("schedule", start, unconfiguredReader)).toEqual({
-      outcome: "not-configured",
-    });
-
-    expect(await readDeliveries(ids)).toEqual(before);
+  test("fails with the database's error", async () => {
+    await expect(
+      pollAt("schedule", start, { repository: failingClaimRepository })
+    ).rejects.toBe(queryError);
     expect(reads).toEqual([]);
   });
 

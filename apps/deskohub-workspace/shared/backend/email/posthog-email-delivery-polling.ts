@@ -67,15 +67,17 @@ export class PostHogEmailDeliveryPolling extends Context.Service<
   ) =>
     Layer.effect(
       this,
-      Effect.gen(function* () {
-        const { read } = yield* PostHogEmailStatusReader;
-        const repository = yield* PostHogEmailDeliveryRepository;
-        const handlerContext = yield* Effect.context<R>();
-        return {
-          poll: (trigger) =>
+      Effect.Do.pipe(
+        Effect.bind("reader", () => Effect.service(PostHogEmailStatusReader)),
+        Effect.bind("repository", () =>
+          Effect.service(PostHogEmailDeliveryRepository)
+        ),
+        Effect.bind("handlerContext", () => Effect.context<R>()),
+        Effect.map(({ reader, repository, handlerContext }) => ({
+          poll: (trigger: PostHogEmailDeliveryPollTrigger) =>
             pollPostHogEmailDeliveries({
               trigger,
-              read,
+              read: reader.read,
               report: (delivery) =>
                 dispatchDeliveryReport(
                   postHogDeliveryReport({ ...delivery, deploymentEnvironment }),
@@ -84,8 +86,8 @@ export class PostHogEmailDeliveryPolling extends Context.Service<
             }).pipe(
               Effect.provideService(PostHogEmailDeliveryRepository, repository)
             ),
-        };
-      })
+        }))
+      )
     );
 
   /** Reads the deployment environment when built, like the Resend webhook. */
@@ -100,6 +102,7 @@ export class PostHogEmailDeliveryPolling extends Context.Service<
         DeliveryReportHandlersLive,
         PostHogEmailStatusReader.Live
       )
-    )
+    ),
+    Layer.orDie
   );
 }

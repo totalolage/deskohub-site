@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { EmailDeliveryId } from "@deskohub/email";
-import { Effect, Match, Option, Ref } from "effect";
+import { Data, Effect, Match, Option, Ref } from "effect";
 import { currentInstant } from "@/shared/utils/temporal";
 import type {
   DeliveryReportError,
@@ -13,9 +13,9 @@ import {
   type PostHogEmailFinalStatus,
 } from "./posthog-delivery-report";
 import {
-  type IPostHogEmailDeliveryRepository,
   type PostHogEmailDeliveryClaim,
   PostHogEmailDeliveryRepository,
+  type PostHogEmailDeliverySettlement,
   type PostHogEmailProgressStatus,
 } from "./posthog-email-deliveries.repository";
 import type {
@@ -34,7 +34,7 @@ type PostHogEmailStatusRead = (
 ) => Effect.Effect<PostHogEmailStatusLookup, PostHogEmailStatusError>;
 
 /** Hands PostHog's final status of one email to its delivery-report handler. */
-export type PostHogFinalStatusReport = (delivery: {
+type PostHogFinalStatusReport = (delivery: {
   readonly messageId: EmailDeliveryId;
   readonly status: PostHogEmailFinalStatus;
   readonly statusAt: Temporal.Instant | null;
@@ -112,10 +112,10 @@ const pollDueDeliveries = ({
     Effect.bind("stop", () =>
       Ref.make(Option.none<PostHogEmailDeliveryPollStop>())
     ),
-    Effect.bind("outcomes", ({ claims, repository, now, stop }) =>
+    Effect.bind("outcomes", ({ claims, now, stop }) =>
       Effect.forEach(
         claims,
-        (claim) => pollDelivery({ claim, repository, now, stop, read, report }),
+        (claim) => pollDelivery({ claim, now, stop, read, report }),
         { concurrency: readConcurrency }
       )
     ),
@@ -149,7 +149,6 @@ const pollDueDeliveries = ({
 /** One claimed delivery within a poll. */
 interface DeliveryPoll {
   readonly claim: PostHogEmailDeliveryClaim;
-  readonly repository: IPostHogEmailDeliveryRepository;
   readonly now: Temporal.Instant;
   /** Set once PostHog refuses further reads in this poll. */
   readonly stop: Ref.Ref<Option.Option<PostHogEmailDeliveryPollStop>>;
@@ -176,103 +175,97 @@ const pollDelivery = (delivery: DeliveryPoll) =>
   );
 
 /** What a poll does with a delivery after reading its status. */
-type DeliveryStep =
-  | {
-      readonly _tag: "Reschedule";
-      readonly status?: PostHogEmailProgressStatus;
-      readonly statusAt?: Temporal.Instant | null;
-    }
-  | {
-      readonly _tag: "Report";
-      readonly status: PostHogEmailFinalStatus;
-      readonly statusAt: Temporal.Instant | null;
-      readonly reason: string | null;
-    }
-  | { readonly _tag: "Expire"; readonly reason: "not-found" | "rejected" }
-  | { readonly _tag: "Stop"; readonly reason: PostHogEmailDeliveryPollStop };
+type DeliveryStep = Data.TaggedEnum<{
+  Reschedule: {
+    readonly status?: PostHogEmailProgressStatus;
+    readonly statusAt?: Temporal.Instant | null;
+  };
+  Report: {
+    readonly status: PostHogEmailFinalStatus;
+    readonly statusAt: Temporal.Instant | null;
+    readonly reason: string | null;
+  };
+  Expire: { readonly reason: "not-found" | "rejected" };
+  Stop: { readonly reason: PostHogEmailDeliveryPollStop };
+}>;
+const DeliveryStep = Data.taggedEnum<DeliveryStep>();
 
 const lookupStep = (
   { claim, now }: DeliveryPoll,
   lookup: PostHogEmailStatusLookup
-): DeliveryStep => {
-  if (lookup._tag === "NotFoundYet") {
-    return Temporal.Instant.compare(
-      claim.sentAt,
-      now.subtract(notFoundLimit)
-    ) <= 0
-      ? { _tag: "Expire", reason: "not-found" }
-      : { _tag: "Reschedule" };
-  }
-  const { status, reason } = lookup.report;
-  const statusAt =
-    lookup.report.statusAt === null
-      ? null
-      : Temporal.Instant.fromEpochMilliseconds(
-          lookup.report.statusAt.getTime()
-        );
-  return isPostHogEmailFinalStatus(status)
-    ? { _tag: "Report", status, statusAt, reason }
-    : { _tag: "Reschedule", status, statusAt };
-};
+): DeliveryStep =>
+  Match.valueTags(lookup, {
+    NotFoundYet: () =>
+      Temporal.Instant.compare(claim.sentAt, now.subtract(notFoundLimit)) <= 0
+        ? DeliveryStep.Expire({ reason: "not-found" })
+        : DeliveryStep.Reschedule({}),
+    Found: ({ report: { status, statusAt: statusDate, reason } }) => {
+      const statusAt =
+        statusDate === null
+          ? null
+          : Temporal.Instant.fromEpochMilliseconds(statusDate.getTime());
+      return isPostHogEmailFinalStatus(status)
+        ? DeliveryStep.Report({ status, statusAt, reason })
+        : DeliveryStep.Reschedule({ status, statusAt });
+    },
+  });
 
 const readErrorStep = (error: PostHogEmailStatusError): DeliveryStep =>
   Match.value(error.reason).pipe(
-    Match.whenOr(
-      "rate-limited",
-      "unauthorized",
-      (reason): DeliveryStep => ({ _tag: "Stop", reason })
+    Match.whenOr("rate-limited", "unauthorized", (reason) =>
+      DeliveryStep.Stop({ reason })
     ),
-    Match.when(
-      "rejected",
-      (): DeliveryStep => ({
-        _tag: "Expire",
-        reason: "rejected",
-      })
-    ),
-    Match.whenOr(
-      "unavailable",
-      "invalid-response",
-      (): DeliveryStep => ({ _tag: "Reschedule" })
+    Match.when("rejected", () => DeliveryStep.Expire({ reason: "rejected" })),
+    Match.whenOr("unavailable", "invalid-response", () =>
+      DeliveryStep.Reschedule({})
     ),
     Match.exhaustive
   );
 
 const applyStep = (delivery: DeliveryPoll, step: DeliveryStep) =>
-  Match.valueTags(step, {
+  DeliveryStep.$match(step, {
     Reschedule: ({ _tag, ...progress }) => reschedule(delivery, progress),
     Report: (final) => reportFinalStatus(delivery, final),
     Expire: ({ reason }) =>
-      delivery.repository
-        .settle({
-          messageId: delivery.claim.messageId,
-          status: "expired",
-          reason,
-          statusAt: null,
-          now: delivery.now,
-        })
-        .pipe(Effect.as<DeliveryPollOutcome>("expired")),
+      settle({
+        messageId: delivery.claim.messageId,
+        status: "expired",
+        reason,
+        statusAt: null,
+        now: delivery.now,
+      }).pipe(Effect.as<DeliveryPollOutcome>("expired")),
     Stop: ({ reason }) => stopPoll(delivery, reason),
   });
 
 /** Stores what the read learned and when to read the delivery again. */
 const reschedule = (
-  { claim, repository, now }: DeliveryPoll,
+  { claim, now }: DeliveryPoll,
   progress: {
     readonly status?: PostHogEmailProgressStatus;
     readonly statusAt?: Temporal.Instant | null;
   }
 ) =>
-  repository
-    .recordPoll({
-      messageId: claim.messageId,
-      ...progress,
-      pollCount: claim.pollCount + 1,
-      nextPollAt: now.add({
-        minutes:
-          backoffMinutes[Math.min(claim.pollCount, backoffMinutes.length - 1)],
-      }),
-    })
-    .pipe(Effect.as<DeliveryPollOutcome>("pending"));
+  Effect.service(PostHogEmailDeliveryRepository).pipe(
+    Effect.flatMap((repository) =>
+      repository.recordPoll({
+        messageId: claim.messageId,
+        ...progress,
+        pollCount: claim.pollCount + 1,
+        nextPollAt: now.add({
+          minutes:
+            backoffMinutes[
+              Math.min(claim.pollCount, backoffMinutes.length - 1)
+            ],
+        }),
+      })
+    ),
+    Effect.as<DeliveryPollOutcome>("pending")
+  );
+
+const settle = (settlement: PostHogEmailDeliverySettlement) =>
+  Effect.service(PostHogEmailDeliveryRepository).pipe(
+    Effect.flatMap((repository) => repository.settle(settlement))
+  );
 
 /**
  * Reports a final status and settles the delivery, or keeps it pending for
@@ -280,7 +273,7 @@ const reschedule = (
  */
 const reportFinalStatus = (
   delivery: DeliveryPoll,
-  final: Extract<DeliveryStep, { readonly _tag: "Report" }>
+  final: Data.TaggedEnum.Value<DeliveryStep, "Report">
 ) => {
   const { claim, now } = delivery;
   return delivery
@@ -294,15 +287,13 @@ const reportFinalStatus = (
     .pipe(
       Effect.matchEffect({
         onSuccess: () =>
-          delivery.repository
-            .settle({
-              messageId: claim.messageId,
-              status: final.status,
-              reason: final.reason,
-              statusAt: final.statusAt,
-              now,
-            })
-            .pipe(Effect.as<DeliveryPollOutcome>("settled")),
+          settle({
+            messageId: claim.messageId,
+            status: final.status,
+            reason: final.reason,
+            statusAt: final.statusAt,
+            now,
+          }).pipe(Effect.as<DeliveryPollOutcome>("settled")),
         onFailure: (error) =>
           Effect.logWarning(
             "PostHog email delivery report failed; polling it again later"
