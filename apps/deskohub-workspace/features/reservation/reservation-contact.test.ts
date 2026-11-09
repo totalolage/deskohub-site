@@ -31,9 +31,12 @@ describe("reservationCustomerSchema", () => {
     expect(acceptsPhoneIn("cs-CZ", "050 123 4567")).toBe(false);
   });
 
-  test.each(locales)("accepts a number with a country calling code in %s", (locale) => {
-    expect(acceptsPhoneIn(locale, "+420 777 123 456")).toBe(true);
-  });
+  test.each(locales)(
+    "accepts a number with a country calling code in %s",
+    (locale) => {
+      expect(acceptsPhoneIn(locale, "+420 777 123 456")).toBe(true);
+    }
+  );
 
   test("reads a Czech national number in cs-CZ and en-US as before", () => {
     expect(acceptsPhoneIn("cs-CZ", "777 123 456")).toBe(true);
