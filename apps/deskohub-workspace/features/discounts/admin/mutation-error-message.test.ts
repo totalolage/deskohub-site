@@ -3,6 +3,7 @@ import {
   DiscountAdminAudienceError,
   DiscountAdminConflictError,
   DiscountAdminNotFoundError,
+  DiscountAdminServiceDatesError,
 } from "./discount-administration.service";
 import { getDiscountAdminMutationErrorMessage } from "./mutation-error-message";
 
@@ -46,6 +47,19 @@ describe("discount mutation error messages", () => {
     ).toBe(
       "Odebráním posledního zákazníka by kód přestal být omezený. Použijte místo toho „Zrušit omezení“."
     );
+  });
+
+  test("gives refused service dates their own message instead of the fallback", () => {
+    const refused = new DiscountAdminServiceDatesError({
+      message: "serviceDateUntil must not be before serviceDateFrom",
+    });
+    for (const locale of ["cs-CZ", "en-US"] as const) {
+      const message = getDiscountAdminMutationErrorMessage(refused, locale);
+      expect(message).not.toBe(
+        getDiscountAdminMutationErrorMessage(new Error("other"), locale)
+      );
+      expect(message).not.toBe(refused.message);
+    }
   });
 
   test("falls back to a generic message for other failures", () => {

@@ -828,6 +828,8 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
     maxUsesPerCustomer: 1,
     validFrom: "2026-08-01",
     validUntil: "2026-08-31",
+    serviceDateFrom: "2026-08-03",
+    serviceDateUntil: "2026-08-28",
   };
   const openCode = {
     id: "code-2",
@@ -838,6 +840,8 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
     maxUsesPerCustomer: null,
     validFrom: null,
     validUntil: null,
+    serviceDateFrom: null,
+    serviceDateUntil: null,
   };
   const voucher = {
     id: "voucher-1",
@@ -939,7 +943,7 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
     ]);
   });
 
-  test("lists codes with their discount label, state, and limits", async () => {
+  test("lists codes with their discount label, state, limits, and service dates", async () => {
     const json = await runInspection(["--json", "codes", "list"], {
       getDiscountDashboard: dashboard,
     });
@@ -950,12 +954,12 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
     expect(json.output).toEqual([JSON.stringify(dashboard.codes)]);
     expect(text.output).toEqual([
       "Discount codes: 2",
-      "code-1\tSUMMER\tSummer\tEnabled\t5 globally\t1 per customer",
-      "code-2\tORPHAN\tdiscount-missing\tDisabled\tUnlimited globally\tUnlimited per customer",
+      "code-1\tSUMMER\tSummer\tEnabled\t5 globally\t1 per customer\tService dates 2026-08-03 to 2026-08-28",
+      "code-2\tORPHAN\tdiscount-missing\tDisabled\tUnlimited globally\tUnlimited per customer\tAny service date",
     ]);
   });
 
-  test("shows a code with its validity, audience, and claims", async () => {
+  test("shows a code with its service dates, validity, audience, and claims", async () => {
     const detail = {
       code: limitedCode,
       discountLabel: "Summer",
@@ -980,7 +984,8 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
     expect(json.calls).toEqual([["getDiscountCode", "code-1"]]);
     expect(json.output).toEqual([JSON.stringify(detail)]);
     expect(text.output).toEqual([
-      "code-1\tSUMMER\tSummer\tEnabled\t5 globally\t1 per customer",
+      "code-1\tSUMMER\tSummer\tEnabled\t5 globally\t1 per customer\tService dates 2026-08-03 to 2026-08-28",
+      "Service dates\t2026-08-03\t2026-08-28",
       "Validity\t2026-08-01\t2026-08-31",
       "Audience\t2 customers",
       "Customer\tcustomer-1\tSynthetic Customer",
@@ -988,7 +993,8 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
       ...claimRows,
     ]);
     expect(open.output).toEqual([
-      "code-2\tORPHAN\tOrphan\tDisabled\tUnlimited globally\tUnlimited per customer",
+      "code-2\tORPHAN\tOrphan\tDisabled\tUnlimited globally\tUnlimited per customer\tAny service date",
+      "Service dates\tAny",
       "Validity\tNo start\tNo end",
       "Audience\tUnrestricted",
       "Claims\t0",

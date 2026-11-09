@@ -479,6 +479,8 @@ const toAdminDiscountCode = (row: AdminDiscountCodeRow): AdminDiscountCode => {
     validUntil: row.promotion.validUntil,
     maxUses: row.maxUses,
     maxUsesPerCustomer: row.maxUsesPerCustomer,
+    serviceDateFrom: row.serviceDateFrom,
+    serviceDateUntil: row.serviceDateUntil,
     audienceSize: row.promotion.customers.length,
     audienceCustomerIds: row.promotion.customers.map(
       ({ dotyposCustomerId }) => dotyposCustomerId

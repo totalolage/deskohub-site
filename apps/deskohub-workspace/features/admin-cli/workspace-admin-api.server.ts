@@ -603,6 +603,7 @@ const mapDiscountMutationFailure = (
     ),
     Match.tag(
       "DiscountAdminConflictError",
+      "DiscountAdminServiceDatesError",
       ({ message }) => new CliMutationRejected({ message })
     ),
     Match.orElse(makeServiceUnavailable)

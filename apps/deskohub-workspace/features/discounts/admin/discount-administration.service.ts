@@ -10,7 +10,7 @@ import type {
 } from "@deskohub/google-calendar";
 import { and, eq, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Match, Option } from "effect";
+import { Context, Data, Effect, Layer, Match, Option, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -44,6 +44,7 @@ import {
   type MoneyUnit,
   sameMoneyUnit,
 } from "@/shared/money/money";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
 import type { DiscountAdjustment } from "../contracts";
 import { insertDiscountCode } from "../discount-code-issuance";
 import { toDotyposDiscountBasisPoints } from "../dotypos-discount-percentage";
@@ -54,6 +55,10 @@ import type {
   VoucherClaimId,
   VoucherId,
 } from "../persistence-contracts";
+import {
+  getServiceDateWindowIssue,
+  type ServiceDateWindow,
+} from "../service-date-eligibility";
 import { isAssignableDotyposDiscountGroup } from "./admin-discount-group";
 import type {
   CreateCustomerDiscountCodeAdminInput,
@@ -102,7 +107,7 @@ export type AdminDiscountCode = {
   readonly remainingUses: number | null;
   readonly createdAt: Temporal.Instant;
   readonly updatedAt: Temporal.Instant;
-};
+} & ServiceDateWindow;
 
 export type AdminVoucher = {
   readonly id: VoucherId;
@@ -304,6 +309,7 @@ export interface IDiscountAdministration {
     | SqlError
     | DiscountAdminNotFoundError
     | DiscountAdminConflictError
+    | DiscountAdminServiceDatesError
   >;
   readonly createCustomerCode: (
     input: CreateCustomerDiscountCodeAdminInput
@@ -314,6 +320,7 @@ export interface IDiscountAdministration {
     | DotyposReadFailure
     | DiscountAdminNotFoundError
     | DiscountAdminConflictError
+    | DiscountAdminServiceDatesError
   >;
   readonly updateCode: (
     input: UpdateDiscountCodeAdminInput
@@ -323,6 +330,7 @@ export interface IDiscountAdministration {
     | SqlError
     | DiscountAdminNotFoundError
     | DiscountAdminConflictError
+    | DiscountAdminServiceDatesError
   >;
   readonly deleteCode: (
     input: DeleteCodeInput
@@ -561,9 +569,23 @@ export class DiscountAdministration extends Context.Service<
             )
       );
 
+      /**
+       * Stores a new code's service dates beside the rows the shared code
+       * writer inserts, in the caller's transaction.
+       */
+      const setCodeServiceDates = (
+        codeId: DiscountCodeId,
+        serviceDates: ServiceDateWindow
+      ) =>
+        db
+          .update(discountCodes)
+          .set(serviceDates)
+          .where(eq(discountCodes.id, codeId));
+
       const createCode = Effect.fn("DiscountAdministration.createCode")(
-        (input: CreateManagedDiscountCodeAdminInput) =>
-          transaction(
+        function* (input: CreateManagedDiscountCodeAdminInput) {
+          const serviceDates = yield* resolveServiceDateChange(input.code);
+          return yield* transaction(
             Effect.gen(function* () {
               const discountId = yield* Match.value(input.discount).pipe(
                 Match.discriminatorsExhaustive("kind")({
@@ -609,14 +631,19 @@ export class DiscountAdministration extends Context.Service<
                 maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
                 audience: [],
               });
+              if (Option.isSome(serviceDates)) {
+                yield* setCodeServiceDates(code.id, serviceDates.value);
+              }
               return code.id;
             })
-          )
+          );
+        }
       );
 
       const createCustomerCode = Effect.fn(
         "DiscountAdministration.createCustomerCode"
       )(function* (input: CreateCustomerDiscountCodeAdminInput) {
+        const serviceDates = yield* resolveServiceDateChange(input.code);
         yield* loadActiveCustomer(input.customerId);
 
         return yield* transaction(
@@ -665,14 +692,18 @@ export class DiscountAdministration extends Context.Service<
               maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
               audience: [input.customerId],
             });
+            if (Option.isSome(serviceDates)) {
+              yield* setCodeServiceDates(code.id, serviceDates.value);
+            }
             return code.id;
           })
         );
       });
 
       const updateCode = Effect.fn("DiscountAdministration.updateCode")(
-        (input: UpdateDiscountCodeAdminInput) =>
-          transaction(
+        function* (input: UpdateDiscountCodeAdminInput) {
+          const serviceDates = yield* resolveServiceDateChange(input);
+          return yield* transaction(
             Effect.gen(function* () {
               const rows = yield* db
                 .select({
@@ -696,6 +727,7 @@ export class DiscountAdministration extends Context.Service<
                   ...(input.maxUsesPerCustomer !== undefined && {
                     maxUsesPerCustomer: input.maxUsesPerCustomer,
                   }),
+                  ...Option.getOrUndefined(serviceDates),
                   updatedAt: Temporal.Now.instant(),
                 })
                 .where(eq(discountCodes.id, input.id));
@@ -707,7 +739,8 @@ export class DiscountAdministration extends Context.Service<
                 })
                 .where(eq(promotionCodes.id, rows[0]!.promotionCodeId));
             })
-          )
+          );
+        }
       );
 
       const deleteCode = Effect.fn("DiscountAdministration.deleteCode")(
@@ -1217,6 +1250,56 @@ export class DiscountAdminAudienceError extends Data.TaggedError(
   readonly promotionKind: "discount-code" | "voucher";
   readonly message: string;
 }> {}
+
+/** A discount code mutation's service dates can't be stored. */
+export class DiscountAdminServiceDatesError extends Data.TaggedError(
+  "DiscountAdminServiceDatesError"
+)<{
+  readonly message: string;
+}> {}
+
+const decodeServiceDate = Schema.decodeUnknownOption(plainDateStringSchema);
+
+const toServiceDate = (value: string | null) =>
+  value === null ? Option.some(null) : decodeServiceDate(value);
+
+/**
+ * The service dates a code mutation sets, or none when it sends neither date:
+ * a new code then has none and an update keeps the stored ones. The two dates
+ * travel together, so a change never combines with a stored date.
+ */
+const resolveServiceDateChange = Effect.fn(
+  "DiscountAdministration.resolveServiceDateChange"
+)(function* ({
+  serviceDateFrom,
+  serviceDateUntil,
+}: {
+  readonly serviceDateFrom?: string | null;
+  readonly serviceDateUntil?: string | null;
+}) {
+  if (serviceDateFrom === undefined && serviceDateUntil === undefined) {
+    return Option.none<ServiceDateWindow>();
+  }
+  if (serviceDateFrom === undefined || serviceDateUntil === undefined) {
+    return yield* new DiscountAdminServiceDatesError({
+      message: "serviceDateFrom and serviceDateUntil must be sent together.",
+    });
+  }
+  const window = Option.all({
+    serviceDateFrom: toServiceDate(serviceDateFrom),
+    serviceDateUntil: toServiceDate(serviceDateUntil),
+  });
+  if (Option.isNone(window)) {
+    return yield* new DiscountAdminServiceDatesError({
+      message: "Service dates must be canonical calendar dates.",
+    });
+  }
+  const issue = getServiceDateWindowIssue(window.value);
+  if (issue !== undefined) {
+    return yield* new DiscountAdminServiceDatesError({ message: issue });
+  }
+  return window;
+});
 
 export type DiscountAdminConflictReason =
   | "promotion-code-taken"
