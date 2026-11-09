@@ -818,11 +818,18 @@ describe.skipIf(!database)("PostHog email delivery polling", () => {
     ).toEqual({ outcome: "not-configured" });
   });
 
-  test("fails with the database's error", async () => {
+  test("fails with the database's error and still logs one summary line", async () => {
     await expect(
       pollAt("schedule", start, { repository: failingClaimRepository })
     ).rejects.toBe(queryError);
     expect(reads).toEqual([]);
+    expect(
+      logs
+        .filter((log) =>
+          [log.message].flat().includes("PostHog email delivery poll")
+        )
+        .map((log) => [log.level, log.annotations])
+    ).toEqual([["Info", { outcome: "failed", trigger: "schedule" }]]);
   });
 
   test("logs one summary line per poll", async () => {

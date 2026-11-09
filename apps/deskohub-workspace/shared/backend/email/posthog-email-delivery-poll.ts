@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { EmailDeliveryId } from "@deskohub/email";
-import { Data, Effect, Match, Option, Ref } from "effect";
+import { Data, Effect, Exit, Match, Option, Ref } from "effect";
 import { currentInstant } from "@/shared/utils/temporal";
 import type {
   DeliveryReportError,
@@ -55,7 +55,7 @@ const notFoundLimit = { hours: 24 } as const;
 /**
  * Reads PostHog's status of the pending deliveries due now, stores their
  * progress and reports their final statuses; without a status reader, does
- * nothing. Logs one summary line.
+ * nothing. Logs one summary line, also for a poll that fails.
  */
 export const pollPostHogEmailDeliveries = Effect.fn(
   "PostHogEmailDeliveryPolling.poll"
@@ -78,13 +78,22 @@ export const pollPostHogEmailDeliveries = Effect.fn(
       onSome: (configuredRead) =>
         pollDueDeliveries({ trigger, read: configuredRead, report }),
     }).pipe(
-      Effect.tap((summary) =>
-        Effect.logInfo("PostHog email delivery poll").pipe(
-          Effect.annotateLogs({ ...summary })
-        )
+      Effect.onExit(
+        Exit.match({
+          onSuccess: (summary) => logPollSummary({ ...summary }),
+          // The cause stays out: a query error carries its parameters.
+          onFailure: () => logPollSummary({ outcome: "failed", trigger }),
+        })
       )
     )
 );
+
+const logPollSummary = (summary: {
+  readonly outcome: PostHogEmailDeliveryPollSummary["outcome"] | "failed";
+}) =>
+  Effect.logInfo("PostHog email delivery poll").pipe(
+    Effect.annotateLogs(summary)
+  );
 
 /** What one poll did with a delivery it claimed. */
 type DeliveryPollOutcome = "unread" | "pending" | "settled" | "expired";
