@@ -38,7 +38,6 @@ import { unneededReadAtom } from "./booking-family-atoms";
 import {
   availabilityNoticeMessage,
   bookingQueryMessage,
-  restartMessage,
 } from "./booking-family-copy";
 import { useBookingStarted, useRestartReason } from "./booking-family-hooks";
 import {
@@ -53,6 +52,7 @@ import { BookingGate } from "./booking-gate";
 import { BookingOfferingsView } from "./booking-offerings-view";
 import { BookingReadFailure } from "./booking-read-view";
 import { coworkBookingModel } from "./cowork-booking-model";
+import { RestartNotice } from "./restart-notice";
 
 /** The customer's cowork draft; none until they change the default. */
 const coworkDraftAtom = Atom.make(Option.none<CoworkDraft>());
@@ -177,12 +177,7 @@ function CoworkSelection({
 
   return (
     <>
-      <Notice
-        tone="info"
-        message={Option.getOrUndefined(
-          Option.map(restart, (reason) => restartMessage(reason, locale))
-        )}
-      />
+      <RestartNotice reason={restart} />
       <SectionHeader title={m.booking_cowork_tier_heading({}, { locale })} />
       <ChoiceList
         label={m.booking_cowork_tier_heading({}, { locale })}
