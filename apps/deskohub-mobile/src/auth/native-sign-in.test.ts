@@ -435,6 +435,9 @@ describe("native email sign-in through the auth session", () => {
     const signInUrl = new URL(app.opened[0] ?? "");
     expect(signInUrl.origin + signInUrl.pathname).toBe(`${origin}/app/sign-in`);
     expect(signInUrl.searchParams.has("prompt")).toBe(false);
+    // The page, its email and a new account follow the app's language, not
+    // the browser's.
+    expect(signInUrl.searchParams.getAll("locale")).toEqual(["cs-CZ"]);
   });
 
   test("refuses a handoff with the wrong state without calling the server", async () => {
