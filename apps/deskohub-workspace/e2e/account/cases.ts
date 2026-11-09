@@ -6,11 +6,11 @@ import { parsePhoneNumber } from "@deskohub/phone-number";
 import { Effect, Option } from "effect";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
+  getAccountDataExportPath,
   getAccountSectionPath,
   getAccountSignInPath,
 } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
-import { getLocalizedPagePath } from "@/features/i18n/routing";
 import { getReservationStartPath } from "@/features/reservation/routes";
 import { maskEmailAddress } from "@/shared/utils";
 import { normalizeBrowserText } from "../browser";
@@ -1281,10 +1281,7 @@ export const makeWorkspaceE2EAccountCases = ({
     makeCase(
       "account-data-export",
       Effect.fn("account-data-export")(function* ({ runStep }) {
-        const exportPath = getLocalizedPagePath(
-          config.locale,
-          "/[locale]/account/data-export"
-        );
+        const exportPath = getAccountDataExportPath(config.locale);
         yield* runStep(
           step(
             "open-legal-section",
