@@ -6,11 +6,6 @@ import { type DatabaseClient, makeDatabaseClient } from "@/db/database-client";
 interface RecordedStatement {
   readonly sql: string;
   readonly params: readonly unknown[];
-  /**
-   * True when the stub pool rejected this statement, so tests can assert a
-   * failing query was actually reached.
-   */
-  readonly failed?: boolean;
 }
 
 export interface RecordingWorkspaceDatabase {
@@ -20,8 +15,6 @@ export interface RecordingWorkspaceDatabase {
   /** Queues one canned result per upcoming statement; the last entry repeats. */
   readonly setRows: (rows: (readonly unknown[])[]) => void;
   readonly failNextQueriesWith: (cause: unknown, count: number) => void;
-  /** Fails every statement whose compiled SQL matches the pattern. */
-  readonly failStatementsMatching: (pattern: RegExp, cause: unknown) => void;
 }
 
 type QueryCallback = (error: Error | null, result: QueryResult) => void;
@@ -45,9 +38,6 @@ export const makeRecordingWorkspaceDatabase =
     const statements: RecordedStatement[] = [];
     let rowsQueue: (readonly unknown[])[] = [];
     let failures: { readonly cause: unknown; remaining: number } | undefined;
-    let statementFailures:
-      | { readonly pattern: RegExp; readonly cause: unknown }
-      | undefined;
 
     const nextRows = (): readonly unknown[] =>
       rowsQueue.length > 1 ? (rowsQueue.shift() ?? []) : (rowsQueue[0] ?? []);
@@ -60,12 +50,7 @@ export const makeRecordingWorkspaceDatabase =
     ): QueryResult => {
       if (failures && failures.remaining > 0) {
         failures.remaining -= 1;
-        statements.push({ sql: text, params: values, failed: true });
         throw failures.cause;
-      }
-      if (statementFailures?.pattern.test(text)) {
-        statements.push({ sql: text, params: values, failed: true });
-        throw statementFailures.cause;
       }
       const rows = transactionControlPattern.test(text) ? [] : nextRows();
       statements.push({ sql: text, params: values });
@@ -151,9 +136,6 @@ export const makeRecordingWorkspaceDatabase =
       },
       failNextQueriesWith: (cause, count) => {
         failures = { cause, remaining: count };
-      },
-      failStatementsMatching: (pattern, cause) => {
-        statementFailures = { pattern, cause };
       },
     };
   };
