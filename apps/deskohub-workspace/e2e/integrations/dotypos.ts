@@ -24,6 +24,7 @@ import {
   workspaceMeetingRoomReservationTableTag,
   workspaceOfficeReservationTableTag,
 } from "@/features/checkout/backend/reservation/workspace-table-selection";
+import { baseLocale, defaultPhoneRegion } from "@/features/i18n";
 import { getOfficeReservationSeatCapacity } from "@/features/office/backend/office-reservation-capacity";
 import type { DatasourceConfig } from "../config";
 import {
@@ -489,7 +490,9 @@ export const prepareDotyposCustomerDiscount = (
       {
         ...customerName,
         email: data.email,
-        phone: Option.getOrUndefined(parsePhoneNumber(data.phone)),
+        phone: Option.getOrUndefined(
+          parsePhoneNumber(data.phone, defaultPhoneRegion(baseLocale))
+        ),
       },
       { lookupFields: ["email"] }
     );

@@ -3,6 +3,7 @@ import { Match, Option } from "effect";
 import type { CustomerProfileSave } from "@/features/account/contracts";
 import type { InvoiceBuyerAddressInput } from "@/features/accounting/billing-identity";
 import { splitCustomerName } from "@/features/checkout/backend/reservation";
+import { baseLocale, defaultPhoneRegion } from "@/features/i18n";
 import type { ReservationBillingSelection } from "./reservation-billing";
 
 const toProfileAddress = (address: InvoiceBuyerAddressInput) => ({
@@ -43,7 +44,9 @@ export const getReservationCustomerProfile = (reservation: {
 
   return {
     ...splitCustomerName(reservation.name),
-    phone: Option.getOrUndefined(parsePhoneNumber(reservation.phone)),
+    phone: Option.getOrUndefined(
+      parsePhoneNumber(reservation.phone, defaultPhoneRegion(baseLocale))
+    ),
     ...(billing && { billing }),
   };
 };

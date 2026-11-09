@@ -65,7 +65,12 @@ import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-o
 import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
-import { type Locale, m } from "@/features/i18n";
+import {
+  baseLocale,
+  defaultPhoneRegion,
+  type Locale,
+  m,
+} from "@/features/i18n";
 import { mirrorDeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import type { MarketingConsentGrantSource } from "@/features/legal/marketing-consent-grant-source";
@@ -1399,7 +1404,9 @@ const resolveBookedCustomerId = Effect.fnUntraced(function* (
         {
           ...splitCustomerName(reservation.name),
           email: reservation.email,
-          phone: Option.getOrUndefined(parsePhoneNumber(reservation.phone)),
+          phone: Option.getOrUndefined(
+            parsePhoneNumber(reservation.phone, defaultPhoneRegion(baseLocale))
+          ),
         },
         { lookupFields: ["email"] }
       )

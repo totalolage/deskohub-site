@@ -36,7 +36,7 @@ import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-d
 import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/checkout-details-meeting-room";
 import { getOfficeCheckoutDetails } from "@/features/checkout/schemas/checkout-details-office";
 import type { DiscountCommitment } from "@/features/discounts";
-import type { Locale } from "@/features/i18n";
+import { baseLocale, defaultPhoneRegion, type Locale } from "@/features/i18n";
 import { isEarlyPerformanceRequestRequired } from "@/features/legal/early-performance";
 import { getPaymentSubmitLegalEvidence } from "@/features/legal/payment-submit-evidence";
 import {
@@ -1259,7 +1259,10 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                             id: dotyposCustomerId,
                             name: data.name,
                             email: data.email,
-                            phone: parsePhoneNumber(data.phone),
+                            phone: parsePhoneNumber(
+                              data.phone,
+                              defaultPhoneRegion(baseLocale)
+                            ),
                           }),
                           accountingSnapshot,
                           reservation: state.reservation,

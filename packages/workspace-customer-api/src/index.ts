@@ -100,6 +100,7 @@ export {
   CustomerProfileSave,
   customerInputParseOptions,
   customerProfileBusinessBillingFields,
+  customerProfileSchemas,
   ProfileCompletionReferralOutcome,
 } from "./customer-profile";
 export {
