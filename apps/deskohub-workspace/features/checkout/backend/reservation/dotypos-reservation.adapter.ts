@@ -205,7 +205,7 @@ export const formatWorkspaceReservationNote = (
     `Cena: ${formatMoney(checkoutDetails.payment.expectedPrice, staffLocale)}`,
     ...checkoutDetails.payment.discounts.map(
       ({ amount, discount }) =>
-        `Sleva: ${discount.label} (${formatMoney(
+        `Sleva: ${discount.staffLabel ?? discount.label} (${formatMoney(
           moneyWithValue(-amount.value, amount),
           staffLocale
         )})`

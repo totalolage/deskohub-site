@@ -2513,6 +2513,48 @@ describe("CheckoutService", () => {
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
+  test("pays an in-flight checkout signed before staff labels without pricing_changed, recording the affirmed staff label", async () => {
+    const orderId = "reservation-before-staff-label";
+    const acceptedQuote = buildCoworkReservationQuote(reservationData, {
+      discountQuote: discountedQuote,
+    });
+    const affirm = mock(() =>
+      Effect.succeed({
+        quote: buildCoworkReservationQuote(reservationData, {
+          discountQuote: {
+            ...discountedQuote,
+            discounts: [
+              {
+                ...application,
+                discount: {
+                  ...application.discount,
+                  staffLabel: "Letní sleva",
+                },
+              },
+            ],
+          },
+        }),
+        commitment: emptyCommitment,
+      })
+    );
+    const harness = await createCheckoutHarness({
+      orderId,
+      acceptedQuote,
+      affirm,
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(acceptedQuote.payment.discounts[0]?.discount).not.toHaveProperty(
+      "staffLabel"
+    );
+    expect(result.status).toBe("redirect");
+    expect(
+      harness.createPendingNexiAttempt.mock.calls[0]?.[0].accountingSnapshot
+        .quote.payment.discounts[0]?.discount
+    ).toEqual({ ...application.discount, staffLabel: "Letní sleva" });
+  });
+
   test("treats a translated-label edit as a quote change while retaining the accepted snapshot", async () => {
     const editedApplication = {
       ...application,
