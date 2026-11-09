@@ -38,6 +38,19 @@ export type MarketingConsentRecord = {
   readonly locale: Locale;
 } & MarketingConsentChoice;
 
+/**
+ * A customer's stored marketing consent: the current grant, the hash of the
+ * marketing document it was given for, and its withdrawal. `grantSource` is
+ * null for grants recorded before the source was stored.
+ */
+export interface CustomerMarketingConsent {
+  readonly grantedAt: Temporal.Instant;
+  readonly withdrawnAt: Temporal.Instant | null;
+  readonly locale: Locale;
+  readonly documentHash: string;
+  readonly grantSource: MarketingConsentGrantSource | null;
+}
+
 export interface IMarketingConsentLedger {
   /**
    * Records the choice against the current marketing-communications document
@@ -50,6 +63,16 @@ export interface IMarketingConsentLedger {
   readonly status: (
     customerId: DotyposCustomerId
   ) => Effect.Effect<MarketingConsentStatus, MarketingConsentUnavailable>;
+  /**
+   * The customer's stored consent, or null when the customer never gave one.
+   * Reads only that customer's row.
+   */
+  readonly find: (
+    customerId: DotyposCustomerId
+  ) => Effect.Effect<
+    CustomerMarketingConsent | null,
+    MarketingConsentUnavailable
+  >;
   /**
    * Withdraws an active consent and reports whether it did. A withdrawn or
    * missing consent stays as it is, so repeating the request changes nothing.
@@ -194,6 +217,20 @@ export class MarketingConsentLedger extends Context.Service<
             .where(eq(customerMarketingConsents.dotyposCustomerId, customerId))
             .limit(1);
           return consent?.state ?? "absent";
+        }, Effect.mapError(unavailable)),
+        find: Effect.fn("MarketingConsentLedger.find")(function* (customerId) {
+          const [consent]: readonly CustomerMarketingConsent[] = yield* db
+            .select({
+              grantedAt: customerMarketingConsents.grantedAt,
+              withdrawnAt: customerMarketingConsents.withdrawnAt,
+              locale: customerMarketingConsents.locale,
+              documentHash: customerMarketingConsents.documentHash,
+              grantSource: customerMarketingConsents.grantSource,
+            })
+            .from(customerMarketingConsents)
+            .where(eq(customerMarketingConsents.dotyposCustomerId, customerId))
+            .limit(1);
+          return consent ?? null;
         }, Effect.mapError(unavailable)),
         withdrawActive: Effect.fn("MarketingConsentLedger.withdrawActive")(
           function* (customerId) {

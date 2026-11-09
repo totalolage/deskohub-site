@@ -1,8 +1,8 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { and, desc, eq, isNull, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, type SQL } from "drizzle-orm";
 import { Data, Effect, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { invoices } from "@/db/schema";
+import { accountingDocumentSnapshots, invoices } from "@/db/schema";
 import {
   decodeInvoiceDocument,
   type InvoiceDocument,
@@ -15,9 +15,17 @@ import {
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
+import {
+  readLimitSentinel,
+  requireWithinReadLimit,
+} from "@/shared/backend/read-limit";
 import { AccountingSnapshotKeyService } from "./accounting-snapshot-key.service";
 import { decryptAccountingSnapshot } from "./accounting-snapshot-sql";
-import type { Invoice, ReservationInvoice } from "./invoice.repository";
+import type {
+  Invoice,
+  InvoiceMetadata,
+  ReservationInvoice,
+} from "./invoice.repository";
 
 export class InvoiceStorageError extends Data.TaggedError(
   "InvoiceStorageError"
@@ -233,6 +241,40 @@ export const makeInvoiceReads = Effect.gen(function* () {
   );
 
   /**
+   * The customer's invoice metadata, oldest issue first. Selects no document
+   * or key column, so nothing is decrypted.
+   */
+  const listMetadataForCustomer = Effect.fn(
+    "InvoiceRepository.listMetadataForCustomer"
+  )(function* (input: {
+    readonly dotyposCustomerId: DotyposCustomerId;
+    readonly limit: number;
+  }) {
+    const rows: readonly InvoiceMetadata[] = yield* db
+      .select({
+        invoiceNumber: invoices.invoiceNumber,
+        issuedAt: invoices.issuedAt,
+        numberingYear: invoices.numberingYear,
+        numberingSequence: invoices.numberingSequence,
+        workspaceReservationId: invoices.workspaceReservationId,
+        paymentAttemptId: invoices.paymentAttemptId,
+        documentSnapshotRecordedAt: accountingDocumentSnapshots.createdAt,
+      })
+      .from(invoices)
+      .leftJoin(
+        accountingDocumentSnapshots,
+        eq(
+          accountingDocumentSnapshots.paymentAttemptId,
+          invoices.paymentAttemptId
+        )
+      )
+      .where(eq(invoices.dotyposCustomerId, input.dotyposCustomerId))
+      .orderBy(asc(invoices.issuedAt), asc(invoices.id))
+      .limit(readLimitSentinel(input.limit));
+    return yield* requireWithinReadLimit(rows, input.limit);
+  });
+
+  /**
    * One of the customer's invoices. Another customer's invoice, an unknown id,
    * and text that is no invoice id all read as `null`; the last one without a
    * query.
@@ -253,6 +295,7 @@ export const makeInvoiceReads = Effect.gen(function* () {
     list,
     listForCustomer,
     listManualInvoiceProvenance,
+    listMetadataForCustomer,
   };
 });
 

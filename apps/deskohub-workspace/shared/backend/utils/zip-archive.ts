@@ -11,12 +11,12 @@ export const zipArchiveMaxEntries = 32;
  * The hard ceiling on the uncompressed total payload size in bytes. When the
  * caller exceeds it, assembly fails instead of silently truncating content.
  */
-export const zipArchiveMaxTotalBytes = 8 * 1024 * 1024;
+const zipArchiveMaxTotalBytes = 8 * 1024 * 1024;
 
 /**
  * The hard ceiling on one entry's uncompressed content size in bytes.
  */
-export const zipArchiveMaxEntryBytes = 4 * 1024 * 1024;
+const zipArchiveMaxEntryBytes = 4 * 1024 * 1024;
 
 /**
  * One UTF-8 text file inside the assembled archive. The path is the exact

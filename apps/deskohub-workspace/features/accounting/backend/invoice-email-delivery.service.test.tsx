@@ -539,6 +539,8 @@ const makeHarness = (options: {
     markAccepted,
     markFailed,
     status: () => Effect.die("status is not part of delivery"),
+    listForCustomer: () =>
+      Effect.die("customer delivery listing is not part of delivery"),
   };
   const selectedInvoice =
     options.invoice === undefined ? invoice : options.invoice;

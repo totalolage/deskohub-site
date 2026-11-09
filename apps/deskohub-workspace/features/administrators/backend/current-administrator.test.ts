@@ -7,6 +7,7 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "@/features/account/backend/customer-authentication.service";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import {
   CustomerAccountAccessError,
   customerAccountIdSchema,
@@ -24,6 +25,7 @@ const session: CustomerAccountSession = {
   accountId,
   email,
   deletionRequested: false,
+  ...testSessionProfile,
 };
 
 const readAccess = ({
