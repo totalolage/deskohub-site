@@ -384,7 +384,7 @@ describe("censorLogValue", () => {
     ]);
   });
 
-  test("projects Drizzle query errors with a censored cause", () => {
+  test("projects Drizzle query errors to their tag, parameter count, and censored cause", () => {
     const error = new EffectDrizzleQueryError({
       query:
         "select * from customers where id = $1 and email = /* deskohub:sensitive */ $2",
@@ -395,18 +395,18 @@ describe("censorLogValue", () => {
     const censored = censorLogValue({ cause: error });
     const serialized = JSON.stringify(censored);
 
-    expect(censored).toMatchObject({
+    expect(censored).toEqual({
       cause: {
         _tag: "EffectDrizzleQueryError",
-        query:
-          "select * from customers where id = $1 and email = /* deskohub:sensitive */ $2",
-        params: ["visible", CENSORED_LOG_VALUE],
-        cause: {
+        parameterCount: 2,
+        cause: expect.objectContaining({
           errorType: "Error",
           message: CENSORED_LOG_VALUE,
-        },
+        }),
       },
     });
+    expect(serialized).not.toContain("from customers");
+    expect(serialized).not.toContain("visible");
     expect(serialized).not.toContain(privateEmail);
     expect(serialized).not.toContain("Failed query");
   });
@@ -958,8 +958,10 @@ describe("censorLoggerOptions", () => {
 
     const serialized = JSON.stringify(censorLoggerOptions(options).cause);
 
-    expect(serialized).toContain("safe-customer-id");
+    expect(serialized).toContain("EffectDrizzleQueryError");
     expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain("from customers");
+    expect(serialized).not.toContain("safe-customer-id");
     expect(serialized).not.toContain(privateValue);
     expect(serialized).not.toContain("driver echoed");
     expect(serialized).not.toContain("Failed query");
@@ -989,9 +991,11 @@ describe("censorLoggerOptions", () => {
 
     const serialized = JSON.stringify(censorLoggerOptions(options).cause);
 
-    expect(serialized).toContain("safe-attempt-id");
-    expect(serialized).toContain("aes256");
+    expect(serialized).toContain("EffectDrizzleQueryError");
     expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain("pgp_sym_encrypt");
+    expect(serialized).not.toContain("safe-attempt-id");
+    expect(serialized).not.toContain("aes256");
     expect(serialized).not.toContain(privateValue);
     expect(serialized).not.toContain("accounting storage failed");
     expect(serialized).not.toContain("driver echoed");
@@ -1121,8 +1125,10 @@ describe("createCensoredOtelLogger", () => {
     await provider.forceFlush();
 
     const serialized = JSON.stringify(exporter.getFinishedLogRecords()[0]);
-    expect(serialized).toContain("safe-customer-id");
+    expect(serialized).toContain("EffectDrizzleQueryError");
     expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain("from customers");
+    expect(serialized).not.toContain("safe-customer-id");
     expect(serialized).not.toContain(privateEmail);
     expect(serialized).not.toContain("Failed query");
     await provider.shutdown();
@@ -1449,8 +1455,7 @@ describe("censorLogValue structure", () => {
     expect(censored[1]).toBe(censored[0]);
     expect(censored[0]).toMatchObject({
       _tag: "EffectDrizzleQueryError",
-      query: "select $1",
-      params: ["visible"],
+      parameterCount: 1,
     });
   });
 });

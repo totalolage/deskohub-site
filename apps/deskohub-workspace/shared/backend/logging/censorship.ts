@@ -468,17 +468,19 @@ function* censorSearchParams(
   return result;
 }
 
+// A failed query keeps no SQL text or parameter values at any log level: the
+// Debug "Database query" row logged before the attempt carries them where
+// Debug is on (see `DatabaseQueryLoggerLive`).
 function* censorDrizzleQueryError(
   value: EffectDrizzleQueryError,
   seen: LogValueCensorship
 ): CensorSteps {
   const result: MutableLogAnnotations = {
     _tag: value._tag,
-    query: value.query,
+    parameterCount: value.params.length,
   };
   seen.set(value, result);
 
-  result.params = yield* censorQueryParams(value.query, value.params, seen);
   result.cause = yield* censorErrorCause(value.cause);
   return result;
 }
