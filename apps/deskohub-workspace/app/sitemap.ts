@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { env } from "@/env";
 import { getWorkspaceAlternates, locales } from "@/features/i18n";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
+import { getPublicPageContentDate } from "@/features/public-pages/public-page-definitions";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -18,12 +19,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     runWorkspaceEffect("sitemap.published-pages", { boundary: "route" })
   );
 
-  return pages.flatMap(({ pathname, contentDate }) =>
+  return pages.flatMap((page) =>
     locales.map((locale) => {
-      const { canonical, languages } = getWorkspaceAlternates(locale, pathname);
+      const { canonical, languages } = getWorkspaceAlternates(
+        locale,
+        page.pathname
+      );
       return {
         url: canonical,
-        lastModified: contentDate,
+        lastModified: getPublicPageContentDate(page, locale),
         alternates: { languages },
       };
     })

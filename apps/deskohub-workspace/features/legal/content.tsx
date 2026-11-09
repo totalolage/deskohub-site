@@ -8,6 +8,7 @@ import {
   type LegalDocumentKey,
   type LegalDocumentSummary,
 } from "./legal-document-summaries";
+import { governingLegalLocale } from "./legal-translation-dates";
 import { legalDocuments as czech } from "./locales/cs-CZ/documents";
 import { translation as german } from "./locales/de-DE/documents";
 import { translation as english } from "./locales/en-US/documents";
@@ -20,16 +21,13 @@ export type LegalDocumentContent = LegalDocumentSummary &
     readonly translationNotice?: string;
   };
 
-/** The locale whose legal text governs; every other locale translates it. */
-const governingLocale = "cs-CZ" satisfies Locale;
-
 const translations = {
   "en-US": english,
   "de-DE": german,
   "uk-UA": ukrainian,
   "sk-SK": slovak,
 } satisfies Record<
-  Exclude<Locale, typeof governingLocale>,
+  Exclude<Locale, typeof governingLegalLocale>,
   LegalDocumentTranslation
 >;
 
@@ -38,7 +36,7 @@ export function getLegalDocument(
   documentKey: LegalDocumentKey
 ): LegalDocumentContent {
   const summary = getLegalDocumentSummary(locale, documentKey);
-  if (locale === governingLocale) {
+  if (locale === governingLegalLocale) {
     return { ...summary, ...czech[documentKey] };
   }
 
