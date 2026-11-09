@@ -3,3 +3,5 @@
  * through the expo-font config plugin in app.json, so it is there at launch.
  */
 export const useBrandFontReady = (): boolean => true;
+
+// 1103 scratch: mobile-only change
