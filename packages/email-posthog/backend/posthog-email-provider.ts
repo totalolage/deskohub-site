@@ -88,12 +88,7 @@ export const makePostHogEmailProvider = (
         );
         return yield* prepare(message).pipe(
           Effect.flatMap((email) =>
-            requestSend({
-              config,
-              email,
-              idempotencyKey,
-              maxRetryAfter: postHogEmailMaxRetryAfter,
-            })
+            requestSend({ config, email, idempotencyKey })
           ),
           Effect.tapError(logSendFailure)
         );
@@ -125,10 +120,7 @@ export const makePostHogEmailProvider = (
             const idempotencyKey = yield* messageIdempotencyKey(
               message.idempotencyKey ?? `${options.idempotencyKey}:${index}`
             );
-            const maxRetryAfter = Duration.min(
-              postHogEmailMaxRetryAfter,
-              Duration.millis(remaining)
-            );
+
             // A message PostHog cannot carry says nothing about PostHog, so
             // only a failed request stops the batch.
             const sent = prepare(message).pipe(
@@ -137,7 +129,7 @@ export const makePostHogEmailProvider = (
                   config,
                   email,
                   idempotencyKey,
-                  maxRetryAfter,
+                  deadline,
                 }).pipe(
                   Effect.timeoutOrElse({
                     duration: Duration.millis(remaining),
@@ -302,11 +294,16 @@ class PostHogSendAttemptFailure extends Data.TaggedError(
   readonly status?: number;
   readonly code: string;
   readonly retryAfter?: Duration.Duration;
+  /** The wait PostHog asks for would end past the batch deadline. */
+  readonly retryAfterPastDeadline?: boolean;
 }> {}
 
 /** Throttling, an in-flight key, and outages pass; quota and refusals do not. */
 const isRetryableAttempt = (failure: PostHogSendAttemptFailure) =>
   failure.kind !== "answered" ||
+  (!failure.retryAfterPastDeadline && isRetryableAnswer(failure));
+
+const isRetryableAnswer = (failure: PostHogSendAttemptFailure) =>
   (failure.status === 429 && failure.code !== "quota_limited") ||
   (failure.status === 409 && failure.code === "idempotency_key_in_flight") ||
   (failure.status !== undefined && failure.status >= 500);
@@ -317,12 +314,13 @@ const requestSend = ({
   config,
   email,
   idempotencyKey,
-  maxRetryAfter,
+  deadline,
 }: {
   readonly config: PostHogEmailProviderConfig;
   readonly email: PostHogEmail;
   readonly idempotencyKey: string;
-  readonly maxRetryAfter: Duration.Duration;
+  /** The batch deadline in epoch milliseconds; a lone send has none. */
+  readonly deadline?: number;
 }) =>
   Effect.gen(function* () {
     const policy = postHogEmailRetryPolicy.withAttemptTimeout(
@@ -346,15 +344,31 @@ const requestSend = ({
             code: "network_error",
           })
       ),
+      // The body is read within the attempt, so its timeout bounds a stalled
+      // body too.
       Effect.flatMap((response) =>
         response.status >= 200 && response.status < 300
-          ? Effect.succeed(response)
+          ? response.text.pipe(
+              Effect.mapError(
+                () =>
+                  new PostHogSendAttemptFailure({
+                    kind: "transport",
+                    code: "network_error",
+                  })
+              )
+            )
           : Effect.gen(function* () {
+              const retryAfter = yield* readRetryAfter(response);
+              const now = yield* Clock.currentTimeMillis;
               return yield* new PostHogSendAttemptFailure({
                 kind: "answered",
                 status: response.status,
                 code: yield* postHogFailureCode(response),
-                retryAfter: yield* readRetryAfter(response),
+                retryAfter,
+                retryAfterPastDeadline:
+                  retryAfter !== undefined &&
+                  deadline !== undefined &&
+                  now + Duration.toMillis(retryAfter) >= deadline,
               });
             })
       ),
@@ -364,18 +378,17 @@ const requestSend = ({
       )
     );
 
-    const response = yield* attempt.pipe(
+    const body = yield* attempt.pipe(
       policy.retryWhileHonoringDelay(isRetryableAttempt, {
         requestedDelay: (failure) => failure.retryAfter,
-        maxRequestedDelay: maxRetryAfter,
+        maxRequestedDelay: postHogEmailMaxRetryAfter,
       }),
       Effect.mapError(toEmailSendError)
     );
 
-    const answer = yield* response.text.pipe(
-      Effect.flatMap(
-        Schema.decodeUnknownEffect(Schema.fromJsonString(SendAnswerSchema))
-      ),
+    const answer = yield* Schema.decodeEffect(
+      Schema.fromJsonString(SendAnswerSchema)
+    )(body).pipe(
       Effect.mapError(() =>
         networkFailure({
           message: "PostHog accepted the email without a readable message id",

@@ -1,5 +1,6 @@
 import { testEmailAddress } from "@deskohub/test-email";
 import {
+  Cause,
   ConfigProvider,
   Duration,
   Effect,
@@ -9,6 +10,7 @@ import {
   Logger,
   Random,
   Redacted,
+  References,
 } from "effect";
 import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -21,7 +23,9 @@ export type FakeAnswer =
       readonly headers?: Record<string, string>;
     }
   | { readonly fails: "network" }
-  | { readonly hangs: true };
+  | { readonly hangs: true }
+  /** Answers 202 at once, then never finishes the body. */
+  | { readonly stallsBody: true };
 
 /** One request the fake PostHog received, at test-clock time `at`. */
 export interface RecordedRequest {
@@ -92,6 +96,12 @@ export const makeFakePostHog = (
           );
         });
       }
+      if ("stallsBody" in next) {
+        settling -= 1;
+        return new Response(new ReadableStream({ start() {} }), {
+          status: 202,
+        });
+      }
       if ("fails" in next) {
         settling -= 1;
         throw new TypeError("fetch failed");
@@ -148,8 +158,15 @@ export const runAgainst = async <A, E>(
   env: Record<string, string> = {}
 ) => {
   const logs: string[] = [];
-  const logger = Logger.make(({ message }) => {
-    logs.push(Array.isArray(message) ? String(message[0]) : String(message));
+  const logger = Logger.make(({ message, cause, fiber }) => {
+    // The whole event, so redaction checks see arguments, annotations, causes.
+    logs.push(
+      JSON.stringify({
+        message,
+        annotations: fiber.getRef(References.CurrentLogAnnotations),
+        cause: Cause.pretty(cause),
+      })
+    );
   });
   const exit = await Effect.runPromise(
     Effect.gen(function* () {

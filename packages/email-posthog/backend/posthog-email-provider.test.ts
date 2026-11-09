@@ -440,6 +440,19 @@ describe("PostHog email failure classification", () => {
     expect(requests.map((request) => request.at)).toEqual([0, 31_000]);
   });
 
+  test("an accepted answer whose body stalls is bounded by the attempt timeout", async () => {
+    const { exit, requests } = await sendOnce(message, () => ({
+      stallsBody: true,
+    }));
+
+    expect(requests.map((request) => request.at)).toEqual([0, 6000, 13_000]);
+    expect(failureOf(exit)).toMatchObject({
+      _tag: "NetworkError",
+      failureKind: "provider",
+      code: "timeout",
+    });
+  });
+
   test("recovers when a retry is accepted", async () => {
     const { exit, requests } = await sendOnce(message, (index) =>
       index < 2 ? refused(503, "delivery_unavailable") : accepted("id-3")
@@ -656,6 +669,22 @@ describe("PostHog email batches", () => {
     expect(results[0]).toMatchObject({
       status: "failed",
       error: { failureKind: "provider", code: "throttled" },
+    });
+  });
+
+  test("stops retrying when a later Retry-After would end past the batch deadline", async () => {
+    const { results, fake } = await sendBatch([batchMessage(0)], () =>
+      refused(429, "throttled", { "Retry-After": "10" })
+    );
+
+    expect(fake.requests.map((request) => request.at)).toEqual([0, 10_000]);
+    expect(results[0]).toMatchObject({
+      status: "failed",
+      error: {
+        _tag: "EmailServiceError",
+        failureKind: "provider",
+        code: "throttled",
+      },
     });
   });
 
