@@ -150,13 +150,15 @@ export const prefetchWrapperDistribution = async (
   }
 };
 
-// Gradle retries transient failures and 5xx answers of dependency downloads
-// three times from 1 s by default, and gives up on a read after 30 s.
+// Gradle makes three attempts (max.tentatives) at a dependency download that
+// fails with a transient error or a 5xx answer, backing off from 1 s, and
+// gives up on a read after 30 s. These make six attempts from 2 s and wait
+// longer. Gradle 9 reads exactly these names; an unknown one is ignored.
 export const gradleNetworkProperties = {
   "systemProp.org.gradle.internal.http.connectionTimeout": "60000",
   "systemProp.org.gradle.internal.http.socketTimeout": "120000",
   "systemProp.org.gradle.internal.repository.initial.backoff": "2000",
-  "systemProp.org.gradle.internal.repository.max.retries": "6",
+  "systemProp.org.gradle.internal.repository.max.tentatives": "6",
 } as const;
 
 // Appends the entries whose keys the gradle.properties text doesn't set yet.

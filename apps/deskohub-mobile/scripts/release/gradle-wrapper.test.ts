@@ -155,18 +155,31 @@ describe("prepareGradle", () => {
   });
 });
 
+describe("gradleNetworkProperties", () => {
+  // The names Gradle 9.4.1 reads (ErrorHandlingModuleComponentRepository,
+  // JavaSystemPropertiesHttpTimeoutSettings); Gradle ignores any other.
+  test("sets the system properties Gradle reads for download retries and timeouts", () => {
+    expect(Object.keys(gradleNetworkProperties).toSorted()).toEqual([
+      "systemProp.org.gradle.internal.http.connectionTimeout",
+      "systemProp.org.gradle.internal.http.socketTimeout",
+      "systemProp.org.gradle.internal.repository.initial.backoff",
+      "systemProp.org.gradle.internal.repository.max.tentatives",
+    ]);
+  });
+});
+
 describe("withGradleProperties", () => {
   test("appends only the keys the file doesn't set", () => {
     expect(
       withGradleProperties(
-        "# settings\norg.gradle.jvmargs=-Xmx3g\nsystemProp.org.gradle.internal.repository.max.retries = 2",
+        "# settings\norg.gradle.jvmargs=-Xmx3g\nsystemProp.org.gradle.internal.repository.max.tentatives = 2",
         {
-          "systemProp.org.gradle.internal.repository.max.retries": "6",
+          "systemProp.org.gradle.internal.repository.max.tentatives": "6",
           "systemProp.org.gradle.internal.http.socketTimeout": "120000",
         }
       )
     ).toBe(
-      "# settings\norg.gradle.jvmargs=-Xmx3g\nsystemProp.org.gradle.internal.repository.max.retries = 2\nsystemProp.org.gradle.internal.http.socketTimeout=120000\n"
+      "# settings\norg.gradle.jvmargs=-Xmx3g\nsystemProp.org.gradle.internal.repository.max.tentatives = 2\nsystemProp.org.gradle.internal.http.socketTimeout=120000\n"
     );
   });
 
