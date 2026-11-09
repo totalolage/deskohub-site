@@ -179,37 +179,27 @@ const findClippedDateText = async (fields: readonly Locator[]) => {
   return clipped;
 };
 
-// At 390 px each date field has 80 px for text beside the calendar button,
-// and dates and the format placeholders need up to 122 px. That awaits a
-// layout decision; the 390 px cases assert the clipping so they fail once the
-// text fits, and should then join the others.
-for (const { dialog, locale, width } of scenarios) {
-  const knownClipping = width === 390;
-  test.skipIf(!chromiumAvailable)(
-    knownClipping
-      ? `still clips date text in the ${dialog} dialog at ${width} px (${locale})`
-      : `shows each date field's placeholder and typed date whole in the ${dialog} dialog at ${width} px (${locale})`,
-    async () => {
-      if (!browser || !harness) throw new Error("The browser is not ready.");
-      const page = await browser.newPage({
-        locale,
-        viewport: { height: 900, width },
-      });
-      try {
-        await openDiscountDialog(page, harness, { dialog, locale });
-        const empty = discountDateFields(page, locale);
-        const dateFields = [empty.validFrom, empty.validUntil];
-        if (dialog === "code") {
-          dateFields.push(empty.serviceDateFrom, empty.serviceDateUntil);
-        }
-        const clipped = await findClippedDateText(dateFields);
-        await fillDateFields(page, dialog, locale);
-        clipped.push(...(await findClippedDateText(dateFields)));
-        if (knownClipping) expect(clipped).not.toEqual([]);
-        else expect(clipped).toEqual([]);
-      } finally {
-        await page.close();
+test.skipIf(!chromiumAvailable).each(scenarios)(
+  "shows each date field's placeholder and typed date whole in the $dialog dialog at $width px ($locale)",
+  async ({ dialog, locale, width }) => {
+    if (!browser || !harness) throw new Error("The browser is not ready.");
+    const page = await browser.newPage({
+      locale,
+      viewport: { height: 900, width },
+    });
+    try {
+      await openDiscountDialog(page, harness, { dialog, locale });
+      const empty = discountDateFields(page, locale);
+      const dateFields = [empty.validFrom, empty.validUntil];
+      if (dialog === "code") {
+        dateFields.push(empty.serviceDateFrom, empty.serviceDateUntil);
       }
+      const clipped = await findClippedDateText(dateFields);
+      await fillDateFields(page, dialog, locale);
+      clipped.push(...(await findClippedDateText(dateFields)));
+      expect(clipped).toEqual([]);
+    } finally {
+      await page.close();
     }
-  );
-}
+  }
+);

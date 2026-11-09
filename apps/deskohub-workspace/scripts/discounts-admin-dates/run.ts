@@ -23,7 +23,7 @@ import {
   enterDate,
   openDiscountDialog,
 } from "@/features/discounts/admin/creation-dialogs.browser-page.test-utils";
-import type { Locale } from "@/features/i18n";
+import { m as customerMessages, type Locale } from "@/features/i18n";
 
 type DateFields = ReturnType<typeof discountDateFields>;
 
@@ -80,6 +80,26 @@ const states: readonly CaptureState[] = [
       await fields.validFrom.press("ArrowDown");
       await page.locator('[role="dialog"] [role="grid"]').last().waitFor();
       return fields.validFrom;
+    },
+  },
+  {
+    description:
+      "Valid until calendar opened from its button, which a narrow cell puts on its own row",
+    dialog: "code",
+    locales: ["en-US", "cs-CZ"],
+    name: "code-valid-until-calendar-button",
+    prepare: async (page, fields, locale) => {
+      await enterDate(fields.validUntil, "2027-01-31");
+      await discountDialog(page)
+        .getByRole("button", {
+          name: customerMessages.dateInputCalendarButtonLabel(
+            { field: m.discountsValidUntilLabel({}, { locale }) },
+            { locale }
+          ),
+        })
+        .click();
+      await page.locator('[role="dialog"] [role="grid"]').last().waitFor();
+      return fields.validUntil;
     },
   },
   {

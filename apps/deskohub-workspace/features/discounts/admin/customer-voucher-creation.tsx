@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/shared/components/ui/dialog";
 import { CreateVoucherForm } from "./admin-tables";
+import { discountDialogContentClassName } from "./creation-dialogs";
 import type { AdminCustomerProfile } from "./discount-administration.service";
 
 type VoucherCustomer = Pick<
@@ -62,10 +63,7 @@ export function CustomerVoucherCreationDialog({
       }}
       open
     >
-      <DialogContent
-        className="max-h-[calc(100vh-2rem)] max-w-4xl overflow-y-auto"
-        locale={locale}
-      >
+      <DialogContent className={discountDialogContentClassName} locale={locale}>
         <DialogHeader>
           <DialogTitle>
             {m.discountsCustomerVoucherCreateTitle(

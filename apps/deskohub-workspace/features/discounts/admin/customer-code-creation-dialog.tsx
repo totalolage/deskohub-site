@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/components/ui/dialog";
+import { discountDialogContentClassName } from "./creation-dialogs";
 import { CustomerDiscountCodeCreationForm } from "./customer-code-creation";
 import type { AdminDiscount } from "./discount-administration.service";
 
@@ -33,10 +34,7 @@ export function CustomerDiscountCodeCreationDialog({
       }}
       open
     >
-      <DialogContent
-        className="max-h-[calc(100vh-2rem)] max-w-4xl overflow-y-auto"
-        locale={locale}
-      >
+      <DialogContent className={discountDialogContentClassName} locale={locale}>
         <DialogHeader>
           <DialogTitle>
             {m.discountsCustomerCodeCreateTitle({ customerName }, { locale })}
