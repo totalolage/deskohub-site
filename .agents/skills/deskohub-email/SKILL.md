@@ -49,6 +49,10 @@ services in `service.ts`.
   outcomes, and after one provider-level failure the rest fail
   provider-level unsent (`not_attempted`). A lone `send` has no such
   deadline.
+  A 2xx whose body is unreadable, times out, or lacks a message ID is an
+  unknown outcome (`invalid_response`): no retry, no fallback. It calls the
+  API over Effect's `HttpClient`, not `posthog-node`, whose email client
+  disables itself without a `phc_` project token and takes no abort signal.
 
 ## Streams and chains
 
