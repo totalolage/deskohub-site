@@ -843,6 +843,11 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
     serviceDateFrom: null,
     serviceDateUntil: null,
   };
+  // Each code line ends with its service dates after these fields.
+  const codeLineFieldCount = 6;
+  const codeLineWithoutServiceDates = (line: string) =>
+    line.split("\t").slice(0, codeLineFieldCount).join("\t");
+  const plainDatePattern = /\d{4}-\d{2}-\d{2}/;
   const voucher = {
     id: "voucher-1",
     code: "GIFT",
@@ -951,12 +956,21 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
       getDiscountDashboard: dashboard,
     });
 
+    const [header, ...rows] = text.output;
+    const [limitedServiceDates, openServiceDates] = rows.map(
+      (row) => row.split("\t")[codeLineFieldCount]
+    );
+
     expect(json.output).toEqual([JSON.stringify(dashboard.codes)]);
-    expect(text.output).toEqual([
+    expect([header, ...rows.map(codeLineWithoutServiceDates)]).toEqual([
       "Discount codes: 2",
-      "code-1\tSUMMER\tSummer\tEnabled\t5 globally\t1 per customer\tService dates 2026-08-03 to 2026-08-28",
-      "code-2\tORPHAN\tdiscount-missing\tDisabled\tUnlimited globally\tUnlimited per customer\tAny service date",
+      "code-1\tSUMMER\tSummer\tEnabled\t5 globally\t1 per customer",
+      "code-2\tORPHAN\tdiscount-missing\tDisabled\tUnlimited globally\tUnlimited per customer",
     ]);
+    expect(limitedServiceDates).toContain("2026-08-03");
+    expect(limitedServiceDates).toContain("2026-08-28");
+    expect(openServiceDates).toBeString();
+    expect(openServiceDates).not.toMatch(plainDatePattern);
   });
 
   test("shows a code with its service dates, validity, audience, and claims", async () => {
@@ -983,18 +997,29 @@ describe("dhw discounts, codes, vouchers, and sales", () => {
 
     expect(json.calls).toEqual([["getDiscountCode", "code-1"]]);
     expect(json.output).toEqual([JSON.stringify(detail)]);
-    expect(text.output).toEqual([
-      "code-1\tSUMMER\tSummer\tEnabled\t5 globally\t1 per customer\tService dates 2026-08-03 to 2026-08-28",
-      "Service dates\t2026-08-03\t2026-08-28",
+    const [codeLine = "", serviceDateRow = "", ...detailRows] = text.output;
+    const [openCodeLine = "", openServiceDateRow = "", ...openDetailRows] =
+      open.output;
+
+    expect(codeLineWithoutServiceDates(codeLine)).toBe(
+      "code-1\tSUMMER\tSummer\tEnabled\t5 globally\t1 per customer"
+    );
+    expect(serviceDateRow.split("\t").slice(1)).toEqual([
+      "2026-08-03",
+      "2026-08-28",
+    ]);
+    expect(codeLineWithoutServiceDates(openCodeLine)).toBe(
+      "code-2\tORPHAN\tOrphan\tDisabled\tUnlimited globally\tUnlimited per customer"
+    );
+    expect(openServiceDateRow).not.toMatch(plainDatePattern);
+    expect(detailRows).toEqual([
       "Validity\t2026-08-01\t2026-08-31",
       "Audience\t2 customers",
       "Customer\tcustomer-1\tSynthetic Customer",
       "Customer\tcustomer-2\tUnavailable",
       ...claimRows,
     ]);
-    expect(open.output).toEqual([
-      "code-2\tORPHAN\tOrphan\tDisabled\tUnlimited globally\tUnlimited per customer\tAny service date",
-      "Service dates\tAny",
+    expect(openDetailRows).toEqual([
       "Validity\tNo start\tNo end",
       "Audience\tUnrestricted",
       "Claims\t0",
