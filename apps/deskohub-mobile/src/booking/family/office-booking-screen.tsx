@@ -33,7 +33,6 @@ import { unneededReadAtom } from "./booking-family-atoms";
 import {
   availabilityNoticeMessage,
   bookingQueryMessage,
-  restartMessage,
 } from "./booking-family-copy";
 import { useBookingStarted, useRestartReason } from "./booking-family-hooks";
 import {
@@ -47,6 +46,7 @@ import { BookingGate } from "./booking-gate";
 import { BookingOfferingsView } from "./booking-offerings-view";
 import { BookingReadFailure } from "./booking-read-view";
 import { officeBookingModel, officeOfferingOf } from "./office-booking-model";
+import { RestartNotice } from "./restart-notice";
 
 /** The customer's office draft; none until they change the default. */
 const officeDraftAtom = Atom.make(Option.none<OfficeDraft>());
@@ -148,12 +148,7 @@ function OfficeSelection({ offering }: { readonly offering: OfficeOffering }) {
 
   return (
     <>
-      <Notice
-        tone="info"
-        message={Option.getOrUndefined(
-          Option.map(restart, (reason) => restartMessage(reason, locale))
-        )}
-      />
+      <RestartNotice reason={restart} />
       <Text style={styles.caption}>
         {m.booking_office_price(
           {
