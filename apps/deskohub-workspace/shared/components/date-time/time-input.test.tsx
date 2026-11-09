@@ -15,6 +15,7 @@ const { act, cleanup, fireEvent, render } = await import(
   "@testing-library/react"
 );
 const { TimeInput } = await import("./time-input");
+const { typeTimeAsBrowsers } = await import("./time-input.test-utils");
 
 const timeLabel = "Start time";
 const en = { locale: "en-US" } as const;
@@ -204,6 +205,56 @@ describe("TimeInput", () => {
     expect(editor.getAttribute("aria-invalid")).toBe("false");
     fireEvent.submit(form);
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  // Pressing a submit button moves focus out of the field before the form
+  // submits, so leaving the field must not swap the entry for the old time.
+  for (const [bound, rejected] of [
+    ["before the minimum", "10:00"],
+    ["after the maximum", "18:00"],
+  ] as const) {
+    test(`keeps a time ${bound} on screen after blur, without a value, and blocks submission`, async () => {
+      const onChange = mock((_value: string) => undefined);
+      const { editor, form, onSubmit, submitted } = renderInForm({
+        defaultValue: "12:00",
+        maximum: "17:00",
+        minimum: "11:00",
+        onChange,
+      });
+
+      await typeTimeAsBrowsers(editor, rejected);
+      fireEvent.blur(editor);
+
+      expect(editor.value).toBe(rejected);
+      expect(submitted()).toEqual([""]);
+      expect(onChange).toHaveBeenLastCalledWith("");
+      expect(editor.getAttribute("aria-invalid")).toBe("true");
+
+      fireEvent.submit(form);
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(document.activeElement === editor).toBe(true);
+
+      await typeTimeAsBrowsers(editor, "12:00");
+      expect(editor.getAttribute("aria-invalid")).toBe("false");
+      fireEvent.submit(form);
+      expect(onSubmit.mock.calls[0]?.[0].getAll("time")).toEqual(["12:00"]);
+    });
+  }
+
+  test("keeps an unfinished edit on screen after blur, without a value, and blocks submission", () => {
+    const { editor, form, onSubmit, submitted, typeTime } = renderInForm({
+      defaultValue: "09:00",
+    });
+
+    markUnfinished(editor, true);
+    typeTime("");
+    fireEvent.blur(editor);
+
+    expect(submitted()).toEqual([""]);
+    expect(editor.getAttribute("aria-invalid")).toBe("true");
+    fireEvent.submit(form);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(document.activeElement === editor).toBe(true);
   });
 
   test("blocks submission of a prefilled time that the bounds no longer allow", () => {

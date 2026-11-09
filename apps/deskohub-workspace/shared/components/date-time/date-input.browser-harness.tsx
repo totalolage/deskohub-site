@@ -53,6 +53,39 @@ function SubmissionForm() {
   );
 }
 
+/** A form whose date-time keeps to one evening's hours. */
+function BoundedSubmissionForm() {
+  const [submissions, setSubmissions] = useState<ReadonlyArray<string>>([]);
+
+  return (
+    <form
+      data-bounded-form
+      data-submissions={JSON.stringify(submissions)}
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        setSubmissions((previous) => [
+          ...previous,
+          String(data.get("eveningStart")),
+        ]);
+      }}
+    >
+      <DateTimeInput
+        dateLabel="Evening start"
+        defaultValue="2099-06-10T16:00"
+        locale="en-US"
+        maximum="2099-06-10T20:00"
+        minimum="2099-06-10T16:00"
+        name="eveningStart"
+        stepMinutes={60}
+        timeLabel="Evening start time"
+      />
+      <button type="submit">Book the evening</button>
+    </form>
+  );
+}
+
 /** A date field in a cell too narrow for the calendar button beside it. */
 function NarrowCellPicker() {
   return (
@@ -69,6 +102,7 @@ createRoot(mountPoint).render(
   <>
     <ControlledPicker />
     <SubmissionForm />
+    <BoundedSubmissionForm />
     <NarrowCellPicker />
   </>
 );

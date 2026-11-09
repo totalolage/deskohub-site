@@ -11,6 +11,7 @@ import {
 import { testEmailAddress } from "@deskohub/test-email";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -77,6 +78,9 @@ mockReservationCheckoutStep();
 
 const { MeetingRoomReservationForm } = await import(
   "./meeting-room-reservation-form"
+);
+const { typeTimeAsBrowsers } = await import(
+  "@/shared/components/date-time/time-input.test-utils"
 );
 
 const money = (value: number) => ({
@@ -596,6 +600,63 @@ describe("MeetingRoomReservationForm", () => {
         startsAt: "2099-07-30T14:00:00Z",
         endsAt: "2099-07-30T15:00:00Z",
       });
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
+  test("stays on the space with a typed start time before the earliest start", async () => {
+    const originalNow = Temporal.Now.instant;
+    Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T12:37:00Z");
+    globalThis.fetch = availabilityFetch(availabilityResponse) as typeof fetch;
+
+    try {
+      const view = renderForm({
+        initialReservation: undefined,
+        initialValues: {
+          ...meetingRoomReservationDefaultValues,
+          email: testEmailAddressForAda,
+          name: "Ada Lovelace",
+          phone: "+420777777777",
+          startDateTime: "2099-07-30T16:00",
+        },
+      });
+      const continueButton = view.getByRole("button", { name: "Continue" });
+      const timeField = view.getByLabelText(
+        /^Meeting room start time/
+      ) as HTMLInputElement;
+      const submittedStart = () =>
+        new FormData(continueButton.form as HTMLFormElement).getAll(
+          "startDateTime"
+        );
+      await waitFor(
+        () => expect(continueButton.hasAttribute("disabled")).toBe(false),
+        { timeout: 5000 }
+      );
+
+      timeField.focus();
+      await typeTimeAsBrowsers(timeField, "10:00");
+      // Pressing Continue moves focus out of the time field first.
+      fireEvent.blur(timeField);
+      await act(async () => {
+        fireEvent.click(continueButton);
+        // Continuing waits for the form's own validation.
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      });
+
+      expect(continueButton.id).toBe("reservation-continue");
+      expect(timeField.value).toBe("10:00");
+      expect(timeField.getAttribute("aria-invalid")).toBe("true");
+      expect(document.activeElement === timeField).toBe(true);
+      expect(submittedStart()).toEqual([""]);
+      expect(executeAsync).not.toHaveBeenCalled();
+
+      // A time the room takes moves the form on.
+      await typeTimeAsBrowsers(timeField, "15:00");
+      fireEvent.blur(timeField);
+      fireEvent.click(continueButton);
+      await waitFor(() => expect(continueButton.id).toBe("reservation-submit"));
+      expect(submittedStart()).toEqual(["2099-07-30T15:00"]);
     } finally {
       Temporal.Now.instant = originalNow;
     }

@@ -428,7 +428,7 @@ test.skipIf(!chromiumAvailable)(
       );
       await page.addStyleTag({ content: appStyles });
       await page.addScriptTag({ path: harnessBundlePath });
-      const form = page.locator("form");
+      const form = page.locator("form").first();
       const submissions = async () =>
         JSON.parse((await form.getAttribute("data-submissions")) ?? "[]");
       const startsDate = page.getByRole("combobox", { name: "Starts" });
@@ -462,6 +462,58 @@ test.skipIf(!chromiumAvailable)(
         "2099-06-10T14:00|",
         "2099-06-10T14:00|2099-06-12",
       ]);
+    } finally {
+      await page.close();
+    }
+  }
+);
+
+// Pressing a submit button takes focus from the time field before the form
+// submits, so leaving the field must not swap a time the bounds leave out for
+// the time before it.
+test.skipIf(!chromiumAvailable)(
+  "a submit button never submits the time before a typed time outside the bounds",
+  async () => {
+    if (!browser) throw new Error("The form browser has not launched.");
+    const page = await browser.newPage({ locale: "en-US" });
+    try {
+      await page.setContent(
+        `<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body><div id="date-picker-test-root"></div></body></html>`
+      );
+      await page.addStyleTag({ content: appStyles });
+      await page.addScriptTag({ path: harnessBundlePath });
+      const form = page.locator("form[data-bounded-form]");
+      const submissions = async () =>
+        JSON.parse((await form.getAttribute("data-submissions")) ?? "[]");
+      const time = page.getByLabel("Evening start time");
+      const submittedStart = form.locator('input[name="eveningStart"]');
+      const book = page.getByRole("button", { name: "Book the evening" });
+
+      // Hour, minute, then the day period of the en-US editor.
+      for (const [typed, shown] of [
+        ["0700A", "07:00"],
+        ["0900P", "21:00"],
+      ] as const) {
+        await time.focus();
+        await page.keyboard.type(typed);
+        await book.click();
+
+        expect({ typed, submissions: await submissions() }).toEqual({
+          typed,
+          submissions: [],
+        });
+        expect(await time.inputValue()).toBe(shown);
+        expect(await submittedStart.inputValue()).toBe("");
+        expect(await time.getAttribute("aria-invalid")).toBe("true");
+        expect(
+          await time.evaluate((element) => element === document.activeElement)
+        ).toBe(true);
+      }
+
+      await time.focus();
+      await page.keyboard.type("0600P");
+      await book.click();
+      expect(await submissions()).toEqual(["2099-06-10T18:00"]);
     } finally {
       await page.close();
     }
