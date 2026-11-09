@@ -3,6 +3,7 @@ language js(typescript, jsx)
 
 file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: r"(?s).*\bnull\b.*",
   $body <: contains bubble {
     `$value ? $consequent : null` as $conditional where {
       $value <: JsComputedMemberExpression(),

@@ -18,7 +18,7 @@ function Card({ className, ref, ...props }: CardProps) {
   );
 }
 
-export interface CardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
+interface CardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
   ref?: React.Ref<HTMLDivElement>;
 }
 
@@ -32,8 +32,7 @@ function CardHeader({ className, ref, ...props }: CardHeaderProps) {
   );
 }
 
-export interface CardTitleProps
-  extends React.HTMLAttributes<HTMLHeadingElement> {
+interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
   as?: "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
   ref?: React.Ref<HTMLHeadingElement>;
 }
@@ -53,7 +52,7 @@ function CardTitle({
   );
 }
 
-export interface CardDescriptionProps
+interface CardDescriptionProps
   extends React.HTMLAttributes<HTMLParagraphElement> {
   ref?: React.Ref<HTMLParagraphElement>;
 }
@@ -68,7 +67,7 @@ function CardDescription({ className, ref, ...props }: CardDescriptionProps) {
   );
 }
 
-export interface CardContentProps extends React.HTMLAttributes<HTMLDivElement> {
+interface CardContentProps extends React.HTMLAttributes<HTMLDivElement> {
   ref?: React.Ref<HTMLDivElement>;
 }
 
@@ -76,25 +75,4 @@ function CardContent({ className, ref, ...props }: CardContentProps) {
   return <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />;
 }
 
-export interface CardFooterProps extends React.HTMLAttributes<HTMLDivElement> {
-  ref?: React.Ref<HTMLDivElement>;
-}
-
-function CardFooter({ className, ref, ...props }: CardFooterProps) {
-  return (
-    <div
-      ref={ref}
-      className={cn("flex items-center gap-3 p-6 pt-0", className)}
-      {...props}
-    />
-  );
-}
-
-export {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-};
+export { Card, CardContent, CardDescription, CardHeader, CardTitle };

@@ -1,4 +1,4 @@
 interface:
   display_name: "Deskohub Workspace Domain"
   short_description: "Preserve Workspace domain modeling invariants"
-  default_prompt: "Use $deskohub-workspace-domain to change Workspace reservations, time modeling, or sales calendar discounts."
+  default_prompt: "Use $deskohub-workspace-domain to change Workspace reservation families, time modeling, or Calendar sales."

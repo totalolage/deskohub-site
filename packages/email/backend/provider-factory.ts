@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Config, Effect, Layer, Option } from "effect";
 import { EmailConfigTag, EmailServiceError } from "./capabilities";
 import { ConsoleEmailProviderLive } from "./providers/console-provider";
 import { ResendEmailProviderLive } from "./providers/resend-provider";
@@ -13,18 +13,20 @@ export const ConfiguredEmailProviderLayer = Layer.unwrap(
     }
 
     if (config.provider !== "console") {
-      return yield* Effect.fail(
-        new EmailServiceError(
-          `Unsupported email provider: ${config.provider}`,
-          undefined,
-          config.provider
-        )
+      return yield* new EmailServiceError(
+        `Unsupported email provider: ${config.provider}`,
+        undefined,
+        config.provider
       );
     }
 
+    const stage = yield* Config.all({
+      nodeEnv: Config.option(Config.string("NODE_ENV")),
+      vercelEnv: Config.option(Config.string("VERCEL_ENV")),
+    });
     const consoleProviderAllowed =
-      process.env.NODE_ENV !== "production" ||
-      process.env.VERCEL_ENV === "preview" ||
+      !Option.contains(stage.nodeEnv, "production") ||
+      Option.contains(stage.vercelEnv, "preview") ||
       config.testMode === true;
 
     if (!consoleProviderAllowed) {
@@ -33,12 +35,10 @@ export const ConfiguredEmailProviderLayer = Layer.unwrap(
         return ResendEmailProviderLive;
       }
 
-      return yield* Effect.fail(
-        new EmailServiceError(
-          "Console email provider is disabled in production",
-          undefined,
-          "console"
-        )
+      return yield* new EmailServiceError(
+        "Console email provider is disabled in production",
+        undefined,
+        "console"
       );
     }
 

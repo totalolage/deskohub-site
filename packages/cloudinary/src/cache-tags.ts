@@ -1,5 +1,15 @@
 import type { CloudinaryPublicId } from "./schema";
 
+const maxPrimitiveLength = 100;
+
+/** `String(value)`, which spells `null` and `undefined` out, cut to 100 characters. */
+const stringifyPrimitive = (value: unknown) => {
+  const stringValue = String(value);
+  return stringValue.length > maxPrimitiveLength
+    ? `${stringValue.substring(0, maxPrimitiveLength)}...`
+    : stringValue;
+};
+
 export function createStableHash(value: unknown): string {
   const seen = new WeakSet();
   const maxDepth = 10;
@@ -10,19 +20,8 @@ export function createStableHash(value: unknown): string {
       return "[...]";
     }
 
-    if (nestedValue === null) {
-      return "null";
-    }
-
-    if (nestedValue === undefined) {
-      return "undefined";
-    }
-
-    if (typeof nestedValue !== "object") {
-      const stringValue = String(nestedValue);
-      return stringValue.length > 100
-        ? `${stringValue.substring(0, 100)}...`
-        : stringValue;
+    if (nestedValue === null || typeof nestedValue !== "object") {
+      return stringifyPrimitive(nestedValue);
     }
 
     if (seen.has(nestedValue)) {

@@ -1,592 +1,822 @@
 import "@/shared/testing/workspace-test-env";
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
-import { eq, inArray, sql } from "drizzle-orm";
-import { Effect, Layer, Schema } from "effect";
+import { NexiOrderIdSchema } from "@deskohub/nexi";
+import { testEmailAddress } from "@deskohub/test-email";
+import { asc, eq, sql } from "drizzle-orm";
+import { Data, Effect, Layer, Schema } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   accountingDocumentSnapshots,
+  invoiceNumberCounters,
   invoices,
-  orders,
+  manualInvoiceActors,
   paymentAttempts,
   workspaceReservations,
 } from "@/db/schema";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
-  type AccountingDocumentSnapshot,
-  accountingDocumentSnapshotSchema,
+  accountingSnapshotKeyIdSchema,
+  companyRegistrationIdSchema,
+  makeAccountingDocumentSnapshot,
+  vatRegistrationIdSchema,
 } from "@/features/accounting/accounting-document-snapshot";
-import { makeCoworkInvoiceDocument } from "@/features/accounting/invoice.test-utils";
 import {
-  type IPaymentLifecycleRepository,
-  PaymentLifecycleRepository,
-} from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
-import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+  getInvoiceNumberingYear,
+  type InvoiceBuyer,
+  type InvoiceNumber,
+} from "@/features/accounting/invoice";
+import { manualInvoiceInputSchema } from "@/features/accounting/manual-invoice";
+import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import {
-  type WorkspaceReservationId,
-  workspaceReservationIdSchema,
-} from "@/features/reservation/persistence-contracts";
+  type PaymentAttemptId,
+  paymentAttemptIdSchema,
+} from "@/features/checkout/checkout-identifiers";
 import {
-  connectWorkspacePostgresTestDatabase,
-  type WorkspacePostgresTestDatabase,
+  buildCoworkReservationQuote,
+  type CoworkReservationQuoteOrder,
+} from "@/features/checkout/checkout-quote.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import {
+  createWorkspacePostgresSuiteDatabase,
+  type WorkspacePostgresSuiteDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
-import { AccountingSnapshotKeyService } from "./accounting-snapshot-key.service";
-import { InvoiceRepository } from "./invoice.repository";
+import {
+  type AccountingSnapshotKey,
+  AccountingSnapshotKeyError,
+  AccountingSnapshotKeyService,
+  type IAccountingSnapshotKeyService,
+} from "./accounting-snapshot-key.service";
+import { encryptAccountingSnapshot } from "./accounting-snapshot-sql";
+import {
+  type IInvoiceRepository,
+  InvoiceRepository,
+} from "./invoice.repository";
 
-mock.module("server-only", () => ({}) as never);
+// Listing reads every invoice in the table, so the suite owns its database:
+// invoices other suites commit, under other keys, never reach it.
+const testDatabase =
+  await createWorkspacePostgresSuiteDatabase("invoice_repository");
+afterAll(() => testDatabase?.close());
 
-const postgresDatabase = await connectWorkspacePostgresTestDatabase();
+const fixtureCustomerPrefix = "invoice-repository-customer-";
 
-const personalAddress = {
-  line1: "Synthetic 1",
-  city: "Praha",
-  postalCode: "100 00",
-  country: "CZ",
+const testKey: AccountingSnapshotKey = {
+  id: accountingSnapshotKeyIdSchema.make("K202608"),
+  secret: "synthetic accounting snapshot secret!",
 };
+const coworkOrder = {
+  entryTier: "open-space",
+  coffee: true,
+} satisfies CoworkReservationQuoteOrder;
+const prepared = {
+  kind: "cowork",
+  reservation: {
+    kind: "cowork",
+    ...coworkOrder,
+    date: "2099-01-01",
+    name: "Synthetic Invoice Customer",
+    email: testEmailAddress("invoice-integration"),
+    phone: "+420 700 000 000",
+  },
+  quote: buildCoworkReservationQuote(coworkOrder),
+} as PreparedCustomerQuote;
+const personalInvoiceBuyer = {
+  kind: "person",
+  legalName: "Synthetic Invoice Customer",
+  address: {
+    line1: "Synthetic 1",
+    city: "Praha",
+    postalCode: "100 00",
+    country: "CZ",
+  },
+} satisfies InvoiceBuyer;
 
-const buyer = {
-  kind: "person" as const,
-  legalName: "Ada Lovelace",
-  address: personalAddress,
-};
-
-/** A snapshot whose identity matches the fixture reservation. */
-const makeSource = (identity: {
-  readonly workspaceReservationId: WorkspaceReservationId;
-  readonly dotyposReservationId: string;
-  readonly dotyposCustomerId: string;
-}): AccountingDocumentSnapshot => {
-  const document = makeCoworkInvoiceDocument("en-US");
-  const {
-    fulfilledAt: _fulfilledAt,
-    invoiceNumber: _invoiceNumber,
-    issuedAt: _issuedAt,
-    paidAt: _paidAt,
-    paymentAttemptId: _paymentAttemptId,
-    supplier: invoiceSupplier,
-    ...snapshotIdentity
-  } = document;
-  const { commercialRegister: _commercialRegister, ...supplier } =
-    invoiceSupplier;
-
-  return Schema.decodeUnknownSync(accountingDocumentSnapshotSchema)({
-    ...snapshotIdentity,
-    supplier,
-    ...identity,
-    billing: {
-      purpose: "personal",
-      invoice: "requested",
-      address: personalAddress,
-    },
-    delivery: { email: "synthetic@example.test" },
-  });
-};
-
-describe.skipIf(!postgresDatabase)(
-  "InvoiceRepository.issue vs markPaid replay on Postgres",
-  () => {
-    const postgres = postgresDatabase as WorkspacePostgresTestDatabase;
-    const fixtureReservationIds: WorkspaceReservationId[] = [];
-
-    /** Fixture with a real accounting snapshot row for the paid attempt. */
-    const insertPaidFulfilledReservation = async (
-      input: {
-        readonly fulfillmentState?: "awaiting_delivery" | "fulfilled";
-      } = {}
-    ) => {
-      const id = workspaceReservationIdSchema.make(crypto.randomUUID());
-      const attemptId = crypto.randomUUID();
-      const dotyposCustomerId = DotyposCustomerIdSchema.make(
-        `customer-${crypto.randomUUID()}`
-      );
-      const dotyposReservationId = DotyposReservationIdSchema.make(
-        `dotypos-reservation-${crypto.randomUUID()}`
-      );
-      const fulfillmentState = input.fulfillmentState ?? "fulfilled";
-      const customerEmailDeliveryId =
-        `delivery-${crypto.randomUUID()}` as never;
-      const paidAt = Temporal.Now.instant();
-      await Effect.runPromise(
-        postgres.db.insert(workspaceReservations).values({
-          id,
-          checkoutAttemptKey: checkoutAttemptKeySchema.make(
-            `attempt-${crypto.randomUUID()}`
-          ),
-          dotyposCustomerId,
-          dotyposReservationId,
-          reservationState: "held",
-          paymentState: "paid",
-          paidAt,
-          fulfillmentState,
-          activeCustomerEmailDeliveryId:
-            fulfillmentState === "awaiting_delivery"
-              ? customerEmailDeliveryId
-              : null,
-          fulfilledAt: fulfillmentState === "fulfilled" ? paidAt : null,
-          activePaymentAttemptId: attemptId as never,
-          reservationDetails: {
-            kind: "cowork",
-            entryTier: "basic",
-            coffee: false,
-          },
-          locale: "en-US",
-        })
-      );
-      await Effect.runPromise(
-        postgres.db.insert(paymentAttempts).values({
-          id: attemptId as never,
-          workspaceReservationId: id,
-          provider: "nexi",
-          providerOrderId: `order-${crypto.randomUUID()}` as never,
-          state: "paid",
-          amountValue: 35_000,
-          amountExponent: 2,
-          currency: "CZK",
-        })
-      );
-      fixtureReservationIds.push(id);
-      const source = makeSource({
-        workspaceReservationId: id,
-        dotyposReservationId,
-        dotyposCustomerId,
-      });
-      // The invoice's attempt reference points at the snapshot row, so the
-      // fixture stores one encrypted with the mocked active key's secret.
-      await Effect.runPromise(
-        postgres.db.insert(accountingDocumentSnapshots).values({
-          paymentAttemptId: attemptId as never,
-          workspaceReservationId: id,
-          keyId: "KEY_1",
-          encryptedSnapshot:
-            sql`pgp_sym_encrypt(${JSON.stringify(source)}, ${"synthetic-secret"}, ${"cipher-algo=aes256,compress-algo=1,unicode-mode=1"})` as never,
-        })
-      );
-      return {
-        id,
-        attemptId,
-        customerEmailDeliveryId,
-        dotyposCustomerId,
-        dotyposReservationId,
-        source,
-      };
-    };
-
-    const makeInvoiceRepository = () =>
-      Effect.runPromise(
-        Effect.gen(function* () {
-          return yield* InvoiceRepository;
-        }).pipe(
-          Effect.provide(
-            InvoiceRepository.Default.pipe(
-              Layer.provide(
-                AccountingDocumentSnapshotRepository.Default.pipe(
-                  Layer.provide(postgres.layer)
-                )
-              ),
-              Layer.provide(
-                Layer.succeed(
-                  AccountingSnapshotKeyService,
-                  AccountingSnapshotKeyService.of({
-                    getActive: Effect.succeed({
-                      id: "KEY_1" as never,
-                      secret: "synthetic-secret",
-                    }),
-                    getById: () =>
-                      Effect.succeed({
-                        id: "KEY_1" as never,
-                        secret: "synthetic-secret",
-                      }),
-                  } as never)
-                )
-              ),
-              Layer.provide(postgres.layer)
-            )
-          )
-        )
-      );
-
-    const makeLifecycleRepository = async () =>
-      (await Effect.runPromise(
-        Effect.gen(function* () {
-          return yield* PaymentLifecycleRepository;
-        }).pipe(
-          Effect.provide(
-            PaymentLifecycleRepository.Default.pipe(
-              Layer.provide(postgres.layer)
-            )
-          )
-        )
-      )) as IPaymentLifecycleRepository;
-
-    afterEach(async () => {
-      if (fixtureReservationIds.length === 0) return;
-      const ids = [...fixtureReservationIds];
-      fixtureReservationIds.length = 0;
-      // Issued invoices and stored snapshots are production-immutable via
-      // triggers, so both triggers are lifted only for this
-      // disposable-database cleanup, as with the dropped kind check in the
-      // reservation-order suite. The order mirror references the attempt and
-      // the attempt cascade-deletes through order_id.
-      await postgres.pool.query(
-        "drop trigger if exists invoices_immutable on invoices"
-      );
-      await postgres.pool.query(
-        "drop trigger if exists accounting_document_snapshots_immutable on accounting_document_snapshots"
-      );
-      try {
-        await Effect.runPromise(
-          postgres.db
-            .delete(invoices)
-            .where(inArray(invoices.workspaceReservationId, ids as never))
-        );
-        await Effect.runPromise(
-          postgres.db
-            .delete(accountingDocumentSnapshots)
-            .where(
-              inArray(
-                accountingDocumentSnapshots.workspaceReservationId,
-                ids as never
-              )
-            )
-        );
-        await Effect.runPromise(
-          postgres.db
-            .delete(orders)
-            .where(inArray(orders.id, ids as readonly string[]))
-        );
-        await Effect.runPromise(
-          postgres.db
-            .delete(paymentAttempts)
-            .where(
-              inArray(paymentAttempts.workspaceReservationId, ids as never)
-            )
-        );
-        await Effect.runPromise(
-          postgres.db
-            .delete(workspaceReservations)
-            .where(inArray(workspaceReservations.id, ids))
-        );
-      } finally {
-        await postgres.pool.query(
-          "create trigger invoices_immutable before update or delete on invoices for each row execute function reject_invoice_mutation()"
-        );
-        await postgres.pool.query(
-          "create trigger accounting_document_snapshots_immutable before update or delete on accounting_document_snapshots for each row execute function reject_accounting_document_snapshot_mutation()"
-        );
-      }
-    });
-
-    test("completes issuance and already-paid replay without a lock-order abort", async () => {
-      const fixture = await insertPaidFulfilledReservation();
-      const repository = await makeInvoiceRepository();
-      const lifecycle = await makeLifecycleRepository();
-
-      // Connection A plays the markPaid replay's first step: it holds the
-      // reservation row lock and pauses before the replay continues.
-      // (Issuance itself holds the attempt row under the attempt-first
-      // order, so the two writers serialize on the reservation.)
-      const latch = await postgres.pool.connect();
-      let issuance:
-        | Promise<{
-            changed: boolean;
-            invoice: { paymentAttemptId: string; invoiceNumber: string };
-          }>
-        | undefined;
-      try {
-        await latch.query("begin");
-        await latch.query(
-          "update workspace_reservations set updated_at = updated_at where id = $1",
-          [fixture.id]
-        );
-
-        // Issuance must anchor on the payment attempt row: it locks the
-        // attempt first and only then waits on the reservation. Deterministic
-        // regression for the attempt-first lock order shared with markPaid
-        // and the deployed old writers.
-        issuance = Effect.runPromise(
-          repository.issue({
-            paymentAttemptId: fixture.attemptId,
-            buyer,
-          }) as never
-        ) as Promise<{
-          changed: boolean;
-          invoice: { paymentAttemptId: string; invoiceNumber: string };
-        }>;
-
-        const deadline = Date.now() + 5_000;
-        let blocked = false;
-        while (Date.now() < deadline) {
-          const { rows } = await postgres.pool.query(
-            `select 1 from pg_stat_activity
-              where wait_event_type = 'Lock'
-                and query ilike '%for update%' limit 1`
-          );
-          if (rows.length > 0) {
-            blocked = true;
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 25));
-        }
-        expect(blocked).toBe(true);
-
-        // While blocked on the reservation, issuance must already hold the
-        // attempt row: an attempt-first writer owns it and this nowait probe
-        // must fail. A reservation-first issuance would not hold it here and
-        // would invert against attempt-first writers.
-        await expect(
-          postgres.pool.query(
-            "select 1 from payment_attempts where id = $1 for update nowait",
-            [fixture.attemptId]
-          )
-        ).rejects.toThrow();
-
-        // Releasing the reservation lets the already-paid markPaid replay
-        // race the resuming issuance; both must finish without an abort.
-        await latch.query("commit");
-      } finally {
-        await latch.query("rollback").catch(() => {});
-        latch.release();
-      }
-
-      const [issuanceResult, replayResult] = await Promise.all([
-        issuance!,
-        Effect.runPromise(
-          lifecycle.markPaid({
-            id: fixture.attemptId as never,
-            workspaceReservationId: fixture.id,
-            paidAt: Temporal.Now.instant(),
+const makeKeyService = (
+  activeKey: AccountingSnapshotKey = testKey,
+  readableKeys: readonly AccountingSnapshotKey[] = [activeKey]
+): IAccountingSnapshotKeyService => ({
+  getActive: Effect.succeed(activeKey),
+  getById: (keyId) => {
+    const key = readableKeys.find((candidate) => candidate.id === keyId);
+    return key
+      ? Effect.succeed(key)
+      : Effect.fail(
+          new AccountingSnapshotKeyError({
+            keyId,
+            message: "Synthetic integration key is unavailable.",
           })
-        ),
-      ]);
-      expect(issuanceResult.changed).toBe(true);
-      expect(issuanceResult.invoice.paymentAttemptId).toBe(fixture.attemptId);
-      // The replay is the already-paid path: idempotent, nothing changed.
-      expect(replayResult.changed).toBe(false);
-      expect(replayResult.attempt.state).toBe("paid");
+        );
+  },
+});
 
-      const [reservation] = await Effect.runPromise(
-        postgres.db
-          .select()
-          .from(workspaceReservations)
-          .where(eq(workspaceReservations.id, fixture.id))
-          .limit(1)
-      );
-      expect(reservation!.paymentState).toBe("paid");
-      expect(reservation!.paidAt).not.toBeNull();
-
-      const [attempt] = await Effect.runPromise(
-        postgres.db
-          .select()
-          .from(paymentAttempts)
-          .where(eq(paymentAttempts.id, fixture.attemptId as never))
-          .limit(1)
-      );
-      expect(attempt!.state).toBe("paid");
-
-      const [issuedInvoice] = await Effect.runPromise(
-        postgres.db
-          .select()
-          .from(invoices)
-          .where(eq(invoices.paymentAttemptId, fixture.attemptId as never))
-          .limit(1)
-      );
-      expect(issuedInvoice!.workspaceReservationId).toBe(fixture.id);
-    });
-
-    test("keeps invoice issuance closed until the matching delivery completes", async () => {
-      const fixture = await insertPaidFulfilledReservation({
-        fulfillmentState: "awaiting_delivery",
-      });
-      const repository = await makeInvoiceRepository();
-      const invoiceNumbersBefore = await postgres.pool.query(
-        "select count(*)::int as count from invoice_number_counters"
-      );
-
-      const eligibilityError = await Effect.runPromise(
-        Effect.flip(
-          repository.issue({
-            paymentAttemptId: fixture.attemptId,
-            buyer,
-          })
+const runRepository = <A, E>(
+  operation: (repository: IInvoiceRepository) => Effect.Effect<A, E>,
+  keys: IAccountingSnapshotKeyService = makeKeyService()
+): Promise<A> => {
+  const baseLayer = Layer.merge(
+    testDatabase!.layer,
+    Layer.succeed(
+      AccountingSnapshotKeyService,
+      AccountingSnapshotKeyService.of(keys)
+    )
+  );
+  const repositoryLayer = InvoiceRepository.Default.pipe(
+    Layer.provide(
+      Layer.merge(
+        baseLayer,
+        AccountingDocumentSnapshotRepository.Default.pipe(
+          Layer.provide(baseLayer)
         )
-      );
-      expect(eligibilityError).toMatchObject({
-        _tag: "InvoiceEligibilityError",
-      });
-      const invoicesBeforeDelivery = await postgres.pool.query(
-        "select payment_attempt_id from invoices where workspace_reservation_id = $1",
-        [fixture.id]
-      );
-      expect(invoicesBeforeDelivery.rows).toHaveLength(0);
-      expect(
-        (
-          await postgres.pool.query(
-            "select count(*)::int as count from invoice_number_counters"
-          )
-        ).rows[0]!.count
-      ).toBe(invoiceNumbersBefore.rows[0]!.count);
+      )
+    )
+  );
 
-      const reservations = await Effect.runPromise(
+  return Effect.runPromise(
+    InvoiceRepository.pipe(
+      Effect.flatMap(operation),
+      Effect.provide(repositoryLayer)
+    )
+  );
+};
+
+const issue = (
+  paymentAttemptId: PaymentAttemptId,
+  buyer: InvoiceBuyer = personalInvoiceBuyer,
+  keys?: IAccountingSnapshotKeyService
+) =>
+  runRepository(
+    (repository) => repository.issue({ paymentAttemptId, buyer }),
+    keys
+  );
+
+const issueFailure = (
+  paymentAttemptId: PaymentAttemptId,
+  keys?: IAccountingSnapshotKeyService
+) =>
+  runRepository(
+    (repository) =>
+      Effect.flip(
+        repository.issue({ paymentAttemptId, buyer: personalInvoiceBuyer })
+      ),
+    keys
+  );
+
+const createPaidFixture = async (
+  options: { readonly fulfilled?: boolean; readonly paid?: boolean } = {}
+) => {
+  const paid = options.paid ?? true;
+  const fulfilled = options.fulfilled ?? paid;
+  const paymentAttemptId = paymentAttemptIdSchema.make(randomUUID());
+  const dotyposCustomerId = DotyposCustomerIdSchema.make(
+    `${fixtureCustomerPrefix}${randomUUID()}`
+  );
+  const dotyposReservationId = DotyposReservationIdSchema.make(
+    `synthetic-reservation-${randomUUID()}`
+  );
+  const now = Temporal.Instant.from(
+    temporalInstantToIsoString(Temporal.Now.instant())
+  );
+
+  const reservationId = await Effect.runPromise(
+    Effect.flatMap(WorkspaceDatabase, ({ db, transaction }) =>
+      transaction(
         Effect.gen(function* () {
-          return yield* WorkspaceReservationRepository;
-        }).pipe(
-          Effect.provide(
-            WorkspaceReservationRepository.Default.pipe(
-              Layer.provide(postgres.layer)
-            )
-          )
-        )
-      );
-      const fulfilledAt = Temporal.Now.instant();
-      await Effect.runPromise(
-        reservations.markCustomerEmailDeliveryFulfilled({
-          customerEmailDeliveryId: fixture.customerEmailDeliveryId,
-          fulfilledAt,
-        })
-      );
-
-      const [reservation] = await Effect.runPromise(
-        postgres.db
-          .select()
-          .from(workspaceReservations)
-          .where(eq(workspaceReservations.id, fixture.id))
-          .limit(1)
-      );
-      expect(reservation!.fulfillmentState).toBe("fulfilled");
-      expect(
-        reservation!.fulfilledAt?.toString({ smallestUnit: "microsecond" })
-      ).toBe(fulfilledAt.toString({ smallestUnit: "microsecond" }));
-
-      const issued = await Effect.runPromise(
-        repository.issue({
-          paymentAttemptId: fixture.attemptId,
-          buyer,
-        })
-      );
-      expect(issued.changed).toBe(true);
-      expect(issued.invoice.workspaceReservationId).toBe(fixture.id);
-    });
-
-    test("invoice issuance and a reservation-only mirror serialize without an active-attempt FK", async () => {
-      const fixture = await insertPaidFulfilledReservation();
-      const repository = await makeInvoiceRepository();
-      const reservations = await Effect.runPromise(
-        Effect.gen(function* () {
-          return yield* WorkspaceReservationRepository;
-        }).pipe(
-          Effect.provide(
-            WorkspaceReservationRepository.Default.pipe(
-              Layer.provide(postgres.layer)
-            )
-          )
-        )
-      );
-
-      await postgres.pool.query(`
-        create or replace function workspace_test_pause_invoice_order_mirror()
-        returns trigger language plpgsql as $$
-        begin
-          perform pg_advisory_xact_lock(hashtext(new.id), 247385);
-          return new;
-        end;
-        $$
-      `);
-      await postgres.pool.query(`
-        create trigger workspace_test_pause_invoice_order_mirror
-        before insert or update on orders
-        for each row execute function workspace_test_pause_invoice_order_mirror()
-      `);
-
-      const waitForLockWait = async (queryPattern: string) => {
-        const deadline = Date.now() + 5_000;
-        while (Date.now() < deadline) {
-          const { rows } = await postgres.pool.query(
-            `select 1 from pg_stat_activity
-              where pid <> pg_backend_pid()
-                and wait_event_type = 'Lock'
-                and query ilike $1
-              limit 1`,
-            [queryPattern]
-          );
-          if (rows.length > 0) return true;
-          await new Promise((resolve) => setTimeout(resolve, 25));
-        }
-        return false;
-      };
-
-      const latch = await postgres.pool.connect();
-      const pending: Promise<unknown>[] = [];
-      try {
-        await latch.query("select pg_advisory_lock(hashtext($1), 247385)", [
-          fixture.id,
-        ]);
-
-        const mirrored = Effect.runPromise(
-          reservations.updateReservationDetails({
-            id: fixture.id,
-            reservationDetails: {
-              kind: "cowork",
-              entryTier: "basic",
-              coffee: true,
+          const reservation = yield* workspaceFixtures(db).reservation({
+            stage: {
+              reservation: paid ? "confirmed" : "held",
+              payment: paid ? "paid" : "pending",
+              fulfillment: getFixtureFulfillmentState({ fulfilled, paid }),
             },
-            locale: "cs-CZ",
-          })
-        );
-        pending.push(mirrored);
-        expect(await waitForLockWait('%insert into "orders"%')).toBe(true);
+            customer: dotyposCustomerId,
+            at: now,
+            overrides: {
+              dotyposReservationId,
+              activePaymentAttemptId: paymentAttemptId,
+            },
+          });
+          const source = makeAccountingDocumentSnapshot({
+            workspaceReservationId: reservation.id,
+            dotyposReservationId,
+            dotyposCustomerId,
+            locale: "en-US",
+            prepared,
+          });
+          yield* db.insert(paymentAttempts).values({
+            id: paymentAttemptId,
+            workspaceReservationId: reservation.id,
+            provider: "nexi",
+            providerOrderId: NexiOrderIdSchema.make(
+              `synthetic-order-${randomUUID()}`
+            ),
+            state: paid ? "paid" : "pending",
+            amountValue: source.quote.payment.expectedPrice.value,
+            amountExponent: source.quote.payment.expectedPrice.exponent,
+            currency: source.quote.payment.expectedPrice.currency,
+          });
+          yield* db.insert(accountingDocumentSnapshots).values({
+            paymentAttemptId,
+            workspaceReservationId: reservation.id,
+            keyId: testKey.id,
+            encryptedSnapshot: encryptAccountingSnapshot(
+              JSON.stringify(source),
+              testKey.secret
+            ),
+          });
+          return reservation.id;
+        })
+      )
+    ).pipe(Effect.provide(testDatabase!.layer))
+  );
 
-        const issuance = Effect.runPromise(
-          repository.issue({
-            paymentAttemptId: fixture.attemptId,
-            buyer,
-          })
-        );
-        pending.push(issuance);
-        expect(
-          await waitForLockWait('%from "workspace_reservations"%for update%')
-        ).toBe(true);
+  return {
+    paymentAttemptId,
+    reservationId,
+    dotyposCustomerId,
+    dotyposReservationId,
+    fulfilledAt: fulfilled ? now : null,
+  };
+};
 
-        await latch.query("select pg_advisory_unlock(hashtext($1), 247385)", [
-          fixture.id,
-        ]);
-        const [details, issued] = await Promise.all([mirrored, issuance]);
-        expect(details.locale).toBe("cs-CZ");
-        expect(issued.changed).toBe(true);
-      } finally {
-        await latch
-          .query("select pg_advisory_unlock(hashtext($1), 247385)", [
-            fixture.id,
-          ])
-          .catch(() => {});
-        await Promise.allSettled(pending);
-        latch.release();
-        await postgres.pool.query(
-          "drop trigger if exists workspace_test_pause_invoice_order_mirror on orders"
-        );
-        await postgres.pool.query(
-          "drop function if exists workspace_test_pause_invoice_order_mirror()"
-        );
-      }
+type PaidFixture = Awaited<ReturnType<typeof createPaidFixture>>;
 
-      const [order] = await Effect.runPromise(
-        postgres.db.select().from(orders).where(eq(orders.id, fixture.id))
+const createAdditionalFailedAttempt = async (fixture: PaidFixture) => {
+  const paymentAttemptId = paymentAttemptIdSchema.make(randomUUID());
+  const source = makeAccountingDocumentSnapshot({
+    workspaceReservationId: fixture.reservationId,
+    dotyposReservationId: fixture.dotyposReservationId,
+    dotyposCustomerId: fixture.dotyposCustomerId,
+    locale: "en-US",
+    prepared,
+  });
+
+  await Effect.runPromise(
+    Effect.flatMap(WorkspaceDatabase, ({ db, transaction }) =>
+      transaction(
+        Effect.gen(function* () {
+          yield* db.insert(paymentAttempts).values({
+            id: paymentAttemptId,
+            workspaceReservationId: fixture.reservationId,
+            provider: "nexi",
+            providerOrderId: NexiOrderIdSchema.make(
+              `synthetic-order-${randomUUID()}`
+            ),
+            state: "failed",
+            failureCode: "synthetic_invoice_attempt",
+            amountValue: source.quote.payment.expectedPrice.value,
+            amountExponent: source.quote.payment.expectedPrice.exponent,
+            currency: source.quote.payment.expectedPrice.currency,
+          });
+          yield* db.insert(accountingDocumentSnapshots).values({
+            paymentAttemptId,
+            workspaceReservationId: fixture.reservationId,
+            keyId: testKey.id,
+            encryptedSnapshot: encryptAccountingSnapshot(
+              JSON.stringify(source),
+              testKey.secret
+            ),
+          });
+        })
+      )
+    ).pipe(Effect.provide(testDatabase!.layer))
+  );
+
+  return paymentAttemptId;
+};
+
+class RolledBackFixture extends Data.TaggedError("RolledBackFixture")<{
+  readonly value: unknown;
+}> {}
+
+// Runs the operation in a transaction that always rolls back, so the invoices
+// and counter changes it makes never reach the shared database.
+const runRepositoryRolledBack = <A, E>(
+  operation: (
+    repository: IInvoiceRepository,
+    database: Pick<WorkspaceDatabase["Service"], "db">
+  ) => Effect.Effect<A, E>,
+  keys?: IAccountingSnapshotKeyService
+) =>
+  runRepository(
+    (repository) =>
+      Effect.flatMap(WorkspaceDatabase, ({ db, transaction }) =>
+        transaction(
+          operation(repository, { db }).pipe(
+            Effect.flatMap((value) => new RolledBackFixture({ value }))
+          )
+        )
+      ).pipe(
+        Effect.provide(testDatabase!.layer),
+        Effect.catchTag("RolledBackFixture", ({ value }) =>
+          Effect.succeed(value as A)
+        )
+      ),
+    keys
+  );
+
+const makeManualInvoiceInput = (actor: string) =>
+  Schema.decodeUnknownSync(manualInvoiceInputSchema)({
+    invoiceId: randomUUID(),
+    dotyposCustomerId: `${fixtureCustomerPrefix}${randomUUID()}`,
+    buyer: personalInvoiceBuyer,
+    deliveryEmail: testEmailAddress("manual-invoice-integration"),
+    locale: "en-US",
+    serviceDate: "2099-01-01",
+    payment: { status: "paid", date: "2099-01-01" },
+    currency: "CZK",
+    lines: [{ description: "Synthetic line", price: "100.00" }],
+    provenance: { source: "admin-ui", actor },
+  });
+
+const getFixtureFulfillmentState = ({
+  fulfilled,
+  paid,
+}: {
+  readonly fulfilled: boolean;
+  readonly paid: boolean;
+}) => {
+  if (fulfilled) return "fulfilled" as const;
+  if (paid) return "processing" as const;
+  return "not_started" as const;
+};
+
+// The suite owns its database, so the counters only move through the
+// issuances each test performs.
+const readCounters = () =>
+  Effect.runPromise(
+    testDatabase!.db
+      .select()
+      .from(invoiceNumberCounters)
+      .orderBy(asc(invoiceNumberCounters.numberingYear))
+  ).then(
+    (rows) => new Map(rows.map((row) => [row.numberingYear, row.lastSequence]))
+  );
+
+const sequenceOf = (invoiceNumber: InvoiceNumber) =>
+  Number(invoiceNumber.slice(invoiceNumber.lastIndexOf("-") + 1));
+
+describe.skipIf(!testDatabase)(
+  "InvoiceRepository on disposable Postgres",
+  () => {
+    const postgres = testDatabase as WorkspacePostgresSuiteDatabase;
+
+    test("issues one encrypted, immutable invoice for concurrent requests", async () => {
+      const fixture = await createPaidFixture();
+      const countersBefore = await readCounters();
+      const buyer = {
+        kind: "business" as const,
+        legalName: `Synthetic Ciphertext Sentinel ${fixture.reservationId}`,
+        companyId: companyRegistrationIdSchema.make("12345678"),
+        vatId: vatRegistrationIdSchema.make("CZ12345678"),
+        address: {
+          line1: "Synthetic 1",
+          city: "Praha",
+          postalCode: "100 00",
+          country: "CZ",
+        },
+      };
+
+      const results = await Promise.all(
+        Array.from({ length: 10 }, () => issue(fixture.paymentAttemptId, buyer))
       );
-      expect(order).toBeDefined();
-      expect(order!.activePaymentAttemptId).toBe(fixture.attemptId);
-      expect(order!.fulfillmentState).toBe("fulfilled");
-      expect(order!.fulfilledAt).not.toBeNull();
+
+      expect(new Set(results.map(({ invoice }) => invoice.id)).size).toBe(1);
       expect(
-        await Effect.runPromise(
+        new Set(results.map(({ invoice }) => invoice.invoiceNumber)).size
+      ).toBe(1);
+      expect(results.filter(({ changed }) => changed)).toHaveLength(1);
+      const issued = results[0]!.invoice;
+      expect(issued.document.buyer).toEqual(buyer);
+      expect("schemaVersion" in issued.document).toBe(false);
+      expect(issued.document.fulfilledAt).toBeTruthy();
+      expect(
+        Temporal.Instant.compare(
+          Temporal.Instant.from(issued.document.fulfilledAt!),
+          fixture.fulfilledAt!
+        )
+      ).toBe(0);
+      const numberingYear = getInvoiceNumberingYear(issued.issuedAt);
+      const countersAfter = await readCounters();
+      expect(countersAfter.get(numberingYear)).toBe(
+        (countersBefore.get(numberingYear) ?? 0) + 1
+      );
+
+      const [stored] = await Effect.runPromise(
+        postgres.db
+          .select({ encryptedDocument: invoices.encryptedDocument })
+          .from(invoices)
+          .where(eq(invoices.id, issued.id))
+      );
+      expect(
+        stored!.encryptedDocument.includes(Buffer.from(buyer.legalName))
+      ).toBe(false);
+
+      const retry = await issue(fixture.paymentAttemptId, {
+        ...personalInvoiceBuyer,
+        legalName: "Different Synthetic Buyer",
+      });
+      expect(retry.changed).toBe(false);
+      expect(retry.invoice.id).toBe(issued.id);
+      expect(retry.invoice.document.buyer).toEqual(buyer);
+      expect(await readCounters()).toEqual(countersAfter);
+
+      const immutable = {
+        code: "55000",
+        message: "issued invoices are immutable",
+      };
+      await expect(
+        postgres.pool.query(
+          "update invoices set invoice_number = 'WS-FV-2099-999999' where id = $1",
+          [issued.id]
+        )
+      ).rejects.toMatchObject(immutable);
+      await expect(
+        postgres.pool.query("delete from invoices where id = $1", [issued.id])
+      ).rejects.toMatchObject(immutable);
+    });
+
+    test("numbers concurrent invoices without gaps or duplicates", async () => {
+      const fixtures = await Promise.all(
+        Array.from({ length: 5 }, () => createPaidFixture())
+      );
+      const countersBefore = await readCounters();
+
+      const results = await Promise.all(
+        fixtures.map(({ paymentAttemptId }) => issue(paymentAttemptId))
+      );
+
+      const numberingYear = getInvoiceNumberingYear(
+        results[0]!.invoice.issuedAt
+      );
+      const before = countersBefore.get(numberingYear) ?? 0;
+      expect(
+        new Set(results.map(({ invoice }) => invoice.invoiceNumber)).size
+      ).toBe(fixtures.length);
+      expect(
+        results
+          .map(({ invoice }) => sequenceOf(invoice.invoiceNumber))
+          .sort((left, right) => left - right)
+      ).toEqual(
+        Array.from(
+          { length: fixtures.length },
+          (_, index) => before + index + 1
+        )
+      );
+      expect((await readCounters()).get(numberingYear)).toBe(
+        before + fixtures.length
+      );
+    });
+
+    test.each([
+      ["an unpaid payment attempt", { paid: false }],
+      ["an unfulfilled reservation", { fulfilled: false }],
+    ] as const)("refuses to number %s", async (_, options) => {
+      const fixture = await createPaidFixture(options);
+      const before = await readCounters();
+
+      const error = await issueFailure(fixture.paymentAttemptId);
+
+      expect(error).toMatchObject({ _tag: "InvoiceEligibilityError" });
+      expect(await readCounters()).toEqual(before);
+    });
+
+    test("finds a reservation's issued invoice by the reservation", async () => {
+      const fixture = await createPaidFixture();
+      const issued = await issue(fixture.paymentAttemptId);
+      // The invoice stays the reservation's after another attempt becomes its
+      // active one.
+      const laterAttemptId = await createAdditionalFailedAttempt(fixture);
+      await Effect.runPromise(
+        Effect.flatMap(WorkspaceDatabase, ({ db }) =>
+          db
+            .update(workspaceReservations)
+            .set({ activePaymentAttemptId: laterAttemptId })
+            .where(eq(workspaceReservations.id, fixture.reservationId))
+        ).pipe(Effect.provide(testDatabase!.layer))
+      );
+
+      const found = await runRepository((repository) =>
+        repository.findByReservationId(fixture.reservationId)
+      );
+
+      expect(found).toMatchObject({
+        id: issued.invoice.id,
+        invoiceNumber: issued.invoice.invoiceNumber,
+        workspaceReservationId: fixture.reservationId,
+        paymentAttemptId: fixture.paymentAttemptId,
+      });
+    });
+
+    test.each([
+      ["fulfilled but not invoiced", { fulfilled: true }],
+      ["paid but not fulfilled", { fulfilled: false }],
+      ["unpaid", { paid: false }],
+    ] as const)(
+      "finds no invoice for a reservation %s",
+      async (_label, options) => {
+        const fixture = await createPaidFixture(options);
+
+        const found = await runRepository((repository) =>
+          repository.findByReservationId(fixture.reservationId)
+        );
+
+        expect(found).toBeNull();
+      }
+    );
+
+    test("refuses to number a failed attempt of a paid reservation", async () => {
+      const fixture = await createPaidFixture();
+      const failedPaymentAttemptId =
+        await createAdditionalFailedAttempt(fixture);
+      const before = await readCounters();
+
+      const error = await issueFailure(failedPaymentAttemptId);
+
+      expect(error).toMatchObject({
+        _tag: "InvoiceEligibilityError",
+        paymentAttemptId: failedPaymentAttemptId,
+      });
+      expect(await readCounters()).toEqual(before);
+    });
+
+    test("rejects a second payment attempt for an invoiced reservation", async () => {
+      const fixture = await createPaidFixture();
+      await issue(fixture.paymentAttemptId);
+      const otherPaymentAttemptId =
+        await createAdditionalFailedAttempt(fixture);
+
+      const error = await issueFailure(otherPaymentAttemptId);
+
+      expect(error).toMatchObject({
+        _tag: "InvoiceEligibilityError",
+        paymentAttemptId: otherPaymentAttemptId,
+      });
+    });
+
+    test("issues one manual invoice for concurrent requests with the same id", async () => {
+      const issuer = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account("invoice-repository-issuer")
+      );
+      const input = Schema.decodeUnknownSync(manualInvoiceInputSchema)({
+        invoiceId: randomUUID(),
+        dotyposCustomerId: `${fixtureCustomerPrefix}${randomUUID()}`,
+        buyer: personalInvoiceBuyer,
+        deliveryEmail: testEmailAddress("manual-invoice-integration"),
+        locale: "en-US",
+        serviceDate: "2099-01-01",
+        payment: { status: "paid", date: "2099-01-01" },
+        currency: "CZK",
+        lines: [{ description: "Synthetic line", price: "100.00" }],
+        provenance: { source: "admin-ui", actor: issuer.email },
+      });
+      const before = await readCounters();
+
+      const results = await Promise.all(
+        Array.from({ length: 10 }, () =>
+          runRepository((repository) =>
+            repository.issueManual({ ...input, issuedBy: issuer })
+          )
+        )
+      );
+
+      expect(new Set(results.map(({ invoice }) => invoice.id))).toEqual(
+        new Set([input.invoiceId])
+      );
+      expect(
+        new Set(results.map(({ invoice }) => invoice.invoiceNumber)).size
+      ).toBe(1);
+      expect(results.filter(({ changed }) => changed)).toHaveLength(1);
+      expect(results[0]!.invoice.document).toMatchObject({
+        provenance: { source: "admin-ui", actor: issuer.email },
+      });
+      const expectedActor = [
+        {
+          invoiceId: input.invoiceId,
+          actorAccountId: issuer.accountId,
+          actorAccountEmail: issuer.email,
+        },
+      ];
+      const readActors = () =>
+        Effect.runPromise(
           postgres.db
             .select()
-            .from(invoices)
-            .where(eq(invoices.workspaceReservationId, fixture.id))
+            .from(manualInvoiceActors)
+            .where(eq(manualInvoiceActors.invoiceId, input.invoiceId))
+        );
+      expect(await readActors()).toEqual(expectedActor);
+
+      const retry = await runRepository((repository) =>
+        repository.issueManual({ ...input, issuedBy: issuer })
+      );
+      expect(retry.changed).toBe(false);
+      expect(await readActors()).toEqual(expectedActor);
+
+      const numberingYear = getInvoiceNumberingYear(
+        results[0]!.invoice.issuedAt
+      );
+      expect((await readCounters()).get(numberingYear)).toBe(
+        (before.get(numberingYear) ?? 0) + 1
+      );
+    });
+
+    test("rolls back a manual invoice when its issuer account is missing", async () => {
+      const invoiceId = randomUUID();
+      const issuedBy = {
+        accountId: customerAccountIdSchema.make(randomUUID()),
+        email: testEmailAddress("missing-invoice-issuer-account"),
+      };
+      const input = Schema.decodeUnknownSync(manualInvoiceInputSchema)({
+        invoiceId,
+        dotyposCustomerId: `${fixtureCustomerPrefix}${randomUUID()}`,
+        buyer: personalInvoiceBuyer,
+        deliveryEmail: testEmailAddress("missing-invoice-issuer"),
+        locale: "en-US",
+        serviceDate: "2099-01-01",
+        payment: { status: "paid", date: "2099-01-01" },
+        currency: "CZK",
+        lines: [{ description: "Synthetic line", price: "100.00" }],
+        provenance: { source: "admin-ui", actor: issuedBy.email },
+      });
+
+      const error = await runRepository((repository) =>
+        Effect.flip(repository.issueManual({ ...input, issuedBy }))
+      );
+
+      expect(error).toBeDefined();
+      const invoiceRows = await postgres.pool.query(
+        "select id from invoices where id = $1",
+        [invoiceId]
+      );
+      const actorRows = await postgres.pool.query(
+        "select invoice_id from manual_invoice_actors where invoice_id = $1",
+        [invoiceId]
+      );
+      expect(invoiceRows.rows).toEqual([]);
+      expect(actorRows.rows).toEqual([]);
+    });
+
+    test("suggests the variable symbol of the next number in the issue year", async () => {
+      const numberingYear = getInvoiceNumberingYear(Temporal.Now.instant());
+
+      const suggestions = await runRepositoryRolledBack((repository, { db }) =>
+        Effect.gen(function* () {
+          yield* db
+            .delete(invoiceNumberCounters)
+            .where(eq(invoiceNumberCounters.numberingYear, numberingYear));
+          const first = yield* repository.getSuggestedVariableSymbol();
+          yield* db
+            .insert(invoiceNumberCounters)
+            .values({ numberingYear, lastSequence: 41 });
+          const next = yield* repository.getSuggestedVariableSymbol();
+          return { first, next };
+        })
+      );
+
+      expect(suggestions).toEqual({
+        first: `${numberingYear}000001`,
+        next: `${numberingYear}000042`,
+      });
+    });
+
+    test("lists who issued each manual invoice, and through what", async () => {
+      const issuer = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account("invoice-provenance-issuer")
+      );
+      const input = makeManualInvoiceInput(issuer.email);
+      const reservationFixture = await createPaidFixture();
+      const reservationInvoice = await issue(
+        reservationFixture.paymentAttemptId
+      );
+
+      await runRepository((repository) =>
+        repository.issueManual({ ...input, issuedBy: issuer })
+      );
+      const provenance = await runRepository((repository) =>
+        repository.listManualInvoiceProvenance()
+      );
+      const listed = await runRepository((repository) => repository.list());
+
+      expect(provenance).toContainEqual({
+        invoiceId: input.invoiceId,
+        provenance: { source: "admin-ui", actor: issuer.email },
+      });
+      expect(
+        provenance.some(
+          ({ invoiceId }) => invoiceId === reservationInvoice.invoice.id
         )
-      ).toHaveLength(1);
+      ).toBe(false);
+      expect(listed.map(({ id }) => id)).toEqual(
+        expect.arrayContaining([input.invoiceId, reservationInvoice.invoice.id])
+      );
+    });
+
+    test("refuses to read an invoice whose metadata does not match its document", async () => {
+      const issuer = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account("invoice-mismatch-issuer")
+      );
+      const input = makeManualInvoiceInput(issuer.email);
+      const copiedInvoiceId = randomUUID();
+
+      const error = await runRepositoryRolledBack((repository, { db }) =>
+        Effect.gen(function* () {
+          yield* repository.issueManual({ ...input, issuedBy: issuer });
+          yield* db.execute(sql`
+            insert into ${invoices} (
+              id, workspace_reservation_id, payment_attempt_id,
+              dotypos_customer_id, invoice_number, numbering_year,
+              numbering_sequence, key_id, encrypted_document, issued_at
+            )
+            select ${copiedInvoiceId}, null, null, dotypos_customer_id,
+              'WS-FV-' || numbering_year || '-999999', numbering_year, 999999,
+              key_id, encrypted_document, issued_at
+            from ${invoices}
+            where id = ${input.invoiceId}
+          `);
+          return yield* Effect.flip(repository.findById(copiedInvoiceId));
+        })
+      );
+
+      expect(error).toMatchObject({
+        _tag: "InvoiceStorageError",
+        operation: "validate",
+        paymentAttemptId: copiedInvoiceId,
+      });
+    });
+
+    test("refuses to number an invoice without an active encryption key", async () => {
+      const fixture = await createPaidFixture();
+      const before = await readCounters();
+
+      const error = await issueFailure(fixture.paymentAttemptId, {
+        ...makeKeyService(),
+        getActive: Effect.fail(
+          new AccountingSnapshotKeyError({
+            keyId: testKey.id,
+            message: "Synthetic active key is unavailable.",
+          })
+        ),
+      });
+
+      expect(error).toMatchObject({
+        _tag: "InvoiceStorageError",
+        operation: "encrypt",
+        paymentAttemptId: fixture.paymentAttemptId,
+      });
+      expect(await readCounters()).toEqual(before);
+    });
+
+    test("rolls the number back when the invoice insert fails", async () => {
+      const fixture = await createPaidFixture();
+      const invalidActiveKey: AccountingSnapshotKey = {
+        ...testKey,
+        // Deliberately bypass the application brand to prove the database failure
+        // rolls the number allocation back in the same transaction.
+        id: "INVALID-ID" as AccountingSnapshotKey["id"],
+      };
+      const before = await readCounters();
+
+      const insertError = await issueFailure(
+        fixture.paymentAttemptId,
+        makeKeyService(invalidActiveKey, [testKey, invalidActiveKey])
+      );
+
+      expect(insertError).toMatchObject({
+        _tag: "InvoiceStorageError",
+        operation: "encrypt",
+        cause: { _tag: "EffectDrizzleQueryError" },
+      });
+      expect(await readCounters()).toEqual(before);
+
+      const successful = await issue(fixture.paymentAttemptId);
+      const numberingYear = getInvoiceNumberingYear(
+        successful.invoice.issuedAt
+      );
+      expect(sequenceOf(successful.invoice.invoiceNumber)).toBe(
+        (before.get(numberingYear) ?? 0) + 1
+      );
+
+      const decryptError = await runRepository(
+        (repository) =>
+          Effect.flip(
+            repository.findByPaymentAttemptId(fixture.paymentAttemptId)
+          ),
+        makeKeyService({
+          ...testKey,
+          secret: "different synthetic accounting snapshot secret!",
+        })
+      );
+      expect(decryptError).toMatchObject({
+        _tag: "InvoiceStorageError",
+        operation: "decrypt",
+        cause: { _tag: "EffectDrizzleQueryError" },
+      });
     });
   }
 );

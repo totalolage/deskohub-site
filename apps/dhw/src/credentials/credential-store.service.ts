@@ -1,4 +1,13 @@
-import { Context, Data, Effect, Layer, Redacted } from "effect";
+import {
+  Config,
+  Context,
+  Data,
+  Effect,
+  Layer,
+  MutableHashMap,
+  Option,
+  Redacted,
+} from "effect";
 
 const credentialService = "cz.deskohub.workspace.cli";
 
@@ -22,7 +31,8 @@ export class CredentialStore extends Context.Service<
   CredentialStore,
   ICredentialStore
 >()("CredentialStore") {
-  static Default = Layer.succeed(this, {
+  /** The operating-system credential store: macOS Keychain or Linux Secret Service. */
+  static system = Layer.succeed(this, {
     get: Effect.fn("CredentialStore.get")((name: string) =>
       Effect.tryPromise({
         try: () => Bun.secrets.get({ service: credentialService, name }),
@@ -52,6 +62,45 @@ export class CredentialStore extends Context.Service<
       })
     ),
   });
+
+  /** Credentials that live only as long as the process, for isolated runs. */
+  static memory = Layer.sync(this, () => {
+    const credentials = MutableHashMap.empty<
+      string,
+      Redacted.Redacted<string>
+    >();
+
+    return {
+      get: (name: string) =>
+        Effect.sync(() =>
+          Option.getOrUndefined(MutableHashMap.get(credentials, name))
+        ),
+      set: (name: string, value: Redacted.Redacted<string>) =>
+        Effect.sync(() => {
+          MutableHashMap.set(credentials, name, value);
+        }),
+      remove: (name: string) =>
+        Effect.sync(() => {
+          const existed = MutableHashMap.has(credentials, name);
+          MutableHashMap.remove(credentials, name);
+          return existed;
+        }),
+    };
+  });
+
+  /** `DHW_CREDENTIAL_STORE=memory` keeps a run away from the shared store. */
+  static Default = Layer.unwrap(
+    Effect.gen(function* () {
+      const store = yield* Config.literals(
+        ["system", "memory"],
+        "DHW_CREDENTIAL_STORE"
+      ).pipe(Config.withDefault("system"));
+
+      return store === "memory"
+        ? CredentialStore.memory
+        : CredentialStore.system;
+    })
+  );
 }
 
 export class CredentialStoreError extends Data.TaggedError(

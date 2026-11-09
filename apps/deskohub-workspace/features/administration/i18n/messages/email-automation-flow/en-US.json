@@ -1,0 +1,196 @@
+{
+  "emailAutomationFlowCampaignSourceThis": "this campaign",
+  "emailAutomationFlowPeriodTriggerWindow": "within … of the trigger",
+  "emailAutomationFlowPeriodTriggerWindowCountLabel": "{subject}: how many units from the trigger",
+  "emailAutomationFlowPeriodTriggerWindowSide": [
+    {
+      "declarations": ["input side"],
+      "selectors": ["side"],
+      "match": {
+        "side=before": "before the trigger",
+        "side=*": "after the trigger"
+      }
+    }
+  ],
+  "emailAutomationFlowPeriodTriggerWindowSideLabel": "{subject}: before or after the trigger",
+  "emailAutomationFlowPeriodWithin": "within",
+  "emailAutomationFlowSavedAudienceEmpty": "No audience matches.",
+  "emailAutomationFlowSavedAudienceLiveNote": "Uses the audience as it is when a run reaches this step, so edits to the audience apply to live runs straight away.",
+  "emailAutomationFlowSavedAudienceMenuLabel": "Saved audience",
+  "emailAutomationFlowSavedAudienceMenuSection": "Saved audiences",
+  "emailAutomationFlowSavedAudienceOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=in": "is in saved audience",
+        "operator=*": "is not in saved audience"
+      }
+    }
+  ],
+  "emailAutomationFlowSavedAudienceOperatorLabel": "Saved audience membership",
+  "emailAutomationFlowSavedAudiencePickerLabel": "Saved audience",
+  "emailAutomationFlowSavedAudiencePickerPlaceholder": "Choose an audience",
+  "emailAutomationFlowSavedAudienceRequired": "Choose a saved audience.",
+  "emailAutomationFlowSavedAudienceSearch": "Search audiences",
+  "emailAutomationFlowSavedAudienceUnknown": "Deleted audience",
+  "emailAutomationFlowArchived": "This automation is archived, so its flow can't change.",
+  "emailAutomationFlowCalendarAddPart": "Add part",
+  "emailAutomationFlowCalendarLastDay": "Last day",
+  "emailAutomationFlowCalendarMinuteAdd": "Add minute",
+  "emailAutomationFlowCalendarMinuteOther": "Other minute",
+  "emailAutomationFlowCalendarNeverOccurs": "This combination never happens in the next eight years. Change one of its parts.",
+  "emailAutomationFlowCalendarNextFires": "Next fires (Prague time)",
+  "emailAutomationFlowCalendarOccurrence": [
+    {
+      "declarations": ["input occurrence"],
+      "selectors": ["occurrence"],
+      "match": {
+        "occurrence=1": "1st",
+        "occurrence=2": "2nd",
+        "occurrence=3": "3rd",
+        "occurrence=4": "4th",
+        "occurrence=5": "5th",
+        "occurrence=*": "last"
+      }
+    }
+  ],
+  "emailAutomationFlowCalendarOccurrenceAdd": "Add weekday",
+  "emailAutomationFlowCalendarOccurrenceLabel": "Which one in the month",
+  "emailAutomationFlowCalendarOccurrenceRemove": "Remove this weekday",
+  "emailAutomationFlowCalendarOccurrenceWeekdayLabel": "Weekday",
+  "emailAutomationFlowCalendarPart": [
+    {
+      "declarations": ["input part"],
+      "selectors": ["part"],
+      "match": {
+        "part=minutes": "Minute of the hour",
+        "part=hours": "Hour of the day",
+        "part=weekdays": "Day of the week",
+        "part=daysOfMonth": "Day of the month",
+        "part=weekdayOccurrences": "Weekday of the month",
+        "part=weeksOfYear": "Week of the year",
+        "part=*": "Month of the year"
+      }
+    }
+  ],
+  "emailAutomationFlowCalendarPartLabel": "Calendar part",
+  "emailAutomationFlowCalendarPreviewUnavailable": "The description isn't available right now. Try again in a moment.",
+  "emailAutomationFlowCalendarRemovePart": "Remove {part}",
+  "emailAutomationFlowCalendarRemoveValue": "Remove {value}",
+  "emailAutomationFlowCalendarWeekAdd": "Add week",
+  "emailAutomationFlowCalendarWeekOther": "Week number",
+  "emailAutomationFlowCalendarWeekValue": "Week {week}",
+  "emailAutomationFlowConditionDescription": "The run continues only for customers who match at that moment. For everyone else it ends here.",
+  "emailAutomationFlowConditionTitle": "Check the customer",
+  "emailAutomationFlowDiscard": "Discard",
+  "emailAutomationFlowEventAccountCreatedDescription": "A new customer creates a Workspace account.",
+  "emailAutomationFlowEventBookedDescription": "A customer's reservation is confirmed in Workspace.",
+  "emailAutomationFlowEventCancelledDescription": "A customer cancels a reservation in Workspace.",
+  "emailAutomationFlowEventFinishedDescription": "The end time of a customer's reservation has passed.",
+  "emailAutomationFlowEventKindLabel": "Which event starts a run",
+  "emailAutomationFlowEventProductHint": "Leave it on any product to start a run for every reservation.",
+  "emailAutomationFlowEventStartedDescription": "The start time of a customer's reservation has passed.",
+  "emailAutomationFlowInsertCondition": "Condition",
+  "emailAutomationFlowInsertConditionDescription": "Check the customer at that moment.",
+  "emailAutomationFlowInsertLabel": "Add a step as step {position}",
+  "emailAutomationFlowInsertWait": "Wait",
+  "emailAutomationFlowInsertWaitDescription": "For a duration or until a time.",
+  "emailAutomationFlowSave": "Save flow",
+  "emailAutomationFlowSaveFailed": "The flow couldn't be saved. Try again in a moment.",
+  "emailAutomationFlowSaveInvalid": "The flow can't be saved like this. Check the highlighted steps.",
+  "emailAutomationFlowScheduleMinutesNotAllowed": "Schedules can start only at {minutes} past the hour. Choose one of these minutes.",
+  "emailAutomationFlowSaving": "Saving…",
+  "emailAutomationFlowSendDescription": "Sends this campaign's email and ends the run.",
+  "emailAutomationFlowSendEditEmail": "Edit the email",
+  "emailAutomationFlowSendSubjectLabel": "Subject in {language}",
+  "emailAutomationFlowSendSubjectMissing": "No content in this language yet",
+  "emailAutomationFlowSendTitle": "Send the email",
+  "emailAutomationFlowStatusArchived": "This automation is archived, so its flow is read-only.",
+  "emailAutomationFlowStatusEmpty": "This automation has no flow yet. Choose its trigger, then save.",
+  "emailAutomationFlowStatusPending": "Saved. <link>Preview and activate</link> to publish these changes to new runs.",
+  "emailAutomationFlowStatusPublished": "Matches the live version.",
+  "emailAutomationFlowStatusUnsaved": "Unsaved changes",
+  "emailAutomationFlowStepDelete": "Delete step",
+  "emailAutomationFlowStepEyebrow": [
+    {
+      "declarations": ["input number", "input kind"],
+      "selectors": ["kind"],
+      "match": {
+        "kind=condition": "Step {number} · Condition",
+        "kind=wait": "Step {number} · Wait",
+        "kind=*": "Step {number} · Send"
+      }
+    }
+  ],
+  "emailAutomationFlowStepMenuLabel": "Actions for {step}",
+  "emailAutomationFlowStepMoveDown": "Move down",
+  "emailAutomationFlowStepMoveUp": "Move up",
+  "emailAutomationFlowTriggerChooseDescription": "A run starts for a customer on each fire of a schedule, or each time they cause an event.",
+  "emailAutomationFlowTriggerChooseTitle": "Choose what starts this automation",
+  "emailAutomationFlowTriggerEyebrow": "Trigger",
+  "emailAutomationFlowTriggerFamilyEvent": "Event",
+  "emailAutomationFlowTriggerFamilyEventDescription": "When a customer books, cancels, starts or finishes a reservation, or creates an account.",
+  "emailAutomationFlowTriggerFamilyLabel": "What starts a run",
+  "emailAutomationFlowTriggerFamilySchedule": "Schedule",
+  "emailAutomationFlowTriggerFamilyScheduleDescription": "At set times, for everyone in the campaign's audience.",
+  "emailAutomationFlowTriggerRequired": "Choose what starts this automation.",
+  "emailAutomationFlowWaitCountError": "Enter a whole number from 1 to 9,999.",
+  "emailAutomationFlowWaitCountLabel": "How long to wait",
+  "emailAutomationFlowWaitFor": "Wait for",
+  "emailAutomationFlowWaitModeCalendar": "Until a time",
+  "emailAutomationFlowWaitModeDuration": "For a duration",
+  "emailAutomationFlowWaitModeLabel": "How the step waits",
+  "emailAutomationFlowWaitTitle": "Wait",
+  "emailAutomationFlowWaitUnitDay": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "day",
+        "countPlural=other": "days"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitHour": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "hour",
+        "countPlural=other": "hours"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitLabel": "Unit of time",
+  "emailAutomationFlowWaitUnitMinute": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "minute",
+        "countPlural=other": "minutes"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitMonth": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "month",
+        "countPlural=other": "months"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitWeek": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "week",
+        "countPlural=other": "weeks"
+      }
+    }
+  ]
+}

@@ -5,25 +5,32 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./api-timeout": "./src/api-timeout.ts",
     "./backend/service.mock": "./src/backend/service.mock.ts",
     "./table-map": "./src/table-map.tsx",
+    "./testing": "./src/backend/in-memory-dotypos.ts",
     "./generated": "./src/generated/index.ts",
-    "./generated/*": "./src/generated/*.ts"
+    "./generated/*": "./src/generated/*.ts",
+    "./types": "./src/types.ts"
   },
   "scripts": {
     "generate": "bun ../../scripts/generate-effect-openapi-client.ts --spec ./openapi/dotypos-api.yaml --name DotyposClient --output ./src/generated/effect.gen.ts",
-    "lint": "biome check src --config-path ../../biome.json --vcs-root ../.."
+    "lint": "biome check src --config-path ../../biome.json --vcs-root ../..",
+    "test": "bun test",
+    "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
-    "effect": "4.0.0-beta.85",
-    "libphonenumber-js": "^1.12.10"
+    "@deskohub/phone-number": "workspace:*",
+    "@deskohub/provider-request": "workspace:*",
+    "effect": "4.0.0-beta.85"
   },
   "peerDependencies": {
     "react": "^19.2.7"
   },
   "devDependencies": {
-    "@types/react": "^19.2.17",
-    "react": "19.2.7",
+    "@deskohub/test-email": "workspace:*",
+    "@types/react": "^19.3.0",
+    "react": "19.3.0",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }

@@ -1,8 +1,13 @@
+import { queryOptions, skipToken } from "@tanstack/react-query";
 import { Match } from "effect";
 import {
+  type MeetingRoomStartTimes,
+  type MeetingRoomStartTimesQuery,
+  parseMeetingRoomStartTimesResponse,
   parseWorkspaceAvailabilityResponse,
   type WorkspaceAvailability,
   type WorkspaceAvailabilityQuery,
+  workspaceAvailabilityKeys,
 } from "@/features/reservation/workspace-availability";
 import {
   type WorkspaceAvailabilityClientRequest,
@@ -42,14 +47,20 @@ export const getWorkspaceAvailabilityUrl = (
   return `/api/workspace/availability?${params.toString()}`;
 };
 
-export const loadWorkspaceAvailability = async ({
-  query,
+export const getMeetingRoomStartTimesUrl = (
+  query: MeetingRoomStartTimesQuery
+) => `/api/workspace/availability?${new URLSearchParams(query).toString()}`;
+
+const fetchAvailability = async ({
   replacementToken,
   signal,
-}: WorkspaceAvailabilityClientRequest & {
+  url,
+}: {
+  readonly replacementToken?: string;
   readonly signal: AbortSignal;
-}): Promise<WorkspaceAvailability> => {
-  const response = await fetch(getWorkspaceAvailabilityUrl(query), {
+  readonly url: string;
+}) => {
+  const response = await fetch(url, {
     signal,
     ...(replacementToken && {
       headers: {
@@ -59,5 +70,87 @@ export const loadWorkspaceAvailability = async ({
   });
   if (!response.ok) throw new Error("Availability request failed");
 
-  return parseWorkspaceAvailabilityResponse(await response.json());
+  return response.json();
 };
+
+export const loadWorkspaceAvailability = async ({
+  query,
+  replacementToken,
+  signal,
+}: WorkspaceAvailabilityClientRequest & {
+  readonly signal: AbortSignal;
+}): Promise<WorkspaceAvailability> =>
+  parseWorkspaceAvailabilityResponse(
+    await fetchAvailability({
+      replacementToken,
+      signal,
+      url: getWorkspaceAvailabilityUrl(query),
+    })
+  );
+
+const loadMeetingRoomStartTimes = async ({
+  query,
+  replacementToken,
+  signal,
+}: {
+  readonly query: MeetingRoomStartTimesQuery;
+  readonly replacementToken?: string;
+  readonly signal: AbortSignal;
+}): Promise<MeetingRoomStartTimes> =>
+  parseMeetingRoomStartTimesResponse(
+    await fetchAvailability({
+      replacementToken,
+      signal,
+      url: getMeetingRoomStartTimesUrl(query),
+    })
+  );
+
+// Every availability read retries a failed request three times and stays
+// fresh for 30 seconds. A replacement token gets its own cache entry because
+// the server leaves the replaced reservation out of the occupancy it reports.
+const availabilityQueryPolicy = {
+  retry: (failureCount: number) => failureCount < 3,
+  staleTime: 30_000,
+};
+
+/** The query for a reservation form's availability; empty without a query. */
+export const workspaceAvailabilityQueryOptions = ({
+  query,
+  replacementToken,
+}: {
+  readonly query: WorkspaceAvailabilityQuery | undefined;
+  readonly replacementToken?: string;
+}) =>
+  queryOptions({
+    queryKey: query
+      ? [
+          ...workspaceAvailabilityKeys.availability(query),
+          replacementToken ?? null,
+        ]
+      : ["workspace-availability", "empty"],
+    queryFn: query
+      ? ({ signal }) =>
+          loadWorkspaceAvailability({ query, replacementToken, signal })
+      : skipToken,
+    ...availabilityQueryPolicy,
+  });
+
+/** The query for the free meeting-room starts; empty without a query. */
+export const meetingRoomStartTimesQueryOptions = ({
+  query,
+  replacementToken,
+}: {
+  readonly query: MeetingRoomStartTimesQuery | undefined;
+  readonly replacementToken?: string;
+}) =>
+  queryOptions({
+    queryKey: [
+      ...workspaceAvailabilityKeys.meetingRoomStartTimes(query),
+      replacementToken ?? null,
+    ],
+    queryFn: query
+      ? ({ signal }) =>
+          loadMeetingRoomStartTimes({ query, replacementToken, signal })
+      : skipToken,
+    ...availabilityQueryPolicy,
+  });

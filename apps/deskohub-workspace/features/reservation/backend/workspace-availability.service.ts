@@ -1,33 +1,22 @@
-import {
-  type DotyposReservationId,
-  type DotyposReservationInterval,
-  DotyposService,
-  type DotyposTable,
-  type DotyposTableId,
-  type ExternalAPIError,
-  type NetworkError,
-  ValidationError,
+import type {
+  DotyposReservationId,
+  DotyposReservationInterval,
 } from "@deskohub/dotypos";
-import type { GoogleCalendarError } from "@deskohub/google-calendar";
-import { Context, Data, Effect, Layer, Match } from "effect";
+import { Context, Data, Effect, Layer, Match, Option, Result } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   excludeDotyposReservationsById,
-  getWorkspaceTableOccupancyById,
-  hasAvailableWorkspaceTableCandidate,
-  workspaceBookingSeatCount,
-  workspaceMeetingRoomReservationTableTag,
-  workspaceOfficeReservationTableTag,
+  type InvalidDotyposTableSeats,
 } from "@/features/checkout/backend/reservation";
-import {
-  getWorkspaceProductByTier,
-  type WorkspaceCoworkProductTier,
-  type WorkspaceProductMonitorOption,
-  workspaceCoworkTiers,
-  workspaceProductMonitorOptions,
-  workspaceProductMonitorOptionTableTags,
-} from "@/features/checkout/product-catalog";
+import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
+import { getMeetingRoomOccupiedInterval } from "@/features/reservation/meeting-room-early-setup";
+import { getMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  getMeetingRoomDayLastServiceDate,
+  getMeetingRoomDayStartTimes,
+  type MeetingRoomStartTime,
+} from "@/features/reservation/meeting-room-reservation-time";
 import {
   coworkReservationKind,
   meetingRoomReservationKind,
@@ -36,30 +25,59 @@ import {
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
+  currentInstant,
+  getPlainDatesBetween,
+  plainDateStringSchema,
+} from "@/shared/utils/temporal";
+import {
   getReservationDate,
-  isSingleDayReservationInterval,
   normalizeReservationInterval,
   type ReservationInterval,
   type ReservationIntervalError,
   type ReservationIntervalInput,
 } from "../reservation-interval";
-import type {
-  WorkspaceAvailability,
-  WorkspaceAvailabilityNotice,
-  WorkspaceAvailabilityQuery,
-  WorkspaceAvailabilityUnavailableTarget,
+import {
+  isMeetingRoomAvailable,
+  type MeetingRoomStartTimes,
+  type MeetingRoomStartTimesQuery,
+  type WorkspaceAvailability,
+  type WorkspaceAvailabilityNotice,
+  type WorkspaceAvailabilityQuery,
+  type WorkspaceAvailabilityUnavailableTarget,
 } from "../workspace-availability";
+import {
+  type AvailabilityEvaluationInput,
+  evaluateAvailability,
+} from "./availability-evaluation";
+import {
+  AdvisoryAvailabilityInventory,
+  type AvailabilityInventory,
+  type AvailabilityInventoryError,
+  makeProviderInventory,
+} from "./availability-inventory";
+import { SharedAvailabilityInventoryLive } from "./availability-inventory-cache.server";
 import {
   GoogleCalendarWorkspaceLimitationsService,
   type WorkspaceCalendarLimitation as WorkspaceCalendarLimitationType,
 } from "./google-calendar-workspace-limitations.service";
 import { WorkspaceReservationRepository } from "./workspace-reservation.repository";
 
-type WorkspaceAvailabilityError =
-  | ExternalAPIError
-  | GoogleCalendarError
-  | NetworkError
-  | ValidationError;
+/**
+ * The caller asked for an impossible availability range, date, or interval.
+ * The availability route answers it with 400.
+ */
+export class AvailabilityQueryInvalid extends Data.TaggedError(
+  "AvailabilityQueryInvalid"
+)<{ readonly message: string }> {}
+
+/**
+ * Why availability couldn't be computed: an invalid query, a provider read
+ * failure, or a Dotypos table without a valid seat capacity.
+ */
+type AvailabilityError =
+  | AvailabilityQueryInvalid
+  | AvailabilityInventoryError
+  | InvalidDotyposTableSeats;
 
 export class WorkspaceTableUnavailableError extends Data.TaggedError(
   "WorkspaceTableUnavailableError"
@@ -90,15 +108,27 @@ type WorkspaceAvailabilityEnsureQuery =
   | OfficeWorkspaceAvailabilityEnsureQuery;
 
 export interface IWorkspaceAvailabilityService {
+  /**
+   * Advisory availability for showing options. Tables, active reservations,
+   * and calendar limitations may come from a shared snapshot that is up to a
+   * few minutes old, so a booking must still pass `ensureAvailable`.
+   */
   readonly getAvailability: (
     input: WorkspaceAvailabilityRequest
-  ) => Effect.Effect<WorkspaceAvailability, WorkspaceAvailabilityError>;
+  ) => Effect.Effect<WorkspaceAvailability, AvailabilityError>;
+  /**
+   * Advisory free meeting-room starts on one date, each evaluated by the
+   * single-interval rules against the shared-snapshot entries every single
+   * check on that date loads, so listing a day after any check on it adds no
+   * provider read.
+   */
+  readonly getMeetingRoomStartTimes: (
+    input: MeetingRoomStartTimesRequest
+  ) => Effect.Effect<MeetingRoomStartTimes, AvailabilityError>;
+  /** Fails unless the reservation is available in live provider data. */
   readonly ensureAvailable: (
     query: WorkspaceAvailabilityEnsureQuery
-  ) => Effect.Effect<
-    void,
-    WorkspaceAvailabilityError | WorkspaceTableUnavailableError
-  >;
+  ) => Effect.Effect<void, AvailabilityError | WorkspaceTableUnavailableError>;
 }
 
 export type WorkspaceAvailabilityOccupancyExclusion = {
@@ -110,15 +140,23 @@ type WorkspaceAvailabilityRequest = {
   readonly occupancyExclusion?: WorkspaceAvailabilityOccupancyExclusion;
 };
 
+type MeetingRoomStartTimesRequest = {
+  readonly query: MeetingRoomStartTimesQuery;
+  readonly occupancyExclusion?: WorkspaceAvailabilityOccupancyExclusion;
+};
+
 const implementation = Effect.gen(function* () {
-  const dotypos = yield* DotyposService;
+  const advisoryInventory = yield* AdvisoryAvailabilityInventory;
+  const providerInventory = yield* makeProviderInventory;
   const workspaceReservations = yield* WorkspaceReservationRepository;
-  const calendarLimitations = yield* GoogleCalendarWorkspaceLimitationsService;
 
   const loadInventory = Effect.fn("workspaceAvailability.loadInventory")(
     function* (
-      input: WorkspaceAvailabilityRequest & {
-        readonly reservationInterval: DotyposReservationInterval;
+      inventory: AvailabilityInventory,
+      input: {
+        /** The consecutive dates the inventory snapshot covers. */
+        readonly dates: readonly Temporal.PlainDate[];
+        readonly occupancyExclusion?: WorkspaceAvailabilityOccupancyExclusion;
       }
     ) {
       yield* Effect.logInfo("Workspace availability inventory load started");
@@ -126,27 +164,15 @@ const implementation = Effect.gen(function* () {
       const [tables, reservations, limitations, expiredDotyposReservationIds] =
         yield* Effect.all(
           [
-            dotypos.getTables(),
-            dotypos.listActiveReservationsOverlapping(
-              input.reservationInterval
+            inventory.tables,
+            inventory.listActiveReservationsOverlapping(
+              getDateRangeReservationInterval(input.dates)
             ),
-            calendarLimitations.listLimitations({
-              from: input.query.from,
-              to: input.query.to,
+            inventory.listLimitations({
+              from: input.dates[0]!.toString(),
+              to: input.dates.at(-1)!.toString(),
             }),
-            workspaceReservations
-              .selectExpiredHoldDotyposReservationIds({
-                now: Temporal.Now.instant(),
-              })
-              .pipe(
-                Effect.tapError((cause) =>
-                  Effect.logWarning(
-                    "Workspace availability expired hold filter failed",
-                    { cause }
-                  )
-                ),
-                Effect.orElseSucceed((): readonly DotyposReservationId[] => [])
-              ),
+            loadExpiredHoldDotyposReservationIds(),
           ],
           { concurrency: "inherit" }
         );
@@ -183,14 +209,52 @@ const implementation = Effect.gen(function* () {
       )
   );
 
-  const getAvailability = Effect.fn("workspaceAvailability.getAvailability")(
-    function* (input: WorkspaceAvailabilityRequest) {
+  const loadExpiredHoldDotyposReservationIds = Effect.fn(
+    "workspaceAvailability.loadExpiredHoldDotyposReservationIds"
+  )(
+    function* () {
+      yield* Effect.logInfo(
+        "Workspace availability expired hold filter started"
+      );
+
+      const expiredDotyposReservationIds =
+        yield* workspaceReservations.selectExpiredHoldDotyposReservationIds({
+          now: Temporal.Now.instant(),
+        });
+
+      yield* Effect.annotateLogsScoped({
+        expiredHoldCount: expiredDotyposReservationIds.length,
+      });
+      yield* Effect.logInfo(
+        "Workspace availability expired hold filter completed"
+      );
+      return expiredDotyposReservationIds;
+    },
+    (effect) =>
+      effect.pipe(
+        Effect.scoped,
+        Effect.tapError((cause) =>
+          Effect.logWarning(
+            "Workspace availability expired hold filter failed",
+            { cause }
+          )
+        ),
+        Effect.orElseSucceed((): readonly DotyposReservationId[] => [])
+      )
+  );
+
+  const computeAvailability = Effect.fn(
+    "workspaceAvailability.getAvailability"
+  )(
+    function* (
+      inventory: AvailabilityInventory,
+      input: WorkspaceAvailabilityRequest
+    ) {
       const { query } = input;
       yield* Effect.annotateLogsScoped({ query });
       yield* Effect.logInfo("Workspace availability computation started");
 
       const dates = yield* getDateRange(query.from, query.to);
-      const reservationInterval = getDateRangeReservationInterval(dates);
       const reservation = yield* getAvailabilityReservation(query);
       const selectedDate = reservation
         ? getReservationDate({
@@ -198,92 +262,35 @@ const implementation = Effect.gen(function* () {
             timeZone: workspaceSiteConstants.location.timeZone,
           })
         : undefined;
-      yield* Effect.annotateLogsScoped({ dates, selectedDate });
+      yield* Effect.annotateLogsScoped({ selectedDate });
 
-      const { tables, reservations, limitations } = yield* loadInventory({
-        ...input,
-        reservationInterval,
-      });
-      const fullyOccupiedDates = getFullyOccupiedCalendarDates(limitations);
-      const occupancyByDate = new Map<string, Map<DotyposTableId, number>>();
-      const shouldCheckRangeDateSelection =
-        query.kind === officeReservationKind ||
-        !reservation ||
-        isSingleDayReservationInterval(reservation);
-
-      for (const day of dates) {
-        const dayKey = plainDateToString(day);
-        const interval =
-          query.kind !== officeReservationKind &&
-          reservation &&
-          dayKey === selectedDate
-            ? reservation
-            : yield* normalizeCoworkAvailabilityInterval(dayKey);
-        occupancyByDate.set(
-          dayKey,
-          getWorkspaceTableOccupancyById(reservations, interval)
-        );
-      }
-
-      const unavailableDates: string[] = [];
-      for (const day of dates.map(plainDateToString)) {
-        if (fullyOccupiedDates.has(day)) {
-          unavailableDates.push(day);
-          continue;
+      const { tables, reservations, limitations } = yield* loadInventory(
+        inventory,
+        {
+          dates: getInventoryDates(query, dates),
+          occupancyExclusion: input.occupancyExclusion,
         }
-        if (
-          (shouldCheckRangeDateSelection || day === selectedDate) &&
-          (yield* isUnavailableForSelection(
-            tables,
-            occupancyByDate.get(day) ?? new Map<DotyposTableId, number>(),
-            query
-          ))
-        ) {
-          unavailableDates.push(day);
-        }
-      }
-
-      const selectedDateOccupancy = selectedDate
-        ? (occupancyByDate.get(selectedDate) ??
-          new Map<DotyposTableId, number>())
-        : new Map<DotyposTableId, number>();
-      const selectedOfficeRangeOccupancy =
-        query.kind === officeReservationKind && reservation
-          ? getWorkspaceTableOccupancyById(reservations, reservation)
-          : selectedDateOccupancy;
-
-      const unavailableCoworkTiers = selectedDate
-        ? yield* Effect.filter(workspaceCoworkTiers, (tier) =>
-            isTierUnavailable(tables, selectedDateOccupancy, tier)
-          )
-        : [];
-      const meetingRoomUnavailable = selectedDate
-        ? yield* isMeetingRoomUnavailable(tables, selectedDateOccupancy)
-        : false;
-      const officeUnavailable =
-        query.kind === officeReservationKind && selectedDate
-          ? yield* isOfficeUnavailable(
-              tables,
-              selectedOfficeRangeOccupancy,
-              query.seats ?? workspaceBookingSeatCount
-            )
-          : false;
-      const unavailableMonitorOptions = selectedDate
-        ? yield* Effect.filter(workspaceProductMonitorOptions, (option) =>
-            isMonitorOptionUnavailable(tables, selectedDateOccupancy, option)
-          )
-        : [];
+      );
+      const evaluation = yield* Effect.fromResult(
+        evaluateAvailability({
+          query,
+          dates: dates.map(plainDateToString),
+          reservation,
+          selectedDate,
+          tables,
+          reservations,
+          fullyOccupiedDates: getFullyOccupiedCalendarDates(limitations),
+        })
+      );
 
       const result = {
         date: selectedDate,
         from: query.from,
         to: query.to,
-        unavailableDates,
-        unavailableCoworkTiers,
-        meetingRoomUnavailable,
-        officeUnavailable,
-        unavailableMonitorOptions,
-        notices: getCalendarNotices(limitations),
+        ...evaluation,
+        notices: getCalendarNotices(limitations).filter(
+          (notice) => notice.date >= query.from && notice.date <= query.to
+        ),
       } satisfies WorkspaceAvailability;
 
       yield* Effect.annotateLogsScoped({ result });
@@ -291,7 +298,7 @@ const implementation = Effect.gen(function* () {
 
       return result;
     },
-    (effect, input) =>
+    (effect, _inventory, input) =>
       effect.pipe(
         Effect.scoped,
         Effect.tapError((cause) =>
@@ -332,14 +339,15 @@ const implementation = Effect.gen(function* () {
         Match.discriminatorsExhaustive("kind")({
           "meeting-room": ({ startsAt, endsAt }) =>
             normalizeMeetingRoomAvailabilityInterval({ startsAt, endsAt }),
-          cowork: ({ date }) => normalizeCoworkAvailabilityInterval(date),
+          cowork: ({ date, entryTier }) =>
+            normalizeCoworkAvailabilityInterval(date, entryTier),
           office: ({ startsAt, endsAt }) =>
             normalizeMeetingRoomAvailabilityInterval({ startsAt, endsAt }),
         })
       );
       const availabilityRange =
         getAvailabilityTouchedDateRange(reservationInterval);
-      const availability = yield* getAvailability({
+      const availability = yield* computeAvailability(providerInventory, {
         query: {
           ...query,
           from: availabilityRange.from,
@@ -380,10 +388,110 @@ const implementation = Effect.gen(function* () {
     (effect) => effect.pipe(Effect.scoped)
   );
 
+  const selectFreeMeetingRoomStartTimes = ({
+    query,
+    occupancyExclusion,
+    candidates,
+  }: MeetingRoomStartTimesRequest & {
+    readonly candidates: ReadonlyArray<MeetingRoomStartTime>;
+  }) =>
+    Effect.succeed({
+      dates: getMeetingRoomInventoryDates(Temporal.PlainDate.from(query.date)),
+    }).pipe(
+      Effect.bind("inventory", ({ dates }) =>
+        loadInventory(advisoryInventory, { dates, occupancyExclusion })
+      ),
+      Effect.let("fullyOccupiedDates", ({ inventory }) =>
+        getFullyOccupiedCalendarDates(inventory.limitations)
+      ),
+      Effect.flatMap(({ dates, inventory, fullyOccupiedDates }) => {
+        const isMeetingRoomFree = (interval: ReservationInterval) =>
+          Effect.fromResult(
+            evaluateMeetingRoomInterval({
+              interval,
+              dates,
+              tables: inventory.tables,
+              reservations: inventory.reservations,
+              fullyOccupiedDates,
+            })
+          );
+        return Effect.filter(candidates, (candidate) =>
+          isMeetingRoomFree(candidate.interval)
+        ).pipe(
+          Effect.flatMap((freeCandidates) =>
+            Effect.forEach(freeCandidates, (candidate) =>
+              isMeetingRoomFree(
+                getMeetingRoomOccupiedInterval({
+                  ...candidate.interval,
+                  earlySetup: true,
+                })
+              ).pipe(
+                Effect.map(
+                  (earlySetupAvailable): FreeMeetingRoomStartTime => ({
+                    ...candidate,
+                    earlySetupAvailable,
+                  })
+                )
+              )
+            )
+          )
+        );
+      }),
+      // A day with no start left needs no inventory.
+      Effect.when(Effect.succeed(candidates.length > 0)),
+      Effect.map(Option.getOrElse((): FreeMeetingRoomStartTime[] => []))
+    );
+
+  const getMeetingRoomStartTimes = Effect.fn(
+    "workspaceAvailability.getMeetingRoomStartTimes"
+  )(
+    (input: MeetingRoomStartTimesRequest) =>
+      Effect.succeed(input).pipe(
+        Effect.tap(({ query }) => Effect.annotateLogsScoped({ query })),
+        Effect.tap(() =>
+          Effect.logInfo("Meeting-room start times computation started")
+        ),
+        Effect.bind("now", () => currentInstant),
+        Effect.let("candidates", ({ query, now }) =>
+          getMeetingRoomDayStartTimes({
+            date: query.date,
+            duration: getMeetingRoomReservationDuration(query.duration),
+            now,
+          })
+        ),
+        Effect.bind("startTimes", selectFreeMeetingRoomStartTimes),
+        Effect.map(
+          ({ query, startTimes }): MeetingRoomStartTimes => ({
+            date: query.date,
+            duration: query.duration,
+            startTimes: startTimes.map(
+              ({ startDateTime, interval, earlySetupAvailable }) => ({
+                startDateTime,
+                ...interval,
+                earlySetupAvailable,
+              })
+            ),
+          })
+        ),
+        Effect.tap((result) => Effect.annotateLogsScoped({ result })),
+        Effect.tap(() => Effect.logInfo("Meeting-room start times computed"))
+      ),
+    (effect) =>
+      effect.pipe(
+        Effect.scoped,
+        Effect.tapError((cause) =>
+          Effect.logError("Meeting-room start times computation failed", {
+            cause,
+          })
+        )
+      )
+  );
+
   return {
-    getAvailability,
+    getAvailability: (input) => computeAvailability(advisoryInventory, input),
+    getMeetingRoomStartTimes,
     ensureAvailable,
-  };
+  } satisfies IWorkspaceAvailabilityService;
 });
 
 export class WorkspaceAvailabilityService extends Context.Service<
@@ -392,7 +500,9 @@ export class WorkspaceAvailabilityService extends Context.Service<
 >()("@deskohub-workspace/reservation/WorkspaceAvailabilityService") {
   static Default = Layer.effect(this, implementation);
 
+  /** Serves advisory availability from the shared inventory snapshot. */
   static Live = this.Default.pipe(
+    Layer.provide(SharedAvailabilityInventoryLive),
     Layer.provide(GoogleCalendarWorkspaceLimitationsService.Live),
     Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(
@@ -414,6 +524,39 @@ const getFullyOccupiedCalendarDates = (
       )
     )
   );
+
+/** A free start, and whether the room is also free for its setup time. */
+type FreeMeetingRoomStartTime = MeetingRoomStartTime & {
+  readonly earlySetupAvailable: boolean;
+};
+
+/**
+ * Evaluates one meeting-room interval exactly as a single-interval check for
+ * it would be, over the inventory dates the interval itself touches. A listed
+ * start passes its booked interval; its setup check passes the occupied one.
+ */
+const evaluateMeetingRoomInterval = ({
+  interval,
+  dates,
+  ...inventory
+}: Pick<
+  AvailabilityEvaluationInput,
+  "tables" | "reservations" | "fullyOccupiedDates"
+> & {
+  readonly interval: ReservationInterval;
+  readonly dates: readonly Temporal.PlainDate[];
+}) => {
+  const { from, to } = getAvailabilityTouchedDateRange(interval);
+  return evaluateAvailability({
+    ...inventory,
+    query: { kind: meetingRoomReservationKind, from, to, ...interval },
+    dates: dates
+      .map(plainDateToString)
+      .filter((touchedDate) => touchedDate >= from && touchedDate <= to),
+    reservation: interval,
+    selectedDate: from,
+  }).pipe(Result.map(isMeetingRoomAvailable));
+};
 
 const getCalendarNotices = (
   limitations: readonly WorkspaceCalendarLimitationType[]
@@ -438,145 +581,49 @@ const getCalendarNotices = (
         : a.date.localeCompare(b.date)
     );
 
-const isUnavailableForSelection = (
-  tables: readonly DotyposTable[],
-  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
-  query: WorkspaceAvailabilityQuery
-) =>
-  Match.value(query).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      "meeting-room": () =>
-        isMeetingRoomUnavailableForSelection(tables, occupancyByTableId),
-      cowork: (coworkQuery) =>
-        isCoworkUnavailableForSelection(
-          tables,
-          occupancyByTableId,
-          coworkQuery
-        ),
-      office: ({ seats }) =>
-        isOfficeUnavailable(
-          tables,
-          occupancyByTableId,
-          seats ?? workspaceBookingSeatCount
-        ),
-    })
-  );
-
-const isMeetingRoomUnavailableForSelection = (
-  tables: readonly DotyposTable[],
-  occupancyByTableId: ReadonlyMap<DotyposTableId, number>
-) => isMeetingRoomUnavailable(tables, occupancyByTableId);
-
-const isCoworkUnavailableForSelection = (
-  tables: readonly DotyposTable[],
-  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
-  query: Extract<WorkspaceAvailabilityQuery, { readonly kind: "cowork" }>
-) => {
-  const { entryTier, monitorOption } = query;
-
-  if (!entryTier) {
-    return Effect.forEach(workspaceCoworkTiers, (candidateTier) =>
-      isTierUnavailable(tables, occupancyByTableId, candidateTier)
-    ).pipe(Effect.map((unavailable) => unavailable.every(Boolean)));
-  }
-
-  const product = getWorkspaceProductByTier(entryTier);
-  if (!product.requiresMonitorOption) {
-    return isTierUnavailable(tables, occupancyByTableId, entryTier);
-  }
-
-  if (monitorOption) {
-    return isMonitorOptionUnavailable(
-      tables,
-      occupancyByTableId,
-      monitorOption
-    );
-  }
-
-  return Effect.forEach(product.allowedMonitorOptions, (option) =>
-    isMonitorOptionUnavailable(tables, occupancyByTableId, option)
-  ).pipe(Effect.map((unavailable) => unavailable.every(Boolean)));
-};
-
-const isTierUnavailable = (
-  tables: readonly DotyposTable[],
-  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
-  tier: WorkspaceCoworkProductTier
-) => {
-  const product = getWorkspaceProductByTier(tier);
-
-  if (product.requiresMonitorOption) {
-    return Effect.forEach(product.allowedMonitorOptions, (option) =>
-      isMonitorOptionUnavailable(tables, occupancyByTableId, option)
-    ).pipe(Effect.map((unavailable) => unavailable.every(Boolean)));
-  }
-
-  return hasAvailableWorkspaceTableCandidate(
-    tables,
-    [`tier:${tier}`],
-    occupancyByTableId,
-    workspaceBookingSeatCount
-  ).pipe(Effect.map((available) => !available));
-};
-
-const isMeetingRoomUnavailable = (
-  tables: readonly DotyposTable[],
-  occupancyByTableId: ReadonlyMap<DotyposTableId, number>
-) =>
-  hasAvailableWorkspaceTableCandidate(
-    tables,
-    [workspaceMeetingRoomReservationTableTag],
-    occupancyByTableId,
-    workspaceBookingSeatCount,
-    true
-  ).pipe(Effect.map((available) => !available));
-
-const isOfficeUnavailable = (
-  tables: readonly DotyposTable[],
-  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
-  seats: number
-) =>
-  hasAvailableWorkspaceTableCandidate(
-    tables,
-    [workspaceOfficeReservationTableTag],
-    occupancyByTableId,
-    seats,
-    true
-  ).pipe(Effect.map((available) => !available));
-
-const isMonitorOptionUnavailable = (
-  tables: readonly DotyposTable[],
-  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
-  monitorOption: WorkspaceProductMonitorOption
-) =>
-  hasAvailableWorkspaceTableCandidate(
-    tables,
-    ["tier:profi", ...workspaceProductMonitorOptionTableTags[monitorOption]],
-    occupancyByTableId,
-    workspaceBookingSeatCount
-  ).pipe(Effect.map((available) => !available));
-
 const getDateRange = Effect.fn(function* (from: string, to: string) {
   const start = yield* parsePlainDate(from);
   const end = yield* parsePlainDate(to);
 
   if (Temporal.PlainDate.compare(start, end) > 0) {
-    return yield* new ValidationError({
+    return yield* new AvailabilityQueryInvalid({
       message: "Availability range start must be before range end",
     });
   }
 
-  const dates: Temporal.PlainDate[] = [];
-  for (
-    let cursor = start;
-    Temporal.PlainDate.compare(cursor, end) <= 0;
-    cursor = cursor.add({ days: 1 })
-  ) {
-    dates.push(cursor);
-  }
-
-  return dates;
+  return getPlainDatesBetween(start, end);
 });
+
+/**
+ * Every date a meeting-room booking starting on `date` can occupy, from the
+ * previous date, which a midnight start's setup time reaches. All
+ * meeting-room reads for a start date load inventory over these dates, so a
+ * single check and the date's start-times list request the same shared
+ * snapshot entries whatever their duration.
+ */
+const getMeetingRoomInventoryDates = (date: Temporal.PlainDate) =>
+  getPlainDatesBetween(
+    date.subtract({ days: 1 }),
+    Temporal.PlainDate.from(
+      getMeetingRoomDayLastServiceDate(
+        plainDateStringSchema.make(date.toString())
+      )
+    )
+  );
+
+/**
+ * Dates the inventory snapshot covers for a query: its own dates, extended for
+ * a meeting room through every date a booking from its start date can occupy.
+ */
+const getInventoryDates = (
+  query: WorkspaceAvailabilityQuery,
+  dates: readonly Temporal.PlainDate[]
+): readonly Temporal.PlainDate[] => {
+  if (query.kind !== meetingRoomReservationKind) return dates;
+
+  const meetingRoomDates = getMeetingRoomInventoryDates(dates[0]!);
+  return meetingRoomDates.length > dates.length ? meetingRoomDates : dates;
+};
 
 const getDateRangeReservationInterval = (
   dates: readonly Temporal.PlainDate[]
@@ -599,23 +646,23 @@ const parsePlainDate = (date: string) =>
   Effect.try({
     try: () => Temporal.PlainDate.from(date),
     catch: () =>
-      new ValidationError({
+      new AvailabilityQueryInvalid({
         message: `Availability date must be a valid YYYY-MM-DD date: ${date}`,
       }),
   });
 
 const getAvailabilityReservation = (
   query: WorkspaceAvailabilityQuery
-): Effect.Effect<ReservationInterval | undefined, ValidationError> =>
+): Effect.Effect<ReservationInterval | undefined, AvailabilityQueryInvalid> =>
   Match.value(query).pipe(
     Match.discriminatorsExhaustive("kind")({
       "meeting-room": ({ startsAt, endsAt }) =>
         startsAt && endsAt
           ? normalizeMeetingRoomAvailabilityInterval({ startsAt, endsAt })
           : Effect.void.pipe(Effect.as(undefined)),
-      cowork: ({ date }) =>
+      cowork: ({ date, entryTier }) =>
         date
-          ? normalizeCoworkAvailabilityInterval(date)
+          ? normalizeCoworkAvailabilityInterval(date, entryTier)
           : Effect.void.pipe(Effect.as(undefined)),
       office: ({ startsAt, endsAt }) =>
         startsAt && endsAt
@@ -631,8 +678,13 @@ const normalizeMeetingRoomAvailabilityInterval = (
     Effect.mapError(toAvailabilityIntervalError)
   );
 
-const normalizeCoworkAvailabilityInterval = (date: string) =>
-  normalizeReservationInterval(getCoworkReservationIntervalInput(date)).pipe(
+const normalizeCoworkAvailabilityInterval = (
+  date: string,
+  entryTier?: WorkspaceCoworkProductTier
+) =>
+  normalizeReservationInterval(
+    getCoworkReservationIntervalInput(entryTier, date)
+  ).pipe(
     Effect.mapError((error) =>
       toAvailabilityIntervalError(error, ` for date: ${date}`)
     )
@@ -657,7 +709,7 @@ const toAvailabilityIntervalError = (
   _error: ReservationIntervalError,
   context = ""
 ) =>
-  new ValidationError({
+  new AvailabilityQueryInvalid({
     message: `Availability interval must be valid${context}.`,
   });
 

@@ -1,8 +1,15 @@
 import "@/shared/testing/workspace-test-env";
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
-  AdministrationActorUsername,
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
+import {
   CliSessionId,
   digestCliAuthenticationSecret,
   makeCliAuthenticationSecret,
@@ -10,42 +17,28 @@ import {
 import { NodeCrypto } from "@effect/platform-node";
 import { inArray } from "drizzle-orm";
 import { Effect } from "effect";
-import * as nextServer from "next/server";
 import { cliAuthenticationRequests, cliSessions } from "@/db/schema";
 import { cliAuthenticationRequestIdSchema } from "@/features/admin-cli/cli-identifiers";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { mockAdministratorAccess } from "@/features/administrators/server/administrator-access.test-utils";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  workspaceTestAdminCredentials,
-  workspaceTestAdministrators,
-} from "@/shared/testing/workspace-test-environment";
 
-let requestHeaders = new Headers();
+const access = mockAdministratorAccess(`cli-page-${crypto.randomUUID()}`);
 
 mock.module("next/headers", () => ({
-  headers: async () => requestHeaders,
+  cookies: async () => ({ get: () => undefined, getAll: () => [] }),
+  headers: async () => new Headers(),
 }));
 mock.module("next/server", () => ({
-  ...nextServer,
-  connection: async () => {},
+  after: () => undefined,
+  connection: () => Promise.resolve(),
 }));
 
 const postgresDatabase = await connectWorkspacePostgresTestDatabase();
-
-const toAuthorization = (username: string, password: string) =>
-  `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
-
-const actAs = (username: string) => {
-  const credential = workspaceTestAdministrators.find(
-    (candidate) => candidate.username === username
-  );
-  if (!credential) throw new Error(`No test credential for ${username}`);
-  requestHeaders = new Headers({
-    authorization: toAuthorization(credential.username, credential.password),
-  });
-};
 
 const randomSecret = () =>
   makeCliAuthenticationSecret().pipe(Effect.provide(NodeCrypto.layer));
@@ -57,8 +50,32 @@ describe.skipIf(!postgresDatabase)("admin CLI page-data projections", () => {
   const postgres = postgresDatabase as WorkspacePostgresTestDatabase;
   const fixtureSessionIds: CliSessionId[] = [];
   const fixtureRequestIds: CliAuthenticationRequestId[] = [];
+  let admin: AdministratorAccountActor;
+  let operator: AdministratorAccountActor;
+
+  beforeAll(async () => {
+    admin = await Effect.runPromise(
+      workspaceFixtures(postgres.db).account("cli-page-admin", {
+        id: access.administrator.accountId,
+        email: access.administrator.email,
+        roles: ["administrator"],
+      })
+    );
+    operator = await Effect.runPromise(
+      workspaceFixtures(postgres.db).account("cli-page-operator", {
+        roles: ["administrator"],
+      })
+    );
+  });
+
+  afterAll(() =>
+    Effect.runPromise(
+      workspaceFixtures(postgres.db).deleteAccounts([admin, operator])
+    )
+  );
 
   afterEach(async () => {
+    access.set("administrator");
     const requestIds = [...fixtureRequestIds];
     const sessionIds = [...fixtureSessionIds];
     fixtureRequestIds.length = 0;
@@ -79,16 +96,17 @@ describe.skipIf(!postgresDatabase)("admin CLI page-data projections", () => {
     }
   });
 
-  const insertSessionFixture = async (username: string) => {
+  const insertSessionFixture = async (owner: AdministratorAccountActor) => {
     const id = CliSessionId.make(crypto.randomUUID());
     await Effect.runPromise(
       postgres.db.insert(cliSessions).values({
         id,
-        approvedBy: AdministrationActorUsername.make(username),
+        approvedByAccountId: owner.accountId,
+        approvedByAccountEmail: owner.email,
         tokenHash: await Effect.runPromise(
           digestSecret(await Effect.runPromise(randomSecret()))
         ),
-        clientName: `${username} CLI`,
+        clientName: "Fixture CLI",
         cliVersion: "1.0.0",
         buildTarget: "development",
         createdAt: Temporal.Instant.from("2026-08-10T10:00:00.000Z"),
@@ -122,35 +140,24 @@ describe.skipIf(!postgresDatabase)("admin CLI page-data projections", () => {
     const { loadCliSessions } = await import(
       "@/features/admin-cli/page-data.server"
     );
-    const adminSessionId = await insertSessionFixture(
-      workspaceTestAdminCredentials.username
-    );
-    const operatorSessionId = await insertSessionFixture("operator");
+    const adminSessionId = await insertSessionFixture(admin);
+    await insertSessionFixture(operator);
 
-    actAs(workspaceTestAdminCredentials.username);
     const adminData = await loadCliSessions();
-    expect(adminData.username).toBe(workspaceTestAdminCredentials.username);
+    expect(adminData.administratorEmail).toBe(admin.email);
     expect(adminData.sessions.map((session) => session.id)).toEqual([
       adminSessionId,
     ]);
-
-    actAs("operator");
-    const operatorData = await loadCliSessions();
-    expect(operatorData.username).toBe("operator");
-    expect(operatorData.sessions.map((session) => session.id)).toEqual([
-      operatorSessionId,
-    ]);
   });
 
-  test("returns the authenticated username alongside the CLI approval request", async () => {
+  test("returns the administrator's email alongside the CLI approval request", async () => {
     const { loadCliAuthenticationApproval } = await import(
       "@/features/admin-cli/page-data.server"
     );
     const code = await insertPendingRequestFixture();
 
-    actAs("operator");
     const approval = await loadCliAuthenticationApproval(code);
-    expect(approval?.username).toBe("operator");
+    expect(approval?.administratorEmail).toBe(admin.email);
     expect(approval?.request?.clientName).toBe("Projection CLI");
     expect(approval?.request?.state).toBe("pending");
   });
@@ -160,11 +167,10 @@ describe.skipIf(!postgresDatabase)("admin CLI page-data projections", () => {
       "@/features/admin-cli/page-data.server"
     );
 
-    actAs("operator");
     const unknown = await loadCliAuthenticationApproval(
       await Effect.runPromise(randomSecret())
     );
-    expect(unknown?.username).toBe("operator");
+    expect(unknown?.administratorEmail).toBe(admin.email);
     expect(unknown?.request).toBeNull();
 
     const malformed = await loadCliAuthenticationApproval(
@@ -173,10 +179,10 @@ describe.skipIf(!postgresDatabase)("admin CLI page-data projections", () => {
     expect(malformed).toBeNull();
   });
 
-  test("still rejects unauthenticated page loads with the shared 404 gate", async () => {
+  test("loads nothing when the page gate rejects the visitor", async () => {
     const pageData = await import("@/features/admin-cli/page-data.server");
 
-    requestHeaders = new Headers();
+    access.set("not-administrator");
     const error = await pageData.loadCliSessions().then(
       () => null,
       (cause: unknown) => cause

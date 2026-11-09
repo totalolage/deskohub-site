@@ -1,23 +1,16 @@
 import { Effect, Schema } from "effect";
-import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
-import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
-import type { CanonicalPromotionCode } from "@/features/discounts";
-import { type Locale, m } from "@/features/i18n";
 import { loadOfficeReservationSeatCapacity } from "@/features/office/backend/office-reservation-capacity.server";
-import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
-import { loadAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
-import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
+import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationDefaultValues,
   getOfficeReservationEndsOn,
-  type NormalizedOfficeReservationOrder,
+  type OfficeReservationInput,
 } from "@/features/reservation/office-reservation";
-import { getOfficeReservationDefaultValuesFromSearchParams } from "@/features/reservation/reservation-checkout-query";
-import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { officeSelectionLink } from "@/features/reservation/office-selection-link";
+import { getOfficePageOfferings } from "@/features/reservation/reservation-page-offerings";
 import { officeReservationPath } from "@/features/reservation/routes";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import type { SearchParamsRecord } from "@/shared/utils";
+import { getOfficeAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import { plainDateStringSchema } from "@/shared/utils/temporal";
 import {
   OfficeReservationForm,
@@ -26,72 +19,74 @@ import {
 
 const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
 
+/** The office selection's start and end as plain dates. */
+const getOfficeSelectionDates = (values: OfficeReservationInput) => ({
+  startsOn: decodePlainDate(values.startsOn),
+  endsOn: decodePlainDate(getOfficeReservationEndsOn(values)),
+});
+
 export const officeReservationPage = createReservationPage({
   fallback: (locale) => <OfficeReservationFormFallback locale={locale} />,
   kind: "office",
   pathname: officeReservationPath,
-  isEnabled: isOfficePageEnabled,
-  metadata: (locale: Locale) => ({
-    title: m.reservationOfficeMetadataTitle({}, { locale }),
-    description: m.reservationOfficeMetadataDescription({}, { locale }),
+  /** The office seat capacity, loaded alongside the existing customer. */
+  loadPageData: loadOfficeReservationSeatCapacity,
+  // Office links never prefill a contact, so only an explicit `customer`
+  // parameter chooses the mode.
+  prefillsContact: false,
+  // A selection the URL names after a Pay return replaces the signed one.
+  restore: (reservation, searchParams, { pageData: seatCapacity, today }) => ({
+    kind: "restored",
+    values: officeSelectionLink.restore(
+      getOfficeReservationDefaultValues(reservation),
+      searchParams,
+      { seatCapacity, today }
+    ),
   }),
-  render: renderOfficeReservationContent,
-});
-
-export async function renderOfficeReservationContent({
-  checkoutSessionId,
-  initialReservation,
-  locale,
-  replacementToken,
-  searchParams,
-  submittedCode,
-}: {
-  readonly checkoutSessionId?: CheckoutSessionId;
-  readonly initialReservation?: NormalizedOfficeReservationOrder;
-  readonly locale: Locale;
-  readonly replacementToken?: string;
-  readonly searchParams: SearchParamsRecord;
-  readonly submittedCode?: CanonicalPromotionCode;
-}) {
-  const today = decodePlainDate(getCurrentWorkspaceDate().toString());
-  const seatCapacity = await loadOfficeReservationSeatCapacity();
-  const restoredInitialValues = initialReservation
-    ? getOfficeReservationDefaultValues(initialReservation)
-    : undefined;
-  const initialValues =
-    restoredInitialValues ??
-    getOfficeReservationDefaultValuesFromSearchParams(searchParams, {
-      seatCapacity,
-      startsOn: today,
-    });
-  const initialEndsOn = decodePlainDate(
-    getOfficeReservationEndsOn(initialValues)
-  );
-  const initialAdvertisedPrices = await loadAdvertisedPrices([
-    getOfficeAdvertisedPriceRequest({
+  read: (searchParams, { lastReservation, pageData: seatCapacity, today }) =>
+    Effect.succeed(
+      officeSelectionLink.read(searchParams, {
+        lastReservation,
+        seatCapacity,
+        today,
+      })
+    ),
+  preload: (
+    values,
+    { locale, pageData: seatCapacity, submittedCode, today }
+  ) => ({
+    advertisedPrices: getOfficeSeatAdvertisedPriceRequests({
       locale,
-      startsOn: decodePlainDate(initialValues.startsOn),
-      seats: initialValues.seats,
+      seatCapacity,
+      ...getOfficeSelectionDates(values),
       submittedCode,
-      endsOn: initialEndsOn,
     }),
-  ]).pipe(
-    Effect.provide(CheckoutPricingService.Live),
-    Effect.scoped,
-    runWorkspaceEffect("reservation.office.load-advertised-price")
-  );
-
-  return (
+    availability: [getOfficeAvailabilityQuery(today)],
+  }),
+  offerings: (
+    values,
+    advertisedPrices,
+    { locale, pageData: seatCapacity, submittedCode }
+  ) =>
+    getOfficePageOfferings({
+      advertisedPrices,
+      locale,
+      seatCapacity,
+      selection: { ...getOfficeSelectionDates(values), seats: values.seats },
+      submittedCode,
+    }),
+  renderForm: (form) => (
     <OfficeReservationForm
-      checkoutSessionId={checkoutSessionId}
-      seatCapacity={seatCapacity}
-      initialAdvertisedPrices={initialAdvertisedPrices}
-      initialReservation={initialReservation}
-      initialValues={initialValues}
-      locale={locale}
-      replacementToken={replacementToken}
-      submittedCode={submittedCode}
-      today={today}
+      checkoutCustomer={form.checkoutCustomer}
+      checkoutSessionId={form.checkoutSessionId}
+      initialAdvertisedPrices={form.initialAdvertisedPrices}
+      initialAvailability={form.initialAvailability}
+      initialValues={form.initialValues}
+      locale={form.locale}
+      replacementToken={form.replacementToken}
+      seatCapacity={form.pageData}
+      submittedCode={form.submittedCode}
+      today={form.today}
     />
-  );
-}
+  ),
+});

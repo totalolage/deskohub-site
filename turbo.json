@@ -1,8 +1,12 @@
 {
   "$schema": "https://v2-9-14.turborepo.dev/schema.json",
+  "futureFlags": { "affectedUsingTaskInputs": true },
   "globalDependencies": [".env", ".env.local"],
   "globalEnv": ["NODE_ENV", "VERCEL_ENV"],
   "globalPassThroughEnv": [
+    "BUN_OPTIONS",
+    "TMPDIR",
+    "DESKOHUB_COVERAGE_RUN_DIR",
     "ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID",
     "ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_*",
     "CHECKOUT_RETURN_STATE_TOKEN_SECRET",
@@ -11,9 +15,9 @@
     "CLOUDINARY_API_KEY",
     "CLOUDINARY_API_SECRET",
     "CRON_SECRET",
+    "ANALYTICS_WAREHOUSE_SOURCE_TOKEN",
     "DATABASE_URL",
     "DATABASE_URL_UNPOOLED",
-    "ADMIN_BASIC_AUTH_CREDENTIALS",
     "DOTYPOS_API_TIMEOUT",
     "DOTYPOS_API_URL",
     "DOTYPOS_BRANCH_ID",
@@ -23,6 +27,9 @@
     "DOTYPOS_EMPLOYEE_ID",
     "DOTYPOS_REFRESH_TOKEN",
     "EMAIL_API_KEY",
+    "EMAIL_CAMPAIGN_ADMIN_INBOX",
+    "EMAIL_CAMPAIGN_FROM",
+    "EMAIL_CAMPAIGN_REPLY_TO",
     "EMAIL_PROVIDER",
     "GOOGLE_CALENDAR_PRIVATE_KEY",
     "GOOGLE_CALENDAR_OPENING_HOURS_ID",
@@ -43,10 +50,12 @@
     "NEXT_PUBLIC_GTM_ID",
     "NEXT_PUBLIC_POSTHOG_HOST",
     "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN",
+    "OPENAI_APPS_CHALLENGE_TOKEN",
     "POSTHOG_API_HOST",
     "POSTHOG_API_KEY",
     "POSTHOG_FEATURE_FLAG_OVERRIDES",
     "POSTHOG_INGEST_HOST",
+    "POSTHOG_PERSON_PRIVACY_API_KEY",
     "POSTHOG_PROJECT_ID",
     "POSTHOG_SERVICE_NAME",
     "POSTHOG_SERVICE_NAMESPACE",
@@ -55,17 +64,10 @@
     "!VERCEL_ENV",
     "VERCEL_AUTOMATION_BYPASS_SECRET",
     "VERCEL_PROJECT_PRODUCTION_URL",
-    "VERCEL_URL"
+    "VERCEL_URL",
+    "WEBMCP_ORIGIN_TRIAL_TOKENS"
   ],
   "tasks": {
-    "@deskohub/dotypos#generate": {
-      "passThroughEnv": [
-        "CLOUDINARY_API_KEY",
-        "CLOUDINARY_API_SECRET",
-        "EMAIL_API_KEY"
-      ]
-    },
-    "@deskohub/nexi#generate": {},
     "deskohub-workspace#i18n:compile": {
       "outputs": ["features/i18n/paraglide/**"],
       "passThroughEnv": [
@@ -82,6 +84,14 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "generate": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/generate-effect-openapi-client.ts",
+        "$TURBO_ROOT$/patches/@effect%2Fopenapi-generator@*.patch"
+      ],
+      "outputs": ["src/generated/**"]
     },
     "dev:app": {
       "cache": false,
@@ -116,18 +126,23 @@
         "GITHUB_STEP_SUMMARY",
         "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH",
         "TARGET_SHA",
-        "WORKSPACE_E2E_ADMIN_BASIC_AUTH",
         "WORKSPACE_E2E_ALLOCATION_SHARD",
         "WORKSPACE_E2E_BASE_URL",
+        "WORKSPACE_E2E_BETTER_AUTH_SECRETS",
+        "WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS",
+        "WORKSPACE_E2E_CRON_SECRET",
         "WORKSPACE_E2E_DATABASE_ALLOWLIST",
         "WORKSPACE_E2E_DATABASE_URL_UNPOOLED",
         "WORKSPACE_E2E_EXECUTION_CONTEXT",
+        "WORKSPACE_E2E_NIGHTLY_CASES",
         "WORKSPACE_E2E_POSTHOG_HOST",
         "WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN",
         "WORKSPACE_E2E_PR_NUMBER",
         "WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL",
         "WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED",
-        "WORKSPACE_E2E_RESEND_API_KEY"
+        "WORKSPACE_E2E_REVIEW_SCREENSHOTS",
+        "WORKSPACE_E2E_VERCEL_TOKEN",
+        "WORKSPACE_E2E_VERCEL_PROJECT"
       ]
     },
     "lint": {
@@ -136,6 +151,7 @@
     },
     "test": {
       "dependsOn": ["^test"],
+      "env": ["CI", "TZ"],
       "outputs": []
     },
     "start": {

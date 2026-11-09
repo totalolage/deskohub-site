@@ -1,5 +1,6 @@
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { BigDecimal, Data, Effect, Schema } from "effect";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { locales } from "@/features/i18n";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import {
@@ -35,18 +36,36 @@ export const invoiceVariableSymbolSchema = Schema.Trim.check(
 export type InvoiceVariableSymbol = typeof invoiceVariableSymbolSchema.Type;
 
 export const manualInvoiceProvenanceSchema = Schema.Struct({
-  source: Schema.Literals(["admin-ui", "dhw-cli"]),
+  source: Schema.Literals(["admin-ui", "dhw-cli", "assistant"]),
+  /**
+   * The issuing administrator's login email. Invoices issued before
+   * administrator accounts hold a Basic-auth username instead.
+   */
   actor: Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(255)),
 });
 export type ManualInvoiceProvenance = typeof manualInvoiceProvenanceSchema.Type;
 
-export const manualInvoiceLineInputSchema = Schema.Struct({
+/** The administrator account issuing a manual invoice, and through what. */
+export type ManualInvoiceIssuer = {
+  readonly source: ManualInvoiceProvenance["source"];
+  readonly administrator: AdministratorAccountActor;
+};
+
+export const toManualInvoiceProvenance = ({
+  source,
+  administrator,
+}: ManualInvoiceIssuer): ManualInvoiceProvenance => ({
+  source,
+  actor: administrator.email,
+});
+
+const manualInvoiceLineInputSchema = Schema.Struct({
   description: Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(1000)),
   price: Schema.Trim.check(Schema.isPattern(/^[+-]?\d+(?:\.\d+)?$/)),
 });
 export type ManualInvoiceLineInput = typeof manualInvoiceLineInputSchema.Type;
 
-export const manualInvoicePaymentSchema = Schema.Union([
+const manualInvoicePaymentSchema = Schema.Union([
   Schema.Struct({
     status: Schema.Literal("due"),
     date: plainDateStringSchema,
@@ -79,7 +98,7 @@ export const manualInvoiceLineSchema = Schema.Struct({
   description: Schema.NonEmptyString,
   price: Schema.String,
 });
-export type ManualInvoiceLine = typeof manualInvoiceLineSchema.Type;
+type ManualInvoiceLine = typeof manualInvoiceLineSchema.Type;
 
 export class ManualInvoiceValidationError extends Data.TaggedError(
   "ManualInvoiceValidationError"

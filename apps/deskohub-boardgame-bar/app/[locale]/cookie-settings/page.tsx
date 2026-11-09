@@ -9,6 +9,10 @@ import { getLocale } from "@/features/i18n";
 import * as messages from "@/features/i18n/paraglide/messages";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
+import {
+  type ConsentPreferences,
+  toggleConsentPreference,
+} from "./consent-preference-toggle";
 
 // Helper to get cookie settings messages
 const msg = (key: string): (() => string) => {
@@ -22,9 +26,7 @@ export default function CookieSettingsPage() {
   const { acceptAll, rejectAll, acceptCategory, rejectCategory, isAccepted } =
     useCookieConsent();
 
-  const [preferences, setPreferences] = useState<
-    Record<ConsentCategory, boolean>
-  >({
+  const [preferences, setPreferences] = useState<ConsentPreferences>({
     necessary: true,
     analytics: false,
     marketing: false,
@@ -41,18 +43,13 @@ export default function CookieSettingsPage() {
     });
   }, [isAccepted]);
 
-  const handleToggle = (category: ConsentCategory) => {
-    if (category === "necessary") return; // Cannot toggle necessary cookies
-
-    const newValue = !preferences[category];
-    setPreferences((prev) => ({ ...prev, [category]: newValue }));
-
-    if (newValue) {
-      acceptCategory(category);
-    } else {
-      rejectCategory(category);
-    }
-  };
+  const handleToggle = (category: ConsentCategory) =>
+    toggleConsentPreference(category, {
+      preferences,
+      setPreferences,
+      acceptCategory,
+      rejectCategory,
+    });
 
   const handleAcceptAll = () => {
     acceptAll();

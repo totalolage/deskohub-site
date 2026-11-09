@@ -1,0 +1,92 @@
+"use client";
+
+import type { Table } from "@deskohub/dotypos/generated";
+import { TableMap } from "@deskohub/dotypos/table-map";
+import { useState } from "react";
+
+type DotyposTablesPreviewProps = {
+  readonly tables: readonly Table[];
+};
+
+const getTableKey = (table: Table) => table.id;
+
+const getTableClassName = (table: Table, selectedTable: Table | undefined) => {
+  const selected =
+    getTableKey(table) === (selectedTable && getTableKey(selectedTable));
+
+  if (selected) {
+    return "cursor-pointer fill-amber-300 stroke-amber-950 stroke-2 transition-colors";
+  }
+
+  if (table.enabled === false || table.display === false) {
+    return "cursor-pointer fill-stone-200 stroke-stone-400 stroke-2 transition-colors hover:fill-stone-300";
+  }
+
+  return "cursor-pointer fill-emerald-300 stroke-emerald-900 stroke-2 transition-colors hover:fill-emerald-200";
+};
+
+export function DotyposTablesPreview({ tables }: DotyposTablesPreviewProps) {
+  const [selectedTable, setSelectedTable] = useState<Table | undefined>(
+    tables[0]
+  );
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="overflow-hidden rounded-3xl border border-stone-300 bg-white p-4 shadow-2xl shadow-black/10 [&>svg]:h-[70vh] [&>svg]:min-h-[420px] [&>svg]:w-full">
+        <TableMap
+          tables={tables}
+          tableStyle={(table) => getTableClassName(table, selectedTable)}
+          onTableClick={setSelectedTable}
+        />
+      </div>
+
+      <aside className="rounded-3xl border border-stone-300 bg-white p-5 shadow-xl shadow-black/5">
+        <h2 className="font-bold text-2xl text-[#00024f]">Selected table</h2>
+        {selectedTable ? (
+          <dl className="mt-5 grid grid-cols-[96px_1fr] gap-x-3 gap-y-2 text-sm">
+            <TableIdentityFacts table={selectedTable} />
+            <TablePlacementFacts table={selectedTable} />
+          </dl>
+        ) : (
+          <p className="mt-4 text-stone-600">No Dotypos tables loaded.</p>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+/** What the selected table is: its name, IDs, type, location, and seats. */
+function TableIdentityFacts({ table }: { readonly table: Table }) {
+  return (
+    <>
+      <dt className="text-stone-500">Name</dt>
+      <dd className="font-semibold">{table.name}</dd>
+      <dt className="text-stone-500">ID</dt>
+      <dd className="break-all">{table.id}</dd>
+      <dt className="text-stone-500">Type</dt>
+      <dd>{table.type ?? "GENERIC"}</dd>
+      <dt className="text-stone-500">Location</dt>
+      <dd>{table.locationName ?? "-"}</dd>
+      <dt className="text-stone-500">Seats</dt>
+      <dd>{table.seats ?? "-"}</dd>
+    </>
+  );
+}
+
+/** Where the selected table sits on the map and whether it is offered. */
+function TablePlacementFacts({ table }: { readonly table: Table }) {
+  return (
+    <>
+      <dt className="text-stone-500">Position</dt>
+      <dd>
+        {table.positionX ?? "0"}, {table.positionY ?? "0"}
+      </dd>
+      <dt className="text-stone-500">Rotation</dt>
+      <dd>{table.rotation ?? "0"}</dd>
+      <dt className="text-stone-500">Visible</dt>
+      <dd>{table.display === false ? "No" : "Yes"}</dd>
+      <dt className="text-stone-500">Enabled</dt>
+      <dd>{table.enabled === false ? "No" : "Yes"}</dd>
+    </>
+  );
+}

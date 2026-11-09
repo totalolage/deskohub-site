@@ -1,4 +1,4 @@
-import type { Category, Product } from "@deskohub/dotypos/generated";
+import type { DotyposCategory, DotyposProduct } from "@deskohub/dotypos";
 import {
   Document,
   Font,
@@ -101,8 +101,8 @@ const styles = StyleSheet.create({
 });
 
 interface MenuPDFDocumentProps {
-  categories: Category[];
-  products: Product[];
+  categories: DotyposCategory[];
+  products: DotyposProduct[];
   locale: Locale;
 }
 
@@ -111,7 +111,7 @@ export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
   products,
   locale,
 }) => {
-  const renderItems = (categoryProducts: Product[]) => {
+  const renderItems = (categoryProducts: DotyposProduct[]) => {
     return categoryProducts.map((product) => {
       const item = formatMenuItem(product, locale);
 

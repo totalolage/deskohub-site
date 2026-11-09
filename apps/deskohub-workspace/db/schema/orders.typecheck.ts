@@ -50,6 +50,9 @@ const validInsert: NewOrder = {
 };
 void validInsert;
 
+// Type-only instant: a typecheck module never runs, so it reads no Temporal.
+declare const instant: Temporal.Instant;
+
 const validSelect: Order = {
   id: "0198c1a2-3b4c-7d5e-8f90-6f5e4d3c2b1a" as OrderId,
   kind: "reservation",
@@ -57,13 +60,12 @@ const validSelect: Order = {
   dotyposCustomerId: "12345" as DotyposCustomerId,
   paymentState: "paid",
   fulfillmentState: "fulfilled",
-  activePaymentAttemptId: null,
-  paidAt: Temporal.Instant.from("2026-09-26T10:00:00.000Z"),
-  fulfilledAt: Temporal.Instant.from("2026-09-26T11:00:00.000Z"),
+  paidAt: instant,
+  fulfilledAt: instant,
   fulfillmentFailedAt: null,
   fulfillmentFailureCode: null,
-  createdAt: Temporal.Instant.from("2026-09-26T09:00:00.000Z"),
-  updatedAt: Temporal.Instant.from("2026-09-26T11:00:00.000Z"),
+  createdAt: instant,
+  updatedAt: instant,
 };
 void validSelect;
 

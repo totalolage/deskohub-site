@@ -1,0 +1,6 @@
+- main:
+  - list "Reservation steps"
+  - status: "Payment status: We could not find this order."
+  - heading "We could not find this order." [level=1]
+  - link "Back home":
+    - /url: /en-US

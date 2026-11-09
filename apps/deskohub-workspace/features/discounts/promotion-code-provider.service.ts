@@ -1,13 +1,14 @@
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Clock, Context, Effect, Layer, Match, Option } from "effect";
+import { Context, Effect, Layer, Match, Option } from "effect";
 import {
   getWorkspaceProductKey,
   type WorkspaceProductIdentity,
 } from "@/features/checkout/product-identity";
-import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import { workspaceProductTargetMatches } from "@/features/discounts/product-target";
 import { m } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import { moneyWithValue, sameMoneyUnit } from "@/shared/money/money";
+import { currentInstant } from "@/shared/utils/temporal";
 import type { CanonicalPromotionCode, DiscountQuoteInput } from "./contracts";
 import type { DiscountDefinition } from "./discount-definition";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
@@ -182,11 +183,7 @@ export class PromotionCodeProvider extends Context.Service<
           }
         ) =>
           Effect.succeed(input).pipe(
-            Effect.bind("at", () =>
-              Clock.currentTimeMillis.pipe(
-                Effect.map(Temporal.Instant.fromEpochMilliseconds)
-              )
-            ),
+            Effect.bind("at", () => currentInstant),
             Effect.bind("configuration", loadCodeConfiguration),
             Effect.tap(validatePromotionEnabled),
             Effect.tap(validatePromotionStarted),
@@ -202,11 +199,7 @@ export class PromotionCodeProvider extends Context.Service<
           }
         ) =>
           Effect.succeed(input).pipe(
-            Effect.bind("at", () =>
-              Clock.currentTimeMillis.pipe(
-                Effect.map(Temporal.Instant.fromEpochMilliseconds)
-              )
-            ),
+            Effect.bind("at", () => currentInstant),
             Effect.bind("configuration", loadCodeConfiguration),
             Effect.tap(validatePromotionEnabled),
             Effect.tap(validatePromotionStarted),
@@ -363,9 +356,7 @@ const validateFixedAdjustmentCompatibility = (input: {
       fixed: (fixedAdjustment) =>
         Option.liftPredicate(
           fixedAdjustment.amount,
-          (amount) =>
-            amount.currency !== input.discountableSubtotal.currency ||
-            amount.exponent !== input.discountableSubtotal.exponent
+          (amount) => !sameMoneyUnit(amount, input.discountableSubtotal)
         ).pipe(
           Option.map(
             (amount) =>
@@ -441,17 +432,14 @@ const toVoucherCandidate = (input: {
   DiscountCandidate,
   PromotionCodeUnavailableError | DiscountProviderError
 > => {
-  const availableAmount = workspaceMoneyWithValue(
+  const availableAmount = moneyWithValue(
     input.configuration.amount.value - input.availability.usedValue,
     input.configuration.amount
   );
   if (availableAmount.value <= 0) {
     return unavailable(input.configuration, "usage_limit_reached");
   }
-  if (
-    availableAmount.currency !== input.discountableSubtotal.currency ||
-    availableAmount.exponent !== input.discountableSubtotal.exponent
-  ) {
+  if (!sameMoneyUnit(availableAmount, input.discountableSubtotal)) {
     return Effect.fail(
       new DiscountProviderError({
         reason: "malformed_configuration",

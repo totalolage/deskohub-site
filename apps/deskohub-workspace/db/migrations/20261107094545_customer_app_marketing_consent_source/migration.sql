@@ -1,0 +1,1 @@
+ALTER TABLE "customer_marketing_consents" DROP CONSTRAINT "customer_marketing_consents_grant_source_check", ADD CONSTRAINT "customer_marketing_consents_grant_source_check" CHECK ("grant_source" is null or "grant_source" in ('reservation_form', 'site_tool', 'mcp_tool', 'account', 'link', 'customer_app'));

@@ -22,20 +22,25 @@ export const getReservationStartPath = (
   locale: Locale,
   kind: ReservationOrderData["kind"],
   searchParams?: URLSearchParams
-) =>
+) => withSearchParams(`/${locale}${getReservationPath(kind)}`, searchParams);
+
+/**
+ * A reservation page path without a locale prefix, for links shared outside
+ * the app: the proxy opens them in the recipient's language.
+ */
+export const getShareableReservationStartPath = (
+  kind: ReservationOrderData["kind"],
+  searchParams?: URLSearchParams
+) => withSearchParams(getReservationPath(kind), searchParams);
+
+const getReservationPath = (kind: ReservationOrderData["kind"]) =>
   Match.value({ kind }).pipe(
     Match.discriminatorsExhaustive("kind")({
-      cowork: () => {
-        const path = getCoworkReservationPath(locale);
-        return searchParams ? `${path}?${searchParams}` : path;
-      },
-      "meeting-room": () => {
-        const path = getMeetingRoomReservationPath(locale);
-        return searchParams ? `${path}?${searchParams}` : path;
-      },
-      office: () => {
-        const path = getOfficeReservationPath(locale);
-        return searchParams ? `${path}?${searchParams}` : path;
-      },
+      cowork: () => coworkReservationPath,
+      "meeting-room": () => meetingRoomReservationPath,
+      office: () => officeReservationPath,
     })
   );
+
+const withSearchParams = (path: string, searchParams?: URLSearchParams) =>
+  searchParams?.size ? `${path}?${searchParams}` : path;

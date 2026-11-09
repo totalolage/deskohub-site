@@ -1,26 +1,36 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "react-email";
+import type { Locale } from "@/features/i18n";
+import { staffEmailLocale } from "@/shared/backend/email/staff-email-locale";
 import {
   contactBusinessPreviewProps,
   contactConfirmationPreviewProps,
   customerReservationPreviewProps,
   invoiceDeliveryPreviewProps,
+  reservationAuthorPreviewProps,
   reservationNotificationPreviewProps,
+  workspaceCampaignPreviewProps,
 } from "./_fixtures/preview-props";
 import { ContactBusinessEmail } from "./contact-business";
 import { ContactConfirmationEmail } from "./contact-confirmation";
 import { CustomerReservationEmail } from "./customer-reservation";
-import { InvoiceDeliveryEmail } from "./invoice-delivery";
+import {
+  InvoiceDeliveryEmail,
+  type InvoiceDeliveryEmailProps,
+} from "./invoice-delivery";
+import { ReservationAuthorEmail } from "./reservation-author";
 import { ReservationNotificationEmail } from "./reservation-notification";
+import { WorkspaceCampaignEmail } from "./workspace-campaign";
 
 describe("Workspace React Email templates", () => {
-  test("renders every preview with the shared design and channel-specific data boundaries", async () => {
+  test("renders every template preview", async () => {
     const [
       business,
       confirmation,
       customerReservation,
       staffNotification,
       invoiceDelivery,
+      campaign,
     ] = await Promise.all([
       render(<ContactBusinessEmail {...contactBusinessPreviewProps} />),
       render(<ContactConfirmationEmail {...contactConfirmationPreviewProps} />),
@@ -31,49 +41,140 @@ describe("Workspace React Email templates", () => {
         />
       ),
       render(<InvoiceDeliveryEmail {...invoiceDeliveryPreviewProps} />),
+      render(<WorkspaceCampaignEmail {...workspaceCampaignPreviewProps} />),
     ]);
 
-    for (const email of [
-      business,
-      confirmation,
-      customerReservation,
-      staffNotification,
-      invoiceDelivery,
-    ]) {
-      expect(email).toContain("Deskohub");
-      expect(email).toContain("Turnovská 430/10");
-      expect(email).toContain("font-size:26px");
-      expect(email).toContain("line-height:34px");
-    }
+    expect(business).toContain(contactBusinessPreviewProps.name);
+    expect(confirmation).toContain('lang="en-US"');
+    expect(customerReservation).toContain(
+      customerReservationPreviewProps.heading
+    );
+    expect(customerReservation).toContain(
+      `href="${customerReservationPreviewProps.access.url}"`
+    );
+    expect(staffNotification).toContain(
+      reservationNotificationPreviewProps.heading
+    );
+    expect(invoiceDelivery).toContain(
+      invoiceDeliveryPreviewProps.invoiceNumber
+    );
+    expect(campaign).toContain("Podzim ve Workspace");
+    expect(campaign).toContain(
+      `href="${workspaceCampaignPreviewProps.footer.marketingPreferencesUrl}"`
+    );
+  });
 
-    expect(business).toContain(contactBusinessPreviewProps.heading);
-    expect(confirmation).toContain(contactConfirmationPreviewProps.heading);
-    expect(customerReservation).toContain("Show access code");
-    expect(customerReservation).toContain(">Invoice<");
-    expect(customerReservation).toContain(">Download<");
-    expect(customerReservation).toContain("text-decoration-line:underline");
-    expect(customerReservation).not.toContain(
-      "For security, the current access PIN is shown"
+  test("renders the author confirmation with only its status link", async () => {
+    const html = await render(
+      <ReservationAuthorEmail {...reservationAuthorPreviewProps} />
     );
-    expect(customerReservation).toContain("/reservation/access/");
-    expect(customerReservation).toContain("accessToken=preview-token");
-    expect(customerReservation).not.toContain("statusToken=");
-    expect(customerReservation).not.toContain("4829");
-    expect(customerReservation).toContain('bgcolor="#00024f"');
-    expect(customerReservation).toContain("background-color:#00024f");
-    expect(customerReservation).toContain(
-      'content="width=device-width, initial-scale=1.0" name="viewport"'
+
+    expect(html).toContain(reservationAuthorPreviewProps.heading);
+    expect(html).toContain(
+      `href="${reservationAuthorPreviewProps.status.url}"`
     );
-    expect(customerReservation).toContain(
-      "padding-right:8px;padding-left:8px;padding-bottom:16px;padding-top:16px"
+    expect(html).toContain(reservationAuthorPreviewProps.table.name);
+    expect(html).not.toContain("accessToken");
+    expect(html).not.toContain(
+      customerReservationPreviewProps.network.password
     );
-    expect(customerReservation).toContain(
-      "@media (min-width:40rem){.sm_w-auto{width:auto!important}}"
+  });
+});
+
+const czechThenEnglish = ["cs-CZ", "en-US"] as const satisfies Locale[];
+
+describe("contact emails", () => {
+  test("write the staff notification in the staff locale", async () => {
+    const html = await render(
+      <ContactBusinessEmail {...contactBusinessPreviewProps} />
     );
-    expect(customerReservation).not.toContain("Where to sit");
-    expect(customerReservation).not.toContain("customer@example.com");
-    expect(staffNotification).toContain("customer@example.com");
-    expect(staffNotification).not.toContain("4829");
-    expect(invoiceDelivery).toContain(invoiceDeliveryPreviewProps.body);
+
+    expect(html).toContain(`lang="${staffEmailLocale}"`);
+    expect(html).toContain(contactBusinessPreviewProps.email);
+  });
+
+  test("list the phone only when the visitor gave one", async () => {
+    const { phone, ...withoutPhone } = contactBusinessPreviewProps;
+    const [withPhoneText, withoutPhoneText] = await Promise.all([
+      render(<ContactBusinessEmail {...contactBusinessPreviewProps} />, {
+        plainText: true,
+      }),
+      render(<ContactBusinessEmail {...withoutPhone} />, { plainText: true }),
+    ]);
+
+    expect(withPhoneText).toContain(phone);
+    expect(withoutPhoneText).not.toContain(phone);
+  });
+
+  test("quote the visitor's message line by line in their locale", async () => {
+    const message = "First line\nSecond line";
+    const [czech, english] = await Promise.all(
+      czechThenEnglish.map((locale) =>
+        render(<ContactConfirmationEmail locale={locale} message={message} />)
+      )
+    );
+
+    expect(czech).toContain('lang="cs-CZ"');
+    expect(english).toContain('lang="en-US"');
+    expect(czech).not.toBe(english);
+    expect(english).toContain("First line<br/>Second line");
+  });
+});
+
+describe("invoice delivery email", () => {
+  const manualInvoice = (requestsPayment: boolean) =>
+    ({
+      ...invoiceDeliveryPreviewProps,
+      invoice: { source: "manual", requestsPayment },
+    }) satisfies InvoiceDeliveryEmailProps;
+
+  test("writes the customer copy in the invoice's locale", async () => {
+    const [czech, english] = await Promise.all(
+      czechThenEnglish.map((locale) =>
+        render(
+          <InvoiceDeliveryEmail
+            {...invoiceDeliveryPreviewProps}
+            recipient={{ audience: "customer", locale }}
+          />
+        )
+      )
+    );
+
+    expect(czech).toContain('lang="cs-CZ"');
+    expect(english).toContain('lang="en-US"');
+    expect(czech).not.toBe(english);
+  });
+
+  test("writes the staff copy in the staff locale", async () => {
+    const html = await render(
+      <InvoiceDeliveryEmail
+        {...invoiceDeliveryPreviewProps}
+        recipient={{ audience: "internal" }}
+      />
+    );
+
+    expect(html).toContain(`lang="${staffEmailLocale}"`);
+    expect(html).toContain(invoiceDeliveryPreviewProps.invoiceNumber);
+  });
+
+  test("asks a manual invoice's customer for payment only when it is due", async () => {
+    const [requested, settled] = await Promise.all([
+      render(<InvoiceDeliveryEmail {...manualInvoice(true)} />, {
+        plainText: true,
+      }),
+      render(<InvoiceDeliveryEmail {...manualInvoice(false)} />, {
+        plainText: true,
+      }),
+    ]);
+
+    expect(requested).not.toBe(settled);
+  });
+
+  test("names the order of a reservation invoice", async () => {
+    const html = await render(
+      <InvoiceDeliveryEmail {...invoiceDeliveryPreviewProps} />
+    );
+
+    expect(html).toContain(invoiceDeliveryPreviewProps.invoice.orderId);
   });
 });

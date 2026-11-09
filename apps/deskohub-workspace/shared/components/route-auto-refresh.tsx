@@ -1,7 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useEffectEvent } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+} from "react";
 
 type RouteAutoRefreshProps = {
   readonly enabled: boolean;
@@ -10,9 +16,16 @@ type RouteAutoRefreshProps = {
   readonly refreshOnFocus?: boolean;
 };
 
-const DEFAULT_REFRESH_INTERVAL_MS = 5000;
+const DEFAULT_REFRESH_INTERVAL_MS = 10_000;
+const POLL_BACKOFF_MS = [2000, 3000, 5000, 8000];
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
+/**
+ * Refreshes the current route while `enabled`. Each poll waits for the
+ * previous refresh to finish, backs off up to `intervalMs`, and pauses while
+ * the document is hidden. Returning to the tab refreshes as soon as any
+ * in-flight refresh finishes and restarts the backoff. Refreshes never overlap.
+ */
 export function RouteAutoRefresh({
   enabled,
   intervalMs = DEFAULT_REFRESH_INTERVAL_MS,
@@ -20,17 +33,59 @@ export function RouteAutoRefresh({
   refreshOnFocus = false,
 }: RouteAutoRefreshProps) {
   const router = useRouter();
+  const [isRefreshing, startRefresh] = useTransition();
+  const [pollAttempt, setPollAttempt] = useState(0);
+  const [isVisibleRefreshPending, setVisibleRefreshPending] = useState(false);
+  const isDocumentVisible = useSyncExternalStore(
+    subscribeToDocumentVisibility,
+    () => document.visibilityState === "visible",
+    () => true
+  );
   const refreshRoute = useEffectEvent(() => {
-    router.refresh();
+    if (isRefreshing) return;
+    startRefresh(() => router.refresh());
   });
+
+  useEffect(() => {
+    if (!enabled || !isDocumentVisible || isRefreshing) return;
+
+    const timeoutId = globalThis.setTimeout(
+      () => {
+        if (isVisibleRefreshPending) setVisibleRefreshPending(false);
+        else
+          setPollAttempt((attempt) =>
+            Math.min(attempt + 1, POLL_BACKOFF_MS.length)
+          );
+        refreshRoute();
+      },
+      isVisibleRefreshPending
+        ? 0
+        : Math.min(POLL_BACKOFF_MS[pollAttempt] ?? intervalMs, intervalMs)
+    );
+
+    return () => globalThis.clearTimeout(timeoutId);
+  }, [
+    enabled,
+    intervalMs,
+    isDocumentVisible,
+    isRefreshing,
+    isVisibleRefreshPending,
+    pollAttempt,
+  ]);
 
   useEffect(() => {
     if (!enabled) return;
 
-    const intervalId = globalThis.setInterval(refreshRoute, intervalMs);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      setPollAttempt(0);
+      setVisibleRefreshPending(true);
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
 
-    return () => globalThis.clearInterval(intervalId);
-  }, [enabled, intervalMs]);
+    return () =>
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+  }, [enabled]);
 
   useEffect(() => {
     if (!refreshAt) return;
@@ -76,4 +131,9 @@ export function RouteAutoRefresh({
   }, [refreshOnFocus]);
 
   return null;
+}
+
+function subscribeToDocumentVisibility(onChange: () => void) {
+  document.addEventListener("visibilitychange", onChange);
+  return () => document.removeEventListener("visibilitychange", onChange);
 }

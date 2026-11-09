@@ -3,135 +3,109 @@
 import { type AresLookupFailure, AresLookupService } from "@deskohub/ares";
 import { Effect, Layer, Match, Result, Schema } from "effect";
 import { revalidatePath } from "next/cache";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { accountActionError } from "@/features/account/account-action-guards";
 import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
 import { toAresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
-import { deleteCurrentAccountThroughAuthEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
+import { CustomerAccountDeletionEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
+import { requestCurrentAccountDeletion } from "@/features/account/backend/current-account-deletion";
+import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
+import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { saveAccountLocalePreference } from "@/features/account/backend/customer-locale-preference";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import {
-  type CustomerProfileInput,
+  completeCurrentCustomerProfile,
+  updateCurrentCustomerProfile,
+} from "@/features/account/backend/customer-profile-saving";
+import { acknowledgeCurrentSignupReferral } from "@/features/account/backend/signup-referral";
+import { requireVerifiedSession } from "@/features/account/backend/verified-customer-session";
+import {
+  completeCustomerProfileStandardSchema,
   updateCustomerProfileStandardSchema,
 } from "@/features/account/contracts";
-import { CustomerAccountAccessError } from "@/features/account/customer-account";
-import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
+import {
+  CustomerAccountAccessError,
+  type CustomerAccountId,
+} from "@/features/account/customer-account";
+import { getAccountPath } from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
-import { m } from "@/features/i18n";
+import { locales, m } from "@/features/i18n";
+import { ReferralService } from "@/features/referrals";
+import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
+import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
-import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
 const deleteCustomerAccountConfirmedSchema = Schema.toStandardSchemaV1(
   Schema.Struct({ confirmed: Schema.Literal(true) }),
   { parseOptions: { errors: "all", onExcessProperty: "error" } }
 );
 
-const requireVerifiedSession = Effect.flatMap(
-  CustomerAuthentication,
-  (authentication) => authentication.currentUser
-).pipe(
-  Effect.flatMap((user) =>
-    user
-      ? Effect.succeed(user)
-      : Effect.fail(
-          new CustomerAccountAccessError({ reason: "unauthenticated" })
-        )
+/**
+ * The selectable locale preferences, derived from the Inlang `locales` tuple
+ * so a locale list change is authoritative here too; the database CHECK
+ * derives from the same list.
+ */
+const localePreferenceSchema = Schema.toStandardSchemaV1(
+  Schema.Struct({ locale: Schema.Literals(locales) }),
+  { parseOptions: { errors: "all", onExcessProperty: "error" } }
+);
+
+/**
+ * The live capabilities of the profile saves, under the request's one
+ * referral release decision.
+ */
+const profileSavingLayer = Layer.mergeAll(
+  CustomerAuthentication.Default,
+  CustomerAccountResolver.Live,
+  CustomerProfileService.Live,
+  ReferralService.Live,
+  ReferralSignupIntentRepository.Live
+);
+
+/** The browser's remembered referral code, forgotten once settled. */
+const rememberedReferralLayer = RememberedReferral.Cookies.pipe(
+  Layer.provide(
+    Layer.mergeAll(ReferralService.Live, CustomerAccountContactService.Live)
   )
 );
 
-const profileActionErrorMessage = (
-  cause: CustomerAccountAccessError,
-  locale: Locale
-) => {
-  if (cause.reason === "unauthenticated") {
-    return m.accountSessionExpired({}, { locale });
-  }
-  if (
-    cause.reason === "link-required" &&
-    cause.linkReason === "deletion-requested"
-  ) {
-    return m.accountDeletionPendingError({}, { locale });
-  }
-  return m.accountProfileError({}, { locale });
-};
-
-const profileActionError =
-  (locale: Locale) =>
-  (cause: CustomerAccountAccessError): PublicSafeActionError =>
-    new PublicSafeActionError({
-      message: profileActionErrorMessage(cause, locale),
-      cause,
-    });
-
-const requireAccountsEnabled = (locale: Locale) =>
-  Effect.promise(areAccountsEnabled).pipe(
-    Effect.filterOrFail(
-      (enabled) => enabled,
-      () =>
-        new PublicSafeActionError({
-          message: m.accountUnavailableDescription({}, { locale }),
-        })
-    ),
-    Effect.asVoid
-  );
-
 /**
- * Saves the Dotypos-owned profile for the verified account: a not-yet-linked
- * account creates and claims its customer profile, an already-linked account
- * updates it. Both paths run under the authoritative session, re-check the
- * deletion marker under the account lock, and never accept an email: the
- * profile input has no email field and the verified login email is read only
- * from the session.
+ * Saves the locale preference of the verified account under the account lock.
+ * The preference is also the site locale for the signed-in customer, so the
+ * caller navigates to the page under the saved locale, and the proxy moves the
+ * locale cookie on that page's response. The action leaves cookies alone: a
+ * cookie write makes Next re-render the referring page, still under the old
+ * locale, while the document navigation is leaving it. The Dotypos profile is
+ * never touched.
  */
-const saveCustomerProfile = Effect.fn(
-  function* (input: CustomerProfileInput, _locale: Locale) {
-    const user = yield* requireVerifiedSession;
-    const resolution = yield* CustomerAccountResolver.pipe(
-      Effect.flatMap((resolver) => resolver.resolve),
-      Effect.result
-    );
-
-    if (Result.isSuccess(resolution)) {
-      return yield* Effect.flatMap(CustomerProfileService, (profile) =>
-        profile.update(resolution.success, input)
-      );
-    }
-
-    const failure = resolution.failure;
-    if (
-      failure.reason === "link-required" &&
-      failure.linkReason === "not-found"
-    ) {
-      return yield* Effect.flatMap(CustomerProfileService, (profile) =>
-        profile.create(user.accountId, user.email, input)
-      );
-    }
-    return yield* failure;
-  },
-  (effect, _input, locale) =>
-    effect.pipe(
-      Effect.mapError(profileActionError(locale)),
-      Effect.provide(
-        Layer.mergeAll(
-          CustomerAuthentication.Default,
-          CustomerAccountResolver.Live,
-          CustomerProfileService.Live
-        )
+const saveLocalePreference = (accountId: CustomerAccountId, locale: Locale) =>
+  saveAccountLocalePreference(accountId, locale).pipe(
+    Effect.provide(
+      Layer.mergeAll(
+        WorkspaceDatabase.Default,
+        CustomerAccountLinkRepository.Live,
+        CustomerAuthentication.Default
       )
     )
-);
+  );
 
 const completeCustomerProfileAction = defineWorkspaceAction(
   {
     operation: "account.complete-profile",
-    schema: updateCustomerProfileStandardSchema,
+    schema: completeCustomerProfileStandardSchema,
     logInput: false,
   },
   (input, { locale }) =>
-    Effect.andThen(
-      requireAccountsEnabled(locale),
-      Effect.as(saveCustomerProfile(input, locale), {
-        status: "completed" as const,
-      })
+    completeCurrentCustomerProfile(input).pipe(
+      Effect.mapError(accountActionError(locale)),
+      Effect.provide(
+        Layer.mergeAll(profileSavingLayer, rememberedReferralLayer).pipe(
+          Layer.provideMerge(ReferralReleaseGateRequest)
+        )
+      )
     )
 );
 
@@ -142,31 +116,64 @@ const updateCustomerProfileAction = defineWorkspaceAction(
     logInput: false,
   },
   (input, { locale }) =>
-    Effect.andThen(
-      requireAccountsEnabled(locale),
-      Effect.as(saveCustomerProfile(input, locale), {
-        status: "updated" as const,
-      })
+    updateCurrentCustomerProfile(input).pipe(
+      Effect.mapError(accountActionError(locale)),
+      Effect.provide(
+        profileSavingLayer.pipe(Layer.provideMerge(ReferralReleaseGateRequest))
+      )
     )
 );
 
-export type CustomerAccountDeletionResult =
-  | { readonly status: "deleted" }
-  | { readonly status: "reauthentication-required" }
-  | { readonly status: "failed" };
-
-const revalidateDeletionAuthority = (locale: Locale) =>
-  Effect.sync(() => {
-    revalidatePath(`/${locale}/account`);
-    revalidatePath(`/${locale}/account/deleted`);
-  });
+const acknowledgeSignupReferralNoticeSchema = Schema.toStandardSchemaV1(
+  Schema.Struct({}),
+  { parseOptions: { errors: "all", onExcessProperty: "error" } }
+);
 
 /**
- * Runs account deletion exclusively through Better Auth's public delete-user
- * endpoint, so its session-freshness gate and the provider-first beforeDelete
- * hook stay the single identity-deletion path. A stale or missing session
- * asks for reauthentication; a retryable provider failure keeps the durable
- * deletion marker and the account untouched.
+ * Hides the settled outcome of the referral code entered at profile
+ * completion. A withheld referral program refuses as unavailable.
+ */
+const acknowledgeSignupReferralNoticeAction = defineWorkspaceAction(
+  {
+    operation: "account.acknowledge-signup-referral",
+    schema: acknowledgeSignupReferralNoticeSchema,
+    logInput: false,
+  },
+  (_input, { locale }) =>
+    acknowledgeCurrentSignupReferral().pipe(
+      Effect.mapError(accountActionError(locale)),
+      Effect.provide(
+        Layer.mergeAll(
+          CustomerAccountResolver.Live,
+          ReferralSignupIntentRepository.Live,
+          ReferralReleaseGateRequest
+        )
+      )
+    )
+);
+
+const updateLocalePreferenceAction = defineWorkspaceAction(
+  {
+    operation: "account.update-locale-preference",
+    schema: localePreferenceSchema,
+    logInput: false,
+  },
+  (input, { locale }) =>
+    Effect.flatMap(requireVerifiedSession, (user) =>
+      saveLocalePreference(user.accountId, input.locale)
+    ).pipe(
+      Effect.mapError(accountActionError(locale)),
+      Effect.provide(CustomerAuthentication.Default),
+      Effect.as({ status: "saved" as const })
+    )
+);
+
+export type { CustomerAccountDeletionResult } from "@/features/account/backend/current-account-deletion";
+
+/**
+ * Deletes the signed-in account through Better Auth's delete-user endpoint
+ * and revalidates the account layout on every outcome, which covers every
+ * section's path and the deleted page.
  */
 const deleteCustomerAccountAction = defineWorkspaceAction(
   {
@@ -174,39 +181,20 @@ const deleteCustomerAccountAction = defineWorkspaceAction(
     schema: deleteCustomerAccountConfirmedSchema,
     logInput: false,
   },
-  Effect.fn(function* (_input, { locale }) {
-    const session = yield* requireVerifiedSession.pipe(
-      Effect.provide(CustomerAuthentication.Default),
-      Effect.result
-    );
-    if (Result.isFailure(session)) {
-      return yield* revalidateDeletionAuthority(locale).pipe(
-        Effect.as({ status: "reauthentication-required" } as const)
-      );
-    }
-
-    const deletion = yield* Effect.promise(() =>
-      deleteCurrentAccountThroughAuthEndpoint()
-    ).pipe(Effect.result);
-
-    yield* revalidateDeletionAuthority(locale);
-
-    if (Result.isSuccess(deletion)) {
-      const result = deletion.success;
-      if (result.status === "failed") {
-        yield* Effect.log("Customer account deletion did not complete").pipe(
-          Effect.annotateLogs({ code: result.code })
-        );
-        return { status: "failed" } as const;
-      }
-      return result;
-    }
-
-    yield* Effect.log("Customer account deletion did not complete").pipe(
-      Effect.annotateLogs({ code: "account.delete.unexpected" })
-    );
-    return { status: "failed" } as const;
-  })
+  (_input, { locale }) =>
+    requestCurrentAccountDeletion.pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          revalidatePath(getAccountPath(locale), "layout");
+        })
+      ),
+      Effect.provide(
+        Layer.mergeAll(
+          CustomerAuthentication.Default,
+          CustomerAccountDeletionEndpoint.Default
+        )
+      )
+    )
 );
 
 const aresLookupStandardSchema = Schema.toStandardSchemaV1(
@@ -255,12 +243,10 @@ const lookupAresBusinessWorkflow = Effect.fn(function* (
     // provider write, and it rejects accounts whose profile link is not
     // settled. The durable deletion marker on the verified session is the
     // same authority the activity guard consults, checked here explicitly.
-    return yield* Effect.fail(
-      new CustomerAccountAccessError({
-        reason: "link-required",
-        linkReason: "deletion-requested",
-      })
-    );
+    return yield* new CustomerAccountAccessError({
+      reason: "link-required",
+      linkReason: "deletion-requested",
+    });
   }
 
   const ares = yield* AresLookupService;
@@ -277,8 +263,8 @@ const lookupAresBusinessWorkflow = Effect.fn(function* (
 
 /**
  * Looks up one Czech company in the public ARES registry for the business
- * billing form. Runs behind the account-wide gate, the verified session, and
- * the durable deletion marker, and performs exactly one provider request per
+ * billing form. Runs behind the verified session and the durable deletion
+ * marker, and performs exactly one provider request per
  * invocation without any retry loop and without any customer classify,
  * reactivate, claim, create, update, or other provider write.
  */
@@ -289,13 +275,10 @@ const lookupAresBusinessAction = defineWorkspaceAction(
     logInput: false,
   },
   (input, { locale }) =>
-    Effect.andThen(
-      requireAccountsEnabled(locale),
-      lookupAresBusinessWorkflow(input, locale).pipe(
-        Effect.mapError(profileActionError(locale)),
-        Effect.provide(
-          Layer.mergeAll(CustomerAuthentication.Default, AresLookupService.Live)
-        )
+    lookupAresBusinessWorkflow(input, locale).pipe(
+      Effect.mapError(accountActionError(locale)),
+      Effect.provide(
+        Layer.mergeAll(CustomerAuthentication.Default, AresLookupService.Live)
       )
     )
 );
@@ -320,9 +303,21 @@ export const updateCustomerProfile: typeof updateCustomerProfileAction = async (
   return await updateCustomerProfileAction(...args);
 };
 
+export const updateLocalePreference: typeof updateLocalePreferenceAction =
+  async (...args: Parameters<typeof updateLocalePreferenceAction>) => {
+    "use server";
+    return await updateLocalePreferenceAction(...args);
+  };
+
 export const deleteCustomerAccount: typeof deleteCustomerAccountAction = async (
   ...args: Parameters<typeof deleteCustomerAccountAction>
 ) => {
   "use server";
   return await deleteCustomerAccountAction(...args);
 };
+
+export const acknowledgeSignupReferralNotice: typeof acknowledgeSignupReferralNoticeAction =
+  async (...args: Parameters<typeof acknowledgeSignupReferralNoticeAction>) => {
+    "use server";
+    return await acknowledgeSignupReferralNoticeAction(...args);
+  };

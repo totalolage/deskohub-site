@@ -3,7 +3,7 @@ import { join } from "node:path";
 import postcss from "postcss";
 import loadPostCssConfig from "postcss-load-config";
 
-export const appModuleExtensions = [
+const appModuleExtensions = [
   ".ts",
   ".tsx",
   ".js",

@@ -1,0 +1,17 @@
+{
+  "name": "@deskohub/test-email",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/test-email-address.ts"
+  },
+  "scripts": {
+    "lint": "biome check src --config-path ../../biome.json --vcs-root ../..",
+    "test": "bun test --path-ignore-patterns='**/*.repository-wide.test.ts'",
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "npm:@typescript/typescript6@6.0.2"
+  }
+}

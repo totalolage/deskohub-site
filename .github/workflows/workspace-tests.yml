@@ -15,23 +15,28 @@ jobs:
   validate-workspace-migrations:
     if: github.event.action != 'converted_to_draft'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
 
       - name: Validate Workspace migration count
         working-directory: apps/deskohub-workspace
-        run: bun scripts/validate-migration-count.ts "${{ github.event.pull_request.base.sha }}"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bun scripts/validate-migration-count.ts "$BASE_SHA"
 
-  test-functional:
+  validate-workspace:
     if: github.event.action != 'converted_to_draft'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -53,25 +58,50 @@ jobs:
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 2
+          persist-credentials: false
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
 
       - run: bun install --frozen-lockfile
-
-      - name: Install Workspace Playwright Chromium
-        working-directory: apps/deskohub-workspace
-        run: bun ./node_modules/@playwright/test/cli.js install --with-deps chromium
 
       - name: Report TypeScript compiler versions
         run: bun tsc --version && bun tsc6 --version
 
       - name: Lint Workspace
         run: bun turbo lint --filter=deskohub-workspace
+
+      # A cached shard replays its pass while its inputs are unchanged, so
+      # the checks that its inputs cover every file the tests read run here,
+      # outside Turbo, on every pull request.
+      - name: Check Workspace test shard inputs
+        working-directory: apps/deskohub-workspace
+        run: bun test scripts/test-shard.test.ts
+
+      # A *.repository-wide.test.ts reads files across the repository, so no
+      # package task caches it and the shards never depend on it. Every one
+      # runs here, uncached, on every pull request.
+      - name: Run repository-wide tests
+        run: |
+          if ! listing="$(git ls-files -- '*.repository-wide.test.ts' '*.repository-wide.test.tsx')"; then
+            echo "Could not list the repository-wide tests" >&2
+            exit 1
+          fi
+          if [[ -z "$listing" ]]; then
+            echo "No *.repository-wide.test.ts files found" >&2
+            exit 1
+          fi
+          mapfile -t tests <<< "$listing"
+          bun test "${tests[@]/#/./}"
+
+      # The shards don't depend on Mobile's tests (see test:dependencies in
+      # apps/deskohub-workspace/turbo.json), and Mobile CI is path-filtered,
+      # so the required gate runs them here.
+      - name: Test Mobile
+        run: bun turbo run test --filter=deskohub-mobile
 
       - name: Validate Workspace schema migration
         env:
@@ -89,7 +119,227 @@ jobs:
 
       - run: bun turbo typecheck
 
-      - name: Run Workspace tests
+      # Vercel skips the portal for commits that don't affect it relative to
+      # their parent alone, so every pull request builds it here.
+      - name: Lint, test and build Portal
+        run: bun turbo lint test build --filter=deskohub-portal
+
+      # No app depends on the coverage tooling, so the test shards skip it.
+      - name: Lint and test the coverage tooling
+        run: bun turbo lint test --filter=@deskohub/test-coverage
+
+  # A shard task's cache key covers its own inputs, its dependencies' and the
+  # $TURBO_ROOT$ files it declares. futureFlags.affectedUsingTaskInputs in
+  # turbo.json makes --affected match changed files against exactly those
+  # inputs, so a pull request that changes none of them would only replay
+  # the base's results, and its shards are skipped.
+  select-workspace-shards:
+    if: github.event.action != 'converted_to_draft'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      affected: ${{ steps.select.outputs.affected }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      # Pull request runs test the merge commit, whose first parent is the
+      # base it merged into, so that parent to HEAD is exactly what this run
+      # tests. The dry run needs no install. Any failure fails the selection,
+      # and test-functional with it; only a parsed task list without a shard
+      # task counts as unaffected.
+      - name: Select the affected Workspace test shards
+        id: select
+        run: |
+          set -euo pipefail
+          if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]] ||
+             ! git rev-parse --verify --quiet 'HEAD^2' > /dev/null; then
+            echo "Expected the pull request merge commit $GITHUB_SHA checked out." >&2
+            exit 1
+          fi
+          base="$(git rev-parse --verify 'HEAD^1')"
+          selection="$(
+            TURBO_SCM_BASE="$base" TURBO_SCM_HEAD=HEAD bunx turbo@2.11.4 run \
+              test:shard-1 test:shard-2 test:shard-3 test:shard-4 \
+              --affected --dry-run=json
+          )"
+          selected="$(jq -ers '
+            if length == 1 then .[0].tasks else error("expected one dry run") end
+            | if type == "array" then . else error("tasks is not a list") end
+            | map(.taskId | if type == "string" then . else error("task without an id") end)
+            | map(select(startswith("deskohub-workspace#test:shard-")))
+            | length
+          ' <<< "$selection")"
+          echo "Affected Workspace test shard tasks since $base: $selected"
+          if [[ "$selected" == 0 ]]; then
+            echo "affected=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "affected=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  test-functional-shards:
+    needs: select-workspace-shards
+    if: >-
+      github.event.action != 'converted_to_draft' &&
+      needs.select-workspace-shards.outputs.affected == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    services:
+      postgres:
+        image: ghcr.io/fboulnois/pg_uuidv7:1.7.0
         env:
-          WORKSPACE_TEST_DATABASE_URL: postgresql://workspace:workspace@127.0.0.1:5432/workspace
-        run: bun turbo test --filter=./apps/deskohub-workspace
+          POSTGRES_USER: workspace
+          POSTGRES_PASSWORD: workspace
+          POSTGRES_DB: workspace
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U workspace"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      # Turbo hashes CI and TZ into each shard's cache key; the local runner
+      # (apps/deskohub-workspace/scripts/local-test-shards.ts) sets the same
+      # values, so a shard either side ran is a cache hit on the other.
+      TZ: UTC
+      WORKSPACE_TEST_DATABASE_URL: postgresql://workspace:workspace@127.0.0.1:5432/workspace
+
+    steps:
+      # Database-backed suites skip without this URL, so a lost value must
+      # fail the shard instead of passing it with those suites unrun.
+      - name: Require the Workspace test database
+        run: |
+          if [[ -z "${WORKSPACE_TEST_DATABASE_URL:-}" ]]; then
+            echo "WORKSPACE_TEST_DATABASE_URL is missing or empty." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Resolve Workspace Playwright version
+        id: playwright
+        working-directory: apps/deskohub-workspace
+        run: echo "version=$(bun -p 'require("@playwright/test/package.json").version')" >> "$GITHUB_OUTPUT"
+
+      # Restores only the browser downloads; the install step below still
+      # installs Chromium's system packages on every run.
+      - name: Cache Workspace Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install Workspace Playwright Chromium
+        working-directory: apps/deskohub-workspace
+        run: bun ./node_modules/@playwright/test/cli.js install --with-deps chromium
+
+      # Each shard is a cached Turbo task that balances by the committed
+      # test-timings.json and records this run's durations beside it. A
+      # cache hit replays the logs and restores the recording.
+      - name: Run Workspace tests
+        run: >-
+          bun --no-env-file turbo run test:shard-${{ matrix.shard }}
+          --filter=./apps/deskohub-workspace
+
+      - name: Upload Workspace test timings
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: workspace-test-timings-shard-${{ matrix.shard }}
+          path: apps/deskohub-workspace/test-timings.shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  # Administration copy must never reach the client chunks customer routes
+  # load. A compile-only production build writes every route's client chunks
+  # without prerendering, so it needs no deployment environment.
+  validate-administration-messages:
+    if: github.event.action != 'converted_to_draft'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build Workspace client chunks
+        env:
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+        run: >-
+          bun turbo run build:compile
+          --filter=./apps/deskohub-workspace
+
+      - name: Check administration messages in the build output
+        working-directory: apps/deskohub-workspace
+        run: bun run test:build-output
+
+  test-functional:
+    needs:
+      - validate-workspace
+      - validate-workspace-migrations
+      - select-workspace-shards
+      - test-functional-shards
+      - validate-administration-messages
+    if: always() && github.event.action != 'converted_to_draft'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Require all Workspace CI jobs to succeed
+        env:
+          VALIDATION_RESULT: ${{ needs.validate-workspace.result }}
+          MIGRATION_COUNT_RESULT: ${{ needs.validate-workspace-migrations.result }}
+          SHARD_SELECTION_RESULT: ${{ needs.select-workspace-shards.result }}
+          FUNCTIONAL_SHARDS_RESULT: ${{ needs.test-functional-shards.result }}
+          ADMINISTRATION_MESSAGES_RESULT: ${{ needs.validate-administration-messages.result }}
+          WORKSPACE_SHARDS_AFFECTED: ${{ needs.select-workspace-shards.outputs.affected }}
+        run: |
+          if [[ "$VALIDATION_RESULT" != success || \
+                "$MIGRATION_COUNT_RESULT" != success || \
+                "$SHARD_SELECTION_RESULT" != success || \
+                "$ADMINISTRATION_MESSAGES_RESULT" != success ]]; then
+            echo "Workspace CI dependency failed, was cancelled, or was skipped." >&2
+            exit 1
+          fi
+          # The shards pass by running, or by being skipped when the
+          # selection found no affected shard task; nothing else passes.
+          case "$WORKSPACE_SHARDS_AFFECTED/$FUNCTIONAL_SHARDS_RESULT" in
+            true/success | false/skipped) ;;
+            *)
+              echo "Workspace test shards were affected=${WORKSPACE_SHARDS_AFFECTED:-<missing>} but $FUNCTIONAL_SHARDS_RESULT." >&2
+              exit 1
+              ;;
+          esac

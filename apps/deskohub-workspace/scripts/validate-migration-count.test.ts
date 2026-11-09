@@ -2,28 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseWorkflow, workflowStepRuns } from "./shared/workflow-contract";
-import {
-  assertValidMigrationCount,
-  parseChangedMigrationPaths,
-} from "./validate-migration-count";
-
-describe("parseChangedMigrationPaths", () => {
-  test("returns non-empty migration paths", () => {
-    expect(
-      parseChangedMigrationPaths(`
-apps/deskohub-workspace/db/migrations/0002_minor_magik.sql
-apps/deskohub-workspace/db/migrations/20260720120000_new_migration/migration.sql
-`)
-    ).toEqual([
-      "apps/deskohub-workspace/db/migrations/0002_minor_magik.sql",
-      "apps/deskohub-workspace/db/migrations/20260720120000_new_migration/migration.sql",
-    ]);
-  });
-
-  test("returns an empty list when no migrations changed", () => {
-    expect(parseChangedMigrationPaths("\n")).toEqual([]);
-  });
-});
+import { assertValidMigrationCount } from "./validate-migration-count";
 
 describe("assertValidMigrationCount", () => {
   test("allows at most one migration", () => {

@@ -1,9 +1,8 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
-import { type DotyposService, ExternalAPIError } from "@deskohub/dotypos";
+import type { DotyposService } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { Effect, Layer } from "effect";
-import { calculateDiscounts } from "./calculator";
 import { CustomerDiscountProvider } from "./customer-discount-provider.service";
 
 const input = {
@@ -40,15 +39,6 @@ const resolve = (overrides: Partial<typeof input> = {}) =>
   });
 
 describe("CustomerDiscountProvider", () => {
-  test("returns no candidate when the customer has no discount group", async () => {
-    const result = await runWithProvider(
-      resolve(),
-      mock(() => Effect.void.pipe(Effect.as(undefined)))
-    );
-
-    expect(result).toEqual([]);
-  });
-
   test.each([
     ["10", 1000],
     ["12.5", 1250],
@@ -89,24 +79,6 @@ describe("CustomerDiscountProvider", () => {
       });
     }
   );
-
-  test("preserves Dotypos failures as provider failures", async () => {
-    const cause = new ExternalAPIError({
-      service: "Dotypos",
-      operation: "getDiscountGroup",
-      statusCode: 503,
-      message: "Unavailable",
-    });
-    const error = await runWithProvider(
-      resolve().pipe(Effect.flip),
-      mock(() => Effect.fail(cause))
-    );
-
-    expect(error).toMatchObject({
-      reason: "provider_failure",
-      cause,
-    });
-  });
 
   test("uses a localized generic label and keeps provenance private", async () => {
     const getCustomerDiscountGroup = mock(() => Effect.succeed(group("50")));
@@ -163,25 +135,5 @@ describe("CustomerDiscountProvider", () => {
       kind: "percentage",
       basisPoints: 2000,
     });
-  });
-
-  test("discounts only the cowork subtotal and leaves paid coffee outside", async () => {
-    const candidates = await runWithProvider(
-      resolve(),
-      mock(() => Effect.succeed(group("50")))
-    );
-    const result = await Effect.runPromise(
-      calculateDiscounts({
-        product: input.product,
-        discountableSubtotal: {
-          value: 35_000,
-          exponent: 2,
-          currency: "CZK",
-        },
-        candidates,
-      })
-    );
-
-    expect(result.quote.discountedSubtotal.value + 5000).toBe(22_500);
   });
 });

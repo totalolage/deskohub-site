@@ -1,6 +1,6 @@
 import type { IgloohomeDeviceId } from "@deskohub/igloohome";
 import type {
-  AdministrationActorUsername,
+  AdministrationLegacyUsername,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeName,
@@ -24,8 +24,11 @@ import {
   standaloneAccessCodeSources,
   standaloneAccessCodeTerminalEventKinds,
 } from "@/features/access-codes/standalone-access-code";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import { instant } from "../instant";
+import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
+import { authUser } from "./auth";
 import { quotedSqlList } from "./sql-list";
 
 export const standaloneAccessCodeAttemptEvents = pgTable(
@@ -41,7 +44,12 @@ export const standaloneAccessCodeAttemptEvents = pgTable(
     eventKind: text("event_kind")
       .notNull()
       .$type<(typeof standaloneAccessCodeAttemptEventKinds)[number]>(),
-    actor: text("actor").notNull().$type<AdministrationActorUsername>(),
+    /** The Basic-auth username of an attempt made before accounts. */
+    actor: text("actor").$type<AdministrationLegacyUsername>(),
+    actorAccountId: text("actor_account_id")
+      .$type<CustomerAccountId>()
+      .references(() => authUser.id, { onDelete: "set null" }),
+    actorAccountEmail: sensitiveText("actor_account_email"),
     source: text("source").notNull().$type<StandaloneAccessCodeSource>(),
     name: text("name")
       .notNull()
@@ -111,6 +119,14 @@ export const standaloneAccessCodeAttemptEvents = pgTable(
       sql`char_length(${t.actor}) between 1 and 80`
     ),
     check(
+      "standalone_access_code_attempt_events_actor_account_check",
+      sql`${t.actorAccountId} is null or (${t.actorAccountEmail} is not null and btrim(${t.actorAccountEmail}) <> '')`
+    ),
+    check(
+      "standalone_access_code_attempt_events_actor_present_check",
+      sql`${t.actor} is not null or ${t.actorAccountEmail} is not null`
+    ),
+    check(
       "standalone_access_code_attempt_events_interval_check",
       sql`${t.endsAt} > ${t.startsAt}`
     ),
@@ -135,5 +151,3 @@ export const standaloneAccessCodeAttemptEvents = pgTable(
 
 export type StandaloneAccessCodeAttemptEventRow =
   typeof standaloneAccessCodeAttemptEvents.$inferSelect;
-export type NewStandaloneAccessCodeAttemptEventRow =
-  typeof standaloneAccessCodeAttemptEvents.$inferInsert;

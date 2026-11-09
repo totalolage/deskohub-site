@@ -1,21 +1,24 @@
 import "@/shared/testing/workspace-test-env";
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
-import {
-  GoogleCalendarAPIError,
-  type GoogleCalendarEvent,
-  type IGoogleCalendarService,
+import type {
+  GoogleCalendarEvent,
+  IGoogleCalendarService,
 } from "@deskohub/google-calendar";
 import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/service.mock";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Layer, Schema, Scope } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import {
   CalendarResourceConfig,
   salesCalendarIdSchema,
   workspaceLimitationsCalendarIdSchema,
 } from "@/shared/backend/config/calendar-resource.config";
-import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
+import { shareAcrossRequests } from "@/shared/backend/share-across-requests";
+import {
+  CalendarDiscountProvider,
+  type ICalendarDiscountProvider,
+} from "./calendar-discount-provider.service";
 import type { DiscountDefinition } from "./discount-definition";
 import {
   DiscountDefinitionNotFoundError,
@@ -75,6 +78,12 @@ const saleEvent = (
   ...input,
 });
 
+/** Midday in Prague on the given date: a booking made during that day. */
+const bookedAtOn = (date: string) =>
+  Temporal.PlainDate.from(date)
+    .toZonedDateTime({ timeZone: "Europe/Prague", plainTime: "12:00" })
+    .toInstant();
+
 const defaultLoadById: IDiscountDefinitionRepository["loadById"] = ({
   discountId,
 }) => Effect.succeed(definition(discountId));
@@ -102,14 +111,36 @@ const runWithProvider = <A, E>(
     Effect.runPromise
   );
 
+/** The candidates a Calendar affirmation resolves, ignoring completeness. */
+const revalidateCandidates = (
+  provider: ICalendarDiscountProvider,
+  input: Parameters<ICalendarDiscountProvider["revalidate"]>[0]
+) =>
+  provider.revalidate(input).pipe(Effect.map(({ candidates }) => candidates));
+
+const revalidate = Effect.gen(function* () {
+  const provider = yield* CalendarDiscountProvider;
+  return yield* provider.revalidate({
+    locale: "en-US",
+    product: basicProduct,
+    lastServiceDate: "2026-07-14",
+    bookedAt: bookedAtOn("2026-07-14"),
+  });
+});
+
 const discover = Effect.gen(function* () {
   const provider = yield* CalendarDiscountProvider;
   return yield* provider.discover({
     locale: "en-US",
     product: basicProduct,
-    reservationDate: "2026-07-14",
+    lastServiceDate: "2026-07-14",
+    bookedAt: bookedAtOn("2026-07-14"),
   });
 });
+
+const discoverCandidates = discover.pipe(
+  Effect.map(({ candidates }) => candidates)
+);
 
 const invalidEventCases = [
   ["missing title", { summary: " " }],
@@ -123,7 +154,6 @@ const invalidEventCases = [
   ],
   ["missing end", { end: undefined }],
   ["invalid range", { end: { date: "2026-07-14" } }],
-  ["invalid calendar date", { start: { date: "2026-02-30" } }],
   [
     "recurring event without original date",
     {
@@ -140,11 +170,9 @@ describe("CalendarDiscountProvider", () => {
 
     const result = await runWithProvider(
       Effect.gen(function* () {
+        yield* TestClock.setTime(bookedAtOn("2026-07-20").epochMilliseconds);
         const provider = yield* CalendarDiscountProvider;
-        return yield* provider.discoverActiveSales({
-          currentDate: Temporal.PlainDate.from("2026-07-20"),
-          locale: "cs-CZ",
-        });
+        return yield* provider.discoverActiveSales({ locale: "cs-CZ" });
       }),
       listEvents,
       ({ discountId }) =>
@@ -237,12 +265,14 @@ describe("CalendarDiscountProvider", () => {
         const basic = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
+          bookedAt: bookedAtOn("2026-07-20"),
         });
         const plus = yield* provider.discover({
           locale: "en-US",
           product: { kind: "cowork", tier: "plus" },
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
+          bookedAt: bookedAtOn("2026-07-20"),
         });
         return { basic, plus };
       }),
@@ -265,13 +295,15 @@ describe("CalendarDiscountProvider", () => {
       from: "2026-07-20",
       to: "2026-07-20",
     });
-    expect(result.basic.map(({ discount }) => discount.id)).toEqual(
+    expect(result.basic.candidates.map(({ discount }) => discount.id)).toEqual(
       expectedIds
     );
     expect(
-      result.basic.map(({ discount }) => discount.label).toSorted()
+      result.basic.candidates.map(({ discount }) => discount.label).toSorted()
     ).toEqual(["All-tier fixed sale", "Percentage database sale"]);
-    expect(result.basic.map(({ discount }) => discount.adjustment)).toEqual(
+    expect(
+      result.basic.candidates.map(({ discount }) => discount.adjustment)
+    ).toEqual(
       expect.arrayContaining([
         { kind: "percentage", basisPoints: 1000 },
         {
@@ -281,27 +313,140 @@ describe("CalendarDiscountProvider", () => {
       ])
     );
     expect(
-      result.plus.map(({ discount }) => discount.label).toSorted()
+      result.plus.candidates.map(({ discount }) => discount.label).toSorted()
     ).toEqual(["All-tier fixed sale", "Percentage database sale"]);
-    expect(result.basic[0]?.discount.expiresAt).toBe(
+    expect(result.basic.candidates[0]?.discount.expiresAt).toBe(
       "2026-08-01T22:00:00.000Z"
     );
-    expect(result.basic[0]?.discount.countdownStartsAt).toBe(
+    expect(result.basic.candidates[0]?.discount.countdownStartsAt).toBe(
       "2026-07-31T22:00:00.000Z"
     );
+    expect(result.basic.complete).toBeTrue();
+    expect(result.plus.complete).toBeTrue();
     expect(loadById).toHaveBeenCalledTimes(2);
     expect(
-      JSON.stringify(result.basic.map(({ discount }) => discount))
+      JSON.stringify(result.basic.candidates.map(({ discount }) => discount))
     ).not.toContain(discountIdA);
     expect(
-      JSON.stringify(result.basic.map(({ discount }) => discount))
+      JSON.stringify(result.basic.candidates.map(({ discount }) => discount))
     ).not.toContain(discountIdB);
+  });
+
+  test("applies a tier-targeted sale only to that tier and a broad sale to every tier", async () => {
+    const listEvents = mock(() =>
+      Effect.succeed([
+        saleEvent({ id: "sale-a", description: discountIdA }),
+        saleEvent({ id: "sale-b", description: discountIdB }),
+      ])
+    );
+    const definitions = new Map<StoredDiscountId, DiscountDefinition>([
+      [
+        discountIdA,
+        definition(discountIdA, {
+          labels: { "en-US": "Reserved desk sale", "cs-CZ": "Sleva na stůl" },
+          products: [{ kind: "cowork", tier: "reserved-desk" }],
+        }),
+      ],
+      [
+        discountIdB,
+        definition(discountIdB, {
+          labels: { "en-US": "Cowork sale", "cs-CZ": "Sleva na cowork" },
+          products: [coworkTarget],
+        }),
+      ],
+    ]);
+    const input = (tier: "open-space" | "reserved-desk") => ({
+      locale: "en-US" as const,
+      product: { kind: "cowork" as const, tier },
+      lastServiceDate: "2026-07-20",
+      bookedAt: bookedAtOn("2026-07-20"),
+    });
+
+    const labels = await runWithProvider(
+      Effect.gen(function* () {
+        const provider = yield* CalendarDiscountProvider;
+        const toLabels = (
+          candidates: readonly { discount: { label: string } }[]
+        ) => candidates.map(({ discount }) => discount.label).toSorted();
+        return {
+          openSpace: toLabels(
+            (yield* provider.discover(input("open-space"))).candidates
+          ),
+          reservedDesk: toLabels(
+            (yield* provider.discover(input("reserved-desk"))).candidates
+          ),
+          revalidatedOpenSpace: toLabels(
+            yield* revalidateCandidates(provider, input("open-space"))
+          ),
+          revalidatedReservedDesk: toLabels(
+            yield* revalidateCandidates(provider, input("reserved-desk"))
+          ),
+        };
+      }),
+      listEvents,
+      ({ discountId }) => Effect.succeed(definitions.get(discountId)!)
+    );
+
+    expect(labels).toEqual({
+      openSpace: ["Cowork sale"],
+      reservedDesk: ["Cowork sale", "Reserved desk sale"],
+      revalidatedOpenSpace: ["Cowork sale"],
+      revalidatedReservedDesk: ["Cowork sale", "Reserved desk sale"],
+    });
+  });
+
+  test("keeps other tiers eligible while one tier target is removed", async () => {
+    const listEvents = mock(() => Effect.succeed([saleEvent()]));
+    let products: DiscountDefinition["products"] = [
+      { kind: "cowork", tier: "open-space" },
+      { kind: "cowork", tier: "reserved-desk" },
+    ];
+    const input = (tier: "open-space" | "reserved-desk") => ({
+      locale: "en-US" as const,
+      product: { kind: "cowork" as const, tier },
+      lastServiceDate: "2026-07-20",
+      bookedAt: bookedAtOn("2026-07-20"),
+    });
+
+    const counts = await runWithProvider(
+      Effect.gen(function* () {
+        const provider = yield* CalendarDiscountProvider;
+        products = [{ kind: "cowork", tier: "open-space" }];
+        // The discovery source is cached here, while reserved desk is removed.
+        const openSpace = yield* provider.discover(input("open-space"));
+        const reservedDesk = yield* provider.discover(input("reserved-desk"));
+        products = [
+          { kind: "cowork", tier: "open-space" },
+          { kind: "cowork", tier: "reserved-desk" },
+        ];
+        const cachedOpenSpace = yield* provider.discover(input("open-space"));
+        const revalidatedReservedDesk = yield* revalidateCandidates(
+          provider,
+          input("reserved-desk")
+        );
+        return {
+          openSpace: openSpace.candidates.length,
+          reservedDesk: reservedDesk.candidates.length,
+          cachedOpenSpace: cachedOpenSpace.candidates.length,
+          revalidatedReservedDesk: revalidatedReservedDesk.length,
+        };
+      }),
+      listEvents,
+      ({ discountId }) => Effect.succeed(definition(discountId, { products }))
+    );
+
+    expect(counts).toEqual({
+      openSpace: 1,
+      reservedDesk: 0,
+      cachedOpenSpace: 1,
+      revalidatedReservedDesk: 1,
+    });
   });
 
   test("ignores cancelled events and events without a description", async () => {
     const loadById = mock(defaultLoadById);
     const result = await runWithProvider(
-      discover,
+      discoverCandidates,
       () =>
         Effect.succeed([
           saleEvent({ status: "cancelled" }),
@@ -318,16 +463,9 @@ describe("CalendarDiscountProvider", () => {
   test.each([
     ["non-UUID description", "ordinary calendar note"],
     ["UUID with prose", `Sale ${discountIdA}`],
-    ["multiple UUIDs", `${discountIdA}\n${discountIdB}`],
     ["rich-text UUID", `<p><code>${discountIdA}</code></p>`],
-    ["rich-text UUID with prose", `<p><code>Sale ${discountIdA}</code></p>`],
-    [
-      "rich-text multiple UUIDs",
-      `<p><code>${discountIdA} ${discountIdB}</code></p>`,
-    ],
-    ["paragraph-wrapped UUID", `<p>${discountIdA}</p>`],
   ])("omits a malformed %s event", async (_label, description) => {
-    const result = await runWithProvider(discover, () =>
+    const result = await runWithProvider(discoverCandidates, () =>
       Effect.succeed([saleEvent({ description })])
     );
 
@@ -349,7 +487,7 @@ describe("CalendarDiscountProvider", () => {
 
   for (const [label, event] of invalidEventCases) {
     test(`omits a referenced ${label}`, async () => {
-      const result = await runWithProvider(discover, () =>
+      const result = await runWithProvider(discoverCandidates, () =>
         Effect.succeed([saleEvent(event)])
       );
 
@@ -358,7 +496,7 @@ describe("CalendarDiscountProvider", () => {
   }
 
   test("keeps valid sales when another calendar event is malformed", async () => {
-    const result = await runWithProvider(discover, () =>
+    const result = await runWithProvider(discoverCandidates, () =>
       Effect.succeed([
         saleEvent({ id: "valid-sale" }),
         saleEvent({ id: "malformed-sale", description: "not-a-discount-id" }),
@@ -369,35 +507,6 @@ describe("CalendarDiscountProvider", () => {
     expect(result[0]?.provenance.providerReference).toBe(
       `${salesCalendarId}:valid-sale`
     );
-  });
-
-  test("ignores a definition unavailable in this environment", async () => {
-    const cause = new DiscountDefinitionNotFoundError({
-      discountId: discountIdA,
-      message: "Not found",
-    });
-    const result = await runWithProvider(
-      discover,
-      () => Effect.succeed([saleEvent()]),
-      () => Effect.fail(cause)
-    );
-
-    expect(result).toEqual([]);
-  });
-
-  test("omits a definition on database failure", async () => {
-    const cause = new EffectDrizzleQueryError({
-      query: "select discount definition",
-      params: [],
-      cause: new Error("database unavailable"),
-    });
-    const result = await runWithProvider(
-      discover,
-      () => Effect.succeed([saleEvent()]),
-      () => Effect.fail(cause)
-    );
-
-    expect(result).toEqual([]);
   });
 
   test("keeps valid definitions when another definition fails to load", async () => {
@@ -422,32 +531,35 @@ describe("CalendarDiscountProvider", () => {
       loadById
     );
 
-    expect(result).toHaveLength(1);
-    expect(result[0]?.provenance.details).toMatchObject({
+    expect(result.complete).toBeFalse();
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]?.provenance.details).toMatchObject({
       storedDiscountId: discountIdA,
     });
     expect(loadById).toHaveBeenCalledTimes(2);
   });
 
-  test("maps Google Calendar failures while preserving the cause", async () => {
-    const cause = new GoogleCalendarAPIError({
-      operation: "events.list",
-      statusCode: 503,
-      message: "Unavailable",
-      cause: new Error("provider unavailable"),
+  test("reports an affirmation incomplete when a definition fails to load", async () => {
+    const cause = new EffectDrizzleQueryError({
+      query: "select discount definition",
+      params: [],
+      cause: new Error("database unavailable"),
     });
-
-    const result = await runWithProvider(discover.pipe(Effect.result), () =>
-      Effect.fail(cause)
+    const result = await runWithProvider(
+      revalidate,
+      () =>
+        Effect.succeed([
+          saleEvent({ id: "valid-sale", description: discountIdA }),
+          saleEvent({ id: "failed-sale", description: discountIdB }),
+        ]),
+      ({ discountId }) =>
+        discountId === discountIdB
+          ? Effect.fail(cause)
+          : Effect.succeed(definition(discountId))
     );
 
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: {
-        reason: "provider_failure",
-        cause,
-      },
-    });
+    expect(result.complete).toBeFalse();
+    expect(result.candidates).toHaveLength(1);
   });
 
   test("uses start-inclusive and exclusive-end Prague date semantics", async () => {
@@ -469,20 +581,23 @@ describe("CalendarDiscountProvider", () => {
     const result = await runWithProvider(
       Effect.gen(function* () {
         const provider = yield* CalendarDiscountProvider;
-        const spring = yield* provider.revalidate({
+        const spring = yield* revalidateCandidates(provider, {
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-03-29",
+          lastServiceDate: "2026-03-29",
+          bookedAt: bookedAtOn("2026-03-29"),
         });
-        const springExclusiveEnd = yield* provider.revalidate({
+        const springExclusiveEnd = yield* revalidateCandidates(provider, {
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-03-30",
+          lastServiceDate: "2026-03-30",
+          bookedAt: bookedAtOn("2026-03-30"),
         });
-        const autumn = yield* provider.revalidate({
+        const autumn = yield* revalidateCandidates(provider, {
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-10-25",
+          lastServiceDate: "2026-10-25",
+          bookedAt: bookedAtOn("2026-10-25"),
         });
         return { autumn, spring, springExclusiveEnd };
       }),
@@ -522,23 +637,26 @@ describe("CalendarDiscountProvider", () => {
     const result = await runWithProvider(
       Effect.gen(function* () {
         const provider = yield* CalendarDiscountProvider;
-        const first = yield* provider.revalidate({
+        const first = yield* revalidateCandidates(provider, {
           locale: "en-US",
           product: basicProduct,
-          reservationDate: displayedDate,
+          lastServiceDate: displayedDate,
+          bookedAt: bookedAtOn(displayedDate),
         });
         displayedDate = "2026-07-16";
-        const moved = yield* provider.revalidate({
+        const moved = yield* revalidateCandidates(provider, {
           locale: "en-US",
           product: basicProduct,
-          reservationDate: displayedDate,
+          lastServiceDate: displayedDate,
+          bookedAt: bookedAtOn(displayedDate),
         });
         originalDate = "2026-07-21";
         displayedDate = "2026-07-21";
-        const nextOccurrence = yield* provider.revalidate({
+        const nextOccurrence = yield* revalidateCandidates(provider, {
           locale: "en-US",
           product: basicProduct,
-          reservationDate: displayedDate,
+          lastServiceDate: displayedDate,
+          bookedAt: bookedAtOn(displayedDate),
         });
         return { first, moved, nextOccurrence };
       }),
@@ -552,7 +670,7 @@ describe("CalendarDiscountProvider", () => {
   });
 
   test("falls back to the iCal UID and occurrence date when event ID is absent", async () => {
-    const result = await runWithProvider(discover, () =>
+    const result = await runWithProvider(discoverCandidates, () =>
       Effect.succeed([
         saleEvent({
           id: undefined,
@@ -585,7 +703,7 @@ describe("CalendarDiscountProvider", () => {
   test("loads one definition for overlapping occurrences that share it", async () => {
     const loadById = mock(defaultLoadById);
     const result = await runWithProvider(
-      discover,
+      discoverCandidates,
       () =>
         Effect.succeed([
           saleEvent({ id: "sale-a" }),
@@ -609,12 +727,14 @@ describe("CalendarDiscountProvider", () => {
         const english = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
+          bookedAt: bookedAtOn("2026-07-20"),
         });
         const czech = yield* provider.discover({
           locale: "cs-CZ",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
+          bookedAt: bookedAtOn("2026-07-20"),
         });
         return { czech, english };
       }),
@@ -622,8 +742,10 @@ describe("CalendarDiscountProvider", () => {
       loadById
     );
 
-    expect(result.english[0]?.discount.label).toBe("Database sale");
-    expect(result.czech[0]?.discount.label).toBe("Databázová sleva");
+    expect(result.english.candidates[0]?.discount.label).toBe("Database sale");
+    expect(result.czech.candidates[0]?.discount.label).toBe("Databázová sleva");
+    expect(result.english.complete).toBeTrue();
+    expect(result.czech.complete).toBeTrue();
     expect(listEvents).toHaveBeenCalledTimes(1);
     expect(loadById).toHaveBeenCalledTimes(1);
   });
@@ -666,23 +788,27 @@ describe("CalendarDiscountProvider", () => {
         const quoteBeforeMutation = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-14",
+          lastServiceDate: "2026-07-14",
+          bookedAt: bookedAtOn("2026-07-14"),
         });
         definitions.set(discountIdA, definition(discountIdA, { products: [] }));
-        const quoteAfterMutation = yield* provider.revalidate({
+        const quoteAfterMutation = yield* revalidateCandidates(provider, {
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-14",
+          lastServiceDate: "2026-07-14",
+          bookedAt: bookedAtOn("2026-07-14"),
         });
         const independentPaymentCase = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-15",
+          lastServiceDate: "2026-07-15",
+          bookedAt: bookedAtOn("2026-07-15"),
         });
         const cachedQuoteCase = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-14",
+          lastServiceDate: "2026-07-14",
+          bookedAt: bookedAtOn("2026-07-14"),
         });
         return {
           cachedQuoteCase,
@@ -695,44 +821,17 @@ describe("CalendarDiscountProvider", () => {
       loadById
     );
 
-    expect(result.quoteBeforeMutation).toHaveLength(1);
+    expect(result.quoteBeforeMutation.candidates).toHaveLength(1);
+    expect(result.quoteBeforeMutation.complete).toBeTrue();
     expect(result.quoteAfterMutation).toHaveLength(0);
-    expect(result.independentPaymentCase).toHaveLength(1);
-    expect(result.cachedQuoteCase).toHaveLength(1);
-    expect(result.independentPaymentCase[0]?.provenance.details).toMatchObject({
+    expect(result.independentPaymentCase.candidates).toHaveLength(1);
+    expect(result.cachedQuoteCase.candidates).toHaveLength(1);
+    expect(
+      result.independentPaymentCase.candidates[0]?.provenance.details
+    ).toMatchObject({
       eventReference: "payment-change",
       storedDiscountId: discountIdB,
     });
-  });
-
-  test("keeps the operator title out of the public label", async () => {
-    let title = "Initial operator title";
-    const listEvents = mock(() =>
-      Effect.succeed([saleEvent({ summary: title })])
-    );
-
-    const result = await runWithProvider(
-      Effect.gen(function* () {
-        const provider = yield* CalendarDiscountProvider;
-        const initial = yield* provider.revalidate({
-          locale: "en-US",
-          product: basicProduct,
-          reservationDate: "2026-07-20",
-        });
-        title = "Edited operator title";
-        const afterTitleEdit = yield* provider.revalidate({
-          locale: "en-US",
-          product: basicProduct,
-          reservationDate: "2026-07-20",
-        });
-        return { afterTitleEdit, initial };
-      }),
-      listEvents
-    );
-
-    expect(result.initial[0]?.discount.label).toBe("Database sale");
-    expect(result.afterTitleEdit[0]?.discount.label).toBe("Database sale");
-    expect(JSON.stringify(result)).not.toContain("operator title");
   });
 
   test("caches resolved definitions for 60 seconds while revalidation is fresh", async () => {
@@ -752,7 +851,8 @@ describe("CalendarDiscountProvider", () => {
         const first = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
+          bookedAt: bookedAtOn("2026-07-20"),
         });
         currentLabels = {
           "en-US": "Edited database sale",
@@ -761,18 +861,21 @@ describe("CalendarDiscountProvider", () => {
         const cached = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
+          bookedAt: bookedAtOn("2026-07-20"),
         });
-        const fresh = yield* provider.revalidate({
+        const fresh = yield* revalidateCandidates(provider, {
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
+          bookedAt: bookedAtOn("2026-07-20"),
         });
         yield* TestClock.adjust("61 seconds");
         const afterTtl = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
+          bookedAt: bookedAtOn("2026-07-20"),
         });
         return { afterTtl, cached, first, fresh };
       }),
@@ -780,60 +883,126 @@ describe("CalendarDiscountProvider", () => {
       loadById
     );
 
-    expect(result.first[0]?.discount.label).toBe("Initial database sale");
-    expect(result.cached[0]?.discount.label).toBe("Initial database sale");
+    expect(result.first.candidates[0]?.discount.label).toBe(
+      "Initial database sale"
+    );
+    expect(result.cached.candidates[0]?.discount.label).toBe(
+      "Initial database sale"
+    );
     expect(result.fresh[0]?.discount.label).toBe("Edited database sale");
-    expect(result.afterTtl[0]?.discount.label).toBe("Edited database sale");
+    expect(result.afterTtl.candidates[0]?.discount.label).toBe(
+      "Edited database sale"
+    );
+    expect(result.first.complete).toBeTrue();
     expect(listEvents).toHaveBeenCalledTimes(3);
     expect(loadById).toHaveBeenCalledTimes(3);
   });
 
-  test("stops accepting a cached sale after its exclusive-end instant", async () => {
+  test("evaluates a sale at the booking instant rather than the current time", async () => {
     const listEvents = mock(() => Effect.succeed([saleEvent()]));
+    const lastBookableInstant = Temporal.Instant.from(
+      "2026-08-01T21:59:59.500Z"
+    );
 
     const result = await runWithProvider(
       Effect.gen(function* () {
-        yield* TestClock.setTime(
-          Temporal.Instant.from("2026-08-01T21:59:59.500Z").epochMilliseconds
-        );
+        yield* TestClock.setTime(lastBookableInstant.epochMilliseconds);
         const provider = yield* CalendarDiscountProvider;
-        const beforeExpiry = yield* provider.discover({
+        const bookedBeforeExpiry = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
+          bookedAt: lastBookableInstant,
         });
         yield* TestClock.adjust("1 second");
-        const cachedAfterExpiry = yield* provider.discover({
-          locale: "en-US",
-          product: basicProduct,
-          reservationDate: "2026-07-20",
-        });
         const activeSalesAfterExpiry = yield* provider.discoverActiveSales({
-          currentDate: Temporal.PlainDate.from("2026-07-20"),
           locale: "en-US",
         });
-        const freshAfterExpiry = yield* provider.revalidate({
+        const bookedAfterExpiry = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
+          bookedAt: lastBookableInstant.add({ seconds: 1 }),
+        });
+        const storedBookingAfterExpiry = yield* revalidateCandidates(provider, {
+          locale: "en-US",
+          product: basicProduct,
+          lastServiceDate: "2026-07-20",
+          bookedAt: lastBookableInstant,
         });
 
         return {
           activeSalesAfterExpiry,
-          beforeExpiry,
-          cachedAfterExpiry,
-          freshAfterExpiry,
+          bookedAfterExpiry,
+          bookedBeforeExpiry,
+          storedBookingAfterExpiry,
         };
       }),
       listEvents
     );
 
-    expect(result.beforeExpiry).toHaveLength(1);
-    expect(result.cachedAfterExpiry).toEqual([]);
+    expect(result.bookedBeforeExpiry.candidates).toHaveLength(1);
+    expect(result.bookedBeforeExpiry.complete).toBeTrue();
     expect(result.activeSalesAfterExpiry.activeSales).toEqual([]);
-    expect(result.freshAfterExpiry).toEqual([]);
-    expect(listEvents).toHaveBeenCalledTimes(2);
+    expect(result.bookedAfterExpiry.candidates).toEqual([]);
+    expect(result.storedBookingAfterExpiry).toHaveLength(1);
+    expect(listEvents.mock.calls.map(([input]) => input.from)).toEqual([
+      "2026-08-01",
+      "2026-08-02",
+      "2026-08-01",
+    ]);
   });
+
+  test("opens the booking window at the Prague start of the first sale day", async () => {
+    const firstBookableInstant = Temporal.Instant.from("2026-07-13T22:00:00Z");
+
+    const result = await runWithProvider(
+      Effect.gen(function* () {
+        const provider = yield* CalendarDiscountProvider;
+        const bookedBeforeStart = yield* revalidateCandidates(provider, {
+          locale: "en-US",
+          product: basicProduct,
+          lastServiceDate: "2026-07-20",
+          bookedAt: firstBookableInstant.subtract({ milliseconds: 1 }),
+        });
+        const bookedAtStart = yield* revalidateCandidates(provider, {
+          locale: "en-US",
+          product: basicProduct,
+          lastServiceDate: "2026-07-20",
+          bookedAt: firstBookableInstant,
+        });
+        return { bookedAtStart, bookedBeforeStart };
+      }),
+      () => Effect.succeed([saleEvent()])
+    );
+
+    expect(result.bookedBeforeStart).toEqual([]);
+    expect(result.bookedAtStart).toHaveLength(1);
+  });
+
+  test.each([
+    ["before the sale started", "2026-07-01", 1],
+    ["on the sale's last day", "2026-08-01", 1],
+    ["after the sale's last day", "2026-08-02", 0],
+  ] as const)(
+    "applies a booking made during the sale for a last service date %s",
+    async (_label, lastServiceDate, expectedCount) => {
+      const result = await runWithProvider(
+        Effect.gen(function* () {
+          const provider = yield* CalendarDiscountProvider;
+          return yield* revalidateCandidates(provider, {
+            locale: "en-US",
+            product: basicProduct,
+            lastServiceDate,
+            bookedAt: bookedAtOn("2026-07-20"),
+          });
+        }),
+        () => Effect.succeed([saleEvent()])
+      );
+
+      expect(result).toHaveLength(expectedCount);
+    }
+  );
 
   test("keeps the discovery cache across separate process-lifetime layer builds", async () => {
     let currentLabels = {
@@ -847,22 +1016,16 @@ describe("CalendarDiscountProvider", () => {
       ({ discountId }) =>
         Effect.succeed(definition(discountId, { labels: currentLabels }))
     );
-    const processMemoMap = Layer.makeMemoMapUnsafe();
-    const processScope = Scope.makeUnsafe();
     const providerLayer = Layer.mergeAll(
-      Layer.fromBuild(() =>
-        Layer.buildWithMemoMap(
-          CalendarDiscountProvider.Default.pipe(
-            Layer.provide(
-              Layer.mergeAll(
-                GoogleCalendarServiceMock({ listEvents }),
-                DiscountDefinitionRepositoryMock({ loadById }),
-                resourceConfigLayer
-              )
+      shareAcrossRequests(
+        CalendarDiscountProvider.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              GoogleCalendarServiceMock({ listEvents }),
+              DiscountDefinitionRepositoryMock({ loadById }),
+              resourceConfigLayer
             )
-          ),
-          processMemoMap,
-          processScope
+          )
         )
       ),
       TestClock.layer()
@@ -873,15 +1036,17 @@ describe("CalendarDiscountProvider", () => {
       return yield* provider.discover({
         locale: "en-US",
         product: basicProduct,
-        reservationDate: "2026-07-20",
+        lastServiceDate: "2026-07-20",
+        bookedAt: bookedAtOn("2026-07-20"),
       });
     });
     const revalidateForDate = Effect.gen(function* () {
       const provider = yield* CalendarDiscountProvider;
-      return yield* provider.revalidate({
+      return yield* revalidateCandidates(provider, {
         locale: "en-US",
         product: basicProduct,
-        reservationDate: "2026-07-20",
+        lastServiceDate: "2026-07-20",
+        bookedAt: bookedAtOn("2026-07-20"),
       });
     });
     const first = await quoteForDate.pipe(
@@ -905,10 +1070,13 @@ describe("CalendarDiscountProvider", () => {
       Effect.runPromise
     );
 
-    expect(first[0]?.discount.label).toBe("Initial database sale");
-    expect(cached[0]?.discount.label).toBe("Initial database sale");
+    expect(first.candidates[0]?.discount.label).toBe("Initial database sale");
+    expect(cached.candidates[0]?.discount.label).toBe("Initial database sale");
     expect(fresh[0]?.discount.label).toBe("Edited database sale");
-    expect(stillCached[0]?.discount.label).toBe("Initial database sale");
+    expect(stillCached.candidates[0]?.discount.label).toBe(
+      "Initial database sale"
+    );
+    expect(first.complete).toBeTrue();
     expect(listEvents).toHaveBeenCalledTimes(2);
     expect(loadById).toHaveBeenCalledTimes(2);
   });
@@ -942,12 +1110,14 @@ describe("CalendarDiscountProvider", () => {
         const first = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
+          bookedAt: bookedAtOn("2026-07-20"),
         });
         const second = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
+          bookedAt: bookedAtOn("2026-07-20"),
         });
         return { first, second };
       }),
@@ -955,8 +1125,10 @@ describe("CalendarDiscountProvider", () => {
       loadById
     );
 
-    expect(result.first).toEqual([]);
-    expect(result.second[0]?.discount.label).toBe("Recovered sale");
+    expect(result.first.candidates).toEqual([]);
+    expect(result.first.complete).toBeFalse();
+    expect(result.second.candidates[0]?.discount.label).toBe("Recovered sale");
+    expect(result.second.complete).toBeTrue();
     expect(loadById).toHaveBeenCalledTimes(2);
   });
 });

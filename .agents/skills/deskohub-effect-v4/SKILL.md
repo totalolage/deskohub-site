@@ -1,17 +1,24 @@
 ---
 name: deskohub-effect-v4
-description: Effect V4 service, Layer, workflow, schema, error, and tagged-union handling.
+description: Effect V4 code, Context.Service, Layer, Effect.fn, Effect.Do workflow, Effect Schema, typed errors, retry and timeout, Match, tagged unions, runWorkspaceEffect, runWorkspaceEffectOrElse, runWorkspaceBrowserEffect, defineWorkspaceAction, defineWorkspaceRoute, Vercel Queue topic, defineQueueTopic, QueuePublisher, queue consumer, browser failure reporting, Effect bundle size.
 ---
 
 # Deskohub Effect V4
 
-Read only the references relevant to the change:
+The repository pins `effect` 4.0.0-beta.85 with a local patch. V4 APIs differ from V3; check `node_modules/effect` before you use an API you remember from V3.
 
-- For services, capabilities, Layers, module structure, mocks, tracing, barrels, and tests, read [references/services-and-layers.md](references/services-and-layers.md).
-- For multi-step Effect workflows and pipeline structure, read [references/declarative-workflows.md](references/declarative-workflows.md).
-- For validation, schemas, brands, public types, and error mapping, read [references/schemas-errors-and-boundaries.md](references/schemas-errors-and-boundaries.md).
-- For discriminated unions, `_tag` construction, and Effect Match, read [references/tagged-unions-and-match.md](references/tagged-unions-and-match.md).
+Read the references that match the change. For a broad service or feature refactor, read all of them before you edit.
 
-For a broad service or feature refactor, read all relevant references before editing. Update the relevant reference when developer feedback changes a durable convention.
+- Services, Layers, capabilities, module layout, mocks, outbound HTTP, provider calls, operation naming, concurrency, and barrels: [references/services-and-layers.md](references/services-and-layers.md).
+- Workspace transactions, writers that commit with their caller, clients that never join, and advisory locks (`WorkspaceLocks`, `WorkspaceLockSections`): [references/workspace-transactions.md](references/workspace-transactions.md).
+- Server actions, routes, pages, tasks, queue topics and consumers, the shared runtime, fail-open runs, and browser runs: [references/workspace-runners.md](references/workspace-runners.md).
+- Multi-step workflows, `Effect.fn`, conditionals, and error recovery inside a pipeline: [references/declarative-workflows.md](references/declarative-workflows.md).
+- Schemas, brands, validation, error mapping, discriminated unions, and `Match`: [references/schemas-errors-and-unions.md](references/schemas-errors-and-unions.md).
 
-Use the repository's patched `@effect/tsgo` TypeScript installation so Effect diagnostics run in typechecks. The `multipleEffectProvide` diagnostic only covers chained `Effect.provide`; compose independent Layer dependencies with one `Layer.provide(Layer.mergeAll(...))`.
+Always apply these rules:
+
+- Use Effect operators for control flow. Retry with `Effect.retry` and a `Schedule`, bound waits with `Effect.timeout` or `Effect.timeoutOrElse`, and carry expected failures as typed errors. Don't write Promise retry loops, `try`/`catch` recovery, or `unknown` error plumbing next to Effect code.
+- Run Effects only through a Workspace runner. The `no-direct-effect-runs` and `no-direct-next-effect-imports` Grit rules reject `Effect.run*` and direct `@deskohub/next-effect` imports in Workspace source.
+- Typechecks run the `@effect/tsgo` diagnostics; the root `prepare` script patches TypeScript for them. The `multipleEffectProvide` diagnostic only flags chained `Effect.provide`. Compose independent Layer dependencies with one `Layer.provide(Layer.mergeAll(...))`.
+
+When developer feedback changes a durable Effect convention, update the matching reference.

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.11/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -17,36 +17,63 @@
       "!**/.turbo",
       "!.taskmaster",
       "!**/generated",
-      "!**/db/migrations/**/snapshot.json"
+      "!**/features/i18n/paraglide",
+      "!**/features/administration/i18n/paraglide",
+      "!**/db/migrations/**/snapshot.json",
+      "!**/administration-wire-contract.golden.json"
     ]
   },
   "formatter": {
     "indentStyle": "space"
   },
   "plugins": [
+    "./lint/automation-state-writers.grit",
+    "./lint/no-backend-runtime-directives.grit",
+    "./lint/no-administration-agent-tools-imports.grit",
+    "./lint/no-better-auth-in-account-domain.grit",
+    "./lint/no-blocking-administration-routes.grit",
+    "./lint/no-borrowed-provider-outcomes.grit",
+    "./lint/no-button-restyling.grit",
     "./lint/no-chained-type-assertions.grit",
     "./lint/no-conditional-empty-object-spread.grit",
     "./lint/no-direct-effect-runs.grit",
     "./lint/no-direct-next-effect-imports.grit",
     "./lint/no-direct-process-env.grit",
+    "./lint/no-eager-feature-flag-providers.grit",
+    "./lint/no-eager-posthog-browser-sdk.grit",
+    "./lint/no-generic-provider-error-tags.grit",
+    "./lint/no-heavy-breadcrumb-imports.grit",
     "./lint/no-known-value-widening.grit",
+    "./lint/no-local-administration-chrome.grit",
+    "./lint/no-next-runtime-imports-in-standalone-modules.grit",
     "./lint/no-object-parameters.grit",
+    "./lint/no-provider-status-branching.grit",
+    "./lint/no-raw-environment-in-e2e-launcher.grit",
     "./lint/no-repeated-computed-conditional-operand.grit",
     "./lint/no-runtime-typeof.grit",
+    "./lint/no-server-env-in-client-modules.grit",
     "./lint/no-shape-in-symbol-names.grit",
+    "./lint/no-standalone-capability-layers.grit",
+    "./lint/no-synchronous-subprocess.grit",
     "./lint/no-throw-in-workspace-effect-modules.grit",
     "./lint/no-unknown-parameters.grit",
     "./lint/no-unknown-type-aliases.grit",
     "./lint/no-unsafe-dictionary-type.grit",
+    "./lint/no-useless-alias.grit",
     "./lint/no-widen-then-assert.grit",
     "./lint/no-wildcard-reexport.grit",
     "./lint/prefer-effect-when.grit",
     "./lint/prefer-effect-fn.grit",
-    "./lint/prefer-effect-value.grit"
+    "./lint/prefer-effect-value.grit",
+    "./lint/workspace-database-clients.grit",
+    "./lint/workspace-transaction-concurrency.grit",
+    "./lint/workspace-transaction-entry.grit",
+    "./lint/workspace-lock-statements.grit",
+    "./lint/workspace-transaction-executors.grit"
   ],
   "linter": {
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "correctness": {
         "noNestedComponentDefinitions": "off"
       },
@@ -75,6 +102,128 @@
         "rules": {
           "suspicious": {
             "noConsole": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/deskohub-workspace/features/account/**",
+        "!apps/deskohub-workspace/features/account/auth.client.ts",
+        "!apps/deskohub-workspace/features/account/backend/auth/**",
+        "!apps/deskohub-workspace/features/account/backend/customer-authentication.service.ts",
+        "!apps/deskohub-workspace/features/account/**/*.test.ts",
+        "!apps/deskohub-workspace/features/account/**/*.test.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "better-auth",
+                      "better-auth/**",
+                      "@better-auth/**"
+                    ],
+                    "message": "Import Better Auth only inside the account auth boundary (backend/auth, the CustomerAuthentication session adapter, and auth.client.ts)."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/deskohub-workspace/features/account/backend/auth/**",
+        "apps/deskohub-workspace/features/account/backend/customer-authentication.service.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "better-auth/client": "The browser auth client lives only in features/account/auth.client.ts.",
+                  "better-auth/react": "The browser auth client lives only in features/account/auth.client.ts.",
+                  "better-auth/next-js": {
+                    "importNames": ["toNextJsHandler"],
+                    "message": "The auth route calls auth.handler directly so it can force private, no-store responses."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/deskohub-workspace/app/\\[locale\\]/admin/**",
+        "apps/deskohub-workspace/features/accounting/admin/**",
+        "apps/deskohub-workspace/features/admin-cli/**",
+        "apps/deskohub-workspace/features/administration/**",
+        "apps/deskohub-workspace/features/discounts/admin/**",
+        "!apps/deskohub-workspace/features/administration/data-table.tsx",
+        "!apps/deskohub-workspace/features/administration/sort-head.tsx",
+        "!apps/deskohub-workspace/features/administration/table-toolbar.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@/shared/components/ui/table": "Compose administration tables through AdministrationDataTable.",
+                  "@/shared/components/ui/badge": "Use the shared administration table toolbar and count badge.",
+                  "next/server": {
+                    "importNames": ["connection"],
+                    "message": "Administration pages establish the request boundary only through authorizeAdministratorPage."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/deskohub-mobile/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["next", "next/**"],
+                    "message": "The mobile app does not run on Next.js. Next.js modules are bound to its server and router."
+                  },
+                  {
+                    "group": [
+                      "@deskohub/next-effect",
+                      "@deskohub/next-effect/**"
+                    ],
+                    "message": "@deskohub/next-effect runs Effects inside the Next.js request lifecycle, which the mobile app does not have."
+                  },
+                  {
+                    "group": [
+                      "@deskohub/i18n/next",
+                      "@deskohub/i18n/action",
+                      "@deskohub/i18n/request-locale"
+                    ],
+                    "message": "This @deskohub/i18n entry is bound to the Next.js server. The mobile app may use the root, core, pathname, translatable, effect, and currency entries."
+                  }
+                ]
+              }
+            }
           }
         }
       }

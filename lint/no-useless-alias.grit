@@ -1,0 +1,93 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
+// GritQL cannot resolve which binding an identifier refers to, so this approximates
+// "the source cannot be reassigned" per file: some binding with the source name must
+// exist, no binding with that name may be a parameter, catch binding, or let/var, no
+// scope that does not enclose the alias (block, function, named class or function
+// expression, namespace) may rebind the name, and no enum member may reuse it, since
+// replacing the alias there could read the shadowing binding. Enum member names match
+// plain, quoted, `$`-prefixed, and bracketed spellings; any escaped member name
+// suppresses the file's reports because its decoded name is unknown. A `const` alias
+// widens a `unique symbol` to `symbol`, so sources whose declaration mentions `Symbol`
+// or `unique`, and aliases read through `typeof`, are skipped. A same-named
+// let/var/parameter anywhere in the file suppresses the report, and a global that a
+// const elsewhere in the file shadows can still be reported. Imported names count as constant: TypeScript
+// rejects assignments to imports, functions, and classes, and the workspace exports no
+// mutable `let` bindings whose live updates an alias snapshot would hide.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    `const $alias = $source` as $alias_declaration where {
+      $alias <: JsIdentifierBinding(),
+      $source <: JsIdentifierExpression(),
+      $program <: contains JsIdentifierBinding() as $source_binding where {
+        $source_binding <: $source
+      },
+      not $program <: contains or {
+        JsFunctionBody(),
+        JsFunctionExpression(),
+        JsClassExpression(),
+        JsBlockStatement(),
+        JsForStatement(),
+        JsForInStatement(),
+        JsForOfStatement(),
+        JsSwitchStatement(),
+        JsStaticInitializationBlockClassMember(),
+        TsModuleBlock()
+      } as $shadowing_scope where {
+        $shadowing_scope <: contains JsIdentifierBinding() as $shadowing_binding where {
+          $shadowing_binding <: $source
+        },
+        not $alias_declaration <: within $shadowing_scope
+      },
+      not $program <: contains TsEnumMember(name = $shadowing_member_name) where {
+        or {
+          $shadowing_member_name <: JsComputedMemberName(expression = $shadowing_member_key),
+          and {
+            not $shadowing_member_name <: JsComputedMemberName(),
+            $shadowing_member_key = $shadowing_member_name
+          }
+        },
+        or {
+          and {
+            $shadowing_member_key <: r"(?s)^['\"`]?([\w$]+)['\"`]?$"($shadowing_member_text),
+            $shadowing_member_text <: $source
+          },
+          $shadowing_member_key <: r"(?s).*\\.*"
+        }
+      },
+      not $program <: contains JsVariableDeclarator(id = $symbol_binding) as $symbol_declarator where {
+        $symbol_binding <: $source,
+        $symbol_declarator <: r"(?s).*\b(?:unique|Symbol)\b.*"
+      },
+      not $program <: contains TsTypeofType(expression_name = $alias_type_query) where {
+        $alias_type_query <: contains JsReferenceIdentifier() as $alias_type_query_root where {
+          $alias_type_query_root <: $alias
+        }
+      },
+      not $program <: contains JsIdentifierBinding() as $reassignable_binding where {
+        $reassignable_binding <: $source,
+        $reassignable_binding <: within or {
+          JsFormalParameter(),
+          JsRestParameter(),
+          TsPropertyParameter(),
+          JsCatchDeclaration(),
+          JsArrowFunctionExpression(parameters = $source),
+          JsVariableDeclaration() as $reassignable_declaration where {
+            not $reassignable_declaration <: r"(?s)^(?:\s|/\*.*?\*/|//[^\n]*\n)*(?:const|using|await)\b.*"
+          },
+          JsForVariableDeclaration() as $reassignable_loop_declaration where {
+            not $reassignable_loop_declaration <: r"(?s)^(?:\s|/\*.*?\*/|//[^\n]*\n)*(?:const|using|await)\b.*"
+          }
+        }
+      },
+      register_diagnostic(
+        span = $alias_declaration,
+        message = "[anti-slop/no-useless-alias] Use the original name instead of a const alias; rename at the boundary with `import { source as alias }` or `export { source as alias }` when the new name aids readability.",
+        severity = "error"
+      )
+    }
+  }
+}

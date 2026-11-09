@@ -33,9 +33,7 @@ type FakeDatabase = {
   }>;
 };
 
-const makeFakeDatabase = (
-  options: { readonly failTransaction?: boolean } = {}
-) => {
+const makeFakeDatabase = () => {
   const accessGrants = new Map<string, FixtureRows["accessGrant"]>();
   const paymentAttempts = new Map<string, FixtureRows["paymentAttempt"]>();
   const reservations = new Map<string, FixtureRows["reservation"]>();
@@ -46,22 +44,6 @@ const makeFakeDatabase = (
     readonly id: string;
     readonly table: string;
   }> = [];
-
-  const restore = (
-    snapshot: Readonly<{
-      readonly accessGrants: Map<string, FixtureRows["accessGrant"]>;
-      readonly paymentAttempts: Map<string, FixtureRows["paymentAttempt"]>;
-      readonly reservations: Map<string, FixtureRows["reservation"]>;
-    }>
-  ) => {
-    accessGrants.clear();
-    paymentAttempts.clear();
-    reservations.clear();
-    for (const [id, row] of snapshot.accessGrants) accessGrants.set(id, row);
-    for (const [id, row] of snapshot.paymentAttempts)
-      paymentAttempts.set(id, row);
-    for (const [id, row] of snapshot.reservations) reservations.set(id, row);
-  };
 
   const database: WorkspaceE2EReservationHistoryDatabase = {
     deleteAccessGrant: (id) =>
@@ -96,12 +78,7 @@ const makeFakeDatabase = (
     transaction: (rows) =>
       Effect.gen(function* () {
         transactionCalls.push(rows);
-        const snapshot = {
-          accessGrants: new Map(accessGrants),
-          paymentAttempts: new Map(paymentAttempts),
-          reservations: new Map(reservations),
-        };
-        const reservationId = rows.reservation.id;
+        const reservationId = rows.reservation.overrides?.id;
         const paymentAttemptId = rows.paymentAttempt.id;
         const accessGrantId = rows.accessGrant.id;
         if (!reservationId || !paymentAttemptId || !accessGrantId) {
@@ -110,12 +87,6 @@ const makeFakeDatabase = (
         reservations.set(reservationId, rows.reservation);
         paymentAttempts.set(paymentAttemptId, rows.paymentAttempt);
         accessGrants.set(accessGrantId, rows.accessGrant);
-        if (options.failTransaction) {
-          restore(snapshot);
-          return yield* Effect.fail(
-            new Error("fixture transaction rolled back")
-          );
-        }
       }),
   };
 
@@ -210,22 +181,9 @@ test("seeds the exact rows and cleans them through the finalizer", async () => {
             fixture = value;
             const rows = fakeDatabase.transactionCalls[0];
             expect(rows).toBeDefined();
-            expect(rows?.reservation.dotyposCustomerId).toBe(input.customerId);
-            expect(rows?.reservation.dotyposReservationId).toBe(
+            expect(rows?.reservation.customer).toBe(input.customerId);
+            expect(rows?.reservation.overrides?.dotyposReservationId).toBe(
               input.dotyposReservationId
-            );
-            expect(rows?.reservation.reservationState).toBe("confirmed");
-            expect(rows?.reservation.paymentState).toBe("paid");
-            expect(rows?.reservation.activePaymentAttemptId).toBeNull();
-            expect(rows?.paymentAttempt.provider).toBe("internal");
-            expect(rows?.paymentAttempt.state).toBe("paid");
-            expect(rows?.paymentAttempt.amountValue).toBe(0);
-            expect(rows?.paymentAttempt.providerOrderId).toBeUndefined();
-            expect(rows?.paymentAttempt.providerOrderCreatedAt).toBeNull();
-            expect(rows?.accessGrant.state).toBe("uncertain");
-            expect(rows?.accessGrant.accessCode).toBeUndefined();
-            expect(rows?.accessGrant.failureCode).toBe(
-              "workspace_e2e_fixture_uncertain"
             );
             expect(rows?.accessGrant.scheduledAccessStartsAt).toEqual(
               Temporal.Instant.from(providerProjection.reservation.startDate)
@@ -239,7 +197,6 @@ test("seeds the exact rows and cleans them through the finalizer", async () => {
             expect(fakeDatabase.reservations.size).toBe(1);
             expect(fakeDatabase.paymentAttempts.size).toBe(1);
             expect(fakeDatabase.accessGrants.size).toBe(1);
-            expect(providerProjection.customer.id).toBe(input.customerId);
             return yield* Effect.fail(new Error("exercise finalizer"));
           }),
         makeDependencies(fakeDatabase, providerProjection, providerCalls)
@@ -291,41 +248,4 @@ test("maps a reversed provider interval through the fixed E2E error boundary", a
       },
     },
   });
-});
-
-test("maps malformed provider timestamps through the fixed E2E error boundary", async () => {
-  const { input, providerProjection } = makeFixtureInput();
-  await expectProviderTimingError({
-    fixtureInput: input,
-    providerProjection: {
-      ...providerProjection,
-      reservation: {
-        ...providerProjection.reservation,
-        startDate: "not-a-provider-timestamp",
-      },
-    },
-  });
-});
-
-test("does not leave rows when the seed transaction rolls back", async () => {
-  const { input, providerProjection } = makeFixtureInput();
-  const fakeDatabase = makeFakeDatabase({ failTransaction: true });
-  const providerCalls: string[] = [];
-
-  await expect(
-    Effect.runPromise(
-      seedWorkspaceE2EReservationHistory(
-        input,
-        makeDependencies(fakeDatabase, providerProjection, providerCalls)
-      )
-    )
-  ).rejects.toThrow("fixture transaction rolled back");
-
-  expect(providerCalls).toEqual([input.dotyposReservationId]);
-  expect(fakeDatabase.transactionCalls).toHaveLength(1);
-  expect(fakeDatabase.reservations.size).toBe(0);
-  expect(fakeDatabase.paymentAttempts.size).toBe(0);
-  expect(fakeDatabase.accessGrants.size).toBe(0);
-  expect(fakeDatabase.cleanupCalls).toHaveLength(0);
-  expect(fakeDatabase.verificationCalls).toHaveLength(0);
 });

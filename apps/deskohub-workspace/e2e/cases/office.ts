@@ -1,16 +1,17 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { getWorkspaceOfficePrice } from "@/features/checkout/product-catalog";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
+import { formatMoney } from "@/shared/money/money";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
-import { waitForBrowserText } from "../browser";
-import { getSubmitOfficeReservationScript } from "../browser-scripts";
+import { waitForPageText } from "../browser";
+import type { OpenE2EBrowserSession } from "../browser-session";
 import {
   loadOfficeAvailability,
   makeOfficeCheckoutData,
   type OfficeCheckoutSlot,
-  selectAvailableOfficeSlot,
+  selectAvailableOfficeSlots,
 } from "../checkout/data";
+import { toReservationStep } from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -19,7 +20,6 @@ import {
 } from "../errors";
 import { pollUntil } from "../polling";
 import { isPreviewPageAvailable } from "../preview-readiness";
-import type { Runner } from "../runtime";
 import { assert, log } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
@@ -30,7 +30,11 @@ import type {
 import { executeCheckoutFlow } from "./checkout";
 
 export type OfficeE2EPreparation = {
+  // Held by the paid office checkout.
   readonly slot: OfficeCheckoutSlot;
+  // Never held: the reservation URL-state cases only open and edit the form
+  // for it, so it must stay apart from the paid range to remain available.
+  readonly urlStateSlot: OfficeCheckoutSlot;
 };
 
 export const prepareOfficeE2E = (
@@ -52,8 +56,15 @@ export const prepareOfficeE2E = (
       return undefined;
     }
 
-    const slot = yield* selectAvailableOfficeSlot(config, allocation);
-    return { slot };
+    const [slot, urlStateSlot] = yield* selectAvailableOfficeSlots(
+      config,
+      2,
+      allocation
+    );
+    return yield* tryWorkspaceE2ESync("assign office checkout ranges", () => {
+      assert(slot && urlStateSlot, "office checkout ranges missing");
+      return { slot, urlStateSlot };
+    });
   });
 
 export const makeOfficeE2ECases = ({
@@ -61,13 +72,11 @@ export const makeOfficeE2ECases = ({
   datasourceConfig,
   flowStates,
   preparation,
-  run,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly flowStates: CheckoutFlowState[];
   readonly preparation: OfficeE2EPreparation | undefined;
-  readonly run: Runner;
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
   WorkspaceE2EError,
@@ -87,18 +96,19 @@ export const makeOfficeE2ECases = ({
     return [
       {
         checkoutStates: [state],
-        execute: ({ runStep, session }) =>
+        execute: ({ openSeparateSession, openSession, runStep }) =>
           executeCheckoutFlow({
+            openSeparateSession,
             config,
             data,
             datasourceConfig,
             flow: {
               id: "office-paid-multi-day",
-              submitReservationScript: getSubmitOfficeReservationScript,
+              toReservationPreparation: toReservationStep,
             },
             payPageSteps: () => [
               {
-                execute: assertOfficePayPage(config, data, run, session),
+                execute: assertOfficePayPage(config, data, openSession),
                 id: "assert-office-pay-summary",
                 timeoutMs: config.timeouts.uiTransition,
               },
@@ -110,9 +120,8 @@ export const makeOfficeE2ECases = ({
                 timeoutMs: config.timeouts.datasource,
               },
             ],
-            run,
             runStep,
-            session,
+            openSession,
             state,
           }).pipe(
             Effect.provideService(HttpClient.HttpClient, httpClient),
@@ -132,8 +141,7 @@ export const makeOfficeE2ECases = ({
 const assertOfficePayPage = (
   config: WorkspaceE2EConfig,
   data: CheckoutData,
-  run: Runner,
-  session: string
+  openSession: OpenE2EBrowserSession
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const office = yield* getOfficeSlot(data);
@@ -146,7 +154,7 @@ const assertOfficePayPage = (
     const accessTitle = `Private office access · ${dayCount} ${dayLabel}`;
     const seatLabel = office.seats === 1 ? "office seat" : "office seats";
     const seatTitle = `${office.seats} ${seatLabel} · ${dayCount} ${dayLabel}`;
-    const price = formatWorkspaceMoney(
+    const price = formatMoney(
       getWorkspaceOfficePrice({
         dayCount,
         seats: office.seats,
@@ -154,7 +162,7 @@ const assertOfficePayPage = (
       data.locale
     ).replaceAll(/\s+/g, " ");
 
-    yield* waitForBrowserText({
+    yield* waitForPageText({
       description: "office pay summary",
       matches: (text) => {
         const normalized = text.replaceAll(/\s+/g, " ");
@@ -164,8 +172,7 @@ const assertOfficePayPage = (
           normalized.includes(price)
         );
       },
-      run,
-      session,
+      session: yield* openSession,
       timeoutMs: config.timeouts.uiTransition,
     });
     log("Office pay summary validated");

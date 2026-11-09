@@ -1,8 +1,4 @@
-import type {
-  ExternalAPIError,
-  NetworkError,
-  ValidationError,
-} from "@deskohub/dotypos";
+import type { DotyposReadFailure } from "@deskohub/dotypos";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
@@ -10,16 +6,16 @@ import {
   isReservationSupersedable,
   type SupersedableReservation,
 } from "@/features/reservation/backend/reservation-supersession";
-import type { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/stored-reservation-details.server";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import type { SealedStateTokenError } from "@/shared/backend/sealed-state";
 import { PayableReservationService } from "./payable-reservation.service";
 
 type ReservationSupersessionError =
+  | SealedStateTokenError
   | EffectDrizzleQueryError
   | WorkspaceReservationDetailsMalformedError
-  | ExternalAPIError
-  | NetworkError
-  | ValidationError;
+  | DotyposReadFailure;
 
 interface IReservationSupersessionService {
   readonly findCurrent: (input: {

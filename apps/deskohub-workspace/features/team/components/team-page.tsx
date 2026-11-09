@@ -1,0 +1,105 @@
+import Interpolate from "@doist/react-interpolate";
+import Link from "next/link";
+import type { Locale } from "@/features/i18n";
+import { m } from "@/features/i18n";
+import { Container } from "@/shared/components/container";
+import { GlassCard } from "@/shared/components/ui/glass-card";
+import { textLink } from "@/shared/components/ui/text-link";
+import { getTeamFounders } from "../team-founders";
+import { CensoredFounderName } from "./censored-founder-name";
+import { FounderProfileImage } from "./founder-profile-image";
+
+type TeamPageProps = {
+  locale: Locale;
+};
+
+export function TeamPage({ locale }: TeamPageProps) {
+  const founders = getTeamFounders(locale);
+
+  return (
+    <main className="relative overflow-hidden bg-navy-blue pb-20 pt-[calc(var(--site-header-height)+4rem)] text-white sm:pb-24 sm:pt-[calc(var(--site-header-height)+5rem)]">
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 bg-[radial-gradient(circle_at_8%_18%,rgba(236,164,35,0.22),transparent_23%),radial-gradient(circle_at_91%_81%,rgba(0,223,153,0.18),transparent_24%)]"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute -right-24 top-20 h-72 w-72 rotate-12 rounded-[4rem] border-[1.5rem] border-white/5"
+      />
+
+      <Container className="relative z-10">
+        <div className="max-w-3xl">
+          <h1 className="text-4xl leading-tight text-balance sm:text-5xl">
+            {m.landingFoundersTitle({}, { locale })}
+          </h1>
+          <p className="mt-6 text-lg leading-8 text-white/82">
+            {m.teamAboutLead({}, { locale })}
+          </p>
+          <p className="mt-4 text-lg leading-8 text-white/82">
+            <Interpolate
+              string={m.teamAboutBody({}, { locale })}
+              mapping={{
+                contact: (content) => (
+                  <Link
+                    href={`/${locale}/contact`}
+                    className={textLink({ tone: "inverse" })}
+                  >
+                    {content}
+                  </Link>
+                ),
+              }}
+            />
+          </p>
+        </div>
+
+        <div className="mt-10 grid max-w-4xl gap-8 xl:mt-12">
+          {founders.map((founder) => (
+            <article key={founder.role} className="relative overflow-visible">
+              <div className="relative flex min-h-28 items-stretch sm:min-h-40">
+                <div className="relative z-10 w-28 shrink-0 self-stretch sm:w-40">
+                  <div className="absolute top-1/2 h-28 w-28 -translate-y-1/2 overflow-hidden rounded-full border-4 border-white bg-navy-blue shadow-[0_16px_32px_-18px_rgba(0,2,79,0.72)] sm:h-40 sm:w-40">
+                    <FounderProfileImage
+                      alt={
+                        founder.name
+                          ? m.teamFounderPhotoAlt(
+                              { name: founder.name, role: founder.role },
+                              { locale }
+                            )
+                          : m.teamUnnamedFounderPhotoAlt(
+                              { role: founder.role },
+                              { locale }
+                            )
+                      }
+                      publicId={founder.imagePublicId}
+                    />
+                  </div>
+
+                  <div className="absolute left-[calc(100%+1rem)] top-5 z-10 sm:top-6">
+                    {founder.name ? (
+                      <div className="w-fit rounded-full border border-burned-orange/30 bg-burned-orange px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-white shadow-[0_2px_4px_rgba(221,72,10,0.38)]">
+                        {founder.name}
+                      </div>
+                    ) : (
+                      <div className="w-max whitespace-nowrap rounded-full border border-burned-orange/30 bg-burned-orange px-3 py-1 leading-none shadow-[0_2px_4px_rgba(221,72,10,0.38)]">
+                        <CensoredFounderName className="text-xs tracking-[0.16em] drop-shadow-none" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <GlassCard className="relative -ml-14 min-w-0 flex-1 rounded-[1.5rem] border border-white/35 px-5 pb-5 pl-18 pt-14 text-white shadow-[0_20px_40px_-28px_rgba(0,0,0,0.5)] sm:-ml-20 sm:px-6 sm:pb-6 sm:pl-24 sm:pt-16">
+                  <h2 className="text-2xl leading-tight sm:text-3xl">
+                    {founder.role}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-white/72 sm:mt-3 sm:leading-7">
+                    {founder.description}
+                  </p>
+                </GlassCard>
+              </div>
+            </article>
+          ))}
+        </div>
+      </Container>
+    </main>
+  );
+}

@@ -1,28 +1,31 @@
-import { DuplicateMessageError, send } from "@vercel/queue";
-import { Context, Data, Effect, Layer, Option, Schema } from "effect";
+import { Context, Data, Duration, Effect, Layer, Schema } from "effect";
 import {
   type PaymentAttemptId,
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
-import { serializeErrorForLog } from "@/shared/utils/error-formatting";
-import { LatePaymentRecoveryService } from "./late-payment-recovery.service";
+import { QueuePublisher } from "@/shared/backend/queue/queue-publisher";
+import { defineQueueTopic } from "@/shared/backend/queue/queue-topic";
 
-export const latePaymentRecoveryQueueTopic = "workspace-late-payment-recovery";
-
-const payloadSchema = Schema.Struct({
-  paymentAttemptId: paymentAttemptIdSchema,
+/** One message per payment attempt: the key is the recovery's idempotency. */
+export const latePaymentRecoveryTopic = defineQueueTopic({
+  topic: "workspace-late-payment-recovery",
+  label: "Late-payment recovery",
+  message: Schema.toStandardSchemaV1(
+    Schema.Struct({ paymentAttemptId: paymentAttemptIdSchema })
+  ),
+  publish: (input: { readonly paymentAttemptId: PaymentAttemptId }) => ({
+    message: { paymentAttemptId: input.paymentAttemptId },
+    key: `late-payment-recovery:${input.paymentAttemptId}`,
+  }),
+  retention: Duration.days(7),
 });
 
-export class LatePaymentRecoveryQueueError extends Data.TaggedError(
+class LatePaymentRecoveryQueueError extends Data.TaggedError(
   "LatePaymentRecoveryQueueError"
 )<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}
-
-class DuplicateLatePaymentRecoveryMessageError extends Data.TaggedError(
-  "DuplicateLatePaymentRecoveryMessageError"
-) {}
 
 interface ILatePaymentRecoveryQueueService {
   readonly enqueue: (input: {
@@ -30,58 +33,32 @@ interface ILatePaymentRecoveryQueueService {
   }) => Effect.Effect<void, LatePaymentRecoveryQueueError>;
 }
 
-export const makeLatePaymentRecoveryQueueService = (
-  sendMessage: typeof send = send
-): ILatePaymentRecoveryQueueService => ({
-  enqueue: Effect.fn("latePaymentRecoveryQueue.enqueue")(function* (input) {
-    yield* Effect.tryPromise({
-      try: () =>
-        sendMessage(
-          latePaymentRecoveryQueueTopic,
-          { paymentAttemptId: input.paymentAttemptId },
-          {
-            retentionSeconds: 7 * 24 * 60 * 60,
-            idempotencyKey: `late-payment-recovery:${input.paymentAttemptId}`,
-          }
-        ),
-      catch: (cause) =>
-        cause instanceof DuplicateMessageError
-          ? new DuplicateLatePaymentRecoveryMessageError()
-          : new LatePaymentRecoveryQueueError({
-              message: "Late-payment recovery could not be enqueued.",
-              cause: serializeErrorForLog(cause),
-            }),
-    }).pipe(
-      Effect.catchTag(
-        "DuplicateLatePaymentRecoveryMessageError",
-        () => Effect.void
-      )
-    );
-  }),
-});
-
 export class LatePaymentRecoveryQueueService extends Context.Service<
   LatePaymentRecoveryQueueService,
   ILatePaymentRecoveryQueueService
 >()("LatePaymentRecoveryQueueService") {
-  static Default = Layer.succeed(this, makeLatePaymentRecoveryQueueService());
+  static Default = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const publisher = yield* QueuePublisher;
+      return {
+        enqueue: Effect.fn("latePaymentRecoveryQueue.enqueue")(
+          function* (input) {
+            yield* latePaymentRecoveryTopic.publish(input).pipe(
+              Effect.provideService(QueuePublisher, publisher),
+              Effect.mapError(
+                (error) =>
+                  new LatePaymentRecoveryQueueError({
+                    message: "Late-payment recovery could not be enqueued.",
+                    cause: error.cause,
+                  })
+              )
+            );
+          }
+        ),
+      };
+    })
+  );
+
+  static Live = this.Default.pipe(Layer.provide(QueuePublisher.Default));
 }
-
-const decodePayload = Schema.decodeUnknownOption(payloadSchema);
-
-export const processLatePaymentRecoveryMessage = Effect.fn(
-  "latePaymentRecoveryQueue.processMessage"
-)(function* (message: Parameters<typeof decodePayload>[0]) {
-  const payload = Option.getOrUndefined(decodePayload(message));
-  if (!payload) {
-    yield* Effect.logWarning(
-      "Late-payment recovery queue message ignored: invalid payload"
-    );
-    return "ignored" as const;
-  }
-
-  const recovery = yield* LatePaymentRecoveryService;
-  return yield* recovery.recover({
-    paymentAttemptId: payload.paymentAttemptId,
-  });
-});

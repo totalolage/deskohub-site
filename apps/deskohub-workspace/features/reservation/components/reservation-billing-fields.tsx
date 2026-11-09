@@ -113,8 +113,9 @@ export function ReservationBillingFields({
                             {},
                             { locale }
                           )}
-                          className="size-7 shrink-0 rounded-full p-0 text-navy-blue/55"
-                          size="icon"
+                          className="shrink-0"
+                          size="icon-sm"
+                          tone="muted"
                           type="button"
                           variant="ghost"
                         >

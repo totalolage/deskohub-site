@@ -1,11 +1,15 @@
 import { expect, mock, test } from "bun:test";
-import { Effect } from "effect";
+import { DotyposRejected } from "@deskohub/dotypos";
+import { testEmailAddress } from "@deskohub/test-email";
+import { Effect, Option } from "effect";
 import {
   cleanupCheckoutFlowStates,
   cleanupOwnedCheckoutFlowStates,
 } from "./cleanup";
 import type { DatasourceConfig } from "./config";
 import type { CheckoutData, CheckoutFlowState, CheckoutRow } from "./types";
+
+const otherRunEmail = testEmailAddress("delivered+other-run");
 
 test("fallback cleanup cancels every matching reservation exactly once", async () => {
   const firstRow = checkoutRow("dotypos-reservation-1");
@@ -33,6 +37,8 @@ test("fallback cleanup cancels every matching reservation exactly once", async (
         cancelDotyposReservation,
         readCheckoutRow: () => Effect.succeed(undefined),
         readCleanupCheckoutRows,
+        readCleanupCustomerIds: () => Effect.succeed([]),
+        readDotyposReservationOwner: ownerForCheckoutData(data),
       }
     )
   );
@@ -76,11 +82,14 @@ test("overlaps cleanup lookups and independent cancellations", async () => {
             checkoutRow(
               orderId === "order-1"
                 ? "dotypos-reservation-1"
-                : "dotypos-reservation-2"
+                : "dotypos-reservation-2",
+              orderId
             )
           ),
         readCleanupCheckoutRows: () =>
           lookupBarrier.wait([checkoutRow("dotypos-reservation-3")]),
+        readCleanupCustomerIds: () => Effect.succeed([]),
+        readDotyposReservationOwner: ownerForCheckoutData(data),
       }
     )
   );
@@ -91,7 +100,7 @@ test("overlaps cleanup lookups and independent cancellations", async () => {
   expect(cancelDotyposReservation).toHaveBeenCalledTimes(3);
 });
 
-test("retains every lookup and cancellation error", async () => {
+test("fails closed on lookup errors before checkout cancellation", async () => {
   const cancelDotyposReservation = mock(() =>
     Effect.fail(new Error("cancellation failed"))
   );
@@ -120,12 +129,190 @@ test("retains every lookup and cancellation error", async () => {
         readCheckoutRow: () => Effect.fail(new Error("row lookup failed")),
         readCleanupCheckoutRows: () =>
           Effect.fail(new Error("fallback lookup failed")),
+        readCleanupCustomerIds: () => Effect.succeed([]),
+        readDotyposReservationOwner: ownerForCheckoutData(data),
       }
     )
   );
 
-  expect(cleanupError?.causes).toHaveLength(5);
-  expect(cancelDotyposReservation).toHaveBeenCalledTimes(2);
+  expect(cleanupError).toBeDefined();
+  expect(cancelDotyposReservation).not.toHaveBeenCalled();
+});
+
+test("does not cancel order or fallback rows outside their journaled recipient", async () => {
+  const cancelledReservationIds: string[] = [];
+  const foreignRow = checkoutRow(
+    "dotypos-reservation-foreign",
+    "journaled-order"
+  );
+  const cancelDotyposReservation = mock((_config, id: string) => {
+    cancelledReservationIds.push(id);
+    return Effect.void;
+  });
+  const exactOrderState: CheckoutFlowState = {
+    data: checkoutData(),
+    orderId: "journaled-order" as CheckoutFlowState["orderId"],
+    startedAt: new Date("2026-07-26T12:00:00.000Z"),
+  };
+
+  const exactCleanupError = await Effect.runPromise(
+    cleanupCheckoutFlowStates(
+      {
+        datasourceConfig: {} as DatasourceConfig,
+        flowStates: [exactOrderState],
+        workflowError: undefined,
+      },
+      {
+        cancelDotyposReservation,
+        readCheckoutRow: () => Effect.succeed(foreignRow),
+        readCleanupCheckoutRows: () => Effect.succeed([]),
+        readCleanupCustomerIds: () => Effect.succeed([]),
+        readDotyposReservationOwner: () =>
+          Effect.succeed(
+            Option.some({
+              customerId:
+                "dotypos-customer-1" as CheckoutRow["dotypos_customer_id"],
+              email: otherRunEmail,
+            })
+          ),
+      }
+    )
+  );
+  expect(exactCleanupError?.message).toContain("recipient ownership mismatch");
+
+  const fallbackState: CheckoutFlowState = {
+    data: { ...checkoutData(), locale: "cs-CZ" },
+    startedAt: new Date("2026-07-26T12:00:00.000Z"),
+  };
+  const fallbackCleanupError = await Effect.runPromise(
+    cleanupCheckoutFlowStates(
+      {
+        datasourceConfig: {} as DatasourceConfig,
+        flowStates: [fallbackState],
+        workflowError: undefined,
+      },
+      {
+        cancelDotyposReservation,
+        readCheckoutRow: () => Effect.succeed(undefined),
+        readCleanupCheckoutRows: () => Effect.succeed([foreignRow]),
+        readCleanupCustomerIds: () => Effect.succeed([]),
+        readDotyposReservationOwner: () =>
+          Effect.succeed(
+            Option.some({
+              customerId:
+                "dotypos-customer-1" as CheckoutRow["dotypos_customer_id"],
+              email: otherRunEmail,
+            })
+          ),
+      }
+    )
+  );
+  expect(fallbackCleanupError?.message).toContain(
+    "recipient ownership mismatch"
+  );
+
+  expect(cancelledReservationIds).toEqual([]);
+});
+
+test("validates ownership of a captured reservation before checkout cancellation", async () => {
+  const cancelDotyposReservation = mock(() => Effect.void);
+  const state: CheckoutFlowState = {
+    checkoutRow: checkoutRow("captured-reservation", "captured-order"),
+    data: checkoutData(),
+  };
+
+  const cleanupError = await Effect.runPromise(
+    cleanupCheckoutFlowStates(
+      {
+        datasourceConfig: {} as DatasourceConfig,
+        flowStates: [state],
+        workflowError: undefined,
+      },
+      {
+        cancelDotyposReservation,
+        readCheckoutRow: () => Effect.succeed(undefined),
+        readCleanupCheckoutRows: () => Effect.succeed([]),
+        readCleanupCustomerIds: () => Effect.succeed([]),
+        readDotyposReservationOwner: () =>
+          Effect.succeed(
+            Option.some({
+              customerId:
+                "dotypos-customer-1" as CheckoutRow["dotypos_customer_id"],
+              email: otherRunEmail,
+            })
+          ),
+      }
+    )
+  );
+
+  expect(cleanupError?.message).toContain("recipient ownership mismatch");
+  expect(cancelDotyposReservation).not.toHaveBeenCalled();
+});
+
+test("treats only a missing reservation as already converged during cleanup", async () => {
+  const datasourceConfig = {} as DatasourceConfig;
+  const state: CheckoutFlowState = {
+    checkoutRow: checkoutRow("missing-reservation"),
+    data: checkoutData(),
+    startedAt: new Date("2026-08-04T12:00:00.000Z"),
+  };
+  const cancelDotyposReservation = mock(() => Effect.void);
+  const waitForCancelledDotyposReservations = mock(() => Effect.void);
+  const missingReservationResult = await Effect.runPromise(
+    cleanupCheckoutFlowStates(
+      {
+        datasourceConfig,
+        flowStates: [state],
+        workflowError: undefined,
+      },
+      {
+        cancelDotyposReservation,
+        readCheckoutRow: () => Effect.succeed(undefined),
+        readCleanupCheckoutRows: () => Effect.succeed([]),
+        readCleanupCustomerIds: () => Effect.succeed([]),
+        readDotyposReservationOwner: () => Effect.succeed(Option.none()),
+        waitForCancelledDotyposReservations,
+      }
+    )
+  );
+
+  expect(missingReservationResult).toBeUndefined();
+  expect(cancelDotyposReservation).not.toHaveBeenCalled();
+  expect(waitForCancelledDotyposReservations).toHaveBeenCalledWith(
+    datasourceConfig,
+    ["missing-reservation"],
+    {
+      endDate: new Date("2026-08-04T22:00:00.000Z"),
+      startDate: new Date("2026-08-03T22:00:00.000Z"),
+    }
+  );
+
+  const linkedCustomerMissing = new DotyposRejected({
+    operation: "getReservation",
+    request: "customer.get",
+    reason: "not-found",
+  });
+  const customerNotFoundResult = await Effect.runPromise(
+    cleanupCheckoutFlowStates(
+      {
+        datasourceConfig,
+        flowStates: [state],
+        workflowError: undefined,
+      },
+      {
+        cancelDotyposReservation,
+        readCheckoutRow: () => Effect.succeed(undefined),
+        readCleanupCheckoutRows: () => Effect.succeed([]),
+        readCleanupCustomerIds: () => Effect.succeed([]),
+        readDotyposReservationOwner: () => Effect.fail(linkedCustomerMissing),
+        waitForCancelledDotyposReservations,
+      }
+    )
+  );
+
+  expect(customerNotFoundResult).toBeDefined();
+  expect(cancelDotyposReservation).not.toHaveBeenCalled();
+  expect(waitForCancelledDotyposReservations).toHaveBeenCalledTimes(1);
 });
 
 test("case-owned cleanup uses only captured IDs and exact-order lookups", async () => {
@@ -207,6 +394,8 @@ test("does not cancel a journaled case reservation twice", async () => {
         readCleanupCheckoutRows: () =>
           Effect.succeed([checkoutRow("dotypos-reservation-1")]),
         waitForCancelledDotyposReservations,
+        readCleanupCustomerIds: () => Effect.succeed([]),
+        readDotyposReservationOwner: ownerForCheckoutData(checkoutData()),
       }
     )
   );
@@ -241,46 +430,10 @@ test("case-owned cleanup leaves failed cancellations for suite reconciliation", 
   expect(state.cleanupComplete).toBeUndefined();
 });
 
-test("waits for case cancellations to leave active inventory", async () => {
-  const state: CheckoutFlowState = {
-    checkoutRow: checkoutRow("dotypos-reservation-1"),
-    cleanupComplete: true,
-    data: checkoutData(),
-  };
-  const cancelDotyposReservation = mock(() => Effect.void);
-  const waitForCancelledDotyposReservations = mock(() => Effect.void);
-
-  const cleanupError = await Effect.runPromise(
-    cleanupCheckoutFlowStates(
-      {
-        datasourceConfig: {} as DatasourceConfig,
-        flowStates: [state],
-        workflowError: undefined,
-      },
-      {
-        cancelDotyposReservation,
-        readCheckoutRow: () => Effect.succeed(undefined),
-        readCleanupCheckoutRows: () => Effect.succeed([]),
-        waitForCancelledDotyposReservations,
-      }
-    )
-  );
-
-  expect(cleanupError).toBeUndefined();
-  expect(cancelDotyposReservation).not.toHaveBeenCalled();
-  expect(waitForCancelledDotyposReservations).toHaveBeenCalledWith(
-    {},
-    ["dotypos-reservation-1"],
-    {
-      endDate: new Date("2026-08-04T22:00:00.000Z"),
-      startDate: new Date("2026-08-03T22:00:00.000Z"),
-    }
-  );
-});
-
 const checkoutData = () =>
   ({
     date: "2026-08-04",
+    email: testEmailAddress("delivered+synthetic-checkout"),
     expectedReservationDetails: {
       kind: "cowork",
       entryTier: "basic",
@@ -289,10 +442,29 @@ const checkoutData = () =>
     locale: "en-US",
   }) as CheckoutData;
 
-const checkoutRow = (dotyposReservationId: string) =>
+const checkoutRow = (dotyposReservationId: string, reservationId = "order-1") =>
   ({
+    reservation_id: reservationId,
+    dotypos_customer_id: "dotypos-customer-1" as NonNullable<
+      CheckoutRow["dotypos_customer_id"]
+    >,
     dotypos_reservation_id: dotyposReservationId,
   }) as CheckoutRow;
+
+const ownerForCheckoutData =
+  (data: CheckoutData) =>
+  (
+    _config: DatasourceConfig,
+    _reservationId: CheckoutRow["dotypos_reservation_id"]
+  ) =>
+    Effect.succeed(
+      Option.some({
+        customerId: "dotypos-customer-1" as NonNullable<
+          CheckoutRow["dotypos_customer_id"]
+        >,
+        email: data.email,
+      })
+    );
 
 const makeBarrier = <A>(expectedParticipants: number) => {
   let active = 0;

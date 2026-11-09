@@ -1,9 +1,5 @@
-import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
 import { Schema, SchemaGetter } from "effect";
-import {
-  type PostHogFeatureFlagDefinitions,
-  postHogFeatureFlags,
-} from "./generated/contract";
+import { postHogFeatureFlags } from "./generated/contract";
 
 export const vercelEnvironmentSchema = Schema.Literals([
   "production",
@@ -11,31 +7,33 @@ export const vercelEnvironmentSchema = Schema.Literals([
   "development",
 ]);
 
-const postHogFeatureFlagKeySet = new Set<string>(postHogFeatureFlags.keys);
-const postHogFeatureFlagOverridesObjectSchema = Schema.Record(
+/** Overrides for the generated contract's flags; decoding ignores other keys. */
+export const contractFeatureFlagOverridesSchema = Schema.Record(
   Schema.Literals(postHogFeatureFlags.keys),
   Schema.optional(Schema.Boolean)
 );
-const decodedPostHogFeatureFlagOverridesSchema = Schema.Record(
-  Schema.String,
-  Schema.Boolean
-)
-  .check(
-    Schema.makeFilter((overrides) =>
-      Object.keys(overrides).every((key) => postHogFeatureFlagKeySet.has(key))
-        ? undefined
-        : "Feature flag overrides contain an unknown flag key."
-    )
-  )
-  .pipe(Schema.decodeTo(postHogFeatureFlagOverridesObjectSchema));
+
+/**
+ * Overrides as configured for the deployment. Contract flags are validated,
+ * while other keys keep unvalidated values because a shared preview value may
+ * name flags this build does not know yet; `resolveFeatureFlagOverrides` drops
+ * those keys.
+ */
+const configuredFeatureFlagOverridesSchema = Schema.StructWithRest(
+  contractFeatureFlagOverridesSchema,
+  [Schema.Record(Schema.String, Schema.Unknown)]
+);
+
+export type ConfiguredFeatureFlagOverrides =
+  typeof configuredFeatureFlagOverridesSchema.Type;
 
 export const postHogFeatureFlagOverridesSchema = Schema.optional(
   Schema.Union([
     Schema.Literal(""),
-    Schema.fromJsonString(decodedPostHogFeatureFlagOverridesSchema),
+    Schema.fromJsonString(configuredFeatureFlagOverridesSchema),
   ])
 ).pipe(
-  Schema.decodeTo(Schema.optional(postHogFeatureFlagOverridesObjectSchema), {
+  Schema.decodeTo(Schema.optional(configuredFeatureFlagOverridesSchema), {
     decode: SchemaGetter.transform((overrides) =>
       overrides === "" ||
       (overrides !== undefined && Object.keys(overrides).length === 0)
@@ -48,7 +46,7 @@ export const postHogFeatureFlagOverridesSchema = Schema.optional(
 
 export const postHogFeatureFlagOverridesEnvironmentCheck = Schema.makeFilter<{
   readonly POSTHOG_FEATURE_FLAG_OVERRIDES?:
-    | PostHogFeatureFlagOverrides<PostHogFeatureFlagDefinitions>
+    | ConfiguredFeatureFlagOverrides
     | undefined;
   readonly VERCEL_ENV: "production" | "preview" | "development";
 }>((environment) =>

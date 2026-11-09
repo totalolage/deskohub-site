@@ -1,12 +1,14 @@
 import { instant } from "@next/playwright";
-import { expect, type Page, test } from "@playwright/test";
-import {
-  enablePreviewAccess,
-  hasLoadedResource,
-  requireBaseUrl,
-} from "./navigation-test-helpers";
+import { type BrowserContext, expect, type Page, test } from "@playwright/test";
+import { isNotFoundPage } from "../not-found-page";
+import { enablePreviewAccess } from "../preview-access";
+import { hasLoadedResource, requireBaseUrl } from "./navigation-test-helpers";
 
 const reservationStepsName = "Reservation steps";
+// The date field's calendar button carries the date label in every family;
+// the text field takes the form's visible label, which varies by duration.
+const calendarButtonName = (dateLabel: string) =>
+  `${dateLabel}: choose from the calendar`;
 
 test.beforeEach(async ({ baseURL, context }) => {
   await enablePreviewAccess(context, baseURL);
@@ -23,13 +25,31 @@ const directNavigationCases = [
     path: "/en-US/reservation/meeting-room",
     shellName: "Reserve the meeting room.",
   },
+  {
+    contentName: "Office reservation start date",
+    path: "/en-US/reservation/office",
+    releaseMarker: "data-office-base-price",
+    shellName: "Reserve a private office.",
+  },
 ] as const;
 
-for (const { contentName, path, shellName } of directNavigationCases) {
+for (const navigation of directNavigationCases) {
+  const { contentName, path, shellName } = navigation;
   test(`serves the ${path} shell on direct navigation`, async ({
     baseURL,
+    context,
     page,
   }) => {
+    test.skip(
+      "releaseMarker" in navigation &&
+        !(await isReservationPageReleased(
+          context,
+          new URL(path, requireBaseUrl(baseURL)).toString(),
+          navigation.releaseMarker
+        )),
+      `${path} is not released on this deployment`
+    );
+
     await instant(
       page,
       async () => {
@@ -39,12 +59,16 @@ for (const { contentName, path, shellName } of directNavigationCases) {
         await expect(
           page.getByRole("region", { name: shellName })
         ).toHaveAttribute("aria-busy", "true");
-        await expect(page.getByLabel(contentName)).toHaveCount(0);
+        await expect(
+          page.getByRole("button", { name: calendarButtonName(contentName) })
+        ).toHaveCount(0);
       },
       { baseURL: requireBaseUrl(baseURL) }
     );
 
-    await expect(page.getByLabel(contentName)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: calendarButtonName(contentName) })
+    ).toBeVisible();
   });
 }
 
@@ -177,13 +201,50 @@ test.describe("client navigation", () => {
         await expect(
           page.getByRole("region", { name: navigation.shellName })
         ).toHaveAttribute("aria-busy", "true");
-        await expect(page.getByLabel(navigation.contentName)).toHaveCount(0);
+        await expect(
+          page.getByRole("button", {
+            name: calendarButtonName(navigation.contentName),
+          })
+        ).toHaveCount(0);
       });
 
-      await expect(page.getByLabel(navigation.contentName)).toBeVisible();
+      await expect(
+        page.getByRole("button", {
+          name: calendarButtonName(navigation.contentName),
+        })
+      ).toBeVisible();
     });
   }
 });
+
+/**
+ * Whether a release-gated page renders its form for this visitor. A disabled
+ * gate answers 404 or streams the not-found boundary with a 200; any other
+ * response fails the test rather than skipping its coverage.
+ */
+async function isReservationPageReleased(
+  context: BrowserContext,
+  url: string,
+  releaseMarker: string
+) {
+  const response = await context.request.get(url);
+
+  try {
+    if (response.status() === 404) return false;
+    expect(response.ok(), `${url} responded with ${response.status()}`).toBe(
+      true
+    );
+
+    const body = await response.text();
+    if (body.includes(releaseMarker)) return true;
+    if (isNotFoundPage(body)) return false;
+    throw new Error(
+      `${url} rendered neither its release marker nor a not-found page`
+    );
+  } finally {
+    await response.dispose();
+  }
+}
 
 async function expectReservationSteps(page: Page) {
   await expect(

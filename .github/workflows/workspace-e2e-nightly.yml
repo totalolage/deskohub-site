@@ -1,0 +1,167 @@
+name: Workspace E2E nightly
+
+# Main deploys only to production, so the nightly run tests main through a
+# Git preview of the e2e/nightly branch, with the nightly-only cases that are
+# too slow for the per-PR gate. This workflow moves the branch, waits for its
+# preview, and dispatches Workspace E2E against it; that dispatched run is
+# the nightly result.
+on:
+  schedule:
+    # 02:30 UTC, when few PR runs compete for the shared E2E date shards.
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: workspace-e2e-nightly
+  cancel-in-progress: false
+
+jobs:
+  start-nightly-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: write
+      contents: write
+      deployments: read
+    steps:
+      # The dispatched run uses main's Workspace E2E workflow, so a launcher
+      # from another ref could pair an older workflow with current main.
+      - name: Refuse to start from a ref other than main
+        env:
+          LAUNCH_REF: ${{ github.ref }}
+        run: |
+          if [[ "$LAUNCH_REF" != "refs/heads/main" ]]; then
+            echo "Workspace E2E nightly starts only from main" >&2
+            exit 1
+          fi
+
+      - name: Point the nightly branch at main and wait for its preview
+        id: target
+        env:
+          DEPLOYMENT_WAIT_SECONDS: 2400
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY_BRANCH: e2e/nightly
+          POLL_SECONDS: 30
+          PREVIEW_ENVIRONMENT: Preview – deskohub-workspace-site
+        run: |
+          set -euo pipefail
+          repo="repos/$GITHUB_REPOSITORY"
+
+          # Prints the Workspace preview state of a commit: "success <url>",
+          # "skipped", "failure", or "pending" while Vercel has none yet.
+          preview_state() {
+            local sha="$1" deployment_id statuses
+            deployment_id="$(gh api --method GET \
+              -H "Accept: application/vnd.github+json" \
+              "$repo/deployments" \
+              -f sha="$sha" \
+              -f environment="$PREVIEW_ENVIRONMENT" \
+              -f per_page=100 | \
+              jq -r 'first(.[] | select(.creator.login == "vercel[bot]") | .id) // empty')"
+            if [[ -z "$deployment_id" ]]; then
+              echo pending
+              return
+            fi
+            statuses="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "$repo/deployments/$deployment_id/statuses")"
+            jq -r '
+              (first(.[] | select(.state == "success" and (.environment_url // "") != "")) | "success \(.environment_url | rtrimstr("/"))") //
+              (first(.[] | select(.state == "inactive" and .description == "Skipped - Not affected")) | "skipped") //
+              (first(.[] | select(.state == "failure" or .state == "error")) | "failure") //
+              "pending"' <<<"$statuses"
+          }
+
+          # Vercel built nothing, not even a skipped deployment, when the
+          # branch was created at main's head, but it builds a move of the
+          # existing branch, even to a commit it has already deployed. So a
+          # missing branch is created at main's parent and then moved.
+          move_nightly_branch() {
+            local sha="$1" parent="$2" current
+            current="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "$repo/git/ref/heads/$NIGHTLY_BRANCH" 2>/dev/null | \
+              jq -r '.object.sha')" || current=""
+            if [[ "$current" == "$sha" ]]; then
+              return
+            fi
+            if [[ -z "$current" ]]; then
+              gh api --method POST \
+                -H "Accept: application/vnd.github+json" \
+                "$repo/git/refs" \
+                -f ref="refs/heads/$NIGHTLY_BRANCH" \
+                -f sha="$parent" >/dev/null
+            fi
+            gh api --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              "$repo/git/refs/heads/$NIGHTLY_BRANCH" \
+              -f sha="$sha" \
+              -F force=true >/dev/null
+            moved=true
+          }
+
+          main="$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "$repo/commits/main")"
+          main_sha="$(jq -r '.sha' <<<"$main")"
+          main_parent="$(jq -r '.parents[0].sha // empty' <<<"$main")"
+          if [[ ! "$main_sha" =~ ^[0-9a-f]{40}$ || ! "$main_parent" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Could not resolve the head of main and its parent" >&2
+            exit 1
+          fi
+
+          moved=false
+          move_nightly_branch "$main_sha" "$main_parent"
+          deadline=$((SECONDS + DEPLOYMENT_WAIT_SECONDS))
+          state="$(preview_state "$main_sha")"
+          while [[ "$state" == "pending" ]]; do
+            if ((SECONDS >= deadline)); then
+              echo "Vercel built no Workspace preview of ${main_sha:0:7} in time" >&2
+              if [[ "$moved" == "false" ]]; then
+                # Only another move makes Vercel build a commit whose move
+                # it missed.
+                echo "If Vercel shows no deployment of it, delete the $NIGHTLY_BRANCH branch and start this workflow again" >&2
+              fi
+              exit 1
+            fi
+            sleep "$POLL_SECONDS"
+            state="$(preview_state "$main_sha")"
+          done
+
+          case "$state" in
+            success\ *)
+              {
+                echo "sha=$main_sha"
+                echo "url=${state#success }"
+              } >> "$GITHUB_OUTPUT"
+              echo "Workspace E2E nightly targets main at ${main_sha:0:7}" >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            skipped)
+              # Another commit's preview proves nothing about this one, so
+              # a skip fails. Merges into main touch shared files and build.
+              echo "Vercel skipped main's head ${main_sha:0:7} as unaffected, so no preview of it exists" >&2
+              exit 1
+              ;;
+            *)
+              echo "The Workspace preview of ${main_sha:0:7} failed" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Dispatch Workspace E2E with nightly cases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+          TARGET_URL: ${{ steps.target.outputs.url }}
+        run: |
+          set -euo pipefail
+          gh workflow run workspace-e2e.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f sha="$TARGET_SHA" \
+            -f url="$TARGET_URL" \
+            -f ref=e2e/nightly \
+            -f include_nightly_cases=true
+          echo "Dispatched Workspace E2E for ${TARGET_SHA:0:7}; its run is the nightly result" >> "$GITHUB_STEP_SUMMARY"

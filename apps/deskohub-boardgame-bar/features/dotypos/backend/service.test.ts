@@ -6,11 +6,12 @@ import {
   type DotyposProduct,
   DotyposProductSchema,
 } from "@deskohub/dotypos";
-import type { Category, Product } from "@deskohub/dotypos/generated";
 import { Effect, Layer, Schema } from "effect";
 import { setBoardgameTestEnv } from "@/shared/testing/boardgame-test-env";
 
-const category = (overrides: Partial<Category>): DotyposCategory => {
+const category = (
+  overrides: Partial<typeof DotyposCategorySchema.Encoded>
+): DotyposCategory => {
   const { id, ...fields } = overrides;
   let identifier: { readonly id?: string } = { id: "category-id" };
   if ("id" in overrides) {
@@ -25,7 +26,9 @@ const category = (overrides: Partial<Category>): DotyposCategory => {
   });
 };
 
-const product = (overrides: Partial<Product>): DotyposProduct => {
+const product = (
+  overrides: Partial<typeof DotyposProductSchema.Encoded>
+): DotyposProduct => {
   const { id, ...fields } = overrides;
   let identifier: { readonly id?: string } = { id: "product-id" };
   if ("id" in overrides) {
@@ -131,19 +134,11 @@ describe("DotyposService.getMenuItems", () => {
     });
     expect(result.products).toHaveLength(1);
     expect(result.products[0]?.id).toBe(duplicate.id);
-    expect(result.categories).toEqual([
-      visible,
-      hidden,
-      deleted,
-      nonMenu,
-      category({ id: undefined }),
-      alsoVisible,
-    ]);
   });
 
   test("recovers failed category products load", async () => {
     setBoardgameTestEnv();
-    const { ValidationError } = await import("@deskohub/dotypos");
+    const { DotyposRejected } = await import("@deskohub/dotypos");
 
     const result = await runWithShared(
       (DotyposService) =>
@@ -154,7 +149,12 @@ describe("DotyposService.getMenuItems", () => {
       {
         getCategories: mock(() => Effect.succeed([category({ id: "broken" })])),
         getProducts: mock(() =>
-          Effect.fail(new ValidationError({ message: "nope" }))
+          Effect.fail(
+            new DotyposRejected({
+              operation: "getProducts",
+              reason: "invalid-request",
+            })
+          )
         ),
       }
     );

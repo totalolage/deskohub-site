@@ -1,6 +1,9 @@
 "use client";
 
-import { Option, Schema } from "effect";
+import { isTestEmailAddress } from "@deskohub/test-email";
+import { Option, Predicate, Schema } from "effect";
+import { runWorkspaceBrowserEffect } from "@/shared/browser/workspace-browser-effect";
+import { reportWorkspaceBrowserFailure } from "@/shared/browser/workspace-browser-logs";
 import { authClient } from "./auth.client";
 import {
   type CustomerAccountId,
@@ -11,7 +14,12 @@ export type AnalyticsAccountIdentity =
   | { status: "pending" }
   | { status: "unavailable" }
   | { status: "anonymous" }
-  | { status: "authenticated"; accountId: CustomerAccountId };
+  | {
+      status: "authenticated";
+      accountId: CustomerAccountId;
+      /** The verified login email is on the reserved test domain. */
+      testAccount: boolean;
+    };
 
 type SessionAtomSnapshot = ReturnType<typeof authClient.useSession.get>;
 type SessionRefetch = SessionAtomSnapshot["refetch"];
@@ -26,6 +34,7 @@ const analyticsSessionDataSchema = Schema.NullOr(
     ),
     user: Schema.NullOr(
       Schema.Struct({
+        email: Schema.optionalKey(Schema.Unknown),
         emailVerified: Schema.Boolean,
         id: Schema.Unknown,
       })
@@ -46,6 +55,8 @@ const analyticsSessionFlagsSchema = Schema.Struct({
 
 type ParsedSessionSnapshot = typeof analyticsSessionSnapshotSchema.Type;
 type ParsedSessionFlags = typeof analyticsSessionFlagsSchema.Type;
+type SignedInSessionData = NonNullable<ParsedSessionSnapshot["data"]>;
+type SignedInUser = NonNullable<SignedInSessionData["user"]>;
 
 type IdentityFacts = {
   readonly expiresAt?: number;
@@ -54,18 +65,19 @@ type IdentityFacts = {
 
 type LifecycleOverride = "pending" | "anonymous";
 
-type SettledIdentity =
-  | { readonly status: "anonymous" }
-  | { readonly accountId: CustomerAccountId; readonly status: "authenticated" };
+type SettledIdentity = Extract<
+  AnalyticsAccountIdentity,
+  { readonly status: "anonymous" | "authenticated" }
+>;
 
 type PublishOptions = {
   readonly suppressSessionChangeNotification?: boolean;
 };
 
 type RefreshCycle = {
+  /** Settles once the cycle finishes, whether the refresh succeeded or not. */
   readonly promise: Promise<void>;
-  readonly reject: (cause: unknown) => void;
-  readonly resolve: () => void;
+  readonly settle: () => void;
   activeEpoch: number;
   requestedEpoch: number;
 };
@@ -75,6 +87,7 @@ const authoritativeRefreshOptions: SessionRefetchOptions = {
   query: { disableCookieCache: true },
 };
 const accountSessionChangeStorageKey = "deskohub.account-session-change";
+const sessionRefreshFailureCode = "account.analytics-session.refresh-failed";
 
 const pendingIdentity: AnalyticsAccountIdentity = { status: "pending" };
 const unavailableIdentity: AnalyticsAccountIdentity = {
@@ -134,6 +147,43 @@ const settledIdentityOf = (
   return identity;
 };
 
+const authenticatedIdentityOf = (
+  user: SignedInUser
+): AnalyticsAccountIdentity | undefined => {
+  const accountId = Option.getOrUndefined(
+    Schema.decodeUnknownOption(customerAccountIdSchema)(user.id)
+  );
+  if (accountId === undefined) return undefined;
+
+  return {
+    accountId,
+    status: "authenticated",
+    testAccount:
+      Predicate.isString(user.email) && isTestEmailAddress(user.email),
+  };
+};
+
+/** Only a verified, nonexpired session with a valid account ID identifies. */
+const readSignedInIdentity = (data: SignedInSessionData): IdentityFacts => {
+  const { session, user } = data;
+  if (user === null || session === null || user.emailVerified !== true) {
+    return { identity: unavailableIdentity };
+  }
+
+  const expiresAtMillis = session.expiresAt.getTime();
+  if (!Number.isFinite(expiresAtMillis)) {
+    return { identity: unavailableIdentity };
+  }
+  if (expiresAtMillis <= Date.now()) {
+    return { expiresAt: expiresAtMillis, identity: unavailableIdentity };
+  }
+
+  const identity = authenticatedIdentityOf(user);
+  return identity === undefined
+    ? { identity: unavailableIdentity }
+    : { expiresAt: expiresAtMillis, identity };
+};
+
 const readSessionIdentity = (value: SessionAtomSnapshot): IdentityFacts => {
   const flags = parseSessionFlags(value);
   if (flags === undefined) return { identity: unavailableIdentity };
@@ -142,49 +192,12 @@ const readSessionIdentity = (value: SessionAtomSnapshot): IdentityFacts => {
   }
 
   const snapshot = parseSessionSnapshot(value);
-  if (snapshot === undefined) return { identity: unavailableIdentity };
-
-  if (snapshot.error !== null) {
+  if (snapshot === undefined || snapshot.error !== null) {
     return { identity: unavailableIdentity };
   }
+  if (snapshot.data === null) return { identity: anonymousIdentity };
 
-  const data = snapshot.data;
-  if (data === null) {
-    return { identity: anonymousIdentity };
-  }
-
-  if (data.user === null || data.session === null) {
-    return { identity: unavailableIdentity };
-  }
-  if (data.user.emailVerified !== true) {
-    return { identity: unavailableIdentity };
-  }
-
-  const expiresAt = data.session.expiresAt;
-  const expiresAtMillis = expiresAt.getTime();
-  if (!Number.isFinite(expiresAtMillis)) {
-    return { identity: unavailableIdentity };
-  }
-  if (expiresAtMillis <= Date.now()) {
-    return { expiresAt: expiresAtMillis, identity: unavailableIdentity };
-  }
-
-  let accountId: CustomerAccountId | undefined;
-  try {
-    accountId = Option.getOrUndefined(
-      Schema.decodeUnknownOption(customerAccountIdSchema)(data.user.id)
-    );
-  } catch {
-    return { identity: unavailableIdentity };
-  }
-  if (accountId === undefined) {
-    return { identity: unavailableIdentity };
-  }
-
-  return {
-    expiresAt: expiresAtMillis,
-    identity: { accountId, status: "authenticated" },
-  };
+  return readSignedInIdentity(snapshot.data);
 };
 
 const readCurrentSession = (): SessionAtomSnapshot => sessionAtom.get();
@@ -195,29 +208,14 @@ const clearExpiryTimer = () => {
   expiryAt = undefined;
 };
 
-const scheduleExpiryTimer = (expiresAt: number | undefined) => {
-  if (listeners.length === 0 || expiresAt === undefined) {
-    clearExpiryTimer();
-    return;
-  }
+const maximumTimerDelay = 2_147_483_647;
 
-  const delay = expiresAt - Date.now();
-  if (delay > 0) expiryRefreshRequested = false;
-  if (delay <= 0 && expiryRefreshRequested) {
-    clearExpiryTimer();
-    return;
-  }
-  if (delay > 0 && expiryTimer !== undefined && expiryAt === expiresAt) {
-    return;
-  }
+const armExpiryTimer = (expiresAt: number, delay: number) => {
+  expiryRefreshRequested = false;
+  if (expiryTimer !== undefined && expiryAt === expiresAt) return;
 
   clearExpiryTimer();
   expiryAt = expiresAt;
-  if (delay <= 0) {
-    expiryRefreshRequested = true;
-    requestExternalRefresh();
-    return;
-  }
   expiryTimer = setTimeout(
     () => {
       expiryTimer = undefined;
@@ -225,45 +223,70 @@ const scheduleExpiryTimer = (expiresAt: number | undefined) => {
       expiryRefreshRequested = true;
       requestExternalRefresh();
     },
-    Math.min(delay, 2_147_483_647)
+    Math.min(delay, maximumTimerDelay)
   );
 };
+
+/** Requests one refresh per expiry until a fresh expiry arrives. */
+const refreshExpiredSession = (expiresAt: number) => {
+  clearExpiryTimer();
+  if (expiryRefreshRequested) return;
+
+  expiryAt = expiresAt;
+  expiryRefreshRequested = true;
+  requestExternalRefresh();
+};
+
+const scheduleExpiryTimer = (expiresAt: number | undefined) => {
+  if (listeners.length === 0 || expiresAt === undefined) {
+    clearExpiryTimer();
+    return;
+  }
+
+  const delay = expiresAt - Date.now();
+  if (delay > 0) armExpiryTimer(expiresAt, delay);
+  else refreshExpiredSession(expiresAt);
+};
+
+// Storage is an optimization for other tabs, not the local state path, so a
+// throwing storage write is ignored.
+const writeAccountSessionChangeMarker = Option.liftThrowable(
+  (browserWindow: Window) =>
+    browserWindow.localStorage.setItem(
+      accountSessionChangeStorageKey,
+      crypto.randomUUID()
+    )
+);
 
 const notifyAccountSessionChange = () => {
   const browserWindow = globalThis.window;
   if (browserWindow === undefined) return;
 
-  try {
-    browserWindow.localStorage.setItem(
-      accountSessionChangeStorageKey,
-      crypto.randomUUID()
-    );
-  } catch {
-    // Storage is an optimization for other tabs, not the local state path.
-  }
+  writeAccountSessionChangeMarker(browserWindow);
+};
+
+/** Records a settled identity and reports whether it changed. */
+const recordSettledIdentity = (identity: AnalyticsAccountIdentity): boolean => {
+  const settledIdentity = settledIdentityOf(identity);
+  if (settledIdentity === undefined) return false;
+
+  const changed =
+    lastSettledIdentity === undefined ||
+    !sameIdentity(lastSettledIdentity, settledIdentity);
+  lastSettledIdentity = settledIdentity;
+  return changed;
 };
 
 const publish = (
   identity: AnalyticsAccountIdentity,
   options: PublishOptions = {}
 ) => {
-  const settledIdentity = settledIdentityOf(identity);
-  const settledIdentityChanged =
-    settledIdentity !== undefined &&
-    (lastSettledIdentity === undefined ||
-      !sameIdentity(lastSettledIdentity, settledIdentity));
+  const settledIdentityChanged = recordSettledIdentity(identity);
 
-  if (settledIdentity !== undefined) lastSettledIdentity = settledIdentity;
-
-  if (sameIdentity(publishedIdentity, identity)) {
-    if (settledIdentityChanged && !options.suppressSessionChangeNotification) {
-      notifyAccountSessionChange();
-    }
-    return;
+  if (!sameIdentity(publishedIdentity, identity)) {
+    publishedIdentity = identity;
+    for (const listener of [...listeners]) listener();
   }
-
-  publishedIdentity = identity;
-  for (const listener of [...listeners]) listener();
 
   if (settledIdentityChanged && !options.suppressSessionChangeNotification) {
     notifyAccountSessionChange();
@@ -312,25 +335,38 @@ const startRefresh = (cycle: RefreshCycle, epoch: number): void => {
 
   void (async () => {
     let succeeded = false;
-    let cause: unknown;
     try {
       const snapshot = readCurrentSession();
       await snapshot.refetch(authoritativeRefreshOptions);
       succeeded = true;
+      // better-auth resolves the refetch even when the request fails and
+      // records the failure on the atom, which publishes `unavailable`.
+      const refreshError = readCurrentSession().error;
+      if (Predicate.isNotNullish(refreshError)) {
+        logSessionRefreshFailure(refreshError);
+      }
     } catch (failure) {
-      cause = failure;
+      logSessionRefreshFailure(failure);
     } finally {
-      finishRefresh(cycle, epoch, succeeded, cause);
+      finishRefresh(cycle, epoch, succeeded);
     }
   })();
   syncAnalyticsIdentity();
 };
 
+// Logs each failed refetch once, whether it rejects or resolves with an error
+// on the atom, including one a newer refresh supersedes.
+// The log never settles or delays the refresh cycle.
+const logSessionRefreshFailure = (cause: unknown) => {
+  void reportWorkspaceBrowserFailure(sessionRefreshFailureCode, cause).pipe(
+    runWorkspaceBrowserEffect("account.analytics-identity.refresh")
+  );
+};
+
 const finishRefresh = (
   cycle: RefreshCycle,
   epoch: number,
-  succeeded: boolean,
-  cause: unknown
+  succeeded: boolean
 ) => {
   if (refreshCycle !== cycle || cycle.activeEpoch !== epoch) return;
 
@@ -357,27 +393,23 @@ const finishRefresh = (
 
   clearAnonymousOverrideAfterRefresh(epoch);
   syncAnalyticsIdentity();
-  if (succeeded) cycle.resolve();
-  else cycle.reject(cause);
+  cycle.settle();
 };
 
 const createRefreshCycle = (epoch: number): RefreshCycle => {
-  let resolve: () => void = () => undefined;
-  let reject: (cause: unknown) => void = () => undefined;
-  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
+  let settle: () => void = () => undefined;
+  const promise = new Promise<void>((resolvePromise) => {
+    settle = resolvePromise;
   });
   return {
     activeEpoch: epoch,
     promise,
-    reject,
     requestedEpoch: epoch,
-    resolve,
+    settle,
   };
 };
 
-const requestRefresh = (epoch: number): Promise<void> => {
+const requestRefresh = (epoch: number): RefreshCycle => {
   authorityRefreshPending = true;
   authorityRefreshFailed = false;
   completedRefreshEpoch = undefined;
@@ -387,14 +419,14 @@ const requestRefresh = (epoch: number): Promise<void> => {
       refreshCycle.requestedEpoch = epoch;
     }
     syncAnalyticsIdentity();
-    return refreshCycle.promise;
+    return refreshCycle;
   }
 
   const cycle = createRefreshCycle(epoch);
   refreshCycle = cycle;
   syncAnalyticsIdentity();
   startRefresh(cycle, epoch);
-  return cycle.promise;
+  return cycle;
 };
 
 const handleSessionSnapshot = () => {
@@ -422,7 +454,7 @@ const requestExternalRefresh = () => {
     });
   }
   refreshEpoch += 1;
-  void requestRefresh(refreshEpoch).catch(() => undefined);
+  requestRefresh(refreshEpoch);
 };
 
 const beginRemoteAccountTransition = () => {
@@ -433,7 +465,7 @@ const beginRemoteAccountTransition = () => {
   completedRefreshEpoch = undefined;
   authorityRefreshFailed = false;
   syncAnalyticsIdentity();
-  void requestRefresh(refreshEpoch).catch(() => undefined);
+  requestRefresh(refreshEpoch);
 };
 
 const installBrowserListeners = () => {
@@ -478,7 +510,7 @@ const mount = () => {
   syncAnalyticsIdentity();
   unsubscribeSession = sessionAtom.subscribe(handleSessionSnapshot);
   installBrowserListeners();
-  void requestRefresh(refreshEpoch).catch(() => undefined);
+  requestRefresh(refreshEpoch);
 };
 
 const unmount = () => {
@@ -517,6 +549,12 @@ export function subscribeAnalyticsAccountIdentity(
   };
 }
 
+/**
+ * Refreshes the identity from the authoritative session. The promise resolves
+ * once the refresh settles and never rejects: a failed refresh publishes the
+ * unavailable identity and reports `account.analytics-session.refresh-failed`
+ * itself, so callers neither catch nor report it.
+ */
 export function refreshAnalyticsAccountIdentity(options?: {
   readonly settleTransition?: true;
 }): Promise<void> {
@@ -525,7 +563,7 @@ export function refreshAnalyticsAccountIdentity(options?: {
     lifecycleOverride = undefined;
   }
   refreshEpoch += 1;
-  return requestRefresh(refreshEpoch);
+  return requestRefresh(refreshEpoch).promise;
 }
 
 export function beginAnalyticsAccountTransition(): void {
@@ -549,5 +587,5 @@ export function completeAnalyticsAccountSignOut(): void {
   scheduleExpiryTimer(undefined);
   notifyAccountSessionChange();
 
-  void requestRefresh(refreshEpoch).catch(() => undefined);
+  requestRefresh(refreshEpoch);
 }

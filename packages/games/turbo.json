@@ -6,10 +6,10 @@
       "outputs": ["src/generated/**"]
     },
     "test": {
-      "dependsOn": ["generate"]
+      "dependsOn": ["$TURBO_EXTENDS$", "generate"]
     },
     "typecheck": {
-      "dependsOn": ["generate"]
+      "dependsOn": ["$TURBO_EXTENDS$", "generate"]
     }
   }
 }

@@ -2,23 +2,30 @@
 
 import { Menu, UserRound, X } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, use, useState } from "react";
+import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import type { Locale } from "@/features/i18n";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
+import { LocaleSwitcher } from "@/shared/components/locale-switcher";
 import {
-  LocaleSwitcherLabels,
-  LocaleSwitcherLinks,
-} from "@/shared/components/locale-switcher-links";
-import { HorizontalLogo, Logo } from "@/shared/components/logo";
-import type { SiteHeaderMenuItem } from "@/shared/components/site-header-config";
+  AdministratorEntryButton,
+  AdministratorEntryMenuButton,
+} from "@/shared/components/site-header-administrator-entry";
+import type {
+  SiteHeaderAccountEntry,
+  SiteHeaderAdministratorEntry,
+  SiteHeaderMenuItem,
+} from "@/shared/components/site-header-config";
+import { SiteHeaderLogo } from "@/shared/components/site-header-logo";
 import { Button } from "@/shared/components/ui/button";
+import { NavItem } from "@/shared/components/ui/nav-item";
 import { cn } from "@/shared/utils";
 
 type SiteHeaderProps = {
-  accountHref?: string;
-  accountLabel?: string;
+  account?: SiteHeaderAccountEntry;
+  administrator?: SiteHeaderAdministratorEntry;
   currentLocale: Locale;
-  languageLabels: Record<Locale, string>;
+  localePreference?: LocalePreferenceSaving;
   links: SiteHeaderMenuItem[];
   contactLabel: string;
   contactHref: string;
@@ -45,38 +52,117 @@ function AccountLink({
   onClick,
 }: AccountLinkProps) {
   return (
+    <NavItem
+      active={active}
+      asChild
+      caps={mobile}
+      layout={mobile ? "row" : "icon"}
+      tone="inverse"
+    >
+      <Link
+        href={href}
+        aria-label={mobile ? undefined : label}
+        title={mobile ? undefined : label}
+        onClick={onClick}
+      >
+        <UserRound aria-hidden />
+        {mobile && label}
+      </Link>
+    </NavItem>
+  );
+}
+
+type AccountEntryLinkProps = Omit<
+  AccountLinkProps,
+  "active" | "href" | "label"
+> & {
+  readonly entry: SiteHeaderAccountEntry;
+};
+
+function ResolvedAccountLink({ entry, ...props }: AccountEntryLinkProps) {
+  const href = use(entry.href);
+  const pathname = usePathname();
+  return (
+    <AccountLink
+      {...props}
+      href={href}
+      label={entry.label}
+      active={pathname === href}
+    />
+  );
+}
+
+function AccountEntryLink(props: AccountEntryLinkProps) {
+  return (
+    <Suspense
+      fallback={
+        <AccountLink
+          {...props}
+          href={props.entry.signInHref}
+          label={props.entry.label}
+        />
+      }
+    >
+      <ResolvedAccountLink {...props} />
+    </Suspense>
+  );
+}
+
+type NavigationLinkProps = {
+  readonly active?: boolean;
+  readonly href: string;
+  readonly label: string;
+  readonly mobile?: boolean;
+  readonly onClick?: () => void;
+};
+
+function NavigationLink({
+  active = false,
+  href,
+  label,
+  mobile = false,
+  onClick,
+}: NavigationLinkProps) {
+  if (mobile) {
+    return (
+      <NavItem active={active} asChild caps tone="inverse">
+        <Link href={href} onClick={onClick}>
+          {label}
+        </Link>
+      </NavItem>
+    );
+  }
+
+  return (
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      aria-label={mobile ? undefined : label}
-      title={mobile ? undefined : label}
-      className={cn(
-        mobile
-          ? "flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm uppercase tracking-[0.12em] transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow"
-          : "inline-flex size-10 items-center justify-center rounded-full border transition-colors hover:border-sunset-yellow/55 hover:text-sunset-yellow",
-        active &&
-          "border-sunset-yellow/55 bg-sunset-yellow/10 text-sunset-yellow",
-        !active && mobile && "border-white/8 bg-white/5 text-white/80",
-        !active && !mobile && "border-white/12 bg-white/6 text-white/82"
-      )}
+      className="text-balance text-center text-sm uppercase tracking-[0.08em] text-white/76 transition-colors hover:text-sunset-yellow xl:max-2xl:text-xs xl:max-2xl:tracking-[0.05em]"
       onClick={onClick}
     >
-      <UserRound aria-hidden className={mobile ? "size-4" : "size-4.5"} />
-      {mobile && label}
+      {label}
     </Link>
   );
 }
 
-function ActiveAccountLink(props: Omit<AccountLinkProps, "active">) {
+function ActiveNavigationLink(props: Omit<NavigationLinkProps, "active">) {
   const pathname = usePathname();
-  return <AccountLink {...props} active={pathname === props.href} />;
+  return <NavigationLink {...props} active={pathname === props.href} />;
+}
+
+function CurrentPageNavigationLink(props: Omit<NavigationLinkProps, "active">) {
+  return (
+    <Suspense fallback={<NavigationLink {...props} />}>
+      <ActiveNavigationLink {...props} />
+    </Suspense>
+  );
 }
 
 export function SiteHeader({
-  accountHref,
-  accountLabel,
+  account,
+  administrator,
   currentLocale,
-  languageLabels,
+  localePreference,
   links,
   contactLabel,
   contactHref,
@@ -92,95 +178,72 @@ export function SiteHeader({
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-(--site-header-height) border-b border-white/10 bg-navy-blue/92 text-white backdrop-blur-md">
-      <div className="mx-auto flex h-full w-full max-w-8xl items-center justify-between gap-3 px-3 sm:gap-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-full w-full max-w-8xl items-center justify-between gap-3 px-3 sm:gap-4 sm:px-6 lg:px-8 xl:gap-2 xl:px-6 2xl:gap-3">
         <Link
           href={`/${currentLocale}`}
           aria-label="Deskohub Workspace"
           className="shrink-0"
           onClick={closeMenu}
         >
-          <span className="block sm:hidden">
-            <Logo
-              styling={{ color: "dark", variant: "color" }}
-              alt=""
-              height={48}
-            />
-          </span>
-          <span className="hidden sm:block">
-            <HorizontalLogo
-              styling={{ color: "dark", variant: "color" }}
-              className="scale-80"
-            />
-          </span>
+          <SiteHeaderLogo sharesBarWithNavigation />
         </Link>
 
         <nav
           aria-label={primaryNavigationLabel}
-          className="hidden items-center gap-6 xl:flex"
+          className="hidden items-center gap-2.5 xl:flex 2xl:gap-3"
         >
           {links.map((link) => (
-            <Link
+            <CurrentPageNavigationLink
               key={link.id}
               href={link.href}
-              className="text-balance text-center text-sm uppercase tracking-[0.12em] text-white/76 transition-colors hover:text-sunset-yellow"
-            >
-              {link.label}
-            </Link>
+              label={link.label}
+            />
           ))}
         </nav>
 
-        <div className="flex shrink-0 items-center gap-2 sm:gap-3 xl:gap-3">
-          {accountHref !== undefined && accountLabel !== undefined && (
-            <Suspense
-              fallback={
-                <AccountLink
-                  href={accountHref}
-                  label={accountLabel}
-                  onClick={closeMenu}
-                />
-              }
-            >
-              <ActiveAccountLink
-                href={accountHref}
-                label={accountLabel}
-                onClick={closeMenu}
-              />
-            </Suspense>
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3 xl:gap-2 2xl:gap-3">
+          <Button
+            asChild
+            variant="secondary"
+            tone="inverse"
+            size="sm"
+            caps
+            className="shrink-0"
+          >
+            <Link href={contactHref} onClick={closeMenu}>
+              {contactLabel}
+            </Link>
+          </Button>
+
+          {administrator !== undefined && (
+            <AdministratorEntryButton
+              entry={administrator}
+              onNavigate={closeMenu}
+            />
           )}
 
-          <Link
-            href={contactHref}
-            className="shrink-0 whitespace-nowrap rounded-full border border-white/12 bg-white px-3 py-2 text-center text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-navy-blue transition-colors hover:bg-sunset-yellow sm:px-4 sm:text-xs sm:tracking-[0.14em]"
-            onClick={closeMenu}
-          >
-            {contactLabel}
-          </Link>
+          {account !== undefined && (
+            <AccountEntryLink entry={account} onClick={closeMenu} />
+          )}
 
           <nav
             aria-label={languageSwitcherLabel}
             data-locale-switcher
-            className="hidden rounded-full border border-white/12 bg-white/6 px-6 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72 xl:block"
+            className="hidden rounded-full border border-white/12 bg-white/6 px-4 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72 xl:block xl:max-2xl:px-3 xl:max-2xl:tracking-[0.08em]"
           >
-            <Suspense
-              fallback={
-                <LocaleSwitcherLabels
-                  currentLocale={currentLocale}
-                  languageLabels={languageLabels}
-                />
-              }
-            >
-              <LocaleSwitcherLinks
-                currentLocale={currentLocale}
-                languageLabels={languageLabels}
-              />
-            </Suspense>
+            <LocaleSwitcher
+              locale={currentLocale}
+              appearance="stacked"
+              localePreference={localePreference}
+            />
           </nav>
 
           <Button
             type="button"
             variant="ghost"
+            tone="inverse"
             size="icon"
-            className="rounded-full border border-white/12 bg-white/6 text-white hover:bg-white/12 hover:text-white xl:hidden"
+            className="xl:hidden"
             aria-expanded={mobileMenuOpen}
             aria-controls="site-header-mobile-menu"
             aria-label={
@@ -202,42 +265,31 @@ export function SiteHeader({
       <div
         id="site-header-mobile-menu"
         className={cn(
-          "overflow-hidden bg-navy-blue/98 transition-[max-height,visibility] duration-300 motion-reduce:transition-none xl:hidden",
+          "bg-navy-blue/98 transition-[max-height,visibility] duration-300 motion-reduce:transition-none xl:hidden",
           mobileMenuOpen
-            ? "visible max-h-128 border-t border-white/10"
-            : "invisible max-h-0"
+            ? "visible max-h-[calc(100dvh-var(--site-header-height))] overflow-y-auto overscroll-contain border-t border-white/10"
+            : "invisible max-h-0 overflow-hidden"
         )}
       >
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
+          {administrator !== undefined && (
+            <AdministratorEntryMenuButton
+              entry={administrator}
+              onNavigate={closeMenu}
+            />
+          )}
           <nav aria-label={mobilePrimaryNavigationLabel} className="grid gap-2">
-            {accountHref !== undefined && accountLabel !== undefined && (
-              <Suspense
-                fallback={
-                  <AccountLink
-                    href={accountHref}
-                    label={accountLabel}
-                    mobile
-                    onClick={closeMenu}
-                  />
-                }
-              >
-                <ActiveAccountLink
-                  href={accountHref}
-                  label={accountLabel}
-                  mobile
-                  onClick={closeMenu}
-                />
-              </Suspense>
+            {account !== undefined && (
+              <AccountEntryLink entry={account} mobile onClick={closeMenu} />
             )}
             {links.map((link) => (
-              <Link
+              <CurrentPageNavigationLink
                 key={link.id}
                 href={link.href}
+                label={link.label}
+                mobile
                 onClick={closeMenu}
-                className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm uppercase tracking-[0.12em] text-white/80 transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow"
-              >
-                {link.label}
-              </Link>
+              />
             ))}
           </nav>
 
@@ -245,22 +297,12 @@ export function SiteHeader({
             data-locale-switcher
             className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.14em] text-white/72"
           >
-            <Suspense
-              fallback={
-                <LocaleSwitcherLabels
-                  currentLocale={currentLocale}
-                  languageLabels={languageLabels}
-                  isMobile
-                />
-              }
-            >
-              <LocaleSwitcherLinks
-                currentLocale={currentLocale}
-                languageLabels={languageLabels}
-                closeMenu={closeMenu}
-                isMobile
-              />
-            </Suspense>
+            <LocaleSwitcher
+              locale={currentLocale}
+              appearance="inline"
+              localePreference={localePreference}
+              onSwitch={closeMenu}
+            />
           </div>
         </div>
       </div>

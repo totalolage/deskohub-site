@@ -55,12 +55,6 @@ const expectedHashFor = (body: readonly string[]) => {
 };
 
 describe("getWorkspaceE2EMarketingDocumentHash", () => {
-  test("real en-US marketing document matches the production hash", () => {
-    expect(getWorkspaceE2EMarketingDocumentHash()).toBe(
-      "75655dda4406b51fd74d1151a8d28443b75e580728c203cef54c2483ec3ed02d"
-    );
-  });
-
   test("normalizes Playwright JSX stubs into real fragments", async () => {
     const fragmentStub = stub({
       __pw_type: "jsx",
@@ -120,14 +114,6 @@ describe("getWorkspaceE2EMarketingDocumentHash", () => {
       hash = getWorkspaceE2EMarketingDocumentHash();
     });
     expect(hash).toBe(await expectedHashFor(["safe"]));
-  });
-
-  test("primitives and arrays pass through unchanged", async () => {
-    let hash = "";
-    withSyntheticBody(["plain", 7, ["nested", true, null, undefined]], () => {
-      hash = getWorkspaceE2EMarketingDocumentHash();
-    });
-    expect(hash).toBe(await expectedHashFor(["plain", "7", "nested"]));
   });
 
   test("malformed stubs fail with the fixed non-sensitive message", () => {

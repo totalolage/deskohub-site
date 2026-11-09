@@ -10,7 +10,7 @@ import type {
   StoredWebhookEventId,
 } from "@/features/checkout/checkout-identifiers";
 
-export class WebhookEventStateError extends Data.TaggedError(
+class WebhookEventStateError extends Data.TaggedError(
   "WebhookEventStateError"
 )<{
   readonly operation: string;
@@ -18,7 +18,7 @@ export class WebhookEventStateError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
-export type InsertWebhookEventResult =
+type InsertWebhookEventResult =
   | { readonly status: "inserted"; readonly event: WebhookEvent }
   | { readonly status: "duplicate"; readonly event: WebhookEvent };
 

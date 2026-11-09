@@ -1,40 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
+import { Cause } from "effect";
+import { SqlError } from "effect/unstable/sql";
 import {
   findDiscountAdminConflict,
-  getAdminDiscountCodeUsage,
   voucherDenominationCanChange,
 } from "./discount-administration.service";
-
-describe("discount administration read models", () => {
-  test("counts reserved and redeemed claims against capacity but excludes releases", () => {
-    expect(
-      getAdminDiscountCodeUsage({
-        maxUses: 5,
-        states: ["reserved", "redeemed", "released", "released"],
-      })
-    ).toEqual({
-      reservedUses: 1,
-      redeemedUses: 1,
-      releasedUses: 2,
-      remainingUses: 3,
-    });
-  });
-
-  test("keeps unlimited capacity and floors exhausted codes at zero", () => {
-    expect(
-      getAdminDiscountCodeUsage({
-        maxUses: null,
-        states: ["redeemed"],
-      }).remainingUses
-    ).toBeNull();
-    expect(
-      getAdminDiscountCodeUsage({
-        maxUses: 1,
-        states: ["reserved", "redeemed"],
-      }).remainingUses
-    ).toBe(0);
-  });
-});
 
 describe("discount administration conflicts", () => {
   test("keeps voucher denomination immutable after released claim history", () => {
@@ -55,47 +26,68 @@ describe("discount administration conflicts", () => {
   });
 
   test("recognizes durable code and reference constraint failures", () => {
+    // Drizzle reports the Effect SQL failure inside a Cause; the Postgres
+    // suite proves the same shape from real violations.
+    const violation = (reason: SqlError.SqlErrorReason) =>
+      new EffectDrizzleQueryError({
+        query: "synthetic statement",
+        params: [],
+        cause: Cause.fail(new SqlError.SqlError({ reason })),
+      });
+    const pgError = (constraint: string) =>
+      Object.assign(new Error("synthetic Postgres error"), { constraint });
+    const foreignKeyViolation = (constraint: string) =>
+      violation(new SqlError.ConstraintError({ cause: pgError(constraint) }));
+
     expect(
-      findDiscountAdminConflict({
-        cause: {
-          constraint: "promotion_codes_code_unique_idx",
-        },
-      })
+      findDiscountAdminConflict(
+        violation(
+          new SqlError.UniqueViolation({
+            cause: pgError("promotion_codes_code_unique_idx"),
+            constraint: "promotion_codes_code_unique_idx",
+          })
+        )
+      )
     ).toMatchObject({
       _tag: "DiscountAdminConflictError",
       message: "A promotion code with this value already exists.",
     });
     expect(
-      findDiscountAdminConflict({
-        reason: {
-          cause: {
-            constraint: "discount_codes_discount_id_discounts_id_fk",
-          },
-        },
-      })
+      findDiscountAdminConflict(
+        foreignKeyViolation("discount_codes_discount_id_discounts_id_fk")
+      )
     ).toMatchObject({
       _tag: "DiscountAdminConflictError",
       message:
         "This discount is still referenced by a discount code and cannot be deleted.",
     });
     expect(
-      findDiscountAdminConflict({
-        constraint: "discount_code_redemptions_code_id_discount_codes_id_fk",
-      })
+      findDiscountAdminConflict(
+        foreignKeyViolation(
+          "discount_code_redemptions_code_id_discount_codes_id_fk"
+        )
+      )
     ).toMatchObject({
       _tag: "DiscountAdminConflictError",
       message: "This discount code has claims and cannot be deleted.",
     });
     expect(
-      findDiscountAdminConflict({
-        constraint: "voucher_redemptions_voucher_id_vouchers_id_fkey",
-      })
+      findDiscountAdminConflict(
+        foreignKeyViolation("voucher_redemptions_voucher_id_vouchers_id_fkey")
+      )
     ).toMatchObject({
       _tag: "DiscountAdminConflictError",
       message: "This voucher has claims and cannot be deleted.",
     });
-    expect(findDiscountAdminConflict(new Error("database unavailable"))).toBe(
+    expect(findDiscountAdminConflict(foreignKeyViolation("unrelated_fk"))).toBe(
       undefined
     );
+    expect(
+      findDiscountAdminConflict(
+        violation(
+          new SqlError.ConnectionError({ cause: new Error("unavailable") })
+        )
+      )
+    ).toBe(undefined);
   });
 });

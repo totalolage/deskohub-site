@@ -2,43 +2,38 @@
 
 ## Generate migrations
 
-Generate Drizzle migrations, journals, and snapshots with Drizzle tooling. Do not hand-write migration metadata or journal entries.
+Generate Drizzle migrations, journals, and snapshots with Drizzle tooling. Never hand-write migration metadata or journal entries.
 
 ## Release Workspace production
 
-Keep the production release sequence intentionally simple:
+Every push to `main` that touches Workspace inputs deploys production, so merging is the release. `.github/workflows/deploy-workspace-production.yml` runs this sequence; keep it:
 
 1. Build a staged Vercel production deployment without assigning domains.
 2. Run pending migrations against the production Neon branch.
 3. Promote the ready deployment.
 
-Do not introduce database branch swapping unless the user explicitly requests it. When a schema change would break queries, mutations, constraints, or decoded data from the previous Vercel deployment, use an expand/backfill/compatibility release that retains and synchronizes both representations while old and new functions can overlap. Defer the destructive contract migration until a later release after the compatibility version is fully deployed; never rename or drop the old representation in the same rollout.
+After the canonical smoke check passes, the last step submits the production sitemap's canonical URLs to IndexNow with `apps/deskohub-workspace/scripts/submit-indexnow.ts`. It runs after the rollback and failure steps, with `continue-on-error`, so a failed or cancelled submission never fails or rolls back the release. A failure shows up as a `::warning` annotation on the run. The step log records only the HTTP status, host, and URL count, never the key. IndexNow verifies the key at `/<key>.txt`, which only production serves. Rotating the key means renaming the `app/<key>.txt` route folder along with `features/public-pages/indexnow-key.ts`.
 
-Do not add a custom Vercel Ignored Build Step for documentation-, test-, CI-, or E2E-only changes. These changes are too infrequent to justify maintaining a classifier; rely on Vercel's automatic affected-project skipping.
+Don't add database branch swapping unless the user asks for it. Don't put migrations in the Vercel build.
+
+Old and new functions overlap during a rollout. When a schema change would break queries, mutations, constraints, or decoded data in the previous deployment, ship an expand, backfill, and compatibility release that keeps both representations in sync. Rename or drop the old representation only in a later release, after the compatibility version is fully deployed.
+
+Skew Protection (12-hour max age from deployment creation) keeps browsers that loaded an older deployment calling its Server Actions. Don't hold a merge for it. A stale tab that hits an incompatible Server Action sees an error and retries.
+
+Vercel queue messages stay pinned to the deployment that published them, and that older code can consume them until they're acknowledged or expire. Late-payment recovery messages are retained for seven days. Before a release that older consumers can't tolerate, check what each topic's consumer writes and whether undelivered messages from older deployments remain.
+
+Email automation work units (`workspace-email-automation-unit`) ship consumer first. Each deployment compiles in a list of the unit kinds it can run, and it claims, promotes and reaps only those kinds. A message for an unknown kind is acknowledged without being claimed, and a deployment that supports the kind re-sends the unit. Add a kind's handler before any code plans that kind. Once automated campaigns exist, never instant-roll back past the release that added the automation schema and the unit consumer. Older code can't decode automated campaigns, shows automated sends as one-off sends, and can't run newer unit kinds.
+
+Don't add a custom Vercel Ignored Build Step for documentation-, test-, CI-, or E2E-only changes. Rely on Vercel's automatic affected-project skipping.
 
 ## Migrate protected preview databases
 
-Workspace Preview databases are owned by the Neon/Vercel integration for the PR
-lifecycle. After the exact immutable Git preview reports success, validate and
-resolve its non-primary `preview/<internal-head-ref>` branch, obtain direct and
-pooled URLs with pinned `neonctl`, mask both immediately, and migrate with the
-direct URL before E2E. Fail closed if the branch-to-PR mapping is missing or
-ambiguous. Never fall back to production or shared development.
+The Neon/Vercel integration creates and deletes Workspace preview branches for the PR lifecycle. Keep its automatic obsolete-branch deletion on. E2E and other repository workflows must not expire or delete integration-owned branches.
 
-The Neon/Vercel integration owns both creation and deletion of these preview
-branches. Keep its automatic obsolete-branch deletion enabled. E2E and other
-repository workflows must not expire or delete integration-owned branches.
+`.github/workflows/workspace-e2e.yml` migrates each preview before E2E. When you change that flow, keep these properties:
 
-Preview data follows the repository PII rule with one approved exception.
-An ordinary protected production-derived Neon branch may inherit Better Auth
-login email, pending-verification email, and short-lived rate-limit IP keys
-from production at its branch point. Preview fixtures and all Dotypos profile
-and reservation data remain synthetic. Do not add a scrubber or a separate
-preview branch procedure to remove the inherited authentication data; the
-existing branch access controls and integration-owned expiry bound it.
+- Wait for the exact immutable Git preview to report success.
+- Resolve its non-primary `preview/<internal-head-ref>` branch. Fail closed when the branch-to-PR mapping is missing or ambiguous. Never fall back to production or shared development.
+- Get direct and pooled URLs with pinned `neonctl`, mask both immediately, and migrate with the direct URL.
 
-Preview Ready currently precedes migration and is acceptable only while builds
-are database-independent. Schema-breaking changes must remain compatible with
-that ordering or add a preview-only pre-runtime migration mechanism. Do not put
-migrations in the Vercel build; production remains staged build, production
-migration, then promotion.
+Preview reports Ready before migration runs. That's acceptable only while builds don't touch the database. A schema-breaking change must stay compatible with that order or add a preview-only migration step that runs before the runtime starts.

@@ -31,9 +31,7 @@ export const latePaymentRecoveries = pgTable(
       .notNull()
       .$type<WorkspaceReservationId>()
       .references(() => workspaceReservations.id),
-    webhookEventId: text("webhook_event_id")
-      .notNull()
-      .$type<NexiWebhookEventId>(),
+    webhookEventId: text("webhook_event_id").$type<NexiWebhookEventId>(),
     providerOperationId: text("provider_operation_id").$type<NexiOperationId>(),
     providerStatus: text("provider_status"),
     state: text("state").notNull().$type<LatePaymentRecoveryState>(),
@@ -78,4 +76,3 @@ export const latePaymentRecoveries = pgTable(
 );
 
 export type LatePaymentRecovery = typeof latePaymentRecoveries.$inferSelect;
-export type NewLatePaymentRecovery = typeof latePaymentRecoveries.$inferInsert;

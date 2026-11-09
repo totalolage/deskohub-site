@@ -1,13 +1,12 @@
 import { Schema } from "effect";
 
-export const standaloneAccessCodeAttemptEventIdSchema =
-  Schema.NonEmptyString.pipe(
-    Schema.brand("StandaloneAccessCodeAttemptEventId")
-  ).annotate({
-    identifier: "StandaloneAccessCodeAttemptEventId",
-    description:
-      "Opaque identifier of one append-only standalone access-code attempt event.",
-  });
+const standaloneAccessCodeAttemptEventIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("StandaloneAccessCodeAttemptEventId")
+).annotate({
+  identifier: "StandaloneAccessCodeAttemptEventId",
+  description:
+    "Opaque identifier of one append-only standalone access-code attempt event.",
+});
 export type StandaloneAccessCodeAttemptEventId =
   typeof standaloneAccessCodeAttemptEventIdSchema.Type;
 
@@ -18,8 +17,6 @@ export const standaloneAccessCodeAttemptEventKinds = [
   "ambiguous",
   "reconciled",
 ] as const;
-export type StandaloneAccessCodeAttemptEventKind =
-  (typeof standaloneAccessCodeAttemptEventKinds)[number];
 
 export const standaloneAccessCodeTerminalEventKinds = [
   "created",
@@ -35,7 +32,11 @@ export const standaloneAccessCodeProviderVariances = [
   2, 3,
 ] satisfies readonly StandaloneAccessCodeProviderVariance[];
 
-export const standaloneAccessCodeSources = ["admin-ui", "dhw-cli"] as const;
+export const standaloneAccessCodeSources = [
+  "admin-ui",
+  "dhw-cli",
+  "assistant",
+] as const;
 export type StandaloneAccessCodeSource =
   (typeof standaloneAccessCodeSources)[number];
 

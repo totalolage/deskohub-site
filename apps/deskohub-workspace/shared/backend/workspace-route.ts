@@ -1,12 +1,10 @@
 import { Data, Effect } from "effect";
 import { NextResponse } from "next/server";
-import {
-  runWorkspaceEffect,
-  scheduleWorkspaceTelemetryFlush,
-} from "./workspace-effect";
+import { unclassifiedTraffic } from "@/shared/agent-traffic/agent-traffic";
+import { runWorkspaceEffect } from "./workspace-effect";
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
-export type WorkspaceRouteCancellation =
+type WorkspaceRouteCancellation =
   | "interrupt-on-disconnect"
   | "continue-after-disconnect";
 
@@ -15,6 +13,8 @@ export class WorkspaceRouteFailure extends Data.TaggedError(
 )<{
   readonly statusCode: number;
   readonly publicMessage: string;
+  /** A stable, machine-readable reason a client can branch on. */
+  readonly code?: string;
   readonly cause?: unknown;
 }> {
   static internal = (publicMessage: string) => (cause: unknown) =>
@@ -23,16 +23,33 @@ export class WorkspaceRouteFailure extends Data.TaggedError(
       publicMessage,
       cause,
     });
+
+  static unavailable =
+    (publicMessage: string, code: string) => (cause: unknown) =>
+      new WorkspaceRouteFailure({
+        statusCode: 503,
+        publicMessage,
+        code,
+        cause,
+      });
 }
 
 export type WorkspaceRouteErrorResponse = NextResponse<{
   readonly error: string;
+  readonly code?: string;
 }>;
 
 export interface WorkspaceRouteOptions {
   /** Stable, low-cardinality name without IDs, URLs, or payload data. */
   readonly operation: string;
   readonly cancellation: WorkspaceRouteCancellation;
+  /**
+   * Who calls the route. A `service` route, such as a webhook or a cron run,
+   * serves no customer request, so its work is unclassified agent traffic
+   * rather than the calling service's. A `client` route classifies the
+   * request's own headers.
+   */
+  readonly caller: "client" | "service";
 }
 
 export const defineWorkspaceRoute =
@@ -47,12 +64,14 @@ export const defineWorkspaceRoute =
     const request = args[0];
     const invocation = Effect.suspend(() => handler(...args)).pipe(
       Effect.catch(recoverWorkspaceRouteFailure),
-      withWorkspaceRequestContext(request.headers)
+      withWorkspaceRequestContext(
+        request.headers,
+        options.caller === "service" ? unclassifiedTraffic : undefined
+      )
     );
-    const effect = Effect.andThen(
-      scheduleWorkspaceTelemetryFlush(),
-      invocation
-    ).pipe(Effect.annotateLogs({ method: request.method.toUpperCase() }));
+    const effect = invocation.pipe(
+      Effect.annotateLogs({ method: request.method.toUpperCase() })
+    );
     const signal =
       options.cancellation === "interrupt-on-disconnect"
         ? request.signal
@@ -76,7 +95,10 @@ const recoverWorkspaceRouteFailure = Effect.fn("workspaceRoute.recoverFailure")(
       : Effect.logError("Workspace route request failed", annotations);
 
     return NextResponse.json(
-      { error: failure.publicMessage },
+      {
+        error: failure.publicMessage,
+        ...(failure.code && { code: failure.code }),
+      },
       { status: statusCode }
     );
   }

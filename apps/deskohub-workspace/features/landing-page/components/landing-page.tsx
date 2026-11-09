@@ -1,13 +1,14 @@
 import type { Locale } from "@/features/i18n";
 import { siteHeaderSectionIds } from "@/shared/components/site-header-config";
-import { workspaceSiteConstants } from "@/shared/utils";
-import { LandingPageFaqContactSection } from "./landing-page-faq-contact-section";
-import { LandingPageFoundersSection } from "./landing-page-founders-section";
+import { getDeskohubBarPageUrl } from "@/shared/utils";
+import { LandingPageAmenitiesSection } from "./landing-page-amenities-section";
+import { LandingPageContactSection } from "./landing-page-contact-section";
+import { LandingPageFaqTeaserSection } from "./landing-page-faq-teaser-section";
 import { LandingPageHero } from "./landing-page-hero";
 import { landingPageHeroVars } from "./landing-page-hero-section";
 import { LandingPageLocationMapSection } from "./landing-page-location-map-section";
+import { LandingPageOfferingSection } from "./landing-page-offering-section";
 import { LandingPagePhotoCarouselSection } from "./landing-page-photo-carousel-section";
-import { LandingPageTeambuildingsSection } from "./landing-page-teambuildings-section";
 
 type LandingPageProps = {
   locale: Locale;
@@ -15,10 +16,7 @@ type LandingPageProps = {
 
 export function LandingPage({ locale }: LandingPageProps) {
   const localePath = `/${locale}`;
-  const localizedHash = (hash: string) => `${localePath}${hash}`;
   const contactHref = `${localePath}/contact`;
-  const contactAddress = workspaceSiteConstants.location.address;
-  const contactEmail = workspaceSiteConstants.contact.infoEmail;
 
   return (
     <main className="overflow-x-clip bg-navy-blue" style={landingPageHeroVars}>
@@ -34,18 +32,7 @@ export function LandingPage({ locale }: LandingPageProps) {
         locationMapSectionId={siteHeaderSectionIds.locationMap}
       />
 
-      <LandingPageFoundersSection
-        locale={locale}
-        foundersSectionId={siteHeaderSectionIds.founders}
-      />
-
-      <LandingPageTeambuildingsSection
-        locale={locale}
-        teambuildingsSectionId={siteHeaderSectionIds.teambuildings}
-        contactHref={contactHref}
-      />
-
-      {/* Legacy event/TTRPG hashes land by contact while those sections are hidden. */}
+      {/* Legacy event/TTRPG hashes land on the offering, which covers both. */}
       <div
         id={siteHeaderSectionIds.events}
         aria-hidden="true"
@@ -57,13 +44,16 @@ export function LandingPage({ locale }: LandingPageProps) {
         className="scroll-mt-[var(--anchor-scroll-offset)]"
       />
 
-      <LandingPageFaqContactSection
+      <LandingPageOfferingSection locale={locale} />
+
+      <LandingPageAmenitiesSection locale={locale} />
+
+      <LandingPageFaqTeaserSection locale={locale} />
+
+      <LandingPageContactSection
         locale={locale}
-        faqContactSectionId={siteHeaderSectionIds.faqContact}
         contactHref={contactHref}
-        deskohubBarCtaHref={localizedHash(`#${siteHeaderSectionIds.overview}`)}
-        contactAddress={contactAddress}
-        contactEmail={contactEmail}
+        deskohubBarCtaHref={getDeskohubBarPageUrl({ locale })}
       />
     </main>
   );

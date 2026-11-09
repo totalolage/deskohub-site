@@ -31,6 +31,7 @@ const Environment = Schema.Struct({
   GITHUB_RUN_ID: positiveIntegerFromString,
   WORKSPACE_E2E_ALLOCATION_MODE: Schema.Literals(["acquire", "release"]),
   WORKSPACE_E2E_ALLOCATION_PREFERRED_SHARD: allocationShardFromString,
+  WORKSPACE_E2E_ALLOCATION_PREVIEW_BRANCH: Schema.String,
   WORKSPACE_E2E_ALLOCATION_TOKEN: Schema.NonEmptyString,
   WORKSPACE_E2E_ALLOCATION_WAIT_SECONDS: positiveIntegerFromString,
   WORKSPACE_E2E_COORDINATOR_DATABASE_URL: Schema.NonEmptyString,
@@ -53,10 +54,18 @@ const run = Effect.fn("WorkspaceE2EAllocation.run")(function* (
     return;
   }
 
+  const previewBranch = environment.WORKSPACE_E2E_ALLOCATION_PREVIEW_BRANCH;
+  if (previewBranch === "") {
+    return yield* new AllocationError({
+      message: "Workspace E2E allocation needs the preview branch to acquire.",
+    });
+  }
+
   const acquireAndPublish = allocation
     .acquire({
       owner,
       preferredShard: environment.WORKSPACE_E2E_ALLOCATION_PREFERRED_SHARD,
+      previewBranch,
       waitSeconds: environment.WORKSPACE_E2E_ALLOCATION_WAIT_SECONDS,
     })
     .pipe(

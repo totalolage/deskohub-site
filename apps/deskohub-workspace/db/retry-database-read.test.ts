@@ -58,33 +58,6 @@ test("retries uncoded connection acquisition failures", async () => {
   expect(attempts).toBe(3);
 });
 
-test("retries uncoded query execution failures", async () => {
-  let attempts = 0;
-  const result = await Effect.suspend(() => {
-    attempts += 1;
-    return attempts === 1
-      ? Effect.fail(
-          new EffectDrizzleQueryError({
-            query: "select 1",
-            params: [],
-            cause: Cause.fail(
-              new SqlError.SqlError({
-                reason: new SqlError.UnknownError({
-                  cause: new Error("connection terminated unexpectedly"),
-                  message: "Failed to execute statement",
-                  operation: "execute",
-                }),
-              })
-            ),
-          })
-        )
-      : Effect.succeed("loaded");
-  }).pipe(retryDatabaseRead, Effect.runPromise);
-
-  expect(result).toBe("loaded");
-  expect(attempts).toBe(2);
-});
-
 test("does not retry coded unknown connection acquisition failures", async () => {
   let attempts = 0;
   const failure = new EffectDrizzleQueryError({

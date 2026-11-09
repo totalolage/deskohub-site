@@ -1,24 +1,22 @@
-import { type BrowserContext, expect, type Page } from "@playwright/test";
+import { expect, type Page, type Request } from "@playwright/test";
+import type { AccountReviewDestination } from "../account/review-screenshots";
+import {
+  makeReviewScreenshotEnvironment,
+  reviewScreenshotsEnabled,
+} from "../e2e-env";
+import { waitForReactClickHandler } from "../react-handlers";
 
-export async function enablePreviewAccess(
-  context: BrowserContext,
+/** The review screenshot opt-in, decoded once through the E2E environment. */
+export const reviewScreenshots = reviewScreenshotsEnabled(
+  makeReviewScreenshotEnvironment()
+);
+
+export const reviewDestination = (
   baseURL: string | undefined
-) {
-  const previewBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (!previewBypassSecret) return;
-
-  const response = await context.request.get(
-    new URL("/favicon.svg", requireBaseUrl(baseURL)).toString(),
-    {
-      headers: {
-        "x-vercel-protection-bypass": previewBypassSecret,
-        "x-vercel-set-bypass-cookie": "true",
-      },
-    }
-  );
-  expect(response.ok()).toBe(true);
-  await response.dispose();
-}
+): AccountReviewDestination => ({
+  baseUrl: requireBaseUrl(baseURL),
+  screenshots: reviewScreenshots,
+});
 
 export async function expectPublicSiteShell(page: Page) {
   await expect(page.getByRole("banner")).toBeVisible();
@@ -40,6 +38,53 @@ export async function hasLoadedResource(page: Page, pathname: string) {
       }
     });
   }, pathname);
+}
+
+/**
+ * Prefetches a route through the App Router and waits for the whole prefetch.
+ * The router fetches the route tree before the segments it needs, so a loaded
+ * tree alone does not mean an instant navigation can render the cached shell.
+ * A route whose segments were already prefetched may issue no new requests.
+ */
+export async function prefetchRoute(page: Page, pathname: string) {
+  const alreadyLoaded = await hasLoadedResource(page, pathname);
+  const pending = new Set<Request>();
+  let segmentLoaded = false;
+  const onRequest = (request: Request) => {
+    if (
+      new URL(request.url()).pathname === pathname &&
+      request.headers()["next-router-prefetch"] !== undefined
+    ) {
+      pending.add(request);
+    }
+  };
+  const onSettled = (request: Request) => {
+    if (!pending.delete(request)) return;
+    const segment = request.headers()["next-router-segment-prefetch"];
+    if (segment !== undefined && segment !== "/_tree") segmentLoaded = true;
+  };
+
+  page.on("request", onRequest);
+  page.on("requestfinished", onSettled);
+  page.on("requestfailed", onSettled);
+  try {
+    // Next exposes its router before hydration creates the action queue.
+    await waitForReactClickHandler(
+      page,
+      page.getByRole("banner").getByRole("link", { name: "Deskohub Workspace" })
+    );
+    await page.evaluate(
+      (target) => window.next?.router?.prefetch(target),
+      pathname
+    );
+    await expect
+      .poll(() => pending.size === 0 && (alreadyLoaded || segmentLoaded))
+      .toBe(true);
+  } finally {
+    page.off("request", onRequest);
+    page.off("requestfinished", onSettled);
+    page.off("requestfailed", onSettled);
+  }
 }
 
 export function requireBaseUrl(baseURL: string | undefined) {

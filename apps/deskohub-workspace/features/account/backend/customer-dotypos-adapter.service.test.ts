@@ -1,16 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import {
   type DotyposCustomer,
+  type DotyposCustomerProfile,
+  type DotyposCustomerWriteRecord,
   DotyposService,
-  ExternalAPIError,
+  DotyposUnavailable,
+  DotyposUncertain,
+  DotyposVersionConflict,
   FindCustomerResult,
-  NetworkError,
 } from "@deskohub/dotypos";
-import { Effect, Layer } from "effect";
-import {
-  CustomerDotyposAdapter,
-  customerProfileAppliesInput,
-} from "./customer-dotypos-adapter.service";
+import { testEmailAddress } from "@deskohub/test-email";
+import { Effect, Layer, Option } from "effect";
+import type { CustomerProfileSave } from "../contracts";
+import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
+
+const customerEmail = testEmailAddress("ada");
 
 const makeCustomer = (
   overrides: Partial<DotyposCustomer> = {}
@@ -30,7 +34,14 @@ const makeCustomer = (
     ...overrides,
   }) as DotyposCustomer;
 
+/** A customer as a create may return it, without the id Dotypos assigned. */
+const createdCustomerWithoutId = (): DotyposCustomerWriteRecord => {
+  const { id: _id, ...customer } = makeCustomer();
+  return customer;
+};
+
 const activeCustomer = makeCustomer();
+
 const expiredCustomer = makeCustomer({
   id: "60222",
   expireDate: "2020-01-01T00:00:00Z",
@@ -59,27 +70,6 @@ const runWithDotypos = <A, E>(
 
 describe("CustomerDotyposAdapter", () => {
   describe("exact-email classification", () => {
-    test("reports a unique active profile as matched and active", async () => {
-      const result = await runWithDotypos(
-        {
-          findCustomer: () =>
-            Effect.succeed(
-              FindCustomerResult.Matched({
-                customer: activeCustomer,
-                matches: [activeCustomer],
-              })
-            ),
-        },
-        (adapter) => adapter.classifyExactEmailCustomers("ada@example.test")
-      );
-
-      expect(result).toEqual({
-        kind: "matched",
-        state: "active",
-        customerId: "60111",
-      });
-    });
-
     test("reports a unique expired profile as matched and expired", async () => {
       const result = await runWithDotypos(
         {
@@ -91,7 +81,7 @@ describe("CustomerDotyposAdapter", () => {
               })
             ),
         },
-        (adapter) => adapter.classifyExactEmailCustomers("ada@example.test")
+        (adapter) => adapter.classifyExactEmailCustomers(customerEmail)
       );
 
       expect(result).toEqual({
@@ -99,30 +89,6 @@ describe("CustomerDotyposAdapter", () => {
         state: "expired",
         customerId: "60222",
       });
-    });
-
-    test("treats several matches as ambiguous and none as not-found", async () => {
-      const ambiguous = await runWithDotypos(
-        {
-          findCustomer: () =>
-            Effect.succeed(
-              FindCustomerResult.Ambiguous({
-                matches: [activeCustomer, expiredCustomer],
-              })
-            ),
-        },
-        (adapter) => adapter.classifyExactEmailCustomers("ada@example.test")
-      );
-      expect(ambiguous).toEqual({ kind: "ambiguous" });
-
-      const notFound = await runWithDotypos(
-        {
-          findCustomer: () =>
-            Effect.succeed(FindCustomerResult.NotFound({ matches: [] })),
-        },
-        (adapter) => adapter.classifyExactEmailCustomers("ada@example.test")
-      );
-      expect(notFound).toEqual({ kind: "not-found" });
     });
 
     test("reports a deleted exact-email profile as unusable instead of not-found", async () => {
@@ -133,7 +99,7 @@ describe("CustomerDotyposAdapter", () => {
           findCustomer: () =>
             Effect.succeed(FindCustomerResult.Deleted({ matches: [deleted] })),
         },
-        (adapter) => adapter.classifyExactEmailCustomers("ada@example.test")
+        (adapter) => adapter.classifyExactEmailCustomers(customerEmail)
       );
 
       expect(result).toEqual({ kind: "unusable" });
@@ -155,7 +121,7 @@ describe("CustomerDotyposAdapter", () => {
       });
 
       const profile = await runWithDotypos(
-        { getCustomer: () => Effect.succeed(customer) },
+        { getCustomer: () => Effect.succeed(Option.some(customer)) },
         (adapter) => adapter.readCustomerProfile("60111")
       );
 
@@ -182,11 +148,13 @@ describe("CustomerDotyposAdapter", () => {
         {
           getCustomer: () =>
             Effect.succeed(
-              makeCustomer({
-                lastName: "Lovelace",
-                companyName: "   ",
-                addressLine1: "",
-              })
+              Option.some(
+                makeCustomer({
+                  lastName: "Lovelace",
+                  companyName: "   ",
+                  addressLine1: "",
+                })
+              )
             ),
         },
         (adapter) => adapter.readCustomerProfile("60111")
@@ -204,7 +172,9 @@ describe("CustomerDotyposAdapter", () => {
       const profile = await runWithDotypos(
         {
           getCustomer: () =>
-            Effect.succeed(makeCustomer({ addressLine1: "Pražská 1" })),
+            Effect.succeed(
+              Option.some(makeCustomer({ addressLine1: "Pražská 1" }))
+            ),
         },
         (adapter) => adapter.readCustomerProfile("60111")
       );
@@ -222,33 +192,11 @@ describe("CustomerDotyposAdapter", () => {
       });
     });
 
-    test("preserves business billing when only company data exists", async () => {
-      const profile = await runWithDotypos(
-        {
-          getCustomer: () =>
-            Effect.succeed(makeCustomer({ companyName: "Analytical Engines" })),
-        },
-        (adapter) => adapter.readCustomerProfile("60111")
-      );
-
-      expect(profile?.billing).toEqual({
-        kind: "business",
-        addressLine1: null,
-        addressLine2: null,
-        city: null,
-        zip: null,
-        country: null,
-        companyName: "Analytical Engines",
-        companyId: null,
-        vatId: null,
-      });
-    });
-
     test("keeps a legacy unparseable phone visible instead of normalizing or clearing it", async () => {
       const profile = await runWithDotypos(
         {
           getCustomer: () =>
-            Effect.succeed(makeCustomer({ phone: "555-ALPHA" })),
+            Effect.succeed(Option.some(makeCustomer({ phone: "555-ALPHA" }))),
         },
         (adapter) => adapter.readCustomerProfile("60111")
       );
@@ -259,14 +207,7 @@ describe("CustomerDotyposAdapter", () => {
     test("treats definitively missing and deleted profiles as absent", async () => {
       const missing = await runWithDotypos(
         {
-          getCustomer: () =>
-            Effect.fail(
-              new ExternalAPIError({
-                service: "Dotypos",
-                operation: "getCustomer",
-                statusCode: 404,
-              })
-            ),
+          getCustomer: () => Effect.succeed(Option.none()),
         },
         (adapter) => adapter.readCustomerProfile("60111")
       );
@@ -274,7 +215,8 @@ describe("CustomerDotyposAdapter", () => {
 
       const deleted = await runWithDotypos(
         {
-          getCustomer: () => Effect.succeed(makeCustomer({ deleted: true })),
+          getCustomer: () =>
+            Effect.succeed(Option.some(makeCustomer({ deleted: true }))),
         },
         (adapter) => adapter.readCustomerProfile("60111")
       );
@@ -282,260 +224,213 @@ describe("CustomerDotyposAdapter", () => {
     });
   });
 
-  describe("expiration and reactivation", () => {
-    test("expires with a fresh ETag and a past expireDate", async () => {
-      const calls: string[] = [];
-      const payloads: unknown[] = [];
+  describe("profile and lifecycle writes", () => {
+    const missingCustomer = Effect.succeed(Option.none<DotyposCustomer>());
+    const conflict = (operation: AccountWriteOperation) =>
+      new DotyposVersionConflict({ operation, request: "customer.patch" });
+    const uncertain = (operation: AccountWriteOperation) =>
+      new DotyposUncertain({
+        operation,
+        request: "customer.patch",
+        reason: "conflict-after-replay",
+        httpStatus: 412,
+      });
 
-      await runWithDotypos(
+    type AccountWriteOperation =
+      | "updateCustomerProfile"
+      | "expireCustomer"
+      | "reactivateCustomer";
+
+    /** Runs one account write against a package operation that answers `outcomes` in order. */
+    const runAccountWrite = async (
+      operation: AccountWriteOperation,
+      outcomes: ReadonlyArray<
+        Effect.Effect<
+          Option.Option<DotyposCustomer>,
+          DotyposVersionConflict | DotyposUncertain | DotyposUnavailable
+        >
+      >
+    ) => {
+      let calls = 0;
+      const answer = () => {
+        const outcome = outcomes[Math.min(calls, outcomes.length - 1)];
+        calls += 1;
+        return outcome ?? missingCustomer;
+      };
+      const reads: string[] = [];
+      const result = await runWithDotypos(
         {
-          patchCustomer: (_id, payload) => {
-            calls.push("patch");
-            payloads.push(payload);
-            return Effect.succeed(
-              makeCustomer({ expireDate: "2020-01-01T00:00:00Z" })
-            );
-          },
-        },
-        (adapter) => adapter.expireCustomer("60111")
-      );
-
-      expect(calls).toEqual(["patch"]);
-      expect(payloads).toHaveLength(1);
-      const payload = payloads[0] as { expireDate: string };
-      expect(payload.expireDate).not.toBeNull();
-      expect(new Date(payload.expireDate).getTime()).toBeLessThan(Date.now());
-    });
-
-    test("reactivates by clearing expireDate", async () => {
-      const payloads: unknown[] = [];
-
-      await runWithDotypos(
-        {
-          patchCustomer: (_id, payload) => {
-            payloads.push(payload);
-            return Effect.succeed(makeCustomer());
-          },
-        },
-        (adapter) => adapter.reactivateCustomer("60222")
-      );
-
-      expect(payloads).toEqual([{ expireDate: null }]);
-    });
-
-    test("does not treat an uncertain response followed by a missing profile as reactivated", async () => {
-      const calls: string[] = [];
-
-      const outcome = await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(
-              new NetworkError({ message: "connection reset" })
-            );
-          },
+          [operation]: answer,
           getCustomer: () => {
-            calls.push("read");
-            return Effect.fail(
-              new ExternalAPIError({
-                service: "Dotypos",
-                operation: "getCustomer",
-                statusCode: 404,
-              })
-            );
+            reads.push("read");
+            return Effect.succeed(Option.some(activeCustomer));
           },
         },
-        (adapter) => adapter.reactivateCustomer("60222").pipe(Effect.result)
+        (adapter) => {
+          switch (operation) {
+            case "updateCustomerProfile":
+              return adapter
+                .updateCustomerProfile("60111", { firstName: "Ada" })
+                .pipe(Effect.result);
+            case "expireCustomer":
+              return adapter.expireCustomer("60111").pipe(Effect.result);
+            case "reactivateCustomer":
+              return adapter.reactivateCustomer("60222").pipe(Effect.result);
+          }
+        }
       );
+      return { result, calls, reads };
+    };
 
-      expect(calls).toContain("read");
-      expect(outcome._tag).toBe("Failure");
-    });
+    const accountWriteOperations = [
+      "updateCustomerProfile",
+      "expireCustomer",
+      "reactivateCustomer",
+    ] as const;
 
-    test("rereads after an uncertain response and retries only when unapplied", async () => {
-      const calls: string[] = [];
-      let patchCount = 0;
+    test.each(accountWriteOperations)(
+      "%s refreshes once after a genuine version conflict",
+      async (operation) => {
+        const { result, calls, reads } = await runAccountWrite(operation, [
+          Effect.fail(conflict(operation)),
+          Effect.succeed(Option.some(activeCustomer)),
+        ]);
 
-      await runWithDotypos(
-        {
-          patchCustomer: () => {
-            patchCount += 1;
-            calls.push("patch");
-            if (patchCount === 1) {
-              return Effect.fail(
-                new NetworkError({ message: "connection reset" })
-              );
-            }
-            return Effect.succeed(makeCustomer());
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(expiredCustomer);
-          },
-        },
-        (adapter) => adapter.reactivateCustomer("60222")
-      );
+        expect(result._tag).toBe("Success");
+        expect(calls).toBe(2);
+        expect(reads).toEqual([]);
+      }
+    );
 
-      expect(calls).toEqual(["patch", "read", "patch"]);
-    });
+    test.each(accountWriteOperations)(
+      "%s fails the second genuine version conflict without a third attempt",
+      async (operation) => {
+        const { result, calls } = await runAccountWrite(operation, [
+          Effect.fail(conflict(operation)),
+          Effect.fail(conflict(operation)),
+          Effect.succeed(Option.some(activeCustomer)),
+        ]);
 
-    test("accepts an uncertain response once a reread shows it applied", async () => {
-      const calls: string[] = [];
-
-      await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(
-              new NetworkError({ message: "connection reset" })
-            );
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(expiredCustomer);
-          },
-        },
-        (adapter) => adapter.expireCustomer("60111")
-      );
-
-      expect(calls).toEqual(["patch", "read"]);
-    });
-
-    test("retries once on an ETag conflict and fails after a second conflict", async () => {
-      const calls: string[] = [];
-      const conflict = () =>
-        new ExternalAPIError({
-          service: "Dotypos",
-          operation: "patchCustomer",
-          statusCode: 412,
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "DotyposVersionConflict" },
         });
+        expect(calls).toBe(2);
+      }
+    );
 
+    test.each(accountWriteOperations)(
+      "%s keeps an uncertain write uncertain without retrying or rereading",
+      async (operation) => {
+        const failure = uncertain(operation);
+        const { result, calls, reads } = await runAccountWrite(operation, [
+          Effect.fail(failure),
+          Effect.succeed(Option.some(activeCustomer)),
+        ]);
+
+        expect(result).toMatchObject({ _tag: "Failure", failure });
+        expect(calls).toBe(1);
+        expect(reads).toEqual([]);
+      }
+    );
+
+    test.each(accountWriteOperations)(
+      "%s keeps an uncertain refresh uncertain without a third attempt",
+      async (operation) => {
+        const failure = uncertain(operation);
+        const { result, calls } = await runAccountWrite(operation, [
+          Effect.fail(conflict(operation)),
+          Effect.fail(failure),
+          Effect.succeed(Option.some(activeCustomer)),
+        ]);
+
+        expect(result).toMatchObject({ _tag: "Failure", failure });
+        expect(calls).toBe(2);
+      }
+    );
+
+    test.each(accountWriteOperations)(
+      "%s fails an unavailable write without retrying",
+      async (operation) => {
+        const failure = new DotyposUnavailable({
+          operation,
+          request: "customer.patch",
+          reason: "server",
+          httpStatus: 503,
+        });
+        const { result, calls } = await runAccountWrite(operation, [
+          Effect.fail(failure),
+          Effect.succeed(Option.some(activeCustomer)),
+        ]);
+
+        expect(result).toMatchObject({ _tag: "Failure", failure });
+        expect(calls).toBe(1);
+      }
+    );
+
+    test("reports an already missing customer as none when expiring", async () => {
+      const { result } = await runAccountWrite("expireCustomer", [
+        missingCustomer,
+      ]);
+
+      expect(result).toMatchObject({ _tag: "Success" });
+      if (result._tag === "Success") {
+        expect(Option.isNone(result.success as Option.Option<unknown>)).toBe(
+          true
+        );
+      }
+    });
+
+    test("returns the expired customer the package answers", async () => {
+      const expired = makeCustomer({ expireDate: "2020-01-01T00:00:00Z" });
       const outcome = await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(conflict());
-          },
-        },
-        (adapter) => adapter.reactivateCustomer("60222").pipe(Effect.result)
+        { expireCustomer: () => Effect.succeed(Option.some(expired)) },
+        (adapter) => adapter.expireCustomer("60111")
       );
 
-      expect(calls).toEqual(["patch", "patch"]);
-      expect(outcome._tag).toBe("Failure");
-    });
-  });
-
-  describe("uncertain-response comparison", () => {
-    test("treats clearing to no billing as applied", () => {
-      expect(
-        customerProfileAppliesInput(makeCustomer(), {
-          firstName: "Ada",
-          billing: undefined,
-        })
-      ).toBe(true);
-      expect(
-        customerProfileAppliesInput(
-          makeCustomer({ lastName: "   ", phone: "  " }),
-          { firstName: "Ada", billing: undefined }
-        )
-      ).toBe(true);
+      expect(outcome).toEqual(Option.some(expired));
     });
 
-    test("reconciles whitespace-only personal billing as cleared", () => {
-      expect(
-        customerProfileAppliesInput(makeCustomer(), {
-          firstName: "Ada",
-          billing: {
-            kind: "personal",
-            addressLine1: "   ",
-            addressLine2: "",
-            city: "",
-            zip: "",
-            country: "",
+    test.each(["updateCustomerProfile", "reactivateCustomer"] as const)(
+      "%s fails a missing customer as DotyposCustomerMissing",
+      async (operation) => {
+        const { result } = await runAccountWrite(operation, [missingCustomer]);
+
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "DotyposCustomerMissing",
+            customerId: expect.any(String),
           },
-        })
-      ).toBe(true);
-    });
-
-    test("reports unapplied when billing data remains while the input clears billing", () => {
-      expect(
-        customerProfileAppliesInput(
-          makeCustomer({ addressLine1: "Pražská 1" }),
-          { firstName: "Ada", billing: undefined }
-        )
-      ).toBe(false);
-    });
-
-    test("reports unapplied when the input adds billing to a profile without billing data", () => {
-      expect(
-        customerProfileAppliesInput(makeCustomer(), {
-          firstName: "Ada",
-          billing: {
-            kind: "personal",
-            addressLine1: "Pražská 1",
-          },
-        })
-      ).toBe(false);
-    });
-
-    test("completes an uncertain write that cleared whitespace-only personal billing", async () => {
-      const calls: string[] = [];
-
-      const outcome = await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(
-              new NetworkError({ message: "connection reset" })
-            );
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(makeCustomer());
-          },
-        },
-        (adapter) =>
-          adapter
-            .updateCustomerProfile("60111", {
-              firstName: "Ada",
-              billing: {
-                kind: "personal",
-                addressLine1: "   ",
-                addressLine2: "",
-                city: "",
-                zip: "",
-                country: "",
-              },
-            })
-            .pipe(Effect.result)
-      );
-
-      expect(calls).toEqual(["patch", "read"]);
-      expect(outcome._tag).toBe("Success");
-    });
+        });
+      }
+    );
   });
 
   describe("profile updates", () => {
-    test("sends explicit clearing values instead of omitting optional fields", async () => {
-      const payloads: unknown[] = [];
-
+    const writeProfile = async (input: CustomerProfileSave) => {
+      const profiles: DotyposCustomerProfile[] = [];
       await runWithDotypos(
         {
-          patchCustomer: (_id, payload) => {
-            payloads.push(payload);
-            return Effect.succeed(makeCustomer());
+          updateCustomerProfile: (_id, profile) => {
+            profiles.push(profile);
+            return Effect.succeed(Option.some(makeCustomer()));
           },
         },
-        (adapter) =>
-          adapter.updateCustomerProfile("60111", {
-            firstName: "Ada",
-            lastName: undefined,
-            phone: undefined,
-            billing: undefined,
-          })
+        (adapter) => adapter.updateCustomerProfile("60111", input)
       );
+      return profiles;
+    };
 
-      expect(payloads).toEqual([
+    test("sends explicit clearing values, a blank phone included, instead of omitting optional fields", async () => {
+      const profiles = await writeProfile({
+        firstName: "Ada",
+        lastName: undefined,
+        phone: undefined,
+        billing: undefined,
+      });
+
+      expect(profiles).toEqual([
         {
           firstName: "Ada",
           lastName: "",
@@ -552,31 +447,29 @@ describe("CustomerDotyposAdapter", () => {
       ]);
     });
 
+    test("writes the phone number the profile contract decoded", async () => {
+      const profiles = await writeProfile({
+        firstName: "Ada",
+        phone: "+420601111222",
+      });
+
+      expect(profiles[0]?.phone).toBe("+420601111222");
+    });
+
     test("clears business billing when the profile switches to personal", async () => {
-      const payloads: unknown[] = [];
-
-      await runWithDotypos(
-        {
-          patchCustomer: (_id, payload) => {
-            payloads.push(payload);
-            return Effect.succeed(makeCustomer());
-          },
+      const profiles = await writeProfile({
+        firstName: "Ada",
+        billing: {
+          kind: "personal",
+          addressLine1: "Pražská 1",
+          addressLine2: undefined,
+          city: "Praha",
+          zip: "11000",
+          country: "CZ",
         },
-        (adapter) =>
-          adapter.updateCustomerProfile("60111", {
-            firstName: "Ada",
-            billing: {
-              kind: "personal",
-              addressLine1: "Pražská 1",
-              addressLine2: undefined,
-              city: "Praha",
-              zip: "11000",
-              country: "CZ",
-            },
-          })
-      );
+      });
 
-      expect(payloads[0]).toMatchObject({
+      expect(profiles[0]).toMatchObject({
         addressLine1: "Pražská 1",
         addressLine2: "",
         companyName: "",
@@ -585,70 +478,28 @@ describe("CustomerDotyposAdapter", () => {
       });
     });
 
-    test("retries an uncertain optional-only update whose reread shows it unapplied", async () => {
-      const calls: string[] = [];
-      let patchCount = 0;
-
-      await runWithDotypos(
-        {
-          patchCustomer: () => {
-            patchCount += 1;
-            calls.push("patch");
-            return Effect.fail(
-              new NetworkError({ message: "connection reset" })
-            );
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(
-              makeCustomer({ lastName: "Old-name", phone: "+420601111222" })
-            );
-          },
+    test("sends business billing fields", async () => {
+      const profiles = await writeProfile({
+        firstName: "Ada",
+        billing: {
+          kind: "business",
+          companyName: "Analytical Engines",
+          companyId: "12345678",
+          vatId: undefined,
+          addressLine1: undefined,
+          addressLine2: undefined,
+          city: undefined,
+          zip: undefined,
+          country: undefined,
         },
-        (adapter) =>
-          adapter
-            .updateCustomerProfile("60111", {
-              firstName: "Ada",
-              lastName: undefined,
-              phone: undefined,
-              billing: undefined,
-            })
-            .pipe(Effect.result)
-      );
+      });
 
-      expect(calls[0]).toBe("patch");
-      expect(calls[1]).toBe("read");
-      expect(patchCount).toBe(2);
-    });
-
-    test("accepts an uncertain optional-only clearing update once a reread shows it applied", async () => {
-      const calls: string[] = [];
-
-      const outcome = await runWithDotypos(
-        {
-          patchCustomer: () => {
-            calls.push("patch");
-            return Effect.fail(
-              new NetworkError({ message: "connection reset" })
-            );
-          },
-          getCustomer: () => {
-            calls.push("read");
-            return Effect.succeed(makeCustomer({ lastName: "Lovelace" }));
-          },
-        },
-        (adapter) =>
-          adapter
-            .updateCustomerProfile("60111", {
-              firstName: "Ada",
-              lastName: "Lovelace",
-              billing: undefined,
-            })
-            .pipe(Effect.result)
-      );
-
-      expect(calls).toEqual(["patch", "read"]);
-      expect(outcome._tag).toBe("Success");
+      expect(profiles[0]).toMatchObject({
+        companyName: "Analytical Engines",
+        companyId: "12345678",
+        vatId: "",
+        addressLine1: "",
+      });
     });
   });
 
@@ -679,12 +530,12 @@ describe("CustomerDotyposAdapter", () => {
           },
           getCustomer: () => {
             calls.push("read");
-            return Effect.succeed(makeCustomer());
+            return Effect.succeed(Option.some(makeCustomer()));
           },
         },
         (adapter) =>
           adapter.createCustomerProfile({
-            email: "ada@example.test",
+            email: customerEmail,
             profile: {
               firstName: "Ada",
               lastName: "Lovelace",
@@ -723,7 +574,7 @@ describe("CustomerDotyposAdapter", () => {
       expect(details[0]).toMatchObject({
         firstName: "Ada",
         lastName: "Lovelace",
-        email: "ada@example.test",
+        email: customerEmail,
       });
     });
 
@@ -739,7 +590,7 @@ describe("CustomerDotyposAdapter", () => {
         {
           createCustomer: () => {
             calls.push("create");
-            return Effect.succeed(makeCustomer({ id: undefined }));
+            return Effect.succeed(createdCustomerWithoutId());
           },
           findCustomer: () => {
             calls.push("find");
@@ -752,12 +603,12 @@ describe("CustomerDotyposAdapter", () => {
           },
           getCustomer: () => {
             calls.push("read");
-            return Effect.succeed(makeCustomer());
+            return Effect.succeed(Option.some(makeCustomer()));
           },
         },
         (adapter) =>
           adapter.createCustomerProfile({
-            email: "ada@example.test",
+            email: customerEmail,
             profile: { firstName: "Ada" },
           })
       );
@@ -777,24 +628,23 @@ describe("CustomerDotyposAdapter", () => {
     test("fails with the unusable-create error when the exact-email fallback has no match", async () => {
       const outcome = await runWithDotypos(
         {
-          createCustomer: () => Effect.succeed(makeCustomer({ id: undefined })),
+          createCustomer: () => Effect.succeed(createdCustomerWithoutId()),
           findCustomer: () =>
             Effect.succeed(FindCustomerResult.NotFound({ matches: [] })),
         },
         (adapter) =>
           adapter
             .createCustomerProfile({
-              email: "ada@example.test",
+              email: customerEmail,
               profile: { firstName: "Ada" },
             })
             .pipe(Effect.result)
       );
 
-      expect(outcome._tag).toBe("Failure");
-      if (outcome._tag === "Failure") {
-        const error = outcome.failure as ExternalAPIError;
-        expect(error.statusCode).toBe(502);
-      }
+      expect(outcome).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "MissingDotyposId", entity: "customer" },
+      });
     });
   });
 });

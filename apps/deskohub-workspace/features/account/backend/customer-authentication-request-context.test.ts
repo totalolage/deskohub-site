@@ -1,5 +1,6 @@
 import { expect, mock, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect, Exit, Logger } from "effect";
+import { notFound } from "next/navigation";
 import { withWorkspaceRequestContext } from "@/shared/backend/workspace-request-context";
 
 const ambientHeaders = mock(() => {
@@ -59,4 +60,84 @@ test("authority reads use each request's captured headers after async work", asy
   );
   expect(ambientHeaders).not.toHaveBeenCalled();
   expect(observed.sort()).toEqual(["first", "first", "second", "second"]);
+});
+
+test("an RSC read without captured headers fails closed when the request store is gone", async () => {
+  const { CustomerAuthentication } = await import(
+    "./customer-authentication.service"
+  );
+  const warnings: unknown[] = [];
+  const outcome = await Effect.runPromise(
+    Effect.flatMap(
+      CustomerAuthentication,
+      (authentication) => authentication.currentUser
+    ).pipe(
+      Effect.provide(CustomerAuthentication.Default),
+      Effect.provide(
+        Logger.layer([
+          Logger.make((options) => {
+            warnings.push(options.message);
+          }),
+        ])
+      ),
+      Effect.result
+    )
+  );
+
+  expect(ambientHeaders).toHaveBeenCalledTimes(1);
+  expect(outcome._tag).toBe("Failure");
+  if (outcome._tag === "Failure") {
+    expect(outcome.failure).toMatchObject({
+      reason: "unavailable",
+      diagnostic: "authentication.session.unclassified",
+    });
+  }
+  expect(warnings).toEqual([
+    [
+      "Customer session read failed closed.",
+      {
+        diagnostic: "authentication.session.unclassified",
+        stage: "request-headers",
+        category: "Error",
+      },
+    ],
+  ]);
+});
+
+test("an RSC read lets Next.js control flow from the request store propagate", async () => {
+  const { CustomerAuthentication } = await import(
+    "./customer-authentication.service"
+  );
+  let navigation: unknown;
+  try {
+    notFound();
+  } catch (thrown) {
+    navigation = thrown;
+  }
+  ambientHeaders.mockImplementationOnce(() => {
+    throw navigation;
+  });
+  const warnings: unknown[] = [];
+  const exit = await Effect.runPromiseExit(
+    Effect.flatMap(
+      CustomerAuthentication,
+      (authentication) => authentication.currentUser
+    ).pipe(
+      Effect.provide(CustomerAuthentication.Default),
+      Effect.provide(
+        Logger.layer([
+          Logger.make((options) => {
+            warnings.push(options.message);
+          }),
+        ])
+      )
+    )
+  );
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit)) {
+    expect(Cause.hasFails(exit.cause)).toBe(false);
+    expect(Cause.squash(exit.cause)).toBe(navigation);
+  }
+  expect(warnings).toEqual([]);
 });

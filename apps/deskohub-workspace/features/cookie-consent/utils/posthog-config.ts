@@ -1,10 +1,11 @@
+import { Option } from "effect";
 import type {
   BeforeSendFn,
   CapturedNetworkRequest,
   PostHogConfig,
 } from "posthog-js";
 import { normalizeHostname } from "@/shared/utils/hostname";
-import { createPostHogPageUrl } from "./posthog-url";
+import { parsePostHogPageUrl } from "./posthog-url";
 
 /**
  * Deployment contract: browser telemetry must use an absolute HTTP(S) URL on
@@ -88,16 +89,17 @@ export function createPostHogConfig({
 function maskCapturedNetworkRequest(
   request: CapturedNetworkRequest
 ): CapturedNetworkRequest | null {
-  try {
-    return {
-      ...request,
-      name: createPostHogPageUrl(request.name),
-      requestBody: undefined,
-      requestHeaders: undefined,
-      responseBody: undefined,
-      responseHeaders: undefined,
-    };
-  } catch {
-    return null;
-  }
+  return parsePostHogPageUrl(request.name).pipe(
+    Option.map(
+      (name): CapturedNetworkRequest => ({
+        ...request,
+        name,
+        requestBody: undefined,
+        requestHeaders: undefined,
+        responseBody: undefined,
+        responseHeaders: undefined,
+      })
+    ),
+    Option.getOrNull
+  );
 }

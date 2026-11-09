@@ -1,10 +1,8 @@
-import {
-  type DotyposReservation,
-  type DotyposTable,
-  type DotyposTableId,
-  DotyposTableIdSchema,
+import type {
+  DotyposReservation,
+  DotyposTable,
+  DotyposTableId,
 } from "@deskohub/dotypos";
-import { Option, Schema } from "effect";
 import { isDisplayableWorkspaceTable } from "./backend/reservation/workspace-table-selection";
 
 export type WorkspaceTableMap = {
@@ -13,31 +11,21 @@ export type WorkspaceTableMap = {
   readonly tables: readonly DotyposTable[];
 };
 
-const getTableId = (table: Pick<DotyposTable, "id">) => {
-  return Option.getOrUndefined(
-    Schema.decodeUnknownOption(DotyposTableIdSchema)(table.id?.trim())
-  );
-};
-
 const getTableRoomName = (table: Pick<DotyposTable, "locationName">) => {
   const roomName = table.locationName?.trim();
   return roomName || undefined;
 };
 
 export const getWorkspaceTableMap = (
-  reservation: DotyposReservation,
+  reservation: Pick<DotyposReservation, "_tableId">,
   tables: readonly DotyposTable[]
 ): WorkspaceTableMap | undefined => {
-  const assignedTableId = Option.getOrUndefined(
-    Schema.decodeUnknownOption(DotyposTableIdSchema)(
-      reservation._tableId?.trim()
-    )
-  );
+  const assignedTableId = reservation._tableId;
   if (!assignedTableId) return undefined;
 
   const displayableTables = tables.filter(isDisplayableWorkspaceTable);
   const assignedTable = displayableTables.find(
-    (table) => getTableId(table) === assignedTableId
+    (table) => table.id === assignedTableId
   );
   if (!assignedTable) return undefined;
 

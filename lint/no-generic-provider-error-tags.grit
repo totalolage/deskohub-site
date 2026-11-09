@@ -1,0 +1,21 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// A provider package names its errors with its port prefix
+// (<Prefix>Unavailable, <Prefix>Rejected, <Prefix>Uncertain, <Prefix><Fact>),
+// so two packages can never share a tag string.
+file($name, $body) where {
+  $name <: r".*packages/.*\.(?:ts|tsx)$",
+  not $name <: r".*/generated/.*",
+  // Remove each exclusion when C60 (Nexi) and C72 (email) adopt the convention.
+  not $name <: r".*packages/(?:nexi|email)/.*",
+  $body <: r"(?s).*\b(?:ExternalAPIError|NetworkError|ValidationError|RequestError)\b.*",
+  $body <: contains bubble JsClassDeclaration() as $class where {
+    $class <: r"(?s)^class\s+\w+\s+extends\s+(?:Schema\.TaggedErrorClass<[^>]*>\(\)|Data\.TaggedError)\(\s*[\x22'](?:ExternalAPIError|NetworkError|ValidationError|RequestError)[\x22'].*",
+    register_diagnostic(
+      span = $class,
+      message = "Name provider errors with the port prefix (<Prefix>Unavailable, <Prefix>Rejected, <Prefix>Uncertain).",
+      severity = "error"
+    )
+  }
+}

@@ -6,17 +6,14 @@ import {
   SchemaGetter,
   SchemaIssue,
 } from "effect";
-import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
-import { m } from "@/features/i18n";
-import {
-  isMeetingRoomWholeDayReservationDuration,
-  type MeetingRoomReservationDuration,
-} from "@/features/reservation/meeting-room-reservation-duration";
 import type {
   ReservationInterval,
   ReservationIntervalInput,
 } from "@/features/reservation/reservation-interval-domain";
-import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval-domain";
+import {
+  isCoworkReservationInterval,
+  isSingleDayReservationInterval,
+} from "@/features/reservation/reservation-interval-domain";
 import { normalizeReservationIntervalFields } from "@/features/reservation/reservation-interval-normalization";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
@@ -30,7 +27,7 @@ export type {
   ReservationInterval,
   ReservationIntervalInput,
 } from "@/features/reservation/reservation-interval-domain";
-export { isSingleDayReservationInterval };
+export { isCoworkReservationInterval, isSingleDayReservationInterval };
 
 export class ReservationIntervalError extends Data.TaggedError(
   "ReservationIntervalError"
@@ -71,44 +68,14 @@ export const reservationIntervalSchema = reservationIntervalInputSchema.pipe(
   )
 );
 
-const getMeetingRoomDurationMessage = (
-  duration: MeetingRoomReservationDuration
-) => {
-  if (isMeetingRoomWholeDayReservationDuration(duration)) {
-    return m.reservationMeetingRoomDurationWholeDay();
-  }
-
-  return m.reservationMeetingRoomDurationHours({ count: duration.amount });
-};
-
-export const getMeetingRoomDurationValidationMessage = () =>
-  m.reservationValidationMeetingRoomDuration({
-    durations: workspaceMeetingRoomCatalog
-      .map(({ duration }) => getMeetingRoomDurationMessage(duration))
-      .join(", "),
-  });
-
 export const wholeHourReservationInstantSchema =
   makeWholeHourInstantStringSchema(workspaceSiteConstants.location.timeZone);
 
 export const coworkReservationIntervalSchema = reservationIntervalSchema.check(
-  Schema.makeFilter(isSingleDayReservationInterval, {
+  Schema.makeFilter(isCoworkReservationInterval, {
     message: "Cowork reservations must use the full-day duration.",
   })
 );
-
-export const getReservationIntervalValidationIssue = (
-  interval: ReservationIntervalInput
-) =>
-  getReservationIntervalNormalization(interval).pipe(
-    Effect.as(null),
-    Effect.catch((issue) =>
-      Effect.succeed({
-        path: issue.path,
-        message: issue.message,
-      })
-    )
-  );
 
 export const getReservationIntervalNormalization = (
   interval: ReservationIntervalInput

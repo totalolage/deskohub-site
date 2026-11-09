@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
+import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import {
-  formatLandingPageSaleBannerLabel,
-  getLandingPageSaleBannerContent,
-} from "./landing-page-sale-banner-content";
+  type WorkspaceProductFamily,
+  type WorkspaceProductTarget,
+  workspaceProductFamilies,
+} from "@/features/discounts/product-target";
+import { type Locale, m } from "@/features/i18n";
+import { getLandingPageSaleBannerLabel } from "./landing-page-sale-banner-content";
 
 const coworkProduct = {
   kind: "cowork",
@@ -15,8 +18,19 @@ const officeProduct = {
   kind: "office",
 } as const satisfies WorkspaceProductTarget;
 
+const bookableWithoutOffice = workspaceProductFamilies.filter(
+  (family) => family !== "office"
+);
+
 const formatLabel = (
   products: readonly WorkspaceProductTarget[],
+  {
+    bookableProducts = workspaceProductFamilies,
+    locale = "en-US",
+  }: {
+    readonly bookableProducts?: readonly WorkspaceProductFamily[];
+    readonly locale?: Locale;
+  } = {},
   adjustment:
     | { readonly kind: "percentage"; readonly basisPoints: number }
     | {
@@ -28,122 +42,148 @@ const formatLabel = (
         };
       } = { kind: "percentage", basisPoints: 2000 }
 ) =>
-  formatLandingPageSaleBannerLabel(
+  getLandingPageSaleBannerLabel(
     {
       title: "Summer focus",
       adjustment,
       products,
     },
-    "en-US"
+    locale,
+    bookableProducts
   );
 
-describe("formatLandingPageSaleBannerLabel", () => {
+const bannerTemplate = (
+  message: typeof m.landingSaleBannerAllProducts,
+  locale: Locale = "en-US"
+) => message({ title: "{title}", adjustment: "{adjustment}" }, { locale });
+
+const summerFocusLabel = (template: string, locale: Locale = "en-US") => ({
+  template,
+  title: "Summer focus",
+  adjustment: formatDiscountAdjustment(
+    { kind: "percentage", basisPoints: 2000 },
+    locale
+  ),
+});
+
+const locales = ["en-US", "cs-CZ"] as const satisfies readonly Locale[];
+
+describe("getLandingPageSaleBannerLabel", () => {
   test("describes a sale on every product without clarification", () => {
     expect(
       formatLabel([coworkProduct, meetingRoomProduct, officeProduct])
-    ).toBe("Summer focus: 20% off!");
+    ).toEqual(summerFocusLabel(bannerTemplate(m.landingSaleBannerAllProducts)));
+  });
+
+  test.each(locales)(
+    "describes a sale on every bookable product as all products in %s while offices are switched off",
+    (locale) => {
+      expect(
+        formatLabel([coworkProduct, meetingRoomProduct], {
+          bookableProducts: bookableWithoutOffice,
+          locale,
+        })
+      ).toEqual(
+        summerFocusLabel(
+          bannerTemplate(m.landingSaleBannerAllProducts, locale),
+          locale
+        )
+      );
+    }
+  );
+
+  test.each(locales)(
+    "describes a sale on every product as all products in %s while offices are bookable",
+    (locale) => {
+      expect(
+        formatLabel([coworkProduct, meetingRoomProduct, officeProduct], {
+          locale,
+        })
+      ).toEqual(
+        summerFocusLabel(
+          bannerTemplate(m.landingSaleBannerAllProducts, locale),
+          locale
+        )
+      );
+    }
+  );
+
+  test.each(locales)(
+    "uses the selected-products wording in %s when a bookable office is left out",
+    (locale) => {
+      expect(
+        formatLabel([coworkProduct, meetingRoomProduct], { locale })
+      ).toEqual(
+        summerFocusLabel(
+          bannerTemplate(m.landingSaleBannerSelectedProducts, locale),
+          locale
+        )
+      );
+    }
+  );
+
+  test("uses the selected-products wording for one cowork tier while offices are switched off", () => {
+    expect(
+      formatLabel(
+        [{ kind: "cowork", tier: "open-space" }, meetingRoomProduct],
+        {
+          bookableProducts: bookableWithoutOffice,
+        }
+      )
+    ).toEqual(
+      summerFocusLabel(bannerTemplate(m.landingSaleBannerSelectedProducts))
+    );
   });
 
   test("describes a sale on every cowork product", () => {
-    expect(formatLabel([coworkProduct])).toBe(
-      "Summer focus: 20% off cowork access!"
+    expect(formatLabel([coworkProduct])).toEqual(
+      summerFocusLabel(bannerTemplate(m.landingSaleBannerAllCoworkProducts))
+    );
+  });
+
+  test("describes a sale on every cowork tier as every cowork product", () => {
+    expect(
+      formatLabel([
+        { kind: "cowork", tier: "open-space" },
+        { kind: "cowork", tier: "reserved-desk" },
+      ])
+    ).toEqual(
+      summerFocusLabel(bannerTemplate(m.landingSaleBannerAllCoworkProducts))
+    );
+  });
+
+  test("uses the selected-products fallback for a single cowork tier", () => {
+    expect(formatLabel([{ kind: "cowork", tier: "reserved-desk" }])).toEqual(
+      summerFocusLabel(bannerTemplate(m.landingSaleBannerSelectedProducts))
+    );
+    expect(
+      formatLabel([
+        { kind: "cowork", tier: "open-space" },
+        meetingRoomProduct,
+        officeProduct,
+      ])
+    ).toEqual(
+      summerFocusLabel(bannerTemplate(m.landingSaleBannerSelectedProducts))
     );
   });
 
   test("describes a sale on every meeting-room product", () => {
-    expect(formatLabel([meetingRoomProduct])).toBe(
-      "Summer focus: 20% off meeting room reservations!"
+    expect(formatLabel([meetingRoomProduct])).toEqual(
+      summerFocusLabel(
+        bannerTemplate(m.landingSaleBannerAllMeetingRoomProducts)
+      )
     );
   });
 
   test("uses the selected-products fallback for a family mix", () => {
-    expect(formatLabel([coworkProduct, meetingRoomProduct])).toBe(
-      "Summer focus: 20% off chosen products!"
+    expect(formatLabel([coworkProduct, meetingRoomProduct])).toEqual(
+      summerFocusLabel(bannerTemplate(m.landingSaleBannerSelectedProducts))
     );
   });
 
   test("does not omit office from a mixed sale label", () => {
-    expect(formatLabel([coworkProduct, officeProduct])).toBe(
-      "Summer focus: 20% off chosen products!"
-    );
-  });
-
-  test("formats fixed adjustments with their currency", () => {
-    expect(
-      formatLabel([coworkProduct], {
-        kind: "fixed",
-        amount: { value: 20_000, exponent: 2, currency: "CZK" },
-      })
-    ).toBe("Summer focus: CZK 200 off cowork access!");
-  });
-
-  test("omits the redundant Czech quantifier", () => {
-    expect(
-      formatLandingPageSaleBannerLabel(
-        {
-          title: "Letní soustředění",
-          adjustment: { kind: "percentage", basisPoints: 2000 },
-          products: [coworkProduct],
-        },
-        "cs-CZ"
-      )
-    ).toBe("Letní soustředění: sleva 20 % na coworkingové vstupy!");
-  });
-});
-
-describe("getLandingPageSaleBannerContent", () => {
-  test.each([
-    ["percentage", { kind: "percentage" as const, basisPoints: 2000 }],
-    [
-      "fixed",
-      {
-        kind: "fixed" as const,
-        amount: { value: 20_000, exponent: 2, currency: "CZK" },
-      },
-    ],
-  ])("exposes the %s adjustment kind to the banner", (kind, adjustment) => {
-    expect(
-      getLandingPageSaleBannerContent({
-        locale: "en-US",
-        reservationKind: "cowork",
-        sale: {
-          title: "Summer focus",
-          adjustment,
-          products: [coworkProduct],
-        },
-      }).adjustmentKind
-    ).toBe(kind);
-  });
-
-  test("attributes reservation visits to the home sale banner", () => {
-    expect(
-      getLandingPageSaleBannerContent({
-        locale: "en-US",
-        reservationKind: "meeting-room",
-        sale: {
-          title: "Summer focus",
-          adjustment: { kind: "percentage", basisPoints: 2000 },
-          products: [meetingRoomProduct],
-        },
-      }).href
-    ).toBe(
-      "/en-US/reservation/meeting-room?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero"
-    );
-  });
-
-  test("links an office-only sale to the office reservation page", () => {
-    expect(
-      getLandingPageSaleBannerContent({
-        locale: "en-US",
-        reservationKind: "office",
-        sale: {
-          title: "Office week",
-          adjustment: { kind: "percentage", basisPoints: 1000 },
-          products: [officeProduct],
-        },
-      }).href
-    ).toBe(
-      "/en-US/reservation/office?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero"
+    expect(formatLabel([coworkProduct, officeProduct])).toEqual(
+      summerFocusLabel(bannerTemplate(m.landingSaleBannerSelectedProducts))
     );
   });
 });

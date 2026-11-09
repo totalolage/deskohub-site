@@ -10,6 +10,7 @@ import { DhwConfig } from "../config/dhw-config.service";
 import { ExecutableInstaller } from "./executable-installer.service";
 import {
   type GithubRelease,
+  type GithubReleaseResult,
   GithubReleaseService,
 } from "./github-release.service";
 import {
@@ -44,9 +45,13 @@ export class UpdateService extends Context.Service<
 
       return {
         check: Effect.fn("UpdateService.check")((force: boolean) =>
-          checkForUpdate({ force, config, github, stateStore }).pipe(
-            Effect.mapError(UpdateError.fromCause)
-          )
+          checkForUpdate({
+            force,
+            build: runningReleaseBuild,
+            config,
+            github,
+            stateStore,
+          }).pipe(Effect.mapError(UpdateError.fromCause))
         ),
         install: Effect.fn("UpdateService.install")((update: AvailableUpdate) =>
           installer.install(update).pipe(Effect.mapError(UpdateError.fromCause))
@@ -69,31 +74,39 @@ export class UpdateError extends Data.TaggedError("UpdateError")<{
         });
 }
 
+/** The published release this executable runs as, if it is one. */
+interface ReleaseBuild {
+  readonly version: string;
+  readonly target: ReleaseBuildTarget;
+}
+
+const runningReleaseBuild: ReleaseBuild | undefined = isReleaseBuild
+  ? { version: DHW_VERSION, target: DHW_BUILD_TARGET as ReleaseBuildTarget }
+  : undefined;
+
 interface CheckForUpdateInput {
   readonly force: boolean;
+  readonly build: ReleaseBuild | undefined;
   readonly config: DhwConfig["Service"];
   readonly github: GithubReleaseService["Service"];
   readonly stateStore: UpdateStateStore["Service"];
 }
 
-const checkForUpdate = Effect.fn("checkForUpdate")(function* ({
+export const checkForUpdate = Effect.fn("checkForUpdate")(function* ({
   force,
+  build,
   config,
   github,
   stateStore,
 }: CheckForUpdateInput) {
-  if (!isReleaseBuild || (!force && config.updateChecksDisabled)) {
+  if (build === undefined || (!force && config.updateChecksDisabled)) {
     return Option.none<AvailableUpdate>();
   }
 
   const state = yield* stateStore.get;
   const now = yield* Clock.currentTimeMillis;
 
-  if (
-    !force &&
-    state.lastAttemptedAt !== undefined &&
-    now - state.lastAttemptedAt < updateCheckIntervalMillis
-  ) {
+  if (!force && wasAttemptedRecently(state, now)) {
     return Option.none<AvailableUpdate>();
   }
 
@@ -102,75 +115,108 @@ const checkForUpdate = Effect.fn("checkForUpdate")(function* ({
   const available =
     result._tag === "NotModified"
       ? state.available
-      : selectAvailableUpdate(
-          result.releases,
-          DHW_BUILD_TARGET as ReleaseBuildTarget
-        );
-  const nextState: UpdateState = {
-    lastAttemptedAt: now,
-    lastSuccessfulAt: now,
-    ...(result.etag === undefined && state.etag === undefined
-      ? {}
-      : { etag: result.etag ?? state.etag }),
-    ...(available === undefined ? {} : { available }),
-  };
+      : selectAvailableUpdate(result.releases, build.target);
 
-  yield* stateStore.set(nextState);
+  yield* stateStore.set(checkedUpdateState({ state, result, available, now }));
 
-  return available !== undefined && gt(available.version, DHW_VERSION)
+  return newerUpdate(available, build.version);
+});
+
+const wasAttemptedRecently = (state: UpdateState, now: number) =>
+  state.lastAttemptedAt !== undefined &&
+  now - state.lastAttemptedAt < updateCheckIntervalMillis;
+
+const checkedUpdateState = ({
+  state,
+  result,
+  available,
+  now,
+}: {
+  readonly state: UpdateState;
+  readonly result: GithubReleaseResult;
+  readonly available: AvailableUpdate | undefined;
+  readonly now: number;
+}): UpdateState => ({
+  lastAttemptedAt: now,
+  lastSuccessfulAt: now,
+  ...(result.etag === undefined && state.etag === undefined
+    ? {}
+    : { etag: result.etag ?? state.etag }),
+  ...(available === undefined ? {} : { available }),
+});
+
+const newerUpdate = (
+  available: AvailableUpdate | undefined,
+  runningVersion: string
+) =>
+  available !== undefined && gt(available.version, runningVersion)
     ? Option.some(available)
     : Option.none<AvailableUpdate>();
-});
 
 export const selectAvailableUpdate = (
   releases: ReadonlyArray<GithubRelease>,
   target: ReleaseBuildTarget
-): AvailableUpdate | undefined => {
-  const candidates = releases
+): AvailableUpdate | undefined =>
+  releases
     .flatMap((release) => {
-      if (
-        release.draft ||
-        release.prerelease ||
-        !release.immutable ||
-        !release.tag_name.startsWith(cliTagPrefix)
-      ) {
-        return [];
-      }
-
-      const version = valid(release.tag_name.slice(cliTagPrefix.length));
-      const asset = release.assets.find(
-        (candidate) => candidate.name === `dhw-${target}`
-      );
-
-      if (
-        version === null ||
-        asset === undefined ||
-        asset.digest === null ||
-        prerelease(version) !== null ||
-        !Number.isSafeInteger(asset.size) ||
-        asset.size <= 0 ||
-        !/^sha256:[a-f0-9]{64}$/.test(asset.digest) ||
-        !isGithubReleaseUrl(release.html_url) ||
-        !isGithubReleaseUrl(asset.browser_download_url)
-      ) {
-        return [];
-      }
-
-      return [
-        {
-          version,
-          releaseUrl: release.html_url.href,
-          assetUrl: asset.browser_download_url.href,
-          assetDigest: asset.digest,
-          assetSize: asset.size,
-          target,
-        } satisfies AvailableUpdate,
-      ];
+      const update = releaseUpdate(release, target);
+      return update === undefined ? [] : [update];
     })
-    .sort((left, right) => rcompare(left.version, right.version));
+    .sort((left, right) => rcompare(left.version, right.version))[0];
 
-  return candidates[0];
+type GithubReleaseAsset = GithubRelease["assets"][number];
+
+const releaseUpdate = (
+  release: GithubRelease,
+  target: ReleaseBuildTarget
+): AvailableUpdate | undefined => {
+  if (!isPublishedCliRelease(release)) {
+    return undefined;
+  }
+
+  const version = stableCliVersion(release.tag_name);
+  const asset = release.assets.find(
+    (candidate) => candidate.name === `dhw-${target}`
+  );
+
+  if (
+    version === undefined ||
+    asset === undefined ||
+    !isVerifiableAsset(asset) ||
+    !isGithubReleaseUrl(release.html_url)
+  ) {
+    return undefined;
+  }
+
+  return {
+    version,
+    releaseUrl: release.html_url.href,
+    assetUrl: asset.browser_download_url.href,
+    assetDigest: asset.digest,
+    assetSize: asset.size,
+    target,
+  };
 };
+
+const isPublishedCliRelease = (release: GithubRelease) =>
+  !release.draft &&
+  !release.prerelease &&
+  release.immutable &&
+  release.tag_name.startsWith(cliTagPrefix);
+
+const stableCliVersion = (tagName: string) => {
+  const version = valid(tagName.slice(cliTagPrefix.length));
+  return version !== null && prerelease(version) === null ? version : undefined;
+};
+
+const isVerifiableAsset = (
+  asset: GithubReleaseAsset
+): asset is GithubReleaseAsset & { readonly digest: string } =>
+  asset.digest !== null &&
+  Number.isSafeInteger(asset.size) &&
+  asset.size > 0 &&
+  /^sha256:[a-f0-9]{64}$/.test(asset.digest) &&
+  isGithubReleaseUrl(asset.browser_download_url);
 
 const isGithubReleaseUrl = (url: URL) =>
   url.protocol === "https:" &&

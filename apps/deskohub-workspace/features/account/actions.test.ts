@@ -1,34 +1,45 @@
+import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { AresLookupFailure } from "@deskohub/ares";
+import { DotyposUnavailable } from "@deskohub/dotypos";
 import { Context, Effect, Layer } from "effect";
+import { SqlError } from "effect/unstable/sql";
+import { m } from "@/features/i18n";
+import {
+  ReferralError,
+  type ReferralOutage,
+} from "@/features/referrals/contracts";
+import { ReferralService as Referrals } from "@/features/referrals/referral.service";
+import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
+import {
+  type InMemoryReferralCookie,
+  RememberedReferral,
+} from "@/features/referrals/remembered-referral.service";
+import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
+import { CustomerAccountContactService } from "./backend/customer-account-contact.service";
 import { CustomerAccountAccessError } from "./customer-account";
 
-const revalidatePath = mock((_path: string) => undefined);
+const customerEmail = testEmailAddress("ada");
+const sneakyEmail = testEmailAddress("sneaky");
+
+const revalidatePath = mock(
+  (_path: string, _type?: "layout" | "page") => undefined
+);
 mock.module("next/cache", () => ({ revalidatePath }));
 
-const requestHeaders = new Headers({ referer: "https://deskohub.test/en-US" });
-mock.module("next/headers", () => ({
-  headers: async () => requestHeaders,
-  cookies: async () => ({ getAll: () => [] }),
-}));
-mock.module("next/server", () => ({
-  after: () => undefined,
-}));
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
-mock.module("botid/server", () => ({
-  checkBotId: () => Promise.resolve({ isBot: false }),
-}));
+const request = await mockWorkspaceActionRequest();
 
-const areAccountsEnabled = mock(() => Promise.resolve(true));
-mock.module("@/features/account/server/account-feature-flag.server", () => ({
-  areAccountsEnabled,
+let referralsEnabled = true;
+const areReferralsEnabled = mock(() => Promise.resolve(referralsEnabled));
+const decideReferrals = ReferralReleaseGate.fromDecision;
+mock.module("@/features/referrals/referral-release-gate.server", () => ({
+  areReferralsEnabled,
+  ReferralReleaseGateRequest: Layer.unwrap(
+    Effect.promise(areReferralsEnabled).pipe(Effect.map(decideReferrals))
+  ),
 }));
 
 let deleteUser: (args: { body: object; headers: Headers }) => Promise<unknown>;
@@ -62,9 +73,15 @@ Object.assign(Authentication, {
     })
   ),
 });
+const realAuthenticationModule = await import(
+  "@/features/account/backend/customer-authentication.service"
+);
 mock.module(
   "@/features/account/backend/customer-authentication.service",
-  () => ({ CustomerAuthentication: Authentication })
+  () => ({
+    ...realAuthenticationModule,
+    CustomerAuthentication: Authentication,
+  })
 );
 
 type ProfileInput = {
@@ -103,6 +120,68 @@ mock.module(
   })
 );
 
+type SignupIntent = {
+  readonly promotionCodeId: string;
+  readonly referrerDotyposCustomerId: string;
+};
+const codeTarget: SignupIntent = {
+  promotionCodeId: "@test/promotion-code-id",
+  referrerDotyposCustomerId: "70001",
+};
+type StoredIntent = SignupIntent & {
+  readonly code: string;
+  readonly outcome: string | null;
+  readonly acknowledged: boolean;
+};
+let storedIntent: StoredIntent | undefined;
+const SignupIntents = Context.Service<
+  SignupIntents,
+  {
+    readonly findCodeTarget: (
+      code: string
+    ) => Effect.Effect<SignupIntent | undefined>;
+    readonly find: (
+      accountId: string
+    ) => Effect.Effect<StoredIntent | undefined>;
+    readonly settle: (
+      accountId: string,
+      promotionCodeId: string,
+      outcome: string
+    ) => Effect.Effect<boolean>;
+    readonly findAttributedCode: (
+      customerId: string
+    ) => Effect.Effect<string | undefined>;
+    readonly acknowledge: (accountId: string) => Effect.Effect<void>;
+  }
+>()("@test/ActionsSignupIntents");
+Object.assign(SignupIntents, {
+  Live: Layer.succeed(SignupIntents, {
+    findCodeTarget: () => Effect.succeed(codeTarget),
+    find: () => Effect.sync(() => storedIntent),
+    settle: (_accountId, _promotionCodeId, outcome) =>
+      Effect.sync(() => {
+        if (!storedIntent || storedIntent.outcome !== null) return false;
+        storedIntent = { ...storedIntent, outcome };
+        return true;
+      }),
+    findAttributedCode: () => Effect.succeed(undefined),
+    acknowledge: () =>
+      Effect.sync(() => {
+        if (storedIntent)
+          storedIntent = { ...storedIntent, acknowledged: true };
+      }),
+  }),
+});
+// The real account link repository, which the locale preference action loads,
+// imports the intent insert; only the service is replaced.
+const realSignupIntentModule = await import(
+  "@/features/referrals/signup-intent.repository"
+);
+mock.module("@/features/referrals/signup-intent.repository", () => ({
+  ...realSignupIntentModule,
+  ReferralSignupIntentRepository: SignupIntents,
+}));
+
 const profileCalls: { op: string; args: unknown[] }[] = [];
 const Profile = Context.Service<
   Profile,
@@ -114,8 +193,16 @@ const Profile = Context.Service<
     readonly create: (
       accountId: string,
       email: string,
-      input: ProfileInput
-    ) => Effect.Effect<{ firstName: string }, never>;
+      input: ProfileInput,
+      signupReferral?: SignupIntent
+    ) => Effect.Effect<
+      {
+        readonly account: { accountId: string; dotyposCustomerId: string };
+        readonly profile: { firstName: string };
+        readonly created: boolean;
+      },
+      never
+    >;
   }
 >()("@test/ActionsProfile");
 Object.assign(Profile, {
@@ -124,14 +211,98 @@ Object.assign(Profile, {
       profileCalls.push({ op: "update", args: [account, input] });
       return Effect.succeed({ firstName: "Ada" });
     },
-    create: (accountId, email, input) => {
-      profileCalls.push({ op: "create", args: [accountId, email, input] });
-      return Effect.succeed({ firstName: "Ada" });
+    create: (accountId, email, input, signupReferral) => {
+      profileCalls.push({
+        op: "create",
+        args: [accountId, email, input, signupReferral],
+      });
+      // The real link repository stores the intent with the created link.
+      storedIntent = signupReferral && {
+        ...signupReferral,
+        code: "RFL12345",
+        outcome: null,
+        acknowledged: false,
+      };
+      return Effect.succeed({
+        account: { accountId, dotyposCustomerId: "60222" },
+        profile: { firstName: "Ada" },
+        created: true,
+      });
     },
   }),
 });
 mock.module("@/features/account/backend/customer-profile.service", () => ({
   CustomerProfileService: Profile,
+}));
+
+const referralCalls: { op: string; args: unknown }[] = [];
+let availableReferralCode: Effect.Effect<
+  string | undefined,
+  ReferralError | ReferralOutage
+>;
+let referralAcceptance: Effect.Effect<
+  { readonly kind: "accepted" },
+  ReferralError
+>;
+let settledReferral: Effect.Effect<boolean, ReferralOutage>;
+Object.assign(Referrals, {
+  Live: Layer.succeed(Referrals, {
+    findAvailableCode: (input) => {
+      referralCalls.push({ op: "findAvailableCode", args: input });
+      return availableReferralCode;
+    },
+    acceptReferral: (input) => {
+      referralCalls.push({ op: "acceptReferral", args: input });
+      return referralAcceptance;
+    },
+    hasSettledReferral: (input) => {
+      referralCalls.push({ op: "hasSettledReferral", args: input });
+      return settledReferral;
+    },
+  }),
+});
+mock.module("@/features/referrals", () => ({ ReferralService: Referrals }));
+
+// Completion supplies its resolved customer, so settlement never reads a session.
+CustomerAccountContactService.Live = Layer.mock(
+  CustomerAccountContactService,
+  {}
+);
+// The remembered code lives in the request's referral cookie.
+const rememberedReferralCookie: InMemoryReferralCookie = {
+  get value() {
+    return request.cookie(referralCodeCookieName);
+  },
+  set value(value) {
+    request.setCookie(referralCodeCookieName, value);
+  },
+};
+let rememberedReferralWritable = true;
+RememberedReferral.Cookies = Layer.unwrap(
+  Effect.sync(() =>
+    RememberedReferral.inMemory(rememberedReferralCookie, {
+      writable: rememberedReferralWritable,
+    })
+  )
+);
+
+type PreferenceSave = {
+  readonly accountId: "@test/account-id";
+  readonly locale: "cs-CZ" | "en-US";
+};
+
+let preferenceSaveEffect: Effect.Effect<void, unknown> =
+  Effect.succeed(undefined);
+let preferenceSaveCalls: PreferenceSave[] = [];
+
+mock.module("@/features/account/backend/customer-locale-preference", () => ({
+  saveAccountLocalePreference: (accountId: string, locale: string) => {
+    preferenceSaveCalls.push({
+      accountId: accountId as "@test/account-id",
+      locale: locale as "cs-CZ" | "en-US",
+    });
+    return preferenceSaveEffect;
+  },
 }));
 
 let lookupOutcome: Effect.Effect<
@@ -176,22 +347,34 @@ const syntheticAresCompany = {
 
 const activeSession = {
   accountId: "@test/account-id" as const,
-  email: "ada@example.test",
+  email: customerEmail,
   deletionRequested: false,
 };
 
 describe("account actions", () => {
   beforeEach(() => {
     profileCalls.length = 0;
+    referralCalls.length = 0;
+    storedIntent = undefined;
+    availableReferralCode = Effect.succeed("RFL12345");
+    referralAcceptance = Effect.succeed({ kind: "accepted" });
+    settledReferral = Effect.succeed(false);
+    rememberedReferralWritable = true;
     revalidatePath.mockClear();
-    areAccountsEnabled.mockReset();
-    areAccountsEnabled.mockResolvedValue(true);
+    referralsEnabled = true;
+    areReferralsEnabled.mockReset();
+    areReferralsEnabled.mockImplementation(() =>
+      Promise.resolve(referralsEnabled)
+    );
     currentUser = Effect.succeed(activeSession);
     resolve = Effect.succeed({
       accountId: "@test/account-id",
       dotyposCustomerId: "60111",
     });
     deleteUser = () => Promise.resolve({ success: true });
+    preferenceSaveEffect = Effect.succeed(undefined);
+    preferenceSaveCalls = [];
+    request.reset();
   });
 
   const importActions = () => import("./actions");
@@ -211,10 +394,276 @@ describe("account actions", () => {
     expect(profileCalls.map(({ op }) => op)).toEqual(["create"]);
     expect(profileCalls[0]!.args).toEqual([
       "@test/account-id",
-      "ada@example.test",
+      customerEmail,
       { firstName: "Ada" },
+      undefined,
     ]);
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  const resolveAsNewCustomerUntilCreated = () => {
+    resolve = Effect.suspend(() =>
+      profileCalls.some(({ op }) => op === "create")
+        ? Effect.succeed({
+            accountId: "@test/account-id" as const,
+            dotyposCustomerId: "60222",
+          })
+        : Effect.fail(
+            new CustomerAccountAccessError({
+              reason: "link-required",
+              linkReason: "not-found",
+            })
+          )
+    );
+  };
+
+  test("stores the entered referral with the new link and records it afterwards", async () => {
+    resolveAsNewCustomerUntilCreated();
+    const { completeCustomerProfile } = await importActions();
+
+    const result = await completeCustomerProfile({
+      firstName: "Ada",
+      referralCode: " rfl12345 ",
+    });
+
+    expect(result).toEqual({
+      data: { status: "completed", referral: { status: "applied" } },
+    });
+    expect(profileCalls).toEqual([
+      {
+        op: "create",
+        args: [
+          "@test/account-id",
+          customerEmail,
+          { firstName: "Ada" },
+          codeTarget,
+        ],
+      },
+    ]);
+    expect(referralCalls).toEqual([
+      { op: "findAvailableCode", args: { code: "rfl12345" } },
+      {
+        op: "acceptReferral",
+        args: {
+          code: "RFL12345",
+          customerAccountId: "@test/account-id",
+          dotyposCustomerId: "60222",
+        },
+      },
+    ]);
+    expect(storedIntent?.outcome).toBe("applied");
+  });
+
+  test("reports an unavailable typed referral code on its field and creates nothing", async () => {
+    resolveAsNewCustomerUntilCreated();
+    availableReferralCode = Effect.succeed(undefined);
+    const { completeCustomerProfile } = await importActions();
+
+    const result = await completeCustomerProfile({
+      firstName: "Ada",
+      referralCode: "RFLGONE1",
+      prefilledReferralCode: "RFL12345",
+    });
+
+    expect(result).toEqual({
+      data: { status: "referral-code-unavailable" },
+    });
+    expect(profileCalls).toEqual([]);
+    expect(referralCalls.map(({ op }) => op)).toEqual(["findAvailableCode"]);
+  });
+
+  test("completes without a referral when the shared-link code cannot be checked", async () => {
+    resolveAsNewCustomerUntilCreated();
+    availableReferralCode = Effect.fail(
+      new SqlError.SqlError({
+        reason: new SqlError.UnknownError({
+          cause: new Error("synthetic connection refused"),
+          message: "synthetic connection refused",
+          operation: "query",
+        }),
+      })
+    );
+    const { completeCustomerProfile } = await importActions();
+
+    const result = await completeCustomerProfile({
+      firstName: "Ada",
+      referralCode: "rfl12345",
+      prefilledReferralCode: "RFL12345",
+    });
+
+    expect(result).toEqual({ data: { status: "completed" } });
+    expect(profileCalls.map(({ args }) => args[3])).toEqual([undefined]);
+    expect(referralCalls.map(({ op }) => op)).toEqual(["findAvailableCode"]);
+  });
+
+  test("reports the referral as not applied when the account already has one", async () => {
+    resolveAsNewCustomerUntilCreated();
+    referralAcceptance = Effect.fail(
+      new ReferralError({ reason: "already_attributed" })
+    );
+    const { completeCustomerProfile } = await importActions();
+
+    const result = await completeCustomerProfile({
+      firstName: "Ada",
+      referralCode: "RFL12345",
+    });
+
+    expect(result).toEqual({
+      data: {
+        status: "completed",
+        referral: { status: "not-applied", reason: "already-referred" },
+      },
+    });
+    expect(referralCalls.map(({ op }) => op)).toEqual([
+      "findAvailableCode",
+      "acceptReferral",
+    ]);
+    expect(storedIntent?.outcome).toBe("already-referred");
+  });
+
+  test("records a typed referral code instead of the remembered one", async () => {
+    resolveAsNewCustomerUntilCreated();
+    rememberedReferralCookie.value = "RFLCOOKIE";
+    const { completeCustomerProfile } = await importActions();
+
+    await completeCustomerProfile({
+      firstName: "Ada",
+      referralCode: "RFLTYPED1",
+      prefilledReferralCode: "RFLCOOKIE",
+    });
+
+    expect(referralCalls[0]).toEqual({
+      op: "findAvailableCode",
+      args: { code: "RFLTYPED1" },
+    });
+  });
+
+  test("forgets the remembered code once completion leaves the customer's referral settled", async () => {
+    resolveAsNewCustomerUntilCreated();
+    rememberedReferralCookie.value = "RFL12345";
+    settledReferral = Effect.succeed(true);
+    const { completeCustomerProfile } = await importActions();
+
+    const result = await completeCustomerProfile({
+      firstName: "Ada",
+      referralCode: "RFL12345",
+      prefilledReferralCode: "RFL12345",
+    });
+
+    expect(result).toEqual({
+      data: { status: "completed", referral: { status: "applied" } },
+    });
+    expect(referralCalls.at(-1)).toEqual({
+      op: "hasSettledReferral",
+      args: { dotyposCustomerId: "60222" },
+    });
+    expect(rememberedReferralCookie.value).toBeUndefined();
+  });
+
+  test("decides the referral program once per action, so a later flag outage cannot skip its referral work", async () => {
+    resolveAsNewCustomerUntilCreated();
+    rememberedReferralCookie.value = "RFL12345";
+    settledReferral = Effect.succeed(true);
+    // The first evaluation succeeds; any later one would fail closed.
+    areReferralsEnabled
+      .mockImplementationOnce(() => Promise.resolve(true))
+      .mockImplementation(() => Promise.resolve(false));
+    const { completeCustomerProfile } = await importActions();
+
+    const result = await completeCustomerProfile({
+      firstName: "Ada",
+      referralCode: "RFL12345",
+      prefilledReferralCode: "RFL12345",
+    });
+
+    expect(areReferralsEnabled).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      data: { status: "completed", referral: { status: "applied" } },
+    });
+    // The remembered-code reader used the same decision as the completion.
+    expect(rememberedReferralCookie.value).toBeUndefined();
+  });
+
+  test("keeps the remembered code while the customer's referral is open or unknown", async () => {
+    resolveAsNewCustomerUntilCreated();
+    rememberedReferralCookie.value = "RFL12345";
+    referralAcceptance = Effect.fail(
+      new ReferralError({ reason: "pending_payment" })
+    );
+    const { completeCustomerProfile } = await importActions();
+
+    const pending = await completeCustomerProfile({
+      firstName: "Ada",
+      referralCode: "RFL12345",
+      prefilledReferralCode: "RFL12345",
+    });
+    expect(pending).toEqual({
+      data: { status: "completed", referral: { status: "pending" } },
+    });
+
+    settledReferral = Effect.fail(
+      new DotyposUnavailable({
+        operation: "listReservations",
+        reason: "server",
+      })
+    );
+    const unknown = await completeCustomerProfile({ firstName: "Ada" });
+    expect(unknown).toEqual({ data: { status: "completed" } });
+
+    expect(
+      referralCalls.filter(({ op }) => op === "hasSettledReferral")
+    ).toHaveLength(2);
+    expect(rememberedReferralCookie.value).toBe("RFL12345");
+  });
+
+  test("completes the profile when the settled code cannot be forgotten", async () => {
+    rememberedReferralCookie.value = "RFL12345";
+    rememberedReferralWritable = false;
+    settledReferral = Effect.succeed(true);
+    const { completeCustomerProfile } = await importActions();
+
+    const result = await completeCustomerProfile({ firstName: "Ada" });
+
+    expect(result).toEqual({ data: { status: "completed" } });
+    expect(rememberedReferralCookie.value).toBe("RFL12345");
+  });
+
+  test("never checks whether the referral is settled without a remembered code", async () => {
+    resolveAsNewCustomerUntilCreated();
+    settledReferral = Effect.succeed(true);
+    const { completeCustomerProfile } = await importActions();
+
+    await completeCustomerProfile({
+      firstName: "Ada",
+      referralCode: "RFL12345",
+    });
+
+    expect(referralCalls.map(({ op }) => op)).toEqual([
+      "findAvailableCode",
+      "acceptReferral",
+    ]);
+    expect(rememberedReferralCookie.value).toBeUndefined();
+  });
+
+  test("ignores a referral code when completion finds an already linked customer", async () => {
+    const { completeCustomerProfile } = await importActions();
+
+    const result = await completeCustomerProfile({
+      firstName: "Ada",
+      referralCode: "RFL12345",
+    });
+
+    expect(result).toEqual({ data: { status: "completed" } });
+    expect(profileCalls).toEqual([
+      {
+        op: "update",
+        args: [
+          { accountId: "@test/account-id", dotyposCustomerId: "60111" },
+          { firstName: "Ada" },
+        ],
+      },
+    ]);
+    expect(referralCalls).toEqual([]);
   });
 
   test("updates the profile when the account already links a customer", async () => {
@@ -232,12 +681,12 @@ describe("account actions", () => {
 
     const result = await updateCustomerProfile({
       firstName: "Ada",
-      email: "sneaky@example.test",
+      email: sneakyEmail,
     } as never);
 
     expect(result.validationErrors).toBeTruthy();
     expect(profileCalls).toHaveLength(0);
-    expect(JSON.stringify(profileCalls)).not.toContain("sneaky@example.test");
+    expect(JSON.stringify(profileCalls)).not.toContain(sneakyEmail);
   });
 
   test("returns the localized profile error when the resolver blocks the edit", async () => {
@@ -273,34 +722,128 @@ describe("account actions", () => {
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 
-  test("returns the existing unavailable failure without reading account data when accounts are disabled", async () => {
-    areAccountsEnabled.mockResolvedValue(false);
+  // A cookie write makes Next re-render the referring page under its old
+  // locale in the save's response while the locale switch navigates away
+  // from it; the error page flashed in that window. The proxy moves the
+  // locale cookie on the navigated page.
+  test("leaves the locale cookie to the proxy", async () => {
+    const { updateLocalePreference } = await importActions();
+
+    await updateLocalePreference({ locale: "cs-CZ" });
+
+    expect(preferenceSaveCalls).toHaveLength(1);
+    expect(request.cookieWrites()).toEqual([]);
+  });
+
+  test("ignores a submitted referral code while the referral program is withheld", async () => {
+    referralsEnabled = false;
+    resolveAsNewCustomerUntilCreated();
+    availableReferralCode = Effect.succeed(undefined);
+    rememberedReferralCookie.value = "RFL12345";
+    settledReferral = Effect.succeed(true);
     const { completeCustomerProfile } = await importActions();
 
-    const result = await completeCustomerProfile({ firstName: "Ada" });
+    const result = await completeCustomerProfile({
+      firstName: "Ada",
+      referralCode: "RFLGONE1",
+      prefilledReferralCode: "RFL12345",
+    });
 
-    expect(result.serverError).toBe(
-      "We cannot reach your account right now. Reservations can still be made without an account."
-    );
-    expect(profileCalls).toHaveLength(0);
-    expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ data: { status: "completed" } });
+    expect(profileCalls).toEqual([
+      {
+        op: "create",
+        args: [
+          "@test/account-id",
+          customerEmail,
+          { firstName: "Ada" },
+          undefined,
+        ],
+      },
+    ]);
+    expect(storedIntent).toBeUndefined();
+    expect(referralCalls).toEqual([]);
+    expect(rememberedReferralCookie.value).toBe("RFL12345");
   });
 
-  test("applies the unavailable failure to profile updates when accounts are disabled", async () => {
-    areAccountsEnabled.mockResolvedValue(false);
-    const { updateCustomerProfile } = await importActions();
+  test("acknowledges the settled signup referral notice", async () => {
+    storedIntent = {
+      ...codeTarget,
+      code: "RFL12345",
+      outcome: "applied",
+      acknowledged: false,
+    };
+    const { acknowledgeSignupReferralNotice } = await importActions();
 
-    const result = await updateCustomerProfile({ firstName: "Ada" });
+    const result = await acknowledgeSignupReferralNotice({});
 
-    expect(result.serverError).toBe(
-      "We cannot reach your account right now. Reservations can still be made without an account."
-    );
-    expect(profileCalls).toHaveLength(0);
-    expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ data: { status: "acknowledged" } });
+    expect(storedIntent?.acknowledged).toBe(true);
   });
 
-  test("deletes through the Better Auth endpoint and revalidates account and deleted paths", async () => {
-    areAccountsEnabled.mockResolvedValue(false);
+  test("leaves the signup referral notice untouched while the referral program is withheld", async () => {
+    referralsEnabled = false;
+    storedIntent = {
+      ...codeTarget,
+      code: "RFL12345",
+      outcome: "applied",
+      acknowledged: false,
+    };
+    const { acknowledgeSignupReferralNotice } = await importActions();
+
+    const result = await acknowledgeSignupReferralNotice({});
+
+    expect(result.serverError).toBe(
+      m.accountUnavailableDescription({}, { locale: "en-US" })
+    );
+    expect(areReferralsEnabled).toHaveBeenCalledTimes(1);
+    expect(storedIntent?.acknowledged).toBe(false);
+  });
+
+  test("saves the locale preference for the verified account", async () => {
+    const { updateLocalePreference } = await importActions();
+
+    const result = await updateLocalePreference({ locale: "cs-CZ" });
+
+    expect(result).toEqual({ data: { status: "saved" } });
+    expect(preferenceSaveCalls).toEqual([
+      { accountId: "@test/account-id", locale: "cs-CZ" },
+    ]);
+    expect(profileCalls).toHaveLength(0);
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  test("returns the session-expired error without saving when unauthenticated", async () => {
+    currentUser = Effect.succeed(null);
+    const { updateLocalePreference } = await importActions();
+
+    const result = await updateLocalePreference({ locale: "cs-CZ" });
+
+    expect(result.serverError).toBe(
+      m.accountSessionExpired({}, { locale: "en-US" })
+    );
+    expect(preferenceSaveCalls).toHaveLength(0);
+  });
+
+  test("returns the deletion-pending error when the account is being deleted", async () => {
+    preferenceSaveEffect = Effect.fail(
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      })
+    );
+    const { updateLocalePreference } = await importActions();
+
+    const result = await updateLocalePreference({ locale: "en-US" });
+
+    expect(result.serverError).toBe(
+      m.accountDeletionPendingError({}, { locale: "en-US" })
+    );
+    expect(preferenceSaveCalls).toHaveLength(1);
+    expect(request.cookieWrites()).toEqual([]);
+  });
+
+  test("deletes through the Better Auth endpoint and revalidates every account path", async () => {
     const seen: { body: object; headers: Headers }[] = [];
     deleteUser = async (args) => {
       seen.push(args);
@@ -313,8 +856,7 @@ describe("account actions", () => {
     expect(result).toEqual({ data: { status: "deleted" } });
     expect(seen).toHaveLength(1);
     expect(String(seen[0]!.headers.get("referer"))).toContain("deskohub.test");
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account/deleted");
+    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account", "layout");
   });
 
   test("asks for reauthentication when the delete endpoint reports a stale session", async () => {
@@ -348,6 +890,40 @@ describe("account actions", () => {
     expect(deleteUserCalls).toBe(0);
   });
 
+  test("reports a retryable failure when the session cannot be read", async () => {
+    const { customerAccountUnavailable } = await import("./customer-account");
+    currentUser = Effect.fail(
+      customerAccountUnavailable("authentication.session")
+    );
+
+    let deleteUserCalls = 0;
+    deleteUser = () => {
+      deleteUserCalls += 1;
+      return Promise.resolve({ success: true });
+    };
+    const { deleteCustomerAccount } = await importActions();
+
+    const result = await deleteCustomerAccount({ confirmed: true });
+
+    expect(result).toEqual({ data: { status: "failed" } });
+    expect(deleteUserCalls).toBe(0);
+  });
+
+  test("reports a refusal when the endpoint refuses to delete a review account", async () => {
+    const { APIError } = await import("better-auth");
+    deleteUser = () => {
+      throw new APIError("FORBIDDEN", {
+        code: "REVIEW_ACCOUNT_DELETION_REFUSED",
+        message: "A review account can't be deleted.",
+      });
+    };
+    const { deleteCustomerAccount } = await importActions();
+
+    const result = await deleteCustomerAccount({ confirmed: true });
+
+    expect(result).toEqual({ data: { status: "refused" } });
+  });
+
   test("reports a retryable failure for other endpoint errors and keeps the account", async () => {
     const { APIError } = await import("better-auth");
     deleteUser = () => {
@@ -360,8 +936,7 @@ describe("account actions", () => {
     const result = await deleteCustomerAccount({ confirmed: true });
 
     expect(result).toEqual({ data: { status: "failed" } });
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account/deleted");
+    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account", "layout");
   });
 });
 
@@ -369,8 +944,6 @@ describe("account ARES business lookup action", () => {
   beforeEach(() => {
     profileCalls.length = 0;
     revalidatePath.mockClear();
-    areAccountsEnabled.mockReset();
-    areAccountsEnabled.mockResolvedValue(true);
     currentUser = Effect.succeed(activeSession);
     resolve = Effect.succeed({
       accountId: "@test/account-id",
@@ -404,38 +977,6 @@ describe("account ARES business lookup action", () => {
     expect(lookupCalls).toEqual(["27082440"]);
     expect(profileCalls).toHaveLength(0);
     expect(revalidatePath).not.toHaveBeenCalled();
-  });
-
-  test("reports an invalid company ID without touching the registry", async () => {
-    lookupOutcome = Effect.fail(
-      new AresLookupFailure({ reason: "InvalidIco" })
-    );
-    const { lookupAresBusiness } = await importActions();
-
-    const result = await lookupAresBusiness({ ico: "1234567a" });
-
-    expect(result).toEqual({
-      data: {
-        status: "invalid-ico",
-        message:
-          "Enter a valid company ID (IČO): exactly eight digits with a valid check digit.",
-      },
-    });
-    expect(lookupCalls).toEqual(["1234567a"]);
-  });
-
-  test("reports a missing company as not found", async () => {
-    lookupOutcome = Effect.fail(new AresLookupFailure({ reason: "NotFound" }));
-    const { lookupAresBusiness } = await importActions();
-
-    const result = await lookupAresBusiness({ ico: "27082440" });
-
-    expect(result).toEqual({
-      data: {
-        status: "not-found",
-        message: "No company was found for this company ID (IČO).",
-      },
-    });
   });
 
   test("reports an unavailable registry as retryable", async () => {
@@ -518,18 +1059,5 @@ describe("account ARES business lookup action", () => {
     );
     expect(lookupCalls).toHaveLength(0);
     expect(profileCalls).toHaveLength(0);
-  });
-
-  test("never looks up a company when accounts are disabled", async () => {
-    areAccountsEnabled.mockResolvedValue(false);
-    const { lookupAresBusiness } = await importActions();
-
-    const result = await lookupAresBusiness({ ico: "27082440" });
-
-    expect(result.serverError).toBe(
-      "We cannot reach your account right now. Reservations can still be made without an account."
-    );
-    expect(lookupCalls).toHaveLength(0);
-    expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
   });
 });

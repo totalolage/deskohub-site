@@ -6,7 +6,7 @@ import type { CalculatedDiscountApplication } from "./calculator";
 import type { AppliedDiscount } from "./contracts";
 import type { DiscountClaimInstruction, DiscountProvenance } from "./provider";
 
-export interface DiscountCommitmentApplication {
+interface DiscountCommitmentApplication {
   readonly application: AppliedDiscount;
   readonly provenance: DiscountProvenance;
   readonly claim?: DiscountClaimInstruction;
@@ -50,19 +50,3 @@ export const makeDiscountCommitment = (input: {
 export const getDiscountCommitmentPayload = (
   commitment: DiscountCommitment
 ): DiscountCommitmentPayload => commitment[readDiscountCommitment]();
-
-type Assert<T extends true> = T;
-
-export type CommitmentPayloadRemainsPrivate = Assert<
-  Extract<
-    keyof DiscountCommitment,
-    | "product"
-    | "applications"
-    | "claimInstructions"
-    | "provenance"
-    | "providerNamespace"
-    | "providerReference"
-  > extends never
-    ? true
-    : false
->;

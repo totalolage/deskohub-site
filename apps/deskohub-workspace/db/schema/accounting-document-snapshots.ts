@@ -33,6 +33,3 @@ export const accountingDocumentSnapshots = pgTable(
     ),
   ]
 );
-
-export type AccountingDocumentSnapshotRow =
-  typeof accountingDocumentSnapshots.$inferSelect;
