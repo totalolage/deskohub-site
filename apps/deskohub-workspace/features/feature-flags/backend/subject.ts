@@ -7,10 +7,10 @@ import {
   readVisitorIdentity,
   type VisitorIdentity,
 } from "@/shared/backend/analytics/visitor-identity";
+import { getRequestHeaders } from "@/shared/backend/utils/request-headers";
 import {
   CurrentVisitorIdentity,
   CurrentWorkspaceRequestHeaders,
-  currentRequestHeaders,
 } from "@/shared/backend/workspace-request-context";
 
 /**
@@ -28,8 +28,9 @@ export interface FeatureFlagAudience {
   readonly subject: PostHogFeatureFlagSubject;
   /**
    * The request being served, as an identity for sharing one evaluation
-   * across its runs: the headers its boundary captured, else Next's request
-   * headers. None for a run outside any request, such as a task.
+   * across its runs: Next's request headers, one object per request, else
+   * the headers its boundary captured. None for a run outside any request,
+   * such as a task.
    */
   readonly request: WeakKey | undefined;
 }
@@ -40,29 +41,34 @@ export interface FeatureFlagAudience {
  */
 export const getCurrentFeatureFlagAudience = Effect.fn(
   "getCurrentFeatureFlagAudience"
-)(() =>
-  Effect.all([CurrentVisitorIdentity, CurrentWorkspaceRequestHeaders]).pipe(
-    Effect.flatMap(([resolvedVisitor, capturedHeaders]) =>
-      Option.match(resolvedVisitor, {
-        onSome: (visitor) =>
-          Effect.succeed(audienceOf(visitor, capturedHeaders)),
-        onNone: () =>
-          currentRequestHeaders.pipe(
-            Effect.flatMap((headers) =>
-              readVisitorIdentity(headers).pipe(
-                Effect.map((visitor) => audienceOf(visitor, headers))
-              )
-            )
-          ),
+)(
+  function* () {
+    const resolvedVisitor = yield* CurrentVisitorIdentity;
+    const capturedHeaders = yield* CurrentWorkspaceRequestHeaders;
+    if (capturedHeaders === undefined) {
+      if (Option.isSome(resolvedVisitor)) {
+        // A boundary that captured no request, such as a task's.
+        return audienceOf(resolvedVisitor.value, undefined);
+      }
+      const headers = yield* getRequestHeaders;
+      return audienceOf(yield* readVisitorIdentity(headers), headers);
+    }
+    const visitor = Option.isSome(resolvedVisitor)
+      ? resolvedVisitor.value
+      : yield* readVisitorIdentity(capturedHeaders);
+    // A route boundary captures its `Request`'s own headers, a different
+    // object from Next's, which the request's other runs read.
+    const request = yield* getRequestHeaders.pipe(
+      Effect.orElseSucceed(() => capturedHeaders)
+    );
+    return audienceOf(visitor, request);
+  },
+  Effect.catch((error) =>
+    Effect.logWarning(error.message, { cause: error.cause }).pipe(
+      Effect.as<FeatureFlagAudience>({
+        subject: workspaceReleaseSubject,
+        request: undefined,
       })
-    ),
-    Effect.catch((error) =>
-      Effect.logWarning(error.message, { cause: error.cause }).pipe(
-        Effect.as<FeatureFlagAudience>({
-          subject: workspaceReleaseSubject,
-          request: undefined,
-        })
-      )
     )
   )
 );

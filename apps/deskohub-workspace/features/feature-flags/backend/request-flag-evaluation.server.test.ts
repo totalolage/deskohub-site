@@ -159,6 +159,12 @@ const readGatesInOneRun = Effect.all([
   ReferralGate.isOpen,
 ]);
 
+/** Serves `effect` as a new request whose boundary captured `headers`. */
+const inNewRequest = (headers: Headers) => {
+  nextRequestHeaders = new Headers(headers);
+  return withWorkspaceRequestContext(headers);
+};
+
 let now = 0;
 /** Runs `effect` on a clock that reads `now`. */
 const onTestClock = <A, E>(effect: Effect.Effect<A, E>) =>
@@ -180,7 +186,7 @@ const readOfficeAnonymouslyAt = (time: number) => {
   return WorkspaceFeatureFlagService.pipe(
     Effect.flatMap((featureFlags) => featureFlags.isEnabled("office_page")),
     Effect.provide(WorkspaceFeatureFlagService.Default),
-    withWorkspaceRequestContext(anonymousHeaders()),
+    inNewRequest(anonymousHeaders()),
     onTestClock,
     Effect.option,
     Effect.runPromise
@@ -296,8 +302,10 @@ describe("one remote evaluation per request", () => {
 
   test("a route handler's gates share one evaluation per request", async () => {
     remoteAnswer = Effect.succeed({ office_page: true, referrals: true });
-    const handleRoute = (request: Request) =>
-      readGatesInOneRun.pipe(
+    const handleRoute = (request: Request) => {
+      // Next's request store holds its own copy of the request's headers.
+      nextRequestHeaders = new Headers(request.headers);
+      return readGatesInOneRun.pipe(
         Effect.provide(
           Layer.mergeAll(
             releaseGateForRun(OfficeGate, closeOnRunFailure),
@@ -308,6 +316,7 @@ describe("one remote evaluation per request", () => {
         withWorkspaceRequestContext(request.headers),
         runWorkspaceEffect("test.route")
       );
+    };
 
     const first = new Request("https://workspace.test/api", {
       headers: visitorHeaders("route-visitor"),
@@ -320,6 +329,38 @@ describe("one remote evaluation per request", () => {
     });
     await handleRoute(second);
     expect(remoteEvaluations).toHaveLength(2);
+  });
+
+  test("a route handler shares its evaluation with the request's own gate runs", async () => {
+    remoteAnswer = Effect.succeed({ office_page: true });
+    const request = new Request("https://workspace.test/api", {
+      headers: visitorHeaders("mixed-route-visitor"),
+    });
+    nextRequestHeaders = new Headers(request.headers);
+
+    const [boundaryGates, requestGate] = await Promise.all([
+      readGatesInOneRun.pipe(
+        Effect.provide(
+          Layer.mergeAll(OfficeGate.Live, MeetingRoomGate.Live, ReferralGate.Live)
+        ),
+        withWorkspaceRequestContext(request.headers),
+        runWorkspaceEffect("test.route")
+      ),
+      decideForRequest(OfficeGate),
+    ]);
+
+    expect(boundaryGates).toEqual([true, false, false]);
+    expect(requestGate).toBe(true);
+    expect(remoteEvaluations).toHaveLength(1);
+  });
+
+  test("opens a gate only for true, never for a variant", async () => {
+    nextRequestHeaders = visitorHeaders("variant-visitor");
+    remoteAnswer = Effect.succeed({
+      office_page: "treatment",
+    } as unknown as FlagValues);
+
+    await expect(decideForRequest(OfficeGate)).resolves.toBe(false);
   });
 
   test("a run outside any request evaluates once per run", async () => {
@@ -420,7 +461,7 @@ describe("the global subject's shared evaluation", () => {
       WorkspaceFeatureFlagService.pipe(
         Effect.flatMap((featureFlags) => featureFlags.isEnabled("office_page")),
         Effect.provide(WorkspaceFeatureFlagService.Default),
-        withWorkspaceRequestContext(headers),
+        inNewRequest(headers),
         onTestClock,
         Effect.runPromise
       );
@@ -452,7 +493,7 @@ describe("disabled remote evaluation", () => {
             ReferralGate.Live
           )
         ),
-        withWorkspaceRequestContext(headers),
+        inNewRequest(headers),
         recordLogs
       );
 

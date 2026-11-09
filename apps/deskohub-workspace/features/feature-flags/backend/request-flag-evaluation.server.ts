@@ -57,8 +57,9 @@ export const evaluateRequestFlags = (
   );
 
 /**
- * Whether the flag is on for the audience. A flag PostHog didn't evaluate is
- * a failed lookup, so a gate over it closes as unavailable.
+ * Whether the flag is on for the audience: only `true` is. A flag PostHog
+ * didn't evaluate is a failed lookup, so a gate over it closes as
+ * unavailable.
  */
 export const isFlagEnabled = (
   flags: RequestFlagValues,
@@ -72,7 +73,7 @@ export const isFlagEnabled = (
           cause: undefined,
         })
       )
-    : Effect.succeed(value !== false);
+    : Effect.succeed(value === true);
 };
 
 /** The evaluations one run outside any request shares. */
