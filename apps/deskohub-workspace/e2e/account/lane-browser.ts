@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { Effect } from "effect";
 import type { AccountSection } from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
@@ -25,6 +26,11 @@ import {
   waitForRememberedReferralCode,
 } from "../referrals/referral-cookie";
 import {
+  type AccountDataExportDelivery,
+  type AccountDataExportRefusal,
+  readAccountDataExportArchiveShape,
+} from "./account-data-export";
+import {
   accountSectionLandmarks,
   selectAccountSectionInSession,
 } from "./account-sections";
@@ -44,6 +50,11 @@ const deleteConfirmCheckboxSelector = "#confirm-account-deletion";
 const deleteConfirmSelector = "#delete-account-confirm";
 const deleteReauthSendSelector = "#delete-account-reauth-send";
 const languageTriggerSelector = '[data-slot="select-trigger"]';
+const accountDataExportSelector = '[data-slot="account-data-export"]';
+const accountDataExportActionSelector =
+  '[data-slot="account-data-export-action"]';
+/** The export block once its request has settled either way. */
+const settledAccountDataExportSelector = `${accountDataExportSelector}:is([data-state="delivered"], [data-state="error"])`;
 
 /** The selectors of the account profile and billing fields the lane fills. */
 export const accountProfileFieldSelectors = {
@@ -269,6 +280,23 @@ export type WorkspaceE2EAccountLaneBrowser = WorkspaceE2EAccountBrowser & {
   readonly hasLocaleCookie: (
     locale: Locale
   ) => Effect.Effect<boolean, WorkspaceE2EError>;
+  /**
+   * Starts the account data export from the legal page's hydrated control
+   * and reports the export response at `path`, read in memory, and the
+   * download and state the control settled on. The archive is never written
+   * anywhere: the browser's copy of the download is deleted at once.
+   */
+  readonly downloadAccountDataExport: (
+    path: string
+  ) => Effect.Effect<AccountDataExportDelivery, WorkspaceE2EError>;
+  /**
+   * Requests the export at `path` from a signed-out visitor's own browser,
+   * closed before this returns, so the lane's session and cookies stay as
+   * they were.
+   */
+  readonly requestAccountDataExportSignedOut: (
+    path: string
+  ) => Effect.Effect<AccountDataExportRefusal, WorkspaceE2EError>;
 };
 
 type AccountBrowserConfig = Pick<
@@ -569,10 +597,13 @@ const makeAccountBrowser = (
 export const makeWorkspaceE2EAccountLaneBrowser = ({
   config,
   openAssistantSession,
+  openSeparateSession,
   openSession,
 }: {
   readonly config: AccountBrowserConfig;
   readonly openAssistantSession: OpenE2EBrowserSession;
+  /** Opens another browser session named `name`, in its own context. */
+  readonly openSeparateSession: (name: string) => OpenE2EBrowserSession;
   readonly openSession: OpenE2EBrowserSession;
 }): WorkspaceE2EAccountLaneBrowser => {
   const withLaneSession = <A>(
@@ -873,5 +904,114 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
         session: openSession,
         timeoutMs,
       }),
+    downloadAccountDataExport: (path) =>
+      Effect.andThen(
+        withLaneSession((laneSession) =>
+          waitForReactHandler(
+            laneSession,
+            accountDataExportActionSelector,
+            "onClick",
+            { timeoutMs: uiTransition }
+          )
+        ),
+        withLaneSession((laneSession) =>
+          laneSession.use("download the account data export", (page) =>
+            downloadAccountDataExportFromPage(page, path, config.timeouts)
+          )
+        )
+      ),
+    requestAccountDataExportSignedOut: (path) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const visitor = yield* Effect.acquireRelease(
+            openSeparateSession("signed-out-visitor"),
+            (session) =>
+              session
+                .close()
+                .pipe(
+                  Effect.timeout(config.timeouts.browserSessionClose),
+                  Effect.ignore
+                ),
+            { interruptible: true }
+          );
+          const url = new URL(path, config.baseUrl).toString();
+          yield* visitor.primePreviewAccess(url, config.bypassSecret, {
+            timeoutMs: config.timeouts.browserNavigation,
+          });
+          return yield* visitor.use(
+            "request the account data export signed out",
+            async (page): Promise<AccountDataExportRefusal> => {
+              const response = await page.request.get(url, {
+                maxRedirects: 0,
+                timeout: config.timeouts.browserNavigation,
+              });
+              try {
+                return {
+                  bodyLength: (await response.body()).length,
+                  cacheControl: response.headers()["cache-control"],
+                  status: response.status(),
+                };
+              } finally {
+                await response.dispose();
+              }
+            }
+          );
+        })
+      ),
+  };
+};
+
+/**
+ * Activates the export control and observes the export it fetches: the
+ * response at `path` by its pathname, the download the control starts from
+ * it, and the state the control settles on. A failed response starts no
+ * download, so only a successful one waits for it.
+ */
+const downloadAccountDataExportFromPage = async (
+  page: Page,
+  path: string,
+  timeouts: AccountBrowserConfig["timeouts"]
+): Promise<AccountDataExportDelivery> => {
+  const responded = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === path,
+    { timeout: timeouts.datasource }
+  );
+  const downloaded = page
+    .waitForEvent("download", { timeout: timeouts.uiTransition })
+    .catch(() => undefined);
+  await page
+    .locator(accountDataExportActionSelector)
+    .filter({ visible: true })
+    .click({ timeout: timeouts.browserAction });
+  const response = await responded;
+  const headers = await response.allHeaders();
+  const archive = response.ok()
+    ? readAccountDataExportArchiveShape(await response.body())
+    : ({ kind: "unreadable" } as const);
+  const download = response.ok() ? await downloaded : undefined;
+  const downloadFilename = download?.suggestedFilename();
+  await download?.delete();
+  await page
+    .locator(settledAccountDataExportSelector)
+    .waitFor({ state: "attached", timeout: timeouts.uiTransition })
+    .catch(() => undefined);
+  const controlState =
+    (await page
+      .locator(accountDataExportSelector)
+      .getAttribute("data-state", { timeout: timeouts.browserAction })
+      .catch(() => null)) ?? undefined;
+  return {
+    archive,
+    controlState,
+    downloadFilename,
+    headers: {
+      cacheControl: headers["cache-control"],
+      contentDisposition: headers["content-disposition"],
+      contentType: headers["content-type"],
+      referrerPolicy: headers["referrer-policy"],
+    },
+    status: response.status(),
   };
 };
