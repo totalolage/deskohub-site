@@ -5,7 +5,7 @@ import { initializeBotProtection } from "../src/auth/bot-protection";
 import { useAuthSession } from "../src/auth/use-auth-session";
 import { useBrandFontReady } from "../src/brand-font";
 import { CustomerDataExitCleanup } from "../src/customer-api/customer-data-exit";
-import { readDeviceLocale } from "../src/i18n/device-locale";
+import { readLaunchLocale } from "../src/i18n/launch-locale";
 import { AppLocaleProvider } from "../src/i18n/locale-context";
 import { UpdateBanner } from "../src/updates/update-banner";
 
@@ -17,7 +17,7 @@ initializeBotProtection();
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [locale] = useState(readDeviceLocale);
+  const [locale] = useState(readLaunchLocale);
   const session = useAuthSession();
   const brandFontReady = useBrandFontReady();
   const restoring = session.status === "restoring";

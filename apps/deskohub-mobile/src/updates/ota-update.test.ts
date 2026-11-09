@@ -25,6 +25,19 @@ const fetchedNew = {
   manifest: { id: "update-a" },
 } as unknown as FetchResult;
 
+const rollBack = {
+  isAvailable: false,
+  isRollBackToEmbedded: true,
+  manifest: undefined,
+  reason: undefined,
+} as unknown as CheckResult;
+
+const fetchedRollBack = {
+  isNew: false,
+  isRollBackToEmbedded: true,
+  manifest: undefined,
+} as unknown as FetchResult;
+
 const fetchedNothingNew = {
   isNew: false,
   isRollBackToEmbedded: false,
@@ -55,8 +68,62 @@ describe("findReadyUpdate", () => {
       async () => available,
       async () => fetchedNew
     );
-    expect(await Effect.runPromise(findReadyUpdate(updates))).toBe("update-a");
+    expect(await Effect.runPromise(findReadyUpdate(updates))).toEqual({
+      kind: "update",
+      updateId: "update-a",
+    });
     expect(calls).toEqual({ check: 1, fetch: 1 });
+  });
+
+  test("fetches a rollback directive and reports the embedded update ready", async () => {
+    const { calls, updates } = source(
+      async () => rollBack,
+      async () => fetchedRollBack
+    );
+    expect(await Effect.runPromise(findReadyUpdate(updates))).toEqual({
+      kind: "embedded",
+    });
+    expect(calls).toEqual({ check: 1, fetch: 1 });
+  });
+
+  test("reports nothing when the rollback fetch brings nothing to apply", async () => {
+    const { calls, updates } = source(
+      async () => rollBack,
+      async () => fetchedNothingNew
+    );
+    expect(await Effect.runPromise(findReadyUpdate(updates))).toBeUndefined();
+    expect(calls).toEqual({ check: 1, fetch: 1 });
+  });
+
+  // The server may publish between the check and the fetch, so the fetch
+  // result decides what is ready.
+  test("reports the rollback a download brought after the check found an update", async () => {
+    const { updates } = source(
+      async () => available,
+      async () => fetchedRollBack
+    );
+    expect(await Effect.runPromise(findReadyUpdate(updates))).toEqual({
+      kind: "embedded",
+    });
+  });
+
+  test("reports the update a download brought after the check found a rollback", async () => {
+    const { updates } = source(
+      async () => rollBack,
+      async () => fetchedNew
+    );
+    expect(await Effect.runPromise(findReadyUpdate(updates))).toEqual({
+      kind: "update",
+      updateId: "update-a",
+    });
+  });
+
+  test("swallows a failed rollback fetch", async () => {
+    const { updates } = source(
+      async () => rollBack,
+      () => Promise.reject(new Error("signature rejected"))
+    );
+    expect(await Effect.runPromise(findReadyUpdate(updates))).toBeUndefined();
   });
 
   test("downloads nothing when the server has no update", async () => {

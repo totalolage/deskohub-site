@@ -17,7 +17,6 @@ interface ManifestRequest {
   readonly platform: MobileUpdatePlatform;
   readonly runtimeVersion: string;
   readonly currentUpdateId: string | null;
-  readonly embeddedUpdateId: string | null;
   readonly expectsSignature: boolean;
 }
 
@@ -81,7 +80,6 @@ const readManifestRequest = (request: Request) =>
         platform,
         runtimeVersion,
         currentUpdateId: headers.get("expo-current-update-id"),
-        embeddedUpdateId: headers.get("expo-embedded-update-id"),
         expectsSignature: headers.has("expo-expect-signature"),
       })
     )
@@ -98,7 +96,9 @@ const noUpdateAvailable: ManifestReply = {
 /**
  * What the app should do given one publication for its platform and runtime
  * version: run the update unless it already does, or return to its embedded
- * update unless it already runs it.
+ * update. The rollback goes to an app on its embedded update too, which may
+ * hold the rolled-back update downloaded for its next start; expo-updates
+ * ignores a directive no newer than the update it runs.
  */
 const replyToPublication = (
   request: ManifestRequest,
@@ -121,17 +121,13 @@ const replyToPublication = (
                 extra: update.extra,
               },
             },
-      rollBackToEmbedded: (): ManifestReply =>
-        request.currentUpdateId !== null &&
-        request.currentUpdateId === request.embeddedUpdateId
-          ? noUpdateAvailable
-          : {
-              part: "directive",
-              body: {
-                type: "rollBackToEmbedded",
-                parameters: { commitTime: toProtocolTime(publishedAt) },
-              },
-            },
+      rollBackToEmbedded: (): ManifestReply => ({
+        part: "directive",
+        body: {
+          type: "rollBackToEmbedded",
+          parameters: { commitTime: toProtocolTime(publishedAt) },
+        },
+      }),
     })
   );
 

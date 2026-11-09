@@ -22,10 +22,12 @@ export const lastLaunchedUpdateKey = "deskohub.updates.last-launched-update-id";
 /**
  * Records an applied update on the first launch that runs a downloaded
  * update, whether a restart from the update prompt or a cold start loaded
- * it. Each launch stores the update it runs, the embedded one included, so
- * an update applied again after a fallback to the embedded update counts
- * again. Nothing is recorded unless the launch was stored, so a storage
- * failure can't record the same update twice.
+ * it. A launch of the embedded update records nothing: after a rollback,
+ * an emergency launch or a new APK, the app runs the build's own update,
+ * not a published one. Each launch stores the update it runs, the embedded
+ * one included, so an update applied again after it counts again. Nothing
+ * is recorded unless the launch was stored, so a storage failure can't
+ * record the same update twice.
  */
 export const recordAppliedUpdate = (
   running: RunningUpdate,

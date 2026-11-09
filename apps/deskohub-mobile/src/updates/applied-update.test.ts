@@ -98,7 +98,7 @@ describe("applied update", () => {
     ]);
   });
 
-  test("never records the build's embedded update, and records an update applied again after it", async () => {
+  test("records no rollback or other embedded launch, and records an update applied again after it", async () => {
     const storage = makeStorage();
     await launch(storage, downloaded("update-2"));
 
