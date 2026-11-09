@@ -1175,6 +1175,108 @@ describe("PostHogAnalytics", () => {
     view.unmount();
   });
 
+  test("an account preference decline resets and opts out, and an accept re-verifies the account before identifying", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?account-preference"
+    );
+
+    const AnalyticsBoundary = () => (
+      <PostHogProvider>
+        <PostHogAnalytics analyticsAccepted posthogEnvironment="preview">
+          <p>synthetic analytics content</p>
+        </PostHogAnalytics>
+      </PostHogProvider>
+    );
+    const announce = (
+      change: "account" | "preference",
+      acceptedCategories: readonly string[]
+    ) => {
+      setConsentCookie(acceptedCategories);
+      window.dispatchEvent(
+        new CustomEvent(CONSENT_UPDATED_EVENT, {
+          detail: {
+            _tag: "ConsentUpdated",
+            acceptedCategories: [...acceptedCategories],
+            change,
+          },
+        })
+      );
+    };
+
+    setConsentCookie(["necessary", "analytics"]);
+    const view = render(<AnalyticsBoundary />);
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-a",
+        status: "authenticated",
+      });
+    });
+
+    const beforeSend = initConfig?.before_send;
+    if (!beforeSend || Array.isArray(beforeSend)) {
+      throw new Error("The PostHog test client needs a before_send function");
+    }
+    expect(identify).toHaveBeenLastCalledWith("workspace-account:account-a");
+
+    const identifyCountBeforeDecline = identify.mock.calls.length;
+    const resetCountBeforeDecline = reset.mock.calls.length;
+    const optOutCountBeforeDecline = optOutCapturing.mock.calls.length;
+    const refreshCountBeforeDecline =
+      refreshAnalyticsAccountIdentity.mock.calls.length;
+    announce("preference", ["necessary"]);
+
+    expect(reset).toHaveBeenCalledTimes(resetCountBeforeDecline + 1);
+    expect(optOutCapturing).toHaveBeenCalledTimes(optOutCountBeforeDecline + 1);
+    expect(identify).toHaveBeenCalledTimes(identifyCountBeforeDecline);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(
+      refreshCountBeforeDecline
+    );
+    expect(document.cookie).not.toContain(
+      "dh_ph_distinct_id=workspace-account%3Aaccount-a"
+    );
+    expect(beforeSend(createEvent("blocked after declining", {}))).toBeNull();
+
+    // The refreshed session names the account the server verified.
+    refreshedAnalyticsAccountIdentity = {
+      accountId: "account-a-verified",
+      status: "authenticated",
+    };
+    const identifyCountBeforeAccept = identify.mock.calls.length;
+    announce("preference", ["necessary", "analytics"]);
+
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(
+      refreshCountBeforeDecline + 1
+    );
+    expect(identify).toHaveBeenCalledTimes(identifyCountBeforeAccept);
+    expect(
+      beforeSend(createEvent("blocked while identity refreshes", {}))
+    ).toBeNull();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(identify).toHaveBeenCalledTimes(identifyCountBeforeAccept + 1);
+    expect(identify).toHaveBeenLastCalledWith(
+      "workspace-account:account-a-verified"
+    );
+    expect(optOutCapturing).toHaveBeenCalledTimes(optOutCountBeforeDecline + 1);
+
+    // A decision applied from elsewhere, such as a silent grant, identifies
+    // the account it already holds without re-verifying it.
+    announce("account", ["necessary"]);
+    const refreshCountBeforeAccountGrant =
+      refreshAnalyticsAccountIdentity.mock.calls.length;
+    const identifyCountBeforeAccountGrant = identify.mock.calls.length;
+    announce("account", ["necessary", "analytics"]);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(
+      refreshCountBeforeAccountGrant
+    );
+    expect(identify).toHaveBeenCalledTimes(identifyCountBeforeAccountGrant + 1);
+
+    view.unmount();
+  });
+
   test("delivers browser logs once each, only while analytics is ready", async () => {
     const { PostHogAnalytics, PostHogProvider } = await import(
       "./posthog-analytics?browser-logs"

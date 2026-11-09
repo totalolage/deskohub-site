@@ -1,7 +1,7 @@
 import { Effect, Exit, Option } from "effect";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { trackSignInCompleted, trackSignInStarted } from "../analytics/events";
+import { trackSignInStarted } from "../analytics/events";
 import type { AppLocale } from "../i18n/app-locale";
 import { useAppLocale } from "../i18n/locale-context";
 import { m } from "../i18n/messages";
@@ -12,13 +12,11 @@ import {
   Screen,
   TextField,
 } from "../ui/controls";
-import { type SignInCallbackMethod, withSignInMethod } from "./auth-callback";
 import {
   type AuthUser,
   isFreshSignIn,
   safeReturnPath,
 } from "./auth-session-state";
-import type { NativeHandoffRequest } from "./native-handoff-request";
 import { webSignInFailureMessage } from "./sign-in-failure-message";
 import type { SignInScreenProps } from "./sign-in-screen.native";
 import { signInStep } from "./sign-in-step";
@@ -37,7 +35,7 @@ import { loadReauthenticatingUser } from "./web-reauthentication-store";
 import {
   completeWebCodeSignIn,
   completeWebPasskeySignIn,
-  mintNativeHandoff,
+  finishSignIn,
   prepareNativeHandoffEmail,
   prepareReauthenticationEmail,
   reauthenticationExpectation,
@@ -47,37 +45,6 @@ import {
   type WebAccountExpectation,
 } from "./web-sign-in";
 import { WebSignInFailure } from "./web-sign-in-failure";
-
-/** Where a finished sign-in goes: back into the app, or a web route. */
-type SignInDestination =
-  | { readonly kind: "app"; readonly url: string }
-  | { readonly kind: "web" };
-
-/**
- * Mints the handoff for a native request; `method` tells the app how this
- * page signed in, and is absent when it continued an existing session.
- * Without a native request the browser itself completed the sign-in.
- */
-const finishSignIn = (
-  request: Option.Option<NativeHandoffRequest>,
-  method: SignInCallbackMethod | undefined
-) =>
-  Option.match(request, {
-    onNone: () =>
-      Effect.sync((): SignInDestination => {
-        if (method !== undefined) trackSignInCompleted(method);
-        return { kind: "web" };
-      }),
-    onSome: (found) =>
-      mintNativeHandoff(found).pipe(
-        Effect.map(
-          (url): SignInDestination => ({
-            kind: "app",
-            url: method === undefined ? url : withSignInMethod(url, method),
-          })
-        )
-      ),
-  });
 
 const signInStatus = ({
   restoring,
@@ -308,7 +275,7 @@ export function SignInScreen({ passkeyOption }: SignInScreenProps) {
               { email: continueAs ?? "" },
               { locale }
             )}
-            onPress={() => void handoff.start(nativeRequest, undefined)}
+            onPress={() => void handoff.start(nativeRequest, "continue")}
             disabled={busy}
           />
           <Button

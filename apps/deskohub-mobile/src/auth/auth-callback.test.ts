@@ -129,7 +129,7 @@ describe("parseAuthCallbackUrl", () => {
 describe("sign-in method on a handoff", () => {
   test("round-trips the method the web page adds", () => {
     const minted = `${nativeReturnUri}?code=${code}&state=${state}`;
-    for (const method of ["link", "code", "passkey"] as const) {
+    for (const method of ["link", "code", "passkey", "continue"] as const) {
       expect(parseAuthCallbackUrl(withSignInMethod(minted, method))).toEqual({
         kind: "handoff",
         code,

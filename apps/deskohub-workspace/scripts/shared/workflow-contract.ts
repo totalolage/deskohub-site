@@ -64,6 +64,21 @@ export interface WorkflowDoc {
 export const parseWorkflow = (path: string): WorkflowDoc =>
   Bun.YAML.parse(readFileSync(path, "utf8")) as WorkflowDoc;
 
+/** A tracked composite action (`.github/actions/<name>/action.yml`). */
+export interface CompositeActionDoc {
+  readonly inputs?: Readonly<
+    Record<string, { readonly required?: boolean; readonly default?: string }>
+  >;
+  readonly outputs?: Readonly<Record<string, { readonly value: string }>>;
+  readonly runs: {
+    readonly using: string;
+    readonly steps: readonly WorkflowStep[];
+  };
+}
+
+export const parseCompositeAction = (path: string): CompositeActionDoc =>
+  Bun.YAML.parse(readFileSync(path, "utf8")) as CompositeActionDoc;
+
 export const workflowJobs = (doc: WorkflowDoc): readonly string[] =>
   Object.keys(doc.jobs);
 

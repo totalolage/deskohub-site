@@ -156,10 +156,42 @@ export const resolveSilentAnalyticsGrant = Effect.fn(
 });
 
 /**
+ * The account's withdrawal the device must take: when the device's saved
+ * choice accepts analytics and the account's current decision is a
+ * withdrawal the choice didn't outrank, as the ledger's ordering rule
+ * decided when it mirrored the choice. A grant is never propagated to a
+ * device that holds a choice.
+ */
+const withdrawalToPropagate = Effect.fn(
+  "AnalyticsConsent.withdrawalToPropagate"
+)(function* (device: DeviceAnalyticsConsent, mirrored: boolean) {
+  const choice = deviceChoiceOf(device.cookieHeader);
+  if (
+    mirrored ||
+    Option.isNone(choice) ||
+    decisionOf(choice.value) !== "grant"
+  ) {
+    return Option.none();
+  }
+
+  const ledger = yield* AnalyticsConsentLedger;
+  return Option.map(
+    Option.filter(
+      yield* ledger.currentDecision(device.accountId),
+      (current) => current.decision === "withdraw"
+    ),
+    (withdrawal) => withdrawal.decidedAt
+  );
+});
+
+/**
  * Records the request device's choice for the signed-in account: as a
  * decision made now after a banner save, or as a mirror of the saved choice
- * when the session hydrates. A signed-out request, or one whose account is
- * being deleted, records nothing.
+ * when the session hydrates. On hydration, returns the instant of the
+ * account's withdrawal when the device still accepts analytics against it,
+ * as when the account opted out on another device, so the device declines
+ * too; else none. A signed-out request, or one whose account is being
+ * deleted, records nothing.
  */
 export const recordSignedInDeviceAnalyticsConsent = Effect.fn(
   "AnalyticsConsent.recordSignedInDevice"
@@ -172,7 +204,9 @@ export const recordSignedInDeviceAnalyticsConsent = Effect.fn(
 }) {
   const authentication = yield* CustomerAuthentication;
   const session = yield* authentication.currentUser;
-  if (!session || session.deletionRequested) return false;
+  if (!session || session.deletionRequested) {
+    return Option.none<Temporal.Instant>();
+  }
 
   const headers = yield* currentRequestHeaders;
   const device = {
@@ -180,7 +214,14 @@ export const recordSignedInDeviceAnalyticsConsent = Effect.fn(
     cookieHeader: headers.get("cookie") ?? "",
     locale,
   };
-  return yield* occasion === "banner_save"
-    ? recordBannerAnalyticsConsent(device)
-    : mirrorDeviceAnalyticsConsent({ ...device, source: "hydration_mirror" });
+  if (occasion === "banner_save") {
+    yield* recordBannerAnalyticsConsent(device);
+    return Option.none<Temporal.Instant>();
+  }
+
+  const mirrored = yield* mirrorDeviceAnalyticsConsent({
+    ...device,
+    source: "hydration_mirror",
+  });
+  return yield* withdrawalToPropagate(device, mirrored);
 });
