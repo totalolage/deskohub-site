@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { unzipSync } from "fflate";
 import {
   buildZipArchive,
@@ -9,9 +10,10 @@ import {
 
 describe("buildZipArchive", () => {
   test("assembles UTF-8 entries that decode back to the exact content", () => {
+    const identityContent = JSON.stringify({ email: testEmailAddress("ada") });
     const bytes = buildZipArchive([
       { path: "manifest.json", content: '{"schemaVersion":2}' },
-      { path: "identity.json", content: '{"email":"ada@example.test"}' },
+      { path: "identity.json", content: identityContent },
       { path: "početna.json", content: '{"note":"český text ✓"}' },
     ]);
     const unzipped = unzipSync(bytes);
@@ -21,7 +23,7 @@ describe("buildZipArchive", () => {
       "početna.json",
     ]);
     expect(new TextDecoder().decode(unzipped["identity.json"])).toBe(
-      '{"email":"ada@example.test"}'
+      identityContent
     );
     expect(new TextDecoder().decode(unzipped["početna.json"])).toBe(
       '{"note":"český text ✓"}'
