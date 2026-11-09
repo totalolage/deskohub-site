@@ -1,4 +1,5 @@
 import { errors, type Locator, type Page } from "@playwright/test";
+import { waitForPageFunction } from "./page-function-wait";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
 
 const reactClickHandlerTimeoutMs = 15_000;
@@ -62,13 +63,13 @@ export const waitForReactClickHandler = async (
       throw new Error("React click control was not rendered");
 
     try {
-      const state = await page.waitForFunction(
-        reactClickHandlerState,
-        element,
-        {
-          polling: workspaceE2EPollIntervalMs.reactHandler,
-          timeout: remainingBudgetMs(),
-        }
+      const state = await waitForPageFunction(
+        (timeout) =>
+          page.waitForFunction(reactClickHandlerState, element, {
+            polling: workspaceE2EPollIntervalMs.reactHandler,
+            timeout,
+          }),
+        deadline
       );
       try {
         if ((await state.jsonValue()) !== "detached") return;
@@ -95,24 +96,29 @@ export const waitForReactSubmitHandler = async (
   const element = await form.elementHandle({ timeout: timeoutMs });
   if (element === null) throw new Error("React form was not rendered");
   try {
-    const state = await page.waitForFunction(
-      (node) => {
-        const reactPropsKey = Object.keys(node).find((key) =>
-          key.startsWith("__reactProps$")
-        );
-        const reactProps =
-          reactPropsKey === undefined
-            ? undefined
-            : Object.getOwnPropertyDescriptor(node, reactPropsKey)?.value;
-        return (
-          typeof reactProps === "object" &&
-          reactProps !== null &&
-          typeof (reactProps as { readonly onSubmit?: unknown }).onSubmit ===
-            "function"
-        );
-      },
-      element,
-      { polling: workspaceE2EPollIntervalMs.reactHandler, timeout: timeoutMs }
+    const deadline = Date.now() + timeoutMs;
+    const state = await waitForPageFunction(
+      (timeout) =>
+        page.waitForFunction(
+          (node) => {
+            const reactPropsKey = Object.keys(node).find((key) =>
+              key.startsWith("__reactProps$")
+            );
+            const reactProps =
+              reactPropsKey === undefined
+                ? undefined
+                : Object.getOwnPropertyDescriptor(node, reactPropsKey)?.value;
+            return (
+              typeof reactProps === "object" &&
+              reactProps !== null &&
+              typeof (reactProps as { readonly onSubmit?: unknown })
+                .onSubmit === "function"
+            );
+          },
+          element,
+          { polling: workspaceE2EPollIntervalMs.reactHandler, timeout }
+        ),
+      deadline
     );
     await state.dispose();
   } finally {
