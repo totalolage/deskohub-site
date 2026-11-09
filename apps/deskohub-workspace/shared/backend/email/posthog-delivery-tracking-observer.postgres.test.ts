@@ -104,6 +104,58 @@ describe.skipIf(!testDatabase)(
       ]);
     });
 
+    const trackedTags = async (id: EmailDeliveryId) =>
+      (await trackedRows(id)).map(({ category, tags }) => ({ category, tags }));
+
+    test("tracks an uncategorised email without metadata with no tags", async () => {
+      const id = deliveryId("bare");
+
+      await observe((observer) =>
+        observer.onSent(
+          sentEvent(id, { category: undefined, tags: [], metadata: undefined })
+        )
+      );
+
+      expect(await trackedTags(id)).toEqual([{ category: null, tags: {} }]);
+    });
+
+    test("keeps metadata Resend's tag characters can't carry", async () => {
+      const id = deliveryId("punctuation");
+
+      await observe((observer) =>
+        observer.onSent(
+          sentEvent(id, {
+            metadata: { dotyposReservationStartDate: "2026-11-09T12:00:00Z" },
+          })
+        )
+      );
+
+      expect(await trackedTags(id)).toEqual([
+        {
+          category: "workspace-reservation-customer-access",
+          tags: {
+            category: "workspace-reservation-customer-access",
+            dotyposReservationStartDate: "2026-11-09T12:00:00Z",
+          },
+        },
+      ]);
+    });
+
+    test("lets a category metadata entry win the category tag, as Resend's reports do", async () => {
+      const id = deliveryId("category-metadata");
+
+      await observe((observer) =>
+        observer.onSent(sentEvent(id, { metadata: { category: "campaign" } }))
+      );
+
+      expect(await trackedTags(id)).toEqual([
+        {
+          category: "workspace-reservation-customer-access",
+          tags: { category: "campaign" },
+        },
+      ]);
+    });
+
     test("keeps the first record when the same delivery is reported again", async () => {
       const id = deliveryId("replayed");
       await observe((observer) => observer.onSent(sentEvent(id)));
