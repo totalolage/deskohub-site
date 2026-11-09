@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   brandFontFamilies,
-  brandFontVariation,
   brandFonts,
+  brandFontVariation,
 } from "@deskohub/brand-tokens";
 import { theme } from "../theme";
 import { stackScreenOptions, tabScreenOptions } from "./navigation";
