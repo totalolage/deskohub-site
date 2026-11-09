@@ -97,6 +97,7 @@ export {
 export { manualInvoiceActors } from "./manual-invoice-actors";
 export { manualInvoiceCreationRequests } from "./manual-invoice-creation-requests";
 export { mobileUpdatePublications } from "./mobile-update-publications";
+export { type NewOrder, type Order, orders } from "./orders";
 export {
   type PaymentAttemptRow,
   type PaymentAttemptState,
