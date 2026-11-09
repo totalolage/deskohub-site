@@ -1,12 +1,13 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { Option, Redacted } from "effect";
+import { Duration, Option, Redacted } from "effect";
 import { getPostHogEmailStatusClientConfig } from "./posthog-email-status-reader";
 
 const environment = {
   POSTHOG_API_HOST: "https://eu.posthog.test",
   POSTHOG_EMAIL_SECRET_KEY: "synthetic-email-secret-key",
+  VERCEL_ENV: "production",
 } as const;
 
 describe("PostHog email status client config", () => {
@@ -22,6 +23,20 @@ describe("PostHog email status client config", () => {
     expect(String(config.secretKey)).not.toContain(
       environment.POSTHOG_EMAIL_SECRET_KEY
     );
+  });
+
+  test.each([
+    ["production", 5],
+    ["preview", 30],
+    ["development", 30],
+  ] as const)("waits for each %s status read %p seconds", (stage, seconds) => {
+    const config = Option.getOrThrow(
+      getPostHogEmailStatusClientConfig({ ...environment, VERCEL_ENV: stage })
+    );
+
+    expect(
+      Duration.toSeconds(Duration.fromInputUnsafe(config.timeout ?? 0))
+    ).toBe(seconds);
   });
 
   test.each([
