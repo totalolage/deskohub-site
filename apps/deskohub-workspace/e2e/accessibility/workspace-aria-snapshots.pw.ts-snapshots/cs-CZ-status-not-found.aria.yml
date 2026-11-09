@@ -1,0 +1,6 @@
+- main:
+  - list "Kroky rezervace"
+  - status: "Stav platby: Tuto objednávku se nepodařilo najít."
+  - heading "Tuto objednávku se nepodařilo najít." [level=1]
+  - link "Zpět domů":
+    - /url: /cs-CZ

@@ -3,12 +3,13 @@ import { fileURLToPath } from "node:url";
 import { $ } from "bun";
 import { Schema } from "effect";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import vercelConfig from "@/vercel.json";
 
 const vercelApiOrigin = "https://api.vercel.com";
 
 const workspaceProductionDomain = "deskohub-workspace-site.vercel.app";
 const customerFacingProductionDomain = workspaceSiteConstants.brand.domain;
-const requiredProductionAliases = [
+export const requiredProductionAliases = [
   workspaceProductionDomain,
   customerFacingProductionDomain,
 ] as const;
@@ -21,17 +22,6 @@ const immutableWorkspaceDeploymentHost =
 
 const defaultPollDeadlineMilliseconds = 10 * 60_000;
 const defaultPollIntervalMilliseconds = 15_000;
-
-const requiredCronDefinitions = [
-  {
-    path: "/api/cron/workspace/reservation-holds",
-    schedule: "0 0 * * *",
-  },
-  {
-    path: "/api/cron/workspace/auth-cleanup",
-    schedule: "17 3 * * *",
-  },
-] as const;
 
 const canonicalAliasResponse = Schema.Struct({
   projectId: Schema.optional(Schema.NullOr(Schema.String)),
@@ -273,8 +263,7 @@ export const assertAuthSessionReady = async (
 /**
  * Production smoke against the customer-facing host: the anonymous session
  * endpoint and public landing page must both be healthy on the domain
- * customers actually use. The landing page is independent of account rollout
- * state; delivery is proven by the exact-SHA preview E2E.
+ * customers actually use. Delivery is proven by the exact-SHA preview E2E.
  */
 export const assertCanonicalLandingReady = async (
   fetchImpl: typeof fetch = fetch
@@ -325,7 +314,7 @@ const missingCronDefinition = (
       }[]
     | undefined
 ) =>
-  requiredCronDefinitions.find(
+  vercelConfig.crons.find(
     (required) =>
       !definitions?.some(
         (definition) =>

@@ -1,15 +1,37 @@
 import { ArrowDown, ArrowRight, Check, CircleAlert } from "lucide-react";
+import type { Locale } from "@/features/i18n";
 import { cn } from "@/shared/utils";
+import { m } from "./i18n";
+import { getAdministrationLifecycleConditionLabel } from "./reservation-presentation";
 import type {
   AdministrationLifecycleStage,
   AdministrationReservationLifecycle,
 } from "./reservation-status";
 
+type LifecycleStageMessage =
+  typeof m.administrationReservationLifecycleStageHeld;
+
 const lifecycleStages = [
-  { stage: "started", label: "Started", note: "Checkout workflow created" },
-  { stage: "held", label: "Held", note: "Reservation is held" },
-  { stage: "paid", label: "Paid", note: "Payment was recorded" },
-  { stage: "complete", label: "Complete", note: "Access was delivered" },
+  {
+    stage: "started",
+    label: m.administrationReservationLifecycleStageStarted,
+    note: m.administrationReservationLifecycleStageStartedNote,
+  },
+  {
+    stage: "held",
+    label: m.administrationReservationLifecycleStageHeld,
+    note: m.administrationReservationLifecycleStageHeldNote,
+  },
+  {
+    stage: "paid",
+    label: m.administrationReservationLifecycleStagePaid,
+    note: m.administrationReservationLifecycleStagePaidNote,
+  },
+  {
+    stage: "complete",
+    label: m.administrationReservationLifecycleStageComplete,
+    note: m.administrationReservationLifecycleStageCompleteNote,
+  },
 ] as const;
 
 type CancellationLifecycleStage = Extract<
@@ -19,21 +41,27 @@ type CancellationLifecycleStage = Extract<
 
 const cancellationStagePresentation = {
   hold_expired: {
-    label: "Hold expired",
-    note: "Waiting for the held booking to be released",
+    label: m.administrationReservationLifecycleStageHoldExpired,
+    note: m.administrationReservationLifecycleStageHoldExpiredNote,
   },
   cancelling: {
-    label: "Cancelling",
-    note: "The held booking is being released",
+    label: m.administrationReservationLifecycleStageCancelling,
+    note: m.administrationReservationLifecycleStageCancellingNote,
   },
   cancellation_failed: {
-    label: "Cancellation issue",
-    note: "The held booking still needs attention",
+    label: m.administrationReservationLifecycleStageCancellationIssue,
+    note: m.administrationReservationLifecycleStageCancellationIssueNote,
   },
-  cancelled: { label: "Cancelled", note: "The hold was released" },
+  cancelled: {
+    label: m.administrationReservationLifecycleStageCancelled,
+    note: m.administrationReservationLifecycleStageCancelledNote,
+  },
 } satisfies Record<
   CancellationLifecycleStage,
-  { readonly label: string; readonly note: string }
+  {
+    readonly label: LifecycleStageMessage;
+    readonly note: LifecycleStageMessage;
+  }
 >;
 
 const isCancellationStage = (
@@ -43,8 +71,10 @@ const isCancellationStage = (
 
 export function ReservationLifecycleMap({
   lifecycle,
+  locale,
 }: {
   readonly lifecycle: AdministrationReservationLifecycle;
+  readonly locale: Locale;
 }) {
   const cancellationStage = isCancellationStage(lifecycle.currentStage)
     ? lifecycle.currentStage
@@ -57,6 +87,7 @@ export function ReservationLifecycleMap({
         <LifecycleStageCard
           className="md:col-start-1 md:row-start-1"
           lifecycle={lifecycle}
+          locale={locale}
           {...started}
         />
         <LifecycleConnector
@@ -66,6 +97,7 @@ export function ReservationLifecycleMap({
         <LifecycleStageCard
           className="md:col-start-3 md:row-start-1"
           lifecycle={lifecycle}
+          locale={locale}
           {...held}
         />
 
@@ -82,6 +114,7 @@ export function ReservationLifecycleMap({
           <LifecycleStageCard
             label={cancellation.label}
             lifecycle={lifecycle}
+            locale={locale}
             note={cancellation.note}
             stage={cancellationStage}
           />
@@ -89,12 +122,16 @@ export function ReservationLifecycleMap({
 
         <LifecycleConnector
           className="md:col-start-4 md:row-start-1"
-          mobileLabel="Or continue to payment"
+          mobileLabel={m.administrationReservationLifecycleContinueToPayment(
+            {},
+            { locale }
+          )}
           reached={lifecycle.reachedStages.includes("paid")}
         />
         <LifecycleStageCard
           className="md:col-start-5 md:row-start-1"
           lifecycle={lifecycle}
+          locale={locale}
           {...paid}
         />
         <LifecycleConnector
@@ -104,6 +141,7 @@ export function ReservationLifecycleMap({
         <LifecycleStageCard
           className="md:col-start-7 md:row-start-1"
           lifecycle={lifecycle}
+          locale={locale}
           {...complete}
         />
       </div>
@@ -134,69 +172,143 @@ function LifecycleConnector({
   );
 }
 
+/** Where a stage card sits relative to the reservation's progress. */
+type LifecycleStageProgress = {
+  readonly attention: boolean;
+  readonly current: boolean;
+  readonly reached: boolean;
+};
+
+const getLifecycleStageProgress = (
+  lifecycle: AdministrationReservationLifecycle,
+  stage: AdministrationLifecycleStage
+): LifecycleStageProgress => {
+  const current = lifecycle.currentStage === stage;
+  return {
+    attention: current && lifecycle.tone === "attention",
+    current,
+    reached: lifecycle.reachedStages.includes(stage),
+  };
+};
+
+const getStageReachClassName = ({
+  current,
+  reached,
+}: LifecycleStageProgress) => {
+  if (!reached) {
+    return "border-navy-blue/10 bg-navy-blue/[0.018] text-navy-blue/60";
+  }
+  return current ? undefined : "border-navy-blue/15 bg-white text-navy-blue/70";
+};
+
+const getStageCurrentClassName = ({
+  attention,
+  current,
+}: LifecycleStageProgress) => {
+  if (!current) {
+    return undefined;
+  }
+  return attention
+    ? "border-burned-orange/45 bg-burned-orange/[0.07] text-navy-blue"
+    : "border-aquamarine-green/60 bg-aquamarine-green/[0.07] text-navy-blue";
+};
+
 function LifecycleStageCard({
   className,
   label,
   lifecycle,
+  locale,
   note,
   stage,
 }: {
   readonly className?: string;
-  readonly label: string;
+  readonly label: LifecycleStageMessage;
   readonly lifecycle: AdministrationReservationLifecycle;
-  readonly note: string;
+  readonly locale: Locale;
+  readonly note: LifecycleStageMessage;
   readonly stage: AdministrationLifecycleStage;
 }) {
-  const current = lifecycle.currentStage === stage;
-  const reached = lifecycle.reachedStages.includes(stage);
-  const attention = current && lifecycle.tone === "attention";
+  const progress = getLifecycleStageProgress(lifecycle, stage);
   return (
     <div
-      aria-current={current ? "step" : undefined}
+      aria-current={progress.current ? "step" : undefined}
       className={cn(
         "relative min-h-20 rounded-xl border px-4 py-3",
-        !reached &&
-          "border-navy-blue/10 bg-navy-blue/[0.018] text-navy-blue/60",
-        reached && !current && "border-navy-blue/15 bg-white text-navy-blue/70",
-        current &&
-          !attention &&
-          "border-aquamarine-green/60 bg-aquamarine-green/[0.07] text-navy-blue",
-        attention &&
-          "border-burned-orange/45 bg-burned-orange/[0.07] text-navy-blue",
+        getStageReachClassName(progress),
+        getStageCurrentClassName(progress),
         className
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold">{label}</p>
+          <p className="text-sm font-semibold">{label({}, { locale })}</p>
           <p className="mt-1 text-xs leading-5">
-            {current ? lifecycle.label : note}
+            {progress.current
+              ? getAdministrationLifecycleConditionLabel(
+                  lifecycle.condition,
+                  locale
+                )
+              : note({}, { locale })}
           </p>
         </div>
-        {reached && !current && (
-          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-navy-blue/8">
-            <Check aria-hidden className="size-3" />
-            <span className="sr-only">Reached</span>
-          </span>
-        )}
-        {current && (
-          <span
-            className={cn(
-              "grid size-5 shrink-0 place-items-center rounded-full",
-              attention
-                ? "bg-burned-orange text-white"
-                : "bg-aquamarine-ink text-white"
-            )}
-          >
-            {attention ? (
-              <CircleAlert aria-hidden className="size-3" />
-            ) : (
-              <span aria-hidden className="size-1.5 rounded-full bg-white" />
-            )}
-            <span className="sr-only">Current stage</span>
-          </span>
-        )}
+        <LifecycleStageBadge locale={locale} progress={progress} />
       </div>
     </div>
+  );
+}
+
+function LifecycleStageBadge({
+  locale,
+  progress,
+}: {
+  readonly locale: Locale;
+  readonly progress: LifecycleStageProgress;
+}) {
+  if (progress.current) {
+    return (
+      <CurrentLifecycleStageBadge
+        attention={progress.attention}
+        locale={locale}
+      />
+    );
+  }
+  if (!progress.reached) {
+    return null;
+  }
+  return (
+    <span className="grid size-5 shrink-0 place-items-center rounded-full bg-navy-blue/8">
+      <Check aria-hidden className="size-3" />
+      <span className="sr-only">
+        {m.administrationReservationLifecycleStageReached({}, { locale })}
+      </span>
+    </span>
+  );
+}
+
+function CurrentLifecycleStageBadge({
+  attention,
+  locale,
+}: {
+  readonly attention: boolean;
+  readonly locale: Locale;
+}) {
+  return (
+    <span
+      className={cn(
+        "grid size-5 shrink-0 place-items-center rounded-full",
+        attention
+          ? "bg-burned-orange text-white"
+          : "bg-aquamarine-ink text-white"
+      )}
+    >
+      {attention ? (
+        <CircleAlert aria-hidden className="size-3" />
+      ) : (
+        <span aria-hidden className="size-1.5 rounded-full bg-white" />
+      )}
+      <span className="sr-only">
+        {m.administrationReservationLifecycleStageCurrent({}, { locale })}
+      </span>
+    </span>
   );
 }

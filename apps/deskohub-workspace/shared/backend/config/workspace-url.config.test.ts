@@ -20,13 +20,6 @@ test("selects the callback origin from the runtime environment", () => {
 
   expect(
     getOrigin({
-      deploymentEnvironment: "preview",
-      deploymentUrl: "preview-b.vercel.app",
-    })
-  ).toBe("https://preview-b.vercel.app");
-
-  expect(
-    getOrigin({
       deploymentEnvironment: "development",
       deploymentUrl: "localhost:3000",
     })

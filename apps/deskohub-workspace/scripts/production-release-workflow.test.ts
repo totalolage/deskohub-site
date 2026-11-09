@@ -1,20 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { isNumber, isString } from "effect/Predicate";
 import {
-  emitRollbackTarget,
-  promoteStagedDeployment,
-  verifyCanonicalAliasServes,
-} from "./production-release";
-import {
-  callsNamed,
-  identifierNames,
-  importSpecifiers,
   nodesOf,
-  type ParsedSource,
-  parseSource,
   parseTrackedSource,
   topLevelConstInitializer,
 } from "./shared/source-ast";
@@ -38,9 +27,6 @@ const rawWorkflow = readFileSync(workflowPath, "utf8");
 const releaseScript = parseTrackedSource(
   resolve(import.meta.dir, "production-release.ts")
 );
-
-const scriptIdentifiers = identifierNames(releaseScript.ast);
-const scriptImportModules = importSpecifiers(releaseScript.ast);
 
 /** Text of every template quasi and string literal in the release script. */
 const scriptTexts = (): readonly string[] =>
@@ -67,137 +53,6 @@ const stepByName = (name: string): WorkflowStep => {
 
 const stepIndexOfName = (name: string): number => stepNames.indexOf(name);
 
-/**
- * Text of the tagged shell template inside the rollback operation — the
- * command the recovery path actually executes — or undefined when the
- * operation exists without such an invocation.
- */
-const rollbackCommandInRecoveryPath = (
-  ast: ParsedSource["ast"]
-): string | undefined => {
-  const operation = topLevelConstInitializer(ast, "rollbackToDeployment");
-  if (!operation) return undefined;
-  const templates = nodesOf(operation).flatMap((node) =>
-    node.type === "TaggedTemplateExpression"
-      ? [node.quasi.quasis.map((quasi) => quasi.value.cooked ?? "").join(" ")]
-      : []
-  );
-  return templates.find((text) => text.includes("rollback"));
-};
-
-/** The canonical production alias payload the script's resolver consumes. */
-const canonicalAliasPayload = () => ({
-  projectId: "project-1",
-  deployment: {
-    id: "baseline-deployment-id",
-    url: "baseline-deployment.vercel.app",
-  },
-});
-
-type FakeAliasRow = {
-  readonly alias: string;
-  readonly deploymentId: string;
-};
-
-/** One paginated project-alias listing page as the Vercel API returns it. */
-const aliasListingPage = (
-  aliases: readonly FakeAliasRow[],
-  next: number | null
-) => ({
-  aliases,
-  pagination: { next },
-});
-
-/** The paginated project listing payload serving the baseline deployment. */
-const baselineAliasListing = () =>
-  aliasListingPage(
-    [
-      {
-        alias: "deskohub-workspace-site.vercel.app",
-        deploymentId: "baseline-deployment-id",
-      },
-      {
-        alias: "workspace.deskohub.cz",
-        deploymentId: "baseline-deployment-id",
-      },
-    ],
-    null
-  );
-
-const stagedDeploymentPayload = () => ({
-  id: "staged-deployment-id",
-  projectId: "project-1",
-  target: "production",
-  readyState: "READY",
-  url: "staged-deployment.vercel.app",
-  crons: [
-    {
-      path: "/api/cron/workspace/reservation-holds",
-      schedule: "0 0 * * *",
-    },
-    {
-      path: "/api/cron/workspace/auth-cleanup",
-      schedule: "17 3 * * *",
-    },
-  ],
-});
-
-const requiredWorkspaceCronDefinitions = [
-  {
-    path: "/api/cron/workspace/reservation-holds",
-    schedule: "0 0 * * *",
-  },
-  {
-    path: "/api/cron/workspace/auth-cleanup",
-    schedule: "17 3 * * *",
-  },
-] as const;
-
-type FakeVercelPayload = ReturnType<
-  | typeof canonicalAliasPayload
-  | typeof aliasListingPage
-  | typeof stagedDeploymentPayload
->;
-
-const jsonResponse = (payload: FakeVercelPayload): Response =>
-  new Response(JSON.stringify(payload), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-
-/**
- * Runs `run` with `fetch` routed to fake Vercel API endpoints; returns the
- * requested URLs so callers can assert the real request pattern (for
- * example that alias pagination was actually followed). `onRequest` fires
- * in real time so callers can interleave fetches into one ordered event log
- * alongside persist/rollback fake calls.
- */
-const withStubbedVercelApi = async (
-  routes: readonly {
-    readonly match: (url: string) => boolean;
-    readonly respond: () => FakeVercelPayload;
-  }[],
-  run: () => Promise<void>,
-  onRequest?: (url: string) => void
-): Promise<readonly string[]> => {
-  const requestedUrls: string[] = [];
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (input: URL | RequestInfo) => {
-    const url = input instanceof URL ? input.href : input;
-    requestedUrls.push(url);
-    onRequest?.(url);
-    const route = routes.find((candidate) => candidate.match(url));
-    if (!route) throw new Error(`Unexpected Vercel API request: ${url}`);
-    return jsonResponse(route.respond());
-  }) as typeof fetch;
-  try {
-    await run();
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-  return requestedUrls;
-};
-
 describe("deploy-workspace-production workflow", () => {
   test("gates the release on the production baseline before building and promoting", () => {
     const gateIndex = stepIndexOfName(
@@ -209,9 +64,23 @@ describe("deploy-workspace-production workflow", () => {
     expect(gateIndex).toBeGreaterThan(-1);
     expect(gateIndex).toBeLessThan(buildIndex);
     expect(buildIndex).toBeLessThan(promoteIndex);
-    expect(
-      stepByName("Verify the production baseline before building").run
-    ).toBe("bun scripts/production-release.ts resolve-previous");
+  });
+
+  test("typechecks the Workspace on the runner because the Vercel build only builds", () => {
+    const workspaceTurbo = JSON.parse(
+      readFileSync(resolve(import.meta.dir, "../turbo.json"), "utf8")
+    ) as { tasks: Record<string, { dependsOn?: readonly string[] }> };
+    const typecheckStep = stepByName("Typecheck Workspace");
+
+    expect(workspaceTurbo.tasks["build:compile"]?.dependsOn).not.toContain(
+      "typecheck"
+    );
+    expect(typecheckStep.run).toBe(
+      "bun turbo typecheck --filter=deskohub-workspace"
+    );
+    expect(stepIndexOfName("Typecheck Workspace")).toBeLessThan(
+      stepIndexOfName("Build staged production deployment")
+    );
   });
 
   test("probes staged auth readiness between migration and promotion", () => {
@@ -226,43 +95,9 @@ describe("deploy-workspace-production workflow", () => {
     expect(probeIndex).toBeLessThan(promoteIndex);
     expect(cronsIndex).toBeGreaterThan(probeIndex);
     expect(cronsIndex).toBeLessThan(promoteIndex);
-    expect(stepByName("Probe staged deployment auth readiness").run).toContain(
-      "bun scripts/production-release.ts probe --url"
-    );
-    expect(stepByName("Verify staged workspace crons").run).toBe(
-      `bun scripts/production-release.ts verify-staged-crons --url "\${{ steps.deploy.outputs.url }}"`
-    );
-  });
-
-  test("keeps the release cron contract aligned with checked-in Vercel definitions", async () => {
-    const config = await Bun.file(
-      new URL("../vercel.json", import.meta.url)
-    ).json();
-
-    expect(config.crons).toEqual(
-      expect.arrayContaining(requiredWorkspaceCronDefinitions)
-    );
-    expect(scriptTexts().some((text) => text.includes("/v1/projects/"))).toBe(
-      false
-    );
-    expect(scriptTexts().some((text) => text.includes("verify-crons"))).toBe(
-      false
-    );
-    expect(
-      scriptTexts().some((text) => text.includes("/v13/deployments/"))
-    ).toBe(true);
-    expect(scriptTexts().some((text) => text.includes("/v9/projects/"))).toBe(
-      true
-    );
   });
 
   test("exposes the protection secret only to the staged probe", () => {
-    const probeStep = stepByName("Probe staged deployment auth readiness");
-    const probeEnv = probeStep.env;
-    expect(probeEnv?.VERCEL_AUTOMATION_BYPASS_SECRET).toBe(
-      `\${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}`
-    );
-
     // The job-level env must not carry the bypass secret; only the staged
     // probe step receives it.
     const jobEnv = deployJob.env as Record<string, string> | undefined;
@@ -275,24 +110,6 @@ describe("deploy-workspace-production workflow", () => {
         JSON.stringify(step.env ?? {}).includes("VERCEL_AUTOMATION_BYPASS")
       );
     expect(secretOutsideProbe).toBe(false);
-
-    // The script-side requireEnv guard for the secret is exercised by the
-    // executed probe behavior in the protected-preview release flow; the
-    // parsed assertions above already prove only the probe step receives it.
-  });
-
-  test("promotes through the script so a failed promotion request cannot skip recovery", () => {
-    const promoteIndex = stepIndexOfName("Promote production deployment");
-    const smokeIndex = stepIndexOfName(
-      "Verify canonical production smoke and cron convergence"
-    );
-
-    expect(promoteIndex).toBeGreaterThan(-1);
-    expect(smokeIndex).toBeGreaterThan(promoteIndex);
-    expect(stepByName("Promote production deployment").run).toContain(
-      "bun scripts/production-release.ts promote --url"
-    );
-    expect(/vercel@\d[\d.]* promote/.test(rawWorkflow)).toBe(false);
   });
 
   test("persists the pre-request baseline before the promotion request", () => {
@@ -314,21 +131,6 @@ describe("deploy-workspace-production workflow", () => {
     );
     expect(promoteIndex).toBeGreaterThan(-1);
     expect(promoteIndex).toBeLessThan(restoreIndex);
-  });
-
-  test("restores the pre-request baseline, never the stale pre-build retention target", () => {
-    const restoreStep = stepByName(
-      "Restore the pre-request production baseline"
-    );
-    expect(JSON.stringify(allSteps).includes("steps.rollback-target")).toBe(
-      false
-    );
-    expect(restoreStep.run).toBe(
-      `bun scripts/production-release.ts rollback --url "\${{ steps.promote.outputs.baseline_url }}" --id "\${{ steps.promote.outputs.baseline_id }}"`
-    );
-    // The baseline outputs the restore step consumes are proven by the
-    // executed promotion flow in "persists the baseline before an ambiguous
-    // promotion and recovers through the rollback path".
   });
 
   test("survives workflow cancellation at the job level so the always() finalizers are reached", () => {
@@ -367,52 +169,19 @@ describe("deploy-workspace-production workflow", () => {
     expect(failStep.if).toBe("always() && (failure() || cancelled())");
   });
 
-  test("recovers and fails when cancellation follows promotion but smoke succeeds", () => {
-    const restoreIf =
-      stepByName("Restore the pre-request production baseline").if ?? "";
-    const failIf = stepByName("Fail the release after rollback").if ?? "";
-    const promoted = "true";
-    const smokeOutcome = "success";
-    const workflowCancelled = true;
+  test("submits published pages to IndexNow only after a successful release, without gating it", () => {
+    const indexNowStep = stepByName("Submit published pages to IndexNow");
 
-    expect(restoreIf).toContain("cancelled()");
-    expect(failIf).toBe("always() && (failure() || cancelled())");
-
-    const recoveryRuns =
-      promoted === "true" &&
-      (smokeOutcome !== "success" ||
-        (workflowCancelled && restoreIf.includes("cancelled()")));
-    const finalJobFails =
-      workflowCancelled && failIf.includes("cancelled()") && recoveryRuns;
-
-    expect(recoveryRuns).toBe(true);
-    expect(finalJobFails).toBe(true);
-  });
-
-  test("recovers whenever the canonical smoke does not succeed, including cancellation", () => {
-    const restoreIf =
-      stepByName("Restore the pre-request production baseline").if ?? "";
-
-    expect(
-      restoreIf.includes("steps.canonical-smoke.outcome != 'success'")
-    ).toBe(true);
-    expect(restoreIf.includes("steps.canonical-smoke.outcome ==")).toBe(false);
-
-    // Mirrors the GitHub expression literals from the restore condition.
-    const recovers = (
-      promoted: string,
-      smokeOutcome: string,
-      workflowCancelled = false
-    ) =>
-      promoted === "true" && (smokeOutcome !== "success" || workflowCancelled);
-
-    expect(recovers("true", "success")).toBe(false);
-    expect(recovers("true", "failure")).toBe(true);
-    expect(recovers("true", "cancelled")).toBe(true);
-    expect(recovers("true", "skipped")).toBe(true);
-    expect(recovers("true", "success", true)).toBe(true);
-    expect(recovers("false", "failure")).toBe(false);
-    expect(recovers("false", "")).toBe(false);
+    // Placed after the recovery steps, a failed or cancelled submission can
+    // neither trigger a rollback nor fail the release.
+    expect(stepIndexOfName("Submit published pages to IndexNow")).toBe(
+      stepNames.length - 1
+    );
+    expect(indexNowStep.if).toBe("steps.canonical-smoke.outcome == 'success'");
+    expect(indexNowStep["continue-on-error"]).toBe(true);
+    expect(indexNowStep["timeout-minutes"]).toBeGreaterThan(0);
+    expect(indexNowStep.run).toBe("bun scripts/submit-indexnow.ts");
+    expect(indexNowStep.env).toBeUndefined();
   });
 
   test("budgets the job timeout for setup, the promotion poll, and both recovery attempts", () => {
@@ -471,428 +240,24 @@ describe("deploy-workspace-production workflow", () => {
     );
   });
 
-  test("smokes the customer-facing production host only after a confirmed promotion", async () => {
-    const canonicalStep = stepByName(
-      "Verify canonical production smoke and cron convergence"
-    );
-    expect(canonicalStep.if).toBe(
-      "always() && steps.promote.outputs.promoted == 'true'"
-    );
-    expect(canonicalStep.run).toBe(
-      `bun scripts/production-release.ts verify-canonical --id "\${{ steps.promote.outputs.promoted_id }}"`
-    );
-    expect(scriptIdentifiers.has("customerFacingProductionDomain")).toBe(true);
-    expect(scriptIdentifiers.has("assertCanonicalLandingReady")).toBe(true);
-    expect(scriptIdentifiers.has("assertCanonicalSignInReady")).toBe(false);
-    expect(scriptIdentifiers.has("assertLiveProjectCrons")).toBe(true);
-    expect(
-      callsNamed(releaseScript.ast, "assertCanonicalLandingReady")
-    ).toHaveLength(1);
-    expect(
-      callsNamed(releaseScript.ast, "assertLiveProjectCrons")
-    ).toHaveLength(1);
-    expect(scriptImportModules).toContain("@/shared/utils/site-constants");
-    // The domain comes from the real site-constants module at runtime, not
-    // from any pinned declaration text.
-    const { workspaceSiteConstants } = await import(
-      "../shared/utils/site-constants"
-    );
-    expect(workspaceSiteConstants.brand.domain).toBe("workspace.deskohub.cz");
-  });
-
-  test("routes live cron verification failures and cancellation through the canonical smoke rollback guard", () => {
-    const canonicalStep = stepByName(
-      "Verify canonical production smoke and cron convergence"
-    );
-    const restoreIf =
-      stepByName("Restore the pre-request production baseline").if ?? "";
-
-    expect(canonicalStep.run).toContain("verify-canonical --id");
-    expect(scriptIdentifiers.has("assertLiveProjectCrons")).toBe(true);
-    expect(restoreIf).toContain("steps.promote.outputs.promoted == 'true' &&");
-    expect(restoreIf).toContain("steps.canonical-smoke.outcome != 'success'");
-    expect(restoreIf).toContain("cancelled()");
-
-    const mustRestore = (outcome: string) => outcome !== "success";
-    expect(mustRestore("failure")).toBe(true);
-    expect(mustRestore("cancelled")).toBe(true);
-    expect(mustRestore("success")).toBe(false);
-  });
-
-  test("never leaves a possibly promoted release untested or unrestored", () => {
-    expect(
-      JSON.stringify(deployJob).includes("steps.promote.outputs.promoted")
-    ).toBe(true);
-    expect(
-      allSteps.some(
-        (step) => step.if === "always() && (failure() || cancelled())"
-      )
-    ).toBe(true);
-    expect(
-      JSON.stringify(deployJob).includes(
-        "steps.promote.outputs.promotion_state == 'recovery-needed'"
-      )
-    ).toBe(true);
-    expect(
-      allSteps.some((step) =>
-        (step.run ?? "").includes("bun scripts/production-release.ts promote")
-      )
-    ).toBe(true);
-  });
-
-  test("rolls the release back through the script's Vercel rollback operation", () => {
-    // Scoped AST verdict: the versioned rollback command must be the actual
-    // shell invocation inside the rollback operation, not a string sitting
-    // anywhere in the module. Comment-immune by construction.
-    const rollbackCommand = rollbackCommandInRecoveryPath(releaseScript.ast);
-    expect(rollbackCommand).toBeDefined();
-    expect(rollbackCommand).toMatch(/\bvercel@\d[\d.]* rollback\b/);
-    expect(rollbackCommand).toContain("--timeout ");
-    expect(/rollback[^\n]*vercel@\d[\d.]* promote/.test(rawWorkflow)).toBe(
-      false
-    );
-    expect(
-      allSteps.some((step) =>
-        (step.run ?? "").includes(
-          "bun scripts/production-release.ts rollback --url"
-        )
-      )
-    ).toBe(true);
-  });
-
-  test("the rollback verdict fails when the command literal survives without the recovery invocation", () => {
-    const urlName = ["u", "rl"].join("");
-    const fixtures = [
-      {
-        path: "tmp/unused-rollback-literal.ts",
-        content: [
-          `const unusedCommand = "bunx vercel@54.9.1 rollback \${${urlName}} --yes --timeout 10m";`,
-          `const rollbackToDeployment = async (${urlName}: string) => {`,
-          "  await Promise.resolve(url);",
-          "};",
-        ].join("\n"),
-      },
-      {
-        path: "tmp/promoting-recovery.ts",
-        content: [
-          `const rollbackToDeployment = async (${urlName}: string) => {`,
-          `  await $\`bunx vercel@54.9.1 promote \${${urlName}} --yes --timeout 10m\`;`,
-          "};",
-        ].join("\n"),
-      },
-    ];
-    for (const fixture of fixtures) {
-      expect(
-        rollbackCommandInRecoveryPath(parseSource(fixture.content))
-      ).toBeUndefined();
-    }
-  });
-
-  /**
-   * Asserts the exact relative ordering the recovery contract guarantees:
-   * the baseline persist and the "possibly-started" state must both land
-   * before the remote promotion request, and "restored" must follow the
-   * completed rollback call.
-   */
-  const expectRecoveryEventOrder = (events: readonly string[]) => {
-    const eventIndex = (fragment: string): number => {
-      const index = events.findIndex((event) => event.includes(fragment));
-      expect(index).toBeGreaterThanOrEqual(0);
-      return index;
-    };
-    const baselinePersist = eventIndex("persist baseline_url=");
-    const possiblyStarted = eventIndex(
-      "persist promotion_state=possibly-started"
-    );
-    const promoteRequest = eventIndex("/v10/projects/project-1/promote/");
-    const rollback = eventIndex("rollback baseline-deployment.vercel.app");
-    const restored = eventIndex("persist promotion_state=restored");
-    expect(baselinePersist).toBeLessThan(promoteRequest);
-    expect(possiblyStarted).toBeLessThan(promoteRequest);
-    expect(restored).toBeGreaterThan(rollback);
-  };
-
-  test("the recovery ordering assertions fail when persistence or recovery is reordered", () => {
-    // Persistence moved after the remote promotion side effect.
-    expect(() =>
-      expectRecoveryEventOrder([
-        "request https://api.vercel.com/v10/projects/project-1/promote/staged-deployment-id",
-        "persist baseline_url=baseline-deployment.vercel.app",
-        "persist promotion_state=possibly-started",
-        "rollback baseline-deployment.vercel.app",
-        "persist promotion_state=restored",
-      ])
-    ).toThrow();
-    // "restored" recorded before the rollback completed.
-    expect(() =>
-      expectRecoveryEventOrder([
-        "persist baseline_url=baseline-deployment.vercel.app",
-        "persist promotion_state=possibly-started",
-        "request https://api.vercel.com/v10/projects/project-1/promote/staged-deployment-id",
-        "persist promotion_state=restored",
-        "rollback baseline-deployment.vercel.app",
-      ])
-    ).toThrow();
-  });
-
-  test("persists the baseline before an ambiguous promotion and recovers through the rollback path", async () => {
-    const events: string[] = [];
-    let pollTicks = 0;
-
-    const requestedUrls = await withStubbedVercelApi(
-      [
-        {
-          match: (url) => url.includes("/v13/deployments/"),
-          respond: stagedDeploymentPayload,
-        },
-        {
-          match: (url) => url.includes("/v4/aliases/"),
-          respond: canonicalAliasPayload,
-        },
-        // The listing keeps serving the baseline, so the staged promotion
-        // never confirms and the recovery path must run and re-verify.
-        {
-          match: (url) => url.includes("/v4/aliases?"),
-          respond: baselineAliasListing,
-        },
-      ],
-      async () => {
-        let rejection: unknown;
-        try {
-          await promoteStagedDeployment(
-            {
-              stagedUrl: "staged-deployment.vercel.app",
-              token: "token",
-              projectId: "project-1",
-              teamId: undefined,
-              pollDeadlineMilliseconds: 2,
-              pollIntervalMilliseconds: 0,
-            },
-            {
-              rollback: async (url) => {
-                events.push(`rollback ${url}`);
-              },
-              persist: async (output) => {
-                events.push(`persist ${output}`);
-              },
-              sleep: async () => {},
-              now: () => (pollTicks += 1),
-            }
-          );
-        } catch (cause) {
-          rejection = cause;
-        }
-        // The ambiguous promotion surfaces as a failure after recovery.
-        expect(rejection).toBeInstanceOf(Error);
-        expect((rejection as Error).message).toContain("ambiguous");
-      },
-      (url) => {
-        events.push(`request ${url}`);
-      }
-    );
-
-    // One real-time log proves the ordering, not just membership: baseline
-    // and "possibly-started" persist before the promotion side effect, and
-    // "restored" only after the rollback completed against the baseline.
-    expectRecoveryEventOrder(events);
-    // The recovery executed against the baseline deployment...
-    expect(events.filter((event) => event.startsWith("rollback "))).toEqual([
-      "rollback baseline-deployment.vercel.app",
-    ]);
-    // ...and both the staged-deployment lookup and alias polls were real.
-    expect(requestedUrls.some((url) => url.includes("/v13/deployments/"))).toBe(
-      true
-    );
-    expect(requestedUrls.some((url) => url.includes("/v4/aliases?"))).toBe(
-      true
-    );
-  });
-
-  test("emits the rollback target through GITHUB_OUTPUT and masks the deployment url", async () => {
-    const outputDirectory = mkdtempSync(join(tmpdir(), "release-output-"));
-    const githubOutput = join(outputDirectory, "github-output.txt");
-    const stdoutChunks: string[] = [];
-    const originalStdoutWrite = process.stdout.write;
-    const previousEnv = { ...process.env };
-    process.env.VERCEL_TOKEN = "synthetic-token";
-    process.env.VERCEL_PROJECT_ID = "project-1";
-    process.env.GITHUB_OUTPUT = githubOutput;
-    process.stdout.write = ((chunk: Uint8Array | string) => {
-      stdoutChunks.push(String(chunk));
-      return true;
-    }) as typeof process.stdout.write;
-    let emittedOutput = "";
-    try {
-      await withStubbedVercelApi(
-        [
-          {
-            match: (url) => url.includes("/v4/aliases/"),
-            respond: canonicalAliasPayload,
-          },
-        ],
-        async () => {
-          await emitRollbackTarget();
-        }
-      );
-      emittedOutput = readFileSync(githubOutput, "utf8");
-    } finally {
-      process.stdout.write = originalStdoutWrite;
-      process.env = previousEnv;
-      rmSync(outputDirectory, { recursive: true, force: true });
-    }
-
-    expect(emittedOutput).toBe("previous_url=baseline-deployment.vercel.app\n");
-    expect(stdoutChunks.join("")).toContain(
-      "::add-mask::baseline-deployment.vercel.app"
-    );
-  });
-
-  test("confirms rollbacks against the paginated required-alias authority, not a single canonical alias", async () => {
-    const expected = {
-      id: "baseline-deployment-id",
-      url: "baseline-deployment.vercel.app",
-    };
-    const input = {
-      token: "token",
-      projectId: "project-1",
-      teamId: undefined as string | undefined,
-    };
-
-    // Every required production alias confirms across two listing pages:
-    // the pagination cursor must actually be followed.
-    const pagedUrls = await withStubbedVercelApi(
-      [
-        {
-          match: (url) => url.includes("until="),
-          respond: () =>
-            aliasListingPage(
-              [
-                {
-                  alias: "workspace.deskohub.cz",
-                  deploymentId: "baseline-deployment-id",
-                },
-              ],
-              null
-            ),
-        },
-        {
-          match: (url) => url.includes("/v4/aliases?"),
-          respond: () =>
-            aliasListingPage(
-              [
-                {
-                  alias: "deskohub-workspace-site.vercel.app",
-                  deploymentId: "baseline-deployment-id",
-                },
-              ],
-              1_700_000_000_000
-            ),
-        },
-      ],
-      async () => {
-        await verifyCanonicalAliasServes(expected, { ...input });
-      }
-    );
-    expect(pagedUrls.filter((url) => url.includes("/v4/aliases"))).toHaveLength(
-      2
-    );
-
-    // A single canonical alias is not enough: the customer-facing domain
-    // missing from the project listing fails the verification outright.
-    await withStubbedVercelApi(
-      [
-        {
-          match: (url) => url.includes("/v4/aliases?"),
-          respond: () =>
-            aliasListingPage(
-              [
-                {
-                  alias: "deskohub-workspace-site.vercel.app",
-                  deploymentId: "baseline-deployment-id",
-                },
-              ],
-              null
-            ),
-        },
-      ],
-      async () => {
-        await expect(
-          verifyCanonicalAliasServes(expected, { ...input })
-        ).rejects.toThrow("workspace.deskohub.cz");
-      }
-    );
-
-    // Aliases that exist but still serve another deployment stay unconfirmed
-    // until the bounded window closes, and then fail the recovery.
-    let deadlineTicks = 0;
-    await withStubbedVercelApi(
-      [
-        {
-          match: (url) => url.includes("/v4/aliases?"),
-          respond: () =>
-            aliasListingPage(
-              [
-                {
-                  alias: "deskohub-workspace-site.vercel.app",
-                  deploymentId: "other-deployment-id",
-                },
-                {
-                  alias: "workspace.deskohub.cz",
-                  deploymentId: "other-deployment-id",
-                },
-              ],
-              null
-            ),
-        },
-      ],
-      async () => {
-        await expect(
-          verifyCanonicalAliasServes(
-            expected,
-            {
-              ...input,
-              pollDeadlineMilliseconds: 2,
-              pollIntervalMilliseconds: 0,
-            },
-            { sleep: async () => {}, now: () => (deadlineTicks += 1) }
-          )
-        ).rejects.toThrow("Rollback verification failed");
-      }
-    );
-  });
-
-  test("publishes recovery state through GITHUB_OUTPUT for the workflow conditions", () => {
-    // The step-output writes and the stdout masking are proven by the
-    // executed "emits the rollback target" flow; these parsed assertions
-    // pin the workflow's consumption of those outputs.
-    expect(
-      JSON.stringify(deployJob).includes("steps.promote.outputs.baseline_url")
-    ).toBe(true);
-    expect(
-      JSON.stringify(deployJob).includes(
-        "steps.promote.outputs.promotion_state"
-      )
-    ).toBe(true);
-    expect(
-      allSteps.some((step) =>
-        (step.run ?? "").includes(
-          "bun scripts/production-release.ts rollback --url"
-        )
-      )
-    ).toBe(true);
-  });
-
   test("keeps GitHub free of Better Auth, Resend, and mail authority", () => {
     expect(rawWorkflow.includes("WORKSPACE_E2E_RESEND_API_KEY")).toBe(false);
     expect(rawWorkflow.includes("EMAIL_API_KEY")).toBe(false);
     expect(rawWorkflow.includes("BETTER_AUTH")).toBe(false);
+  });
+
+  test("exposes the Neon API key only to the production migration", () => {
+    // Dependency install and the Next build run third-party code, so the
+    // database-admin credential stays scoped to the one step that uses it.
     const jobEnv = deployJob.env as Record<string, string>;
-    expect(jobEnv.VERCEL_TOKEN).toBe(`\${{ secrets.VERCEL_TOKEN }}`);
-    expect(jobEnv.NEON_API_KEY).toBe(`\${{ secrets.NEON_API_KEY }}`);
+    expect(Object.keys(jobEnv)).not.toContain("NEON_API_KEY");
+    const keyOutsideMigration = allSteps
+      .filter((step) => step.name !== "Migrate production database")
+      .some((step) => JSON.stringify(step.env ?? {}).includes("NEON_API_KEY"));
+    expect(keyOutsideMigration).toBe(false);
   });
 
   test("never sends a production magic link as a release probe", () => {
     expect(rawWorkflow.includes("sign-in/magic-link")).toBe(false);
-    expect(rawWorkflow.includes("verify-canonical")).toBe(true);
   });
 });

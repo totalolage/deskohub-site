@@ -10,36 +10,50 @@ import {
 } from "bun:test";
 import { act, cleanup, render } from "@testing-library/react";
 import type {
-  BeforeSendFn,
-  CapturedNetworkRequest,
+  CaptureLogOptions,
   CaptureResult,
   PostHogConfig,
 } from "posthog-js";
+import { StrictMode } from "react";
+import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
+import { runWorkspaceBrowserEffect } from "@/shared/browser/workspace-browser-effect";
+import {
+  discardWorkspaceBrowserLogs,
+  reportWorkspaceBrowserFailure,
+} from "@/shared/browser/workspace-browser-logs";
+import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import {
+  captureAnalyticsEvent,
+  discardAnalyticsEvents,
+} from "../analytics-events";
+import {
+  bindVisitorConsentRevision,
   CONSENT_UPDATED_EVENT,
   CONSENT_UPDATED_STORAGE_KEY,
-} from "../utils/consent-event";
+} from "../visitor-consent";
 
 process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN = "phc_test";
 process.env.NEXT_PUBLIC_POSTHOG_HOST = "https://posthog.example";
 let posthogHost = "https://posthog.example";
 
-mock.module("@/env", () => ({
-  env: {
-    get NEXT_PUBLIC_POSTHOG_HOST() {
-      return posthogHost;
-    },
+mock.module("@/client-env", () => ({
+  getClientEnv: () => ({
+    NEXT_PUBLIC_POSTHOG_HOST: posthogHost,
     NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: "phc_test",
-  },
+  }),
 }));
 
 type TestAnalyticsAccountIdentity =
   | { readonly status: "pending" | "unavailable" | "anonymous" }
-  | { readonly accountId: string; readonly status: "authenticated" };
+  | {
+      readonly accountId: string;
+      readonly status: "authenticated";
+      readonly testAccount?: boolean;
+    };
 
 let analyticsAccountIdentity: TestAnalyticsAccountIdentity = {
   status: "pending",
@@ -69,6 +83,26 @@ mock.module("@/features/account/analytics-identity", () => ({
   getAnalyticsAccountIdentity,
   refreshAnalyticsAccountIdentity,
   subscribeAnalyticsAccountIdentity,
+}));
+
+const dotyposCustomerIds = new Map<string, string>();
+const dotyposCustomerIdListeners = new Set<() => void>();
+const linkDotyposCustomer = (accountId: string, dotyposCustomerId: string) => {
+  dotyposCustomerIds.set(accountId, dotyposCustomerId);
+  for (const listener of [...dotyposCustomerIdListeners]) listener();
+};
+const requestAnalyticsDotyposCustomerId = mock(
+  (_accountId: string) => undefined
+);
+
+mock.module("@/features/account/analytics-customer-link", () => ({
+  getAnalyticsDotyposCustomerId: (accountId: string) =>
+    dotyposCustomerIds.get(accountId),
+  requestAnalyticsDotyposCustomerId,
+  subscribeAnalyticsDotyposCustomerId: (listener: () => void) => {
+    dotyposCustomerIdListeners.add(listener);
+    return () => dotyposCustomerIdListeners.delete(listener);
+  },
 }));
 
 let currentDistinctId = "visitor-id";
@@ -109,6 +143,7 @@ const capture = mock(
     return preparedEvent ?? undefined;
   }
 );
+const captureLog = mock((_options: CaptureLogOptions) => undefined);
 const identify = mock((distinctId?: string) => {
   posthogLifecycle.push("identify");
   if (distinctId !== undefined) currentDistinctId = distinctId;
@@ -116,6 +151,13 @@ const identify = mock((distinctId?: string) => {
   sessionIdListener?.("session-before-ready");
   sessionCookiesDuringIdentify = document.cookie;
   capture("$identify");
+});
+const setInternalOrTestUser = mock(() => {
+  posthogLifecycle.push("set-internal-or-test-user");
+  capture("$set", { $set: { $internal_or_test_user: true } });
+});
+const setPersonProperties = mock((properties: Record<string, string>) => {
+  capture("$set", { $set: properties });
 });
 const optInCapturing = mock(
   (_options?: { readonly captureEventName?: string | false }) => undefined
@@ -160,6 +202,7 @@ const onSessionId = mock((listener: (sessionId: string) => void) => {
 
 const posthog = {
   capture,
+  captureLog,
   featureFlags: {
     hasLoadedFlags: false,
     overrideFeatureFlags,
@@ -186,12 +229,29 @@ const posthog = {
   reloadFeatureFlags,
   reset,
   set_config: setConfig,
+  setInternalOrTestUser,
+  setPersonProperties,
   startSessionRecording,
   stopSessionRecording,
   unregister,
 };
 
 mock.module("posthog-js", () => ({ default: posthog }));
+
+const preloadableModule = await import("@/shared/utils/preloadable-module");
+const { createPreloadableModule, useLoadedModule, usePreloadWhenIdle } =
+  preloadableModule;
+let failNextSdkLoad = false;
+mock.module("@/shared/utils/preloadable-module", () => ({
+  createPreloadableModule: <Module,>(importModule: () => Promise<Module>) =>
+    createPreloadableModule(() => {
+      if (!failNextSdkLoad) return importModule();
+      failNextSdkLoad = false;
+      return Promise.reject(new Error("synthetic chunk load failure"));
+    }),
+  useLoadedModule,
+  usePreloadWhenIdle,
+}));
 
 let pathname = "/account";
 mock.module("next/navigation", () => ({
@@ -204,7 +264,7 @@ const setConsentCookie = (categories: readonly unknown[]) => {
 };
 
 const createConsentCookieString = (categories: readonly unknown[]) =>
-  `cc_cookie=${encodeURIComponent(JSON.stringify({ categories }))}`;
+  `cc_cookie=${savedConsentCookieValue({ categories })}`;
 
 const clearConsentCookie = () => {
   // biome-ignore lint/suspicious/noDocumentCookie: The browser test needs to simulate another tab removing consent.
@@ -255,6 +315,7 @@ describe("PostHogAnalytics", () => {
   });
 
   beforeEach(() => {
+    bindVisitorConsentRevision(getConsentBannerRevision());
     window.happyDOM.setURL("https://deskohub.test/account");
     posthogHost = "https://posthog.example";
     analyticsAccountIdentity = { status: "pending" };
@@ -272,7 +333,13 @@ describe("PostHogAnalytics", () => {
     posthogLifecycle.length = 0;
     init.mockClear();
     capture.mockClear();
+    captureLog.mockClear();
     identify.mockClear();
+    setInternalOrTestUser.mockClear();
+    setPersonProperties.mockClear();
+    dotyposCustomerIds.clear();
+    dotyposCustomerIdListeners.clear();
+    requestAnalyticsDotyposCustomerId.mockClear();
     optInCapturing.mockClear();
     optOutCapturing.mockClear();
     reset.mockClear();
@@ -294,8 +361,8 @@ describe("PostHogAnalytics", () => {
     document.cookie = "cc_cookie=; Path=/; Max-Age=0";
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("rejects unsafe telemetry hosts before first SDK initialization", async () => {
@@ -343,20 +410,16 @@ describe("PostHogAnalytics", () => {
 
     const distinctIdBeforeHostGuard = currentDistinctId;
     setConsentCookie(["necessary", "analytics"]);
-    for (const unsafeHost of [
-      "https://deskohub.test/ingest",
-      "https://deskohub.test:3211/ingest",
-      "https://user:password@telemetry.example/ingest",
-    ]) {
-      posthogHost = unsafeHost;
-      const unsafeView = render(
-        <UnsafeHostAnalyticsBoundary analyticsAccepted discountCodesOverride />
-      );
-      expect(
-        unsafeView.getByRole("form", { name: "Discount code" })
-      ).toBeDefined();
-      unsafeView.unmount();
-    }
+    // The unsafe-host matrix lives in utils/posthog-config.test.ts; one
+    // same-origin host proves the component honours the guard.
+    posthogHost = "https://deskohub.test/ingest";
+    const unsafeView = render(
+      <UnsafeHostAnalyticsBoundary analyticsAccepted discountCodesOverride />
+    );
+    expect(
+      unsafeView.getByRole("form", { name: "Discount code" })
+    ).toBeDefined();
+    unsafeView.unmount();
 
     expect(init).not.toHaveBeenCalled();
     expect(identify).not.toHaveBeenCalled();
@@ -512,6 +575,147 @@ describe("PostHogAnalytics", () => {
     view.unmount();
   });
 
+  test("marks only a consented production test account as an internal or test user", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?test-account-tagging"
+    );
+    const AnalyticsBoundary = ({
+      analyticsAccepted,
+    }: {
+      readonly analyticsAccepted: boolean;
+    }) => (
+      <PostHogProvider>
+        <PostHogAnalytics
+          analyticsAccepted={analyticsAccepted}
+          posthogEnvironment="production"
+        />
+      </PostHogProvider>
+    );
+
+    setConsentCookie(["necessary", "analytics"]);
+    const view = render(<AnalyticsBoundary analyticsAccepted />);
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-a",
+        status: "authenticated",
+        testAccount: false,
+      });
+    });
+
+    expect(identify).toHaveBeenCalledWith("workspace-account:account-a");
+    expect(setInternalOrTestUser).not.toHaveBeenCalled();
+
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-b",
+        status: "authenticated",
+        testAccount: true,
+      });
+    });
+
+    expect(identify).toHaveBeenLastCalledWith("workspace-account:account-b");
+    expect(setInternalOrTestUser).toHaveBeenCalledTimes(1);
+    const personEvent = capturedEvents.find(({ event }) => event === "$set");
+    expect(personEvent?.properties).toMatchObject({
+      $set: { $internal_or_test_user: true },
+      "deployment.environment.name": "production",
+      distinct_id: "workspace-account:account-b",
+    });
+
+    view.unmount();
+  });
+
+  test("tags preview events and marks every preview account as an internal or test user", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?preview-environment-tagging"
+    );
+
+    setConsentCookie(["necessary", "analytics"]);
+    const view = render(
+      <PostHogProvider>
+        <PostHogAnalytics analyticsAccepted posthogEnvironment="preview" />
+      </PostHogProvider>
+    );
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-a",
+        status: "authenticated",
+        testAccount: false,
+      });
+    });
+    capture("reservation started");
+
+    expect(setInternalOrTestUser).toHaveBeenCalledTimes(1);
+    for (const eventName of ["$identify", "$set", "reservation started"]) {
+      const event = capturedEvents.find(({ event }) => event === eventName);
+      expect(event?.properties).toMatchObject({
+        "deployment.environment.name": "preview",
+        distinct_id: "workspace-account:account-a",
+      });
+    }
+
+    view.unmount();
+  });
+
+  test("links a consented account's person to its Dotypos customer ID once it loads", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?dotypos-customer-link"
+    );
+    const AnalyticsBoundary = ({
+      analyticsAccepted,
+    }: {
+      readonly analyticsAccepted: boolean;
+    }) => (
+      <PostHogProvider>
+        <PostHogAnalytics
+          analyticsAccepted={analyticsAccepted}
+          posthogEnvironment="preview"
+        />
+      </PostHogProvider>
+    );
+
+    setConsentCookie(["necessary"]);
+    const view = render(<AnalyticsBoundary analyticsAccepted={false} />);
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-a",
+        status: "authenticated",
+        testAccount: false,
+      });
+    });
+
+    expect(requestAnalyticsDotyposCustomerId).not.toHaveBeenCalled();
+
+    setConsentCookie(["necessary", "analytics"]);
+    view.rerender(<AnalyticsBoundary analyticsAccepted />);
+    await act(async () => undefined);
+
+    expect(identify).toHaveBeenCalledWith("workspace-account:account-a");
+    expect(requestAnalyticsDotyposCustomerId).toHaveBeenCalledWith("account-a");
+    expect(setPersonProperties).not.toHaveBeenCalled();
+
+    await act(async () => {
+      linkDotyposCustomer("account-a", "customer-a");
+    });
+
+    expect(identify).toHaveBeenCalledTimes(1);
+    expect(setPersonProperties).toHaveBeenCalledTimes(1);
+    // Preview also marks the person as internal or test with its own $set.
+    const personEvent = capturedEvents.find(
+      ({ event, properties }) =>
+        event === "$set" && properties.$set?.dotypos_customer_id !== undefined
+    );
+    expect(personEvent?.properties).toMatchObject({
+      $set: { dotypos_customer_id: "customer-a" },
+      distinct_id: "workspace-account:account-a",
+    });
+    expect(Object.keys(personEvent?.properties.$set ?? {})).toEqual([
+      "dotypos_customer_id",
+    ]);
+
+    view.unmount();
+  });
+
   test("keeps initialization, identity, consent, and pageviews ordered", async () => {
     const [{ PostHogAnalytics, PostHogProvider }, { useFeatureFlagEnabled }] =
       await Promise.all([
@@ -543,7 +747,7 @@ describe("PostHogAnalytics", () => {
               ? undefined
               : { discount_codes: discountCodesOverride }
           }
-          posthogEnvironment="preview"
+          posthogEnvironment="production"
         >
           <DiscountCodesProbe initialEnabled />
         </PostHogAnalytics>
@@ -575,15 +779,6 @@ describe("PostHogAnalytics", () => {
     });
 
     expect(init).toHaveBeenCalledTimes(1);
-    expect(initConfig).toEqual(
-      expect.objectContaining({
-        advanced_disable_feature_flags: true,
-        advanced_disable_feature_flags_on_first_load: true,
-        capture_pageleave: false,
-        capture_pageview: false,
-        tracing_headers: [],
-      })
-    );
     expect(seededInitialPersonProperties).toEqual({});
     expect(posthogLifecycle.slice(0, 4)).toEqual([
       "init",
@@ -699,7 +894,11 @@ describe("PostHogAnalytics", () => {
     setConsentCookie(["necessary"]);
     window.dispatchEvent(
       new CustomEvent(CONSENT_UPDATED_EVENT, {
-        detail: { _tag: "ConsentUpdated", acceptedCategories: ["necessary"] },
+        detail: {
+          change: "local",
+          _tag: "ConsentUpdated",
+          acceptedCategories: ["necessary"],
+        },
       })
     );
     expect(document.cookie).not.toContain(
@@ -721,6 +920,7 @@ describe("PostHogAnalytics", () => {
     window.dispatchEvent(
       new CustomEvent(CONSENT_UPDATED_EVENT, {
         detail: {
+          change: "local",
           _tag: "ConsentUpdated",
           acceptedCategories: ["necessary", "analytics"],
         },
@@ -739,6 +939,7 @@ describe("PostHogAnalytics", () => {
     window.dispatchEvent(
       new CustomEvent(CONSENT_UPDATED_EVENT, {
         detail: {
+          change: "local",
           _tag: "ConsentUpdated",
           acceptedCategories: ["necessary", "analytics"],
         },
@@ -974,118 +1175,536 @@ describe("PostHogAnalytics", () => {
     view.unmount();
   });
 
-  test("builds a privacy-safe production configuration", async () => {
-    const { createPostHogConfig, isPostHogTelemetryHostAllowed } = await import(
-      "../utils/posthog-config"
+  test("an account preference decline resets and opts out, and an accept re-verifies the account before identifying", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?account-preference"
     );
-    const beforeSend: BeforeSendFn = (event) => event;
-    const config = createPostHogConfig({
-      apiHost: "https://posthog.example",
-      beforeSend,
-      optOutUseragentFilter: false,
-    });
 
-    expect(
-      isPostHogTelemetryHostAllowed(
-        "https://posthog.example/ingest",
-        "deskohub.test"
-      )
-    ).toBe(true);
-    expect(
-      isPostHogTelemetryHostAllowed(
-        "https://deskohub.test/ingest",
-        "deskohub.test"
-      )
-    ).toBe(false);
-    expect(
-      isPostHogTelemetryHostAllowed(
-        "https://DESKOHUB.TEST./ingest",
-        "deskohub.test"
-      )
-    ).toBe(false);
-    expect(
-      isPostHogTelemetryHostAllowed(
-        "https://deskohub.test/ingest",
-        "DESKOHUB.TEST."
-      )
-    ).toBe(false);
-    expect(
-      isPostHogTelemetryHostAllowed(
-        "https://deskohub.test:3211/ingest",
-        "deskohub.test"
-      )
-    ).toBe(false);
-    expect(
-      isPostHogTelemetryHostAllowed(
-        "https://user:password@posthog.example/ingest",
-        "deskohub.test"
-      )
-    ).toBe(false);
-    expect(isPostHogTelemetryHostAllowed("/ingest", "deskohub.test")).toBe(
-      false
+    const AnalyticsBoundary = () => (
+      <PostHogProvider>
+        <PostHogAnalytics analyticsAccepted posthogEnvironment="preview">
+          <p>synthetic analytics content</p>
+        </PostHogAnalytics>
+      </PostHogProvider>
     );
-    expect(isPostHogTelemetryHostAllowed("http://.", "deskohub.test")).toBe(
-      false
-    );
-    expect(
-      isPostHogTelemetryHostAllowed(
-        "ftp://posthog.example/ingest",
-        "deskohub.test"
-      )
-    ).toBe(false);
-
-    expect(config).toMatchObject({
-      advanced_disable_feature_flags: true,
-      advanced_disable_feature_flags_on_first_load: true,
-      autocapture: false,
-      capture_exceptions: false,
-      capture_dead_clicks: false,
-      capture_heatmaps: false,
-      capture_pageleave: false,
-      capture_pageview: false,
-      disable_capture_url_hashes: true,
-      disable_session_recording: true,
-      disable_surveys: true,
-      mask_all_text: true,
-      rageclick: false,
-      save_campaign_params: false,
-      save_referrer: false,
-      session_recording: {
-        maskAllInputs: true,
-        maskTextSelector: "body",
-        recordBody: false,
-        recordHeaders: false,
-      },
-      tracing_headers: [],
-    });
-    expect(config.mask_all_element_attributes).toBeUndefined();
-    expect(config.session_recording.maskAllElementAttributes).toBeUndefined();
-
-    const maskCapturedNetworkRequestFn =
-      config.session_recording.maskCapturedNetworkRequestFn;
-    if (!maskCapturedNetworkRequestFn) {
-      throw new Error("The production config needs network URL masking");
-    }
-
-    const request: CapturedNetworkRequest = {
-      duration: 1,
-      entryType: "resource",
-      name: "https://deskohub.test/account?email=synthetic%40example.test#secret",
-      requestBody: "synthetic-request-body",
-      requestHeaders: { authorization: "synthetic-token" },
-      responseBody: "synthetic-response-body",
-      responseHeaders: { "x-private": "synthetic-header" },
-      startTime: 0,
+    const announce = (
+      change: "account" | "preference",
+      acceptedCategories: readonly string[]
+    ) => {
+      setConsentCookie(acceptedCategories);
+      window.dispatchEvent(
+        new CustomEvent(CONSENT_UPDATED_EVENT, {
+          detail: {
+            _tag: "ConsentUpdated",
+            acceptedCategories: [...acceptedCategories],
+            change,
+          },
+        })
+      );
     };
-    const maskedRequest = maskCapturedNetworkRequestFn(request);
 
-    expect(maskedRequest).toMatchObject({
-      name: "https://deskohub.test/account",
-      requestBody: undefined,
-      requestHeaders: undefined,
-      responseBody: undefined,
-      responseHeaders: undefined,
+    setConsentCookie(["necessary", "analytics"]);
+    const view = render(<AnalyticsBoundary />);
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-a",
+        status: "authenticated",
+      });
     });
-    expect(JSON.stringify(maskedRequest)).not.toContain("synthetic");
+
+    const beforeSend = initConfig?.before_send;
+    if (!beforeSend || Array.isArray(beforeSend)) {
+      throw new Error("The PostHog test client needs a before_send function");
+    }
+    expect(identify).toHaveBeenLastCalledWith("workspace-account:account-a");
+
+    const identifyCountBeforeDecline = identify.mock.calls.length;
+    const resetCountBeforeDecline = reset.mock.calls.length;
+    const optOutCountBeforeDecline = optOutCapturing.mock.calls.length;
+    const refreshCountBeforeDecline =
+      refreshAnalyticsAccountIdentity.mock.calls.length;
+    announce("preference", ["necessary"]);
+
+    expect(reset).toHaveBeenCalledTimes(resetCountBeforeDecline + 1);
+    expect(optOutCapturing).toHaveBeenCalledTimes(optOutCountBeforeDecline + 1);
+    expect(identify).toHaveBeenCalledTimes(identifyCountBeforeDecline);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(
+      refreshCountBeforeDecline
+    );
+    expect(document.cookie).not.toContain(
+      "dh_ph_distinct_id=workspace-account%3Aaccount-a"
+    );
+    expect(beforeSend(createEvent("blocked after declining", {}))).toBeNull();
+
+    // The refreshed session names the account the server verified.
+    refreshedAnalyticsAccountIdentity = {
+      accountId: "account-a-verified",
+      status: "authenticated",
+    };
+    const identifyCountBeforeAccept = identify.mock.calls.length;
+    announce("preference", ["necessary", "analytics"]);
+
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(
+      refreshCountBeforeDecline + 1
+    );
+    expect(identify).toHaveBeenCalledTimes(identifyCountBeforeAccept);
+    expect(
+      beforeSend(createEvent("blocked while identity refreshes", {}))
+    ).toBeNull();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(identify).toHaveBeenCalledTimes(identifyCountBeforeAccept + 1);
+    expect(identify).toHaveBeenLastCalledWith(
+      "workspace-account:account-a-verified"
+    );
+    expect(optOutCapturing).toHaveBeenCalledTimes(optOutCountBeforeDecline + 1);
+
+    // A decision applied from elsewhere, such as a silent grant, identifies
+    // the account it already holds without re-verifying it.
+    announce("account", ["necessary"]);
+    const refreshCountBeforeAccountGrant =
+      refreshAnalyticsAccountIdentity.mock.calls.length;
+    const identifyCountBeforeAccountGrant = identify.mock.calls.length;
+    announce("account", ["necessary", "analytics"]);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(
+      refreshCountBeforeAccountGrant
+    );
+    expect(identify).toHaveBeenCalledTimes(identifyCountBeforeAccountGrant + 1);
+
+    view.unmount();
+  });
+
+  test("delivers browser logs once each, only while analytics is ready", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?browser-logs"
+    );
+    const logBrowserFailure = (failureCode: string) =>
+      act(async () => {
+        await reportWorkspaceBrowserFailure(
+          failureCode,
+          new Error("synthetic browser failure")
+        ).pipe(runWorkspaceBrowserEffect("test.browser-logs"));
+      });
+    const deliveredLog = (failureCode: string): CaptureLogOptions => ({
+      attributes: {
+        boundary: "browser",
+        "deployment.environment.name": "preview",
+        errorType: "Error",
+        failureCode,
+        operation: "test.browser-logs",
+        "url.full": "https://deskohub.test/account",
+      },
+      body: "Workspace browser failure",
+      level: "warn",
+    });
+
+    discardWorkspaceBrowserLogs();
+    window.happyDOM.setURL(
+      "https://deskohub.test/account?checkoutToken=synthetic-token#hash"
+    );
+    setConsentCookie(["necessary", "analytics"]);
+    const view = render(
+      <PostHogProvider>
+        <PostHogAnalytics analyticsAccepted posthogEnvironment="preview">
+          <p>synthetic analytics content</p>
+        </PostHogAnalytics>
+      </PostHogProvider>
+    );
+
+    await logBrowserFailure("test.before-ready");
+    expect(captureLog).not.toHaveBeenCalled();
+
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-a",
+        status: "authenticated",
+      });
+    });
+    expect(captureLog.mock.calls).toEqual([
+      [deliveredLog("test.before-ready")],
+    ]);
+
+    await logBrowserFailure("test.while-ready");
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "unavailable" });
+    });
+    await logBrowserFailure("test.while-paused");
+    expect(captureLog.mock.calls).toEqual([
+      [deliveredLog("test.before-ready")],
+      [deliveredLog("test.while-ready")],
+    ]);
+
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-a",
+        status: "authenticated",
+      });
+    });
+    expect(captureLog.mock.calls).toEqual([
+      [deliveredLog("test.before-ready")],
+      [deliveredLog("test.while-ready")],
+      [deliveredLog("test.while-paused")],
+    ]);
+
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "pending" });
+    });
+    await logBrowserFailure("test.before-withdrawal");
+    setConsentCookie(["necessary"]);
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: CONSENT_UPDATED_STORAGE_KEY,
+        newValue: "synthetic-withdrawal-nonce",
+      })
+    );
+    setConsentCookie(["necessary", "analytics"]);
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: CONSENT_UPDATED_STORAGE_KEY,
+        newValue: "synthetic-reconsent-nonce",
+      })
+    );
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-a",
+        status: "authenticated",
+      });
+    });
+
+    expect(captureLog).toHaveBeenCalledTimes(3);
+    expect(JSON.stringify(captureLog.mock.calls)).not.toContain(
+      "synthetic-token"
+    );
+
+    view.unmount();
+  });
+
+  test("keeps consented events captured before the consent state hydrates", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?consent-hydration"
+    );
+    const AnalyticsBoundary = ({
+      analyticsAccepted,
+    }: {
+      readonly analyticsAccepted: boolean;
+    }) => (
+      <PostHogProvider>
+        <PostHogAnalytics
+          analyticsAccepted={analyticsAccepted}
+          posthogEnvironment="preview"
+        />
+      </PostHogProvider>
+    );
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary", "analytics"]);
+    captureAnalyticsEvent("before hydration");
+    const view = render(<AnalyticsBoundary analyticsAccepted={false} />);
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    await act(async () => {
+      view.rerender(<AnalyticsBoundary analyticsAccepted />);
+    });
+
+    expect(capturedEvents.map(({ event }) => event)).toContain(
+      "before hydration"
+    );
+
+    view.unmount();
+  });
+
+  test("retries a failed SDK load when the tab regains focus", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?sdk-load-retry"
+    );
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary", "analytics"]);
+    failNextSdkLoad = true;
+    const view = render(
+      <PostHogProvider>
+        <PostHogAnalytics analyticsAccepted posthogEnvironment="preview" />
+      </PostHogProvider>
+    );
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    captureAnalyticsEvent("while the SDK failed to load");
+    expect(init).not.toHaveBeenCalled();
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    expect(init).toHaveBeenCalledTimes(1);
+    expect(capturedEvents.map(({ event }) => event)).toContain(
+      "while the SDK failed to load"
+    );
+
+    view.unmount();
+  });
+
+  test("drops events held from an account that is left before the SDK loads", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?account-change-before-load"
+    );
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary", "analytics"]);
+    const view = render(
+      <PostHogProvider>
+        <PostHogAnalytics analyticsAccepted posthogEnvironment="preview" />
+      </PostHogProvider>
+    );
+    publishAnalyticsAccountIdentity({
+      accountId: "account-a",
+      status: "authenticated",
+    });
+    captureAnalyticsEvent("from account a");
+    publishAnalyticsAccountIdentity({ status: "pending" });
+    publishAnalyticsAccountIdentity({ status: "anonymous" });
+    captureAnalyticsEvent("after leaving account a");
+    expect(init).not.toHaveBeenCalled();
+
+    await act(async () => undefined);
+
+    expect(init).toHaveBeenCalledTimes(1);
+    const eventNames = capturedEvents.map(({ event }) => event);
+    expect(eventNames).not.toContain("from account a");
+    expect(eventNames).toContain("after leaving account a");
+
+    view.unmount();
+  });
+
+  test("sends events captured before the SDK loads once analytics is ready", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?analytics-events"
+    );
+    const AnalyticsBoundary = ({
+      analyticsAccepted,
+    }: {
+      readonly analyticsAccepted: boolean;
+    }) => (
+      <PostHogProvider>
+        <PostHogAnalytics
+          analyticsAccepted={analyticsAccepted}
+          posthogEnvironment="preview"
+        />
+      </PostHogProvider>
+    );
+    const capturedEventNames = () =>
+      capturedEvents
+        .map(({ event }) => event)
+        .filter((event) => event !== "$identify" && event !== "$set");
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary"]);
+    const view = render(<AnalyticsBoundary analyticsAccepted={false} />);
+    captureAnalyticsEvent("without consent");
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    expect(init).not.toHaveBeenCalled();
+
+    setConsentCookie(["necessary", "analytics"]);
+    captureAnalyticsEvent("before load", { step: 1 });
+    captureAnalyticsEvent("before load", { step: 2 });
+    expect(init).not.toHaveBeenCalled();
+
+    await act(async () => {
+      view.rerender(<AnalyticsBoundary analyticsAccepted />);
+    });
+    expect(init).toHaveBeenCalledTimes(1);
+    expect(capturedEventNames()).toEqual([
+      "$pageview",
+      "before load",
+      "before load",
+    ]);
+    expect(
+      capturedEvents
+        .filter(({ event }) => event === "before load")
+        .map(({ properties }) => properties.step)
+    ).toEqual([1, 2]);
+
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "pending" });
+    });
+    captureAnalyticsEvent("while paused");
+    expect(capturedEventNames()).not.toContain("while paused");
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    expect(capturedEventNames().at(-1)).toBe("while paused");
+
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-a",
+        status: "authenticated",
+      });
+    });
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "pending" });
+    });
+    captureAnalyticsEvent("while leaving account a");
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    expect(capturedEventNames()).not.toContain("while leaving account a");
+
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "pending" });
+    });
+    captureAnalyticsEvent("before withdrawal");
+    setConsentCookie(["necessary"]);
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: CONSENT_UPDATED_STORAGE_KEY,
+        newValue: "synthetic-withdrawal-nonce",
+      })
+    );
+    captureAnalyticsEvent("after withdrawal");
+    setConsentCookie(["necessary", "analytics"]);
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: CONSENT_UPDATED_STORAGE_KEY,
+        newValue: "synthetic-reconsent-nonce",
+      })
+    );
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+
+    expect(capturedEventNames()).not.toContain("without consent");
+    expect(capturedEventNames()).not.toContain("before withdrawal");
+    expect(capturedEventNames()).not.toContain("after withdrawal");
+
+    view.unmount();
+  });
+  test("starts one session under Strict Mode's repeated effects", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?strict-mode"
+    );
+
+    discardAnalyticsEvents();
+    setConsentCookie(["necessary", "analytics"]);
+    captureAnalyticsEvent("before strict mount");
+    const view = render(
+      <StrictMode>
+        <PostHogProvider>
+          <PostHogAnalytics analyticsAccepted posthogEnvironment="preview" />
+        </PostHogProvider>
+      </StrictMode>
+    );
+    await act(async () => {
+      publishAnalyticsAccountIdentity({
+        accountId: "account-a",
+        status: "authenticated",
+      });
+    });
+
+    expect(init).toHaveBeenCalledTimes(1);
+    expect(identify).toHaveBeenCalledTimes(1);
+    expect(reset).not.toHaveBeenCalled();
+    expect(optOutCapturing).not.toHaveBeenCalled();
+    expect(onSessionId).toHaveBeenCalledTimes(1);
+    expect(
+      capturedEvents
+        .map(({ event }) => event)
+        .filter((event) => event !== "$set")
+    ).toEqual(["$identify", "$pageview", "before strict mount"]);
+    expect(document.cookie).toContain(
+      "dh_ph_distinct_id=workspace-account%3Aaccount-a"
+    );
+
+    view.unmount();
+  });
+
+  test("applies changed flag overrides without restarting identity or pageviews", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?flag-override-change"
+    );
+    const AnalyticsBoundary = ({
+      discountCodesOverride,
+    }: {
+      readonly discountCodesOverride?: boolean;
+    }) => (
+      <PostHogProvider>
+        <PostHogAnalytics
+          analyticsAccepted
+          featureFlagOverrides={
+            discountCodesOverride === undefined
+              ? undefined
+              : { discount_codes: discountCodesOverride }
+          }
+          posthogEnvironment="preview"
+        />
+      </PostHogProvider>
+    );
+
+    setConsentCookie(["necessary", "analytics"]);
+    const view = render(<AnalyticsBoundary discountCodesOverride />);
+    await act(async () => {
+      publishAnalyticsAccountIdentity({ status: "anonymous" });
+    });
+    expect(overrideFeatureFlags).toHaveBeenLastCalledWith({
+      flags: { discount_codes: true },
+    });
+    const eventCount = capturedEvents.length;
+    const reloadCount = reloadFeatureFlags.mock.calls.length;
+
+    await act(async () => {
+      view.rerender(<AnalyticsBoundary discountCodesOverride={false} />);
+    });
+    expect(overrideFeatureFlags).toHaveBeenLastCalledWith({
+      flags: { discount_codes: false },
+    });
+
+    await act(async () => {
+      view.rerender(<AnalyticsBoundary />);
+    });
+    expect(overrideFeatureFlags).toHaveBeenLastCalledWith(false);
+    expect(init).toHaveBeenCalledTimes(1);
+    expect(reset).not.toHaveBeenCalled();
+    expect(capturedEvents).toHaveLength(eventCount);
+    expect(reloadFeatureFlags).toHaveBeenCalledTimes(reloadCount);
+
+    const overrideCount = overrideFeatureFlags.mock.calls.length;
+    await act(async () => {
+      view.rerender(<AnalyticsBoundary />);
+    });
+    expect(overrideFeatureFlags).toHaveBeenCalledTimes(overrideCount);
+
+    view.unmount();
+  });
+
+  test("does not initialize an SDK that finishes loading after unmount", async () => {
+    const { PostHogAnalytics, PostHogProvider } = await import(
+      "./posthog-analytics?unmount-during-load"
+    );
+    const AnalyticsBoundary = () => (
+      <PostHogProvider>
+        <PostHogAnalytics analyticsAccepted posthogEnvironment="preview" />
+      </PostHogProvider>
+    );
+
+    setConsentCookie(["necessary", "analytics"]);
+    publishAnalyticsAccountIdentity({ status: "anonymous" });
+    const view = render(<AnalyticsBoundary />);
+    view.unmount();
+    await act(async () => undefined);
+
+    expect(init).not.toHaveBeenCalled();
+    expect(capturedEvents).toHaveLength(0);
+
+    const remountedView = render(<AnalyticsBoundary />);
+    await act(async () => undefined);
+    expect(init).toHaveBeenCalledTimes(1);
+    expect(capturedEvents.map(({ event }) => event)).toEqual(["$pageview"]);
+
+    remountedView.unmount();
   });
 });

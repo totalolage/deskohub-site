@@ -1,19 +1,27 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import * as fsPromises from "node:fs/promises";
 import { resolve } from "node:path";
+import { testEmailAddress } from "@deskohub/test-email";
 import type * as Playwright from "@playwright/test";
+import { encodeAuthCallbackReturn } from "@/features/account/routes";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   type AccountReviewTarget,
   captureAccountReview,
+  captureCallbackHandoffReview,
   captureReservationStatusReview,
+  type LanguagePreferenceReviewCapture,
   persistCallbackDocumentReview,
+  withLanguagePreferenceReview,
   withSignInPendingReview,
 } from "./review-screenshots";
+import type { LanguagePreferenceReviewStage } from "./review-targets";
 
 const baseUrl = "https://deskohub-workspace-review.example.test";
+const review = { baseUrl, screenshots: true } as const;
+const reviewWithoutScreenshots = { baseUrl, screenshots: false } as const;
 const magicLinkUrl = new URL(
   "/api/auth/sign-in/magic-link",
   baseUrl
@@ -26,293 +34,29 @@ const accountReviewArtifactDirectory = resolve(
 );
 const captureFailureMessage = "Account review screenshot capture failed";
 const attemptUuid = "0f0a9c1e-7b62-4c8d-9e21-53ab2f0d4c7a";
-const privateLinkedAccountQueries = [
-  "",
-  "?section=reservations",
-  "?section=profile",
-  "?section=billing",
-  "?section=danger",
+const englishCard = {
+  body: "Taking you to your account…",
+  label: "Loading sign-in…",
+  title: "You are signed in",
+} as const;
+const czechCard = {
+  body: "Vracíme tě zpět. Dokončit můžeš přímo v tomto prohlížeči.",
+  label: "Načítání přihlášení…",
+  title: "Přihlášení proběhlo",
+} as const;
+const selection = "/cs-CZ/reservation/cowork?selection=synthetic-1";
+const enSelection = "/en-US/reservation/cowork?selection=synthetic-1";
+const czechLanding = { locale: "cs-CZ", returnTo: selection } as const;
+const czechCallbackUrl = `${baseUrl}/cs-CZ/auth/callback?attempt=${attemptUuid}&return=${encodeAuthCallbackReturn(selection)}`;
+const reservationCustomerReviewTargets = [
+  "reservation-customer-account-desktop",
+  "reservation-customer-contact-desktop",
 ] as const;
-const marketingReviewTargets = [
-  "account-marketing-withdrawn-desktop",
-  "account-marketing-active-mobile",
-  "marketing-link-pending-desktop",
-  "marketing-link-pending-mobile",
-  "marketing-link-active-desktop",
-  "marketing-link-active-mobile",
-  "marketing-link-withdrawn-desktop",
-  "marketing-link-withdrawn-mobile",
-  "marketing-link-invalid-desktop",
-  "marketing-link-invalid-mobile",
-] as const;
-
-const validTargets = [
-  {
-    filename: "completion-mobile375x900.png",
-    path: "/en-US/account",
-    query: "",
-    target: "completion-mobile375x900",
-    viewport: { height: 900, width: 375 },
-    fullPage: true,
-  },
-  {
-    filename: "account-loading-desktop.png",
-    path: "/en-US/account",
-    query: "",
-    target: "account-loading-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "callback-loading-desktop.png",
-    path: "/en-US/auth/callback",
-    query: "",
-    queries: ["", `?attempt=${attemptUuid}`],
-    target: "callback-loading-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "sign-in-handoff-desktop.png",
-    path: ["/en-US/account", "/en-US/auth/sign-in"],
-    query: "",
-    target: "sign-in-handoff-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "linked-reservations-desktop.png",
-    path: "/en-US/account",
-    query: "",
-    queries: privateLinkedAccountQueries,
-    target: "linked-reservations-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "linked-reservations-mobile.png",
-    path: "/en-US/account",
-    query: "",
-    queries: privateLinkedAccountQueries,
-    target: "linked-reservations-mobile",
-    viewport: { height: 900, width: 375 },
-    fullPage: true,
-  },
-  {
-    filename: "linked-profile-desktop.png",
-    path: "/en-US/account",
-    query: "",
-    queries: privateLinkedAccountQueries,
-    target: "linked-profile-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "linked-billing-desktop.png",
-    path: "/en-US/account",
-    query: "",
-    queries: privateLinkedAccountQueries,
-    target: "linked-billing-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "linked-billing-mobile.png",
-    path: "/en-US/account",
-    query: "",
-    queries: privateLinkedAccountQueries,
-    target: "linked-billing-mobile",
-    viewport: { height: 900, width: 375 },
-    fullPage: true,
-  },
-  {
-    filename: "linked-legal-desktop.png",
-    path: "/en-US/account/legal",
-    query: "",
-    target: "linked-legal-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "account-marketing-withdrawn-desktop.png",
-    path: "/en-US/account/legal",
-    query: "",
-    target: "account-marketing-withdrawn-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "account-marketing-active-mobile.png",
-    path: "/en-US/account/legal",
-    query: "",
-    target: "account-marketing-active-mobile",
-    viewport: { height: 900, width: 375 },
-    fullPage: true,
-  },
-  {
-    filename: "marketing-link-pending-desktop.png",
-    path: "/en-US/account/legal",
-    query: "",
-    target: "marketing-link-pending-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "marketing-link-pending-mobile.png",
-    path: "/en-US/account/legal",
-    query: "",
-    target: "marketing-link-pending-mobile",
-    viewport: { height: 900, width: 375 },
-    fullPage: true,
-  },
-  {
-    filename: "marketing-link-active-desktop.png",
-    path: "/en-US/account/legal",
-    query: "",
-    target: "marketing-link-active-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "marketing-link-active-mobile.png",
-    path: "/en-US/account/legal",
-    query: "",
-    target: "marketing-link-active-mobile",
-    viewport: { height: 900, width: 375 },
-    fullPage: true,
-  },
-  {
-    filename: "marketing-link-withdrawn-desktop.png",
-    path: "/en-US/account/legal",
-    query: "",
-    target: "marketing-link-withdrawn-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "marketing-link-withdrawn-mobile.png",
-    path: "/en-US/account/legal",
-    query: "",
-    target: "marketing-link-withdrawn-mobile",
-    viewport: { height: 900, width: 375 },
-    fullPage: true,
-  },
-  {
-    filename: "marketing-link-invalid-desktop.png",
-    path: "/en-US/account/legal",
-    query: "",
-    target: "marketing-link-invalid-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "marketing-link-invalid-mobile.png",
-    path: "/en-US/account/legal",
-    query: "",
-    target: "marketing-link-invalid-mobile",
-    viewport: { height: 900, width: 375 },
-    fullPage: true,
-  },
-  {
-    filename: "public-legal-desktop.png",
-    path: "/en-US/account/legal",
-    query: "",
-    target: "public-legal-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "public-legal-mobile.png",
-    path: "/en-US/account/legal",
-    query: "",
-    target: "public-legal-mobile",
-    viewport: { height: 900, width: 375 },
-    fullPage: true,
-  },
-  {
-    filename: "linked-danger-desktop.png",
-    path: "/en-US/account",
-    query: "",
-    queries: privateLinkedAccountQueries,
-    target: "linked-danger-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "linked-danger-mobile.png",
-    path: "/en-US/account",
-    query: "",
-    queries: privateLinkedAccountQueries,
-    target: "linked-danger-mobile",
-    viewport: { height: 900, width: 375 },
-    fullPage: true,
-  },
-  {
-    filename: "support-desktop.png",
-    path: "/en-US/account",
-    query: "",
-    target: "support-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "sign-in-accepted-desktop.png",
-    path: "/en-US/auth/sign-in",
-    query: "",
-    target: "sign-in-accepted-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "sign-in-pending-desktop.png",
-    path: "/en-US/auth/sign-in",
-    query: "",
-    target: "sign-in-pending-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "sign-in-desktop.png",
-    path: "/en-US/auth/sign-in",
-    query: "",
-    target: "sign-in-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "callback-failed-desktop.png",
-    path: "/en-US/auth/callback",
-    query: "",
-    queries: [
-      "?error=INVALID_TOKEN",
-      `?attempt=${attemptUuid}&error=INVALID_TOKEN`,
-      `?error=INVALID_TOKEN&attempt=${attemptUuid}`,
-    ],
-    target: "callback-failed-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-  {
-    filename: "deleted-desktop.png",
-    path: "/en-US/account/deleted",
-    query: "",
-    target: "deleted-desktop",
-    viewport: { height: 1000, width: 1440 },
-    fullPage: true,
-  },
-] as const satisfies ReadonlyArray<{
-  readonly filename: `${string}.png`;
-  readonly fullPage: boolean;
-  readonly path: string | readonly string[];
-  readonly query: string;
-  readonly queries?: readonly string[];
-  readonly target: AccountReviewTarget;
-  readonly viewport: Playwright.ViewportSize;
-}>;
 
 type FakePage = {
   readonly currentViewport: () => Playwright.ViewportSize | null;
   readonly fontReadyCalls: () => number;
+  readonly locatorSelectors: readonly string[];
   readonly page: Playwright.Page;
   readonly setCallbackLoadingPresent: (present: boolean) => void;
   readonly setUrl: (url: string) => void;
@@ -324,8 +68,16 @@ type FakePage = {
 const makeFakePage = (
   url: string,
   options: {
+    /** The signed-in callback card; English account copy by default. */
+    readonly card?: {
+      readonly body: string;
+      readonly label: string;
+      readonly title: string;
+    };
     readonly callbackLoadingPresent?: boolean;
     readonly failScreenshot?: boolean;
+    readonly hiddenTitle?: boolean;
+    readonly titleCount?: number;
     readonly onFontsReady?: () => Promise<void> | void;
     readonly onScreenshot?: () => Promise<void> | void;
     readonly onViewportChange?: (
@@ -337,6 +89,7 @@ const makeFakePage = (
   let currentUrl = url;
   let callbackLoadingPresent = options.callbackLoadingPresent ?? true;
   let fontReadyCallCount = 0;
+  const locatorSelectors: string[] = [];
   const screenshotCalls: Record<string, unknown>[] = [];
   const viewportChanges: (Playwright.ViewportSize | null)[] = [];
   let resolveScreenshotStarted!: () => void;
@@ -344,6 +97,7 @@ const makeFakePage = (
     resolveScreenshotStarted = resolve;
   });
 
+  const card = options.card ?? englishCard;
   const makeLocator = (kind: string): Playwright.Locator =>
     Object.assign({} as Playwright.Locator, {
       boundingBox: async () => {
@@ -351,17 +105,29 @@ const makeFakePage = (
         if (!callbackLoadingPresent) return null;
         return { height: 422, width: 512, x: 0, y: 0 };
       },
-      count: async () =>
-        kind === "loading-card" && !callbackLoadingPresent ? 0 : 1,
-      getByText: () => makeLocator("loading-text"),
+      count: async () => {
+        if (kind === "loading-card" && !callbackLoadingPresent) return 0;
+        return kind === "card-title" ? (options.titleCount ?? 1) : 1;
+      },
+      first: () => makeLocator(kind),
+      locator: (selector: string) =>
+        makeLocator(selector === "h1" ? "card-title" : "card-body"),
+      // Surrounding whitespace is trimmed before comparison.
+      textContent: async () =>
+        ` ${kind === "card-title" ? card.title : card.body}\n`,
       waitFor: async () => {
         if (
           (kind === "loading-card" ||
             kind === "loading-status" ||
-            kind === "loading-text") &&
+            kind === "card-title" ||
+            kind === "card-body") &&
           !callbackLoadingPresent
         )
           throw new Error("callback loading state is not visible");
+        if (kind === "card-title" && options.hiddenTitle)
+          throw new Error("callback heading is not visible");
+        if (kind === "other-status")
+          throw new Error("callback status is not visible");
       },
     });
 
@@ -383,10 +149,16 @@ const makeFakePage = (
       currentViewport = viewport;
       await options.onViewportChange?.(viewport);
     },
-    getByRole: (role: string) =>
-      makeLocator(role === "status" ? "loading-status" : "landmark"),
-    locator: (selector: string) =>
-      makeLocator(selector === "main" ? "main" : "loading-card"),
+    getByRole: (role: string, roleOptions?: { readonly name?: string }) => {
+      if (role !== "status") return makeLocator("landmark");
+      return makeLocator(
+        roleOptions?.name === card.label ? "loading-status" : "other-status"
+      );
+    },
+    locator: (selector: string) => {
+      locatorSelectors.push(selector);
+      return makeLocator(selector === "main" ? "main" : "loading-card");
+    },
     url: () => currentUrl,
     viewportSize: () => currentViewport,
   });
@@ -394,6 +166,7 @@ const makeFakePage = (
   return {
     currentViewport: () => currentViewport,
     fontReadyCalls: () => fontReadyCallCount,
+    locatorSelectors,
     page,
     setCallbackLoadingPresent: (present) => {
       callbackLoadingPresent = present;
@@ -688,19 +461,9 @@ describe("account review screenshot capture", () => {
       url: `${baseUrl}/en-US/auth/sign-in`,
     },
     {
-      name: "a sign-in handoff at a foreign origin",
-      target: "sign-in-handoff-desktop",
-      url: `https://other.example.test/en-US/auth/sign-in`,
-    },
-    {
       name: "a token query",
       target: "completion-mobile375x900",
       url: `${baseUrl}/en-US/account?token=synthetic-secret-token`,
-    },
-    {
-      name: "a sign-in handoff with a query",
-      target: "sign-in-handoff-desktop",
-      url: `${baseUrl}/en-US/auth/sign-in?token=synthetic-secret-token`,
     },
     {
       name: "linked legal at the private account path",
@@ -708,150 +471,155 @@ describe("account review screenshot capture", () => {
       url: `${baseUrl}/en-US/account`,
     },
     {
-      name: "linked legal with a private section query",
+      name: "linked legal with an extra query parameter",
       target: "linked-legal-desktop",
-      url: `${baseUrl}/en-US/account/legal?section=profile`,
+      url: `${baseUrl}/en-US/account/legal?view=private`,
+    },
+    {
+      name: "the preference redirect capture at the unredirected en-US page",
+      target: "locale-preference-redirect-desktop",
+      url: `${baseUrl}/en-US/faq`,
+    },
+    {
+      name: "the switcher capture at the Czech account it switched away from",
+      target: "locale-switcher-saved-desktop",
+      url: `${baseUrl}/cs-CZ/account`,
     },
     {
       name: "linked account with an extra query parameter",
       target: "linked-profile-desktop",
-      url: `${baseUrl}/en-US/account?section=profile&view=private`,
+      url: `${baseUrl}/en-US/account/profile?view=private`,
     },
     {
       name: "linked account with a credential query",
       target: "linked-profile-desktop",
-      url: `${baseUrl}/en-US/account?section=profile&token=synthetic-secret-token`,
+      url: `${baseUrl}/en-US/account/profile?token=synthetic-secret-token`,
     },
     {
-      name: "linked account with a duplicate section query",
+      name: "linked account with a duplicate query parameter",
       target: "linked-profile-desktop",
-      url: `${baseUrl}/en-US/account?section=profile&section=profile`,
+      url: `${baseUrl}/en-US/account/profile?view=private&view=private`,
     },
     {
-      name: "linked account with an unknown section query",
+      name: "linked account with an unknown section path",
       target: "linked-profile-desktop",
-      url: `${baseUrl}/en-US/account?section=unknown`,
+      url: `${baseUrl}/en-US/account/unknown`,
     },
     {
-      name: "a mobile linked account with a credential query",
-      target: "linked-reservations-mobile",
-      url: `${baseUrl}/en-US/account?token=synthetic-secret-token`,
-    },
-    {
-      name: "a mobile linked account with an extra query parameter",
-      target: "linked-billing-mobile",
-      url: `${baseUrl}/en-US/account?section=billing&view=private`,
-    },
-    {
-      name: "a mobile linked account with a hash",
-      target: "linked-danger-mobile",
-      url: `${baseUrl}/en-US/account#review-state`,
-    },
-    {
-      name: "a callback failure query with a malformed attempt parameter",
-      target: "callback-failed-desktop",
-      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&attempt=not-a-uuid`,
+      name: "the referrals section with a share-link code",
+      target: "linked-referrals-desktop",
+      url: `${baseUrl}/en-US/account/referrals?ref=RFL12345`,
     },
     {
       name: "a callback failure query with a non-canonical attempt parameter",
-      target: "callback-failed-desktop",
-      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid.toUpperCase()}`,
+      target: "callback-failed-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid.toUpperCase()}`,
     },
     {
       name: "a callback failure query with an extra parameter",
-      target: "callback-failed-desktop",
-      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid}&extra=1`,
+      target: "callback-failed-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid}&extra=1`,
     },
     {
       name: "a callback failure query with a duplicated attempt parameter",
-      target: "callback-failed-desktop",
-      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid}&attempt=${attemptUuid}`,
+      target: "callback-failed-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid}&attempt=${attemptUuid}`,
     },
     {
       name: "a callback query with another parameter",
-      target: "callback-failed-desktop",
-      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&token=synthetic-secret-token`,
+      target: "callback-failed-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/callback?error=INVALID_TOKEN&token=synthetic-secret-token`,
+    },
+    {
+      name: "the Czech callback failure at the English callback",
+      target: "callback-failed-cs-desktop",
+      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN`,
+    },
+    {
+      name: "the Czech callback failure without its failure parameter",
+      target: "callback-failed-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/callback?attempt=${attemptUuid}`,
+    },
+    {
+      name: "the Czech accepted sign-in at the English sign-in",
+      target: "sign-in-accepted-cs-desktop",
+      url: `${baseUrl}/en-US/auth/sign-in`,
+    },
+    {
+      name: "the Czech accepted sign-in with a protocol-relative return",
+      target: "sign-in-accepted-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/sign-in?returnTo=${encodeURIComponent("//evil.example/cs-CZ")}`,
+    },
+    {
+      name: "the Czech accepted sign-in with an absolute return",
+      target: "sign-in-accepted-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/sign-in?returnTo=${encodeURIComponent("https://evil.example/")}`,
+    },
+    {
+      name: "the English accepted sign-in with an extra parameter",
+      target: "sign-in-accepted-desktop",
+      url: `${baseUrl}/en-US/auth/sign-in?returnTo=%2Fen-US&token=synthetic-secret-token`,
+    },
+    {
+      name: "the Czech accepted sign-in with two returns",
+      target: "sign-in-accepted-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/sign-in?returnTo=%2Fcs-CZ&returnTo=%2Fcs-CZ`,
+    },
+    {
+      name: "the Czech accepted sign-in with an extra parameter",
+      target: "sign-in-accepted-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/sign-in?returnTo=%2Fcs-CZ&token=synthetic-secret-token`,
+    },
+    {
+      name: "the Czech accepted sign-in with another parameter name",
+      target: "sign-in-accepted-cs-desktop",
+      url: `${baseUrl}/cs-CZ/auth/sign-in?next=%2Fcs-CZ`,
+    },
+    {
+      name: "the Czech returning callback without its exact return target",
+      target: "callback-signed-in-cs-desktop",
+      url: czechCallbackUrl,
     },
     {
       name: "a callback query",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?_rsc=synthetic-cache-key`,
     },
     {
-      name: "a callback loading attempt UUID that is malformed",
-      target: "callback-loading-desktop",
-      url: `${baseUrl}/en-US/auth/callback?attempt=not-a-uuid`,
-    },
-    {
       name: "a callback loading attempt UUID that is not canonical",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid.toUpperCase()}`,
     },
     {
       name: "a callback loading attempt UUID with an extra parameter",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid}&extra=1`,
     },
     {
       name: "a callback loading token parameter",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?token=synthetic-secret-token`,
     },
     {
       name: "a callback loading duplicated attempt parameter",
-      target: "callback-loading-desktop",
+      target: "callback-signed-in-desktop",
       url: `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid}&attempt=${attemptUuid}`,
-    },
-    {
-      name: "a callback hash",
-      target: "callback-loading-desktop",
-      url: `${baseUrl}/en-US/auth/callback#review-state`,
-    },
-    {
-      name: "a callback foreign origin",
-      target: "callback-loading-desktop",
-      url: "https://other.example.test/en-US/auth/callback",
     },
     {
       name: "a hash",
       target: "completion-mobile375x900",
       url: `${baseUrl}/en-US/account#review-state`,
     },
-    {
-      name: "linked legal at a foreign origin",
-      target: "linked-legal-desktop",
-      url: "https://other.example.test/en-US/account/legal",
-    },
-    {
-      name: "public legal at a foreign origin",
-      target: "public-legal-desktop",
-      url: "https://other.example.test/en-US/account/legal",
-    },
-    {
-      name: "public legal with a credential query",
-      target: "public-legal-desktop",
-      url: `${baseUrl}/en-US/account/legal?token=synthetic-secret-token`,
-    },
-    {
-      name: "linked legal with a hash",
-      target: "linked-legal-desktop",
-      url: `${baseUrl}/en-US/account/legal#review-state`,
-    },
-    ...marketingReviewTargets.flatMap((target) => [
+    ...reservationCustomerReviewTargets.flatMap((target) => [
       {
-        name: `${target} with a token query`,
+        name: `${target} with a prefilled contact query`,
         target,
-        url: `${baseUrl}/en-US/account/legal?token=synthetic-secret-token`,
+        url: `${baseUrl}/en-US/reservation/cowork?email=${encodeURIComponent(testEmailAddress("synthetic"))}`,
       },
       {
-        name: `${target} with another query`,
+        name: `${target} with a prefilled contact on the contact step`,
         target,
-        url: `${baseUrl}/en-US/account/legal?review-state=synthetic-query`,
-      },
-      {
-        name: `${target} with a hash`,
-        target,
-        url: `${baseUrl}/en-US/account/legal#review-state`,
+        url: `${baseUrl}/en-US/reservation/cowork?step=contact&email=${encodeURIComponent(testEmailAddress("synthetic"))}`,
       },
     ]),
   ] as const;
@@ -861,7 +629,7 @@ describe("account review screenshot capture", () => {
       const fakePage = makeFakePage(invalidPage.url);
 
       await expect(
-        captureAccountReview(fakePage.page, baseUrl, invalidPage.target)
+        captureAccountReview(fakePage.page, review, invalidPage.target)
       ).rejects.toThrow(captureFailureMessage);
 
       expect(fakePage.screenshotCalls).toHaveLength(0);
@@ -869,6 +637,18 @@ describe("account review screenshot capture", () => {
       expect(writeFileSpy?.mock.calls).toHaveLength(0);
     });
   }
+
+  test("allows the contact step for reservation customer screenshots", async () => {
+    for (const target of reservationCustomerReviewTargets) {
+      const fakePage = makeFakePage(
+        `${baseUrl}/en-US/reservation/cowork?step=contact`
+      );
+
+      await captureAccountReview(fakePage.page, review, target);
+
+      expect(fakePage.screenshotCalls).toHaveLength(1);
+    }
+  });
 
   test("does not include the rejected URL in its fixed error", async () => {
     const unsafeUrl = `${baseUrl}/en-US/auth/callback?token=synthetic-secret-token`;
@@ -878,8 +658,8 @@ describe("account review screenshot capture", () => {
     try {
       await captureAccountReview(
         fakePage.page,
-        baseUrl,
-        "callback-loading-desktop"
+        review,
+        "callback-signed-in-desktop"
       );
     } catch (cause) {
       failure = cause;
@@ -892,45 +672,107 @@ describe("account review screenshot capture", () => {
     expect(writeFileSpy?.mock.calls).toHaveLength(0);
   });
 
-  for (const expected of validTargets) {
-    const expectedPaths = Array.isArray(expected.path)
-      ? expected.path
-      : [expected.path];
-    for (const expectedPath of expectedPaths) {
-      for (const expectedQuery of expected.queries ?? [expected.query]) {
-        test(`captures fixed metadata for ${expected.target} at ${expectedPath}${expectedQuery}`, async () => {
-          const fakePage = makeFakePage(
-            `${baseUrl}${expectedPath}${expectedQuery}`
-          );
+  test("captures, persists, and restores the viewport through one shared pipeline", async () => {
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account`);
 
-          await captureAccountReview(fakePage.page, baseUrl, expected.target);
+    await captureAccountReview(
+      fakePage.page,
+      review,
+      "completion-mobile375x900"
+    );
 
-          expect(fakePage.screenshotCalls).toHaveLength(1);
-          expect(fakePage.screenshotCalls[0]).toEqual({
-            animations: "disabled",
-            fullPage: expected.fullPage,
-            timeout: expect.any(Number),
-          });
-          expect(fakePage.screenshotCalls[0]?.timeout).toBeGreaterThan(0);
-          expect(fakePage.screenshotCalls[0]?.timeout).toBeLessThanOrEqual(
-            workspaceE2ETimeouts.browserAction
-          );
-          expect(fakePage.viewportChanges).toEqual([
-            expected.viewport,
-            initialViewport,
-          ]);
-          expect(fakePage.currentViewport()).toEqual(initialViewport);
-          expect(fakePage.fontReadyCalls()).toBe(1);
-          expect(writeFileSpy?.mock.calls).toEqual([
-            [
-              resolve(accountReviewArtifactDirectory, expected.filename),
-              screenshotBuffer,
-            ],
-          ]);
-        });
-      }
-    }
-  }
+    expect(fakePage.screenshotCalls).toHaveLength(1);
+    expect(fakePage.screenshotCalls[0]?.timeout).toBeGreaterThan(0);
+    expect(fakePage.screenshotCalls[0]?.timeout).toBeLessThanOrEqual(
+      workspaceE2ETimeouts.browserAction
+    );
+    expect(fakePage.viewportChanges).toHaveLength(2);
+    expect(fakePage.viewportChanges[0]).not.toEqual(initialViewport);
+    expect(fakePage.currentViewport()).toEqual(initialViewport);
+    expect(fakePage.fontReadyCalls()).toBe(1);
+    expect(writeFileSpy?.mock.calls).toHaveLength(1);
+    expect(writeFileSpy?.mock.calls[0]?.[0]).toStartWith(
+      `${accountReviewArtifactDirectory}/`
+    );
+    expect(writeFileSpy?.mock.calls[0]?.[1]).toBe(screenshotBuffer);
+  });
+
+  test.each([
+    [
+      "a private linked profile path",
+      "linked-profile-desktop",
+      "/en-US/account/profile",
+    ],
+    [
+      "a bare callback loading page",
+      "callback-signed-in-desktop",
+      "/en-US/auth/callback",
+    ],
+    [
+      "a canonical callback attempt",
+      "callback-signed-in-desktop",
+      `/en-US/auth/callback?attempt=${attemptUuid}`,
+    ],
+    [
+      "the account sign-in handoff path",
+      "sign-in-handoff-desktop",
+      "/en-US/account",
+    ],
+    [
+      "the sign-in page handoff path",
+      "sign-in-handoff-desktop",
+      "/en-US/auth/sign-in",
+    ],
+    [
+      "the bare Czech accepted sign-in",
+      "sign-in-accepted-cs-desktop",
+      "/cs-CZ/auth/sign-in",
+    ],
+    [
+      "the Czech accepted sign-in returning to a selection",
+      "sign-in-accepted-cs-desktop",
+      `/cs-CZ/auth/sign-in?${new URLSearchParams({ returnTo: selection })}`,
+    ],
+    [
+      "the English accepted sign-in returning to a selection",
+      "sign-in-accepted-desktop",
+      `/en-US/auth/sign-in?${new URLSearchParams({ returnTo: enSelection })}`,
+    ],
+    [
+      "the English pending sign-in returning to a selection",
+      "sign-in-pending-desktop",
+      `/en-US/auth/sign-in?${new URLSearchParams({ returnTo: enSelection })}`,
+    ],
+    [
+      "the Czech callback failure",
+      "callback-failed-cs-desktop",
+      `/cs-CZ/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid}&return=${encodeAuthCallbackReturn(selection)}`,
+    ],
+  ] as const satisfies ReadonlyArray<
+    readonly [string, AccountReviewTarget, string]
+  >)("accepts %s", async (_name, target, pathAndQuery) => {
+    const fakePage = makeFakePage(`${baseUrl}${pathAndQuery}`);
+
+    await captureAccountReview(fakePage.page, review, target);
+
+    expect(fakePage.screenshotCalls).toHaveLength(1);
+    expect(writeFileSpy?.mock.calls).toHaveLength(1);
+  });
+
+  test("masks the referral code and share link in referral captures", async () => {
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account/referrals`);
+
+    await captureAccountReview(
+      fakePage.page,
+      review,
+      "referral-overview-positive-desktop"
+    );
+
+    expect(fakePage.screenshotCalls[0]?.mask).toEqual([expect.any(Object)]);
+    expect(fakePage.locatorSelectors).toContain(
+      '[data-screen="referrals-screen"] code, [data-screen="referrals-screen"] a[href*="ref="]'
+    );
+  });
 
   test("captures a reservation status target only at the exact fixture path", async () => {
     const reservationId = workspaceReservationIdSchema.make(
@@ -941,7 +783,7 @@ describe("account review screenshot capture", () => {
 
     await captureReservationStatusReview(
       fakePage.page,
-      baseUrl,
+      review,
       "reservation-status-modal-desktop",
       reservationId
     );
@@ -976,7 +818,7 @@ describe("account review screenshot capture", () => {
     await expect(
       captureReservationStatusReview(
         fakePage.page,
-        baseUrl,
+        review,
         "reservation-status-details-desktop",
         fixtureReservationId
       )
@@ -989,31 +831,158 @@ describe("account review screenshot capture", () => {
 
   test("allows the closed invalid-token callback query", async () => {
     const fakePage = makeFakePage(
-      `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN`
+      `${baseUrl}/cs-CZ/auth/callback?error=INVALID_TOKEN`
     );
 
     await captureAccountReview(
       fakePage.page,
-      baseUrl,
-      "callback-failed-desktop"
+      review,
+      "callback-failed-cs-desktop"
     );
 
     expect(fakePage.screenshotCalls).toHaveLength(1);
     expect(writeFileSpy?.mock.calls).toEqual([
       [
-        resolve(accountReviewArtifactDirectory, "callback-failed-desktop.png"),
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-failed-cs-desktop.png"
+        ),
         screenshotBuffer,
       ],
     ]);
   });
 
+  test("persists the Czech accepted sign-in under its own file", async () => {
+    const fakePage = makeFakePage(`${baseUrl}/cs-CZ/auth/sign-in`);
+
+    await captureAccountReview(
+      fakePage.page,
+      review,
+      "sign-in-accepted-cs-desktop"
+    );
+
+    expect(fakePage.viewportChanges[0]).toEqual({ height: 1000, width: 1440 });
+    expect(writeFileSpy?.mock.calls).toEqual([
+      [
+        resolve(
+          accountReviewArtifactDirectory,
+          "sign-in-accepted-cs-desktop.png"
+        ),
+        screenshotBuffer,
+      ],
+    ]);
+  });
+
+  for (const [name, options] of [
+    ["no signed-in heading", { titleCount: 0 }],
+    ["two headings", { titleCount: 2 }],
+    ["a hidden heading", { hiddenTitle: true }],
+    ["the wrong title", { card: { ...englishCard, title: "Signing you in" } }],
+    [
+      "the returning body without a return target",
+      { card: { ...englishCard, body: czechCard.body } },
+    ],
+    ["the Czech card", { card: czechCard }],
+  ] as const) {
+    test(`does not write the English callback capture showing ${name}`, async () => {
+      const fakePage = makeFakePage(`${baseUrl}/en-US/auth/callback`, options);
+
+      await expect(
+        captureAccountReview(
+          fakePage.page,
+          review,
+          "callback-signed-in-desktop"
+        )
+      ).rejects.toThrow(captureFailureMessage);
+
+      expect(writeFileSpy?.mock.calls).toHaveLength(0);
+    });
+  }
+
+  test("captures the Czech returning callback against its exact landing", async () => {
+    const fakePage = makeFakePage(czechCallbackUrl, { card: czechCard });
+
+    await captureCallbackHandoffReview(
+      fakePage.page,
+      review,
+      "callback-signed-in-cs-desktop",
+      czechLanding
+    );
+
+    expect(fakePage.viewportChanges[0]).toEqual({ height: 1000, width: 1440 });
+    expect(writeFileSpy?.mock.calls).toEqual([
+      [
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-signed-in-cs-desktop.png"
+        ),
+        screenshotBuffer,
+      ],
+    ]);
+  });
+
+  for (const [name, url, options] of [
+    [
+      "another return",
+      `${baseUrl}/cs-CZ/auth/callback?return=${encodeAuthCallbackReturn("/cs-CZ/account")}`,
+      { card: czechCard },
+    ],
+    [
+      "no return",
+      `${baseUrl}/cs-CZ/auth/callback?attempt=${attemptUuid}`,
+      { card: czechCard },
+    ],
+    ["the English card", czechCallbackUrl, { card: englishCard }],
+    [
+      "the account body",
+      czechCallbackUrl,
+      { card: { ...czechCard, body: "Přesměrujeme tě na účet…" } },
+    ],
+    [
+      "a hidden heading",
+      czechCallbackUrl,
+      { card: czechCard, hiddenTitle: true },
+    ],
+  ] as const) {
+    test(`does not write the Czech returning callback with ${name}`, async () => {
+      const fakePage = makeFakePage(url, options);
+
+      await expect(
+        captureCallbackHandoffReview(
+          fakePage.page,
+          review,
+          "callback-signed-in-cs-desktop",
+          czechLanding
+        )
+      ).rejects.toThrow(captureFailureMessage);
+
+      expect(writeFileSpy?.mock.calls).toHaveLength(0);
+    });
+  }
+
+  test("does not capture a held callback target under another landing's locale", async () => {
+    const fakePage = makeFakePage(czechCallbackUrl, { card: czechCard });
+
+    await expect(
+      captureCallbackHandoffReview(
+        fakePage.page,
+        review,
+        "callback-signed-in-desktop",
+        czechLanding
+      )
+    ).rejects.toThrow(captureFailureMessage);
+
+    expect(fakePage.screenshotCalls).toHaveLength(0);
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
+  });
+
   test("restores the previous viewport when screenshot capture fails", async () => {
-    const fakePage = makeFakePage(`${baseUrl}/en-US/account`, {
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account/profile`, {
       failScreenshot: true,
     });
 
     await expect(
-      captureAccountReview(fakePage.page, baseUrl, "linked-profile-desktop")
+      captureAccountReview(fakePage.page, review, "linked-profile-desktop")
     ).rejects.toThrow(captureFailureMessage);
 
     expect(fakePage.viewportChanges).toEqual([
@@ -1041,7 +1010,7 @@ describe("account review screenshot capture", () => {
         const preparationStarted = new Promise<void>((resolve) => {
           resolvePreparationStarted = resolve;
         });
-        const fakePage = makeFakePage(`${baseUrl}/en-US/account`, {
+        const fakePage = makeFakePage(`${baseUrl}/en-US/account/profile`, {
           onFontsReady: () => {
             if (phase !== "fonts") return;
             resolvePreparationStarted();
@@ -1061,7 +1030,7 @@ describe("account review screenshot capture", () => {
         const controller = new AbortController();
         const capture = captureAccountReview(
           fakePage.page,
-          baseUrl,
+          review,
           "linked-profile-desktop",
           { signal: controller.signal }
         );
@@ -1090,7 +1059,7 @@ describe("account review screenshot capture", () => {
     const onUnhandledRejection = (reason: unknown) => {
       unhandledRejections.push(reason);
     };
-    const fakePage = makeFakePage(`${baseUrl}/en-US/account`, {
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account/profile`, {
       onScreenshot: () => screenshotReady,
     });
     const controller = new AbortController();
@@ -1099,7 +1068,7 @@ describe("account review screenshot capture", () => {
     try {
       const capture = captureAccountReview(
         fakePage.page,
-        baseUrl,
+        review,
         "linked-profile-desktop",
         { signal: controller.signal }
       );
@@ -1128,12 +1097,12 @@ describe("account review screenshot capture", () => {
 
     await withControlledDateNow(clock, async () => {
       await withControlledTimers(clock, async (advanceTo) => {
-        const fakePage = makeFakePage(`${baseUrl}/en-US/account`, {
+        const fakePage = makeFakePage(`${baseUrl}/en-US/account/profile`, {
           onScreenshot: () => screenshotReady,
         });
         const capture = captureAccountReview(
           fakePage.page,
-          baseUrl,
+          review,
           "linked-profile-desktop",
           { deadline: workspaceE2ETimeouts.browserAction }
         );
@@ -1157,9 +1126,16 @@ describe("account review screenshot capture", () => {
     let validatorCalls = 0;
     const pixels = Buffer.from("held-document-png");
 
-    await persistCallbackDocumentReview(fakePage.page, baseUrl, pixels, () => {
-      validatorCalls += 1;
-    });
+    await persistCallbackDocumentReview(
+      fakePage.page,
+      review,
+      "callback-signed-in-desktop",
+      { locale: "en-US" },
+      pixels,
+      () => {
+        validatorCalls += 1;
+      }
+    );
 
     expect(validatorCalls).toBe(2);
     expect(fakePage.screenshotCalls).toHaveLength(0);
@@ -1167,11 +1143,67 @@ describe("account review screenshot capture", () => {
     expect(fakePage.fontReadyCalls()).toBe(0);
     expect(writeFileSpy?.mock.calls).toEqual([
       [
-        resolve(accountReviewArtifactDirectory, "callback-loading-desktop.png"),
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-signed-in-desktop.png"
+        ),
         pixels,
       ],
     ]);
   });
+
+  test("persists the Czech returning callback against its exact landing", async () => {
+    const fakePage = makeFakePage(czechCallbackUrl);
+    const pixels = Buffer.from("held-czech-document-png");
+
+    await persistCallbackDocumentReview(
+      fakePage.page,
+      review,
+      "callback-signed-in-cs-desktop",
+      czechLanding,
+      pixels,
+      () => undefined
+    );
+
+    expect(writeFileSpy?.mock.calls).toEqual([
+      [
+        resolve(
+          accountReviewArtifactDirectory,
+          "callback-signed-in-cs-desktop.png"
+        ),
+        pixels,
+      ],
+    ]);
+  });
+
+  for (const [name, url] of [
+    [
+      "another return",
+      `${baseUrl}/cs-CZ/auth/callback?return=${encodeAuthCallbackReturn("/cs-CZ/account")}`,
+    ],
+    ["no return", `${baseUrl}/cs-CZ/auth/callback`],
+    [
+      "the English callback",
+      `${baseUrl}/en-US/auth/callback?return=${encodeAuthCallbackReturn(selection)}`,
+    ],
+  ] as const) {
+    test(`does not persist the Czech returning callback with ${name}`, async () => {
+      const fakePage = makeFakePage(url);
+
+      await expect(
+        persistCallbackDocumentReview(
+          fakePage.page,
+          review,
+          "callback-signed-in-cs-desktop",
+          czechLanding,
+          screenshotBuffer,
+          () => undefined
+        )
+      ).rejects.toThrow(captureFailureMessage);
+
+      expect(writeFileSpy?.mock.calls).toHaveLength(0);
+    });
+  }
 
   test("does not write when the supplied held-document validator fails", async () => {
     const fakePage = makeFakePage(
@@ -1181,7 +1213,9 @@ describe("account review screenshot capture", () => {
     await expect(
       persistCallbackDocumentReview(
         fakePage.page,
-        baseUrl,
+        review,
+        "callback-signed-in-desktop",
+        { locale: "en-US" },
         screenshotBuffer,
         () => {
           throw new Error("receipt is not valid");
@@ -1201,7 +1235,9 @@ describe("account review screenshot capture", () => {
     await expect(
       persistCallbackDocumentReview(
         fakePage.page,
-        baseUrl,
+        review,
+        "callback-signed-in-desktop",
+        { locale: "en-US" },
         screenshotBuffer,
         () => undefined
       )
@@ -1220,7 +1256,9 @@ describe("account review screenshot capture", () => {
     await expect(
       persistCallbackDocumentReview(
         fakePage.page,
-        baseUrl,
+        review,
+        "callback-signed-in-desktop",
+        { locale: "en-US" },
         screenshotBuffer,
         () => undefined,
         { signal: controller.signal }
@@ -1239,7 +1277,9 @@ describe("account review screenshot capture", () => {
     await expect(
       persistCallbackDocumentReview(
         fakePage.page,
-        baseUrl,
+        review,
+        "callback-signed-in-desktop",
+        { locale: "en-US" },
         screenshotBuffer,
         () => {
           validatorCalls += 1;
@@ -1265,7 +1305,7 @@ describe("account review screenshot capture", () => {
     });
 
     await expect(
-      captureAccountReview(fakePage.page, baseUrl, "callback-loading-desktop")
+      captureAccountReview(fakePage.page, review, "callback-signed-in-desktop")
     ).rejects.toThrow(captureFailureMessage);
 
     expect(fakePage.screenshotCalls).toHaveLength(1);
@@ -1278,7 +1318,7 @@ describe("account review screenshot capture", () => {
     await withControlledDateNow(clock, async () => {
       const fakePage = makePendingReviewFakePage(clock);
 
-      await withSignInPendingReview(fakePage.page, baseUrl, async () => {
+      await withSignInPendingReview(fakePage.page, review, async () => {
         await fakePage.startPost();
       });
 
@@ -1299,7 +1339,7 @@ describe("account review screenshot capture", () => {
         let runCaseCalls = 0;
         const wrapped = withSignInPendingReview(
           fakePage.page,
-          baseUrl,
+          review,
           async () => {
             runCaseCalls += 1;
           }
@@ -1335,7 +1375,7 @@ describe("account review screenshot capture", () => {
     let runCaseCalls = 0;
 
     await expect(
-      withSignInPendingReview(fakePage.page, baseUrl, async () => {
+      withSignInPendingReview(fakePage.page, review, async () => {
         runCaseCalls += 1;
       })
     ).rejects.toThrow(captureFailureMessage);
@@ -1361,7 +1401,7 @@ describe("account review screenshot capture", () => {
       });
       const wrapped = withSignInPendingReview(
         fakePage.page,
-        baseUrl,
+        review,
         async () => {
           void fakePage.startPost();
           await fakePage.captureComplete;
@@ -1421,7 +1461,7 @@ describe("account review screenshot capture", () => {
         const fakePage = makePendingReviewFakePage(clock, options);
 
         await expect(
-          withSignInPendingReview(fakePage.page, baseUrl, async () => {
+          withSignInPendingReview(fakePage.page, review, async () => {
             await fakePage.startPost();
           })
         ).rejects.toThrow(captureFailureMessage);
@@ -1441,7 +1481,7 @@ describe("account review screenshot capture", () => {
       });
 
       await expect(
-        withSignInPendingReview(fakePage.page, baseUrl, async () => {
+        withSignInPendingReview(fakePage.page, review, async () => {
           await fakePage.startPost();
           throw runCaseFailure;
         })
@@ -1458,7 +1498,7 @@ describe("account review screenshot capture", () => {
         advancePendingTo: 5_000,
       });
 
-      await withSignInPendingReview(fakePage.page, baseUrl, async () => {
+      await withSignInPendingReview(fakePage.page, review, async () => {
         await fakePage.startPost();
       });
 
@@ -1480,7 +1520,7 @@ describe("account review screenshot capture", () => {
       });
 
       await expect(
-        withSignInPendingReview(fakePage.page, baseUrl, async () => {
+        withSignInPendingReview(fakePage.page, review, async () => {
           await fakePage.startPost();
         })
       ).rejects.toThrow(captureFailureMessage);
@@ -1489,5 +1529,185 @@ describe("account review screenshot capture", () => {
       expect(fakePage.continueArguments).toEqual([[]]);
       expect(fakePage.continueCallCount()).toBe(1);
     });
+  });
+});
+
+/**
+ * The language case as the wrapper sees it: each genuine mid-case moment
+ * handed to the capture hook on its own page, then the English profile the
+ * case ends on.
+ */
+const runLanguageCaseMoments = async (
+  fakePage: FakePage,
+  capture: LanguagePreferenceReviewCapture,
+  options: { readonly skip?: LanguagePreferenceReviewStage } = {}
+) => {
+  const captureUnlessSkipped = async (stage: LanguagePreferenceReviewStage) => {
+    if (stage !== options.skip) await capture(stage);
+  };
+  fakePage.setUrl(`${baseUrl}/cs-CZ/account/profile`);
+  await captureUnlessSkipped("czech-profile");
+  fakePage.setUrl(`${baseUrl}/cs-CZ/faq`);
+  await captureUnlessSkipped("preference-redirect");
+  fakePage.setUrl(`${baseUrl}/en-US/account`);
+  await captureUnlessSkipped("switcher-saved");
+  fakePage.setUrl(`${baseUrl}/en-US/account/profile`);
+};
+
+const languageReviewFileNames = [
+  "linked-profile-language-desktop-cs.png",
+  "locale-preference-redirect-desktop.png",
+  "locale-switcher-saved-desktop.png",
+  "linked-profile-language-mobile.png",
+];
+
+describe("language preference review wrapper", () => {
+  const createLanguageWriteFileSpy = () =>
+    spyOn(fsPromises, "writeFile").mockImplementation(async () => undefined);
+  let languageWriteFileSpy:
+    | ReturnType<typeof createLanguageWriteFileSpy>
+    | undefined;
+  const writeFileNames = (): string[] =>
+    (languageWriteFileSpy?.mock.calls ?? []).map(
+      ([path]) => String(path).split(/[\\/]/).pop() ?? ""
+    );
+
+  beforeEach(() => {
+    languageWriteFileSpy = createLanguageWriteFileSpy();
+  });
+
+  afterEach(() => {
+    languageWriteFileSpy?.mockRestore();
+    languageWriteFileSpy = undefined;
+  });
+
+  test("captures every mid-case moment, then the mobile language view", async () => {
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account/profile`);
+
+    // The fake page has no route API: the wrapper holds no request, since a
+    // language choice saves and navigates without a separate feedback state.
+    await withLanguagePreferenceReview(fakePage.page, review, (capture) =>
+      runLanguageCaseMoments(fakePage, capture)
+    );
+
+    expect(writeFileNames()).toEqual(languageReviewFileNames);
+    expect(fakePage.currentViewport()).toEqual(initialViewport);
+  });
+
+  test("fails the review when the case skips a language moment", async () => {
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account/profile`);
+
+    await expect(
+      withLanguagePreferenceReview(fakePage.page, review, (capture) =>
+        runLanguageCaseMoments(fakePage, capture, { skip: "switcher-saved" })
+      )
+    ).rejects.toThrow(captureFailureMessage);
+
+    // Every genuine capture still lands; only the skipped one is missing.
+    expect(writeFileNames()).toEqual(
+      languageReviewFileNames.filter(
+        (name) => name !== "locale-switcher-saved-desktop.png"
+      )
+    );
+  });
+
+  test("fails the review when a moment is captured off its page", async () => {
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account`);
+
+    await expect(
+      withLanguagePreferenceReview(fakePage.page, review, async (capture) => {
+        // The Czech profile capture while the page is still the English
+        // account must never be written.
+        await capture("czech-profile");
+        await runLanguageCaseMoments(fakePage, capture);
+      })
+    ).rejects.toThrow(captureFailureMessage);
+
+    expect(writeFileNames()).toEqual(
+      languageReviewFileNames.filter(
+        (name) => name !== "linked-profile-language-desktop-cs.png"
+      )
+    );
+  });
+
+  test("fails the review when a moment is captured twice", async () => {
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account`);
+
+    await expect(
+      withLanguagePreferenceReview(fakePage.page, review, async (capture) => {
+        await runLanguageCaseMoments(fakePage, capture);
+        fakePage.setUrl(`${baseUrl}/en-US/account`);
+        await capture("switcher-saved");
+      })
+    ).rejects.toThrow(captureFailureMessage);
+
+    expect(
+      writeFileNames().filter(
+        (name) => name === "locale-switcher-saved-desktop.png"
+      )
+    ).toHaveLength(1);
+  });
+
+  test("rethrows the case failure without the post-case capture", async () => {
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account`);
+    const caseFailure = new Error("synthetic language case failure");
+
+    await expect(
+      withLanguagePreferenceReview(fakePage.page, review, async (capture) => {
+        fakePage.setUrl(`${baseUrl}/cs-CZ/account/profile`);
+        await capture("czech-profile");
+        throw caseFailure;
+      })
+    ).rejects.toBe(caseFailure);
+
+    expect(writeFileNames()).toEqual([
+      "linked-profile-language-desktop-cs.png",
+    ]);
+  });
+});
+
+describe("account review screenshots without the opt-in", () => {
+  let writeFileSpy: ReturnType<typeof spyOn> | undefined;
+  let mkdirSpy: ReturnType<typeof spyOn> | undefined;
+
+  beforeEach(() => {
+    writeFileSpy = spyOn(fsPromises, "writeFile").mockImplementation(
+      async () => undefined
+    );
+    mkdirSpy = spyOn(fsPromises, "mkdir").mockImplementation(
+      async () => undefined
+    );
+  });
+
+  afterEach(() => {
+    writeFileSpy?.mockRestore();
+    mkdirSpy?.mockRestore();
+  });
+
+  const expectUntouched = (fakePage: FakePage) => {
+    expect(fakePage.screenshotCalls).toHaveLength(0);
+    expect(fakePage.viewportChanges).toHaveLength(0);
+    expect(fakePage.fontReadyCalls()).toBe(0);
+    expect(mkdirSpy?.mock.calls).toHaveLength(0);
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
+  };
+
+  test("runs the sign-in case without holding its request", async () => {
+    const clock = makeControlledClock();
+    const fakePage = makePendingReviewFakePage(clock);
+    let caseRuns = 0;
+
+    await withSignInPendingReview(
+      fakePage.page,
+      reviewWithoutScreenshots,
+      async () => {
+        caseRuns += 1;
+      }
+    );
+
+    expect(caseRuns).toBe(1);
+    expect(fakePage.routeCalls).toHaveLength(0);
+    expect(fakePage.unrouteCallCount()).toBe(0);
+    expectUntouched(fakePage);
   });
 });

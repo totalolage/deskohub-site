@@ -2,14 +2,13 @@ import "server-only";
 
 import { GoogleCalendarService } from "@deskohub/google-calendar";
 import { Effect, Layer, Option } from "effect";
-import { cacheLife, cacheTag } from "next/cache";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   CalendarResourceConfig,
   type SalesCalendarId,
 } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
 import { type CalendarSale, normalizeCalendarSales } from "./calendar-sale";
 import type { DiscountDefinition } from "./discount-definition";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
@@ -21,7 +20,8 @@ export const calendarDiscountSourceTag = "workspace-calendar-discounts";
 
 export interface CalendarSalesSourceInput {
   readonly calendarId: SalesCalendarId;
-  readonly reservationDate: string;
+  /** Workspace calendar date on which the booking is made. */
+  readonly bookingDate: string;
 }
 
 export interface ResolvedCalendarSale {
@@ -83,8 +83,8 @@ export const loadCalendarSalesSource = Effect.fn("CalendarDiscountSource.load")(
     const events = yield* calendar
       .listEvents({
         calendarId: input.calendarId,
-        from: input.reservationDate,
-        to: input.reservationDate,
+        from: input.bookingDate,
+        to: input.bookingDate,
       })
       .pipe(
         Effect.mapError(
@@ -97,7 +97,7 @@ export const loadCalendarSalesSource = Effect.fn("CalendarDiscountSource.load")(
     const normalization = yield* normalizeCalendarSales({
       calendarId: input.calendarId,
       events,
-      reservationDate: input.reservationDate,
+      bookingDate: input.bookingDate,
     });
     const definitionResolution = yield* loadDiscountDefinitions({
       sales: normalization.sales,
@@ -125,32 +125,30 @@ const CalendarDiscountSourceLive = Layer.mergeAll(
 );
 
 export async function loadCalendarDiscountSource(
-  reservationDate: string
+  bookingDate: string
 ): Promise<CalendarSalesSourceResult> {
   "use cache: remote";
 
-  try {
-    const source = await Effect.gen(function* () {
+  // A partial source or a failed load, including a runner that never
+  // starts, is never shared, so the next request retries it.
+  return await readSharedSnapshot(
+    "discounts.calendar-source.load",
+    Effect.gen(function* () {
       const { salesCalendarId } = yield* CalendarResourceConfig;
       return yield* loadCalendarSalesSource({
         calendarId: salesCalendarId,
-        reservationDate,
+        bookingDate,
       });
-    }).pipe(
-      Effect.provide(CalendarDiscountSourceLive),
-      runWorkspaceEffect("discounts.calendar-source.load")
-    );
-
-    if (source.complete) {
-      cacheLife("advertisedPricingSources");
-      cacheTag(calendarDiscountSourceTag);
-    } else {
-      cacheLife({ expire: 0 });
+    }).pipe(Effect.provide(CalendarDiscountSourceLive)),
+    {
+      complete: {
+        lifetime: "advertisedPricingSources",
+        tags: [calendarDiscountSourceTag],
+      },
+      incomplete: {
+        when: (source) => !source.complete,
+        lifetime: { expire: 0 },
+      },
     }
-
-    return source;
-  } catch (cause) {
-    cacheLife({ expire: 0 });
-    throw cause;
-  }
+  );
 }

@@ -1,75 +1,23 @@
 ---
 name: deskohub-workspace-checkout
-description: Workspace checkout, payment, pricing, accounting-document, reservation-hold, and cleanup lifecycle handling.
+description: Workspace checkout, reservation submission, reservation order mirror, orders table, payment attempt order_id, agent booking view, MCP Apps, Pay page, order summary, pricing_changed, discount affirmation, Nexi payment, webhook, late payment, refund, reservation hold, supersession, hold cleanup, paid fulfillment, access PIN, availability cache, invoice, accounting snapshot.
 ---
 
 # Deskohub Workspace checkout
 
-Keep abandoned and expired reservation-hold cleanup exclusively in the per-reservation scheduled queue task, with the daily cron job as the recovery path. Do not add inline abandonment cleanup, sweeps, or terminal-payment cancellation fallbacks. Deliberately cancelling an unpaid reservation because the customer resubmitted the reservation form is supersession, not cleanup.
+Read the reference for the part you're changing:
 
-The current Nexi card HPP contract has no documented provider expiry. Apply the Workspace 30-minute abandonment window from `providerOrderCreatedAt` only in queued hold cleanup. Before that cutoff, retry an operation-free order through the queue. At or after the cutoff, expire it only when a fresh verified lookup has no operations and no authorized or captured amount. Any operation or non-zero amount remains pending for provider reconciliation or operator attention. A successful webhook for an already-terminal local attempt starts durable late-payment recovery. Reuse an original hold only after verifying it remains `NEW` or `CONFIRMED` in Dotypos; otherwise recreate the immutable accepted reservation only when it has not ended, no newer checkout reservation exists, and current availability passes. Atomically re-redeem any released discount claim and continue normal paid fulfillment after recovery; require refund when recovery is unavailable or superseded, and require operator review for ambiguous provider state.
+- Advertised prices, signed summaries, discount affirmation, `pricing_changed`, discount codes, Calendar booking instant and deadlines, currency, the shared Money module: [references/pricing.md](references/pricing.md).
+- Reservation-page availability and caching, page preload, account card, Pay tab handling, return route, status page: [references/checkout-pages.md](references/checkout-pages.md).
+- Agent booking view, MCP Apps `ui://` resources, `show_booking`, tool `_meta`, booking mode: [references/agent-booking-view.md](references/agent-booking-view.md).
+- Tables, PII rules, reservation orders and their database mirror, state machines, checkout keys and key rotation, supersession, Nexi attempts and timeouts, webhook, hold cleanup, late payment, refunds, fulfillment and email delivery: [references/lifecycle.md](references/lifecycle.md).
+- Access PIN disclosure and Igloohome issuance: [references/reservation-access.md](references/reservation-access.md).
+- Accounting snapshots, invoices, billing details, snapshot keys: [references/accounting-documents.md](references/accounting-documents.md).
 
-Keep Workspace queue payloads versionless. Evolve their strict decoders directly when compatibility is needed; do not add `schemaVersion` metadata.
+Customer and operator policy lives in the business specifications: [checkout](../../../apps/deskohub-workspace/docs/checkout-lifecycle.md), [discount codes](../../../apps/deskohub-workspace/docs/discount-codes.md), and [accounting documents](../../../apps/deskohub-workspace/docs/accounting-document-snapshots.md). Change the specification when policy changes, and keep its rules out of these references.
 
-Do not reuse or mutate a Dotypos reservation when the reservation form is resubmitted from checkout, even when its values are unchanged. Cancel the existing unpaid reservation, preserve its local row and Dotypos reservation ownership, then use the normal flow to create a new local row and a new Dotypos reservation. Each reservation keeps its own scheduled cleanup task; never refresh or transfer the old task. If the existing reservation has a pending or paid payment, leave it untouched and rotate the current submission into a fresh checkout session. If supersession cancellation fails, log and retain the old row for scheduled recovery, then likewise rotate the session before continuing.
+## Always apply
 
-Do not time-gate PIN disclosure or clear an issued PIN according to the application clock. Once an authorized paid, locally confirmed, live-confirmed reservation has an issued PIN, show it on the protected access page together with the exact programmed start and end times. Igloohome's programmed AlgoPIN bounds alone determine when the lock accepts it; locally stored bounds exist only for issuance, customer explanation, and schedule-change recovery. When a live reservation move changes the rounded provider interval, automatically replace a known issued PIN for the new interval; reserve manual reconciliation for ambiguous provider outcomes.
-
-For a reservation page restored from signed Pay state, project availability after supersession by excluding only that checkout's verified current replaceable Dotypos `NEW` hold. Keep the signed restoration context separate from the public availability selection query and never accept a client-authored reservation ID as the exclusion. Confirm the same reservation is still `NEW` in the inventory snapshot, keep every other reservation and Calendar limitation, and keep `ensureAvailable` and table assignment structurally unable to receive an exclusion. The authoritative submission path must cancel the old hold and then run the ordinary full availability check before creating its replacement.
-
-Use `checkoutSessionId` for the stable grouping and back-navigation lifetime across reservation edits. Use `checkoutAttemptId` for one mounted form submission and its immediate transport retries; bind its stored HMAC to the normalized submitted values so replaying the opaque ID with different inputs cannot reuse a hold. Neither identifies a Dotypos reservation. Serialize supersession for a checkout session, and reject stale pay state unless its exact local reservation is still current for that session and its live Dotypos reservation remains pending rather than cancelled. Before supersession deletion, likewise require live Dotypos status `NEW`; an already `CANCELLED` reservation may be finalized locally, while any other status must not be deleted. Repeat the live Dotypos-state guard immediately before creating a provider payment session so a cancellation between page rendering and payment submission cannot start payment for a stale reservation.
-
-Use document navigation for explicit start-over links from checkout status or invalid Pay state. Next Cache Components can retain the previous reservation route in a hidden Activity boundary, including a completed safe-action result; revealing it through client navigation can remount the callback effect and replay its stale Pay redirect. A fresh reservation must load a fresh document, form action state, checkout session, and attempt rather than restoring that inactive route tree.
-
-Inspect the technical [lifecycle reference](references/lifecycle.md), [accounting-document reference](references/accounting-documents.md), [scheduled cleanup queue route](../../../apps/deskohub-workspace/app/api/queues/workspace/reservation-hold-cleanup/route.ts), and [daily recovery cron route](../../../apps/deskohub-workspace/app/api/cron/workspace/reservation-holds/route.ts) as relevant before changing this boundary. Consult the business-facing [checkout specification](../../../apps/deskohub-workspace/docs/checkout-lifecycle.md) for customer and operator policy. Update this skill when developer feedback adds or changes a durable checkout invariant.
-
-When one affirmative control captures the early-performance request and the
-related withdrawal-right acknowledgement together, persist one consent fact.
-Do not duplicate an always-identical boolean under multiple legal labels;
-evidence comes from the recorded action, time, source, and versioned wording.
-
-Preserve the three price boundaries documented in the checkout lifecycle:
-
-- reservation-page advertisement;
-- signed order-summary state containing the authoritative quote;
-- freshly affirmed payment amount.
-
-Meeting-room checkout remains eligible after the reservation start while its
-exclusive end has not passed. Apply end-time validation at reservation
-submission and final payment initiation; do not reject a booking merely because
-its start is in the past. Reusing an already-created provider session is
-idempotent recovery, not payment initiation: the provider can still settle that
-session independently, so return a valid matching active session before the end
-check. Never use recovery to create a replacement session, and retain the final
-end check immediately before creating any internal or provider payment attempt.
-
-Any change to price facts accepted at the immediately preceding boundary returns `pricing_changed` with the affected product keys. Never introduce a newly available anonymously discoverable automatic discount retrospectively. Discount-code entry on the summary is independent and its field errors leave the existing summary payable. An ordinary code may instead be provisionally advertised from the reservation URL's `discountCode` query parameter; keep its raw value inside the protected advertised-price snapshot, exclude vouchers, and fully revalidate it after customer identity resolution. Never create a durable payment attempt or external provider session unless the freshly affirmed fingerprint and total exactly match the signed summary and all application/claim mutations commit atomically.
-
-Reservation-page advertisement evaluates only anonymously discoverable pricing: Calendar sales and, when explicitly supplied in the URL, the public portion of an ordinary discount code. Customer-specific pricing remains outside that boundary. After advertised discounts are affirmed on reservation submission, fully validate a query code and evaluate the customer discount following Dotypos identity resolution. A query code that fails complete validation produces an updated summary without the code; a customer discount may first appear without `pricing_changed`. Once shown on the summary, every discount follows the normal affirmation and `pricing_changed` rules.
-
-Advertised-price requests and protected snapshots contain only inputs that determine the advertised amount. In cowork checkout, monitor selection affects availability and final zero-priced product composition, not price; keep it out of advertisement requests, quote items, quote fingerprints, query keys, and snapshot comparison while preserving it in reservation validation, availability, table assignment, and the signed reservation state.
-
-Keep price quotes and checkout summaries as separate domain values. A quote owns authoritative priced items, payment facts, generic discount applications, and its fingerprint. It must not embed a summary or duplicate reservation selection. Derive the family-specific checkout summary from the signed reservation plus its quote; zero-priced product composition belongs in that summary projection, not in the monetary quote.
-
-Inside `apps/deskohub-workspace`, do not prefix new app-owned services, operations, or supporting types with `Workspace`; the app boundary already supplies that context. Keep the prefix only when it distinguishes a real alternative or belongs to an established contract whose broad rename is outside the current change.
-
-Pass canonical reservation projections through pricing boundaries. Do not repair an incomplete checkout product type by manually intersecting reservation fields such as `date`; use the reservation domain's existing PII-free details projection.
-
-Keep catalog currency through advertisement, signed-summary generation, final price affirmation, and local payment attempts. The non-production Nexi sandbox currency override belongs only at Nexi call sites: apply it to HPP creation and verification arguments without feeding it back into customer-visible quotes or locally persisted payment facts.
-
-Keep payment-tab operations inside the hosted-provider result branch. The customer's single Order and pay activation starts checkout; when that action returns a provider session while browser activation remains, open its hosted page in a new tab, mark the original status tab as owner, and navigate the original tab to status. Fall back to the provider page in the current tab when the browser blocks the new tab or activation has expired. Do not pre-open a placeholder to guarantee two tabs: that performs tab management before the result establishes that a provider flow exists. Preserve the established scoped Web Lock ownership and closure flow; do not replace it with new cross-tab coordination. Internal zero-total completion, pricing changes, validation failures, and any other result that creates no provider session must not open or manage a browser tab. Never require a second payment activation after the provider session is ready.
-
-Discount-code submission and price-change metadata are reservation-family-neutral. Keep `submittedCode` and `changedKeys` in the common signed pay-state envelope, and have every reservation family quote and affirm discounts through its own canonical product identity. Exhaustively dispatch family-owned quote, summary, persistence, and checkout-details projections; do not make cowork the implicit default.
-
-Do not add temporary downstream reservation-family rejection guards when the public issuing schema cannot produce that family. Keep reachability at the issuer boundary and let the PR that opens the issuer implement the new family exhaustively; transitional guards are easy to forget and can silently block the completed feature.
-
-Keep the local checkout lifecycle status required and structurally distinguish
-`not_found` from statuses backed by a reservation row. External reservation
-summary facts may remain unavailable after terminal hold cancellation or a
-Dotypos read failure; do not conflate that optional projection with the required
-local payment and fulfillment status.
-
-Administration may overlay a live Dotypos `CANCELLED` status as an
-operator-facing attention-state cancellation when the local row is stale. Keep
-that overlay read-only: it must not persist a lifecycle transition, authorize
-access, trigger recovery, or claim that Deskohub completed cancellation.
+- Inside `apps/deskohub-workspace`, don't prefix new app-owned services, operations, or types with `Workspace`. Keep the prefix only when it distinguishes a real alternative or belongs to an established contract.
+- Keep reservation-family reachability at the issuing schema. Don't add temporary downstream rejection guards for a family the issuer can't produce; the PR that opens the issuer implements the family exhaustively.
+- Update the matching reference when developer feedback adds or changes a durable checkout invariant.

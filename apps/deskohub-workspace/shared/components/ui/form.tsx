@@ -8,22 +8,21 @@ import {
   type ControllerProps,
   type FieldPath,
   type FieldValues,
-  FormProvider,
+  FormProvider as Form,
   useFormContext,
 } from "react-hook-form";
 import { Label } from "@/shared/components/ui/label";
 import { cn } from "@/shared/utils";
-
-const Form = FormProvider;
 
 const FormFieldContext = React.createContext<{ name: string } | null>(null);
 
 const FormField = <
   TFieldValues extends FieldValues = FieldValues,
   TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
+  TTransformedValues = TFieldValues,
 >({
   ...props
-}: ControllerProps<TFieldValues, TName>) => (
+}: ControllerProps<TFieldValues, TName, TTransformedValues>) => (
   <FormFieldContext.Provider value={{ name: props.name }}>
     <Controller {...props} />
   </FormFieldContext.Provider>
@@ -51,14 +50,33 @@ function useFormField() {
     name: fieldContext.name,
     formItemId: `${itemContext.id}-form-item`,
     formLabelId: `${itemContext.id}-form-item-label`,
-    formDescriptionId: `${itemContext.id}-form-item-description`,
     formMessageId: `${itemContext.id}-form-item-message`,
     ...fieldState,
   };
 }
 
-function FormItem({
+/**
+ * The label, control, and message stack every `FormItem` renders. Use it
+ * directly when the item itself stays out of layout (`className="contents"`)
+ * so its label still sits at the same distance from its control.
+ */
+function FormItemLayout({
   className,
+  ref,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & {
+  ref?: React.Ref<HTMLDivElement>;
+}) {
+  return (
+    <div
+      ref={ref}
+      className={cn("flex flex-col gap-y-2", className)}
+      {...props}
+    />
+  );
+}
+
+function FormItem({
   ref,
   ...props
 }: React.HTMLAttributes<HTMLDivElement> & {
@@ -68,11 +86,7 @@ function FormItem({
 
   return (
     <FormItemContext.Provider value={{ id }}>
-      <div
-        ref={ref}
-        className={cn("flex flex-col gap-y-2", className)}
-        {...props}
-      />
+      <FormItemLayout ref={ref} {...props} />
     </FormItemContext.Provider>
   );
 }
@@ -105,6 +119,7 @@ function FormLabel({
 
 function FormControl({
   ref,
+  "aria-describedby": describedBy,
   ...props
 }: React.ComponentPropsWithoutRef<typeof Slot> & {
   ref?: React.Ref<React.ComponentRef<typeof Slot>>;
@@ -115,28 +130,12 @@ function FormControl({
     <Slot
       ref={ref}
       id={formItemId}
-      aria-describedby={error ? formMessageId : undefined}
+      aria-describedby={
+        [describedBy, error && formMessageId].filter(Boolean).join(" ") ||
+        undefined
+      }
       aria-invalid={Boolean(error)}
       aria-labelledby={formLabelId}
-      {...props}
-    />
-  );
-}
-
-function FormDescription({
-  className,
-  ref,
-  ...props
-}: React.HTMLAttributes<HTMLParagraphElement> & {
-  ref?: React.Ref<HTMLParagraphElement>;
-}) {
-  const { formDescriptionId } = useFormField();
-
-  return (
-    <p
-      ref={ref}
-      id={formDescriptionId}
-      className={cn("text-sm text-navy-blue/62", className)}
       {...props}
     />
   );
@@ -153,16 +152,17 @@ function FormMessage({
   const { error, formMessageId } = useFormField();
   const body = error ? String(error.message) : children;
 
-  if (!body) {
-    return null;
-  }
-
+  // The live region stays mounted so screen readers announce the message when
+  // it appears; while empty it leaves the item's flow and gap.
   return (
     <p
       ref={ref}
       id={formMessageId}
       aria-live="polite"
-      className={cn("text-sm font-medium text-burned-orange", className)}
+      className={cn(
+        "text-sm font-medium text-burned-orange empty:sr-only",
+        className
+      )}
       {...props}
     >
       {body}
@@ -173,9 +173,9 @@ function FormMessage({
 export {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
+  FormItemLayout,
   FormLabel,
   FormMessage,
   useFormField,

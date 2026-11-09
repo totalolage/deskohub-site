@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Workspace Account"
+  short_description: "Build Workspace customer accounts and Better Auth"
+  default_prompt: "Use $deskohub-workspace-account to change Workspace customer accounts, Better Auth sign-in, or account privacy handling."

@@ -2,8 +2,8 @@ import type { CheckoutSummaryOrderItem } from "@/features/checkout/checkout-summ
 import { CheckoutSummaryDiscountDetails } from "@/features/checkout/components/checkout-summary-discount-details";
 import { CheckoutSummaryLine } from "@/features/checkout/components/checkout-summary-line";
 import { getWorkspaceOfficeProductTitle } from "@/features/checkout/product-catalog.i18n";
-import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
+import { moneyWithValue } from "@/shared/money/money";
 
 type OfficeCheckoutSummaryItem = Extract<
   CheckoutSummaryOrderItem,
@@ -19,15 +19,12 @@ export function OfficeCheckoutSummaryItem({
   readonly item: OfficeCheckoutSummaryItem;
   readonly locale: Locale;
 }) {
-  const seatTotalAmount = workspaceMoneyWithValue(
+  const seatTotalAmount = moneyWithValue(
     item.seatAmount.value * item.seats,
     item.seatAmount
   );
   const discountAmount = item.originalAmount
-    ? workspaceMoneyWithValue(
-        item.amount.value - item.originalAmount.value,
-        item.amount
-      )
+    ? moneyWithValue(item.amount.value - item.originalAmount.value, item.amount)
     : undefined;
 
   return (

@@ -1,35 +1,42 @@
-import { Context, type Effect, Match } from "effect";
+import { Context, Data, type Effect, Match } from "effect";
 import type {
+  EmailConfig,
   EmailMessage,
-  EmailProviderConfig,
   EmailSendResult,
 } from "../types/email.types";
 import type { NetworkError } from "./network-error";
 
-export class EmailServiceError {
-  readonly _tag = "EmailServiceError";
-  constructor(
-    readonly message: string,
-    readonly cause?: unknown,
-    readonly provider?: string
-  ) {}
+export class EmailServiceError extends Data.TaggedError("EmailServiceError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+  readonly provider?: string;
+}> {
+  constructor(message: string, cause?: unknown, provider?: string) {
+    super({ message, cause, provider });
+  }
 }
 
-export class EmailTemplateError {
-  readonly _tag = "EmailTemplateError";
-  constructor(
-    readonly message: string,
-    readonly template: string,
-    readonly cause?: unknown
-  ) {}
+export type EmailSendError = EmailServiceError | NetworkError;
+
+/** Options of one batch request; the key stays the same across retries. */
+export interface EmailBatchOptions {
+  readonly idempotencyKey: string;
 }
 
 export interface EmailProvider {
   readonly name: string;
   readonly send: (
     message: EmailMessage
-  ) => Effect.Effect<EmailSendResult, EmailServiceError | NetworkError>;
-  readonly verify: Effect.Effect<boolean, EmailServiceError>;
+  ) => Effect.Effect<EmailSendResult, EmailSendError>;
+  /**
+   * Sends up to 100 messages in one request. Results follow the message
+   * order. A provider that accepted the key once returns the same result for
+   * a repeated request instead of sending again.
+   */
+  readonly sendBatch: (
+    messages: readonly EmailMessage[],
+    options: EmailBatchOptions
+  ) => Effect.Effect<readonly EmailSendResult[], EmailSendError>;
 }
 
 export class EmailProviderTag extends Context.Service<
@@ -39,12 +46,10 @@ export class EmailProviderTag extends Context.Service<
 
 export class EmailConfigTag extends Context.Service<
   EmailConfigTag,
-  EmailProviderConfig
+  EmailConfig
 >()("EmailConfig") {}
 
-export const isRetryableEmailError = (
-  error: EmailServiceError | NetworkError
-) =>
+export const isRetryableEmailError = (error: EmailSendError) =>
   Match.value(error).pipe(
     Match.tag("NetworkError", () => true),
     Match.orElse(() => false)

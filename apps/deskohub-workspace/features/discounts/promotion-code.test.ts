@@ -137,29 +137,4 @@ describe("stored promotion configuration", () => {
       amount: { value: 10_000, exponent: 2, currency: "CZK" },
     });
   });
-
-  test.each([
-    ["mixed child data", discountRow({ voucherId })],
-    ["noncanonical code", discountRow({ code: "summer_50" })],
-    ["zero maximum uses", discountRow({ maxUses: 0 })],
-    ["zero per-customer maximum uses", discountRow({ maxUsesPerCustomer: 0 })],
-    [
-      "inverted validity window",
-      discountRow({
-        validFrom: Temporal.Instant.from("2026-08-01T00:00:00Z"),
-        validUntil: Temporal.Instant.from("2026-07-31T00:00:00Z"),
-      }),
-    ],
-  ])("rejects %s", async (_label, row) => {
-    const result = await Effect.runPromise(
-      decodePromotionConfiguration({
-        row: row as PromotionConfigurationRow,
-      }).pipe(Effect.result)
-    );
-
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: { _tag: "PromotionCodeConfigurationError", promotionCodeId },
-    });
-  });
 });

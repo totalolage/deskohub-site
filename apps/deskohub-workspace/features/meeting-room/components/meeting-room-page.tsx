@@ -1,12 +1,13 @@
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import type { VenuePhoto } from "@/features/gallery/types/venue-photo";
 import type { Locale } from "@/features/i18n";
+import { MeetingRoomBooking } from "./meeting-room-booking";
 import { MeetingRoomGallery } from "./meeting-room-gallery";
 import { MeetingRoomHero } from "./meeting-room-hero";
 import { MeetingRoomSpecifications } from "./meeting-room-specifications";
 
 type MeetingRoomPageProps = {
-  galleryImages: readonly CloudinaryAsset[];
-  heroImage?: CloudinaryAsset;
+  galleryImages: readonly VenuePhoto[];
+  heroImage?: VenuePhoto;
   locale: Locale;
 };
 
@@ -20,6 +21,7 @@ export function MeetingRoomPage({
       <MeetingRoomHero image={heroImage} locale={locale} />
       <MeetingRoomSpecifications locale={locale} />
       <MeetingRoomGallery images={galleryImages} locale={locale} />
+      <MeetingRoomBooking locale={locale} />
     </main>
   );
 }

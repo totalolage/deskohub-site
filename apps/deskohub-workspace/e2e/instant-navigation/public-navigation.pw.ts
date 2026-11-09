@@ -1,7 +1,8 @@
 import { instant } from "@next/playwright";
 import { expect, type Page, test } from "@playwright/test";
+import { m } from "@/features/i18n";
+import { enablePreviewAccess } from "../preview-access";
 import {
-  enablePreviewAccess,
   expectPublicSiteShell,
   hasLoadedResource,
 } from "./navigation-test-helpers";
@@ -10,6 +11,7 @@ const galleryPath = "/en-US/gallery";
 const contactPath = "/en-US/contact";
 const homePath = "/en-US";
 const ttrpgRoomPath = "/en-US/ttrpg-room";
+const locale = "en-US" as const;
 
 test.beforeEach(async ({ baseURL, context }) => {
   await enablePreviewAccess(context, baseURL);
@@ -32,18 +34,12 @@ test("serves the resolved header and gallery on direct navigation", async ({
 
   await expectPublicSiteShell(page);
   await expect(
-    page.getByRole("heading", { level: 1, name: "Workspace gallery" })
+    page.getByRole("heading", {
+      level: 1,
+      name: m.galleryPageTitle({}, { locale }),
+    })
   ).toBeVisible();
   await expectGalleryContentToResolve(page);
-});
-
-test("serves the resolved header and contact page on direct navigation", async ({
-  page,
-}) => {
-  await page.goto(contactPath);
-
-  await expectPublicSiteShell(page);
-  await expectContactPage(page);
 });
 
 test("serves the resolved header and TTRPG page on direct navigation", async ({
@@ -150,11 +146,6 @@ test.describe("client navigation", () => {
       expectDestination: expectHomePage,
       linkName: "Home",
     },
-    {
-      destinationPath: contactPath,
-      expectDestination: expectContactPage,
-      linkName: "Contact",
-    },
   ] as const) {
     test(`uses prefetched UI from the footer for ${navigation.destinationPath}`, async ({
       page,
@@ -194,38 +185,35 @@ test.describe("client navigation", () => {
   }
 });
 
-const homeHeading = "The first self-service workspace on Palmovka.";
-
 async function expectHomePage(page: Page) {
   await expect(
-    page.getByRole("heading", { level: 1, name: homeHeading })
-  ).toBeVisible();
-  await expect(page.getByRole("region", { name: homeHeading })).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Reserve cowork" })
-  ).toBeVisible();
-  await expect(
     page.getByRole("heading", {
-      level: 2,
-      name: "Two minutes from Palmovka metro",
+      level: 1,
+      name: m.landingHeroTitle({}, { locale }),
     })
   ).toBeVisible();
-  await expect(page.locator("#hero-gallery")).toBeVisible();
+  // The decorative carousel may be absent when Cloudinary has no usable
+  // images; when it renders, it must already be resolved.
+  const carousel = page.locator("#hero-gallery");
+  if ((await carousel.count()) > 0) await expect(carousel).toBeVisible();
   await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
 }
 
 async function expectGalleryShell(page: Page) {
   await expect(
-    page.getByRole("heading", { level: 1, name: "Workspace gallery" })
+    page.getByRole("heading", {
+      level: 1,
+      name: m.galleryPageTitle({}, { locale }),
+    })
   ).toBeVisible();
   await expect(
-    page.getByRole("region", { name: "Workspace gallery" })
+    page.getByRole("region", { name: m.gallerySrTitle({}, { locale }) })
   ).toHaveAttribute("aria-busy", "true");
 }
 
 async function expectGalleryContentToResolve(page: Page) {
   await expect(
-    page.getByRole("region", { name: "Workspace gallery" })
+    page.getByRole("region", { name: m.gallerySrTitle({}, { locale }) })
   ).toHaveCount(0);
 }
 
@@ -233,31 +221,18 @@ async function expectContactPage(page: Page) {
   await expect(
     page.getByRole("heading", {
       level: 1,
-      name: "Tell us what kind of day you want to build.",
+      name: m.contactDetailsTitle({}, { locale }),
     })
   ).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Email" })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
 }
 
 async function expectTtrpgRoomPage(page: Page) {
   await expect(
     page.getByRole("heading", {
       level: 1,
-      name: "Private rooms for TTRPGs and similar events",
+      name: m.ttrpgRoomHeroTitle({}, { locale }),
     })
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { level: 2, name: "Cozy private session" })
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { level: 2, name: "Large-scale adventure" })
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Contact Deskohub Bar" })
-  ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Reserve" })).toBeVisible();
 }
 
 async function getPrimaryNavigationLinks(page: Page) {

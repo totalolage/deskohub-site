@@ -5,6 +5,7 @@ file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
   not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
   not $name <: r".*/generated/.*",
+  $body <: r"(?s).*\bexport\b.*",
   $body <: contains bubble {
     or {
       `export * from $source` as $statement,

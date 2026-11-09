@@ -19,12 +19,19 @@ export type CloudinarySearchCursor = typeof CloudinarySearchCursorSchema.Type;
 
 export const CloudinaryAssetSchema = Schema.Struct({
   public_id: CloudinaryPublicIdSchema,
+  /**
+   * The provider's immutable asset identity. Unlike `public_id`, it survives
+   * renames, so callers can verify that the asset now living at a public ID
+   * is really the one they put there.
+   */
+  asset_id: Schema.optional(Schema.NonEmptyString),
   secure_url: Schema.String,
   url: Schema.String,
   width: Schema.Finite,
   height: Schema.Finite,
   format: Schema.String,
   resource_type: Schema.String,
+  version: Schema.optional(Schema.Finite),
   created_at: Schema.String,
   folder: Schema.optional(Schema.String),
   tags: Schema.optional(Schema.Array(Schema.String)),
@@ -63,3 +70,12 @@ export const SearchOptionsSchema = Schema.Struct({
 });
 
 export type SearchOptions = Schema.Schema.Type<typeof SearchOptionsSchema>;
+
+export const CloudinaryDestroyOutcomeSchema = Schema.Literals([
+  "destroyed",
+  "not-found",
+]);
+
+export type CloudinaryDestroyOutcome = Schema.Schema.Type<
+  typeof CloudinaryDestroyOutcomeSchema
+>;

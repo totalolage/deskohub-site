@@ -1,6 +1,5 @@
 import type { IgloohomeDeviceId } from "@deskohub/igloohome";
 import type {
-  AdministrationActorUsername,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeCleanupTarget,
@@ -8,16 +7,14 @@ import type {
   AdministrationWorkspaceSiteLocalWholeHourDateTime,
 } from "@deskohub/workspace-admin-api";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import type {
-  EffectPgQueryResultHKT,
-  EffectPgTransaction,
-} from "drizzle-orm/effect-postgres";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import type { relations } from "@/db/relations";
 import type { StandaloneAccessCodeAttemptEventRow } from "@/db/schema";
-import { standaloneAccessCodeAttemptEvents } from "@/db/schema";
+import { standaloneAccessCodeAttemptEvents as events } from "@/db/schema";
 import { quotedSqlList } from "@/db/schema/sql-list";
+import { WorkspaceLocks } from "@/db/workspace-locks";
+import type { CustomerAccountId } from "@/features/account/customer-account";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import type {
   StandaloneAccessCodeFailureCode,
   StandaloneAccessCodeProviderVariance,
@@ -31,7 +28,7 @@ import {
 
 export interface StandaloneAccessCodeAttempt {
   readonly attemptId: AdministrationStandaloneAccessCodeAttemptId;
-  readonly actor: AdministrationActorUsername;
+  readonly actor: AdministratorAccountActor;
   readonly source: StandaloneAccessCodeSource;
   readonly name: AdministrationStandaloneAccessCodeName;
   readonly deviceId: IgloohomeDeviceId;
@@ -40,6 +37,23 @@ export interface StandaloneAccessCodeAttempt {
   readonly startsAt: Temporal.Instant;
   readonly endsAt: Temporal.Instant;
 }
+
+/**
+ * Who an attempt event records. Events written before administrator
+ * accounts carry only the Basic-auth username.
+ */
+type AttemptEventActor = Pick<
+  StandaloneAccessCodeAttemptEventRow,
+  "actor" | "actorAccountId" | "actorAccountEmail"
+>;
+
+const toAttemptEventActor = (
+  actor: AdministratorAccountActor
+): AttemptEventActor => ({
+  actor: null,
+  actorAccountId: actor.accountId,
+  actorAccountEmail: actor.email,
+});
 
 export interface StandaloneAccessCodeCreatedAttemptTerminal {
   readonly name: AdministrationStandaloneAccessCodeName;
@@ -63,7 +77,7 @@ export type StandaloneAccessCodeAttemptTerminalResolution =
       readonly failureCode: StandaloneAccessCodeFailureCode;
     };
 
-export type StandaloneAccessCodeAttemptClaim =
+type StandaloneAccessCodeAttemptClaim =
   | StandaloneAccessCodeAttemptTerminalResolution
   | {
       readonly kind: "claimed";
@@ -78,7 +92,7 @@ export type StandaloneAccessCodeAttemptClaim =
   | { readonly kind: "mismatch" }
   | { readonly kind: "exhausted" };
 
-export type StandaloneAccessCodeAppendTerminalResult =
+type StandaloneAccessCodeAppendTerminalResult =
   | { readonly kind: "appended" }
   | {
       readonly kind: "already-terminal";
@@ -94,13 +108,17 @@ export class StandaloneAccessCodeAttemptLogStorageError extends Data.TaggedError
   readonly cause?: unknown;
 }> {}
 
+type ClaimInput = {
+  readonly attempt: StandaloneAccessCodeAttempt;
+  readonly claimedAt: Temporal.Instant;
+  readonly staleBefore: Temporal.Instant;
+  readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;
+};
+
 export interface IStandaloneAccessCodeAttemptLogRepository {
-  readonly claim: (input: {
-    readonly attempt: StandaloneAccessCodeAttempt;
-    readonly claimedAt: Temporal.Instant;
-    readonly staleBefore: Temporal.Instant;
-    readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;
-  }) => Effect.Effect<
+  readonly claim: (
+    input: ClaimInput
+  ) => Effect.Effect<
     StandaloneAccessCodeAttemptClaim,
     StandaloneAccessCodeAttemptLogStorageError
   >;
@@ -127,30 +145,18 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
-
-      const events = standaloneAccessCodeAttemptEvents;
-      type Transaction = EffectPgTransaction<
-        EffectPgQueryResultHKT,
-        typeof relations
-      >;
+      const { db, transaction } = yield* WorkspaceDatabase;
 
       const deviceWindowKey = (attempt: StandaloneAccessCodeAttempt) =>
         `${attempt.deviceId}|${attempt.startsAt.toString()}|${attempt.endsAt.toString()}`;
 
-      const lockDeviceWindow = (
-        tx: Transaction,
-        attempt: StandaloneAccessCodeAttempt
-      ) =>
-        tx.execute(
-          sql`select pg_advisory_xact_lock(hashtext('standalone-access-code'), hashtext(${deviceWindowKey(attempt)}))`
-        );
+      const lockDeviceWindow = (attempt: StandaloneAccessCodeAttempt) =>
+        WorkspaceLocks.standaloneAccessCodeDevice(deviceWindowKey(attempt));
 
       const findStartedEvent = (
-        tx: Transaction,
         attemptId: AdministrationStandaloneAccessCodeAttemptId
       ) =>
-        tx
+        db
           .select()
           .from(events)
           .where(
@@ -162,10 +168,9 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           .limit(1);
 
       const findTerminalEvent = (
-        tx: Transaction,
         attemptId: AdministrationStandaloneAccessCodeAttemptId
       ) =>
-        tx
+        db
           .select()
           .from(events)
           .where(
@@ -180,7 +185,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
 
       const matchesAttempt = (
         event: {
-          readonly actor: AdministrationActorUsername;
+          readonly actorAccountId: CustomerAccountId | null;
           readonly source: StandaloneAccessCodeSource;
           readonly name: AdministrationStandaloneAccessCodeName;
           readonly deviceId: IgloohomeDeviceId;
@@ -189,27 +194,24 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
         },
         attempt: StandaloneAccessCodeAttempt
       ) =>
-        event.actor === attempt.actor &&
+        event.actorAccountId === attempt.actor.accountId &&
         event.source === attempt.source &&
         event.name === attempt.name &&
         event.deviceId === attempt.deviceId &&
         event.startsAt.equals(attempt.startsAt) &&
         event.endsAt.equals(attempt.endsAt);
 
-      const insertStartedEvent = (
-        tx: Transaction,
-        input: {
-          readonly attempt: StandaloneAccessCodeAttempt;
-          readonly variance: StandaloneAccessCodeProviderVariance;
-          readonly claimedAt: Temporal.Instant;
-        }
-      ) =>
-        tx
+      const insertStartedEvent = (input: {
+        readonly attempt: StandaloneAccessCodeAttempt;
+        readonly variance: StandaloneAccessCodeProviderVariance;
+        readonly claimedAt: Temporal.Instant;
+      }) =>
+        db
           .insert(events)
           .values({
             attemptId: input.attempt.attemptId,
             eventKind: "started",
-            actor: input.attempt.actor,
+            ...toAttemptEventActor(input.attempt.actor),
             source: input.attempt.source,
             name: input.attempt.name,
             deviceId: input.attempt.deviceId,
@@ -229,24 +231,22 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           })
           .returning({ id: events.id });
 
-      const insertTerminalEvent = (
-        tx: Transaction,
-        input: {
-          readonly attempt: StandaloneAccessCodeAttempt;
-          readonly variance: StandaloneAccessCodeProviderVariance;
-          readonly eventKind: StandaloneAccessCodeTerminalEventKind;
-          readonly occurredAt: Temporal.Instant;
-          readonly providerCredentialId: AdministrationProviderCredentialId | null;
-          readonly providerStatusCode: number | null;
-          readonly failureCode: StandaloneAccessCodeFailureCode | null;
-        }
-      ) =>
-        tx
+      const insertTerminalEvent = (input: {
+        readonly attempt: Omit<StandaloneAccessCodeAttempt, "actor">;
+        readonly actor: AttemptEventActor;
+        readonly variance: StandaloneAccessCodeProviderVariance;
+        readonly eventKind: StandaloneAccessCodeTerminalEventKind;
+        readonly occurredAt: Temporal.Instant;
+        readonly providerCredentialId: AdministrationProviderCredentialId | null;
+        readonly providerStatusCode: number | null;
+        readonly failureCode: StandaloneAccessCodeFailureCode | null;
+      }) =>
+        db
           .insert(events)
           .values({
             attemptId: input.attempt.attemptId,
             eventKind: input.eventKind,
-            actor: input.attempt.actor,
+            ...input.actor,
             source: input.attempt.source,
             name: input.attempt.name,
             deviceId: input.attempt.deviceId,
@@ -267,10 +267,9 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           .returning({ id: events.id });
 
       const occupiedVariances = Effect.fn(function* (
-        tx: Transaction,
         attempt: StandaloneAccessCodeAttempt
       ) {
-        const startedEvents = yield* tx
+        const startedEvents = yield* db
           .select({
             attemptId: events.attemptId,
             variance: events.variance,
@@ -286,7 +285,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           );
         if (startedEvents.length === 0) return [];
 
-        const freedAttempts = yield* tx
+        const freedAttempts = yield* db
           .selectDistinct({ attemptId: events.attemptId })
           .from(events)
           .where(
@@ -311,14 +310,11 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
         ];
       });
 
-      const unreconciledAmbiguousAttempts = Effect.fn(function* (
-        tx: Transaction,
-        input: {
-          readonly attempt: StandaloneAccessCodeAttempt;
-          readonly staleBefore: Temporal.Instant;
-        }
-      ) {
-        const startedEvents = yield* tx
+      const unreconciledAmbiguousAttempts = Effect.fn(function* (input: {
+        readonly attempt: StandaloneAccessCodeAttempt;
+        readonly staleBefore: Temporal.Instant;
+      }) {
+        const startedEvents = yield* db
           .select()
           .from(events)
           .where(
@@ -332,7 +328,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
         if (startedEvents.length === 0) return [];
 
         const [terminalEvents, reconciledEvents] = yield* Effect.all([
-          tx
+          db
             .select({
               attemptId: events.attemptId,
               eventKind: events.eventKind,
@@ -350,7 +346,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
                 )
               )
             ),
-          tx
+          db
             .select({ attemptId: events.attemptId })
             .from(events)
             .where(
@@ -402,20 +398,17 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
         return unresolvedCandidates.sort(byOccurrenceThenAttemptId);
       });
 
-      const insertReconciledEvent = (
-        tx: Transaction,
-        input: {
-          readonly attempt: StandaloneAccessCodeAttempt;
-          readonly prior: StandaloneAccessCodeAttemptEventRow;
-          readonly occurredAt: Temporal.Instant;
-        }
-      ) =>
-        tx
+      const insertReconciledEvent = (input: {
+        readonly attempt: StandaloneAccessCodeAttempt;
+        readonly prior: StandaloneAccessCodeAttemptEventRow;
+        readonly occurredAt: Temporal.Instant;
+      }) =>
+        db
           .insert(events)
           .values({
             attemptId: input.prior.attemptId,
             eventKind: "reconciled",
-            actor: input.attempt.actor,
+            ...toAttemptEventActor(input.attempt.actor),
             source: input.attempt.source,
             name: input.prior.name,
             deviceId: input.prior.deviceId,
@@ -484,15 +477,17 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           Match.exhaustive
         );
 
-      const appendOrResolveStaleAmbiguous = Effect.fn(function* (
-        tx: Transaction,
-        input: {
-          readonly prior: StandaloneAccessCodeAttemptEventRow;
-          readonly occurredAt: Temporal.Instant;
-        }
-      ) {
-        yield* insertTerminalEvent(tx, {
+      const appendOrResolveStaleAmbiguous = Effect.fn(function* (input: {
+        readonly prior: StandaloneAccessCodeAttemptEventRow;
+        readonly occurredAt: Temporal.Instant;
+      }) {
+        yield* insertTerminalEvent({
           attempt: input.prior,
+          actor: {
+            actor: input.prior.actor,
+            actorAccountId: input.prior.actorAccountId,
+            actorAccountEmail: input.prior.actorAccountEmail,
+          },
           variance: input.prior.variance,
           eventKind: "ambiguous",
           occurredAt: input.occurredAt,
@@ -500,7 +495,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           providerStatusCode: null,
           failureCode: "standalone_attempt_stale",
         });
-        const [terminal] = yield* findTerminalEvent(tx, input.prior.attemptId);
+        const [terminal] = yield* findTerminalEvent(input.prior.attemptId);
         if (!terminal) {
           return yield* new StandaloneAccessCodeAttemptLogStorageError({
             operation: "claim",
@@ -512,15 +507,16 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
         return terminal;
       });
 
-      const cleanupTargetOf = (
-        prior: StandaloneAccessCodeAttemptEventRow
-      ): AdministrationStandaloneAccessCodeCleanupTarget => ({
-        attemptId: prior.attemptId,
-        name: prior.name,
-      });
+      const cleanupRequired = (prior: StandaloneAccessCodeAttemptEventRow) =>
+        ({
+          kind: "cleanup-required",
+          cleanupTarget: {
+            attemptId: prior.attemptId,
+            name: prior.name,
+          } satisfies AdministrationStandaloneAccessCodeCleanupTarget,
+        }) as const;
 
       const resolveReplay = Effect.fn(function* (
-        tx: Transaction,
         stored: StandaloneAccessCodeAttemptEventRow,
         input: {
           readonly attempt: StandaloneAccessCodeAttempt;
@@ -533,15 +529,12 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           return { kind: "mismatch" } as const;
         }
 
-        let terminal = (yield* findTerminalEvent(
-          tx,
-          input.attempt.attemptId
-        ))[0];
+        let terminal = (yield* findTerminalEvent(input.attempt.attemptId))[0];
         if (
           !terminal &&
           Temporal.Instant.compare(stored.occurredAt, input.staleBefore) <= 0
         ) {
-          terminal = yield* appendOrResolveStaleAmbiguous(tx, {
+          terminal = yield* appendOrResolveStaleAmbiguous({
             prior: stored,
             occurredAt: input.claimedAt,
           });
@@ -555,7 +548,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           resolution.kind === "ambiguous" &&
           input.providerCredentialRemovedAttemptId === input.attempt.attemptId
         ) {
-          yield* insertReconciledEvent(tx, {
+          yield* insertReconciledEvent({
             attempt: input.attempt,
             prior: terminal,
             occurredAt: input.claimedAt,
@@ -565,70 +558,69 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
         return resolution;
       });
 
-      const claimInTransaction = Effect.fn(function* (
-        tx: Transaction,
-        input: {
-          readonly attempt: StandaloneAccessCodeAttempt;
-          readonly claimedAt: Temporal.Instant;
-          readonly staleBefore: Temporal.Instant;
-          readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;
-        }
+      /**
+       * Whether a removed attempt is ambiguous and so needs reconciling. A
+       * stale started attempt first gets its ambiguous terminal event, unless
+       * a concurrent writer recorded another outcome.
+       */
+      const settlesAsAmbiguous = Effect.fn(function* (
+        target: {
+          readonly prior: StandaloneAccessCodeAttemptEventRow;
+          readonly staleStarted: boolean;
+        },
+        occurredAt: Temporal.Instant
       ) {
-        const [existing] = yield* findStartedEvent(tx, input.attempt.attemptId);
-        if (existing) return yield* resolveReplay(tx, existing, input);
+        if (!target.staleStarted) return true;
+        const terminal = yield* appendOrResolveStaleAmbiguous({
+          prior: target.prior,
+          occurredAt,
+        });
+        return resolveTerminalEvent(terminal).kind === "ambiguous";
+      });
 
-        const [target] = yield* unreconciledAmbiguousAttempts(tx, {
+      /**
+       * Reconciles the oldest unreconciled ambiguous attempt in the device
+       * window once its provider credential was removed. Returns the cleanup
+       * an administrator still owes before a new attempt may claim.
+       */
+      const reconcileAmbiguousAttempt = Effect.fn(function* (
+        input: ClaimInput
+      ) {
+        const [target] = yield* unreconciledAmbiguousAttempts({
           attempt: input.attempt,
           staleBefore: input.staleBefore,
         });
-        if (target) {
-          if (
-            input.providerCredentialRemovedAttemptId !== target.prior.attemptId
-          ) {
-            return {
-              kind: "cleanup-required",
-              cleanupTarget: cleanupTargetOf(target.prior),
-            } as const;
-          }
-          if (target.staleStarted) {
-            const terminal = yield* appendOrResolveStaleAmbiguous(tx, {
-              prior: target.prior,
-              occurredAt: input.claimedAt,
-            });
-            if (resolveTerminalEvent(terminal).kind === "ambiguous") {
-              yield* insertReconciledEvent(tx, {
-                attempt: input.attempt,
-                prior: target.prior,
-                occurredAt: input.claimedAt,
-              });
-            }
-          } else {
-            yield* insertReconciledEvent(tx, {
-              attempt: input.attempt,
-              prior: target.prior,
-              occurredAt: input.claimedAt,
-            });
-          }
-
-          const [next] = yield* unreconciledAmbiguousAttempts(tx, {
-            attempt: input.attempt,
-            staleBefore: input.staleBefore,
-          });
-          if (next) {
-            return {
-              kind: "cleanup-required",
-              cleanupTarget: cleanupTargetOf(next.prior),
-            } as const;
-          }
+        if (!target) return undefined;
+        if (
+          input.providerCredentialRemovedAttemptId !== target.prior.attemptId
+        ) {
+          return cleanupRequired(target.prior);
         }
 
-        const occupied = yield* occupiedVariances(tx, input.attempt);
+        if (yield* settlesAsAmbiguous(target, input.claimedAt)) {
+          yield* insertReconciledEvent({
+            attempt: input.attempt,
+            prior: target.prior,
+            occurredAt: input.claimedAt,
+          });
+        }
+
+        const [next] = yield* unreconciledAmbiguousAttempts({
+          attempt: input.attempt,
+          staleBefore: input.staleBefore,
+        });
+        return next ? cleanupRequired(next.prior) : undefined;
+      });
+
+      /** Starts the attempt on the first provider variance still free. */
+      const claimFreeVariance = Effect.fn(function* (input: ClaimInput) {
+        const occupied = yield* occupiedVariances(input.attempt);
         const variance = standaloneAccessCodeProviderVariances.find(
           (candidate) => !occupied.includes(candidate)
         );
         if (variance === undefined) return { kind: "exhausted" } as const;
 
-        const inserted = yield* insertStartedEvent(tx, {
+        const inserted = yield* insertStartedEvent({
           attempt: input.attempt,
           variance,
           claimedAt: input.claimedAt,
@@ -637,7 +629,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           return { kind: "claimed", variance } as const;
         }
 
-        const [raced] = yield* findStartedEvent(tx, input.attempt.attemptId);
+        const [raced] = yield* findStartedEvent(input.attempt.attemptId);
         if (!raced) {
           return yield* new StandaloneAccessCodeAttemptLogStorageError({
             operation: "claim",
@@ -646,99 +638,104 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
               "Concurrent attempt claim could not be read after conflict.",
           });
         }
-        return yield* resolveReplay(tx, raced, input);
+        return yield* resolveReplay(raced, input);
+      });
+
+      const claimAttempt = Effect.fn(function* (input: ClaimInput) {
+        const [existing] = yield* findStartedEvent(input.attempt.attemptId);
+        if (existing) return yield* resolveReplay(existing, input);
+
+        const cleanup = yield* reconcileAmbiguousAttempt(input);
+        if (cleanup) return cleanup;
+        return yield* claimFreeVariance(input);
       });
 
       return StandaloneAccessCodeAttemptLogRepository.of({
         claim: Effect.fn("StandaloneAccessCodeAttemptLogRepository.claim")(
           function* (input) {
-            return yield* db
-              .transaction((tx) =>
-                lockDeviceWindow(tx, input.attempt).pipe(
-                  Effect.andThen(claimInTransaction(tx, input))
-                )
+            return yield* transaction(
+              lockDeviceWindow(input.attempt).pipe(
+                Effect.andThen(claimAttempt(input))
               )
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new StandaloneAccessCodeAttemptLogStorageError({
-                      operation: "claim",
-                      attemptId: input.attempt.attemptId,
-                      message:
-                        "Standalone access-code attempt could not be claimed.",
-                      cause,
-                    })
-                )
-              );
+            ).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new StandaloneAccessCodeAttemptLogStorageError({
+                    operation: "claim",
+                    attemptId: input.attempt.attemptId,
+                    message:
+                      "Standalone access-code attempt could not be claimed.",
+                    cause,
+                  })
+              )
+            );
           }
         ),
         appendTerminal: Effect.fn(
           "StandaloneAccessCodeAttemptLogRepository.appendTerminal"
         )(function* (input) {
-          return yield* db
-            .transaction((tx) =>
-              lockDeviceWindow(tx, input.attempt).pipe(
-                Effect.andThen(
-                  Effect.gen(function* () {
-                    const written = yield* insertTerminalEvent(tx, {
-                      attempt: input.attempt,
-                      variance: input.variance,
-                      eventKind: input.eventKind,
-                      occurredAt: input.occurredAt,
-                      providerCredentialId: input.providerCredentialId ?? null,
-                      providerStatusCode: input.providerStatusCode ?? null,
-                      failureCode: input.failureCode ?? null,
-                    });
-                    if (written.length > 0) {
-                      return { kind: "appended" } as const;
-                    }
+          return yield* transaction(
+            lockDeviceWindow(input.attempt).pipe(
+              Effect.andThen(
+                Effect.gen(function* () {
+                  const written = yield* insertTerminalEvent({
+                    attempt: input.attempt,
+                    actor: toAttemptEventActor(input.attempt.actor),
+                    variance: input.variance,
+                    eventKind: input.eventKind,
+                    occurredAt: input.occurredAt,
+                    providerCredentialId: input.providerCredentialId ?? null,
+                    providerStatusCode: input.providerStatusCode ?? null,
+                    failureCode: input.failureCode ?? null,
+                  });
+                  if (written.length > 0) {
+                    return { kind: "appended" } as const;
+                  }
 
-                    const [existing] = yield* findTerminalEvent(
-                      tx,
-                      input.attempt.attemptId
+                  const [existing] = yield* findTerminalEvent(
+                    input.attempt.attemptId
+                  );
+                  if (!existing) {
+                    return yield* new StandaloneAccessCodeAttemptLogStorageError(
+                      {
+                        operation: "append_terminal",
+                        attemptId: input.attempt.attemptId,
+                        message:
+                          "Conflicting standalone access-code terminal event could not be read.",
+                      }
                     );
-                    if (!existing) {
-                      return yield* new StandaloneAccessCodeAttemptLogStorageError(
-                        {
-                          operation: "append_terminal",
-                          attemptId: input.attempt.attemptId,
-                          message:
-                            "Conflicting standalone access-code terminal event could not be read.",
-                        }
-                      );
-                    }
+                  }
 
-                    const stored = resolveTerminalEvent(existing);
-                    if (stored.kind === "in-progress") {
-                      return yield* new StandaloneAccessCodeAttemptLogStorageError(
-                        {
-                          operation: "append_terminal",
-                          attemptId: input.attempt.attemptId,
-                          message:
-                            "Conflicting standalone access-code terminal event did not resolve to a terminal outcome.",
-                        }
-                      );
-                    }
-                    return {
-                      kind: "already-terminal",
-                      terminal: stored,
-                    } as const;
-                  })
-                )
+                  const stored = resolveTerminalEvent(existing);
+                  if (stored.kind === "in-progress") {
+                    return yield* new StandaloneAccessCodeAttemptLogStorageError(
+                      {
+                        operation: "append_terminal",
+                        attemptId: input.attempt.attemptId,
+                        message:
+                          "Conflicting standalone access-code terminal event did not resolve to a terminal outcome.",
+                      }
+                    );
+                  }
+                  return {
+                    kind: "already-terminal",
+                    terminal: stored,
+                  } as const;
+                })
               )
             )
-            .pipe(
-              Effect.mapError(
-                (cause) =>
-                  new StandaloneAccessCodeAttemptLogStorageError({
-                    operation: "append_terminal",
-                    attemptId: input.attempt.attemptId,
-                    message:
-                      "Standalone access-code terminal event could not be written.",
-                    cause,
-                  })
-              )
-            );
+          ).pipe(
+            Effect.mapError(
+              (cause) =>
+                new StandaloneAccessCodeAttemptLogStorageError({
+                  operation: "append_terminal",
+                  attemptId: input.attempt.attemptId,
+                  message:
+                    "Standalone access-code terminal event could not be written.",
+                  cause,
+                })
+            )
+          );
         }),
       });
     })

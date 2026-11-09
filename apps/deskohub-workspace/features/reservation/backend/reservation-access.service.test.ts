@@ -3,17 +3,12 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { type DotyposReservation, DotyposService } from "@deskohub/dotypos";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import {
   WorkspaceCheckoutAccessCodeService,
   type WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType,
 } from "@/features/checkout/backend/reservation/access-code.service";
 import type { Locale } from "@/features/i18n";
-import {
-  createReservationAccessCookieCapability,
-  openReservationAccessCookie,
-  sealReservationAccessCookie,
-} from "@/features/reservation/backend/reservation-access-cookie";
 import {
   createReservationAccessToken,
   openReservationAccessToken,
@@ -27,10 +22,8 @@ import {
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import {
-  type ReservationAccessToken,
-  reservationAccessTokenSchema,
-} from "@/features/reservation/reservation-access-token";
+import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
+import { ReservationAccessIssuanceError } from "@/features/reservation-access";
 
 mock.module("server-only", () => ({}));
 
@@ -106,7 +99,6 @@ const makeProviderReservation = (
 
 type HarnessOptions = {
   readonly accessToken?: ReservationAccessToken;
-  readonly accessCookie?: string;
   readonly authorized?: boolean;
   readonly inputLocale?: Locale;
   readonly reservation?: ReturnType<typeof makeReservation> | null;
@@ -125,15 +117,6 @@ const runAccess = async (options: HarnessOptions = {}) => {
   const isAuthorized = mock((input: ReservationAuthorizationInput) => {
     if (options.authorized !== undefined) {
       return Effect.succeed(options.authorized);
-    }
-    if (input.accessCookie) {
-      return openReservationAccessCookie({
-        value: input.accessCookie,
-        orderId: input.orderId,
-      }).pipe(
-        Effect.as(true),
-        Effect.orElseSucceed(() => false)
-      );
     }
     if (!input.accessToken) return Effect.succeed(false);
     return openReservationAccessToken({
@@ -157,7 +140,9 @@ const runAccess = async (options: HarnessOptions = {}) => {
   const getReservation = mock(() =>
     options.providerFails
       ? Effect.fail(new Error("provider unavailable"))
-      : Effect.succeed(options.providerReservation ?? makeProviderReservation())
+      : Effect.succeed(
+          Option.some(options.providerReservation ?? makeProviderReservation())
+        )
   );
   const resolveCustomerAccessCode = mock(
     options.resolver ?? (() => Effect.succeed(resolvedAccess))
@@ -171,7 +156,6 @@ const runAccess = async (options: HarnessOptions = {}) => {
     return yield* service.getAccess({
       orderId,
       locale: options.inputLocale ?? "en-US",
-      accessCookie: options.accessCookie,
       accessToken: options.accessToken,
     });
   }).pipe(
@@ -187,113 +171,52 @@ const runAccess = async (options: HarnessOptions = {}) => {
     Effect.runPromise
   );
 
-  return { access, findById, getReservation, resolveCustomerAccessCode };
+  return {
+    access,
+    findById,
+    getReservation,
+    isAuthorized,
+    resolveCustomerAccessCode,
+  };
 };
 
-const createAccessToken = (tokenOrderId = orderId, locale: Locale = "en-US") =>
+const createAccessToken = () =>
   createReservationAccessToken({
-    orderId: tokenOrderId,
-    locale,
+    orderId,
+    locale: "en-US",
   }).pipe(Effect.runPromise);
 
-const createAccessCookie = async () => {
-  const capability = await Effect.runPromise(
-    createReservationAccessCookieCapability({ orderId, locale: "en-US" })
-  );
-  return Effect.runPromise(
-    sealReservationAccessCookie({
-      orderId,
-      capability,
-    })
-  );
-};
-
 describe("ReservationAccessService", () => {
-  test("accepts a valid access cookie before provider lookup", async () => {
-    const result = await runAccess({
-      accessCookie: await createAccessCookie(),
-    });
+  test("returns an invalid-link state without reads when the request is not authorized", async () => {
+    const result = await runAccess({ authorized: false });
 
-    expect(result.access.state).toBe("available");
-    expect(result.getReservation).toHaveBeenCalledTimes(1);
+    expect(result.access).toEqual({ state: "invalid_link" });
+    expect(result.findById).not.toHaveBeenCalled();
+    expect(result.getReservation).not.toHaveBeenCalled();
+    expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
   });
 
-  test("returns an invalid-link state for missing, tampered, reservation-mismatched, and locale-mismatched capabilities", async () => {
-    const validToken = await createAccessToken();
-    const otherOrderToken = await createAccessToken(
-      workspaceReservationIdSchema.make("another-reservation")
+  test("asks for the access-code permission, not the status permission", async () => {
+    const result = await runAccess({ authorized: false });
+
+    expect(result.isAuthorized).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId, permission: "view-access-code" })
     );
-    const otherLocaleToken = await createAccessToken(orderId, "cs-CZ");
-    const inputs = [
-      undefined,
-      reservationAccessTokenSchema.make(`${validToken}tampered`),
-      otherOrderToken,
-      otherLocaleToken,
-    ];
-
-    for (const accessToken of inputs) {
-      const result = await runAccess({ accessToken });
-
-      expect(result.access).toEqual({ state: "invalid_link" });
-      expect(result.findById).not.toHaveBeenCalled();
-      expect(result.getReservation).not.toHaveBeenCalled();
-      expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
-    }
-  });
-
-  test("allows owner-authorized access details across route locales", async () => {
-    const result = await runAccess({
-      authorized: true,
-      inputLocale: "cs-CZ",
-    });
-
-    expect(result.access).toEqual({ state: "available", ...resolvedAccess });
-    expect(result.resolveCustomerAccessCode).toHaveBeenCalledTimes(1);
-  });
-
-  test("allows cookie-authorized access details across route locales", async () => {
-    const result = await runAccess({
-      accessCookie: await createAccessCookie(),
-      inputLocale: "cs-CZ",
-    });
-
-    expect(result.access).toEqual({ state: "available", ...resolvedAccess });
-    expect(result.resolveCustomerAccessCode).toHaveBeenCalledTimes(1);
   });
 
   test("fails closed when the local reservation is missing or cannot be read", async () => {
     const accessToken = await createAccessToken();
 
-    for (const options of [
-      { accessToken, reservation: null },
-      { accessToken, reservationFails: true },
-    ]) {
+    for (const [options, reason] of [
+      [{ accessToken, reservation: null }, "reservation-state"],
+      [{ accessToken, reservationFails: true }, "lookup-failed"],
+    ] as const) {
       const result = await runAccess(options);
 
-      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.access).toEqual({ state: "unavailable", reason });
       expect(result.getReservation).not.toHaveBeenCalled();
       expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
     }
-  });
-
-  test("uses live provider timing after a reservation moves", async () => {
-    const accessToken = await createAccessToken();
-    const result = await runAccess({
-      accessToken,
-      providerReservation: makeProviderReservation({
-        startDate: "2026-06-20T09:00:00Z",
-        endDate: "2026-06-20T10:00:00Z",
-      }),
-    });
-
-    expect(result.access).toEqual({ state: "available", ...resolvedAccess });
-    expect(result.getReservation).toHaveBeenCalledTimes(1);
-    expect(result.resolveCustomerAccessCode).toHaveBeenCalledWith({
-      reservationId: orderId,
-      dotyposReservationId: "provider-reservation-id",
-      reservedFrom: Temporal.Instant.from("2026-06-20T09:00:00Z"),
-      reservedUntil: Temporal.Instant.from("2026-06-20T10:00:00Z"),
-    });
   });
 
   test.each([
@@ -309,7 +232,10 @@ describe("ReservationAccessService", () => {
         reservation: makeReservation(overrides),
       });
 
-      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.access).toEqual({
+        state: "unavailable",
+        reason: "reservation-state",
+      });
       expect(result.getReservation).not.toHaveBeenCalled();
       expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
     }
@@ -317,23 +243,29 @@ describe("ReservationAccessService", () => {
 
   test("fails closed when the provider is unavailable, cancelled, or returns invalid timing", async () => {
     const accessToken = await createAccessToken();
-    const cases: readonly HarnessOptions[] = [
-      { accessToken, providerFails: true },
-      {
-        accessToken,
-        providerReservation: makeProviderReservation({ status: "CANCELLED" }),
-      },
-      {
-        accessToken,
-        providerReservation: makeProviderReservation({
-          startDate: "invalid-start",
-        }),
-      },
+    const cases: readonly (readonly [HarnessOptions, string])[] = [
+      [{ accessToken, providerFails: true }, "lookup-failed"],
+      [
+        {
+          accessToken,
+          providerReservation: makeProviderReservation({ status: "CANCELLED" }),
+        },
+        "reservation-state",
+      ],
+      [
+        {
+          accessToken,
+          providerReservation: makeProviderReservation({
+            startDate: "invalid-start",
+          }),
+        },
+        "lookup-failed",
+      ],
     ];
 
-    for (const options of cases) {
+    for (const [options, reason] of cases) {
       const result = await runAccess(options);
-      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.access).toEqual({ state: "unavailable", reason });
       expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
     }
   });
@@ -388,7 +320,60 @@ describe("ReservationAccessService", () => {
           resolver as WorkspaceCheckoutAccessCodeServiceType["resolveCustomerAccessCode"],
       });
 
-      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.access).toEqual({
+        state: "unavailable",
+        reason: "lookup-failed",
+      });
     }
+  });
+
+  test("blames the reservation when issuance refuses it", async () => {
+    const accessToken = await createAccessToken();
+
+    for (const refusal of [
+      "reservation-ended",
+      "unrepresentable-interval",
+    ] as const) {
+      const result = await runAccess({
+        accessToken,
+        resolver: () =>
+          Effect.fail(
+            new ReservationAccessIssuanceError({
+              reservationId: orderId,
+              outcome: "rejected",
+              message: "refused",
+              refusal,
+            })
+          ),
+      });
+
+      expect(result.access).toEqual({
+        state: "unavailable",
+        reason: "reservation-state",
+      });
+    }
+  });
+
+  test("treats a failed issuance as a failed lookup, even after the reservation ended", async () => {
+    const accessToken = await createAccessToken();
+
+    // The fixture reservation ended in June 2026; a stored code could still
+    // be shown, so a storage failure reading it is no refusal.
+    const result = await runAccess({
+      accessToken,
+      resolver: () =>
+        Effect.fail(
+          new ReservationAccessIssuanceError({
+            reservationId: orderId,
+            outcome: "uncertain",
+            message: "Reservation access grant could not be loaded.",
+          })
+        ),
+    });
+
+    expect(result.access).toEqual({
+      state: "unavailable",
+      reason: "lookup-failed",
+    });
   });
 });

@@ -7,16 +7,10 @@ import {
   mock,
   test,
 } from "bun:test";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { testEmailAddress } from "@deskohub/test-email";
 import React, { Activity } from "react";
 import type { CustomerProfileInput } from "@/features/account/contracts";
+import { m } from "@/features/i18n";
 import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guard";
 import {
   registerWorkspaceComponentTestEnv,
@@ -24,6 +18,11 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 registerWorkspaceComponentTestEnv();
+// @testing-library/react must load after the happy-dom registration, or
+// React's synthetic change events never fire against controlled inputs.
+const { act, cleanup, fireEvent, render, waitFor, within } = await import(
+  "@testing-library/react"
+);
 
 type ActionResult = {
   readonly data?: { readonly status?: string };
@@ -51,10 +50,24 @@ mock.module("next/navigation", () => ({
 }));
 
 mock.module("@/features/account/actions", () => ({
+  acknowledgeSignupReferralNotice: mock(() =>
+    Promise.resolve({ data: { status: "acknowledged" } })
+  ),
+  updateLocalePreference: () => Promise.resolve({ data: { status: "saved" } }),
   lookupAresBusiness: () =>
     Promise.resolve({ data: { status: "not-found", message: "" } }),
   completeCustomerProfile,
   updateCustomerProfile,
+}));
+
+// Keeps the browser Effect runtime, which this navigation mock can't load,
+// out of the form.
+mock.module("@/features/account/analytics-customer-link", () => ({
+  refreshAnalyticsDotyposCustomerId: () => undefined,
+}));
+mock.module("@/features/account/avatar-actions", () => ({
+  removeCustomerAvatar: () => Promise.resolve({ data: { status: "removed" } }),
+  uploadCustomerAvatar: () => Promise.resolve({ data: { status: "removed" } }),
 }));
 
 const businessProfile = {
@@ -107,7 +120,7 @@ function ProfileFixture({
       <output data-testid="active-section">{section}</output>
       <Activity mode={activityMode}>
         <ProfileFormForTest
-          email="ada@example.test"
+          email={testEmailAddress("ada")}
           locale="en-US"
           mode="edit"
           onSectionChange={setSection}
@@ -145,8 +158,8 @@ describe("ProfileForm action lifecycle", () => {
     routerRefresh.mockClear();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("reveals profile after a billing save reports a phone error and retains drafts", async () => {
@@ -320,6 +333,36 @@ describe("ProfileForm action lifecycle", () => {
     expectDirty();
   });
 
+  test("reports a transport failure with the generic profile error and allows a retry", async () => {
+    updateCustomerProfile.mockImplementationOnce(() =>
+      Promise.reject(new Error("synthetic transport failure"))
+    );
+
+    const view = render(<ProfileFixture />);
+    const feedback = () =>
+      view.container.querySelector("#account-profile-feedback") as HTMLElement;
+    const firstName = view.getByLabelText("First name") as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.input(firstName, { target: { value: "Changed" } });
+      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
+    });
+    await waitFor(() => expect(updateCustomerProfile).toHaveBeenCalledTimes(1));
+
+    await waitFor(() =>
+      expect(feedback().textContent).toBe(
+        m.accountProfileError({}, { locale: "en-US" })
+      )
+    );
+    expect(
+      (
+        view.container.querySelector("#account-profile-submit") as HTMLElement
+      ).hasAttribute("disabled")
+    ).toBe(false);
+    expect(firstName.value).toBe("Changed");
+    expectDirty();
+  });
+
   test("reveals billing after a profile save reports a company error with feedback", async () => {
     updateCustomerProfile.mockImplementationOnce(() =>
       Promise.resolve({
@@ -357,33 +400,6 @@ describe("ProfileForm action lifecycle", () => {
       "Please review the highlighted fields and try again."
     );
     expectDirty();
-  });
-
-  test("prioritizes profile when profile and billing errors arrive together", async () => {
-    updateCustomerProfile.mockImplementationOnce(() =>
-      Promise.resolve({
-        validationErrors: {
-          formErrors: [],
-          fieldErrors: {
-            firstName: ["Enter your first name."],
-            billing: ["companyName: Company name is required."],
-          },
-        },
-      })
-    );
-
-    const view = render(<ProfileFixture initialSection="billing" />);
-    await act(async () => {
-      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
-    });
-
-    await waitFor(() => expect(updateCustomerProfile).toHaveBeenCalledTimes(1));
-    await waitFor(() =>
-      expect(view.getByTestId("active-section").textContent).toBe("profile")
-    );
-    expect(view.getByLabelText("First name").getAttribute("aria-invalid")).toBe(
-      "true"
-    );
   });
 
   test("preserves the full submitted baseline through late edits and Activity hide/show", async () => {

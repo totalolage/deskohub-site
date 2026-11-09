@@ -1,5 +1,9 @@
 import { Schema } from "effect";
 import { checkoutSummarySchema } from "@/features/checkout/checkout-summary";
+import {
+  getWorkspaceProductKey,
+  type WorkspaceProductIdentity,
+} from "@/features/checkout/product-identity";
 import { coworkReservationQuoteSchema } from "@/features/checkout/reservation-quote-cowork";
 import { meetingRoomReservationQuoteSchema } from "@/features/checkout/reservation-quote-meeting-room";
 import { officeReservationQuoteSchema } from "@/features/checkout/reservation-quote-office";
@@ -8,6 +12,7 @@ import { locales } from "@/features/i18n";
 import { coworkAdvertisedPriceReservationSchema } from "@/features/reservation/cowork-reservation";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
 import { officeAdvertisedPriceReservationSchema } from "@/features/reservation/office-reservation";
+import type { Money } from "@/shared/money/money";
 
 const advertisedPriceRequestBaseSchema = Schema.Struct({
   locale: Schema.Literals(locales),
@@ -75,16 +80,6 @@ const officeAdvertisedPriceSchema = Schema.Struct({
   summary: checkoutSummarySchema,
 });
 
-export const advertisedPriceSchema = Schema.Union([
-  coworkAdvertisedPriceSchema,
-  meetingRoomAdvertisedPriceSchema,
-  officeAdvertisedPriceSchema,
-]).annotate({
-  identifier: "AdvertisedPrice",
-  description:
-    "Family-specific advertised quote and its integrity-protected snapshot token.",
-});
-
 export type AdvertisedPriceRequest = typeof advertisedPriceRequestSchema.Type;
 export type CoworkAdvertisedPriceRequest =
   typeof coworkAdvertisedPriceRequestSchema.Type;
@@ -95,10 +90,14 @@ export type OfficeAdvertisedPriceRequest =
 export const advertisedPriceRequestEquals = Schema.toEquivalence(
   advertisedPriceRequestSchema
 );
+export type CoworkAdvertisedPrice = typeof coworkAdvertisedPriceSchema.Type;
+export type MeetingRoomAdvertisedPrice =
+  typeof meetingRoomAdvertisedPriceSchema.Type;
+export type OfficeAdvertisedPrice = typeof officeAdvertisedPriceSchema.Type;
 export type AdvertisedPrice =
-  | typeof coworkAdvertisedPriceSchema.Type
-  | typeof meetingRoomAdvertisedPriceSchema.Type
-  | typeof officeAdvertisedPriceSchema.Type;
+  | CoworkAdvertisedPrice
+  | MeetingRoomAdvertisedPrice
+  | OfficeAdvertisedPrice;
 export type PreloadedAdvertisedPrice = {
   readonly request: AdvertisedPriceRequest;
   readonly advertisedPrice: AdvertisedPrice;
@@ -109,6 +108,34 @@ export const isMeetingRoomAdvertisedPrice = Schema.is(
   meetingRoomAdvertisedPriceSchema
 );
 export const isOfficeAdvertisedPrice = Schema.is(officeAdvertisedPriceSchema);
+
+/** The order line that carries the product's advertised price. */
+export const getAdvertisedProductItem = (
+  { summary }: AdvertisedPrice,
+  product: WorkspaceProductIdentity
+) =>
+  summary.sections
+    .find(({ key }) => key === "order")
+    ?.items.find(
+      (item) =>
+        "product" in item &&
+        getWorkspaceProductKey(item.product) === getWorkspaceProductKey(product)
+    );
+
+/** The amount a product's order line advertises, with its price before the sale. */
+export const getAdvertisedProductAmount = (
+  advertisedPrice: AdvertisedPrice,
+  product: WorkspaceProductIdentity
+): { readonly amount: Money; readonly originalAmount?: Money } | undefined => {
+  const item = getAdvertisedProductItem(advertisedPrice, product);
+  if (!item) return undefined;
+
+  return {
+    amount: item.amount,
+    ...("originalAmount" in item &&
+      item.originalAmount && { originalAmount: item.originalAmount }),
+  };
+};
 
 export const advertisedPriceKeys = {
   all: ["advertised-price"] as const,

@@ -1,37 +1,85 @@
 import "server-only";
 
 import { v2 as cloudinary } from "cloudinary";
-import { Context, Duration, Effect, Layer, pipe, Schedule } from "effect";
+import { Clock, Context, Effect, Layer, Predicate, pipe } from "effect";
 import * as Schema from "effect/Schema";
+import { FetchHttpClient, HttpClient } from "effect/unstable/http";
+import { decodeCloudinaryAsset } from "./asset-decoding";
 import {
   type CloudinaryConfig,
   CloudinaryRuntimeConfig,
   configureCloudinarySdk,
   validateCloudinaryRuntimeConfig,
 } from "./config";
-import { CloudinarySearchError } from "./errors";
-import { type CnfExpression, cnfToCloudinaryExpression } from "./expression";
+import {
+  CloudinaryDestroyError,
+  CloudinaryPrefixDeleteError,
+  CloudinaryRenameError,
+  CloudinarySearchError,
+  CloudinaryUploadError,
+} from "./errors";
+import type { CnfExpression } from "./expression";
+import { retryTransientCloudinaryFailure } from "./request-policy";
 import {
   type CloudinaryAsset,
-  CloudinaryAssetSchema,
+  type CloudinaryDestroyOutcome,
   type CloudinaryPublicId,
   type CloudinarySearchCursor,
   CloudinarySearchResponseSchema,
   type SearchOptions,
   SearchOptionsSchema,
 } from "./schema";
+import { makeTaggedAssetLister } from "./tag-list";
+import { untracedFetch } from "./untraced-fetch";
 
 export type { CloudinaryConfig } from "./config";
+
+/**
+ * Server-side image upload input. Trusted internal values, so the shape is a
+ * plain interface rather than a runtime-decoded schema.
+ */
+export interface CloudinaryImageUploadInput {
+  readonly bytes: Uint8Array;
+  readonly publicId: CloudinaryPublicId;
+  readonly folder: string;
+}
+
+/**
+ * What a browser may store with a signed upload. Every value is signed on
+ * the server, so the browser can't change any of them.
+ */
+export interface CloudinarySignedImageUploadInput {
+  readonly publicId: CloudinaryPublicId;
+  readonly folder: string;
+  /** Applied before Cloudinary stores the image, which keeps only its output. */
+  readonly transformation: string;
+  /** Formats stored as they are. */
+  readonly allowedFormats: readonly string[];
+  /** The format an image in any other format is converted to. */
+  readonly fallbackFormat: string;
+}
+
+/** A browser uploads by posting `fields` and the file to `url`. */
+export interface CloudinarySignedImageUpload {
+  readonly url: string;
+  readonly fields: Readonly<Record<string, string>>;
+}
 
 export interface ICloudinaryService {
   readonly getByPublicId: (
     publicId: CloudinaryPublicId
   ) => Effect.Effect<CloudinaryAsset, CloudinarySearchError>;
-  readonly searchByTag: (
-    tag: string,
+  readonly searchByFolder: (
+    folder: string,
     options?: SearchOptions
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
-  readonly searchByFolder: (
+  /**
+   * Lists the assets in one folder without ever logging the folder, its
+   * assets, raw provider responses, or provider failure text. This is the
+   * sanitized sibling of `searchByFolder` for account-derived folders
+   * (avatar staging), where identifiers must not reach logs.
+   */
+  readonly listFolderAssets: (
     folder: string,
     options?: SearchOptions
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
@@ -42,10 +90,37 @@ export interface ICloudinaryService {
     expression: string,
     options?: SearchOptions
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
-  readonly searchWithTags: <Tag extends string>(
+  /**
+   * Lists image assets matching a tag expression from Cloudinary's
+   * CDN-cached tag resource lists instead of the Admin Search API, so it
+   * spends no Admin API quota. A list may lag tag changes by up to a minute.
+   * Groups without a positive tag select nothing.
+   */
+  readonly listTaggedAssets: <Tag extends string>(
     tags: CnfExpression<Tag>,
     options?: SearchOptions
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
+  readonly uploadImage: (
+    input: CloudinaryImageUploadInput
+  ) => Effect.Effect<CloudinaryAsset, CloudinaryUploadError>;
+  /**
+   * Signs an image upload a browser sends straight to Cloudinary. The
+   * signature is valid for an hour and covers every field.
+   */
+  readonly signImageUpload: (
+    input: CloudinarySignedImageUploadInput
+  ) => Effect.Effect<CloudinarySignedImageUpload>;
+  readonly destroyAsset: (
+    publicId: CloudinaryPublicId
+  ) => Effect.Effect<CloudinaryDestroyOutcome, CloudinaryDestroyError>;
+  readonly deleteResourcesByPublicIdPrefix: (
+    prefix: CloudinaryPublicId
+  ) => Effect.Effect<void, CloudinaryPrefixDeleteError>;
+  readonly renameAsset: (
+    fromPublicId: CloudinaryPublicId,
+    toPublicId: CloudinaryPublicId,
+    options?: { readonly overwrite?: boolean }
+  ) => Effect.Effect<CloudinaryAsset, CloudinaryRenameError>;
 }
 
 export class CloudinaryService extends Context.Service<
@@ -56,27 +131,62 @@ export class CloudinaryService extends Context.Service<
     this,
     Effect.gen(function* () {
       const rawConfig = yield* CloudinaryRuntimeConfig;
+      const httpClient = yield* HttpClient.HttpClient;
       const config = yield* validateCloudinaryRuntimeConfig(rawConfig);
       yield* configureCloudinarySdk(config);
 
-      yield* Effect.logDebug("Cloudinary service initialized", {
-        serviceName: config.serviceName,
-        cloudName: config.cloudName,
-      });
+      yield* Effect.logDebug("Cloudinary service initialized");
 
       const executeSearch = createSearchExecutor(config);
+      const executeSanitizedSearch = createSearchExecutor(config, true);
       const getByPublicId = createPublicIdLookupExecutor();
+      const uploadImage = createUploadExecutor();
+      const signImageUpload = createUploadSigner(config);
+      const destroyAsset = createDestroyExecutor();
+      const deleteResourcesByPublicIdPrefix = createPrefixDeleteExecutor();
+      const renameAsset = createRenameExecutor();
+      const listTaggedAssets: ICloudinaryService["listTaggedAssets"] =
+        makeTaggedAssetLister(config, httpClient);
 
-      const searchByTag: ICloudinaryService["searchByTag"] = (tag, options) =>
-        executeSearch(`tags=${tag} AND resource_type:image`, options);
+      const listFolderAssets: ICloudinaryService["listFolderAssets"] = (
+        folder,
+        options
+      ) =>
+        Effect.gen(function* () {
+          yield* Effect.logInfo("Cloudinary folder listing started");
+
+          const expressions = [`folder=${folder}`, `folder:${folder}`];
+
+          for (const expression of expressions) {
+            const assets = yield* executeSanitizedSearch(
+              `${expression} AND resource_type:image`,
+              options
+            );
+
+            if (assets.length > 0) {
+              yield* Effect.logInfo("Cloudinary folder listing completed", {
+                resultCount: assets.length,
+              });
+              return assets;
+            }
+
+            yield* Effect.logDebug(
+              "Cloudinary folder listing expression returned no assets"
+            );
+          }
+
+          yield* Effect.logInfo("Cloudinary folder listing completed", {
+            resultCount: 0,
+          });
+          return [];
+        });
 
       const searchByFolder: ICloudinaryService["searchByFolder"] = (
         folder,
         options
       ) =>
         Effect.gen(function* () {
-          yield* Effect.annotateLogsScoped({ folder, options });
-          yield* Effect.logInfo("Cloudinary folder search started", { folder });
+          yield* Effect.logInfo("Cloudinary folder search started");
 
           const expressions = [`folder=${folder}`, `folder:${folder}`];
 
@@ -87,33 +197,20 @@ export class CloudinaryService extends Context.Service<
             );
 
             if (assets.length > 0) {
-              yield* Effect.annotateLogsScoped({ result: assets });
-              yield* Effect.logInfo("Cloudinary folder search completed", {
-                folder,
-                expression,
-                resultCount: assets.length,
-              });
+              yield* Effect.logInfo("Cloudinary folder search completed");
               return assets;
             }
 
             yield* Effect.logWarning(
-              "Cloudinary folder search expression returned no assets",
-              {
-                folder,
-                expression,
-              }
+              "Cloudinary folder search expression returned no assets"
             );
           }
 
-          yield* Effect.annotateLogsScoped({ result: [] });
           yield* Effect.logWarning(
-            "Cloudinary folder search completed with no assets",
-            {
-              folder,
-            }
+            "Cloudinary folder search completed with no assets"
           );
           return [];
-        }).pipe(Effect.scoped, Effect.annotateLogs({ folder, options }));
+        }).pipe(Effect.scoped);
 
       const searchAll: ICloudinaryService["searchAll"] = (options) =>
         executeSearch("resource_type:image", options);
@@ -123,26 +220,30 @@ export class CloudinaryService extends Context.Service<
         options
       ) => executeSearch(expression, options);
 
-      const searchWithTags: ICloudinaryService["searchWithTags"] = (
-        tags,
-        options
-      ) => {
-        if (tags.length === 0) {
-          return searchAll(options);
-        }
-
-        return executeSearch(cnfToCloudinaryExpression(tags), options);
-      };
-
       return {
         getByPublicId,
-        searchByTag,
         searchByFolder,
+        listFolderAssets,
         searchAll,
         searchByExpression,
-        searchWithTags,
+        listTaggedAssets,
+        uploadImage,
+        signImageUpload,
+        destroyAsset,
+        deleteResourcesByPublicIdPrefix,
+        renameAsset,
       } satisfies ICloudinaryService;
     })
+  );
+
+  /**
+   * The service wired to the platform `fetch` for tag list requests. Tag list
+   * URLs carry a signature, so the requests run with tracing suppressed and
+   * no fetch or HTTP instrumentation records them.
+   */
+  static Live = this.Default.pipe(
+    Layer.provide(FetchHttpClient.layer),
+    Layer.provide(Layer.succeed(FetchHttpClient.Fetch, untracedFetch))
   );
 }
 
@@ -165,33 +266,45 @@ type CloudinaryRejectedValue =
   | null
   | undefined;
 
-function decodeAssetResponse(result: unknown, publicId: CloudinaryPublicId) {
+/**
+ * Fixed, identifier-free search expression used for errors on the
+ * by-public-ID lookup path. The looked-up public ID itself never enters
+ * errors or logs: the same executor serves avatar assets, where provider
+ * asset identifiers must not be logged.
+ */
+const publicIdLookupExpression = "public_id lookup";
+
+/**
+ * Fixed, identifier-free failure message for the by-public-ID lookup path.
+ * The provider's rejection text can echo the requested asset identifier, so
+ * it is never carried into this error message.
+ */
+const publicIdLookupFailureMessage = "Cloudinary public ID lookup failed";
+
+function toPublicIdLookupSearchError(error: CloudinaryRejectedValue) {
+  const httpCode = readRejectedHttpCode(error);
+
+  return new CloudinarySearchError({
+    message: publicIdLookupFailureMessage,
+    expression: publicIdLookupExpression,
+    httpCode,
+  });
+}
+
+function decodeAssetResponse(result: unknown) {
   return pipe(
-    Schema.decodeUnknownEffect(CloudinaryAssetSchema)(result),
+    decodeCloudinaryAsset(result),
     Effect.mapError(
       () =>
         new CloudinarySearchError({
           message: "Cloudinary response did not match the asset schema",
-          expression: `public_id=${publicId}`,
+          expression: publicIdLookupExpression,
         })
     )
   );
 }
 
-const cloudinaryRetryPolicy = Schedule.exponential("100 millis").pipe(
-  Schedule.jittered,
-  Schedule.while<CloudinarySearchError, Duration.Duration>(
-    ({ input }) => input.httpCode !== undefined && input.httpCode >= 500
-  ),
-  Schedule.both(Schedule.recurs(2)),
-  Schedule.tapOutput(([delay, attempt]) =>
-    Effect.logWarning(`Cloudinary search retry attempt #${attempt + 1}`, {
-      attemptNumber: attempt + 1,
-      delayMs: Duration.toMillis(delay),
-      maxRetries: 2,
-    })
-  )
-);
+const retryTransientSearchFailure = retryTransientCloudinaryFailure("search");
 
 function readCloudinaryHttpCode(
   error: CloudinaryProviderError
@@ -205,39 +318,58 @@ function readCloudinaryHttpCode(
   return typeof httpCode === "number" ? httpCode : undefined;
 }
 
-function stringifyCloudinaryError(error: CloudinaryProviderError): string {
-  const message = error.message ?? error.error?.message;
-
-  if (typeof message === "string") {
-    return message;
-  }
-
-  try {
-    return JSON.stringify(error) ?? String(error);
-  } catch {
-    return String(error);
-  }
+function readRejectedHttpCode(
+  error: CloudinaryRejectedValue
+): number | undefined {
+  return typeof error === "object" && error !== null
+    ? readCloudinaryHttpCode(error)
+    : undefined;
 }
 
-function toCloudinarySearchError(
-  error: CloudinaryRejectedValue,
-  expression: string
-) {
-  if (typeof error !== "object" || error === null) {
-    return new CloudinarySearchError({
-      message: String(error),
-      expression,
-    });
-  }
+function toCloudinarySearchError(error: CloudinaryRejectedValue) {
+  // Provider rejection text and the caller-supplied expression never enter
+  // the typed error: both can carry identifiers or secrets that propagate
+  // verbatim into framework error reporting. Only the numeric HTTP code is
+  // retained, so 5xx retry and avatar 404 handling keep working, and the raw
+  // rejection is never attached as a cause or payload.
+  const httpCode = readRejectedHttpCode(error);
 
   return new CloudinarySearchError({
-    message: stringifyCloudinaryError(error),
-    expression,
-    httpCode: readCloudinaryHttpCode(error),
+    message: searchFailureMessage,
+    expression: searchExpressionLabel,
+    httpCode,
   });
 }
 
-function decodeSearchResponse(result: unknown, expression: string) {
+/**
+ * Fixed, identifier-free failure values for the generic search path. Provider
+ * rejection text and the caller-supplied expression can carry identifiers or
+ * secrets, so errors carry only these fixed labels plus the numeric HTTP code.
+ */
+const searchFailureMessage = "Cloudinary search failed";
+const searchExpressionLabel = "gallery search";
+
+/**
+ * Fixed, identifier-free failure label for the sanitized folder-listing
+ * path. The listed folder may embed an account identifier, so neither the
+ * expression, the provider's rejection text, nor any asset payload may
+ * reach the error or the logs. The HTTP code remains available to the retry
+ * policy and typed error contract, but is never logged.
+ */
+const folderListingExpressionLabel = "folder listing";
+const folderListingFailureMessage = "Cloudinary folder listing failed";
+
+function toSanitizedFolderListingError(error: CloudinaryRejectedValue) {
+  const httpCode = readRejectedHttpCode(error);
+
+  return new CloudinarySearchError({
+    message: folderListingFailureMessage,
+    expression: folderListingExpressionLabel,
+    httpCode,
+  });
+}
+
+function decodeSearchResponse(result: unknown) {
   return pipe(
     Schema.decodeUnknownEffect(CloudinarySearchResponseSchema)(result),
     Effect.mapError(
@@ -245,27 +377,36 @@ function decodeSearchResponse(result: unknown, expression: string) {
         new CloudinarySearchError({
           message:
             "Cloudinary response did not match the gallery search schema",
-          expression,
+          expression: searchExpressionLabel,
         })
     )
   );
 }
 
-function decodeSearchOptions(options: unknown, expression: string) {
+function decodeSearchOptions(options: unknown) {
   return pipe(
     Schema.decodeUnknownEffect(SearchOptionsSchema)(options ?? {}),
     Effect.mapError(
       () =>
         new CloudinarySearchError({
           message: "Cloudinary search options did not match the schema",
-          expression,
+          expression: searchExpressionLabel,
         })
     )
   );
 }
 
-function createSearchExecutor(config: CloudinaryConfig) {
+function createSearchExecutor(config: CloudinaryConfig, sanitized = false) {
   const defaultPageSize = config.defaultPageSize ?? 100;
+
+  // In sanitized mode the real expression still drives the provider call,
+  // while errors and logs use fixed labels instead of the expression or
+  // provider response data. The generic path sanitizes provider rejection
+  // text and the expression the same way; both errors carry fixed labels.
+  const toSearchError = (error: CloudinaryRejectedValue) =>
+    sanitized
+      ? toSanitizedFolderListingError(error)
+      : toCloudinarySearchError(error);
 
   const buildSearchExpression = (
     expression: string,
@@ -304,50 +445,24 @@ function createSearchExecutor(config: CloudinaryConfig) {
             pageSize,
             nextCursor
           ).execute(),
-        catch: (error) =>
-          toCloudinarySearchError(error as CloudinaryRejectedValue, expression),
+        catch: (error) => toSearchError(error as CloudinaryRejectedValue),
       }),
-      Effect.tap((rawResult) =>
-        Effect.gen(function* () {
-          yield* Effect.annotateLogsScoped({ rawResult });
-          yield* Effect.logDebug("Cloudinary provider response received", {
-            rawResult,
-          });
-        })
+      Effect.flatMap((result) => decodeSearchResponse(result)),
+      Effect.tapError(() =>
+        sanitized
+          ? Effect.logError(folderListingFailureMessage)
+          : Effect.logError("Cloudinary search page failed")
       ),
-      Effect.flatMap((result) => decodeSearchResponse(result, expression)),
-      Effect.tap((response) =>
-        Effect.gen(function* () {
-          yield* Effect.annotateLogsScoped({ response });
-          yield* Effect.logDebug("Cloudinary search response decoded", {
-            response,
-          });
-        })
-      ),
-      Effect.tapError((error) =>
-        Effect.logError("Cloudinary search page failed", {
-          expression,
-          errorMessage: error.message,
-          httpCode: error.httpCode,
-        })
-      ),
-      Effect.retry(cloudinaryRetryPolicy)
+      retryTransientSearchFailure
     );
 
   return Effect.fn("cloudinary.search")(
     function* (expression: string, options?: SearchOptions) {
-      yield* Effect.annotateLogsScoped({ expression, options });
-      yield* Effect.logInfo("Cloudinary search started", {
-        expression,
-        options,
-      });
+      yield* sanitized
+        ? Effect.logInfo("Cloudinary folder listing page started")
+        : Effect.logInfo("Cloudinary search started");
 
-      const decodedOptions = yield* decodeSearchOptions(options, expression);
-      yield* Effect.annotateLogsScoped({ decodedOptions });
-      yield* Effect.logDebug("Cloudinary search options decoded", {
-        decodedOptions,
-      });
-
+      const decodedOptions = yield* decodeSearchOptions(options);
       const assets: CloudinaryAsset[] = [];
       let nextCursor: CloudinarySearchCursor | undefined;
       let remainingResults = decodedOptions.maxResults;
@@ -381,43 +496,40 @@ function createSearchExecutor(config: CloudinaryConfig) {
         },
       });
 
-      yield* Effect.annotateLogsScoped({ result: assets });
       if (assets.length === 0) {
-        yield* Effect.logWarning("Cloudinary search returned no assets", {
-          expression,
-          options,
-        });
+        yield* sanitized
+          ? Effect.logWarning("Cloudinary folder listing returned no assets")
+          : Effect.logWarning("Cloudinary search returned no assets");
       }
-      yield* Effect.logInfo("Cloudinary search completed", {
-        expression,
-        resultCount: assets.length,
-        options,
-      });
+      yield* sanitized
+        ? Effect.logInfo("Cloudinary folder listing page completed", {
+            resultCount: assets.length,
+          })
+        : Effect.logInfo("Cloudinary search completed");
 
       return assets;
     },
-    (effect, expression, options) =>
-      effect.pipe(
-        Effect.tapError((error) =>
-          Effect.logError("Cloudinary search failed", {
-            expression,
-            errorMessage: error.message,
-            httpCode: error.httpCode,
-          })
-        ),
-        Effect.scoped,
-        Effect.annotateLogs({ expression, options })
-      )
+    (effect) =>
+      sanitized
+        ? effect.pipe(
+            Effect.tapError(() => Effect.logError(folderListingFailureMessage)),
+            Effect.scoped
+          )
+        : effect.pipe(
+            Effect.tapError(() => Effect.logError("Cloudinary search failed")),
+            Effect.scoped
+          )
   );
 }
 
 function createPublicIdLookupExecutor() {
+  // The looked-up public ID (and any asset-bearing response payload) is kept
+  // out of logs and annotations entirely: this executor serves the avatar
+  // path, where provider asset identifiers must never be logged. Only fixed
+  // operation messages are emitted.
   return Effect.fn("cloudinary.api.resource")(
     function* (publicId: CloudinaryPublicId) {
-      yield* Effect.annotateLogsScoped({ publicId });
-      yield* Effect.logInfo("Cloudinary public ID lookup started", {
-        publicId,
-      });
+      yield* Effect.logInfo("Cloudinary public ID lookup started");
 
       return yield* pipe(
         Effect.tryPromise({
@@ -429,40 +541,19 @@ function createPublicIdLookupExecutor() {
               context: true,
             }),
           catch: (error) =>
-            toCloudinarySearchError(
-              error as CloudinaryRejectedValue,
-              `public_id=${publicId}`
-            ),
+            toPublicIdLookupSearchError(error as CloudinaryRejectedValue),
         }),
-        Effect.tap((rawResult) =>
-          Effect.gen(function* () {
-            yield* Effect.annotateLogsScoped({ rawResult });
-            yield* Effect.logDebug("Cloudinary provider response received", {
-              rawResult,
-            });
-          })
+        Effect.flatMap((result) => decodeAssetResponse(result)),
+        Effect.tap(() =>
+          Effect.logInfo("Cloudinary public ID lookup completed")
         ),
-        Effect.flatMap((result) => decodeAssetResponse(result, publicId)),
-        Effect.tap((asset) =>
-          Effect.gen(function* () {
-            yield* Effect.annotateLogsScoped({ result: asset });
-            yield* Effect.logInfo("Cloudinary public ID lookup completed", {
-              publicId,
-            });
-          })
+        Effect.tapError(() =>
+          Effect.logError("Cloudinary public ID lookup failed")
         ),
-        Effect.tapError((error) =>
-          Effect.logError("Cloudinary public ID lookup failed", {
-            publicId,
-            errorMessage: error.message,
-            httpCode: error.httpCode,
-          })
-        ),
-        Effect.retry(cloudinaryRetryPolicy)
+        retryTransientSearchFailure
       );
     },
-    (effect, publicId) =>
-      effect.pipe(Effect.scoped, Effect.annotateLogs({ publicId }))
+    (effect) => Effect.scoped(effect)
   );
 }
 
@@ -471,43 +562,490 @@ export const getGalleryImages = Effect.fn("getGalleryImages")(
     tags: CnfExpression<Tag>,
     options?: SearchOptions
   ) {
-    yield* Effect.annotateLogsScoped({ tags, options });
-    yield* Effect.logInfo("Cloudinary gallery images lookup started", {
-      tags,
-      options,
-    });
+    yield* Effect.logInfo("Cloudinary gallery images lookup started");
 
     const service = yield* CloudinaryService;
 
-    const result = yield* service.searchWithTags(tags, options).pipe(
-      Effect.tapError((error) =>
-        Effect.logError("Cloudinary gallery images lookup failed", {
-          tags,
-          options,
-          errorMessage: error.message,
-          httpCode: error.httpCode,
-        })
-      )
-    );
+    const result = yield* service
+      .listTaggedAssets(tags, options)
+      .pipe(
+        Effect.tapError(() =>
+          Effect.logError("Cloudinary gallery images lookup failed")
+        )
+      );
 
-    yield* Effect.annotateLogsScoped({ result });
     if (result.length === 0) {
       yield* Effect.logWarning(
-        "Cloudinary gallery images lookup returned no assets",
-        {
-          tags,
-          options,
-        }
+        "Cloudinary gallery images lookup returned no assets"
       );
     }
-    yield* Effect.logInfo("Cloudinary gallery images lookup completed", {
-      tags,
-      options,
-      resultCount: result.length,
-    });
+    yield* Effect.logInfo("Cloudinary gallery images lookup completed");
 
     return result;
   },
-  (effect, tags, options) =>
-    effect.pipe(Effect.scoped, Effect.annotateLogs({ tags, options }))
+  (effect) => effect.pipe(Effect.scoped)
 );
+
+function toUploadError(
+  error: CloudinaryRejectedValue,
+  publicId: CloudinaryPublicId
+) {
+  const httpCode = readRejectedHttpCode(error);
+
+  return new CloudinaryUploadError({
+    message: "Cloudinary image upload failed",
+    publicId,
+    httpCode,
+  });
+}
+
+function createUploadExecutor() {
+  const retryTransientUploadFailure =
+    retryTransientCloudinaryFailure("image upload");
+
+  const performUpload = (input: CloudinaryImageUploadInput) =>
+    Effect.tryPromise({
+      try: () =>
+        new Promise<unknown>((resolveUpload, rejectUpload) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              public_id: input.publicId,
+              folder: input.folder,
+              resource_type: "image",
+            },
+            (error, result) => {
+              if (error) {
+                rejectUpload(error);
+                return;
+              }
+
+              if (!result) {
+                rejectUpload(
+                  new CloudinaryUploadError({
+                    message: "Cloudinary image upload returned no result",
+                    publicId: input.publicId,
+                  })
+                );
+                return;
+              }
+
+              resolveUpload(result);
+            }
+          );
+
+          stream.end(input.bytes);
+        }),
+      catch: (error) =>
+        error instanceof CloudinaryUploadError
+          ? error
+          : toUploadError(error as CloudinaryRejectedValue, input.publicId),
+    });
+
+  return Effect.fn("cloudinary.upload")(
+    function* (input: CloudinaryImageUploadInput) {
+      // The uploaded public ID and its folder (which may embed an account
+      // identifier) never enter logs or annotations: this executor serves
+      // the avatar path, where provider asset identifiers and provider
+      // details must never be logged. Only fixed operation/outcome codes are
+      // emitted.
+      yield* Effect.logInfo("Cloudinary image upload started");
+
+      return yield* pipe(
+        performUpload(input),
+        Effect.flatMap((result) =>
+          pipe(
+            decodeCloudinaryAsset(result),
+            Effect.mapError(
+              () =>
+                new CloudinaryUploadError({
+                  message:
+                    "Cloudinary upload response did not match the asset schema",
+                  publicId: input.publicId,
+                })
+            )
+          )
+        ),
+        Effect.tap(() => Effect.logInfo("Cloudinary image upload completed")),
+        Effect.tapError(() =>
+          Effect.logError("Cloudinary image upload failed")
+        ),
+        retryTransientUploadFailure
+      );
+    },
+    (effect) => Effect.scoped(effect)
+  );
+}
+
+function createUploadSigner(config: CloudinaryConfig) {
+  return Effect.fn("cloudinary.signImageUpload")(function* (
+    input: CloudinarySignedImageUploadInput
+  ) {
+    const now = yield* Clock.currentTimeMillis;
+    const signed = {
+      allowed_formats: input.allowedFormats.join(","),
+      folder: input.folder,
+      format: input.fallbackFormat,
+      // A replay within the signature's hour can't replace the stored image.
+      overwrite: "false",
+      public_id: input.publicId,
+      timestamp: String(Math.floor(now / 1000)),
+      transformation: input.transformation,
+    };
+    return {
+      url: cloudinary.utils.api_url("upload", {
+        cloud_name: config.cloudName,
+        resource_type: "image",
+      }),
+      fields: {
+        ...signed,
+        api_key: config.apiKey,
+        signature: cloudinary.utils.api_sign_request(signed, config.apiSecret),
+      },
+    } satisfies CloudinarySignedImageUpload;
+  });
+}
+
+function toDestroyOutcome(
+  result: string
+): CloudinaryDestroyOutcome | undefined {
+  if (result === "ok") {
+    return "destroyed";
+  }
+
+  if (result === "not found") {
+    return "not-found";
+  }
+
+  return undefined;
+}
+
+function createDestroyExecutor() {
+  const retryTransientDestroyFailure =
+    retryTransientCloudinaryFailure("asset destroy");
+
+  const performDestroy = (publicId: CloudinaryPublicId) =>
+    Effect.tryPromise({
+      try: () =>
+        cloudinary.uploader.destroy(publicId, {
+          invalidate: true,
+        }) as Promise<{ result?: unknown }>,
+      catch: (error) => {
+        const httpCode =
+          typeof error === "object" && error !== null
+            ? readCloudinaryHttpCode(error as CloudinaryProviderError)
+            : undefined;
+
+        return new CloudinaryDestroyError({
+          message: "Cloudinary asset destroy request failed",
+          publicId,
+          outcome:
+            httpCode !== undefined && httpCode < 500 ? "failed" : "uncertain",
+          httpCode,
+        });
+      },
+    });
+
+  return Effect.fn("cloudinary.destroy")(
+    function* (publicId: CloudinaryPublicId) {
+      // The destroyed public ID never enters logs or annotations: this
+      // executor serves the avatar path, where provider asset identifiers
+      // must never be logged. Only the fixed outcome code is emitted.
+      yield* Effect.logInfo("Cloudinary asset destroy started");
+
+      return yield* pipe(
+        performDestroy(publicId),
+        Effect.flatMap((result) => {
+          const outcome =
+            typeof result.result === "string"
+              ? toDestroyOutcome(result.result)
+              : undefined;
+
+          if (outcome === undefined) {
+            return Effect.fail(
+              new CloudinaryDestroyError({
+                message:
+                  "Cloudinary asset destroy returned an unrecognized outcome",
+                publicId,
+                outcome: "uncertain",
+              })
+            );
+          }
+
+          return Effect.succeed(outcome);
+        }),
+        Effect.tap((outcome) =>
+          Effect.logInfo("Cloudinary asset destroy completed", { outcome })
+        ),
+        Effect.tapError((error) =>
+          Effect.logError("Cloudinary asset destroy failed", {
+            outcome: error.outcome,
+          })
+        ),
+        retryTransientDestroyFailure
+      );
+    },
+    (effect) => Effect.scoped(effect)
+  );
+}
+
+const prefixDeletePageLimit = 25;
+
+type PrefixDeletePage = {
+  readonly nextCursor?: string;
+};
+
+type PrefixDeleteResponse = {
+  readonly deleted: { readonly [key: PropertyKey]: unknown };
+  readonly partial: boolean;
+  readonly next_cursor?: unknown;
+};
+
+const isPrefixDeleteResponse = (
+  result: unknown
+): result is PrefixDeleteResponse =>
+  Predicate.isObject(result) &&
+  Predicate.isObject(result.deleted) &&
+  typeof result.partial === "boolean";
+
+const failPrefixDeletePage = (message: string) =>
+  Effect.fail(
+    new CloudinaryPrefixDeleteError({ message, outcome: "uncertain" })
+  );
+
+function decodePrefixDeletePage(
+  result: unknown
+): Effect.Effect<PrefixDeletePage, CloudinaryPrefixDeleteError> {
+  if (!isPrefixDeleteResponse(result)) {
+    return failPrefixDeletePage(
+      "Cloudinary prefix delete returned an invalid response"
+    );
+  }
+
+  const statuses = Object.values(result.deleted);
+  if (
+    statuses.some((status) => status !== "deleted" && status !== "not found")
+  ) {
+    return failPrefixDeletePage(
+      "Cloudinary prefix delete returned an incomplete result"
+    );
+  }
+
+  return decodePrefixDeleteCursor(result);
+}
+
+/** A partial page must name the next cursor; a final page must name none. */
+function decodePrefixDeleteCursor({
+  partial,
+  next_cursor: nextCursor,
+}: PrefixDeleteResponse): Effect.Effect<
+  PrefixDeletePage,
+  CloudinaryPrefixDeleteError
+> {
+  if (partial) {
+    return typeof nextCursor === "string" && nextCursor.length > 0
+      ? Effect.succeed({ nextCursor } satisfies PrefixDeletePage)
+      : failPrefixDeletePage(
+          "Cloudinary prefix delete returned an invalid cursor"
+        );
+  }
+
+  return nextCursor === undefined
+    ? Effect.succeed({} satisfies PrefixDeletePage)
+    : failPrefixDeletePage(
+        "Cloudinary prefix delete returned an invalid cursor"
+      );
+}
+
+function toPrefixDeleteError(error: CloudinaryRejectedValue) {
+  const httpCode = readRejectedHttpCode(error);
+
+  return new CloudinaryPrefixDeleteError({
+    message: "Cloudinary asset prefix delete failed",
+    outcome: httpCode !== undefined && httpCode < 500 ? "failed" : "uncertain",
+    httpCode,
+  });
+}
+
+function createPrefixDeleteExecutor() {
+  const retryTransientPrefixDeleteFailure = retryTransientCloudinaryFailure(
+    "asset prefix delete"
+  );
+
+  const deletePage = (prefix: CloudinaryPublicId, nextCursor?: string) =>
+    Effect.tryPromise({
+      try: () =>
+        cloudinary.api.delete_resources_by_prefix(prefix, {
+          resource_type: "image",
+          type: "upload",
+          ...(nextCursor === undefined ? {} : { next_cursor: nextCursor }),
+        }),
+      catch: (error) => toPrefixDeleteError(error as CloudinaryRejectedValue),
+    }).pipe(
+      Effect.flatMap(decodePrefixDeletePage),
+      Effect.tapError((error) => {
+        const httpCode = error.httpCode;
+
+        return Effect.logError("Cloudinary asset prefix delete failed", {
+          outcome: error.outcome,
+          ...(httpCode !== undefined &&
+          Number.isSafeInteger(httpCode) &&
+          httpCode >= 100 &&
+          httpCode <= 599
+            ? { httpCode }
+            : {}),
+        });
+      }),
+      retryTransientPrefixDeleteFailure
+    );
+
+  return Effect.fn("cloudinary.api.delete_resources_by_prefix")(
+    function* (prefix: CloudinaryPublicId) {
+      const seenCursors = new Set<string>();
+      let nextCursor: string | undefined;
+
+      for (
+        let pageNumber = 0;
+        pageNumber < prefixDeletePageLimit;
+        pageNumber += 1
+      ) {
+        const page = yield* deletePage(prefix, nextCursor);
+        yield* Effect.logInfo("Cloudinary asset prefix delete page completed", {
+          pageNumber: pageNumber + 1,
+        });
+
+        if (page.nextCursor === undefined) return;
+        if (seenCursors.has(page.nextCursor)) {
+          return yield* new CloudinaryPrefixDeleteError({
+            message: "Cloudinary prefix delete cursor repeated",
+            outcome: "uncertain",
+          });
+        }
+
+        seenCursors.add(page.nextCursor);
+        nextCursor = page.nextCursor;
+      }
+
+      return yield* new CloudinaryPrefixDeleteError({
+        message: "Cloudinary prefix delete exceeded its page limit",
+        outcome: "uncertain",
+      });
+    },
+    (effect) => Effect.scoped(effect)
+  );
+}
+
+type RenameFailureReason = CloudinaryRenameError["reason"];
+
+const renameFailureMessages: Record<RenameFailureReason, string> = {
+  "target-exists": "Cloudinary rename target public ID already exists",
+  "source-missing": "Cloudinary rename source public ID is missing",
+  failed: "Cloudinary asset rename failed",
+};
+
+/** The provider's rejection text, lower-cased, used only for classification. */
+function readRenameRejectionText(error: CloudinaryRejectedValue): string {
+  const rawMessage =
+    typeof error === "object" && error !== null
+      ? (error.message ?? error.error?.message)
+      : undefined;
+
+  return typeof rawMessage === "string" ? rawMessage.toLowerCase() : "";
+}
+
+function classifyRenameReason(
+  httpCode: number | undefined,
+  rejectionText: string
+): RenameFailureReason {
+  if (
+    httpCode === 409 ||
+    rejectionText.includes("already exists") ||
+    rejectionText.includes("already a file")
+  ) {
+    return "target-exists";
+  }
+
+  return httpCode === 404 ? "source-missing" : "failed";
+}
+
+function classifyRenameFailure(
+  error: CloudinaryRejectedValue,
+  fromPublicId: CloudinaryPublicId,
+  toPublicId: CloudinaryPublicId
+) {
+  const httpCode = readRejectedHttpCode(error);
+  const reason = classifyRenameReason(httpCode, readRenameRejectionText(error));
+
+  return new CloudinaryRenameError({
+    message: renameFailureMessages[reason],
+    fromPublicId,
+    toPublicId,
+    reason,
+    httpCode,
+  });
+}
+
+function createRenameExecutor() {
+  const retryTransientRenameFailure =
+    retryTransientCloudinaryFailure("asset rename");
+
+  const performRename = (
+    fromPublicId: CloudinaryPublicId,
+    toPublicId: CloudinaryPublicId,
+    overwrite: boolean
+  ) =>
+    Effect.tryPromise({
+      try: () =>
+        cloudinary.uploader.rename(fromPublicId, toPublicId, {
+          overwrite,
+        }) as Promise<unknown>,
+      catch: (error) =>
+        classifyRenameFailure(
+          error as CloudinaryRejectedValue,
+          fromPublicId,
+          toPublicId
+        ),
+    });
+
+  return Effect.fn("cloudinary.rename")(
+    function* (
+      fromPublicId: CloudinaryPublicId,
+      toPublicId: CloudinaryPublicId,
+      options?: { readonly overwrite?: boolean }
+    ) {
+      const overwrite = options?.overwrite ?? false;
+
+      // The renamed public IDs never enter logs or annotations: this
+      // executor serves the avatar path, where provider asset identifiers
+      // must never be logged. Only fixed operation messages and the
+      // type-constrained overwrite flag are emitted.
+      yield* Effect.logInfo("Cloudinary asset rename started", { overwrite });
+
+      return yield* pipe(
+        performRename(fromPublicId, toPublicId, overwrite),
+        Effect.flatMap((result) =>
+          pipe(
+            decodeCloudinaryAsset(result),
+            Effect.mapError(
+              () =>
+                new CloudinaryRenameError({
+                  message:
+                    "Cloudinary rename response did not match the asset schema",
+                  fromPublicId,
+                  toPublicId,
+                  reason: "failed",
+                })
+            )
+          )
+        ),
+        Effect.tap(() => Effect.logInfo("Cloudinary asset rename completed")),
+        Effect.tapError((error) =>
+          Effect.logError("Cloudinary asset rename failed", {
+            reason: error.reason,
+          })
+        ),
+        retryTransientRenameFailure
+      );
+    },
+    (effect) => Effect.scoped(effect)
+  );
+}

@@ -1,4 +1,4 @@
-import { Data, Effect, Predicate, Schema } from "effect";
+import { Data, Effect, Match, Schema } from "effect";
 import {
   type CoworkReservationQuote,
   coworkReservationQuoteSchema,
@@ -30,19 +30,18 @@ import {
   officeAdvertisedPriceReservationSchema,
 } from "@/features/reservation/office-reservation";
 import {
-  type CheckoutStateCryptoOptions,
-  CheckoutStateTokenError,
-  createCheckoutStateClaims,
-  openCheckoutState,
-  sealCheckoutState,
-} from "./checkout-state-token";
+  makeLegacySealedState,
+  type SealedStateIssueOptions,
+  type SealedStateSealOptions,
+  type SealedStateTokenError,
+} from "@/shared/backend/sealed-state";
 import {
   getSubmittedCodeMetadata,
   type PayStateSubmittedCodeMetadata,
 } from "./pay-state-contract";
 import { workspaceCheckoutPriceStateSchema } from "./workspace-checkout-price-state";
 
-export const advertisedPriceStateDefaultTtlMilliseconds = 10 * 60 * 1000;
+const advertisedPriceStateDefaultTtlMilliseconds = 10 * 60 * 1000;
 
 const absentSubmittedCodeMetadataSchema = Schema.Struct({
   submittedCode: Schema.optionalKey(Schema.Never),
@@ -82,7 +81,7 @@ const officeAdvertisedPriceStateSchema = Schema.Struct({
   ...requestedDiscountCodeSchemaField,
 });
 
-export const advertisedPriceStateSchema = Schema.Union([
+const advertisedPriceStateSchema = Schema.Union([
   Schema.Struct({
     ...coworkAdvertisedPriceStateSchema.fields,
     ...absentSubmittedCodeMetadataSchema.fields,
@@ -115,6 +114,15 @@ export const advertisedPriceStateSchema = Schema.Union([
 
 export type AdvertisedPriceState = typeof advertisedPriceStateSchema.Type;
 
+/**
+ * Advertised-price tokens ride on reservation pages into the submission, so
+ * they keep the sealed state format that predates purposes.
+ */
+const advertisedPriceStateCodec = makeLegacySealedState({
+  schema: advertisedPriceStateSchema,
+  ttlMilliseconds: advertisedPriceStateDefaultTtlMilliseconds,
+});
+
 type AdvertisedPriceStateInput = (
   | {
       readonly kind: "cowork";
@@ -143,13 +151,38 @@ type AdvertisedPriceStateInput = (
 ) &
   PayStateSubmittedCodeMetadata;
 
-export class AdvertisedPriceStateTokenError extends Data.TaggedError(
+class AdvertisedPriceStateTokenError extends Data.TaggedError(
   "AdvertisedPriceStateTokenError"
 )<{
-  readonly code: CheckoutStateTokenError["code"];
+  readonly code: SealedStateTokenError["code"];
   readonly message: string;
   readonly cause?: unknown;
-}> {}
+}> {
+  static fromStateFailure = (
+    cause: SealedStateTokenError | Schema.SchemaError
+  ) =>
+    Match.value(cause).pipe(
+      Match.tag(
+        "SealedStateTokenError",
+        (failure) =>
+          new AdvertisedPriceStateTokenError({
+            code: failure.code,
+            message: failure.message,
+            cause: failure,
+          })
+      ),
+      Match.tag(
+        "SchemaError",
+        (failure) =>
+          new AdvertisedPriceStateTokenError({
+            code: "invalid-token",
+            message: "Invalid advertised price state.",
+            cause: failure,
+          })
+      ),
+      Match.exhaustive
+    );
+}
 
 export class AdvertisedPriceMismatchError extends Data.TaggedError(
   "AdvertisedPriceMismatchError"
@@ -159,34 +192,16 @@ export class AdvertisedPriceMismatchError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-const isCheckoutStateTokenError = (
-  cause: unknown
-): cause is CheckoutStateTokenError =>
-  Predicate.isTagged(cause, CheckoutStateTokenError._tag);
-
-const toAdvertisedPriceStateTokenError = (cause: unknown) =>
-  isCheckoutStateTokenError(cause)
-    ? new AdvertisedPriceStateTokenError({
-        code: cause.code,
-        message: cause.message,
-        cause,
-      })
-    : new AdvertisedPriceStateTokenError({
-        code: "invalid-token",
-        message: "Invalid advertised price state.",
-        cause,
-      });
-
 export const buildAdvertisedPriceState = Effect.fn(
   "advertisedPriceState.build"
 )(function* (
   input: AdvertisedPriceStateInput,
-  options: CheckoutStateCryptoOptions = {}
+  options: SealedStateIssueOptions = {}
 ) {
-  const claims = yield* createCheckoutStateClaims(
-    input.ttlMilliseconds ?? advertisedPriceStateDefaultTtlMilliseconds,
-    options
-  ).pipe(Effect.mapError(toAdvertisedPriceStateTokenError));
+  const claims = yield* advertisedPriceStateCodec.issueClaims({
+    issuedAt: options.issuedAt,
+    ttlMilliseconds: input.ttlMilliseconds,
+  });
 
   return yield* Schema.decodeUnknownEffect(advertisedPriceStateSchema, {
     onExcessProperty: "error",
@@ -200,30 +215,21 @@ export const buildAdvertisedPriceState = Effect.fn(
       requestedDiscountCode: input.requestedDiscountCode,
     }),
     ...getSubmittedCodeMetadata(input),
-  }).pipe(Effect.mapError(toAdvertisedPriceStateTokenError));
-});
+  });
+}, Effect.mapError(AdvertisedPriceStateTokenError.fromStateFailure));
 
 export const sealAdvertisedPriceState = Effect.fn("advertisedPriceState.seal")(
-  function* (
-    state: AdvertisedPriceState,
-    options: CheckoutStateCryptoOptions = {}
-  ) {
-    const encodedState = yield* Schema.encodeUnknownEffect(
-      advertisedPriceStateSchema,
-      { onExcessProperty: "error" }
-    )(state).pipe(Effect.mapError(toAdvertisedPriceStateTokenError));
-
-    return yield* sealCheckoutState(encodedState, state.kid, options).pipe(
-      Effect.mapError(toAdvertisedPriceStateTokenError)
-    );
-  }
+  (state: AdvertisedPriceState, options: SealedStateSealOptions = {}) =>
+    advertisedPriceStateCodec
+      .seal(state, options)
+      .pipe(Effect.mapError(AdvertisedPriceStateTokenError.fromStateFailure))
 );
 
 export const openAdvertisedPriceState = Effect.fn("advertisedPriceState.open")(
-  (token: string, options: CheckoutStateCryptoOptions = {}) =>
-    openCheckoutState(token, advertisedPriceStateSchema, options).pipe(
-      Effect.mapError(toAdvertisedPriceStateTokenError)
-    )
+  (token: string) =>
+    advertisedPriceStateCodec
+      .open(token)
+      .pipe(Effect.mapError(AdvertisedPriceStateTokenError.fromStateFailure))
 );
 
 export const openSubmittedAdvertisedPriceState = Effect.fn(

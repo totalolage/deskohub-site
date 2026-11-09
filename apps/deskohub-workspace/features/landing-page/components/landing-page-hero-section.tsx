@@ -12,9 +12,9 @@ import { Button } from "@/shared/components/ui/button";
 import type { VariableStyle } from "@/shared/utils";
 import cornerMask from "../images/corner.svg";
 import heroImage from "../images/hero.jpeg";
+import { LandingPageBackgroundNoise } from "./landing-page-background-noise";
 import { LandingPageHeroScrollScene } from "./landing-page-hero-scroll-scene";
 import { LandingPageHexagon } from "./landing-page-hexagon";
-import { LandingPagePhotoCarouselBackgroundNoise } from "./landing-page-photo-carousel-section";
 
 type LandingPageHeroSectionProps = {
   locale: Locale;
@@ -59,7 +59,10 @@ export function LandingPageHeroSection({
           {meetingRoomPageEnabled && (
             <Button
               asChild
-              className="relative h-14 rounded-lg bg-burned-orange px-8 text-base uppercase tracking-[0.08em] hover:bg-burned-orange/90"
+              size="2xl"
+              shape="rounded"
+              caps
+              className="relative"
             >
               <Link href={`/${locale}/meeting-room`}>
                 <Arrow1
@@ -77,7 +80,11 @@ export function LandingPageHeroSection({
           <Button
             asChild
             variant="secondary"
-            className="relative h-14 rounded-lg border-burned-orange bg-white/92 px-8 text-base uppercase tracking-[0.08em] text-burned-orange hover:bg-white"
+            tone="burned-orange"
+            size="2xl"
+            shape="rounded"
+            caps
+            className="relative"
           >
             <Link href={getCoworkReservationPath(locale)}>
               <CornerAccent
@@ -113,10 +120,10 @@ export function LandingPageHeroSection({
             maskSize: "cover",
           }}
         >
-          <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+          <LandingPageBackgroundNoise className="bg-bottom" />
         </div>
         <div className="absolute inset-x-0 bottom-0 top-[calc(8rem-3.075rem)] bg-chilean-fire">
-          <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+          <LandingPageBackgroundNoise className="bg-bottom" />
         </div>
         <div
           className="absolute right-0 top-0 h-32 w-32 bg-chilean-fire rotate-y-180"
@@ -125,7 +132,7 @@ export function LandingPageHeroSection({
             maskSize: "cover",
           }}
         >
-          <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+          <LandingPageBackgroundNoise className="bg-bottom" />
         </div>
       </div>
     </div>
@@ -136,7 +143,7 @@ export function LandingPageHeroSection({
       ariaLabelledBy="landing-page-heading"
       background={<Background locale={locale} />}
       bottomSection={orangeMaskSection}
-      className="group relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white has-[[data-landing-page-sale-banner]]:pt-(--site-header-height)"
+      className="group relative isolate -mb-[calc(0.5*var(--hero-bottom-section-height))] min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white has-[[data-landing-page-sale-banner]]:pt-(--site-header-height)"
       id={overviewSectionId}
       saleBanner={saleBanner}
     >

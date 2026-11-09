@@ -1,0 +1,9 @@
+- main:
+  - list "Kroky rezervace"
+  - status: "Stav platby: Platba nebyla dokončena."
+  - heading "Platba nebyla dokončena." [level=1]
+  - heading "Souhrn rezervace" [level=2]
+  - term: Číslo objednávky
+  - definition: /.+/
+  - link "Zpět domů":
+    - /url: /cs-CZ

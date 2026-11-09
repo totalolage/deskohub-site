@@ -1,21 +1,13 @@
-import { cn } from "@/shared/utils";
+import { Button } from "@/shared/components/ui/button";
 
-export function SkipLink({
-  label,
-  className,
-}: {
-  label: string;
-  className?: string;
-}) {
+export function SkipLink({ label }: { label: string }) {
   return (
-    <a
-      href="#main-content"
-      className={cn(
-        "fixed left-4 top-4 z-[100] -translate-y-24 rounded-full bg-white px-5 py-3 font-semibold text-navy-blue shadow-lg transition-transform focus:translate-y-0 focus:outline-none focus:ring-2 focus:ring-burned-orange focus:ring-offset-2 motion-reduce:transition-none",
-        className
-      )}
+    <Button
+      asChild
+      className="fixed -top-24 left-4 z-[100] focus:top-4"
+      variant="secondary"
     >
-      {label}
-    </a>
+      <a href="#main-content">{label}</a>
+    </Button>
   );
 }

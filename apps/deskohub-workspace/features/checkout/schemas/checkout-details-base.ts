@@ -3,7 +3,7 @@ import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
 import { reservationQuotePaymentSchema } from "@/features/checkout/reservation-quote-schema";
 import { locales } from "@/features/i18n";
 
-export const checkoutDetailsBaseSchema = Schema.Struct({
+const checkoutDetailsBaseSchema = Schema.Struct({
   locale: Schema.Literals(locales),
   legal: legalEvidenceMapSchema,
   payment: reservationQuotePaymentSchema,

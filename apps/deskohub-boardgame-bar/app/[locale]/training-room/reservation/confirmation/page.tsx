@@ -5,6 +5,7 @@ import { ReservationConfirmation } from "@/features/reservation/components/reser
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
+import { getTrainingRoomConfirmationDetails } from "./confirmation-details";
 
 // Route type definitions
 export interface RouteParams_locale {
@@ -36,42 +37,9 @@ export default async function TrainingRoomConfirmationPage({
   const { locale } = await params;
   setLocale(locale, { reload: false });
 
-  // Extract query parameters
-  const searchParamsData = await searchParams;
-
-  // Build display name from company or firstName + lastName
-  const company = searchParamsData.company as string | undefined;
-  const firstName = searchParamsData.firstName as string | undefined;
-  const lastName = searchParamsData.lastName as string | undefined;
-  const role = searchParamsData.role as string | undefined;
-
-  let displayName = "";
-  if (company) {
-    displayName = company;
-    if (firstName && lastName && role) {
-      displayName = `${company} - ${firstName} ${lastName} (${role})`;
-    }
-  } else if (firstName && lastName) {
-    displayName = `${firstName} ${lastName}`;
-  }
-
-  // Parse date if provided
-  const dateString = searchParamsData.date as string | undefined;
-  const date = dateString ? new Date(dateString) : new Date();
-
-  // Build confirmation details from query parameters
-  const confirmationDetails = {
-    id: "", // No ID for training room reservations
-    name: displayName,
-    email: (searchParamsData.email as string) || "",
-    phone: (searchParamsData.phone as string) || "",
-    date: date,
-    time: (searchParamsData.time as string) || "",
-    duration: searchParamsData.duration
-      ? parseInt(searchParamsData.duration as string, 10)
-      : undefined,
-    specialRequests: searchParamsData.specialRequirements as string | undefined,
-  };
+  const confirmationDetails = getTrainingRoomConfirmationDetails(
+    await searchParams
+  );
 
   return (
     <>

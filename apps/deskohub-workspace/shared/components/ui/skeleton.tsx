@@ -1,7 +1,7 @@
 import type * as React from "react";
 import { cn } from "@/shared/utils";
 
-export interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
+interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
   ref?: React.Ref<HTMLDivElement>;
 }
 

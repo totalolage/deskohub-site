@@ -1,7 +1,6 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
-import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import { workspaceE2EMaximumSameDateCoworkReservations } from "../capacity";
 import {
   checkoutFlows,
@@ -10,11 +9,15 @@ import {
   reuseCoworkCheckoutContact,
   selectCoworkDates,
 } from "../checkout/data";
+import {
+  toReservationSelectionPreparation,
+  toReservationStep,
+} from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { toWorkspaceE2EError, type WorkspaceE2EError } from "../errors";
 import { discountCodeFixtures } from "../integrations/discount-fixtures";
 import type { E2EDotyposDiscountGroup } from "../integrations/dotypos";
-import type { Runner } from "../runtime";
+import { planWorkspaceE2EReferralCases } from "../referrals/plan";
 import { log } from "../runtime";
 import { E2ETelemetryService } from "../services/telemetry";
 import type {
@@ -22,6 +25,7 @@ import type {
   CheckoutFlowState,
   WorkspaceE2ECase,
 } from "../types";
+import { planAgentBookingCase } from "./agent-booking";
 import { executeCheckoutFlow } from "./checkout";
 import { executeZeroTotalCheckout } from "./checkout-zero-total";
 import { assertContactForm } from "./contact";
@@ -43,8 +47,11 @@ import {
   assertPaymentTerminalPath,
   getPaymentTerminalScenarios,
 } from "./payment-terminal";
+import { planReferralSomeoneElsePaymentCase } from "./referral-someone-else-payment";
 import { makeReservationLinkE2ECases } from "./reservation-links";
 import { assertReservationReplacement } from "./reservation-reuse";
+import { makeReservationUrlStateE2ECases } from "./reservation-url-state";
+import { planSignedOutVerificationCase } from "./signed-out-verification";
 
 export type WorkspaceE2EPreparation = {
   readonly customerDiscountGroup: E2EDotyposDiscountGroup;
@@ -59,7 +66,6 @@ export const makeWorkspaceE2ECases = ({
   datasourceConfig,
   flowStates,
   preparation,
-  run,
   traceConstruction = true,
 }: {
   allocation: WorkspaceE2EDateAllocation;
@@ -67,7 +73,6 @@ export const makeWorkspaceE2ECases = ({
   datasourceConfig: DatasourceConfig;
   flowStates: CheckoutFlowState[];
   preparation: WorkspaceE2EPreparation;
-  run: Runner;
   traceConstruction?: boolean;
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
@@ -88,19 +93,19 @@ export const makeWorkspaceE2ECases = ({
         checkoutFlows.length +
           terminalScenarios.length +
           latePaymentRecoveryScenarios.length +
-          2,
+          3,
         {
           allocation,
           maximumReservationsPerDate:
-            workspaceE2EMaximumSameDateCoworkReservations.basic,
-          selectionLabel: "tier:basic",
+            workspaceE2EMaximumSameDateCoworkReservations["open-space"],
+          selectionLabel: "open-space",
         }
       );
       const cases: WorkspaceE2ECase[] = [
         {
           checkoutStates: [],
-          execute: ({ runStep, session }) =>
-            assertLocaleSwitcher({ config, run, runStep, session }).pipe(
+          execute: ({ openSession, runStep }) =>
+            assertLocaleSwitcher({ config, openSession, runStep }).pipe(
               Effect.mapError((cause) =>
                 toWorkspaceE2EError("run locale switch e2e case", cause)
               )
@@ -110,8 +115,8 @@ export const makeWorkspaceE2ECases = ({
         },
         {
           checkoutStates: [],
-          execute: ({ runStep, session }) =>
-            assertContactForm({ config, run, runStep, session }).pipe(
+          execute: ({ openSession, runStep }) =>
+            assertContactForm({ config, openSession, runStep }).pipe(
               Effect.mapError((cause) =>
                 toWorkspaceE2EError("run contact form e2e case", cause)
               )
@@ -133,17 +138,16 @@ export const makeWorkspaceE2ECases = ({
         const state = trackCheckoutState(flowStates, data);
         cases.push({
           checkoutStates: [state],
-          execute: ({ runStep, session }) =>
+          execute: ({ openSession, runStep }) =>
             assertPaymentTerminalPath({
               config,
               data,
               reservationPath: "/en-US/reservation/cowork",
-              run,
               runStep,
               scenario,
-              session,
+              openSession,
               state,
-              submitReservationScript: getSubmitCoworkReservationScript(data),
+              preparation: toReservationStep(data),
             }).pipe(
               Effect.mapError((cause) =>
                 toWorkspaceE2EError(
@@ -152,8 +156,12 @@ export const makeWorkspaceE2ECases = ({
                 )
               )
             ),
-          id: `payment-${scenario.state}`,
-          timeoutMs: config.timeouts.paymentTerminalCase,
+          id: scenario.id,
+          // A real hosted payment may take the sandbox restart.
+          timeoutMs:
+            scenario.trigger === "injected"
+              ? config.timeouts.paymentTerminalCase
+              : config.timeouts.checkoutCase,
         });
       }
 
@@ -164,17 +172,16 @@ export const makeWorkspaceE2ECases = ({
         const state = trackCheckoutState(flowStates, data);
         cases.push({
           checkoutStates: [state],
-          execute: ({ runStep, session }) =>
+          execute: ({ openSession, runStep }) =>
             executeLatePaymentRecovery({
               config,
               data,
               datasourceConfig,
-              run,
               runStep,
               scenario,
-              session,
+              openSession,
               state,
-              submitReservationScript: getSubmitCoworkReservationScript(data),
+              preparation: toReservationStep(data),
             }).pipe(
               Effect.provideService(HttpClient.HttpClient, httpClient),
               Effect.mapError((cause) =>
@@ -220,18 +227,18 @@ export const makeWorkspaceE2ECases = ({
       );
       cases.push({
         checkoutStates: [reservationReplacementState],
-        execute: ({ runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           assertReservationReplacement({
             config,
             data: reservationReplacementData,
             datasourceConfig,
+            toSelectionPreparation: toReservationSelectionPreparation,
             replacementData: editedReservationReplacementData,
             reservationPath: "/en-US/reservation/cowork",
-            run,
             runStep,
-            session,
+            openSession,
             state: reservationReplacementState,
-            submitReservationScript: getSubmitCoworkReservationScript,
+            toReservationPreparation: toReservationStep,
           }).pipe(
             Effect.mapError((cause) =>
               toWorkspaceE2EError("run reservation replacement e2e case", cause)
@@ -254,17 +261,15 @@ export const makeWorkspaceE2ECases = ({
       const zeroTotalState = trackCheckoutState(flowStates, zeroTotalData);
       cases.push({
         checkoutStates: [zeroTotalState],
-        execute: ({ runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           executeZeroTotalCheckout({
             config,
             data: zeroTotalData,
             datasourceConfig,
-            run,
             runStep,
-            session,
+            openSession,
             state: zeroTotalState,
-            submitReservationScript:
-              getSubmitCoworkReservationScript(zeroTotalData),
+            preparation: toReservationStep(zeroTotalData),
             discountCode: discountCodeFixtures.zeroTotal.code,
           }).pipe(
             Effect.mapError((cause) =>
@@ -273,6 +278,41 @@ export const makeWorkspaceE2ECases = ({
           ),
         id: "checkout-zero-total",
         timeoutMs: config.timeouts.zeroTotalCheckoutCase,
+      });
+
+      // The automation journey books its own zero-total reservation; its
+      // binder wraps this checkout in the admin flow and the engine waits.
+      const automationDate = yield* requireCheckoutDate(
+        checkoutDates,
+        nextDateIndex
+      );
+      const automationData = makeCoworkCheckoutData(
+        config.baseUrl,
+        automationDate,
+        "cowork-automation"
+      );
+      nextDateIndex += 1;
+      const automationState = trackCheckoutState(flowStates, automationData);
+      cases.push({
+        checkoutStates: [automationState],
+        execute: ({ openSession, runStep }) =>
+          executeZeroTotalCheckout({
+            config,
+            data: automationData,
+            datasourceConfig,
+            runStep,
+            openSession,
+            state: automationState,
+            stepIdPrefix: "automation-",
+            preparation: toReservationStep(automationData),
+            discountCode: discountCodeFixtures.zeroTotal.code,
+          }).pipe(
+            Effect.mapError((cause) =>
+              toWorkspaceE2EError("run automation reservation checkout", cause)
+            )
+          ),
+        id: "automation-reservation-booked",
+        timeoutMs: config.timeouts.automationReservationCase,
       });
 
       for (const flow of checkoutFlows) {
@@ -287,15 +327,15 @@ export const makeWorkspaceE2ECases = ({
         const state = trackCheckoutState(flowStates, data);
         cases.push({
           checkoutStates: [state],
-          execute: ({ runStep, session }) =>
+          execute: ({ openSeparateSession, openSession, runStep }) =>
             executeCheckoutFlow({
+              openSeparateSession,
               config,
               data,
               datasourceConfig,
               flow,
-              run,
               runStep,
-              session,
+              openSession,
               state,
             }).pipe(
               Effect.provideService(HttpClient.HttpClient, httpClient),
@@ -308,13 +348,21 @@ export const makeWorkspaceE2ECases = ({
         });
       }
 
+      const referralPlan = yield* planWorkspaceE2EReferralCases({
+        allocation,
+        availableBasicDates: discountPreparation.availableBasicDates,
+        config,
+        excludedDates: new Set(checkoutDates),
+        trackCheckoutState: (data) => trackCheckoutState(flowStates, data),
+      });
+      cases.push(...referralPlan.cases);
+
       cases.push(
         ...(yield* makeMeetingRoomE2ECases({
           config,
           datasourceConfig,
           flowStates,
           preparation: preparation.meetingRoom,
-          run,
         }))
       );
 
@@ -324,7 +372,19 @@ export const makeWorkspaceE2ECases = ({
           datasourceConfig,
           flowStates,
           preparation: preparation.meetingRoom,
-          run,
+        }))
+      );
+
+      cases.push(
+        ...(yield* makeReservationUrlStateE2ECases({
+          allocation,
+          config,
+          datasourceConfig,
+          preparation: {
+            discounts: discountPreparation,
+            meetingRoom: preparation.meetingRoom,
+            office: preparation.office,
+          },
         }))
       );
 
@@ -334,7 +394,6 @@ export const makeWorkspaceE2ECases = ({
           datasourceConfig,
           flowStates,
           preparation: preparation.office,
-          run,
         }))
       );
 
@@ -343,11 +402,37 @@ export const makeWorkspaceE2ECases = ({
           allocation,
           config,
           datasourceConfig,
-          excludedDates: new Set(checkoutDates),
+          excludedDates: new Set([...checkoutDates, ...referralPlan.dates]),
           flowStates,
           preparation: discountPreparation,
-          run,
         }))
+      );
+
+      cases.push(
+        yield* planReferralSomeoneElsePaymentCase({
+          allocation,
+          availableBasicDates: discountPreparation.availableBasicDates,
+          config,
+          flowStates,
+        })
+      );
+
+      cases.push(
+        yield* planSignedOutVerificationCase({
+          allocation,
+          availableBasicDates: discountPreparation.availableBasicDates,
+          config,
+          flowStates,
+        })
+      );
+
+      cases.push(
+        yield* planAgentBookingCase({
+          allocation,
+          availableBasicDates: discountPreparation.availableBasicDates,
+          config,
+          flowStates,
+        })
       );
 
       return cases;

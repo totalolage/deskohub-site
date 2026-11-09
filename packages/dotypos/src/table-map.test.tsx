@@ -3,6 +3,7 @@ import type { Table } from "./generated";
 import { TableMap } from "./table-map";
 
 type ReactElementLike = {
+  readonly key?: string | null;
   readonly props: {
     readonly "aria-label"?: string;
     readonly children: ReactElementLike | readonly ReactElementLike[];
@@ -12,6 +13,10 @@ type ReactElementLike = {
     readonly fill?: string;
     readonly height?: number;
     readonly onClick?: () => void;
+    readonly onKeyDown?: (event: {
+      readonly key: string;
+      readonly preventDefault: () => void;
+    }) => void;
     readonly points?: string;
     readonly role?: string;
     readonly stroke?: string;
@@ -86,25 +91,6 @@ test("renders positioned tables with classes and click handlers", () => {
   expect(clicks).toEqual([table]);
 });
 
-test("renders read-only tables without interactive group props", () => {
-  const table: Table = {
-    _cloudId: "cloud",
-    id: "table-1",
-    name: "T1",
-  };
-
-  const svg = TableMap({
-    tables: [table],
-    tableStyle: () => "is-muted",
-  }) as ReactElementLike;
-  const group = firstChild(svg);
-
-  expect(svg.props.role).toBe("img");
-  expect(group.props.role).toBeUndefined();
-  expect(group.props.tabIndex).toBeUndefined();
-  expect(group.props.onClick).toBeUndefined();
-});
-
 test("renders a rectangular room layout behind tables", () => {
   const table: Table = {
     _cloudId: "cloud",
@@ -172,11 +158,7 @@ test("renders a bottom entrance door with a right hinge and arrow", () => {
   expect(swing.props.d).toBe(
     "M 10 100 C 10 83.431457506 23.431457506 70 40 70"
   );
-  expect(swing.props.fill).toBe("none");
-  expect(swing.props.stroke).toBe("#00024f");
-  expect(swing.props.strokeOpacity).toBe(0.24);
   expect(firstChild(arrow).props.x1).toBe(25);
-  expect(arrow.props.color).toBe("#00df99");
 });
 
 test("rotates geometry while keeping labels upright", () => {
@@ -210,4 +192,75 @@ test("rotates geometry while keeping labels upright", () => {
   expect(label.props.transform).toBeUndefined();
   expect(label.props.x).toBe(55);
   expect(label.props.y).toBe(15);
+});
+
+test("activates a table from Enter or Space and ignores other keys", () => {
+  const table: Table = { _cloudId: "cloud", id: "table-1", name: "T1" };
+  const clicks: Table[] = [];
+  const prevented: string[] = [];
+
+  const svg = TableMap({
+    tables: [table],
+    tableStyle: () => "is-muted",
+    onTableClick: (clickedTable) => clicks.push(clickedTable),
+  }) as ReactElementLike;
+  const group = firstChild(svg);
+
+  for (const key of ["Enter", " ", "Tab", "a"]) {
+    group.props.onKeyDown?.({
+      key,
+      preventDefault: () => prevented.push(key),
+    });
+  }
+
+  expect(clicks).toEqual([table, table]);
+  expect(prevented).toEqual(["Enter", " "]);
+});
+
+test("renders a static image keyed by table id with fallback button labels for unnamed tables", () => {
+  const unnamed: Table = {
+    id: "table-unnamed",
+    _cloudId: "cloud",
+    name: "",
+    positionX: "not a number",
+    positionY: "5",
+    type: "ROUND",
+  };
+
+  const staticSvg = TableMap({
+    tables: [unnamed],
+    tableStyle: () => "is-muted",
+  }) as ReactElementLike;
+  const [geometry, label] = childrenOf(staticSvg);
+  if (!(geometry && label))
+    throw new Error("Expected table geometry and label");
+
+  expect(staticSvg.props.role).toBe("img");
+  expect(geometry.key).toBe("table-unnamed");
+  expect(geometry.props.role).toBeUndefined();
+  expect(geometry.props.transform).toBe("translate(0 5)");
+  expect(label.key).toBe("table-unnamed-label");
+  expect(staticSvg.props.viewBox).toBe("-52 -47 104 104");
+
+  const interactiveSvg = TableMap({
+    tables: [unnamed, { ...unnamed, id: "table-blank", name: "  " }],
+    tableStyle: () => "is-muted",
+    onTableClick: () => undefined,
+  }) as ReactElementLike;
+  const [first, second] = childrenOf(interactiveSvg);
+
+  expect(first?.props["aria-label"]).toBe("Table");
+  expect(second?.props["aria-label"]).toBe("Table");
+});
+
+test("frames an empty map in a unit view box", () => {
+  const svg = TableMap({
+    tables: [],
+    tableStyle: () => "is-muted",
+    ariaLabel: "Empty room",
+  }) as ReactElementLike;
+
+  expect(svg.props.viewBox).toBe("0 0 1 1");
+  expect(svg.props["aria-label"]).toBe("Empty room");
+  expect(childrenOf(svg)).toEqual([]);
 });

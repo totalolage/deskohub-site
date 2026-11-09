@@ -2,7 +2,7 @@
 
 import { Glass, type GlassProps } from "@samasante/liquid-glass";
 
-export type GlassCardProps = GlassProps;
+type GlassCardProps = GlassProps;
 
 function GlassCard({ optics, style, ...props }: GlassCardProps) {
   return (

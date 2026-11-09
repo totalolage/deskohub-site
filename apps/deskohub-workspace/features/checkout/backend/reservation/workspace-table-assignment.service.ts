@@ -1,14 +1,12 @@
 import {
+  type DotyposReadFailure,
   type DotyposReservationId,
   type DotyposReservationInterval,
   DotyposService,
+  type DotyposTable,
   type DotyposTableId,
-  type ExternalAPIError,
-  type NetworkError,
-  ValidationError,
 } from "@deskohub/dotypos";
-import type { Table } from "@deskohub/dotypos/generated";
-import { Context, Effect, Layer, Match } from "effect";
+import { Context, Data, Effect, Layer, Match } from "effect";
 import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/product-catalog";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
@@ -16,6 +14,7 @@ import {
   getCoworkReservationIntervalInput,
 } from "@/features/reservation/cowork-reservation";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
+import { getMeetingRoomOccupiedInterval } from "@/features/reservation/meeting-room-early-setup";
 import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import {
   getOfficeReservationIntervalInput,
@@ -26,8 +25,8 @@ import {
   getReservationIntervalNormalization,
   type ReservationInterval,
 } from "@/features/reservation/reservation-interval";
+import { ReservationIntervalValidationError } from "@/features/reservation/reservation-interval-domain";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import {
   excludeDotyposReservationsById,
   getWorkspaceReservationIntervalDates,
@@ -35,8 +34,13 @@ import {
   workspaceBookingSeatCount,
 } from "./workspace-table-occupancy";
 import {
-  getWorkspaceTableCandidates,
+  getWorkspaceTableCandidatesByPredicate,
+  getWorkspaceTableSeatCapacity,
+  type InvalidDotyposTableSeats,
+  isWorkspaceCoworkTableCandidate,
   selectWorkspaceTableFromCandidates,
+  workspaceCoworkOpenSpaceTableTag,
+  workspaceCoworkReservedDeskTableTag,
   workspaceMeetingRoomReservationTableTag,
   workspaceOfficeReservationTableTag,
 } from "./workspace-table-selection";
@@ -49,25 +53,93 @@ export type WorkspaceTableAssignmentReservation =
   | MeetingRoomReservationDetails
   | OfficeReservationDetails;
 
+type WorkspaceTableAssignment = {
+  readonly requiredTags: readonly string[];
+  readonly isCandidateTable: (tableTags: ReadonlySet<string>) => boolean;
+  readonly requireEmptyTable: boolean;
+  readonly scoreCoworkOpenSpaceCapacity?: true;
+};
+
+const getRequiredTagsAssignment = (
+  requiredTags: readonly string[],
+  requireEmptyTable: boolean
+): WorkspaceTableAssignment => ({
+  requiredTags,
+  isCandidateTable: (tableTags: ReadonlySet<string>) =>
+    requiredTags.every((tag) => tableTags.has(tag)),
+  requireEmptyTable,
+});
+
+const getReservedDeskScoringOccupancyById = Effect.fn(
+  "workspaceTableAssignment.getReservedDeskScoringOccupancyById"
+)(function* (
+  tables: readonly DotyposTable[],
+  actualOccupancyByTableId: ReadonlyMap<DotyposTableId, number>
+) {
+  const rankingOccupancyByTableId = new Map(actualOccupancyByTableId);
+
+  for (const table of tables) {
+    if (
+      table.enabled !== true ||
+      table.display !== true ||
+      !table.tags?.includes(workspaceCoworkOpenSpaceTableTag)
+    ) {
+      continue;
+    }
+
+    const seatCapacity = yield* getWorkspaceTableSeatCapacity(table);
+    rankingOccupancyByTableId.set(
+      table.id,
+      Math.max(actualOccupancyByTableId.get(table.id) ?? 0, seatCapacity)
+    );
+  }
+
+  return rankingOccupancyByTableId;
+});
+
 export const getWorkspaceReservationInterval = (
   reservation: WorkspaceTableAssignmentReservation
 ) =>
   getReservationIntervalNormalization(
     Match.value(reservation).pipe(
       Match.discriminatorsExhaustive("kind")({
-        cowork: ({ date }) => getCoworkReservationIntervalInput(date),
-        "meeting-room": (meetingRoom) => meetingRoom,
+        cowork: ({ entryTier, date }) =>
+          getCoworkReservationIntervalInput(entryTier, date),
+        "meeting-room": getMeetingRoomOccupiedInterval,
         office: getOfficeReservationIntervalInput,
       })
     )
   );
+
+/**
+ * No active, visible Dotypos table carries the tags a reservation needs, so
+ * Workspace's table configuration can't serve it at all.
+ */
+export class TableAssignmentUnconfigured extends Data.TaggedError(
+  "TableAssignmentUnconfigured"
+)<{
+  readonly requiredTags: readonly string[];
+  readonly message: string;
+}> {}
+
+/** Every matching table is already occupied for the reservation interval. */
+export class TableAssignmentUnavailableError extends Data.TaggedError(
+  "TableAssignmentUnavailableError"
+)<{
+  readonly requiredTags: readonly string[];
+  readonly message: string;
+}> {}
 
 export interface IWorkspaceTableAssignmentService {
   readonly assignTableId: (
     reservation: WorkspaceTableAssignmentReservation
   ) => Effect.Effect<
     DotyposTableId,
-    ExternalAPIError | NetworkError | ValidationError
+    | DotyposReadFailure
+    | InvalidDotyposTableSeats
+    | ReservationIntervalValidationError
+    | TableAssignmentUnavailableError
+    | TableAssignmentUnconfigured
   >;
 }
 
@@ -145,15 +217,25 @@ export class WorkspaceTableAssignmentService extends Context.Service<
             ({ activeReservations, occupancyInput }) =>
               getWorkspaceTableOccupancyById(activeReservations, occupancyInput)
           ),
+          Effect.bind(
+            "rankingOccupancyByTableId",
+            ({ assignment, inventory, occupancyByTableId }) =>
+              assignment.scoreCoworkOpenSpaceCapacity
+                ? getReservedDeskScoringOccupancyById(
+                    inventory.tables,
+                    occupancyByTableId
+                  )
+                : Effect.succeed(occupancyByTableId)
+          ),
           Effect.tap(({ occupancyByTableId }) =>
             Effect.logDebug("Workspace table occupancy calculated", {
               occupancyByTableId: Object.fromEntries(occupancyByTableId),
             })
           ),
           Effect.let("matchingTables", ({ assignment, inventory }) =>
-            getWorkspaceTableCandidates(
+            getWorkspaceTableCandidatesByPredicate(
               inventory.tables,
-              assignment.requiredTags
+              assignment.isCandidateTable
             )
           ),
           Effect.bind(
@@ -164,13 +246,15 @@ export class WorkspaceTableAssignmentService extends Context.Service<
               inventory,
               matchingTables,
               occupancyByTableId,
+              rankingOccupancyByTableId,
             }) =>
               selectWorkspaceTableFromCandidates(
                 matchingTables,
                 inventory.tables,
                 occupancyByTableId,
                 seats,
-                assignment.requireEmptyTable
+                assignment.requireEmptyTable,
+                rankingOccupancyByTableId
               )
           ),
           Effect.bind("matchingTableId", validateTableAssignment),
@@ -192,63 +276,83 @@ export class WorkspaceTableAssignmentService extends Context.Service<
 
 const getReservationAssignment = (
   reservation: WorkspaceTableAssignmentReservation
-) =>
+): WorkspaceTableAssignment =>
   Match.value(reservation).pipe(
     Match.discriminatorsExhaustive("kind")({
       cowork: (coworkReservation) =>
         Match.value(coworkReservation).pipe(
           Match.discriminatorsExhaustive("entryTier")({
-            basic: ({ entryTier }) => ({
-              requiredTags: [`tier:${entryTier}`],
+            "open-space": ({ entryTier }) => ({
+              requiredTags: [workspaceCoworkOpenSpaceTableTag],
+              isCandidateTable: (tableTags: ReadonlySet<string>) =>
+                isWorkspaceCoworkTableCandidate(tableTags, { entryTier }),
               requireEmptyTable: false,
             }),
-            plus: ({ entryTier }) => ({
-              requiredTags: [`tier:${entryTier}`],
+            "reserved-desk": ({ entryTier, monitorOption }) => ({
+              requiredTags: [workspaceCoworkReservedDeskTableTag],
+              isCandidateTable: (tableTags: ReadonlySet<string>) =>
+                isWorkspaceCoworkTableCandidate(tableTags, {
+                  entryTier,
+                  ...(monitorOption && { monitorOption }),
+                }),
               requireEmptyTable: false,
+              scoreCoworkOpenSpaceCapacity: true as const,
             }),
-            profi: ({ entryTier, monitorOption }) => ({
-              requiredTags: [
-                `tier:${entryTier}`,
-                ...workspaceProductMonitorOptionTableTags[monitorOption],
-              ],
-              requireEmptyTable: false,
-            }),
+            basic: ({ entryTier }) =>
+              getRequiredTagsAssignment([`tier:${entryTier}`], false),
+            plus: ({ entryTier }) =>
+              getRequiredTagsAssignment([`tier:${entryTier}`], false),
+            profi: ({ entryTier, monitorOption }) =>
+              getRequiredTagsAssignment(
+                [
+                  `tier:${entryTier}`,
+                  ...workspaceProductMonitorOptionTableTags[monitorOption],
+                ],
+                false
+              ),
           })
         ),
-      "meeting-room": () => ({
-        requiredTags: [workspaceMeetingRoomReservationTableTag],
-        requireEmptyTable: true,
-      }),
-      office: () => ({
-        requiredTags: [workspaceOfficeReservationTableTag],
-        requireEmptyTable: true,
-      }),
+      "meeting-room": () =>
+        getRequiredTagsAssignment(
+          [workspaceMeetingRoomReservationTableTag],
+          true
+        ),
+      office: () =>
+        getRequiredTagsAssignment([workspaceOfficeReservationTableTag], true),
     })
   );
 
 const getReservationOccupancyInput = (
   reservation: WorkspaceTableAssignmentReservation
-): Effect.Effect<Temporal.PlainDate | ReservationInterval, ValidationError> =>
+): Effect.Effect<
+  Temporal.PlainDate | ReservationInterval,
+  ReservationIntervalValidationError
+> =>
   Match.value(reservation).pipe(
     Match.discriminatorsExhaustive("kind")({
-      cowork: ({ date }) =>
-        Effect.try({
-          try: () => Temporal.PlainDate.from(date),
-          catch: (cause) =>
-            new ValidationError({
-              message: `Workspace reservation date must be a valid YYYY-MM-DD date: ${date}`,
-              cause,
-            }),
-        }),
+      // Occupancy must use the tier's authoritative reservation interval
+      // (Open Space Prague 00:00-17:00 exclusive, every other tier Prague
+      // midnight to next midnight), not the whole calendar day.
+      cowork: ({ entryTier, date }) =>
+        getReservationIntervalNormalization(
+          getCoworkReservationIntervalInput(entryTier, date)
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ReservationIntervalValidationError({
+                path: cause.path,
+                message: `Workspace cowork reservation interval must be valid for date: ${date}`,
+                cause,
+              })
+          )
+        ),
       "meeting-room": (meetingRoomReservation) =>
-        Effect.succeed(meetingRoomReservation),
+        getReservationIntervalNormalization(
+          getMeetingRoomOccupiedInterval(meetingRoomReservation)
+        ),
       office: (officeReservation) =>
         getReservationIntervalNormalization(
           getOfficeReservationIntervalInput(officeReservation)
-        ).pipe(
-          Effect.mapError(
-            (cause) => new ValidationError({ message: cause.message, cause })
-          )
         ),
     })
   );
@@ -265,23 +369,22 @@ const getReservationSeats = (
   );
 
 const validateTableAssignment = (input: {
-  readonly assignment: ReturnType<typeof getReservationAssignment>;
-  readonly matchingTable: Table | undefined;
-  readonly matchingTables: ReturnType<typeof getWorkspaceTableCandidates>;
+  readonly assignment: WorkspaceTableAssignment;
+  readonly matchingTable: DotyposTable | undefined;
+  readonly matchingTables: readonly DotyposTable[];
 }) =>
   Effect.succeed(input).pipe(
     Effect.filterOrFail(
       ({ matchingTables }) => matchingTables.length > 0,
       ({ assignment }) =>
-        new ValidationError({
+        new TableAssignmentUnconfigured({
+          requiredTags: assignment.requiredTags,
           message: `No active visible Dotypos workspace table matches tags: ${assignment.requiredTags.join(
             ", "
           )}`,
         })
     ),
-    Effect.let("matchingTableId", ({ matchingTable }) =>
-      matchingTable ? getAssignableDotyposTableId(matchingTable) : undefined
-    ),
+    Effect.let("matchingTableId", ({ matchingTable }) => matchingTable?.id),
     Effect.filterOrFail(
       (
         assignment
@@ -289,7 +392,8 @@ const validateTableAssignment = (input: {
         readonly matchingTableId: DotyposTableId;
       } => assignment.matchingTableId !== undefined,
       ({ assignment }) =>
-        new ValidationError({
+        new TableAssignmentUnavailableError({
+          requiredTags: assignment.requiredTags,
           message: `No available Dotypos workspace table matches tags: ${assignment.requiredTags.join(
             ", "
           )}`,

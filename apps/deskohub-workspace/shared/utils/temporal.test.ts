@@ -1,15 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
-import { Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import {
   ceilToWholeHour,
+  currentPlainDate,
   floorToWholeHour,
+  getPlainDatesBetween,
   instantStringSchema,
   isFuturePlainDateTime,
   isPlainDateString,
+  localDateTimeSchema,
+  localDateTimeToInstant,
   localDateTimeToTemporalInstantString,
+  localTimeSchema,
   makeWholeHourInstantStringSchema,
-  temporalInstantToIsoString,
+  parseInstant,
+  parsePlainDate,
   temporalInstantToLocalDateTimeString,
 } from "./temporal";
 
@@ -79,6 +86,45 @@ describe("makeWholeHourInstantStringSchema", () => {
     expect(isWholeHourInPrague("2026-07-10T08:00:00.001Z")).toBe(false);
     expect(isWholeHourInPrague("not-an-instant")).toBe(false);
   });
+
+  test("rejects instants when the time zone is unknown", () => {
+    expect(
+      Schema.is(makeWholeHourInstantStringSchema("Not/A_Zone"))(
+        "2026-07-10T08:00:00Z"
+      )
+    ).toBe(false);
+  });
+});
+
+describe("localTimeSchema", () => {
+  const isLocalTime = Schema.is(localTimeSchema);
+
+  test("accepts canonical hour and minute times", () => {
+    expect(isLocalTime("08:30")).toBe(true);
+  });
+
+  test("rejects noncanonical and invalid times", () => {
+    expect(isLocalTime("08:30:00")).toBe(false);
+    expect(isLocalTime("8:30")).toBe(false);
+    expect(isLocalTime("25:00")).toBe(false);
+    expect(isLocalTime("not-a-time")).toBe(false);
+  });
+});
+
+describe("localDateTimeSchema", () => {
+  const isLocalDateTime = Schema.is(localDateTimeSchema);
+
+  test("accepts canonical local date-times to the minute or second", () => {
+    expect(isLocalDateTime("2026-07-10T08:30")).toBe(true);
+    expect(isLocalDateTime("2026-07-10T08:30:15")).toBe(true);
+  });
+
+  test("rejects noncanonical, offset and invalid date-times", () => {
+    expect(isLocalDateTime("2026-07-10T08:30:00")).toBe(false);
+    expect(isLocalDateTime("2026-07-10T08:30Z")).toBe(false);
+    expect(isLocalDateTime("2026-02-30T08:30")).toBe(false);
+    expect(isLocalDateTime("not-a-date-time")).toBe(false);
+  });
 });
 
 describe("isPlainDateString", () => {
@@ -93,14 +139,7 @@ describe("isPlainDateString", () => {
   test("rejects impossible and noncanonical dates", () => {
     expect(isCanonicalPlainDate("2026-02-30")).toBe(false);
     expect(isCanonicalPlainDate("2026-7-10")).toBe(false);
-  });
-});
-
-describe("temporalInstantToIsoString", () => {
-  test("formats an instant as a JavaScript ISO timestamp", () => {
-    expect(
-      temporalInstantToIsoString(Temporal.Instant.from("2026-07-10T08:00:00Z"))
-    ).toBe("2026-07-10T08:00:00.000Z");
+    expect(isCanonicalPlainDate("not-a-date")).toBe(false);
   });
 });
 
@@ -120,5 +159,111 @@ describe("local date-time input conversion", () => {
         timeZone: "Europe/Prague",
       })
     ).toBe("2026-08-01T08:00:00Z");
+  });
+});
+
+describe("localDateTimeToInstant", () => {
+  const timeZone = "Europe/Prague";
+
+  test.each([
+    ["summer time", "2026-08-01T10:00", "2026-08-01T08:00:00Z"],
+    ["standard time", "2026-01-15T10:00", "2026-01-15T09:00:00Z"],
+    [
+      "a time skipped by the spring DST gap",
+      "2026-03-29T02:30",
+      "2026-03-29T01:30:00Z",
+    ],
+    [
+      "a time repeated by the autumn DST overlap",
+      "2026-10-25T02:30",
+      "2026-10-25T00:30:00Z",
+    ],
+  ])("resolves %s in the supplied time zone", (_, dateTime, expected) => {
+    const instant = localDateTimeToInstant({ dateTime, timeZone });
+
+    expect(instant).toBeInstanceOf(Temporal.Instant);
+    expect(instant.equals(Temporal.Instant.from(expected))).toBe(true);
+  });
+});
+
+describe("parseInstant", () => {
+  test("parses ISO strings with an offset", () => {
+    expect(
+      Option.map(parseInstant("2026-07-10T10:00:00+02:00"), String)
+    ).toEqual(Option.some("2026-07-10T08:00:00Z"));
+  });
+
+  test("returns none for local and invalid strings", () => {
+    expect(parseInstant("2026-07-10T10:00:00")).toEqual(Option.none());
+    expect(parseInstant("not-an-instant")).toEqual(Option.none());
+  });
+});
+
+describe("parsePlainDate", () => {
+  test("parses calendar dates", () => {
+    expect(Option.map(parsePlainDate("2026-07-10"), String)).toEqual(
+      Option.some("2026-07-10")
+    );
+  });
+
+  test("returns none for invalid dates", () => {
+    expect(parsePlainDate("2026-02-30")).toEqual(Option.none());
+    expect(parsePlainDate("not-a-date")).toEqual(Option.none());
+  });
+});
+
+describe("getPlainDatesBetween", () => {
+  test("returns inclusive dates across a month boundary", () => {
+    const dates = getPlainDatesBetween(
+      Temporal.PlainDate.from("2026-01-30"),
+      Temporal.PlainDate.from("2026-02-02")
+    );
+
+    expect(dates.map(String)).toEqual([
+      "2026-01-30",
+      "2026-01-31",
+      "2026-02-01",
+      "2026-02-02",
+    ]);
+    expect(dates.every((date) => date instanceof Temporal.PlainDate)).toBe(
+      true
+    );
+  });
+
+  test("returns an empty list when the start follows the end", () => {
+    expect(
+      getPlainDatesBetween(
+        Temporal.PlainDate.from("2026-02-02"),
+        Temporal.PlainDate.from("2026-02-01")
+      )
+    ).toEqual([]);
+  });
+
+  test("returns one date when the start equals the end", () => {
+    expect(
+      getPlainDatesBetween(
+        Temporal.PlainDate.from("2026-02-01"),
+        Temporal.PlainDate.from("2026-02-01")
+      ).map(String)
+    ).toEqual(["2026-02-01"]);
+  });
+});
+
+describe("currentPlainDate", () => {
+  test("reads today in the time zone from the Effect clock", async () => {
+    const dates = await Effect.runPromise(
+      Effect.gen(function* () {
+        // 22:30 UTC is already the next day in Prague (CEST).
+        yield* TestClock.setTime(
+          Temporal.Instant.from("2026-08-31T22:30:00Z").epochMilliseconds
+        );
+        return [
+          yield* currentPlainDate("Europe/Prague"),
+          yield* currentPlainDate("UTC"),
+        ];
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(dates).toEqual(["2026-09-01", "2026-08-31"]);
   });
 });

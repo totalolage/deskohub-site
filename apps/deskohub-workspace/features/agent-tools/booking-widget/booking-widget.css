@@ -1,0 +1,70 @@
+@import "tailwindcss" source(none);
+@import "../../../shared/styles/brand-theme.css";
+
+@source "./*.tsx";
+@source "../../../shared/components/ui/{button,choice-card,input,label,segmented-control}.tsx";
+
+@theme inline {
+  --color-surface: var(--view-surface);
+  --color-muted: var(--view-muted);
+}
+
+/* The brand font isn't inlined: the stack falls back to system fonts. */
+:root {
+  --font-sculpin: "Sculpin";
+}
+
+/* The view follows the host's theme (`data-theme`) and takes its colours
+   from the host's style variables, with brand fallbacks for hosts that send
+   none. Text and its tints come from the host's primary text colour, so the
+   brand navy turns light in a dark host. The brand orange stays the accent,
+   which hosts don't provide. In a dark host no orange keeps both 4.5:1 for
+   white text on it and 3:1 against the background, so the accent turns
+   light and the text on it, white elsewhere, turns dark. */
+:root {
+  --brand-navy-blue: var(--color-text-primary, #00024f);
+  --brand-burned-orange-ink: var(--color-text-danger, #7a2e0a);
+  --view-surface: var(--color-background-primary, #ffffff);
+  --view-muted: var(
+    --color-text-secondary,
+    color-mix(in oklab, var(--brand-navy-blue) 70%, transparent)
+  );
+  --view-ring: var(--color-ring-primary, var(--brand-burned-orange));
+}
+
+:root[data-theme="dark"] {
+  --brand-navy-blue: var(--color-text-primary, #eef0ff);
+  --brand-burned-orange: #f08a4b;
+  --brand-burned-orange-ink: var(--color-text-danger, #ff9a6b);
+  /* The primitives' text on the accent and its top highlight. */
+  --color-white: #14152a;
+  --view-surface: var(--color-background-primary, #14152a);
+}
+
+@layer base {
+  /* Focus rings sit on the view's surface, not on white. */
+  * {
+    --tw-ring-offset-color: var(--view-surface);
+  }
+}
+
+/* Focus indicators take the host's ring colour. Unlayered, so it overrides
+   the primitives' accent rings and outlines. */
+:focus-visible,
+:has(> :focus-visible) {
+  --tw-ring-color: var(--view-ring);
+  outline-color: var(--view-ring);
+}
+
+body {
+  margin: 0;
+  background: var(--view-surface);
+  font-family: var(--font-sans, var(--font-body));
+  font-weight: var(--font-body-weight);
+  color: var(--brand-navy-blue);
+}
+
+h1 {
+  font-family: var(--font-sans, var(--font-heading));
+  font-weight: var(--font-heading-weight);
+}

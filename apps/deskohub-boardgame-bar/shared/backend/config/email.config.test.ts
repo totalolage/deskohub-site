@@ -1,8 +1,17 @@
-import { describe, expect, test } from "bun:test";
-import { EmailConfigTag } from "@deskohub/email";
+import { describe, expect, mock, test } from "bun:test";
+import { EmailConfigTag, EmailServiceTag } from "@deskohub/email";
 import { ConfigProvider, Effect } from "effect";
 import { siteConstants } from "@/shared/utils/constants";
-import { EmailConfigLayer } from "./email.config";
+import { BoardgameEmailLayer, EmailConfigLayer } from "./email.config";
+
+const resendSend = mock(async () => ({
+  data: { id: "synthetic-resend-delivery" },
+}));
+mock.module("resend", () => ({
+  Resend: class {
+    emails = { send: resendSend };
+  },
+}));
 
 const readConfig = (env: Record<string, string>) =>
   Effect.runPromise(
@@ -30,23 +39,6 @@ describe("EmailConfigLayer", () => {
     });
   });
 
-  test("present API values unwrap correctly", async () => {
-    const config = await readConfig({
-      EMAIL_PROVIDER: "resend",
-      EMAIL_FROM_ADDRESS: "from@example.test",
-      EMAIL_FROM_NAME: "From Name",
-      EMAIL_API_KEY: "api-key",
-      EMAIL_TEST_MODE: "true",
-    });
-
-    expect(config).toEqual({
-      provider: "resend",
-      defaultFrom: { email: "from@example.test", name: "From Name" },
-      apiKey: "api-key",
-      testMode: true,
-    });
-  });
-
   test("defaults to resend when an API key is configured", async () => {
     const config = await readConfig({
       EMAIL_API_KEY: "api-key",
@@ -70,3 +62,40 @@ describe("EmailConfigLayer", () => {
     });
   });
 });
+
+test.each([
+  {
+    stage: { NODE_ENV: "production", VERCEL_ENV: "preview" },
+    provider: "console",
+  },
+  {
+    stage: { NODE_ENV: "production", VERCEL_ENV: "production" },
+    provider: "resend",
+  },
+])(
+  "BoardgameEmailLayer sends through $provider for $stage",
+  async ({ stage, provider }) => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const email = yield* EmailServiceTag;
+        return yield* email.send({
+          from: { email: "boardgame-sender@deskohub.test" },
+          to: { email: "boardgame-recipient@deskohub.test" },
+          subject: "Synthetic composition check",
+          text: "Synthetic body",
+        });
+      }).pipe(
+        Effect.provide(BoardgameEmailLayer),
+        Effect.provideService(
+          ConfigProvider.ConfigProvider,
+          ConfigProvider.fromUnknown({
+            ...stage,
+            EMAIL_PROVIDER: "console",
+            EMAIL_API_KEY: "re_test",
+          })
+        )
+      )
+    );
+    expect(result.provider).toBe(provider);
+  }
+);

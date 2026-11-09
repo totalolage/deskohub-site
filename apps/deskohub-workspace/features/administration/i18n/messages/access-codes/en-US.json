@@ -1,0 +1,72 @@
+{
+  "accessCodesPageTitle": "Create an access code",
+  "accessCodesFormLoading": "Loading the access-code form",
+  "accessCodesFormName": "Create an access code",
+  "accessCodesNameLabel": "Name",
+  "accessCodesNameRequired": "Enter a name for this access code.",
+  "accessCodesNameTooLong": [
+    {
+      "declarations": [
+        "input maximum",
+        "local maximumPlural = maximum: plural",
+        "local formattedMaximum = maximum: number"
+      ],
+      "selectors": ["maximumPlural"],
+      "match": {
+        "maximumPlural=one": "Use at most {formattedMaximum} character.",
+        "maximumPlural=other": "Use at most {formattedMaximum} characters."
+      }
+    }
+  ],
+  "accessCodesWindowLegend": "Access window ({timeZone})",
+  "accessCodesStartsLabel": "Starts",
+  "accessCodesStartRequired": "Choose a start time.",
+  "accessCodesStartInvalid": "Choose a valid start time on the whole hour.",
+  "accessCodesEndsLabel": "Ends",
+  "accessCodesEndRequired": "Choose an end time.",
+  "accessCodesEndInvalid": "Choose a valid end time on the whole hour.",
+  "accessCodesWindowDurationInvalid": [
+    {
+      "declarations": [
+        "input minimum",
+        "input maximum",
+        "local maximumPlural = maximum: plural",
+        "local formattedMinimum = minimum: number",
+        "local formattedMaximum = maximum: number"
+      ],
+      "selectors": ["maximumPlural"],
+      "match": {
+        "maximumPlural=one": "The end must be {formattedMinimum} to {formattedMaximum} hour after the start.",
+        "maximumPlural=other": "The end must be {formattedMinimum} to {formattedMaximum} hours after the start."
+      }
+    }
+  ],
+  "accessCodesDurationSummary": "Duration: {duration}",
+  "accessCodesSubmit": "Create access code",
+  "accessCodesSubmitting": "Creating…",
+  "accessCodesPinShownOnceWarning": "This PIN is shown only once and cannot be retrieved later. Copy it somewhere safe before leaving this page.",
+  "accessCodesCopyCode": "Copy code",
+  "accessCodesCopied": "Copied",
+  "accessCodesResultName": "Access code",
+  "accessCodesResultValidFrom": "Valid from",
+  "accessCodesResultValidUntil": "Valid until",
+  "accessCodesResultDuration": "Duration",
+  "accessCodesCreateAnother": "Create another access code",
+  "accessCodesAlreadyCreated": "This access code was already created. Its PIN was shown only once at creation and cannot be displayed again.",
+  "accessCodesAmbiguousNotice": "The provider did not confirm whether this access code exists. This attempt is closed; it will not be retried automatically.",
+  "accessCodesCleanupRequiredNotice": "A previous attempt for this window is still ambiguous. Its possible credential must be resolved at the lock before another code is created.",
+  "accessCodesCleanupInstructions": "Before creating another code for this window, check the lock in the Igloohome app over Bluetooth and remove “{name}” if it is there.",
+  "accessCodesCleanupFormName": "Confirm the lock is clean",
+  "accessCodesCleanupConfirmationLabel": "I removed the named access code at the lock, or verified that it is absent.",
+  "accessCodesCleanupConfirmationRequired": "Confirm the lock check before you continue.",
+  "accessCodesStartOver": "Start over",
+  "accessCodesFailureRejected": "The provider rejected this access code. Adjust the details and try again.",
+  "accessCodesFailureInProgress": "This access code is already being created. Wait a moment and try again.",
+  "accessCodesFailureUnavailable": "Access-code creation is temporarily unavailable. Try again in a few minutes.",
+  "accessCodesFailureReconciled": "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code. Submit again to create the access code.",
+  "accessCodesCreateFailed": "The access code could not be created. Try again.",
+  "accessCodesServerUnreachable": "The server could not be reached. This attempt is kept, so you can safely try again.",
+  "accessCodesActionTimedOut": "The server took too long to respond. Try again.",
+  "accessCodesActionFailedUnexpectedly": "Something went wrong on the server. Try again.",
+  "accessCodesAuthenticationRequired": "Administrator authentication is required."
+}

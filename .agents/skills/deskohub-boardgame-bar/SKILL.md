@@ -1,15 +1,30 @@
 ---
 name: deskohub-boardgame-bar
-description: Boardgame Bar opening-hours, email, reservation, webhook, feature-flag, and caching handling.
+description: Boardgame Bar, deskohub-boardgame-bar, bar.deskohub.cz, opening hours, Google Calendar webhook, table reservation, ChoiceQR, training-room request, contact form email, Resend, static feature flags, siteConstants, cache tags, Temporal polyfill.
 ---
 
 # Deskohub Boardgame Bar
 
-Read only the reference relevant to the change:
+Business behavior lives in `apps/deskohub-boardgame-bar/docs`. Read the matching spec before changing customer or operator behavior.
 
-- For public opening-hours exceptions and Calendar maintenance, read [references/opening-hours.md](references/opening-hours.md).
-- For email provider selection and delivery, read [references/email.md](references/email.md).
-- For table and training-room reservation implementation, read [references/reservations.md](references/reservations.md).
-- For static feature flags, development detection, cache tags, and invalidation, read [references/runtime.md](references/runtime.md).
+- For opening-hours exceptions, the Google Calendar watch, and its cron, read [references/opening-hours.md](references/opening-hours.md).
+- For table reservations and training-room requests, read [references/reservations.md](references/reservations.md).
+- For email provider selection and sender addresses, read [references/email.md](references/email.md).
 
-Consult the business-facing specifications under `apps/deskohub-boardgame-bar/docs` for customer and operator behavior. Update the relevant reference when developer feedback changes a durable implementation convention.
+Paths below are relative to `apps/deskohub-boardgame-bar`.
+
+## Feature flags
+
+Release gates are static: `siteConstants.featureFlags` in `shared/utils/constants.ts`. Changing one needs a deployment. Gate at the page, primary action, or major presentation boundary. When you add a temporary flag, add a cleanup task.
+
+## Development-only behavior
+
+Detect development with `isDev` from `shared/utils/environment.ts`, not scattered environment checks. Never relax webhook authentication based on a browser-controlled value; on the client, `isDev` also trusts the hostname.
+
+## Cache tags
+
+Tag cached server functions with the helpers in `shared/utils/cache-tags.ts`, not ad hoc strings. Apply broad and entity-specific tags when callers need both invalidation scopes. After a mutation or an authenticated provider notification, invalidate only the affected tags.
+
+## Temporal global
+
+`shared/polyfills/temporal.ts` installs the `Temporal` global idempotently. `instrumentation.ts` loads it for the server and `app/rootLayout.tsx` loads it for static prerender, because Next.js skips instrumentation during `next build`. Feature modules use the global and never import the polyfill.

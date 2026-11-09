@@ -15,15 +15,15 @@ import {
   workspaceMeetingRoomReservationTableTag,
 } from "@/features/checkout/backend/reservation/workspace-table-selection";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   isMeetingRoomWholeDayReservationDuration,
   type MeetingRoomReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { formatMoney } from "@/shared/money/money";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
-import { normalizeBrowserText, waitForBrowserText } from "../browser";
-import { getSubmitMeetingRoomReservationScript } from "../browser-scripts";
+import { normalizeBrowserText, waitForPageText } from "../browser";
+import type { OpenE2EBrowserSession } from "../browser-session";
 import {
   loadMeetingRoomAvailability,
   type MeetingRoomCheckoutSlot,
@@ -31,7 +31,10 @@ import {
   reuseMeetingRoomCheckoutContact,
   selectAvailableMeetingRoomSlots,
 } from "../checkout/data";
-import { reservationCookieIsolationStep } from "../checkout/reservation-cookie-isolation";
+import {
+  toReservationSelectionPreparation,
+  toReservationStep,
+} from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -44,7 +47,6 @@ import {
   loadDotyposCapacityInventory,
 } from "../integrations/dotypos";
 import { pollUntil } from "../polling";
-import type { Runner } from "../runtime";
 import { assert, log } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
@@ -61,10 +63,15 @@ import {
 } from "./payment-terminal";
 import { assertReservationReplacement } from "./reservation-reuse";
 
-// The first slots drive the meeting-room checkout cases below; the four
-// trailing one-hour slots are reserved for the reservation-link regression
-// cases in ./reservation-links.ts (three link cases plus a replacement slot).
+// The first slots drive the meeting-room checkout cases below; the next four
+// one-hour slots are reserved for the reservation-link regression cases in
+// ./reservation-links.ts (three link cases plus a replacement slot), and the
+// last four-hour slot for the meeting-room URL-state case in
+// ./reservation-url-state.ts, which never holds it.
 export const meetingRoomE2ECoreSlotCount = 6;
+export const meetingRoomE2EReservationLinkSlotCount = 4;
+export const meetingRoomE2EUrlStateSlotIndex =
+  meetingRoomE2ECoreSlotCount + meetingRoomE2EReservationLinkSlotCount;
 
 export const meetingRoomE2EDurations = [
   { unit: "hour", amount: 1 },
@@ -77,6 +84,7 @@ export const meetingRoomE2EDurations = [
   { unit: "hour", amount: 1 },
   { unit: "hour", amount: 1 },
   { unit: "hour", amount: 1 },
+  { unit: "hour", amount: 4 },
 ] as const satisfies readonly MeetingRoomReservationDuration[];
 
 export type MeetingRoomE2EPreparation = {
@@ -102,13 +110,11 @@ export const makeMeetingRoomE2ECases = ({
   datasourceConfig,
   flowStates,
   preparation,
-  run,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly flowStates: CheckoutFlowState[];
   readonly preparation: MeetingRoomE2EPreparation;
-  readonly run: Runner;
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
   WorkspaceE2EError,
@@ -183,93 +189,60 @@ export const makeMeetingRoomE2ECases = ({
     return [
       {
         checkoutStates: [paidState],
-        execute: ({ runStep, session }) => {
+        execute: ({ openSeparateSession, openSession, runStep }) => {
           return executeCheckoutFlow({
+            openSeparateSession,
             config,
             data: paidData,
             datasourceConfig,
             flow: {
               id: "meeting-room-paid-one-hour",
-              submitReservationScript: getSubmitMeetingRoomReservationScript,
+              // Picks the start from the listed free start times; the other
+              // hourly cases type it into the time input.
+              toReservationPreparation: (data) =>
+                toReservationStep(data, {
+                  startTimeEntry: "listed",
+                }),
             },
             payPageSteps: () => [
               {
                 execute: assertMeetingRoomPayPage(
                   config,
                   paidData,
-                  run,
-                  session
+                  openSession
                 ),
                 id: "assert-meeting-room-pay-summary",
                 timeoutMs: config.timeouts.uiTransition,
               },
             ],
-            run,
             runStep,
-            session,
+            openSession,
             state: paidState,
-          })
-            .pipe(Effect.provideService(HttpClient.HttpClient, httpClient))
-            .pipe(
-              Effect.flatMap(() =>
-                tryWorkspaceE2ESync(
-                  "read paid meeting-room order and customer for reservation cookie isolation",
-                  () => {
-                    const orderId = paidState.orderId;
-                    const customerId =
-                      paidState.checkoutRow?.dotypos_customer_id;
-                    assert(
-                      orderId,
-                      "paid meeting-room order id missing after checkout"
-                    );
-                    assert(
-                      customerId,
-                      "paid meeting-room customer id missing after checkout"
-                    );
-                    return { customerId, orderId };
-                  }
-                ).pipe(
-                  Effect.flatMap(({ customerId, orderId }) =>
-                    runStep(
-                      reservationCookieIsolationStep({
-                        config,
-                        customerId,
-                        data: paidData,
-                        orderId,
-                        run,
-                        session,
-                      })
-                    )
-                  )
-                )
+          }).pipe(
+            Effect.provideService(HttpClient.HttpClient, httpClient),
+            Effect.mapError((cause) =>
+              toWorkspaceE2EError(
+                "run paid meeting-room checkout e2e case",
+                cause
               )
             )
-            .pipe(
-              Effect.mapError((cause) =>
-                toWorkspaceE2EError(
-                  "run paid meeting-room checkout e2e case",
-                  cause
-                )
-              )
-            );
+          );
         },
         id: "checkout-meeting-room-paid-one-hour",
         timeoutMs: config.timeouts.checkoutCase,
       },
       {
         checkoutStates: [zeroTotalState],
-        execute: ({ runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           executeZeroTotalCheckout({
             config,
             data: zeroTotalData,
             datasourceConfig,
             discountCode: discountCodeFixtures.zeroTotal.code,
-            run,
             runStep,
-            session,
+            openSession,
             state: zeroTotalState,
-            submitReservationScript:
-              getSubmitMeetingRoomReservationScript(zeroTotalData),
+            preparation: toReservationStep(zeroTotalData),
           }).pipe(
             Effect.mapError((cause) =>
               toWorkspaceE2EError(
@@ -283,7 +256,7 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [replacementState],
-        execute: ({ runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           assertReservationReplacement({
             config,
             data: replacementData,
@@ -298,13 +271,13 @@ export const makeMeetingRoomE2ECases = ({
               id: "assert-held-meeting-room-slot-availability",
               timeoutMs: config.timeouts.datasource,
             }),
+            toSelectionPreparation: toReservationSelectionPreparation,
             replacementData: editedReplacementData,
             reservationPath: "/en-US/reservation/meeting-room",
-            run,
             runStep,
-            session,
+            openSession,
             state: replacementState,
-            submitReservationScript: getSubmitMeetingRoomReservationScript,
+            toReservationPreparation: toReservationStep,
           }).pipe(
             Effect.mapError((cause) =>
               toWorkspaceE2EError(
@@ -318,18 +291,16 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [cancelledState],
-        execute: ({ runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           assertPaymentTerminalPath({
             config,
             data: cancelledData,
             reservationPath: "/en-US/reservation/meeting-room",
-            run,
             runStep,
             scenario: cancelledScenario,
-            session,
+            openSession,
             state: cancelledState,
-            submitReservationScript:
-              getSubmitMeetingRoomReservationScript(cancelledData),
+            preparation: toReservationStep(cancelledData),
           }).pipe(
             Effect.mapError((cause) =>
               toWorkspaceE2EError(
@@ -343,30 +314,25 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [dayState],
-        execute: ({ runStep, session }) =>
+        execute: ({ openSeparateSession, openSession, runStep }) =>
           executeCheckoutFlow({
+            openSeparateSession,
             config,
             data: dayData,
             datasourceConfig,
             flow: {
               id: "meeting-room-paid-whole-day",
-              submitReservationScript: getSubmitMeetingRoomReservationScript,
+              toReservationPreparation: toReservationStep,
             },
             payPageSteps: () => [
               {
-                execute: assertMeetingRoomPayPage(
-                  config,
-                  dayData,
-                  run,
-                  session
-                ),
+                execute: assertMeetingRoomPayPage(config, dayData, openSession),
                 id: "assert-whole-day-meeting-room-pay-summary",
                 timeoutMs: config.timeouts.uiTransition,
               },
             ],
-            run,
             runStep,
-            session,
+            openSession,
             state: dayState,
           }).pipe(
             Effect.provideService(HttpClient.HttpClient, httpClient),
@@ -559,8 +525,7 @@ export const isMeetingRoomUnavailableFromInventory = ({
 const assertMeetingRoomPayPage = (
   config: WorkspaceE2EConfig,
   data: CheckoutData,
-  run: Runner,
-  session: string
+  openSession: OpenE2EBrowserSession
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const meetingRoom = yield* getMeetingRoomSlot(data);
@@ -571,12 +536,12 @@ const assertMeetingRoomPayPage = (
       : `Meeting room - ${meetingRoom.duration.amount} ${
           meetingRoom.duration.amount === 1 ? "hour" : "hours"
         }`;
-    const price = formatWorkspaceMoney(
+    const price = formatMoney(
       getWorkspaceMeetingRoomPriceForDuration(meetingRoom.duration),
       data.locale
     );
 
-    yield* waitForBrowserText({
+    yield* waitForPageText({
       description: "meeting-room pay summary",
       matches: (text) => {
         const normalized = normalizeBrowserText(text);
@@ -586,8 +551,7 @@ const assertMeetingRoomPayPage = (
           normalized.includes(normalizeBrowserText(price))
         );
       },
-      run,
-      session,
+      session: yield* openSession,
       timeoutMs: config.timeouts.uiTransition,
     });
     log("Meeting-room pay summary validated");

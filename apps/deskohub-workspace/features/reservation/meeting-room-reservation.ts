@@ -1,23 +1,31 @@
 import { Effect, Option, Schema, SchemaGetter, SchemaIssue } from "effect";
+import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
+import { getMeetingRoomEarlySetupField } from "@/features/reservation/meeting-room-early-setup";
 import {
   getMeetingRoomReservationDuration,
   getMeetingRoomReservationDurationKey,
+  isMeetingRoomWholeDayReservationDuration,
+  type MeetingRoomReservationDuration,
   meetingRoomReservationDurationKeySchema,
   meetingRoomReservationDurationSchema,
 } from "@/features/reservation/meeting-room-reservation-duration";
-import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
+import {
+  getMeetingRoomLastServiceDate,
+  getMeetingRoomReservationInterval,
+  getMeetingRoomStartDateTime,
+} from "@/features/reservation/meeting-room-reservation-time";
 import {
   defaultReservationBillingSelection,
   normalizedReservationBillingSelectionSchema,
   reservationBillingSelectionInputSchema,
 } from "@/features/reservation/reservation-billing";
 import {
+  droppingRetiredReservationCustomerMessage,
   normalizedReservationCustomerSchema,
   reservationCustomerSchema,
 } from "@/features/reservation/reservation-contact";
 import {
-  getMeetingRoomDurationValidationMessage,
   getReservationIntervalNormalization,
   hasReservationIntervalEnded,
   reservationTimestampInputSchema,
@@ -71,6 +79,7 @@ const meetingRoomReservationOrderBaseSchema = Schema.Struct({
   reservationDate: plainDateStringSchema,
   startsAt: reservationTimestampInputSchema,
   endsAt: reservationTimestampInputSchema,
+  earlySetup: Schema.optionalKey(Schema.Boolean),
 });
 
 export const meetingRoomReservationOrderInputSchema = Schema.Struct({
@@ -78,15 +87,19 @@ export const meetingRoomReservationOrderInputSchema = Schema.Struct({
   ...meetingRoomReservationOrderBaseSchema.fields,
 });
 
-export const normalizedMeetingRoomReservationOrderSchema = Schema.Struct({
-  kind: Schema.Literal(meetingRoomReservationKind),
-  ...normalizedReservationCustomerSchema.fields,
-  billing: normalizedReservationBillingSelectionSchema,
-  duration: meetingRoomReservationDurationSchema,
-  reservationDate: plainDateStringSchema,
-  startsAt: instantStringSchema,
-  endsAt: instantStringSchema,
-});
+export const normalizedMeetingRoomReservationOrderSchema =
+  droppingRetiredReservationCustomerMessage(
+    Schema.Struct({
+      kind: Schema.Literal(meetingRoomReservationKind),
+      ...normalizedReservationCustomerSchema.fields,
+      billing: normalizedReservationBillingSelectionSchema,
+      duration: meetingRoomReservationDurationSchema,
+      reservationDate: plainDateStringSchema,
+      startsAt: instantStringSchema,
+      endsAt: instantStringSchema,
+      earlySetup: Schema.optionalKey(Schema.Boolean),
+    })
+  );
 
 export type MeetingRoomReservationOrderInput =
   typeof meetingRoomReservationOrderInputSchema.Type;
@@ -99,6 +112,8 @@ export const meetingRoomReservationDetailsSchema = Schema.Struct({
   reservationDate: plainDateStringSchema,
   startsAt: instantStringSchema,
   endsAt: instantStringSchema,
+  /** The customer comes 15 minutes before `startsAt` to set up. */
+  earlySetup: Schema.optionalKey(Schema.Boolean),
 }).annotate({
   identifier: "MeetingRoomReservationDetails",
   description:
@@ -117,16 +132,31 @@ export const getMeetingRoomReservationDetails = (
     reservationDate: reservation.reservationDate,
     startsAt: reservation.startsAt,
     endsAt: reservation.endsAt,
+    ...getMeetingRoomEarlySetupField(reservation),
   });
 
-export const meetingRoomReservationPricingInputSchema = Schema.Struct({
+const meetingRoomReservationPricingInputSchema = Schema.Struct({
   kind: Schema.Literal(meetingRoomReservationKind),
   duration: meetingRoomReservationDurationSchema,
   reservationDate: plainDateStringSchema,
-}).annotate({
-  identifier: "MeetingRoomReservationPricingInput",
-  description: "The complete set of inputs that can affect meeting-room price.",
-});
+  /** Last Prague date the booking occupies; calendar sales depend on it. */
+  lastServiceDate: plainDateStringSchema,
+})
+  .check(
+    Schema.makeFilter(
+      ({ lastServiceDate, reservationDate }) =>
+        Temporal.PlainDate.compare(lastServiceDate, reservationDate) >= 0 &&
+        Temporal.PlainDate.compare(
+          lastServiceDate,
+          Temporal.PlainDate.from(reservationDate).add({ days: 1 })
+        ) <= 0
+    )
+  )
+  .annotate({
+    identifier: "MeetingRoomReservationPricingInput",
+    description:
+      "The complete set of inputs that can affect meeting-room price.",
+  });
 
 export type MeetingRoomReservationPricingInput =
   typeof meetingRoomReservationPricingInputSchema.Type;
@@ -156,39 +186,67 @@ export const getMeetingRoomAdvertisedPriceReservation = (
       kind: meetingRoomReservationKind,
       duration: reservation.duration,
       reservationDate: reservation.reservationDate,
+      lastServiceDate: getMeetingRoomLastServiceDate(reservation),
     },
   });
 
 export type MeetingRoomReservationProductInput = Pick<
   MeetingRoomReservationOrderInput,
-  "kind"
+  "kind" | "duration" | "earlySetup"
 >;
 
 export const storedMeetingRoomReservationDetailsSchema = Schema.Struct({
   kind: workspaceMeetingRoomProductIdentitySchema.fields.kind,
+  // Rows written before snapshots recorded the offer, and rows the backfill
+  // couldn't resolve, have no duration.
+  duration: Schema.optionalKey(
+    workspaceMeetingRoomProductIdentitySchema.fields.duration
+  ),
+  // Dotypos holds the room from the setup start, so the booked start is 15
+  // minutes after the stored Dotypos start.
+  earlySetup: Schema.optionalKey(Schema.Boolean),
 }).annotate({
   identifier: "StoredMeetingRoomReservationDetails",
   description:
-    "App-owned meeting-room family discriminator without Dotypos-owned reservation facts.",
+    "App-owned meeting-room product identity without Dotypos-owned reservation facts.",
 });
 
 export type StoredMeetingRoomReservationDetails =
   typeof storedMeetingRoomReservationDetailsSchema.Type;
 
-export const getStoredMeetingRoomReservationDetails = (
-  _reservation: MeetingRoomReservationProductInput
-): StoredMeetingRoomReservationDetails => ({
+export const getStoredMeetingRoomReservationDetails = ({
+  duration,
+  earlySetup,
+}: MeetingRoomReservationProductInput): StoredMeetingRoomReservationDetails => ({
   kind: meetingRoomReservationKind,
+  duration,
+  ...getMeetingRoomEarlySetupField({ earlySetup }),
 });
+
+const getMeetingRoomDurationMessage = (
+  duration: MeetingRoomReservationDuration
+) => {
+  if (isMeetingRoomWholeDayReservationDuration(duration)) {
+    return m.reservationMeetingRoomDurationWholeDay();
+  }
+
+  return m.reservationMeetingRoomDurationHours({ count: duration.amount });
+};
+
+const getMeetingRoomDurationValidationMessage = () =>
+  m.reservationValidationMeetingRoomDuration({
+    durations: workspaceMeetingRoomCatalog
+      .map(({ duration }) => getMeetingRoomDurationMessage(duration))
+      .join(", "),
+  });
 
 const intervalMatchesMeetingRoomReservationDuration = (
   reservation: MeetingRoomReservationOrderInput,
   interval: ReservationInterval
 ) => {
-  const startDateTime = Temporal.Instant.from(interval.startsAt)
-    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDateTime()
-    .toString({ smallestUnit: "minute" });
+  const startDateTime = getMeetingRoomStartDateTime(
+    Temporal.Instant.from(interval.startsAt)
+  );
   const expectedInterval = getMeetingRoomReservationInterval(
     startDateTime,
     reservation.duration
@@ -291,11 +349,9 @@ export const normalizeMeetingRoomReservationOrder = (
         name: reservation.name,
         email: reservation.email,
         phone: reservation.phone,
-        ...(reservation.message !== undefined && {
-          message: reservation.message,
-        }),
         billing: reservation.billing ?? defaultReservationBillingSelection,
         ...interval,
+        ...getMeetingRoomEarlySetupField(reservation),
       })
     )
   );
@@ -345,6 +401,7 @@ const meetingRoomReservationBaseSchema = Schema.Struct({
   billing: reservationBillingSelectionInputSchema,
   startDateTime: meetingRoomStartDateTimeSchema,
   duration: meetingRoomReservationDurationKeySchema,
+  earlySetup: Schema.Boolean,
   marketingConsent: Schema.Boolean,
 });
 
@@ -388,10 +445,10 @@ export const meetingRoomReservationDefaultValues: MeetingRoomReservationInput =
   {
     startDateTime: "",
     duration: "hour:1",
+    earlySetup: false,
     name: "",
     email: "",
     phone: "",
-    message: "",
     billing: defaultReservationBillingSelection,
     marketingConsent: false,
   };
@@ -403,18 +460,17 @@ export const getMeetingRoomReservationDefaultValues = (
     return undefined;
   }
 
-  const startDateTime = Temporal.Instant.from(reservation.startsAt)
-    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDateTime()
-    .toString({ smallestUnit: "minute" });
+  const startDateTime = getMeetingRoomStartDateTime(
+    Temporal.Instant.from(reservation.startsAt)
+  );
 
   return {
     startDateTime,
     duration: getMeetingRoomReservationDurationKey(reservation.duration),
+    earlySetup: reservation.earlySetup === true,
     name: reservation.name,
     email: reservation.email,
     phone: reservation.phone,
-    ...(reservation.message !== undefined && { message: reservation.message }),
     billing: reservation.billing,
     marketingConsent: false,
   };
@@ -441,12 +497,10 @@ export const getMeetingRoomReservationOrder = (
         .toString()
     ),
     ...interval,
+    ...getMeetingRoomEarlySetupField(reservation),
     name: reservation.name,
     email: reservation.email,
     phone: reservation.phone,
-    ...(reservation.message !== undefined && {
-      message: reservation.message,
-    }),
     billing: reservation.billing,
   });
 };

@@ -1,4 +1,5 @@
 import { deepStrictEqual } from "node:assert/strict";
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import {
   NexiOperationIdSchema,
   NexiWebhookEventIdSchema,
@@ -31,6 +32,8 @@ import {
   latePaymentRecoveries,
   legalEvidenceEvents,
   paymentAttempts,
+  referralAttributions,
+  referralInvitationClaims,
   voucherRedemptions,
   vouchers,
   webhookEvents,
@@ -40,10 +43,12 @@ import type {
   PaymentAttemptId,
   StoredWebhookEventId,
 } from "@/features/checkout/checkout-identifiers";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { LegalEvidenceAcknowledgements } from "@/features/checkout/legal-evidence";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import type { VoucherId } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import type { Money } from "@/shared/money/money";
+import { matchesExpectedReservationDetails } from "../checkout/reservation-details";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   isNexiWebhookDiagnosticCode,
@@ -56,7 +61,10 @@ import {
 } from "../errors";
 import { pollUntil } from "../polling";
 import { assert, log } from "../runtime";
-import { workspaceE2EPollIntervalMs } from "../timeouts";
+import {
+  workspaceE2EPollInitialIntervalMs,
+  workspaceE2EPollIntervalMs,
+} from "../timeouts";
 import type {
   CheckoutData,
   CheckoutRow,
@@ -86,6 +94,7 @@ export const requireProviderSessionRowAfterRedirect = (
       ),
       {
         ...options,
+        initialIntervalMs: workspaceE2EPollInitialIntervalMs.database,
         intervalMs: workspaceE2EPollIntervalMs.datasource,
       }
     );
@@ -94,6 +103,7 @@ export const requireProviderSessionRowAfterRedirect = (
 export const waitForProviderSessionRowAfterRedirect = (
   readRow: Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError>,
   options: {
+    readonly initialIntervalMs?: number;
     readonly intervalMs: number;
     readonly onRow?: (row: CheckoutRow) => void;
     readonly timeoutMs: number;
@@ -113,6 +123,7 @@ export const waitForProviderSessionRowAfterRedirect = (
       Effect.map((row) => (isProviderSessionRow(row) ? row : undefined))
     ),
     {
+      initialIntervalMs: options.initialIntervalMs,
       intervalMs: options.intervalMs,
       label: "provider session row after hosted redirect",
       timeoutMs: options.timeoutMs,
@@ -262,6 +273,7 @@ export const validatePostgres = (
         )
       ),
       {
+        initialIntervalMs: workspaceE2EPollInitialIntervalMs.database,
         intervalMs: workspaceE2EPollIntervalMs.datasource,
         label: `Postgres checkout rows for ${orderId}`,
         timeoutMs: config.timeouts.datasource,
@@ -338,6 +350,20 @@ export const validateDiscountApplications = (
         .leftJoin(
           voucherRedemptions,
           eq(voucherRedemptions.applicationId, discountApplications.id)
+        )
+        // A checkout may restart its payment; only the active attempt counts.
+        .innerJoin(
+          workspaceReservations,
+          and(
+            eq(
+              workspaceReservations.id,
+              discountApplications.workspaceReservationId
+            ),
+            eq(
+              workspaceReservations.activePaymentAttemptId,
+              discountApplications.paymentAttemptId
+            )
+          )
         )
         .where(eq(discountApplications.workspaceReservationId, orderId))
         .orderBy(asc(discountApplications.sequence))
@@ -516,7 +542,7 @@ export const validateVoucherRedemptions = (
     readonly orderId: WorkspaceReservationId;
     readonly subtotalAfter: "positive" | "zero";
   }[],
-  creditPerRun: WorkspaceMoney
+  creditPerRun: Money
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
@@ -624,7 +650,7 @@ export const validateVoucherRedemptions = (
 
 interface VoucherRedemptionRow {
   readonly adjustment: {
-    readonly amount?: WorkspaceMoney;
+    readonly amount?: Money;
     readonly kind?: string;
   };
 }
@@ -649,6 +675,7 @@ export const validateInternalPostgres = (
         )
       ),
       {
+        initialIntervalMs: workspaceE2EPollInitialIntervalMs.database,
         intervalMs: workspaceE2EPollIntervalMs.datasource,
         label: `internal Postgres checkout rows for ${orderId}`,
         timeoutMs: config.timeouts.datasource,
@@ -743,6 +770,118 @@ export const readCheckoutRow = (
     return yield* readCheckoutRowFromDatabase(db, orderId);
   });
 
+/**
+ * The referral facts recorded for one paid order's booked customer: its
+ * attributions, every invitation claim, and the discount applications of the
+ * order's active payment attempt that a claim may point at.
+ */
+export type ReferralInvitationPaymentRecord = {
+  readonly activePaymentAttemptId: string | null;
+  readonly applications: readonly {
+    readonly adjustment: unknown;
+    readonly id: string;
+    readonly label: string;
+    readonly paymentAttemptId: string;
+  }[];
+  readonly attributions: readonly {
+    readonly referrerDotyposCustomerId: string;
+  }[];
+  readonly claims: readonly {
+    readonly applicationId: string;
+    readonly paymentAttemptId: string;
+    readonly state: string;
+  }[];
+  readonly dotyposCustomerId: string | null;
+  readonly paymentState: string;
+};
+
+export const readReferralInvitationPayment = (
+  orderId: WorkspaceReservationId
+): Effect.Effect<
+  ReferralInvitationPaymentRecord | undefined,
+  WorkspaceE2EError,
+  E2EDatabase
+> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const [reservation] = yield* runRetrySafeDatabaseOperation(
+      "read referral invitation reservation",
+      db
+        .select({
+          activePaymentAttemptId: workspaceReservations.activePaymentAttemptId,
+          dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+          paymentState: workspaceReservations.paymentState,
+        })
+        .from(workspaceReservations)
+        .where(eq(workspaceReservations.id, orderId))
+        .limit(1)
+    );
+    if (!reservation) return undefined;
+    const customerId = reservation.dotyposCustomerId;
+    const attemptId = reservation.activePaymentAttemptId;
+    const [attributions, claims, applications] = yield* Effect.all([
+      customerId === null
+        ? Effect.succeed([])
+        : runRetrySafeDatabaseOperation(
+            "read referral attributions",
+            db
+              .select({
+                referrerDotyposCustomerId:
+                  referralAttributions.referrerDotyposCustomerId,
+              })
+              .from(referralAttributions)
+              .where(
+                eq(referralAttributions.invitedDotyposCustomerId, customerId)
+              )
+          ),
+      customerId === null
+        ? Effect.succeed([])
+        : runRetrySafeDatabaseOperation(
+            "read referral invitation claims",
+            db
+              .select({
+                applicationId: referralInvitationClaims.applicationId,
+                paymentAttemptId: referralInvitationClaims.paymentAttemptId,
+                state: referralInvitationClaims.state,
+              })
+              .from(referralInvitationClaims)
+              .where(
+                eq(
+                  referralInvitationClaims.invitedDotyposCustomerId,
+                  customerId
+                )
+              )
+          ),
+      attemptId === null
+        ? Effect.succeed([])
+        : runRetrySafeDatabaseOperation(
+            "read active attempt discount applications",
+            db
+              .select({
+                adjustment: discountApplications.adjustment,
+                id: discountApplications.id,
+                label: discountApplications.label,
+                paymentAttemptId: discountApplications.paymentAttemptId,
+              })
+              .from(discountApplications)
+              .where(
+                and(
+                  eq(discountApplications.workspaceReservationId, orderId),
+                  eq(discountApplications.paymentAttemptId, attemptId)
+                )
+              )
+          ),
+    ]);
+    return {
+      activePaymentAttemptId: attemptId,
+      applications,
+      attributions,
+      claims,
+      dotyposCustomerId: customerId,
+      paymentState: reservation.paymentState,
+    };
+  });
+
 export const waitForCheckoutRow = (
   config: DatasourceConfig,
   orderId: WorkspaceReservationId
@@ -750,6 +889,7 @@ export const waitForCheckoutRow = (
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
     return yield* pollUntil(readCheckoutRowFromDatabase(db, orderId), {
+      initialIntervalMs: workspaceE2EPollInitialIntervalMs.database,
       intervalMs: workspaceE2EPollIntervalMs.datasource,
       label: "checkout row",
       timeoutMs: config.timeouts.datasource,
@@ -758,9 +898,11 @@ export const waitForCheckoutRow = (
 
 export const readCleanupCheckoutRows = (
   createdAfter: Date,
-  data: CheckoutData
+  data: CheckoutData,
+  customerIds: readonly DotyposCustomerId[]
 ): Effect.Effect<readonly CheckoutRow[], WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
+    if (customerIds.length === 0) return [];
     const { db } = yield* E2EDatabase;
     const reservations = yield* runRetrySafeDatabaseOperation(
       "read checkout cleanup rows",
@@ -774,11 +916,11 @@ export const readCleanupCheckoutRows = (
               Temporal.Instant.fromEpochMilliseconds(createdAfter.getTime())
             ),
             isNotNull(workspaceReservations.dotyposReservationId),
+            inArray(workspaceReservations.dotyposCustomerId, [...customerIds]),
             ne(workspaceReservations.paymentState, "paid"),
-            eq(
-              workspaceReservations.reservationDetails,
-              data.expectedReservationDetails
-            ),
+            // Narrow by containment so snapshots carrying optional product
+            // identity still match; the decoded rows are matched below.
+            sql`${workspaceReservations.reservationDetails} @> ${JSON.stringify(data.expectedReservationDetails)}::jsonb`,
             eq(workspaceReservations.locale, data.locale)
           )
         )
@@ -791,7 +933,14 @@ export const readCleanupCheckoutRows = (
       { concurrency: "inherit" }
     ).pipe(
       Effect.map((rows) =>
-        rows.filter((row): row is CheckoutRow => row !== undefined)
+        rows.filter(
+          (row): row is CheckoutRow =>
+            row !== undefined &&
+            matchesExpectedReservationDetails(
+              row.reservation_details,
+              data.expectedReservationDetails
+            )
+        )
       )
     );
   });
@@ -803,7 +952,7 @@ export const markPaymentTerminalForE2E = (
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
-    const failureCode = `workspace_e2e_nexi_${scenario.state}`;
+    const { failureCode } = scenario;
     const providerOperationId = NexiOperationIdSchema.make(
       `workspace-e2e-${scenario.state}-${orderId}`
     );
@@ -864,6 +1013,137 @@ export const markPaymentTerminalForE2E = (
       "assert terminal checkout row exists",
       () => {
         assert(row, "terminal checkout row missing");
+        return row;
+      }
+    );
+  });
+
+const nexiSandboxRejectedFailureCode = "workspace_e2e_nexi_sandbox_rejected";
+
+// Unpaid terminal payment states from which checkout starts a new attempt.
+const isRestartablePaymentState = (state: string | null) =>
+  state === "failed" || state === "cancelled" || state === "expired";
+
+// Releases every reserved claim of a rejected attempt with the columns a
+// terminal payment release writes, so a fresh attempt can claim them again.
+// Referral invitations allow one active claim per invited customer, so a
+// still-reserved invitation would block the restarted attempt's admission.
+export const releaseRejectedAttemptClaims = (
+  db: Pick<DatabaseClient, "update">,
+  paymentAttemptId: PaymentAttemptId,
+  releaseReason: string,
+  releasedAt: Temporal.Instant
+) => {
+  const releasedClaim = {
+    releaseReason,
+    releasedAt,
+    state: "released",
+    updatedAt: releasedAt,
+  } as const;
+  return [
+    db
+      .update(discountCodeRedemptions)
+      .set(releasedClaim)
+      .where(
+        and(
+          eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId),
+          eq(discountCodeRedemptions.state, "reserved")
+        )
+      ),
+    db
+      .update(voucherRedemptions)
+      .set(releasedClaim)
+      .where(
+        and(
+          eq(voucherRedemptions.paymentAttemptId, paymentAttemptId),
+          eq(voucherRedemptions.state, "reserved")
+        )
+      ),
+    db
+      .update(referralInvitationClaims)
+      .set(releasedClaim)
+      .where(
+        and(
+          eq(referralInvitationClaims.paymentAttemptId, paymentAttemptId),
+          eq(referralInvitationClaims.state, "reserved")
+        )
+      ),
+  ] as const;
+};
+
+// Retires a payment attempt the Nexi sandbox rejected before authorization the
+// way a provider failure would: the attempt and the reservation payment fail
+// while the hold stays, and the attempt's discount-code, voucher, and referral
+// invitation claims are released.
+// Reopening the checkout pay page then starts a fresh attempt and Nexi order.
+export const retireRejectedPaymentAttemptForE2E = (
+  orderId: WorkspaceReservationId,
+  paymentAttemptId: PaymentAttemptId
+): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const failureCode = nexiSandboxRejectedFailureCode;
+    const now = Temporal.Now.instant();
+
+    yield* runDatabaseOperation(
+      "retire rejected payment attempt",
+      db.transaction((tx) =>
+        Effect.gen(function* () {
+          yield* tx
+            .update(paymentAttempts)
+            .set({ state: "failed", failureCode, updatedAt: now })
+            .where(
+              and(
+                eq(paymentAttempts.id, paymentAttemptId),
+                eq(paymentAttempts.workspaceReservationId, orderId),
+                inArray(paymentAttempts.state, ["created", "pending"])
+              )
+            );
+
+          yield* tx
+            .update(workspaceReservations)
+            .set({ paymentState: "failed", failureCode, updatedAt: now })
+            .where(
+              and(
+                eq(workspaceReservations.id, orderId),
+                eq(
+                  workspaceReservations.activePaymentAttemptId,
+                  paymentAttemptId
+                ),
+                eq(workspaceReservations.reservationState, "held"),
+                eq(workspaceReservations.paymentState, "pending")
+              )
+            );
+
+          for (const release of releaseRejectedAttemptClaims(
+            tx,
+            paymentAttemptId,
+            failureCode,
+            now
+          )) {
+            yield* release;
+          }
+        })
+      )
+    );
+
+    const row = yield* readCheckoutRowFromDatabase(db, orderId);
+    return yield* tryWorkspaceE2ESync(
+      "assert rejected payment attempt retired",
+      () => {
+        assert(row, "retired checkout row missing");
+        // The app may already have failed the attempt from a Nexi
+        // notification; any unpaid terminal state lets checkout start afresh.
+        assert(
+          row.payment_attempt_id === paymentAttemptId &&
+            isRestartablePaymentState(row.payment_attempt_state) &&
+            isRestartablePaymentState(row.payment_state),
+          "rejected payment attempt was not retired"
+        );
+        assert(
+          row.reservation_state === "held",
+          "reservation hold ended before the payment could restart"
+        );
         return row;
       }
     );
@@ -1017,6 +1297,9 @@ export const waitForLatePaymentRecoveryOutcome = (
 
         const checkoutRow = yield* readCheckoutRowFromDatabase(db, orderId);
         if (!checkoutRow) return undefined;
+        // Status-page verification can settle the recovery while the
+        // replayed webhook is still being processed; wait for both.
+        if (checkoutRow.webhook_state !== "processed") return undefined;
         if (
           expected.state === "recovered" &&
           checkoutRow.fulfillment_state !== "processing" &&
@@ -1027,6 +1310,7 @@ export const waitForLatePaymentRecoveryOutcome = (
         return { checkoutRow, recovery };
       }),
       {
+        initialIntervalMs: workspaceE2EPollInitialIntervalMs.database,
         intervalMs: workspaceE2EPollIntervalMs.datasource,
         label: `late payment recovery for ${orderId}`,
         timeoutMs: config.timeouts.datasource,
@@ -1151,6 +1435,25 @@ export const markFulfillmentFailedForE2E = (
     );
   });
 
+const terminalUnpaidPaymentStates: ReadonlySet<string> = new Set([
+  "failed",
+  "cancelled",
+  "expired",
+]);
+
+export const getPreviewFulfillmentMarkerDiagnosticCode = (
+  row: CheckoutRow | undefined
+): WorkspaceE2EDiagnosticCode | undefined => {
+  if (!row) return undefined;
+  if (terminalUnpaidPaymentStates.has(row.payment_state)) {
+    return "checkout_payment_terminal_before_fulfillment";
+  }
+  if (row.fulfillment_state === "failed") {
+    return "checkout_fulfillment_failed_before_marker";
+  }
+  return undefined;
+};
+
 export const markPreviewFulfillmentDeliveredForE2E = (
   config: DatasourceConfig,
   orderId: WorkspaceReservationId
@@ -1182,6 +1485,17 @@ export const markPreviewFulfillmentDeliveredForE2E = (
 
         if (rows[0]?.id !== orderId) {
           const current = yield* readCheckoutRowFromDatabase(db, orderId);
+          const diagnosticCode =
+            getPreviewFulfillmentMarkerDiagnosticCode(current);
+          if (diagnosticCode) {
+            return yield* workspaceE2EError(
+              `Checkout ${orderId} can no longer reach fulfillment (payment ${current?.payment_state}, fulfillment ${current?.fulfillment_state})`,
+              {
+                diagnosticCode,
+                operation: "mark preview fulfillment delivered",
+              }
+            );
+          }
           return current?.fulfillment_state === "fulfilled"
             ? current
             : undefined;
@@ -1190,6 +1504,7 @@ export const markPreviewFulfillmentDeliveredForE2E = (
         return yield* readCheckoutRowFromDatabase(db, orderId);
       }),
       {
+        initialIntervalMs: workspaceE2EPollInitialIntervalMs.database,
         intervalMs: workspaceE2EPollIntervalMs.datasource,
         label: `preview fulfillment marker for ${orderId}`,
         timeoutMs: config.timeouts.datasource,
@@ -1236,7 +1551,7 @@ export const assertPaymentTerminalRow = (
       `payment attempt state was not ${scenario.state}`
     );
     assert(
-      row.payment_failure_code === `workspace_e2e_nexi_${scenario.state}`,
+      row.payment_failure_code === scenario.failureCode,
       "terminal payment failure code mismatch"
     );
     assert(
@@ -1295,9 +1610,11 @@ const assertPostgresRow = (
       row.fulfillment_failure_code === null,
       "fulfillment_failure_code should be null"
     );
-    deepStrictEqual(
-      row.reservation_details,
-      data.expectedReservationDetails,
+    assert(
+      matchesExpectedReservationDetails(
+        row.reservation_details,
+        data.expectedReservationDetails
+      ),
       "unexpected reservation details"
     );
     assert(row.locale === data.locale, "unexpected locale");
@@ -1401,9 +1718,11 @@ const assertInternalPostgresRow = (
     assert(row.paid_at, "paid_at missing");
     assert(row.reservation_confirmed_at, "reservation confirmation missing");
     assert(row.fulfilled_at, "fulfilled_at missing");
-    deepStrictEqual(
-      row.reservation_details,
-      data.expectedReservationDetails,
+    assert(
+      matchesExpectedReservationDetails(
+        row.reservation_details,
+        data.expectedReservationDetails
+      ),
       "unexpected reservation details"
     );
   });
@@ -1493,6 +1812,7 @@ const assertLegalEvidence = (
       db
         .select({
           accepted: legalEvidenceEvents.accepted,
+          acknowledgements: legalEvidenceEvents.acknowledgements,
           document_key: legalEvidenceEvents.documentKey,
           hash_algorithm: legalEvidenceEvents.hashAlgorithm,
           locale: legalEvidenceEvents.locale,
@@ -1510,6 +1830,7 @@ const assertLegalEvidence = (
 export const assertLegalEvidenceRows = (
   rows: readonly {
     readonly accepted: boolean;
+    readonly acknowledgements: LegalEvidenceAcknowledgements | null;
     readonly document_key: string;
     readonly hash_algorithm: string;
     readonly locale: string;
@@ -1524,6 +1845,10 @@ export const assertLegalEvidenceRows = (
 
   for (const row of rows) {
     assert(row.accepted, `legal evidence ${row.document_key} was not accepted`);
+    assert(
+      row.acknowledgements !== null,
+      `legal evidence ${row.document_key} acknowledgements were not recorded`
+    );
     assert(
       row.hash_algorithm === "sha256",
       "legal evidence hash algorithm mismatch"
@@ -1546,7 +1871,7 @@ const assertNoLocalPii = (
   data: CheckoutData
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const patterns = [data.email, data.phone, data.name, data.message].map(
+    const patterns = [data.email, data.phone, data.name].map(
       (value) => `%${value}%`
     );
     const [

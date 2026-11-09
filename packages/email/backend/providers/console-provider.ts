@@ -1,71 +1,93 @@
 import { Effect, Layer } from "effect";
 import {
+  type EmailDeliveryId,
   EmailDeliveryIdSchema,
   type EmailMessage,
   type EmailSendResult,
 } from "../../types/email.types";
 import { type EmailProvider, EmailProviderTag } from "../capabilities";
 
-const ConsoleEmailProvider: EmailProvider = {
+const recipientAddresses = (message: EmailMessage): readonly string[] =>
+  Array.isArray(message.to)
+    ? message.to.map((r) => (typeof r === "string" ? r : r.email))
+    : [typeof message.to === "string" ? message.to : message.to.email];
+
+const consoleDeliveryIdPrefix = "console-";
+
+/**
+ * Console never reports delivery, so callers treat its acceptance as final
+ * instead of waiting for a provider webhook.
+ */
+export const isConsoleEmailDeliveryId = (id: EmailDeliveryId): boolean =>
+  id.startsWith(consoleDeliveryIdPrefix);
+
+export const ConsoleEmailProvider: EmailProvider = {
   name: "console",
 
   send: Effect.fn("consoleEmailProvider.send")(function* (
     message: EmailMessage
   ) {
-    const recipients = Array.isArray(message.to)
-      ? message.to.map((r) => (typeof r === "string" ? r : r.email))
-      : [typeof message.to === "string" ? message.to : message.to.email];
+    if (message.sensitiveContent === true) {
+      // Sensitive messages may carry bearer data; log only non-PII facts.
+      yield* Effect.logInfo("Console Email Provider - Sending Email", {
+        category: message.tags?.[0],
+        hasHtml: !!message.html,
+        hasText: !!message.text,
+        sensitive: true,
+      });
+    } else {
+      const recipients = recipientAddresses(message);
+      yield* Effect.logInfo("Console Email Provider - Sending Email", {
+        from:
+          typeof message.from === "string" ? message.from : message.from.email,
+        to: recipients,
+        subject: message.subject,
+        hasHtml: !!message.html,
+        hasText: !!message.text,
+        attachments: message.attachments?.map((attachment) => ({
+          filename: attachment.filename,
+          contentType: attachment.contentType,
+          contentId: attachment.contentId,
+        })),
+        tags: message.tags,
+        metadata: message.metadata,
+      });
 
-    yield* Effect.logInfo("Console Email Provider - Sending Email", {
-      from:
-        typeof message.from === "string" ? message.from : message.from.email,
-      to: recipients,
-      subject: message.subject,
-      hasHtml: !!message.html,
-      hasText: !!message.text,
-      attachments: message.attachments?.map((attachment) => ({
-        filename: attachment.filename,
-        contentType: attachment.contentType,
-        contentId: attachment.contentId,
-      })),
-      tags: message.tags,
-      metadata: message.metadata,
-    });
-
-    if (process.env.NODE_ENV === "development") {
-      // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
-      console.log(`\n${"=".repeat(60)}`);
-      // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
-      console.log("EMAIL CONTENT:");
-      // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
-      console.log("=".repeat(60));
-      // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
-      console.log("Subject:", message.subject);
-      // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
-      console.log("To:", recipients.join(", "));
-      if (message.text) {
+      if (process.env.NODE_ENV === "development") {
         // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
-        console.log("\nText Version:");
+        console.log(`\n${"=".repeat(60)}`);
         // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
-        console.log("-".repeat(40));
+        console.log("EMAIL CONTENT:");
         // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
-        console.log(message.text);
+        console.log("=".repeat(60));
+        // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
+        console.log("Subject:", message.subject);
+        // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
+        console.log("To:", recipients.join(", "));
+        if (message.text) {
+          // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
+          console.log("\nText Version:");
+          // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
+          console.log("-".repeat(40));
+          // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
+          console.log(message.text);
+        }
+        if (message.html) {
+          // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
+          console.log("\nHTML Version (first 500 chars):");
+          // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
+          console.log("-".repeat(40));
+          // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
+          console.log(`${message.html.substring(0, 500)}...`);
+        }
+        // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
+        console.log(`${"=".repeat(60)}\n`);
       }
-      if (message.html) {
-        // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
-        console.log("\nHTML Version (first 500 chars):");
-        // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
-        console.log("-".repeat(40));
-        // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
-        console.log(`${message.html.substring(0, 500)}...`);
-      }
-      // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
-      console.log(`${"=".repeat(60)}\n`);
     }
 
     const result: EmailSendResult = {
       id: EmailDeliveryIdSchema.make(
-        `console-${Date.now()}-${Math.random().toString(36).substring(7)}`
+        `${consoleDeliveryIdPrefix}${Date.now()}-${Math.random().toString(36).substring(7)}`
       ),
       status: "sent",
       provider: "console",
@@ -79,11 +101,10 @@ const ConsoleEmailProvider: EmailProvider = {
     return result;
   }),
 
-  verify: Effect.gen(function* () {
-    yield* Effect.logInfo("Console Email Provider verification", {
-      status: "always valid in development",
-    });
-    return true;
+  sendBatch: Effect.fn("consoleEmailProvider.sendBatch")(function* (messages) {
+    return yield* Effect.forEach(messages, (message) =>
+      ConsoleEmailProvider.send(message)
+    );
   }),
 };
 

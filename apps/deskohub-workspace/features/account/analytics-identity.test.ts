@@ -9,8 +9,17 @@ import {
   setSystemTime,
   test,
 } from "bun:test";
+import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import {
+  deliverWorkspaceBrowserLogs,
+  discardWorkspaceBrowserLogs,
+  type WorkspaceBrowserLogRecord,
+} from "@/shared/browser/workspace-browser-logs";
 import { customerAccountIdSchema } from "./customer-account";
+
+// An address outside the test domain stands for an ordinary customer.
+const customerEmail = resendSimulatorAddress("delivered", "synthetic");
 
 type SessionQuery = {
   readonly query?: {
@@ -73,6 +82,7 @@ const futureExpiry = () => new Date(Date.now() + 60_000);
 const authenticatedSession = (
   accountId: string,
   overrides: {
+    readonly email?: unknown;
     readonly emailVerified?: boolean;
     readonly expiresAt?: Date;
   } = {}
@@ -83,7 +93,7 @@ const authenticatedSession = (
       token: "session-token-must-not-leave-adapter",
     },
     user: {
-      email: "synthetic@example.test",
+      email: "email" in overrides ? overrides.email : customerEmail,
       emailVerified: overrides.emailVerified ?? true,
       id: accountId,
       name: "Synthetic User",
@@ -195,13 +205,50 @@ describe("analytics account identity", () => {
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       accountId: accountId("synthetic-account-a"),
       status: "authenticated",
+      testAccount: false,
     });
     expect(
       JSON.stringify(analyticsIdentity.getAnalyticsAccountIdentity())
-    ).not.toContain("synthetic@example.test");
+    ).not.toContain(customerEmail);
     expect(
       JSON.stringify(analyticsIdentity.getAnalyticsAccountIdentity())
     ).not.toContain("session-token");
+  });
+
+  test("flags an account whose verified email is on the test domain without publishing the email", async () => {
+    const testAccountEmail = testEmailAddress("synthetic");
+    unsubscribe = analyticsIdentity.subscribeAnalyticsAccountIdentity(
+      () => undefined
+    );
+    await resolveNextRefetch(anonymousSession());
+
+    setSession(
+      authenticatedSession("synthetic-account-a", { email: testAccountEmail })
+    );
+
+    expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
+      accountId: accountId("synthetic-account-a"),
+      status: "authenticated",
+      testAccount: true,
+    });
+    expect(
+      JSON.stringify(analyticsIdentity.getAnalyticsAccountIdentity())
+    ).not.toContain(testAccountEmail);
+  });
+
+  test("treats an account without a readable email as an ordinary account", async () => {
+    unsubscribe = analyticsIdentity.subscribeAnalyticsAccountIdentity(
+      () => undefined
+    );
+    await resolveNextRefetch(anonymousSession());
+
+    setSession(authenticatedSession("synthetic-account-a", { email: 42 }));
+
+    expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
+      accountId: accountId("synthetic-account-a"),
+      status: "authenticated",
+      testAccount: false,
+    });
   });
 
   test("fails closed for unverified, malformed, and invalid session data", async () => {
@@ -379,6 +426,7 @@ describe("analytics account identity", () => {
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       accountId: accountId("synthetic-account-a"),
       status: "authenticated",
+      testAccount: false,
     });
   });
 
@@ -411,6 +459,7 @@ describe("analytics account identity", () => {
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       accountId: accountId("synthetic-account-a"),
       status: "authenticated",
+      testAccount: false,
     });
   });
 
@@ -438,7 +487,7 @@ describe("analytics account identity", () => {
     expect(firstMarker === secondMarker).toBe(false);
     for (const marker of [firstMarker, secondMarker]) {
       expect(marker.includes("synthetic-account-a")).toBe(false);
-      expect(marker.includes("synthetic@example.test")).toBe(false);
+      expect(marker.includes(customerEmail)).toBe(false);
       expect(marker.includes("session-token-must-not-leave-adapter")).toBe(
         false
       );
@@ -513,6 +562,7 @@ describe("analytics account identity", () => {
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       accountId: accountId("synthetic-account-b"),
       status: "authenticated",
+      testAccount: false,
     });
     const markerAfterAccountB = localStorage.getItem(
       "deskohub.account-session-change"
@@ -583,6 +633,7 @@ describe("analytics account identity", () => {
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       accountId: accountId("synthetic-account-a"),
       status: "authenticated",
+      testAccount: false,
     });
   });
 
@@ -609,36 +660,6 @@ describe("analytics account identity", () => {
       status: "pending",
     });
 
-    await flushMicrotasks();
-
-    expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
-      status: "unavailable",
-    });
-  });
-
-  test("derives unavailable after clearing the override for a malformed post-sign-out response", async () => {
-    unsubscribe = analyticsIdentity.subscribeAnalyticsAccountIdentity(
-      () => undefined
-    );
-    await resolveNextRefetch(anonymousSession());
-
-    setSession({
-      ...authenticatedSession("synthetic-account-a"),
-      refetch: async () => {
-        setSession({
-          ...authenticatedSession("synthetic-account-a"),
-          data: {
-            user: { emailVerified: true, id: "synthetic-account-a" },
-          },
-        });
-      },
-    });
-
-    analyticsIdentity.completeAnalyticsAccountSignOut();
-
-    expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
-      status: "pending",
-    });
     await flushMicrotasks();
 
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
@@ -695,36 +716,14 @@ describe("analytics account identity", () => {
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       status: "pending",
     });
-    await expect(refresh).rejects.toBe(failure);
+    await expect(refresh).resolves.toBeUndefined();
 
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       status: "unavailable",
     });
   });
 
-  test("consumes a synchronous refetch failure and rejects the caller refresh", async () => {
-    unsubscribe = analyticsIdentity.subscribeAnalyticsAccountIdentity(
-      () => undefined
-    );
-    await resolveNextRefetch(anonymousSession());
-
-    const failure = new Error("synthetic synchronous refetch failure");
-    setSession({
-      ...authenticatedSession("synthetic-account-a"),
-      refetch: () => {
-        throw failure;
-      },
-    });
-
-    const refresh = analyticsIdentity.refreshAnalyticsAccountIdentity();
-
-    await expect(refresh).rejects.toBe(failure);
-    expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
-      status: "unavailable",
-    });
-  });
-
-  test("consumes an asynchronously rejected refetch and rejects the caller refresh", async () => {
+  test("consumes an asynchronously rejected refetch without rejecting the caller refresh", async () => {
     unsubscribe = analyticsIdentity.subscribeAnalyticsAccountIdentity(
       () => undefined
     );
@@ -740,9 +739,183 @@ describe("analytics account identity", () => {
 
     const refresh = analyticsIdentity.refreshAnalyticsAccountIdentity();
 
-    await expect(refresh).rejects.toBe(failure);
+    await expect(refresh).resolves.toBeUndefined();
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       status: "unavailable",
+    });
+  });
+
+  test("publishes unavailable for a failed background refresh that nobody awaits", async () => {
+    let unhandledRejections = 0;
+    const recordUnhandled = () => {
+      unhandledRejections += 1;
+    };
+    process.on("unhandledRejection", recordUnhandled);
+    setSession({
+      ...authenticatedSession("synthetic-account-a"),
+      refetch: async () => {
+        throw new Error("synthetic background refetch failure");
+      },
+    });
+
+    try {
+      unsubscribe = analyticsIdentity.subscribeAnalyticsAccountIdentity(
+        () => undefined
+      );
+      window.dispatchEvent(new Event("focus"));
+      await flushMicrotasks();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
+        status: "unavailable",
+      });
+      expect(unhandledRejections).toBe(0);
+    } finally {
+      process.off("unhandledRejection", recordUnhandled);
+    }
+  });
+
+  describe("refresh failure logs", () => {
+    const refreshFailureLog: WorkspaceBrowserLogRecord = {
+      attributes: {
+        boundary: "browser",
+        errorType: "Error",
+        failureCode: "account.analytics-session.refresh-failed",
+        operation: "account.analytics-identity.refresh",
+      },
+      body: "Workspace browser failure",
+      level: "warn",
+    };
+    let detachLogs: (() => void) | undefined;
+
+    // Earlier failing refreshes leave records waiting for a sink.
+    const collectLogs = () => {
+      discardWorkspaceBrowserLogs();
+      const records: WorkspaceBrowserLogRecord[] = [];
+      detachLogs = deliverWorkspaceBrowserLogs((record) =>
+        records.push(record)
+      );
+      return records;
+    };
+
+    const settleLogs = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    afterEach(() => {
+      detachLogs?.();
+      detachLogs = undefined;
+      discardWorkspaceBrowserLogs();
+    });
+
+    test("logs each failed refetch once with a stable code and no payload", async () => {
+      unsubscribe = analyticsIdentity.subscribeAnalyticsAccountIdentity(
+        () => undefined
+      );
+      await resolveNextRefetch(anonymousSession());
+      const records = collectLogs();
+
+      const failure = new Error(
+        `synthetic refetch failure for ${customerEmail} with session-token`
+      );
+      setSession({
+        ...authenticatedSession("synthetic-account-a"),
+        refetch: async () => {
+          throw failure;
+        },
+      });
+
+      await expect(
+        analyticsIdentity.refreshAnalyticsAccountIdentity()
+      ).resolves.toBeUndefined();
+      await settleLogs();
+      expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
+        status: "unavailable",
+      });
+      expect(records).toEqual([refreshFailureLog]);
+
+      await expect(
+        analyticsIdentity.refreshAnalyticsAccountIdentity()
+      ).resolves.toBeUndefined();
+      await settleLogs();
+      expect(records).toEqual([refreshFailureLog, refreshFailureLog]);
+      expect(JSON.stringify(records)).not.toContain(customerEmail);
+      expect(JSON.stringify(records)).not.toContain("session-token");
+    });
+
+    test("logs a refetch that resolves with a failed session request once", async () => {
+      unsubscribe = analyticsIdentity.subscribeAnalyticsAccountIdentity(
+        () => undefined
+      );
+      await resolveNextRefetch(anonymousSession());
+      const records = collectLogs();
+
+      await Promise.all([
+        analyticsIdentity.refreshAnalyticsAccountIdentity(),
+        resolveNextRefetch({
+          ...authenticatedSession("synthetic-account-a"),
+          error: {
+            message: `session unavailable for ${customerEmail}`,
+            status: 503,
+            statusText: "Service Unavailable",
+          },
+        }),
+      ]);
+      await settleLogs();
+
+      expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
+        status: "unavailable",
+      });
+      expect(records).toEqual([
+        {
+          ...refreshFailureLog,
+          attributes: {
+            ...refreshFailureLog.attributes,
+            errorType: "unclassified",
+            status: 503,
+          },
+        },
+      ]);
+      expect(JSON.stringify(records)).not.toContain(customerEmail);
+    });
+
+    test("keeps the refresh outcome when the log sink throws", async () => {
+      let unhandledRejections = 0;
+      const recordUnhandled = () => {
+        unhandledRejections += 1;
+      };
+      process.on("unhandledRejection", recordUnhandled);
+      unsubscribe = analyticsIdentity.subscribeAnalyticsAccountIdentity(
+        () => undefined
+      );
+      await resolveNextRefetch(anonymousSession());
+      let sinkCalls = 0;
+      discardWorkspaceBrowserLogs();
+      detachLogs = deliverWorkspaceBrowserLogs(() => {
+        sinkCalls += 1;
+        throw new Error("synthetic log sink failure");
+      });
+
+      const failure = new Error("synthetic refetch failure");
+      setSession({
+        ...authenticatedSession("synthetic-account-a"),
+        refetch: async () => {
+          throw failure;
+        },
+      });
+
+      try {
+        await expect(
+          analyticsIdentity.refreshAnalyticsAccountIdentity()
+        ).resolves.toBeUndefined();
+        await settleLogs();
+
+        expect(sinkCalls).toBe(1);
+        expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
+          status: "unavailable",
+        });
+        expect(unhandledRejections).toBe(0);
+      } finally {
+        process.off("unhandledRejection", recordUnhandled);
+      }
     });
   });
 
@@ -819,6 +992,7 @@ describe("analytics account identity", () => {
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       accountId: accountId("synthetic-account-a"),
       status: "authenticated",
+      testAccount: false,
     });
   });
 
@@ -849,6 +1023,7 @@ describe("analytics account identity", () => {
     expect(observed).not.toContainEqual({
       accountId: accountId("synthetic-account-a"),
       status: "authenticated",
+      testAccount: false,
     });
     expect(refetchRequests).toHaveLength(1);
 
@@ -858,6 +1033,7 @@ describe("analytics account identity", () => {
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       accountId: accountId("synthetic-account-b"),
       status: "authenticated",
+      testAccount: false,
     });
   });
 
@@ -890,6 +1066,7 @@ describe("analytics account identity", () => {
     expect(observed).not.toContainEqual({
       accountId: accountId("synthetic-account-a"),
       status: "authenticated",
+      testAccount: false,
     });
     expect(refetchRequests).toHaveLength(1);
 
@@ -931,6 +1108,7 @@ describe("analytics account identity", () => {
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       accountId: accountId("synthetic-account-b"),
       status: "authenticated",
+      testAccount: false,
     });
   });
 
@@ -975,6 +1153,7 @@ describe("analytics account identity", () => {
     expect(observed).not.toContainEqual({
       accountId: accountId("synthetic-account-a"),
       status: "authenticated",
+      testAccount: false,
     });
 
     await resolveNextRefetch(authenticatedSession("synthetic-account-b"));
@@ -982,6 +1161,7 @@ describe("analytics account identity", () => {
     expect(analyticsIdentity.getAnalyticsAccountIdentity()).toEqual({
       accountId: accountId("synthetic-account-b"),
       status: "authenticated",
+      testAccount: false,
     });
   });
 

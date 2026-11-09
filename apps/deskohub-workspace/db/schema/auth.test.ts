@@ -1,11 +1,20 @@
 import { describe, expect, test } from "bun:test";
+import { passkey } from "@better-auth/passkey";
 import { getAuthTables } from "better-auth/db";
-import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
+import { getTableConfig, PgDialect, type PgTable } from "drizzle-orm/pg-core";
 import { authOptions } from "@/features/account/backend/auth/auth-options";
+import { makeCustomerAgentAuthorizationPlugins } from "@/features/account/backend/auth/customer-agent-authorization-server";
 import {
   authAccount,
+  authOauthAccessToken,
+  authOauthClient,
+  authOauthClientAssertion,
+  authOauthClientResource,
+  authOauthConsent,
+  authOauthRefreshToken,
+  authOauthResource,
+  authPasskey,
   authRateLimit,
-  authRelations,
   authSession,
   authUser,
   authVerification,
@@ -15,6 +24,7 @@ interface BetterAuthField {
   readonly fieldName: string;
   readonly required?: boolean;
   readonly unique?: boolean;
+  readonly index?: boolean;
   readonly references?: {
     readonly model: string;
     readonly field: string;
@@ -22,8 +32,9 @@ interface BetterAuthField {
   };
 }
 
+// An acronym such as the passkey `credentialID` is one word.
 const snakeCase = (field: string) =>
-  field.replace(/[A-Z]/g, (character) => `_${character.toLowerCase()}`);
+  field.replace(/[A-Z]+/g, (word) => `_${word.toLowerCase()}`);
 
 const drizzleAuthTables = {
   user: authUser,
@@ -31,6 +42,14 @@ const drizzleAuthTables = {
   account: authAccount,
   verification: authVerification,
   rateLimit: authRateLimit,
+  passkey: authPasskey,
+  oauthClient: authOauthClient,
+  oauthResource: authOauthResource,
+  oauthClientResource: authOauthClientResource,
+  oauthRefreshToken: authOauthRefreshToken,
+  oauthAccessToken: authOauthAccessToken,
+  oauthConsent: authOauthConsent,
+  oauthClientAssertion: authOauthClientAssertion,
 };
 
 const uniqueIndexColumns = (table: PgTable) =>
@@ -38,8 +57,27 @@ const uniqueIndexColumns = (table: PgTable) =>
     .indexes.filter((index) => index.config.unique)
     .flatMap((index) => index.config.columns.map((column) => column.name));
 
+const indexColumns = (table: PgTable) =>
+  getTableConfig(table).indexes.flatMap((index) =>
+    index.config.columns.map((column) => column.name)
+  );
+
+const uniqueIndexColumnGroups = (table: PgTable) =>
+  getTableConfig(table)
+    .indexes.filter((index) => index.config.unique)
+    .map((index) => index.config.columns.map((column) => column.name));
+
 describe("Better Auth schema", () => {
-  const authTables = getAuthTables(authOptions);
+  // Keep this plugin set aligned with the runtime's auth table contributors.
+  const authTables = getAuthTables({
+    ...authOptions,
+    plugins: [
+      passkey(),
+      ...makeCustomerAgentAuthorizationPlugins({
+        resource: "https://workspace.example/api/mcp",
+      }),
+    ],
+  });
 
   test("isolates every auth table in the auth schema", () => {
     for (const [model, table] of Object.entries(drizzleAuthTables)) {
@@ -80,12 +118,18 @@ describe("Better Auth schema", () => {
           expect(uniqueIndexColumns(table)).toContain(columnName);
         }
 
+        if (field.index) {
+          expect(indexColumns(table)).toContain(columnName);
+        }
+
         if (field.references) {
           const foreignKey = config.foreignKeys.find(
             (candidate) => candidate.reference().columns[0]?.name === columnName
           );
           expect(foreignKey).toBeDefined();
-          expect(foreignKey!.onDelete).toBe("cascade");
+          expect(foreignKey!.onDelete).toBe(
+            field.references.model === "session" ? "set null" : "cascade"
+          );
           const referenced = getTableConfig(
             foreignKey!.reference().foreignTable
           );
@@ -93,10 +137,23 @@ describe("Better Auth schema", () => {
           expect(referenced.name).toBe(
             snakeCase(authTables[field.references.model]!.modelName)
           );
-          expect(foreignKey!.reference().foreignColumns[0]?.name).toBe("id");
+          expect(foreignKey!.reference().foreignColumns[0]?.name).toBe(
+            snakeCase(field.references.field)
+          );
         }
       }
     }
+  });
+
+  test("roots every login in its durable customer account", () => {
+    const [foreignKey] = getTableConfig(authUser).foreignKeys;
+    expect(
+      foreignKey?.reference().columns.map((column) => column.name)
+    ).toEqual(["id"]);
+    expect(getTableConfig(foreignKey!.reference().foreignTable).name).toBe(
+      "customer_accounts"
+    );
+    expect(foreignKey!.onDelete).toBe("restrict");
   });
 
   test("carries deletionRequestedAt as nullable server-owned user state", () => {
@@ -115,23 +172,42 @@ describe("Better Auth schema", () => {
     expect(column.getSQLType()).toBe("timestamp with time zone");
   });
 
-  test("indexes the daily cleanup cutoffs", () => {
-    const indexNames = (table: PgTable) =>
-      getTableConfig(table).indexes.map((index) => index.config.name);
+  test("carries the locale preference as a nullable server-owned user field", () => {
+    const fields = authTables.user!.fields as Record<string, BetterAuthField>;
+    expect(fields.locale).toMatchObject({
+      type: "string",
+      required: false,
+      input: false,
+    });
 
-    expect(indexNames(authSession)).toContain("session_expires_at_idx");
-    expect(indexNames(authVerification)).toContain(
-      "verification_expires_at_idx"
+    const config = getTableConfig(authUser);
+    const column = config.columns.find(
+      (candidate) => candidate.name === "locale"
+    )!;
+    expect(column.notNull).toBe(false);
+    expect(column.getSQLType()).toBe("text");
+    const check = config.checks.find(
+      (candidate) => candidate.name === "user_locale_check"
     );
-    expect(indexNames(authRateLimit)).toContain("rate_limit_last_request_idx");
+    expect(check).toBeDefined();
+    expect(new PgDialect().sqlToQuery(check!.value).sql).toBe(
+      `"auth"."user"."locale" in ('en-US', 'cs-CZ')`
+    );
   });
 
-  test("defines relations only for the tables Better Auth joins", () => {
-    expect(Object.keys(authRelations).sort()).toEqual([
-      "account",
-      "session",
-      "user",
+  test("keeps one passkey row per WebAuthn credential", () => {
+    expect(uniqueIndexColumns(authPasskey)).toEqual(["credential_id"]);
+  });
+
+  test("keeps OAuth client/resource links unique by pair", () => {
+    expect(uniqueIndexColumnGroups(authOauthClientResource)).toContainEqual([
+      "client_id",
+      "resource_id",
     ]);
+    expect(authTables.oauthClientResource?.indexes).toContainEqual({
+      fields: ["clientId", "resourceId"],
+      unique: true,
+    });
   });
 
   test("keeps timestamps decoding as Date, not Temporal", () => {

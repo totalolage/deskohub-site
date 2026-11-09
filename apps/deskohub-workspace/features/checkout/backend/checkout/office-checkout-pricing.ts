@@ -6,6 +6,7 @@ import {
   type OfficeReservationQuote,
 } from "@/features/checkout/reservation-quote-office";
 import type {
+  DiscountAffirmationUnavailableError,
   DiscountQuote,
   DiscountResolutionError,
 } from "@/features/discounts";
@@ -29,7 +30,9 @@ import {
   reservationCheckoutPricing,
 } from "./reservation-checkout-pricing";
 
-export type OfficeCheckoutPricingError = DiscountResolutionError;
+export type OfficeCheckoutPricingError =
+  | DiscountResolutionError
+  | DiscountAffirmationUnavailableError;
 export type OfficeAdvertisementQuoteInput =
   ReservationAdvertisementQuoteInput<OfficeAdvertisedPriceReservation>;
 export type OfficeAdvertisementAffirmationInput =
@@ -81,7 +84,7 @@ const getOfficePricingContext = Effect.fn(
     discountInput: {
       product: getOfficeReservationProductIdentity(reservation),
       discountableSubtotal: productItem.amount,
-      reservationDate: reservation.startsOn,
+      lastServiceDate: reservation.endsOn,
     },
   };
 });

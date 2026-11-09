@@ -1,9 +1,8 @@
-import { createHash } from "node:crypto";
 import { Predicate } from "effect";
 import type { ReactNode } from "react";
 import { cloneElement, createElement, Fragment, isValidElement } from "react";
-import { getCanonicalLegalDocument } from "@/features/legal/canonical-document";
 import { getLegalDocument } from "@/features/legal/content";
+import { hashLegalDocument } from "@/features/legal/document-version";
 
 const unsupportedNodeMessage =
   "Unsupported React node shape in the marketing communications document";
@@ -105,7 +104,5 @@ export const getWorkspaceE2EMarketingDocumentHash = (): string => {
       ),
     })),
   };
-  return createHash("sha256")
-    .update(getCanonicalLegalDocument(normalizedDocument))
-    .digest("hex");
+  return hashLegalDocument(normalizedDocument);
 };

@@ -1,7 +1,7 @@
 import { Data, Effect } from "effect";
-import { redact } from "./runtime";
+import { redact, redactDiagnosticText } from "./redaction";
 
-export const nexiWebhookDiagnosticCodes = [
+const nexiWebhookDiagnosticCodes = [
   "nexi_webhook_parse_failed",
   "nexi_webhook_unknown_order",
   "nexi_webhook_missing_security_token",
@@ -23,7 +23,7 @@ export const isNexiWebhookDiagnosticCode = (
   typeof value === "string" &&
   nexiWebhookDiagnosticCodes.some((code) => code === value);
 
-export const workspaceE2ERunnerDiagnosticCodes = [
+const workspaceE2ERunnerDiagnosticCodes = [
   "provider_session_row_read_failed_after_redirect",
   "provider_session_reservation_missing_after_redirect",
   "provider_session_active_attempt_missing_after_redirect",
@@ -32,9 +32,101 @@ export const workspaceE2ERunnerDiagnosticCodes = [
   "postgres_checkout_row_assertion_failed",
   "postgres_legal_evidence_validation_failed",
   "postgres_local_pii_validation_failed",
+  "checkout_payment_terminal_before_fulfillment",
+  "checkout_fulfillment_failed_before_marker",
 ] as const;
 
-export const workspaceE2EAccountDiagnosticCodes = [
+const workspaceE2EProfileNavigationDiagnosticCodes = [
+  "account_profile_baseline_failed",
+  "account_profile_clean_navigation_failed",
+  "account_profile_draft_retention_failed",
+  "account_profile_hidden_billing_validation_failed",
+  "account_profile_header_dismissal_failed",
+  "account_profile_history_dismissal_failed",
+  "account_profile_discard_confirmation_failed",
+  "account_profile_persisted_document_reload_failed",
+  "account_profile_persisted_profile_navigation_failed",
+  "account_profile_persisted_profile_handler_wait_failed",
+  "account_profile_persisted_profile_panel_hydration_wait_failed",
+  "account_profile_persisted_profile_click_failed",
+  "account_profile_persisted_profile_landmark_wait_failed",
+  "account_profile_persisted_profile_form_visibility_failed",
+  "account_profile_persisted_first_name_restore_failed",
+  "account_profile_persisted_last_name_restore_failed",
+  "account_profile_persisted_phone_restore_failed",
+  "account_profile_persisted_billing_navigation_failed",
+  "account_profile_persisted_billing_kind_restore_failed",
+  "account_profile_persisted_billing_company_restore_failed",
+  "account_profile_persisted_return_profile_navigation_failed",
+  "account_profile_persisted_unavailable_heading_expectation_failed",
+] as const;
+
+export type WorkspaceE2EProfileNavigationDiagnosticCode =
+  (typeof workspaceE2EProfileNavigationDiagnosticCodes)[number];
+
+const workspaceE2EAccountLocaleSwitchDiagnosticCodes = [
+  "account_locale_switch_start_failed",
+  "account_locale_switch_trigger_failed",
+  "account_locale_switch_landing_failed",
+  "account_locale_switch_error_page_shown",
+  "account_locale_switch_page_error",
+] as const;
+
+export type WorkspaceE2EAccountLocaleSwitchDiagnosticCode =
+  (typeof workspaceE2EAccountLocaleSwitchDiagnosticCodes)[number];
+
+const accountLayoutNavigationPhases = [
+  "select",
+  "landmark",
+  "capture",
+] as const;
+const accountLayoutSections = [
+  "reservations",
+  "referrals",
+  "profile",
+  "security",
+  "assistants",
+  "billing",
+  "legal",
+  "danger",
+] as const;
+
+type AccountLayoutNavigationDiagnosticCode =
+  `account_layout_${(typeof accountLayoutNavigationPhases)[number]}_${(typeof accountLayoutSections)[number]}_failed`;
+
+const accountLayoutNavigationDiagnosticCodes =
+  accountLayoutNavigationPhases.flatMap((phase) =>
+    accountLayoutSections.map(
+      (section) => `account_layout_${phase}_${section}_failed` as const
+    )
+  ) as AccountLayoutNavigationDiagnosticCode[];
+
+const workspaceE2EAccountPasskeyDiagnosticCodes = [
+  "account_passkey_authenticator_failed",
+  "account_passkey_sign_in_offer_failed",
+  "account_passkey_prompt_failed",
+  "account_passkey_sign_in_failed",
+  "account_passkey_rename_failed",
+  "account_passkey_delete_failed",
+  "account_passkey_settings_create_failed",
+  "account_passkey_deletion_reauth_failed",
+] as const;
+
+export type WorkspaceE2EAccountPasskeyDiagnosticCode =
+  (typeof workspaceE2EAccountPasskeyDiagnosticCodes)[number];
+
+const workspaceE2EReservationExistingCustomerDiagnosticCodes = [
+  "account_reservation_existing_customer_page_failed",
+  "account_reservation_existing_customer_card_failed",
+  "account_reservation_existing_customer_card_review_failed",
+  "account_reservation_existing_customer_contact_switch_failed",
+  "account_reservation_existing_customer_contact_review_failed",
+] as const;
+
+export type WorkspaceE2EReservationExistingCustomerDiagnosticCode =
+  (typeof workspaceE2EReservationExistingCustomerDiagnosticCodes)[number];
+
+const workspaceE2EAccountDiagnosticCodes = [
   "auth_delivery_request_rejected",
   "auth_delivery_message_not_observed",
   "auth_delivery_message_ambiguous",
@@ -46,12 +138,87 @@ export const workspaceE2EAccountDiagnosticCodes = [
   "postgres_account_fixture_assertion_failed",
   "postgres_account_fixture_convergence_failed",
   "dotypos_account_fixture_mutation_failed",
+  ...workspaceE2EProfileNavigationDiagnosticCodes,
+  ...workspaceE2EAccountLocaleSwitchDiagnosticCodes,
+  ...accountLayoutNavigationDiagnosticCodes,
+  ...workspaceE2EReservationExistingCustomerDiagnosticCodes,
+  ...workspaceE2EAccountPasskeyDiagnosticCodes,
 ] as const;
 
-export const workspaceE2EDiagnosticCodes = [
+// The Nexi hosted payment page step that failed, paired with the provider page
+// state observed when it failed. Both halves are closed code-owned sets.
+const nexiHostedPaymentSteps = [
+  "card_entry",
+  "continue",
+  "pay",
+  "challenge",
+  "challenge_failure",
+  "return",
+] as const;
+
+const nexiHostedPaymentPageStates = [
+  "card_entry_incomplete",
+  "card_entry_ready",
+  "card_submission_rejected",
+  "provider_error_page",
+  "provider_failure_page",
+  "provider_server_error",
+  "continue_enabled",
+  "continue_disabled",
+  "pay_enabled",
+  "pay_disabled",
+  "challenge_enabled",
+  "challenge_disabled",
+  "challenge_failure_enabled",
+  "challenge_failure_disabled",
+  "return_enabled",
+  "return_disabled",
+  "unknown",
+  "snapshot_unavailable",
+] as const;
+
+export type NexiHostedPaymentStep = (typeof nexiHostedPaymentSteps)[number];
+export type NexiHostedPaymentPageStateCode =
+  (typeof nexiHostedPaymentPageStates)[number];
+export type NexiHostedPaymentDiagnosticCode =
+  `nexi_hosted_${NexiHostedPaymentStep}_${NexiHostedPaymentPageStateCode}`;
+
+const nexiHostedPaymentDiagnosticCodes = nexiHostedPaymentSteps.flatMap(
+  (step) =>
+    nexiHostedPaymentPageStates.map(
+      (state): NexiHostedPaymentDiagnosticCode => `nexi_hosted_${step}_${state}`
+    )
+);
+
+export const toNexiHostedPaymentDiagnosticCode = (
+  step: NexiHostedPaymentStep,
+  state: NexiHostedPaymentPageStateCode
+): NexiHostedPaymentDiagnosticCode => `nexi_hosted_${step}_${state}`;
+
+export const parseNexiHostedPaymentDiagnosticCode = (
+  diagnosticCode: string | undefined
+):
+  | {
+      readonly state: NexiHostedPaymentPageStateCode;
+      readonly step: NexiHostedPaymentStep;
+    }
+  | undefined => {
+  for (const step of nexiHostedPaymentSteps) {
+    const prefix = `nexi_hosted_${step}_`;
+    if (!diagnosticCode?.startsWith(prefix)) continue;
+    const state = nexiHostedPaymentPageStates.find(
+      (candidate) => candidate === diagnosticCode.slice(prefix.length)
+    );
+    if (state) return { state, step };
+  }
+  return undefined;
+};
+
+const workspaceE2EDiagnosticCodes = [
   ...nexiWebhookDiagnosticCodes,
   ...workspaceE2ERunnerDiagnosticCodes,
   ...workspaceE2EAccountDiagnosticCodes,
+  ...nexiHostedPaymentDiagnosticCodes,
 ] as const;
 
 export type WorkspaceE2EDiagnosticCode =
@@ -94,6 +261,8 @@ export const workspaceE2EError = (
 export const workspaceE2ETimeoutError = (
   message: string,
   options: {
+    readonly cause?: unknown;
+    readonly diagnosticCode?: WorkspaceE2EDiagnosticCode;
     readonly operation?: string;
   } = {}
 ) => new WorkspaceE2EError({ message, ...options, reason: "timeout" });
@@ -115,6 +284,24 @@ export const withWorkspaceE2EDiagnosticCode =
               operation: error.operation,
               reason: error.reason,
             })
+      )
+    );
+
+/**
+ * Reports `effect` running out of time as an ordinary `<operation> failed`,
+ * for a bound that is a safety net rather than the case's timing contract,
+ * such as a page evaluation's deadline.
+ */
+export const withoutWorkspaceE2ETimeout =
+  (operation: string) =>
+  <A, R>(
+    effect: Effect.Effect<A, WorkspaceE2EError, R>
+  ): Effect.Effect<A, WorkspaceE2EError, R> =>
+    effect.pipe(
+      Effect.mapError((error) =>
+        error.reason === "timeout"
+          ? workspaceE2EError(`${operation} failed`, { operation })
+          : error
       )
     );
 
@@ -207,6 +394,19 @@ const formatUnknownFailure = (cause: unknown, seen: Set<unknown>): string => {
 
 const getCauseMessage = (cause: unknown) =>
   cause instanceof Error ? cause.message : String(cause);
+
+/**
+ * The first line of a browser failure, with registered secrets, URLs, and
+ * token-like runs redacted, so a boundary that keeps Playwright messages out
+ * of its reports can still say which failure it met.
+ */
+export const describeBrowserFailure = (cause: unknown) => {
+  const name = cause instanceof Error ? cause.name : "failure";
+  const [firstLine = ""] = redactDiagnosticText(getCauseMessage(cause)).split(
+    "\n"
+  );
+  return `${name}: ${firstLine.slice(0, 200)}`;
+};
 
 const indent = (value: string) =>
   value

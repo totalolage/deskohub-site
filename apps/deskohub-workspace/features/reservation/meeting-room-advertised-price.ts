@@ -1,8 +1,22 @@
 import { Option, Schema } from "effect";
-import type { MeetingRoomAdvertisedPriceRequest } from "@/features/checkout/advertised-price";
+import {
+  getAdvertisedProductAmount,
+  isMeetingRoomAdvertisedPrice,
+  type MeetingRoomAdvertisedPrice,
+  type MeetingRoomAdvertisedPriceRequest,
+} from "@/features/checkout/advertised-price";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
-import { meetingRoomReservationDurations } from "@/features/reservation/meeting-room-reservation-duration";
+import type { AdvertisedOptionFamily } from "@/features/reservation/advertised-option-prices";
+import {
+  getMeetingRoomReservationDurationKey,
+  type MeetingRoomReservationDurationKey,
+  meetingRoomReservationDurations,
+} from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  getMeetingRoomLastServiceDate,
+  getMeetingRoomReservationInterval,
+} from "@/features/reservation/meeting-room-reservation-time";
 import {
   localDateTimeSchema,
   plainDateStringSchema,
@@ -21,24 +35,54 @@ export const getMeetingRoomDurationAdvertisedPriceRequests = ({
   readonly submittedCode?: CanonicalPromotionCode;
 }): ReadonlyArray<MeetingRoomAdvertisedPriceRequest> =>
   decodeLocalDateTime(startDateTime).pipe(
-    Option.map((dateTime) =>
-      decodePlainDate(
+    Option.map((dateTime) => {
+      const reservationDate = decodePlainDate(
         Temporal.PlainDateTime.from(dateTime).toPlainDate().toString()
-      )
-    ),
-    Option.map((reservationDate) =>
-      meetingRoomReservationDurations.map((duration) => ({
-        locale,
-        ...(submittedCode && { submittedCode }),
-        reservation: {
-          kind: "meeting-room" as const,
-          details: {
-            kind: "meeting-room" as const,
-            duration,
-            reservationDate,
-          },
-        },
-      }))
-    ),
+      );
+
+      return meetingRoomReservationDurations.flatMap((duration) => {
+        const interval = getMeetingRoomReservationInterval(dateTime, duration);
+
+        return interval
+          ? [
+              {
+                locale,
+                ...(submittedCode && { submittedCode }),
+                reservation: {
+                  kind: "meeting-room" as const,
+                  details: {
+                    kind: "meeting-room" as const,
+                    duration,
+                    reservationDate,
+                    lastServiceDate: getMeetingRoomLastServiceDate(interval),
+                  },
+                },
+              },
+            ]
+          : [];
+      });
+    }),
     Option.getOrElse(() => [])
+  );
+
+/** Each duration option shows its own product line's advertised amount. */
+export const meetingRoomDurationOptions: AdvertisedOptionFamily<
+  MeetingRoomAdvertisedPriceRequest,
+  MeetingRoomAdvertisedPrice
+> = {
+  isPrice: isMeetingRoomAdvertisedPrice,
+  amountOf: (price, { reservation: { details } }) =>
+    getAdvertisedProductAmount(price, {
+      kind: "meeting-room",
+      duration: details.duration,
+    }),
+};
+
+export const findMeetingRoomDurationAdvertisedPriceRequest = (
+  requests: ReadonlyArray<MeetingRoomAdvertisedPriceRequest>,
+  durationKey: MeetingRoomReservationDurationKey
+) =>
+  requests.find(
+    ({ reservation: { details } }) =>
+      getMeetingRoomReservationDurationKey(details.duration) === durationKey
   );

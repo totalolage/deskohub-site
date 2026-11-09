@@ -38,11 +38,17 @@ export type PreparedCoworkPayState = PayStateSubmittedCodeMetadata & {
   readonly reservation: NormalizedCoworkReservationOrder;
   readonly quote: CoworkReservationQuote;
   readonly requestedDiscountCode?: CanonicalPromotionCode;
+  readonly referralCode?: CanonicalPromotionCode;
 };
 
 export const prepareCoworkAdvertisement = Effect.fn(
   "prepareCoworkPayState.prepareAdvertisement"
-)(function* (input: PrepareCoworkPayStateInput) {
+)(function* (
+  input: PrepareCoworkPayStateInput & {
+    /** Moment the reservation is submitted and its price is locked. */
+    readonly bookedAt: Temporal.Instant;
+  }
+) {
   const state = yield* openSubmittedAdvertisedPriceState(
     input.advertisedPriceToken
   );
@@ -77,6 +83,7 @@ export const prepareCoworkAdvertisement = Effect.fn(
     reservation: state.reservation,
     locale: input.locale,
     advertisedQuote: state.quote,
+    bookedAt: input.bookedAt,
     ...getSubmittedCodeMetadata(state),
   });
   const changed = state.quote.fingerprint !== affirmed.quote.fingerprint;
@@ -87,7 +94,7 @@ export const prepareCoworkAdvertisement = Effect.fn(
     advertisedQuote: state.quote,
     discountQuote: affirmed.discountQuote,
     ...getSubmittedCodeMetadata(affirmed),
-    requestedDiscountCode: state.requestedDiscountCode ?? state.submittedCode,
+    requestedDiscountCode: state.requestedDiscountCode,
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
         getCoworkCheckoutSummary(state.reservation.details, state.quote),

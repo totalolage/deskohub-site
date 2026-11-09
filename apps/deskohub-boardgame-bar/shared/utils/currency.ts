@@ -1,3 +1,4 @@
+import { formatCurrencyAmount } from "@deskohub/i18n/currency";
 import { type Locale, m } from "@/features/i18n";
 import { siteConstants } from "./constants";
 
@@ -25,13 +26,5 @@ export function formatPrice(
     return m.priceOnRequest({}, { locale });
   }
 
-  // Format using Intl.NumberFormat for proper localization
-  const formatter = new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
-
-  return formatter.format(numericPrice);
+  return formatCurrencyAmount({ amount: numericPrice, currency, locale });
 }

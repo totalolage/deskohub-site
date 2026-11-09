@@ -1,95 +1,55 @@
-import { devNull } from "node:os";
 import { resolve } from "node:path";
-import { Cause, Effect, Exit, Option } from "effect";
+import type { Browser } from "@playwright/test";
+import { Cause, Effect, Exit, Scope } from "effect";
+import { readBrowserPageDiagnostics } from "./browser";
 import {
-  captureBrowserFailureArtifacts,
-  closeBrowserSession,
-  startBrowserDiagnostics,
-  stopBrowserHar,
-} from "./browser";
+  E2EBrowserSession,
+  type OpenE2EBrowserSession,
+  writeArtifactText,
+} from "./browser-session";
+import { runE2ECase, type WorkspaceE2EStepRunner } from "./case-runner";
 import type { DatasourceConfig } from "./config";
-import {
-  type WorkspaceE2EProviderVerificationPermit,
-  WorkspaceE2EProviderVerificationPermitService,
-  workspaceE2EProviderVerificationConcurrency,
-} from "./coordination/provider-verification-permit.service";
-import {
-  type WorkspaceE2EDiagnosticCode,
-  WorkspaceE2EError,
-  workspaceE2ETimeoutError,
-} from "./errors";
+import type { WorkspaceE2EHostedPaymentPermitService } from "./coordination/hosted-payment-permit.service";
+import type { WorkspaceE2EProviderVerificationPermitService } from "./coordination/provider-verification-permit.service";
+import { type WorkspaceE2EError, workspaceE2ETimeoutError } from "./errors";
 import type { E2EDatabase } from "./integrations/database.service";
-import { pollUntil, withinWorkspaceE2EDeadline } from "./polling";
-import type { Runner } from "./runtime";
-import { log, redact } from "./runtime";
+import { redact } from "./redaction";
+import { log } from "./runtime";
 import {
   type WorkspaceE2ECleanup,
   WorkspaceE2ECleanupService,
 } from "./services/cleanup";
-import {
-  type E2EFailureKind,
-  type E2EOutcome,
-  type E2EResult,
-  type E2ETelemetry,
-  E2ETelemetryService,
-  toE2EResult,
-} from "./services/telemetry";
-import {
-  formatWorkspaceE2EDuration,
-  type WorkspaceE2ETimeouts,
-} from "./timeouts";
-import type {
-  WorkspaceE2ECase,
-  WorkspaceE2EStep,
-  WorkspaceE2EStepRunner,
-} from "./types";
+import type { E2ETelemetryService } from "./services/telemetry";
+import type { WorkspaceE2ETimeouts } from "./timeouts";
+import type { WorkspaceE2ECase } from "./types";
 
-const e2eOutcomeStatus: Record<E2EOutcome, string> = {
-  cancelled: "CANCEL",
-  failed: "FAIL",
-  passed: "PASS",
-  timed_out: "TIMEOUT",
-};
-
-export { workspaceE2EProviderVerificationConcurrency };
-
-export type WorkspaceE2EFailureDiagnostic = {
-  readonly caseId: string;
-  readonly diagnosticCode?: WorkspaceE2EDiagnosticCode;
-  readonly failureKind: E2EFailureKind;
-  readonly outcome: "failed" | "timed_out";
-  readonly stepId?: string;
-};
-
-export type WorkspaceE2EFailureReporter = (
-  diagnostic: WorkspaceE2EFailureDiagnostic
-) => void;
-
-type WorkspaceE2ECaseRuntime = {
+/** The case's browser session, shared by its body, failure capture, and cleanup. */
+type WorkspaceE2ECaseBrowser = {
   readonly artifactDir: string;
-  browserHarStarted: boolean;
-  browserHarStopped: boolean;
-  durationMs?: number;
   failureCause?: Cause.Cause<WorkspaceE2EError>;
-  result?: E2EResult;
-  readonly session: string;
-  terminalStepId?: string;
+  readonly openSession: OpenE2EBrowserSession;
   readonly testCase: WorkspaceE2ECase;
 };
 
+/**
+ * Runs one checkout case on the case runner. The body opens the case's own
+ * browser session and starts its diagnostics before the case steps; a
+ * genuine failure captures browser artifacts while the session is still
+ * open, and the capture's close exports the HAR; cleanup cancels the case's
+ * owned reservations while it closes the session.
+ */
 export const runWorkspaceE2ECase = ({
   artifactRoot,
+  browser: workerBrowser,
   datasourceConfig,
-  reportFailure,
-  run,
   sessionPrefix,
   testCase,
   timeouts,
 }: {
   artifactRoot: string;
+  /** Opens the case's one session; the caller's Scope owns it. */
+  browser: Browser;
   datasourceConfig: DatasourceConfig;
-  reportFailure?: WorkspaceE2EFailureReporter;
-  run: Runner;
   sessionPrefix: string;
   testCase: WorkspaceE2ECase;
   timeouts: WorkspaceE2ETimeouts;
@@ -99,232 +59,137 @@ export const runWorkspaceE2ECase = ({
   | E2EDatabase
   | E2ETelemetryService
   | WorkspaceE2ECleanupService
+  | WorkspaceE2EHostedPaymentPermitService
   | WorkspaceE2EProviderVerificationPermitService
+  | Scope.Scope
 > =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const telemetry = yield* E2ETelemetryService;
-      const cleanup = yield* WorkspaceE2ECleanupService;
-      const providerVerificationPermit =
-        yield* WorkspaceE2EProviderVerificationPermitService;
-      let caseRuntime: WorkspaceE2ECaseRuntime | undefined;
-      const tracedCase = telemetry.traceCase({
-        caseId: testCase.id,
-        effect: Effect.acquireUseRelease(
-          Effect.sync((): WorkspaceE2ECaseRuntime => {
-            const runtime: WorkspaceE2ECaseRuntime = {
-              artifactDir: resolve(artifactRoot, testCase.id),
-              browserHarStarted: false,
-              browserHarStopped: false,
-              session: `${sessionPrefix}-${testCase.id}`,
-              testCase,
-            };
-            caseRuntime = runtime;
-            return runtime;
-          }),
-          (runtime) =>
-            runCase(
-              runtime,
-              run,
-              telemetry,
-              timeouts,
-              providerVerificationPermit
-            ).pipe(
-              Effect.tapCause(() =>
-                runtime.failureCause
-                  ? captureFailureArtifacts(runtime, run, timeouts)
-                  : Effect.void
-              )
-            ),
-          (runtime) =>
-            telemetry.tracePhase({
-              caseId: testCase.id,
-              effect: finalizeCaseRuntime(
-                runtime,
-                run,
-                timeouts,
-                cleanup,
-                datasourceConfig
-              ),
-              phaseId: "case-finalization",
-            })
-        ),
-        timeoutMs: testCase.timeoutMs,
-      });
-
-      yield* reportFailure
-        ? tracedCase.pipe(
-            Effect.tapCause((cause) =>
-              Effect.sync(() => {
-                if (Cause.hasInterruptsOnly(cause)) return;
-                const result = toE2EResult(Exit.failCause(cause));
-                if (
-                  result.outcome !== "failed" &&
-                  result.outcome !== "timed_out"
-                )
-                  return;
-                const error = Cause.findErrorOption(cause);
-                const diagnosticCode =
-                  Option.isSome(error) &&
-                  error.value instanceof WorkspaceE2EError
-                    ? error.value.diagnosticCode
-                    : undefined;
-                try {
-                  reportFailure({
-                    caseId: testCase.id,
-                    ...(diagnosticCode ? { diagnosticCode } : {}),
-                    failureKind: result.failureKind,
-                    outcome: result.outcome,
-                    ...(caseRuntime?.terminalStepId
-                      ? { stepId: caseRuntime.terminalStepId }
-                      : {}),
-                  });
-                } catch {
-                  log("Workspace E2E failure reporter failed");
-                }
-              })
-            )
-          )
-        : tracedCase;
-    })
-  );
-
-const runCase = (
-  runtime: WorkspaceE2ECaseRuntime,
-  run: Runner,
-  telemetry: E2ETelemetry,
-  timeouts: WorkspaceE2ETimeouts,
-  providerVerificationPermit: WorkspaceE2EProviderVerificationPermit
-): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> => {
-  const startedAt = Date.now();
-  const runStep = makeStepRunner(
-    runtime,
-    telemetry,
-    providerVerificationPermit
-  );
-
-  return withinWorkspaceE2EDeadline(
-    Effect.gen(function* () {
-      log(`CASE START ${runtime.testCase.id}`);
-      runtime.browserHarStarted = yield* startBrowserDiagnostics(
-        run,
-        runtime.session
-      ).pipe(
-        Effect.timeoutOrElse({
-          duration: `${timeouts.browserAction} millis`,
-          orElse: () =>
-            Effect.fail(
-              workspaceE2ETimeoutError(
-                `Timed out starting browser diagnostics for ${runtime.testCase.id}`,
-                { operation: `${runtime.testCase.id} browser diagnostics` }
-              )
-            ),
-        })
+  Effect.gen(function* () {
+    const cleanup = yield* WorkspaceE2ECleanupService;
+    const testScope = yield* Effect.scope;
+    const sessionId = `${sessionPrefix}-${testCase.id}`;
+    const openSessionOnFirstUse = (id: string) =>
+      E2EBrowserSession.openOnFirstUse({ browser: workerBrowser, id }).pipe(
+        Scope.provide(testScope)
       );
-      yield* runtime.testCase.execute({
-        runStep,
-        session: runtime.session,
-      });
-    }),
-    `${runtime.testCase.id} e2e case`,
-    runtime.testCase.timeoutMs
-  ).pipe(
-    Effect.tapCause((cause) =>
-      Effect.sync(() => {
-        if (!Cause.hasInterruptsOnly(cause)) runtime.failureCause = cause;
-      })
+    const browser: WorkspaceE2ECaseBrowser = {
+      artifactDir: resolve(artifactRoot, testCase.id),
+      openSession: yield* openSessionOnFirstUse(sessionId),
+      testCase,
+    };
+
+    yield* runE2ECase({
+      body: Effect.fn(function* (step: WorkspaceE2EStepRunner) {
+        yield* startCaseBrowser(browser).pipe(
+          Effect.timeoutOrElse({
+            duration: `${timeouts.browserAction} millis`,
+            orElse: () =>
+              Effect.fail(
+                workspaceE2ETimeoutError(
+                  `Timed out starting browser diagnostics for ${testCase.id}`,
+                  { operation: `${testCase.id} browser diagnostics` }
+                )
+              ),
+          })
+        );
+        yield* testCase.execute({
+          openSeparateSession: (name) =>
+            Effect.flatten(openSessionOnFirstUse(`${sessionId}-${name}`)),
+          openSession: browser.openSession,
+          runStep: step,
+        });
+      }),
+      caseId: testCase.id,
+      cleanup: finalizeCaseBrowser(
+        browser,
+        timeouts,
+        cleanup,
+        datasourceConfig
+      ),
+      onFailure: (cause) =>
+        Effect.suspend(() => {
+          browser.failureCause = cause;
+          return captureFailureArtifacts(browser, cause, timeouts);
+        }),
+      watchdogMs: testCase.timeoutMs,
+    });
+  });
+
+// A browser that fails to open is logged, not fatal: the case's first browser
+// step fails with the same opening failure, so it keeps its step id.
+const startCaseBrowser = (
+  browser: WorkspaceE2ECaseBrowser
+): Effect.Effect<void> =>
+  browser.openSession.pipe(
+    Effect.flatMap((session) =>
+      Effect.forEach(
+        ["console", "errors", "requests"] as const,
+        session.clearDiagnostics,
+        { discard: true }
+      )
     ),
-    Effect.onExit((exit) =>
-      Effect.sync(() => {
-        runtime.durationMs = Date.now() - startedAt;
-        runtime.result = toE2EResult(exit);
-      })
+    Effect.catch(() =>
+      Effect.sync(() =>
+        log("Browser HAR capture unavailable; continuing workspace e2e")
+      )
     )
   );
-};
-
-const makeStepRunner =
-  (
-    runtime: WorkspaceE2ECaseRuntime,
-    telemetry: E2ETelemetry,
-    providerVerificationPermit: WorkspaceE2EProviderVerificationPermit
-  ): WorkspaceE2EStepRunner =>
-  <A, R>({ capacity, execute, id, timeoutMs }: WorkspaceE2EStep<A, R>) => {
-    const caseId = runtime.testCase.id;
-    const operation = `${caseId}/${id}`;
-    const timedExecution = withinWorkspaceE2EDeadline(
-      execute,
-      operation,
-      timeoutMs
-    );
-    const capacityLimitedExecution =
-      capacity === "provider-verification"
-        ? providerVerificationPermit.withPermit(timedExecution)
-        : timedExecution;
-
-    return telemetry.traceStep({
-      caseId,
-      effect: Effect.suspend(() => {
-        const startedAt = Date.now();
-
-        return Effect.sync(() => log(`STEP START ${operation}`)).pipe(
-          Effect.andThen(capacityLimitedExecution),
-          Effect.onExit((exit) =>
-            Effect.sync(() => {
-              const durationMs = Date.now() - startedAt;
-              const elapsed = formatWorkspaceE2EDuration(durationMs);
-              const { outcome } = toE2EResult(exit);
-              if (outcome !== "passed") runtime.terminalStepId = id;
-              const status = e2eOutcomeStatus[outcome];
-              log(`STEP ${status} ${operation} (${elapsed})`);
-            })
-          )
-        );
-      }),
-      stepId: id,
-      timeoutMs,
-    });
-  };
 
 const captureFailureArtifacts = (
-  runtime: WorkspaceE2ECaseRuntime,
-  run: Runner,
+  browser: WorkspaceE2ECaseBrowser,
+  failureCause: Cause.Cause<WorkspaceE2EError>,
   timeouts: WorkspaceE2ETimeouts
 ): Effect.Effect<void, never> =>
-  captureBrowserFailureArtifacts({
-    artifactDir: runtime.artifactDir,
-    cause: Cause.squash(runtime.failureCause!),
-    harStarted: runtime.browserHarStarted,
-    run,
-    session: runtime.session,
+  Effect.gen(function* () {
+    const { artifactDir } = browser;
+    const failure = Cause.squash(failureCause);
+    yield* writeArtifactText(
+      artifactDir,
+      "error.txt",
+      failure instanceof Error
+        ? (failure.stack ?? failure.message)
+        : String(failure)
+    );
+    // A browser still opening is waited for within the capture's bound; one
+    // that failed to open has nothing more to capture.
+    const session = yield* browser.openSession.pipe(
+      Effect.orElseSucceed(() => undefined)
+    );
+    if (session) {
+      yield* writeArtifactText(
+        artifactDir,
+        "browser-diagnostics.txt",
+        yield* readBrowserPageDiagnostics(session)
+      );
+      yield* session.captureFailureArtifacts(artifactDir);
+    }
+    log(`Workspace e2e failure artifacts saved to ${artifactDir}`);
   }).pipe(
-    Effect.timeoutOrElse({
-      duration: `${timeouts.artifactCapture} millis`,
-      orElse: () =>
-        Effect.sync(() => {
-          log(`Browser artifact capture timed out for ${runtime.testCase.id}`);
-          return false;
-        }),
-    }),
-    Effect.tap((harStopped) =>
-      Effect.sync(() => {
-        runtime.browserHarStopped = harStopped;
-      })
-    ),
-    Effect.catchCause((cause) =>
+    Effect.catch((error) =>
       Effect.sync(() =>
-        logAuxiliaryFailure(
-          `${runtime.testCase.id} browser artifact capture`,
-          cause
+        log(
+          `Workspace e2e failure artifact capture failed: ${redact(String(error))}`
         )
       )
     ),
-    Effect.asVoid
+    Effect.timeoutOrElse({
+      duration: `${timeouts.artifactCapture} millis`,
+      orElse: () =>
+        Effect.sync(() =>
+          log(`Browser artifact capture timed out for ${browser.testCase.id}`)
+        ),
+    }),
+    Effect.catchCause((cause) =>
+      Effect.sync(() =>
+        logAuxiliaryFailure(
+          `${browser.testCase.id} browser artifact capture`,
+          cause
+        )
+      )
+    )
   );
 
-const finalizeCaseRuntime = (
-  runtime: WorkspaceE2ECaseRuntime,
-  run: Runner,
+const finalizeCaseBrowser = (
+  browser: WorkspaceE2ECaseBrowser,
   timeouts: WorkspaceE2ETimeouts,
   cleanup: WorkspaceE2ECleanup,
   datasourceConfig: DatasourceConfig
@@ -333,15 +198,15 @@ const finalizeCaseRuntime = (
     const failures: unknown[] = [];
     const reservationCleanup = collectFinalizerFailure(
       failures,
-      `${runtime.testCase.id} reservation cleanup`,
+      `${browser.testCase.id} reservation cleanup`,
       runFinalizer(
-        `${runtime.testCase.id} reservation cleanup`,
+        `${browser.testCase.id} reservation cleanup`,
         cleanup
           .cleanupOwnedCheckoutStates({
             datasourceConfig,
-            flowStates: runtime.testCase.checkoutStates,
-            workflowError: runtime.failureCause
-              ? Cause.squash(runtime.failureCause)
+            flowStates: browser.testCase.checkoutStates,
+            workflowError: browser.failureCause
+              ? Cause.squash(browser.failureCause)
               : undefined,
           })
           .pipe(
@@ -352,49 +217,31 @@ const finalizeCaseRuntime = (
         timeouts
       )
     );
-    const browserFinalization = Effect.gen(function* () {
-      if (runtime.browserHarStarted && !runtime.browserHarStopped) {
-        yield* collectFinalizerFailure(
-          failures,
-          `${runtime.testCase.id} HAR stop`,
-          runFinalizer(
-            `${runtime.testCase.id} HAR stop`,
-            stopBrowserHar(run, runtime.session, devNull),
-            timeouts
-          )
-        );
-      }
-      yield* collectFinalizerFailure(
-        failures,
-        `${runtime.testCase.id} browser close`,
-        runFinalizer(
-          `${runtime.testCase.id} browser close`,
-          closeBrowserSession(run, runtime.session),
-          timeouts
-        )
-      );
-    });
-    yield* Effect.all([reservationCleanup, browserFinalization], {
+    // Resolved again, so a browser still opening is waited for within the
+    // bound and then closed. Only the bound fails the finalizer: a failed
+    // opening or close has nothing left to close.
+    const browserClose = collectFinalizerFailure(
+      failures,
+      `${browser.testCase.id} browser close`,
+      runFinalizer(
+        `${browser.testCase.id} browser close`,
+        browser.openSession.pipe(
+          Effect.flatMap((session) => session.close()),
+          Effect.ignore
+        ),
+        timeouts
+      )
+    );
+    yield* Effect.all([reservationCleanup, browserClose], {
       concurrency: "unbounded",
       discard: true,
     });
-
-    const durationMs = runtime.durationMs ?? 0;
-    const result: E2EResult =
-      failures.length > 0
-        ? { failureKind: "error", outcome: "failed" }
-        : (runtime.result ?? { outcome: "cancelled" });
-    const { outcome } = result;
-    const status = e2eOutcomeStatus[outcome];
-    log(
-      `CASE ${status} ${runtime.testCase.id} (${formatWorkspaceE2EDuration(durationMs)})`
-    );
 
     if (failures.length > 0)
       return yield* Effect.die(
         new AggregateError(
           failures,
-          `Failed to finalize ${runtime.testCase.id} e2e case`
+          `Failed to finalize ${browser.testCase.id} e2e case`
         )
       );
   });

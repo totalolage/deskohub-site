@@ -61,6 +61,7 @@ if (typecheck) {
     {
       operation: "type.route-response",
       cancellation: "continue-after-disconnect",
+      caller: "client",
     },
     // @ts-expect-error Route success values must be Responses.
     () => Effect.succeed("not a response")
@@ -70,6 +71,7 @@ if (typecheck) {
     {
       operation: "type.route-failure",
       cancellation: "continue-after-disconnect",
+      caller: "client",
     },
     // @ts-expect-error Route failures must be mapped to WorkspaceRouteFailure.
     // @effect-diagnostics-next-line missingEffectError:off
@@ -80,6 +82,7 @@ if (typecheck) {
     {
       operation: "type.route-mapped",
       cancellation: "continue-after-disconnect",
+      caller: "client",
     },
     () =>
       Effect.fail("handler failed").pipe(

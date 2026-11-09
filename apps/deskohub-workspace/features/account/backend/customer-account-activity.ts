@@ -6,8 +6,15 @@ import {
   customerAccountUnavailable,
   mapCustomerAccountFailure,
 } from "../customer-account";
-import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import {
+  type CustomerAccountActivityState,
+  CustomerAccountLinkRepository,
+} from "./customer-account-link.repository";
 import { CustomerAuthentication } from "./customer-authentication.service";
+
+/** The account still exists and awaits no deletion. */
+export const isAccountActive = (activity: CustomerAccountActivityState) =>
+  activity.kind === "active" && activity.deletionRequestedAt == null;
 
 /**
  * Shared authoritative account activity guard. Every account-authenticated
@@ -69,6 +76,15 @@ const isAuthenticationNotConfigured = (error: CustomerAccountAccessError) =>
   error.reason === "not-configured";
 
 /**
+ * A state-creating section. It receives the signed-in account whose activity
+ * the guard verified and whose lock it holds, or null for an anonymous
+ * session, so the state it creates can name its author.
+ */
+export type GuardedStateCreation<A, E, R> = (
+  accountId: CustomerAccountId | null
+) => Effect.Effect<A, E, R>;
+
+/**
  * Isolates the advisory-lock boundary. The lock's own database failure is
  * the only error the lock wrapper adds, so the section's typed error is
  * wrapped in this tagged error before entering the lock and unwrapped
@@ -96,7 +112,7 @@ const restoreSectionError = <E>(
 
 export const guardOptionalAccountStateCreation = <A, E, R>(
   dependencies: AccountActivityGuardDependencies,
-  stateCreation: Effect.Effect<A, E, R>
+  stateCreation: GuardedStateCreation<A, E, R>
 ): Effect.Effect<A, E | CustomerAccountAccessError, R> =>
   dependencies.currentUser.pipe(
     Effect.catchIf(isAuthenticationNotConfigured, () => Effect.succeed(null)),
@@ -106,12 +122,12 @@ export const guardOptionalAccountStateCreation = <A, E, R>(
             .withAccountLock(
               session.accountId,
               requireAccountActivity(dependencies, session.accountId).pipe(
-                Effect.andThen(stateCreation),
+                Effect.andThen(stateCreation(session.accountId)),
                 Effect.mapError((error) => new GuardedSectionError({ error }))
               )
             )
             .pipe(Effect.mapError(restoreSectionError))
-        : stateCreation
+        : stateCreation(null)
     )
   );
 
@@ -123,7 +139,7 @@ export class OptionalAccountActivityGuard extends Context.Service<
   OptionalAccountActivityGuard,
   {
     readonly guardStateCreation: <A, E, R>(
-      stateCreation: Effect.Effect<A, E, R>
+      stateCreation: GuardedStateCreation<A, E, R>
     ) => Effect.Effect<A, E | CustomerAccountAccessError, R>;
   }
 >()("@deskohub-workspace/account/OptionalAccountActivityGuard") {
@@ -146,12 +162,18 @@ export class OptionalAccountActivityGuard extends Context.Service<
     })
   );
 
-  static Live = this.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        CustomerAuthentication.Default,
-        CustomerAccountLinkRepository.Live
+  /**
+   * The service reading the customer through this authentication, such as
+   * an agent's access token instead of the browser session.
+   */
+  static withAuthentication = <E, R>(
+    authentication: Layer.Layer<CustomerAuthentication, E, R>
+  ) =>
+    this.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(authentication, CustomerAccountLinkRepository.Live)
       )
-    )
-  );
+    );
+
+  static Live = this.withAuthentication(CustomerAuthentication.Default);
 }

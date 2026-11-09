@@ -3,12 +3,12 @@ import { Effect, Layer, Redacted } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
 import { getDatasourceConfig } from "../config";
+import { WorkspaceE2EHostedPaymentPermitService } from "../coordination/hosted-payment-permit.service";
 import { WorkspaceE2EProviderVerificationPermitService } from "../coordination/provider-verification-permit.service";
 import type { WorkspaceE2EEnvironment } from "../e2e-env";
 import { toWorkspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
-import { addDatabaseUrlRedactions } from "../runtime";
-import { WorkspaceE2ECaseService } from "./cases";
+import { addDatabaseUrlRedactions } from "../redaction";
 import { WorkspaceE2ECleanupService } from "./cleanup";
 import {
   type E2ERunContext,
@@ -24,17 +24,18 @@ export const makeWorkspaceE2ECaseRuntimeLive = (
     environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
   );
   const datasourceConfig = getDatasourceConfig(environment);
-  const support = Layer.mergeAll(
+  return Layer.mergeAll(
     FetchHttpClient.layer,
     WorkspaceE2ECleanupService.Default,
+    WorkspaceE2EHostedPaymentPermitService.Default.pipe(
+      Layer.provide(E2ERunContextService.layerValue(runContext))
+    ),
     makeWorkspaceE2EProviderVerificationPermitLive(environment),
     E2ETelemetryService.Default.pipe(
       Layer.provideMerge(E2ERunContextService.layerValue(runContext))
     ),
     E2EDatabase.layer(datasourceConfig)
   );
-
-  return WorkspaceE2ECaseService.Default.pipe(Layer.provideMerge(support));
 };
 
 const makeWorkspaceE2EProviderVerificationPermitLive = (

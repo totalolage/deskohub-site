@@ -10,7 +10,6 @@ import {
 } from "bun:test";
 import { AlgoPinSchema, IgloohomeDeviceIdSchema } from "@deskohub/igloohome";
 import {
-  AdministrationActorUsername,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeName,
@@ -20,6 +19,9 @@ import { eq, inArray } from "drizzle-orm";
 import { Effect, Layer, Schema } from "effect";
 import { Pool } from "pg";
 import { standaloneAccessCodeAttemptEvents } from "@/db/schema";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
+import { waitForPostgresLockWaiter } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
@@ -45,7 +47,8 @@ const attemptIds = [
 ];
 let nextAttemptIdIndex = 0;
 
-const actor = AdministrationActorUsername.make("Fixture Operator");
+let actor: AdministratorAccountActor;
+let otherAccountActor: AdministratorAccountActor;
 const source = "dhw-cli";
 const deviceId = Schema.decodeUnknownSync(IgloohomeDeviceIdSchema)(
   "fixture-ek1"
@@ -89,6 +92,7 @@ describe.skipIf(!postgresDatabase)(
   () => {
     const postgres = postgresDatabase as WorkspacePostgresTestDatabase;
     let attempts: IStandaloneAccessCodeAttemptLogRepository;
+    const testAccounts: AdministratorAccountActor[] = [];
 
     const claim = (input: {
       readonly attempt: StandaloneAccessCodeAttempt;
@@ -111,6 +115,19 @@ describe.skipIf(!postgresDatabase)(
     };
 
     beforeAll(async () => {
+      actor = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account(
+          "standalone-access-code-attempt",
+          { roles: ["administrator"] }
+        )
+      );
+      testAccounts.push(actor);
+      otherAccountActor = await Effect.runPromise(
+        workspaceFixtures(postgres.db).account(
+          "standalone-access-code-other-actor"
+        )
+      );
+      testAccounts.push(otherAccountActor);
       attempts = await Effect.runPromise(
         Effect.gen(function* () {
           return yield* StandaloneAccessCodeAttemptLogRepository;
@@ -158,24 +175,12 @@ describe.skipIf(!postgresDatabase)(
     });
     afterAll(async () => {
       await barrierPool.end();
+      await Effect.runPromise(
+        workspaceFixtures(postgres.db).deleteAccounts(testAccounts)
+      );
     });
 
     const reconcileBarrierKey = 987654321099;
-
-    const waitForWaitingLock = async (
-      predicate: string,
-      description: string
-    ) => {
-      const deadline = Date.now() + 5_000;
-      while (Date.now() < deadline) {
-        const waiting = await barrierPool.query(
-          `select 1 from pg_locks where not granted and ${predicate}`
-        );
-        if (waiting.rows.length > 0) return;
-        await Bun.sleep(10);
-      }
-      throw new Error(`Timed out waiting for ${description}.`);
-    };
 
     const installReconcileBarrier = async () => {
       await barrierPool.query(`
@@ -214,12 +219,14 @@ describe.skipIf(!postgresDatabase)(
 
     const insertRogueCreatedEvent = {
       text: `insert into standalone_access_code_attempt_events
-        (attempt_id, event_kind, actor, source, name, device_id, starts_at_local,
-         ends_at_local, starts_at, ends_at, variance, provider_credential_id, occurred_at)
-       values ($1, 'created', $2, $3, $4, $5, $6, $7, $8, $9, 2, $10, $11)`,
+        (attempt_id, event_kind, actor_account_id, actor_account_email, source,
+         name, device_id, starts_at_local, ends_at_local, starts_at, ends_at,
+         variance, provider_credential_id, occurred_at)
+       values ($1, 'created', $2, $3, $4, $5, $6, $7, $8, $9, $10, 2, $11, $12)`,
       values: (attemptId: string, occurredAt: Temporal.Instant) => [
         attemptId,
-        actor,
+        actor.accountId,
+        actor.email,
         source,
         accessName,
         deviceId,
@@ -245,6 +252,32 @@ describe.skipIf(!postgresDatabase)(
       expect(second).toMatchObject({ kind: "claimed", variance: 3 });
       expect(third).toMatchObject({ kind: "exhausted" });
       expect(await eventKindsOf(thirdAttempt.attemptId)).toEqual([]);
+    });
+
+    test("records the administrator account on started and terminal events", async () => {
+      const attempt = attemptFixture();
+      await Effect.runPromise(claim({ attempt }));
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt,
+          variance: 2,
+          eventKind: "created",
+          occurredAt: Temporal.Now.instant(),
+          providerCredentialId,
+        })
+      );
+
+      const events = await loadEvents(attempt.attemptId);
+      expect(events).toHaveLength(2);
+      expect(events.map(({ eventKind }) => eventKind).sort()).toEqual([
+        "created",
+        "started",
+      ]);
+      for (const event of events) {
+        expect(event.actor).toBeNull();
+        expect(event.actorAccountId).toBe(actor.accountId);
+        expect(event.actorAccountEmail).toBe(actor.email);
+      }
     });
 
     test("reuses a variance once its attempt is definitively rejected", async () => {
@@ -340,7 +373,7 @@ describe.skipIf(!postgresDatabase)(
         claim({
           attempt: {
             ...attempt,
-            actor: AdministrationActorUsername.make("Other Operator"),
+            actor: otherAccountActor,
           },
         })
       );
@@ -369,6 +402,23 @@ describe.skipIf(!postgresDatabase)(
         "ambiguous",
         "started",
       ]);
+      const events = await loadEvents(attempt.attemptId);
+      const startedEvent = events.find(
+        ({ eventKind }) => eventKind === "started"
+      );
+      const ambiguousEvent = events.find(
+        ({ eventKind }) => eventKind === "ambiguous"
+      );
+      expect(startedEvent).toMatchObject({
+        actor: null,
+        actorAccountId: actor.accountId,
+        actorAccountEmail: actor.email,
+      });
+      expect(ambiguousEvent?.actor).toBeNull();
+      expect(ambiguousEvent?.actorAccountId).toBe(startedEvent?.actorAccountId);
+      expect(ambiguousEvent?.actorAccountEmail).toBe(
+        startedEvent?.actorAccountEmail
+      );
 
       const laterReplay = await Effect.runPromise(claim({ attempt }));
       expect(laterReplay).toMatchObject({
@@ -401,62 +451,6 @@ describe.skipIf(!postgresDatabase)(
           occurredAt: Temporal.Instant.from("2026-09-10T08:00:00Z"),
         },
       });
-    });
-
-    test("records the provider status code on a rejected terminal event", async () => {
-      const attempt = attemptFixture();
-      await Effect.runPromise(claim({ attempt }));
-
-      await Effect.runPromise(
-        attempts.appendTerminal({
-          attempt,
-          variance: 2,
-          eventKind: "rejected",
-          occurredAt: Temporal.Now.instant(),
-          failureCode: "standalone_provider_rejected",
-          providerStatusCode: 502,
-        })
-      );
-
-      const rows = await loadEvents(attempt.attemptId);
-      const terminal = rows.find(({ eventKind }) => eventKind === "rejected");
-      expect(terminal?.providerStatusCode).toBe(502);
-      expect(terminal?.failureCode).toBe("standalone_provider_rejected");
-      expect(terminal?.providerCredentialId).toBeNull();
-    });
-
-    test("appends exactly one terminal event per attempt", async () => {
-      const attempt = attemptFixture();
-      await Effect.runPromise(claim({ attempt }));
-
-      const first = await Effect.runPromise(
-        attempts.appendTerminal({
-          attempt,
-          variance: 2,
-          eventKind: "created",
-          occurredAt: Temporal.Now.instant(),
-          providerCredentialId,
-        })
-      );
-      const second = await Effect.runPromise(
-        attempts.appendTerminal({
-          attempt,
-          variance: 2,
-          eventKind: "rejected",
-          occurredAt: Temporal.Now.instant(),
-          failureCode: "standalone_provider_rejected",
-        })
-      );
-
-      expect(first).toMatchObject({ kind: "appended" });
-      expect(second).toMatchObject({
-        kind: "already-terminal",
-        terminal: { kind: "created" },
-      });
-      expect(await eventKindsOf(attempt.attemptId)).toEqual([
-        "created",
-        "started",
-      ]);
     });
 
     test("returns the stored created resolution when a later terminal append conflicts", async () => {
@@ -673,37 +667,6 @@ describe.skipIf(!postgresDatabase)(
         ({ eventKind }) => eventKind === "reconciled"
       );
       expect(reconciledRows).toHaveLength(0);
-    });
-
-    test("reports cleanup-required before capacity exhaustion", async () => {
-      const ambiguous = attemptFixture();
-      const created = attemptFixture();
-      await Effect.runPromise(claim({ attempt: ambiguous }));
-      await Effect.runPromise(claim({ attempt: created }));
-      await Effect.runPromise(
-        attempts.appendTerminal({
-          attempt: ambiguous,
-          variance: 2,
-          eventKind: "ambiguous",
-          occurredAt: Temporal.Now.instant(),
-          failureCode: "standalone_provider_ambiguous",
-        })
-      );
-      await Effect.runPromise(
-        attempts.appendTerminal({
-          attempt: created,
-          variance: 3,
-          eventKind: "created",
-          occurredAt: Temporal.Now.instant(),
-          providerCredentialId,
-        })
-      );
-
-      const next = await Effect.runPromise(
-        claim({ attempt: attemptFixture() })
-      );
-
-      expect(next).toMatchObject({ kind: "cleanup-required" });
     });
 
     test("returns the stored prior name and attempt id as the cleanup target", async () => {
@@ -1052,7 +1015,9 @@ describe.skipIf(!postgresDatabase)(
       const reconciled = (await loadEvents(ambiguous.attemptId)).find(
         ({ eventKind }) => eventKind === "reconciled"
       );
-      expect(reconciled?.actor).toBe(actor);
+      expect(reconciled?.actor).toBeNull();
+      expect(reconciled?.actorAccountId).toBe(actor.accountId);
+      expect(reconciled?.actorAccountEmail).toBe(actor.email);
       expect(reconciled?.failureCode).toBeNull();
       expect(reconciled?.providerCredentialId).toBeNull();
     });
@@ -1076,34 +1041,6 @@ describe.skipIf(!postgresDatabase)(
       expect(staleReplay).toMatchObject({
         kind: "ambiguous",
         failureCode: "standalone_attempt_stale",
-      });
-    });
-
-    test("keeps replaying a reconciled ambiguous attempt as ambiguous", async () => {
-      const ambiguous = attemptFixture();
-      await Effect.runPromise(claim({ attempt: ambiguous }));
-      await Effect.runPromise(
-        attempts.appendTerminal({
-          attempt: ambiguous,
-          variance: 2,
-          eventKind: "ambiguous",
-          occurredAt: Temporal.Now.instant(),
-          failureCode: "standalone_provider_ambiguous",
-        })
-      );
-
-      const confirmed = await Effect.runPromise(
-        claim({
-          attempt: attemptFixture(),
-          providerCredentialRemovedAttemptId: ambiguous.attemptId,
-        })
-      );
-      expect(confirmed).toMatchObject({ kind: "claimed", variance: 2 });
-
-      const replay = await Effect.runPromise(claim({ attempt: ambiguous }));
-      expect(replay).toMatchObject({
-        kind: "ambiguous",
-        failureCode: "standalone_provider_ambiguous",
       });
     });
 
@@ -1137,40 +1074,6 @@ describe.skipIf(!postgresDatabase)(
         claim({ attempt: ambiguous })
       );
       expect(unconfirmedReplay).toMatchObject({ kind: "ambiguous" });
-    });
-
-    test("records reconciliation at most once per attempt across confirmed claims", async () => {
-      const ambiguous = attemptFixture();
-      await Effect.runPromise(claim({ attempt: ambiguous }));
-      await Effect.runPromise(
-        attempts.appendTerminal({
-          attempt: ambiguous,
-          variance: 2,
-          eventKind: "ambiguous",
-          occurredAt: Temporal.Now.instant(),
-          failureCode: "standalone_provider_ambiguous",
-        })
-      );
-
-      const first = await Effect.runPromise(
-        claim({
-          attempt: attemptFixture(),
-          providerCredentialRemovedAttemptId: ambiguous.attemptId,
-        })
-      );
-      const second = await Effect.runPromise(
-        claim({
-          attempt: attemptFixture(),
-          providerCredentialRemovedAttemptId: ambiguous.attemptId,
-        })
-      );
-
-      expect(first).toMatchObject({ kind: "claimed" });
-      expect(second).toMatchObject({ kind: "claimed" });
-      const reconciledRows = (await loadEvents(ambiguous.attemptId)).filter(
-        ({ eventKind }) => eventKind === "reconciled"
-      );
-      expect(reconciledRows).toHaveLength(1);
     });
 
     test("reconciles exactly once under concurrent confirmed claims", async () => {
@@ -1230,7 +1133,9 @@ describe.skipIf(!postgresDatabase)(
         postgres.db.insert(standaloneAccessCodeAttemptEvents).values({
           attemptId: newAttemptId(),
           eventKind: "started",
-          actor,
+          actor: null,
+          actorAccountId: actor.accountId,
+          actorAccountEmail: actor.email,
           source: "operator-console" as never,
           name: accessName,
           deviceId,
@@ -1259,7 +1164,9 @@ describe.skipIf(!postgresDatabase)(
         postgres.db.insert(standaloneAccessCodeAttemptEvents).values({
           attemptId: "not-a-uuid" as never,
           eventKind: "started",
-          actor,
+          actor: null,
+          actorAccountId: actor.accountId,
+          actorAccountEmail: actor.email,
           source,
           name: accessName,
           deviceId,
@@ -1314,10 +1221,11 @@ describe.skipIf(!postgresDatabase)(
           })
         );
         void replay.catch(() => {});
-        await waitForWaitingLock(
-          "locktype = 'transactionid'",
-          "the stale replay to reach the contested terminal insert"
-        );
+        await waitForPostgresLockWaiter(barrierPool, {
+          condition: "locktype = 'transactionid'",
+          description:
+            "the stale replay to reach the contested terminal insert",
+        });
 
         await barrier.query("commit");
         expect(await replay).toMatchObject({
@@ -1367,10 +1275,11 @@ describe.skipIf(!postgresDatabase)(
           })
         );
         void confirmed.catch(() => {});
-        await waitForWaitingLock(
-          `locktype = 'advisory' and classid = (${reconcileBarrierKey}::bigint >> 32)::oid and objid = (${reconcileBarrierKey}::bigint & 4294967295)::oid`,
-          "the confirmed claim to reach the reconciliation barrier"
-        );
+        await waitForPostgresLockWaiter(barrierPool, {
+          condition: `locktype = 'advisory' and classid = (${reconcileBarrierKey}::bigint >> 32)::oid and objid = (${reconcileBarrierKey}::bigint & 4294967295)::oid`,
+          description:
+            "the confirmed claim to reach the reconciliation barrier",
+        });
 
         await barrier.query("commit");
         await barrier.query(

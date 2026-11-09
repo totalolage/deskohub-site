@@ -1,0 +1,13 @@
+- main:
+  - list "Reservation steps":
+    - listitem:
+      - link "Reservation Completed"
+  - heading "Order summary" [level=1]
+  - textbox "Discount, voucher, or referral code"
+  - button "Apply code"
+  - checkbox "I agree to the General Terms and Conditions, Operating Rules."
+  - link "General Terms and Conditions":
+    - /url: /en-US/terms-and-conditions
+  - link "Operating Rules":
+    - /url: /en-US/operating-rules
+  - button /^Order and pay/ [disabled]

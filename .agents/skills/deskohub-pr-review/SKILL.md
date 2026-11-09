@@ -1,29 +1,42 @@
 ---
 name: deskohub-pr-review
-description: Pull request review feedback, regression fixes, thread resolution, and completion.
+description: Pull request, PR review feedback, review threads, code review round, regression fix, UI screenshots, PR screenshot upload, ready for review, mergeable, merge main, branch behind main, PR monitoring.
 ---
 
 # Deskohub PR review
 
-In OpenCode, use the native read-only `review` subagent, following the active
-`orchestrator` and `review` agent instructions. Supply a fixed base/artifact
-revision or diff hash, the actual diff, acceptance criteria, changed files, test
-evidence, known risks, and applicable child review coverage because the reviewer
-cannot run shell commands. Route accepted findings to their implementation
-owners, reverify, and resume the same reviewer until it returns `APPROVED`, then
-perform final verification. A fixed uncommitted diff is valid. Treat commits as
-separate publishing steps subject to user authorization, not prerequisites for
-each review. Review units may contain multiple execution contributions; impose
-neither a root-only rule nor a per-worker review requirement.
+## Review rounds
 
-When fixing a bug raised by review, first add a regression test against the current implementation and confirm that it fails. Do not change production code for hypothetical states that the application cannot produce.
+- Give an independent read-only reviewer a fixed revision or diff hash, the diff itself, acceptance criteria, changed files, test evidence, and known risks, so the review doesn't depend on running commands. A fixed uncommitted diff is fine.
+- Route accepted findings to whoever owns that code, reverify, and return to the same reviewer until it approves. Then run final verification.
+- Commits are publishing steps that need user authorization, not a prerequisite for each review round.
 
-When a planned PR stopping point is ready for user review, publish the PR as ready for review instead of leaving it in draft.
+## Fixes
 
-For PR feedback work, local verification is an intermediate checkpoint. Continue through review, commit, push, deployed screenshot evidence, thread resolution, and required checks until the PR is mergeable. Stop earlier only for an explicit user pause or a concrete blocker that requires their input.
+- For a bug raised in review, first add a regression test against the current implementation and confirm it fails.
+- Don't change production code for states the application can't produce.
 
-For every PR that introduces or changes UI, attach screenshots of every newly introduced visible UI state to the PR. Capture the exact committed and pushed code, preferably from its immutable preview. Cover states that differ materially in copy, layout, interaction result, or responsive presentation; document non-visible boundary states with tests rather than empty screenshots. Upload ephemeral review screenshots through GitHub rather than committing them to the repository unless they are durable documentation or test fixtures. Use the `gh image` extension for native `user-attachments` when a GitHub browser session is available. In a headless environment, upload synthetic-only screenshots as GitHub Release Assets in the dedicated `totalolage/gitshot-images` repository and embed those URLs with `gh pr comment`. Never use Cloudinary for PR screenshots.
+## Screenshots
 
-After an addressed fix is pushed and validated, reply to each addressed review thread with a concise summary and mark the thread resolved.
+Every PR that introduces or changes UI needs a screenshot of each newly introduced visible state, posted to the PR.
 
-Update this skill when developer feedback changes the repository's review workflow.
+- Capture the exact committed and pushed code, preferably from its immutable preview deployment.
+- Cover states that differ in copy, layout, interaction result, or responsive presentation. Cover states that render nothing with tests, not empty screenshots.
+- Upload through GitHub; don't commit screenshots unless they're durable documentation or test fixtures. Never use Cloudinary.
+- With a GitHub browser session, use the `gh image` extension for native `user-attachments` uploads. Headless, upload synthetic-only screenshots as release assets in `totalolage/gitshot-images` and embed their URLs with `gh pr comment`.
+
+## Merging main
+
+Each push to a pull request branch starts a full Vercel preview build, so merge `origin/main` into the branch once, as the last step before merging the pull request.
+
+1. Finish development, review, and every other required check on the branch as it stands. A branch behind `main` is fine; GitHub doesn't require it to be up to date.
+2. `git fetch origin && git merge origin/main`, then push. Always merge; never rebase or force-push.
+3. If the final main merge is clean, with no hand-written conflict resolution, and post-merge CI is green, merge the pull request without another review round. If conflict resolution was needed, re-review the resolved hunks and the code and behavior they touch, then merge once that review passes and CI is green. If CI goes red after the final merge, the pull request returns to development and review.
+
+Merge `main` earlier only to resolve a real conflict or a failure that blocks work in progress. Main moving, a `BEHIND` merge state, and monitoring a pull request are not reasons to merge early. For conflict resolutions in other integration contexts, follow the branch integration guidance in the `deskohub-repository` skill.
+
+## Completion
+
+- At a planned stopping point, mark the PR ready for review instead of leaving it in draft.
+- Local verification is a checkpoint, not the finish. Continue through review, commit, push, screenshot evidence from the deployment, thread resolution, required checks, and the final main merge until the PR is mergeable. Stop earlier only when the user pauses the work or a blocker needs their input.
+- After a fix is pushed and validated, reply to each addressed thread with a short summary and resolve it.

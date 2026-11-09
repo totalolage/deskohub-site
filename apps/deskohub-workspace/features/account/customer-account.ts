@@ -37,11 +37,17 @@ export type CustomerAccountFailureCode =
   | "account-link.lock"
   | "account-link.read"
   | "account-link.unlink"
-  | "account.data-export"
+  | "account-locale-preference.read"
+  | "account-locale-preference.write"
   | "account.deletion-state"
+  | "account.review"
+  | "authentication.agent-connections"
+  | "authentication.agent-token"
+  | "authentication.passkeys"
   | "authentication.session"
   | "dotypos.customer-expiration"
-  | "dotypos.customer-lookup";
+  | "dotypos.customer-lookup"
+  | "referral.signup-acknowledge";
 
 export class CustomerAccountFailureCause extends Data.TaggedError(
   "CustomerAccountFailureCause"
@@ -83,3 +89,24 @@ export const mapCustomerAccountFailure =
     error instanceof CustomerAccountAccessError
       ? error
       : customerAccountUnavailable(code);
+
+/**
+ * No Dotypos customer matches the verified email, so the account completes
+ * its profile, which creates one.
+ */
+export const isCustomerProfileMissing = (error: CustomerAccountAccessError) =>
+  error.reason === "link-required" && error.linkReason === "not-found";
+
+const supportLinkReasons: ReadonlySet<CustomerAccountLinkFailure> =
+  new Set<CustomerAccountLinkFailure>(["ambiguous", "unusable", "claimed"]);
+
+/**
+ * The verified email's Dotypos customers can't be linked safely, so only
+ * support can connect the account to its history.
+ */
+export const isCustomerAccountSupportRequired = (
+  error: CustomerAccountAccessError
+) =>
+  error.reason === "link-required" &&
+  error.linkReason !== undefined &&
+  supportLinkReasons.has(error.linkReason);

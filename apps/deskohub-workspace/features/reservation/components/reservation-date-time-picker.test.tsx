@@ -1,31 +1,47 @@
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
+import type { ComponentProps } from "react";
 import "@/shared/polyfills/temporal";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { ReservationDateTimePicker } from "./reservation-date-time-picker";
+
+// React DOM detects input events and Radix picks its layout-effect hook when
+// they load, so the DOM must exist before either is imported.
+registerWorkspaceComponentTestEnv();
+const { cleanup, fireEvent, render } = await import("@testing-library/react");
+const { ReservationDateTimePicker } = await import(
+  "./reservation-date-time-picker"
+);
+
+/** Types a date into the date field and leaves it, which commits it. */
+const typeDate = (
+  props: Partial<ComponentProps<typeof ReservationDateTimePicker>>,
+  text: string
+) => {
+  const onChange = mock((_value: string) => undefined);
+  const view = render(
+    <ReservationDateTimePicker
+      dateLabel="Start date"
+      locale="en-US"
+      onChange={onChange}
+      timeLabel="Start time"
+      {...props}
+    />
+  );
+  const dateInput = view.getByRole("combobox", { name: "Start date" });
+  fireEvent.change(dateInput, { target: { value: text } });
+  fireEvent.focusOut(dateInput);
+  return onChange.mock.calls.map(([value]) => value);
+};
 
 describe("ReservationDateTimePicker", () => {
-  beforeAll(() => {
-    registerWorkspaceComponentTestEnv();
-  });
-
   afterEach(() => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("prevents selecting a time before the same-day minimum", () => {
@@ -67,7 +83,7 @@ describe("ReservationDateTimePicker", () => {
     );
 
     expect(
-      view.getByRole("button", { name: "Meeting room start date" })
+      view.getByRole("combobox", { name: "Meeting room start date" })
     ).toBeDefined();
     const timeInput = view.getByLabelText("Meeting room start time");
     expect(timeInput.getAttribute("step")).toBe("3600");
@@ -85,147 +101,77 @@ describe("ReservationDateTimePicker", () => {
     expect((timeInput as HTMLInputElement).value).toBe("16:00");
   });
 
-  test("shows only the selected date in the date control", () => {
-    const view = render(
-      <ReservationDateTimePicker
-        dateLabel="Start date"
-        locale="en-US"
-        timeLabel="Start time"
-        value="2099-06-10T16:00"
-      />
-    );
+  describe("a typed date", () => {
+    test("keeps the chosen time on another day than the minimum", () => {
+      expect(
+        typeDate(
+          { minimum: "2099-06-10T15:00", value: "2099-06-10T16:00" },
+          "6/12/2099"
+        )
+      ).toEqual(["2099-06-12T16:00"]);
+    });
 
-    const dateButton = view.getByRole("button", { name: "Start date" });
-    expect(dateButton.textContent).toContain("June 10, 2099");
-    expect(dateButton.textContent).not.toContain("16:00");
+    test("moves an earlier time up to the minimum on the minimum's day", () => {
+      expect(
+        typeDate(
+          { minimum: () => "2099-06-10T15:00", value: "2099-06-12T09:00" },
+          "6/10/2099"
+        )
+      ).toEqual(["2099-06-10T15:00"]);
+      cleanup();
+      expect(
+        typeDate(
+          { minimum: "2099-06-10T15:00", value: "2099-06-12T16:30" },
+          "6/10/2099"
+        )
+      ).toEqual(["2099-06-10T16:30"]);
+    });
 
-    cleanup();
-    const czechView = render(
-      <ReservationDateTimePicker
-        dateLabel="Datum začátku"
-        locale="cs-CZ"
-        timeLabel="Čas začátku"
-        value="2099-06-10T16:00"
-      />
-    );
-    expect(
-      czechView.getByRole("button", { name: "Datum začátku" }).textContent
-    ).toContain("10. června 2099");
-  });
+    test("keeps the time without a time field, even before the minimum", () => {
+      expect(
+        typeDate(
+          {
+            minimum: "2099-06-10T15:00",
+            showTime: false,
+            value: "2099-06-12T09:00",
+          },
+          "6/10/2099"
+        )
+      ).toEqual(["2099-06-10T09:00"]);
+    });
 
-  test("accepts a time before the date and keeps it pending", () => {
-    const onChange = mock(() => undefined);
-    const view = render(
-      <ReservationDateTimePicker
-        dateLabel="Start date"
-        onChange={onChange}
-        timeLabel="Start time"
-      />
-    );
-    const timeInput = view.getByLabelText("Start time") as HTMLInputElement;
+    test("starts at the default time before any time is chosen", () => {
+      expect(typeDate({}, "6/10/2099")).toEqual(["2099-06-10T10:00"]);
+    });
 
-    expect(timeInput.disabled).toBe(false);
-    fireEvent.input(timeInput, { target: { value: "17:00" } });
-    expect(timeInput.value).toBe("17:00");
-    expect(onChange).not.toHaveBeenCalled();
+    test("keeps wall-clock times across daylight saving changes", () => {
+      // 02:30 doesn't exist in Prague on 29 March 2026 and happens twice on
+      // 25 October 2026; the picker stores the local time as chosen.
+      expect(
+        typeDate(
+          { minimum: "2026-03-29T02:30", value: "2026-03-28T01:00" },
+          "3/29/2026"
+        )
+      ).toEqual(["2026-03-29T02:30"]);
+      cleanup();
+      expect(typeDate({ value: "2026-10-24T02:30" }, "10/25/2026")).toEqual([
+        "2026-10-25T02:30",
+      ]);
+      cleanup();
+      expect(
+        typeDate(
+          { minimum: "2028-02-29T23:59", value: "2028-02-28T08:00" },
+          "2/29/2028"
+        )
+      ).toEqual(["2028-02-29T23:59"]);
+    });
 
-    view.rerender(
-      <ReservationDateTimePicker
-        dateLabel="Start date"
-        onChange={onChange}
-        timeLabel="Start time"
-      />
-    );
-    expect((view.getByLabelText("Start time") as HTMLInputElement).value).toBe(
-      "17:00"
-    );
-  });
-
-  test("accepts minute-level values by default", () => {
-    const onChange = mock(() => undefined);
-    const view = render(
-      <ReservationDateTimePicker
-        dateLabel="Start date"
-        onChange={onChange}
-        timeLabel="Start time"
-        value="2099-06-10T16:00"
-      />
-    );
-    const timeInput = view.getByLabelText("Start time");
-
-    expect(timeInput.getAttribute("step")).toBe("60");
-    fireEvent.input(timeInput, { target: { value: "17:30" } });
-    expect(onChange).toHaveBeenCalledWith("2099-06-10T17:30");
-  });
-
-  test("does not mutate controlled state when the minimum moves forward", () => {
-    const onChange = mock(() => undefined);
-    const view = render(
-      <ReservationDateTimePicker
-        dateLabel="Start date"
-        minimum="2099-06-10T15:00"
-        onChange={onChange}
-        timeLabel="Start time"
-        value="2099-06-10T16:00"
-      />
-    );
-
-    view.rerender(
-      <ReservationDateTimePicker
-        dateLabel="Start date"
-        minimum="2099-06-10T17:00"
-        onChange={onChange}
-        timeLabel="Start time"
-        value="2099-06-10T16:00"
-      />
-    );
-
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  test("hides time without mutating the selected date-time", () => {
-    const onChange = mock(() => undefined);
-    const view = render(
-      <ReservationDateTimePicker
-        dateLabel="Meeting room date"
-        minimum="2099-06-10T15:00"
-        onChange={onChange}
-        timeLabel="Meeting room start time"
-        showTime={false}
-        value="2099-06-10T16:00"
-      />
-    );
-
-    expect(view.queryByLabelText("Meeting room start time")).toBeNull();
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  test("restores the preserved clock when time is shown again", () => {
-    const onChange = mock(() => undefined);
-    const view = render(
-      <ReservationDateTimePicker
-        dateLabel="Meeting room date"
-        onChange={onChange}
-        timeLabel="Meeting room start time"
-        showTime={false}
-        value="2099-06-11T16:00"
-      />
-    );
-
-    expect(onChange).not.toHaveBeenCalled();
-    view.rerender(
-      <ReservationDateTimePicker
-        dateLabel="Meeting room date"
-        onChange={onChange}
-        timeLabel="Meeting room start time"
-        showTime
-        value="2099-06-11T16:00"
-      />
-    );
-
-    expect(
-      (view.getByLabelText("Meeting room start time") as HTMLInputElement).value
-    ).toBe("16:00");
-    expect(onChange).not.toHaveBeenCalled();
+    test("clears the date and time together for text that is no date", () => {
+      expect(typeDate({ value: "2099-06-10T16:00" }, "not a date")).toEqual([
+        "",
+      ]);
+      cleanup();
+      expect(typeDate({ value: "2099-06-10T16:00" }, " ")).toEqual([""]);
+    });
   });
 });

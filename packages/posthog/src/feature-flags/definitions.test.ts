@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import { PostHogProjectId } from "../identifiers";
 import {
   listPostHogFeatureFlagDefinitions,
@@ -146,6 +147,91 @@ describe("listPostHogFeatureFlagDefinitions", () => {
     });
   });
 
+  test("classifies early-exit, group-aggregated and default-rollout release conditions", async () => {
+    const unconditional = { properties: [], rollout_percentage: 100 };
+    const targeted = {
+      properties: [{ key: "plan", value: "paid" }],
+      rollout_percentage: 100,
+    };
+    const definitions = await Effect.runPromise(
+      listPostHogFeatureFlagDefinitions(projectId, () =>
+        Effect.succeed({
+          count: 8,
+          results: [
+            { key: "unknown-activity", filters: { groups: [unconditional] } },
+            { key: "default-rollout", active: true, filters: { groups: [{}] } },
+            {
+              key: "default-rollout-continuity-off",
+              active: true,
+              ensure_experience_continuity: false,
+              filters: { groups: [{ properties: [] }] },
+            },
+            {
+              key: "group-aggregated",
+              active: true,
+              filters: {
+                aggregation_group_type_index: 0,
+                groups: [unconditional],
+              },
+            },
+            {
+              key: "group-aggregated-condition",
+              active: true,
+              filters: {
+                groups: [{ ...unconditional, aggregation_group_type_index: 1 }],
+              },
+            },
+            {
+              key: "early-exit-after-full-release",
+              active: true,
+              filters: { early_exit: true, groups: [targeted, unconditional] },
+            },
+            {
+              key: "early-exit-after-partial-release",
+              active: true,
+              filters: {
+                early_exit: true,
+                groups: [
+                  { ...targeted, rollout_percentage: 50 },
+                  unconditional,
+                ],
+              },
+            },
+            {
+              key: "nobody-across-groups",
+              active: true,
+              filters: {
+                aggregation_group_type_index: 0,
+                groups: [
+                  { properties: [], rollout_percentage: 0 },
+                  { ...targeted, rollout_percentage: -1 },
+                ],
+              },
+            },
+          ] as const,
+        })
+      )
+    );
+
+    expect(
+      Object.fromEntries(
+        definitions.map(({ constantEnabledValue, key }) => [
+          key,
+          constantEnabledValue,
+        ])
+      )
+    ).toEqual({
+      "default-rollout": true,
+      "default-rollout-continuity-off": true,
+      "early-exit-after-full-release": true,
+      "early-exit-after-partial-release": undefined,
+      "group-aggregated": undefined,
+      "group-aggregated-condition": undefined,
+      "nobody-across-groups": false,
+      "unknown-activity": undefined,
+    });
+  });
+
   test("does not classify an active flag without release conditions", async () => {
     const [definition] = await Effect.runPromise(
       listPostHogFeatureFlagDefinitions(projectId, () =>
@@ -154,6 +240,24 @@ describe("listPostHogFeatureFlagDefinitions", () => {
     );
 
     expect(definition?.constantEnabledValue).toBeUndefined();
+  });
+
+  test("fails a stalled page request", async () => {
+    const error = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* listPostHogFeatureFlagDefinitions(
+          projectId,
+          () => Effect.never
+        ).pipe(Effect.flip, Effect.forkChild);
+        yield* TestClock.adjust("10 seconds");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(error).toMatchObject({
+      _tag: "PostHogFeatureFlagError",
+      message: "PostHog feature flag request timed out.",
+    });
   });
 
   test("fails through the Effect error channel for duplicate keys", async () => {

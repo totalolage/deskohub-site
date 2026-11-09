@@ -5,6 +5,7 @@ file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
   not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
   not $name <: r".*/generated/.*",
+  $body <: r"(?s).*Effect\.(?:tryPromise|promise|sync|try|suspend)\s*\(.*",
   $body <: contains bubble {
     `Effect.fn($trace)($callback)` as $wrapper where {
       $callback <: r"(?s)^\s*\(\s*\)\s*=>\s*Effect\.(?:tryPromise|promise|sync|try|suspend)\s*\(.*\)\s*(?:\.pipe\s*\(.*\))?\s*$",

@@ -1,65 +1,24 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { createPostHogPageUrl, sanitizePostHogProperties } from "./posthog-url";
 
+const syntheticAddress = testEmailAddress("synthetic");
+const syntheticEmailAddress = testEmailAddress("synthetic-email");
+
 describe("createPostHogPageUrl", () => {
-  test("strips all checkout and auth query params", () => {
-    expect(
-      createPostHogPageUrl(
-        "https://deskohub.test/checkout?payState=secret&payStateRef=ref&checkoutToken=checkout&step=pay&token=abc"
-      )
-    ).toBe("https://deskohub.test/checkout");
-  });
-
-  test("strips Vercel preview bypass params", () => {
-    expect(
-      createPostHogPageUrl(
-        "https://deskohub.test/reservation/status/order-id?x-vercel-protection-bypass=secret&step=done"
-      )
-    ).toBe("https://deskohub.test/reservation/status/[id]");
-  });
-
-  test("strips reservation access capability tokens", () => {
-    expect(
-      createPostHogPageUrl(
-        "https://deskohub.test/reservation/access/order-id?accessToken=signed-capability&step=access"
-      )
-    ).toBe("https://deskohub.test/reservation/access/[id]");
-    expect(
-      createPostHogPageUrl(
-        "https://deskohub.test/reservation/invoice/order-id?accessToken=signed-capability&step=invoice"
-      )
-    ).toBe("https://deskohub.test/reservation/invoice/[id]");
-  });
-
-  test("continues to strip the retired reservation status token name", () => {
-    expect(
-      createPostHogPageUrl(
-        "https://deskohub.test/reservation/status/order-id?statusToken=retired-capability&outcome=success"
-      )
-    ).toBe("https://deskohub.test/reservation/status/[id]");
-  });
-
-  test("strips marketing query params from PostHog pageviews", () => {
-    expect(
-      createPostHogPageUrl(
-        "https://deskohub.test/en-US/reservation/cowork?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero"
-      )
-    ).toBe("https://deskohub.test/en-US/reservation/cowork");
-  });
-
   test("strips private query and fragment values", () => {
     const privateValues = [
-      "synthetic-email@example.test",
+      syntheticEmailAddress,
       "Synthetic Name",
       "synthetic-token",
       "synthetic-billing",
       "123456",
     ];
     const sanitizedUrl = createPostHogPageUrl(
-      "https://deskohub.test/account?email=synthetic-email%40example.test&name=Synthetic%20Name&token=synthetic-token&billing=synthetic-billing&pin=123456#synthetic-fragment"
+      `https://deskohub.test/reservation/status/order-id?payState=synthetic-pay-state&x-vercel-protection-bypass=synthetic-bypass&accessToken=synthetic-capability&statusToken=synthetic-status&utm_source=deskohub&email=${encodeURIComponent(syntheticEmailAddress)}&name=Synthetic%20Name&token=synthetic-token&billing=synthetic-billing&pin=123456#synthetic-fragment`
     );
 
-    expect(sanitizedUrl).toBe("https://deskohub.test/account");
+    expect(sanitizedUrl).toBe("https://deskohub.test/reservation/status/[id]");
     for (const privateValue of privateValues) {
       expect(sanitizedUrl).not.toContain(privateValue);
     }
@@ -113,7 +72,7 @@ describe("createPostHogPageUrl", () => {
   test("drops malformed URL properties instead of returning them raw", () => {
     const properties = sanitizePostHogProperties(
       {
-        $current_url: "synthetic-email@example.test?token=synthetic-token",
+        $current_url: `${syntheticEmailAddress}?token=synthetic-token`,
         $initial_current_url: "not a URL",
         $referrer: "$direct",
       },
@@ -125,9 +84,7 @@ describe("createPostHogPageUrl", () => {
       "deployment.environment.name": "preview",
     });
     expect(JSON.stringify(properties)).not.toContain("synthetic-token");
-    expect(JSON.stringify(properties)).not.toContain(
-      "synthetic-email@example.test"
-    );
+    expect(JSON.stringify(properties)).not.toContain(syntheticEmailAddress);
   });
 
   test("sanitizes URL properties nested in explicit person-property bags", () => {
@@ -135,8 +92,7 @@ describe("createPostHogPageUrl", () => {
       sanitizePostHogProperties(
         {
           $set_once: {
-            $initial_current_url:
-              "https://deskohub.test/account?email=synthetic%40example.test#name",
+            $initial_current_url: `https://deskohub.test/account?email=${encodeURIComponent(syntheticAddress)}#name`,
           },
         },
         "preview"
@@ -183,7 +139,7 @@ describe("createPostHogPageUrl", () => {
   test("drops non-string URL and path properties, including nested person properties", () => {
     const properties = sanitizePostHogProperties(
       {
-        $current_url: { email: "synthetic-email@example.test" },
+        $current_url: { email: syntheticEmailAddress },
         $pathname: ["synthetic-name", "synthetic-token"],
         $set_once: {
           $initial_current_url: { billing: "synthetic-billing" },
@@ -198,7 +154,7 @@ describe("createPostHogPageUrl", () => {
       "deployment.environment.name": "preview",
     });
     for (const privateValue of [
-      "synthetic-email@example.test",
+      syntheticEmailAddress,
       "synthetic-name",
       "synthetic-token",
       "synthetic-billing",
@@ -209,27 +165,13 @@ describe("createPostHogPageUrl", () => {
   });
 
   test("drops query-derived campaign properties at the top level and in person properties", () => {
-    const clickIdProperties = [
-      "gclid",
-      "dclid",
-      "gbraid",
-      "wbraid",
-      "fbclid",
-      "msclkid",
-      "twclid",
-      "li_fat_id",
-      "mc_cid",
-      "igshid",
-      "ttclid",
-    ];
     const campaignProperties = [
       "utm_source",
-      "utm_campaign",
       "$initial_utm_medium",
-      ...clickIdProperties,
-      ...clickIdProperties.map((property) => `$initial_${property}`),
       "$session_entry_utm_source",
-      ...clickIdProperties.map((property) => `$session_entry_${property}`),
+      "msclkid",
+      "$initial_fbclid",
+      "$session_entry_ttclid",
     ];
     const properties = sanitizePostHogProperties(
       {
@@ -239,7 +181,7 @@ describe("createPostHogPageUrl", () => {
             `synthetic-top-campaign-${index}`,
           ])
         ),
-        utm_content: "synthetic-email@example.test",
+        utm_content: syntheticEmailAddress,
         gclid: "synthetic-click-id",
         keep: "ordinary-value",
         $set_once: {
@@ -275,9 +217,7 @@ describe("createPostHogPageUrl", () => {
       expect(properties).not.toHaveProperty(property);
       expect(properties.$set_once).not.toHaveProperty(property);
     }
-    expect(JSON.stringify(properties)).not.toContain(
-      "synthetic-email@example.test"
-    );
+    expect(JSON.stringify(properties)).not.toContain(syntheticEmailAddress);
     expect(JSON.stringify(properties)).not.toContain("Synthetic Name");
     expect(JSON.stringify(properties)).not.toContain("synthetic-click-id");
     expect(JSON.stringify(properties)).not.toContain(
@@ -286,23 +226,5 @@ describe("createPostHogPageUrl", () => {
     expect(JSON.stringify(properties)).not.toContain(
       "synthetic-nested-session-click-id"
     );
-  });
-
-  test("leaves non-url referrers unchanged", () => {
-    expect(
-      sanitizePostHogProperties(
-        {
-          $referrer: "$direct",
-          $initial_referrer: "$direct",
-          $session_entry_referrer: "$direct",
-        },
-        "preview"
-      )
-    ).toEqual({
-      $referrer: "$direct",
-      $initial_referrer: "$direct",
-      $session_entry_referrer: "$direct",
-      "deployment.environment.name": "preview",
-    });
   });
 });

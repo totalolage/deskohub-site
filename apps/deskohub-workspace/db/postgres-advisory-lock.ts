@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { Context, Effect, Layer, Result, Semaphore } from "effect";
 import { SqlError } from "effect/unstable/sql";
 import type { Pool } from "pg";
@@ -13,6 +14,17 @@ export type PostgresAdvisoryLockPool = {
   readonly connect: () => Promise<PostgresAdvisoryLockClient>;
 };
 
+/**
+ * Takes a transaction-scoped advisory lock inside the caller's own
+ * transaction; the lock releases when that transaction ends.
+ */
+export const postgresAdvisoryTransactionLockStatement = (
+  key: PostgresAdvisoryLockKey
+) => {
+  const [namespace, lockKey] = key;
+  return sql`select pg_advisory_xact_lock(hashtext(${namespace}), hashtext(${lockKey}))`;
+};
+
 const beginSql = "begin";
 const lockSql = "select pg_advisory_xact_lock(hashtext($1), hashtext($2))";
 const rollbackSql = "rollback";
@@ -20,24 +32,28 @@ const rollbackSql = "rollback";
 const toSqlError = (cause: unknown) =>
   new SqlError.SqlError({ reason: new SqlError.UnknownError({ cause }) });
 
-const acquireTransactionLock = (
+const acquireTransactionLocks = Effect.fn(function* (
   pool: PostgresAdvisoryLockPool,
-  key: PostgresAdvisoryLockKey
-) =>
-  Effect.tryPromise({
-    try: async () => {
-      const client = await pool.connect();
-      try {
-        await client.query(beginSql);
-        await client.query(lockSql, [...key]);
-      } catch (cause) {
-        client.release(cause instanceof Error ? cause : true);
-        throw cause;
-      }
-      return client;
-    },
+  keys: readonly PostgresAdvisoryLockKey[]
+) {
+  const client = yield* Effect.tryPromise({
+    try: () => pool.connect(),
     catch: toSqlError,
   });
+  yield* Effect.tryPromise({
+    try: async () => {
+      await client.query(beginSql);
+      for (const key of keys) {
+        await client.query(lockSql, [...key]);
+      }
+    },
+    catch: toSqlError,
+  }).pipe(
+    // A client whose transaction did not open cleanly is evicted, not reused.
+    Effect.tapError((error) => Effect.sync(() => client.release(error)))
+  );
+  return client;
+});
 
 const releaseTransactionLock = Effect.fn(function* (
   client: PostgresAdvisoryLockClient
@@ -87,15 +103,38 @@ export const withPostgresAdvisoryLock = <A, E, R>(
   key: PostgresAdvisoryLockKey,
   effect: Effect.Effect<A, E, R>
 ): Effect.Effect<A, E | SqlError.SqlError, R> =>
+  withPostgresAdvisoryLocks(pool, [key], effect);
+
+/**
+ * Acquires multiple transaction-scoped advisory locks on one pinned client
+ * and under one pool permit. Callers provide a deterministic global order.
+ */
+export const withPostgresAdvisoryLocks = <A, E, R>(
+  pool: PostgresAdvisoryLockPool,
+  keys: readonly PostgresAdvisoryLockKey[],
+  effect: Effect.Effect<A, E, R>
+): Effect.Effect<A, E | SqlError.SqlError, R> =>
   Effect.acquireUseRelease(
-    acquireTransactionLock(pool, key),
+    acquireTransactionLocks(pool, keys),
     () => effect,
     releaseTransactionLock
   );
 
 interface IWorkspaceDatabaseAdvisoryLock {
+  /**
+   * Reserves the shared advisory-lock pool permit around work that performs
+   * its advisory locking and local queries inside one database transaction.
+   * The effect must open that transaction only after this permit is acquired.
+   */
+  readonly withTransactionPermit: <A, E, R>(
+    effect: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E | SqlError.SqlError, R>;
   readonly withLock: <A, E, R>(
     key: PostgresAdvisoryLockKey,
+    effect: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E | SqlError.SqlError, R>;
+  readonly withLocks: <A, E, R>(
+    keys: readonly PostgresAdvisoryLockKey[],
     effect: Effect.Effect<A, E, R>
   ) => Effect.Effect<A, E | SqlError.SqlError, R>;
 }
@@ -108,6 +147,13 @@ export class WorkspaceDatabaseAdvisoryLock extends Context.Service<
     const semaphore = makeAdvisoryLockSemaphore(pool);
 
     return Layer.succeed(this, {
+      withTransactionPermit: (effect) => {
+        if (semaphore === undefined) {
+          return Effect.fail(advisoryLockPoolCapacityError);
+        }
+
+        return semaphore.withPermits(1)(effect);
+      },
       withLock: (key, effect) => {
         if (semaphore === undefined) {
           return Effect.fail(advisoryLockPoolCapacityError);
@@ -115,6 +161,15 @@ export class WorkspaceDatabaseAdvisoryLock extends Context.Service<
 
         return semaphore.withPermits(1)(
           withPostgresAdvisoryLock(pool, key, effect)
+        );
+      },
+      withLocks: (keys, effect) => {
+        if (semaphore === undefined) {
+          return Effect.fail(advisoryLockPoolCapacityError);
+        }
+
+        return semaphore.withPermits(1)(
+          withPostgresAdvisoryLocks(pool, keys, effect)
         );
       },
     });

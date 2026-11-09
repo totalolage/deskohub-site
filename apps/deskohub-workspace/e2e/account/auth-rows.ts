@@ -1,9 +1,20 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
-import { authSession, authUser } from "@/db/schema/auth";
-import { customerAccountLinks } from "@/db/schema/customer-account-links";
+import {
+  WorkspaceDatabase,
+  type WorkspaceDatabaseClient,
+} from "@/db/database.service";
+import { authPasskey, authSession, authUser } from "@/db/schema/auth";
+import { customerAccounts } from "@/db/schema/customer-accounts";
+import { CustomerAccountRepository } from "@/features/account/backend/customer-account.repository";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
+import type { Locale } from "@/features/i18n";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
+import {
+  type ReservationFixtureInput,
+  workspaceFixtures,
+} from "@/shared/testing/workspace-fixtures.test-utils";
 import type { WorkspaceE2EError } from "../errors";
 import { workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
@@ -33,26 +44,51 @@ export const findAuthUserIdByEmail = (
     return rows[0]?.id;
   });
 
-/**
- * Reads the exact email stored on one journaled synthetic auth row, keyed by
- * that row's id alone. The returned string stays inside the runner and only
- * ever feeds in-page boolean comparisons; it is redacted and never logged,
- * asserted by value, or written to a message.
- */
 export const findAuthUserEmailById = (
   accountId: string
-): Effect.Effect<string | undefined, WorkspaceE2EError, E2EDatabase> =>
+): Effect.Effect<string | null | undefined, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
     const rows = yield* runDatabaseOperation(
-      "read synthetic auth user email",
+      "read synthetic auth user owner",
       db
         .select({ email: authUser.email })
         .from(authUser)
-        .where(eq(authUser.id, accountId))
+        .where(eq(authUser.id, sensitiveDatabaseParameter(accountId)))
     );
-    return rows[0]?.email;
+    return rows[0] ? rows[0].email : undefined;
   });
+
+/**
+ * The author of a reservation a fixture seeds for the customer: the live
+ * account linked to it, else a new synthetic customer account without a
+ * login, since every reservation has an author.
+ */
+export const seedWorkspaceE2EReservationAuthor = Effect.fn(
+  "seedWorkspaceE2EReservationAuthor"
+)(function* (executor: WorkspaceDatabaseClient, customerId: DotyposCustomerId) {
+  const [linked] = yield* executor
+    .select({ id: customerAccounts.id })
+    .from(customerAccounts)
+    .where(eq(customerAccounts.dotyposCustomerId, customerId));
+  if (linked) return linked.id;
+  return yield* workspaceFixtures(executor).customerAccount({
+    id: customerAccountIdSchema.make(
+      `e2e-reservation-author-${crypto.randomUUID()}`
+    ),
+  });
+});
+
+/**
+ * A fixture reservation of one customer, inserted with the author
+ * `seedWorkspaceE2EReservationAuthor` resolves for that customer.
+ */
+export type WorkspaceE2EAuthoredReservation = Omit<
+  ReservationFixtureInput,
+  "author" | "customer"
+> & {
+  readonly customer: DotyposCustomerId;
+};
 
 export const findLinkedDotyposCustomerId = (
   accountId: string
@@ -62,13 +98,11 @@ export const findLinkedDotyposCustomerId = (
     const rows = yield* runDatabaseOperation(
       "read synthetic account link",
       db
-        .select({
-          dotyposCustomerId: customerAccountLinks.dotyposCustomerId,
-        })
-        .from(customerAccountLinks)
-        .where(eq(customerAccountLinks.customerAccountId, accountId))
+        .select({ dotyposCustomerId: customerAccounts.dotyposCustomerId })
+        .from(customerAccounts)
+        .where(eq(customerAccounts.id, customerAccountIdSchema.make(accountId)))
     );
-    return rows[0]?.dotyposCustomerId;
+    return rows[0]?.dotyposCustomerId ?? undefined;
   });
 
 export const removeSyntheticAccountLink = (
@@ -80,19 +114,18 @@ export const removeSyntheticAccountLink = (
     const rows = yield* runDatabaseOperation(
       "delete synthetic account link",
       db
-        .delete(customerAccountLinks)
+        .update(customerAccounts)
+        .set({ dotyposCustomerId: null })
         .where(
           and(
-            eq(customerAccountLinks.customerAccountId, accountId),
+            eq(customerAccounts.id, customerAccountIdSchema.make(accountId)),
             eq(
-              customerAccountLinks.dotyposCustomerId,
+              customerAccounts.dotyposCustomerId,
               customerId as DotyposCustomerId
             )
           )
         )
-        .returning({
-          customerAccountId: customerAccountLinks.customerAccountId,
-        })
+        .returning({ customerAccountId: customerAccounts.id })
     );
 
     if (rows.length !== 1 || rows[0]?.customerAccountId !== accountId) {
@@ -107,14 +140,29 @@ export const removeSyntheticAccountLink = (
   });
 
 /**
- * Deletes exactly one journaled synthetic Better Auth user. Cascades remove
- * the account's sessions, OAuth accounts, and the customer-account link row.
+ * Deletes exactly one journaled synthetic account the way account deletion
+ * does: leaves the customer account's tombstone, so the reservations it
+ * authored that cleanup keeps name a deleted account, then deletes the
+ * Better Auth user. Cascades remove the account's sessions, OAuth accounts,
+ * and the customer-account link row. Repeats keep the first deletion instant.
  */
 export const removeSyntheticAuthUser = (
   accountId: string
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
+    yield* runDatabaseOperation(
+      "tombstone synthetic customer account",
+      CustomerAccountRepository.use((accounts) =>
+        accounts.tombstone(
+          customerAccountIdSchema.make(accountId),
+          Temporal.Now.instant()
+        )
+      ).pipe(
+        Effect.provide(CustomerAccountRepository.Default),
+        Effect.provideService(WorkspaceDatabase, WorkspaceDatabase.make(db))
+      )
+    );
     yield* runDatabaseOperation(
       "delete synthetic auth user",
       db.delete(authUser).where(eq(authUser.id, accountId))
@@ -137,6 +185,24 @@ export const setDeletionRequestedAt = (
   });
 
 /**
+ * Sets the saved locale preference of the exact synthetic account. A
+ * deletion-pending account keeps its preference but rejects every save
+ * through the application, so the lane uses this fixture to give the
+ * pending account a preference its reauthentication sign-in must honor.
+ */
+export const setAccountLocalePreference = (
+  accountId: string,
+  locale: Locale
+): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    yield* runDatabaseOperation(
+      "set synthetic account locale preference",
+      db.update(authUser).set({ locale }).where(eq(authUser.id, accountId))
+    );
+  });
+
+/**
  * Back-dates or restores the creation time of the synthetic account's own
  * sessions so the deployed ten-minute recent-session deletion gate is
  * exercised deterministically. Only the exact synthetic user's rows change.
@@ -154,6 +220,45 @@ export const setSessionCreatedAt = (
         .set({ createdAt: value })
         .where(eq(authSession.userId, accountId))
     );
+  });
+
+/**
+ * The number of passkeys the synthetic account holds. Only the exact
+ * synthetic user's rows are counted.
+ */
+export const countAccountPasskeys = (
+  accountId: string
+): Effect.Effect<number, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const rows = yield* runDatabaseOperation(
+      "count synthetic account passkeys",
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(authPasskey)
+        .where(eq(authPasskey.userId, accountId))
+    );
+    return rows[0]?.count ?? 0;
+  });
+
+/**
+ * When the synthetic account's newest session was created, so a passkey
+ * reauthentication can be shown to have opened a fresh one.
+ */
+export const readNewestSessionCreatedAt = (
+  accountId: string
+): Effect.Effect<Date | undefined, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const rows = yield* runDatabaseOperation(
+      "read synthetic newest session creation time",
+      db
+        .select({ createdAt: sql<Date>`max(${authSession.createdAt})` })
+        .from(authSession)
+        .where(eq(authSession.userId, accountId))
+    );
+    const value = rows[0]?.createdAt;
+    return value == null ? undefined : new Date(value);
   });
 
 export const assertNoAuthRows = (
@@ -193,7 +298,7 @@ export const assertNoAuthRows = (
  */
 export type WorkspaceE2EAccountState = "linked" | "missing" | "unlinked";
 
-export const classifyWorkspaceE2EAccountState = (input: {
+const classifyWorkspaceE2EAccountState = (input: {
   readonly authUserId: string | undefined;
   readonly linkedDotyposCustomerId: string | undefined;
 }): WorkspaceE2EAccountState => {
@@ -216,14 +321,11 @@ export const readSyntheticAccountState = (
       db
         .select({
           authUserId: authUser.id,
-          dotyposCustomerId: customerAccountLinks.dotyposCustomerId,
+          dotyposCustomerId: customerAccounts.dotyposCustomerId,
         })
         .from(authUser)
-        .leftJoin(
-          customerAccountLinks,
-          eq(customerAccountLinks.customerAccountId, authUser.id)
-        )
-        .where(eq(authUser.email, sensitiveDatabaseParameter(email)))
+        .leftJoin(customerAccounts, eq(customerAccounts.id, authUser.id))
+        .where(eq(authUser.email, email))
     );
     const row = rows[0];
     return classifyWorkspaceE2EAccountState({

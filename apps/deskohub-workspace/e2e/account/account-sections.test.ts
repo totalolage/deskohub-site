@@ -1,47 +1,30 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { Effect } from "effect";
 import { createElement, useState } from "react";
-import {
-  type AccountSection,
-  AccountShell,
-  type AccountShellProps,
-} from "@/features/account/components/shell/account-shell";
+import { AccountShell } from "@/features/account/components/shell/account-shell";
+import { getAccountSectionPath } from "@/features/account/routes";
+import type { AccountSection } from "@/features/account/sections";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import type { Runner } from "../runtime";
-import { workspaceE2ETimeouts } from "../timeouts";
 import {
   type AccountSectionPage,
-  accountSectionLabels,
   accountSectionLandmarks,
   selectAccountSection,
-  selectAccountSectionInRunner,
 } from "./account-sections";
 
 const sections = [
   "reservations",
+  "referrals",
   "profile",
+  "assistants",
   "billing",
   "legal",
   "danger",
 ] as const satisfies readonly AccountSection[];
 
-const shellLabels = {
-  mobileSection: "Account section",
-  navigation: "Account navigation",
-  sections: accountSectionLabels,
-} as const satisfies AccountShellProps["labels"];
-
-const misleadingShellLabels = {
-  ...shellLabels,
-  sections: {
-    ...shellLabels.sections,
-    reservations: "Reservations and billing",
-  },
-} as const satisfies AccountShellProps["labels"];
+const accountSectionDataAttribute = "data-account-section";
 
 const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
   switch (section) {
@@ -51,11 +34,23 @@ const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
         { id: "account-reservations-past-title" },
         "Past reservations"
       );
+    case "referrals":
+      return createElement(
+        "section",
+        { "data-screen": "referrals-screen" },
+        createElement("h2", null, "Referrals")
+      );
     case "profile":
       return createElement(
         "section",
         { "data-screen": "profile-screen" },
         createElement("input", { id: "account-profile-first-name" })
+      );
+    case "assistants":
+      return createElement(
+        "h2",
+        { id: "account-assistants-title" },
+        "Connected assistants"
       );
     case "billing":
       return createElement(
@@ -65,19 +60,13 @@ const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
         createElement("select", { id: "account-profile-billing-kind" })
       );
     case "legal":
-      return createElement(
-        // Mirror the real LegalScreen: the landmark policy link lives inside
-        // the legal navigation, never as a bare panel link.
-        "nav",
-        null,
-        includeLegalLink
-          ? createElement(
-              "a",
-              { href: "/en-US/privacy-policy" },
-              "Privacy policy"
-            )
-          : null
-      );
+      return includeLegalLink
+        ? createElement(
+            "a",
+            { href: "/en-US/privacy-policy" },
+            "Privacy policy"
+          )
+        : null;
     case "danger":
       return createElement(
         "button",
@@ -89,11 +78,9 @@ const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
 
 function AccountShellHarness({
   includeLegalLink = true,
-  labels = shellLabels,
   reservationCount,
 }: {
   readonly includeLegalLink?: boolean;
-  readonly labels?: AccountShellProps["labels"];
   readonly reservationCount?: number;
 }) {
   const [activeSection, setActiveSection] =
@@ -110,11 +97,10 @@ function AccountShellHarness({
         // AccountShellProps' required children field without replacing them.
         // biome-ignore lint/correctness/noChildrenProp: AccountShellProps requires children in its createElement props type.
         children: null,
-        labels,
+        locale: "en-US",
         onSectionChange: setActiveSection,
         reservationCount,
         signOut: createElement("button", { type: "button" }, "Sign out"),
-        title: "Workspace account",
       },
       ...sections.map((section) =>
         createElement(
@@ -134,13 +120,19 @@ function AccountShellHarness({
 
 type FakeLocator = {
   readonly click: (options?: { readonly timeout?: number }) => Promise<void>;
+  readonly elementHandle: () => Promise<FakeElementHandle>;
   readonly isVisible: () => Promise<boolean>;
+};
+
+type FakeElementHandle = {
+  readonly dispose: () => Promise<void>;
+  readonly element: Element;
 };
 
 type FakePageOptions = {
   readonly onClick?: (options?: { readonly timeout?: number }) => void;
   readonly onIsVisible?: () => void;
-  readonly onWait?: () => void;
+  readonly onWait?: (argument: unknown) => void | Promise<void>;
 };
 
 const desktopBreakpoint = 768;
@@ -178,6 +170,10 @@ const fakeLocator = (
     options.onClick?.(clickOptions);
     fireEvent.click(element);
   },
+  elementHandle: async () => ({
+    dispose: async () => {},
+    element,
+  }),
   isVisible: async () => {
     options.onIsVisible?.();
     return elementIsVisible(element, width);
@@ -188,7 +184,7 @@ const makeFakePage = (
   width: number | null,
   pageOptions: FakePageOptions = {}
 ): AccountSectionPage => {
-  const page = {
+  const page = Object.assign({} as AccountSectionPage, {
     getByRole: (role: string, roleOptions?: unknown) => {
       const name =
         typeof roleOptions === "object" &&
@@ -202,9 +198,13 @@ const makeFakePage = (
         "exact" in roleOptions
           ? (roleOptions as { readonly exact?: unknown }).exact !== false
           : true;
-      const candidates = Array.from(
-        document.querySelectorAll<HTMLElement>("button")
-      );
+      const candidates: HTMLElement[] = [];
+      if (role === "link") {
+        candidates.push(...document.querySelectorAll<HTMLElement>("a"));
+      }
+      if (role === "button") {
+        candidates.push(...document.querySelectorAll<HTMLElement>("button"));
+      }
       const match = candidates.find((element) => {
         if (!elementIsVisible(element, width)) return false;
         const accessibleName =
@@ -218,21 +218,29 @@ const makeFakePage = (
     waitForFunction: async (pageFunction: unknown, arg: unknown) => {
       if (typeof pageFunction !== "function")
         throw new Error("fake wait predicate was not a function");
-      pageOptions.onWait?.();
-      if (!(pageFunction as (value: unknown) => boolean)(arg)) {
+      const predicateArgument =
+        typeof arg === "object" && arg !== null && "element" in arg
+          ? (arg as FakeElementHandle).element
+          : arg;
+      await pageOptions.onWait?.(predicateArgument);
+      const result = (pageFunction as (value: unknown) => unknown)(
+        predicateArgument
+      );
+      if (!result) {
         throw new Error("fake account section did not settle");
       }
+      return { dispose: async () => {}, jsonValue: async () => result };
     },
-  };
+  });
   return page;
 };
 
 const setResponsiveNavigationVisibility = (
   mode: "desktop" | "mobile"
 ): void => {
-  const navigation = document.querySelector(
-    'nav[aria-label="Account navigation"]'
-  );
+  const navigation = document
+    .querySelector("[data-account-mobile-navigation]")
+    ?.closest("nav");
   if (!navigation) throw new Error("fake account navigation was not rendered");
 
   for (const child of Array.from(navigation.children)) {
@@ -244,22 +252,6 @@ const setResponsiveNavigationVisibility = (
       child.style.display = mode === "desktop" ? "block" : "none";
     }
   }
-};
-
-const makeRunner = (desktop: boolean) => {
-  const calls: Array<{
-    readonly args: readonly string[];
-    readonly input: string | undefined;
-  }> = [];
-  const run: Runner = async (_command, args, options) => {
-    calls.push({ args: args.slice(2), input: options?.input });
-    return {
-      exitCode: 0,
-      stderr: "",
-      stdout: args[2] === "eval" ? String(desktop) : "",
-    };
-  };
-  return { calls, run };
 };
 
 beforeAll(registerWorkspaceComponentTestEnv);
@@ -277,30 +269,14 @@ test("selects every section through rendered desktop AccountShell controls", asy
     expect(landmark).toBeTruthy();
     expect(landmark?.closest("[hidden]")).toBeNull();
 
-    const button = Array.from(
-      document.querySelectorAll(
-        'nav[aria-label="Account navigation"] button:not([data-account-section])'
-      )
-    ).find(
-      (candidate) =>
-        candidate.textContent?.replaceAll(/\s+/g, " ").trim() ===
-        accountSectionLabels[section]
+    const link = document.querySelector(
+      `a[data-account-sidebar-section="${section}"]`
     );
-    expect(button?.getAttribute("aria-current")).toBe("page");
+    expect(link?.getAttribute("aria-current")).toBe("page");
+    expect(link?.getAttribute("href")).toBe(
+      getAccountSectionPath("en-US", section)
+    );
   }
-});
-
-test("scopes the legal landmark to AccountShell when the public footer duplicates it", () => {
-  render(createElement(AccountShellHarness));
-
-  expect(document.querySelectorAll("a[href$='/privacy-policy']")).toHaveLength(
-    2
-  );
-  const legalLandmarks = document.querySelectorAll(
-    accountSectionLandmarks.legal
-  );
-  expect(legalLandmarks).toHaveLength(1);
-  expect(legalLandmarks[0]?.closest("main")).not.toBeNull();
 });
 
 test("does not accept the public footer as the legal account landmark", async () => {
@@ -335,19 +311,23 @@ for (const reservationCount of [0, 3] as const) {
 
 test("does not accept a misleading Reservations label prefix", async () => {
   const page = makeFakePage(1440);
-  render(
-    createElement(AccountShellHarness, {
-      labels: misleadingShellLabels,
-      reservationCount: 3,
-    })
+  render(createElement(AccountShellHarness, { reservationCount: 3 }));
+  // The shell names its sections from the catalog, so the test renames the
+  // rendered desktop link.
+  const reservationsLabel = document.querySelector(
+    '[data-account-sidebar-section="reservations"] .break-words'
   );
+  if (reservationsLabel === null) {
+    throw new Error("The desktop Reservations label is not rendered.");
+  }
+  reservationsLabel.textContent = "Reservations and billing";
 
   await expect(selectAccountSection(page, "reservations")).rejects.toThrow(
     "fake account section did not settle"
   );
 });
 
-test("selects every section through visible mobile section buttons", async () => {
+test("selects every section through visible mobile section links", async () => {
   const page = makeFakePage(375);
   render(createElement(AccountShellHarness));
 
@@ -357,12 +337,15 @@ test("selects every section through visible mobile section buttons", async () =>
     const mobileNavigation = document.querySelector(
       "[data-account-mobile-navigation]"
     );
-    const button = mobileNavigation?.querySelector<HTMLButtonElement>(
-      `[data-account-section="${section}"]`
+    const link = mobileNavigation?.querySelector<HTMLAnchorElement>(
+      `[${accountSectionDataAttribute}="${section}"]`
     );
-    expect(button?.getAttribute("aria-current")).toBe("page");
+    expect(link?.getAttribute("aria-current")).toBe("page");
+    expect(link?.getAttribute("href")).toBe(
+      getAccountSectionPath("en-US", section)
+    );
     expect(
-      mobileNavigation?.querySelectorAll('button[aria-current="page"]')
+      mobileNavigation?.querySelectorAll('a[aria-current="page"]')
     ).toHaveLength(1);
     expect(
       document
@@ -382,15 +365,19 @@ test("resolves the responsive section variant when viewport size is unavailable"
     for (const section of sections) {
       await selectAccountSection(page, section);
 
-      const activeButtons = document.querySelectorAll(
+      const activeLinks = document.querySelectorAll(
         mode === "mobile"
-          ? '[data-account-mobile-navigation] button[aria-current="page"]'
-          : 'nav[aria-label="Account navigation"] button:not([data-account-section])[aria-current="page"]'
+          ? '[data-account-mobile-navigation] a[aria-current="page"]'
+          : 'a[data-account-sidebar-section][aria-current="page"]'
       );
-      expect(activeButtons).toHaveLength(1);
-      expect(activeButtons[0]?.textContent?.trim()).toBe(
-        accountSectionLabels[section]
-      );
+      expect(activeLinks).toHaveLength(1);
+      expect(
+        activeLinks[0]?.getAttribute(
+          mode === "mobile"
+            ? "data-account-section"
+            : "data-account-sidebar-section"
+        )
+      ).toBe(section);
       expect(
         document
           .querySelector(accountSectionLandmarks[section])
@@ -400,64 +387,90 @@ test("resolves the responsive section variant when viewport size is unavailable"
   }
 });
 
-test("lets the section click own delayed actionability before checking readiness", async () => {
+test("waits for the rendered section link handler before clicking it", async () => {
   const calls: string[] = [];
+  let linkHandlerAttached = false;
+  let restoreLinkHandler = () => {};
   const page = makeFakePage(1440, {
-    onClick: (options) => {
-      calls.push(`click:${options?.timeout ?? "missing"}`);
+    onClick: () => {
+      calls.push("click");
+      if (!linkHandlerAttached) {
+        throw new Error("account section link handler was not attached");
+      }
     },
-    onIsVisible: () => {
-      throw new Error("selection must not probe button visibility");
-    },
-    onWait: () => {
-      calls.push("wait");
+    onWait: async (argument) => {
+      if (argument instanceof Element) {
+        calls.push("wait:link-handler");
+        await Promise.resolve();
+        restoreLinkHandler();
+        return;
+      }
+      if (typeof argument === "string") {
+        calls.push(`wait:panel-hydration:${argument}`);
+        return;
+      }
+      calls.push("wait:section-ready");
     },
   });
   render(createElement(AccountShellHarness));
 
-  await selectAccountSection(page, "billing");
+  const billingLink = document.querySelector<HTMLAnchorElement>(
+    'a[data-account-sidebar-section="billing"]'
+  );
+  if (billingLink === null)
+    throw new Error("rendered Billing link was not found");
+  const reactPropsKey = Object.keys(billingLink).find((key) =>
+    key.startsWith("__reactProps$")
+  );
+  if (reactPropsKey === undefined)
+    throw new Error("rendered Billing link has no React props");
+  const reactPropsDescriptor = Object.getOwnPropertyDescriptor(
+    billingLink,
+    reactPropsKey
+  );
+  if (reactPropsDescriptor === undefined)
+    throw new Error("rendered Billing link React props descriptor is missing");
+
+  if (!Reflect.deleteProperty(billingLink, reactPropsKey))
+    throw new Error("could not defer the rendered Billing link handler");
+  restoreLinkHandler = () => {
+    Object.defineProperty(billingLink, reactPropsKey, reactPropsDescriptor);
+    linkHandlerAttached = true;
+  };
+
+  await selectAccountSection(page, "billing", (stage) =>
+    calls.push(`stage:${stage}`)
+  );
 
   expect(calls).toEqual([
-    `click:${workspaceE2ETimeouts.browserAction}`,
-    "wait",
+    "stage:link-handler-wait",
+    "wait:link-handler",
+    "stage:panel-hydration-wait",
+    "wait:panel-hydration:[data-screen='profile-screen']",
+    "stage:native-link-click",
+    "click",
+    "stage:selected-landmark-wait",
+    "wait:section-ready",
   ]);
+  expect(billingLink.getAttribute("aria-current")).toBe("page");
 });
 
-test("uses a visible desktop button and waits for its visible landmark in the Runner adapter", async () => {
-  const { calls, run } = makeRunner(true);
+test("does not click a section before its streamed panel is hydrated", async () => {
+  const calls: string[] = [];
+  const page = makeFakePage(1440, {
+    onClick: () => {
+      calls.push("click");
+    },
+  });
+  render(createElement(AccountShellHarness));
+  const profileScreen = document.querySelector(accountSectionLandmarks.profile);
+  if (profileScreen === null)
+    throw new Error("profile screen was not rendered");
+  const serverCopy = profileScreen.cloneNode(true);
+  profileScreen.replaceWith(serverCopy);
 
-  await Effect.runPromise(
-    selectAccountSectionInRunner(run, "account-sections-test", "billing")
-  );
-
-  expect(calls.map(({ args }) => args.slice(0, 2))).toEqual([
-    ["eval", "--stdin"],
-    [
-      "click",
-      'nav[aria-label="Account navigation"] button:not([data-account-section]):has-text("Billing & Invoices")',
-    ],
-    ["wait", "--fn"],
-  ]);
-  expect(calls[2]?.args[2]).toContain("#account-profile-billing-kind");
-  expect(calls[2]?.args[2]).toContain('"desktop":true');
-  expect(calls[2]?.args[2]).not.toContain(".click(");
-});
-
-test("uses the visible mobile section button in the Runner adapter", async () => {
-  const { calls, run } = makeRunner(false);
-
-  await Effect.runPromise(
-    selectAccountSectionInRunner(run, "account-sections-test", "danger")
-  );
-
-  expect(calls.map(({ args }) => args.slice(0, 2))).toEqual([
-    ["eval", "--stdin"],
-    [
-      "click",
-      'nav[aria-label="Account navigation"] [data-account-mobile-navigation] button[data-account-section="danger"]',
-    ],
-    ["wait", "--fn"],
-  ]);
-  expect(calls[2]?.args[2]).toContain('"desktop":false');
-  expect(calls[2]?.args[2]).toContain("#delete-account-trigger");
+  await expect(
+    selectAccountSection(page, "profile", (stage) => calls.push(stage))
+  ).rejects.toThrow("fake account section did not settle");
+  expect(calls).toEqual(["link-handler-wait", "panel-hydration-wait"]);
 });

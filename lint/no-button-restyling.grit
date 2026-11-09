@@ -1,0 +1,163 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// `className` on the Button family (`Button`, `DisclosureButton`, `NavItem`,
+// `SegmentedControl`, `ChoiceCard`) places the control in its parent and never
+// restyles it; see the `className` doc in `shared/components/ui/button.tsx`.
+//
+// Threat model: this catches accidental and habitual restyles, not deliberate
+// evasion through dynamic indirection such as `ui["Button"]` or
+// `Object.values(ui)`. The rule finds the components by name in JSX, so it
+// rejects every static way a component reaches JSX under another name or with
+// classes it can't read:
+// - a renamed import, re-export or local export (`Button as Action`);
+// - any value use outside a JSX tag: `const Action = Button`, `memo(Button)`,
+//   `createElement(Button, props)`, `{ Button }` object shorthand, and a
+//   member read such as `ui.Button`;
+// - destructuring the name from any object under another name
+//   (`const { Button: Action } = ui`); `const { Button } = ...` keeps the name
+//   the JSX check reads, so it passes;
+// - a spread attribute other than an object literal whose `className` passes.
+// A JSX member tag such as `<ui.Button>` is checked by its last segment, so
+// namespace imports and barrels stay covered. React Email's `Button` only shares
+// the name, and its classes style email HTML: a bare `<Button>` isn't checked
+// when every `Button` binding in the module is an import from React Email, and
+// renaming that import passes. Any other `Button` binding (a second import, a
+// declaration, a destructured or parameter name) keeps the check on.
+//
+// Every class, after any variant prefix and `!`, must be one of:
+// - margin, self and grid placement, `order`, flex-item `shrink`, `grow`,
+//   `flex-1|auto|initial|none` and `basis-*`, and scroll-snap alignment;
+// - `static|fixed|absolute|relative|sticky`, inset (`top-*`, `inset-x-*`) and `z-*`;
+// - `hidden` and `group`;
+// - width (`w-*`, `min-w-*`, `max-w-*`) and display (`block`, `inline-block`,
+//   `flex`, `inline-flex`) only under a breakpoint or container-query variant
+//   (`sm:w-auto`, `@xl:w-auto`, `md:inline-flex`).
+// The value must be a string, an expression-free template, or `cn(...)`/`clsx(...)`
+// over those, `condition && classes` and `condition ? classes : classes`.
+// Anything else (a variable, a forwarded prop, an interpolated template) is
+// reported because it can't be checked; suppress it with
+// `biome-ignore lint/plugin: <why the value is parent layout only>`.
+// A spread object literal is checked like attributes: its `className` value as
+// above, any other plain key passes. Any other spread can carry a `className`,
+// so it is reported for the same suppression.
+pattern layout_classes() {
+  r"^[\"'`]\s*(?:(?:(?:(?:[^\s:\[\]\"'`]|\[[^\]\s\"'`]*\])+:)*!?(?:-?m[trblxyse]?-(?:[0-9./]+|px|auto|full|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|(?:justify-|place-)?self-(?:auto|start|end|center|stretch|baseline|baseline-last|end-safe|center-safe)|(?:col|row)-(?:span|start|end)-(?:[0-9]+|full|auto|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|(?:col|row)-auto|-?order-(?:[0-9]+|first|last|none|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|(?:shrink|grow)(?:-0)?|flex-(?:1|auto|initial|none)|basis-(?:[a-z0-9./]+|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|snap-(?:start|end|center|align-none|normal|always)|(?:static|fixed|absolute|relative|sticky)|-?(?:inset(?:-[xy])?|top|right|bottom|left|start|end)-(?:[0-9./]+|px|auto|full|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|-?z-(?:[0-9]+|auto|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|hidden|group(?:/[a-z0-9_-]+)?)|(?:(?:[^\s:\[\]\"'`]|\[[^\]\s\"'`]*\])+:)*(?:(?:max-|min-)?(?:sm|md|lg|xl|2xl)|(?:max|min)-\[[^\]\s\"'`]+\]|@[a-z0-9-]*(?:\[[^\]\s\"'`]+\])?(?:/[a-z0-9_-]+)?):(?:(?:[^\s:\[\]\"'`]|\[[^\]\s\"'`]*\])+:)*!?(?:(?:min-|max-)?w-(?:[a-z0-9./]+|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|(?:block|inline-block|flex|inline-flex)))!?(?:\s+(?:(?:(?:[^\s:\[\]\"'`]|\[[^\]\s\"'`]*\])+:)*!?(?:-?m[trblxyse]?-(?:[0-9./]+|px|auto|full|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|(?:justify-|place-)?self-(?:auto|start|end|center|stretch|baseline|baseline-last|end-safe|center-safe)|(?:col|row)-(?:span|start|end)-(?:[0-9]+|full|auto|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|(?:col|row)-auto|-?order-(?:[0-9]+|first|last|none|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|(?:shrink|grow)(?:-0)?|flex-(?:1|auto|initial|none)|basis-(?:[a-z0-9./]+|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|snap-(?:start|end|center|align-none|normal|always)|(?:static|fixed|absolute|relative|sticky)|-?(?:inset(?:-[xy])?|top|right|bottom|left|start|end)-(?:[0-9./]+|px|auto|full|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|-?z-(?:[0-9]+|auto|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|hidden|group(?:/[a-z0-9_-]+)?)|(?:(?:[^\s:\[\]\"'`]|\[[^\]\s\"'`]*\])+:)*(?:(?:max-|min-)?(?:sm|md|lg|xl|2xl)|(?:max|min)-\[[^\]\s\"'`]+\]|@[a-z0-9-]*(?:\[[^\]\s\"'`]+\])?(?:/[a-z0-9_-]+)?):(?:(?:[^\s:\[\]\"'`]|\[[^\]\s\"'`]*\])+:)*!?(?:(?:min-|max-)?w-(?:[a-z0-9./]+|\[[^\]\s\"'`]+\]|\([^)\s\"'`]+\))|(?:block|inline-block|flex|inline-flex)))!?)*)?\s*[\"'`]$"
+}
+
+pattern react_email_import() {
+  JsImport(import_clause = JsImportNamedClause(source = r"^[\"'](?:react-email|@react-email/[\w-]+)[\"']$"))
+}
+
+pattern checked_classes() {
+  or {
+    or { JsStringLiteralExpression(), JsTemplateExpression() } as $classes where {
+      not $classes <: r"(?s).*\$\{.*",
+      or {
+        $classes <: layout_classes(),
+        register_diagnostic(
+          span = $classes,
+          message = "Button className accepts parent layout only: margin, placement, position, z-index, responsive width or visibility, and group. Express colour, size, radius, typography and states through the component's props.",
+          severity = "error"
+        )
+      }
+    },
+    JsCallExpression(callee = r"^(?:cn|clsx)$", arguments = JsCallArguments(args = $arguments)) where {
+      $arguments <: every checked_classes()
+    },
+    `$condition && $classes` where { $classes <: checked_classes() },
+    JsConditionalExpression(consequent = checked_classes(), alternate = checked_classes()),
+    JsParenthesizedExpression(expression = checked_classes()),
+    r"^(?:undefined|null|false)$"
+  }
+}
+
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.tsx?$",
+  $body <: r"(?s).*\b(?:Button|DisclosureButton|NavItem|SegmentedControl|ChoiceCard)\b.*",
+  $body <: contains bubble or {
+    or {
+      JsxSelfClosingElement(name = $component, attributes = $attributes),
+      JsxOpeningElement(name = $component, attributes = $attributes)
+    } where {
+      $component <: r"^(?:[\w$]+\.)*(?:Button|DisclosureButton|NavItem|SegmentedControl|ChoiceCard)$",
+      not and {
+        $component <: r"^Button$",
+        $component <: within JsModule() as $module where {
+          $module <: contains JsIdentifierBinding() as $email_binding where {
+            $email_binding <: r"^Button$",
+            $email_binding <: within react_email_import()
+          },
+          not $module <: contains JsIdentifierBinding() as $other_binding where {
+            $other_binding <: r"^Button$",
+            not $other_binding <: within react_email_import()
+          }
+        }
+      },
+      $attributes <: some bubble or {
+        JsxAttribute(
+          name = r"^className$",
+          initializer = JsxAttributeInitializerClause(value = $value)
+        ) where {
+          or {
+            $value <: JsxString() as $classes where {
+              or {
+                $classes <: layout_classes(),
+                register_diagnostic(
+                  span = $classes,
+                  message = "Button className accepts parent layout only: margin, placement, position, z-index, responsive width or visibility, and group. Express colour, size, radius, typography and states through the component's props.",
+                  severity = "error"
+                )
+              }
+            },
+            $value <: JsxExpressionAttributeValue(expression = checked_classes()),
+            register_diagnostic(
+              span = $value,
+              message = "Pass Button className as literal classes, or cn() over literal and conditional literal classes, so the parent-layout check can read it.",
+              severity = "error"
+            )
+          }
+        },
+        JsxSpreadAttribute(argument = $spread) where {
+          or {
+            $spread <: JsObjectExpression(members = $members) where {
+              $members <: every or {
+                JsPropertyObjectMember(name = r"^[\"']?className[\"']?$", value = checked_classes()),
+                JsPropertyObjectMember(name = and {
+                  not JsComputedMemberName(),
+                  not r"^[\"']?className[\"']?$"
+                }),
+                JsShorthandPropertyObjectMember(name = not r"^className$")
+              }
+            },
+            register_diagnostic(
+              span = $spread,
+              message = "Spread props can carry a Button className the parent-layout check can't read. Pass className as its own attribute, or suppress with `biome-ignore lint/plugin: <why the spread never restyles>`.",
+              severity = "error"
+            )
+          }
+        }
+      }
+    },
+    or {
+      JsNamedImportSpecifier(name = $reference),
+      JsExportNamedFromSpecifier(source_name = $reference, export_as = JsExportAsClause()),
+      JsExportNamedSpecifier(local_name = $reference),
+      JsIdentifierExpression(name = $reference),
+      JsShorthandPropertyObjectMember(name = $reference),
+      JsStaticMemberExpression(member = $reference),
+      JsObjectBindingPatternProperty(member = $reference)
+    } as $indirection where {
+      $reference <: r"^[\"']?(?:Button|DisclosureButton|NavItem|SegmentedControl|ChoiceCard)[\"']?$",
+      not and {
+        $indirection <: JsNamedImportSpecifier(),
+        $indirection <: within react_email_import()
+      },
+      register_diagnostic(
+        span = $indirection,
+        message = "Keep the Button family under its own name and use it only as a JSX tag, so the parent-layout check can find its className.",
+        severity = "error"
+      )
+    }
+  }
+}

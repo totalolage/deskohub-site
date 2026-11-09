@@ -1,35 +1,30 @@
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
-import {
-  fillBrowserField,
-  focusBrowserElement,
-  openBrowserPage,
-  pressBrowserKey,
-  waitForBrowserReactFormAction,
-  waitForBrowserText,
-} from "../browser";
+import { openPage, waitForPageText, waitForReactFormSubmit } from "../browser";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";
 import { failWorkspaceE2E, type WorkspaceE2EError } from "../errors";
-import type { Runner } from "../runtime";
 import { log } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
-import type { WorkspaceE2EStepRunner } from "../types";
 import { makeUrl, setSearchParams } from "../urls";
 
 export const assertContactForm = ({
   config,
-  run,
   runStep,
-  session,
+  openSession,
 }: {
   config: WorkspaceE2EConfig;
-  run: Runner;
   runStep: WorkspaceE2EStepRunner;
-  session: string;
+  openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const runId = new Date().toISOString().replace(/[-:.TZ]/g, "");
     const data = {
-      email: `workspace-e2e-contact-${runId}@example.com`,
+      email: testEmailAddress(`delivered+workspace-e2e-contact-${runId}`),
       message: `Automated workspace contact e2e ${runId}`,
       name: `Workspace Contact E2E ${runId}`,
       phone: `+420736${runId.slice(8, 14)}`,
@@ -41,30 +36,52 @@ export const assertContactForm = ({
     );
     yield* setSearchParams(url, { e2eAt: runId });
 
+    // Each step reaches the session itself, so a browser that fails to open
+    // fails the step that needed it.
+    const browser = openSession;
     yield* runStep({
-      execute: openBrowserPage(config, run, session, url.toString(), {
-        timeoutMs: config.timeouts.browserNavigation,
-      }).pipe(Effect.asVoid),
+      execute: Effect.flatMap(browser, (opened) =>
+        openPage(opened, config, url.toString(), {
+          timeoutMs: config.timeouts.browserNavigation,
+        })
+      ),
       id: "open-contact-form",
       timeoutMs: config.timeouts.browserNavigation,
     });
     yield* runStep({
-      execute: waitForBrowserReactFormAction(
-        run,
-        session,
-        "#contact-form form",
-        { timeoutMs: config.timeouts.uiTransition }
+      execute: Effect.flatMap(browser, (opened) =>
+        waitForReactFormSubmit(
+          opened,
+          "#contact-form form",
+          [
+            "#contact-name",
+            "#contact-phone",
+            "#contact-email",
+            "#contact-message",
+          ],
+          {
+            requiredReadyAttribute: {
+              name: "data-rhf-ready",
+              value: "true",
+            },
+            timeoutMs: config.timeouts.uiTransition,
+          }
+        )
       ),
       id: "wait-for-contact-form-hydration",
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: fillContactForm(run, session, data, config.timeouts),
+      execute: Effect.flatMap(browser, (opened) =>
+        fillContactForm(opened, data, config.timeouts)
+      ),
       id: "fill-contact-form",
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: submitContactForm(run, session, config.timeouts),
+      execute: Effect.flatMap(browser, (opened) =>
+        submitContactForm(opened, config.timeouts)
+      ),
       id: "submit-contact-form",
       timeoutMs: config.timeouts.uiTransition,
     });
@@ -72,51 +89,50 @@ export const assertContactForm = ({
   });
 
 const fillContactForm = (
-  run: Runner,
-  session: string,
+  session: E2EBrowserSession,
   data: { email: string; message: string; name: string; phone: string },
   timeouts: WorkspaceE2ETimeouts
 ) =>
-  Effect.gen(function* () {
-    const timeoutMs = timeouts.browserAction;
-    yield* fillBrowserField(run, session, "#contact-name", data.name, {
-      timeoutMs,
-    });
-    yield* fillBrowserField(run, session, "#contact-phone", data.phone, {
-      timeoutMs,
-    });
-    yield* fillBrowserField(run, session, "#contact-email", data.email, {
-      timeoutMs,
-    });
-    yield* fillBrowserField(run, session, "#contact-message", data.message, {
-      timeoutMs,
-    });
-  });
+  Effect.forEach(
+    [
+      ["#contact-name", data.name],
+      ["#contact-phone", data.phone],
+      ["#contact-email", data.email],
+      ["#contact-message", data.message],
+    ] as const,
+    ([selector, value]) =>
+      session.use("fill browser field", (page) =>
+        page
+          .locator(selector)
+          .filter({ visible: true })
+          .fill(value, { timeout: timeouts.browserAction })
+      ),
+    { discard: true }
+  );
 
-const submitContactForm = (
-  run: Runner,
-  session: string,
+const submitContactForm = Effect.fnUntraced(function* (
+  session: E2EBrowserSession,
   timeouts: WorkspaceE2ETimeouts
-) =>
-  Effect.gen(function* () {
-    const timeoutMs = timeouts.uiTransition;
-    yield* focusBrowserElement(
-      run,
-      session,
-      '#contact-form button[type="submit"]',
-      { timeoutMs }
-    );
-    yield* pressBrowserKey(run, session, "Enter", { timeoutMs });
-    const result = yield* waitForBrowserText({
-      description: "contact form result",
-      matches: (text) =>
-        text.includes("Your message has been sent.") ||
-        text.includes("Failed to send your message. Please try again later."),
-      run,
-      session,
-      timeoutMs,
-    });
-
-    if (result.includes("Failed to send your message. Please try again later."))
-      return yield* failWorkspaceE2E("Contact form submission failed");
+) {
+  const timeoutMs = timeouts.uiTransition;
+  yield* session.use("focus browser element", (page) =>
+    page
+      .locator('#contact-form button[type="submit"]')
+      .filter({ visible: true })
+      .focus({ timeout: timeoutMs })
+  );
+  yield* session.use("press browser key", (page) =>
+    page.keyboard.press("Enter")
+  );
+  const result = yield* waitForPageText({
+    description: "contact form result",
+    matches: (text) =>
+      text.includes("Your message has been sent.") ||
+      text.includes("Failed to send your message. Please try again later."),
+    session,
+    timeoutMs,
   });
+
+  if (result.includes("Failed to send your message. Please try again later."))
+    return yield* failWorkspaceE2E("Contact form submission failed");
+});

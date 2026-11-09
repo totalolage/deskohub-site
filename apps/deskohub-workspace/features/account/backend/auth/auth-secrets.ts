@@ -1,4 +1,4 @@
-export type BetterAuthSecretEntry = {
+type BetterAuthSecretEntry = {
   readonly version: number;
   readonly value: string;
 };

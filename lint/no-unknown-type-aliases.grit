@@ -4,6 +4,7 @@ language js(typescript, jsx)
 // ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
 file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: r"(?s).*\bunknown\b.*",
   $body <: contains bubble {
     TsTypeAliasDeclaration() as $unknown_alias where {
       $unknown_alias <: r"(?s)^type\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*\(?\s*unknown\s*\)?\s*;?$",

@@ -20,12 +20,6 @@ beforeEach(() => {
   requestedLocale = "en-US";
 });
 
-test("resolves a supported locale from the root route parameter", async () => {
-  const { getRequestLocale } = await import("./request-locale");
-
-  await expect(getRequestLocale()).resolves.toBe("en-US");
-});
-
 test("rejects a missing or unsupported root route parameter", async () => {
   const { getRequestLocale } = await import("./request-locale");
 

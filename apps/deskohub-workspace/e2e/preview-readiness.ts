@@ -6,10 +6,10 @@ import {
   type WorkspaceE2EError,
   workspaceE2EError,
 } from "./errors";
+import { isNotFoundPage } from "./not-found-page";
 import { makeUrl } from "./urls";
 
-export const previewTileReferrerPolicy = "strict-origin-when-cross-origin";
-export const previewAuthSessionCacheControl = "private, no-store";
+const previewAuthSessionCacheControl = "private, no-store";
 
 export const assertPreviewEndpointsReady = (
   config: WorkspaceE2EConfig
@@ -18,7 +18,6 @@ export const assertPreviewEndpointsReady = (
     [
       assertPreviewEndpointReady(config, "/api/webhooks/nexi"),
       assertPreviewEndpointReady(config, "/api/webhooks/resend"),
-      assertPreviewHomepageTilesReady(config),
       assertPreviewJpegReady(config, "/workspace-location-map.jpeg"),
       assertPreviewAuthSessionReady(config),
     ],
@@ -74,33 +73,6 @@ export const assertPreviewAuthSessionReady = Effect.fn(
   );
 });
 
-export const assertPreviewHomepageTilesReady = Effect.fn(
-  "previewReadiness.assertHomepageTilesReady"
-)(function* (config: WorkspaceE2EConfig) {
-  const path = "/en-US";
-  const operation = `check ${path} preview homepage`;
-  const response = yield* requestPreviewEndpoint(config, path);
-
-  yield* Effect.succeed(response).pipe(
-    Effect.filterOrFail(
-      ({ status }) => status >= 200 && status < 300,
-      ({ status }) =>
-        workspaceE2EError(
-          `${path} preview homepage check failed with ${status}`,
-          { operation }
-        )
-    ),
-    Effect.filterOrFail(
-      ({ headers }) => headers["referrer-policy"] === previewTileReferrerPolicy,
-      ({ headers }) =>
-        workspaceE2EError(
-          `${path} preview homepage sent Referrer-Policy ${headers["referrer-policy"] ?? "without a policy"} instead of ${previewTileReferrerPolicy}; OpenStreetMap browser tiles require a Referer`,
-          { operation }
-        )
-    )
-  );
-});
-
 export const isPreviewPageAvailable = (
   config: WorkspaceE2EConfig,
   path: string,
@@ -127,9 +99,7 @@ export const isPreviewPageAvailable = (
       )
     );
     if (body.includes(expectedContent)) return true;
-    if (/<h1[^>]*class="next-error-h1"[^>]*>\s*404\s*<\/h1>/.test(body)) {
-      return false;
-    }
+    if (isNotFoundPage(body)) return false;
 
     return yield* workspaceE2EError(
       `${path} preview page did not render its expected content`,

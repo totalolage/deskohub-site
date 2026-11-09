@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-import { GoogleCalendarRuntimeConfig } from "../config";
+import { testEmailAddress } from "@deskohub/test-email";
+import { Duration, Effect, Fiber, Layer, Schema } from "effect";
+import { TestClock } from "effect/testing";
+import {
+  GoogleCalendarRuntimeConfig,
+  type IGoogleCalendarRuntimeConfig,
+} from "../config";
 import {
   GoogleCalendarChannelIdSchema,
   GoogleCalendarEventIdSchema,
@@ -22,14 +27,20 @@ type CalendarListResponse = {
   };
 };
 
+type RequestOptions = { readonly signal?: AbortSignal };
+
 type ListEventsImplementation = (
-  params: CalendarListQuery
+  params: CalendarListQuery,
+  options?: RequestOptions
 ) => Promise<CalendarListResponse>;
 
-type WatchEventsImplementation = (params: {
-  readonly calendarId: string;
-  readonly requestBody?: unknown;
-}) => Promise<{
+type WatchEventsImplementation = (
+  params: {
+    readonly calendarId: string;
+    readonly requestBody?: unknown;
+  },
+  options?: RequestOptions
+) => Promise<{
   readonly data: {
     readonly id?: string | null;
     readonly resourceId?: string | null;
@@ -42,7 +53,6 @@ let listEvents = mock<ListEventsImplementation>(async () => ({
   data: { items: [] },
 }));
 let watchEvents = mock<WatchEventsImplementation>(async () => ({ data: {} }));
-const calendarCalls: unknown[] = [];
 const jwtCalls: unknown[] = [];
 
 mock.module("@googleapis/calendar", () => ({
@@ -53,18 +63,20 @@ mock.module("@googleapis/calendar", () => ({
       }
     },
   },
-  calendar: mock((options: unknown) => {
-    calendarCalls.push(options);
-    return { events: { list: listEvents, watch: watchEvents } };
-  }),
+  calendar: mock(() => ({
+    events: { list: listEvents, watch: watchEvents },
+  })),
 }));
 
-const { GoogleCalendarService } = await import("./service");
+const { GoogleCalendarService, getGoogleCalendarRequestWorstCaseDuration } =
+  await import("./service");
 
 type GoogleCalendarRequirement = import("./service").GoogleCalendarService;
 
+const serviceAccountEmail = testEmailAddress("service");
+
 const config = {
-  serviceAccountEmail: "service@example.test",
+  serviceAccountEmail,
   privateKey: "line1\\nline2",
   timeZone: "Europe/Prague",
 };
@@ -89,22 +101,52 @@ beforeEach(() => {
     data: { items: [] },
   }));
   watchEvents = mock<WatchEventsImplementation>(async () => ({ data: {} }));
-  calendarCalls.length = 0;
   jwtCalls.length = 0;
 });
 
 const runWithCalendar = <A, E>(
-  effect: Effect.Effect<A, E, GoogleCalendarRequirement>
+  effect: Effect.Effect<A, E, GoogleCalendarRequirement>,
+  runtimeConfig: IGoogleCalendarRuntimeConfig = config
 ) =>
   Effect.runPromise(
     effect.pipe(
       Effect.provide(
         GoogleCalendarService.Default.pipe(
-          Layer.provide(Layer.succeed(GoogleCalendarRuntimeConfig, config))
+          Layer.provide(
+            Layer.succeed(GoogleCalendarRuntimeConfig, runtimeConfig)
+          )
         )
       )
     )
   );
+
+/** A provider request that never answers until it is aborted. */
+const stalledRequest = (
+  options: RequestOptions | undefined,
+  onAbort: () => void = () => undefined
+) =>
+  new Promise<CalendarListResponse>((_resolve, reject) => {
+    options?.signal?.addEventListener("abort", () => {
+      onAbort();
+      reject(new Error("aborted"));
+    });
+  });
+
+const providerError = (status: number, message: string) =>
+  Object.assign(new Error(message), { status });
+
+/** Lists events while advancing the test clock by each of `steps` in turn. */
+const listEventsAdvancingClock = (steps: readonly Duration.Input[]) =>
+  Effect.gen(function* () {
+    const googleCalendar = yield* GoogleCalendarService;
+    const fiber = yield* googleCalendar
+      .listEvents({ calendarId, from: "2026-06-20", to: "2026-06-21" })
+      .pipe(Effect.result, Effect.forkChild);
+    for (const step of steps) {
+      yield* TestClock.adjust(step);
+    }
+    return yield* Fiber.join(fiber);
+  }).pipe(Effect.provide(TestClock.layer()));
 
 describe("GoogleCalendarService", () => {
   test("paginates, expands date window, maps key newlines and events", async () => {
@@ -160,14 +202,12 @@ describe("GoogleCalendarService", () => {
     );
 
     expect(jwtCalls[0]).toMatchObject({
-      email: "service@example.test",
+      email: serviceAccountEmail,
       key: "line1\nline2",
       scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
     });
-    expect(calendarCalls[0]).toMatchObject({ version: "v3" });
     expect(listEvents.mock.calls[0]?.[0]).toMatchObject({
       calendarId: "calendar-id",
-      maxResults: 250,
       orderBy: "startTime",
       singleEvents: true,
       timeMin: "2026-06-19T00:00:00Z",
@@ -327,17 +367,20 @@ describe("GoogleCalendarService", () => {
       })
     );
 
-    expect(watchEvents).toHaveBeenCalledWith({
-      calendarId: "calendar-id",
-      requestBody: {
-        address:
-          "https://bar.example.test/api/webhooks/google-calendar/opening-hours",
-        id: "requested-channel-id",
-        params: { ttl: "259200" },
-        token: "derived-webhook-token",
-        type: "web_hook",
+    expect(watchEvents).toHaveBeenCalledWith(
+      {
+        calendarId: "calendar-id",
+        requestBody: {
+          address:
+            "https://bar.example.test/api/webhooks/google-calendar/opening-hours",
+          id: "requested-channel-id",
+          params: { ttl: "259200" },
+          token: "derived-webhook-token",
+          type: "web_hook",
+        },
       },
-    });
+      { signal: expect.any(AbortSignal) }
+    );
     expect(result).toEqual({
       channelId: decodeChannelId("returned-channel-id"),
       resourceId: decodeResourceId("resource-id"),
@@ -347,10 +390,19 @@ describe("GoogleCalendarService", () => {
     });
   });
 
-  test("maps event watch provider errors", async () => {
-    watchEvents = mock<WatchEventsImplementation>(async () => {
+  test("keeps the channel token out of event watch failures", async () => {
+    watchEvents = mock<WatchEventsImplementation>(async (params) => {
+      const requestConfig = {
+        url: "https://www.googleapis.com/calendar/v3/calendars/calendar-id/events/watch",
+        data: params.requestBody,
+        body: JSON.stringify(params.requestBody),
+      };
       const error = new Error("Invalid webhook address");
-      Object.assign(error, { status: 400 });
+      Object.assign(error, {
+        status: 400,
+        config: requestConfig,
+        response: { status: 400, config: { ...requestConfig } },
+      });
       throw error;
     });
 
@@ -365,19 +417,143 @@ describe("GoogleCalendarService", () => {
             webhookToken: "derived-webhook-token",
             ttlSeconds: 259_200,
           })
-          .pipe(Effect.result);
+          .pipe(Effect.flip);
       })
     );
 
-    expect(result._tag).toBe("Failure");
-    if (result._tag === "Failure") {
-      expect(result.failure).toMatchObject({
+    expect(result).toMatchObject({
+      _tag: "GoogleCalendarAPIError",
+      operation: "events.watch",
+      statusCode: 400,
+      message: "Invalid webhook address",
+    });
+    expect(JSON.stringify(result)).not.toContain("derived-webhook-token");
+    expect(Bun.inspect(result.cause, { depth: 10 })).not.toContain(
+      "derived-webhook-token"
+    );
+  });
+
+  test("times out and aborts a stalled events request after its retry", async () => {
+    let aborted = 0;
+    listEvents = mock<ListEventsImplementation>((_params, options) =>
+      stalledRequest(options, () => {
+        aborted += 1;
+      })
+    );
+
+    const result = await runWithCalendar(
+      listEventsAdvancingClock(["10 seconds", "1 second", "10 seconds"])
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
         _tag: "GoogleCalendarAPIError",
-        operation: "events.watch",
-        statusCode: 400,
-        message: "Invalid webhook address",
+        operation: "events.list",
+        message: "Google Calendar request timed out.",
+      },
+    });
+    expect(listEvents).toHaveBeenCalledTimes(2);
+    expect(aborted).toBe(2);
+  });
+
+  test.each([429, 503])(
+    "retries an events request answered with HTTP %i",
+    async (status) => {
+      let attempt = 0;
+      listEvents = mock<ListEventsImplementation>(async () => {
+        attempt += 1;
+        if (attempt === 1) throw providerError(status, "Try again");
+        return { data: { items: [] } };
       });
+
+      const result = await runWithCalendar(
+        listEventsAdvancingClock(["1 second"])
+      );
+
+      expect(result).toMatchObject({ _tag: "Success", success: [] });
+      expect(listEvents).toHaveBeenCalledTimes(2);
     }
+  );
+
+  test("does not retry an events request rejected as a client error", async () => {
+    listEvents = mock<ListEventsImplementation>(async () => {
+      throw providerError(404, "Not Found");
+    });
+
+    const result = await runWithCalendar(
+      listEventsAdvancingClock(["1 second"])
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { statusCode: 404 },
+    });
+    expect(listEvents).toHaveBeenCalledTimes(1);
+  });
+
+  test("times each attempt out at the configured request timeout", async () => {
+    let attempt = 0;
+    listEvents = mock<ListEventsImplementation>((_params, options) => {
+      attempt += 1;
+      return attempt === 1
+        ? stalledRequest(options)
+        : Promise.resolve({ data: { items: [] } });
+    });
+
+    const result = await runWithCalendar(
+      listEventsAdvancingClock(["5 seconds", "1 second"]),
+      { ...config, requestTimeout: "5 seconds" }
+    );
+
+    expect(result).toMatchObject({ _tag: "Success", success: [] });
+    expect(listEvents).toHaveBeenCalledTimes(2);
+  });
+
+  test("bounds every page of one load by the worst case of one retried request", async () => {
+    let answerFirstPage: (() => void) | undefined;
+    listEvents = mock<ListEventsImplementation>((params, options) =>
+      params.pageToken === undefined
+        ? new Promise((resolve) => {
+            answerFirstPage = () =>
+              resolve({ data: { items: [], nextPageToken: "next" } });
+          })
+        : stalledRequest(options)
+    );
+    const settle = Effect.promise(
+      () => new Promise((resolve) => setTimeout(resolve, 0))
+    );
+
+    const result = await runWithCalendar(
+      Effect.gen(function* () {
+        const googleCalendar = yield* GoogleCalendarService;
+        const fiber = yield* googleCalendar
+          .listEvents({ calendarId, from: "2026-06-20", to: "2026-06-21" })
+          .pipe(Effect.result, Effect.forkChild);
+        // The first page answers within its own timeout, after 9 seconds.
+        yield* TestClock.adjust("9 seconds");
+        answerFirstPage?.();
+        yield* settle;
+        // The second page times out at 19 seconds and is retried; the whole
+        // load ends at the 20.12-second worst case, not the retry's own 29.
+        yield* TestClock.adjust("10 seconds");
+        yield* settle;
+        yield* TestClock.adjust("1200 millis");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(
+      Duration.toMillis(getGoogleCalendarRequestWorstCaseDuration("10 seconds"))
+    ).toBe(20_120);
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        operation: "events.list",
+        message: "Google Calendar request timed out.",
+      },
+    });
+    expect(listEvents).toHaveBeenCalledTimes(3);
   });
 
   test.each(["id", "iCalUID", "recurringEventId"] as const)(

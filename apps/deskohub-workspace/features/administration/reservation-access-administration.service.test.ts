@@ -1,8 +1,8 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
-import { WorkspacePaidFulfillmentService } from "@/features/checkout/backend/fulfillment/paid-fulfillment.service";
+import { Context, Effect, Layer } from "effect";
+import { ReservationFulfillment } from "@/features/checkout/backend/fulfillment/reservation-fulfillment.service";
 import {
   WorkspaceReservationDetailsError,
   WorkspaceReservationService,
@@ -26,6 +26,7 @@ const baseGrant = {
   deviceId: "EK1",
   state: "failed",
   providerCredentialId: null,
+  accessName: "Deskohub grant-id",
   scheduledAccessStartsAt: Temporal.Instant.from("2099-07-01T08:00:00Z"),
   accessStartsAt: Temporal.Instant.from("2099-07-01T08:00:00Z"),
   accessEndsAt: Temporal.Instant.from("2099-07-01T16:00:00Z"),
@@ -97,8 +98,8 @@ const runMutation = (
               Layer.mock(WorkspaceReservationService, {
                 getAccessTarget: mock(() => target),
               }),
-              Layer.mock(WorkspacePaidFulfillmentService, {
-                fulfillPaidOrder,
+              Layer.mock(ReservationFulfillment, {
+                run: fulfillPaidOrder,
               })
             )
           )
@@ -119,9 +120,7 @@ describe("ReservationAccessAdministration", () => {
       reservedFrom: reservation.reservedFrom,
       reservedUntil: reservation.reservedUntil,
     });
-    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
-      orderId: reservationId,
-    });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith(reservationId);
     expect(harness.confirmProviderCredentialRemoved).not.toHaveBeenCalled();
   });
 
@@ -205,9 +204,7 @@ describe("ReservationAccessAdministration", () => {
     );
 
     expect((await harness.result).state).toBe("issued");
-    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
-      orderId: reservationId,
-    });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith(reservationId);
   });
 
   test("classifies failures before issuance as safe to retry", async () => {
@@ -276,5 +273,95 @@ describe("ReservationAccessAdministration", () => {
       reason: "invalid_state",
     });
     expect(uncertain.issueForReservation).not.toHaveBeenCalled();
+  });
+});
+
+describe("ReservationAccessAdministration.perOperation", () => {
+  /**
+   * An implementation that, like fulfillment's analytics, reads the author's
+   * consent once per instance and returns the grant named after it.
+   */
+  const consentReading = (hold: Effect.Effect<void> = Effect.void) => {
+    let consent = "grant";
+    let builds = 0;
+    class ConsentRead extends Context.Service<ConsentRead, string>()(
+      "test/ConsentRead"
+    ) {}
+    const implementation = Layer.effect(
+      ReservationAccessAdministration,
+      Effect.map(Effect.service(ConsentRead), (read) => {
+        const answer = Effect.as(hold, { ...baseGrant, id: read });
+        return {
+          mutate: () => answer,
+          resumeInterruptedMutation: () => answer,
+        };
+      })
+    ).pipe(
+      Layer.provide(
+        Layer.sync(ConsentRead, () => {
+          builds += 1;
+          return `${consent}-${builds}`;
+        })
+      )
+    );
+    return {
+      implementation,
+      withdraw: () => {
+        consent = "withdraw";
+      },
+    };
+  };
+
+  test("reads consent again for each operation of a service built once", async () => {
+    const { implementation, withdraw } = consentReading();
+
+    const ids = await Effect.gen(function* () {
+      const administration = yield* ReservationAccessAdministration;
+      const first = yield* administration.mutate({
+        kind: "retry-failed",
+        reservationId,
+      });
+      withdraw();
+      const second =
+        yield* administration.resumeInterruptedMutation(reservationId);
+      return [first.id, second.id];
+    }).pipe(
+      Effect.provide(
+        ReservationAccessAdministration.perOperation(implementation)
+      ),
+      Effect.runPromise
+    );
+
+    expect(ids).toEqual(["grant-1", "withdraw-2"]);
+  });
+
+  test("gives overlapping operations their own instance", async () => {
+    let started = 0;
+    const allStarted = Promise.withResolvers<void>();
+    // Each operation waits until all three are running, so they overlap.
+    const { implementation } = consentReading(
+      Effect.suspend(() => {
+        started += 1;
+        if (started === 3) allStarted.resolve();
+        return Effect.promise(() => allStarted.promise);
+      })
+    );
+
+    const ids = await Effect.gen(function* () {
+      const administration = yield* ReservationAccessAdministration;
+      return yield* Effect.all(
+        [1, 2, 3].map(() =>
+          administration.mutate({ kind: "retry-failed", reservationId })
+        ),
+        { concurrency: "unbounded" }
+      );
+    }).pipe(
+      Effect.provide(
+        ReservationAccessAdministration.perOperation(implementation)
+      ),
+      Effect.runPromise
+    );
+
+    expect(new Set(ids.map(({ id }) => id)).size).toBe(3);
   });
 });

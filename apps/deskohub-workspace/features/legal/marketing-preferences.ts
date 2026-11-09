@@ -1,12 +1,14 @@
+import type { MarketingConsentStatus } from "./marketing-consent-status";
+
 export type MarketingPreferencesManagedState =
   | {
-      readonly status: "absent" | "active" | "withdrawn";
+      readonly status: MarketingConsentStatus;
       readonly source: "link";
       readonly context: string;
       readonly dismissalContext: string;
     }
   | {
-      readonly status: "absent" | "active" | "withdrawn";
+      readonly status: MarketingConsentStatus;
       readonly source: "account";
       readonly context: string;
     };
@@ -39,3 +41,22 @@ export function isManagedMarketingState(
     state.status === "withdrawn"
   );
 }
+
+/**
+ * Why a marketing-preferences action refused the request. The action returns
+ * it as result data, and the form shows the reason's own copy.
+ */
+export type MarketingPreferencesRejectionReason =
+  | "invalid-link"
+  | "pending-confirmation-required"
+  | "stale-context";
+
+/** What a refused marketing-preferences action returns. */
+export type MarketingPreferencesRejection = {
+  readonly status: "rejected";
+  readonly reason: MarketingPreferencesRejectionReason;
+};
+
+export type MarketingPreferencesMutationFailureReason =
+  | MarketingPreferencesRejectionReason
+  | "unavailable";

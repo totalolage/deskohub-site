@@ -2,10 +2,12 @@ import { Effect, Predicate } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import sharp, { type OverlayOptions } from "sharp";
 import { ImageRenderingError, OsmTileRequestError } from "./errors";
+import { renderTextImage } from "./text-image";
 
 const defaultTileSize = 256;
 const defaultTileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const defaultUserAgent = "DeskohubStaticMap/1.0 (+https://deskohub.cz)";
+const tileRequestTimeout = "10 seconds";
 
 export interface StaticMapImageOptions {
   readonly lat: number;
@@ -17,6 +19,42 @@ export interface StaticMapImageOptions {
   readonly tileUrl?: string;
   readonly userAgent?: string;
   readonly quality?: number;
+  /**
+   * Font the OpenStreetMap attribution is drawn with. Without it the
+   * attribution needs a system sans-serif font, which serverless runtimes
+   * such as Vercel functions lack.
+   */
+  readonly attributionFont?: StaticMapAttributionFont;
+  /**
+   * Image pixels per displayed pixel. Enlarges the attribution so it stays
+   * legible when the image is shown downscaled. Defaults to 1.
+   */
+  readonly attributionScale?: number;
+  /**
+   * Draws the attribution into the image. Defaults to true. Turn it off only
+   * when the page shows the attribution over the image itself, for example
+   * because the page crops the image to its viewport.
+   */
+  readonly attribution?: boolean;
+  /** Draws the location marker at the coordinate. Defaults to true. */
+  readonly marker?: boolean;
+  /** The image pixel the coordinate lands on. Defaults to the image centre. */
+  readonly focus?: StaticMapFocus;
+  /** Defaults to JPEG. */
+  readonly format?: StaticMapImageFormat;
+}
+
+interface StaticMapFocus {
+  readonly x: number;
+  readonly y: number;
+}
+
+type StaticMapImageFormat = "jpeg" | "webp";
+
+export interface StaticMapAttributionFont {
+  readonly file: string;
+  /** Family name of the font in `file`. */
+  readonly family: string;
 }
 
 const staticMapDefaults = {
@@ -31,6 +69,7 @@ export const generateStaticMapImage = Effect.fn("osm.generateStaticMapImage")(
     return Effect.succeed(input).pipe(
       Effect.bind("composites", fetchTileComposites),
       Effect.bind("tiledMap", renderTiledMap),
+      Effect.bind("overlays", renderOverlays),
       Effect.bind("image", renderStaticMap),
       Effect.map(({ image }) => image)
     );
@@ -50,11 +89,17 @@ interface TilePlacement {
 }
 
 interface StaticMapInput {
+  readonly attribution: boolean;
+  readonly attributionFont: StaticMapAttributionFont | undefined;
+  readonly attributionScale: number;
   readonly baseHeight: number;
   readonly baseWidth: number;
   readonly extractLeft: number;
   readonly extractTop: number;
+  readonly focus: StaticMapFocus;
+  readonly format: StaticMapImageFormat;
   readonly height: number;
+  readonly marker: boolean;
   readonly quality: number;
   readonly tileUrl: string;
   readonly tiles: readonly TilePlacement[];
@@ -100,37 +145,87 @@ const renderTiledMap = ({
       }),
   });
 
+// OpenStreetMap's attribution guidelines ask for this text where the map is
+// shown.
+const attributionText = "© OpenStreetMap contributors";
+const attributionFontSize = 12;
+
+const renderAttribution = ({
+  attributionFont,
+  attributionScale,
+  height,
+  width,
+}: StaticMapInput) =>
+  Effect.tryPromise({
+    try: async () => {
+      const text = await renderTextImage({
+        text: attributionText,
+        font: `${attributionFont?.family ?? "sans-serif"} ${attributionFontSize * attributionScale}`,
+        fontfile: attributionFont?.file,
+        color: "#00024f",
+      });
+      const paddingX = Math.round(8 * attributionScale);
+      const paddingY = Math.round(5 * attributionScale);
+      const boxWidth = text.info.width + 2 * paddingX;
+      const boxHeight = text.info.height + 2 * paddingY;
+
+      return Buffer.from(`
+        <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+          <rect x="${width - boxWidth}" y="${height - boxHeight}" width="${boxWidth}" height="${boxHeight}" fill="rgba(255,255,255,0.88)"/>
+          <image x="${width - boxWidth + paddingX}" y="${height - boxHeight + paddingY}" width="${text.info.width}" height="${text.info.height}" href="data:image/png;base64,${text.data.toString("base64")}"/>
+        </svg>
+      `);
+    },
+    catch: (cause) =>
+      new ImageRenderingError({
+        cause,
+        message: "The map attribution could not be rendered.",
+        operation: "render-map-attribution",
+      }),
+  });
+
+const renderOverlays = (input: StaticMapInput) =>
+  Effect.all([
+    ...(input.marker
+      ? [
+          Effect.succeed(
+            createMarkerSvg(input.width, input.height, input.focus)
+          ),
+        ]
+      : []),
+    ...(input.attribution ? [renderAttribution(input)] : []),
+  ]);
+
 const renderStaticMap = ({
   extractLeft,
   extractTop,
+  format,
   height,
+  overlays,
   quality,
   tiledMap,
   width,
-}: StaticMapInput & { readonly tiledMap: Buffer }) =>
+}: StaticMapInput & {
+  readonly overlays: readonly Buffer[];
+  readonly tiledMap: Buffer;
+}) =>
   Effect.tryPromise({
-    try: () =>
-      sharp(tiledMap)
+    try: () => {
+      const image = sharp(tiledMap)
         .extract({
           left: extractLeft,
           top: extractTop,
           width,
           height,
         })
-        .composite([
-          {
-            input: createMarkerSvg(width, height),
-            left: 0,
-            top: 0,
-          },
-          {
-            input: createAttributionSvg(width, height),
-            left: 0,
-            top: 0,
-          },
-        ])
-        .jpeg({ quality, mozjpeg: true })
-        .toBuffer(),
+        .composite(overlays.map((input) => ({ input, left: 0, top: 0 })));
+
+      return (
+        format === "webp"
+          ? image.webp({ quality })
+          : image.jpeg({ quality, mozjpeg: true })
+      ).toBuffer();
+    },
     catch: (cause) =>
       new ImageRenderingError({
         cause,
@@ -155,6 +250,9 @@ const fetchTile = Effect.fn("osm.fetchTile")(
     );
 
     return HttpClient.execute(request).pipe(
+      // Trace headers would leak internal span IDs to the tile server and make
+      // every request for the same tile unique, defeating HTTP tile caches.
+      Effect.provideService(HttpClient.TracerPropagationEnabled, false),
       Effect.filterOrFail(
         ({ status }) => status >= 200 && status < 300,
         ({ status }) =>
@@ -176,7 +274,18 @@ const fetchTile = Effect.fn("osm.fetchTile")(
               url,
               ...tile,
             })
-      )
+      ),
+      Effect.timeoutOrElse({
+        duration: tileRequestTimeout,
+        orElse: () =>
+          Effect.fail(
+            new OsmTileRequestError({
+              message: `OpenStreetMap tile ${tile.z}/${tile.x}/${tile.y} timed out.`,
+              url,
+              ...tile,
+            })
+          ),
+      })
     );
   }
 );
@@ -185,19 +294,80 @@ const createStaticMapInput = (
   options: StaticMapImageOptions
 ): StaticMapInput => {
   const tileSize = options.tileSize ?? defaultTileSize;
+  const viewport = createStaticMapViewport(options, tileSize);
+  const look = resolveStaticMapLook(options);
+
+  return {
+    attribution: look.attribution,
+    attributionFont: look.attributionFont,
+    attributionScale: look.attributionScale,
+    baseWidth: (viewport.endTileX - viewport.startTileX + 1) * tileSize,
+    baseHeight: (viewport.endTileY - viewport.startTileY + 1) * tileSize,
+    extractLeft: viewport.left - viewport.startTileX * tileSize,
+    extractTop: viewport.top - viewport.startTileY * tileSize,
+    focus: viewport.focus,
+    format: look.format,
+    height: options.height,
+    marker: look.marker,
+    quality: look.quality,
+    tileUrl: options.tileUrl ?? defaultTileUrl,
+    tiles: placeViewportTiles(viewport, options.zoom, tileSize),
+    userAgent: options.userAgent ?? defaultUserAgent,
+    width: options.width,
+  };
+};
+
+interface StaticMapViewport {
+  readonly endTileX: number;
+  readonly endTileY: number;
+  readonly focus: StaticMapFocus;
+  readonly left: number;
+  readonly startTileX: number;
+  readonly startTileY: number;
+  readonly top: number;
+}
+
+/** Positions the image over the world pixels and finds the tiles it spans. */
+const createStaticMapViewport = (
+  options: StaticMapImageOptions,
+  tileSize: number
+): StaticMapViewport => {
   const center = coordinateToGlobalPixel(
     options.lat,
     options.lng,
     options.zoom,
     tileSize
   );
-  const left = center.x - options.width / 2;
-  const top = center.y - options.height / 2;
-  const startTileX = Math.floor(left / tileSize);
-  const startTileY = Math.floor(top / tileSize);
-  const endTileX = Math.floor((left + options.width - 1) / tileSize);
-  const endTileY = Math.floor((top + options.height - 1) / tileSize);
-  const tileCount = 2 ** options.zoom;
+  const focus = options.focus ?? {
+    x: options.width / 2,
+    y: options.height / 2,
+  };
+  // Snap the viewport to whole pixels before choosing tiles, so the crop
+  // offset and the tile range agree and the crop stays inside the canvas.
+  const left = Math.round(center.x - focus.x);
+  const top = Math.round(center.y - focus.y);
+
+  return {
+    endTileX: Math.floor((left + options.width - 1) / tileSize),
+    endTileY: Math.floor((top + options.height - 1) / tileSize),
+    focus,
+    left,
+    startTileX: Math.floor(left / tileSize),
+    startTileY: Math.floor(top / tileSize),
+    top,
+  };
+};
+
+/**
+ * Places each tile the viewport spans, skipping rows beyond the poles and
+ * wrapping columns around the antimeridian.
+ */
+const placeViewportTiles = (
+  { endTileX, endTileY, startTileX, startTileY }: StaticMapViewport,
+  zoom: number,
+  tileSize: number
+): TilePlacement[] => {
+  const tileCount = 2 ** zoom;
   const tiles: TilePlacement[] = [];
 
   for (let y = startTileY; y <= endTileY; y += 1) {
@@ -206,9 +376,9 @@ const createStaticMapInput = (
     for (let x = startTileX; x <= endTileX; x += 1) {
       tiles.push({
         tile: {
-          x: normalizeTileX(x, options.zoom),
+          x: normalizeTileX(x, zoom),
           y,
-          z: options.zoom,
+          z: zoom,
         },
         left: (x - startTileX) * tileSize,
         top: (y - startTileY) * tileSize,
@@ -216,19 +386,18 @@ const createStaticMapInput = (
     }
   }
 
-  return {
-    baseWidth: (endTileX - startTileX + 1) * tileSize,
-    baseHeight: (endTileY - startTileY + 1) * tileSize,
-    extractLeft: Math.round(left - startTileX * tileSize),
-    extractTop: Math.round(top - startTileY * tileSize),
-    height: options.height,
-    quality: options.quality ?? staticMapDefaults.quality,
-    tileUrl: options.tileUrl ?? defaultTileUrl,
-    tiles,
-    userAgent: options.userAgent ?? defaultUserAgent,
-    width: options.width,
-  };
+  return tiles;
 };
+
+/** Resolves what the rendered image draws and how it is encoded. */
+const resolveStaticMapLook = (options: StaticMapImageOptions) => ({
+  attribution: options.attribution ?? true,
+  attributionFont: options.attributionFont,
+  attributionScale: options.attributionScale ?? 1,
+  format: options.format ?? "jpeg",
+  marker: options.marker ?? true,
+  quality: options.quality ?? staticMapDefaults.quality,
+});
 
 const degreesToRadians = (degrees: number) => (degrees * Math.PI) / 180;
 
@@ -261,11 +430,15 @@ const buildTileUrl = (template: string, { x, y, z }: TileCoordinate): string =>
     .replaceAll("{y}", String(y))
     .replaceAll("{z}", String(z));
 
-const createMarkerSvg = (width: number, height: number) => {
+const createMarkerSvg = (
+  width: number,
+  height: number,
+  focus: StaticMapFocus
+) => {
   const markerWidth = 56;
   const markerHeight = 72;
-  const left = width / 2 - markerWidth / 2;
-  const top = height / 2 - markerHeight;
+  const left = focus.x - markerWidth / 2;
+  const top = focus.y - markerHeight;
 
   return Buffer.from(`
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
@@ -276,11 +449,3 @@ const createMarkerSvg = (width: number, height: number) => {
     </svg>
   `);
 };
-
-const createAttributionSvg = (width: number, height: number) =>
-  Buffer.from(`
-    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="${width - 196}" y="${height - 23}" width="196" height="23" fill="rgba(255,255,255,0.88)"/>
-      <text x="${width - 188}" y="${height - 7}" font-family="Arial, sans-serif" font-size="12" fill="#00024f">&#169; OpenStreetMap contributors</text>
-    </svg>
-  `);

@@ -1,16 +1,19 @@
 ---
 name: deskohub-workspace-domain
-description: Workspace reservation types, product identities, timezone values, and sales-calendar discounts.
+description: Workspace reservation families, reservation author, reservation customer, customer account, deleted-account tombstone, booked by, cowork, meeting room, office, product identity, product keys, discount targets, Temporal, timezone, Prague dates, DST, Calendar sales, discount definitions, email campaigns, campaign audiences, recipients, test send, confirmation code, analytics consent decision, current decision, consent mirror, analytics consent ledger, silent grant, analytics preference, opt-out, PostHog person anonymisation, cross-device withdrawal, person-linked, reservation-keyed.
 ---
 
 # Deskohub Workspace domain
 
-Read only the reference relevant to the change:
+Read the reference that matches the change:
 
-- For cowork and meeting-room reservation types, read [references/reservations.md](references/reservations.md).
-- For timezone values, Temporal schemas, parsing, or formatting, read [references/temporal.md](references/temporal.md).
-- For Google Calendar sales and stored discount definitions, read [references/sales-calendar.md](references/sales-calendar.md).
+- [references/reservations.md](references/reservations.md): reservation families, product identities and keys, discount targets, meeting-room durations, office ranges and seats, and Reserved Desk ranking.
+- [references/reservation-parties.md](references/reservation-parties.md): reservation author, reservation customer, customer account, and deleted-account tombstone.
+- [references/temporal.md](references/temporal.md): timezone, Temporal types, formatting, Dotypos interval decoding, and stored instant precision.
+- [references/sales-calendar.md](references/sales-calendar.md): Calendar sales, stored discount definitions, sale eligibility, and the sale source cache.
+- [references/email-campaigns.md](references/email-campaigns.md): campaign glossary, audience filters, recipient resolution, and send confirmation.
+- [references/analytics-consent.md](references/analytics-consent.md): consent decision, current decision, mirror, decision sources, silent grant, analytics preference, opt-out, anonymisation, cross-device withdrawal, person-linked and reservation-keyed events, and the ledger's ordering rules.
 
-Consult the business-facing [reservation product specification](../../../apps/deskohub-workspace/docs/reservation-products.md) before changing customer-visible product eligibility, duration, pricing, or availability rules.
+Read the business [reservation product](../../../apps/deskohub-workspace/docs/reservation-products.md) and [discount](../../../apps/deskohub-workspace/docs/discount-codes.md) specifications before changing customer-visible eligibility, duration, pricing, or availability.
 
-Update the relevant reference when developer feedback changes a durable domain invariant.
+Update the matching reference when developer feedback changes a durable domain invariant.

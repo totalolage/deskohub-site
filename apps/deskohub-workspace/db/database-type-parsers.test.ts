@@ -3,6 +3,7 @@ import * as PgClient from "@effect/sql-pg/PgClient";
 import "@/shared/polyfills/temporal";
 import { makeWithDefaults } from "drizzle-orm/effect-postgres";
 import { Effect, Layer } from "effect";
+import { toStoredInstant } from "./instant";
 import {
   drizzleRawTypeOids,
   drizzleRawTypeParsers,
@@ -45,6 +46,16 @@ describe("Effect Postgres type parsing", () => {
     expect(() =>
       workspaceReservations.createdAt.mapFromDriverValue("not-an-instant")
     ).toThrow();
+  });
+
+  test("an instant read back from its column equals its stored instant", () => {
+    const written = Temporal.Instant.from("2026-10-12T06:25:49.712747123Z");
+    const readBack = workspaceReservations.createdAt.mapFromDriverValue(
+      workspaceReservations.createdAt.mapToDriverValue(written)
+    );
+
+    expect(readBack.equals(written)).toBe(false);
+    expect(readBack.equals(toStoredInstant(written))).toBe(true);
   });
 
   test("Drizzle Effect casts instant selections to text for the column codec", async () => {

@@ -4,14 +4,18 @@ import { workspaceE2ETimeouts } from "./timeouts";
 
 const analyticsCheckboxSelector = "#cookie-category-analytics";
 
+/** The cookie banner's button that saves a necessary-only choice. */
+export const cookieBannerNecessaryOnlyButton = (page: Page, locale: Locale) =>
+  page.getByRole("button", {
+    exact: true,
+    name: m.cookieConsentConsentModalAcceptNecessaryBtn({}, { locale }),
+  });
+
 export async function dismissLegalCookieConsent(
   page: Page,
   locale: Locale
 ): Promise<void> {
-  const necessaryOnlyButton = page.getByRole("button", {
-    exact: true,
-    name: m.cookieConsentConsentModalAcceptNecessaryBtn({}, { locale }),
-  });
+  const necessaryOnlyButton = cookieBannerNecessaryOnlyButton(page, locale);
 
   await expect
     .poll(

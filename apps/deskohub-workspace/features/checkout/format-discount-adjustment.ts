@@ -1,7 +1,7 @@
 import { Match } from "effect";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
-import { formatWorkspaceMoney } from "./workspace-money";
+import { formatMoney, moneyWithValue } from "@/shared/money/money";
 
 export const formatDiscountAdjustment = (
   adjustment: DiscountAdjustment,
@@ -14,6 +14,30 @@ export const formatDiscountAdjustment = (
           style: "percent",
           maximumFractionDigits: 2,
         }).format(basisPoints / 10_000),
-      fixed: ({ amount }) => formatWorkspaceMoney(amount, locale),
+      fixed: ({ amount }) => formatMoney(amount, locale),
     })
+  );
+
+/**
+ * Formats the adjustment as the signed price change it causes, such as
+ * "-20%" or "-CZK 50".
+ */
+export const formatDiscountReduction = (
+  adjustment: DiscountAdjustment,
+  locale: Locale
+) =>
+  formatDiscountAdjustment(
+    Match.value(adjustment).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        percentage: ({ basisPoints }): DiscountAdjustment => ({
+          kind: "percentage",
+          basisPoints: -basisPoints,
+        }),
+        fixed: ({ amount }): DiscountAdjustment => ({
+          kind: "fixed",
+          amount: moneyWithValue(-amount.value, amount),
+        }),
+      })
+    ),
+    locale
   );

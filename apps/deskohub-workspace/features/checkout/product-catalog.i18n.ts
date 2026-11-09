@@ -1,18 +1,37 @@
-import type {
-  WorkspaceCoworkProductTier,
-  WorkspaceProductMonitorOption,
+import { Match } from "effect";
+import {
+  type WorkspaceCoworkProductTier,
+  type WorkspaceProductMonitorOption,
+  type WorkspaceProductMonitorResolution,
+  workspaceProductMonitorSetups,
 } from "@/features/checkout/product-catalog";
 import { type Locale, m } from "@/features/i18n";
 import {
   isMeetingRoomWholeDayReservationDuration,
   type MeetingRoomReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
+import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 type WorkspaceProductMessage = (
   inputs: Record<string, never>,
   options: { readonly locale: Locale }
 ) => string;
 type WorkspaceProductTierPerkMarker = "bullet" | "plus";
+
+/** A message naming the Open Space cut-off, filled in from the site constants. */
+const withOpenSpaceUsableUntil =
+  (
+    message: (
+      inputs: { readonly until: string },
+      options: { readonly locale: Locale }
+    ) => string
+  ): WorkspaceProductMessage =>
+  (_inputs, options) =>
+    message(
+      { until: workspaceSiteConstants.openingHours.openSpaceUsableUntil },
+      options
+    );
 
 export type WorkspaceProductTierCardMessages = {
   readonly description: WorkspaceProductMessage;
@@ -25,6 +44,14 @@ export type WorkspaceProductTierCardMessages = {
 };
 
 export const workspaceProductTierMessages = {
+  "open-space": {
+    title: m.reservationOpenSpaceTitle,
+    description: withOpenSpaceUsableUntil(m.reservationOpenSpaceDescription),
+  },
+  "reserved-desk": {
+    title: m.reservationReservedDeskTitle,
+    description: m.reservationReservedDeskDescription,
+  },
   basic: {
     title: m.reservationTierBasicTitle,
     description: m.reservationTierBasicDescription,
@@ -46,6 +73,20 @@ export const workspaceProductTierMessages = {
 >;
 
 export const workspaceProductTierCardMessages = {
+  "open-space": {
+    description: withOpenSpaceUsableUntil(m.reservationOpenSpaceBulletDesk),
+    perksLabel: m.reservationTierPerksLabel,
+    perks: [{ message: m.reservationOpenSpacePerkWifi }],
+  },
+  "reserved-desk": {
+    description: m.reservationReservedDeskBulletDesk,
+    perksLabel: m.reservationTierPerksLabel,
+    perks: [
+      { message: m.reservationReservedDeskPerkAccess, highlighted: true },
+      { message: m.reservationReservedDeskPerkCoffee },
+      { message: m.reservationReservedDeskPerkMonitor, marker: "plus" },
+    ],
+  },
   basic: {
     description: m.reservationTierBasicBulletDesk,
     perksLabel: m.reservationTierPerksLabel,
@@ -72,30 +113,17 @@ export const workspaceProductTierCardMessages = {
   WorkspaceProductTierCardMessages
 >;
 
-export const workspaceProductMonitorMessages = {
-  "2x27-qhd": {
-    title: m.reservationMonitor2x27QhdTitle,
-    description: m.reservationMonitor2x27QhdDescription,
-  },
-  "2x32-qhd": {
-    title: m.reservationMonitor2x32QhdTitle,
-    description: m.reservationMonitor2x32QhdDescription,
-  },
-  "2x27-4k": {
-    title: m.reservationMonitor2x27FourKTitle,
-    description: m.reservationMonitor2x27FourKDescription,
-  },
-  "2x32-4k": {
-    title: m.reservationMonitor2x32FourKTitle,
-    description: m.reservationMonitor2x32FourKDescription,
-  },
-} satisfies Record<
-  WorkspaceProductMonitorOption,
-  {
-    readonly title: WorkspaceProductMessage;
-    readonly description: WorkspaceProductMessage;
-  }
->;
+export const workspaceProductMonitorDescriptionMessages = {
+  "2x27-qhd": m.reservationMonitor2x27QhdDescription,
+  "2x32-qhd": m.reservationMonitor2x32QhdDescription,
+  "2x27-4k": m.reservationMonitor2x27FourKDescription,
+  "2x32-4k": m.reservationMonitor2x32FourKDescription,
+} satisfies Record<WorkspaceProductMonitorOption, WorkspaceProductMessage>;
+
+const workspaceProductMonitorResolutionLabels = {
+  qhd: "QHD",
+  "4k": "4K",
+} satisfies Record<WorkspaceProductMonitorResolution, string>;
 
 export const getWorkspaceProductMessage = (
   message: WorkspaceProductMessage,
@@ -114,14 +142,40 @@ export const getWorkspaceMeetingRoomProductTitle = (locale: Locale) =>
 export const getWorkspaceOfficeProductTitle = (locale: Locale) =>
   getWorkspaceProductMessage(m.reservationOfficeProductTitle, locale);
 
+/** The catalog name of the product a stored reservation booked. */
+export const getReservationProductTitle = (
+  details: StoredWorkspaceReservationDetails,
+  locale: Locale
+) =>
+  Match.value(details).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: ({ entryTier }) =>
+        getWorkspaceProductTierTitle(entryTier, locale),
+      "meeting-room": () => getWorkspaceMeetingRoomProductTitle(locale),
+      office: () => getWorkspaceOfficeProductTitle(locale),
+    })
+  );
+
 export const getWorkspaceProductMonitorTitle = (
   option: WorkspaceProductMonitorOption,
   locale: Locale
-) =>
-  getWorkspaceProductMessage(
-    workspaceProductMonitorMessages[option].title,
-    locale
+) => {
+  const { count, sizeInches, resolution } =
+    workspaceProductMonitorSetups[option];
+
+  return m.reservationMonitorSetupTitle(
+    {
+      count,
+      size: new Intl.NumberFormat(locale, {
+        style: "unit",
+        unit: "inch",
+        unitDisplay: "narrow",
+      }).format(sizeInches),
+      resolution: workspaceProductMonitorResolutionLabels[resolution],
+    },
+    { locale }
   );
+};
 
 export const getWorkspaceMeetingRoomDurationLabel = (
   duration: MeetingRoomReservationDuration,

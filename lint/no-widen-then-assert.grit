@@ -4,6 +4,33 @@ language js(typescript, jsx)
 // ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
 file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: r"(?s).*\bas\b.*",
+  $body <: r"(?s).*\b(?:unknown|any|object|Record)\b.*",
+  $body <: contains or {
+    `const $guard_binding: $guard_broad = $guard_known`,
+    `const $guard_binding = $guard_known as $guard_broad`
+  } where {
+    $guard_broad <: or {
+      TsUnknownType(),
+      TsAnyType(),
+      TsNonPrimitiveType(),
+      r"^Record\s*<.*,\s*(?:unknown|any)>$"
+    },
+    $guard_known <: or {
+      JsObjectExpression(),
+      JsArrayExpression(),
+      JsArrowFunctionExpression(),
+      JsClassExpression(),
+      JsFunctionExpression(),
+      JsNewExpression(),
+      JsStringLiteralExpression(),
+      JsNumberLiteralExpression(),
+      JsBooleanLiteralExpression(),
+      JsNullLiteralExpression(),
+      JsTemplateExpression(),
+      JsUnaryExpression()
+    }
+  },
   $body <: contains bubble {
     `$binding as $target` as $widen_then_assert where {
       or {

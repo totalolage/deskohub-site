@@ -1,0 +1,19 @@
+- radiogroup "Offer *":
+  - radio /^Open Space / [checked]
+  - radio /^Reserved Desk /
+- combobox "Reservation date *": /\d{1,2}\/\d{1,2}\/\d{4}/
+- 'button "Reservation date: choose from the calendar"'
+- switch "Coffee"
+- textbox "Email *"
+- textbox "Phone *"
+- textbox "Name *"
+- group "Reservation purpose":
+  - switch "Business use"
+  - button
+  - checkbox "Create invoice"
+- link "Privacy Policy":
+  - /url: /en-US/privacy-policy
+- checkbox /^I agree that Desktechub s\.r\.o\. may use my email/
+- link "Marketing Communications Consent":
+  - /url: /en-US/marketing-communications
+- button "Continue"

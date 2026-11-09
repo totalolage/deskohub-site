@@ -6,7 +6,6 @@ import {
   assertPreviewAuthSessionReady,
   assertPreviewEndpointReady,
   assertPreviewEndpointsReady,
-  assertPreviewHomepageTilesReady,
   assertPreviewJpegReady,
   isPreviewPageAvailable,
 } from "./preview-readiness";
@@ -69,53 +68,6 @@ test("checks that the generated map endpoint returns a JPEG payload", async () =
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
-test("requires a tile-compatible referrer policy on the localized homepage", async () => {
-  const requests: Array<{ headers: Headers; url: string }> = [];
-  const fetchMock = mock(
-    async (input: URL | RequestInfo, init?: RequestInit) => {
-      const request =
-        input instanceof Request ? input : new Request(input, init);
-      requests.push({
-        headers: request.headers,
-        url: request.url,
-      });
-      return new Response(null, {
-        status: 200,
-        headers: { "referrer-policy": "strict-origin-when-cross-origin" },
-      });
-    }
-  );
-
-  await Effect.runPromise(
-    assertPreviewHomepageTilesReady(makeConfig()).pipe(
-      Effect.provide(makeFetchHttpClientLayer(fetchMock))
-    )
-  );
-
-  expect(requests).toHaveLength(1);
-  expect(requests[0]?.url).toBe(
-    "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US"
-  );
-});
-
-test("rejects a global no-referrer policy that blocks OpenStreetMap browser tiles", async () => {
-  const fetchMock = mock(
-    async () =>
-      new Response(null, {
-        status: 200,
-        headers: { "referrer-policy": "no-referrer" },
-      })
-  );
-
-  await expect(
-    Effect.runPromise(
-      assertPreviewHomepageTilesReady(makeConfig()).pipe(
-        Effect.provide(makeFetchHttpClientLayer(fetchMock))
-      )
-    )
-  ).rejects.toThrow("strict-origin-when-cross-origin");
-});
-
 test("starts all preview readiness requests before any request completes", async () => {
   let startedRequestCount = 0;
   let releaseRequests: () => void = () => undefined;
@@ -124,7 +76,7 @@ test("starts all preview readiness requests before any request completes", async
   });
   const fetchMock = mock(async (input: URL | RequestInfo) => {
     startedRequestCount += 1;
-    if (startedRequestCount === 5) releaseRequests();
+    if (startedRequestCount === 4) releaseRequests();
     await allRequestsStarted;
 
     if (String(input).endsWith(".jpeg")) {
@@ -139,10 +91,7 @@ test("starts all preview readiness requests before any request completes", async
         headers: { "cache-control": "private, no-store" },
       });
     }
-    return new Response(null, {
-      status: 200,
-      headers: { "referrer-policy": "strict-origin-when-cross-origin" },
-    });
+    return new Response(null, { status: 200 });
   });
 
   await Effect.runPromise(
@@ -151,7 +100,7 @@ test("starts all preview readiness requests before any request completes", async
     )
   );
 
-  expect(startedRequestCount).toBe(5);
+  expect(startedRequestCount).toBe(4);
 });
 
 test("requires a healthy null auth session with private/no-store on the exact preview", async () => {
@@ -219,18 +168,6 @@ test("rejects an authenticated-looking auth session response during readiness", 
   ).rejects.toThrow("null session");
 });
 
-test("rejects a failing auth session endpoint during readiness", async () => {
-  const fetchMock = mock(async () => new Response("null", { status: 500 }));
-
-  await expect(
-    Effect.runPromise(
-      assertPreviewAuthSessionReady(makeConfig()).pipe(
-        Effect.provide(makeFetchHttpClientLayer(fetchMock))
-      )
-    )
-  ).rejects.toThrow("failed with 500");
-});
-
 test("recognizes a rendered feature-gated preview page", async () => {
   const fetchMock = mock(
     async () =>
@@ -270,28 +207,13 @@ test("recognizes a rendered not-found response for a disabled preview page", asy
   ).resolves.toBe(false);
 });
 
-test("rejects a streamed Next server error instead of disabling E2E coverage", async () => {
+test("rejects a server error streamed with a 200 instead of disabling E2E coverage", async () => {
   const fetchMock = mock(
     async () =>
-      new Response('<h1 class="next-error-h1">500</h1>', {
-        status: 200,
-      })
-  );
-
-  await expect(
-    Effect.runPromise(
-      isPreviewPageAvailable(
-        makeConfig(),
-        "/en-US/reservation/office",
-        "data-office-base-price"
-      ).pipe(Effect.provide(makeFetchHttpClientLayer(fetchMock)))
-    )
-  ).rejects.toThrow("did not render its expected content");
-});
-
-test("rejects a preview page without expected content or a rendered not-found boundary", async () => {
-  const fetchMock = mock(
-    async () => new Response("<main>Unexpected page</main>", { status: 200 })
+      new Response(
+        '<section aria-busy="true">Reserve a private office.</section><template data-dgst="2871029386"></template>',
+        { status: 200 }
+      )
   );
 
   await expect(

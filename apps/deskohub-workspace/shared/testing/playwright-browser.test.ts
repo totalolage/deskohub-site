@@ -2,13 +2,10 @@ import { expect, test } from "bun:test";
 import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolvePlaywrightChromiumExecutable } from "./playwright-browser";
-
-test("uses the explicitly configured Playwright browser", async () => {
-  expect(
-    await resolvePlaywrightChromiumExecutable("/configured/chrome", undefined)
-  ).toBe("/configured/chrome");
-});
+import {
+  playwrightChromiumAvailable,
+  resolvePlaywrightChromiumExecutable,
+} from "./playwright-browser";
 
 test("finds the hosted system browser when no path is configured", async () => {
   const directory = await mkdtemp(join(tmpdir(), "workspace-playwright-"));
@@ -21,8 +18,15 @@ test("finds the hosted system browser when no path is configured", async () => {
   );
 });
 
-test("lets Playwright fall back to its bundled browser", async () => {
-  expect(
-    await resolvePlaywrightChromiumExecutable(undefined, "/missing")
-  ).toBeUndefined();
+test("fails CI browser tests without Playwright Chromium", async () => {
+  const error = await playwrightChromiumAvailable("/missing/chrome", true).then(
+    () => null,
+    (cause: unknown) => cause
+  );
+
+  expect(error).toBeInstanceOf(Error);
+  expect(error).toHaveProperty(
+    "message",
+    expect.stringContaining("/missing/chrome")
+  );
 });

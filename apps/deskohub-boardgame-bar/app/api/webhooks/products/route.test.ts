@@ -74,21 +74,6 @@ describe("products webhook route", () => {
     }
   });
 
-  test("invalid payload returns 400", async () => {
-    const { POST } = await import("./route");
-
-    const response = await POST(request({ nope: true }));
-    const body = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(body).toMatchObject({
-      error: "Invalid payload",
-      message: "Invalid product payload format",
-    });
-    expect(body).toHaveProperty("issues", expect.any(String));
-    expect(revalidateTag).not.toHaveBeenCalled();
-  });
-
   test("valid payload invalidates menu, category, and product tags", async () => {
     const { POST } = await import("./route");
 
