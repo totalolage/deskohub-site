@@ -18,22 +18,35 @@ export class CurrentCustomerAgentGrant extends Context.Service<
 >()("@deskohub-workspace/agent-tools/CurrentCustomerAgentGrant") {}
 
 /**
- * The services a signed-in tool call reads the customer through: the grant,
- * and the account services backed by the caller's access token.
+ * The grant, and the account services backed by the caller's access token,
+ * which re-verify the token on every read.
  */
-export const customerAgentCallServices = ({
-  grant,
-  accessToken,
-}: CustomerAgentCaller) =>
+const tokenBackedCallServices = ({ grant, accessToken }: CustomerAgentCaller) =>
   Layer.merge(
     Layer.succeed(CurrentCustomerAgentGrant, grant),
     customerAgentAccountServices(accessToken)
   );
 
-export type SignedInAgentToolServices = Layer.Success<
-  ReturnType<typeof customerAgentCallServices>
->;
+type TokenBackedCallServices = ReturnType<typeof tokenBackedCallServices>;
 
-export type SignedInAgentToolRequirements = Layer.Services<
-  ReturnType<typeof customerAgentCallServices>
->;
+export type SignedInAgentToolServices = Layer.Success<TokenBackedCallServices>;
+
+export type SignedInAgentToolRequirements =
+  Layer.Services<TokenBackedCallServices>;
+
+/**
+ * How a signed-in tool call builds the services it reads the customer
+ * through. Every call defaults to the token-backed services; a test
+ * provides its own to read a fixed customer instead.
+ */
+export const CustomerAgentCallServices = Context.Reference<{
+  readonly forCaller: (
+    caller: CustomerAgentCaller
+  ) => Layer.Layer<
+    SignedInAgentToolServices,
+    Layer.Error<TokenBackedCallServices>,
+    SignedInAgentToolRequirements
+  >;
+}>("@deskohub-workspace/agent-tools/CustomerAgentCallServices", {
+  defaultValue: () => ({ forCaller: tokenBackedCallServices }),
+});
