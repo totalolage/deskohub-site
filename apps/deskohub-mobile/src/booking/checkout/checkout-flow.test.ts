@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { CustomerCheckoutDetailsInvalid } from "@deskohub/workspace-customer-api";
-import { Clock, Deferred, Effect, Option } from "effect";
+import { Clock, Deferred, Effect, Exit, Option } from "effect";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { reservationHistoryAtom } from "../../account/reservations/reservations-list-state";
 import { analytics } from "../../analytics/analytics";
 import { accountStorageKey } from "../../customer-api/account-scoped-storage";
 import { fakeWorkspaceOrigin } from "../../customer-api/testing/fake-workspace";
-import { PaymentBrowserUnavailable } from "../payment-browser.service";
+import {
+  type PaymentBrowserResult,
+  PaymentBrowserUnavailable,
+} from "../payment-browser.service";
+import { RememberedReferralUpdate } from "../remembered-referral";
 import {
   RememberedReferralCode,
   rememberedReferralStorageName,
@@ -97,6 +101,10 @@ const pay = async (flow: Flow) => {
   flow.controller().send(CheckoutEvent.Pay());
 };
 
+/**
+ * Gives the flow a turn, for checks that something did not happen; a check
+ * that something did happen waits for it instead.
+ */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 /**
@@ -111,9 +119,21 @@ const showReservations = async (checkout: FakeCheckout) => {
       .length;
 };
 
-/** Resolves once `reads` reaches `count`, or fails after a few hundred turns. */
-const untilReads = async (reads: () => number, count: number) => {
-  for (let turn = 0; turn < 500 && reads() < count; turn += 1) await settle();
+/**
+ * Resolves once the Reservations list has read the history `count` times:
+ * each successful read ends in a new value of the list, which re-checks
+ * `reads`.
+ */
+const untilReads = async (
+  checkout: FakeCheckout,
+  reads: () => number,
+  count: number
+) => {
+  await waitForValue(
+    checkout.registry,
+    reservationHistoryAtom,
+    () => reads() >= count
+  );
   expect(reads()).toBe(count);
 };
 
@@ -297,7 +317,9 @@ describe("useCheckoutFlow's flow", () => {
     );
     await pay(flow);
     await flow.untilState("Done");
-    await settle();
+    await checkout.referral.untilApplied(
+      RememberedReferralUpdate.$is("Forget")
+    );
 
     expect(
       checkout.booking.calls.map(({ endpoint, referralCode }) => [
@@ -326,7 +348,9 @@ describe("useCheckoutFlow's flow", () => {
       ({ state }) =>
         state._tag === "Review" && state.code.status._tag === "Applied"
     );
-    await settle();
+    await flow.checkout.referral.untilApplied(
+      RememberedReferralUpdate.$is("Remember")
+    );
 
     expect(applied.state).toMatchObject({
       flow: { rememberedReferralCode: Option.some(fakeBookingCodes.referral) },
@@ -352,35 +376,38 @@ describe("useCheckoutFlow's flow", () => {
 
   test("unmounting interrupts the running command; its answer never arrives", async () => {
     const flow = await startFlow();
+    const open = Effect.runSync(Deferred.make<void>());
     const gate = Effect.runSync(Deferred.make<void>());
-    let interrupted = false;
+    const ended = Effect.runSync(
+      Deferred.make<
+        Exit.Exit<PaymentBrowserResult, PaymentBrowserUnavailable>
+      >()
+    );
     let answered = false;
     flow.checkout.browser.answerWith(
-      Deferred.await(gate).pipe(
+      Deferred.succeed(open, undefined).pipe(
+        Effect.andThen(Deferred.await(gate)),
         Effect.tap(() =>
           Effect.sync(() => {
             answered = true;
           })
         ),
         Effect.as("returned" as const),
-        Effect.onInterrupt(() =>
-          Effect.sync(() => {
-            interrupted = true;
-          })
-        )
+        Effect.onExit((exit) => Deferred.succeed(ended, exit))
       )
     );
 
     await toReview(flow);
     await pay(flow);
     await flow.untilState("Paying");
+    await Effect.runPromise(Deferred.await(open));
     expect(flow.checkout.browser.opened).toHaveLength(1);
     flow.unmount();
-    await settle();
+    // The flow's teardown ends the page's command a few turns later.
+    const exit = await Effect.runPromise(Deferred.await(ended));
     Effect.runSync(Deferred.succeed(gate, undefined));
-    await settle();
 
-    expect(interrupted).toBe(true);
+    expect(Exit.hasInterrupts(exit)).toBe(true);
     expect(answered).toBe(false);
   });
 
@@ -418,14 +445,17 @@ describe("useCheckoutFlow's flow", () => {
     const flow = await startFlow();
     // The submission is reported as its answer lands, before the payment
     // page would open: the screen leaves view right then.
-    const capture = spyOn(analytics, "capture").mockImplementation(() =>
-      flow.setFocused(false)
-    );
+    const reported = Effect.runSync(Deferred.make<void>());
+    const capture = spyOn(analytics, "capture").mockImplementation(() => {
+      flow.setFocused(false);
+      Effect.runSync(Deferred.succeed(reported, undefined));
+    });
     cleanups.push(() => capture.mockRestore());
 
     await toReview(flow);
     await pay(flow);
     await flow.untilState("Paying");
+    await Effect.runPromise(Deferred.await(reported));
     await settle();
     expect(capture).toHaveBeenCalledTimes(1);
     expect(flow.checkout.browser.opened).toEqual([]);
@@ -574,7 +604,7 @@ describe("a finished booking", () => {
       expect(reads()).toBe(1);
       await finish(flow);
       await flow.untilState("Done");
-      await untilReads(reads, 2);
+      await untilReads(flow.checkout, reads, 2);
       // The clock keeps ticking on the finished flow; nothing reads again.
       await flow.checkout.adjust(holdClockInterval);
       await flow.checkout.adjust(holdClockInterval);
@@ -604,7 +634,7 @@ describe("a finished booking", () => {
       await settle();
       expect(reads()).toBe(1);
       flow.unmount();
-      await untilReads(reads, 2);
+      await untilReads(flow.checkout, reads, 2);
       await settle();
 
       expect(reads()).toBe(2);
