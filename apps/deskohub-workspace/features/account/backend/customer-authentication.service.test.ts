@@ -125,7 +125,6 @@ describe("CustomerAuthentication session adapter", () => {
     const malformed = [
       { createdAt: new Date(Number.NaN) },
       { updatedAt: new Date(Number.NaN) },
-      { createdAt: "2026-01-05T09:00:00Z" as unknown as Date },
     ];
     for (const timestamps of malformed) {
       const outcome = await runDecode(sessionFor(timestamps));

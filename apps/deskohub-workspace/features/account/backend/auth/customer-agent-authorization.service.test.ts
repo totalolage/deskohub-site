@@ -299,8 +299,7 @@ describe("CustomerAgentAuthorization.currentUser", () => {
 
     expect(outcome._tag).toBe("Success");
     if (outcome._tag !== "Success") return;
-    const { accountCreatedAt, accountUpdatedAt, ...session } =
-      outcome.success!;
+    const { accountCreatedAt, accountUpdatedAt, ...session } = outcome.success!;
     expect(session).toEqual({
       accountId: ACCOUNT_ID as CustomerAccountId,
       email: customerEmail as never,
