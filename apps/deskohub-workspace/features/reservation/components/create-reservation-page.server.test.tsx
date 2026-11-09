@@ -415,16 +415,25 @@ test("reopens the contact details sealed into a sign-in's return path", async ()
     billing: { purpose: "personal", invoice: "none" },
     marketingConsent: true,
   } as const;
-  const token = await Effect.runPromise(
-    checkoutContactReturnState
-      .seal(contact)
-      .pipe(Effect.provide(TestSealedStateKeys))
-  );
+  const sealUnder = (locale: Locale, phone: string) =>
+    Effect.runPromise(
+      checkoutContactReturnState
+        .seal({ ...contact, phone }, locale)
+        .pipe(Effect.provide(TestSealedStateKeys))
+    );
+  const token = await sealUnder("en-US", contact.phone);
+  // Typed on a de-DE page, then reopened on this en-US one, which reads a
+  // national number as a Czech one.
+  const germanToken = await sealUnder("de-DE", "0151 23456789");
   const family = createPreloadFreeFamily();
   const pageDefinition = createReservationPage(family);
 
   for (const [query, expected] of [
     [{ [checkoutContactQueryParam]: token }, contact],
+    [
+      { [checkoutContactQueryParam]: germanToken },
+      { ...contact, phone: "+49 1512 3456789" },
+    ],
     [{ [checkoutContactQueryParam]: "not-a-sealed-contact" }, { name: "" }],
     [{}, { name: "" }],
   ] as const) {
