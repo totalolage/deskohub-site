@@ -1,6 +1,5 @@
 /**
  * Whether the Reservations tab offers the way into booking (`/book`): the
- * header action and the empty-list call to action. The booking flow turns it
- * on when it ships.
+ * header action and the empty-list call to action.
  */
-export const bookingEntryEnabled = false;
+export const bookingEntryEnabled = true;
