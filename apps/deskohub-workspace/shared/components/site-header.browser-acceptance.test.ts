@@ -20,6 +20,13 @@ const shortMobileViewport = { height: 600, width: 375 } as const;
 // moves from the bar into the menu.
 const handheldWidths = [320, 360, 390, 430, 768] as const;
 const contactBarMinWidth = 360;
+// Widths on each side of the `sm`, `xl` and `2xl` breakpoints, where the
+// language menu button gains or drops its language name.
+const languageTriggerWidths = [390, 640, 1024, 1280, 1440, 1536] as const;
+// Phones get a round icon button. The full header's button is round beside
+// the desktop navigation from `xl` to `2xl` too.
+const showsIconOnlyLanguageTrigger = (variant: HeaderVariant, width: number) =>
+  width < 640 || (variant === "full" && width >= 1280 && width < 1536);
 // Small laptops, the `xl` breakpoint where the full header adds its desktop
 // navigation and language switcher, and a common desktop.
 const desktopWidths = [1024, 1280, 1440] as const;
@@ -262,6 +269,20 @@ const expectNoHorizontalOverflow = async (
 
 const languageMenuTrigger = (page: Page) =>
   page.getByRole("banner").locator("[data-language-menu-trigger]");
+
+const readLanguageTriggerLayout = (page: Page) =>
+  languageMenuTrigger(page).evaluate((trigger) => {
+    const name = trigger.querySelector("span[lang]");
+    const rect = trigger.getBoundingClientRect();
+    return {
+      height: rect.height,
+      name:
+        name instanceof HTMLElement && name.checkVisibility()
+          ? name.innerText
+          : null,
+      width: rect.width,
+    };
+  });
 
 // The visible copies of the contact button, in the bar or the open menu.
 const readVisibleContactLinks = (page: Page, locale: Locale) =>
@@ -655,6 +676,41 @@ for (const locale of locales) {
             expect(right).toBeLessThanOrEqual(width);
           }
           await expectNoHorizontalOverflow(page);
+        } finally {
+          await page.close();
+        }
+      }
+    );
+  }
+
+  for (const variant of headerVariants) {
+    test.skipIf(!chromiumAvailable)(
+      `names the language in the ${variant} header's menu button where it has room (${locale})`,
+      async () => {
+        const page = await openSiteHeader(
+          locale,
+          { height: 900, width: languageTriggerWidths[0] },
+          { variant }
+        );
+        try {
+          for (const width of languageTriggerWidths) {
+            await page.setViewportSize({ height: 900, width });
+            const layout = await readLanguageTriggerLayout(page);
+            if (showsIconOnlyLanguageTrigger(variant, width)) {
+              expect({ viewport: width, ...layout }).toEqual({
+                height: 40,
+                name: null,
+                viewport: width,
+                width: 40,
+              });
+            } else {
+              expect({ name: layout.name, viewport: width }).toEqual({
+                name: languageNames[locale],
+                viewport: width,
+              });
+              expect(layout.width).toBeGreaterThan(layout.height);
+            }
+          }
         } finally {
           await page.close();
         }
