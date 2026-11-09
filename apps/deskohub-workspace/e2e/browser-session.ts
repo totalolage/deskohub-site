@@ -11,7 +11,7 @@ import type {
   Request,
   Response,
 } from "@playwright/test";
-import { Cause, Deferred, Effect, Exit, FiberSet, type Scope } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, FiberSet, Scope } from "effect";
 import {
   sanitizeArtifactText,
   sanitizeHarArtifact,
@@ -24,6 +24,7 @@ import {
   toNexiBuildEndpoint,
 } from "./checkout/nexi-build-api";
 import {
+  toWorkspaceE2EError,
   WorkspaceE2EError,
   workspaceE2EError,
   workspaceE2ETimeoutError,
@@ -529,7 +530,45 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
   };
 });
 
-export const E2EBrowserSession = { open };
+type E2EBrowserSessionOptions = Parameters<typeof open>[0];
+
+/**
+ * The session a case or lane drives, opened on first use: every later use
+ * shares the same session, waits for an opening still in progress, or fails
+ * with the same opening failure. A failed opening therefore fails the step
+ * that first needed the session.
+ */
+export type OpenE2EBrowserSession = Effect.Effect<
+  E2EBrowserSession,
+  WorkspaceE2EError
+>;
+
+/**
+ * The caller's Scope owns the session: closing it closes the session, and an
+ * opening still in progress then stops and releases what it opened. The
+ * opening runs on its own fiber in that Scope, so a use that is interrupted
+ * or times out stops only its own wait.
+ */
+const openOnFirstUse = Effect.fnUntraced(function* (
+  options: E2EBrowserSessionOptions
+): Effect.fn.Return<OpenE2EBrowserSession, never, Scope.Scope> {
+  const owner = yield* Effect.scope;
+  const opening = Effect.gen(function* () {
+    const scope = yield* Scope.fork(owner);
+    return yield* open(options).pipe(
+      Scope.provide(scope),
+      Effect.onError((cause) => Scope.close(scope, Exit.failCause(cause)))
+    );
+  }).pipe(
+    Effect.catchDefect((defect) =>
+      Effect.fail(toWorkspaceE2EError("open browser session", defect))
+    )
+  );
+  const started = yield* Effect.cached(Effect.forkIn(opening, owner));
+  return Effect.flatMap(started, Fiber.join);
+});
+
+export const E2EBrowserSession = { open, openOnFirstUse };
 
 const readCookieOperation = "read browser cookie";
 

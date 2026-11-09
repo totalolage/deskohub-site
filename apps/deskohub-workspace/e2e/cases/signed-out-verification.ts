@@ -36,7 +36,10 @@ import {
   waitForPageUrl,
   waitForReactHandler,
 } from "../browser";
-import type { E2EBrowserSession } from "../browser-session";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
 import {
   makeCoworkCheckoutData,
   requireCheckoutDate,
@@ -64,17 +67,12 @@ import {
 import { waitForCheckoutRow } from "../integrations/database";
 import { E2EDatabase } from "../integrations/database.service";
 import type { WorkspaceE2ECaseBinder } from "../playwright-checkout/fixtures";
+import { addRedaction } from "../redaction";
 import {
   recordCheckoutIntent,
   recordReservationResult,
 } from "../reservation-intents";
-import {
-  addRedaction,
-  assert,
-  browserSessionFor,
-  parseUrl,
-  type Runner,
-} from "../runtime";
+import { assert, parseUrl } from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -180,15 +178,14 @@ export const bindSignedOutVerificationCase: WorkspaceE2ECaseBinder = async ({
   return {
     ...testCase,
     checkoutStates: [boundState],
-    execute: ({ run, runStep, session }) =>
+    execute: ({ openSession, runStep }) =>
       executeSignedOutVerification({
         accountConfig,
         config,
         datasourceConfig,
         identities,
-        run,
         runStep,
-        session,
+        openSession,
         state: boundState,
       }).pipe(
         Effect.provide(FetchHttpClient.layer),
@@ -257,18 +254,16 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
     config,
     datasourceConfig,
     identities,
-    run,
     runStep,
-    session,
+    openSession,
     state,
   }: {
     readonly accountConfig: WorkspaceE2EAccountConfig;
     readonly config: WorkspaceE2EConfig;
     readonly datasourceConfig: DatasourceConfig;
     readonly identities: Identities;
-    readonly run: Runner;
     readonly runStep: Parameters<WorkspaceE2ECase["execute"]>[0]["runStep"];
-    readonly session: string;
+    readonly openSession: OpenE2EBrowserSession;
     readonly state: CheckoutFlowState;
   }) {
     const database = yield* E2EDatabase;
@@ -280,12 +275,12 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
     const reservationScript = toReservationStep(data);
     // Each step reaches the session itself, so a browser that fails to open
     // fails the step that needed it.
-    const browser = browserSessionFor(run, session);
+    const browser = openSession;
     state.startedAt = new Date();
 
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browserSession = yield* browserSessionFor(run, session);
+        const browserSession = yield* openSession;
         yield* openPage(browserSession, config, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
         });
@@ -313,7 +308,7 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
     // The same script fills the contact step's inputs from the planned contact.
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browserSession = yield* browserSessionFor(run, session);
+        const browserSession = yield* openSession;
         yield* prepareReservationSelection({
           preparation: reservationScript,
           session: browserSession,
@@ -451,7 +446,7 @@ const executeSignedOutVerification = Effect.fn("SignedOutVerification.execute")(
 
       const orderId = yield* runStep({
         execute: Effect.gen(function* () {
-          const browser = yield* browserSessionFor(run, session);
+          const browser = yield* openSession;
           const orderId = yield* waitForReservationPayPage({
             onOrderId: (startedOrderId) => {
               state.orderId = startedOrderId;

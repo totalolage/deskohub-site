@@ -21,6 +21,7 @@ import type {
   WorkspaceReservationId,
 } from "../features/reservation/persistence-contracts";
 import type { ReservationInterval } from "../features/reservation/reservation-interval";
+import type { OpenE2EBrowserSession } from "./browser-session";
 import type { WorkspaceE2EStepRunner } from "./case-runner";
 import type { ReservationFormPreparation } from "./checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
@@ -28,7 +29,6 @@ import type { WorkspaceE2EHostedPaymentPermitService } from "./coordination/host
 import type { WorkspaceE2EProviderVerificationPermitService } from "./coordination/provider-verification-permit.service";
 import type { WorkspaceE2EError } from "./errors";
 import type { E2EDatabase } from "./integrations/database.service";
-import type { Runner } from "./runtime";
 
 export type CheckoutRow = {
   reservation_id: WorkspaceReservationId;
@@ -137,10 +137,17 @@ export type PaymentTerminalScenario = {
 
 /** What a running case gets from the case pool. */
 export type WorkspaceE2ECaseContext = {
-  /** The test's browser runner; `session` names the case's own session. */
-  readonly run: Runner;
+  /**
+   * The case's own browser session, opened on first use; a session that
+   * fails to open fails the step that first needs it.
+   */
+  readonly openSession: OpenE2EBrowserSession;
+  /**
+   * Another session in its own browser context, such as a second visitor's;
+   * the test's Scope owns it as it owns the case's session.
+   */
+  readonly openSeparateSession: (name: string) => OpenE2EBrowserSession;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
 };
 
 export type WorkspaceE2ECase = {

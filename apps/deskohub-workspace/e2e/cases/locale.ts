@@ -1,26 +1,27 @@
 import { Effect } from "effect";
 import { activateHydratedElement, openPage, waitForPageUrl } from "../browser";
-import type { E2EBrowserSession } from "../browser-session";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
-import { browserSessionFor, log, parseUrl, type Runner } from "../runtime";
+import { log, parseUrl } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutData } from "../types";
 
 export const assertLocaleSwitcher = ({
   config,
-  run,
   runStep,
-  session,
+  openSession,
 }: {
   config: Pick<WorkspaceE2EConfig, "baseUrl" | "bypassSecret" | "timeouts">;
-  run: Runner;
   runStep: WorkspaceE2EStepRunner;
-  session: string;
+  openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const browser = browserSessionFor(run, session);
+    const browser = openSession;
     yield* runStep({
       execute: Effect.flatMap(browser, (opened) =>
         openPage(opened, config, `${config.baseUrl}/en-US`, {

@@ -23,6 +23,7 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 import { formatMoney } from "@/shared/money/money";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { normalizeBrowserText, waitForPageText } from "../browser";
+import type { OpenE2EBrowserSession } from "../browser-session";
 import {
   loadMeetingRoomAvailability,
   type MeetingRoomCheckoutSlot,
@@ -46,8 +47,7 @@ import {
   loadDotyposCapacityInventory,
 } from "../integrations/dotypos";
 import { pollUntil } from "../polling";
-import type { Runner } from "../runtime";
-import { assert, browserSessionFor, log } from "../runtime";
+import { assert, log } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
   CheckoutData,
@@ -189,8 +189,9 @@ export const makeMeetingRoomE2ECases = ({
     return [
       {
         checkoutStates: [paidState],
-        execute: ({ run, runStep, session }) => {
+        execute: ({ openSeparateSession, openSession, runStep }) => {
           return executeCheckoutFlow({
+            openSeparateSession,
             config,
             data: paidData,
             datasourceConfig,
@@ -208,16 +209,14 @@ export const makeMeetingRoomE2ECases = ({
                 execute: assertMeetingRoomPayPage(
                   config,
                   paidData,
-                  run,
-                  session
+                  openSession
                 ),
                 id: "assert-meeting-room-pay-summary",
                 timeoutMs: config.timeouts.uiTransition,
               },
             ],
-            run,
             runStep,
-            session,
+            openSession,
             state: paidState,
           }).pipe(
             Effect.provideService(HttpClient.HttpClient, httpClient),
@@ -234,15 +233,14 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [zeroTotalState],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           executeZeroTotalCheckout({
             config,
             data: zeroTotalData,
             datasourceConfig,
             discountCode: discountCodeFixtures.zeroTotal.code,
-            run,
             runStep,
-            session,
+            openSession,
             state: zeroTotalState,
             preparation: toReservationStep(zeroTotalData),
           }).pipe(
@@ -258,7 +256,7 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [replacementState],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           assertReservationReplacement({
             config,
             data: replacementData,
@@ -276,9 +274,8 @@ export const makeMeetingRoomE2ECases = ({
             toSelectionPreparation: toReservationSelectionPreparation,
             replacementData: editedReplacementData,
             reservationPath: "/en-US/reservation/meeting-room",
-            run,
             runStep,
-            session,
+            openSession,
             state: replacementState,
             toReservationPreparation: toReservationStep,
           }).pipe(
@@ -294,15 +291,14 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [cancelledState],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           assertPaymentTerminalPath({
             config,
             data: cancelledData,
             reservationPath: "/en-US/reservation/meeting-room",
-            run,
             runStep,
             scenario: cancelledScenario,
-            session,
+            openSession,
             state: cancelledState,
             preparation: toReservationStep(cancelledData),
           }).pipe(
@@ -318,8 +314,9 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [dayState],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSeparateSession, openSession, runStep }) =>
           executeCheckoutFlow({
+            openSeparateSession,
             config,
             data: dayData,
             datasourceConfig,
@@ -329,19 +326,13 @@ export const makeMeetingRoomE2ECases = ({
             },
             payPageSteps: () => [
               {
-                execute: assertMeetingRoomPayPage(
-                  config,
-                  dayData,
-                  run,
-                  session
-                ),
+                execute: assertMeetingRoomPayPage(config, dayData, openSession),
                 id: "assert-whole-day-meeting-room-pay-summary",
                 timeoutMs: config.timeouts.uiTransition,
               },
             ],
-            run,
             runStep,
-            session,
+            openSession,
             state: dayState,
           }).pipe(
             Effect.provideService(HttpClient.HttpClient, httpClient),
@@ -534,8 +525,7 @@ export const isMeetingRoomUnavailableFromInventory = ({
 const assertMeetingRoomPayPage = (
   config: WorkspaceE2EConfig,
   data: CheckoutData,
-  run: Runner,
-  session: string
+  openSession: OpenE2EBrowserSession
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const meetingRoom = yield* getMeetingRoomSlot(data);
@@ -561,7 +551,7 @@ const assertMeetingRoomPayPage = (
           normalized.includes(normalizeBrowserText(price))
         );
       },
-      session: yield* browserSessionFor(run, session),
+      session: yield* openSession,
       timeoutMs: config.timeouts.uiTransition,
     });
     log("Meeting-room pay summary validated");

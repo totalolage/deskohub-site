@@ -5,14 +5,18 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import type { Browser } from "@playwright/test";
-import { Effect } from "effect";
+import { Effect, Exit, Scope } from "effect";
 import type { Locale } from "@/features/i18n";
+import {
+  E2EBrowserSession,
+  type OpenE2EBrowserSession,
+} from "../browser-session";
 import type { WorkspaceE2EStep } from "../case-runner";
+import { runUntracedE2EEffect } from "../effect-edge";
 import { WorkspaceE2EError, workspaceE2EError } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
 import { readWorkspaceE2ERunPlan } from "../playwright-checkout/run-plan";
 import { runtimeTest } from "../playwright-checkout/runtime-fixtures";
-import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { verifyAccountLayoutNavigation } from "./account-layout-navigation";
 import {
@@ -133,8 +137,10 @@ type WorkspaceE2EAccountLane = {
   };
   readonly rateBudget: ReturnType<typeof makeMagicLinkRateBudget>;
   readonly runPlan: Awaited<ReturnType<typeof readWorkspaceE2ERunPlan>>;
-  readonly run: Runner;
-  readonly session: string;
+  /** The lane's one browser session, shared by every case. */
+  readonly openSession: OpenE2EBrowserSession;
+  /** The sign-in assistant's own browser session, in its own context. */
+  readonly openAssistantSession: OpenE2EBrowserSession;
   /**
    * The selections the lane's sign-ins return to, built once per worker so
    * the case that requests a link and the case that consumes it agree.
@@ -160,7 +166,17 @@ const accountTest = runtimeTest.extend<
     async ({ browser, environment, runContext, runEffect }, applyFixture) => {
       const config = getAccountE2EConfig(environment, runContext.runId);
       const runPlan = await readWorkspaceE2ERunPlan();
-      const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
+      // The lane's Scope owns both sessions; each opens on first use.
+      const laneScope = Scope.makeUnsafe("parallel");
+      const laneSessionId = `workspace-account-e2e-${runContext.runId}`;
+      const openLaneSession = (id: string) =>
+        E2EBrowserSession.openOnFirstUse({ browser, id, recordHar: false });
+      const [openSession, openAssistantSession] = await runUntracedE2EEffect(
+        Effect.all([
+          openLaneSession(laneSessionId),
+          openLaneSession(`${laneSessionId}-assistant`),
+        ]).pipe(Scope.provide(laneScope))
+      );
       const lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff = {};
       const { makeWorkspaceE2ESignInReturns } = await import("./cases");
       const signInReturns = makeWorkspaceE2ESignInReturns();
@@ -218,9 +234,9 @@ const accountTest = runtimeTest.extend<
                   passkeys,
                   previewLogs,
                   rateBudget: makeMagicLinkRateBudget(),
+                  openAssistantSession,
+                  openSession,
                   runPlan,
-                  run,
-                  session: `workspace-account-e2e-${runContext.runId}`,
                   signInReturns,
                 })
               );
@@ -231,7 +247,7 @@ const accountTest = runtimeTest.extend<
         // A failed passkey case leaves its authenticator behind; the lane
         // page closes with the session either way.
         await runEffect(Effect.ignore(passkeys.removeAuthenticator));
-        await run.close?.();
+        await runUntracedE2EEffect(Scope.close(laneScope, Exit.void));
       }
     },
     { scope: "worker" },
@@ -272,8 +288,8 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         datasourceConfig,
         laneBrowser: makeWorkspaceE2EAccountLaneBrowser({
           config: accountLane.config,
-          run: accountLane.run,
-          session: accountLane.session,
+          openAssistantSession: accountLane.openAssistantSession,
+          openSession: accountLane.openSession,
         }),
         lifecycleHandoff: accountLane.lifecycleHandoff,
         passkeys: accountLane.passkeys,
@@ -524,7 +540,6 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         runEffect(
           runWorkspaceE2EAccountCase({
             journalRef: accountLane.journalRef,
-            session: accountLane.session,
             testCase: selected,
             ...(verifyPages ? { verifyPages } : {}),
           })

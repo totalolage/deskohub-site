@@ -13,7 +13,10 @@ import {
   waitForReactFormSubmit,
   waitForReactHandler,
 } from "../browser";
-import type { E2EBrowserSession } from "../browser-session";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
 import { switchLocale } from "../cases/locale";
 import type { WorkspaceE2EConfig } from "../config";
 import { type WorkspaceE2EError, withoutWorkspaceE2ETimeout } from "../errors";
@@ -21,7 +24,6 @@ import {
   waitForNoRememberedReferralCode,
   waitForRememberedReferralCode,
 } from "../referrals/referral-cookie";
-import { browserSessionFor, type Runner } from "../runtime";
 import {
   accountSectionLandmarks,
   selectAccountSectionInSession,
@@ -108,11 +110,7 @@ export type WorkspaceE2EAccountBrowser = {
   ) => Effect.Effect<void, WorkspaceE2EError>;
 };
 
-/**
- * The account lane's browser steps that drive its session directly, while
- * the rest of each case still reaches the same context through argv
- * commands.
- */
+/** The account lane's browser steps over the lane's session. */
 export type WorkspaceE2EAccountLaneBrowser = WorkspaceE2EAccountBrowser & {
   /**
    * The second browser of the cross-browser sign-in, the one a customer's
@@ -121,7 +119,7 @@ export type WorkspaceE2EAccountLaneBrowser = WorkspaceE2EAccountBrowser & {
   readonly assistant: WorkspaceE2EAccountBrowser & {
     /**
      * Closes the assistant's browser. A close that fails or outlasts
-     * `browserSessionClose` is ignored; the lane runner's `close` at worker
+     * `browserSessionClose` is ignored; closing the lane's Scope at worker
      * teardown still closes a session that opens after the wait.
      */
     readonly close: Effect.Effect<void>;
@@ -465,17 +463,14 @@ const hasDocumentCookie = (cookie: string) =>
   document.cookie.split("; ").includes(cookie);
 
 /**
- * The page steps over the session behind `run`'s `session` id, reached on
- * every call so a failure to open it fails the calling step. Polls reach it
- * on every read, as their argv reads did.
+ * The page steps over one session, reached on every call so a failure to
+ * open it fails the calling step. Polls reach it on every read.
  */
 const makeAccountBrowser = (
   config: AccountBrowserConfig,
-  run: Runner,
-  session: string
+  browserSession: OpenE2EBrowserSession
 ): WorkspaceE2EAccountBrowser => {
   const { timeouts } = config;
-  const browserSession = Effect.suspend(() => browserSessionFor(run, session));
   const withSession = <A>(
     drive: (opened: E2EBrowserSession) => Effect.Effect<A, WorkspaceE2EError>
   ) => Effect.flatMap(browserSession, drive);
@@ -568,36 +563,30 @@ const makeAccountBrowser = (
 };
 
 /**
- * Builds the lane browser over the runner's `session` id and the assistant's
- * `<session>-assistant` id.
+ * Builds the lane browser over the lane's session and the assistant's own
+ * session.
  */
 export const makeWorkspaceE2EAccountLaneBrowser = ({
   config,
-  run,
-  session,
+  openAssistantSession,
+  openSession,
 }: {
   readonly config: AccountBrowserConfig;
-  readonly run: Runner;
-  readonly session: string;
+  readonly openAssistantSession: OpenE2EBrowserSession;
+  readonly openSession: OpenE2EBrowserSession;
 }): WorkspaceE2EAccountLaneBrowser => {
   const withLaneSession = <A>(
     drive: (
       laneSession: E2EBrowserSession
     ) => Effect.Effect<A, WorkspaceE2EError>
-  ) =>
-    Effect.flatMap(
-      Effect.suspend(() => browserSessionFor(run, session)),
-      drive
-    );
+  ) => Effect.flatMap(openSession, drive);
   const { browserAction, uiTransition } = config.timeouts;
-  // As the argv `press` command, a key press has no timeout of its own; the
-  // calling step bounds it.
+  // A key press has no timeout of its own; the calling step bounds it.
   const press = (key: string) =>
     withLaneSession((laneSession) =>
       laneSession.use("press browser key", (page) => page.keyboard.press(key))
     );
-  // An evaluation that overruns its bound fails rather than timing out, as
-  // the argv `eval` it replaces did.
+  // An evaluation that overruns its bound fails rather than timing out.
   const evaluate = <A, Arg>(
     label: string,
     read: (arg: Arg) => A | Promise<A>,
@@ -628,14 +617,11 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
         .click({ timeout: browserAction })
     )
   );
-  const assistantSession = `${session}-assistant`;
   return {
-    ...makeAccountBrowser(config, run, session),
+    ...makeAccountBrowser(config, openSession),
     assistant: {
-      ...makeAccountBrowser(config, run, assistantSession),
-      close: Effect.suspend(() =>
-        browserSessionFor(run, assistantSession)
-      ).pipe(
+      ...makeAccountBrowser(config, openAssistantSession),
+      close: openAssistantSession.pipe(
         Effect.flatMap((assistant) => assistant.close()),
         Effect.timeout(config.timeouts.browserSessionClose),
         Effect.ignore
@@ -884,7 +870,7 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
       waitForPageSnapshot({
         description,
         matches,
-        session: Effect.suspend(() => browserSessionFor(run, session)),
+        session: openSession,
         timeoutMs,
       }),
   };
