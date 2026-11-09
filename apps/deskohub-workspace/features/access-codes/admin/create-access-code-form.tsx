@@ -17,6 +17,7 @@ import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { FormDateTimeInput } from "@/shared/components/date-time/form-fields";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
@@ -491,21 +492,18 @@ function StandaloneAccessCodeWindowForm({
                 control={form.control}
                 name="startsAt"
                 rules={{ deps: ["endsAt"] }}
-                render={({ field: { onChange, ...field }, fieldState }) => (
+                render={({ field }) => (
                   <FormItem>
                     <FormLabel>
                       {m.accessCodesStartsLabel({}, { locale })}
                     </FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        onInput={onChange}
-                        required
-                        step={3600}
-                        type="datetime-local"
-                        variant={fieldState.error ? "error" : "default"}
-                      />
-                    </FormControl>
+                    <FormDateTimeInput
+                      {...field}
+                      dateLabel={m.accessCodesStartsLabel({}, { locale })}
+                      required
+                      stepMinutes={60}
+                      timeLabel={m.accessCodesStartsTimeLabel({}, { locale })}
+                    />
                     <FormMessage />
                   </FormItem>
                 )}
@@ -513,23 +511,20 @@ function StandaloneAccessCodeWindowForm({
               <FormField
                 control={form.control}
                 name="endsAt"
-                render={({ field: { onChange, ...field }, fieldState }) => (
+                render={({ field }) => (
                   <FormItem>
                     <FormLabel>
                       {m.accessCodesEndsLabel({}, { locale })}
                     </FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        max={endMax}
-                        min={endMin}
-                        onInput={onChange}
-                        required
-                        step={3600}
-                        type="datetime-local"
-                        variant={fieldState.error ? "error" : "default"}
-                      />
-                    </FormControl>
+                    <FormDateTimeInput
+                      {...field}
+                      dateLabel={m.accessCodesEndsLabel({}, { locale })}
+                      maximum={endMax}
+                      minimum={endMin}
+                      required
+                      stepMinutes={60}
+                      timeLabel={m.accessCodesEndsTimeLabel({}, { locale })}
+                    />
                     <FormMessage />
                   </FormItem>
                 )}

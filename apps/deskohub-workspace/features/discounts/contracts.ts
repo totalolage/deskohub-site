@@ -163,6 +163,11 @@ export type DiscountAdvertisementInput = {
    * when it is on or before the sale's last day.
    */
   readonly lastServiceDate: string;
+  /**
+   * Prague date the reservation starts. Discount-code service-date windows
+   * are judged on it; later days of the reservation never count.
+   */
+  readonly firstServiceDate: string;
   /** Moment the booking is made; calendar sales are evaluated at it. */
   readonly bookedAt: Temporal.Instant;
   readonly locale: Locale;
@@ -176,6 +181,11 @@ export type DiscountQuoteInput = {
    * when it is on or before the sale's last day.
    */
   readonly lastServiceDate: string;
+  /**
+   * Prague date the reservation starts. Discount-code service-date windows
+   * are judged on it; later days of the reservation never count.
+   */
+  readonly firstServiceDate: string;
   /** Moment the booking is made; calendar sales are evaluated at it. */
   readonly bookedAt: Temporal.Instant;
   readonly locale: Locale;

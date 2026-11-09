@@ -370,6 +370,8 @@ export class EmailDiscountValues extends Context.Service<
               validUntil: expiresAt,
               maxUses: parameters.maxUses,
               maxUsesPerCustomer: parameters.maxUsesPerCustomer,
+              serviceDateFrom: null,
+              serviceDateUntil: null,
               audience: [preparation.dotyposCustomerId],
             })
           ),

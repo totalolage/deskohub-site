@@ -36,6 +36,7 @@ import { generatePromotionCode } from "@/features/discounts/promotion-code";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import { FormDateTimeInput } from "@/shared/components/date-time/form-fields";
 import { Button } from "@/shared/components/ui/button";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
 import { DisclosureButton } from "@/shared/components/ui/disclosure-button";
@@ -70,8 +71,8 @@ import {
   voucherFormDefaults,
 } from "./form-defaults";
 import {
-  toCreateDiscountCodeInput,
   toCreateDiscountInput,
+  toDiscountCodeUpdateInput,
   toVoucherConfigurationInput,
   toVoucherCreditInput,
 } from "./form-input";
@@ -94,6 +95,7 @@ import {
   getDiscountProductTargetLabel,
 } from "./product-target-options";
 import { PromotionCustomersPanel } from "./promotion-customers";
+import { DiscountCodeServiceDateFields } from "./service-date-fields";
 import { formatDiscountUsageLimit } from "./usage-limit";
 
 export type DiscountTableItem = {
@@ -116,6 +118,10 @@ export type DiscountCodeTableItem = {
   readonly validUntil: string | null;
   readonly maxUses: number | null;
   readonly maxUsesPerCustomer: number | null;
+  readonly serviceDateFrom: string | null;
+  readonly serviceDateUntil: string | null;
+  /** The reservation dates, already formatted on the server. */
+  readonly serviceDates: string;
   readonly audienceSize: number;
   readonly audienceCustomerIds: readonly DotyposCustomerId[];
   readonly reservedUses: number;
@@ -210,6 +216,12 @@ export function DiscountCodesAdminTable({
         accessorFn: (code) => discountProducts.get(code.discountId) ?? "",
         id: "products",
         header: m.discountsColumnProducts({}, { locale }),
+      },
+      {
+        accessorFn: (code) => code.serviceDateFrom ?? "",
+        id: "serviceDates",
+        header: m.discountsColumnServiceDates({}, { locale }),
+        cell: ({ row }) => row.original.serviceDates,
       },
       {
         accessorFn: (code) => getStatusLabel(code.enabled, locale),
@@ -466,7 +478,7 @@ export function VoucherEditor({
       >
         <div className="grid gap-5">
           <VoucherCreditFields credit={voucher.issuedCredit} />
-          <DiscountCodeConfigurationFields code={voucher} showMaxUses={false} />
+          <DiscountCodeConfigurationFields code={voucher} promotion="voucher" />
         </div>
       </MutationForm>
     </div>
@@ -779,7 +791,7 @@ export function CreateVoucherForm({
           </div>
         )}
         <VoucherCreditFields />
-        <DiscountCodeConfigurationFields showMaxUses={false} />
+        <DiscountCodeConfigurationFields promotion="voucher" />
       </div>
     </MutationForm>
   );
@@ -901,7 +913,7 @@ function DiscountCodeEditor({
             kind: "update-code",
             code: {
               id: code.id,
-              ...toCreateDiscountCodeInput(values),
+              ...toDiscountCodeUpdateInput(values, code),
             },
           })
         }
@@ -1407,13 +1419,18 @@ function DiscountCodeFields({
   );
 }
 
+/**
+ * The code value, switch, and redemption window every promotion has, plus a
+ * discount code's usage limits and reservation dates.
+ */
 export function DiscountCodeConfigurationFields({
   code,
-  showMaxUses = true,
+  promotion = "discount-code",
 }: {
   readonly code?: DiscountCodeTableItem | VoucherTableItem;
-  readonly showMaxUses?: boolean;
+  readonly promotion?: "discount-code" | "voucher";
 }) {
+  const showMaxUses = promotion === "discount-code";
   const locale = useRouteLocale();
   const { control, register, setValue } =
     useFormContext<DiscountCodeConfigurationFormValues>();
@@ -1470,48 +1487,49 @@ export function DiscountCodeConfigurationFields({
         </ChoiceCard>
       </div>
       <div
-        className={`grid gap-4 ${showMaxUses ? "md:grid-cols-4" : "md:grid-cols-2"}`}
+        className={`grid gap-4 md:grid-cols-2 ${showMaxUses ? "lg:grid-cols-4" : ""}`}
       >
-        <FormField
-          control={control}
-          name="validFrom"
-          render={({ field, fieldState }) => (
-            <FormItem>
-              <FormLabel htmlFor={fieldId("validFrom", code?.id)}>
-                {m.discountsValidFromLabel({}, { locale })}
-              </FormLabel>
-              <FormControl>
-                <Input
+        {/* The redemption window stays one pair side by side at every width;
+            each date-time stacks its date and time inside its half. The usage
+            limits join its row only where four columns leave the dates room. */}
+        <div className="grid min-w-0 grid-cols-2 items-start gap-4 md:col-span-2">
+          <FormField
+            control={control}
+            name="validFrom"
+            render={({ field }) => (
+              <FormItem className="min-w-0">
+                <FormLabel>
+                  {m.discountsValidFromLabel({}, { locale })}
+                </FormLabel>
+                <FormDateTimeInput
                   {...field}
-                  id={fieldId("validFrom", code?.id)}
-                  type="datetime-local"
-                  variant={fieldState.error ? "error" : "default"}
+                  dateLabel={m.discountsValidFromLabel({}, { locale })}
+                  displayValue={false}
+                  timeLabel={m.discountsValidFromTimeLabel({}, { locale })}
                 />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={control}
-          name="validUntil"
-          render={({ field, fieldState }) => (
-            <FormItem>
-              <FormLabel htmlFor={fieldId("validUntil", code?.id)}>
-                {m.discountsValidUntilLabel({}, { locale })}
-              </FormLabel>
-              <FormControl>
-                <Input
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={control}
+            name="validUntil"
+            render={({ field }) => (
+              <FormItem className="min-w-0">
+                <FormLabel>
+                  {m.discountsValidUntilLabel({}, { locale })}
+                </FormLabel>
+                <FormDateTimeInput
                   {...field}
-                  id={fieldId("validUntil", code?.id)}
-                  type="datetime-local"
-                  variant={fieldState.error ? "error" : "default"}
+                  dateLabel={m.discountsValidUntilLabel({}, { locale })}
+                  displayValue={false}
+                  timeLabel={m.discountsValidUntilTimeLabel({}, { locale })}
                 />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
         {showMaxUses && (
           <>
             <FormField
@@ -1564,6 +1582,7 @@ export function DiscountCodeConfigurationFields({
       <p className="text-xs leading-5 text-navy-blue/70">
         {m.discountsValidityHint({}, { locale })}
       </p>
+      {promotion === "discount-code" && <DiscountCodeServiceDateFields />}
     </div>
   );
 }
