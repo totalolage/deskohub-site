@@ -98,6 +98,13 @@ const openLanguageMenu = async (view: RenderResult) => {
   return view.findByRole("menu");
 };
 
+// Lets queued promise callbacks and timers run, so a test can assert that
+// nothing happened yet rather than that it had not happened so far.
+const flushPendingWork = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
 type Surface = {
   readonly name: string;
   /** Renders the switcher and returns the control that switches to Czech. */
@@ -170,14 +177,27 @@ describe("LanguageMenu", () => {
       <LanguageMenu locale="en-US" triggerLabel={triggerLabel} tone="light" />
     );
 
-    expect(view.queryByRole("menu")).toBeNull();
-    expect(view.queryAllByRole("menuitem")).toHaveLength(0);
-    expect(view.queryAllByRole("link")).toHaveLength(0);
+    const menuContent = () =>
+      view.baseElement.querySelector("[data-locale-switcher]");
+    expect(menuContent()).toBeNull();
+    expect(view.baseElement.querySelector("a")).toBeNull();
     expect(
       view
         .getByRole("button", { name: triggerLabel })
         .getAttribute("aria-expanded")
     ).toBe("false");
+
+    const menu = await openLanguageMenu(view);
+    expect(menuContent()).toBe(menu);
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(
+      displayOrder.length
+    );
+
+    await act(async () => {
+      fireEvent.keyDown(menu, { key: "Escape" });
+    });
+    expect(menuContent()).toBeNull();
+    expect(view.baseElement.querySelector("a")).toBeNull();
   });
 
   test("lists every language in its own language in display order, marking the current one without a link", async () => {
@@ -334,7 +354,9 @@ describe.each(surfaces)("switching from a $name", (surface) => {
     await act(() => preference.signedIn);
 
     const notPrevented = fireEvent.click(choice, { ctrlKey: true });
+    await flushPendingWork();
 
+    // The browser follows the unprevented link itself, here and for real.
     expect(notPrevented).toBe(true);
     expect(saves).toEqual([]);
   });
@@ -381,8 +403,10 @@ describe.each(surfaces)("switching from a $name", (surface) => {
     });
 
     const notPrevented = fireEvent.click(choice);
+    await flushPendingWork();
     expect(notPrevented).toBe(false);
     expect(saves).toEqual([]);
+    expect(window.location.pathname).toBe("/en-US");
 
     await act(async () => {
       signedIn.resolve(true);
@@ -405,7 +429,9 @@ describe.each(surfaces)("switching from a $name", (surface) => {
     });
 
     const notPrevented = fireEvent.click(choice);
+    await flushPendingWork();
     expect(notPrevented).toBe(false);
+    expect(window.location.pathname).toBe("/en-US");
     await act(async () => {
       signedIn.resolve(false);
       await signedIn.promise;

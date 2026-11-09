@@ -375,6 +375,7 @@ test("uses document navigation for the alternate-locale minimal-header link", as
   ] as const) {
     currentPathname = pathname;
     capturedLinks.length = 0;
+    capturedGuardedLinkHrefs.length = 0;
     const view = render(
       <MinimalSiteHeader
         currentLocale={currentLocale}
@@ -391,6 +392,7 @@ test("uses document navigation for the alternate-locale minimal-header link", as
     expect(capturedLinks.filter(({ href }) => href === alternateHref)).toEqual(
       []
     );
+    expect(capturedGuardedLinkHrefs).not.toContain(alternateHref);
     expect(capturedLinks).toContainEqual({
       href: `/${currentLocale}`,
       prefetch: false,

@@ -8,8 +8,16 @@ import {
   setSystemTime,
   test,
 } from "bun:test";
-import { act, cleanup, render, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { ComponentProps } from "react";
+import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import { type Locale, m } from "@/features/i18n";
 import { languageNames } from "@/features/i18n/language-labels";
 import {
@@ -55,13 +63,18 @@ beforeEach(() => {
 afterEach(cleanup);
 afterAll(unregisterWorkspaceComponentTestEnv);
 
-// The layout passes the header's preference saving; a guest's is enough here.
-const localePreference = {
+// The layout passes the header's preference saving; most tests need a guest's.
+const guestPreference: LocalePreferenceSaving = {
   signedIn: Promise.resolve(false),
   save: () => Promise.resolve(),
 };
 
-const renderFooter = async () => {
+const languageNavigationLabel = m.languageSwitcherLabel(
+  {},
+  { locale: "cs-CZ" }
+);
+
+const renderFooter = async (localePreference = guestPreference) => {
   const { PublicSiteFooter } = await import("./public-site-footer");
   const footer = await PublicSiteFooter({ localePreference });
   // The language links settle the session check right after the render.
@@ -94,12 +107,14 @@ test("routes every internal footer page link through a locale-prefixed guarded l
   const view = await renderFooter();
   // Language links switch locale with a document navigation, not a guarded
   // in-app link.
+  const languageNavigation = view.getByRole("navigation", {
+    name: languageNavigationLabel,
+  });
   const internalPageHrefs = Array.from(
-    view.container.querySelectorAll(
-      'a[href^="/"]:not([download]):not([hreflang])'
-    ),
-    (link) => link.getAttribute("href")
-  );
+    view.container.querySelectorAll('a[href^="/"]:not([download])')
+  )
+    .filter((link) => !languageNavigation.contains(link))
+    .map((link) => link.getAttribute("href"));
 
   expect(internalPageHrefs.length).toBeGreaterThan(0);
   expect<readonly (string | null)[]>(guardedLinkHrefs).toEqual(
@@ -133,7 +148,7 @@ test("links the Android app page for crawlers and visitors without scripts", asy
 test("names every language in itself and links all but the current one to this page", async () => {
   const view = await renderFooter();
   const languages = view.getByRole("navigation", {
-    name: m.languageSwitcherLabel({}, { locale: "cs-CZ" }),
+    name: languageNavigationLabel,
   });
   const displayOrder: readonly Locale[] = [
     "cs-CZ",
@@ -161,4 +176,33 @@ test("names every language in itself and links all but the current one to this p
     expect(link.getAttribute("hrefLang")).toBe(locale);
     expect(link.hasAttribute("aria-current")).toBe(false);
   }
+});
+
+test("saves a signed-in customer's preference before a language link navigates", async () => {
+  window.location.href = "http://localhost/cs-CZ/pricing";
+  const saves: { readonly locale: string }[] = [];
+  const saved = Promise.withResolvers<void>();
+  const view = await renderFooter({
+    signedIn: Promise.resolve(true),
+    save: (input) => {
+      saves.push(input);
+      return saved.promise;
+    },
+  });
+
+  fireEvent.click(
+    within(
+      view.getByRole("navigation", { name: languageNavigationLabel })
+    ).getByRole("link", { name: languageNames["en-US"] })
+  );
+
+  await waitFor(() => expect(saves).toEqual([{ locale: "en-US" }]));
+  expect(window.location.pathname).toBe("/cs-CZ/pricing");
+
+  await act(async () => {
+    saved.resolve();
+    await saved.promise;
+  });
+
+  expect(window.location.pathname).toBe("/en-US/pricing");
 });
