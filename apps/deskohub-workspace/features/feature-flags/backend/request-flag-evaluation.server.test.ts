@@ -6,7 +6,15 @@ import {
   type PostHogFeatureFlagSubject,
 } from "@deskohub/posthog/feature-flags/node";
 import { PostHogDistinctId } from "@deskohub/posthog/identifiers";
-import { Clock, Effect, Layer, Logger, Option, References } from "effect";
+import {
+  Clock,
+  type Context,
+  Effect,
+  Layer,
+  Logger,
+  Option,
+  References,
+} from "effect";
 import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   POSTHOG_DISTINCT_ID_COOKIE,
@@ -19,13 +27,22 @@ import {
 import type { ReleaseGateClass } from "./release-gate";
 
 type FlagValues = Partial<Record<PostHogFeatureFlagKey, boolean>>;
+/** What PostHog may answer, variants included. */
+type RemoteFlagValues = Partial<
+  Record<PostHogFeatureFlagKey, boolean | string>
+>;
+type LogAnnotations = Context.Service.Shape<
+  typeof References.CurrentLogAnnotations
+>;
 
 // The flags the classification settles: constants and overrides.
 let constants: FlagValues = {};
 let policy: "allowed" | "disabled" = "allowed";
 // What PostHog answers a remote evaluation with.
-let remoteAnswer: Effect.Effect<FlagValues, PostHogFeatureFlagEvaluationError> =
-  Effect.succeed({});
+let remoteAnswer: Effect.Effect<
+  RemoteFlagValues,
+  PostHogFeatureFlagEvaluationError
+> = Effect.succeed({});
 // The headers object Next's request store hands out for the current request.
 let nextRequestHeaders = new Headers();
 
@@ -206,7 +223,7 @@ const unavailable = Effect.fail(
 const disabledWarningCode = "feature_flags.remote_evaluation_disabled";
 
 const recordLogs = <A, E>(effect: Effect.Effect<A, E>) => {
-  const annotations: Record<string, unknown>[] = [];
+  const annotations: LogAnnotations[] = [];
   return Effect.runPromise(
     effect.pipe(
       Effect.provide(
@@ -251,7 +268,10 @@ describe("one remote evaluation per request", () => {
     ]);
 
     expect(remoteEvaluations).toEqual([
-      { distinctId: "landing-visitor", flagKeys: [...postHogFeatureFlags.keys] },
+      {
+        distinctId: "landing-visitor",
+        flagKeys: [...postHogFeatureFlags.keys],
+      },
     ]);
   });
 
@@ -341,7 +361,11 @@ describe("one remote evaluation per request", () => {
     const [boundaryGates, requestGate] = await Promise.all([
       readGatesInOneRun.pipe(
         Effect.provide(
-          Layer.mergeAll(OfficeGate.Live, MeetingRoomGate.Live, ReferralGate.Live)
+          Layer.mergeAll(
+            OfficeGate.Live,
+            MeetingRoomGate.Live,
+            ReferralGate.Live
+          )
         ),
         withWorkspaceRequestContext(request.headers),
         runWorkspaceEffect("test.route")
@@ -356,9 +380,7 @@ describe("one remote evaluation per request", () => {
 
   test("opens a gate only for true, never for a variant", async () => {
     nextRequestHeaders = visitorHeaders("variant-visitor");
-    remoteAnswer = Effect.succeed({
-      office_page: "treatment",
-    } as unknown as FlagValues);
+    remoteAnswer = Effect.succeed({ office_page: "treatment" });
 
     await expect(decideForRequest(OfficeGate)).resolves.toBe(false);
   });

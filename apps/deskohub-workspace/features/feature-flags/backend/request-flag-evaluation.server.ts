@@ -101,7 +101,10 @@ const evaluationsOf = (
 const shareEvaluation = (
   evaluations: SharedEvaluations,
   key: string,
-  evaluation: Effect.Effect<RequestFlagValues, PostHogFeatureFlagEvaluationError>
+  evaluation: Effect.Effect<
+    RequestFlagValues,
+    PostHogFeatureFlagEvaluationError
+  >
 ): Effect.Effect<RequestFlagValues, PostHogFeatureFlagEvaluationError> =>
   Effect.suspend(() => {
     const existing = evaluations.get(key);
@@ -136,7 +139,8 @@ const evaluateForSubject = (subject: PostHogFeatureFlagSubject) =>
 const readConstantFlagValues = Effect.promise(() =>
   Promise.all(
     postHogFeatureFlags.keys.map(
-      async (key) => [key, await getGlobalWorkspaceFeatureFlagValue(key)] as const
+      async (key) =>
+        [key, await getGlobalWorkspaceFeatureFlagValue(key)] as const
     )
   )
 ).pipe(
