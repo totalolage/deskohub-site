@@ -106,6 +106,11 @@ type LanguageMenuProps = {
   readonly triggerLabel: string;
   /** `inverse` sits on the customer site's dark header, `light` on a white one. */
   readonly tone: "inverse" | "light";
+  /**
+   * The customer header's desktop navigation shares the bar from `xl` to
+   * `2xl`, so the trigger drops the language name there and keeps the icon.
+   */
+  readonly sharesBarWithNavigation?: boolean;
   readonly localePreference?: LocalePreferenceSaving;
 };
 
@@ -113,9 +118,11 @@ function LanguageMenuTrigger({
   locale,
   triggerLabel,
   tone,
+  sharesBarWithNavigation = false,
   ...props
 }: Omit<LanguageMenuProps, "localePreference"> &
-  Omit<ComponentProps<typeof Button>, "className">) {
+  // Radix's trigger forwards only state, ARIA, event and ref props.
+  Omit<ComponentProps<"button">, "className" | "type">) {
   return (
     <Button
       type="button"
@@ -123,7 +130,10 @@ function LanguageMenuTrigger({
       shape="pill"
       aria-label={triggerLabel}
       data-language-menu-trigger
-      className="shrink-0 sm:w-auto"
+      className={cn(
+        "shrink-0 sm:w-auto",
+        sharesBarWithNavigation && "xl:max-2xl:w-10"
+      )}
       variant="ghost"
       tone={tone === "inverse" ? "inverse" : "outline"}
       // biome-ignore lint/plugin: the menu trigger passes only its state, ARIA and event props, never a className.
@@ -131,14 +141,28 @@ function LanguageMenuTrigger({
     >
       {/* Phones get the icon alone in a round button; wider screens add the
           current language's name and a chevron. */}
-      <span className="flex items-center gap-1.5 sm:px-3.5">
+      <span
+        className={cn(
+          "flex items-center gap-1.5 sm:px-3.5",
+          sharesBarWithNavigation && "xl:max-2xl:px-0"
+        )}
+      >
         <Languages aria-hidden className="size-4.5" />
-        <span lang={locale} className="hidden sm:inline">
+        <span
+          lang={locale}
+          className={cn(
+            "hidden sm:inline",
+            sharesBarWithNavigation && "xl:max-2xl:hidden"
+          )}
+        >
           {languageNames[locale]}
         </span>
         <ChevronDown
           aria-hidden
-          className="hidden size-3.5 opacity-70 sm:block"
+          className={cn(
+            "hidden size-3.5 opacity-70 sm:block",
+            sharesBarWithNavigation && "xl:max-2xl:hidden"
+          )}
         />
       </span>
     </Button>
@@ -206,10 +230,13 @@ function LanguageMenuWithLinks({
  * navigation. The prerendered shell cannot read the query, so it shows the
  * trigger alone until the client takes over.
  */
-export function LanguageMenu(props: LanguageMenuProps) {
+export function LanguageMenu({
+  localePreference,
+  ...props
+}: LanguageMenuProps) {
   return (
     <Suspense fallback={<LanguageMenuTrigger {...props} />}>
-      <LanguageMenuWithLinks {...props} />
+      <LanguageMenuWithLinks {...props} localePreference={localePreference} />
     </Suspense>
   );
 }

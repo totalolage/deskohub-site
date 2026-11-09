@@ -233,6 +233,7 @@ export function SiteHeader({
             locale={currentLocale}
             triggerLabel={languageMenuTriggerLabel}
             tone="inverse"
+            sharesBarWithNavigation
             localePreference={localePreference}
           />
 
