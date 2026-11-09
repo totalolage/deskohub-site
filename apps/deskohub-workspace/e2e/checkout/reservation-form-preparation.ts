@@ -506,7 +506,7 @@ export const prepareReservationForm = ({
         );
         return (
           hiddenStart instanceof HTMLInputElement &&
-          hiddenStart.value === expected.date
+          hiddenStart.value.slice(0, 10) === expected.date
         );
       },
       "meeting-room date did not update",
@@ -572,7 +572,7 @@ export const prepareReservationForm = ({
         }
         return (
           hiddenStart instanceof HTMLInputElement &&
-          hiddenStart.value === expected.date &&
+          hiddenStart.value.slice(0, 10) === expected.date &&
           (expected.wholeDay
             ? time === null
             : time instanceof HTMLInputElement &&

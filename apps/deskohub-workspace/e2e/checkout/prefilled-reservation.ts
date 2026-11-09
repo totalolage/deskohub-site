@@ -201,7 +201,10 @@ export const isPrefilledReservation = (
               expected.monitorOption;
       }
       case "meeting-room": {
-        if (value('input[name="startDateTime"]') !== expected.date)
+        // The field holds the whole local start; the date leads it.
+        if (
+          value('input[name="startDateTime"]')?.slice(0, 10) !== expected.date
+        )
           return false;
         // The start-time control is matched by type, not by its localized
         // aria label, so one check covers en-US and cs-CZ pages.
