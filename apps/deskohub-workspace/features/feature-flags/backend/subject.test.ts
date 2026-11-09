@@ -19,12 +19,15 @@ const globalReleaseSubject = {
   sendFeatureFlagEvents: false,
 };
 
-const subjectFor = async (
+const audienceFor = async (
   provide: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E>
 ) => {
-  const { getCurrentPostHogFeatureFlagSubject } = await import("./subject");
-  return Effect.runPromise(provide(getCurrentPostHogFeatureFlagSubject()));
+  const { getCurrentFeatureFlagAudience } = await import("./subject");
+  return Effect.runPromise(provide(getCurrentFeatureFlagAudience()));
 };
+const subjectFor = async (
+  provide: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E>
+) => (await audienceFor(provide)).subject;
 
 describe("PostHog feature flag subject", () => {
   test("uses the consented visitor of the request and records flag access", async () => {
@@ -60,5 +63,17 @@ describe("PostHog feature flag subject", () => {
     expect(await subjectFor(withAnonymousVisitor)).toEqual(
       globalReleaseSubject
     );
+  });
+
+  test("identifies the request by the headers its boundary captured", async () => {
+    const headers = new Headers({ cookie: necessaryConsentCookie });
+
+    const audience = await audienceFor(withWorkspaceRequestContext(headers));
+
+    expect(audience.request).toBe(headers);
+  });
+
+  test("identifies no request for work that serves no visitor", async () => {
+    expect((await audienceFor(withAnonymousVisitor)).request).toBeUndefined();
   });
 });
