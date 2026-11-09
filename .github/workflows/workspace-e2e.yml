@@ -438,6 +438,7 @@ jobs:
           sparse-checkout: |
             .github/actions/workspace-e2e-allocation
             .github/actions/setup-bun
+            .github/actions/restore-playwright-webkit
 
       - name: Select preferred date shard
         id: preferred-shard
@@ -572,6 +573,15 @@ jobs:
           path: ~/.bun/install/cache
           key: ${{ steps.bun-cache.outputs.cache-primary-key }}
 
+      # An actions/cache step would save the browser download after the job,
+      # once exact-SHA code has run, into the default-branch scope every
+      # workflow restores from. This action only restores the WebKit download
+      # that playwright-webkit-cache.yml saves from main's code. It reads the
+      # Workspace's exact Playwright pin as data, so it runs before any
+      # exact-SHA code. On a miss, the install step below downloads WebKit.
+      - name: Restore Workspace Playwright WebKit
+        uses: ./.workspace-e2e-coordinator/.github/actions/restore-playwright-webkit
+
       - name: Install repository dependencies
         run: bun install --frozen-lockfile
 
@@ -692,22 +702,10 @@ jobs:
           "$browser_path" --version
           echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$browser_path" >> "$GITHUB_ENV"
 
-      - name: Resolve Workspace Playwright version
-        id: playwright
-        working-directory: apps/deskohub-workspace
-        run: |
-          echo "image-os=${ImageOS:?The hosted runner must provide ImageOS}" >> "$GITHUB_OUTPUT"
-          echo "version=$(bun -p 'require("@playwright/test/package.json").version')" >> "$GITHUB_OUTPUT"
-
       # The WebKit project covers Safari and iOS, which get the Temporal
-      # polyfill. Restores only the browser download; the install step below
-      # still installs WebKit's system packages on every run.
-      - name: Cache Workspace Playwright WebKit
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-webkit-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.image-os }}-${{ steps.playwright.outputs.version }}
-
+      # polyfill. This installs WebKit's system packages on every run, and
+      # downloads the browser only when "Restore Workspace Playwright WebKit"
+      # found no entry.
       - name: Install Workspace Playwright WebKit
         working-directory: apps/deskohub-workspace
         run: bun ./node_modules/@playwright/test/cli.js install --with-deps webkit

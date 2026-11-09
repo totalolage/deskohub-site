@@ -81,6 +81,18 @@ const bunReleaseCacheDoc = parseWorkflow(
 const setupBunAction = parseCompositeAction(
   resolve(import.meta.dir, "../../../.github/actions/setup-bun/action.yml")
 );
+const playwrightWebKitCacheDoc = parseWorkflow(
+  resolve(
+    import.meta.dir,
+    "../../../.github/workflows/playwright-webkit-cache.yml"
+  )
+);
+const restorePlaywrightWebKitAction = parseCompositeAction(
+  resolve(
+    import.meta.dir,
+    "../../../.github/actions/restore-playwright-webkit/action.yml"
+  )
+);
 const workflowDispatchInputs = doc.on?.workflow_dispatch?.inputs;
 // Format-insensitive view of the parsed workflow used for document-level
 // token presence/absence checks; assertions never touch raw file text.
@@ -851,5 +863,117 @@ describe("workspace E2E workflow", () => {
     expect(setup?.with?.["bun-sha256"]).toBe(e2eSetup.with?.["bun-sha256"]);
     expect(String(e2eSetup.with?.["bun-sha256"])).toMatch(/^[0-9a-f]{64}$/);
     expect(bunReleaseCacheDoc.permissions).toEqual({ contents: "read" });
+  });
+
+  test("saves every cache entry before any exact-SHA code runs", () => {
+    const steps = testJob?.steps ?? [];
+    const install = stepByName("Install repository dependencies");
+    const installIndex = steps.indexOf(install);
+    expect(installIndex).toBeGreaterThan(0);
+    // actions/cache saves in its post-job step, after every exact-SHA step,
+    // so the job uses only the explicit restore and save actions.
+    expect(
+      allSteps.filter((step) => /^actions\/cache@/.test(step.uses ?? ""))
+    ).toEqual([]);
+    const saves = allSteps.filter((step) =>
+      /^actions\/cache\/save@/.test(step.uses ?? "")
+    );
+    expect(saves.map((step) => step.name)).toEqual(["Save Bun package cache"]);
+    for (const save of saves) {
+      expect(steps.indexOf(save)).toBeLessThan(installIndex);
+    }
+    // The job's local actions restore without saving.
+    for (const action of [setupBunAction, restorePlaywrightWebKitAction]) {
+      expect(
+        action.runs.steps.filter((step) =>
+          /^actions\/cache(\/save)?@/.test(step.uses ?? "")
+        )
+      ).toEqual([]);
+    }
+  });
+
+  test("restores Playwright WebKit from the workflow commit before any exact-SHA code runs", () => {
+    const steps = testJob?.steps ?? [];
+    const restore = stepByName("Restore Workspace Playwright WebKit");
+    const coordinatorCheckout = stepByName("Checkout workflow actions");
+    expect(restore.uses).toBe(
+      `./${coordinatorCheckout.with?.path}/.github/actions/restore-playwright-webkit`
+    );
+    expect(String(coordinatorCheckout.with?.["sparse-checkout"])).toContain(
+      ".github/actions/restore-playwright-webkit"
+    );
+    const restoreIndex = steps.indexOf(restore);
+    expect(restoreIndex).toBeGreaterThan(steps.indexOf(coordinatorCheckout));
+    expect(restoreIndex).toBeLessThan(
+      steps.indexOf(stepByName("Install repository dependencies"))
+    );
+    // A hit or a miss, the install step still runs: it installs WebKit's
+    // system packages and downloads the browser only when it is missing.
+    const install = stepByName("Install Workspace Playwright WebKit");
+    expect(steps.indexOf(install)).toBeGreaterThan(restoreIndex);
+    expect(install.if).toBeUndefined();
+    expect(install.run).toContain("install --with-deps webkit");
+  });
+
+  test("restores only the WebKit build of the Workspace's exact Playwright pin", () => {
+    const steps = restorePlaywrightWebKitAction.runs.steps;
+    expect(steps.map((step) => step.name)).toEqual([
+      "Resolve Workspace Playwright version",
+      "Restore Playwright WebKit",
+    ]);
+    const [version, restore] = steps;
+    // The pin is read as data, never by running exact-SHA code.
+    expect(version?.run).toContain("apps/deskohub-workspace/package.json");
+    expect(version?.run).not.toMatch(/\bbunx?\b|\bnode\b|\bnpx\b/);
+    expect(restore?.uses).toStartWith("actions/cache/restore@");
+    expect(restore?.with?.["restore-keys"]).toBeUndefined();
+    // The prefix is new, so no entry an earlier E2E run saved after its
+    // exact-SHA code matches it.
+    expect(String(restore?.with?.key)).toStartWith(
+      "workspace-e2e-playwright-webkit-"
+    );
+    for (const part of [
+      "runner.os",
+      "runner.arch",
+      `steps.${version?.id}.outputs.image-os`,
+      `steps.${version?.id}.outputs.version`,
+    ]) {
+      expect(String(restore?.with?.key)).toContain(part);
+    }
+    expect(restorePlaywrightWebKitAction.outputs?.path?.value).toBe(
+      restore?.with?.path
+    );
+    expect(restore?.with?.path).toBe("~/.cache/ms-playwright");
+  });
+
+  test("saves Playwright WebKit only from main's code and main's pin", () => {
+    const warm = playwrightWebKitCacheDoc.jobs.warm;
+    const warmSteps = warm?.steps ?? [];
+    expect(warmSteps.map((step) => step.uses?.replace(/@.*/, ""))).toEqual([
+      "actions/checkout",
+      "./.github/actions/restore-playwright-webkit",
+      undefined,
+      "actions/cache/save",
+    ]);
+    const [checkout, restore, download, save] = warmSteps;
+    expect(checkout?.with?.ref).toBeUndefined();
+    expect(checkout?.with?.["persist-credentials"]).toBe(false);
+    const miss = `steps.${restore?.id}.outputs.cache-hit != 'true'`;
+    expect(download?.if).toBe(miss);
+    expect(download?.env?.PLAYWRIGHT_VERSION).toBe(
+      `\${{ steps.${restore?.id}.outputs.version }}`
+    );
+    expect(download?.run).toContain("install webkit");
+    expect(save?.if).toContain("github.ref == 'refs/heads/main'");
+    expect(save?.if).toContain(miss);
+    expect(save?.with?.path).toBe(`\${{ steps.${restore?.id}.outputs.path }}`);
+    expect(save?.with?.key).toBe(
+      `\${{ steps.${restore?.id}.outputs.cache-primary-key }}`
+    );
+    // The key holds the runner image, so the writer runs on E2E's runner.
+    expect(warm?.["runs-on"]).toBe(testJob?.["runs-on"]);
+    expect(playwrightWebKitCacheDoc.permissions).toEqual({
+      contents: "read",
+    });
   });
 });

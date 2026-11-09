@@ -29,6 +29,7 @@ interface WorkflowJob {
     readonly "cancel-in-progress"?: boolean | string;
   };
   readonly outputs?: Record<string, string>;
+  readonly "runs-on"?: string;
   readonly steps?: readonly WorkflowStep[];
   readonly permissions?: Record<string, string>;
   readonly env?: Record<string, string>;
