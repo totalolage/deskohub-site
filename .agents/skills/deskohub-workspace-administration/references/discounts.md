@@ -10,6 +10,9 @@ The [discount specification](../../../../apps/deskohub-workspace/docs/discount-c
 - `promotion_codes` owns the globally unique entered value, scheduling, enablement, and customer audience. Discount codes and vouchers use separate child tables and claim ledgers.
 - Database triggers keep the common fields on `discount_codes` and the `discount_code_customers` table in sync with `promotion_codes` for older deployments. Drop the mirrors and triggers only in a dedicated contract migration.
 - Global and per-customer use limits belong to the discount-code child, not the shared discount. An omitted limit is unlimited in that dimension.
+- A discount code can have service dates: the first and last reservation start date, in Prague, it applies to (`serviceDateFrom` and `serviceDateUntil`). A one-day range repeats the date. Both are set or both are empty, and the last isn't before the first. Vouchers never have them.
+- Code create and update take the two dates together. Create without them makes a code for any date. An update that omits both keeps the stored dates, two nulls clear them, and two dates replace them. The shared contract and `DiscountAdministration` both reject one date alone, a date paired with null, an inverted range, and a non-canonical date; the service checks with `getServiceDateWindowIssue` (`features/discounts/service-date-eligibility.ts`). The Admin UI forms always send both: emptying both fields clears the dates.
+- `insertDiscountCode` doesn't take service dates, so the administration service writes them onto the new code in the same transaction.
 - An empty audience is unrestricted, so removing the last customer broadens access and needs explicit confirmation.
 - Deleting a code or voucher must fail when immutable claims reference it. Prefer disabling.
 - Calendar sales: validate the discount definition before associating it with a sale. Load `deskohub-workspace-domain` for Calendar sale semantics.
