@@ -436,6 +436,9 @@ describe("native email sign-in through the auth session", () => {
     const signInUrl = new URL(app.opened[0] ?? "");
     expect(signInUrl.origin + signInUrl.pathname).toBe(`${origin}/app/sign-in`);
     expect(signInUrl.searchParams.has("prompt")).toBe(false);
+    // The page, its email and a new account follow the app's language, not
+    // the browser's.
+    expect(signInUrl.searchParams.getAll("locale")).toEqual(["cs-CZ"]);
   });
 
   test("records the sign-in as started with the email's link method before the page opens", async () => {

@@ -104,6 +104,7 @@ describe("app route tree", () => {
       "deskohub://account/legal",
       "https://workspace.deskohub.cz/app/reservations/synthetic-order?after=payment",
       "https://workspace.deskohub.cz/app/account/legal",
+      "https://workspace.deskohub.cz/app/account",
       "/reservations/synthetic-order/access",
     ]) {
       expect({ link, resolves: resolves(link) }).toEqual({
