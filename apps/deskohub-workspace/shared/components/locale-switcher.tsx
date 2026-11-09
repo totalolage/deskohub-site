@@ -56,6 +56,17 @@ const isPlainClick = (event: MouseEvent<HTMLAnchorElement>) =>
   !event.shiftKey &&
   !event.altKey;
 
+/**
+ * The order the language menu and links list the languages in: Czech first,
+ * then English, then the rest in registry order (owner decision D23). The
+ * registry keeps its own base-first order for everything else.
+ */
+const languageDisplayOrder: readonly Locale[] = [
+  "cs-CZ",
+  "en-US",
+  ...locales.filter((locale) => locale !== "cs-CZ" && locale !== "en-US"),
+];
+
 type SelectLocale = (
   locale: Locale,
   event: MouseEvent<HTMLAnchorElement>
@@ -111,6 +122,7 @@ function LanguageMenuTrigger({
       size="icon"
       shape="pill"
       aria-label={triggerLabel}
+      data-language-menu-trigger
       className="shrink-0 sm:w-auto"
       variant="ghost"
       tone={tone === "inverse" ? "inverse" : "outline"}
@@ -143,8 +155,12 @@ function LanguageMenuWithLinks({
       <DropdownMenuTrigger asChild>
         <LanguageMenuTrigger {...props} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-44">
-        {locales.map((locale) => {
+      <DropdownMenuContent
+        align="end"
+        className="min-w-44"
+        data-locale-switcher
+      >
+        {languageDisplayOrder.map((locale) => {
           const isCurrent = locale === props.locale;
           const label = (
             <>
@@ -217,9 +233,9 @@ function LanguageLinkList({
   readonly selectLocale?: SelectLocale;
 }) {
   return (
-    <nav aria-label={label} data-locale-switcher className={className}>
+    <nav aria-label={label} className={className}>
       <ul className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {locales.map((locale) => (
+        {languageDisplayOrder.map((locale) => (
           <li key={locale}>
             {locale === currentLocale || !getLocaleHref ? (
               <span
