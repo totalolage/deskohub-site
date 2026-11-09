@@ -25,8 +25,7 @@ export const signInMethodParam = "method";
 
 const isSignInMethod = (
   value: string | null | undefined
-): value is SignInMethod =>
-  signInMethods.some((method) => method === value);
+): value is SignInMethod => signInMethods.some((method) => method === value);
 
 /** Where the web sign-in page sends a minted handoff code. */
 export const nativeReturnUri = "deskohub://auth/callback";
@@ -112,10 +111,7 @@ export const parseAuthCallbackParams = (
   });
 
 /** The minted handoff URL with the method the page signed in with. */
-export const withSignInMethod = (
-  url: string,
-  method: SignInMethod
-): string => {
+export const withSignInMethod = (url: string, method: SignInMethod): string => {
   const withMethod = new URL(url);
   withMethod.searchParams.set(signInMethodParam, method);
   return withMethod.toString();
