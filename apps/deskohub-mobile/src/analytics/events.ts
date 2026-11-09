@@ -1,7 +1,12 @@
 import { type AnalyticsController, analytics } from "./analytics";
 
-/** How a customer signs in, as the site reports it. */
-export type SignInMethod = "link" | "code" | "passkey";
+/**
+ * How a customer signs in: the site's link, code and passkey, plus the app's
+ * `continue`, a re-sign-in that continues the web page's existing session.
+ */
+export const signInMethods = ["link", "code", "passkey", "continue"] as const;
+
+export type SignInMethod = (typeof signInMethods)[number];
 
 /** The reservation families a booking can start in. */
 export type ReservationKind = "cowork" | "meeting_room" | "office";
