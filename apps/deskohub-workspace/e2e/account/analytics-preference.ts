@@ -1,9 +1,9 @@
 import "../../shared/polyfills/temporal";
 
-import type { Page, Request } from "@playwright/test";
+import type { Page, Request, Response } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { asc, eq } from "drizzle-orm";
-import { Effect, Option } from "effect";
+import { Data, Duration, Effect, Option, Schedule } from "effect";
 import { accountAnalyticsConsentDecisions } from "@/db/schema/account-analytics-consent-decisions";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { m } from "@/features/i18n";
@@ -14,12 +14,12 @@ import type {
   E2EBrowserSession,
   OpenE2EBrowserSession,
 } from "../browser-session";
-import { workspaceE2EError } from "../errors";
+import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { preparePublicLegalBrowser } from "../instant-navigation/public-account-legal-assertions";
 import { E2EDatabase } from "../integrations/database.service";
 import { runDatabaseOperation } from "../integrations/database-operation";
 import {
-  dismissLegalCookieConsent,
+  cookieBannerNecessaryOnlyButton,
   hasReactClickHandler,
 } from "../legal-cookie-consent";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -59,8 +59,9 @@ export type WorkspaceE2EAnalyticsPreferenceInput = {
 const driveDevice = <A>(
   device: E2EBrowserSession,
   operation: AnalyticsPreferenceOperation,
-  drive: (page: Page) => Promise<A>
-) => device.use(operation, drive);
+  drive: (page: Page) => Promise<A>,
+  deadline?: Parameters<E2EBrowserSession["use"]>[2]
+) => device.use(operation, drive, deadline);
 
 const readAnalyticsDecisions = Effect.fn("readAnalyticsDecisions")(function* (
   accountId: CustomerAccountId
@@ -119,7 +120,9 @@ const prepareDevice = (device: E2EBrowserSession) =>
 
 /**
  * Declines the cookie banner while the device is signed out, so no banner
- * decision reaches the account.
+ * decision reaches the account. It waits for the banner itself: the page's
+ * own analytics switch hydrates before the banner opens, and a device left
+ * without a saved choice never sends the signed-in hydration mirror.
  */
 const declineBannerSignedOut = (
   device: E2EBrowserSession,
@@ -133,31 +136,86 @@ const declineBannerSignedOut = (
         device,
         "decline analytics preference device banner",
         async (page) => {
-          await dismissLegalCookieConsent(page, locale);
+          const necessaryOnly = cookieBannerNecessaryOnlyButton(page, locale);
+          await necessaryOnly.click({
+            timeout: workspaceE2ETimeouts.uiTransition,
+          });
+          await expect(necessaryOnly).toBeHidden({
+            timeout: workspaceE2ETimeouts.browserAction,
+          });
           await expect(accountPreferenceSwitch(page)).toHaveCount(0);
         }
       )
-    )
+    ),
+    Effect.andThen(requireDeviceDeclinedAnalytics(device))
   );
 
 /**
- * Reloads the device after its seeded session cookie was set, waiting until
- * the account preference is visible and interactive.
+ * A signed-in reload whose client session read Better Auth answered with 429.
+ * Its per-IP limit counts every case sharing the runner's address, and a page
+ * whose read fails never verifies the account, so its mirror stays silent.
+ * The page reads the session again only on a later load, or on a focus,
+ * online or visibility change, none of which happens here.
  */
-const reloadSignedIn = async (page: Page) => {
-  // The mirror sends its hydration request once the session verified the
-  // account, which the switch reads when a save is sent; waiting for it also
-  // keeps the mirror's own write out of the toggles.
-  await Promise.all([
-    page.waitForResponse(
-      (response) => recordsDeviceConsent("hydration")(response.request()),
-      { timeout: workspaceE2ETimeouts.browserNavigation }
-    ),
-    page.reload({
-      timeout: workspaceE2ETimeouts.browserNavigation,
-      waitUntil: "load",
-    }),
-  ]);
+class SessionReadRateLimited extends Data.TaggedError(
+  "SessionReadRateLimited"
+)<{
+  readonly retryAfter: Duration.Duration;
+}> {}
+
+/** Better Auth's default rate limit window, for a 429 without its delay. */
+const sessionReadRateLimitWindow = Duration.seconds(10);
+
+const isRateLimitedSessionRead = (response: Response) =>
+  response.status() === 429 &&
+  new URL(response.url()).pathname === "/api/auth/get-session";
+
+/** The delay Better Auth's `X-Retry-After` header asks for, in seconds. */
+const retryAfterOf = (response: Response) => {
+  const seconds = Number(response.headers()["x-retry-after"]);
+  return Number.isFinite(seconds) && seconds >= 0
+    ? Duration.seconds(seconds)
+    : sessionReadRateLimitWindow;
+};
+
+/**
+ * Reloads the device after its seeded session cookie was set and waits for
+ * the mirror's hydration request, which it sends once the session verified
+ * the account; the switch reads that account when a save is sent, and
+ * waiting also keeps the mirror's own write out of the toggles. Returns the
+ * retry delay instead when the page's session read was rate limited and no
+ * other read let the mirror send its request. The wait for an already sent
+ * mirror request has no Playwright timeout of its own, so the caller bounds
+ * the whole callback through the session deadline.
+ */
+const reloadUntilMirrored = async (page: Page) => {
+  const timeout = workspaceE2ETimeouts.browserNavigation;
+  let mirror: Request | undefined;
+  const noteMirror = (request: Request) => {
+    if (recordsDeviceConsent("hydration")(request)) mirror ??= request;
+  };
+  page.on("request", noteMirror);
+  try {
+    const [settled] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          recordsDeviceConsent("hydration")(response.request()) ||
+          isRateLimitedSessionRead(response),
+        { timeout }
+      ),
+      page.reload({ timeout, waitUntil: "load" }),
+    ]);
+    if (!isRateLimitedSessionRead(settled)) return Option.none();
+    if (mirror === undefined) return Option.some(retryAfterOf(settled));
+    await mirror.response();
+    return Option.none();
+  } finally {
+    page.off("request", noteMirror);
+  }
+};
+
+/** Waits until the account preference is visible and interactive. */
+const waitForAccountPreference = async (page: Page) => {
   await expect(accountPreferenceSwitch(page)).toBeVisible({
     timeout: workspaceE2ETimeouts.browserNavigation,
   });
@@ -167,6 +225,66 @@ const reloadSignedIn = async (page: Page) => {
     { timeout: workspaceE2ETimeouts.uiTransition }
   );
 };
+
+/**
+ * Reloads the device until the mirror's hydration request is sent. A
+ * rate-limited session read is retried after the delay Better Auth asks for,
+ * at most twice; each reload, including the wait for a mirror request already
+ * sent, is bounded by one navigation. Exported for its colocated test.
+ */
+export const reloadDeviceUntilMirrored = (device: E2EBrowserSession) =>
+  driveDevice(
+    device,
+    "sign in analytics preference device",
+    (page) => reloadUntilMirrored(page),
+    { timeoutMs: workspaceE2ETimeouts.browserNavigation }
+  ).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.void,
+        onSome: (retryAfter) =>
+          Effect.fail(new SessionReadRateLimited({ retryAfter })),
+      })
+    ),
+    Effect.retry({
+      schedule: Schedule.recurs(2).pipe(
+        Schedule.setInputType<SessionReadRateLimited | WorkspaceE2EError>(),
+        Schedule.passthrough,
+        Schedule.modifyDelay((failure) =>
+          Effect.succeed(
+            failure._tag === "SessionReadRateLimited"
+              ? failure.retryAfter
+              : Duration.zero
+          )
+        )
+      ),
+      while: (failure) => failure._tag === "SessionReadRateLimited",
+    }),
+    Effect.catchTag("SessionReadRateLimited", () =>
+      Effect.fail(
+        workspaceE2EError(
+          "The device's session read stayed rate limited after signing in",
+          { operation: "sign in analytics preference device" }
+        )
+      )
+    )
+  );
+
+/**
+ * Signs the device's page in by reloading it until the mirror's hydration
+ * request is sent, then waits until the account preference is visible and
+ * interactive.
+ */
+const reloadSignedIn = (device: E2EBrowserSession) =>
+  reloadDeviceUntilMirrored(device).pipe(
+    Effect.andThen(
+      driveDevice(
+        device,
+        "sign in analytics preference device",
+        waitForAccountPreference
+      )
+    )
+  );
 
 const expectSwitchStates = async (
   page: Page,
@@ -261,6 +379,21 @@ const ledgerDecisionFailure = (message: string) =>
     operation: "assert account analytics preference decision",
   });
 
+/** Fails unless the device saved a choice that declines analytics. */
+const requireDeviceDeclinedAnalytics = Effect.fn(
+  "requireDeviceDeclinedAnalytics"
+)(function* (device: E2EBrowserSession) {
+  const choice = yield* readDeviceChoice(device);
+  if (
+    Option.isNone(choice) ||
+    choice.value.acceptedCategories.includes("analytics")
+  ) {
+    return yield* deviceDecisionFailure(
+      "The device saved no choice declining analytics before signing in"
+    );
+  }
+});
+
 /**
  * The device's saved choice after the account preference save recorded as
  * `decision`: analytics accepted exactly when granted, and dated at the
@@ -343,9 +476,7 @@ const exercisePreferenceOnDevice = Effect.fn("exercisePreferenceOnDevice")(
       secret: input.sessionSecret,
       session: device,
     });
-    yield* driveDevice(device, "sign in analytics preference device", (page) =>
-      reloadSignedIn(page)
-    );
+    yield* reloadSignedIn(device);
     yield* driveDevice(device, "assert initial analytics preference", (page) =>
       expectSwitchStates(page, { account: false, device: false })
     );

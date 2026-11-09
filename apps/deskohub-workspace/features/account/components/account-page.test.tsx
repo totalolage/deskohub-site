@@ -10,6 +10,7 @@ import {
 import { testEmailAddress } from "@deskohub/test-email";
 import { useState } from "react";
 import type {
+  CustomerInvoiceHistory,
   CustomerProfileInput,
   CustomerReservationHistory,
 } from "@/features/account/contracts";
@@ -37,6 +38,15 @@ const { act, cleanup, fireEvent, render, waitFor, within } = await import(
 );
 
 const adaAddress = testEmailAddress("ada");
+
+// A settled history React reads without suspending, so every rerender
+// commits at once; the panel's loading states have their own tests.
+const emptyInvoiceHistory: CustomerInvoiceHistory = { kind: "empty" };
+const loadedInvoiceHistory = Object.assign(
+  Promise.resolve(emptyInvoiceHistory),
+  { status: "fulfilled", value: emptyInvoiceHistory }
+);
+const loadInvoiceHistory = mock(() => loadedInvoiceHistory);
 
 const signInMagicLink = mock(() => Promise.resolve({ error: null }));
 const getSession = mock(() => Promise.resolve({ data: null, error: null }));
@@ -216,6 +226,7 @@ describe("AccountPage states", () => {
     refreshAnalyticsAccountIdentity.mockClear();
     workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
     getSession.mockClear();
+    loadInvoiceHistory.mockClear();
   });
 
   afterAll(async () => {
@@ -231,7 +242,13 @@ describe("AccountPage states", () => {
   ) => {
     const { AccountPage } = await import("./account-page");
     if (state.kind === "unauthenticated") {
-      return render(<AccountPage locale={locale} state={state} />);
+      return render(
+        <AccountPage
+          loadInvoiceHistory={loadInvoiceHistory}
+          locale={locale}
+          state={state}
+        />
+      );
     }
 
     const { AccountLayoutShell } = await import("./account-layout-shell");
@@ -244,7 +261,11 @@ describe("AccountPage states", () => {
         referralsEnabled
         signedIn={signedIn}
       >
-        <AccountPage locale={locale} state={state} />
+        <AccountPage
+          loadInvoiceHistory={loadInvoiceHistory}
+          locale={locale}
+          state={state}
+        />
       </AccountLayoutShell>
     );
 
@@ -402,6 +423,10 @@ describe("AccountPage states", () => {
     expect(hrefs.some((href) => href.includes("/reservation/access/"))).toBe(
       false
     );
+    expect(loadInvoiceHistory).toHaveBeenCalledTimes(1);
+    expect(
+      view.container.querySelector('[data-slot="invoice-history"]')
+    ).toBeTruthy();
   });
 
   test("offers a review account no account deletion", async () => {
@@ -468,6 +493,32 @@ describe("AccountPage states", () => {
     expect(view.getByText(m.accountProfileSave({}, en))).toBeTruthy();
   });
 
+  test("streams the invoice history into its own Billing panel beside the billing form", async () => {
+    const view = await renderState(linkedState);
+    const invoicePanel = view.container.querySelector(
+      '[data-slot="invoice-history"]'
+    );
+
+    expect(loadInvoiceHistory).toHaveBeenCalledTimes(1);
+    expect(invoicePanel?.closest("[hidden]")).toBeTruthy();
+
+    fireEvent.click(
+      within(
+        view.getByRole("group", { name: m.accountSectionLabel({}, en) })
+      ).getByRole("link", { name: m.accountSectionBilling({}, en) })
+    );
+
+    const billingForm = view
+      .getByText(m.accountBillingDetailsTitle({}, en))
+      .closest('[data-slot="account-section-panel"]');
+    expect(invoicePanel?.closest("[hidden]")).toBeNull();
+    expect(billingForm).toBeTruthy();
+    expect(billingForm?.contains(invoicePanel ?? null)).toBe(false);
+    expect(
+      invoicePanel?.querySelector('[data-slot="invoice-history-empty"]')
+    ).toBeTruthy();
+  });
+
   test("submits the remembered referral code with completion and shows its outcome after the refresh", async () => {
     completeCustomerProfile.mockImplementationOnce(() =>
       Promise.resolve({
@@ -490,7 +541,11 @@ describe("AccountPage states", () => {
 
       return (
         <AccountLayoutShell locale="en-US" signedIn>
-          <AccountPage locale="en-US" state={state} />
+          <AccountPage
+            loadInvoiceHistory={loadInvoiceHistory}
+            locale="en-US"
+            state={state}
+          />
         </AccountLayoutShell>
       );
     }
@@ -560,7 +615,11 @@ describe("AccountPage states", () => {
 
       return (
         <AccountLayoutShell locale="en-US" signedIn>
-          <AccountPage locale="en-US" state={state} />
+          <AccountPage
+            loadInvoiceHistory={loadInvoiceHistory}
+            locale="en-US"
+            state={state}
+          />
         </AccountLayoutShell>
       );
     }
@@ -687,7 +746,11 @@ describe("AccountPage states", () => {
       const { AccountPage } = await import("./account-page");
       const page = (state: CustomerAccountPageState) => (
         <AccountLayoutShell locale="en-US" signedIn>
-          <AccountPage locale="en-US" state={state} />
+          <AccountPage
+            loadInvoiceHistory={loadInvoiceHistory}
+            locale="en-US"
+            state={state}
+          />
         </AccountLayoutShell>
       );
       const pendingMessage = m.accountProfileReferralPending({}, en);
@@ -786,6 +849,7 @@ describe("AccountPage states", () => {
     expect(
       view.getByRole("button", { name: m.accountDeletionConfirm({}, en) })
     ).toBeTruthy();
+    expect(loadInvoiceHistory).not.toHaveBeenCalled();
   });
 
   test("renders the pending deletion state with retry and sign out", async () => {
@@ -798,6 +862,10 @@ describe("AccountPage states", () => {
     expect(view.getByText(m.accountDeletionPendingTitle({}, en))).toBeTruthy();
     expect(view.getByText(m.accountDeletionConfirm({}, en))).toBeTruthy();
     expect(view.getByText(m.accountSignOut({}, en))).toBeTruthy();
+    expect(loadInvoiceHistory).not.toHaveBeenCalled();
+    expect(
+      view.container.querySelector('[data-slot="invoice-history"]')
+    ).toBeNull();
   });
 
   test("redirects unauthenticated visitors without loading account data", async () => {
@@ -1138,7 +1206,11 @@ describe("AccountPage states", () => {
         referralsEnabled
         signedIn
       >
-        <AccountPage locale="en-US" state={state} />
+        <AccountPage
+          loadInvoiceHistory={loadInvoiceHistory}
+          locale="en-US"
+          state={state}
+        />
       </AccountLayoutShell>
     );
     const view = render(
@@ -1173,7 +1245,11 @@ describe("AccountPage states", () => {
         referralsEnabled
         signedIn
       >
-        <AccountPage locale="en-US" state={state} />
+        <AccountPage
+          loadInvoiceHistory={loadInvoiceHistory}
+          locale="en-US"
+          state={state}
+        />
       </AccountLayoutShell>
     );
     const view = render(

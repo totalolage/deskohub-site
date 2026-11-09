@@ -364,6 +364,15 @@ export async function loadCustomerAccountPage() {
 }
 `;
 
+// The fixture's stand-in account page shows no invoices, so the sections'
+// route reads none; this keeps the real invoice service and its database out
+// of the fixture build.
+const fixtureInvoiceHistory = `
+export async function loadCustomerInvoiceHistory() {
+  return { kind: "unavailable" as const };
+}
+`;
+
 const fixtureAccountPage = `
 import { AccountSignInRedirect } from "@/features/account/components/account-sign-in-redirect";
 import { supportedLocales } from "@deskohub/i18n/locale-registry";
@@ -507,6 +516,7 @@ const writeFixture = async (
       : { "fixture/cookie-consent.ts": fixtureCookieConsent }),
     "fixture/env.ts": fixtureEnv,
     "fixture/hydration.tsx": fixtureHydration,
+    "fixture/invoice-history.server.ts": fixtureInvoiceHistory,
     "fixture/marketing-actions.ts": fixtureMarketingActions,
     "fixture/marketing-preferences.server.ts": fixtureMarketingPreferences,
     "fixture/referral-release-gate.server.ts": fixtureReferralFeatureFlag,
@@ -548,6 +558,9 @@ const writeFixture = async (
         ],
         "@/features/account/page-data.server": [
           "./fixture/account-page-data.server.ts",
+        ],
+        "@/features/account/invoice-history.server": [
+          "./fixture/invoice-history.server.ts",
         ],
         "@/features/account/backend/customer-authentication.service": [
           "./fixture/customer-authentication.service.ts",

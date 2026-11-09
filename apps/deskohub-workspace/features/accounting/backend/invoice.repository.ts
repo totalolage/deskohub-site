@@ -1,3 +1,4 @@
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { eq, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Schema } from "effect";
@@ -145,6 +146,27 @@ export interface IInvoiceRepository {
   readonly issueManual: (
     input: ManualInvoiceIssueInput
   ) => Effect.Effect<ManualInvoiceIssuance, InvoiceRepositoryError>;
+  /**
+   * Finds one invoice of the Dotypos customer; another customer's invoice,
+   * an unknown id, and text that is no invoice id all read as `null`.
+   */
+  readonly findForCustomer: (
+    dotyposCustomerId: DotyposCustomerId,
+    invoiceId: string
+  ) => Effect.Effect<
+    Invoice | null,
+    EffectDrizzleQueryError | InvoiceStorageError
+  >;
+  /**
+   * Decrypts the Dotypos customer's invoices, newest issue first, and no
+   * other customer's.
+   */
+  readonly listForCustomer: (
+    dotyposCustomerId: DotyposCustomerId
+  ) => Effect.Effect<
+    readonly Invoice[],
+    EffectDrizzleQueryError | InvoiceStorageError
+  >;
   /** Decrypts every invoice. */
   readonly list: () => Effect.Effect<
     readonly Invoice[],

@@ -72,6 +72,7 @@ import {
 } from "@/shared/money/currencies";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
+  currentPlainDate,
   type PlainDate,
   plainDateStringSchema,
   temporalInstantToPlainDate,
@@ -264,13 +265,15 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
     (query: InvoiceAdministrationListQuery = {}) =>
       invoices.list().pipe(
         Effect.flatMap((stored) =>
-          deliveryLedger.status(stored.map(({ id }) => id)).pipe(
-            Effect.map((statuses) => {
-              const today = getPragueDate();
-              return stored.map((invoice) =>
+          Effect.all([
+            deliveryLedger.status(stored.map(({ id }) => id)),
+            currentPragueDate,
+          ]).pipe(
+            Effect.map(([statuses, today]) =>
+              stored.map((invoice) =>
                 toListItem(invoice, statuses.get(invoice.id)!, today)
-              );
-            })
+              )
+            )
           )
         ),
         Effect.map((items): InvoiceAdministrationPage => {
@@ -303,7 +306,7 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
     if (!stored)
       return yield* new InvoiceAdministrationNotFoundError({ invoiceId });
     const statuses = yield* deliveryLedger.status([stored.id]);
-    return toDetail(stored, statuses.get(stored.id)!, getPragueDate());
+    return toDetail(stored, statuses.get(stored.id)!, yield* currentPragueDate);
   });
 
   const needsAttention = Effect.fn(
@@ -780,12 +783,9 @@ const toDetail = (
   };
 };
 
-const getPragueDate = () =>
-  plainDateStringSchema.make(
-    Temporal.Now.zonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-      .toPlainDate()
-      .toString()
-  );
+const currentPragueDate = currentPlainDate(
+  workspaceSiteConstants.location.timeZone
+);
 
 export const sortInvoiceAdministrationItems = (
   items: readonly InvoiceAdministrationListItem[],

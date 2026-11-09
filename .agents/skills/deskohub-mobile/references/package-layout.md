@@ -95,7 +95,10 @@ CI builds no native app; the release workflow's PR dry run builds the APK.
   `react-native` and the Expo modules with Bun module mocks. Add a mock there
   when a new native module enters a tested import graph. Component tests
   either inspect the element tree (`src/ui/testing/element-tree.ts`) or render
-  into happy-dom with `clientRoot()` (`src/testing/client-root.ts`).
+  into happy-dom with `clientRoot()` (`src/testing/client-root.ts`). A
+  rendered component that talks to the fake auth server needs
+  `clientRoot({ keepFetch: true })`: happy-dom's fetch drops the Cookie
+  header.
 - `app.config.test.ts` pins the version code, both update-signing shapes, the
   `eas.json` profiles and the preview App Link filter;
   `plugins/android-asset-statements.test.ts` pins the asset statements;

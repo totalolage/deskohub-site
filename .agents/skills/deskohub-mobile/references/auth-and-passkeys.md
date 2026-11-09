@@ -16,6 +16,12 @@ origins. App paths are relative to `apps/deskohub-mobile/src/auth`.
   `expo-origin` header, which the server trusts as `deskohub://`; native
   requests carry no `Origin`. The customer API transport reads the same
   SecureStore cookie.
+- Keep `expo-network` installed. `@better-auth/expo` imports this optional peer
+  when a client's session atom first mounts, which every `/get-session` read
+  does. Metro fails a missing module synchronously, past the plugin's catch,
+  so without it every sign-in client's session read failed and every
+  reauthentication ended as "unavailable" (#1123). Bun rejects the import
+  instead, so `native-auth-client.test.ts` pins the dependency.
 - Web (the `/app/` bundle): `auth-client.web.ts` uses the site's cookies on the
   same origin and `passkeyClient()`.
 - Every write to the stored session (sign-in, sign-out, passkey sign-in, web

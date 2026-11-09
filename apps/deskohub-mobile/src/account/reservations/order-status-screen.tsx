@@ -9,7 +9,7 @@ import { Match, Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { type Href, useFocusEffect, useRouter } from "expo-router";
 import { useCallback } from "react";
-import { StyleSheet, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { AsyncView } from "../../customer-api/async-view";
 import { CustomerViewError } from "../../customer-api/customer-view-error";
 import { sharedViewErrorMessage } from "../../customer-api/customer-view-error-message";
@@ -342,6 +342,31 @@ function OrderStatusContent({
 }
 
 /**
+ * The status card while the first read is under way. That read refreshes the
+ * order with the payment gateway and takes a moment, notably right after the
+ * return from payment; a lone spinner on the empty screen read as blank.
+ */
+function OrderStatusPending() {
+  const locale = useAppLocale();
+  return (
+    <View
+      style={[styles.status, styles.pending, { borderColor: toneColor.info }]}
+    >
+      <ActivityIndicator
+        role="progressbar"
+        aria-label={m.account_loading({}, { locale })}
+        aria-busy
+        size="small"
+        color={theme.colors.accent}
+      />
+      <Text role="heading" style={styles.pendingTitle}>
+        {m.reservations_refresh_reading({}, { locale })}
+      </Text>
+    </View>
+  );
+}
+
+/**
  * An order's status (GET status, which refreshes the order and spends the
  * read budget): what happens next, the order summary, and its actions. It
  * keeps itself up to date while focused and in the foreground.
@@ -384,6 +409,7 @@ export function OrderStatusScreen({
         result={result}
         onRetry={retry}
         errorMessage={statusErrorMessage(locale)}
+        loading={<OrderStatusPending />}
       >
         {(state) => <OrderStatusContent state={state} onRefresh={refresh} />}
       </AsyncView>
@@ -407,5 +433,7 @@ const styles = StyleSheet.create({
   },
   statusTitle: { ...theme.type.heading, color: theme.colors.text },
   statusBody: { ...theme.type.body, color: theme.colors.textMuted },
+  pending: { flexDirection: "row", alignItems: "center" },
+  pendingTitle: { ...theme.type.heading, color: theme.colors.text, flex: 1 },
   refresh: { alignItems: "flex-start" },
 });

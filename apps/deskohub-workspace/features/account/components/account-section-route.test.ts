@@ -14,6 +14,9 @@ const getRequestPathname = mock(() =>
 const loadCustomerAccountPage = mock(() =>
   Promise.resolve({ kind: "unavailable" as const })
 );
+const loadCustomerInvoiceHistory = mock((_locale: string) =>
+  Promise.resolve({ kind: "empty" as const })
+);
 const AccountPage = mock(() => null);
 const AccountContentLoading = mock(() => null);
 
@@ -30,6 +33,9 @@ mock.module("@/shared/backend/utils/request-pathname", () => ({
 }));
 mock.module("@/features/account/page-data.server", () => ({
   loadCustomerAccountPage,
+}));
+mock.module("@/features/account/invoice-history.server", () => ({
+  loadCustomerInvoiceHistory,
 }));
 mock.module("@/features/account/components/account-page", () => ({
   AccountPage,
@@ -132,6 +138,17 @@ describe("customer account route boundary", () => {
       type: AccountPage,
       props: { locale: "en-US", state: { kind: "unavailable" } },
     });
+  });
+
+  test("lets the page start loading the invoice history in its locale", async () => {
+    const output = (await renderSections().content()) as ReactElement<{
+      readonly loadInvoiceHistory: () => Promise<unknown>;
+    }>;
+    loadCustomerInvoiceHistory.mockClear();
+
+    await output.props.loadInvoiceHistory();
+
+    expect(loadCustomerInvoiceHistory).toHaveBeenCalledWith("en-US");
   });
 
   test.each([

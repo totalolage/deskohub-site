@@ -133,6 +133,7 @@
   "callback_open_in_app": "Otevřít v aplikaci",
   "callback_continue_here": "Pokračovat v prohlížeči",
   "callback_back_to_sign_in": "Zpět na přihlášení",
+  "callback_go_back": "Zpět",
   "signin_error_cancelled": "Přihlášení bylo zrušeno. Můžeš to zkusit znovu.",
   "signin_error_link": "Tento přihlašovací odkaz tady nejde použít. Začni s přihlášením znovu.",
   "signin_error_expired": "Přihlášení trvalo příliš dlouho a vypršelo. Začni znovu.",

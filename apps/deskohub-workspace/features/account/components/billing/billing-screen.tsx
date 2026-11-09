@@ -1,4 +1,4 @@
-import { Download, FileDown, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import { useId } from "react";
 import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
@@ -8,13 +8,14 @@ import { Button } from "@/shared/components/ui/button";
 
 /*
  * THESIS: Billing stays honest about unavailable account capabilities instead of
- * presenting placeholder payment data or invoice rows.
+ * presenting placeholder payment data.
  * OWN-WORLD: Sculpin, navy, slate, and white surfaces extend the account shell
  * with compact controls and quiet empty states.
  * STORY: Visitors see what billing supports, understand what is unavailable,
  * and continue into their own billing details.
  * FIRST VIEWPORT: One padded billing card places title, payment methods,
- * billing details, invoice history, and the caller-owned footer in one stack.
+ * billing details, and the caller-owned footer in one stack. Invoice history
+ * is its own panel beside this one (`invoice-history.tsx`).
  * FORM: This shell never owns form markup, fields, values, or persistence; the caller owns them.
  */
 
@@ -33,8 +34,6 @@ export function BillingScreen({
   const titleId = `${instanceId}-billing-title`;
   const paymentMethodsTitleId = `${instanceId}-payment-methods-title`;
   const billingDetailsTitleId = `${instanceId}-billing-details-title`;
-  const invoiceHistoryTitleId = `${instanceId}-invoice-history-title`;
-  const invoiceHistoryUnavailableId = `${instanceId}-invoice-history-unavailable`;
 
   return (
     <AccountSectionPanel
@@ -75,59 +74,6 @@ export function BillingScreen({
           {m.accountBillingDetailsTitle({}, { locale })}
         </h3>
         <div className="mt-6 min-w-0">{children}</div>
-      </section>
-
-      <hr className="my-7 h-px border-0 bg-[#e6ebf1]" />
-
-      <section aria-labelledby={invoiceHistoryTitleId} className="min-w-0">
-        <div className="flex min-w-0 flex-wrap items-start justify-between gap-4">
-          <h3
-            id={invoiceHistoryTitleId}
-            className="min-w-0 flex-1 break-words text-lg font-semibold text-[#344258]"
-          >
-            {m.accountBillingInvoiceHistoryTitle({}, { locale })}
-          </h3>
-          <div className="flex w-full min-w-0 flex-wrap gap-2 @xl:w-auto">
-            <FutureFeatureTooltip locale={locale}>
-              <Button
-                aria-describedby={invoiceHistoryUnavailableId}
-                disabled
-                size="sm"
-                type="button"
-                variant="secondary"
-                wrap
-              >
-                <Download aria-hidden="true" className="size-4 shrink-0" />
-                <span className="min-w-0 break-words">
-                  {m.accountBillingDownloadInvoice({}, { locale })}
-                </span>
-              </Button>
-            </FutureFeatureTooltip>
-            <FutureFeatureTooltip locale={locale}>
-              <Button
-                aria-describedby={invoiceHistoryUnavailableId}
-                disabled
-                size="sm"
-                type="button"
-                variant="secondary"
-                wrap
-              >
-                <FileDown aria-hidden="true" className="size-4 shrink-0" />
-                <span className="min-w-0 break-words">
-                  {m.accountBillingExportInvoices({}, { locale })}
-                </span>
-              </Button>
-            </FutureFeatureTooltip>
-          </div>
-        </div>
-        <div className="mt-4 min-w-0 rounded-2xl border border-[#e0e6ee] bg-[#fbfcfd] px-4 py-5">
-          <p
-            id={invoiceHistoryUnavailableId}
-            className="min-w-0 break-words text-sm leading-6 text-[#51627c]"
-          >
-            {m.accountBillingInvoiceHistoryUnavailable({}, { locale })}
-          </p>
-        </div>
       </section>
     </AccountSectionPanel>
   );

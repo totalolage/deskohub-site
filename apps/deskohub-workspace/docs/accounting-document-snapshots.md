@@ -43,6 +43,10 @@ A post-order invoice request is available only for an eligible paid reservation 
 
 Historical reservations without trustworthy transaction facts or a verified recipient use a support fallback rather than reconstructing an invoice from current data.
 
+## Customer account
+
+A signed-in customer sees the invoices issued to their own customer record in the billing area of their account, with each invoice's number, issue date, total, and payment status, and the due date while payment is requested. They can download each invoice as a PDF and all of them as a CSV export. Access follows the account's active customer link: an account without one, an account awaiting deletion, and anyone signed out see no invoices, and a request for an invoice that isn't theirs is indistinguishable from a request for one that doesn't exist. Deleting the account ends this access, but issued invoices are accounting records and are retained.
+
 ## Administration and privacy
 
 Authorized operators may view invoices by reservation or customer and generate their presentation on demand. Missing historical protection keys or unreadable versions are explicit unavailable states, not permission to substitute current facts.
