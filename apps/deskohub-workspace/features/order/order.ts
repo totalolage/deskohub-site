@@ -30,15 +30,11 @@ export const orderFulfillmentStates = [
 
 export type OrderFulfillmentState = (typeof orderFulfillmentStates)[number];
 
-const uuidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export const orderIdSchema = Schema.NonEmptyString.pipe(
-  Schema.check(Schema.isPattern(uuidPattern)),
-  Schema.brand("OrderId")
-).annotate({
-  identifier: "OrderId",
-  description: "Opaque identifier for a persisted order.",
-});
+export const orderIdSchema = Schema.String.check(Schema.isUUID())
+  .pipe(Schema.brand("OrderId"))
+  .annotate({
+    identifier: "OrderId",
+    description: "Database-generated identifier of one persisted order.",
+  });
 
 export type OrderId = typeof orderIdSchema.Type;
