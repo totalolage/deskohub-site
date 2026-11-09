@@ -516,7 +516,9 @@ describe.skipIf(!suiteDatabase)(
         if (!Exit.isSuccess(exit)) return;
         const { taken, graphFree } = exit.value;
         expect(dies(taken, "out of rank order")).toBe(true);
-        expect(dies(taken, "referralGraph after customerAccount")).toBe(true);
+        for (const name of ["referralGraph", "customerAccount"]) {
+          expect(dies(taken, name)).toBe(true);
+        }
         expect(
           Exit.isFailure(taken) && Cause.pretty(taken.cause)
         ).not.toContain(account);
@@ -546,7 +548,9 @@ describe.skipIf(!suiteDatabase)(
         if (!Exit.isSuccess(exit)) return;
         const { entered, accountFree } = exit.value;
         expect(dies(entered, "inside a Workspace transaction")).toBe(true);
-        expect(dies(entered, "customerAccount after referralGraph")).toBe(true);
+        for (const name of ["customerAccount", "referralGraph"]) {
+          expect(dies(entered, name)).toBe(true);
+        }
         expect(
           Exit.isFailure(entered) && Cause.pretty(entered.cause)
         ).not.toContain(account);
@@ -583,7 +587,9 @@ describe.skipIf(!suiteDatabase)(
               enter(inner)(enter(outer)(Effect.succeed("nested")))
             );
             expect(dies(reversed, "out of section order")).toBe(true);
-            expect(dies(reversed, `${outer} inside ${inner}`)).toBe(true);
+            for (const name of [outer, inner]) {
+              expect(dies(reversed, name)).toBe(true);
+            }
           });
         }
       }
@@ -620,7 +626,10 @@ describe.skipIf(!suiteDatabase)(
         expect(Exit.isSuccess(reversed)).toBe(true);
         if (!Exit.isSuccess(reversed)) return;
         const { entered, digestFree } = reversed.value;
-        expect(dies(entered, "signInEmail inside customerAccount")).toBe(true);
+        expect(dies(entered, "out of section order")).toBe(true);
+        for (const name of ["signInEmail", "customerAccount"]) {
+          expect(dies(entered, name)).toBe(true);
+        }
         expect(
           Exit.isFailure(entered) && Cause.pretty(entered.cause)
         ).not.toContain(digest);
