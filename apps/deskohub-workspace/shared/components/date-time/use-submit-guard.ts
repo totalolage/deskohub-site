@@ -17,6 +17,10 @@ export const useSubmitGuard = (
   isBlocked: () => boolean
 ) => {
   const guard = useEffectEvent((event: SubmitEvent) => {
+    // A field the form doesn't submit, such as one in a disabled fieldset,
+    // never blocks, as native constraint validation skips it.
+    const field = fieldRef.current;
+    if (field?.disabled || field?.closest("fieldset:disabled")) return;
     if (!isBlocked()) return;
     event.preventDefault();
     event.stopImmediatePropagation();

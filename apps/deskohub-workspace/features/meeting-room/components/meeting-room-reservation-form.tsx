@@ -16,7 +16,7 @@ import { MeetingRoomEarlySetupField } from "@/features/meeting-room/components/m
 import { MeetingRoomStartTimeOptions } from "@/features/meeting-room/components/meeting-room-start-time-options";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
-import { ReservationFormDateTimePicker } from "@/features/reservation/components/reservation-date-time-picker";
+import { ReservationFormDateTimeInput } from "@/features/reservation/components/reservation-date-time-input";
 import {
   ReservationCustomerFieldsFallback,
   ReservationFormFallback,
@@ -228,32 +228,24 @@ export function MeetingRoomReservationForm({
       <FormField
         control={form.control}
         name="startDateTime"
-        render={({ field, fieldState }) => (
+        render={({ field }) => (
           <FormItem>
             <ReservationFormLabel required>
               {isWholeDaySelected
                 ? m.reservationDateLabel({}, { locale })
                 : m.reservationMeetingRoomStartLabel({}, { locale })}
             </ReservationFormLabel>
-            <ReservationFormDateTimePicker
-              className={
-                isWholeDaySelected
-                  ? "grid-cols-1"
-                  : "grid-cols-1 sm:grid-cols-2"
-              }
+            <ReservationFormDateTimeInput
+              {...field}
+              className="sm:grid-cols-2"
               dateLabel={m.reservationMeetingRoomDateLabel({}, { locale })}
               locale={locale}
               minimum={() =>
                 getEarliestMeetingRoomStartDateTime(selectedDuration)
               }
-              name={field.name}
-              onBlur={field.onBlur}
-              onChange={field.onChange}
+              stepMinutes={60}
               timeLabel={m.reservationMeetingRoomTimeLabel({}, { locale })}
-              showTime={!isWholeDaySelected}
-              timeStepMinutes={60}
-              value={field.value}
-              variant={fieldState.error ? "error" : "default"}
+              wholeDay={isWholeDaySelected}
             />
             <FormMessage />
             {startTimesQuery && !isWholeDaySelected && (

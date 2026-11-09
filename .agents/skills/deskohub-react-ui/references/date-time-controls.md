@@ -13,7 +13,7 @@ The Workspace has one implementation of each: `DateInput`, `TimeInput`, and `Dat
 - Pass `value` and `onChange` to control a field, or `defaultValue` to leave it uncontrolled. Once a parent passes `value`, it owns the value; an edit it doesn't pass back doesn't stick.
 - With a `name`, the control submits exactly one canonical value through a hidden field, so plain `FormData` forms and GET filter forms read it like a native input. An uncontrolled control returns to its `defaultValue` on a native form reset.
 - Inside a React Hook Form `FormItem`, use `FormDateInput`, `FormTimeInput`, or `FormDateTimeInput` (`form-fields.tsx`) in place of `FormControl`, and spread the field: `<FormDateInput label={...} {...field} />`. The item's label names the control, and a field error marks it invalid and describes it.
-- An entry the control can't take never becomes the value and keeps the owning form from submitting, `noValidate` forms included: date text that is no date (or a date outside the bounds), a time editor showing an unfinished or rejected time, a time the bounds no longer allow, or a date-time with only a date or only a time. The control focuses the entry and explains it. The guard listens to the form's `submit` event, so code that calls React Hook Form's `handleSubmit` directly or reads `new FormData(form)` without submitting must check `onPartialDraftChange` itself.
+- An entry the control can't take never becomes the value and keeps the owning form from submitting, `noValidate` forms included: date text that is no date (or a date outside the bounds), a time editor showing an unfinished or rejected time, a time the bounds no longer allow, or a date-time with only a date or only a time. The control focuses the entry and explains it. The guard listens to the form's `submit` event, so code that calls React Hook Form's `handleSubmit` directly or reads `new FormData(form)` without submitting must check `onPartialDraftChange` itself. A disabled control, or one inside a disabled `fieldset`, never blocks.
 - The controls report plain strings through `onChange`, so React Hook Form fields use `FormField`/`Controller`, not `register(...)` spreads.
 - A partial date-time draft survives a React Hook Form `reset` that leaves the field's value unchanged. To discard it, remount the control with a new `key`.
 
@@ -33,7 +33,7 @@ Feature policy stays in the caller or a thin adapter; the controls only take gen
 - `defaultTime` (date-time): the time a date gets before any time is chosen, so a date alone completes the value. Picking a date moves an earlier time up to the minimum's time on the minimum's day.
 - `displayValue` (date): the line under the field with the selected date; the long date by default, `false` for none in compact cells.
 
-Reservation availability, minimum booking times, and whole-hour rules live in the reservation adapters in `features/reservation/components`, which pass them through these hooks.
+Reservation availability, minimum booking times, and whole-hour rules live in the reservation adapters in `features/reservation/components`, which pass them through these hooks: `ReservationFormDateInput` takes the space's unavailable dates, and `ReservationFormDateTimeInput` gives a start the workspace's default start time and, for a whole-day booking, takes only the date while the start keeps its time.
 
 ## Tests
 

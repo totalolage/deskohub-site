@@ -593,6 +593,31 @@ describe("DateInput in a form", () => {
     expect(onSubmit.mock.calls[0]?.[0].getAll("date")).toEqual(["2099-06-11"]);
   });
 
+  test("doesn't hold up the form from a disabled fieldset", () => {
+    const onSubmit = mock(() => undefined);
+    const view = render(
+      <form
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <fieldset disabled>
+          <DateInput label={dateLabel} locale="en-US" name="date" />
+        </fieldset>
+      </form>
+    );
+    const form = view.container.querySelector("form") as HTMLFormElement;
+
+    fireEvent.change(view.getByRole("combobox"), {
+      target: { value: "next friday" },
+    });
+    fireEvent.submit(form);
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
   test("submits an emptied field as an empty date", () => {
     const { form, input, onSubmit } = renderInForm({
       defaultValue: "2099-06-10",
