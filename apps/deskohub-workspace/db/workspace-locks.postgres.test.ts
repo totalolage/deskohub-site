@@ -2,15 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
-import {
-  Cause,
-  Duration,
-  Effect,
-  Exit,
-  Logger,
-  Predicate,
-  References,
-} from "effect";
+import { Cause, Duration, Effect, Exit, Predicate } from "effect";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -22,10 +14,6 @@ import { makeDatabaseClient, makeDatabasePool } from "./database-client";
 import { WorkspaceDatabaseAdvisoryLock } from "./postgres-advisory-lock";
 import { isLockWaitTimeout } from "./sql-constraint";
 import { WorkspaceLockSections, WorkspaceLocks } from "./workspace-locks";
-
-test("bun test runs with NODE_ENV=test, so lock violations die here", () => {
-  expect(process.env.NODE_ENV).toBe("test");
-});
 
 const suiteDatabase =
   await createWorkspacePostgresSuiteDatabase("workspace_locks");
@@ -265,7 +253,7 @@ describe.skipIf(!suiteDatabase)(
       ]);
     });
 
-    test("a lower rank after a higher one dies under bun test", async () => {
+    test("a lower rank after a higher one dies", async () => {
       const exit = await run(
         transaction(
           WorkspaceLocks.customerAccount(accountId()).pipe(
@@ -436,7 +424,7 @@ describe.skipIf(!suiteDatabase)(
       expect(recorded.flatMap(({ values }) => values)).toContain("5000ms");
     });
 
-    test("an out-of-order bounded wait under a transaction-held higher rank dies under bun test", async () => {
+    test("an out-of-order bounded wait under a transaction-held higher rank dies", async () => {
       const exit = await run(
         transaction(
           WorkspaceLocks.customerAccount(accountId()).pipe(
@@ -497,104 +485,165 @@ describe.skipIf(!suiteDatabase)(
       expect(dies(exit, "enclosing lock section")).toBe(true);
     });
 
-    test("a section entered inside a transaction dies under bun test", async () => {
-      const exit = await run(
-        transaction(
-          WorkspaceLockSections.customerAccount(accountId())(Effect.void)
-        )
-      );
-      expect(dies(exit, "inside a Workspace transaction")).toBe(true);
-    });
+    /** Runs with `NODE_ENV` set, so a check cannot depend on the environment. */
+    const runWithNodeEnv = async <A, E>(
+      nodeEnv: string,
+      effect: Effect.Effect<A, E, WorkspaceDatabaseAdvisoryLock>
+    ) => {
+      const previous = process.env.NODE_ENV;
+      process.env.NODE_ENV = nodeEnv;
+      try {
+        return await run(effect);
+      } finally {
+        process.env.NODE_ENV = previous;
+      }
+    };
 
-    describe("with NODE_ENV=production", () => {
-      const inProduction = async <A, E>(
-        effect: Effect.Effect<A, E, WorkspaceDatabaseAdvisoryLock>
-      ) => {
-        const logs: Array<{
-          readonly level: string;
-          readonly annotations: unknown;
-        }> = [];
-        // Errors only: the database client logs its queries at Info.
-        const capture = Logger.make((options) => {
-          if (options.logLevel !== "Error") return;
-          logs.push({
-            level: options.logLevel,
-            annotations: options.fiber.getRef(References.CurrentLogAnnotations),
-          });
-        });
-        const previous = process.env.NODE_ENV;
-        process.env.NODE_ENV = "production";
-        try {
-          const exit = await run(
-            effect.pipe(Effect.provide(Logger.layer([capture])))
-          );
-          return { exit, logs };
-        } finally {
-          process.env.NODE_ENV = previous;
-        }
-      };
-
-      test("an out-of-order lock is logged without its key and then taken", async () => {
+    for (const nodeEnv of ["test", "production"] as const) {
+      test(`an out-of-order lock dies before it is taken, naming locks and not keys (NODE_ENV=${nodeEnv})`, async () => {
         const account = accountId();
-        const { exit, logs } = await inProduction(
+        const exit = await runWithNodeEnv(
+          nodeEnv,
           transaction(
-            WorkspaceLocks.customerAccount(account).pipe(
-              Effect.andThen(WorkspaceLocks.referralGraph()),
-              Effect.andThen(freeElsewhere(graphProbe))
-            )
+            Effect.gen(function* () {
+              yield* WorkspaceLocks.customerAccount(account);
+              const taken = yield* Effect.exit(WorkspaceLocks.referralGraph());
+              return { taken, graphFree: yield* freeElsewhere(graphProbe) };
+            })
           )
         );
-        expect(exit).toStrictEqual(Exit.succeed(false));
-        expect(logs).toEqual([
-          {
-            level: "Error",
-            annotations: {
-              code: "workspace-lock-order",
-              requested: "referralGraph",
-              rank: 10,
-              heldAbove: ["customerAccount"],
-            },
-          },
-        ]);
-        expect(JSON.stringify(logs)).not.toContain(account);
+        expect(Exit.isSuccess(exit)).toBe(true);
+        if (!Exit.isSuccess(exit)) return;
+        const { taken, graphFree } = exit.value;
+        expect(dies(taken, "out of rank order")).toBe(true);
+        expect(dies(taken, "referralGraph after customerAccount")).toBe(true);
+        expect(
+          Exit.isFailure(taken) && Cause.pretty(taken.cause)
+        ).not.toContain(account);
+        expect(graphFree).toBe(true);
       });
 
-      test("a section entered inside a transaction is logged and then held", async () => {
+      test(`a section entered inside a transaction dies before it is held, naming locks and not keys (NODE_ENV=${nodeEnv})`, async () => {
         const account = accountId();
-        const { exit, logs } = await inProduction(
+        const exit = await runWithNodeEnv(
+          nodeEnv,
           transaction(
-            WorkspaceLocks.referralGraph().pipe(
-              Effect.andThen(
+            Effect.gen(function* () {
+              yield* WorkspaceLocks.referralGraph();
+              const entered = yield* Effect.exit(
                 WorkspaceLockSections.customerAccount(account)(
-                  freeElsewhere(accountProbe(account))
+                  Effect.succeed("ran")
                 )
-              )
+              );
+              return {
+                entered,
+                accountFree: yield* freeElsewhere(accountProbe(account)),
+              };
+            })
+          )
+        );
+        expect(Exit.isSuccess(exit)).toBe(true);
+        if (!Exit.isSuccess(exit)) return;
+        const { entered, accountFree } = exit.value;
+        expect(dies(entered, "inside a Workspace transaction")).toBe(true);
+        expect(dies(entered, "customerAccount after referralGraph")).toBe(true);
+        expect(
+          Exit.isFailure(entered) && Cause.pretty(entered.cause)
+        ).not.toContain(account);
+        expect(accountFree).toBe(true);
+      });
+    }
+
+    describe("sections nest in declaration order", () => {
+      type SectionName = keyof typeof WorkspaceLockSections;
+      /** Enters the named section on a fresh synthetic key. */
+      const enter =
+        (name: SectionName) =>
+        <A, E>(effect: Effect.Effect<A, E, WorkspaceDatabaseAdvisoryLock>) =>
+          (
+            WorkspaceLockSections[name] as (
+              key: string
+            ) => (
+              effect: Effect.Effect<A, E, WorkspaceDatabaseAdvisoryLock>
+            ) => Effect.Effect<A, unknown, WorkspaceDatabaseAdvisoryLock>
+          )(`${name}-${crypto.randomUUID()}`)(effect);
+      const declared = Object.keys(WorkspaceLockSections) as Array<SectionName>;
+
+      test("the registry declares more than one section", () => {
+        expect(declared.length).toBeGreaterThan(1);
+      });
+
+      for (const [index, outer] of declared.entries()) {
+        for (const inner of declared.slice(index + 1)) {
+          test(`${inner} inside ${outer} is held; ${outer} inside ${inner} dies`, async () => {
+            expect(
+              await run(enter(outer)(enter(inner)(Effect.succeed("nested"))))
+            ).toStrictEqual(Exit.succeed("nested"));
+            const reversed = await run(
+              enter(inner)(enter(outer)(Effect.succeed("nested")))
+            );
+            expect(dies(reversed, "out of section order")).toBe(true);
+            expect(dies(reversed, `${outer} inside ${inner}`)).toBe(true);
+          });
+        }
+      }
+
+      test("customerAccount nests inside signInEmail, holding both; the reverse dies before signInEmail is held", async () => {
+        const digest = `digest-${crypto.randomUUID()}`;
+        const account = accountId();
+        const digestProbe = pairProbe("sign-in-email", digest);
+        const nested = await run(
+          WorkspaceLockSections.signInEmail(digest)(
+            WorkspaceLockSections.customerAccount(account)(
+              Effect.all([
+                freeElsewhere(digestProbe),
+                freeElsewhere(accountProbe(account)),
+              ])
             )
           )
         );
-        expect(exit).toStrictEqual(Exit.succeed(false));
-        expect(logs).toEqual([
-          {
-            level: "Error",
-            annotations: {
-              code: "workspace-lock-section-in-transaction",
-              requested: "customerAccount",
-              rank: 20,
-              heldAbove: ["referralGraph"],
-            },
-          },
-        ]);
-        expect(JSON.stringify(logs)).not.toContain(account);
+        expect(nested).toStrictEqual(Exit.succeed([false, false]));
+
+        const reversed = await run(
+          WorkspaceLockSections.customerAccount(account)(
+            Effect.gen(function* () {
+              const entered = yield* Effect.exit(
+                WorkspaceLockSections.signInEmail(digest)(Effect.void)
+              );
+              return {
+                entered,
+                digestFree: yield* freeElsewhere(digestProbe),
+              };
+            })
+          )
+        );
+        expect(Exit.isSuccess(reversed)).toBe(true);
+        if (!Exit.isSuccess(reversed)) return;
+        const { entered, digestFree } = reversed.value;
+        expect(dies(entered, "signInEmail inside customerAccount")).toBe(true);
+        expect(
+          Exit.isFailure(entered) && Cause.pretty(entered.cause)
+        ).not.toContain(digest);
+        expect(digestFree).toBe(true);
       });
 
-      test("a key an enclosing section holds still dies", async () => {
-        const account = accountId();
-        const { exit } = await inProduction(
-          WorkspaceLockSections.customerAccount(account)(
-            transaction(WorkspaceLocks.customerAccount(account))
-          ).pipe(Effect.timeout("20 seconds"))
+      test("one section nests on ascending keys; a descending key dies", async () => {
+        const [first, second] = accountPair();
+        const section = WorkspaceLockSections.customerAccount;
+        expect(
+          await run(section(first)(section(second)(Effect.succeed("nested"))))
+        ).toStrictEqual(Exit.succeed("nested"));
+        const descending = await run(
+          section(second)(section(first)(Effect.void))
         );
-        expect(dies(exit, "enclosing lock section")).toBe(true);
+        expect(dies(descending, "out of section order")).toBe(true);
+      });
+
+      test("the same key inside its own section still dies as reentry", async () => {
+        const account = accountId();
+        const section = WorkspaceLockSections.customerAccount;
+        const exit = await run(section(account)(section(account)(Effect.void)));
+        expect(dies(exit, "not reentrant")).toBe(true);
       });
     });
   }

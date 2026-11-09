@@ -173,29 +173,23 @@ const requestedLockTimeout = (wait: LockWait | undefined) => {
 };
 
 /**
- * Until enforcement lands, a lock-order violation fails under `bun test` and
- * is logged in production, where the lock is then taken as requested.
+ * A lock-order defect. It names the locks, never their keys: key values can
+ * identify a customer.
  */
-const reportViolation = (
+const lockViolation = (
   message: string,
-  code: "workspace-lock-order" | "workspace-lock-section-in-transaction",
-  requested: { readonly name: string; readonly rank: number },
-  heldAbove: ReadonlyArray<HeldLock>
+  requested: { readonly name: string },
+  relation: "after" | "inside",
+  held: ReadonlyArray<HeldLock>
 ) => {
-  // Names and ranks only: key values can identify a customer.
-  const held = heldAbove.map(({ name }) => name);
-  return process.env.NODE_ENV === "test"
-    ? Effect.die(
-        new Error(`${message}: ${requested.name} after ${held.join(", ")}`)
-      )
-    : Effect.logError(message).pipe(
-        Effect.annotateLogs({
-          code,
-          requested: requested.name,
-          rank: requested.rank,
-          heldAbove: held,
-        })
-      );
+  const names = held.map(({ name }) => name).join(", ");
+  return Effect.die(
+    new Error(
+      names === ""
+        ? `${message}: ${requested.name}`
+        : `${message}: ${requested.name} ${relation} ${names}`
+    )
+  );
 };
 
 /**
@@ -240,10 +234,10 @@ export const takeTransactionLock = ({
       Option.isSome(timeoutMillis) &&
       heldAbove.every(({ holder }) => holder === "section");
     if (heldAbove.length > 0 && !allowedOutOfOrder) {
-      yield* reportViolation(
+      return yield* lockViolation(
         "A Workspace lock was taken out of rank order",
-        "workspace-lock-order",
         lock,
+        "after",
         heldAbove
       );
     }
@@ -283,9 +277,12 @@ const withLockTimeout = <A, E, R>(
 
 /**
  * Holds a session lock section: the lock on its own connection, through
- * `WorkspaceDatabaseAdvisoryLock.withLock`, while `effect` runs. Sections are
- * not reentrant, and a section entered inside a Workspace transaction waits
- * on that transaction's locks from another connection.
+ * `WorkspaceDatabaseAdvisoryLock.withLock`, while `effect` runs. Each of these
+ * is a defect, checked before the lock is requested: a section entered inside
+ * a Workspace transaction, which would wait on that transaction's locks from
+ * another connection; a section entered inside one that orders after it
+ * (`lockOrder`: declaration order, then key order); and a section
+ * entered inside itself, since sections are not reentrant.
  */
 export const holdSection =
   (section: {
@@ -303,14 +300,25 @@ export const holdSection =
     Effect.gen(function* () {
       const transaction = yield* CurrentTransactionLedger;
       if (Option.isSome(transaction)) {
-        yield* reportViolation(
+        return yield* lockViolation(
           "A Workspace lock section was entered inside a Workspace transaction",
-          "workspace-lock-section-in-transaction",
           section,
+          "after",
           transaction.value.held
         );
       }
       const sections = yield* HeldSections;
+      const enclosingAbove = sections.filter((held) =>
+        Order.isGreaterThan(lockOrder)(held, section)
+      );
+      if (enclosingAbove.length > 0) {
+        return yield* lockViolation(
+          "A Workspace lock section was entered out of section order",
+          section,
+          "inside",
+          enclosingAbove
+        );
+      }
       if (sections.some((held) => isSameKey(held, section))) {
         return yield* Effect.die(
           new Error(
