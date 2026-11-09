@@ -4,10 +4,14 @@
 //   bun scripts/release/mobile-release.ts metadata [--tag mobile-vX.Y.Z]
 //   bun scripts/release/mobile-release.ts build [--tag mobile-vX.Y.Z] [--signing release|debug] --out-dir <dir>
 //   bun scripts/release/mobile-release.ts gradle-cache-key
+//   bun scripts/release/mobile-release.ts prepare-gradle
 //
 // `metadata` and `gradle-cache-key` print `key=value` lines for
 // $GITHUB_OUTPUT; `gradle-cache-key` names the Gradle cache of pull request
-// dry runs (gradle-cache.ts). With --tag, both
+// dry runs (gradle-cache.ts). `prepare-gradle` is for CI runners: it
+// downloads the Gradle distribution the prebuild's wrapper uses, with retries,
+// and raises Gradle's download retries in the Gradle user home
+// (gradle-wrapper.ts). With --tag, both
 // commands fail unless the tag matches `expo.version` in app.json and
 // CHANGELOG.md has a section for it. `build` needs EXPO_TOKEN; it writes
 // deskohub-<version>.apk and release-notes.md to the output directory after
@@ -28,7 +32,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { androidVersionCode } from "../../app.config";
@@ -38,7 +42,8 @@ import {
   verifyNonReleaseSigners,
   verifyReleaseSigners,
 } from "./apk-signature";
-import { gradleCacheKey } from "./gradle-cache";
+import { gradleCacheKey, readTemplateWrapperProperties } from "./gradle-cache";
+import { prepareGradle } from "./gradle-wrapper";
 import { changelogSection, renderReleaseNotes } from "./release-notes";
 import { releaseTag, releaseTagVersion } from "./release-tag";
 
@@ -360,6 +365,17 @@ const main = async () => {
       print(`native-inputs=${key.nativeInputs}`);
       return;
     }
+    case "prepare-gradle": {
+      const { distribution, result } = await prepareGradle({
+        gradleUserHome:
+          process.env.GRADLE_USER_HOME || join(homedir(), ".gradle"),
+        wrapperProperties: readTemplateWrapperProperties(),
+      });
+      print(
+        `Gradle distribution ${distribution.url}: ${result === "downloaded" ? `downloaded to ${distribution.zipPath}` : "already in the Gradle user home"}`
+      );
+      return;
+    }
     case "build": {
       const outDirectory = values["out-dir"];
       if (outDirectory === undefined) {
@@ -381,7 +397,7 @@ const main = async () => {
     }
     default:
       throw new Error(
-        "Usage: mobile-release.ts metadata|build|gradle-cache-key [--tag mobile-vX.Y.Z] [--signing release|debug] [--out-dir <dir>]"
+        "Usage: mobile-release.ts metadata|build|gradle-cache-key|prepare-gradle [--tag mobile-vX.Y.Z] [--signing release|debug] [--out-dir <dir>]"
       );
   }
 };

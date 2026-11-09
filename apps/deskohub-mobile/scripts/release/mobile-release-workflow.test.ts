@@ -215,6 +215,20 @@ describe("mobile-release.yml Gradle cache", () => {
     expect(index(check)).toBeLessThan(index(save));
   });
 
+  test("pre-fetches the Gradle distribution on every event, after a restore and before either build", () => {
+    const prefetch = stepNamed("Pre-fetch the Gradle distribution");
+    const index = (step: Step) => build.steps.indexOf(step);
+    expect(prefetch.if).toBeUndefined();
+    expect(prefetch["working-directory"]).toBe("apps/deskohub-mobile");
+    expect(prefetch.run).toBe(
+      "bun scripts/release/mobile-release.ts prepare-gradle"
+    );
+    expect(JSON.stringify(prefetch)).not.toContain("secrets.");
+    expect(index(restore)).toBeLessThan(index(prefetch));
+    expect(index(prefetch)).toBeLessThan(index(releaseBuild));
+    expect(index(prefetch)).toBeLessThan(index(dryRunBuild));
+  });
+
   test("keys on the Gradle distribution and native inputs, falls back to the closest earlier cache, and saves under the full key", () => {
     expect(keyStep.id).toBe("gradle-cache-key");
     expect(keyStep.run).toContain("mobile-release.ts gradle-cache-key");

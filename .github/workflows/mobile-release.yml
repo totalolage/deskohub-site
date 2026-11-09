@@ -125,6 +125,15 @@ jobs:
             mobile-gradle-${{ runner.os }}-${{ runner.arch }}-${{ steps.gradle-cache-key.outputs.gradle }}-
             mobile-gradle-${{ runner.os }}-${{ runner.arch }}-
 
+      # The Gradle wrapper downloads its distribution once with a 10 s timeout
+      # and no retry, which services.gradle.org often misses from these
+      # runners. This downloads the distribution the prebuild's wrapper names,
+      # with retries, unless a restored cache has it, and raises Gradle's
+      # retries for dependency downloads. Tag builds run it too.
+      - name: Pre-fetch the Gradle distribution
+        working-directory: apps/deskohub-mobile
+        run: bun scripts/release/mobile-release.ts prepare-gradle
+
       # Only tag pushes read the release keystore. A dry run fails if the
       # release certificate signed its APK. Keep the two steps' env the same
       # apart from the keystore, so the dry run builds the app that ships.

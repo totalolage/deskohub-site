@@ -112,7 +112,8 @@ const readNativeInputFiles = async (): Promise<NativeInputFile[]> => {
   );
 };
 
-const readTemplateWrapperProperties = (): string => {
+// The gradle-wrapper.properties the prebuild writes to android/gradle/wrapper.
+export const readTemplateWrapperProperties = (): string => {
   const expoPackage = Bun.resolveSync("expo/package.json", projectDirectory);
   const template = join(expoPackage, "..", "template.tgz");
   const tar = Bun.spawnSync(
