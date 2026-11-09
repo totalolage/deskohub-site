@@ -17,6 +17,12 @@ The Workspace has one implementation of each: `DateInput`, `TimeInput`, and `Dat
 - The controls report plain strings through `onChange`, so React Hook Form fields use `FormField`/`Controller`, not `register(...)` spreads.
 - A partial date-time draft survives a React Hook Form `reset` that leaves the field's value unchanged. To discard it, remount the control with a new `key`.
 
+## Layout
+
+- A date field takes the width of its cell. Below 12rem it moves the calendar button to its own row under the text, so a narrow cell, such as half of a date pair on a phone, still shows a whole date and the format placeholder; wider cells keep the button inside the field. There is no prop for it.
+- The field measures its own width (a CSS container), so it can't size to its content: give it a cell that stretches it, such as a grid track or a `FormItem`, never a shrink-to-fit parent.
+- Keep the 16px field text: phones zoom into smaller text. When a pair of date fields must share a phone-width row, measure it with a real-browser test (`features/discounts/admin/creation-dialogs.browser-acceptance.test.tsx` checks placeholder and typed-date width).
+
 ## Labels and copy
 
 - `label` (`dateLabel` and `timeLabel` on `DateTimeInput`) names each field, and the date field's calendar button and calendar. A visible label passed as `aria-labelledby` names the date field instead; the time field of a date-time keeps `timeLabel`. Pass complete localized strings: administration labels come from the area's administration catalog.

@@ -255,6 +255,160 @@ test.skipIf(!chromiumAvailable)(
   }
 );
 
+// Below 12rem the calendar button leaves the text's row, so a narrow cell
+// shows a whole date and the format placeholder. The Czech placeholder is the
+// widest the field shows.
+const narrowCellWidths = [150, 180] as const;
+
+const narrowMarkup = renderToStaticMarkup(
+  <main className="p-4">
+    {narrowCellWidths.map((width) => (
+      <div key={width} data-narrow-cell={width} style={{ width }}>
+        <DateInput
+          label={`Datum v buňce ${width}`}
+          locale="cs-CZ"
+          value="2099-08-28"
+        />
+      </div>
+    ))}
+    {narrowCellWidths.map((width) => (
+      <div key={width} data-empty-cell={width} style={{ width }}>
+        <DateInput label={`Prázdné datum ${width}`} locale="cs-CZ" />
+      </div>
+    ))}
+  </main>
+);
+
+test.skipIf(!chromiumAvailable)(
+  "puts the calendar button on its own row below the whole text in a narrow cell",
+  async () => {
+    if (!browser) throw new Error("The layout browser has not been launched.");
+    const page = await browser.newPage({
+      viewport: { height: 900, width: 640 },
+    });
+    try {
+      await page.setContent(
+        `<!doctype html><html lang="cs"><head><meta charset="utf-8"></head><body>${narrowMarkup}</body></html>`
+      );
+      await page.addStyleTag({
+        content: `${appStyles}*{transition:none!important}`,
+      });
+      const layouts = await page.evaluate(() =>
+        [
+          ...document.querySelectorAll<HTMLElement>(
+            "[data-narrow-cell], [data-empty-cell]"
+          ),
+        ].map((cell) => {
+          const input =
+            cell.querySelector<HTMLInputElement>('[role="combobox"]');
+          const button = cell.querySelector('button[aria-haspopup="dialog"]');
+          if (!input || !button) return undefined;
+          const cellBox = cell.getBoundingClientRect();
+          const inputBox = input.getBoundingClientRect();
+          const buttonBox = button.getBoundingClientRect();
+          const style = getComputedStyle(input);
+          const context = document.createElement("canvas").getContext("2d");
+          if (!context) return undefined;
+          context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+          const room =
+            input.clientWidth -
+            Number.parseFloat(style.paddingLeft) -
+            Number.parseFloat(style.paddingRight);
+          return {
+            buttonBelowField: buttonBox.top >= inputBox.bottom,
+            buttonSpansCell: Math.abs(buttonBox.width - cellBox.width) < 0.5,
+            fieldFillsCell: Math.abs(inputBox.width - cellBox.width) < 0.5,
+            textFits:
+              context.measureText(input.value || input.placeholder).width <=
+              room,
+            buttonTallEnough: buttonBox.height >= 24,
+            fontSize: style.fontSize,
+          };
+        })
+      );
+      expect(layouts).toHaveLength(narrowCellWidths.length * 2);
+      for (const layout of layouts) {
+        expect(layout).toEqual({
+          buttonBelowField: true,
+          buttonSpansCell: true,
+          fieldFillsCell: true,
+          textFits: true,
+          buttonTallEnough: true,
+          // Phones zoom into a field with smaller text.
+          fontSize: "16px",
+        });
+      }
+    } finally {
+      await page.close();
+    }
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "keeps focus order and calendar focus return in a narrow cell",
+  async () => {
+    if (!browser) throw new Error("The calendar browser has not launched.");
+    const page = await browser.newPage();
+    try {
+      await page.setContent(
+        `<!doctype html><html lang="cs"><head><meta charset="utf-8"></head><body><div id="date-picker-test-root"></div></body></html>`
+      );
+      await page.addStyleTag({ content: appStyles });
+      await page.addScriptTag({ path: harnessBundlePath });
+      const label = "Datum v úzké buňce";
+      const field = page.getByRole("combobox", { name: label });
+      const calendar = page.getByRole("dialog", { name: label });
+      const calendarButton = page.getByRole("button", {
+        name: m.dateInputCalendarButtonLabel(
+          { field: label },
+          { locale: "cs-CZ" }
+        ),
+      });
+      const after = page.getByRole("button", { name: "Po úzké buňce" });
+      const isFocused = (locator: typeof field) =>
+        locator.evaluate((element) => element === document.activeElement);
+      const fieldBox = await field.boundingBox();
+      const buttonBox = await calendarButton.boundingBox();
+      expect(
+        buttonBox && fieldBox && buttonBox.y >= fieldBox.y + fieldBox.height
+      ).toBe(true);
+
+      // The text field, then its calendar button, then what follows.
+      await field.focus();
+      await page.keyboard.press("Tab");
+      expect(await isFocused(calendarButton)).toBe(true);
+      await page.keyboard.press("Tab");
+      expect(await isFocused(after)).toBe(true);
+      await page.keyboard.press("Shift+Tab");
+      expect(await isFocused(calendarButton)).toBe(true);
+
+      // The button opens the calendar beside the cell, inside the viewport.
+      await page.keyboard.press("Enter");
+      await calendar.waitFor();
+      const calendarBox = await calendar.boundingBox();
+      const viewport = page.viewportSize();
+      expect(
+        calendarBox &&
+          viewport &&
+          calendarBox.x >= 0 &&
+          calendarBox.x + calendarBox.width <= viewport.width
+      ).toBe(true);
+      await page.keyboard.press("Escape");
+      await calendar.waitFor({ state: "detached" });
+      expect(await isFocused(field)).toBe(true);
+
+      await page.keyboard.press("ArrowDown");
+      await calendar.waitFor();
+      await page.keyboard.press("Enter");
+      await calendar.waitFor({ state: "detached" });
+      expect(await field.inputValue()).not.toBe("");
+      expect(await isFocused(field)).toBe(true);
+    } finally {
+      await page.close();
+    }
+  }
+);
+
 // Enter in a field submits the form natively, without the field losing focus
 // first. The controls still keep half a date-time, or text that is no date,
 // out of a form that skips validation.

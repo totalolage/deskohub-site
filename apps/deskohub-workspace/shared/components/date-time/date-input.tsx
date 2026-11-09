@@ -422,7 +422,15 @@ export function DateInput({
   };
 
   return (
-    <div className={cn("flex min-w-0 flex-col gap-2", className)}>
+    // The field's own width decides where the calendar button goes: beside
+    // the text where the cell leaves room for a whole date, on its own row
+    // below in a narrow cell, so the text keeps the full width.
+    <div
+      className={cn(
+        "@container/date-field flex min-w-0 flex-col gap-2",
+        className
+      )}
+    >
       <input
         ref={hiddenFieldRef}
         disabled={disabled}
@@ -446,7 +454,7 @@ export function DateInput({
           if (!nextOpen) onBlur?.();
         }}
       >
-        <div className="relative">
+        <div className="relative @max-[12rem]/date-field:grid @max-[12rem]/date-field:gap-2">
           <Input
             ref={composeRefs(fieldRef, ref)}
             id={id}
@@ -462,7 +470,7 @@ export function DateInput({
             aria-label={ariaLabelledBy ? undefined : label}
             aria-labelledby={ariaLabelledBy}
             autoComplete="off"
-            className="pe-12"
+            className="pe-12 @max-[12rem]/date-field:px-3"
             disabled={disabled}
             onBlur={() => {
               if (typed.commitText()) onBlur?.();
@@ -497,7 +505,7 @@ export function DateInput({
               onFocus={calendarModule.preload}
               onPointerDown={calendarModule.preload}
               onPointerEnter={calendarModule.preload}
-              className="absolute inset-y-1 end-1 flex w-10 cursor-pointer items-center justify-center rounded-[0.85rem] text-burned-orange outline-none transition hover:bg-burned-orange/10 focus-visible:ring-2 focus-visible:ring-burned-orange disabled:cursor-not-allowed disabled:opacity-50"
+              className="absolute inset-y-1 end-1 flex w-10 cursor-pointer items-center justify-center rounded-[0.85rem] text-burned-orange outline-none transition hover:bg-burned-orange/10 focus-visible:ring-2 focus-visible:ring-burned-orange disabled:cursor-not-allowed disabled:opacity-50 @max-[12rem]/date-field:static @max-[12rem]/date-field:h-10 @max-[12rem]/date-field:w-full @max-[12rem]/date-field:border @max-[12rem]/date-field:border-navy-blue/45 @max-[12rem]/date-field:bg-white"
               type="button"
             >
               <CalendarIcon aria-hidden="true" className="h-5 w-5" />

@@ -53,9 +53,22 @@ function SubmissionForm() {
   );
 }
 
+/** A date field in a cell too narrow for the calendar button beside it. */
+function NarrowCellPicker() {
+  return (
+    <div className="flex items-start gap-3">
+      <div data-narrow-cell style={{ width: 150 }}>
+        <DateInput label="Datum v úzké buňce" locale="cs-CZ" />
+      </div>
+      <button type="button">Po úzké buňce</button>
+    </div>
+  );
+}
+
 createRoot(mountPoint).render(
   <>
     <ControlledPicker />
     <SubmissionForm />
+    <NarrowCellPicker />
   </>
 );
