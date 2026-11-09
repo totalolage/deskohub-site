@@ -244,6 +244,27 @@ describe("LanguageMenu", () => {
       within(menu).getByRole("menuitem", { name: czech }).getAttribute("href")
     ).toBe("/cs-CZ/pricing?ref=menu");
   });
+
+  test("a signed-in switch closes the menu while the preference saves", async () => {
+    const { LanguageMenu } = await import("./locale-switcher");
+    const { saves, preference } = localePreference(true);
+    const view = render(
+      <LanguageMenu
+        locale="en-US"
+        triggerLabel={triggerLabel}
+        tone="light"
+        localePreference={preference}
+      />
+    );
+    const menu = await openLanguageMenu(view);
+    await act(() => preference.signedIn);
+
+    fireEvent.click(within(menu).getByRole("menuitem", { name: czech }));
+
+    await waitFor(() => expect(view.queryByRole("menu")).toBeNull());
+    expect(saves).toEqual([{ locale: "cs-CZ" }]);
+    expect(window.location.pathname).toBe("/en-US");
+  });
 });
 
 describe("LanguageLinks", () => {

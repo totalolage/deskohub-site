@@ -174,8 +174,9 @@ function LanguageMenuWithLinks({
   ...props
 }: LanguageMenuProps) {
   const { getLocaleHref, selectLocale } = useLocaleSwitch(localePreference);
+  const [open, setOpen] = useState(false);
   return (
-    <DropdownMenu modal={false}>
+    <DropdownMenu modal={false} open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <LanguageMenuTrigger {...props} />
       </DropdownMenuTrigger>
@@ -211,7 +212,13 @@ function LanguageMenuWithLinks({
               <a
                 href={getLocaleHref(locale)}
                 hrefLang={locale}
-                onClick={(event) => selectLocale?.(locale, event)}
+                onClick={(event) => {
+                  selectLocale?.(locale, event);
+                  // A signed-in switch takes over the click to save the
+                  // preference first, which also skips the menu's own close;
+                  // close it so the save can't be started twice.
+                  if (event.defaultPrevented) setOpen(false);
+                }}
               >
                 {label}
               </a>
