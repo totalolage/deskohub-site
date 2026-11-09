@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { notFound } from "next/navigation";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { loadGlobalRelease } from "@/features/feature-flags/backend/global-release.server";
 import { isLocale, locales, m } from "@/features/i18n";
+import { getLocaleBrandFontStack } from "@/features/i18n/locale-fonts";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   getPublicPageTitle,
@@ -99,11 +100,22 @@ export default async function LocaleLayout({
 }: LocaleLayoutProps) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
+  // A script Sculpin lacks, such as Ukrainian Cyrillic, takes its letters
+  // from a companion face listed after Sculpin.
+  const brandFontStack = getLocaleBrandFontStack(
+    locale,
+    sculpin.style.fontFamily
+  );
 
   return (
     <html
       lang={locale}
       className={`${sculpin.variable} ${sculpinItalic.variable}`}
+      style={
+        brandFontStack
+          ? ({ "--font-sculpin": brandFontStack } as CSSProperties)
+          : undefined
+      }
     >
       <head>
         <TemporalLoader />
