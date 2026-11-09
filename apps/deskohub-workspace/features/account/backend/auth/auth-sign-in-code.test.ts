@@ -17,7 +17,10 @@ import {
   realCreateCustomerAccount,
   type TestAuth,
   type TestAuthOptions,
+  testAccountDeletion,
   testDatabase,
+  unavailableFlag,
+  unbuildableFlagProvider,
   uniqueEmail,
   uniqueIp,
   userIdForEmail,
@@ -268,7 +271,7 @@ describe("sign-in code gate", () => {
     const sentLinks: CapturedMagicLink[] = [];
     const { auth } = makeMemoryTestAuth({
       sentLinks,
-      isSignInCodeEnabled: () => Promise.reject(new Error("unreadable")),
+      signInCodeFlag: unavailableFlag,
     });
 
     const response = await sendSignInEmail(auth, uniqueEmail("code-flag-down"));
@@ -277,11 +280,73 @@ describe("sign-in code gate", () => {
     expect(sentLinks[0]!.code).toBeUndefined();
   });
 
+  test("fails closed to link-only when the gate itself fails", async () => {
+    const sentLinks: CapturedMagicLink[] = [];
+    const { auth } = makeMemoryTestAuth({
+      sentLinks,
+      signInCodeFlag: Effect.die(new Error("synthetic gate defect")),
+    });
+
+    const response = await sendSignInEmail(
+      auth,
+      uniqueEmail("code-gate-fails")
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: true, signInCode: false });
+    expect(sentLinks).toHaveLength(1);
+    expect(sentLinks[0]!.code).toBeUndefined();
+  });
+
+  test("fails closed to link-only when the flag provider can't be built, and the link signs in", async () => {
+    const sentLinks: CapturedMagicLink[] = [];
+    const { auth, store } = makeMemoryTestAuth({
+      sentLinks,
+      flagProvider: unbuildableFlagProvider,
+    });
+
+    const response = await sendSignInEmail(
+      auth,
+      uniqueEmail("code-provider-unbuildable")
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: true, signInCode: false });
+    expect(sentLinks).toHaveLength(1);
+    expect(sentLinks[0]!.code).toBeUndefined();
+    expect(store.verification).toHaveLength(1);
+
+    const verified = await verifyMagicLink(auth, sentLinks[0]!);
+    expect(verified.status).toBe(302);
+    expect(getSessionCookie(verified)).toBeDefined();
+  });
+
+  test("decides the flag once per sign-in email and not again to sign in", async () => {
+    const sentLinks: CapturedMagicLink[] = [];
+    let reads = 0;
+    const { auth } = makeMemoryTestAuth({
+      sentLinks,
+      signInCodeFlag: Effect.sync(() => {
+        reads += 1;
+        return true;
+      }),
+    });
+
+    await sendSignInEmail(auth, uniqueEmail("code-decided-once"));
+    expect(reads).toBe(1);
+    expect(sentLinks[0]!.code).toMatch(/^\d{6}$/);
+
+    const verified = await verifyMagicLink(auth, sentLinks[0]!);
+    expect(verified.status).toBe(302);
+    expect(getSessionCookie(verified)).toBeDefined();
+    expect(reads).toBe(1);
+  });
+
   test("sends a six-digit code with the link and says so when the flag is on", async () => {
     const sentLinks: CapturedMagicLink[] = [];
     const { auth } = makeMemoryTestAuth({
       sentLinks,
-      isSignInCodeEnabled: async () => true,
+      signInCodeFlag: Effect.succeed(true),
     });
 
     const response = await sendSignInEmail(auth, uniqueEmail("code-on"), {
@@ -320,7 +385,7 @@ describe("sign-in code gate", () => {
     const sentLinks: CapturedMagicLink[] = [];
     const { auth, store } = makeMemoryTestAuth({
       sentLinks,
-      isSignInCodeEnabled: async () => true,
+      signInCodeFlag: Effect.succeed(true),
     });
     const email = uniqueEmail("code-fields");
     await sendSignInEmail(auth, email);
@@ -369,7 +434,7 @@ describe("sign-in code gate", () => {
     const on = makeMemoryTestAuth({
       sentLinks: onSentLinks,
       verifyHuman: bot,
-      isSignInCodeEnabled: async () => true,
+      signInCodeFlag: Effect.succeed(true),
     });
 
     const blockedLinkOnly = await sendSignInEmail(
@@ -408,7 +473,7 @@ describe.skipIf(!testDatabase)(
   "sign-in codes on the migrated disposable Postgres",
   () => {
     const makeCodeAuth = (sentLinks: CapturedMagicLink[]) =>
-      makeTestAuth({ sentLinks, isSignInCodeEnabled: async () => true });
+      makeTestAuth({ sentLinks, signInCodeFlag: Effect.succeed(true) });
 
     test("signs the app in with the emailed code and hands it the session cookie", async () => {
       const sentLinks: CapturedMagicLink[] = [];
@@ -632,7 +697,7 @@ describe.skipIf(!testDatabase)(
       const restore = pausedVerificationCreate();
       const auth = makeTestAuth({
         sentLinks,
-        isSignInCodeEnabled: async () => true,
+        signInCodeFlag: Effect.succeed(true),
         database: restore.database,
         createCustomerAccount: realCreateCustomerAccount,
       });
@@ -667,7 +732,7 @@ describe.skipIf(!testDatabase)(
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({
         sentLinks,
-        isSignInCodeEnabled: async () => true,
+        signInCodeFlag: Effect.succeed(true),
       });
       const consume = await pausedVerificationConsume(auth);
       const email = uniqueEmail("code-restore-displace");
@@ -700,7 +765,7 @@ describe.skipIf(!testDatabase)(
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({
         sentLinks,
-        isSignInCodeEnabled: async () => true,
+        signInCodeFlag: Effect.succeed(true),
       });
       const consume = await pausedVerificationConsume(auth);
       const email = uniqueEmail("code-restore-skew");
@@ -745,7 +810,7 @@ describe.skipIf(!testDatabase)(
       const failing = failingVerificationWrites();
       const auth = makeTestAuth({
         sentLinks,
-        isSignInCodeEnabled: async () => true,
+        signInCodeFlag: Effect.succeed(true),
         database: failing.database,
         createCustomerAccount: realCreateCustomerAccount,
       });
@@ -766,7 +831,7 @@ describe.skipIf(!testDatabase)(
       const failing = failingVerificationWrites();
       const auth = makeTestAuth({
         sentLinks,
-        isSignInCodeEnabled: async () => true,
+        signInCodeFlag: Effect.succeed(true),
         database: failing.database,
         createCustomerAccount: realCreateCustomerAccount,
       });
@@ -844,7 +909,7 @@ describe.skipIf(!testDatabase)(
       const checks: VerifyHumanInput[] = [];
       const auth = makeTestAuth({
         sentLinks,
-        isSignInCodeEnabled: async () => true,
+        signInCodeFlag: Effect.succeed(true),
         verifyHuman: (input) =>
           Effect.sync(() => {
             checks.push(input);
@@ -880,7 +945,7 @@ describe.skipIf(!testDatabase)(
       const linkOnlyChecks: VerifyHumanInput[] = [];
       const linkOnly = makeTestAuth({
         sentLinks: linkOnlySentLinks,
-        isSignInCodeEnabled: async () => false,
+        signInCodeFlag: Effect.succeed(false),
         verifyHuman: (input) =>
           Effect.sync(() => {
             linkOnlyChecks.push(input);
@@ -908,11 +973,12 @@ describe.skipIf(!testDatabase)(
       let deletions = 0;
       const auth = makeTestAuth({
         sentLinks,
-        isSignInCodeEnabled: async () => true,
-        beforeDeleteUser: () =>
+        signInCodeFlag: Effect.succeed(true),
+        accountDeletion: testAccountDeletion(() =>
           Effect.sync(() => {
             deletions += 1;
-          }),
+          })
+        ),
       });
       const email = uniqueEmail("code-reauth");
 

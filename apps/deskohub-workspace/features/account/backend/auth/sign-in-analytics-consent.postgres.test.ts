@@ -100,7 +100,7 @@ describe.skipIf(!testDatabase)(
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({
         sentLinks,
-        mirrorSignInAnalyticsConsent: () =>
+        mirrorAnalyticsConsent: () =>
           Effect.fail(
             new AnalyticsConsentUnavailable({ cause: "ledger unavailable" })
           ),

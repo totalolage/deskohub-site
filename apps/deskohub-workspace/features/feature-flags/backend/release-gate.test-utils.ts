@@ -14,17 +14,27 @@ export class TestReleaseGate extends ReleaseGate<TestReleaseGate>()(
   "webmcp_site_tools"
 ) {}
 
+/** `gate` whose `Live` decides it over `featureFlags`. */
+export const releaseGateOverFlags = <Self>(
+  gate: ReleaseGateClass<Self> & {
+    readonly Default: Layer.Layer<Self, never, WorkspaceFeatureFlagService>;
+  },
+  featureFlags: Layer.Layer<WorkspaceFeatureFlagService>
+): ReleaseGateClass<Self> => ({
+  isOpen: gate.isOpen,
+  fromDecision: gate.fromDecision,
+  fromEvaluation: gate.fromEvaluation,
+  Live: gate.Default.pipe(Layer.provide(featureFlags)),
+});
+
 /** `TestReleaseGate` whose `Live` evaluates the flag with `isEnabled`. */
 export const testReleaseGateEvaluating = (
   isEnabled: IWorkspaceFeatureFlagService["isEnabled"]
-): ReleaseGateClass<TestReleaseGate> => ({
-  isOpen: TestReleaseGate.isOpen,
-  fromDecision: TestReleaseGate.fromDecision,
-  fromEvaluation: TestReleaseGate.fromEvaluation,
-  Live: TestReleaseGate.Default.pipe(
-    Layer.provide(WorkspaceFeatureFlagServiceMock({ isEnabled }))
-  ),
-});
+): ReleaseGateClass<TestReleaseGate> =>
+  releaseGateOverFlags(
+    TestReleaseGate,
+    WorkspaceFeatureFlagServiceMock({ isEnabled })
+  );
 
 type FlagLookup = readonly [
   "isEnabled" | "constantValue",

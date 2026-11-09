@@ -13,7 +13,6 @@ import {
 import { ReviewAccounts } from "@/features/review-accounts";
 import { BotDetectedError } from "@/shared/backend/bot-protection/bot-protection.service";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
-import type { CustomerAccountId } from "../../customer-account";
 import {
   encodeAuthCallbackReturn,
   getAuthCallbackPath,
@@ -46,6 +45,7 @@ import {
   SECRET_V2,
   signInForMagicLink,
   type TestAuth,
+  testAccountDeletion,
   testDatabase,
   uniqueDotyposCustomerId,
   uniqueEmail,
@@ -113,14 +113,6 @@ const makeTestDeletionLayers = (
       )
     )
   );
-
-const runTestDeletion = (
-  layers: Layer.Layer<CustomerAccountDeletionService>,
-  accountId: CustomerAccountId
-) =>
-  Effect.flatMap(CustomerAccountDeletionService, (service) =>
-    service.requestDeletion(accountId)
-  ).pipe(Effect.provide(layers));
 
 test("reports auth handler failures without logging provider data", async () => {
   const email = uniqueEmail("verification-failure");
@@ -712,7 +704,7 @@ describe.skipIf(!testDatabase)(
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({
         sentLinks,
-        captureAccountLocalePreference: () => Effect.fail(captureFailure()),
+        captureLocalePreference: () => Effect.fail(captureFailure()),
       });
       const email = uniqueEmail("legacy-capture-failure");
       const accountId = await insertLegacyAccount(email);
@@ -962,11 +954,9 @@ describe.skipIf(!testDatabase)(
         calls.push("expire");
         return Effect.succeed(Option.some({} as never));
       });
-      const beforeDeleteUser = (accountId: CustomerAccountId) =>
-        runTestDeletion(deletionLayers, accountId);
 
       const sentLinks: CapturedMagicLink[] = [];
-      const auth = makeTestAuth({ sentLinks, beforeDeleteUser });
+      const auth = makeTestAuth({ sentLinks, accountDeletion: deletionLayers });
       const email = uniqueEmail("delete");
 
       await signInForMagicLink(auth, email);
@@ -1012,11 +1002,9 @@ describe.skipIf(!testDatabase)(
           })
         )
       );
-      const beforeDeleteUser = (accountId: CustomerAccountId) =>
-        runTestDeletion(deletionLayers, accountId);
 
       const sentLinks: CapturedMagicLink[] = [];
-      const auth = makeTestAuth({ sentLinks, beforeDeleteUser });
+      const auth = makeTestAuth({ sentLinks, accountDeletion: deletionLayers });
       const email = uniqueEmail("retry");
 
       await signInForMagicLink(auth, email);
@@ -1059,11 +1047,9 @@ describe.skipIf(!testDatabase)(
           return Effect.void;
         }
       );
-      const beforeDeleteUser = (accountId: CustomerAccountId) =>
-        runTestDeletion(deletionLayers, accountId);
 
       const sentLinks: CapturedMagicLink[] = [];
-      const auth = makeTestAuth({ sentLinks, beforeDeleteUser });
+      const auth = makeTestAuth({ sentLinks, accountDeletion: deletionLayers });
       const email = uniqueEmail("delete-review");
 
       await signInForMagicLink(auth, email);
@@ -1110,11 +1096,9 @@ describe.skipIf(!testDatabase)(
         () => Effect.succeed(Option.some({} as never)),
         () => Effect.fail(new CustomerAvatarProviderError({}))
       );
-      const beforeDeleteUser = (accountId: CustomerAccountId) =>
-        runTestDeletion(deletionLayers, accountId);
 
       const sentLinks: CapturedMagicLink[] = [];
-      const auth = makeTestAuth({ sentLinks, beforeDeleteUser });
+      const auth = makeTestAuth({ sentLinks, accountDeletion: deletionLayers });
       const email = uniqueEmail("avatar-delete-retry");
 
       await signInForMagicLink(auth, email);
@@ -1150,10 +1134,11 @@ describe.skipIf(!testDatabase)(
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({
         sentLinks,
-        beforeDeleteUser: () =>
+        accountDeletion: testAccountDeletion(() =>
           Effect.sync(() => {
             hookCalls += 1;
-          }),
+          })
+        ),
       });
       const email = uniqueEmail("stale");
 
@@ -1187,11 +1172,9 @@ describe.skipIf(!testDatabase)(
       const deletionLayers = makeTestDeletionLayers(() =>
         Effect.succeed(Option.some({} as never))
       );
-      const beforeDeleteUser = (accountId: CustomerAccountId) =>
-        runTestDeletion(deletionLayers, accountId);
 
       const sentLinks: CapturedMagicLink[] = [];
-      const auth = makeTestAuth({ sentLinks, beforeDeleteUser });
+      const auth = makeTestAuth({ sentLinks, accountDeletion: deletionLayers });
       const email = uniqueEmail("locked");
 
       await signInForMagicLink(auth, email);
