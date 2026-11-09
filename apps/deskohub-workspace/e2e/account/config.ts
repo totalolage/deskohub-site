@@ -6,8 +6,8 @@ import {
   type WorkspaceE2EEnvironment,
 } from "../e2e-env";
 import { workspaceE2EError } from "../errors";
+import { addRedaction } from "../redaction";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
-import { addRedaction } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { AccountReviewDestination } from "./review-screenshots";
 

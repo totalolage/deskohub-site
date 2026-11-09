@@ -3,11 +3,11 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Schema } from "effect";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
 import { validE2ERuntimeEnvironment } from "../e2e-env.test-fixture";
+import { redact } from "../redaction";
 import {
   type WorkspaceE2ERunId,
   workspaceE2ERunIdSchema,
 } from "../run-identifiers";
-import { redact } from "../runtime";
 import {
   getAccountE2EConfig,
   makeWorkspaceE2EAccountRecipient,

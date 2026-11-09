@@ -29,7 +29,7 @@ import type { WorkspaceE2EError } from "../errors";
 import { workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
 import { runDatabaseOperation } from "../integrations/database-operation";
-import { addRedaction } from "../runtime";
+import { addRedaction } from "../redaction";
 import { seedWorkspaceE2EReservationAuthor } from "./auth-rows";
 
 export type WorkspaceE2EReferralOwnerInput = {

@@ -1,316 +1,26 @@
 import type { Locator, Page } from "@playwright/test";
 import { Effect } from "effect";
-import { inPageCall } from "./browser-scripts";
-import { type E2EBrowserSession, isPlaywrightTimeout } from "./browser-session";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "./browser-session";
 import type { WorkspaceE2EConfig } from "./config";
 import {
   toWorkspaceE2EError,
-  tryWorkspaceE2EPromise,
   type WorkspaceE2EError,
   withoutWorkspaceE2ETimeout,
   workspaceE2EError,
-  workspaceE2ETimeoutError,
 } from "./errors";
 import { pollUntil } from "./polling";
 import { redact } from "./redaction";
-import type { Runner } from "./runtime";
 import { log } from "./runtime";
-import { argvCommandTimeoutMs, workspaceE2EPollIntervalMs } from "./timeouts";
-
-// Playwright reports an exhausted command budget as its TimeoutError; classify
-// it as a Workspace E2E timeout so pollers can retry it like their own deadlines.
-export const runBrowserCommand = (
-  operation: string,
-  run: Runner,
-  session: string,
-  args: string[],
-  options?: Parameters<Runner>[2]
-) =>
-  tryWorkspaceE2EPromise(operation, (signal) =>
-    run("playwright", ["--session", session, ...args], {
-      ...options,
-      signal,
-    })
-  ).pipe(
-    Effect.mapError((error) =>
-      isPlaywrightTimeout(error.cause)
-        ? workspaceE2ETimeoutError(error.message, {
-            cause: error.cause,
-            operation: error.operation,
-          })
-        : error
-    )
-  );
-
-const readBrowserUrl = (
-  run: Runner,
-  session: string
-): Effect.Effect<string | undefined, WorkspaceE2EError> =>
-  runBrowserCommand("read browser URL", run, session, ["get", "url"], {
-    allowFailure: true,
-    logOutput: false,
-  }).pipe(
-    Effect.map((result) =>
-      result.exitCode === 0 ? result.stdout.trim() : undefined
-    )
-  );
-
-export const waitForBrowserReactHydration = (
-  run: Runner,
-  session: string,
-  selector: string,
-  options: { readonly timeoutMs?: number } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "wait for browser React hydration",
-    run,
-    session,
-    ["wait", "--fn", inPageCall(isReactHydrated, { selector })],
-    {
-      logOutput: false,
-      timeoutMs: options.timeoutMs ?? 60_000,
-    }
-  ).pipe(Effect.asVoid);
-
-export const waitForBrowserReactHandler = (
-  run: Runner,
-  session: string,
-  selector: string,
-  handler: string,
-  options: { readonly timeoutMs?: number } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand(
-    `wait for browser React ${handler} handler`,
-    run,
-    session,
-    ["wait", "--fn", inPageCall(hasReactHandler, { handler, selector })],
-    {
-      logOutput: false,
-      timeoutMs: options.timeoutMs ?? 60_000,
-    }
-  ).pipe(Effect.asVoid);
-
-export const waitForBrowserCondition = (
-  run: Runner,
-  session: string,
-  description: string,
-  condition: string,
-  options: { readonly timeoutMs?: number } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand(
-    `wait for ${description}`,
-    run,
-    session,
-    ["wait", "--fn", condition],
-    {
-      logOutput: false,
-      timeoutMs: options.timeoutMs ?? 60_000,
-    }
-  ).pipe(Effect.asVoid);
-
-export const waitForBrowserTextContent = (
-  run: Runner,
-  session: string,
-  text: string,
-  options: {
-    readonly caseSensitive?: boolean;
-    readonly timeoutMs?: number;
-  } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  waitForBrowserCondition(
-    run,
-    session,
-    "browser text content",
-    inPageCall(pageTextIncludes, toPageTextQuery(text, options)),
-    { timeoutMs: options.timeoutMs }
-  );
-
-export const waitForBrowserReactFormSubmit = (
-  run: Runner,
-  session: string,
-  selector: string,
-  visibleFieldSelectors: readonly string[],
-  options: ReactFormSubmitOptions = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  waitForBrowserCondition(
-    run,
-    session,
-    "browser React form handlers",
-    inPageCall(
-      isReactFormSubmitReady,
-      toReactFormSubmitQuery(selector, visibleFieldSelectors, options)
-    ),
-    { timeoutMs: options.timeoutMs }
-  );
-
-export const evalBrowserScript = (
-  operation: string,
-  run: Runner,
-  session: string,
-  input: string,
-  options: Omit<NonNullable<Parameters<Runner>[2]>, "input"> = {}
-) =>
-  runBrowserCommand(operation, run, session, ["eval", "--stdin"], {
-    input,
-    ...options,
-  });
-
-const focusBrowserElement = (
-  run: Runner,
-  session: string,
-  selector: string,
-  options: { readonly timeoutMs?: number } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "focus browser element",
-    run,
-    session,
-    ["focus", selector],
-    {
-      logOutput: false,
-      timeoutMs: options.timeoutMs ?? 60_000,
-    }
-  ).pipe(Effect.asVoid);
-
-export const scrollBrowserElementIntoView = (
-  run: Runner,
-  session: string,
-  selector: string,
-  options: { readonly timeoutMs?: number } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "scroll browser element into view",
-    run,
-    session,
-    ["eval", "--stdin"],
-    {
-      input: inPageCall(scrollElementIntoView, selector),
-      logOutput: false,
-      timeoutMs: options.timeoutMs ?? 60_000,
-    }
-  ).pipe(Effect.asVoid);
-
-const pressBrowserKey = (
-  run: Runner,
-  session: string,
-  key: string,
-  options: { readonly timeoutMs?: number } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand("press browser key", run, session, ["press", key], {
-    logOutput: false,
-    timeoutMs: options.timeoutMs ?? 60_000,
-  }).pipe(Effect.asVoid);
-
-export const activateBrowserElement = (
-  run: Runner,
-  session: string,
-  selector: string,
-  options: { readonly timeoutMs?: number } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    yield* focusBrowserElement(run, session, selector, options);
-    yield* pressBrowserKey(run, session, "Enter", options);
-  });
-
-export const activateHydratedBrowserElement = (
-  run: Runner,
-  session: string,
-  selector: string,
-  options: { readonly timeoutMs?: number } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    yield* waitForBrowserReactHydration(run, session, selector, options);
-    yield* activateBrowserElement(run, session, selector, options);
-  });
+import {
+  urlWaitDiagnosticsTimeoutMs,
+  workspaceE2EPollIntervalMs,
+} from "./timeouts";
 
 export const normalizeBrowserText = (text: string) =>
   text.replaceAll(/\s+/g, " ").trim();
-
-const hasSnapshotRole = (line: string, role: string | undefined) =>
-  role === undefined ||
-  line.match(/^\s*-\s+(\S+)/)?.[1]?.toLowerCase() === role.toLowerCase();
-
-export const findEnabledSnapshotRef = (
-  snapshot: string,
-  labels: readonly string[],
-  role?: string
-) => {
-  for (const line of snapshot.split("\n")) {
-    if (!hasSnapshotRole(line, role)) continue;
-    if (hasDisabledSnapshotState(line)) continue;
-    const ref = getSnapshotRef(line);
-    if (!ref) continue;
-
-    const name = line
-      .match(/"([^"]+)"/)?.[1]
-      ?.trim()
-      .toLowerCase();
-    if (name && labels.some((label) => name === label.toLowerCase()))
-      return ref;
-  }
-
-  for (const line of snapshot.split("\n")) {
-    if (!hasSnapshotRole(line, role)) continue;
-    if (hasDisabledSnapshotState(line)) continue;
-    const ref = getSnapshotRef(line);
-    if (!ref) continue;
-
-    const lowerLine = line.toLowerCase();
-    if (labels.some((label) => lowerLine.includes(label.toLowerCase())))
-      return ref;
-  }
-};
-
-const hasDisabledSnapshotState = (line: string) =>
-  /\[[^\]]*\bdisabled\b[^\]]*\]/i.test(line);
-
-export const getSnapshotRef = (line: string) =>
-  line.match(/\bref=((?:f\d+)?e\d+)\b/)?.[1]?.replace(/^/, "@") ??
-  line.match(/@(?:f\d+)?e\d+/)?.[0];
-
-export const isFrameSnapshotRef = (ref: string) => /^@f\d+e\d+$/.test(ref);
-
-export const waitForBrowserUrl = ({
-  description,
-  matches,
-  run,
-  session,
-  timeoutMs,
-}: {
-  description: string;
-  matches: (url: string) => boolean;
-  run: Runner;
-  session: string;
-  timeoutMs: number;
-}): Effect.Effect<string, WorkspaceE2EError> =>
-  pollForUrl(readBrowserUrl(run, session), {
-    description,
-    matches,
-    readDiagnostics: readBrowserDiagnostics(run, session),
-    timeoutMs,
-  });
-
-const readBrowserDiagnostics = (
-  run: Runner,
-  session: string
-): Effect.Effect<string, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "read browser diagnostics",
-    run,
-    session,
-    ["eval", "--stdin"],
-    {
-      allowFailure: true,
-      input: inPageCall(summarizeCheckoutPage, undefined),
-      logOutput: false,
-    }
-  ).pipe(
-    Effect.map((result) =>
-      result.exitCode === 0
-        ? formatBrowserDiagnostics(result.stdout)
-        : unavailableBrowserDiagnostics
-    )
-  );
 
 /**
  * Polls `readUrl` until `matches` accepts the URL. A wait that fails or runs
@@ -355,9 +65,8 @@ const pollForUrl = (
 
 /**
  * Primes preview access for the URL's origin when the run has a bypass
- * secret, then loads the URL in the session's active page. It activates the
- * loaded page again, which drops any iframe the argv runner had selected, as
- * its `open` command did, while argv commands still share the session.
+ * secret, then loads the URL in the session's active page and keeps that
+ * page active.
  */
 export const openPage = (
   session: E2EBrowserSession,
@@ -390,9 +99,8 @@ export const waitForPageTextContent = (
     .pipe(Effect.asVoid);
 
 /**
- * The page's visible text with registered secrets redacted, as argv output
- * was. A read that overruns its 30 s bound fails rather than timing out, as
- * the argv `eval` it replaces did.
+ * The page's visible text with registered secrets redacted. A read that
+ * overruns its 30 s bound fails rather than timing out.
  */
 export const readPageText = (
   session: E2EBrowserSession
@@ -404,14 +112,11 @@ export const readPageText = (
     .pipe(withoutWorkspaceE2ETimeout("read browser text"), Effect.map(redact));
 
 /**
- * The session a poller reads, or the runner bridge that resolves it
- * (`browserSessionFor`). A poller resolves a bridge on every read, so a
- * browser that fails to open reads as an unreadable page, as an argv read
- * that allowed failure did.
+ * The session a poller reads, or the opener that yields it
+ * (`OpenE2EBrowserSession`). A poller yields an opener on every read, so a
+ * browser that fails to open reads as an unreadable page.
  */
-export type PolledBrowserSession =
-  | E2EBrowserSession
-  | Effect.Effect<E2EBrowserSession, WorkspaceE2EError>;
+export type PolledBrowserSession = E2EBrowserSession | OpenE2EBrowserSession;
 
 const readPolledSession = <A, E>(
   session: PolledBrowserSession,
@@ -449,8 +154,7 @@ export const waitForPageText = ({
 
 /**
  * The page body's interactive aria snapshot (`ai` mode) with registered
- * secrets redacted, as the argv `snapshot -i` output was. Each Playwright
- * wait is bounded by that command's 60 s.
+ * secrets redacted. Each Playwright wait is bounded by 60 s.
  */
 export const readPageSnapshot = (
   session: E2EBrowserSession
@@ -597,8 +301,7 @@ export const activateElement = (
         .filter({ visible: true })
         .focus({ timeout: timeoutMs })
     );
-    // As the argv `press` command, the key press has no timeout of its own;
-    // the caller's step bounds it.
+    // The key press has no timeout of its own; the caller's step bounds it.
     yield* session.use("press browser key", (page) =>
       page.keyboard.press("Enter")
     );
@@ -618,9 +321,8 @@ export const activateHydratedElement = (
 /**
  * Evaluates `check`, a self-contained in-page function called with `arg`,
  * and fails with the problem it returns; `null` means the page holds. An
- * evaluation that overruns `timeoutMs` fails rather than timing out, as the
- * argv `eval` it replaces did, so `check` must never throw a named
- * `TimeoutError`.
+ * evaluation that overruns `timeoutMs` fails rather than timing out, so
+ * `check` must never throw a named `TimeoutError`.
  */
 export const assertPageCheck = <Arg>(
   session: E2EBrowserSession,
@@ -645,8 +347,7 @@ export const assertPageCheck = <Arg>(
 /**
  * Scrolls the first element matching `selector` to the viewport's center and
  * waits two animation frames for layout to settle. An evaluation that
- * overruns `timeoutMs` fails rather than timing out, as the argv `eval` it
- * replaces did.
+ * overruns `timeoutMs` fails rather than timing out.
  */
 export const scrollIntoView = (
   session: E2EBrowserSession,
@@ -672,8 +373,8 @@ export const readActivePage = (
   });
 
 /**
- * The session's request and response log, one entry per line, as the argv
- * `network requests` output was. The session redacts each entry.
+ * The session's request and response log, one entry per line. The session
+ * redacts each entry.
  */
 export const readNetworkLog = (
   session: E2EBrowserSession
@@ -681,8 +382,8 @@ export const readNetworkLog = (
   session.diagnostics.pipe(Effect.map(({ requests }) => requests.join("\n")));
 
 /**
- * The active page's URL with registered secrets redacted, as argv output was,
- * or `undefined` when the page can't be read.
+ * The active page's URL with registered secrets redacted, or `undefined`
+ * when the page can't be read.
  */
 export const readPageUrl = (
   session: E2EBrowserSession
@@ -696,8 +397,7 @@ export const readPageUrl = (
 
 /**
  * Polls the active page's URL until `matches` accepts it. A wait that runs
- * out fails as a plain error, not a timeout, carrying the page diagnostics,
- * as the argv `waitForBrowserUrl` does.
+ * out fails as a plain error, not a timeout, carrying the page diagnostics.
  */
 export const waitForPageUrl = ({
   description,
@@ -723,10 +423,8 @@ export const waitForPageUrl = ({
       ).pipe(
         Effect.orElseSucceed(() => unavailableBrowserDiagnostics),
         Effect.map(redact),
-        // The argv evaluation it replaces ran under the runner's default
-        // command bound.
         Effect.timeoutOrElse({
-          duration: `${argvCommandTimeoutMs} millis`,
+          duration: `${urlWaitDiagnosticsTimeoutMs} millis`,
           orElse: () => Effect.succeed(unavailableBrowserDiagnostics),
         })
       ),
@@ -754,8 +452,7 @@ const toPageTextQuery = (
 });
 
 // The in-page functions below run in the browser, so they must not close over
-// anything; argv callers get them as an expression through `inPageCall`
-// (`browser-scripts.ts`).
+// anything.
 
 const readBodyText = () => document.body?.innerText ?? "";
 

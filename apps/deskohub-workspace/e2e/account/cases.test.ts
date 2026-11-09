@@ -56,7 +56,6 @@ const fixedNowMs = fixedNow.getTime();
 const baseUrl = "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app";
 const expectedHost = new URL(baseUrl).host;
 const syntheticRunId = "cases-test-run";
-const session = "workspace-account-cases-test";
 
 const completionTitle = "Complete your profile";
 const completionReferralApplied =
@@ -1970,14 +1969,10 @@ const requireExternal = () => {
 
 /** The cross-browser sign-in's second browser, open only inside its case. */
 let assistantBrowser: FakeBrowser | undefined;
-const assistantSession = `${session}-assistant`;
 
-const requireBrowser = (browserSession = session) => {
+const requireBrowser = (which: "assistant" | "lane" = "lane") => {
   if (!activeBrowser) throw new Error("synthetic browser is not installed");
-  if (browserSession === session) return activeBrowser;
-  if (browserSession !== assistantSession) {
-    throw new Error("the account case drove an unknown browser session");
-  }
+  if (which === "lane") return activeBrowser;
   if (!assistantBrowser) {
     assistantBrowser = new FakeBrowser(requireExternal(), true);
     requireExternal().assistantBrowserEvents.push("open");
@@ -2195,7 +2190,7 @@ const makeScenario = (
   const laneBrowser: WorkspaceE2EAccountLaneBrowser = {
     ...fakeAccountBrowser(() => browser),
     assistant: {
-      ...fakeAccountBrowser(() => requireBrowser(assistantSession)),
+      ...fakeAccountBrowser(() => requireBrowser("assistant")),
       close: Effect.sync(() => {
         if (assistantBrowser) {
           assistantBrowser = undefined;
@@ -2372,7 +2367,6 @@ const makeCaseExecution = (
       testCase.execute({
         journalRef: scenario.journalRef,
         runStep,
-        session,
       })
     ),
     () =>
@@ -2430,7 +2424,7 @@ const buildCase = async (
     captureSignInHandoffReview: async (stage) => {
       scenario.external.signInHandoffReviews.push({
         stage,
-        url: requireBrowser(assistantSession).url(),
+        url: requireBrowser("assistant").url(),
       });
     },
     rateBudget: scenario.rateBudget,
@@ -3075,7 +3069,6 @@ const runLanguageCase = async (
     selected.execute({
       journalRef: scenario.journalRef,
       runStep,
-      session,
     }) as Effect.Effect<void, WorkspaceE2EError>
   );
   return { exit, scenario, stepIds };

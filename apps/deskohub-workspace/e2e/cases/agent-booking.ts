@@ -14,6 +14,7 @@ import type { WorkspaceE2EAccountJournalOwner } from "../account/reconcile";
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { openPage, waitForPageUrl } from "../browser";
+import type { OpenE2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
   makeCoworkCheckoutData,
@@ -55,16 +56,15 @@ import type { E2EDatabase } from "../integrations/database.service";
 import type { WorkspaceE2ECaseBinder } from "../playwright-checkout/fixtures";
 import { pollUntil } from "../polling";
 import { waitForReactClickHandler } from "../react-handlers";
+import { addRedaction } from "../redaction";
 import { bindCheckoutContact } from "../referrals/checkout";
-import {
-  addRedaction,
-  assert,
-  browserSessionFor,
-  parseUrl,
-  type Runner,
-} from "../runtime";
+import { assert, parseUrl } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
-import type { CheckoutFlowState, WorkspaceE2ECase } from "../types";
+import type {
+  CheckoutFlowState,
+  WorkspaceE2ECase,
+  WorkspaceE2ECaseContext,
+} from "../types";
 import { executeCheckoutFlow } from "./checkout";
 
 export const agentBookingCaseId = "checkout-agent-booking";
@@ -164,14 +164,14 @@ export const bindAgentBookingCase: WorkspaceE2ECaseBinder = async ({
   return {
     ...testCase,
     checkoutStates: [boundState],
-    execute: ({ run, runStep, session }) =>
+    execute: ({ openSeparateSession, openSession, runStep }) =>
       executeAgentBooking({
         config,
         datasourceConfig,
         identities,
-        run,
+        openSeparateSession,
+        openSession,
         runStep,
-        session,
         state: boundState,
       }).pipe(
         Effect.scoped,
@@ -187,16 +187,16 @@ type AgentBookingContext = {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly identities: WorkspaceE2ECaseIdentities<AgentBookerLabel>;
-  readonly run: Runner;
+  readonly openSeparateSession: WorkspaceE2ECaseContext["openSeparateSession"];
+  readonly openSession: OpenE2EBrowserSession;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
   readonly state: CheckoutFlowState;
 };
 
 const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
   booking: AgentBookingContext
 ) {
-  const { config, identities, runStep, session } = booking;
+  const { config, identities, openSession, runStep } = booking;
   const booker = yield* runStep({
     execute: identities.seedLinkedAccount(agentBookerLabel),
     id: "seed-agent-booker",
@@ -295,9 +295,9 @@ const executeAgentBooking = Effect.fn("AgentBooking.execute")(function* (
       id: "agent-booking",
       startReservation: startAgentReservation({ booking, mcp }),
     },
-    run: booking.run,
+    openSeparateSession: booking.openSeparateSession,
+    openSession,
     runStep,
-    session,
     state: booking.state,
   });
 
@@ -323,7 +323,7 @@ const disconnectAgentInAccount = Effect.fn("AgentBooking.disconnect")(
     const { config, state } = booking;
     const { locale } = state.data;
     yield* openPage(
-      yield* caseBrowser(booking),
+      yield* booking.openSession,
       config,
       new URL(
         getAccountSectionPath(locale, "assistants"),
@@ -409,7 +409,7 @@ const answerAgentConsent = ({
       config,
       server,
     });
-    const browser = yield* caseBrowser(booking);
+    const browser = yield* booking.openSession;
     yield* openPage(browser, config, request.authorizationUrl, {
       timeoutMs: config.timeouts.browserNavigation,
     });
@@ -478,10 +478,6 @@ const answerAgentConsent = ({
     return { callback, request };
   });
 
-/** The case's browser session, reached inside the step that drives it. */
-const caseBrowser = ({ run, session }: AgentBookingContext) =>
-  browserSessionFor(run, session);
-
 /**
  * Drives the case's active page natively, once its browser holds only the
  * case's own context. A Playwright timeout fails the step rather than timing
@@ -492,7 +488,7 @@ const onCasePage = <A>(
   label: string,
   drive: (page: Page) => Promise<A>
 ): Effect.Effect<A, WorkspaceE2EError> =>
-  Effect.flatMap(caseBrowser(booking), (browser) =>
+  Effect.flatMap(booking.openSession, (browser) =>
     browser
       .use(label, async (page) => {
         if (page.context().browser()?.contexts().length !== 1) {
@@ -574,7 +570,7 @@ const startedReservationSchema = Schema.Struct({
  * the Pay link it returns in the signed-in browser.
  */
 const startAgentReservation = ({
-  booking: { config, run, runStep, session, state },
+  booking: { config, openSession, runStep, state },
   mcp,
 }: {
   readonly booking: AgentBookingContext;
@@ -623,7 +619,7 @@ const startAgentReservation = ({
             "The agent's Pay link has already expired"
           );
         });
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* openPage(browser, config, started.pay_url, {
           timeoutMs: config.timeouts.browserNavigation,
         });

@@ -14,6 +14,7 @@ import { seedWorkspaceE2EReferralOwner } from "../account/referral-fixture";
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { waitForPageUrl } from "../browser";
+import type { OpenE2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EStep } from "../case-runner";
 import {
   makeCoworkCheckoutData,
@@ -46,6 +47,7 @@ import {
 } from "../integrations/database";
 import { E2EDatabase } from "../integrations/database.service";
 import type { WorkspaceE2ECaseBinder } from "../playwright-checkout/fixtures";
+import { addRedaction } from "../redaction";
 import {
   isReferralAppliedPayUrl,
   referralAppliedMessage,
@@ -54,17 +56,13 @@ import {
   waitForNoRememberedReferralCode,
   waitForRememberedReferralCode,
 } from "../referrals/referral-cookie";
-import {
-  addRedaction,
-  assert,
-  browserSessionFor,
-  type Runner,
-} from "../runtime";
+import { assert } from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlowState,
   CheckoutRow,
   WorkspaceE2ECase,
+  WorkspaceE2ECaseContext,
 } from "../types";
 import { executeCheckoutFlow } from "./checkout";
 import {
@@ -200,14 +198,14 @@ export const bindReferralSomeoneElsePaymentCase: WorkspaceE2ECaseBinder =
     return {
       ...testCase,
       checkoutStates: [boundState],
-      execute: ({ run, runStep, session }) =>
+      execute: ({ openSeparateSession, openSession, runStep }) =>
         executeReferralSomeoneElsePayment({
           config,
           datasourceConfig,
           identities,
-          run,
           runStep,
-          session,
+          openSeparateSession,
+          openSession,
           state: boundState,
         }).pipe(
           Effect.provide(FetchHttpClient.layer),
@@ -242,17 +240,17 @@ const executeReferralSomeoneElsePayment = Effect.fn(
   config,
   datasourceConfig,
   identities,
-  run,
   runStep,
-  session,
+  openSeparateSession,
+  openSession,
   state,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly identities: Identities;
-  readonly run: Runner;
   readonly runStep: Parameters<WorkspaceE2ECase["execute"]>[0]["runStep"];
-  readonly session: string;
+  readonly openSeparateSession: WorkspaceE2ECaseContext["openSeparateSession"];
+  readonly openSession: OpenE2EBrowserSession;
   readonly state: CheckoutFlowState;
 }) {
   const database = yield* E2EDatabase;
@@ -261,7 +259,7 @@ const executeReferralSomeoneElsePayment = Effect.fn(
   const expectedDiscounts = getReferralSomeoneElseDiscounts(locale);
 
   yield* runStep({
-    execute: Effect.flatMap(browserSessionFor(run, session), (browserSession) =>
+    execute: Effect.flatMap(openSession, (browserSession) =>
       waitForNoRememberedReferralCode({ config, session: browserSession })
     ),
     id: "starts-without-remembered-referral-code",
@@ -278,7 +276,7 @@ const executeReferralSomeoneElsePayment = Effect.fn(
     timeoutMs: config.timeouts.datasource,
   });
   yield* runStep({
-    execute: identities.signIn(booker, { run, session }),
+    execute: identities.signIn(booker, { openSession }),
     id: "sign-in-synthetic-booker",
     timeoutMs: config.timeouts.datasource,
   });
@@ -317,20 +315,18 @@ const executeReferralSomeoneElsePayment = Effect.fn(
     {
       // The shared reservation link left its code in the booker's cookie,
       // which prefills the box.
-      execute: Effect.flatMap(
-        browserSessionFor(run, session),
-        (browserSession) =>
-          waitForRememberedReferralCode(
-            { config, session: browserSession },
-            referrer.code
-          )
+      execute: Effect.flatMap(openSession, (browserSession) =>
+        waitForRememberedReferralCode(
+          { config, session: browserSession },
+          referrer.code
+        )
       ),
       id: "remember-shared-referral-code",
       timeoutMs: config.timeouts.uiTransition,
     },
     {
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* assertRequestedOnlyDiscountCode({
           code: canonicalPromotionCodeSchema.make(referrer.code),
           config,
@@ -342,7 +338,7 @@ const executeReferralSomeoneElsePayment = Effect.fn(
     },
     {
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* applyDiscountCode({
           appliedMessage: referralAppliedMessage(locale),
           code: referrer.code,
@@ -367,7 +363,7 @@ const executeReferralSomeoneElsePayment = Effect.fn(
     },
     {
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* assertDisplayedDiscounts({
           config,
           discounts: expectedDiscounts,
@@ -383,8 +379,7 @@ const executeReferralSomeoneElsePayment = Effect.fn(
     beforeReservationSubmit: waitForAdvertisedCalendarSale({
       config,
       data,
-      run,
-      session,
+      openSession,
     }),
     config,
     data,
@@ -395,16 +390,16 @@ const executeReferralSomeoneElsePayment = Effect.fn(
       toReservationPreparation: toReservationStep,
     },
     payPageSteps,
-    run,
     runStep,
-    session,
+    openSeparateSession,
+    openSession,
     state,
   });
 
   yield* runStep({
     // Booking for someone else never settles the booker's own referral, so
     // the paid status page leaves the booker's remembered code in place.
-    execute: Effect.flatMap(browserSessionFor(run, session), (browserSession) =>
+    execute: Effect.flatMap(openSession, (browserSession) =>
       waitForRememberedReferralCode(
         { config, session: browserSession },
         referrer.code

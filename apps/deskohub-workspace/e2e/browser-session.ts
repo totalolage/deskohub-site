@@ -11,7 +11,7 @@ import type {
   Request,
   Response,
 } from "@playwright/test";
-import { Cause, Deferred, Effect, Exit, FiberSet, type Scope } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, FiberSet, Scope } from "effect";
 import {
   sanitizeArtifactText,
   sanitizeHarArtifact,
@@ -24,6 +24,7 @@ import {
   toNexiBuildEndpoint,
 } from "./checkout/nexi-build-api";
 import {
+  toWorkspaceE2EError,
   WorkspaceE2EError,
   workspaceE2EError,
   workspaceE2ETimeoutError,
@@ -177,7 +178,6 @@ export type E2EBrowserSession = {
 
 type SessionState = {
   active: Page;
-  readonly onActivate?: (page: Page) => void;
   readonly diagnostics: {
     readonly console: string[];
     readonly errors: string[];
@@ -205,11 +205,6 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
   readonly fetch?: typeof fetch;
   /** Names the raw HAR file; any characters are safe. */
   readonly id: string;
-  /**
-   * Hears every change of the active page. Only the argv runner uses it, to
-   * drop its selected iframe.
-   */
-  readonly onActivate?: (page: Page) => void;
   /** Records a HAR for `close({ harPath })`; on by default. */
   readonly recordHar?: boolean;
 }): Effect.fn.Return<E2EBrowserSession, WorkspaceE2EError, Scope.Scope> {
@@ -314,7 +309,6 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
   });
   const state: SessionState = {
     active: initialPage,
-    onActivate: options.onActivate,
     diagnostics: { console: [], errors: [], requests: [] },
     previewAccess: new Map(),
     registeredPages: new WeakSet(),
@@ -529,7 +523,52 @@ const open = Effect.fn("E2EBrowserSession.open")(function* (options: {
   };
 });
 
-export const E2EBrowserSession = { open };
+type E2EBrowserSessionOptions = Parameters<typeof open>[0];
+
+/**
+ * The session a case or lane drives, opened on first use: every later use
+ * shares the same session, waits for an opening still in progress, or fails
+ * with the same opening failure. A failed opening therefore fails the step
+ * that first needed the session.
+ */
+export type OpenE2EBrowserSession = Effect.Effect<
+  E2EBrowserSession,
+  WorkspaceE2EError
+>;
+
+/**
+ * The caller's Scope owns the session: closing it closes the session, and an
+ * opening still in progress then stops and releases what it opened. The
+ * opening runs on its own fiber in that Scope, so a use that is interrupted
+ * or times out stops only its own wait.
+ */
+const openOnFirstUse = Effect.fnUntraced(function* (
+  options: E2EBrowserSessionOptions
+): Effect.fn.Return<OpenE2EBrowserSession, never, Scope.Scope> {
+  const owner = yield* Effect.scope;
+  const opening = Effect.gen(function* () {
+    const scope = yield* Scope.fork(owner);
+    return yield* open(options).pipe(
+      Scope.provide(scope),
+      Effect.onError((cause) => Scope.close(scope, Exit.failCause(cause)))
+    );
+  }).pipe(
+    Effect.catchDefect((defect) =>
+      Effect.fail(toWorkspaceE2EError("open browser session", defect))
+    )
+  );
+  const started = yield* Effect.cached(Effect.forkIn(opening, owner));
+  // Starting the opening only forks it, so it runs uninterruptibly: an
+  // interrupt inside `cached` would leave every later use waiting, or cache
+  // the interruption. Each use's wait stays interruptible.
+  // Awaited, not joined: closing the Scope while a joined opening is in an
+  // uninterruptible region, such as creating the context, never settles.
+  return Effect.flatMap(Effect.uninterruptible(started), (fiber) =>
+    Effect.flatten(Fiber.await(fiber))
+  );
+});
+
+export const E2EBrowserSession = { open, openOnFirstUse };
 
 const readCookieOperation = "read browser cookie";
 
@@ -553,8 +592,8 @@ const describeCookie = (
         secure: cookie.secure,
       };
 
-// The capture logs keep the layout the argv runner gave them, which failure
-// triage reads: an exit code, then the log when it has entries.
+// The capture logs keep the layout failure triage reads: an exit code, then
+// the log when it has entries.
 const asCapturedLog = (text: string) =>
   text ? `exitCode: 0\n\nstdout:\n${text}` : "exitCode: 0";
 
@@ -604,7 +643,6 @@ const registerPage = (
 
 const setActive = (state: SessionState, page: Page) => {
   state.active = page;
-  state.onActivate?.(page);
 };
 
 const pushDiagnostic = (entries: string[], value: string) => {
@@ -649,11 +687,10 @@ const formatResponse = (response: Response) =>
   `${response.status()} ${response.request().method()} ${response.url()}`;
 
 /**
- * Whether a failure, or one of its causes, is Playwright's `TimeoutError`.
- * It matches the error's name rather than the class, so modules that every
- * E2E process loads, such as `runtime.ts`, never load Playwright itself.
+ * Whether a failure, or one of its causes, is Playwright's `TimeoutError`,
+ * matched by the error's name rather than the class.
  */
-export const isPlaywrightTimeout = (cause: unknown): boolean =>
+const isPlaywrightTimeout = (cause: unknown): boolean =>
   cause instanceof Error &&
   (cause.name === "TimeoutError" || isPlaywrightTimeout(cause.cause));
 

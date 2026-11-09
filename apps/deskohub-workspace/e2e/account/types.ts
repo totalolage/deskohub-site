@@ -78,7 +78,6 @@ export type WorkspaceE2EAccountCase = {
   readonly execute: (context: {
     readonly journalRef: WorkspaceE2EAccountJournalRef;
     readonly runStep: WorkspaceE2EStepRunner;
-    readonly session: string;
   }) => Effect.Effect<
     WorkspaceE2EAccountCaseCompletion,
     WorkspaceE2EError,

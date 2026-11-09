@@ -664,6 +664,18 @@ describe("applyCheckoutDiscountCode", () => {
       { _tag: "CustomerServiceUnavailable" },
     ],
     [
+      "a referral store outage, despite the replacement the referral flow signed",
+      {
+        status: "unavailable",
+        reason: "provider",
+        freshPayUrl: "/en-US/checkout/pay?payState=attempted",
+        freshPayStateToken: "attempted-token",
+        expiresAt: "2099-07-01T10:13:00.000Z",
+      },
+      503,
+      { _tag: "CustomerServiceUnavailable" },
+    ],
+    [
       "an expired hold",
       { status: "unavailable", reason: "checkout", checkoutReason: "expired" },
       409,

@@ -1,15 +1,20 @@
 import { resolve } from "node:path";
-import { Cause, Effect, Exit } from "effect";
+import type { Browser } from "@playwright/test";
+import { Cause, Effect, Exit, Scope } from "effect";
 import { readBrowserPageDiagnostics } from "./browser";
-import { type E2EBrowserSession, writeArtifactText } from "./browser-session";
+import {
+  E2EBrowserSession,
+  type OpenE2EBrowserSession,
+  writeArtifactText,
+} from "./browser-session";
 import { runE2ECase, type WorkspaceE2EStepRunner } from "./case-runner";
 import type { DatasourceConfig } from "./config";
 import type { WorkspaceE2EHostedPaymentPermitService } from "./coordination/hosted-payment-permit.service";
 import type { WorkspaceE2EProviderVerificationPermitService } from "./coordination/provider-verification-permit.service";
 import { type WorkspaceE2EError, workspaceE2ETimeoutError } from "./errors";
 import type { E2EDatabase } from "./integrations/database.service";
-import type { Runner } from "./runtime";
-import { browserSessionFor, log, redact } from "./runtime";
+import { redact } from "./redaction";
+import { log } from "./runtime";
 import {
   type WorkspaceE2ECleanup,
   WorkspaceE2ECleanupService,
@@ -22,8 +27,7 @@ import type { WorkspaceE2ECase } from "./types";
 type WorkspaceE2ECaseBrowser = {
   readonly artifactDir: string;
   failureCause?: Cause.Cause<WorkspaceE2EError>;
-  readonly run: Runner;
-  readonly sessionId: string;
+  readonly openSession: OpenE2EBrowserSession;
   readonly testCase: WorkspaceE2ECase;
 };
 
@@ -36,16 +40,16 @@ type WorkspaceE2ECaseBrowser = {
  */
 export const runWorkspaceE2ECase = ({
   artifactRoot,
+  browser: workerBrowser,
   datasourceConfig,
-  run,
   sessionPrefix,
   testCase,
   timeouts,
 }: {
   artifactRoot: string;
+  /** Opens the case's one session; the caller's Scope owns it. */
+  browser: Browser;
   datasourceConfig: DatasourceConfig;
-  /** The test's runner; its Scope owns the case's session. */
-  run: Runner;
   sessionPrefix: string;
   testCase: WorkspaceE2ECase;
   timeouts: WorkspaceE2ETimeouts;
@@ -57,13 +61,19 @@ export const runWorkspaceE2ECase = ({
   | WorkspaceE2ECleanupService
   | WorkspaceE2EHostedPaymentPermitService
   | WorkspaceE2EProviderVerificationPermitService
+  | Scope.Scope
 > =>
   Effect.gen(function* () {
     const cleanup = yield* WorkspaceE2ECleanupService;
+    const testScope = yield* Effect.scope;
+    const sessionId = `${sessionPrefix}-${testCase.id}`;
+    const openSessionOnFirstUse = (id: string) =>
+      E2EBrowserSession.openOnFirstUse({ browser: workerBrowser, id }).pipe(
+        Scope.provide(testScope)
+      );
     const browser: WorkspaceE2ECaseBrowser = {
       artifactDir: resolve(artifactRoot, testCase.id),
-      run,
-      sessionId: `${sessionPrefix}-${testCase.id}`,
+      openSession: yield* openSessionOnFirstUse(sessionId),
       testCase,
     };
 
@@ -82,9 +92,10 @@ export const runWorkspaceE2ECase = ({
           })
         );
         yield* testCase.execute({
-          run: browser.run,
+          openSeparateSession: (name) =>
+            Effect.flatten(openSessionOnFirstUse(`${sessionId}-${name}`)),
+          openSession: browser.openSession,
           runStep: step,
-          session: browser.sessionId,
         });
       }),
       caseId: testCase.id,
@@ -103,22 +114,12 @@ export const runWorkspaceE2ECase = ({
     });
   });
 
-/**
- * The case's session from the runner, which opens it on first use and keeps
- * its outcome: every later call shares the same session, waits for an
- * opening still in progress, or fails with the same opening failure.
- */
-const caseSession = (
-  browser: WorkspaceE2ECaseBrowser
-): Effect.Effect<E2EBrowserSession, WorkspaceE2EError> =>
-  browserSessionFor(browser.run, browser.sessionId);
-
 // A browser that fails to open is logged, not fatal: the case's first browser
 // step fails with the same opening failure, so it keeps its step id.
 const startCaseBrowser = (
   browser: WorkspaceE2ECaseBrowser
 ): Effect.Effect<void> =>
-  caseSession(browser).pipe(
+  browser.openSession.pipe(
     Effect.flatMap((session) =>
       Effect.forEach(
         ["console", "errors", "requests"] as const,
@@ -150,7 +151,7 @@ const captureFailureArtifacts = (
     );
     // A browser still opening is waited for within the capture's bound; one
     // that failed to open has nothing more to capture.
-    const session = yield* caseSession(browser).pipe(
+    const session = yield* browser.openSession.pipe(
       Effect.orElseSucceed(() => undefined)
     );
     if (session) {
@@ -224,7 +225,7 @@ const finalizeCaseBrowser = (
       `${browser.testCase.id} browser close`,
       runFinalizer(
         `${browser.testCase.id} browser close`,
-        caseSession(browser).pipe(
+        browser.openSession.pipe(
           Effect.flatMap((session) => session.close()),
           Effect.ignore
         ),

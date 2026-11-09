@@ -163,7 +163,8 @@ Flow:
 3. Optionally `applyCheckoutDiscountCode`. A rejected code answers 422 and
    leaves the checkout usable; when the server signed a replacement that keeps
    the attempted code, the error carries its token. An unknown Calendar
-   discount or a provider outage answers 503, never a price review.
+   discount or a provider outage, the referral store's included, answers 503,
+   never a price review or a rejected code.
 4. A `price_review` checkout shows the new summary and calls
    `acceptCheckoutPriceChange`, the same continuation the Pay page's link
    issues. Acceptance needs only the token: it doesn't renew the hold, so the

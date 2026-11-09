@@ -16,8 +16,8 @@ import {
   makeTestE2EEnvironment,
   validE2ERuntimeEnvironment,
 } from "../e2e-env.test-fixture";
+import { redact } from "../redaction";
 import { workspaceE2ERunIdSchema } from "../run-identifiers";
-import { redact } from "../runtime";
 import {
   E2ERunContextService,
   E2ETelemetryService,

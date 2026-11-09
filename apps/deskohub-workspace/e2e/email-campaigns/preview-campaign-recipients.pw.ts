@@ -45,7 +45,7 @@ import {
   waitForReactClickHandler,
   waitForReactSubmitHandler,
 } from "../react-handlers";
-import { addRedaction } from "../runtime";
+import { addRedaction } from "../redaction";
 import {
   workspaceE2EEmailCampaignCleanupTimeout,
   workspaceE2EPollInitialIntervalMs,

@@ -96,9 +96,8 @@ export const bindWorkspaceE2ECheckoutBooker: WorkspaceE2ECaseBinder = async ({
     secret: resolveWorkspaceE2ESessionSigningSecret(environment),
   });
   const signIn = Effect.fn("CheckoutBooker.signIn")(function* ({
-    run,
     runStep,
-    session,
+    openSession,
   }: WorkspaceE2ECaseContext) {
     const booker = yield* runStep({
       execute: identities.seedLinkedAccount(label),
@@ -106,7 +105,7 @@ export const bindWorkspaceE2ECheckoutBooker: WorkspaceE2ECaseBinder = async ({
       timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
-      execute: identities.signIn(booker, { run, session }),
+      execute: identities.signIn(booker, { openSession }),
       id: "sign-in-checkout-booker",
       timeoutMs: config.timeouts.datasource,
     });
@@ -146,9 +145,9 @@ export const bindWorkspaceE2ECheckoutBooker: WorkspaceE2ECaseBinder = async ({
         data: boundState.data,
         datasourceConfig,
         flow,
-        run: context.run,
+        openSeparateSession: context.openSeparateSession,
+        openSession: context.openSession,
         runStep: context.runStep,
-        session: context.session,
         state: boundState,
       }).pipe(
         Effect.provide(FetchHttpClient.layer),

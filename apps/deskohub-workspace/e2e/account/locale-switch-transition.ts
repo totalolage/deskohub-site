@@ -9,7 +9,7 @@ import {
   workspaceE2EError,
 } from "../errors";
 import { waitForReactClickHandler } from "../react-handlers";
-import { redact } from "../runtime";
+import { redact } from "../redaction";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   accountSectionLandmarks,
