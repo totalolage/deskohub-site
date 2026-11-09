@@ -9,10 +9,7 @@ import {
   type WorkspaceE2EAccountLocaleSwitchDiagnosticCode,
   workspaceE2EError,
 } from "../errors";
-import {
-  waitForReactClickHandler,
-  waitForReactEventHandler,
-} from "../react-handlers";
+import { waitForReactClickHandler } from "../react-handlers";
 import { redact } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
@@ -121,10 +118,12 @@ type LocaleSwitch = {
   readonly trigger: (page: Page, to: Locale) => Promise<void>;
 };
 
-/** Chooses the language in the profile's preferred-language control. */
-const chooseProfileLanguage = async (page: Page, to: Locale) => {
-  const trigger = page.locator(languageTriggerSelector);
-  await page.waitForFunction(
+/**
+ * Waits until React has attached its `onPointerDown` handler to the element
+ * `selector` matches, so a Radix trigger opens on the click that follows.
+ */
+const waitForPointerDownHandler = (page: Page, selector: string) =>
+  page.waitForFunction(
     (selector) => {
       const element = document.querySelector(selector);
       if (element === null) return false;
@@ -139,9 +138,14 @@ const chooseProfileLanguage = async (page: Page, to: Locale) => {
         typeof Reflect.get(props, "onPointerDown") === "function"
       );
     },
-    languageTriggerSelector,
+    selector,
     { timeout: workspaceE2ETimeouts.uiTransition }
   );
+
+/** Chooses the language in the profile's preferred-language control. */
+const chooseProfileLanguage = async (page: Page, to: Locale) => {
+  const trigger = page.locator(languageTriggerSelector);
+  await waitForPointerDownHandler(page, languageTriggerSelector);
   await trigger.click({ timeout: workspaceE2ETimeouts.browserAction });
   await page
     .getByRole("option", { name: languageNames[to] })
@@ -155,7 +159,7 @@ const chooseProfileLanguage = async (page: Page, to: Locale) => {
  */
 export const activateHeaderSwitcher = async (page: Page, to: Locale) => {
   const trigger = page.locator(languageMenuTriggerSelector);
-  await waitForReactEventHandler(page, trigger, "onPointerDown");
+  await waitForPointerDownHandler(page, languageMenuTriggerSelector);
   await trigger.click({ timeout: workspaceE2ETimeouts.browserAction });
   const link = page
     .locator(localeSwitchLinkSelector(to))

@@ -1,60 +1,56 @@
 import { errors, type Locator, type Page } from "@playwright/test";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
 
-const reactHandlerTimeoutMs = 15_000;
+const reactClickHandlerTimeoutMs = 15_000;
 
-type ReactHandlerState = "ready" | "detached" | false;
+type ReactClickHandlerState = "ready" | "detached" | false;
 
 /**
- * Runs in the browser: whether React has attached the `handler` prop, such
- * as `onClick`, to the element, or the element has left the document. A
- * server-rendered control is visible before hydration, and a native event
- * before then is silently dropped. A streamed Suspense reveal can also
- * replace a server-rendered fallback control with a new node after the
- * document `load` event; the replaced node never gains React props.
+ * Runs in the browser: whether React has attached an `onClick` prop to the
+ * element, or the element has left the document. A server-rendered control is
+ * visible before hydration, and a native click before then is silently
+ * dropped. A streamed Suspense reveal can also replace a server-rendered
+ * fallback control with a new node after the document `load` event; the
+ * replaced node never gains React props.
  */
-const reactHandlerState = ({
-  element,
-  handler,
-}: {
-  readonly element: Element | null;
-  readonly handler: string;
-}): ReactHandlerState => {
+const reactClickHandlerState = (
+  element: Element | null
+): ReactClickHandlerState => {
   if (element === null || !element.isConnected) return "detached";
   const reactPropsKey = Object.keys(element).find((key) =>
     key.startsWith("__reactProps$")
   );
   if (reactPropsKey === undefined) return false;
 
-  const reactProps: unknown = Object.getOwnPropertyDescriptor(
+  const reactProps = Object.getOwnPropertyDescriptor(
     element,
     reactPropsKey
   )?.value;
   if (typeof reactProps !== "object" || reactProps === null) return false;
 
-  return typeof Reflect.get(reactProps, handler) === "function"
+  return "onClick" in reactProps &&
+    typeof (reactProps as { readonly onClick?: unknown }).onClick === "function"
     ? "ready"
     : false;
 };
 
 /**
- * Waits until React has hydrated the `handler` prop, such as `onPointerDown`,
- * of the control the locator currently resolves to, resolving the locator
- * again whenever the observed node is replaced.
+ * Waits until React has hydrated the click handler of the control the locator
+ * currently resolves to, resolving the locator again whenever the observed
+ * node is replaced.
  */
-export const waitForReactEventHandler = async (
+export const waitForReactClickHandler = async (
   page: Pick<Page, "waitForFunction">,
-  control: Pick<Locator, "elementHandle">,
-  handler: string
+  control: Pick<Locator, "elementHandle">
 ): Promise<void> => {
-  const deadline = Date.now() + reactHandlerTimeoutMs;
+  const deadline = Date.now() + reactClickHandlerTimeoutMs;
   let replacements = 0;
 
   const remainingBudgetMs = (): number => {
     const remainingMs = deadline - Date.now();
     if (remainingMs > 0) return remainingMs;
     throw new errors.TimeoutError(
-      `React ${handler} handler wait timed out after ${replacements} control replacements`
+      `React click handler wait timed out after ${replacements} control replacements`
     );
   };
 
@@ -63,12 +59,12 @@ export const waitForReactEventHandler = async (
       timeout: remainingBudgetMs(),
     });
     if (element === null)
-      throw new Error(`React ${handler} control was not rendered`);
+      throw new Error("React click control was not rendered");
 
     try {
       const state = await page.waitForFunction(
-        reactHandlerState,
-        { element, handler },
+        reactClickHandlerState,
+        element,
         {
           polling: workspaceE2EPollIntervalMs.reactHandler,
           timeout: remainingBudgetMs(),
@@ -85,12 +81,6 @@ export const waitForReactEventHandler = async (
     replacements += 1;
   }
 };
-
-/** Waits until React has hydrated the control's click handler. */
-export const waitForReactClickHandler = (
-  page: Pick<Page, "waitForFunction">,
-  control: Pick<Locator, "elementHandle">
-): Promise<void> => waitForReactEventHandler(page, control, "onClick");
 
 /**
  * Waits until React has attached the `onSubmit` handler of the form the
