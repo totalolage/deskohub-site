@@ -216,6 +216,22 @@ describe("details", () => {
     expect(commandOf(result, "CreateCheckout").request.earlySetup).toBe(true);
   });
 
+  test("the hold's selection leaves out options spelled out as undefined", () => {
+    const result = run(
+      startCheckout({
+        ...startInput,
+        selection: { ...startInput.selection, monitorOption: undefined },
+      }),
+      continueEvent
+    );
+    expect(commandOf(result, "CreateCheckout").request.selection).toEqual(
+      startInput.selection
+    );
+    expect(
+      "monitorOption" in commandOf(result, "CreateCheckout").request.selection
+    ).toBe(false);
+  });
+
   test("creating ignores another continue, so one hold is created at a time", () => {
     const creating = run(startCheckout(startInput), continueEvent);
     const again = step(creating.state, continueEvent);

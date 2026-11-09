@@ -12,6 +12,7 @@ import {
   type RememberedReferralUpdate,
   rememberedReferralUpdate,
 } from "../remembered-referral";
+import { withoutAbsentOptions } from "../selection/booking-selection";
 import {
   BookingProblem,
   type CheckoutReplacementToken,
@@ -60,7 +61,13 @@ import {
  */
 export const startCheckout = (input: CheckoutStartInput): CheckoutState =>
   CheckoutState.Details({
-    flow: { ...input, nextOperationId: 1 },
+    // Every request encodes the selection, and an option spelled out as
+    // `undefined` can't be encoded.
+    flow: {
+      ...input,
+      selection: withoutAbsentOptions(input.selection),
+      nextOperationId: 1,
+    },
     details: Option.none(),
     notice: Option.none(),
   });
