@@ -81,6 +81,24 @@ jobs:
         working-directory: apps/deskohub-workspace
         run: bun test scripts/test-shard.test.ts
 
+      # A *.repository.test.ts reads files across the repository, so no
+      # package task caches it and the shards never depend on it. Every one
+      # runs here, uncached, on every pull request.
+      - name: Run repository-wide tests
+        run: |
+          mapfile -t tests < <(git ls-files -- '*.repository.test.ts' '*.repository.test.tsx')
+          if [[ "${#tests[@]}" -eq 0 ]]; then
+            echo "No *.repository.test.ts files found" >&2
+            exit 1
+          fi
+          bun test "${tests[@]/#/./}"
+
+      # The shards don't depend on Mobile's tests (see test:dependencies in
+      # apps/deskohub-workspace/turbo.json), and Mobile CI is path-filtered,
+      # so the required gate runs them here.
+      - name: Test Mobile
+        run: bun turbo run test --filter=deskohub-mobile
+
       - name: Validate Workspace schema migration
         env:
           DATABASE_URL: postgresql://workspace:workspace@127.0.0.1:5432/workspace

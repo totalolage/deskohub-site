@@ -33,7 +33,7 @@
     "lint:biome": "biome check app db emails features scripts shared *.ts --config-path \"$(git rev-parse --show-toplevel)/biome.json\"",
     "lint:eslint": "eslint --ext .ts,.tsx app db emails features scripts shared proxy.ts",
     "lint:knip": "knip --directory ../.. --workspace apps/deskohub-workspace",
-    "test": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1 --timeout 30000 --path-ignore-patterns='**/*.build.test.ts'",
+    "test": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1 --timeout 30000 --path-ignore-patterns='**/*.{build,repository}.test.ts'",
     "test:shard-1": "bun --no-env-file scripts/test-shard.ts 1",
     "test:shard-2": "bun --no-env-file scripts/test-shard.ts 2",
     "test:shard-3": "bun --no-env-file scripts/test-shard.ts 3",

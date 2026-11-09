@@ -32,20 +32,14 @@ export type RepositoryTestEmailLiteral = TestEmailLiteral & {
 };
 
 /**
- * Where and what the check scans. This package's Turbo `test` inputs must
- * cover every root and extension here; a test keeps them aligned.
+ * Where and what the check scans. It reads files across the repository, so
+ * its test is a `*.repository.test.ts` that Workspace CI runs uncached on
+ * every pull request instead of a cached package task.
  */
-export const scannedRoots = ["apps", "packages", "scripts"] as const;
+const scannedRoots = ["apps", "packages", "scripts"] as const;
 /** Boardgame Bar keeps its own email setup and stays outside this check. */
-export const excludedRoots = ["apps/deskohub-boardgame-bar"] as const;
-export const scannedExtensions = [
-  "ts",
-  "tsx",
-  "js",
-  "jsx",
-  "mjs",
-  "cjs",
-] as const;
+const excludedRoots = ["apps/deskohub-boardgame-bar"] as const;
+const scannedExtensions = ["ts", "tsx", "js", "jsx", "mjs", "cjs"] as const;
 
 const moduleExtension = `\\.(?:${scannedExtensions.join("|")})$`;
 

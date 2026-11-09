@@ -132,7 +132,8 @@
         "@deskohub/workspace-admin-api#test",
         "@deskohub/workspace-customer-api#test",
         "osm#test"
-      ]
+      ],
+      "inputs": []
     },
     "test:shard-1": {
       "dependsOn": [
