@@ -347,7 +347,7 @@
   "landingOfferingOffices": "Private offices aren't available yet.",
   "landingAmenitiesTitle": "What's here",
   "landingAmenityInternetTitle": "Internet",
-  "landingAmenityInternetText": "Fiber internet and 6G Wi-Fi.",
+  "landingAmenityInternetText": "Fiber internet and Wi-Fi 6.",
   "landingAmenityWorkstationTitle": "Workstations",
   "landingAmenityWorkstationText": "Add two 27″ or 32″ monitors, in QHD or 4K, to a Reserved Desk.",
   "landingAmenityCoffeeTitle": "Coffee",
@@ -372,7 +372,7 @@
   "faqQuestionHowItWorks": "How does it work?",
   "faqAnswerHowItWorks": "Book and pay online in the <reservation>booking form</reservation>. Your confirmation email links to a page with your door PIN. Enter the PIN on the keypad at the main door, and come and go as you need during your booking.",
   "faqQuestionInternet": "Is there a good internet connection?",
-  "faqAnswerInternet": "We have Optical Fiber internet and 6G WiFi available.",
+  "faqAnswerInternet": "We have fiber internet and Wi-Fi 6.",
   "faqQuestionFood": "Can I bring my own food?",
   "faqAnswerFood": "Yes, you are welcome to bring food, as well as purchase drinks from our drinks fridge. We even have plates, cutlery, and a small oven for reheating your food!",
   "faqQuestionCalls": "Is there a space for taking calls?",
@@ -967,19 +967,73 @@
   "reservationValidationCoffeeRequired": "Coffee is included with this tier and must stay selected.",
   "automatedRequestRejected": "This request looked automated, so we couldn’t accept it. Please continue in your own browser.",
   "reservationSecurityInvalidOrigin": "The reservation request could not be verified. Please reload the page and try again.",
-  "contactValidationNameMinimum": "Name must be at least {min} characters.",
-  "contactValidationNameMaximum": "Name can be at most {max} characters.",
+  "contactValidationNameMinimum": [
+    {
+      "declarations": ["input min", "local minPlural = min: plural"],
+      "selectors": ["minPlural"],
+      "match": {
+        "minPlural=one": "Name must be at least {min} character.",
+        "minPlural=other": "Name must be at least {min} characters."
+      }
+    }
+  ],
+  "contactValidationNameMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Name can be at most {max} character.",
+        "maxPlural=other": "Name can be at most {max} characters."
+      }
+    }
+  ],
   "contactValidationEmailRequired": "Email is required.",
   "contactValidationEmailInvalid": "Enter a valid email address.",
-  "contactValidationEmailMaximum": "Email can be at most {max} characters.",
+  "contactValidationEmailMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Email can be at most {max} character.",
+        "maxPlural=other": "Email can be at most {max} characters."
+      }
+    }
+  ],
   "contactEmailConfirmationLabel": "Repeat email",
   "contactValidationEmailConfirmationMismatch": "The emails don't match. Check both for typos.",
   "contactValidationEmailUndeliverable": "This email address can't receive email. Check it for typos, because we send your confirmation and access link there.",
-  "contactValidationPhoneInvalid": "Enter a valid Czech phone number.",
-  "contactValidationPhoneMaximum": "Phone can be at most {max} characters.",
+  "contactValidationPhoneInvalid": "Enter a valid phone number. A number in international format starting with + always works.",
+  "contactValidationPhoneMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Phone can be at most {max} character.",
+        "maxPlural=other": "Phone can be at most {max} characters."
+      }
+    }
+  ],
   "contactValidationPhoneRequired": "Phone is required.",
-  "contactValidationMessageMinimum": "Message must be at least {min} characters.",
-  "contactValidationMessageMaximum": "Message can be at most {max} characters.",
+  "contactValidationMessageMinimum": [
+    {
+      "declarations": ["input min", "local minPlural = min: plural"],
+      "selectors": ["minPlural"],
+      "match": {
+        "minPlural=one": "Message must be at least {min} character.",
+        "minPlural=other": "Message must be at least {min} characters."
+      }
+    }
+  ],
+  "contactValidationMessageMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Message can be at most {max} character.",
+        "maxPlural=other": "Message can be at most {max} characters."
+      }
+    }
+  ],
   "galleryMetadataTitle": "Photos of the Palmovka coworking space",
   "galleryMetadataDescription": "Photos of Deskohub Workspace at Palmovka, Prague 8. See what the space looks like before you book a desk or the meeting room.",
   "gallerySrTitle": "Workspace gallery",
@@ -1437,7 +1491,7 @@
   "coworkingReservedDeskHours": "all day, 24/7",
   "coworkingOpenSpaceText": "Take any free seat at a shared table. Good for a regular working day away from home.",
   "coworkingOpenSpacePointHours": "From midnight to {until} on your booked day",
-  "coworkingOpenSpacePointInternet": "Fibre internet and Wi-Fi 6G",
+  "coworkingOpenSpacePointInternet": "Fiber internet and Wi-Fi 6",
   "coworkingOpenSpacePointCoffee": "Coffee available as an add-on",
   "coworkingOpenSpaceCta": "Book a shared desk",
   "coworkingReservedDeskText": "The desk is yours for the whole day. No hunting for a free seat, and you can come and go at any hour, day or night.",
@@ -1448,7 +1502,7 @@
   "coworkingPricesNote": "Add-on prices and any current sale are in the <pricing>price list</pricing>.",
   "coworkingAmenitiesTitle": "What you'll find here",
   "coworkingAmenityInternetTitle": "Internet",
-  "coworkingAmenityInternetText": "Fibre internet and Wi-Fi 6G handle video calls and large files.",
+  "coworkingAmenityInternetText": "Fiber internet and Wi-Fi 6 handle video calls and large files.",
   "coworkingAmenityWorkstationTitle": "Workstations",
   "coworkingAmenityWorkstationText": "Add two 27″ or 32″ monitors in QHD or 4K to a reserved desk.",
   "coworkingAmenityKitchenTitle": "Kitchenette",

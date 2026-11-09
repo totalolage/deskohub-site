@@ -11,9 +11,7 @@
         "local maximumPlural = maximum: plural",
         "local formattedMaximum = maximum: number"
       ],
-      "selectors": [
-        "maximumPlural"
-      ],
+      "selectors": ["maximumPlural"],
       "match": {
         "maximumPlural=one": "Використайте щонайбільше {formattedMaximum} символ.",
         "maximumPlural=few": "Використайте щонайбільше {formattedMaximum} символи.",
@@ -38,9 +36,7 @@
         "local formattedMinimum = minimum: number",
         "local formattedMaximum = maximum: number"
       ],
-      "selectors": [
-        "maximumPlural"
-      ],
+      "selectors": ["maximumPlural"],
       "match": {
         "maximumPlural=one": "Кінець має бути через {formattedMinimum}–{formattedMaximum} годину після початку.",
         "maximumPlural=few": "Кінець має бути через {formattedMinimum}–{formattedMaximum} години після початку.",

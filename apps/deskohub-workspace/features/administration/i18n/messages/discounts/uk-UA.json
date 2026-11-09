@@ -11,9 +11,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} код знижки",
         "countPlural=few": "{formattedCount} коди знижки",
@@ -37,9 +35,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} ваучер",
         "countPlural=few": "{formattedCount} ваучери",
@@ -60,9 +56,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} акція",
         "countPlural=few": "{formattedCount} акції",
@@ -136,9 +130,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} клієнт",
         "countPlural=few": "{formattedCount} клієнти",
@@ -289,9 +281,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Цей код може використати {formattedCount} клієнт.",
         "countPlural=few": "Цей код можуть використати {formattedCount} клієнти.",
@@ -308,9 +298,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Цей ваучер може використати {formattedCount} клієнт.",
         "countPlural=few": "Цей ваучер можуть використати {formattedCount} клієнти.",
@@ -393,9 +381,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} обраний клієнт",
         "countPlural=few": "{formattedCount} обрані клієнти",
@@ -456,9 +442,7 @@
         "local formattedCount = count: number",
         "local formattedTotal = total: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Зараз код {code} доступний лише {formattedCount} іншому клієнту. Після додавання клієнта ({customerName}) загальна кількість клієнтів із доступом становитиме {formattedTotal}.",
         "countPlural=few": "Зараз код {code} доступний лише {formattedCount} іншим клієнтам. Після додавання клієнта ({customerName}) загальна кількість клієнтів із доступом становитиме {formattedTotal}.",
@@ -476,9 +460,7 @@
         "local formattedCount = count: number",
         "local formattedTotal = total: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Зараз ваучер {code} доступний лише {formattedCount} іншому клієнту. Після додавання клієнта ({customerName}) загальна кількість клієнтів із доступом становитиме {formattedTotal}.",
         "countPlural=few": "Зараз ваучер {code} доступний лише {formattedCount} іншим клієнтам. Після додавання клієнта ({customerName}) загальна кількість клієнтів із доступом становитиме {formattedTotal}.",

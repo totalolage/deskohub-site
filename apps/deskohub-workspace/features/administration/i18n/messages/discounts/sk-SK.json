@@ -11,9 +11,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} zľavový kód",
         "countPlural=few": "{formattedCount} zľavové kódy",
@@ -37,9 +35,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} poukážka",
         "countPlural=few": "{formattedCount} poukážky",
@@ -60,9 +56,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} zľavová akcia",
         "countPlural=few": "{formattedCount} zľavové akcie",
@@ -136,9 +130,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} zákazník",
         "countPlural=few": "{formattedCount} zákazníci",
@@ -289,9 +281,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Tento kód môže použiť {formattedCount} zákazník.",
         "countPlural=few": "Tento kód môžu použiť {formattedCount} zákazníci.",
@@ -308,9 +298,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Túto poukážku môže použiť {formattedCount} zákazník.",
         "countPlural=few": "Túto poukážku môžu použiť {formattedCount} zákazníci.",
@@ -393,9 +381,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} vybraný zákazník",
         "countPlural=few": "{formattedCount} vybraní zákazníci",
@@ -456,9 +442,7 @@
         "local formattedCount = count: number",
         "local formattedTotal = total: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Kód {code} je teraz obmedzený na {formattedCount} ďalšieho zákazníka. Po pridaní tohto zákazníka ({customerName}) bude dostupný {formattedTotal} zákazníkom.",
         "countPlural=few": "Kód {code} je teraz obmedzený na {formattedCount} ďalších zákazníkov. Po pridaní tohto zákazníka ({customerName}) bude dostupný {formattedTotal} zákazníkom.",
@@ -476,9 +460,7 @@
         "local formattedCount = count: number",
         "local formattedTotal = total: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Poukážka {code} je teraz obmedzená na {formattedCount} ďalšieho zákazníka. Po pridaní tohto zákazníka ({customerName}) bude dostupná {formattedTotal} zákazníkom.",
         "countPlural=few": "Poukážka {code} je teraz obmedzená na {formattedCount} ďalších zákazníkov. Po pridaní tohto zákazníka ({customerName}) bude dostupná {formattedTotal} zákazníkom.",

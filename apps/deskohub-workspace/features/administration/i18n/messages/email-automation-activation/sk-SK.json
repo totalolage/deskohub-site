@@ -20,7 +20,7 @@
   "emailAutomationActivationFailureArchived": "Táto automatizácia je archivovaná a už ju nemožno meniť.",
   "emailAutomationActivationFailureAudienceArchived": "Publikum kampane je archivované. Vyberte aktívne publikum a skúste to znova.",
   "emailAutomationActivationFailureDraftChanged": "Pracovná verzia alebo publikum sa po skúšobnom behu zmenili. Spustite skúšobný beh znova a potom aktivujte.",
-  "emailAutomationActivationFailureFallbackContentMissing": "Doplňte český e-mail. Zákazníci, v ktorých jazyku e-mail nie je, dostanú český.",
+  "emailAutomationActivationFailureFallbackContentMissing": "Doplňte český e-mail. Je poslednou náhradnou verziou pre zákazníkov, ktorých jazyk nemá vlastný e-mail.",
   "emailAutomationActivationFailureFlowInvalid": "Scenár ešte nie je hotový. Dokončite ho na karte Scenár a skúste to znova.",
   "emailAutomationActivationFailurePreviewRequired": "Pred aktiváciou spustite skúšobný beh aktuálnej pracovnej verzie.",
   "emailAutomationActivationFailureStatusConflict": "Stav automatizácie sa medzitým zmenil. Načítajte stránku znova a skúste to ešte raz.",
@@ -61,9 +61,7 @@
         "input total",
         "local countPlural = total: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Vyhodnotené {done} z {total} dávky",
         "countPlural=few": "Vyhodnotené {done} z {total} dávok",

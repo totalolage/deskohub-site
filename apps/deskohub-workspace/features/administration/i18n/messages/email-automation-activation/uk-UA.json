@@ -20,7 +20,7 @@
   "emailAutomationActivationFailureArchived": "Цю автоматизацію архівовано, і її більше не можна змінювати.",
   "emailAutomationActivationFailureAudienceArchived": "Аудиторію кампанії архівовано. Оберіть активну аудиторію та спробуйте ще раз.",
   "emailAutomationActivationFailureDraftChanged": "Після пробного виконання змінилася робоча версія або аудиторія. Почніть пробне виконання знову, а потім активуйте.",
-  "emailAutomationActivationFailureFallbackContentMissing": "Додайте чеський лист. Клієнти, для мови яких немає листа, отримають чеський.",
+  "emailAutomationActivationFailureFallbackContentMissing": "Додайте чеський лист. Це останній резервний варіант для клієнтів, для мови яких листа немає.",
   "emailAutomationActivationFailureFlowInvalid": "Сценарій ще не готовий. Завершіть його на вкладці «Сценарій» і спробуйте ще раз.",
   "emailAutomationActivationFailurePreviewRequired": "Перед активацією почніть пробне виконання поточної робочої версії.",
   "emailAutomationActivationFailureStatusConflict": "Статус автоматизації тим часом змінився. Оновіть сторінку та спробуйте ще раз.",
@@ -61,9 +61,7 @@
         "input total",
         "local countPlural = total: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Оцінено {done} з {total} пакета",
         "countPlural=few": "Оцінено {done} з {total} пакетів",

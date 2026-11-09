@@ -13,9 +13,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} faktúra",
         "countPlural=few": "{formattedCount} faktúry",
@@ -81,9 +79,7 @@
         "local maximumLengthPlural = maximumLength: plural",
         "local formattedMaximumLength = maximumLength: number"
       ],
-      "selectors": [
-        "maximumLengthPlural"
-      ],
+      "selectors": ["maximumLengthPlural"],
       "match": {
         "maximumLengthPlural=one": "Použite najviac {formattedMaximumLength} znak.",
         "maximumLengthPlural=few": "Použite najviac {formattedMaximumLength} znaky.",
@@ -147,9 +143,7 @@
         "local decimalPlacesPlural = decimalPlaces: plural",
         "local formattedDecimalPlaces = decimalPlaces: number"
       ],
-      "selectors": [
-        "decimalPlacesPlural"
-      ],
+      "selectors": ["decimalPlacesPlural"],
       "match": {
         "decimalPlacesPlural=one": "Zadajte ceny vrátane znamienka s najviac {formattedDecimalPlaces} desatinným miestom.",
         "decimalPlacesPlural=few": "Zadajte ceny vrátane znamienka s najviac {formattedDecimalPlaces} desatinnými miestami.",

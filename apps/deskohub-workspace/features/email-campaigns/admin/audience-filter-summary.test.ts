@@ -7,6 +7,10 @@ import {
   describeAudienceFilter,
   hasPeriodEndingAtEvaluation,
 } from "./audience-filter-summary";
+import {
+  reservationProductFamilyLabel,
+  reservationProductPropertyLabel,
+} from "./audiences/reservation-product-wording";
 import { describeDatePeriod } from "./date-period-phrases";
 
 const and = (...filters: AudienceFilter[]): AudienceFilter => ({
@@ -554,6 +558,28 @@ describe("reservation product phrasing", () => {
     ).toBe(
       "Customers who have never visited for cowork with no coffee and tier other than Basic Day Pass"
     );
+  });
+
+  test("names products mid-sentence as each language writes nouns", () => {
+    const filter = reservations("gte", 1, {
+      product: {
+        family: "meeting-room",
+        properties: [{ property: "offer", operator: "anyOf", value: [] }],
+      },
+    });
+    const labels = (locale: Locale) => [
+      reservationProductFamilyLabel("meeting-room", locale),
+      reservationProductPropertyLabel("meeting-room", "offer", locale),
+    ];
+
+    for (const label of labels("de-DE")) {
+      expect(describe_(filter, "de-DE")).toContain(label);
+    }
+    for (const label of labels("cs-CZ")) {
+      expect(describe_(filter, "cs-CZ")).toContain(
+        label.toLocaleLowerCase("cs-CZ")
+      );
+    }
   });
 });
 

@@ -15,13 +15,8 @@
   "emailsEditorLanguageCzech": "Čeština",
   "emailsEditorLanguageProblemCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} problém",
         "countPlural=few": "{count} problémy",
@@ -50,13 +45,8 @@
   "emailsEditorProblemsHeading": "Pred zverejnením",
   "emailsEditorProblemsCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Zverejneniu bráni {count} problém.",
         "countPlural=few": "Zverejneniu bránia {count} problémy.",
@@ -221,6 +211,7 @@
   "emailsEditorBlockSortDescending": "Zostupne",
   "emailsEditorBlockLimit": "Zobraziť najviac",
   "emailsEditorBlockLimitHint": "Ak pole necháte prázdne, zobrazia sa všetky položky.",
+  "emailsEditorEnglishFallbackMissing": "Bez anglického prekladu dostanú nemeckí a ukrajinskí príjemcovia bez vlastného prekladu českú verziu.",
   "emailsEditorProblemValuePath": "Vyberte pole zákazníka.",
   "emailsEditorProblemValueSort": "Vyberte pole na zoradenie aj jeho smer.",
   "emailsEditorProblemValueDiscount": "Vyberte zľavu.",

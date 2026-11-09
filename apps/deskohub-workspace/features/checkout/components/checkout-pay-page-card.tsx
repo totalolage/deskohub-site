@@ -3,7 +3,7 @@
 import Interpolate from "@doist/react-interpolate";
 import { CreditCard, RotateCcw, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -17,6 +17,7 @@ import {
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
 import { formatMoney, type Money } from "@/shared/money/money";
+import { CheckoutSummaryLine } from "./checkout-summary-line";
 
 type CheckoutPayActionVariant = "pay" | "retry";
 
@@ -125,6 +126,21 @@ export function CheckoutPayProviderHandoff({
   );
 }
 
+const payLabelAmountMarker = "__CHECKOUT_PAY_AMOUNT__";
+
+/**
+ * Whether the locale's pay label names the amount it charges. The catalog
+ * decides: the de-DE legal order button (§ 312j BGB) carries no amount, so the
+ * total stands beside the button instead.
+ */
+const payLabelNamesAmount = (locale: Locale) =>
+  m
+    .checkoutPayOrderAndPayAmountButton(
+      { amount: payLabelAmountMarker },
+      { locale }
+    )
+    .includes(payLabelAmountMarker);
+
 export function CheckoutPaySubmitButton({
   disabled,
   locale,
@@ -141,35 +157,63 @@ export function CheckoutPaySubmitButton({
   readonly total?: Money;
   readonly variant: CheckoutPayActionVariant;
 }) {
+  const separateTotalId = useId();
+  const separateTotal =
+    total && !payLabelNamesAmount(locale) ? total : undefined;
+
+  // Centred on the first line of the label, as the button centres it when
+  // the label fits on one line.
+  const payIconClassName =
+    "me-2 mt-[calc((1lh-1rem)/2)] inline-block size-4 align-top";
+  const orderLabel = total
+    ? m.checkoutPayOrderAndPayAmountButton(
+        { amount: formatMoney(total, locale) },
+        { locale }
+      )
+    : m.checkoutPayOrderAndPayButton({}, { locale });
+  const label = pending
+    ? m.checkoutPaymentRetryPending({}, { locale })
+    : orderLabel;
+
   return (
-    <Button
-      type="button"
-      size="xl"
-      caps
-      fullWidth
-      disabled={disabled}
-      pending={pending}
-      onClick={onClick}
-    >
-      {pending ? (
-        m.checkoutPaymentRetryPending({}, { locale })
-      ) : (
-        <>
-          {
-            {
-              pay: <CreditCard className="h-4 w-4" />,
-              retry: <RotateCcw className="h-4 w-4" />,
-            }[variant]
-          }
-          {total
-            ? m.checkoutPayOrderAndPayAmountButton(
-                { amount: formatMoney(total, locale) },
-                { locale }
-              )
-            : m.checkoutPayOrderAndPayButton({}, { locale })}
-        </>
+    <div className="@container space-y-3">
+      {!!separateTotal && (
+        <div id={separateTotalId}>
+          <CheckoutSummaryLine
+            amount={separateTotal}
+            label={m.checkoutSummaryItemTotal({}, { locale })}
+            locale={locale}
+          />
+        </div>
       )}
-    </Button>
+      <Button
+        type="button"
+        size="xl"
+        caps
+        fullWidth
+        wrap
+        aria-describedby={separateTotal ? separateTotalId : undefined}
+        disabled={disabled}
+        pending={pending}
+        onClick={onClick}
+      >
+        {/* Long labels, such as the German legal order wording, wrap onto
+            balanced lines. The icon leads the first line, so it stays
+            beside the text rather than beside the whole wrapped block.
+            Below 18rem the label takes the small button's type size and
+            caps tracking: at the full size, the longest word
+            ("Zahlungspflichtig", about 206px) beside the icon needs a
+            278px button. */}
+        <span className="text-balance @max-[18rem]:text-xs @max-[18rem]:tracking-[0.08em]">
+          {!pending &&
+            {
+              pay: <CreditCard className={payIconClassName} />,
+              retry: <RotateCcw className={payIconClassName} />,
+            }[variant]}
+          {label}
+        </span>
+      </Button>
+    </div>
   );
 }
 

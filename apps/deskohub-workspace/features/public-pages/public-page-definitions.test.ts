@@ -5,9 +5,14 @@ import {
   getLegalDocument,
   type LegalDocumentKey,
 } from "@/features/legal/content";
+import { legalTranslationDates } from "@/features/legal/legal-translation-dates";
 import { runtimeImportGraph } from "@/shared/testing/runtime-import-graph.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { publicPageDefinitions, publicPages } from "./public-page-definitions";
+import {
+  getPublicPageContentDate,
+  publicPageDefinitions,
+  publicPages,
+} from "./public-page-definitions";
 
 const workspaceRoot = resolve(import.meta.dir, "../..");
 const renderingPackage = /^(react|react-dom|server-only|next)(\/|$)/;
@@ -53,10 +58,15 @@ describe("public page content dates", () => {
   test("date every page with a calendar day that has passed", () => {
     const today = Temporal.Now.plainDateISO("Europe/Prague");
 
-    for (const { contentDate } of publicPages) {
-      const date = Temporal.PlainDate.from(contentDate);
-      expect(date.toString()).toBe(contentDate);
-      expect(Temporal.PlainDate.compare(date, today)).toBeLessThanOrEqual(0);
+    for (const { contentDate, localeContentDates } of publicPages) {
+      for (const isoDate of [
+        contentDate,
+        ...Object.values(localeContentDates ?? {}),
+      ]) {
+        const date = Temporal.PlainDate.from(isoDate);
+        expect(date.toString()).toBe(isoDate);
+        expect(Temporal.PlainDate.compare(date, today)).toBeLessThanOrEqual(0);
+      }
     }
   });
 
@@ -67,6 +77,28 @@ describe("public page content dates", () => {
           longDate(publicPageDefinitions[`/${documentKey}`].contentDate, locale)
         );
       }
+    }
+  });
+
+  // A translated locale's legal text can change, as its translation notice
+  // did, without a new Czech version or document date.
+  test("date each legal page in a translated locale by its translation too", () => {
+    for (const documentKey of legalDocumentKeys) {
+      expect(
+        publicPageDefinitions[`/${documentKey}`].localeContentDates
+      ).toEqual(legalTranslationDates);
+    }
+  });
+
+  // English's translation notice changed with the new locales' translations,
+  // all after the Czech versions; Czech keeps each document's date.
+  test("date the translated legal pages by their 2026-11-09 translations", () => {
+    for (const documentKey of legalDocumentKeys) {
+      const page = publicPageDefinitions[`/${documentKey}`];
+      for (const locale of ["en-US", "de-DE", "uk-UA", "sk-SK"] as const) {
+        expect(getPublicPageContentDate(page, locale)).toBe("2026-11-09");
+      }
+      expect(getPublicPageContentDate(page, "cs-CZ")).toBe(page.contentDate);
     }
   });
 });

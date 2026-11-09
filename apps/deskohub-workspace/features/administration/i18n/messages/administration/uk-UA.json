@@ -6,13 +6,8 @@
   "administrationBookingColumnTable": "Стіл",
   "administrationBookingCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} резервування столу",
         "countPlural=few": "{count} резервування столів",
@@ -45,9 +40,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} особа",
         "countPlural=few": "{formattedCount} особи",
@@ -89,9 +82,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{date}: {formattedCount} бронювання",
         "countPlural=few": "{date}: {formattedCount} бронювання",
@@ -112,9 +103,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} бронювання за останні 365 днів",
         "countPlural=few": "{formattedCount} бронювання за останні 365 днів",
@@ -126,13 +115,8 @@
   "administrationCustomerContactUnavailable": "Дані клієнта недоступні",
   "administrationCustomerCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} клієнт",
         "countPlural=few": "{count} клієнти",
@@ -168,9 +152,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} бронювання · Оновлено {date}",
         "countPlural=few": "{formattedCount} бронювання · Оновлено {date}",
@@ -197,9 +179,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "<count>{formattedCount}</count> бронювання",
         "countPlural=few": "<count>{formattedCount}</count> бронювання",
@@ -263,13 +243,8 @@
   "administrationOperationColumnType": "Тип",
   "administrationOperationCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} операція",
         "countPlural=few": "{count} операції",
@@ -311,13 +286,8 @@
   "administrationOrderColumnReservation": "Бронювання",
   "administrationOrderCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} замовлення",
         "countPlural=few": "{count} замовлення",
@@ -375,9 +345,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "… і ще {formattedCount}",
         "countPlural=few": "… і ще {formattedCount}",
@@ -399,9 +367,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Завершено: {formattedCompleted} з {formattedCount} бронювання",
         "countPlural=few": "Завершено: {formattedCompleted} з {formattedCount} бронювань",
@@ -503,9 +469,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} бронювання очікує повернення коштів.",
         "countPlural=few": "{formattedCount} бронювання очікують повернення коштів.",
@@ -660,13 +624,8 @@
   "administrationReservationLifecycleWaitingForCleanup": "Очікує зняття утримання",
   "administrationReservationListCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} бронювання",
         "countPlural=few": "{count} бронювання",

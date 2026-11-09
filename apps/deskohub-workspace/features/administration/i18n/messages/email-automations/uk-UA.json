@@ -2,13 +2,8 @@
   "emailAutomationsEyebrow": "Автоматична кампанія",
   "emailAutomationsFrequencyBannerBody": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Цей розклад запускається до {count} разу на годину. Кожен запуск перевіряє всю аудиторію, тому переконайтеся, що така частота навмисна.",
         "countPlural=few": "Цей розклад запускається до {count} разів на годину. Кожен запуск перевіряє всю аудиторію, тому переконайтеся, що така частота навмисна.",

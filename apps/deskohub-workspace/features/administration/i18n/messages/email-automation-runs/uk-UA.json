@@ -11,9 +11,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Чекати {formattedCount} хвилину",
         "countPlural=few": "Чекати {formattedCount} хвилини",
@@ -29,9 +27,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Чекати {formattedCount} годину",
         "countPlural=few": "Чекати {formattedCount} години",
@@ -47,9 +43,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Чекати {formattedCount} день",
         "countPlural=few": "Чекати {formattedCount} дні",
@@ -65,9 +59,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Чекати {formattedCount} тиждень",
         "countPlural=few": "Чекати {formattedCount} тижні",
@@ -83,9 +75,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Чекати {formattedCount} місяць",
         "countPlural=few": "Чекати {formattedCount} місяці",
@@ -101,9 +91,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} хвилина",
         "countPlural=few": "{formattedCount} хвилини",
@@ -119,9 +107,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} година",
         "countPlural=few": "{formattedCount} години",
@@ -137,9 +123,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} день",
         "countPlural=few": "{formattedCount} дні",
@@ -156,9 +140,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} хвилину тому",
         "countPlural=few": "{formattedCount} хвилини тому",
@@ -174,9 +156,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} годину тому",
         "countPlural=few": "{formattedCount} години тому",
@@ -192,9 +172,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} день тому",
         "countPlural=few": "{formattedCount} дні тому",
@@ -282,9 +260,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} виконання на цій сторінці",
         "countPlural=few": "{formattedCount} виконання на цій сторінці",

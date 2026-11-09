@@ -349,7 +349,7 @@
   "landingOfferingOffices": "Súkromné kancelárie zatiaľ neponúkame.",
   "landingAmenitiesTitle": "Čo tu nájdeš",
   "landingAmenityInternetTitle": "Internet",
-  "landingAmenityInternetText": "Optický internet a Wi-Fi 6G.",
+  "landingAmenityInternetText": "Optický internet a Wi-Fi 6.",
   "landingAmenityWorkstationTitle": "Pracovné stanice",
   "landingAmenityWorkstationText": "K vyhradenému miestu si pridáš dva monitory 27″ alebo 32″ v rozlíšení QHD alebo 4K.",
   "landingAmenityCoffeeTitle": "Káva",
@@ -374,7 +374,7 @@
   "faqQuestionHowItWorks": "Ako to funguje?",
   "faqAnswerHowItWorks": "Miesto si zarezervuješ a zaplatíš online v <reservation>rezervačnom formulári</reservation>. V potvrdzovacom e-maile dostaneš odkaz na stránku s PIN kódom k dverám. PIN zadáš na klávesnici pri hlavných dverách a počas rezervácie môžeš prichádzať aj odchádzať.",
   "faqQuestionInternet": "Je tu kvalitné internetové pripojenie?",
-  "faqAnswerInternet": "K dispozícii máme optický internet a Wi-Fi 6G.",
+  "faqAnswerInternet": "K dispozícii máme optický internet a Wi-Fi 6.",
   "faqQuestionFood": "Môžem si priniesť jedlo?",
   "faqAnswerFood": "Áno, jedlo si môžeš priniesť a môžeš si tiež kúpiť nápoje z našej chladničky. Máme dokonca taniere, príbory a malú rúru na ohriatie jedla!",
   "faqQuestionCalls": "Je tu priestor na telefonovanie?",
@@ -673,7 +673,7 @@
   "checkoutDiscountCodePlaceholder": "Zadaj kód",
   "checkoutDiscountCodeApply": "Použiť kód",
   "checkoutDiscountCodeApplying": "Uplatňuje sa...",
-  "checkoutDiscountCodeUnavailable": "Tento zľavový kód, odporúčací kód alebo poukážka nie sú dostupné. Skontroluj ich a skús to znova, alebo pokračuj s aktuálnou cenou.",
+  "checkoutDiscountCodeUnavailable": "Tento zľavový kód, odporúčací kód alebo kód poukážky nie je dostupný. Skontroluj ho a skús to znova alebo pokračuj s aktuálnou cenou.",
   "checkoutVoucherLabel": "Poukážka",
   "checkoutDiscountCodeApplied": "Kód uplatnený: zľava {discount} 🎉",
   "checkoutReferralDiscountApplied": "Odporúčacia zľava na prvú rezerváciu uplatnená: {discount} 🎉",
@@ -937,6 +937,12 @@
   "cookieSettingsNecessaryDescription": "Potrebné pre základnú funkčnosť, výber jazyka, zabezpečenie a uloženie voľby súhlasu.",
   "cookieSettingsAnalyticsTitle": "Analytické cookies",
   "cookieSettingsAnalyticsDescription": "Pomáhajú nám vyhodnocovať používanie webu, spoľahlivosť rezervačného formulára a účinnosť kampaní bez odosielania hodnôt rezervačného formulára alebo osobných údajov.",
+  "analyticsPreferenceTitle": "Analytika na tvojom účte",
+  "analyticsPreferenceDescription": "Platí na všetkých zariadeniach, kde sa prihlásiš. Viac nájdeš v <privacy>zásadách ochrany osobných údajov</privacy>.",
+  "analyticsPreferenceSaving": "Ukladáme tvoju preferenciu analytiky…",
+  "analyticsPreferenceSaved": "Tvoja preferencia analytiky bola uložená.",
+  "analyticsPreferenceSaveError": "Preferenciu analytiky sa nepodarilo uložiť. Skús to, prosím, znova.",
+  "analyticsPreferenceUnavailable": "Preferenciu analytiky teraz nemožno načítať. Skús to, prosím, neskôr.",
   "cookieSettingsMarketingTitle": "Marketingové cookies",
   "cookieSettingsMarketingDescription": "V budúcnosti by podporovali meranie reklamy alebo kampaní, ak budú nasadené.",
   "cookieSettingsPreferencesTitle": "Preferenčné cookies",
@@ -977,19 +983,85 @@
   "reservationValidationCoffeeRequired": "Káva je pri tejto tarife zahrnutá a musí zostať vybraná.",
   "automatedRequestRejected": "Táto požiadavka vyzerala ako automatizovaná, preto sme ju nemohli prijať. Pokračuj, prosím, vo vlastnom prehliadači.",
   "reservationSecurityInvalidOrigin": "Rezervačnú požiadavku sa nepodarilo overiť. Obnov stránku a skús to, prosím, znova.",
-  "contactValidationNameMinimum": "Meno musí mať aspoň {min} znaky.",
-  "contactValidationNameMaximum": "Meno môže mať najviac {max} znakov.",
+  "contactValidationNameMinimum": [
+    {
+      "declarations": ["input min", "local minPlural = min: plural"],
+      "selectors": ["minPlural"],
+      "match": {
+        "minPlural=one": "Meno musí mať aspoň {min} znak.",
+        "minPlural=few": "Meno musí mať aspoň {min} znaky.",
+        "minPlural=many": "Meno musí mať aspoň {min} znaku.",
+        "minPlural=other": "Meno musí mať aspoň {min} znakov."
+      }
+    }
+  ],
+  "contactValidationNameMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Meno môže mať najviac {max} znak.",
+        "maxPlural=few": "Meno môže mať najviac {max} znaky.",
+        "maxPlural=many": "Meno môže mať najviac {max} znaku.",
+        "maxPlural=other": "Meno môže mať najviac {max} znakov."
+      }
+    }
+  ],
   "contactValidationEmailRequired": "E-mail je povinný.",
   "contactValidationEmailInvalid": "Zadaj platnú e-mailovú adresu.",
-  "contactValidationEmailMaximum": "E-mail môže mať najviac {max} znakov.",
+  "contactValidationEmailMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "E-mail môže mať najviac {max} znak.",
+        "maxPlural=few": "E-mail môže mať najviac {max} znaky.",
+        "maxPlural=many": "E-mail môže mať najviac {max} znaku.",
+        "maxPlural=other": "E-mail môže mať najviac {max} znakov."
+      }
+    }
+  ],
   "contactEmailConfirmationLabel": "Zopakuj e-mail",
   "contactValidationEmailConfirmationMismatch": "E-maily sa nezhodujú. Skontroluj, či v nich nie je preklep.",
   "contactValidationEmailUndeliverable": "Na túto e-mailovú adresu sa nedá doručiť e-mail. Skontroluj, či v nej nie je preklep, pretože na ňu posielame potvrdenie a prístupový odkaz.",
-  "contactValidationPhoneInvalid": "Zadaj platné telefónne číslo. Číslo mimo Česka zadaj s predvoľbou.",
-  "contactValidationPhoneMaximum": "Telefón môže mať najviac {max} znakov.",
+  "contactValidationPhoneInvalid": "Zadaj platné telefónne číslo. Číslo v medzinárodnom formáte s + na začiatku prejde vždy.",
+  "contactValidationPhoneMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Telefón môže mať najviac {max} znak.",
+        "maxPlural=few": "Telefón môže mať najviac {max} znaky.",
+        "maxPlural=many": "Telefón môže mať najviac {max} znaku.",
+        "maxPlural=other": "Telefón môže mať najviac {max} znakov."
+      }
+    }
+  ],
   "contactValidationPhoneRequired": "Telefón je povinný.",
-  "contactValidationMessageMinimum": "Správa musí mať aspoň {min} znakov.",
-  "contactValidationMessageMaximum": "Správa môže mať najviac {max} znakov.",
+  "contactValidationMessageMinimum": [
+    {
+      "declarations": ["input min", "local minPlural = min: plural"],
+      "selectors": ["minPlural"],
+      "match": {
+        "minPlural=one": "Správa musí mať aspoň {min} znak.",
+        "minPlural=few": "Správa musí mať aspoň {min} znaky.",
+        "minPlural=many": "Správa musí mať aspoň {min} znaku.",
+        "minPlural=other": "Správa musí mať aspoň {min} znakov."
+      }
+    }
+  ],
+  "contactValidationMessageMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Správa môže mať najviac {max} znak.",
+        "maxPlural=few": "Správa môže mať najviac {max} znaky.",
+        "maxPlural=many": "Správa môže mať najviac {max} znaku.",
+        "maxPlural=other": "Správa môže mať najviac {max} znakov."
+      }
+    }
+  ],
   "galleryMetadataTitle": "Fotky coworkingu na Palmovke",
   "galleryMetadataDescription": "Fotky z Deskohub Workspace na Palmovke v Prahe 8. Pozri sa, ako to u nás vyzerá, skôr než si zarezervuješ miesto alebo zasadaciu miestnosť.",
   "gallerySrTitle": "Galéria Workspace",
@@ -1326,7 +1398,7 @@
   "publicOfferingReservedDeskAlwaysOpenAccess": "Prístup na kód funguje nonstop.",
   "publicOfferingMeetingRoomUsage": "Hodinové rezervácie začínajú o zvolenej celej hodine. Celodenná rezervácia trvá od polnoci do polnoci.",
   "publicOfferingOfficeDescription": "Súkromná kancelária len pre teba na celé dni, s toľkými miestami, koľko potrebuješ.",
-  "publicOfferingOfficeUsage": "Rezervuj celé dni so začiatkom najviac mesiac vopred. Jedna rezervácia môže trvať najviac {hours} hodín, zvyčajne 28 dní.",
+  "publicOfferingOfficeUsage": "Rezervuj celé dni so začiatkom najviac mesiac vopred. Jedna rezervácia môže trvať najviac {hours} h, zvyčajne 28 dní.",
   "publicOfferingOfficeSeatPrice": "Každé rezervované miesto, za deň",
   "pricingPageTitle": "Cenník a otváracie hodiny",
   "pricingMetadataTitle": "Cenník coworkingu a zasadačky, Praha 8",
@@ -1453,7 +1525,7 @@
   "coworkingReservedDeskHours": "celý deň, 24/7",
   "coworkingOpenSpaceText": "Sadneš si na voľné miesto pri zdieľanom stole. Hodí sa na bežný pracovný deň mimo domova.",
   "coworkingOpenSpacePointHours": "Od polnoci do {until} v deň rezervácie",
-  "coworkingOpenSpacePointInternet": "Optický internet a Wi-Fi 6G",
+  "coworkingOpenSpacePointInternet": "Optický internet a Wi-Fi 6",
   "coworkingOpenSpacePointCoffee": "Kávu si môžeš prikúpiť",
   "coworkingOpenSpaceCta": "Rezervovať zdieľané miesto",
   "coworkingReservedDeskText": "Stôl máš celý deň len pre seba. Nemusíš hľadať voľné miesto a prísť aj odísť môžeš kedykoľvek cez deň aj v noci.",
@@ -1464,7 +1536,7 @@
   "coworkingPricesNote": "Ceny doplnkov a prípadné zľavy nájdeš v <pricing>cenníku</pricing>.",
   "coworkingAmenitiesTitle": "Čo tu nájdeš",
   "coworkingAmenityInternetTitle": "Internet",
-  "coworkingAmenityInternetText": "Optický internet a Wi-Fi 6G zvládnu videohovory aj veľké súbory.",
+  "coworkingAmenityInternetText": "Optický internet a Wi-Fi 6 zvládnu videohovory aj veľké súbory.",
   "coworkingAmenityWorkstationTitle": "Pracovné stanice",
   "coworkingAmenityWorkstationText": "K vyhradenému miestu si pridáš dva monitory 27″ alebo 32″ v rozlíšení QHD alebo 4K.",
   "coworkingAmenityKitchenTitle": "Kuchynka",
