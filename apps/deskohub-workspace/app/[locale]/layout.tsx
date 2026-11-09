@@ -18,10 +18,12 @@ import "../globals.css";
 // Only the regular face is preloaded: few pages render italic text, and the
 // browser fetches the italic face when one does. Next names a font's family
 // after its const, so the italic face joins the regular face's `sculpin`
-// family and italic text still finds it.
+// family and italic text still finds it. Both files are variable fonts, so
+// declaring their whole weight axis gives medium, semibold and bold text the
+// designed instances instead of a synthesized bold.
 const sculpin = localFont({
   src: "../../assets/fonts/Sculpin/regular.woff2",
-  weight: "400",
+  weight: "300 900",
   style: "normal",
   display: "swap",
   variable: "--font-sculpin",
@@ -30,7 +32,7 @@ const sculpin = localFont({
 // Nothing reads its variable; applying it keeps the italic face in the CSS.
 const sculpinItalic = localFont({
   src: "../../assets/fonts/Sculpin/italic.woff2",
-  weight: "400",
+  weight: "300 900",
   style: "italic",
   display: "swap",
   preload: false,
