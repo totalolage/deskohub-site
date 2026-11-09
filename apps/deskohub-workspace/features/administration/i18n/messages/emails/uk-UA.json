@@ -15,13 +15,8 @@
   "emailsEditorLanguageCzech": "Чеська",
   "emailsEditorLanguageProblemCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} проблема",
         "countPlural=few": "{count} проблеми",
@@ -50,13 +45,8 @@
   "emailsEditorProblemsHeading": "Перед публікацією",
   "emailsEditorProblemsCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Публікації заважає {count} проблема.",
         "countPlural=few": "Публікації заважають {count} проблеми.",
@@ -221,6 +211,7 @@
   "emailsEditorBlockSortDescending": "За спаданням",
   "emailsEditorBlockLimit": "Показати не більше",
   "emailsEditorBlockLimitHint": "Якщо залишити поле порожнім, буде показано всі елементи.",
+  "emailsEditorEnglishFallbackMissing": "Без англійського перекладу німецькомовні та україномовні одержувачі без власного перекладу отримають чеську версію.",
   "emailsEditorProblemValuePath": "Оберіть поле клієнта.",
   "emailsEditorProblemValueSort": "Оберіть поле для сортування та його напрям.",
   "emailsEditorProblemValueDiscount": "Оберіть знижку.",
