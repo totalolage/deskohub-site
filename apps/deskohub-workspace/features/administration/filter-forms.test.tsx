@@ -6,6 +6,7 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import { formatNumericPlainDate } from "@/shared/utils/date-time-format";
 import type { CustomerListQuery } from "./customer-list-query";
 import { operationListQuery } from "./operation-list-query";
 import { orderListQuery } from "./order-list-query";
@@ -55,6 +56,13 @@ const submittedValue = (form: HTMLFormElement, name: string) =>
 
 const getDateField = (view: ReturnType<typeof render>, name: string) =>
   view.getByRole("combobox", { name }) as HTMLInputElement;
+
+/** The text a date field shows for a canonical date on an en-US route. */
+const shownDate = (date: string) =>
+  formatNumericPlainDate({
+    date: Temporal.PlainDate.from(date),
+    locale: "en-US",
+  });
 
 // A date field takes typed text when focus leaves it.
 const typeDate = (field: HTMLInputElement, text: string) => {
@@ -127,11 +135,38 @@ describe("administration filter forms", () => {
         />
       );
 
+      expect(getDateField(view, "From").value).toBe(shownDate("2026-08-05"));
+      expect(getDateField(view, "To").value).toBe(shownDate("2026-08-12"));
       expect(formEntries(form)).toEqual([
         ["from", "2026-08-05"],
         ["to", "2026-08-12"],
       ]);
       await expectNativeGetSubmission(form);
+    });
+
+    test("submits a date typed without leaving the field", async () => {
+      const view = render(
+        <OrdersAdministrationFilterForm
+          query={orderListQuery.parse({ from: "2026-08-03", to: "2026-08-10" })}
+        />
+      );
+      const form = getForm(view.container);
+      let submittedEntries: string[][] | undefined;
+      form.submit = () => {
+        submittedEntries = formEntries(form);
+      };
+      fireEvent.change(getDateField(view, "From"), {
+        target: { value: "2026-08-04" },
+      });
+
+      fireEvent.submit(form);
+
+      await waitFor(() =>
+        expect(submittedEntries).toEqual([
+          ["from", "2026-08-04"],
+          ["to", "2026-08-10"],
+        ])
+      );
     });
 
     test("keeps typed text that is no date from submitting", async () => {
