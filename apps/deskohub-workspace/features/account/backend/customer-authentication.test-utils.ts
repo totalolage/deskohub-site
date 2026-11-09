@@ -6,6 +6,19 @@ import {
   CustomerAuthentication,
 } from "./customer-authentication.service";
 
+/**
+ * The Better Auth profile facts of a synthetic verified session: no saved
+ * name and fixed account timestamps.
+ */
+export const testSessionProfile = {
+  displayName: null,
+  accountCreatedAt: Temporal.Instant.from("2026-01-05T09:00:00Z"),
+  accountUpdatedAt: Temporal.Instant.from("2026-01-05T09:00:00Z"),
+} as const satisfies Pick<
+  CustomerAccountSession,
+  "displayName" | "accountCreatedAt" | "accountUpdatedAt"
+>;
+
 /** A verified session for this account. */
 const signedInSession = (
   accountId: CustomerAccountId,
@@ -14,9 +27,7 @@ const signedInSession = (
   accountId,
   email: testEmailAddress("signed-in-account"),
   deletionRequested: session.deletionRequested ?? false,
-  displayName: null,
-  accountCreatedAt: Temporal.Instant.from("2026-01-05T09:00:00Z"),
-  accountUpdatedAt: Temporal.Instant.from("2026-01-05T09:00:00Z"),
+  ...testSessionProfile,
 });
 
 /**

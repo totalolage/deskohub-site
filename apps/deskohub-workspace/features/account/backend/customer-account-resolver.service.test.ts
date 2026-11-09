@@ -14,6 +14,7 @@ import {
   resolveCustomerAccountLink,
 } from "./customer-account-resolver.service";
 import type { CustomerAccountSession } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 
 const accountId = customerAccountIdSchema.make("auth-user-1");
 const otherAccountId = customerAccountIdSchema.make("auth-user-2");
@@ -25,6 +26,7 @@ const session = (
   accountId,
   email: verifiedEmail,
   deletionRequested: false,
+  ...testSessionProfile,
   ...overrides,
 });
 

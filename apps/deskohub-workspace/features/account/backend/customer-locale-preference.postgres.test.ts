@@ -17,6 +17,7 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 import {
   captureAccountLocalePreference,
   lookupMagicLinkDeliveryLocale,
@@ -64,6 +65,7 @@ const makeRepositoryLayer = () => {
       accountId: customerAccountIdSchema.make(accountId),
       email: testEmailAddress(`pref-${accountId}`),
       deletionRequested: false,
+      ...testSessionProfile,
     };
   };
 

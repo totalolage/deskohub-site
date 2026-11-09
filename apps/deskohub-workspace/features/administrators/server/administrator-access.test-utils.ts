@@ -2,6 +2,7 @@ import { mock } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import {
   customerAccountIdSchema,
   customerAccountUnavailable,
@@ -67,17 +68,7 @@ export const mockAdministratorAccess = (
             return Effect.succeed(
               access === "signed-out"
                 ? null
-                : {
-                    ...actor,
-                    deletionRequested: false,
-                    displayName: null,
-                    accountCreatedAt: Temporal.Instant.from(
-                      "2026-01-05T09:00:00Z"
-                    ),
-                    accountUpdatedAt: Temporal.Instant.from(
-                      "2026-01-05T09:00:00Z"
-                    ),
-                  }
+                : { ...actor, deletionRequested: false, ...testSessionProfile }
             );
           }),
         }),
