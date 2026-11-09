@@ -368,7 +368,7 @@ jobs:
     needs: resolve-target
     if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     cache-mode: write
     permissions:
       contents: read
@@ -911,7 +911,9 @@ jobs:
       needs.resolve-target.outputs.deployment == 'success' &&
       needs.resolve-target.outputs.nightly != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    # Covers fill-bun-package-cache and test-e2e, which run in sequence
+    # beside it.
+    timeout-minutes: 65
     permissions:
       actions: write
       pull-requests: read
@@ -952,7 +954,7 @@ jobs:
           done
 
   publish-final-status:
-    needs: [resolve-target, test-e2e]
+    needs: [resolve-target, fill-bun-package-cache, test-e2e]
     if: always() && needs.resolve-target.result == 'success' && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success' && needs.resolve-target.outputs.nightly != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -965,7 +967,7 @@ jobs:
         if: always()
         env:
           ALLOCATION_SHARD: ${{ needs.test-e2e.outputs.shard }}
-          ALLOCATION_DESCRIPTION: ${{ needs.test-e2e.outputs.shard == '' && 'Workspace E2E shard allocation failed' || needs.test-e2e.outputs.release_outcome == 'success' && 'Workspace E2E shard released' || 'Workspace E2E shard release failed' }}
+          ALLOCATION_DESCRIPTION: ${{ needs.fill-bun-package-cache.result != 'success' && 'Workspace E2E Bun package cache fill failed' || needs.test-e2e.outputs.shard == '' && 'Workspace E2E shard allocation failed' || needs.test-e2e.outputs.release_outcome == 'success' && 'Workspace E2E shard released' || 'Workspace E2E shard release failed' }}
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
           STATUS_STATE: ${{ needs.test-e2e.result == 'success' && 'success' || 'failure' }}

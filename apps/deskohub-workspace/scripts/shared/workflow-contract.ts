@@ -35,6 +35,7 @@ interface WorkflowJob {
   readonly "cache-mode"?: WorkflowCacheMode;
   readonly "runs-on"?: string;
   readonly steps?: readonly WorkflowStep[];
+  readonly "timeout-minutes"?: number;
   readonly permissions?: Record<string, string>;
   readonly env?: Record<string, string>;
   readonly services?: Readonly<Record<string, WorkflowService>>;
@@ -144,7 +145,7 @@ export const workflowExpressionBoolean = (
 ): WorkflowExpressionValue => ({ kind: "boolean", value });
 
 const expressionToken =
-  /\s*(?:(==|&&|\|\|)|'((?:[^']|'')*)'|([A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)*))/y;
+  /\s*(?:(==|!=|&&|\|\|)|'((?:[^']|'')*)'|([A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)*))/y;
 
 const tokenizeExpression = (
   source: string
@@ -200,7 +201,7 @@ const resolveExpressionPath = (
 };
 
 // Evaluates the GitHub Actions expression subset of context paths, string
-// literals, ==, && and ||, with GitHub's precedence and operand-returning &&
+// literals, ==, !=, && and ||, with GitHub's precedence and operand-returning &&
 // and ||. It evaluates both operands where GitHub short-circuits, and anything
 // outside the subset throws, so an expression it cannot model fails instead
 // of misevaluating.
@@ -231,9 +232,13 @@ const evaluateExpression = (
   };
   const equality = (): WorkflowExpressionValue => {
     const left = operand();
-    return accept("==")
-      ? workflowExpressionBoolean(expressionEqual(left, operand()))
-      : left;
+    if (accept("==")) {
+      return workflowExpressionBoolean(expressionEqual(left, operand()));
+    }
+    if (accept("!=")) {
+      return workflowExpressionBoolean(!expressionEqual(left, operand()));
+    }
+    return left;
   };
   const and = (): WorkflowExpressionValue => {
     let value = equality();

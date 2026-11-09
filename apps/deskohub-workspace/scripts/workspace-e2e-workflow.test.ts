@@ -700,6 +700,7 @@ describe("workspace E2E workflow", () => {
       );
     expect(doc.jobs["publish-final-status"].needs).toEqual([
       "resolve-target",
+      "fill-bun-package-cache",
       "test-e2e",
     ]);
     // A target E2E never ran against gets no final status.
@@ -771,6 +772,52 @@ describe("workspace E2E workflow", () => {
     expect(fillSetup.if).toBe(miss);
     expect(fillSetup.with).toEqual(e2eSetup.with);
     expect(fillJob?.permissions).toEqual({ contents: "read" });
+  });
+
+  test("keeps the supersession guard alive while the fill and test jobs run", () => {
+    const guard = doc.jobs["cancel-superseded-run"];
+    expect(guard?.needs).toBe("resolve-target");
+    expect(guard?.["timeout-minutes"]).toBeGreaterThan(
+      (fillJob?.["timeout-minutes"] ?? Number.POSITIVE_INFINITY) +
+        (testJob?.["timeout-minutes"] ?? Number.POSITIVE_INFINITY)
+    );
+  });
+
+  test("names a failed Bun package cache fill in the allocation status", () => {
+    const description = String(
+      stepByName("Publish final commit status").env?.ALLOCATION_DESCRIPTION
+    );
+    const allocationDescription = (
+      fill: string,
+      shard: string,
+      release: string
+    ) =>
+      evaluateWorkflowValue(description, {
+        contexts: ["needs"],
+        values: new Map([
+          [
+            "needs.fill-bun-package-cache.result",
+            workflowExpressionString(fill),
+          ],
+          ["needs.test-e2e.outputs.shard", workflowExpressionString(shard)],
+          [
+            "needs.test-e2e.outputs.release_outcome",
+            workflowExpressionString(release),
+          ],
+        ]),
+      });
+    expect(allocationDescription("failure", "", "")).toBe(
+      "Workspace E2E Bun package cache fill failed"
+    );
+    expect(allocationDescription("success", "", "")).toBe(
+      "Workspace E2E shard allocation failed"
+    );
+    expect(allocationDescription("success", "3", "success")).toBe(
+      "Workspace E2E shard released"
+    );
+    expect(allocationDescription("success", "3", "failure")).toBe(
+      "Workspace E2E shard release failed"
+    );
   });
 
   test("restores the Bun package cache test-e2e installs from, saving nothing", () => {
