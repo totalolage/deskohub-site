@@ -4,13 +4,12 @@ import { isAPIError } from "better-auth/api";
 import { createLocalAccountIssuer } from "better-auth/db";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Data, Effect, Option, Predicate, Schema } from "effect";
-import {
-  type CustomerAccountId,
-  customerAccountIdSchema,
-} from "@/features/account/customer-account";
+import { WorkspaceLockSections } from "@/db/workspace-locks";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
+import { ReviewAccounts } from "@/features/review-accounts";
 import type { ReviewAccountCredential } from "./review-account-credentials";
-import { digestAddress, type SignInEmailLock } from "./sign-in-code";
+import { digestAddress } from "./sign-in-code";
 
 /**
  * App-directory review logins sign in with an email and password through
@@ -18,23 +17,6 @@ import { digestAddress, type SignInEmailLock } from "./sign-in-code";
  * an allowlisted address provisions its login, and later ones repair it, so
  * nothing is written on deploy and a repeat sign-in writes nothing.
  */
-
-export type ReviewLoginConfig = {
-  /** The allowlisted review logins, from `REVIEW_ACCOUNT_CREDENTIALS`. */
-  readonly reviewAccountCredentials: readonly ReviewAccountCredential[];
-  /** Whether the durable account is marked as a review account. */
-  readonly isReviewAccount: (
-    accountId: CustomerAccountId
-  ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
-  /**
-   * Creates the marked durable account of a new review login, before Better
-   * Auth inserts the login under the same id.
-   */
-  readonly registerReviewAccount: (
-    accountId: CustomerAccountId
-  ) => Effect.Effect<void, EffectDrizzleQueryError>;
-  readonly withSignInEmailLock: SignInEmailLock;
-};
 
 /**
  * Better Auth's own answer to an unknown email or a wrong password, so a
@@ -88,7 +70,6 @@ type ReviewLoginContext = Pick<
 >;
 
 type ReviewLoginProvisioning = {
-  readonly config: ReviewLoginConfig;
   readonly credential: ReviewAccountCredential;
   readonly context: ReviewLoginContext;
   /** The sign-in's callback locale, seeding a new login's preference. */
@@ -135,7 +116,8 @@ const linkCredential = (
  */
 const createReviewLogin = Effect.fn("WorkspaceAuth.createReviewLogin")(
   function* (provisioning: ReviewLoginProvisioning) {
-    const { config, credential, context, locale } = provisioning;
+    const { credential, context, locale } = provisioning;
+    const reviewAccounts = yield* ReviewAccounts;
     const accountId = yield* Option.match(
       decodeAccountId(context.generateId({ model: "user" })),
       {
@@ -143,7 +125,7 @@ const createReviewLogin = Effect.fn("WorkspaceAuth.createReviewLogin")(
         onSome: Effect.succeed,
       }
     );
-    yield* config.registerReviewAccount(accountId);
+    yield* reviewAccounts.register(accountId);
     yield* storage(() =>
       context.internalAdapter.createUser(
         {
@@ -174,10 +156,11 @@ const repairReviewLogin = Effect.fn("WorkspaceAuth.repairReviewLogin")(
     provisioning: ReviewLoginProvisioning,
     { user, accounts }: ExistingLogin
   ) {
-    const { config, credential, context } = provisioning;
+    const { credential, context } = provisioning;
+    const reviewAccounts = yield* ReviewAccounts;
     const isReviewAccount = yield* Option.match(decodeAccountId(user.id), {
       onNone: () => Effect.succeed(false),
-      onSome: config.isReviewAccount,
+      onSome: reviewAccounts.isReviewAccount,
     });
     if (!isReviewAccount) {
       yield* Effect.logWarning(
@@ -219,8 +202,7 @@ const repairReviewLogin = Effect.fn("WorkspaceAuth.repairReviewLogin")(
 export const provisionReviewLogin = (provisioning: ReviewLoginProvisioning) =>
   digestAddress(provisioning.credential).pipe(
     Effect.flatMap((address) =>
-      provisioning.config.withSignInEmailLock(
-        address,
+      WorkspaceLockSections.signInEmail(address)(
         storage(() =>
           provisioning.context.internalAdapter.findUserByEmail(
             provisioning.credential.email,
@@ -235,7 +217,8 @@ export const provisionReviewLogin = (provisioning: ReviewLoginProvisioning) =>
               | APIError
               | EffectDrizzleQueryError
               | ReviewLoginIdInvalidError
-              | ReviewLoginStorageError
+              | ReviewLoginStorageError,
+              ReviewAccounts
             > =>
               existing === null
                 ? createReviewLogin(provisioning)

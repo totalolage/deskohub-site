@@ -3,40 +3,19 @@ import "@/shared/testing/workspace-test-env";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
-import type {
-  CustomerAgentClientId,
-  CustomerAgentGrant,
-  CustomerAgentScope,
-  CustomerReservationHistory,
+import {
+  type CustomerAgentClientId,
+  type CustomerAgentGrant,
+  type CustomerAgentScope,
+  type CustomerReservationHistory,
+  CustomerReservationHistoryService,
 } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
+import { inMemoryCustomerAgentCallServices } from "./agent-tools.test-utils";
+import { listMyReservationsTool } from "./list-my-reservations.tool";
 
 const accountId = "account-1" as CustomerAccountId;
 let linked: { readonly dotyposCustomerId: string } | null;
-
-const { CustomerAccountContactService, CustomerReservationHistoryService } =
-  await import("@/features/account");
-const callerModule = await import("./customer-agent-caller");
-mock.module("./customer-agent-caller", () => ({
-  ...callerModule,
-  customerAgentCallServices: ({ grant }: { grant: CustomerAgentGrant }) =>
-    Layer.merge(
-      Layer.succeed(callerModule.CurrentCustomerAgentGrant, grant),
-      Layer.mock(CustomerAccountContactService, {
-        currentLinkedAccount: Effect.sync(() =>
-          linked
-            ? ({
-                accountId: grant.accountId,
-                email: testEmailAddress("list-my-reservations"),
-                ...linked,
-              } as never)
-            : null
-        ),
-      })
-    ),
-}));
-
-const { listMyReservationsTool } = await import("./list-my-reservations.tool");
 
 let history: CustomerReservationHistory;
 const load = mock(() => Effect.sync(() => history));
@@ -51,7 +30,24 @@ const list = () =>
   listMyReservationsTool
     .call({}, Option.some({ grant, accessToken: "token" }))
     .pipe(
-      Effect.provide(Layer.mock(CustomerReservationHistoryService, { load })),
+      Effect.provide(
+        Layer.merge(
+          Layer.mock(CustomerReservationHistoryService, { load }),
+          inMemoryCustomerAgentCallServices(({ accountId }) => ({
+            contact: {
+              currentLinkedAccount: Effect.sync(() =>
+                linked
+                  ? ({
+                      accountId,
+                      email: testEmailAddress("list-my-reservations"),
+                      ...linked,
+                    } as never)
+                  : null
+              ),
+            },
+          }))
+        )
+      ),
       Effect.result,
       Effect.runPromise
     );

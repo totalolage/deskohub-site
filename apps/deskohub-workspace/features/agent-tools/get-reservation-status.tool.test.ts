@@ -9,43 +9,22 @@ import type {
   CustomerAgentScope,
 } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
-import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout/checkout-status.service";
+import {
+  CheckoutStatusService,
+  type CheckoutStatusViewModel,
+} from "@/features/checkout/backend/checkout/checkout-status.service";
 import { checkoutStatusKinds } from "@/features/checkout/checkout-status-kind";
-import type { WorkspaceReservation } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  type WorkspaceReservation,
+  WorkspaceReservationRepository,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { ReviewSandboxMock } from "@/features/review-accounts/backend/review-sandbox.service.mock";
+import { inMemoryCustomerAgentCallServices } from "./agent-tools.test-utils";
+import { getReservationStatusTool } from "./get-reservation-status.tool";
 
 const accountId = "account-1" as CustomerAccountId;
 const linkedCustomerId = "60111";
-
-const { CustomerAccountReservationOwnership } = await import(
-  "@/features/account"
-);
-const callerModule = await import("./customer-agent-caller");
-mock.module("./customer-agent-caller", () => ({
-  ...callerModule,
-  customerAgentCallServices: ({ grant }: { grant: CustomerAgentGrant }) =>
-    Layer.merge(
-      Layer.succeed(callerModule.CurrentCustomerAgentGrant, grant),
-      Layer.succeed(CustomerAccountReservationOwnership, {
-        activeAccountId: Effect.succeed(grant.accountId),
-        resolve: Effect.succeed({
-          accountId: grant.accountId,
-          dotyposCustomerId: linkedCustomerId as never,
-        }),
-      })
-    ),
-}));
-
-const { WorkspaceReservationRepository } = await import(
-  "@/features/reservation/backend/workspace-reservation.repository"
-);
-const { CheckoutStatusService } = await import(
-  "@/features/checkout/backend/checkout/checkout-status.service"
-);
-const { getReservationStatusTool } = await import(
-  "./get-reservation-status.tool"
-);
 
 let stored: Partial<WorkspaceReservation> | null;
 const getStatus = mock(
@@ -83,7 +62,16 @@ const services = Layer.mergeAll(
     findById: () => Effect.succeed(stored as WorkspaceReservation | null),
   }),
   ReviewSandboxMock({ isOrderOf: () => Effect.succeed(false) }),
-  Layer.mock(CheckoutStatusService, { getStatus })
+  Layer.mock(CheckoutStatusService, { getStatus }),
+  inMemoryCustomerAgentCallServices(({ accountId }) => ({
+    ownership: {
+      activeAccountId: Effect.succeed(accountId),
+      resolve: Effect.succeed({
+        accountId,
+        dotyposCustomerId: linkedCustomerId as never,
+      }),
+    },
+  }))
 );
 
 const grant: CustomerAgentGrant = {

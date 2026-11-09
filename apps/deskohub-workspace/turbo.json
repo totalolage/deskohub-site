@@ -108,9 +108,36 @@
       ],
       "passThroughEnv": ["WORKSPACE_TEST_DATABASE_URL"]
     },
+    "test:dependencies": {
+      "dependsOn": [
+        "@deskohub/agent-skills#test",
+        "@deskohub/ares#test",
+        "@deskohub/brand-tokens#test",
+        "@deskohub/cloudinary#test",
+        "@deskohub/cloudinary-image#test",
+        "@deskohub/dotypos#test",
+        "@deskohub/effect-schema-resolver#test",
+        "@deskohub/email#test",
+        "@deskohub/google-calendar#test",
+        "@deskohub/i18n#test",
+        "@deskohub/igloohome#test",
+        "@deskohub/nexi#test",
+        "@deskohub/next-effect#test",
+        "@deskohub/phone-number#test",
+        "@deskohub/posthog#test",
+        "@deskohub/qr-code#test",
+        "@deskohub/secret-comparison#test",
+        "@deskohub/standard-schema#test",
+        "@deskohub/test-email#test",
+        "@deskohub/workspace-admin-api#test",
+        "@deskohub/workspace-customer-api#test",
+        "osm#test"
+      ],
+      "inputs": []
+    },
     "test:shard-1": {
       "dependsOn": [
-        "^test",
+        "test:dependencies",
         "@deskohub/dotypos#generate",
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
@@ -132,8 +159,6 @@
         "$TURBO_ROOT$/{.agents,apps/*,packages/*}/package.json",
         "$TURBO_ROOT$/apps/deskohub-mobile/app.json",
         "$TURBO_ROOT$/apps/deskohub-mobile/public/**",
-        "$TURBO_ROOT$/*.test.{ts,tsx}",
-        "$TURBO_ROOT$/{.agents,.github,apps,lint,packages,patches,scripts}/**/*.test.{ts,tsx}",
         "$TURBO_ROOT$/.gitignore",
         "$TURBO_ROOT$/{apps,packages}/*/.gitignore",
         "!$TURBO_ROOT$/**/node_modules/**"
@@ -146,7 +171,7 @@
     },
     "test:shard-2": {
       "dependsOn": [
-        "^test",
+        "test:dependencies",
         "@deskohub/dotypos#generate",
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
@@ -168,8 +193,6 @@
         "$TURBO_ROOT$/{.agents,apps/*,packages/*}/package.json",
         "$TURBO_ROOT$/apps/deskohub-mobile/app.json",
         "$TURBO_ROOT$/apps/deskohub-mobile/public/**",
-        "$TURBO_ROOT$/*.test.{ts,tsx}",
-        "$TURBO_ROOT$/{.agents,.github,apps,lint,packages,patches,scripts}/**/*.test.{ts,tsx}",
         "$TURBO_ROOT$/.gitignore",
         "$TURBO_ROOT$/{apps,packages}/*/.gitignore",
         "!$TURBO_ROOT$/**/node_modules/**"
@@ -182,7 +205,7 @@
     },
     "test:shard-3": {
       "dependsOn": [
-        "^test",
+        "test:dependencies",
         "@deskohub/dotypos#generate",
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
@@ -204,8 +227,6 @@
         "$TURBO_ROOT$/{.agents,apps/*,packages/*}/package.json",
         "$TURBO_ROOT$/apps/deskohub-mobile/app.json",
         "$TURBO_ROOT$/apps/deskohub-mobile/public/**",
-        "$TURBO_ROOT$/*.test.{ts,tsx}",
-        "$TURBO_ROOT$/{.agents,.github,apps,lint,packages,patches,scripts}/**/*.test.{ts,tsx}",
         "$TURBO_ROOT$/.gitignore",
         "$TURBO_ROOT$/{apps,packages}/*/.gitignore",
         "!$TURBO_ROOT$/**/node_modules/**"
@@ -218,7 +239,7 @@
     },
     "test:shard-4": {
       "dependsOn": [
-        "^test",
+        "test:dependencies",
         "@deskohub/dotypos#generate",
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
@@ -240,8 +261,6 @@
         "$TURBO_ROOT$/{.agents,apps/*,packages/*}/package.json",
         "$TURBO_ROOT$/apps/deskohub-mobile/app.json",
         "$TURBO_ROOT$/apps/deskohub-mobile/public/**",
-        "$TURBO_ROOT$/*.test.{ts,tsx}",
-        "$TURBO_ROOT$/{.agents,.github,apps,lint,packages,patches,scripts}/**/*.test.{ts,tsx}",
         "$TURBO_ROOT$/.gitignore",
         "$TURBO_ROOT$/{apps,packages}/*/.gitignore",
         "!$TURBO_ROOT$/**/node_modules/**"

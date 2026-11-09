@@ -115,6 +115,100 @@ test("checks the shard inputs outside Turbo's cache on every pull request", () =
   expect(check?.run).toBe("bun test scripts/test-shard.test.ts");
 });
 
+test("runs Mobile's tests and the repository-wide tests in Workspace validation, which the gate always needs", () => {
+  // The shards depend on neither, so a skipped shard matrix must not skip them.
+  const steps = workflowSteps(doc, "validate-workspace");
+  for (const name of ["Run repository-wide tests", "Test Mobile"]) {
+    const step = steps.find((candidate) => candidate.name === name);
+    expect(step).toBeDefined();
+    expect(step?.if).toBeUndefined();
+    expect(step?.["continue-on-error"]).toBeUndefined();
+  }
+  expect(steps.find((step) => step.name === "Test Mobile")?.run).toBe(
+    "bun turbo run test --filter=deskohub-mobile"
+  );
+  expect(doc.jobs["test-functional"]?.needs).toContain("validate-workspace");
+});
+
+describe("repository-wide test step", () => {
+  const step = stepByName("Run repository-wide tests");
+  const runner = createWorkflowStepRunner("workspace-repository-tests-");
+  const repositories = mkdtempSync(join(tmpdir(), "workspace-repository-"));
+  const files = [
+    "a/x.repository-wide.test.ts",
+    "b/c/y.repository-wide.test.tsx",
+  ];
+
+  beforeAll(async () => {
+    for (const repository of ["with-tests", "without-tests"]) {
+      await commandOutput(["git", "init", "--quiet", repository], {
+        cwd: repositories,
+      });
+    }
+    const withTests = join(repositories, "with-tests");
+    for (const file of [...files, "a/z.test.ts", "a/w.repository.test.ts"]) {
+      await Bun.write(join(withTests, file), "");
+    }
+    await commandOutput(["git", "add", "."], { cwd: withTests });
+  });
+
+  afterAll(() => {
+    runner.cleanup();
+    rmSync(repositories, { force: true, recursive: true });
+  });
+
+  // Stands in for bun: logs its arguments and exits as told.
+  const fakeBun = (exitCode: number) => `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$GH_FIXTURES/calls.log"
+exit ${exitCode}
+`;
+
+  const runTests = (repository: string, exitCode = 0) =>
+    runner.runStep(
+      step,
+      {},
+      { GIT_DIR: join(repositories, repository, ".git") },
+      { bun: fakeBun(exitCode) }
+    );
+
+  test("runs every tracked repository-wide test by path", async () => {
+    const { calls, result } = await runTests("with-tests");
+    expect(result.exitCode).toBe(0);
+    expect(calls).toEqual([
+      `test ${files.map((file) => `./${file}`).join(" ")}`,
+    ]);
+  });
+
+  test("fails when a repository-wide test fails", async () => {
+    const { result } = await runTests("with-tests", 1);
+    expect(result.exitCode).not.toBe(0);
+  });
+
+  test("fails without running bun when it finds no repository-wide test", async () => {
+    const { calls, result } = await runTests("without-tests");
+    expect(result.exitCode).not.toBe(0);
+    expect(calls).toEqual([]);
+  });
+
+  test("fails without running bun when listing the tests fails partway", async () => {
+    // A listing that fails after printing some paths must not pass on them.
+    const { calls, result } = await runner.runStep(
+      step,
+      {},
+      {},
+      {
+        bun: fakeBun(0),
+        git: `#!/usr/bin/env bash
+printf '%s\\n' ${files[0]}
+exit 1
+`,
+      }
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(calls).toEqual([]);
+  });
+});
+
 test("runs the shards with the Bun the repository pins", () => {
   const rootPackage = JSON.parse(
     readFileSync(resolve(import.meta.dir, "../../../package.json"), "utf8")
