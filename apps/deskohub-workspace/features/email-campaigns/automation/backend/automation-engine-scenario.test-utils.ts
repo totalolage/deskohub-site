@@ -18,6 +18,7 @@ import { Effect, Fiber, Layer, Result, Struct } from "effect";
 import { TestClock } from "effect/testing";
 import { customerEvents, customerMarketingConsents } from "@/db/schema";
 import type { CustomerAccountId } from "@/features/account/customer-account";
+import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingManagementService } from "@/features/legal/backend/marketing-management.service";
 import { ReservationActivitySweep } from "@/features/reservation/backend/reservation-activity-sweep.service";
@@ -40,6 +41,7 @@ import { CampaignCandidateRepository } from "../../backend/campaign-candidate.re
 import { CampaignDeliveryService } from "../../backend/campaign-delivery.service";
 import { CampaignEmailConfig } from "../../backend/campaign-email.config";
 import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
+import { CampaignRecipientAnalyticsIdentity } from "../../backend/campaign-recipient-analytics-identity";
 import { CampaignUnsubscribeService } from "../../backend/campaign-unsubscribe.service";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
@@ -359,6 +361,9 @@ export const automationScenarioLayer = async (input: {
         input.dotypos.layer,
         resend.layer,
         AutomationRunSettlement.Default,
+        CampaignRecipientAnalyticsIdentity.Default.pipe(
+          Layer.provide(AnalyticsConsentLedger.Default)
+        ),
         Layer.succeed(CampaignEmailConfig, {
           deploymentEnvironment: input.deploymentEnvironment ?? "development",
           from: { email: testEmailAddress("campaigns") },
