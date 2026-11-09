@@ -161,8 +161,22 @@ export function CheckoutPaySubmitButton({
   const separateTotal =
     total && !payLabelNamesAmount(locale) ? total : undefined;
 
+  // Centred on the first line of the label, as the button centres it when
+  // the label fits on one line.
+  const payIconClassName =
+    "me-2 mt-[calc((1lh-1rem)/2)] inline-block size-4 align-top";
+  const orderLabel = total
+    ? m.checkoutPayOrderAndPayAmountButton(
+        { amount: formatMoney(total, locale) },
+        { locale }
+      )
+    : m.checkoutPayOrderAndPayButton({}, { locale });
+  const label = pending
+    ? m.checkoutPaymentRetryPending({}, { locale })
+    : orderLabel;
+
   return (
-    <div className="space-y-3">
+    <div className="@container space-y-3">
       {!!separateTotal && (
         <div id={separateTotalId}>
           <CheckoutSummaryLine
@@ -177,29 +191,25 @@ export function CheckoutPaySubmitButton({
         size="xl"
         caps
         fullWidth
+        wrap
         aria-describedby={separateTotal ? separateTotalId : undefined}
         disabled={disabled}
         pending={pending}
         onClick={onClick}
       >
-        {pending ? (
-          m.checkoutPaymentRetryPending({}, { locale })
-        ) : (
-          <>
+        {/* Long labels, such as the German legal order wording, wrap onto
+            balanced lines. The icon leads the first line, so it stays
+            beside the text rather than beside the whole wrapped block. On
+            a narrow phone the label takes the small button's type size and
+            caps tracking, so its longest word still fits beside the icon. */}
+        <span className="text-balance @max-[18rem]:text-xs @max-[18rem]:tracking-[0.08em]">
+          {!pending &&
             {
-              {
-                pay: <CreditCard className="h-4 w-4" />,
-                retry: <RotateCcw className="h-4 w-4" />,
-              }[variant]
-            }
-            {total
-              ? m.checkoutPayOrderAndPayAmountButton(
-                  { amount: formatMoney(total, locale) },
-                  { locale }
-                )
-              : m.checkoutPayOrderAndPayButton({}, { locale })}
-          </>
-        )}
+              pay: <CreditCard className={payIconClassName} />,
+              retry: <RotateCcw className={payIconClassName} />,
+            }[variant]}
+          {label}
+        </span>
       </Button>
     </div>
   );
