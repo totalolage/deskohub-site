@@ -1,11 +1,11 @@
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import {
   type EmailDeliveryId,
   EmailDeliveryIdSchema,
   type EmailMessage,
   type EmailSendResult,
 } from "../../types/email.types";
-import { type EmailProvider, EmailProviderTag } from "../capabilities";
+import type { EmailProvider } from "../capabilities";
 
 const recipientAddresses = (message: EmailMessage): readonly string[] =>
   Array.isArray(message.to)
@@ -21,6 +21,11 @@ const consoleDeliveryIdPrefix = "console-";
 export const isConsoleEmailDeliveryId = (id: EmailDeliveryId): boolean =>
   id.startsWith(consoleDeliveryIdPrefix);
 
+/**
+ * Logs mail instead of sending it. Internal: the email service sends through
+ * it when a message addresses only test recipients under recipient routing,
+ * or when the message's stream has an empty provider chain.
+ */
 export const ConsoleEmailProvider: EmailProvider = {
   name: "console",
 
@@ -107,8 +112,3 @@ export const ConsoleEmailProvider: EmailProvider = {
     );
   }),
 };
-
-export const ConsoleEmailProviderLive = Layer.succeed(
-  EmailProviderTag,
-  ConsoleEmailProvider
-);

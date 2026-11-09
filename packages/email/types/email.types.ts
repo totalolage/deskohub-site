@@ -5,6 +5,7 @@
  */
 
 import { Schema } from "effect";
+import type { EmailSendError } from "../backend/capabilities";
 
 export const EmailDeliveryIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("EmailDeliveryId")
@@ -53,25 +54,40 @@ export interface EmailMessage {
   metadata?: Record<string, unknown>;
   /** Providers suppress recipient and content when this message may carry secrets. */
   sensitiveContent?: boolean;
+  /**
+   * An opaque identity of the recipient that a provider may attribute
+   * engagement to, such as an analytics person id. Never an email address.
+   */
+  recipientIdentity?: string;
 }
 
-/**
- * Email send result
- */
+/** A message a provider accepted for delivery. */
 export interface EmailSendResult {
   id: EmailDeliveryId;
-  status: "sent" | "queued" | "failed";
+  status: "sent" | "queued";
   provider: string;
   timestamp: Date;
-  error?: string;
 }
 
 /**
- * Email delivery configuration. `EmailServiceTag.RecipientRouted` sends mail
- * for `EMAIL_TEST_DOMAIN` recipients to Console and everything else to Resend
- * with `apiKey`, or everything to Console when `apiKey` is missing;
- * `EmailServiceTag.Live` instead selects one provider from `provider` and
- * `testMode`.
+ * A message of a batch that no provider accepted. `error` is the last
+ * provider's failure: a `NetworkError` leaves the outcome unknown, an
+ * `EmailServiceError` means that provider sent nothing.
+ */
+export interface EmailSendFailure {
+  status: "failed";
+  provider: string;
+  timestamp: Date;
+  error: EmailSendError;
+}
+
+/** One message's outcome in a batch, in the batch's message order. */
+export type EmailBatchResult = EmailSendResult | EmailSendFailure;
+
+/**
+ * Email delivery configuration. The email service reads only `defaultFrom`;
+ * `provider`, `apiKey`, and `testMode` are inputs an app reads when it
+ * composes its `EmailProviders` chains.
  */
 export interface EmailConfig {
   provider?: "resend" | "console";

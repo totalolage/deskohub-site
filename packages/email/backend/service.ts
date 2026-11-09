@@ -1,24 +1,37 @@
-import { Context, Effect, Layer, Match } from "effect";
-import type { EmailMessage, EmailSendResult } from "../types/email.types";
+import { Context, Effect, Layer } from "effect";
+import type {
+  EmailBatchResult,
+  EmailMessage,
+  EmailSendResult,
+} from "../types/email.types";
 import {
   type EmailBatchOptions,
   EmailConfigTag,
-  EmailProviderTag,
+  type EmailProvider,
   type EmailSendError,
-  isRetryableEmailError,
 } from "./capabilities";
-import { RoutedEmailProviderLive } from "./email-routing";
-import { ConfiguredEmailProviderLayer } from "./provider-factory";
-import { emailRetryPolicy } from "./request-policy";
+import { EmailDeliveryObserver } from "./email-delivery-observer";
+import {
+  type EmailChainContext,
+  emailFailureLogFacts,
+  sendBatchThroughChain,
+  sendThroughChain,
+} from "./email-provider-chain";
+import {
+  type EmailStream,
+  EmailProviders,
+  emailCategoryOf,
+  emailStreamOf,
+} from "./email-providers";
+import { addressesOnlyTestRecipients } from "./email-routing";
+import { ConsoleEmailProvider } from "./providers/console-provider";
 
 export {
   type EmailBatchOptions,
   EmailConfigTag,
   type EmailProvider,
-  EmailProviderTag,
   type EmailSendError,
   EmailServiceError,
-  isRetryableEmailError,
 } from "./capabilities";
 
 export interface EmailService {
@@ -26,43 +39,42 @@ export interface EmailService {
     message: EmailMessage
   ) => Effect.Effect<EmailSendResult, EmailSendError>;
   /**
-   * Sends up to 100 messages in one provider request, exactly once. A retry
-   * after an unknown outcome is the caller's: it replays the identical batch
-   * under the same idempotency key, and only it knows whether an earlier
-   * request may have been accepted. Results follow the message order.
+   * Sends up to 100 messages, each through its stream's provider chain. A
+   * retry after an unknown outcome is the caller's: it replays the identical
+   * batch under the same idempotency key, and only it knows whether an
+   * earlier request may have been accepted. Results follow the message
+   * order; a message no provider accepted comes back as an
+   * `EmailSendFailure`. The call fails as a whole only when the first
+   * provider failed the whole batch and no other provider tried it.
    */
   readonly sendBatch: (
     messages: readonly EmailMessage[],
     options: EmailBatchOptions
-  ) => Effect.Effect<readonly EmailSendResult[], EmailSendError>;
+  ) => Effect.Effect<readonly EmailBatchResult[], EmailSendError>;
 }
 
 export class EmailServiceTag extends Context.Service<
   EmailServiceTag,
   EmailService
 >()("EmailService") {
+  /**
+   * Sends each message through its stream's `EmailProviders` chain; a
+   * stream with an empty chain sends through Console.
+   */
   static Default = Layer.effect(
     this,
-    Effect.suspend(() => emailServiceImplementation)
+    Effect.suspend(() => makeEmailService({ testRecipientsToConsole: false }))
   );
-
-  /** Sends through the one provider `EmailConfig.provider` selects. */
-  static Live = this.Default.pipe(Layer.provide(ConfiguredEmailProviderLayer));
 
   /**
-   * Routes each message by recipient: only `EMAIL_TEST_DOMAIN` recipients go
-   * to Console, everything else to Resend; without a Resend key every message
-   * goes to Console. Ignores `provider` and `testMode`.
+   * Like `Default`, and mail addressed only to `EMAIL_TEST_DOMAIN`
+   * recipients goes to Console, so automated runs never reach a provider.
    */
-  static RecipientRouted = this.Default.pipe(
-    Layer.provide(RoutedEmailProviderLive)
+  static RecipientRouted = Layer.effect(
+    this,
+    Effect.suspend(() => makeEmailService({ testRecipientsToConsole: true }))
   );
 }
-
-const getEmailRetryPolicyDescription = (error: EmailSendError) =>
-  isRetryableEmailError(error)
-    ? "exponential backoff (1s base, jittered, max 3 retries)"
-    : "no retry - not a network error";
 
 /** Log only non-PII send facts; recipients and rendered bodies stay out. */
 const emailSendLogFacts = (message: {
@@ -70,126 +82,159 @@ const emailSendLogFacts = (message: {
   text?: string;
   tags?: string[];
 }) => ({
-  category: message.tags?.[0],
+  category: emailCategoryOf(message),
   hasHtml: !!message.html,
   hasText: !!message.text,
 });
 
-/** Provider logs receive fixed codes and tags, never raw error messages. */
-const emailFailureLogFacts = (error: EmailSendError) => ({
-  code: Match.value(error).pipe(
-    Match.tag("NetworkError", () => "email.send.transport-retryable"),
-    Match.orElse(() => "email.send.rejected")
-  ),
-  errorType: error._tag,
-});
+type EmailRoute = "console" | EmailStream;
 
-const retryEmailTransportFailure = emailRetryPolicy.retryWhile(
-  isRetryableEmailError
-);
+const routeOrder: readonly EmailRoute[] = [
+  "console",
+  "transactional",
+  "marketing",
+];
 
-const emailServiceImplementation = Effect.gen(function* () {
-  const provider = yield* EmailProviderTag;
-  const config = yield* EmailConfigTag;
+const consoleChain: ReadonlyArray<EmailProvider> = [ConsoleEmailProvider];
 
-  return {
-    send: Effect.fn("email.send")(
-      function* (message: EmailMessage) {
-        yield* Effect.logInfo("Email send started", {
-          provider: provider.name,
-          ...emailSendLogFacts(message),
-        });
+const makeEmailService = (options: {
+  readonly testRecipientsToConsole: boolean;
+}) =>
+  Effect.gen(function* () {
+    const providers = yield* EmailProviders;
+    const config = yield* EmailConfigTag;
+    const observer = yield* EmailDeliveryObserver;
 
-        const finalMessage = yield* withDeliveryIdempotencyKey({
-          ...message,
-          from: message.from || config.defaultFrom,
-        });
+    const streamOf = (message: EmailMessage) =>
+      emailStreamOf(message, providers.marketingCategories);
+    const context: EmailChainContext = { streamOf, observer };
 
-        const result = yield* provider.send(finalMessage).pipe(
-          Effect.tapError((error) =>
-            Effect.logWarning("Email send failed, will retry if NetworkError", {
-              ...emailFailureLogFacts(error),
-              willRetry: isRetryableEmailError(error),
-              retryPolicy: getEmailRetryPolicyDescription(error),
-            })
-          ),
-          retryEmailTransportFailure,
-          Effect.tap((sendResult) =>
-            Effect.logInfo("Email sent successfully", {
-              id: sendResult.id,
-              provider: sendResult.provider,
-            })
-          ),
-          Effect.tapError((error) =>
-            Effect.logError("Email send failed - all retries exhausted", {
-              ...emailFailureLogFacts(error),
-              provider: provider.name,
-              maxRetriesReached: true,
-            })
-          )
-        );
-
-        return result;
-      },
-      (effect, message) =>
-        effect.pipe(
-          Effect.scoped,
-          Effect.annotateLogs({
-            provider: provider.name,
-            ...emailSendLogFacts(message),
-          })
-        )
-    ),
-
-    sendBatch: Effect.fn("email.sendBatch")(
-      function* (
-        messages: readonly EmailMessage[],
-        options: EmailBatchOptions
+    const routeOf = (message: EmailMessage): EmailRoute => {
+      if (
+        options.testRecipientsToConsole &&
+        addressesOnlyTestRecipients(message)
       ) {
-        yield* Effect.logInfo("Email batch send started", {
-          provider: provider.name,
-          size: messages.length,
-          category: messages[0]?.tags?.[0],
-        });
+        return "console";
+      }
+      const stream = streamOf(message);
+      return providers[stream].length > 0 ? stream : "console";
+    };
+    const chainOf = (route: EmailRoute) =>
+      route === "console" ? consoleChain : providers[route];
+    const providerNames = (route: EmailRoute) =>
+      chainOf(route).map((provider) => provider.name);
 
-        return yield* provider
-          .sendBatch(
-            messages.map((message) => ({
-              ...message,
-              from: message.from || config.defaultFrom,
-            })),
-            options
-          )
-          .pipe(
-            Effect.tap((results) =>
-              Effect.logInfo("Email batch sent successfully", {
-                size: results.length,
-                provider: provider.name,
+    const withDefaultSender = (message: EmailMessage): EmailMessage => ({
+      ...message,
+      from: message.from || config.defaultFrom,
+    });
+
+    const service: EmailService = {
+      send: Effect.fn("email.send")(
+        function* (message: EmailMessage) {
+          const finalMessage = yield* withDeliveryIdempotencyKey(
+            withDefaultSender(message)
+          );
+          const route = routeOf(finalMessage);
+          yield* Effect.logInfo("Email send started", {
+            providers: providerNames(route),
+          });
+
+          return yield* sendThroughChain(
+            chainOf(route),
+            finalMessage,
+            context
+          ).pipe(
+            Effect.tap((sendResult) =>
+              Effect.logInfo("Email sent successfully", {
+                id: sendResult.id,
+                provider: sendResult.provider,
               })
             ),
             Effect.tapError((error) =>
-              Effect.logError("Email batch send failed", {
+              Effect.logError("Email send failed", {
                 ...emailFailureLogFacts(error),
-                provider: provider.name,
+                provider:
+                  error._tag === "EmailServiceError"
+                    ? error.provider
+                    : undefined,
               })
             )
           );
-      },
-      (effect, messages) =>
-        effect.pipe(
-          Effect.scoped,
-          Effect.annotateLogs({
-            provider: provider.name,
-            category: messages[0]?.tags?.[0],
-          })
-        )
-    ),
-  };
-});
+        },
+        (effect, message) =>
+          effect.pipe(Effect.annotateLogs(emailSendLogFacts(message)))
+      ),
+
+      sendBatch: Effect.fn("email.sendBatch")(
+        function* (
+          messages: readonly EmailMessage[],
+          batchOptions: EmailBatchOptions
+        ) {
+          const finalMessages = messages.map(withDefaultSender);
+          const routes = finalMessages.map(routeOf);
+          const groups = routeOrder
+            .map((route) => ({
+              route,
+              indices: routes.flatMap((routed, index) =>
+                routed === route ? [index] : []
+              ),
+            }))
+            .filter(({ indices }) => indices.length > 0);
+          // Two chains in one batch must not share one provider key.
+          const chainGroups = groups.filter(({ route }) => route !== "console");
+          const keyOf = (route: EmailRoute) =>
+            chainGroups.length > 1
+              ? `${batchOptions.idempotencyKey}:${route}`
+              : batchOptions.idempotencyKey;
+
+          yield* Effect.logInfo("Email batch send started", {
+            size: messages.length,
+            providers: groups.map(({ route }) => providerNames(route)),
+          });
+
+          const results: EmailBatchResult[] = [];
+          for (const { route, indices } of groups) {
+            const groupResults = yield* sendBatchThroughChain(
+              chainOf(route),
+              indices.map((index) => finalMessages[index]!),
+              { idempotencyKey: keyOf(route) },
+              context
+            );
+            for (const [position, index] of indices.entries()) {
+              results[index] = groupResults[position]!;
+            }
+          }
+
+          yield* Effect.logInfo("Email batch sent", {
+            size: results.length,
+            failed: results.filter((result) => result.status === "failed")
+              .length,
+          });
+          return results;
+        },
+        (effect, messages) =>
+          effect.pipe(
+            Effect.tapError((error) =>
+              Effect.logError(
+                "Email batch send failed",
+                emailFailureLogFacts(error)
+              )
+            ),
+            Effect.annotateLogs({
+              category: emailCategoryOf(messages[0] ?? {}),
+            })
+          )
+      ),
+    };
+
+    return service;
+  });
 
 /**
- * One logical delivery keeps one idempotency key across transport retries, so
- * a provider that accepted a timed-out attempt does not deliver it twice.
+ * One logical delivery keeps one idempotency key across a provider's
+ * transport retries, so a provider that accepted a timed-out attempt does
+ * not deliver it twice.
  */
 const withDeliveryIdempotencyKey = (message: EmailMessage) =>
   Effect.sync(
@@ -205,7 +250,7 @@ const withDeliveryIdempotencyKey = (message: EmailMessage) =>
 /** A reservation delivery category is sent at most once per reservation. */
 const reservationDeliveryIdempotencyKey = (message: EmailMessage) => {
   const workspaceReservationId = message.metadata?.workspaceReservationId;
-  const category = message.tags?.[0];
+  const category = emailCategoryOf(message);
 
   if (
     typeof workspaceReservationId !== "string" ||

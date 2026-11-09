@@ -1,24 +1,20 @@
 import type { ProviderRequestPolicy } from "@deskohub/provider-request";
-import { Config, Duration, Effect, Layer, Option, Schema } from "effect";
-import { Resend } from "resend";
 import {
   EmailDeliveryIdSchema,
   type EmailMessage,
-  type EmailSendResult,
-} from "../../types/email.types";
-import {
-  EmailConfigTag,
   type EmailProvider,
-  EmailProviderTag,
+  type EmailSendError,
+  type EmailSendResult,
   EmailServiceError,
-  isRetryableEmailError,
-} from "../capabilities";
-import { NetworkError } from "../network-error";
-import { emailRetryPolicy } from "../request-policy";
+  NetworkError,
+} from "@deskohub/email";
+import { Config, Duration, Effect, Option, Schema } from "effect";
+import { Resend } from "resend";
+import { resendRetryPolicy } from "./request-policy";
 
 const resendTagPattern = /^[A-Za-z0-9_-]{1,256}$/;
 
-type ResendRequestTimeouts = {
+export type ResendRequestTimeouts = {
   readonly send: Duration.Duration;
   readonly batch: Duration.Duration;
 };
@@ -29,7 +25,7 @@ type ResendRequestTimeouts = {
  * CI, and E2E deployments share Resend capacity with parallel runs, so they
  * wait much longer before giving up.
  */
-const resendRequestTimeouts = {
+export const resendRequestTimeouts = {
   production: { send: Duration.seconds(5), batch: Duration.seconds(10) },
   nonProduction: { send: Duration.seconds(30), batch: Duration.seconds(30) },
 } as const satisfies Record<string, ResendRequestTimeouts>;
@@ -93,90 +89,111 @@ type ResendResponse<A> = {
   readonly error: unknown;
 };
 
-/**
- * Resend refused a request with this status and sent nothing. A 409 means
- * the idempotency key was already used, so an earlier request under it may
- * have been delivered.
- */
-const isResendRefusal = (statusCode: number) =>
-  statusCode >= 400 && statusCode < 500 && statusCode !== 409;
+const resendProviderRefusal = (code: string) =>
+  new EmailServiceError("Resend cannot send now", undefined, "resend", {
+    failureKind: "provider",
+    code,
+  });
+
+const resendMessageRefusal = (code: string) =>
+  new EmailServiceError(
+    "Resend rejected the email request",
+    undefined,
+    "resend",
+    {
+      failureKind: "message",
+      code,
+    }
+  );
 
 /**
- * Runs one Resend request and classifies its failure. `EmailServiceError`
- * means Resend refused the request and sent nothing. `NetworkError` means
- * the outcome is unknown (a timeout, a transport or server failure, a reused
- * key, or an unreadable response to an accepted request), so the caller may
- * retry under the same idempotency key. The raw provider failure is
- * discarded so spans and logs never carry its message. The request gets
- * Effect's abort signal, so a timeout or interrupt cancels it in flight
- * instead of leaving it to overlap a later attempt.
+ * Classifies a Resend refusal by its HTTP status:
+ *
+ * | Status | Error | Chain | Send retry |
+ * |---|---|---|---|
+ * | 429 quota or rate limit | `EmailServiceError` `provider` | next provider | no |
+ * | 401, 403, 404 key, scope, or missing resource | `EmailServiceError` `provider` | next provider | no |
+ * | 409 idempotency key in use or reused | `NetworkError` `unknown-outcome` | stops; caller replays | yes |
+ * | other 4xx, such as 400 and 422 validation | `EmailServiceError` `message` | stops | no |
+ * | 5xx | `NetworkError` `provider` | next provider | yes |
+ *
+ * An error without a status is classified by its message: an
+ * authentication or unverified-domain refusal is provider-level, any other
+ * invalid or bad request is message-level, and the rest is a server failure.
+ * Codes are `http-<status>` or `resend-<kind>`; the raw provider message is
+ * discarded so spans and logs never carry it.
+ */
+const classifyResendError = (error: unknown): EmailSendError => {
+  const statusCode = getResendErrorStatusCode(error);
+  if (statusCode === undefined) {
+    const message = getResendErrorMessage(error).toLowerCase();
+    if (
+      ["unauthorized", "forbidden", "api key", "not verified"].some((word) =>
+        message.includes(word)
+      )
+    ) {
+      return resendProviderRefusal("resend-unauthorized");
+    }
+    if (message.includes("invalid") || message.includes("bad request")) {
+      return resendMessageRefusal("resend-invalid");
+    }
+    return new NetworkError({
+      message: "Resend network error",
+      code: "resend-server",
+    });
+  }
+  const code = `http-${statusCode}`;
+  if (statusCode === 409) {
+    return new NetworkError({
+      message: "Resend idempotency key already in use",
+      code,
+      failureKind: "unknown-outcome",
+    });
+  }
+  if (statusCode >= 500 || statusCode < 400) {
+    return new NetworkError({ message: "Resend network error", code });
+  }
+  return [401, 403, 404, 429].includes(statusCode)
+    ? resendProviderRefusal(code)
+    : resendMessageRefusal(code);
+};
+
+/**
+ * Runs one Resend request. The request gets Effect's abort signal, so a
+ * timeout or interrupt cancels it in flight instead of leaving it to overlap
+ * a later attempt. A transport failure or timeout is a `NetworkError`; a
+ * refusal is classified by `classifyResendError`.
  */
 const requestResend = <A>(
   request: (signal: AbortSignal) => Promise<ResendResponse<A>>,
   policy: ProviderRequestPolicy
 ) =>
   Effect.tryPromise({
-    try: async (signal) => {
-      const response = await request(signal);
-      const resendError = response.error;
-      if (resendError) {
-        const errorMessage = getResendErrorMessage(resendError);
-        const statusCode = getResendErrorStatusCode(resendError);
-        const normalizedErrorMessage = errorMessage.toLowerCase();
-
-        if (
-          statusCode === undefined
-            ? normalizedErrorMessage.includes("invalid") ||
-              normalizedErrorMessage.includes("bad request") ||
-              normalizedErrorMessage.includes("unauthorized") ||
-              normalizedErrorMessage.includes("forbidden") ||
-              normalizedErrorMessage.includes("not verified")
-            : isResendRefusal(statusCode)
-        ) {
-          throw new Error(`CLIENT_ERROR: ${errorMessage}`);
-        }
-
-        throw new Error(`API_ERROR: ${errorMessage}`);
-      }
-
-      return response.data;
-    },
-    catch: (error) => {
-      // Classify internally, then discard the raw provider failure.
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-
-      if (errorMessage.includes("CLIENT_ERROR:")) {
-        return new EmailServiceError(
-          "Resend rejected the email request",
-          undefined,
-          "resend"
-        );
-      }
-
-      return new NetworkError({
-        message: errorMessage.includes("API_ERROR:")
-          ? "Resend network error"
-          : "Resend request failed",
-      });
-    },
+    try: (signal) => request(signal),
+    // Discard the raw transport failure; its message may carry request data.
+    catch: () =>
+      new NetworkError({ message: "Resend request failed", code: "transport" }),
   }).pipe(
     policy.attempt(
       () =>
-        new NetworkError({
-          message: "Resend send timed out",
-        })
+        new NetworkError({ message: "Resend send timed out", code: "timeout" })
+    ),
+    Effect.flatMap(
+      (response): Effect.Effect<A | null, EmailSendError> =>
+        response.error
+          ? Effect.fail(classifyResendError(response.error))
+          : Effect.succeed(response.data)
     ),
     Effect.tapError((error) =>
-      Effect.logWarning(
-        "Resend tryPromise failed - will retry if NetworkError",
-        {
-          errorTag: error._tag,
-          willRetry: isRetryableEmailError(error),
-        }
-      )
+      Effect.logWarning("Resend request failed", {
+        errorTag: error._tag,
+        errorCode: error.code,
+      })
     )
   );
+
+const isRetryableResendFailure = (error: EmailSendError) =>
+  error._tag === "NetworkError";
 
 const toResendEmail = (message: EmailMessage) => ({
   from: `${message.from.name || ""} <${message.from.email}>`.trim(),
@@ -201,17 +218,32 @@ const decodeDeliveryId = (id: unknown) =>
       () =>
         new NetworkError({
           message: "Resend response did not contain a valid email delivery ID",
+          code: "invalid-response",
+          failureKind: "unknown-outcome",
         })
     )
   );
 
-export const createResendProvider = (
-  apiKey: string,
-  timeouts: ResendRequestTimeouts
-): EmailProvider => {
+export interface ResendEmailProviderConfig {
+  readonly apiKey: string;
+  readonly timeouts: ResendRequestTimeouts;
+}
+
+/**
+ * Sends through Resend. A single send retries a transport failure, a server
+ * failure, or a 409 under its idempotency key, with a jittered exponential
+ * backoff from 1 second, at most three times; a batch runs once, and only
+ * its caller can replay it safely. Resend cannot carry attachments in a
+ * batch, so such a batch is refused at the message level before any
+ * request.
+ */
+export const makeResendEmailProvider = ({
+  apiKey,
+  timeouts,
+}: ResendEmailProviderConfig): EmailProvider => {
   const resend = new Resend(apiKey);
-  const sendPolicy = emailRetryPolicy.withAttemptTimeout(timeouts.send);
-  const batchPolicy = emailRetryPolicy.withAttemptTimeout(timeouts.batch);
+  const sendPolicy = resendRetryPolicy.withAttemptTimeout(timeouts.send);
+  const batchPolicy = resendRetryPolicy.withAttemptTimeout(timeouts.batch);
 
   return {
     name: "resend",
@@ -224,7 +256,7 @@ export const createResendProvider = (
           hasText: !!message.text,
         });
 
-        const data = yield* requestResend(
+        const deliveryId = yield* requestResend(
           (signal) =>
             resend.emails.send(
               {
@@ -244,14 +276,14 @@ export const createResendProvider = (
           sendPolicy
         ).pipe(
           Effect.tap((response) =>
-            Effect.logInfo("Resend tryPromise succeeded", {
+            Effect.logInfo("Resend request succeeded", {
               hasData: !!response,
               id: response?.id,
             })
-          )
+          ),
+          Effect.flatMap((response) => decodeDeliveryId(response?.id)),
+          sendPolicy.retryWhile(isRetryableResendFailure)
         );
-
-        const deliveryId = yield* decodeDeliveryId(data?.id);
 
         const sendResult: EmailSendResult = {
           id: deliveryId,
@@ -262,7 +294,7 @@ export const createResendProvider = (
 
         yield* Effect.annotateLogsScoped({ result: sendResult });
         yield* Effect.logInfo("Email sent successfully via Resend", {
-          id: data?.id,
+          id: deliveryId,
         });
 
         return sendResult;
@@ -282,11 +314,7 @@ export const createResendProvider = (
     sendBatch: Effect.fn("resend.sendBatch")(
       function* (messages, options) {
         if (messages.some((message) => message.attachments?.length)) {
-          return yield* new EmailServiceError(
-            "Resend batch emails cannot carry attachments",
-            undefined,
-            "resend"
-          );
+          return yield* resendMessageRefusal("attachments-unsupported");
         }
         yield* Effect.logInfo("Sending email batch via Resend", {
           category: messages[0]?.tags?.[0],
@@ -306,6 +334,8 @@ export const createResendProvider = (
         if (ids.length !== messages.length) {
           return yield* new NetworkError({
             message: "Resend batch response did not match the batch size",
+            code: "batch-size-mismatch",
+            failureKind: "unknown-outcome",
           });
         }
 
@@ -340,21 +370,3 @@ const resendIdempotencyKeyMaxLength = 256;
 
 const getResendIdempotencyKey = (idempotencyKey: string | undefined) =>
   idempotencyKey?.slice(0, resendIdempotencyKeyMaxLength);
-
-export const ResendEmailProviderLive = Layer.effect(
-  EmailProviderTag,
-  Effect.gen(function* () {
-    const config = yield* EmailConfigTag;
-    const apiKey = config.apiKey?.trim() ?? "";
-
-    if (!apiKey) {
-      return yield* new EmailServiceError(
-        "EMAIL_API_KEY is required for Resend email provider",
-        undefined,
-        "resend"
-      );
-    }
-
-    return createResendProvider(apiKey, yield* deploymentResendRequestTimeouts);
-  })
-);

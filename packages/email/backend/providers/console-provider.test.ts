@@ -2,8 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Logger, References } from "effect";
 import type { EmailMessage } from "../../types/email.types";
-import { EmailProviderTag } from "../capabilities";
-import { ConsoleEmailProviderLive } from "./console-provider";
+import { ConsoleEmailProvider } from "./console-provider";
 
 const bearerText =
   "Sign in at https://preview.example/api/auth/magic-link/verify?token=secret-token";
@@ -125,9 +124,7 @@ const send = (message: EmailMessage) => {
   const logEntries: CapturedLogEntry[] = [];
   const capture = captureConsole();
   const promise = Effect.runPromise(
-    EmailProviderTag.pipe(
-      Effect.provide(ConsoleEmailProviderLive),
-      Effect.flatMap((provider) => provider.send(message)),
+    ConsoleEmailProvider.send(message).pipe(
       Effect.provide(Logger.layer([captureLogs(logEntries)]))
     )
   );

@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Fiber, Layer } from "effect";
-import { TestClock } from "effect/testing";
 import type { EmailMessage } from "../types/email.types";
 import { EmailConfigTag } from "./capabilities";
 import { makeEmailProviderFake } from "./email-provider.test-utils";
+import { EmailProviders } from "./email-providers";
 import { EmailServiceTag } from "./service";
 
 const message: EmailMessage = {
@@ -33,28 +33,58 @@ const runWithFake = <A, E>(
     )
   );
 
-const withInstantRetries = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  Effect.gen(function* () {
-    const fiber = yield* Effect.forkChild(effect);
-    yield* TestClock.adjust("1 minute");
-    return yield* Fiber.join(fiber);
-  }).pipe(Effect.provide(TestClock.layer()));
-
-test("single-send retry after a lost response makes one delivery", async () => {
+test("a lost single-send response is an unknown outcome; a replay under the same key makes one delivery", async () => {
   const fake = makeEmailProviderFake();
   fake.respondWith(() => "accept-lost");
-  const result = await runWithFake(
-    fake,
+  const keyed = { ...message, idempotencyKey: "delivery-1" };
+  const send = Effect.gen(function* () {
+    const email = yield* EmailServiceTag;
+    return yield* email.send(keyed);
+  });
+
+  const lost = await runWithFake(fake, send.pipe(Effect.flip));
+  const replayed = await runWithFake(fake, send);
+
+  expect(lost).toMatchObject({ _tag: "NetworkError" });
+  expect(fake.requests().map((request) => request.key)).toEqual([
+    "delivery-1",
+    "delivery-1",
+  ]);
+  expect(fake.mailed()).toEqual([testEmailAddress("recipient")]);
+  expect(replayed.provider).toBe("resend");
+});
+
+test("named fakes compose into a chain; an unavailable one hands the message on", async () => {
+  const posthog = makeEmailProviderFake({ name: "posthog" });
+  const resend = makeEmailProviderFake();
+  posthog.respondWith(() => "unavailable");
+
+  const result = await Effect.runPromise(
     Effect.gen(function* () {
       const email = yield* EmailServiceTag;
-      return yield* email.send(message);
-    }).pipe(withInstantRetries)
+      return yield* email.send({ ...message, tags: ["email-campaign"] });
+    }).pipe(
+      Effect.provide(
+        EmailServiceTag.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(EmailProviders, {
+                transactional: [resend.provider],
+                marketing: [posthog.provider, resend.provider],
+                marketingCategories: new Set(["email-campaign"]),
+              }),
+              Layer.succeed(EmailConfigTag, { defaultFrom: message.from })
+            )
+          )
+        )
+      )
+    )
   );
 
-  expect(fake.requests()).toHaveLength(2);
-  expect(fake.requests()[1]?.key).toBe(fake.requests()[0]?.key);
-  expect(fake.mailed()).toEqual([testEmailAddress("recipient")]);
   expect(result.provider).toBe("resend");
+  expect(posthog.requests()).toHaveLength(1);
+  expect(posthog.mailed()).toEqual([]);
+  expect(resend.mailed()).toEqual([testEmailAddress("recipient")]);
 });
 
 test("a batch makes one request; the caller replays lost acceptance under the same key", async () => {
@@ -81,8 +111,11 @@ test("a batch makes one request; the caller replays lost acceptance under the sa
         idempotencyKey: "batch",
       });
       expect(again).toEqual(replay);
-      expect(replay.map(({ id }) => id)).toHaveLength(2);
-      expect(replay[0]?.id).not.toBe(replay[1]?.id);
+      const ids = replay.map((result) =>
+        result.status === "failed" ? undefined : result.id
+      );
+      expect(ids).toEqual([expect.any(String), expect.any(String)]);
+      expect(ids[0]).not.toBe(ids[1]);
     })
   );
   expect(fake.requests()).toHaveLength(3);

@@ -6,22 +6,45 @@ import {
 } from "../types/email.types";
 import {
   type EmailProvider,
-  EmailProviderTag,
   type EmailSendError,
   EmailServiceError,
 } from "./capabilities";
+import { EmailProviders } from "./email-providers";
 import { NetworkError } from "./network-error";
 
-/** How the provider answers a fresh request. Accepted keys always replay. */
+/**
+ * How the provider answers a fresh request. Accepted keys always replay.
+ * `refuse` is a message-level refusal that stops a provider chain;
+ * `unavailable` is a provider-level refusal (a quota or throttling 429) that
+ * moves the message to the next provider.
+ */
 export type EmailProviderFakeResponse =
   | "accept"
   | "accept-lost"
   | "refuse"
+  | "unavailable"
   | "accept-hang"
   | "hang";
 
-/** Idempotent delivery with injectable refusal, response loss, and interruption. */
-export const makeEmailProviderFake = () => {
+export interface EmailProviderFakeOptions {
+  /** The provider name results carry; `resend` by default. */
+  readonly name?: string;
+  /**
+   * Without attachment support, a message with attachments is refused at
+   * the message level before any request, as a real provider reports it.
+   */
+  readonly sendsAttachments?: boolean;
+}
+
+/**
+ * Idempotent delivery with injectable refusal, response loss, and
+ * interruption. `layer` provides it as the only provider of both streams;
+ * compose several fakes into `EmailProviders` to test a chain.
+ */
+export const makeEmailProviderFake = ({
+  name = "resend",
+  sendsAttachments = true,
+}: EmailProviderFakeOptions = {}) => {
   const accepted = {
     send: new Map<
       string,
@@ -44,12 +67,25 @@ export const makeEmailProviderFake = () => {
   const recipientsOf = (messages: readonly EmailMessage[]) =>
     messages.flatMap((message) => [message.to].flat().map((to) => to.email));
 
+  const refuseAttachments = (messages: readonly EmailMessage[]) =>
+    !sendsAttachments && messages.some((message) => message.attachments?.length)
+      ? Effect.fail(
+          new EmailServiceError(
+            "Provider cannot send attachments",
+            undefined,
+            name,
+            { failureKind: "message", code: "attachments-unsupported" }
+          )
+        )
+      : Effect.void;
+
   const request = (
     operation: keyof typeof accepted,
     messages: readonly EmailMessage[],
     key?: string
   ) =>
-    Effect.promise(() => beforeRequest()).pipe(
+    refuseAttachments(messages).pipe(
+      Effect.andThen(Effect.promise(() => beforeRequest())),
       Effect.andThen(
         Effect.suspend(
           (): Effect.Effect<readonly EmailSendResult[], EmailSendError> => {
@@ -61,7 +97,23 @@ export const makeEmailProviderFake = () => {
             const response = earlier ? "accept" : respond(requestKey);
             if (response === "refuse") {
               return Effect.fail(
-                new EmailServiceError("Invalid email request")
+                new EmailServiceError(
+                  "Invalid email request",
+                  undefined,
+                  name,
+                  {
+                    failureKind: "message",
+                    code: "http-422",
+                  }
+                )
+              );
+            }
+            if (response === "unavailable") {
+              return Effect.fail(
+                new EmailServiceError("Provider unavailable", undefined, name, {
+                  failureKind: "provider",
+                  code: "http-429",
+                })
               );
             }
             if (response === "hang") return Effect.never;
@@ -76,10 +128,10 @@ export const makeEmailProviderFake = () => {
               messages.map(
                 (): EmailSendResult => ({
                   id: EmailDeliveryIdSchema.make(
-                    `resend-fake-${fakeId}-${++nextId}`
+                    `${name}-fake-${fakeId}-${++nextId}`
                   ),
                   status: "sent",
-                  provider: "resend",
+                  provider: name,
                   timestamp: new Date(),
                 })
               );
@@ -105,7 +157,7 @@ export const makeEmailProviderFake = () => {
     );
 
   const provider: EmailProvider = {
-    name: "resend",
+    name,
     send: (message) =>
       request("send", [message], message.idempotencyKey).pipe(
         Effect.map((results) => results[0]!)
@@ -116,7 +168,11 @@ export const makeEmailProviderFake = () => {
 
   return {
     provider,
-    layer: Layer.succeed(EmailProviderTag, provider),
+    layer: Layer.succeed(EmailProviders, {
+      transactional: [provider],
+      marketing: [provider],
+      marketingCategories: new Set<string>(),
+    }),
     /** Every request, replays included, in order. */
     requests: () => [...requests],
     /** Every To address accepted for delivery. */
