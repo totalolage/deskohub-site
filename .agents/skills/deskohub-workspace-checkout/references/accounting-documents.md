@@ -34,6 +34,16 @@ One invoice per reservation payment is enforced by unique indexes; repeated or c
 
 Render the PDF on demand from the issued JSON. Never persist the PDF or read current catalog, supplier, customer, or reservation data while rendering.
 
+## Customer account access
+
+`CustomerInvoiceService` (`features/account/backend/customer-invoice.service.ts`) is the only customer-facing reader of issued invoices.
+
+- Every operation re-authorizes: `CustomerAccountResolver.resolve`, then `requireAccountActivity` against the database, never cookies or a cached result. A refused session (signed out, unverified, not linked, a review account, deletion pending, login gone) is `CustomerInvoicesUnavailableError`; an unreadable session or link is a load failure.
+- Ownership is in SQL: read through `InvoiceRepository.listForCustomer` and `findForCustomer` with the resolved Dotypos customer, so another customer's invoice is never decrypted. An unknown, foreign, or malformed id is the same not-found.
+- Project with `getCustomerInvoiceSummary` (`features/accounting/customer-invoice.ts`) on the Prague date from `currentPlainDate`; totals, settlement, and due dates come only from `invoice-settlement.ts`. Render PDFs with `renderInvoicePdfFile` and export CSV with `getCustomerInvoiceCsvColumns` through `createCsvDownloadResponse`. Customer reads never touch the email delivery ledger.
+- `CustomerInvoicesLoadError` keeps a fixed `code` and logs only it, never an id, email, or a database, decryption, or renderer cause. Routes answer every refusal with one indistinguishable private 404 and a load failure with a private 500 (account skill, account domain and routes).
+- Account deletion keeps issued invoices: the tombstone clears the account's Dotypos customer, so the deleted account reaches none, while the rows stay readable by id and customer (`customer-account-deletion.postgres.test.ts`).
+
 ## Delivery
 
 - Send a dedicated invoice follow-up after fulfilment, never as part of the access-code email, plus an internal copy.

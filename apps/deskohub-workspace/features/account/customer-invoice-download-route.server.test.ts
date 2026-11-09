@@ -1,272 +1,237 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, mock, test } from "bun:test";
-import { Data, Effect, Layer } from "effect";
-
-mock.module("server-only", () => ({}) as never);
-
-const ownedInvoiceId = "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb23";
-const otherOwnerId = "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb99";
-
-class TestCustomerInvoiceNotFoundError extends Data.TaggedError(
-  "CustomerInvoiceNotFoundError"
-)<{
-  readonly invoiceId: string;
-}> {}
-
-const { makeCustomerInvoiceCsvGet, makeCustomerInvoicePdfGet } = await import(
-  "@/features/account/customer-invoice-download-route.server"
-);
-const { CustomerInvoiceService, CustomerInvoicesUnavailableError } =
-  await import("@/features/account/backend/customer-invoice.service");
-
-const serviceLayer = Layer.succeed(
+import { beforeEach, describe, expect, test } from "bun:test";
+import { Effect, Layer } from "effect";
+import {
+  type CustomerInvoiceSummary,
+  getCustomerInvoiceCsvColumns,
+} from "@/features/accounting/customer-invoice";
+import { invoiceNumberSchema } from "@/features/accounting/invoice";
+import { invoiceIdSchema } from "@/features/accounting/manual-invoice";
+import { captureWorkspaceLogs } from "@/shared/testing/workspace-telemetry.test-utils";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
+import {
+  CustomerInvoiceNotFoundError,
   CustomerInvoiceService,
-  CustomerInvoiceService.of({
-    list: Effect.succeed([]),
-    // The real service maps a missing or non-owned lookup to the same
-    // CustomerInvoiceNotFoundError; the boundary must treat it identically
-    // to a malformed id.
-    findPdf: (invoiceId: string) =>
-      Effect.fail(new TestCustomerInvoiceNotFoundError({ invoiceId })),
-    buildCsv: () =>
-      Effect.succeed({
-        fileName: "deskohub-invoices.csv",
-        content: "Invoice number,Total\r\nWS-FV-2026-000042,450\r\n",
-      }),
-  } as never)
-);
+  CustomerInvoicesLoadError,
+  CustomerInvoicesUnavailableError,
+} from "./backend/customer-invoice.service";
+import {
+  makeCustomerInvoiceExportGet,
+  makeCustomerInvoicePdfGet,
+} from "./customer-invoice-download-route.server";
 
-const unavailableServiceLayer = Layer.succeed(
-  CustomerInvoiceService,
-  CustomerInvoiceService.of({
-    list: Effect.fail(
-      new CustomerInvoicesUnavailableError({
-        message: "Customer invoices are unavailable for this account.",
-      })
-    ),
-    findPdf: () =>
-      Effect.fail(
-        new CustomerInvoicesUnavailableError({
-          message: "Customer invoices are unavailable for this account.",
-        })
-      ),
-    buildCsv: () =>
-      Effect.fail(
-        new CustomerInvoicesUnavailableError({
-          message: "Customer invoices are unavailable for this account.",
-        })
-      ),
-  } as never)
-);
+const workspaceLogs = captureWorkspaceLogs();
 
-describe("customer invoice download routes", () => {
-  test("malformed, missing, and non-owned pdf ids share one indistinguishable 404", async () => {
-    const GET = makeCustomerInvoicePdfGet(serviceLayer);
-    const responses = await Promise.all(
-      ["not-a-uuid", ownedInvoiceId, otherOwnerId].map(async (invoiceId) => {
-        const response = await GET(new Request("https://workspace.test/x"), {
-          params: Promise.resolve({ invoiceId }),
+const ownInvoiceId = "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb23";
+const otherCustomersInvoiceId = "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb99";
+const pdfBytes = new TextEncoder().encode("%PDF-1.7 synthetic");
+
+const summary: CustomerInvoiceSummary = {
+  id: invoiceIdSchema.make(ownInvoiceId),
+  invoiceNumber: invoiceNumberSchema.make("WS-FV-2026-000042"),
+  issuedOn: plainDateStringSchema.make("2026-08-20"),
+  total: { amount: "450.50", currency: "CZK" },
+  paymentStatus: "due",
+  dueDate: plainDateStringSchema.make("2026-09-01"),
+};
+
+type Outcome = "own" | "not-found" | "unavailable" | "load-failed";
+
+let outcome: Outcome;
+let requestedInvoiceIds: string[];
+
+beforeEach(() => {
+  outcome = "own";
+  requestedInvoiceIds = [];
+  workspaceLogs.reset();
+});
+
+const refuse = () =>
+  outcome === "unavailable"
+    ? Effect.fail(new CustomerInvoicesUnavailableError())
+    : Effect.fail(new CustomerInvoicesLoadError({ code: "invoice.read" }));
+
+const service = Layer.mock(CustomerInvoiceService, {
+  pdf: (invoiceId) =>
+    Effect.suspend(() => {
+      requestedInvoiceIds.push(invoiceId);
+      if (outcome === "own" && invoiceId === ownInvoiceId) {
+        return Effect.succeed({
+          bytes: pdfBytes,
+          fileName: `${summary.invoiceNumber}.pdf`,
         });
-        if (response instanceof Response && response.status !== 404) {
-          throw new Error(`expected 404 for ${invoiceId}`);
-        }
-        return response;
-      })
-    );
+      }
+      if (outcome === "own" || outcome === "not-found") {
+        return Effect.fail(new CustomerInvoiceNotFoundError());
+      }
+      return refuse();
+    }),
+  csv: (locale) =>
+    Effect.suspend(() =>
+      outcome === "own"
+        ? Effect.succeed({
+            filename: "invoices-2026-09-02.csv",
+            columns: getCustomerInvoiceCsvColumns(locale),
+            rows: [summary],
+          })
+        : refuse()
+    ),
+});
 
-    const [malformed, missing, nonOwned] = responses;
-    for (const response of responses) {
-      if (!(response instanceof Response)) throw new Error("no response");
-      expect(response.status).toBe(404);
-      expect(response.headers.get("cache-control")).toBe("private, no-store");
-      expect(response.headers.get("content-type")).not.toBe("application/pdf");
-    }
-    expect(await malformed?.text()).toBe(await missing?.text());
-    expect(await missing?.text()).toBe(await nonOwned?.text());
-  });
+const unbuildableService = Layer.effect(
+  CustomerInvoiceService,
+  Effect.fail(new Error("synthetic configuration failure"))
+);
 
-  test("maps unavailable PDF authorization to the missing and non-owned 404", async () => {
-    const unauthorizedGet = makeCustomerInvoicePdfGet(unavailableServiceLayer);
-    const missingGet = makeCustomerInvoicePdfGet(serviceLayer);
-    const [unavailable, malformed, missing, nonOwned] = await Promise.all([
-      unauthorizedGet(new Request("https://workspace.test/x"), {
-        params: Promise.resolve({ invoiceId: ownedInvoiceId }),
-      }),
-      missingGet(new Request("https://workspace.test/x"), {
-        params: Promise.resolve({ invoiceId: "not-a-uuid" }),
-      }),
-      missingGet(new Request("https://workspace.test/x"), {
-        params: Promise.resolve({ invoiceId: ownedInvoiceId }),
-      }),
-      missingGet(new Request("https://workspace.test/x"), {
-        params: Promise.resolve({ invoiceId: otherOwnerId }),
-      }),
-    ]);
-    const responses = [unavailable, malformed, missing, nonOwned];
-    for (const response of responses) {
-      if (!(response instanceof Response)) throw new Error("no response");
-      expect(response.status).toBe(404);
-      expect(response.headers.get("cache-control")).toBe("private, no-store");
-      expect(response.headers.get("content-disposition")).toBeNull();
-      expect(response.headers.get("content-type")).not.toBe("application/pdf");
-    }
-    const bodies = await Promise.all(
-      responses.map((response) => response.text())
-    );
-    expect(new Set(bodies).size).toBe(1);
-    expect(bodies[0]).not.toContain("%PDF");
-  });
+const requestPdf = (
+  invoiceId: string,
+  { locale = "en-US", layer = service } = {}
+) =>
+  makeCustomerInvoicePdfGet(layer)(
+    new Request(
+      `https://workspace.test/${locale}/account/invoices/${invoiceId}/pdf`
+    ),
+    { params: Promise.resolve({ locale, invoiceId }) }
+  );
 
-  test("serves an owned invoice as a private pdf attachment", async () => {
-    const GET = makeCustomerInvoicePdfGet(
-      Layer.succeed(
-        CustomerInvoiceService,
-        CustomerInvoiceService.of({
-          list: Effect.succeed([]),
-          findPdf: () =>
-            Effect.succeed({
-              bytes: Buffer.from("%PDF-1.4 synthetic"),
-              fileName: "WS-FV-2026-000042.pdf",
-            }),
-          buildCsv: () => Effect.succeed({ fileName: "x", content: "" }),
-        } as never)
-      )
-    );
+const requestExport = ({ locale = "en-US", layer = service } = {}) =>
+  makeCustomerInvoiceExportGet(layer)(
+    new Request(`https://workspace.test/${locale}/account/invoices/export`),
+    { params: Promise.resolve({ locale }) }
+  );
 
-    const response = await GET(new Request("https://workspace.test/x"), {
-      params: Promise.resolve({ invoiceId: ownedInvoiceId }),
-    });
-    if (!(response instanceof Response)) throw new Error("no response");
+const describeResponse = async (response: Response) => ({
+  status: response.status,
+  headers: [...response.headers.entries()].sort(),
+  body: await response.text(),
+});
+
+const expectPrivate = (response: Response) => {
+  expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+  expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+};
+
+describe("customer invoice PDF route", () => {
+  test("downloads the customer's own invoice as a private attachment", async () => {
+    const response = await requestPdf(ownInvoiceId);
+
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("application/pdf");
-    expect(response.headers.get("content-disposition")).toBe(
-      `attachment; filename="WS-FV-2026-000042.pdf"`
+    expect(response.headers.get("Content-Type")).toBe("application/pdf");
+    expect(response.headers.get("Content-Disposition")).toBe(
+      'attachment; filename="WS-FV-2026-000042.pdf"'
     );
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expectPrivate(response);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(pdfBytes);
+    expect(requestedInvoiceIds).toEqual([ownInvoiceId]);
   });
 
-  test("maps an invalid export locale to the same private 404", async () => {
-    const GET = makeCustomerInvoiceCsvGet(serviceLayer);
-    const [invalid, valid] = await Promise.all([
-      GET(new Request("https://workspace.test/x"), {
-        params: Promise.resolve({ locale: "not-a-locale" }),
-      }),
-      GET(new Request("https://workspace.test/x"), {
-        params: Promise.resolve({ locale: "en-US" }),
-      }),
+  test("answers every refusal with the same private 404", async () => {
+    const otherCustomers = await requestPdf(otherCustomersInvoiceId);
+    const malformed = await requestPdf("not-an-invoice-id");
+    outcome = "not-found";
+    const unknown = await requestPdf(ownInvoiceId);
+    outcome = "unavailable";
+    const refused = await requestPdf(ownInvoiceId);
+    outcome = "own";
+    const invalidLocale = await requestPdf(ownInvoiceId, { locale: "xx-XX" });
+
+    const reference = await describeResponse(otherCustomers);
+    expect(reference.status).toBe(404);
+    expect(reference.body).toBe("");
+    expectPrivate(otherCustomers);
+    for (const response of [malformed, unknown, refused, invalidLocale]) {
+      expect(await describeResponse(response)).toEqual(reference);
+    }
+    // An invalid locale never reaches the service.
+    expect(requestedInvoiceIds).toEqual([
+      otherCustomersInvoiceId,
+      "not-an-invoice-id",
+      ownInvoiceId,
+      ownInvoiceId,
     ]);
-    if (!(invalid instanceof Response) || !(valid instanceof Response)) {
-      throw new Error("no response");
-    }
-    expect(invalid.status).toBe(404);
-    expect(invalid.headers.get("cache-control")).toBe("private, no-store");
-    expect(valid.status).toBe(200);
-    expect(valid.headers.get("content-type")).toContain("text/csv");
-    expect(valid.headers.get("content-disposition")).toBe(
-      `attachment; filename="deskohub-invoices.csv"`
-    );
-    expect(valid.headers.get("cache-control")).toBe("private, no-store");
   });
 
-  test("maps unavailable CSV authorization to the invalid-locale 404 for safe locales", async () => {
-    const unauthorizedGet = makeCustomerInvoiceCsvGet(unavailableServiceLayer);
-    const invalidLocaleGet = makeCustomerInvoiceCsvGet(serviceLayer);
-    const safeLocales = ["en-US", "cs-CZ"] as const;
-    const deniedResponses = await Promise.all(
-      safeLocales.map((locale) =>
-        unauthorizedGet(new Request("https://workspace.test/x"), {
-          params: Promise.resolve({ locale }),
-        })
-      )
-    );
-    const invalidLocale = await invalidLocaleGet(
-      new Request("https://workspace.test/x"),
-      { params: Promise.resolve({ locale: "not-a-locale" }) }
-    );
-    if (!(invalidLocale instanceof Response)) {
-      throw new Error("no invalid-locale response");
-    }
+  test("answers a load failure with a private 500 without the document", async () => {
+    outcome = "load-failed";
 
-    for (const response of [...deniedResponses, invalidLocale]) {
-      if (!(response instanceof Response)) throw new Error("no response");
-      expect(response.status).toBe(404);
-      expect(response.headers.get("cache-control")).toBe("private, no-store");
-      expect(response.headers.get("content-disposition")).toBeNull();
-      expect(response.headers.get("content-type") ?? "").not.toContain(
-        "text/csv"
-      );
-    }
-    const bodies = await Promise.all(
-      [...deniedResponses, invalidLocale].map((response) => response.text())
-    );
-    expect(new Set(bodies).size).toBe(1);
-    expect(bodies[0]).not.toContain("WS-FV-2026-000042");
-  });
-
-  test("unexpected pdf failures answer with a private no-store json error", async () => {
-    const failingLayer = Layer.succeed(
-      CustomerInvoiceService,
-      CustomerInvoiceService.of({
-        list: Effect.succeed([]),
-        findPdf: () =>
-          Effect.fail(
-            new (class extends Data.TaggedError("CustomerInvoicesLoadError") {
-              readonly message = "synthetic storage outage secret-detail";
-            })()
-          ),
-        buildCsv: () => Effect.succeed({ fileName: "x", content: "" }),
-      } as never)
-    );
-    const GET = makeCustomerInvoicePdfGet(failingLayer);
-
-    const response = await GET(new Request("https://workspace.test/x"), {
-      params: Promise.resolve({ invoiceId: ownedInvoiceId }),
-    });
-    if (!(response instanceof Response)) throw new Error("no response");
+    const response = await requestPdf(ownInvoiceId);
 
     expect(response.status).toBe(500);
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("content-type")).toContain("application/json");
-    expect(response.headers.get("content-disposition")).toBeNull();
-    const body = await response.text();
-    expect(body).not.toContain("%PDF");
-    expect(body).not.toContain("synthetic storage outage secret-detail");
+    expectPrivate(response);
+    expect(response.headers.get("Content-Disposition")).toBeNull();
+    expect(response.headers.get("Content-Type")).not.toBe("application/pdf");
   });
 
-  test("unexpected csv failures answer with a private no-store json error", async () => {
-    const failingLayer = Layer.succeed(
-      CustomerInvoiceService,
-      CustomerInvoiceService.of({
-        list: Effect.fail(
-          new (class extends Data.TaggedError("CustomerInvoicesLoadError") {
-            readonly message = "synthetic storage outage secret-detail";
-          })()
-        ),
-        findPdf: () =>
-          Effect.fail(
-            new TestCustomerInvoiceNotFoundError({ invoiceId: ownedInvoiceId })
-          ),
-        buildCsv: () =>
-          Effect.fail(
-            new (class extends Data.TaggedError("CustomerInvoicesLoadError") {
-              readonly message = "synthetic storage outage secret-detail";
-            })()
-          ),
-      } as never)
-    );
-    const GET = makeCustomerInvoiceCsvGet(failingLayer);
-
-    const response = await GET(new Request("https://workspace.test/x"), {
-      params: Promise.resolve({ locale: "en-US" }),
+  test("answers a service that can't be built with a private 500 and logs only a fixed code", async () => {
+    const response = await requestPdf(ownInvoiceId, {
+      layer: unbuildableService,
     });
-    if (!(response instanceof Response)) throw new Error("no response");
 
     expect(response.status).toBe(500);
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("content-type")).toContain("application/json");
-    expect(response.headers.get("content-disposition")).toBeNull();
-    const body = await response.text();
-    expect(body).not.toContain("synthetic storage outage secret-detail");
+    expectPrivate(response);
+    const logged = JSON.stringify(
+      workspaceLogs.records().map(({ body, attributes }) => ({
+        body,
+        attributes,
+      }))
+    );
+    expect(logged).toContain("account.invoice-download");
+    expect(logged).not.toContain("synthetic configuration failure");
+    expect(logged).not.toContain(ownInvoiceId);
+  });
+});
+
+test("refuses an invalid locale even when the service can't be built", async () => {
+  const response = await requestExport({
+    locale: "xx-XX",
+    layer: unbuildableService,
+  });
+
+  expect(response.status).toBe(404);
+  expectPrivate(response);
+});
+
+describe("customer invoice export route", () => {
+  test("downloads the customer's invoices as a private CSV attachment", async () => {
+    const response = await requestExport({ locale: "cs-CZ" });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe(
+      "text/csv; charset=utf-8"
+    );
+    expect(response.headers.get("Content-Disposition")).toBe(
+      'attachment; filename="invoices-2026-09-02.csv"'
+    );
+    expectPrivate(response);
+    const records = (await response.text()).trim().split("\r\n");
+    expect(records).toHaveLength(2);
+    expect(records[1]).toContain(summary.invoiceNumber);
+    expect(records[1]).toContain(summary.total.amount);
+  });
+
+  test("answers a refusal and an invalid locale with the same private 404", async () => {
+    const invalidLocale = await requestExport({ locale: "xx-XX" });
+    outcome = "unavailable";
+    const refused = await requestExport();
+
+    const reference = await describeResponse(invalidLocale);
+    expect(reference.status).toBe(404);
+    expectPrivate(invalidLocale);
+    expect(await describeResponse(refused)).toEqual(reference);
+    expect(reference).toEqual(
+      await describeResponse(await requestPdf("not-an-invoice-id"))
+    );
+  });
+
+  test("answers a load failure with a private 500 without rows", async () => {
+    outcome = "load-failed";
+
+    const response = await requestExport();
+
+    expect(response.status).toBe(500);
+    expectPrivate(response);
+    expect(response.headers.get("Content-Disposition")).toBeNull();
+    expect(await response.text()).not.toContain(summary.invoiceNumber);
   });
 });

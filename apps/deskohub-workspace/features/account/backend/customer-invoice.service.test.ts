@@ -1,378 +1,375 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import type { CustomerInvoiceSummary } from "@/features/accounting/customer-invoice";
-import type { InvoiceDocument } from "@/features/accounting/invoice";
+import { SqlError } from "effect/unstable/sql";
+import { TestClock } from "effect/testing";
+import type { Invoice } from "@/features/accounting/backend/invoice.repository";
+import { InvoiceRepository } from "@/features/accounting/backend/invoice.repository";
+import { InvoiceStorageError } from "@/features/accounting/backend/invoice-reads";
+import { getCustomerInvoiceSummary } from "@/features/accounting/customer-invoice";
+import {
+  makeCoworkInvoiceDocument,
+  makeTestManualInvoiceDocument,
+} from "@/features/accounting/invoice.test-utils";
+import { invoiceIdSchema } from "@/features/accounting/manual-invoice";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
+import {
+  CustomerAccountAccessError,
+  type CustomerAccountId,
+  customerAccountUnavailable,
+  customerAccountIdSchema,
+} from "../customer-account";
+import {
+  type CustomerAccountActivityState,
+  CustomerAccountLinkRepository,
+} from "./customer-account-link.repository";
+import { CustomerAccountResolver } from "./customer-account-resolver.service";
+import {
+  CustomerInvoiceNotFoundError,
+  CustomerInvoiceService,
+  CustomerInvoicesLoadError,
+  CustomerInvoicesUnavailableError,
+} from "./customer-invoice.service";
 
-mock.module("server-only", () => ({}) as never);
+const accountId: CustomerAccountId = customerAccountIdSchema.make(
+  "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01"
+);
+const dotyposCustomerId = DotyposCustomerIdSchema.make("dotypos-customer-ada");
 
-type RenderInvoicePdf = (
-  document: InvoiceDocument
-) => Effect.Effect<Buffer, { readonly _tag: "InvoicePdfRenderingError" }>;
-
-let renderInvoicePdfImpl: RenderInvoicePdf = () =>
-  Effect.succeed(Buffer.from("%PDF-1.4 synthetic"));
-
-mock.module("@/features/accounting/backend/invoice-pdf", () => ({
-  renderInvoicePdf: (document: InvoiceDocument) =>
-    renderInvoicePdfImpl(document),
-}));
-
-const { CustomerInvoiceService } = await import(
-  "@/features/account/backend/customer-invoice.service"
-);
-const { AccountFeatureFlagService } = await import(
-  "@/features/account/backend/account-feature-flag.service"
-);
-const { CustomerAccountLinkRepository } = await import(
-  "@/features/account/backend/customer-account-link.repository"
-);
-const { CustomerAccountResolver } = await import(
-  "@/features/account/backend/customer-account-resolver.service"
-);
-const { CustomerAccountAccessError } = await import(
-  "@/features/account/customer-account"
-);
-const { InvoiceRepository } = await import(
-  "@/features/accounting/backend/invoice.repository"
-);
-
-const account = {
-  accountId: "auth-account-1",
-  dotyposCustomerId: "dotypos-customer-1",
+const dueInvoice: Invoice = {
+  id: invoiceIdSchema.make("018f47d2-8f7c-7c5e-9f9a-6ef21f90cb23"),
+  workspaceReservationId: null,
+  paymentAttemptId: null,
+  dotyposCustomerId,
+  invoiceNumber: makeTestManualInvoiceDocument("en-US").invoiceNumber,
+  issuedAt: Temporal.Instant.from("2026-08-20T10:00:00Z"),
+  // Due 2026-09-01.
+  document: makeTestManualInvoiceDocument("en-US", "450.50"),
+};
+const coworkDocument = makeCoworkInvoiceDocument("en-US");
+const paidInvoice: Invoice = {
+  id: invoiceIdSchema.make("018f47d2-8f7c-7c5e-9f9a-6ef21f90cb24"),
+  workspaceReservationId: "reservation-1",
+  paymentAttemptId: "payment-attempt-1",
+  dotyposCustomerId,
+  invoiceNumber: coworkDocument.invoiceNumber,
+  issuedAt: Temporal.Instant.from("2026-08-10T10:00:00Z"),
+  document: coworkDocument,
 };
 
-const summary: CustomerInvoiceSummary = {
-  id: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb23",
-  invoiceNumber: "WS-FV-2026-000042",
-  issuedAt: "2026-08-12T12:34:56.789Z",
-  total: "450",
-  currency: "CZK",
-  paymentStatus: "due",
-  dueDate: "2026-09-01",
-};
+// 22:30 UTC on 2026-09-01 is already 2026-09-02 in Prague, so the due
+// invoice is overdue only by the Prague date.
+const now = Temporal.Instant.from("2026-09-01T22:30:00Z");
+const pragueToday = plainDateStringSchema.make("2026-09-02");
 
-type HarnessOverrides = {
-  readonly flagEnabled?: boolean;
-  readonly resolution?: Effect.Effect<
-    { readonly accountId: string; readonly dotyposCustomerId: string },
+type Fixture = {
+  resolve: Effect.Effect<
+    {
+      readonly accountId: CustomerAccountId;
+      readonly dotyposCustomerId: typeof dotyposCustomerId;
+    },
     CustomerAccountAccessError
   >;
-  readonly deletionRequestedAt?: string | null;
-  readonly foundInvoice?: unknown;
-  readonly probes?: unknown[][];
-  readonly listOutcome?: Effect.Effect<
-    readonly CustomerInvoiceSummary[],
-    unknown
-  >;
+  activity: Effect.Effect<CustomerAccountActivityState, SqlError.SqlError>;
+  list: Effect.Effect<readonly Invoice[], InvoiceStorageError>;
+  find: (
+    invoiceId: string
+  ) => Effect.Effect<Invoice | null, InvoiceStorageError>;
 };
 
-const makeHarness = (overrides: HarnessOverrides = {}) => {
-  let authorizations = 0;
-  let activityChecks = 0;
-  let invoiceRepositoryCalls = 0;
-  const flagEnabled = overrides.flagEnabled ?? true;
-  const resolution =
-    overrides.resolution ??
-    Effect.succeed(account).pipe(
-      Effect.tap(() =>
-        Effect.sync(() => {
-          authorizations += 1;
-        })
-      )
-    );
-  const deletionRequestedAt =
-    overrides.deletionRequestedAt === undefined
-      ? null
-      : overrides.deletionRequestedAt;
-  const foundInvoice =
-    "foundInvoice" in overrides
-      ? overrides.foundInvoice
-      : {
-          id: summary.id,
-          dotyposCustomerId: account.dotyposCustomerId,
-          invoiceNumber: summary.invoiceNumber,
-        };
+let fixture: Fixture;
+let events: string[];
 
-  const serviceLayer = CustomerInvoiceService.Default.pipe(
+beforeEach(() => {
+  events = [];
+  fixture = {
+    resolve: Effect.succeed({ accountId, dotyposCustomerId }),
+    activity: Effect.succeed({ kind: "active", deletionRequestedAt: null }),
+    list: Effect.succeed([dueInvoice, paidInvoice]),
+    find: (invoiceId) =>
+      Effect.succeed(invoiceId === dueInvoice.id ? dueInvoice : null),
+  };
+});
+
+const serviceLayer = () =>
+  CustomerInvoiceService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        Layer.succeed(
-          AccountFeatureFlagService,
-          AccountFeatureFlagService.of({
-            isEnabled: Effect.succeed(flagEnabled),
-          })
-        ),
-        Layer.succeed(
-          CustomerAccountResolver,
-          CustomerAccountResolver.of({
-            resolve: resolution,
-          } as never)
-        ),
-        Layer.succeed(
-          CustomerAccountLinkRepository,
-          CustomerAccountLinkRepository.of({
-            findActivityState: () =>
-              Effect.succeed({ deletionRequestedAt }).pipe(
-                Effect.tap(() =>
-                  Effect.sync(() => {
-                    activityChecks += 1;
-                  })
-                )
-              ),
-          } as never)
-        ),
-        Layer.succeed(
-          InvoiceRepository,
-          InvoiceRepository.of({
-            listForCustomer: (dotyposCustomerId: string) => {
-              invoiceRepositoryCalls += 1;
-              return (
-                overrides.listOutcome ??
-                Effect.succeed(
-                  dotyposCustomerId === account.dotyposCustomerId
-                    ? [summary]
-                    : []
-                )
-              );
-            },
-            findForCustomer: (dotyposCustomerId: string, invoiceId: string) => {
-              invoiceRepositoryCalls += 1;
-              overrides.probes?.push([dotyposCustomerId, invoiceId]);
-              return Effect.succeed(
-                dotyposCustomerId === account.dotyposCustomerId
-                  ? (foundInvoice as never)
-                  : null
-              );
-            },
-          } as never)
-        )
+        Layer.mock(CustomerAccountResolver, {
+          resolve: Effect.suspend(() => {
+            events.push("resolve");
+            return fixture.resolve;
+          }),
+        }),
+        Layer.mock(CustomerAccountLinkRepository, {
+          findActivityState: (id) =>
+            Effect.suspend(() => {
+              events.push(`activity:${id}`);
+              return fixture.activity;
+            }),
+        }),
+        Layer.mock(InvoiceRepository, {
+          listForCustomer: (customerId) =>
+            Effect.suspend(() => {
+              events.push(`list:${customerId}`);
+              return fixture.list;
+            }),
+          findForCustomer: (customerId, invoiceId) =>
+            Effect.suspend(() => {
+              events.push(`find:${customerId}:${invoiceId}`);
+              return fixture.find(invoiceId);
+            }),
+        })
       )
     )
   );
 
-  const run = <A, E>(effect: Effect.Effect<A, E, never>) =>
-    Effect.runPromise(
-      Effect.flatMap(CustomerInvoiceService, () => effect).pipe(
-        Effect.provide(serviceLayer)
-      ) as Effect.Effect<A, E, never>
-    );
+const provideService = <A, E>(
+  operation: (service: CustomerInvoiceService["Service"]) => Effect.Effect<A, E>
+) =>
+  Effect.gen(function* () {
+    yield* TestClock.setTime(now.epochMilliseconds);
+    return yield* Effect.flatMap(CustomerInvoiceService, operation);
+  }).pipe(Effect.provide(Layer.merge(serviceLayer(), TestClock.layer())));
 
-  return {
-    run,
-    authorizationCount: () => authorizations,
-    activityCheckCount: () => activityChecks,
-    invoiceRepositoryCallCount: () => invoiceRepositoryCalls,
-  };
-};
+const run = <A, E>(
+  operation: (service: CustomerInvoiceService["Service"]) => Effect.Effect<A, E>
+) => Effect.runPromise(provideService(operation));
 
-describe("customer invoice service authorization", () => {
-  test("lists only the linked customer's invoices", async () => {
-    const { run } = makeHarness();
-    const summaries = await run(
-      Effect.flatMap(CustomerInvoiceService, (service) => service.list)
-    );
-    expect(summaries).toEqual([summary]);
-  });
+const runFailure = <A, E>(
+  operation: (service: CustomerInvoiceService["Service"]) => Effect.Effect<A, E>
+) => Effect.runPromise(Effect.flip(provideService(operation)));
 
-  test("re-authorizes the account on every request without caching", async () => {
-    const { run, authorizationCount, activityCheckCount } = makeHarness();
-    for (let index = 0; index < 3; index += 1) {
-      await run(
-        Effect.flatMap(CustomerInvoiceService, (service) => service.list)
-      );
-    }
-    expect(authorizationCount()).toBe(3);
-    expect(activityCheckCount()).toBe(3);
-  });
-
-  test("fails closed when the account feature flag is disabled", async () => {
-    const harness = makeHarness({ flagEnabled: false });
-    const outcome = await harness.run(
-      Effect.flatMap(CustomerInvoiceService, (service) => service.list).pipe(
-        Effect.result
-      )
-    );
-    expect((outcome as { failure?: { _tag?: string } }).failure?._tag).toBe(
-      "CustomerInvoicesUnavailableError"
-    );
-  });
-
-  test("fails closed for an unauthenticated or unverified session", async () => {
-    const harness = makeHarness({
-      resolution: Effect.fail(
+const deniedAuthorities: readonly (readonly [
+  string,
+  Pick<Fixture, "resolve"> | Pick<Fixture, "activity">,
+])[] = [
+  [
+    "a signed-out session",
+    {
+      resolve: Effect.fail(
         new CustomerAccountAccessError({ reason: "unauthenticated" })
       ),
-    });
-    const outcome = await harness.run(
-      Effect.flatMap(CustomerInvoiceService, (service) => service.list).pipe(
-        Effect.result
-      )
-    );
-    expect((outcome as { failure?: { _tag?: string } }).failure?._tag).toBe(
-      "CustomerInvoicesUnavailableError"
-    );
-  });
-
-  test("denies PDF and CSV requests before invoice reads or PDF rendering when authorization fails", async () => {
-    const probes: unknown[][] = [];
-    const harnesses = [
-      makeHarness({
-        resolution: Effect.fail(
-          new CustomerAccountAccessError({ reason: "unauthenticated" })
-        ),
-        probes,
+    },
+  ],
+  [
+    "an unverified email",
+    {
+      resolve: Effect.fail(
+        new CustomerAccountAccessError({ reason: "unverified-email" })
+      ),
+    },
+  ],
+  [
+    "authentication that isn't configured",
+    {
+      resolve: Effect.fail(
+        new CustomerAccountAccessError({ reason: "not-configured" })
+      ),
+    },
+  ],
+  [
+    "an account without a Dotypos customer",
+    {
+      resolve: Effect.fail(
+        new CustomerAccountAccessError({
+          reason: "link-required",
+          linkReason: "not-found",
+        })
+      ),
+    },
+  ],
+  [
+    "an account whose customers only support can link",
+    {
+      resolve: Effect.fail(
+        new CustomerAccountAccessError({
+          reason: "link-required",
+          linkReason: "ambiguous",
+        })
+      ),
+    },
+  ],
+  [
+    "a review account",
+    { resolve: Effect.fail(customerAccountUnavailable("account.review")) },
+  ],
+  [
+    "an account with deletion pending",
+    {
+      activity: Effect.succeed({
+        kind: "active",
+        deletionRequestedAt: new Date("2026-09-01T10:00:00Z"),
       }),
-      makeHarness({
-        resolution: Effect.fail(
-          new CustomerAccountAccessError({ reason: "unverified-email" })
-        ),
-        probes,
-      }),
-      makeHarness({
-        deletionRequestedAt: "2026-09-01T00:00Z",
-        probes,
-      }),
-    ];
-    const previous = renderInvoicePdfImpl;
-    let renderCalls = 0;
-    renderInvoicePdfImpl = () => {
-      renderCalls += 1;
-      return Effect.succeed(Buffer.from("%PDF-1.4 synthetic"));
-    };
-    try {
-      for (const harness of harnesses) {
-        for (const operation of ["pdf", "csv"] as const) {
-          const outcome = await harness.run(
-            Effect.flatMap(CustomerInvoiceService, (service) =>
-              operation === "pdf"
-                ? service.findPdf(summary.id)
-                : service.buildCsv("en-US")
-            ).pipe(Effect.result)
-          );
-          expect(
-            (outcome as { failure?: { _tag?: string } }).failure?._tag
-          ).toBe("CustomerInvoicesUnavailableError");
-          expect(harness.invoiceRepositoryCallCount()).toBe(0);
-          expect(probes).toEqual([]);
-          expect(renderCalls).toBe(0);
-        }
-      }
-    } finally {
-      renderInvoicePdfImpl = previous;
-    }
+    },
+  ],
+  [
+    "an account whose login is gone",
+    { activity: Effect.succeed({ kind: "missing" }) },
+  ],
+];
+
+describe("CustomerInvoiceService.list", () => {
+  test("summarizes the account's own invoices on the Prague date", async () => {
+    const summaries = await run((service) => service.list);
+
+    expect(summaries).toEqual([
+      getCustomerInvoiceSummary(dueInvoice, pragueToday),
+      getCustomerInvoiceSummary(paidInvoice, pragueToday),
+    ]);
+    expect(summaries[0]?.paymentStatus).toBe("overdue");
+    expect(events).toEqual([
+      "resolve",
+      `activity:${accountId}`,
+      `list:${dotyposCustomerId}`,
+    ]);
   });
 
-  test("denies deletion-pending accounts the invoice list", async () => {
-    const harness = makeHarness({ deletionRequestedAt: "2026-09-01T00:00Z" });
-    const outcome = await harness.run(
-      Effect.flatMap(CustomerInvoiceService, (service) => service.list).pipe(
-        Effect.result
-      )
-    );
-    expect((outcome as { failure?: { _tag?: string } }).failure?._tag).toBe(
-      "CustomerInvoicesUnavailableError"
-    );
-  });
+  test("re-authorizes on every call", async () => {
+    await run((service) => Effect.andThen(service.list, service.list));
 
-  // The invoices themselves survive account deletion in storage; only the
-  // access ends, so a deletion-pending account is denied the PDF too.
-  test("denies deletion-pending accounts the invoice PDF", async () => {
-    const harness = makeHarness({ deletionRequestedAt: "2026-09-01T00:00Z" });
-    const outcome = await harness.run(
-      Effect.flatMap(CustomerInvoiceService, (service) =>
-        service.findPdf(summary.id)
-      ).pipe(Effect.result)
-    );
-    expect((outcome as { failure?: { _tag?: string } }).failure?._tag).toBe(
-      "CustomerInvoicesUnavailableError"
-    );
-  });
-
-  test("maps database failures to the load error without document data", async () => {
-    const harness = makeHarness({
-      listOutcome: Effect.fail(new Error("synthetic database failure")),
-    });
-    const outcome = await harness.run(
-      Effect.flatMap(CustomerInvoiceService, (service) => service.list).pipe(
-        Effect.result
-      )
-    );
-    expect((outcome as { failure?: { _tag?: string } }).failure?._tag).toBe(
-      "CustomerInvoicesLoadError"
-    );
-    expect(JSON.stringify(outcome)).not.toContain("synthetic database failure");
-  });
-});
-
-describe("customer invoice pdf authorization", () => {
-  test("renders an owned invoice with a filename from the invoice number", async () => {
-    const harness = makeHarness();
-    const pdf = await harness.run(
-      Effect.flatMap(CustomerInvoiceService, (service) =>
-        service.findPdf(summary.id)
-      )
-    );
-    expect(pdf.fileName).toBe("WS-FV-2026-000042.pdf");
-    expect(pdf.bytes.toString()).toContain("%PDF");
-  });
-
-  test("returns the same not-found failure for a missing or non-owned invoice", async () => {
-    const missing = makeHarness({ foundInvoice: null });
-    const missingOutcome = await missing.run(
-      Effect.flatMap(CustomerInvoiceService, (service) =>
-        service.findPdf(summary.id)
-      ).pipe(Effect.result)
-    );
+    expect(events.filter((event) => event === "resolve")).toHaveLength(2);
     expect(
-      (missingOutcome as { failure?: { _tag?: string } }).failure?._tag
-    ).toBe("CustomerInvoiceNotFoundError");
-
-    // The lookup always receives the authorized Dotypos customer id, so a
-    // non-owned invoice can never match and falls into the same not-found.
-    const probes: readonly unknown[][] = [];
-    const probing = makeHarness({ foundInvoice: null, probes });
-    await probing.run(
-      Effect.flatMap(CustomerInvoiceService, (service) =>
-        service.findPdf(summary.id)
-      ).pipe(Effect.result)
-    );
-    expect(probes[0]?.[0]).toBe(account.dotyposCustomerId);
-    expect(probes[0]?.[1]).toBe(summary.id);
+      events.filter((event) => event.startsWith("activity:"))
+    ).toHaveLength(2);
   });
 
-  test("fails closed when the PDF renderer fails", async () => {
-    const previous = renderInvoicePdfImpl;
-    renderInvoicePdfImpl = () =>
-      Effect.fail({ _tag: "InvoicePdfRenderingError" });
-    try {
-      const harness = makeHarness();
-      const outcome = await harness.run(
-        Effect.flatMap(CustomerInvoiceService, (service) =>
-          service.findPdf(summary.id)
-        ).pipe(Effect.result)
-      );
-      expect((outcome as { failure?: { _tag?: string } }).failure?._tag).toBe(
-        "CustomerInvoicesLoadError"
-      );
-      expect(JSON.stringify(outcome)).not.toContain("%PDF");
-    } finally {
-      renderInvoicePdfImpl = previous;
+  test.each(deniedAuthorities)(
+    "is unavailable to %s without reading invoices",
+    async (_, denial) => {
+      Object.assign(fixture, denial);
+
+      const error = await runFailure((service) => service.list);
+
+      expect(error).toEqual(new CustomerInvoicesUnavailableError());
+      expect(events.some((event) => event.startsWith("list:"))).toBe(false);
     }
+  );
+
+  test("fails to load when the session can't be read", async () => {
+    fixture.resolve = Effect.fail(
+      customerAccountUnavailable("account-link.read")
+    );
+
+    const error = await runFailure((service) => service.list);
+
+    expect(error).toEqual(
+      new CustomerInvoicesLoadError({ code: "account.authority" })
+    );
+    expect(events.some((event) => event.startsWith("list:"))).toBe(false);
+  });
+
+  test("fails to load when the account's activity can't be read", async () => {
+    fixture.activity = Effect.fail(
+      new SqlError.SqlError({
+        reason: new SqlError.UnknownError({
+          cause: new Error("synthetic connection refused"),
+          message: "synthetic connection refused",
+          operation: "query",
+        }),
+      })
+    );
+
+    const error = await runFailure((service) => service.list);
+
+    expect(error).toEqual(
+      new CustomerInvoicesLoadError({ code: "account.authority" })
+    );
+    expect(events.some((event) => event.startsWith("list:"))).toBe(false);
+  });
+
+  test("fails to load without the storage cause when invoices can't be read", async () => {
+    fixture.list = Effect.fail(
+      new InvoiceStorageError({
+        operation: "decrypt",
+        paymentAttemptId: dueInvoice.id,
+        message: "synthetic decryption failure",
+      })
+    );
+
+    const error = await runFailure((service) => service.list);
+
+    expect(error).toEqual(
+      new CustomerInvoicesLoadError({ code: "invoice.read" })
+    );
   });
 });
 
-describe("customer invoice csv export", () => {
-  test("builds a labeled CSV download from the listed facts", async () => {
-    const harness = makeHarness();
-    const csv = await harness.run(
-      Effect.flatMap(CustomerInvoiceService, (service) =>
-        service.buildCsv("en-US")
-      )
+describe("CustomerInvoiceService.pdf", () => {
+  test("renders the account's own invoice named by its number", async () => {
+    const file = await run((service) => service.pdf(dueInvoice.id));
+
+    expect(file.fileName).toBe(`${dueInvoice.invoiceNumber}.pdf`);
+    expect(new TextDecoder().decode(file.bytes.subarray(0, 5))).toBe("%PDF-");
+    expect(events).toEqual([
+      "resolve",
+      `activity:${accountId}`,
+      `find:${dotyposCustomerId}:${dueInvoice.id}`,
+    ]);
+  });
+
+  test("is not found when the customer has no invoice with the id", async () => {
+    const error = await runFailure((service) =>
+      service.pdf("not-an-invoice-id")
     );
-    expect(csv.fileName).toBe("deskohub-invoices.csv");
-    expect(csv.content).toContain("WS-FV-2026-000042");
-    expect(csv.content.split("\r\n")).toHaveLength(2);
+
+    expect(error).toEqual(new CustomerInvoiceNotFoundError());
+  });
+
+  test.each(deniedAuthorities)(
+    "is unavailable to %s without reading the invoice",
+    async (_, denial) => {
+      Object.assign(fixture, denial);
+
+      const error = await runFailure((service) => service.pdf(dueInvoice.id));
+
+      expect(error).toEqual(new CustomerInvoicesUnavailableError());
+      expect(events.some((event) => event.startsWith("find:"))).toBe(false);
+    }
+  );
+
+  test("fails to load when the invoice can't be read", async () => {
+    fixture.find = () =>
+      Effect.fail(
+        new InvoiceStorageError({
+          operation: "decrypt",
+          paymentAttemptId: dueInvoice.id,
+          message: "synthetic decryption failure",
+        })
+      );
+
+    const error = await runFailure((service) => service.pdf(dueInvoice.id));
+
+    expect(error).toEqual(
+      new CustomerInvoicesLoadError({ code: "invoice.read" })
+    );
+  });
+});
+
+describe("CustomerInvoiceService.csv", () => {
+  test("exports the account's invoices with headers in the locale", async () => {
+    const csv = await run((service) => service.csv("cs-CZ"));
+
+    expect(csv.filename).toBe(`invoices-${pragueToday}.csv`);
+    expect(csv.rows).toEqual([
+      getCustomerInvoiceSummary(dueInvoice, pragueToday),
+      getCustomerInvoiceSummary(paidInvoice, pragueToday),
+    ]);
+    expect(csv.columns.length).toBeGreaterThan(0);
+    expect(events).toEqual([
+      "resolve",
+      `activity:${accountId}`,
+      `list:${dotyposCustomerId}`,
+    ]);
+  });
+
+  test.each(deniedAuthorities)("is unavailable to %s", async (_, denial) => {
+    Object.assign(fixture, denial);
+
+    const error = await runFailure((service) => service.csv("en-US"));
+
+    expect(error).toEqual(new CustomerInvoicesUnavailableError());
   });
 });

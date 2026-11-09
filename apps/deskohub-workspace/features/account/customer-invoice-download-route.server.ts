@@ -1,182 +1,146 @@
 import "server-only";
 
-import { Effect, type Layer, Option, Schema } from "effect";
-import { NextResponse } from "next/server";
-import { CustomerInvoiceService } from "@/features/account/backend/customer-invoice.service";
-import { invoiceIdSchema } from "@/features/accounting/manual-invoice";
-import { isLocale } from "@/features/i18n";
-import { censorLogValue } from "@/shared/backend/logging/censorship";
-import {
-  defineWorkspaceRoute,
-  WorkspaceRouteFailure,
-} from "@/shared/backend/workspace-route";
+import { Data, Effect, Layer } from "effect";
+import { isLocale, type Locale } from "@/features/i18n";
+import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
+import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
+import { createCsvDownloadResponse } from "@/shared/utils/csv";
+import { createDownloadResponse } from "@/shared/utils/download-response";
+import { markPrivateResponse } from "@/shared/utils/private-response";
+import { CustomerInvoiceService } from "./backend/customer-invoice.service";
 
-type CustomerInvoicePdfRouteContext = {
-  readonly params: Promise<{ invoiceId: string }>;
+/** The service the routes read, live unless a test provides a fake. */
+type CustomerInvoiceServiceLayer = Layer.Layer<CustomerInvoiceService, unknown>;
+
+type CustomerInvoicePdfParams = {
+  readonly params: Promise<{
+    readonly locale: string;
+    readonly invoiceId: string;
+  }>;
 };
 
-type CustomerInvoiceCsvRouteContext = {
-  readonly params: Promise<{ locale: string }>;
-};
-
-/**
- * Every customer invoice download answer is private: not-found responses and
- * documents share the same no-store cache contract, and expected failures map
- * here at the route boundary so domain services stay free of HTTP statuses.
- */
-const privateAttachmentResponse = (input: {
-  readonly body: BodyInit;
-  readonly contentType: string;
-  readonly fileName: string;
-}) => {
-  const response = new NextResponse(input.body, {
-    headers: {
-      "Content-Disposition": `attachment; filename="${input.fileName}"`,
-      "Content-Type": input.contentType,
-      "Cache-Control": "private, no-store",
-    },
-  });
-  return response;
-};
-
-const privateNotFoundResponse = () => {
-  const response = new NextResponse(null, { status: 404 });
-  response.headers.set("Cache-Control", "private, no-store");
-  return response;
+type CustomerInvoiceExportParams = {
+  readonly params: Promise<{ readonly locale: string }>;
 };
 
 /**
- * Unexpected route failures answer with the same private no-store cache
- * contract as every other answer from these routes; the recovery is local so
- * the shared default for other workspace routes stays untouched.
+ * `GET /[locale]/account/invoices/[invoiceId]/pdf`: one of the signed-in
+ * customer's invoices as a PDF attachment.
  */
-const privateFailureResponse = (failure: WorkspaceRouteFailure) => {
-  const response = NextResponse.json(
-    { error: failure.publicMessage },
-    { status: failure.statusCode }
-  );
-  response.headers.set("Cache-Control", "private, no-store");
-  return response;
-};
-
-const decodeRouteInvoiceId = Schema.decodeUnknownOption(invoiceIdSchema);
-
-const toRouteFailure = (publicMessage: string) => (cause: unknown) =>
-  WorkspaceRouteFailure.internal(publicMessage)(cause);
-
-/**
- * These routes answer expected failures locally, bypassing the shared
- * recovery's logging, so unexpected failures are logged here with the same
- * censored-value conventions: no decrypted documents, no raw provider or
- * database payloads.
- */
-const logPrivateDownloadFailure = (operation: string) => (cause: unknown) =>
-  Effect.logError("Customer invoice download failed unexpectedly", {
-    cause: censorLogValue(cause),
-    operation,
-  });
-
 export const makeCustomerInvoicePdfGet = (
-  serviceLayer: Layer.Layer<
-    CustomerInvoiceService,
-    Schema.SchemaError
-  > = CustomerInvoiceService.Live
+  service: CustomerInvoiceServiceLayer = CustomerInvoiceService.Live
 ) =>
   defineWorkspaceRoute(
     {
       operation: "account.invoice-pdf",
       cancellation: "interrupt-on-disconnect",
+      caller: "client",
     },
-    (_request, context: CustomerInvoicePdfRouteContext) =>
-      Effect.flatMap(
-        Effect.promise(() => context.params),
-        ({ invoiceId }) => {
-          // A malformed invoice id can never match a stored row; it takes the
-          // same indistinguishable not-found response as a missing or
-          // non-owned invoice without touching the database.
-          if (Option.isNone(decodeRouteInvoiceId(invoiceId))) {
-            return Effect.succeed(privateNotFoundResponse());
-          }
-          return Effect.gen(function* () {
-            const invoices = yield* CustomerInvoiceService;
-            const pdf = yield* invoices.findPdf(invoiceId);
-            return privateAttachmentResponse({
-              body: Uint8Array.from(pdf.bytes),
-              contentType: "application/pdf",
-              fileName: pdf.fileName,
-            });
-          }).pipe(
-            Effect.provide(serviceLayer),
-            Effect.catchTag(
-              [
-                "CustomerInvoiceNotFoundError",
-                "CustomerInvoicesUnavailableError",
-              ],
-              () => Effect.succeed(privateNotFoundResponse())
-            ),
-            Effect.catch((cause) =>
-              logPrivateDownloadFailure("account.invoice-pdf")(cause).pipe(
-                Effect.andThen(
-                  Effect.succeed(
-                    privateFailureResponse(
-                      toRouteFailure("Customer invoice could not be loaded")(
-                        cause
-                      )
-                    )
-                  )
-                )
-              )
-            )
-          );
-        }
+    (_request: Request, { params }: CustomerInvoicePdfParams) =>
+      routeLocale(params).pipe(
+        Effect.flatMap(({ invoiceId }) =>
+          Effect.flatMap(CustomerInvoiceService, (invoices) =>
+            invoices.pdf(invoiceId)
+          ).pipe(withService(service))
+        ),
+        Effect.map(({ bytes, fileName }) =>
+          createDownloadResponse({
+            body: Uint8Array.from(bytes),
+            contentType: "application/pdf",
+            filename: fileName,
+          })
+        ),
+        Effect.catchTags({
+          CustomerInvoiceRouteNotFound: answerNotFound,
+          CustomerInvoiceNotFoundError: answerNotFound,
+          CustomerInvoicesUnavailableError: answerNotFound,
+          CustomerInvoicesLoadError: answerLoadFailed,
+        }),
+        answerUnexpected
       )
   );
 
-export const makeCustomerInvoiceCsvGet = (
-  serviceLayer: Layer.Layer<
-    CustomerInvoiceService,
-    Schema.SchemaError
-  > = CustomerInvoiceService.Live
+/**
+ * `GET /[locale]/account/invoices/export`: the signed-in customer's invoices
+ * as a CSV attachment with headers in the route locale.
+ */
+export const makeCustomerInvoiceExportGet = (
+  service: CustomerInvoiceServiceLayer = CustomerInvoiceService.Live
 ) =>
   defineWorkspaceRoute(
     {
-      operation: "account.invoice-csv",
+      operation: "account.invoice-export",
       cancellation: "interrupt-on-disconnect",
+      caller: "client",
     },
-    (_request, context: CustomerInvoiceCsvRouteContext) =>
-      Effect.flatMap(
-        Effect.promise(() => context.params),
-        ({ locale }) => {
-          if (!isLocale(locale)) {
-            return Effect.succeed(privateNotFoundResponse());
-          }
-          return Effect.gen(function* () {
-            const invoices = yield* CustomerInvoiceService;
-            const csv = yield* invoices.buildCsv(locale);
-            return privateAttachmentResponse({
-              body: csv.content,
-              contentType: "text/csv; charset=utf-8",
-              fileName: csv.fileName,
-            });
-          }).pipe(
-            Effect.provide(serviceLayer),
-            Effect.catchTag("CustomerInvoicesUnavailableError", () =>
-              Effect.succeed(privateNotFoundResponse())
-            ),
-            Effect.catch((cause) =>
-              logPrivateDownloadFailure("account.invoice-csv")(cause).pipe(
-                Effect.andThen(
-                  Effect.succeed(
-                    privateFailureResponse(
-                      toRouteFailure("Customer invoices could not be exported")(
-                        cause
-                      )
-                    )
-                  )
-                )
-              )
-            )
-          );
-        }
+    (_request: Request, { params }: CustomerInvoiceExportParams) =>
+      routeLocale(params).pipe(
+        Effect.flatMap(({ locale }) =>
+          Effect.flatMap(CustomerInvoiceService, (invoices) =>
+            invoices.csv(locale)
+          ).pipe(withService(service))
+        ),
+        Effect.map(createCsvDownloadResponse),
+        Effect.catchTags({
+          CustomerInvoiceRouteNotFound: answerNotFound,
+          CustomerInvoicesUnavailableError: answerNotFound,
+          CustomerInvoicesLoadError: answerLoadFailed,
+        }),
+        answerUnexpected
       )
+  );
+
+/** The route's own parameters can't name a customer's invoices. */
+class CustomerInvoiceRouteNotFound extends Data.TaggedError(
+  "CustomerInvoiceRouteNotFound"
+) {}
+
+/**
+ * Provides the service only once the route's own parameters passed, so an
+ * invalid locale is refused even when the service can't be built. A build
+ * failure becomes a defect, which `answerUnexpected` answers.
+ */
+const withService =
+  (service: CustomerInvoiceServiceLayer) =>
+  <A, E>(self: Effect.Effect<A, E, CustomerInvoiceService>) =>
+    self.pipe(Effect.provide(Layer.orDie(service)));
+
+const routeLocale = <Params extends { readonly locale: string }>(
+  params: Promise<Params>
+) =>
+  Effect.promise(() => params).pipe(
+    Effect.filterOrFail(
+      (values): values is Params & { readonly locale: Locale } =>
+        isLocale(values.locale),
+      () => new CustomerInvoiceRouteNotFound()
+    )
+  );
+
+/*
+ * Every refusal (signed out, no linked customer, a review account, deletion
+ * pending, another customer's or an unknown invoice, an invalid locale)
+ * answers the same private 404, so a response never tells whether an
+ * invoice exists. A load failure answers a private 500 without any document
+ * bytes; the service already logged its fixed code. Anything else, such as a
+ * service that couldn't be built, logs only this route's code.
+ */
+const answerNotFound = () => Effect.sync(notFoundResponse);
+
+const answerLoadFailed = () => Effect.sync(loadFailedResponse);
+
+const answerUnexpected = catchRecoverableCause(() =>
+  Effect.logError("Customer invoice download failed", {
+    failureCode: "account.invoice-download",
+  }).pipe(Effect.andThen(Effect.sync(loadFailedResponse)))
+);
+
+const notFoundResponse = () =>
+  markPrivateResponse(new Response(null, { status: 404 }));
+
+const loadFailedResponse = () =>
+  markPrivateResponse(
+    Response.json(
+      { error: "Customer invoices could not be loaded." },
+      { status: 500 }
+    )
   );

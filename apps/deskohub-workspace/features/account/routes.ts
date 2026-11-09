@@ -61,6 +61,16 @@ export const readAuthCallbackReturnTo = (
 export const getAccountPath = (locale: Locale) =>
   getLocalizedPagePath(locale, "/[locale]/account");
 
+/** Downloads one of the signed-in customer's invoices as a PDF. */
+export const getAccountInvoicePdfPath = (locale: Locale, invoiceId: string) =>
+  getLocalizedPagePath(locale, "/[locale]/account/invoices/[invoiceId]/pdf", {
+    invoiceId,
+  });
+
+/** Downloads the signed-in customer's invoices as CSV. */
+export const getAccountInvoiceExportPath = (locale: Locale) =>
+  getLocalizedPagePath(locale, "/[locale]/account/invoices/export");
+
 /**
  * Where a finished sign-in continues: `returnTo` when it is a same-origin
  * path, otherwise the account.

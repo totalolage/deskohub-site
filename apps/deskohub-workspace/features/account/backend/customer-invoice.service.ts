@@ -1,104 +1,95 @@
-import "server-only";
-
 import { Context, Data, Effect, Layer } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
-import { AccountingDocumentSnapshotRepository } from "@/features/accounting/backend/accounting-document-snapshot.repository";
-import { AccountingSnapshotKeyService } from "@/features/accounting/backend/accounting-snapshot-key.service";
 import { InvoiceRepository } from "@/features/accounting/backend/invoice.repository";
-import { renderInvoicePdf } from "@/features/accounting/backend/invoice-pdf";
+import {
+  type InvoicePdfFile,
+  renderInvoicePdfFile,
+} from "@/features/accounting/backend/invoice-pdf";
 import {
   type CustomerInvoiceSummary,
-  renderCustomerInvoiceCsv,
+  getCustomerInvoiceCsvColumns,
+  getCustomerInvoiceSummary,
 } from "@/features/accounting/customer-invoice";
 import type { Locale } from "@/features/i18n";
-import type { LinkedCustomerAccount } from "../customer-account";
-import { AccountFeatureFlagService } from "./account-feature-flag.service";
+import { workspaceSiteConstants } from "@/shared/utils";
+import type { CsvColumn } from "@/shared/utils/csv";
+import { currentPlainDate, type PlainDate } from "@/shared/utils/temporal";
+import type {
+  CustomerAccountAccessError,
+  LinkedCustomerAccount,
+} from "../customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import { CustomerAccountResolver } from "./customer-account-resolver.service";
 
+/**
+ * The session has no active account whose invoices it may see: signed out,
+ * no linked Dotypos customer, a review account, or deletion pending.
+ */
 export class CustomerInvoicesUnavailableError extends Data.TaggedError(
   "CustomerInvoicesUnavailableError"
-)<{
-  readonly message: string;
-}> {}
+) {}
 
+/** No invoice of the account's customer has this id. */
+export class CustomerInvoiceNotFoundError extends Data.TaggedError(
+  "CustomerInvoiceNotFoundError"
+) {}
+
+/** Which step failed; the only detail a load failure keeps or logs. */
+export type CustomerInvoiceLoadFailureCode =
+  | "account.authority"
+  | "invoice.read"
+  | "invoice.pdf";
+
+/**
+ * The account or its invoices couldn't be read. It keeps a fixed code, never
+ * the database, decryption, or renderer cause.
+ */
 export class CustomerInvoicesLoadError extends Data.TaggedError(
   "CustomerInvoicesLoadError"
 )<{
-  readonly message: string;
+  readonly code: CustomerInvoiceLoadFailureCode;
 }> {}
 
-export class CustomerInvoiceNotFoundError extends Data.TaggedError(
-  "CustomerInvoiceNotFoundError"
-)<{
-  readonly invoiceId: string;
-}> {}
-
-const unavailable = () =>
-  new CustomerInvoicesUnavailableError({
-    message: "Customer invoices are unavailable for this account.",
-  });
-
-const toUnavailable = () => unavailable();
-
-const toLoadError = () =>
-  new CustomerInvoicesLoadError({
-    message: "Customer invoices could not be loaded.",
-  });
-
-const AccountingStorageLive = Layer.mergeAll(
-  WorkspaceDatabase.Default,
-  AccountingSnapshotKeyService.Default
-);
-
-const DependenciesLive = Layer.mergeAll(
-  AccountFeatureFlagService.Live,
-  CustomerAccountResolver.Live,
-  CustomerAccountLinkRepository.Live,
-  InvoiceRepository.Default.pipe(
-    Layer.provide(
-      Layer.merge(
-        AccountingStorageLive,
-        AccountingDocumentSnapshotRepository.Default.pipe(
-          Layer.provide(AccountingStorageLive)
-        )
-      )
-    )
-  )
-);
+/** The account's invoice export, ready for `createCsvDownloadResponse`. */
+interface CustomerInvoiceExport {
+  readonly filename: string;
+  readonly columns: readonly CsvColumn<CustomerInvoiceSummary>[];
+  readonly rows: readonly CustomerInvoiceSummary[];
+}
 
 interface ICustomerInvoiceService {
-  /**
-   * Lists the linked customer's issued invoices. Re-authorizes the account
-   * feature flag, the verified session, the durable link, and the
-   * non-deletion-pending activity state on every call.
-   */
+  /** The account's issued invoices, newest issue first. */
   readonly list: Effect.Effect<
     readonly CustomerInvoiceSummary[],
     CustomerInvoicesUnavailableError | CustomerInvoicesLoadError
   >;
   /**
-   * Renders the linked customer's own invoice as a PDF. A missing or
-   * non-owned invoice is the same not-found failure; a database, decryption,
-   * or renderer failure fails closed as a load error without the document.
+   * One of the account's invoices as a PDF file. Another customer's invoice,
+   * an unknown id, and text that is no invoice id are all not found.
    */
-  readonly findPdf: (
+  readonly pdf: (
     invoiceId: string
   ) => Effect.Effect<
-    { readonly bytes: Buffer; readonly fileName: string },
+    InvoicePdfFile,
     | CustomerInvoiceNotFoundError
     | CustomerInvoicesUnavailableError
     | CustomerInvoicesLoadError
   >;
-  readonly buildCsv: (
+  /** The account's invoices as CSV rows with headers in `locale`. */
+  readonly csv: (
     locale: Locale
   ) => Effect.Effect<
-    { readonly fileName: string; readonly content: string },
+    CustomerInvoiceExport,
     CustomerInvoicesUnavailableError | CustomerInvoicesLoadError
   >;
 }
 
+/**
+ * A signed-in customer's own issued invoices. Every operation re-authorizes
+ * from the authoritative session: it resolves the account's Dotypos customer
+ * and re-reads the account's activity, so a deletion request or a removed
+ * login stops it, and reads only that customer's invoices.
+ */
 export class CustomerInvoiceService extends Context.Service<
   CustomerInvoiceService,
   ICustomerInvoiceService
@@ -106,79 +97,114 @@ export class CustomerInvoiceService extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const flag = yield* AccountFeatureFlagService;
       const resolver = yield* CustomerAccountResolver;
       const links = yield* CustomerAccountLinkRepository;
-      const invoiceRepository = yield* InvoiceRepository;
+      const invoices = yield* InvoiceRepository;
 
-      // Every customer invoice request re-authorizes from the authoritative
-      // database session, the active durable link, and the deletion marker;
-      // nothing is cached between requests.
       const authorize: Effect.Effect<
         LinkedCustomerAccount,
-        CustomerInvoicesUnavailableError
-      > = Effect.gen(function* () {
-        const enabled = yield* flag.isEnabled;
-        if (!enabled) return yield* unavailable();
-        const account = yield* resolver.resolve.pipe(
-          Effect.mapError(toUnavailable)
-        );
-        yield* requireAccountActivity(links, account.accountId).pipe(
-          Effect.mapError(toUnavailable)
-        );
-        return account;
-      });
-
-      const list = authorize.pipe(
-        Effect.flatMap((account) =>
-          invoiceRepository
-            .listForCustomer(account.dotyposCustomerId)
-            .pipe(Effect.mapError(toLoadError))
+        CustomerInvoicesUnavailableError | CustomerInvoicesLoadError
+      > = resolver.resolve.pipe(
+        Effect.tap((account) =>
+          requireAccountActivity(links, account.accountId)
+        ),
+        Effect.catchTag(
+          "CustomerAccountAccessError",
+          (
+            error
+          ): Effect.Effect<
+            never,
+            CustomerInvoicesUnavailableError | CustomerInvoicesLoadError
+          > =>
+            isAccessDenial(error)
+              ? Effect.fail(new CustomerInvoicesUnavailableError())
+              : failLoad("account.authority")
         )
       );
 
-      const findPdf = (invoiceId: string) =>
-        authorize.pipe(
-          Effect.flatMap((account) =>
-            invoiceRepository
-              .findForCustomer(account.dotyposCustomerId, invoiceId)
-              .pipe(Effect.mapError(toLoadError))
+      const listWithToday = (
+        account: LinkedCustomerAccount
+      ): Effect.Effect<
+        {
+          readonly today: PlainDate;
+          readonly summaries: readonly CustomerInvoiceSummary[];
+        },
+        CustomerInvoicesLoadError
+      > =>
+        Effect.Do.pipe(
+          Effect.bind("issued", () =>
+            invoices
+              .listForCustomer(account.dotyposCustomerId)
+              .pipe(Effect.catch(() => failLoad("invoice.read")))
           ),
-          Effect.flatMap((invoice) =>
-            invoice
-              ? Effect.succeed(invoice)
-              : Effect.fail(new CustomerInvoiceNotFoundError({ invoiceId }))
-          ),
-          Effect.flatMap((invoice) =>
-            renderInvoicePdf(invoice.document).pipe(
-              Effect.map(
-                (
-                  bytes
-                ): { readonly bytes: Buffer; readonly fileName: string } => ({
-                  bytes,
-                  fileName: `${invoice.invoiceNumber}.pdf`,
-                })
-              )
-            )
-          ),
-          Effect.catchTag("InvoicePdfRenderingError", () =>
-            Effect.fail(toLoadError())
-          )
+          Effect.bind("today", () => currentPlainDate(workspaceTimeZone)),
+          Effect.map(({ issued, today }) => ({
+            today,
+            summaries: issued.map((invoice) =>
+              getCustomerInvoiceSummary(invoice, today)
+            ),
+          }))
         );
 
-      const buildCsv = Effect.fn("CustomerInvoiceService.buildCsv")(function* (
-        locale: Locale
+      const list = authorize.pipe(
+        Effect.flatMap(listWithToday),
+        Effect.map(({ summaries }) => summaries),
+        Effect.withSpan("CustomerInvoiceService.list")
+      );
+
+      const pdf = Effect.fn("CustomerInvoiceService.pdf")(function* (
+        invoiceId: string
       ) {
-        const summaries = yield* list;
-        return {
-          fileName: "deskohub-invoices.csv",
-          content: renderCustomerInvoiceCsv(summaries, locale),
-        };
+        const account = yield* authorize;
+        const invoice = yield* invoices
+          .findForCustomer(account.dotyposCustomerId, invoiceId)
+          .pipe(Effect.catch(() => failLoad("invoice.read")));
+        if (!invoice) return yield* new CustomerInvoiceNotFoundError();
+        return yield* renderInvoicePdfFile(invoice.document).pipe(
+          Effect.catch(() => failLoad("invoice.pdf"))
+        );
       });
 
-      return { list, findPdf, buildCsv } satisfies ICustomerInvoiceService;
+      const csv = Effect.fn("CustomerInvoiceService.csv")(function* (
+        locale: Locale
+      ) {
+        const { today, summaries } = yield* authorize.pipe(
+          Effect.flatMap(listWithToday)
+        );
+        return {
+          filename: `invoices-${today}.csv`,
+          columns: getCustomerInvoiceCsvColumns(locale),
+          rows: summaries,
+        } satisfies CustomerInvoiceExport;
+      });
+
+      return { list, pdf, csv } satisfies ICustomerInvoiceService;
     })
   );
 
-  static Live = this.Default.pipe(Layer.provide(DependenciesLive));
+  static Live = this.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        CustomerAccountResolver.Live,
+        CustomerAccountLinkRepository.Live,
+        InvoiceRepository.Live
+      )
+    )
+  );
 }
+
+const workspaceTimeZone = workspaceSiteConstants.location.timeZone;
+
+/**
+ * Whether the session is refused rather than unreadable. The `unavailable`
+ * reason means a session, link, lock, or Dotypos read failed, except for a
+ * review account, which never has a Dotypos customer.
+ */
+const isAccessDenial = (error: CustomerAccountAccessError) =>
+  error.reason !== "unavailable" || error.cause?.code === "account.review";
+
+/** Logs the step's fixed code, never its cause, and fails with it. */
+const failLoad = (code: CustomerInvoiceLoadFailureCode) =>
+  Effect.logError("Customer invoices could not be loaded", {
+    failureCode: code,
+  }).pipe(Effect.andThen(Effect.fail(new CustomerInvoicesLoadError({ code }))));

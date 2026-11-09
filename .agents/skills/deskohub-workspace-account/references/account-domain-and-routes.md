@@ -157,6 +157,20 @@ glossary defines the customer account, reservation author, and tombstone.
   onto the bare path's, so it reloads the page and closes open dialogs.
   Don't add a catch-all slot page. If a modal ever links to another account
   route, add an explicit null slot page for that route.
+- `GET /[locale]/account/invoices/[invoiceId]/pdf` and
+  `GET /[locale]/account/invoices/export` (under `(site)/(full-header)`) are
+  thin files over `features/account/customer-invoice-download-route.server.ts`,
+  which reads `CustomerInvoiceService`. Every refusal (signed out, no linked
+  customer, a review account, deletion pending, another customer's, unknown,
+  or malformed invoice id, invalid locale) answers the same empty private
+  404; a load failure answers a private 500 without document bytes; success
+  is a private attachment. Build their URLs with `getAccountInvoicePdfPath`
+  and `getAccountInvoiceExportPath` (`features/account/routes.ts`). The page
+  streams the list with `loadCustomerInvoiceHistory`
+  (`features/account/invoice-history.server.ts`), whose Effect
+  `loadInvoiceHistory` never fails: `populated` (server-formatted rows),
+  `empty`, `unavailable`, or `failed`. See the checkout skill's
+  accounting-documents reference for the invoice rules.
 - Every route into `/account/legal` and `/account/deleted` starts with the
   modal closed. The dialog makes the background inert, closing it goes back to
   `/account`, and deletion leaves through a document navigation.
