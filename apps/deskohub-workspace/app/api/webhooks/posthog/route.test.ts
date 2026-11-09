@@ -186,6 +186,23 @@ describe("PostHog email webhook route", () => {
     }
   );
 
+  test("answers 500 without polling when the request body cannot be read", async () => {
+    const signed = signedRequest();
+    const request = new Request(signed.url, {
+      method: "POST",
+      headers: signed.headers,
+      body: new ReadableStream({
+        start: (controller) => controller.error(new Error("connection reset")),
+      }),
+    });
+
+    const { status, body } = await send(request);
+
+    expect(status).toBe(500);
+    expect(body.code).toBe("posthog_webhook_body_unreadable");
+    expect(pollTriggers).toEqual([]);
+  });
+
   test("answers 500 so PostHog retries when the poll fails", async () => {
     pollResult = Effect.fail(new Error("database unavailable"));
 

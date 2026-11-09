@@ -17,8 +17,13 @@ const rejectionCode = {
   "verification-failed": "posthog_webhook_verification_failed",
 } satisfies Record<StandardWebhookRejection["reason"], string>;
 
-/** An unusable configuration answers 500 so PostHog delivers the signal again. */
-const signingSecretRefusal = (code: string, cause?: unknown) =>
+export const maxDuration = 300;
+
+/**
+ * An unusable configuration or an unreadable body answers 500 so PostHog
+ * delivers the signal again.
+ */
+const retryRefusal = (code: string, cause?: unknown) =>
   new WebhookRefusal({
     disposition: { kind: "retry", severity: "error" },
     code,
@@ -35,7 +40,7 @@ const receiveDeliveryStatusSignal = Effect.fn(
 )(function* (request: Request) {
   const { signingSecret } = yield* PostHogEmailWebhookConfig;
   if (!signingSecret) {
-    return yield* signingSecretRefusal("posthog_webhook_secret_missing");
+    return yield* retryRefusal("posthog_webhook_secret_missing");
   }
 
   const webhook = yield* verifyStandardWebhookRequest(
@@ -43,10 +48,10 @@ const receiveDeliveryStatusSignal = Effect.fn(
     signingSecret
   ).pipe(
     Effect.catchTags({
+      StandardWebhookBodyUnreadable: ({ cause }) =>
+        Effect.fail(retryRefusal("posthog_webhook_body_unreadable", cause)),
       StandardWebhookSecretInvalid: ({ cause }) =>
-        Effect.fail(
-          signingSecretRefusal("posthog_webhook_secret_invalid", cause)
-        ),
+        Effect.fail(retryRefusal("posthog_webhook_secret_invalid", cause)),
       StandardWebhookRejection: ({ reason, cause }) =>
         Effect.fail(
           new WebhookRefusal({

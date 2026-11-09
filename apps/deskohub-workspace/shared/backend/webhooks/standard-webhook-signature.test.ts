@@ -88,6 +88,29 @@ describe("verifyStandardWebhookRequest", () => {
     expect(result._tag).toBe("Success");
   });
 
+  test("reports a body that cannot be read apart from a forged request", async () => {
+    atSecondsAfterSigning(10);
+    const signed = specExampleRequest();
+    const request = new Request(signed.url, {
+      method: "POST",
+      headers: signed.headers,
+      body: new ReadableStream({
+        start: (controller) => controller.error(new Error("connection reset")),
+      }),
+    });
+
+    const result = await verify(request);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        _tag: "Failure",
+        failure: expect.objectContaining({
+          _tag: "StandardWebhookBodyUnreadable",
+        }),
+      })
+    );
+  });
+
   test("reports an unusable signing secret apart from a forged request", async () => {
     atSecondsAfterSigning(10);
 

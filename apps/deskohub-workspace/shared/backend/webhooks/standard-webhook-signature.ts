@@ -31,6 +31,13 @@ class StandardWebhookSecretInvalid extends Data.TaggedError(
   readonly cause: unknown;
 }> {}
 
+/** The request body could not be read, so nothing was verified. */
+class StandardWebhookBodyUnreadable extends Data.TaggedError(
+  "StandardWebhookBodyUnreadable"
+)<{
+  readonly cause: unknown;
+}> {}
+
 /**
  * Verifies a request signed under the Standard Webhooks specification
  * (https://www.standardwebhooks.com): the `webhook-signature` header must
@@ -52,7 +59,10 @@ export const verifyStandardWebhookRequest = Effect.fn(
     return yield* new StandardWebhookRejection({ reason: "headers-missing" });
   }
 
-  const body = yield* Effect.promise(() => request.text());
+  const body = yield* Effect.tryPromise({
+    try: () => request.text(),
+    catch: (cause) => new StandardWebhookBodyUnreadable({ cause }),
+  });
 
   yield* Effect.try({
     try: () =>
