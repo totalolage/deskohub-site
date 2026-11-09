@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer, Option } from "effect";
+import { Context, Data, Effect, Layer, Option, Semaphore } from "effect";
 import type { AppLocale } from "../i18n/app-locale";
 import type { AuthUser } from "./auth-session-state";
 import { makeMemorySecureStore } from "./memory-secure-store";
@@ -156,7 +156,14 @@ const makeNativeAuth = (
   ): Effect.Effect<SignInSession, NativeAuthFailure> =>
     Effect.suspend(() => {
       const storage = makeMemorySecureStore();
-      const signIn = createNativeAuthClient({ ...options, storage });
+      // Nothing else writes the sign-in's storage, so its session reads
+      // are stored even while a change to the app's session runs: the
+      // acceptance copies the session they cache.
+      const signIn = createNativeAuthClient({
+        ...options,
+        storage,
+        sessionWriteLock: Semaphore.makeUnsafe(1),
+      });
       return call(operation, (signal) => request(signIn, signal)).pipe(
         Effect.as({
           user: userOf(signIn),
