@@ -146,6 +146,11 @@ const caseTimeout = workspaceE2ETimeouts.accountCase;
  * server-rendered reservation content races a bare uiTransition budget.
  */
 const accountPageLoadTimeout = browserTimeout + datasourceTimeout;
+/**
+ * The control's hydration, the export's response and download, and the
+ * control settling, each bounded by its own wait.
+ */
+const accountDataExportDownloadTimeout = 2 * uiTransition + datasourceTimeout;
 
 /**
  * The deployed deletion gate treats a session as stale after ten minutes;
@@ -1296,7 +1301,7 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "download-account-data-export",
             laneBrowser.downloadAccountDataExport(exportPath),
-            uiTransition + datasourceTimeout
+            accountDataExportDownloadTimeout
           )
         );
         yield* runStep(

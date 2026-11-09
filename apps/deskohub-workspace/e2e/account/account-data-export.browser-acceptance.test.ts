@@ -54,19 +54,23 @@ const privateHeaders = {
  * button that fetches the export, saves a ZIP attachment through a detached
  * download link named from its Content-Disposition, and settles the block on
  * delivered, or on error for anything else. Loading the page signs the
- * browser in; `?fail=1` makes the export fail.
+ * browser in; `?fail=1` makes the export fail, `?delayMs=` delays its
+ * response, and `?hidden=1` hides the action so it cannot be clicked.
  */
 const legalPage = (url: URL) => {
   const fail = url.searchParams.get("fail") === "1";
+  const delayMs = Number(url.searchParams.get("delayMs") ?? "0");
+  const hidden = url.searchParams.get("hidden") === "1" ? " hidden" : "";
   return new Response(
     `<!doctype html><html><head><meta charset="utf-8"></head><body>
     <section data-slot="account-data-export" data-state="idle">
-      <button type="button" data-slot="account-data-export-action">Download</button>
+      <button type="button" data-slot="account-data-export-action"${hidden}>Download</button>
       <p data-slot="account-data-export-status" role="status"></p>
     </section>
     <script>
       document.cookie = "${signedInCookie}; path=/";
       document.cookie = "export-fail=${fail ? "1" : "0"}; path=/";
+      document.cookie = "export-delay=${delayMs}; path=/";
       const block = document.querySelector('[data-slot="account-data-export"]');
       const action = document.querySelector('[data-slot="account-data-export-action"]');
       action.__reactProps$test = { onClick: () => {} };
@@ -95,8 +99,10 @@ const legalPage = (url: URL) => {
 };
 
 /** The export route: the signed-in browser's archive, else a private 404. */
-const exportRoute = (request: Request) => {
+const exportRoute = async (request: Request) => {
   const cookie = request.headers.get("cookie") ?? "";
+  const delayMs = Number(/export-delay=(\d+)/.exec(cookie)?.[1] ?? "0");
+  if (delayMs > 0) await Bun.sleep(delayMs);
   if (!cookie.includes(signedInCookie))
     return new Response(null, { headers: privateHeaders, status: 404 });
   if (cookie.includes("export-fail=1"))
@@ -235,7 +241,49 @@ test.skipIf(!chromiumAvailable)(
     expect(
       result.value && findAccountDataExportDeliveryProblem(result.value)
     ).toBe("the export responded with status 500");
-    // Only the settled-state wait bounds it, never the download wait.
+    // The download wait lasts as long as a slow export may take, so a
+    // failed export must not wait for it.
+    expect(Date.now() - started).toBeLessThan(10_000);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "keeps waiting for the download of an export slower than a UI transition",
+  async () => {
+    const result = await runLaneStep((laneBrowser) =>
+      Effect.gen(function* () {
+        yield* laneBrowser.open(
+          `${origin}/en-US/account/legal?delayMs=${config.timeouts.uiTransition + 500}`
+        );
+        return yield* laneBrowser.downloadAccountDataExport(exportPath);
+      })
+    );
+
+    expect(result.failures).toEqual([]);
+    expect(
+      result.value && findAccountDataExportDeliveryProblem(result.value)
+    ).toBeNull();
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "fails the step when the action cannot be clicked, leaving no stray wait",
+  async () => {
+    const started = Date.now();
+    const result = await runLaneStep((laneBrowser) =>
+      Effect.gen(function* () {
+        yield* laneBrowser.open(`${origin}/en-US/account/legal?hidden=1`);
+        return yield* laneBrowser.downloadAccountDataExport(exportPath);
+      })
+    );
+
+    expect(result.succeeded).toBe(false);
+    expect(result.failures).toEqual([
+      {
+        message: "download the account data export timed out",
+        timeout: true,
+      },
+    ]);
     expect(Date.now() - started).toBeLessThan(10_000);
   }
 );

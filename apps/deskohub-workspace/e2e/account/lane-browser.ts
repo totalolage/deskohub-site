@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Download, Page } from "@playwright/test";
 import { Effect } from "effect";
 import type { AccountSection } from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
@@ -964,14 +964,17 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
 /**
  * Activates the export control and observes the export it fetches: the
  * response at `path` by its pathname, the download the control starts from
- * it, and the state the control settles on. A failed response starts no
- * download, so only a successful one waits for it.
+ * it, and the state the control settles on. Both waits are armed before the
+ * click and last as long as a slow export may take, and the browser's copy
+ * of the download is deleted however the step ends. A failed response starts
+ * no download, so only a successful one waits for it.
  */
 const downloadAccountDataExportFromPage = async (
   page: Page,
   path: string,
   timeouts: AccountBrowserConfig["timeouts"]
 ): Promise<AccountDataExportDelivery> => {
+  const exportDeadline = timeouts.datasource + timeouts.uiTransition;
   const responded = page.waitForResponse(
     (response) =>
       response.request().method() === "GET" &&
@@ -979,39 +982,53 @@ const downloadAccountDataExportFromPage = async (
     { timeout: timeouts.datasource }
   );
   const downloaded = page
-    .waitForEvent("download", { timeout: timeouts.uiTransition })
+    .waitForEvent("download", { timeout: exportDeadline })
     .catch(() => undefined);
-  await page
-    .locator(accountDataExportActionSelector)
-    .filter({ visible: true })
-    .click({ timeout: timeouts.browserAction });
-  const response = await responded;
-  const headers = await response.allHeaders();
-  const archive = response.ok()
-    ? readAccountDataExportArchiveShape(await response.body())
-    : ({ kind: "unreadable" } as const);
-  const download = response.ok() ? await downloaded : undefined;
-  const downloadFilename = download?.suggestedFilename();
-  await download?.delete();
-  await page
-    .locator(settledAccountDataExportSelector)
-    .waitFor({ state: "attached", timeout: timeouts.uiTransition })
-    .catch(() => undefined);
-  const controlState =
-    (await page
-      .locator(accountDataExportSelector)
-      .getAttribute("data-state", { timeout: timeouts.browserAction })
-      .catch(() => null)) ?? undefined;
-  return {
-    archive,
-    controlState,
-    downloadFilename,
-    headers: {
-      cacheControl: headers["cache-control"],
-      contentDisposition: headers["content-disposition"],
-      contentType: headers["content-type"],
-      referrerPolicy: headers["referrer-policy"],
-    },
-    status: response.status(),
-  };
+  let observed: Download | undefined;
+  try {
+    // Awaiting both together observes the response wait even when the
+    // click fails.
+    const [response] = await Promise.all([
+      responded,
+      page
+        .locator(accountDataExportActionSelector)
+        .filter({ visible: true })
+        .click({ timeout: timeouts.browserAction }),
+    ]);
+    const headers = await response.allHeaders();
+    const archive = response.ok()
+      ? readAccountDataExportArchiveShape(await response.body())
+      : ({ kind: "unreadable" } as const);
+    observed = response.ok() ? await downloaded : undefined;
+    const downloadFilename = observed?.suggestedFilename();
+    await page
+      .locator(settledAccountDataExportSelector)
+      .waitFor({ state: "attached", timeout: timeouts.uiTransition })
+      .catch(() => undefined);
+    const controlState =
+      (await page
+        .locator(accountDataExportSelector)
+        .getAttribute("data-state", { timeout: timeouts.browserAction })
+        .catch(() => null)) ?? undefined;
+    return {
+      archive,
+      controlState,
+      downloadFilename,
+      headers: {
+        cacheControl: headers["cache-control"],
+        contentDisposition: headers["content-disposition"],
+        contentType: headers["content-type"],
+        referrerPolicy: headers["referrer-policy"],
+      },
+      status: response.status(),
+    };
+  } finally {
+    // An observed download is deleted before the step returns; one that
+    // starts after the step gave up is deleted when it arrives.
+    if (observed) await observed.delete().catch(() => undefined);
+    else
+      void downloaded
+        .then((download) => download?.delete())
+        .catch(() => undefined);
+  }
 };
