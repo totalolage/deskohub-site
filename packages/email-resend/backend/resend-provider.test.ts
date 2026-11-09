@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { continuesEmailChain } from "@deskohub/email";
 import { testEmailAddress } from "@deskohub/test-email";
-import { ConfigProvider, Effect, Fiber, Layer, Tracer } from "effect";
+import { ConfigProvider, Duration, Effect, Fiber, Tracer } from "effect";
 import { TestClock } from "effect/testing";
 
 const adaAddress = testEmailAddress("ada");
@@ -50,10 +51,8 @@ mock.module("resend", () => ({
   },
 }));
 
-const { ResendEmailProviderLive } = await import("./resend-provider");
-const { EmailConfigTag, EmailProviderTag } = await import("../service");
-
-type EmailProviderRequirement = import("../service").EmailProviderTag;
+const { deploymentResendRequestTimeouts, makeResendEmailProvider } =
+  await import("./resend-provider");
 
 beforeEach(() => {
   send = mock<SendImplementation>(async () => ({
@@ -64,29 +63,45 @@ beforeEach(() => {
   }));
 });
 
-const config = {
-  provider: "resend" as const,
-  defaultFrom: { email: deskohubAddress },
-  apiKey: "api-key",
-};
+/** The Resend provider with the request timeouts of the test's deployment. */
+const resendProvider = deploymentResendRequestTimeouts.pipe(
+  Effect.map((timeouts) =>
+    makeResendEmailProvider({ apiKey: "api-key", timeouts })
+  )
+);
 
+/** Runs `effect` on the TestClock with `env` as its configuration. */
 const runProvider = <A, E>(
-  effect: Effect.Effect<A, E, EmailProviderRequirement>,
+  effect: Effect.Effect<A, E>,
   env: Record<string, string> = {}
 ) =>
   Effect.runPromise(
     effect.pipe(
-      Effect.provide(
-        ResendEmailProviderLive.pipe(
-          Layer.provide(Layer.succeed(EmailConfigTag, config))
-        )
-      ),
+      Effect.provide(TestClock.layer()),
       Effect.provideService(
         ConfigProvider.ConfigProvider,
         ConfigProvider.fromUnknown(env)
       )
     )
   );
+
+/**
+ * Waits for a forked request, advancing the TestClock through every attempt
+ * timeout and retry backoff.
+ */
+const finish = <A, E>(fiber: Fiber.Fiber<A, E>) =>
+  Effect.gen(function* () {
+    while (fiber.pollUnsafe() === undefined) {
+      yield* TestClock.adjust("1 second");
+    }
+    return yield* Fiber.join(fiber);
+  });
+
+/** Runs a request to its result on the TestClock. */
+const settle = <A, E>(request: Effect.Effect<A, E>) =>
+  Effect.gen(function* () {
+    return yield* finish(yield* request.pipe(Effect.result, Effect.forkChild));
+  });
 
 const message = {
   from: { email: deskohubAddress },
@@ -104,78 +119,215 @@ const batchMessages = [
 ];
 
 describe("ResendEmailProvider", () => {
-  test("maps 4xx and invalid errors to EmailServiceError", async () => {
-    for (const error of [
-      { statusCode: 400, message: "Bad request" },
-      { message: "Invalid API key" },
-    ]) {
-      send = mock<SendImplementation>(async () => ({ error }));
-      const result = await runProvider(
-        Effect.gen(function* () {
-          const provider = yield* EmailProviderTag;
-          return yield* provider.send(message).pipe(Effect.result);
-        })
-      );
+  const refusal =
+    (statusCode: number, errorMessage = "Refused"): SendImplementation =>
+    async () => ({ error: { statusCode, message: errorMessage } });
+  const unclassifiedRefusal =
+    (error: unknown): SendImplementation =>
+    async () => ({ error });
 
-      expect(result._tag).toBe("Failure");
-      if (result._tag === "Failure") {
-        expect(result.failure._tag).toBe("EmailServiceError");
-      }
-    }
-  });
-
-  test("maps 5xx and network errors to NetworkError", async () => {
-    for (const failure of [
-      async () => ({ error: { statusCode: 500, message: "Server error" } }),
-      async () => {
+  for (const row of [
+    {
+      name: "429 quota or rate limit",
+      respond: refusal(429),
+      tag: "EmailServiceError",
+      failureKind: "provider",
+      code: "http-429",
+      attempts: 1,
+      continuesChain: true,
+    },
+    {
+      name: "401 key refusal",
+      respond: refusal(401),
+      tag: "EmailServiceError",
+      failureKind: "provider",
+      code: "http-401",
+      attempts: 1,
+      continuesChain: true,
+    },
+    {
+      name: "403 scope refusal",
+      respond: refusal(403),
+      tag: "EmailServiceError",
+      failureKind: "provider",
+      code: "http-403",
+      attempts: 1,
+      continuesChain: true,
+    },
+    {
+      name: "404 missing resource",
+      respond: refusal(404),
+      tag: "EmailServiceError",
+      failureKind: "provider",
+      code: "http-404",
+      attempts: 1,
+      continuesChain: true,
+    },
+    {
+      name: "409 idempotency key in use",
+      respond: refusal(409),
+      tag: "NetworkError",
+      failureKind: "unknown-outcome",
+      code: "http-409",
+      attempts: 4,
+      continuesChain: false,
+    },
+    {
+      name: "400 validation refusal",
+      respond: refusal(400),
+      tag: "EmailServiceError",
+      failureKind: "message",
+      code: "http-400",
+      attempts: 1,
+      continuesChain: false,
+    },
+    {
+      name: "422 validation refusal",
+      respond: refusal(422),
+      tag: "EmailServiceError",
+      failureKind: "message",
+      code: "http-422",
+      attempts: 1,
+      continuesChain: false,
+    },
+    {
+      name: "5xx server failure",
+      respond: refusal(503),
+      tag: "NetworkError",
+      failureKind: undefined,
+      code: "http-503",
+      attempts: 4,
+      continuesChain: true,
+    },
+    {
+      name: "unauthorized refusal without a status",
+      respond: unclassifiedRefusal({ message: "Invalid API key" }),
+      tag: "EmailServiceError",
+      failureKind: "provider",
+      code: "resend-unauthorized",
+      attempts: 1,
+      continuesChain: true,
+    },
+    {
+      name: "invalid request without a status",
+      respond: unclassifiedRefusal({ message: "Invalid recipient" }),
+      tag: "EmailServiceError",
+      failureKind: "message",
+      code: "resend-invalid",
+      attempts: 1,
+      continuesChain: false,
+    },
+    {
+      name: "server failure without a status",
+      respond: unclassifiedRefusal({ message: "Upstream unavailable" }),
+      tag: "NetworkError",
+      failureKind: undefined,
+      code: "resend-server",
+      attempts: 4,
+      continuesChain: true,
+    },
+    {
+      name: "transport failure",
+      respond: async () => {
         throw new Error("network down");
       },
-    ]) {
-      send = mock<SendImplementation>(failure);
+      tag: "NetworkError",
+      failureKind: undefined,
+      code: "transport",
+      attempts: 4,
+      continuesChain: true,
+    },
+    {
+      name: "stalled request",
+      respond: () => new Promise(() => {}),
+      tag: "NetworkError",
+      failureKind: undefined,
+      code: "timeout",
+      attempts: 4,
+      continuesChain: true,
+    },
+    {
+      name: "accepted response without a valid delivery ID",
+      respond: async () => ({ data: { id: "" } }),
+      tag: "NetworkError",
+      failureKind: "unknown-outcome",
+      code: "invalid-response",
+      attempts: 4,
+      continuesChain: false,
+    },
+  ] as const satisfies readonly {
+    readonly name: string;
+    readonly respond: SendImplementation;
+    readonly tag: "EmailServiceError" | "NetworkError";
+    readonly failureKind:
+      | "provider"
+      | "message"
+      | "unknown-outcome"
+      | undefined;
+    readonly code: string;
+    readonly attempts: 1 | 4;
+    readonly continuesChain: boolean;
+  }[]) {
+    test(`classifies a ${row.name} and sends it ${row.attempts} time(s) under one key`, async () => {
+      send = mock<SendImplementation>(row.respond);
+
       const result = await runProvider(
         Effect.gen(function* () {
-          const provider = yield* EmailProviderTag;
-          return yield* provider.send(message).pipe(Effect.result);
+          const provider = yield* resendProvider;
+          return yield* settle(
+            provider.send({ ...message, idempotencyKey: "delivery-key" })
+          );
         })
       );
 
-      expect(result._tag).toBe("Failure");
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: row.tag, code: row.code },
+      });
       if (result._tag === "Failure") {
-        expect(result.failure._tag).toBe("NetworkError");
+        expect(result.failure.failureKind).toBe(row.failureKind);
+        expect(continuesEmailChain(result.failure)).toBe(row.continuesChain);
       }
-    }
-  });
+      expect(send).toHaveBeenCalledTimes(row.attempts);
+      expect(
+        send.mock.calls.map(([, options]) => options?.idempotencyKey)
+      ).toEqual(Array(row.attempts).fill("delivery-key"));
+    });
+  }
 
   test("classifies an error without a status code by its message, then its error code", async () => {
-    for (const [error, expectedTag] of [
-      [{ error: "invalid_api_key" }, "EmailServiceError"],
+    for (const [error, expected] of [
+      [
+        { error: "invalid_api_key" },
+        { _tag: "EmailServiceError", code: "resend-invalid" },
+      ],
       [
         { message: 42, error: "restricted_api_key forbidden" },
-        "EmailServiceError",
+        { _tag: "EmailServiceError", code: "resend-unauthorized" },
       ],
-      [{ message: "Rate limited", error: "invalid_request" }, "NetworkError"],
-      [{ error: 42 }, "NetworkError"],
-      ["Forbidden", "NetworkError"],
+      [
+        { message: "Rate limited", error: "invalid_request" },
+        { _tag: "NetworkError", code: "resend-server" },
+      ],
+      [{ error: 42 }, { _tag: "NetworkError", code: "resend-server" }],
+      ["Forbidden", { _tag: "NetworkError", code: "resend-server" }],
     ] as const) {
-      send = mock<SendImplementation>(async () => ({ error }));
+      send = mock<SendImplementation>(unclassifiedRefusal(error));
       const result = await runProvider(
         Effect.gen(function* () {
-          const provider = yield* EmailProviderTag;
-          return yield* provider.send(message).pipe(Effect.result);
+          const provider = yield* resendProvider;
+          return yield* settle(provider.send(message));
         })
       );
 
-      expect(result._tag).toBe("Failure");
-      if (result._tag === "Failure") {
-        expect(result.failure._tag).toBe(expectedTag);
-      }
+      expect(result).toMatchObject({ _tag: "Failure", failure: expected });
     }
   });
 
   test("sends no Resend tags for a message without categories or string metadata", async () => {
     await runProvider(
       Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
+        const provider = yield* resendProvider;
         yield* provider.send({ ...message, metadata: { attempt: 1 } });
       })
     );
@@ -189,53 +341,64 @@ describe("ResendEmailProvider", () => {
     [{ VERCEL_ENV: "preview" }, "30 seconds", "30 seconds"],
     [{}, "30 seconds", "30 seconds"],
   ] as const) {
-    test(`times out a stalled request after ${single} (batch ${batch}) in ${env.VERCEL_ENV ?? "an unnamed deployment"}`, async () => {
-      send = mock<SendImplementation>(() => new Promise(() => {}));
-      batchSend = mock<BatchSendImplementation>(() => new Promise(() => {}));
+    test(`times out each stalled attempt after ${single} (batch ${batch}) in ${env.VERCEL_ENV ?? "an unnamed deployment"}`, async () => {
+      const sendSignals: AbortSignal[] = [];
+      const batchSignals: AbortSignal[] = [];
+      send = mock<SendImplementation>((_, options) => {
+        if (options?.signal) sendSignals.push(options.signal);
+        return new Promise(() => {});
+      });
+      batchSend = mock<BatchSendImplementation>((_, options) => {
+        if (options?.signal) batchSignals.push(options.signal);
+        return new Promise(() => {});
+      });
 
-      const stalled = <A>(
-        request: Effect.Effect<A, unknown>,
-        timeout: string
-      ) =>
+      /** Whether the first attempt is aborted just before and at `timeout`. */
+      const abortsAround = (signals: AbortSignal[], timeout: Duration.Input) =>
         Effect.gen(function* () {
-          const fiber = yield* request.pipe(Effect.result, Effect.forkChild);
-          yield* TestClock.adjust(timeout);
-          return yield* Fiber.join(fiber);
+          yield* TestClock.adjust(
+            Duration.subtract(
+              Duration.fromInputUnsafe(timeout),
+              Duration.millis(1)
+            )
+          );
+          const before = signals[0]?.aborted;
+          yield* TestClock.adjust("1 millis");
+          return { before, at: signals[0]?.aborted };
         });
 
-      const [sent, sentBeforeBatchTimeout, sentBatch] = await runProvider(
+      const outcome = await runProvider(
         Effect.gen(function* () {
-          const provider = yield* EmailProviderTag;
-          const timedOut = yield* stalled(provider.send(message), single);
-          const early = yield* provider
+          const provider = yield* resendProvider;
+          const sending = yield* provider
+            .send(message)
+            .pipe(Effect.result, Effect.forkChild);
+          const sendAborts = yield* abortsAround(sendSignals, single);
+          const sent = yield* finish(sending);
+          const batching = yield* provider
             .sendBatch(batchMessages, { idempotencyKey: "stalled" })
-            .pipe(Effect.timeoutOption("1 second"), Effect.forkChild);
-          yield* TestClock.adjust("1 second");
-          const beforeBatchTimeout = yield* Fiber.join(early);
-          const batchTimedOut = yield* stalled(
-            provider.sendBatch(batchMessages, { idempotencyKey: "stalled" }),
-            batch
-          );
-          return [timedOut, beforeBatchTimeout, batchTimedOut] as const;
-        }).pipe(Effect.provide(TestClock.layer())),
+            .pipe(Effect.result, Effect.forkChild);
+          const batchAborts = yield* abortsAround(batchSignals, batch);
+          const sentBatch = yield* finish(batching);
+          return { sent, sendAborts, sentBatch, batchAborts };
+        }),
         env
       );
 
-      expect(send).toHaveBeenCalledTimes(1);
-      for (const result of [sent, sentBatch]) {
+      expect(outcome.sendAborts).toEqual({ before: false, at: true });
+      expect(outcome.batchAborts).toEqual({ before: false, at: true });
+      expect(send).toHaveBeenCalledTimes(4);
+      expect(batchSend).toHaveBeenCalledTimes(1);
+      for (const result of [outcome.sent, outcome.sentBatch]) {
         expect(result).toMatchObject({
           _tag: "Failure",
-          failure: {
-            _tag: "NetworkError",
-            message: "Resend send timed out",
-          },
+          failure: { _tag: "NetworkError", code: "timeout" },
         });
       }
-      expect(sentBeforeBatchTimeout._tag).toBe("None");
     });
   }
 
-  test("aborts a stalled request when its timeout releases it", async () => {
+  test("aborts every stalled attempt when its timeout releases it", async () => {
     const signals: (AbortSignal | undefined)[] = [];
     send = mock<SendImplementation>((_, options) => {
       signals.push(options?.signal);
@@ -248,48 +411,24 @@ describe("ResendEmailProvider", () => {
 
     await runProvider(
       Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
-        const single = yield* provider
-          .send(message)
-          .pipe(Effect.result, Effect.forkChild);
-        const batch = yield* provider
-          .sendBatch(batchMessages, { idempotencyKey: "stalled" })
-          .pipe(Effect.result, Effect.forkChild);
-        yield* TestClock.adjust("30 seconds");
-        yield* Fiber.join(single);
-        yield* Fiber.join(batch);
-      }).pipe(Effect.provide(TestClock.layer()))
-    );
-
-    expect(signals).toHaveLength(2);
-    for (const signal of signals) {
-      expect(signal?.aborted).toBe(true);
-    }
-  });
-
-  test("treats an accepted response without a valid delivery ID as unconfirmed", async () => {
-    send = mock<SendImplementation>(async () => ({ data: { id: "" } }));
-
-    const result = await runProvider(
-      Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
-        return yield* provider.send(message).pipe(Effect.result);
+        const provider = yield* resendProvider;
+        yield* settle(provider.send(message));
+        yield* settle(
+          provider.sendBatch(batchMessages, { idempotencyKey: "stalled" })
+        );
       })
     );
 
-    expect(result._tag).toBe("Failure");
-    if (result._tag === "Failure") {
-      expect(result.failure).toMatchObject({
-        _tag: "NetworkError",
-        message: "Resend response did not contain a valid email delivery ID",
-      });
+    expect(signals).toHaveLength(5);
+    for (const signal of signals) {
+      expect(signal?.aborted).toBe(true);
     }
   });
 
   test("forwards the delivery idempotency key within Resend's limit", async () => {
     await runProvider(
       Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
+        const provider = yield* resendProvider;
         yield* provider.send({
           ...message,
           idempotencyKey: "invoice-resend-attempt-2",
@@ -320,7 +459,7 @@ describe("ResendEmailProvider", () => {
 
     const results = await runProvider(
       Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
+        const provider = yield* resendProvider;
         return yield* provider.sendBatch(batchMessages, {
           idempotencyKey: "campaign-batch-key",
         });
@@ -334,20 +473,48 @@ describe("ResendEmailProvider", () => {
       idempotencyKey: "campaign-batch-key",
       signal: expect.any(AbortSignal),
     });
-    expect(results.map((result) => result.id)).toEqual([
-      "batch-id-1",
-      "batch-id-2",
+    expect(results).toMatchObject([
+      { id: "batch-id-1", status: "sent", provider: "resend" },
+      { id: "batch-id-2", status: "sent", provider: "resend" },
     ]);
   });
 
-  test("maps batch refusals to EmailServiceError and unknown outcomes to NetworkError", async () => {
-    for (const [statusCode, errorMessage, expectedTag] of [
-      [400, "Batch request failed", "EmailServiceError"],
-      [422, "Invalid recipient", "EmailServiceError"],
-      [429, "Too many requests", "EmailServiceError"],
+  test("classifies batch refusals and sends each batch once", async () => {
+    for (const [statusCode, errorMessage, expected] of [
+      [
+        400,
+        "Batch request failed",
+        { _tag: "EmailServiceError", failureKind: "message", code: "http-400" },
+      ],
+      [
+        422,
+        "Invalid recipient",
+        { _tag: "EmailServiceError", failureKind: "message", code: "http-422" },
+      ],
+      [
+        429,
+        "Too many requests",
+        {
+          _tag: "EmailServiceError",
+          failureKind: "provider",
+          code: "http-429",
+        },
+      ],
       // A reused key: an earlier request under it may have been delivered.
-      [409, "Invalid idempotent request", "NetworkError"],
-      [500, "Invalid upstream response", "NetworkError"],
+      [
+        409,
+        "Invalid idempotent request",
+        {
+          _tag: "NetworkError",
+          failureKind: "unknown-outcome",
+          code: "http-409",
+        },
+      ],
+      [
+        500,
+        "Invalid upstream response",
+        { _tag: "NetworkError", code: "http-500" },
+      ],
     ] as const) {
       batchSend = mock<BatchSendImplementation>(async () => ({
         error: { statusCode, message: errorMessage },
@@ -355,17 +522,17 @@ describe("ResendEmailProvider", () => {
 
       const result = await runProvider(
         Effect.gen(function* () {
-          const provider = yield* EmailProviderTag;
-          return yield* provider
-            .sendBatch(batchMessages, { idempotencyKey: "campaign-batch-key" })
-            .pipe(Effect.result);
+          const provider = yield* resendProvider;
+          return yield* settle(
+            provider.sendBatch(batchMessages, {
+              idempotencyKey: "campaign-batch-key",
+            })
+          );
         })
       );
 
-      expect(result._tag).toBe("Failure");
-      if (result._tag === "Failure") {
-        expect(result.failure._tag).toBe(expectedTag);
-      }
+      expect(result).toMatchObject({ _tag: "Failure", failure: expected });
+      expect(batchSend).toHaveBeenCalledTimes(1);
     }
   });
 
@@ -376,23 +543,30 @@ describe("ResendEmailProvider", () => {
 
     const result = await runProvider(
       Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
-        return yield* provider
-          .sendBatch(batchMessages, { idempotencyKey: "campaign-batch-key" })
-          .pipe(Effect.result);
+        const provider = yield* resendProvider;
+        return yield* settle(
+          provider.sendBatch(batchMessages, {
+            idempotencyKey: "campaign-batch-key",
+          })
+        );
       })
     );
 
-    expect(result._tag).toBe("Failure");
-    if (result._tag === "Failure") {
-      expect(result.failure._tag).toBe("NetworkError");
-    }
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "NetworkError",
+        failureKind: "unknown-outcome",
+        code: "batch-size-mismatch",
+      },
+    });
+    expect(batchSend).toHaveBeenCalledTimes(1);
   });
 
   test("rejects batches with attachments without calling Resend", async () => {
     const result = await runProvider(
       Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
+        const provider = yield* resendProvider;
         return yield* provider
           .sendBatch(
             [
@@ -412,17 +586,21 @@ describe("ResendEmailProvider", () => {
       })
     );
 
-    expect(result._tag).toBe("Failure");
-    if (result._tag === "Failure") {
-      expect(result.failure._tag).toBe("EmailServiceError");
-    }
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "EmailServiceError",
+        failureKind: "message",
+        code: "attachments-unsupported",
+      },
+    });
     expect(batchSend).not.toHaveBeenCalled();
   });
 
   test("maps the magic-link tags and surface metadata to Resend tags", async () => {
     await runProvider(
       Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
+        const provider = yield* resendProvider;
         yield* provider.send({
           ...message,
           tags: ["account-magic-link"],
@@ -448,7 +626,7 @@ describe("ResendEmailProvider", () => {
 
     await runProvider(
       Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
+        const provider = yield* resendProvider;
         yield* provider.send({
           ...message,
           attachments: [attachment],
@@ -472,29 +650,6 @@ describe("ResendEmailProvider", () => {
         { name: "reservationId", value: "reservation-id" },
       ],
     });
-  });
-
-  test("layer fails when EMAIL_API_KEY is missing", async () => {
-    const result = await Effect.runPromise(
-      EmailProviderTag.pipe(
-        Effect.provide(
-          ResendEmailProviderLive.pipe(
-            Layer.provide(
-              Layer.succeed(EmailConfigTag, {
-                provider: "resend" as const,
-                defaultFrom: { email: deskohubAddress },
-              })
-            )
-          )
-        ),
-        Effect.result
-      )
-    );
-
-    expect(result._tag).toBe("Failure");
-    if (result._tag === "Failure") {
-      expect(result.failure._tag).toBe("EmailServiceError");
-    }
   });
 });
 
@@ -558,21 +713,18 @@ const captureSpans = () => {
 const rawProviderDetail = "raw provider detail: quota exceeded for key rk_123";
 
 const runTracedSend = (tracer: Tracer.Tracer) =>
-  Effect.gen(function* () {
-    const provider = yield* EmailProviderTag;
-    return yield* provider
-      .send({
-        ...message,
-        text: "bearer text with secret-token",
-      })
-      .pipe(Effect.withSpan("resend.send.test"), Effect.result);
-  }).pipe(
-    Effect.provide(
-      ResendEmailProviderLive.pipe(
-        Layer.provide(Layer.succeed(EmailConfigTag, config))
-      )
-    ),
-    Effect.provide(Layer.succeed(Tracer.Tracer, tracer))
+  runProvider(
+    Effect.gen(function* () {
+      const provider = yield* resendProvider;
+      return yield* settle(
+        provider
+          .send({
+            ...message,
+            text: "bearer text with secret-token",
+          })
+          .pipe(Effect.withSpan("resend.send.test"))
+      );
+    }).pipe(Effect.provideService(Tracer.Tracer, tracer))
   );
 
 describe("ResendEmailProvider span censorship", () => {
@@ -582,7 +734,7 @@ describe("ResendEmailProvider span censorship", () => {
     }));
     const { ended, tracer } = captureSpans();
 
-    const result = await Effect.runPromise(runTracedSend(tracer));
+    const result = await runTracedSend(tracer);
 
     expect(result._tag).toBe("Failure");
     expect(ended.length).toBeGreaterThan(0);
@@ -606,7 +758,7 @@ describe("ResendEmailProvider span censorship", () => {
     });
     const { ended, tracer } = captureSpans();
 
-    const result = await Effect.runPromise(runTracedSend(tracer));
+    const result = await runTracedSend(tracer);
 
     expect(result._tag).toBe("Failure");
     expect(ended.length).toBeGreaterThan(0);
