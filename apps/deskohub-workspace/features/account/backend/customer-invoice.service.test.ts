@@ -3,8 +3,8 @@ import "@/shared/testing/workspace-test-env";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import { SqlError } from "effect/unstable/sql";
 import { TestClock } from "effect/testing";
+import { SqlError } from "effect/unstable/sql";
 import type { Invoice } from "@/features/accounting/backend/invoice.repository";
 import { InvoiceRepository } from "@/features/accounting/backend/invoice.repository";
 import { InvoiceStorageError } from "@/features/accounting/backend/invoice-reads";
@@ -18,8 +18,8 @@ import { plainDateStringSchema } from "@/shared/utils/temporal";
 import {
   CustomerAccountAccessError,
   type CustomerAccountId,
-  customerAccountUnavailable,
   customerAccountIdSchema,
+  customerAccountUnavailable,
 } from "../customer-account";
 import {
   type CustomerAccountActivityState,
