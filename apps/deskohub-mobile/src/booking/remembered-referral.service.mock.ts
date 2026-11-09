@@ -15,7 +15,7 @@ export const inMemoryAccountScopedStorage = (
       Effect.sync(() => Option.fromUndefinedOr(entries.get(name))),
     setItem: (name, value) => Effect.sync(() => void entries.set(name, value)),
     removeItem: (name) => Effect.sync(() => void entries.delete(name)),
-    writeTemporaryFile: () => Effect.succeed(Option.none()),
+    temporaryFile: () => Effect.succeed(Option.none()),
   });
 
 /** Account storage whose every read and write fails, as a broken disk does. */
@@ -27,7 +27,7 @@ export const failingAccountScopedStorage: Layer.Layer<AccountScopedStorage> =
       Effect.fail(new DeviceCapabilityFailed({ capability: "storage" })),
     removeItem: () =>
       Effect.fail(new DeviceCapabilityFailed({ capability: "storage" })),
-    writeTemporaryFile: () =>
+    temporaryFile: () =>
       Effect.fail(
         new DeviceCapabilityFailed({ capability: "temporary-files" })
       ),
