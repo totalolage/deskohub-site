@@ -703,6 +703,8 @@ export {
   type AdministrationReservationStatusGroup as AdministrationReservationStatusGroupType,
   AdministrationReservationSummary,
   type AdministrationReservationSummary as AdministrationReservationSummaryType,
+  AdministrationServiceDate,
+  type AdministrationServiceDate as AdministrationServiceDateType,
   AdministrationStandaloneAccessCodeAttemptId,
   type AdministrationStandaloneAccessCodeAttemptId as AdministrationStandaloneAccessCodeAttemptIdType,
   AdministrationStandaloneAccessCodeCleanupTarget,

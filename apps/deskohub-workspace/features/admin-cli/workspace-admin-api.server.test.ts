@@ -6,6 +6,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationActorEmail,
   AdministrationAuthentication,
+  AdministrationDiscountCodeUpdateInput,
   AdministrationDotyposCustomerId,
   AdministrationInstant,
   AdministrationProviderCredentialId,
@@ -76,6 +77,7 @@ import {
 import {
   DiscountAdminConflictError,
   DiscountAdministration,
+  DiscountAdminServiceDatesError,
 } from "@/features/discounts/admin/discount-administration.service";
 import { CampaignOperations } from "@/features/email-campaigns/backend/campaign-operations.service";
 import {
@@ -83,6 +85,7 @@ import {
   type ReservationProductDetailsBackfillBatch,
 } from "@/features/reservation/backend/reservation-product-details-backfill.service";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
 import {
   discountMutationRecovery,
   reservationAccessRecovery,
@@ -1339,6 +1342,58 @@ describe("Workspace Admin API", () => {
       recovery: discountMutationRecovery,
     });
   });
+
+  test("passes a code update's service dates through and rejects ones the service refuses", async () => {
+    const requestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000011"
+    );
+    const updates: unknown[] = [];
+    const discounts = Layer.succeed(DiscountAdministration, {
+      ...({} as DiscountAdministration["Service"]),
+      updateCode: (input) =>
+        Effect.sync(() => updates.push(input)).pipe(
+          Effect.andThen(
+            new DiscountAdminServiceDatesError({
+              message: "serviceDateUntil must not be before serviceDateFrom",
+            })
+          )
+        ),
+    });
+    const serviceDates = {
+      serviceDateFrom: "2026-07-01",
+      serviceDateUntil: "2026-07-31",
+    };
+
+    const error = await callAdministrationApi(
+      (client) =>
+        client
+          .mutateDiscounts({
+            payload: {
+              requestId,
+              mutation: {
+                kind: "update-code",
+                code: Schema.decodeUnknownSync(
+                  AdministrationDiscountCodeUpdateInput
+                )({
+                  id: "01980000-0000-7000-8000-000000000002",
+                  discountId: "01980000-0000-7000-8000-000000000001",
+                  code: "SUMMER10",
+                  enabled: true,
+                  validFrom: null,
+                  validUntil: null,
+                  maxUses: null,
+                  ...serviceDates,
+                }),
+              },
+            },
+          })
+          .pipe(Effect.flip),
+      { discounts }
+    );
+
+    expect(error).toBeInstanceOf(CliMutationRejected);
+    expect(updates).toEqual([expect.objectContaining(serviceDates)]);
+  });
 });
 
 describe("customer and reservation administration endpoints", () => {
@@ -1363,7 +1418,12 @@ describe("customer and reservation administration endpoints", () => {
     const profile = adminCustomerProfile({
       codes: [
         adminCustomerCode(),
-        adminCustomerCode({ validFrom: null, validUntil: null }),
+        adminCustomerCode({
+          validFrom: null,
+          validUntil: null,
+          serviceDateFrom: plainDateStringSchema.make("2026-08-03"),
+          serviceDateUntil: plainDateStringSchema.make("2026-08-28"),
+        }),
       ],
       claims: [
         adminCodeClaim(),
@@ -1430,8 +1490,20 @@ describe("customer and reservation administration endpoints", () => {
     };
     expect(result.profile).toMatchObject({
       codes: [
-        { code: "SUMMER10", ...datedRange, ...audit },
-        { code: "SUMMER10", ...openRange, ...audit },
+        {
+          code: "SUMMER10",
+          ...datedRange,
+          ...audit,
+          serviceDateFrom: null,
+          serviceDateUntil: null,
+        },
+        {
+          code: "SUMMER10",
+          ...openRange,
+          ...audit,
+          serviceDateFrom: "2026-08-03",
+          serviceDateUntil: "2026-08-28",
+        },
       ],
       claims: [reservedClaim, settledClaim],
       vouchers: [
