@@ -14,6 +14,7 @@ import {
   PopoverTrigger,
 } from "@/shared/components/ui/popover";
 import { cn } from "@/shared/utils";
+import { composeRefs } from "@/shared/utils/compose-refs";
 import {
   formatNumericPlainDate,
   formatNumericPlainDatePattern,
@@ -32,7 +33,6 @@ import {
   resolveBound,
   toCalendarDate,
 } from "./canonical-value";
-import { composeRefs } from "./compose-refs";
 import { useControllableValue } from "./use-controllable-value";
 import { useFormReset } from "./use-form-reset";
 import { useSubmitGuard } from "./use-submit-guard";

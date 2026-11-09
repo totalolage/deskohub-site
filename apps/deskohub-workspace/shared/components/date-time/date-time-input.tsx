@@ -4,6 +4,7 @@ import { type Ref, useEffect, useId, useRef, useState } from "react";
 import { isLocale, m } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { cn } from "@/shared/utils";
+import { composeRefs } from "@/shared/utils/compose-refs";
 import {
   type ControlBound,
   formatCanonicalDateTime,
@@ -12,7 +13,6 @@ import {
   parseCanonicalTime,
   resolveBound,
 } from "./canonical-value";
-import { composeRefs } from "./compose-refs";
 import { DateInput } from "./date-input";
 import { resolveStepMinutes, roundTimeUpToStep, TimeInput } from "./time-input";
 import { useControllableValue } from "./use-controllable-value";

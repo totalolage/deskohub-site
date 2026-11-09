@@ -14,13 +14,13 @@ import { isLocale, m } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils";
+import { composeRefs } from "@/shared/utils/compose-refs";
 import {
   type ControlBound,
   formatCanonicalTime,
   parseCanonicalTime,
   resolveBound,
 } from "./canonical-value";
-import { composeRefs } from "./compose-refs";
 import { useControllableValue } from "./use-controllable-value";
 import { useFormReset } from "./use-form-reset";
 import { useSubmitGuard } from "./use-submit-guard";
