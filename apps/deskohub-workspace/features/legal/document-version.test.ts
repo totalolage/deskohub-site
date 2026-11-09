@@ -26,7 +26,7 @@ const publishedDocuments: ReadonlyArray<{
   {
     locale: "en-US",
     documentKey: "privacy-policy",
-    version: "4cf23776d78d518f27c1a80ae4cdd091d3fc73ff6faf3b2b369749fe7f634cac",
+    version: "d084917d2e8732fd9abc196246a813b96cdc8014fb646dca298d9bb1d215da63",
   },
   {
     locale: "en-US",
@@ -51,7 +51,7 @@ const publishedDocuments: ReadonlyArray<{
   {
     locale: "cs-CZ",
     documentKey: "privacy-policy",
-    version: "f17c81a5953a85b6636e978e45feeea5c4db4128ed4ccbe0cfbe01ad0b0e74c0",
+    version: "fbe11ad42f4f79a0237f388695ee6bb1f0b7a5b7242f449c4bce9a428ffe03d2",
   },
   {
     locale: "cs-CZ",
