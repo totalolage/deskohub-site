@@ -257,6 +257,36 @@ describe("formatWorkspaceReservationNote", () => {
     );
   });
 
+  test("names the discount by its staff label for a non-Czech checkout", () => {
+    const germanSale = {
+      ...summerSale,
+      discount: {
+        ...summerSale.discount,
+        label: "Sommerrabatt",
+        staffLabel: "Letní sleva",
+      },
+    };
+    const note = formatWorkspaceReservationNote({
+      paymentOrderId: "payment-order-id",
+      reservation: noteReservations.office,
+      checkoutDetails: {
+        ...checkoutDetails,
+        locale: "de-DE",
+        payment: { ...checkoutDetails.payment, discounts: [germanSale] },
+      },
+    });
+
+    expect(note).toContain(germanSale.discount.staffLabel);
+    expect(note).not.toContain(germanSale.discount.label);
+  });
+
+  test("names the discount by its checkout label when an older snapshot has no staff label", () => {
+    const note = formatNote("en-US", noteReservations.office);
+
+    expect(summerSale.discount).not.toHaveProperty("staffLabel");
+    expect(note).toContain(summerSale.discount.label);
+  });
+
   test("lets late-payment recovery find a note by its payment order", () => {
     const note = formatNote("en-US", noteReservations.office);
 

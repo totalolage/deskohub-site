@@ -1,5 +1,6 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { ReservationQuote } from "@/features/checkout/reservation-quote";
+import { getCanonicalAppliedDiscount } from "@/features/checkout/reservation-quote-fingerprint";
 import type {
   AppliedDiscount,
   DiscountCommitment,
@@ -123,8 +124,8 @@ const haveSameBasePricing = (input: {
     input.current.payment.undiscountedPrice
   ) &&
   haveSameJsonEncoding(
-    input.previousNonReferralDiscounts,
-    input.currentNonReferralDiscounts
+    input.previousNonReferralDiscounts.map(getCanonicalAppliedDiscount),
+    input.currentNonReferralDiscounts.map(getCanonicalAppliedDiscount)
   );
 
 /**
@@ -176,7 +177,10 @@ const isUnchangedCurrentInvitation = (input: {
   readonly previousInvitation: AppliedDiscount;
   readonly currentInvitation: AppliedDiscount;
 }) =>
-  haveSameJsonEncoding(input.previousInvitation, input.currentInvitation) &&
+  haveSameJsonEncoding(
+    getCanonicalAppliedDiscount(input.previousInvitation),
+    getCanonicalAppliedDiscount(input.currentInvitation)
+  ) &&
   isCurrentInvitationApplication({
     application: input.currentInvitation,
     commitment: input.commitment,

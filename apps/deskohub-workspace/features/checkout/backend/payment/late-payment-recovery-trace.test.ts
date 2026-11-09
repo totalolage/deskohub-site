@@ -19,6 +19,7 @@ import {
   WorkspaceReservationStateError,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
+import { moneyWithValue } from "@/shared/money/money";
 import {
   type EffectTrace,
   recordEffectTrace,
@@ -489,6 +490,43 @@ describe("LatePaymentRecoveryService.recover original hold reuse", () => {
         "call fulfillment.run(reservation-id)",
       ]
     `);
+  });
+
+  test("recreates from a snapshot signed before staff labels with its stored discount label", async () => {
+    const document = makeCoworkInvoiceDocument("de-DE");
+    const storedLabel = "Sommerrabatt";
+    const atPrice = (value: number) =>
+      moneyWithValue(value, document.quote.payment.expectedPrice);
+    const { calls, outcome } = await recover({
+      reservation: currentHeld,
+      originalStatus: "CANCELLED",
+      snapshot: {
+        ...document,
+        quote: {
+          ...document.quote,
+          payment: {
+            ...document.quote.payment,
+            discounts: [
+              {
+                discount: {
+                  id: "summer-sale" as never,
+                  label: storedLabel,
+                  adjustment: { kind: "percentage", basisPoints: 1000 },
+                },
+                subtotalBefore: atPrice(35_000),
+                amount: atPrice(3500),
+                subtotalAfter: atPrice(31_500),
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(outcome).toBe("recovered");
+    expect(calls.createReservation).toHaveBeenCalledWith(
+      expect.objectContaining({ note: expect.stringContaining(storedLabel) })
+    );
   });
 
   test("releases a reused hold and refunds when its discount is gone", async () => {
