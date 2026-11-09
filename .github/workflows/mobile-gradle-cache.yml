@@ -28,7 +28,8 @@ on:
     paths:
       - ".github/workflows/mobile-gradle-cache.yml"
       - "apps/deskohub-mobile/scripts/release/gradle-*.ts"
-      - "apps/deskohub-mobile/scripts/release/resolve-dependencies.init.gradle"
+      - "apps/deskohub-mobile/scripts/release/mobile-release.ts"
+      - "apps/deskohub-mobile/scripts/release/resolve-dependencies.*"
 
 permissions:
   contents: read
@@ -102,6 +103,19 @@ jobs:
         if: steps.gradle-cache.outputs.cache-hit != 'true'
         working-directory: apps/deskohub-mobile
         run: bun scripts/release/mobile-release.ts resolve-gradle-dependencies
+
+      # On the Gradle distribution just unpacked: a download that keeps failing
+      # must fail the warm-up rather than save an incomplete entry, and the
+      # retry properties must ride out 504 answers.
+      - name: Test the dependency download against a failing repository
+        if: steps.gradle-cache.outputs.cache-hit != 'true'
+        working-directory: apps/deskohub-mobile
+        env:
+          GRADLE_DISTRIBUTION: ${{ steps.gradle-cache-key.outputs.gradle }}
+        run: |
+          set -euo pipefail
+          gradle="$(ls -d ~/.gradle/wrapper/dists/"$GRADLE_DISTRIBUTION"/*/*/bin/gradle)"
+          MOBILE_RELEASE_GRADLE="$gradle" bun test scripts/release/resolve-dependencies.test.ts
 
       - name: Check the Gradle cache for signing material
         if: steps.gradle-cache.outputs.cache-hit != 'true'

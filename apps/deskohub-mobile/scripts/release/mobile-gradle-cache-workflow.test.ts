@@ -82,10 +82,11 @@ describe("mobile-gradle-cache.yml", () => {
     );
   });
 
-  test("downloads the dependencies without building, behind the signing-material check", () => {
+  test("downloads the dependencies without building, behind the Gradle test and the signing-material check", () => {
     const steps = [
       "Pre-fetch the Gradle distribution",
       "Download the Gradle dependencies",
+      "Test the dependency download against a failing repository",
       "Check the Gradle cache for signing material",
       "Save the Gradle cache",
     ].map(warmStep);
@@ -94,6 +95,13 @@ describe("mobile-gradle-cache.yml", () => {
     );
     expect(warmStep("Download the Gradle dependencies").run).toBe(
       "bun scripts/release/mobile-release.ts resolve-gradle-dependencies"
+    );
+    const gradleTest = warmStep(
+      "Test the dependency download against a failing repository"
+    );
+    expect(gradleTest.if).toBe(notExactHit);
+    expect(gradleTest.run).toContain(
+      'MOBILE_RELEASE_GRADLE="$gradle" bun test scripts/release/resolve-dependencies.test.ts'
     );
     expect(JSON.stringify(warmup)).not.toContain("secrets.");
     expect(JSON.stringify(warmup)).not.toContain("eas-cli");
