@@ -6,7 +6,7 @@ import { Suspense, use, useState } from "react";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import type { Locale } from "@/features/i18n";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
-import { LocaleSwitcher } from "@/shared/components/locale-switcher";
+import { LanguageMenu } from "@/shared/components/locale-switcher";
 import {
   AdministratorEntryButton,
   AdministratorEntryMenuButton,
@@ -30,7 +30,7 @@ type SiteHeaderProps = {
   contactLabel: string;
   contactHref: string;
   closeNavigationMenuLabel: string;
-  languageSwitcherLabel: string;
+  languageMenuTriggerLabel: string;
   mobilePrimaryNavigationLabel: string;
   openNavigationMenuLabel: string;
   primaryNavigationLabel: string;
@@ -167,7 +167,7 @@ export function SiteHeader({
   contactLabel,
   contactHref,
   closeNavigationMenuLabel,
-  languageSwitcherLabel,
+  languageMenuTriggerLabel,
   mobilePrimaryNavigationLabel,
   openNavigationMenuLabel,
   primaryNavigationLabel,
@@ -226,17 +226,12 @@ export function SiteHeader({
             <AccountEntryLink entry={account} onClick={closeMenu} />
           )}
 
-          <nav
-            aria-label={languageSwitcherLabel}
-            data-locale-switcher
-            className="hidden rounded-full border border-white/12 bg-white/6 px-4 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72 xl:block xl:max-2xl:px-3 xl:max-2xl:tracking-[0.08em]"
-          >
-            <LocaleSwitcher
-              locale={currentLocale}
-              appearance="stacked"
-              localePreference={localePreference}
-            />
-          </nav>
+          <LanguageMenu
+            locale={currentLocale}
+            triggerLabel={languageMenuTriggerLabel}
+            tone="inverse"
+            localePreference={localePreference}
+          />
 
           <Button
             type="button"
@@ -292,18 +287,6 @@ export function SiteHeader({
               />
             ))}
           </nav>
-
-          <div
-            data-locale-switcher
-            className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.14em] text-white/72"
-          >
-            <LocaleSwitcher
-              locale={currentLocale}
-              appearance="inline"
-              localePreference={localePreference}
-              onSwitch={closeMenu}
-            />
-          </div>
         </div>
       </div>
     </header>

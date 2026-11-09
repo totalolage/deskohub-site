@@ -1,5 +1,6 @@
 import { cacheLife } from "next/cache";
 import { Suspense } from "react";
+import { createLocalePreferenceSaving } from "@/features/account/server/locale-preference-saving.server";
 import { type Locale, m } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { AppInstallCallToAction } from "@/features/mobile-distribution/app-install-call-to-action";
@@ -9,6 +10,7 @@ import {
 } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
+import { LanguageLinks } from "@/shared/components/locale-switcher";
 import { workspaceSiteConstants } from "@/shared/utils";
 
 export async function PublicSiteFooter() {
@@ -180,14 +182,22 @@ export async function PublicSiteFooter() {
           <AppInstallCallToAction locale={locale} />
         </Suspense>
 
-        <div className="mt-10 border-t border-white/10 pt-5 text-sm text-white/56">
-          {m.footerCopyright(
-            {
-              companyName: workspaceSiteConstants.brand.legalName,
-              year: copyrightYear,
-            },
-            { locale }
-          )}
+        <div className="mt-10 flex flex-col gap-4 border-t border-white/10 pt-5 text-sm text-white/56 md:flex-row md:items-center md:justify-between">
+          <LanguageLinks
+            locale={locale}
+            label={m.languageSwitcherLabel({}, { locale })}
+            localePreference={createLocalePreferenceSaving()}
+            className="text-white/78 md:order-last"
+          />
+          <p>
+            {m.footerCopyright(
+              {
+                companyName: workspaceSiteConstants.brand.legalName,
+                year: copyrightYear,
+              },
+              { locale }
+            )}
+          </p>
         </div>
       </Container>
     </footer>
