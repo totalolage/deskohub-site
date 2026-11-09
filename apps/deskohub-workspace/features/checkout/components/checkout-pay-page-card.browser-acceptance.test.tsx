@@ -13,8 +13,10 @@ import {
 } from "./checkout-pay-page-card";
 
 const appDirectory = resolve(import.meta.dir, "../../..");
-// The narrowest supported phone, a common phone and a desktop.
-const viewportWidths = [320, 390, 1280] as const;
+// The narrowest supported phone, the widths either side of the label's
+// 18rem breakpoint (a 287px and a 288px button), a common phone and a
+// desktop.
+const viewportWidths = [320, 369, 370, 390, 1280] as const;
 
 const chromiumAvailable = await playwrightChromiumAvailable();
 let browser: Browser | undefined;
@@ -40,9 +42,11 @@ const { total } = buildCoworkCheckoutSummary({
   entryTier: "basic",
   coffee: false,
 });
+// A six-figure amount, such as a long office booking, lengthens the label.
+const largeTotal = { ...total, value: 12_345_650, exponent: 2 };
 
 // The pay card inside the checkout page's gutter, with every label the pay
-// button shows: pay, retry and the pending state.
+// button shows: pay, retry, the pending state and a large amount.
 const payCardMarkup = (locale: Locale) =>
   renderToStaticMarkup(
     <main className="mx-auto w-full max-w-3xl px-4 sm:px-6">
@@ -58,6 +62,11 @@ const payCardMarkup = (locale: Locale) =>
           pending
           total={total}
           variant="retry"
+        />
+        <CheckoutPaySubmitButton
+          locale={locale}
+          total={largeTotal}
+          variant="pay"
         />
       </CheckoutPayCard>
     </main>
@@ -112,13 +121,18 @@ test.skipIf(!chromiumAvailable)(
             })
           );
 
-          expect(buttons).toHaveLength(3);
-          const [pay, retry, pending] = buttons;
-          for (const { iconBesideFirstLetter, iconWidth } of [pay, retry])
+          expect(buttons).toHaveLength(4);
+          // The pending button shows no icon.
+          const [pay, retry, , largePay] = buttons;
+          for (const { iconBesideFirstLetter, iconWidth } of [
+            pay,
+            retry,
+            largePay,
+          ])
             expect({ locale, width, iconBesideFirstLetter, iconWidth }).toEqual(
               { locale, width, iconBesideFirstLetter: true, iconWidth: 16 }
             );
-          for (const { content, label } of [pay, retry, pending]) {
+          for (const { content, label } of buttons) {
             expect({ locale, width, overflow: false }).toEqual({
               locale,
               width,
