@@ -1,5 +1,6 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { NexiCorrelationId } from "@deskohub/nexi";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type {
   OrderFulfillmentState,
   OrderId,
@@ -25,6 +26,9 @@ type _InsertCorrelationIdIsBranded = Expect<
 >;
 type _CustomerIdIsBranded = Expect<
   Equal<Order["dotyposCustomerId"], DotyposCustomerId>
+>;
+type _ActivePaymentAttemptIdIsBranded = Expect<
+  Equal<Order["activePaymentAttemptId"], PaymentAttemptId | null>
 >;
 
 // Insert-time facts without defaults must be supplied by the caller. An
@@ -60,6 +64,7 @@ const validSelect: Order = {
   dotyposCustomerId: "12345" as DotyposCustomerId,
   paymentState: "paid",
   fulfillmentState: "fulfilled",
+  activePaymentAttemptId: "attempt-1" as PaymentAttemptId,
   paidAt: instant,
   fulfilledAt: instant,
   fulfillmentFailedAt: null,
