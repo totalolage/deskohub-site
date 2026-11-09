@@ -16,8 +16,8 @@ import { censorDatabaseQueryParams } from "@/shared/backend/logging/censorship";
 import { moneyWithValue } from "@/shared/money/money";
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 import {
-  accountingDocumentIdentitySchema,
   type AccountingDocumentSnapshot,
+  accountingDocumentIdentitySchema,
   accountingDocumentSnapshotSchema,
   decodeStoredAccountingDocumentSnapshot,
   getAccountingDocumentSnapshotFirstServiceDate,
