@@ -179,7 +179,7 @@
   "emailAutomationRunsHealthFallingBehind": "Eine geplante Kampagne braucht für eine Ausführung länger als die Zeit bis zur nächsten.",
   "emailAutomationRunsHealthUnrecognized": "Die Automatisierungs-Engine meldet eine Warnung, die diese Seite nicht kennt: {code}.",
   "emailAutomationRunsHealthCampaignScheduleLag": "Der Zeitplan dieser Kampagne ist {duration} im Rückstand.",
-  "emailAutomationRunsHealthCampaignEnteringFire": "Diese Kampagne legt Durchläufe für die Ausführung am {date} an: {done} von {total} Teilen erledigt.",
+  "emailAutomationRunsHealthCampaignEnteringFire": "Diese Kampagne legt Durchläufe für die Ausführung am {date} an. Erledigte Teile: {done} von {total}.",
   "emailAutomationRunsHealthCampaignFallingBehind": "Die letzte Ausführung dieser Kampagne dauerte {duration} und damit länger als die Zeit bis zur nächsten Ausführung ({interval}).",
   "emailAutomationRunsHealthCampaignFallingBehindUnknown": "Die letzte Ausführung dieser Kampagne dauerte {duration} und damit länger als die Zeit bis zur nächsten Ausführung.",
   "emailAutomationRunsCountsTitle": "Durchläufe nach Status",

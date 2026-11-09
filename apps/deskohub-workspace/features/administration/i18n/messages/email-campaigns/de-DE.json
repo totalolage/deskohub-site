@@ -15,7 +15,7 @@
   "emailCampaignsAudienceCampaignEmailCountAny": "mindestens eine {single}{period} erhalten haben",
   "emailCampaignsAudienceCampaignEmailCountCountLabel": "Anzahl der Kampagnen-E-Mails",
   "emailCampaignsAudienceCampaignEmailCountLabel": "Erhaltene Kampagnen-E-Mails",
-  "emailCampaignsAudienceCampaignEmailCountLeadText": "erhalten aus",
+  "emailCampaignsAudienceCampaignEmailCountLeadText": "aus",
   "emailCampaignsAudienceCampaignEmailCountNone": "keine {single}{period} erhalten haben",
   "emailCampaignsAudienceCampaignEmailCountNounAny": [
     {
@@ -82,10 +82,10 @@
     }
   ],
   "emailCampaignsAudienceCampaignEmailCountPeriodLabel": "Erhaltene E-Mails",
-  "emailCampaignsAudienceCampaignEmailCountPurposeAny": "E-Mails jeder Art",
+  "emailCampaignsAudienceCampaignEmailCountPurposeAny": "erhaltener E-Mails jeder Art",
   "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Kampagnenzweck",
-  "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "Marketing-E-Mails",
-  "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "Service-E-Mails",
+  "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "erhaltener Marketing-E-Mails",
+  "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "erhaltener Service-E-Mails",
   "emailCampaignsAudienceCampaignEmailCountSourceAny": "einer beliebigen Kampagne",
   "emailCampaignsAudienceCampaignEmailCountSourceEmpty": "Keine passende Kampagne.",
   "emailCampaignsAudienceCampaignEmailCountSourceLabel": "Kampagne",
