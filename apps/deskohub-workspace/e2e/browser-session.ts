@@ -682,11 +682,10 @@ const formatResponse = (response: Response) =>
   `${response.status()} ${response.request().method()} ${response.url()}`;
 
 /**
- * Whether a failure, or one of its causes, is Playwright's `TimeoutError`.
- * It matches the error's name rather than the class, so modules that every
- * E2E process loads, such as `runtime.ts`, never load Playwright itself.
+ * Whether a failure, or one of its causes, is Playwright's `TimeoutError`,
+ * matched by the error's name rather than the class.
  */
-export const isPlaywrightTimeout = (cause: unknown): boolean =>
+const isPlaywrightTimeout = (cause: unknown): boolean =>
   cause instanceof Error &&
   (cause.name === "TimeoutError" || isPlaywrightTimeout(cause.cause));
 
