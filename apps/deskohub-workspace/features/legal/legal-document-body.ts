@@ -13,3 +13,13 @@ export type LegalDocumentBody = {
 
 /** One locale's text of every legal document. */
 export type LegalDocumentBodies = Record<LegalDocumentKey, LegalDocumentBody>;
+
+/**
+ * A locale's translation of the governing Czech documents. Its notice, shown
+ * with every document, states that the Czech text governs on any
+ * discrepancy.
+ */
+export type LegalDocumentTranslation = {
+  readonly translationNotice: string;
+  readonly documents: LegalDocumentBodies;
+};

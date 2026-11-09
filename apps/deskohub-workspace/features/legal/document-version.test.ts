@@ -16,27 +16,27 @@ const publishedDocuments: ReadonlyArray<{
   {
     locale: "en-US",
     documentKey: "terms-and-conditions",
-    version: "94c5ab326bd014146ce95e7408885c33fe563821877ad507f8dd512ef4388b1a",
+    version: "d56d9e83196b802aee01393512cff46d0fef6e01449c72b229db535b0bf095c6",
   },
   {
     locale: "en-US",
     documentKey: "operating-rules",
-    version: "e1d0be9cf7391fbcbd96a11b5bc8a4ef527abec495e323a16f67e10b3b6a64af",
+    version: "05cefdd98d32159cfce228b230931f9cc257643d90f83f327589732476c8ba56",
   },
   {
     locale: "en-US",
     documentKey: "privacy-policy",
-    version: "d783addd2d40a3221f65c18a560d29c9caf2eadbe677315b9e204c1b08d3c357",
+    version: "53e796ba06229ee4d8e9500c3045178a27113df99b1d708dd59c11a3134fb7e5",
   },
   {
     locale: "en-US",
     documentKey: "marketing-communications",
-    version: "75655dda4406b51fd74d1151a8d28443b75e580728c203cef54c2483ec3ed02d",
+    version: "3aa139f0b2a187e4d7bd7e488174b03c8e43b4a893d221b8527ed8e58db31653",
   },
   {
     locale: "en-US",
     documentKey: "cookie-policy",
-    version: "b5b9dbefd033c1e03fadf088aadab6e2081a518f4d09d9a4f3bc833dae1a5b07",
+    version: "476c15e027bde0e04823024f02842b5652456a9721680f0efd0dabf9d494fd03",
   },
   {
     locale: "cs-CZ",

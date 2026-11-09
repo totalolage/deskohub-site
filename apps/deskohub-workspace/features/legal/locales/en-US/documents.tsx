@@ -1,6 +1,7 @@
 import { workspaceSiteConstants } from "@/shared/utils";
 import type {
   LegalDocumentBodies,
+  LegalDocumentTranslation,
   LegalSection,
 } from "../../legal-document-body";
 import { companyAddress, companyName, contactEmail } from "../operator-details";
@@ -199,7 +200,6 @@ const termsAndConditionsSections: LegalSection[] = [
       "15.1 The Provider may amend these GTC for contracts concluded after a new version takes effect. An already concluded Booking is governed by the version accepted at checkout unless a later amendment is more favorable to the Client or the Client expressly accepts it.",
       "15.2 An individual agreement takes precedence over these GTC. If one provision is invalid or ineffective, the remaining provisions are unaffected.",
       "15.3 These GTC become effective on August 12, 2026.",
-      "15.4 These GTC are issued in Czech and English. If the language versions differ, the Czech version is authoritative and takes precedence.",
     ],
   },
 ];
@@ -293,12 +293,11 @@ const operatingRulesSections: LegalSection[] = [
     body: [
       "9.1 The Operator may amend these House Rules for future Bookings. A confirmed Booking is governed by the version accepted at checkout unless an immediate measure is necessary for safety or under mandatory law.",
       "9.2 These House Rules become effective on August 12, 2026.",
-      "9.3 These House Rules are issued in Czech and English. If the language versions differ, the Czech version is authoritative and takes precedence.",
     ],
   },
 ];
 
-export const legalDocuments = {
+const legalDocuments = {
   "privacy-policy": {
     updatedAt: "8 November 2026",
     sections: [
@@ -840,3 +839,9 @@ export const legalDocuments = {
     sections: operatingRulesSections,
   },
 } satisfies LegalDocumentBodies;
+
+export const translation = {
+  translationNotice:
+    "This is a translation of the Czech original. In case of any discrepancy between this translation and the Czech version, the Czech version governs.",
+  documents: legalDocuments,
+} satisfies LegalDocumentTranslation;

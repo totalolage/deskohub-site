@@ -29,6 +29,7 @@ export function getCanonicalLegalDocument(
     title: document.title,
     lead: document.lead,
     updatedAt: document.updatedAt,
+    translationNotice: document.translationNotice,
     sections: document.sections.map((section) => ({
       heading: section.heading,
       body: section.body.map(reactNodeToCanonicalText),
