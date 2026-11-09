@@ -11,8 +11,8 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
  * The profile schemas are the customer API's, so the account forms and the
  * mobile app validate a profile identically. A phone typed without a country
  * calling code reads in the default region of the visitor's locale. The forms
- * keep the phone as entered text; the profile actions decode it to its phone
- * number.
+ * submit the phone number they read in the page's locale, so an action whose
+ * locale has since moved to a saved preference still saves that number.
  */
 export {
   type CustomerProfile,
@@ -27,23 +27,23 @@ export {
 const customerProfileContracts = (locale: Locale) =>
   customerProfileSchemas(defaultPhoneRegion(locale));
 
-/** The profile as the account form submits it in `locale`. */
+/** The profile save a visitor in `locale` submits. */
 export const updateCustomerProfileSchema = (locale: Locale) =>
-  customerProfileContracts(locale).input;
+  customerProfileContracts(locale).save;
 
-/** The first-time completion as the account form submits it in `locale`. */
+/** The first-time completion a visitor in `locale` submits. */
 export const completeCustomerProfileSchema = (locale: Locale) =>
-  customerProfileContracts(locale).completionInput;
+  customerProfileContracts(locale).completionSave;
 
 /** The profile save the update action reads from a request in `locale`. */
 export const updateCustomerProfileStandardSchema = (locale: Locale) =>
-  Schema.toStandardSchemaV1(customerProfileContracts(locale).save, {
+  Schema.toStandardSchemaV1(updateCustomerProfileSchema(locale), {
     parseOptions: customerInputParseOptions,
   });
 
 /** The completion save the completion action reads from a request in `locale`. */
 export const completeCustomerProfileStandardSchema = (locale: Locale) =>
-  Schema.toStandardSchemaV1(customerProfileContracts(locale).completionSave, {
+  Schema.toStandardSchemaV1(completeCustomerProfileSchema(locale), {
     parseOptions: customerInputParseOptions,
   });
 

@@ -147,16 +147,17 @@ describe("customer profile phone in the visitor's locale", () => {
   ] as const)(
     "reads a %s phone without a country calling code in the locale's region",
     async (_, validate) => {
-      expect(
-        savedPhone(
-          await validate({ firstName: "Ada", phone: germanMobile }, "de-DE")
-        )
-      ).toBe("+4915123456789");
-      expect(
-        savedPhone(
-          await validate({ firstName: "Ada", phone: "050 123 4567" }, "uk-UA")
-        )
-      ).toBe("+380501234567");
+      for (const [locale, phone, saved] of [
+        ["cs-CZ", "601 123 456", "+420601123456"],
+        ["en-US", "601 123 456", "+420601123456"],
+        ["de-DE", germanMobile, "+4915123456789"],
+        ["uk-UA", "050 123 4567", "+380501234567"],
+        ["sk-SK", "0905 123 456", "+421905123456"],
+      ] as const) {
+        expect(
+          savedPhone(await validate({ firstName: "Ada", phone }, locale))
+        ).toBe(saved);
+      }
       expect(
         await validate({ firstName: "Ada", phone: germanMobile }, "cs-CZ")
       ).toHaveProperty("issues");
