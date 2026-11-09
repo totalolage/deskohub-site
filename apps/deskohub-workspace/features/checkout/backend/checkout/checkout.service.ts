@@ -40,6 +40,7 @@ import type { Locale } from "@/features/i18n";
 import { isEarlyPerformanceRequestRequired } from "@/features/legal/early-performance";
 import { getPaymentSubmitLegalEvidence } from "@/features/legal/payment-submit-evidence";
 import {
+  reservationLogFields,
   type WorkspaceReservation,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -71,6 +72,7 @@ import {
   isNexiPaymentAttempt,
   type PaymentAttempt,
   PaymentAttemptRepository,
+  paymentAttemptLogFields,
 } from "../repositories/payment-attempt.repository";
 import { PaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import { formatWorkspaceReservationNote } from "../reservation/dotypos-reservation.adapter";
@@ -605,7 +607,9 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                     message: "Nexi payment attempt configuration is invalid.",
                   });
                 }
-                yield* Effect.annotateLogsScoped({ attempt });
+                yield* Effect.annotateLogsScoped(
+                  paymentAttemptLogFields(attempt)
+                );
                 yield* Effect.logInfo("Checkout payment attempt created");
 
                 yield* Effect.logInfo(
@@ -632,7 +636,10 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                       })
                     )
                   );
-                yield* Effect.annotateLogsScoped({ hostedPaymentPage });
+                // Not the page itself: its URL and security token are secrets.
+                yield* Effect.annotateLogsScoped({
+                  providerOrderId: hostedPaymentPage.orderId,
+                });
                 yield* Effect.logInfo(
                   "Nexi hosted payment page creation completed"
                 );
@@ -782,12 +789,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                 ).pipe(Effect.as(null))
             )
           );
-        yield* Effect.annotateLogsScoped({
-          reservationId: reservation?.id,
-          reservationState: reservation?.reservationState,
-          paymentState: reservation?.paymentState,
-          fulfillmentState: reservation?.fulfillmentState,
-        });
+        yield* Effect.annotateLogsScoped(reservationLogFields(reservation));
         return reservation;
       });
 
@@ -894,9 +896,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         const attempt = yield* paymentAttempts.findById(
           reservation.activePaymentAttemptId
         );
-        yield* Effect.annotateLogsScoped({
-          activePaymentAttempt: attempt,
-        });
+        yield* Effect.annotateLogsScoped(paymentAttemptLogFields(attempt));
         yield* Effect.logDebug(
           "Hosted payment checkout active payment attempt lookup completed"
         );
@@ -909,7 +909,6 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           attempt.providerRedirectUrl &&
           moneyEquals(attempt.amount, state.acceptedTotal)
         ) {
-          yield* Effect.annotateLogsScoped({ attempt });
           yield* Effect.logInfo(
             "Hosted payment checkout reused active provider session"
           );
@@ -995,7 +994,9 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
             office: ({ quote }) => getOfficeCheckoutSummary(quote),
           })
         );
-        yield* Effect.annotateLogsScoped({ quote: prepared.quote });
+        yield* Effect.annotateLogsScoped({
+          quoteFingerprint: prepared.quote.fingerprint,
+        });
         yield* Effect.logDebug("Hosted payment checkout quote built");
         yield* Effect.logDebug(
           "Hosted payment checkout quote comparison started"
@@ -1028,8 +1029,10 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         );
         yield* Effect.annotateLogsScoped({
           changedKeys,
-          acceptedQuote: state.quote,
+          acceptedQuoteFingerprint: state.quote.fingerprint,
           acceptedTotal: state.acceptedTotal,
+          freshQuoteFingerprint: prepared.quote.fingerprint,
+          freshTotal: freshSummary.total,
         });
         yield* Effect.logInfo(
           "Hosted payment checkout returned pricing_changed"

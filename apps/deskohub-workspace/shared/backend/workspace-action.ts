@@ -1,14 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import {
-  Cause,
-  Data,
-  Duration,
-  Effect,
-  Predicate,
-  Ref,
-  References,
-  Result,
-} from "effect";
+import { Cause, Data, Duration, Effect, Predicate, Ref, Result } from "effect";
 import type {
   FlattenedValidationErrors,
   SafeActionResult,
@@ -320,7 +311,6 @@ const prepareWorkspaceAction = <
       })
     );
   }).pipe(
-    Effect.provideService(References.MinimumLogLevel, "All"),
     withActionDeadline(options.deadline ?? workspaceActionDeadline),
     Effect.mapError((error) =>
       error instanceof WorkspaceActionTimeout
