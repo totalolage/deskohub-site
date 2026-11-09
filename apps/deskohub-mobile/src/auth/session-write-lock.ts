@@ -1,8 +1,12 @@
 import { Context, Effect, Semaphore } from "effect";
 
+/** The one lock the app's runtimes and its auth client share. */
+export const appSessionWriteLock = Semaphore.makeUnsafe(1);
+
 /**
  * Lets one change to the app's stored session run at a time: a sign-out, a
- * sign-in's acceptance, or a passkey ceremony. Better Auth's Expo client
+ * sign-in's acceptance, a passkey ceremony, or storing a session read's
+ * answer (`createNativeAuthClient`). Better Auth's Expo client
  * clears the stored session before it sends a sign-out
  * (`@better-auth/expo/dist/client.js:448`) and again when the answer arrives
  * (`client.js:374`), and on the web the answer's cookie expires the session
@@ -18,7 +22,7 @@ import { Context, Effect, Semaphore } from "effect";
  */
 export const SessionWriteLock = Context.Reference<Semaphore.Semaphore>(
   "deskohub-mobile/SessionWriteLock",
-  { defaultValue: () => Semaphore.makeUnsafe(1) }
+  { defaultValue: () => appSessionWriteLock }
 );
 
 /** Runs `change` once it holds the app's session write lock. */
