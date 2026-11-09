@@ -89,7 +89,7 @@ export const navigationDecision = (
 
 /** Leaves the checkout for `destination` (see `CheckoutDestination`). */
 export const leaveCheckout = (
-  router: Pick<ImperativeRouter, "push" | "dismissTo">,
+  router: Pick<ImperativeRouter, "navigate" | "dismissTo">,
   destination: CheckoutDestination
 ) => {
   switch (destination._tag) {
@@ -97,11 +97,13 @@ export const leaveCheckout = (
       // First back to the list: out of the book stack, checkout included,
       // to the tabs below it, and down the reservations stack past any
       // status already open. Queued navigations apply in order, so the
-      // status then opens over the list. When the first step only just
-      // created the reservations stack, the anchor puts the list below the
-      // status, as the deep link does. Back from the status is the list.
+      // status then opens over the list. A navigate, not a push: when the
+      // first step only just created the tabs, a push would add a second
+      // tabs route. When it only just created the reservations stack, the
+      // anchor puts the list below the status, as the deep link does. Back
+      // from the status is the list.
       router.dismissTo(reservationsHref);
-      return router.push(destination.href, { withAnchor: true });
+      return router.navigate(destination.href, { withAnchor: true });
     case "FamilyScreen":
       // Replaces the checkout when the family screen isn't below it.
       return router.dismissTo(destination.href);

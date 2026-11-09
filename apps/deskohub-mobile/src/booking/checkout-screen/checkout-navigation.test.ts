@@ -127,13 +127,13 @@ describe("navigationDecision", () => {
 
 describe("leaveCheckout", () => {
   const recordingRouter = () => {
-    type Options = Parameters<ImperativeRouter["push"]>[1];
+    type Options = Parameters<ImperativeRouter["navigate"]>[1];
     const calls: Array<readonly [string, Href, Options]> = [];
     return {
       calls,
       router: {
-        push: (href: Href, options?: Options) =>
-          void calls.push(["push", href, options]),
+        navigate: (href: Href, options?: Options) =>
+          void calls.push(["navigate", href, options]),
         dismissTo: (href: Href, options?: Options) =>
           void calls.push(["dismissTo", href, options]),
       },
@@ -149,7 +149,7 @@ describe("leaveCheckout", () => {
     // it when the first step only just created the reservations stack.
     expect(calls).toEqual([
       ["dismissTo", reservationsHref, undefined],
-      ["push", href, { withAnchor: true }],
+      ["navigate", href, { withAnchor: true }],
     ]);
   });
 
