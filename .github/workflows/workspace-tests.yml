@@ -86,11 +86,15 @@ jobs:
       # runs here, uncached, on every pull request.
       - name: Run repository-wide tests
         run: |
-          mapfile -t tests < <(git ls-files -- '*.repository-wide.test.ts' '*.repository-wide.test.tsx')
-          if [[ "${#tests[@]}" -eq 0 ]]; then
+          if ! listing="$(git ls-files -- '*.repository-wide.test.ts' '*.repository-wide.test.tsx')"; then
+            echo "Could not list the repository-wide tests" >&2
+            exit 1
+          fi
+          if [[ -z "$listing" ]]; then
             echo "No *.repository-wide.test.ts files found" >&2
             exit 1
           fi
+          mapfile -t tests <<< "$listing"
           bun test "${tests[@]/#/./}"
 
       # The shards don't depend on Mobile's tests (see test:dependencies in

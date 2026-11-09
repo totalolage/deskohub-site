@@ -189,6 +189,24 @@ exit ${exitCode}
     expect(result.exitCode).not.toBe(0);
     expect(calls).toEqual([]);
   });
+
+  test("fails without running bun when listing the tests fails partway", async () => {
+    // A listing that fails after printing some paths must not pass on them.
+    const { calls, result } = await runner.runStep(
+      step,
+      {},
+      {},
+      {
+        bun: fakeBun(0),
+        git: `#!/usr/bin/env bash
+printf '%s\\n' ${files[0]}
+exit 1
+`,
+      }
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(calls).toEqual([]);
+  });
 });
 
 test("runs the shards with the Bun the repository pins", () => {
