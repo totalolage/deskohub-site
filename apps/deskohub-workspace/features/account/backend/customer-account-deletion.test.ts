@@ -70,6 +70,10 @@ const makeDependencies = (
         Effect.ensuring(Effect.sync(() => calls.push("lock-release")))
       );
     },
+    anonymiseAnalyticsPerson: () => {
+      calls.push("anonymise-analytics-person");
+      return Effect.void;
+    },
     ...overrides,
   };
   return { dependencies, calls };
@@ -92,6 +96,7 @@ describe("Customer account deletion", () => {
       "destroy-avatar",
       "tombstone",
       "lock-release",
+      "anonymise-analytics-person",
     ]);
   });
 
@@ -145,6 +150,61 @@ describe("Customer account deletion", () => {
 
     expect(outcome._tag).toBe("Failure");
     expect(calls).not.toContain("tombstone");
+    expect(calls).not.toContain("anonymise-analytics-person");
+  });
+
+  test("requests no PostHog person anonymisation when the provider cleanup fails", async () => {
+    const { dependencies, calls } = makeDependencies({
+      expireOutcome: Effect.fail(
+        new DotyposUnavailable({
+          operation: "expireCustomer",
+          reason: "server",
+        })
+      ),
+    });
+
+    const outcome = await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(Effect.result)
+    );
+
+    expect(outcome._tag).toBe("Failure");
+    expect(calls).not.toContain("anonymise-analytics-person");
+  });
+
+  test("completes the deletion and logs no identifier when the PostHog person anonymisation dies or throws", async () => {
+    for (const failure of ["dies", "throws"] as const) {
+      let anonymisationRequests = 0;
+      const logged: unknown[] = [];
+      const { dependencies, calls } = makeDependencies({
+        anonymiseAnalyticsPerson: (id) => {
+          anonymisationRequests += 1;
+          const defect = new Error(`synthetic defect for ${id}`);
+          if (failure === "throws") throw defect;
+          return Effect.die(defect);
+        },
+      });
+
+      const outcome = await Effect.runPromise(
+        expireLinkedDotyposProfile(dependencies)(accountId).pipe(
+          Effect.result,
+          Effect.provide(
+            Logger.layer([
+              Logger.make(({ message }) => {
+                logged.push(message);
+              }),
+            ])
+          )
+        )
+      );
+
+      expect(outcome._tag).toBe("Success");
+      expect(anonymisationRequests).toBe(1);
+      expect(calls.slice(-2)).toEqual(["tombstone", "lock-release"]);
+      expect(JSON.stringify(logged)).toContain(
+        "account.deletion.analytics-person-not-scheduled"
+      );
+      expect(JSON.stringify(logged)).not.toContain(accountId);
+    }
   });
 
   test("tolerates a definitively missing provider profile", async () => {
@@ -176,6 +236,7 @@ describe("Customer account deletion", () => {
       "destroy-avatar",
       "tombstone",
       "lock-release",
+      "anonymise-analytics-person",
     ]);
   });
 
