@@ -21,7 +21,7 @@ import {
   CustomerInvoiceNotIssued,
   CustomerReservationOrderId,
 } from "./customer-reservations-api";
-import { CustomerSessionRequired } from "./customer-session";
+import { CustomerAccountId, CustomerSessionRequired } from "./customer-session";
 
 const baseUrl = "https://workspace.deskohub.test";
 const customerEmail = testEmailAddress("customer");
@@ -255,14 +255,15 @@ describe("makeCustomerAuthApiClient", () => {
 
   test("decodes a session whose saved locale it doesn't serve, keeping the tag", async () => {
     expect(CustomerLocale.literals).not.toContain(laterLocale);
+    const accountId = CustomerAccountId.make("account-1");
     const session = {
       session: {
         id: "session-1",
-        userId: "account-1",
+        userId: accountId,
         expiresAt: "2026-11-10T00:00:00.000Z",
       },
       user: {
-        id: "account-1",
+        id: accountId,
         email: customerEmail,
         emailVerified: true,
         name: "",
