@@ -346,7 +346,7 @@
   "landingOfferingOffices": "Privatbüros bieten wir noch nicht an.",
   "landingAmenitiesTitle": "Was du hier findest",
   "landingAmenityInternetTitle": "Internet",
-  "landingAmenityInternetText": "Glasfaserinternet und WLAN (Wi-Fi 6G).",
+  "landingAmenityInternetText": "Glasfaserinternet und WLAN (Wi-Fi 6).",
   "landingAmenityWorkstationTitle": "Workstations",
   "landingAmenityWorkstationText": "Zum reservierten Platz kannst du zwei Monitore mit 27″ oder 32″ in QHD- oder 4K-Auflösung hinzufügen.",
   "landingAmenityCoffeeTitle": "Kaffee",
@@ -371,7 +371,7 @@
   "faqQuestionHowItWorks": "Wie funktioniert das?",
   "faqAnswerHowItWorks": "Du reservierst und bezahlst deinen Platz online im <reservation>Reservierungsformular</reservation>. In der Bestätigungs-E-Mail bekommst du einen Link zu einer Seite mit der PIN für die Tür. Die PIN gibst du am Tastenfeld an der Eingangstür ein, und während deiner Reservierung kannst du kommen und gehen.",
   "faqQuestionInternet": "Gibt es hier gutes Internet?",
-  "faqAnswerInternet": "Wir haben Glasfaserinternet und WLAN (Wi-Fi 6G).",
+  "faqAnswerInternet": "Wir haben Glasfaserinternet und WLAN (Wi-Fi 6).",
   "faqQuestionFood": "Kann ich Essen mitbringen?",
   "faqAnswerFood": "Ja, du kannst Essen mitbringen und dir auch Getränke aus unserem Kühlschrank kaufen. Wir haben sogar Teller, Besteck und einen kleinen Ofen zum Aufwärmen!",
   "faqQuestionCalls": "Gibt es einen Ort zum Telefonieren?",
@@ -432,7 +432,7 @@
   "contactPrivacyNoteAfter": "gelesen hast, und willigst ein, dass wir deine Daten zur Beantwortung deiner Anfrage verwenden.",
   "reservationNavCta": "Zugang erhalten",
   "coworkReservationLink": "Coworking reservieren",
-  "meetingRoomReservationLink": "Meetingraum reservieren",
+  "meetingRoomReservationLink": "Meetingraum jetzt reservieren",
   "reservationCoworkMetadataTitle": "Coworking reservieren: Palmovka, Prag 8",
   "reservationCoworkMetadataDescription": "Wähle einen Tag. Open-Space-Platz bis 17:00, reservierter Platz den ganzen Tag mit 24/7-Zugang und Kaffee inklusive. Online bezahlen, PIN-Link per E-Mail.",
   "reservationHeroEyebrow": "Workspace-Reservierung",
@@ -922,6 +922,12 @@
   "cookieSettingsNecessaryDescription": "Erforderlich für Grundfunktionen, Sprachauswahl, Sicherheit und das Speichern der Einwilligungsentscheidung.",
   "cookieSettingsAnalyticsTitle": "Analyse-Cookies",
   "cookieSettingsAnalyticsDescription": "Sie helfen uns, die Nutzung der Website, die Zuverlässigkeit des Reservierungsformulars und die Wirksamkeit von Kampagnen auszuwerten, ohne Eingaben aus dem Reservierungsformular oder personenbezogene Daten zu senden.",
+  "analyticsPreferenceTitle": "Analyse für dein Konto",
+  "analyticsPreferenceDescription": "Gilt auf allen Geräten, auf denen du dich anmeldest. Mehr dazu in der <privacy>Datenschutzerklärung</privacy>.",
+  "analyticsPreferenceSaving": "Deine Analysepräferenz wird gespeichert …",
+  "analyticsPreferenceSaved": "Deine Analysepräferenz wurde gespeichert.",
+  "analyticsPreferenceSaveError": "Die Analysepräferenz konnte nicht gespeichert werden. Versuch es bitte noch einmal.",
+  "analyticsPreferenceUnavailable": "Die Analysepräferenz kann gerade nicht geladen werden. Versuch es bitte später noch einmal.",
   "cookieSettingsMarketingTitle": "Marketing-Cookies",
   "cookieSettingsMarketingDescription": "Würden künftig Werbe- oder Kampagnenmessung unterstützen, falls wir sie einsetzen.",
   "cookieSettingsPreferencesTitle": "Präferenz-Cookies",
@@ -960,19 +966,73 @@
   "reservationValidationCoffeeRequired": "Kaffee ist in diesem Tarif enthalten und muss ausgewählt bleiben.",
   "automatedRequestRejected": "Diese Anfrage wirkte automatisiert, deshalb konnten wir sie nicht annehmen. Mach bitte in deinem eigenen Browser weiter.",
   "reservationSecurityInvalidOrigin": "Die Reservierungsanfrage konnte nicht geprüft werden. Lade die Seite neu und versuch es bitte noch einmal.",
-  "contactValidationNameMinimum": "Der Name muss mindestens {min} Zeichen haben.",
-  "contactValidationNameMaximum": "Der Name darf höchstens {max} Zeichen haben.",
+  "contactValidationNameMinimum": [
+    {
+      "declarations": ["input min", "local minPlural = min: plural"],
+      "selectors": ["minPlural"],
+      "match": {
+        "minPlural=one": "Der Name muss mindestens {min} Zeichen haben.",
+        "minPlural=other": "Der Name muss mindestens {min} Zeichen haben."
+      }
+    }
+  ],
+  "contactValidationNameMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Der Name darf höchstens {max} Zeichen haben.",
+        "maxPlural=other": "Der Name darf höchstens {max} Zeichen haben."
+      }
+    }
+  ],
   "contactValidationEmailRequired": "Die E-Mail-Adresse ist erforderlich.",
   "contactValidationEmailInvalid": "Gib eine gültige E-Mail-Adresse ein.",
-  "contactValidationEmailMaximum": "Die E-Mail-Adresse darf höchstens {max} Zeichen haben.",
+  "contactValidationEmailMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Die E-Mail-Adresse darf höchstens {max} Zeichen haben.",
+        "maxPlural=other": "Die E-Mail-Adresse darf höchstens {max} Zeichen haben."
+      }
+    }
+  ],
   "contactEmailConfirmationLabel": "E-Mail-Adresse wiederholen",
   "contactValidationEmailConfirmationMismatch": "Die E-Mail-Adressen stimmen nicht überein. Prüf, ob sich ein Tippfehler eingeschlichen hat.",
   "contactValidationEmailUndeliverable": "An diese E-Mail-Adresse kann keine E-Mail zugestellt werden. Prüf, ob sie einen Tippfehler enthält, denn wir schicken die Bestätigung und den Zugangslink dorthin.",
-  "contactValidationPhoneInvalid": "Gib eine gültige tschechische Telefonnummer ein.",
-  "contactValidationPhoneMaximum": "Die Telefonnummer darf höchstens {max} Zeichen haben.",
+  "contactValidationPhoneInvalid": "Gib eine gültige Telefonnummer ein. Eine Nummer im internationalen Format mit + am Anfang wird immer akzeptiert.",
+  "contactValidationPhoneMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Die Telefonnummer darf höchstens {max} Zeichen haben.",
+        "maxPlural=other": "Die Telefonnummer darf höchstens {max} Zeichen haben."
+      }
+    }
+  ],
   "contactValidationPhoneRequired": "Die Telefonnummer ist erforderlich.",
-  "contactValidationMessageMinimum": "Die Nachricht muss mindestens {min} Zeichen haben.",
-  "contactValidationMessageMaximum": "Die Nachricht darf höchstens {max} Zeichen haben.",
+  "contactValidationMessageMinimum": [
+    {
+      "declarations": ["input min", "local minPlural = min: plural"],
+      "selectors": ["minPlural"],
+      "match": {
+        "minPlural=one": "Die Nachricht muss mindestens {min} Zeichen haben.",
+        "minPlural=other": "Die Nachricht muss mindestens {min} Zeichen haben."
+      }
+    }
+  ],
+  "contactValidationMessageMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Die Nachricht darf höchstens {max} Zeichen haben.",
+        "maxPlural=other": "Die Nachricht darf höchstens {max} Zeichen haben."
+      }
+    }
+  ],
   "galleryMetadataTitle": "Fotos vom Coworking in Palmovka",
   "galleryMetadataDescription": "Fotos von Deskohub Workspace in Palmovka, Prag 8. Sieh dir an, wie es bei uns aussieht, bevor du einen Platz oder den Meetingraum reservierst.",
   "gallerySrTitle": "Workspace-Galerie",
@@ -1430,7 +1490,7 @@
   "coworkingReservedDeskHours": "ganzer Tag, 24/7",
   "coworkingOpenSpaceText": "Du setzt dich an einen freien Platz an einem gemeinsamen Tisch. Ideal für einen normalen Arbeitstag außer Haus.",
   "coworkingOpenSpacePointHours": "Von Mitternacht bis {until} am Tag der Reservierung",
-  "coworkingOpenSpacePointInternet": "Glasfaserinternet und WLAN (Wi-Fi 6G)",
+  "coworkingOpenSpacePointInternet": "Glasfaserinternet und WLAN (Wi-Fi 6)",
   "coworkingOpenSpacePointCoffee": "Kaffee kannst du dazukaufen",
   "coworkingOpenSpaceCta": "Open-Space-Platz reservieren",
   "coworkingReservedDeskText": "Der Tisch gehört den ganzen Tag nur dir. Du musst keinen freien Platz suchen und kannst jederzeit kommen und gehen, tagsüber wie nachts.",
@@ -1441,7 +1501,7 @@
   "coworkingPricesNote": "Preise für Zusatzoptionen und eventuelle Rabattaktionen findest du in der <pricing>Preisliste</pricing>.",
   "coworkingAmenitiesTitle": "Was du hier findest",
   "coworkingAmenityInternetTitle": "Internet",
-  "coworkingAmenityInternetText": "Glasfaserinternet und WLAN (Wi-Fi 6G) kommen mit Videoanrufen und großen Dateien klar.",
+  "coworkingAmenityInternetText": "Glasfaserinternet und WLAN (Wi-Fi 6) kommen mit Videoanrufen und großen Dateien klar.",
   "coworkingAmenityWorkstationTitle": "Workstations",
   "coworkingAmenityWorkstationText": "Zum reservierten Platz fügst du zwei Monitore mit 27″ oder 32″ in QHD oder 4K hinzu.",
   "coworkingAmenityKitchenTitle": "Teeküche",

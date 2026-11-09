@@ -207,6 +207,7 @@
   "emailsEditorBlockSortDescending": "Absteigend",
   "emailsEditorBlockLimit": "Höchstens anzeigen",
   "emailsEditorBlockLimitHint": "Wenn Sie das Feld leer lassen, werden alle Einträge angezeigt.",
+  "emailsEditorEnglishFallbackMissing": "Ohne englische Übersetzung erhalten deutsch- und ukrainischsprachige Empfänger, für deren Sprache keine eigene Übersetzung vorliegt, die tschechische Fassung.",
   "emailsEditorProblemValuePath": "Wählen Sie ein Kundenfeld aus.",
   "emailsEditorProblemValueSort": "Wählen Sie das Sortierfeld und die Sortierrichtung aus.",
   "emailsEditorProblemValueDiscount": "Wählen Sie einen Rabatt aus.",
