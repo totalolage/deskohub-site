@@ -227,3 +227,5 @@ export default configureWorkspaceBotId(
   workspaceBotIdVercelEnvironment,
   withBotId
 );
+
+// 1103 scratch: workspace change
