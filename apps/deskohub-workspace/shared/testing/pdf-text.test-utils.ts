@@ -7,7 +7,6 @@ import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 export const extractPdfText = async (bytes: Uint8Array) => {
   const loadingTask = getDocument({
     data: new Uint8Array(bytes),
-    isEvalSupported: false,
     useSystemFonts: false,
   });
   const pdf = await loadingTask.promise;
