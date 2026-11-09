@@ -855,25 +855,20 @@ export class CampaignDeliveryService extends Context.Service<
         Effect.forEach(
           Arr.zip(input.batch.dotyposCustomerIds, input.recipients),
           ([dotyposCustomerId, outcome]) =>
-            Match.value(outcome).pipe(
-              Match.when({ status: "sent" }, ({ providerMessageId }) =>
-                markSent({
+            outcome.status === "sent"
+              ? markSent({
                   sendId: input.batch.sendId,
                   dotyposCustomerId,
-                  providerMessageId,
+                  providerMessageId: outcome.providerMessageId,
                   now: input.now,
                 })
-              ),
-              Match.orElse(({ status, failureCode }) =>
-                settlePendingRecipients({
+              : settlePendingRecipients({
                   sendId: input.batch.sendId,
                   customerIds: [dotyposCustomerId],
-                  status,
-                  failureCode,
+                  status: outcome.status,
+                  failureCode: outcome.failureCode,
                   now: input.now,
-                })
-              )
-            ),
+                }),
           { discard: true }
         );
 
@@ -905,20 +900,16 @@ export class CampaignDeliveryService extends Context.Service<
         readonly outcome: BatchOutcome;
         readonly now: Temporal.Instant;
       }): Effect.Effect<void, EffectDrizzleQueryError> =>
-        Match.value(input.outcome).pipe(
-          Match.when({ status: "accepted" }, ({ recipients }) =>
-            settleRecipients({ ...input, recipients })
-          ),
-          Match.orElse(({ status, failureCode }) =>
-            settlePendingRecipients({
+        input.outcome.status === "accepted"
+          ? settleRecipients({ ...input, recipients: input.outcome.recipients })
+          : settlePendingRecipients({
               sendId: input.batch.sendId,
               customerIds: input.batch.dotyposCustomerIds,
-              status: status === "rejected" ? "failed" : "unconfirmed",
-              failureCode,
+              status:
+                input.outcome.status === "rejected" ? "failed" : "unconfirmed",
+              failureCode: input.outcome.failureCode,
               now: input.now,
-            }).pipe(Effect.asVoid)
-          )
-        );
+            }).pipe(Effect.asVoid);
 
       /** Settles a batch's outcome together with its recipients. */
       const settleBatch = (input: {
