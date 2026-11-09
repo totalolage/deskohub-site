@@ -1,216 +1,165 @@
+import "@/shared/testing/workspace-test-env";
+
 import { describe, expect, test } from "bun:test";
+import { serializeCsv } from "@/shared/utils/csv";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
 import {
   type CustomerInvoiceSummary,
-  formatInvoiceAmount,
-  formatInvoiceMinorUnits,
+  getCustomerInvoiceCsvColumns,
+  getCustomerInvoiceStatusLabel,
   getCustomerInvoiceSummary,
-  renderCustomerInvoiceCsv,
-} from "@/features/accounting/customer-invoice";
+} from "./customer-invoice";
+import type { InvoiceDocument } from "./invoice";
 import {
   makeCoworkInvoiceDocument,
   makeTestManualInvoiceDocument,
-} from "@/features/accounting/invoice.test-utils";
+} from "./invoice.test-utils";
+import {
+  getInvoiceTotal,
+  type InvoicePaymentStatus,
+} from "./invoice-settlement";
+import { invoiceIdSchema } from "./manual-invoice";
 
-const issuedAt = Temporal.Instant.from("2026-08-12T12:34:56.789Z");
+const date = plainDateStringSchema.make;
+const invoiceId = invoiceIdSchema.make("018f47d2-8f7c-7c5e-9f9a-6ef21f90cb31");
+const issuedAt = Temporal.Instant.from("2026-08-20T10:00:00Z");
+
+const summarize = (document: InvoiceDocument, today = date("2026-08-25")) =>
+  getCustomerInvoiceSummary({ id: invoiceId, issuedAt, document }, today);
+
+const dueManual = makeTestManualInvoiceDocument("en-US", "450.50", {
+  status: "due",
+  date: date("2026-09-01"),
+});
 
 describe("customer invoice summary", () => {
-  test("derives paid facts from a reservation invoice document", () => {
+  test("reads a reservation invoice as paid at its quoted total", () => {
     const document = makeCoworkInvoiceDocument("en-US");
-    const summary = getCustomerInvoiceSummary({
-      id: "invoice-1",
-      issuedAt,
-      document,
-    });
-    expect(summary.paymentStatus).toBe("paid");
-    expect(summary.dueDate).toBeNull();
-    expect(summary.currency).toBe(
-      document.quote.payment.expectedPrice.currency
-    );
-    expect(summary.total).toBe(
-      formatInvoiceMinorUnits(
-        document.quote.payment.expectedPrice.value,
-        document.quote.payment.expectedPrice.exponent
-      )
-    );
-    expect(summary.invoiceNumber).toBe(document.invoiceNumber);
-  });
 
-  test("derives due facts from a manual invoice document", () => {
-    const document = makeTestManualInvoiceDocument("cs-CZ", "450", {
-      status: "due",
-      date: "2026-09-01",
-    });
-    const summary = getCustomerInvoiceSummary({
-      id: "invoice-2",
-      issuedAt,
-      document,
-    });
-    expect(summary.paymentStatus).toBe("due");
-    expect(summary.dueDate).toBe("2026-09-01");
-    expect(summary.currency).toBe("CZK");
-    expect(summary.total).toBe("450");
-  });
-
-  test("treats a settled manual invoice as paid without a due date", () => {
-    const document = makeTestManualInvoiceDocument("en-US", "450", {
-      status: "paid",
-      date: "2026-08-20",
-    });
-    const summary = getCustomerInvoiceSummary({
-      id: "invoice-3",
-      issuedAt,
-      document,
-    });
-    expect(summary.paymentStatus).toBe("paid");
-    expect(summary.dueDate).toBeNull();
-  });
-
-  test("ignores a due date for a zero-total manual invoice", () => {
-    const document = makeTestManualInvoiceDocument("en-US", "0", {
-      status: "due",
-      date: "2026-09-01",
-    });
-    const summary = getCustomerInvoiceSummary({
-      id: "invoice-4",
-      issuedAt,
-      document,
-    });
-    expect(summary.paymentStatus).toBe("paid");
-    expect(summary.dueDate).toBeNull();
-  });
-
-  test("stays stable when mutable provider data would change", () => {
-    const document = makeCoworkInvoiceDocument("en-US");
-    const first = getCustomerInvoiceSummary({
-      id: "invoice-1",
-      issuedAt,
-      document,
-    });
-    const second = getCustomerInvoiceSummary({
-      id: "invoice-1",
-      issuedAt,
-      document,
-    });
-    expect(second).toEqual(first);
-    expect(JSON.stringify(first)).not.toContain("Ada");
-  });
-});
-
-describe("formatInvoiceMinorUnits", () => {
-  test("formats minor units with the currency exponent", () => {
-    expect(formatInvoiceMinorUnits(45000, 2)).toBe("450.00");
-    expect(formatInvoiceMinorUnits(450, 0)).toBe("450");
-    expect(formatInvoiceMinorUnits(-45050, 2)).toBe("-450.50");
-  });
-});
-
-describe("formatInvoiceAmount", () => {
-  test("formats ordinary amounts identically in both locales", () => {
-    expect(formatInvoiceAmount("450", "CZK", "cs-CZ")).toBe("450\u00a0Kč");
-    expect(formatInvoiceAmount("450.00", "CZK", "cs-CZ")).toBe(
-      "450,00\u00a0Kč"
-    );
-    expect(formatInvoiceAmount("450", "USD", "en-US")).toBe("$450");
-    expect(formatInvoiceAmount("450.00", "USD", "en-US")).toBe("$450.00");
-    expect(formatInvoiceAmount("1234.5", "USD", "en-US")).toBe("$1,234.5");
-    expect(formatInvoiceAmount("1234.5", "CZK", "cs-CZ")).toBe(
-      "1\u00a0234,5\u00a0Kč"
-    );
-  });
-
-  test("keeps exact digits for amounts beyond the safe-integer range", () => {
-    const beyondSafeInteger = "9007199254740993.25";
-    expect(formatInvoiceAmount(beyondSafeInteger, "USD", "en-US")).toBe(
-      "$9,007,199,254,740,993.25"
-    );
-    expect(formatInvoiceAmount(beyondSafeInteger, "CZK", "cs-CZ")).toBe(
-      "9\u00a0007\u00a0199\u00a0254\u00a0740\u00a0993,25\u00a0Kč"
-    );
-  });
-
-  test("preserves the sign for negative amounts between -1 and 0", () => {
-    expect(formatInvoiceAmount("-0.25", "USD", "en-US")).toBe("-$0.25");
-    expect(formatInvoiceAmount("-0.25", "CZK", "cs-CZ")).toBe("-0,25\u00a0Kč");
-  });
-
-  test("formats negative whole amounts with fractions", () => {
-    expect(formatInvoiceAmount("-1200.50", "USD", "en-US")).toBe("-$1,200.50");
-    expect(formatInvoiceAmount("-1200.50", "CZK", "cs-CZ")).toBe(
-      "-1\u00a0200,50\u00a0Kč"
-    );
-  });
-});
-
-describe("renderCustomerInvoiceCsv", () => {
-  const summaries: readonly CustomerInvoiceSummary[] = [
-    {
-      id: "invoice-1",
-      invoiceNumber: "WS-FV-2026-000042",
-      issuedAt: "2026-08-12T12:34:56.789Z",
-      total: "450",
-      currency: "CZK",
-      paymentStatus: "due",
-      dueDate: "2026-09-01",
-    },
-    {
-      id: "invoice-2",
-      invoiceNumber: "WS-FV-2026-000007",
-      issuedAt: "2026-07-01T09:00:00.000Z",
-      total: "1200",
-      currency: "CZK",
+    expect(summarize(document)).toEqual({
+      id: invoiceId,
+      invoiceNumber: document.invoiceNumber,
+      issuedOn: date("2026-08-20"),
+      total: getInvoiceTotal(document),
       paymentStatus: "paid",
       dueDate: null,
-    },
+    });
+  });
+
+  test("keeps the exact total of a manual invoice", () => {
+    expect(summarize(dueManual).total).toEqual({
+      amount: dueManual.total,
+      currency: dueManual.currency,
+    });
+  });
+
+  test.each([
+    ["2026-08-31", "issued"],
+    ["2026-09-01", "due"],
+    ["2026-09-02", "overdue"],
+  ] as const)(
+    "on %s a requested payment reads as %s with its due date",
+    (today, paymentStatus) => {
+      expect(summarize(dueManual, date(today))).toMatchObject({
+        paymentStatus,
+        dueDate: date("2026-09-01"),
+      });
+    }
+  );
+
+  test("states no due date once nothing is requested", () => {
+    const paid = makeTestManualInvoiceDocument("en-US", "450", {
+      status: "paid",
+      date: date("2026-08-20"),
+    });
+    const nothingDue = makeTestManualInvoiceDocument("en-US", "0", {
+      status: "due",
+      date: date("2026-08-01"),
+    });
+
+    expect(summarize(paid)).toMatchObject({
+      paymentStatus: "paid",
+      dueDate: null,
+    });
+    expect(summarize(nothingDue)).toMatchObject({
+      paymentStatus: "issued",
+      dueDate: null,
+    });
+  });
+
+  test("dates the issue on the Prague calendar day", () => {
+    const summary = getCustomerInvoiceSummary(
+      {
+        id: invoiceId,
+        issuedAt: Temporal.Instant.from("2026-08-31T22:30:00Z"),
+        document: dueManual,
+      },
+      date("2026-09-01")
+    );
+
+    expect(summary.issuedOn).toBe(date("2026-09-01"));
+  });
+});
+
+describe("customer invoice status label", () => {
+  const statuses: readonly InvoicePaymentStatus[] = [
+    "paid",
+    "issued",
+    "due",
+    "overdue",
   ];
 
-  test("writes localized headers and real ledger facts", () => {
-    const csv = renderCustomerInvoiceCsv(summaries, "en-US");
-    const [header, first, second] = csv.split("\r\n");
-    expect(header).toBe(
-      "Invoice number,Issuance date,Amount,Currency,Status,Due date"
+  test.each(["en-US", "cs-CZ"] as const)(
+    "names every status apart in %s",
+    (locale) => {
+      const labels = statuses.map((status) =>
+        getCustomerInvoiceStatusLabel(status, locale)
+      );
+
+      expect(labels.every((label) => label.length > 0)).toBe(true);
+      expect(new Set(labels).size).toBe(statuses.length);
+    }
+  );
+});
+
+describe("customer invoice CSV", () => {
+  const summaries: readonly CustomerInvoiceSummary[] = [
+    summarize(dueManual, date("2026-09-02")),
+    summarize(makeCoworkInvoiceDocument("en-US")),
+  ];
+  const records = (locale: "en-US" | "cs-CZ") =>
+    serializeCsv(getCustomerInvoiceCsvColumns(locale), summaries)
+      .split("\r\n")
+      .filter((record) => record.length > 0)
+      .map((record) => record.split(","));
+
+  test("writes a header and one record per invoice", () => {
+    const [header, ...rows] = records("en-US");
+
+    expect(header).toHaveLength(6);
+    expect(header!.every((cell) => cell.length > 0)).toBe(true);
+    expect(rows).toEqual(
+      summaries.map((summary) => [
+        summary.invoiceNumber,
+        summary.issuedOn,
+        summary.dueDate ?? "",
+        summary.total.amount,
+        summary.total.currency,
+        getCustomerInvoiceStatusLabel(summary.paymentStatus, "en-US"),
+      ])
     );
-    expect(first).toContain("WS-FV-2026-000042");
-    expect(first).toContain(",450,CZK,");
-    expect(first).toContain("2026-09-01");
-    expect(second).toContain("WS-FV-2026-000007");
-    expect(second.endsWith(",")).toBe(true);
   });
 
-  test("localizes headers and statuses for Czech exports", () => {
-    const csv = renderCustomerInvoiceCsv(summaries, "cs-CZ");
-    const [header, first] = csv.split("\r\n");
-    expect(header).toBe(
-      "Číslo faktury,Datum vystavení,Částka,Měna,Stav,Datum splatnosti"
+  test("localizes the header and statuses but not the data", () => {
+    const english = records("en-US");
+    const czech = records("cs-CZ");
+
+    expect(czech[0]).not.toEqual(english[0]);
+    expect(czech[1]!.at(-1)).toBe(
+      getCustomerInvoiceStatusLabel("overdue", "cs-CZ")
     );
-    expect(first).toContain("WS-FV-2026-000042");
-  });
-
-  test("keeps one row per issued invoice without duplicates", () => {
-    const csv = renderCustomerInvoiceCsv(summaries, "en-US");
-    expect(csv.split("\r\n")).toHaveLength(3);
-    expect(csv.match(/WS-FV-2026-000042/g)).toHaveLength(1);
-  });
-
-  test("derives summaries from both invoice kinds without joins", () => {
-    const manual = makeTestManualInvoiceDocument("en-US");
-    const reservation = makeCoworkInvoiceDocument("en-US");
-    const rows = [
-      getCustomerInvoiceSummary({
-        id: "manual-id",
-        issuedAt,
-        document: manual,
-      }),
-      getCustomerInvoiceSummary({
-        id: "reservation-id",
-        issuedAt,
-        document: reservation,
-      }),
-    ];
-    expect(rows[0].id).toBe("manual-id");
-    expect(rows[1].id).toBe("reservation-id");
-    expect(rows[0].currency).toBe("CZK");
-    expect(rows[1].currency).toBe(
-      reservation.quote.payment.expectedPrice.currency
+    expect(czech.slice(1).map((row) => row.slice(0, -1))).toEqual(
+      english.slice(1).map((row) => row.slice(0, -1))
     );
   });
 });
