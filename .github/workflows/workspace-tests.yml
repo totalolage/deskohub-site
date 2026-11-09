@@ -81,14 +81,14 @@ jobs:
         working-directory: apps/deskohub-workspace
         run: bun test scripts/test-shard.test.ts
 
-      # A *.repository.test.ts reads files across the repository, so no
+      # A *.repository-wide.test.ts reads files across the repository, so no
       # package task caches it and the shards never depend on it. Every one
       # runs here, uncached, on every pull request.
       - name: Run repository-wide tests
         run: |
-          mapfile -t tests < <(git ls-files -- '*.repository.test.ts' '*.repository.test.tsx')
+          mapfile -t tests < <(git ls-files -- '*.repository-wide.test.ts' '*.repository-wide.test.tsx')
           if [[ "${#tests[@]}" -eq 0 ]]; then
-            echo "No *.repository.test.ts files found" >&2
+            echo "No *.repository-wide.test.ts files found" >&2
             exit 1
           fi
           bun test "${tests[@]/#/./}"

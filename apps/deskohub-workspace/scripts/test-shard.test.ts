@@ -342,15 +342,16 @@ const unhashedRepositoryFiles = async (
 // Workspace CI also runs this file outside Turbo: a file these checks would
 // reject changes no shard hash, so a cached shard would replay their pass.
 describe("shard inputs outside the package", () => {
+  const ignore = workspaceTestArguments
+    .find((argument) => argument.startsWith("--path-ignore-patterns="))
+    ?.slice("--path-ignore-patterns=".length);
+  const ignored = new Bun.Glob(ignore ?? "");
+
   test("leave the repository-wide tests to uncached Workspace validation", () => {
-    // A *.repository.test.ts reads files across the repository (every test
+    // A *.repository-wide.test.ts reads files across the repository (every test
     // file, every scanned module), so no package task may cache it.
-    const ignore = workspaceTestArguments
-      .find((argument) => argument.startsWith("--path-ignore-patterns="))
-      ?.slice("--path-ignore-patterns=".length);
-    const ignored = new Bun.Glob(ignore ?? "");
     expect(
-      ignored.match("scripts/no-source-string-tests.repository.test.ts")
+      ignored.match("scripts/no-source-string-tests.repository-wide.test.ts")
     ).toBe(true);
     expect(
       ignored.match(
@@ -358,6 +359,41 @@ describe("shard inputs outside the package", () => {
       )
     ).toBe(true);
     expect(ignored.match("scripts/test-shard.test.ts")).toBe(false);
+  });
+
+  test("skip only the tests another Workspace CI step runs", async () => {
+    // An ignore pattern that also matched ordinary tests (the database
+    // *.repository.test.ts suites, say) would drop them from every shard.
+    const listed = (
+      await commandOutput(
+        [
+          "git",
+          "ls-files",
+          "--cached",
+          "--others",
+          "--exclude-standard",
+          "--",
+          "*.test.ts",
+          "*.test.tsx",
+        ],
+        { cwd: workspaceRoot, timeoutMs: 20_000 }
+      )
+    )
+      .split("\n")
+      .filter(Boolean);
+    const buildOutput = workspacePackage.scripts["test:build-output"] ?? "";
+    const skipped = listed.filter((file) => ignored.match(file));
+    expect(skipped.length).toBeGreaterThan(0);
+    expect(
+      skipped.filter(
+        (file) =>
+          !buildOutput.split(" ").includes(`./${file}`) &&
+          !file.endsWith(".repository-wide.test.ts")
+      )
+    ).toEqual([]);
+    expect(listed).toContain(
+      "features/checkout/backend/repositories/webhook-event.repository.test.ts"
+    );
   });
 
   test("hash every ignore file that decides which files the package's own scans see", async () => {

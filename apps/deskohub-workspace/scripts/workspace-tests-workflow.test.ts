@@ -134,7 +134,10 @@ describe("repository-wide test step", () => {
   const step = stepByName("Run repository-wide tests");
   const runner = createWorkflowStepRunner("workspace-repository-tests-");
   const repositories = mkdtempSync(join(tmpdir(), "workspace-repository-"));
-  const files = ["a/x.repository.test.ts", "b/c/y.repository.test.tsx"];
+  const files = [
+    "a/x.repository-wide.test.ts",
+    "b/c/y.repository-wide.test.tsx",
+  ];
 
   beforeAll(async () => {
     for (const repository of ["with-tests", "without-tests"]) {
@@ -143,7 +146,7 @@ describe("repository-wide test step", () => {
       });
     }
     const withTests = join(repositories, "with-tests");
-    for (const file of [...files, "a/z.test.ts"]) {
+    for (const file of [...files, "a/z.test.ts", "a/w.repository.test.ts"]) {
       await Bun.write(join(withTests, file), "");
     }
     await commandOutput(["git", "add", "."], { cwd: withTests });

@@ -33,7 +33,7 @@ export type RepositoryTestEmailLiteral = TestEmailLiteral & {
 
 /**
  * Where and what the check scans. It reads files across the repository, so
- * its test is a `*.repository.test.ts` that Workspace CI runs uncached on
+ * its test is a `*.repository-wide.test.ts` that Workspace CI runs uncached on
  * every pull request instead of a cached package task.
  */
 const scannedRoots = ["apps", "packages", "scripts"] as const;
