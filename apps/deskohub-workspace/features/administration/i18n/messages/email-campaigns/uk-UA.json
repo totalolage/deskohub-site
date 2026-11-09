@@ -448,7 +448,7 @@
   "emailCampaignsAudienceReservationCountDateBasisVisit": "датою візиту",
   "emailCampaignsAudienceReservationCountDateBasisVisitEnd": "завершенням візиту",
   "emailCampaignsAudienceReservationCountLabel": "Кількість бронювань",
-  "emailCampaignsAudienceReservationCountLeadText": "бронювань за",
+  "emailCampaignsAudienceReservationCountLeadText": "за",
   "emailCampaignsAudienceReservationCountNone": "мають менше ніж одне {single}{period}",
   "emailCampaignsAudienceReservationCountNounBooked": [
     {
@@ -541,12 +541,12 @@
     }
   ],
   "emailCampaignsAudienceReservationCountPeriodLabel": "Бронювання",
-  "emailCampaignsAudienceReservationCountStatusBooked": "підтверджених",
-  "emailCampaignsAudienceReservationCountStatusCancelled": "скасованих",
-  "emailCampaignsAudienceReservationCountStatusComplete": "завершених",
-  "emailCampaignsAudienceReservationCountStatusInProgress": "поточних",
+  "emailCampaignsAudienceReservationCountStatusBooked": "підтверджених бронювань",
+  "emailCampaignsAudienceReservationCountStatusCancelled": "скасованих бронювань",
+  "emailCampaignsAudienceReservationCountStatusComplete": "завершених бронювань",
+  "emailCampaignsAudienceReservationCountStatusInProgress": "поточних бронювань",
   "emailCampaignsAudienceReservationCountStatusLabel": "Статус бронювання",
-  "emailCampaignsAudienceReservationCountStatusNeedsRefund": "відшкодовуваних",
+  "emailCampaignsAudienceReservationCountStatusNeedsRefund": "бронювань, що очікують повернення коштів",
   "emailCampaignsAudienceReservationCountVisitEndPeriod": "із завершенням {period}",
   "emailCampaignsAudienceReservationCountVisitPeriod": "з візитом {period}",
   "emailCampaignsAudienceSaveCampaignNotFound": "Не вдалося зберегти аудиторію. Кампанії, листи якої вона враховує, більше не існує. Оберіть іншу кампанію.",
