@@ -2,6 +2,7 @@ import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationKind } from "@/features/reservation/reservation-kind";
 import type { ReservationProductPropertyIds } from "@/features/reservation/reservation-product-descriptor";
+import { nounInSentence } from "@/shared/utils/text-case";
 import type { AudienceMessage } from "./audience-attribute-wording";
 
 /** How the Admin UI names a product property, and counts a number one. */
@@ -73,6 +74,7 @@ export const reservationProductPropertyUnit = (
   locale: Locale
 ) =>
   propertyWording(family, property)?.unit?.({ count }, { locale }) ??
-  reservationProductPropertyLabel(family, property, locale).toLocaleLowerCase(
+  nounInSentence(
+    reservationProductPropertyLabel(family, property, locale),
     locale
   );

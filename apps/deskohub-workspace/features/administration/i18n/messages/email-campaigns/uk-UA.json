@@ -711,12 +711,56 @@
         "countPlural=one": "протягом {weeks} календарного тижня",
         "countPlural=few": "протягом {weeks} календарних тижнів",
         "countPlural=many": "протягом {weeks} календарних тижнів",
-        "countPlural=other": "протягом {weeks} календарних тижнів"
+        "countPlural=*": "протягом {weeks} календарних тижнів"
       }
     }
   ],
   "emailCampaignsCalendarLastDayOfMonth": "останнього",
-  "emailCampaignsCalendarLastOccurrence": "{weekday} (останній такий день)",
+  "emailCampaignsCalendarLastOccurrence": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "в останній понеділок",
+        "weekday=tuesday": "в останній вівторок",
+        "weekday=wednesday": "в останню середу",
+        "weekday=thursday": "в останній четвер",
+        "weekday=friday": "в останню пʼятницю",
+        "weekday=saturday": "в останню суботу",
+        "weekday=*": "в останню неділю"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceQualifier": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "в останній понеділок",
+        "weekday=tuesday": "в останній вівторок",
+        "weekday=wednesday": "в останню середу",
+        "weekday=thursday": "в останній четвер",
+        "weekday=friday": "в останню пʼятницю",
+        "weekday=saturday": "в останню суботу",
+        "weekday=*": "в останню неділю"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceWait": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "останнього понеділка",
+        "weekday=tuesday": "останнього вівторка",
+        "weekday=wednesday": "останньої середи",
+        "weekday=thursday": "останнього четверга",
+        "weekday=friday": "останньої пʼятниці",
+        "weekday=saturday": "останньої суботи",
+        "weekday=*": "останньої неділі"
+      }
+    }
+  ],
   "emailCampaignsCalendarMinute": "xx:{minute}",
   "emailCampaignsCalendarMonthInName": [
     {
@@ -798,7 +842,7 @@
         "countPlural=one": "щороку в перший день {weeks} календарного тижня, якщо цей день у межах {months}",
         "countPlural=few": "щороку в перший день {weeks} календарних тижнів, якщо цей день у межах {months}",
         "countPlural=many": "щороку в перший день {weeks} календарних тижнів, якщо цей день у межах {months}",
-        "countPlural=other": "щороку в перший день {weeks} календарних тижнів, якщо цей день у межах {months}"
+        "countPlural=*": "щороку в перший день {weeks} календарних тижнів, якщо цей день у межах {months}"
       }
     }
   ],
@@ -814,7 +858,7 @@
         "countPlural=one": "щороку на початку {weeks} календарного тижня (у понеділок)",
         "countPlural=few": "щороку на початку {weeks} календарних тижнів (у понеділок)",
         "countPlural=many": "щороку на початку {weeks} календарних тижнів (у понеділок)",
-        "countPlural=other": "щороку на початку {weeks} календарних тижнів (у понеділок)"
+        "countPlural=*": "щороку на початку {weeks} календарних тижнів (у понеділок)"
       }
     }
   ],
@@ -850,6 +894,21 @@
     }
   ],
   "emailCampaignsCalendarWeekdayName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "у понеділок",
+        "weekday=tuesday": "у вівторок",
+        "weekday=wednesday": "у середу",
+        "weekday=thursday": "у четвер",
+        "weekday=friday": "у пʼятницю",
+        "weekday=saturday": "у суботу",
+        "weekday=*": "у неділю"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayQualifierName": [
     {
       "declarations": ["input weekday"],
       "selectors": ["weekday"],

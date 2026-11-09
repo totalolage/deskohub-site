@@ -137,29 +137,71 @@ const daysOfMonthPhrase = (
   );
 };
 
-/** "the 2nd Tuesday and last Friday" (unscoped). */
-const occurrencesPhrase = (
-  occurrences: readonly CalendarWeekdayOccurrence[],
-  phrasing: Phrasing
+/**
+ * Where an occurrence sits in a schedule: leading the day part ("the last
+ * Wednesday of every month") or qualifying weekdays ("every Wednesday that
+ * is the last Wednesday"). Languages put the two in different cases.
+ */
+type OccurrencePlace = "lead" | "qualifier";
+
+/**
+ * One occurrence, agreeing with its weekday's gender and its place: "last
+ * Wednesday", "2nd Tuesday".
+ */
+const occurrencePhrase = (
+  { occurrence, weekday }: CalendarWeekdayOccurrence,
+  place: OccurrencePlace,
+  { usage, locale }: Phrasing
 ) => {
-  const options = { locale: phrasing.locale };
-  const names = occurrences.map(({ occurrence, weekday }) => {
-    const name =
-      phrasing.usage === "schedule"
-        ? m.emailCampaignsCalendarWeekdayName({ weekday }, options)
-        : m.emailCampaignsCalendarWeekdayWaitName({ weekday }, options);
+  const options = { locale };
+  if (usage === "wait") {
     return occurrence === "last"
-      ? m.emailCampaignsCalendarLastOccurrence({ weekday: name }, options)
+      ? m.emailCampaignsCalendarLastOccurrenceWait({ weekday }, options)
       : m.emailCampaignsCalendarOccurrence(
-          { occurrence, weekday: name },
+          {
+            occurrence,
+            weekday: m.emailCampaignsCalendarWeekdayWaitName(
+              { weekday },
+              options
+            ),
+          },
           options
         );
-  });
-  return m.emailCampaignsCalendarOccurrences(
-    { occurrences: listed(names, phrasing) },
+  }
+  if (occurrence === "last") {
+    return place === "lead"
+      ? m.emailCampaignsCalendarLastOccurrence({ weekday }, options)
+      : m.emailCampaignsCalendarLastOccurrenceQualifier({ weekday }, options);
+  }
+  return m.emailCampaignsCalendarOccurrence(
+    {
+      occurrence,
+      weekday:
+        place === "lead"
+          ? m.emailCampaignsCalendarWeekdayName({ weekday }, options)
+          : m.emailCampaignsCalendarWeekdayQualifierName({ weekday }, options),
+    },
     options
   );
 };
+
+/** "the 2nd Tuesday and last Friday" (unscoped). */
+const occurrencesPhrase = (
+  occurrences: readonly CalendarWeekdayOccurrence[],
+  place: OccurrencePlace,
+  phrasing: Phrasing
+) =>
+  m.emailCampaignsCalendarOccurrences(
+    {
+      occurrences: listed(
+        occurrences.map((occurrence) =>
+          occurrencePhrase(occurrence, place, phrasing)
+        ),
+        phrasing
+      ),
+    },
+    { locale: phrasing.locale }
+  );
 
 const monthNames = (
   months: readonly number[],
@@ -235,7 +277,12 @@ const monthBoundPhrases = (
 ) => {
   const { weekdays, daysOfMonth, weekdayOccurrences, months } = expression;
   return [
-    weekdayOccurrences && occurrencesPhrase(weekdayOccurrences, phrasing),
+    weekdayOccurrences &&
+      occurrencesPhrase(
+        weekdayOccurrences,
+        weekdays ? "qualifier" : "lead",
+        phrasing
+      ),
     daysOfMonth && daysOfMonthPhrase(daysOfMonth, phrasing),
   ]
     .filter((phrase) => phrase !== undefined)

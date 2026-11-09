@@ -820,7 +820,51 @@
     }
   ],
   "emailCampaignsCalendarLastDayOfMonth": "posledný",
-  "emailCampaignsCalendarLastOccurrence": "{weekday} (posledný výskyt)",
+  "emailCampaignsCalendarLastOccurrence": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "posledný pondelok",
+        "weekday=tuesday": "posledný utorok",
+        "weekday=wednesday": "posledná streda",
+        "weekday=thursday": "posledný štvrtok",
+        "weekday=friday": "posledný piatok",
+        "weekday=saturday": "posledná sobota",
+        "weekday=*": "posledná nedeľa"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceQualifier": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "posledný pondelok",
+        "weekday=tuesday": "posledný utorok",
+        "weekday=wednesday": "poslednú stredu",
+        "weekday=thursday": "posledný štvrtok",
+        "weekday=friday": "posledný piatok",
+        "weekday=saturday": "poslednú sobotu",
+        "weekday=*": "poslednú nedeľu"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceWait": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "posledný pondelok",
+        "weekday=tuesday": "posledný utorok",
+        "weekday=wednesday": "poslednú stredu",
+        "weekday=thursday": "posledný štvrtok",
+        "weekday=friday": "posledný piatok",
+        "weekday=saturday": "poslednú sobotu",
+        "weekday=*": "poslednú nedeľu"
+      }
+    }
+  ],
   "emailCampaignsCalendarMinute": "xx:{minute}",
   "emailCampaignsCalendarMonthInName": [
     {
@@ -989,6 +1033,21 @@
         "weekday=friday": "piatok",
         "weekday=saturday": "sobota",
         "weekday=*": "nedeľa"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayQualifierName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "pondelok",
+        "weekday=tuesday": "utorok",
+        "weekday=wednesday": "stredu",
+        "weekday=thursday": "štvrtok",
+        "weekday=friday": "piatok",
+        "weekday=saturday": "sobotu",
+        "weekday=*": "nedeľu"
       }
     }
   ],

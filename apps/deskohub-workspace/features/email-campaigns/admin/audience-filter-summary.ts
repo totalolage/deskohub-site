@@ -15,6 +15,7 @@ import { Match, Schema } from "effect";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { reservationProductProperty } from "@/features/reservation/reservation-product-descriptor";
+import { nounInSentence } from "@/shared/utils/text-case";
 import {
   type AudienceFilter,
   audienceConditionsOf,
@@ -112,11 +113,10 @@ const describeProductProperty = (
   locale: Locale
 ): string => {
   const options = { locale };
-  const property = reservationProductPropertyLabel(
-    family,
-    condition.property,
+  const property = nounInSentence(
+    reservationProductPropertyLabel(family, condition.property, locale),
     locale
-  ).toLocaleLowerCase(locale);
+  );
   const names = (values: readonly string[], type: ListType) => {
     const descriptor = reservationProductProperty(family, condition.property);
     return joined(
@@ -177,10 +177,10 @@ const describeProduct = (
   locale: Locale
 ): string => {
   if (!product) return "";
-  const family = reservationProductFamilyLabel(
-    product.family,
+  const family = nounInSentence(
+    reservationProductFamilyLabel(product.family, locale),
     locale
-  ).toLocaleLowerCase(locale);
+  );
   const details = product.properties.map((condition) =>
     describeProductProperty(product.family, condition, locale)
   );
