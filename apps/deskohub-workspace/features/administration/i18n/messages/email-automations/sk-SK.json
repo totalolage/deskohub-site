@@ -2,13 +2,8 @@
   "emailAutomationsEyebrow": "Automatická kampaň",
   "emailAutomationsFrequencyBannerBody": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Tento plán sa spúšťa až {count}-krát za hodinu. Každé spustenie vyhodnotí celé publikum, preto overte, či je táto frekvencia zámerná.",
         "countPlural=few": "Tento plán sa spúšťa až {count}-krát za hodinu. Každé spustenie vyhodnotí celé publikum, preto overte, či je táto frekvencia zámerná.",

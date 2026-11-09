@@ -19,13 +19,8 @@
   "emailCampaignsAudienceCampaignEmailCountNone": "nedostali žiadny {single}{period}",
   "emailCampaignsAudienceCampaignEmailCountNounAny": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "e-mail z kampane",
         "countPlural=few": "e-maily z kampaní",
@@ -36,13 +31,8 @@
   ],
   "emailCampaignsAudienceCampaignEmailCountNounDeleted": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "e-mail z odstránenej kampane",
         "countPlural=few": "e-maily z odstránenej kampane",
@@ -53,13 +43,8 @@
   ],
   "emailCampaignsAudienceCampaignEmailCountNounMarketing": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "marketingový e-mail z kampane",
         "countPlural=few": "marketingové e-maily z kampaní",
@@ -70,13 +55,8 @@
   ],
   "emailCampaignsAudienceCampaignEmailCountNounOperational": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "prevádzkový e-mail z kampane",
         "countPlural=few": "prevádzkové e-maily z kampaní",
@@ -92,9 +72,7 @@
         "input campaign",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "e-mail z kampane {campaign}",
         "countPlural=few": "e-maily z kampane {campaign}",
@@ -105,13 +83,8 @@
   ],
   "emailCampaignsAudienceCampaignEmailCountNounThis": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "e-mail z tejto kampane",
         "countPlural=few": "e-maily z tejto kampane",
@@ -139,12 +112,8 @@
   "emailCampaignsAudienceCountNumberOf": "Počet",
   "emailCampaignsAudienceCountOperator": [
     {
-      "declarations": [
-        "input operator"
-      ],
-      "selectors": [
-        "operator"
-      ],
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
       "match": {
         "operator=eq": "rovná sa",
         "operator=ne": "nie je",
@@ -199,6 +168,9 @@
   "emailCampaignsAudienceEditorSaving": "Ukladá sa…",
   "emailCampaignsAudienceEditorSingleLocaleCzech": "Všetci príjemcovia hovoria po česky, takže kampane pre toto publikum potrebujú iba český obsah.",
   "emailCampaignsAudienceEditorSingleLocaleEnglish": "Všetci príjemcovia hovoria po anglicky, takže kampane pre toto publikum potrebujú iba anglický obsah.",
+  "emailCampaignsAudienceEditorSingleLocaleGerman": "Všetci príjemcovia hovoria po nemecky, takže kampane pre toto publikum potrebujú iba nemecký obsah.",
+  "emailCampaignsAudienceEditorSingleLocaleSlovak": "Všetci príjemcovia hovoria po slovensky, takže kampane pre toto publikum potrebujú iba slovenský obsah.",
+  "emailCampaignsAudienceEditorSingleLocaleUkrainian": "Všetci príjemcovia hovoria po ukrajinsky, takže kampane pre toto publikum potrebujú iba ukrajinský obsah.",
   "emailCampaignsAudienceEditorSummary": "{summary}.",
   "emailCampaignsAudienceEditorSummaryHeading": "Jednoducho povedané",
   "emailCampaignsAudienceEditorTitleLabel": "Názov",
@@ -244,9 +216,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} publikum",
         "countPlural=few": "{formattedCount} publiká",
@@ -266,6 +236,9 @@
   "emailCampaignsAudienceLocaleLabel": "Jazyk",
   "emailCampaignsAudienceLocaleNameCzech": "po česky",
   "emailCampaignsAudienceLocaleNameEnglish": "po anglicky",
+  "emailCampaignsAudienceLocaleNameGerman": "po nemecky",
+  "emailCampaignsAudienceLocaleNameSlovak": "po slovensky",
+  "emailCampaignsAudienceLocaleNameUkrainian": "po ukrajinsky",
   "emailCampaignsAudienceLocaleOptionCzech": "Čeština (cs-CZ)",
   "emailCampaignsAudienceLocaleOptionEnglish": "Angličtina (en-US)",
   "emailCampaignsAudienceLocaleSummaryAnyOf": "hovoria {values}",
@@ -278,12 +251,8 @@
   "emailCampaignsAudiencePeriodEndLabel": "{subject}: dátum konca",
   "emailCampaignsAudiencePeriodKind": [
     {
-      "declarations": [
-        "input kind"
-      ],
-      "selectors": [
-        "kind"
-      ],
+      "declarations": ["input kind"],
+      "selectors": ["kind"],
       "match": {
         "kind=AnyTime": "kedykoľvek",
         "kind=Past": "kedykoľvek doteraz",
@@ -298,13 +267,8 @@
   "emailCampaignsAudiencePeriodLabel": "{subject}: obdobie",
   "emailCampaignsAudiencePeriodLast": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "za posledný",
         "countPlural=few": "za posledné",
@@ -319,13 +283,8 @@
   "emailCampaignsAudiencePeriodTo": "do",
   "emailCampaignsAudiencePeriodUnitDay": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "deň",
         "countPlural=few": "dni",
@@ -337,13 +296,8 @@
   "emailCampaignsAudiencePeriodUnitLabel": "{subject}: jednotka obdobia",
   "emailCampaignsAudiencePeriodUnitMonth": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "mesiac",
         "countPlural=few": "mesiace",
@@ -354,13 +308,8 @@
   ],
   "emailCampaignsAudiencePeriodUnitWeek": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "týždeň",
         "countPlural=few": "týždne",
@@ -371,13 +320,8 @@
   ],
   "emailCampaignsAudiencePeriodUnitYear": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "rok",
         "countPlural=few": "roky",
@@ -406,13 +350,8 @@
   "emailCampaignsAudienceProductSelectLabel": "Produkt rezervácie",
   "emailCampaignsAudienceProductUnitDays": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "deň",
         "countPlural=few": "dni",
@@ -423,13 +362,8 @@
   ],
   "emailCampaignsAudienceProductUnitSeats": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "miesto",
         "countPlural=few": "miesta",
@@ -457,9 +391,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "potvrdenú rezerváciu{product}",
         "countPlural=few": "potvrdené rezervácie{product}",
@@ -475,9 +407,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "zrušenú rezerváciu{product}",
         "countPlural=few": "zrušené rezervácie{product}",
@@ -493,9 +423,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "dokončenú rezerváciu{product}",
         "countPlural=few": "dokončené rezervácie{product}",
@@ -511,9 +439,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "prebiehajúcu rezerváciu{product}",
         "countPlural=few": "prebiehajúce rezervácie{product}",
@@ -529,9 +455,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "rezerváciu{product} čakajúcu na vrátenie peňazí",
         "countPlural=few": "rezervácie{product} čakajúce na vrátenie peňazí",
@@ -560,12 +484,8 @@
   "emailCampaignsAudienceSetMatchLabel": "{subject}: zhoda",
   "emailCampaignsAudienceSetOperator": [
     {
-      "declarations": [
-        "input operator"
-      ],
-      "selectors": [
-        "operator"
-      ],
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
       "match": {
         "operator=allOf": "všetky z",
         "operator=noneOf": "žiadny z",
@@ -584,9 +504,7 @@
         "input noun",
         "input none"
       ],
-      "selectors": [
-        "operator"
-      ],
+      "selectors": ["operator"],
       "match": {
         "operator=eq": "presne {formattedCount} {noun}",
         "operator=ne": "iný počet {none} ako {formattedCount}",
@@ -615,9 +533,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "za posledný deň",
         "countPlural=few": "za posledné {formattedCount} dni",
@@ -633,9 +549,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "za posledný mesiac",
         "countPlural=few": "za posledné {formattedCount} mesiace",
@@ -651,9 +565,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "za posledný týždeň",
         "countPlural=few": "za posledné {formattedCount} týždne",
@@ -669,9 +581,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "za posledný rok",
         "countPlural=few": "za posledné {formattedCount} roky",
@@ -692,10 +602,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "side",
-        "countPlural"
-      ],
+      "selectors": ["side", "countPlural"],
       "match": {
         "side=before, countPlural=one": "v priebehu {formattedCount} dňa pred spúšťacou udalosťou",
         "side=before, countPlural=few": "v priebehu {formattedCount} dní pred spúšťacou udalosťou",
@@ -716,10 +623,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "side",
-        "countPlural"
-      ],
+      "selectors": ["side", "countPlural"],
       "match": {
         "side=before, countPlural=one": "v priebehu {formattedCount} mesiaca pred spúšťacou udalosťou",
         "side=before, countPlural=few": "v priebehu {formattedCount} mesiacov pred spúšťacou udalosťou",
@@ -740,10 +644,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "side",
-        "countPlural"
-      ],
+      "selectors": ["side", "countPlural"],
       "match": {
         "side=before, countPlural=one": "v priebehu {formattedCount} týždňa pred spúšťacou udalosťou",
         "side=before, countPlural=few": "v priebehu {formattedCount} týždňov pred spúšťacou udalosťou",
@@ -764,10 +665,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "side",
-        "countPlural"
-      ],
+      "selectors": ["side", "countPlural"],
       "match": {
         "side=before, countPlural=one": "v priebehu {formattedCount} roka pred spúšťacou udalosťou",
         "side=before, countPlural=few": "v priebehu {formattedCount} rokov pred spúšťacou udalosťou",
@@ -808,9 +706,7 @@
         "input weeks",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "v {weeks} kalendárnom týždni",
         "countPlural=few": "v {weeks} kalendárnych týždňoch",
@@ -824,12 +720,8 @@
   "emailCampaignsCalendarMinute": "xx:{minute}",
   "emailCampaignsCalendarMonthInName": [
     {
-      "declarations": [
-        "input month"
-      ],
-      "selectors": [
-        "month"
-      ],
+      "declarations": ["input month"],
+      "selectors": ["month"],
       "match": {
         "month=1": "v januári",
         "month=2": "vo februári",
@@ -848,12 +740,8 @@
   ],
   "emailCampaignsCalendarMonthName": [
     {
-      "declarations": [
-        "input month"
-      ],
-      "selectors": [
-        "month"
-      ],
+      "declarations": ["input month"],
+      "selectors": ["month"],
       "match": {
         "month=1": "január",
         "month=2": "február",
@@ -872,12 +760,8 @@
   ],
   "emailCampaignsCalendarMonthOfName": [
     {
-      "declarations": [
-        "input month"
-      ],
-      "selectors": [
-        "month"
-      ],
+      "declarations": ["input month"],
+      "selectors": ["month"],
       "match": {
         "month=1": "januára",
         "month=2": "februára",
@@ -909,9 +793,7 @@
         "input months",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "každý rok prvý deň {weeks} kalendárneho týždňa pripadajúci na {months}",
         "countPlural=few": "každý rok prvý deň {weeks} kalendárnych týždňov pripadajúci na {months}",
@@ -927,9 +809,7 @@
         "input weeks",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "každý rok na začiatku {weeks} kalendárneho týždňa (v pondelok)",
         "countPlural=few": "každý rok na začiatku {weeks} kalendárnych týždňov (v pondelok)",
@@ -956,12 +836,8 @@
   "emailCampaignsCalendarWeekNumber": "{week}.",
   "emailCampaignsCalendarWeekdayEveryName": [
     {
-      "declarations": [
-        "input weekday"
-      ],
-      "selectors": [
-        "weekday"
-      ],
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
       "match": {
         "weekday=monday": "každý pondelok",
         "weekday=tuesday": "každý utorok",
@@ -975,12 +851,8 @@
   ],
   "emailCampaignsCalendarWeekdayName": [
     {
-      "declarations": [
-        "input weekday"
-      ],
-      "selectors": [
-        "weekday"
-      ],
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
       "match": {
         "weekday=monday": "pondelok",
         "weekday=tuesday": "utorok",
@@ -994,12 +866,8 @@
   ],
   "emailCampaignsCalendarWeekdayWaitName": [
     {
-      "declarations": [
-        "input weekday"
-      ],
-      "selectors": [
-        "weekday"
-      ],
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
       "match": {
         "weekday=monday": "pondelok",
         "weekday=tuesday": "utorok",
@@ -1013,13 +881,8 @@
   ],
   "emailCampaignsCalendarWeekdaysEvery": [
     {
-      "declarations": [
-        "input set",
-        "input weekdays"
-      ],
-      "selectors": [
-        "set"
-      ],
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
       "match": {
         "set=workdays": "každý pracovný deň",
         "set=weekend": "každý víkendový deň",
@@ -1029,13 +892,8 @@
   ],
   "emailCampaignsCalendarWeekdaysWait": [
     {
-      "declarations": [
-        "input set",
-        "input weekdays"
-      ],
-      "selectors": [
-        "set"
-      ],
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
       "match": {
         "set=workdays": "pracovný deň",
         "set=weekend": "víkendový deň",
@@ -1045,13 +903,8 @@
   ],
   "emailCampaignsCalendarWeekdaysWaitQualified": [
     {
-      "declarations": [
-        "input set",
-        "input weekdays"
-      ],
-      "selectors": [
-        "set"
-      ],
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
       "match": {
         "set=workdays": "pracovný deň",
         "set=weekend": "víkendový deň",
@@ -1096,9 +949,12 @@
   "emailCampaignsComposerCreateDraft": "Vytvoriť koncept",
   "emailCampaignsComposerDraftDescription": "Koncept. Uložte zmeny a potom odošlite testovací e-mail, v ktorom nájdete potvrdzovací kód na skutočné odoslanie.",
   "emailCampaignsComposerEyebrow": "E-mailová kampaň",
-  "emailCampaignsComposerFallbackLocaleHint": "Čeština je povinná: dostanú ju príjemcovia, pre ktorých jazyk obsah chýba.",
+  "emailCampaignsComposerFallbackLocaleHint": "Čeština je povinná ako posledná náhradná verzia. Nemeckí a ukrajinskí príjemcovia bez obsahu vo svojom jazyku dostanú najprv anglickú verziu, ak je k dispozícii.",
   "emailCampaignsComposerHiddenContentCzech": "Český obsah je pre toto publikum skrytý a neuloží sa.",
   "emailCampaignsComposerHiddenContentEnglish": "Anglický obsah je pre toto publikum skrytý a neuloží sa.",
+  "emailCampaignsComposerHiddenContentGerman": "Nemecký obsah je pre toto publikum skrytý a neuloží sa.",
+  "emailCampaignsComposerHiddenContentSlovak": "Slovenský obsah je pre toto publikum skrytý a neuloží sa.",
+  "emailCampaignsComposerHiddenContentUkrainian": "Ukrajinský obsah je pre toto publikum skrytý a neuloží sa.",
   "emailCampaignsComposerLocaleIssues": "{count} na opravu",
   "emailCampaignsComposerLocaleOptional": "Nepovinné",
   "emailCampaignsComposerLocaleReady": "Pripravené",
@@ -1125,6 +981,9 @@
   "emailCampaignsComposerSaving": "Ukladá sa…",
   "emailCampaignsComposerSingleLocaleAudienceCzech": "Publikum zahŕňa iba česky hovoriacich zákazníkov.",
   "emailCampaignsComposerSingleLocaleAudienceEnglish": "Publikum zahŕňa iba anglicky hovoriacich zákazníkov.",
+  "emailCampaignsComposerSingleLocaleAudienceGerman": "Publikum zahŕňa iba nemecky hovoriacich zákazníkov.",
+  "emailCampaignsComposerSingleLocaleAudienceSlovak": "Publikum zahŕňa iba slovensky hovoriacich zákazníkov.",
+  "emailCampaignsComposerSingleLocaleAudienceUkrainian": "Publikum zahŕňa iba ukrajinsky hovoriacich zákazníkov.",
   "emailCampaignsComposerSubjectLabel": "Predmet",
   "emailCampaignsComposerSubjectMissing": "Doplňte predmet.",
   "emailCampaignsComposerTemplateLabel": "Šablóna",
@@ -1176,6 +1035,9 @@
   "emailCampaignsEmailPreviewLanguage": "Jazyk náhľadu",
   "emailCampaignsEmailPreviewMissingContentCzech": "E-mail uvidíte, keď doplníte český obsah.",
   "emailCampaignsEmailPreviewMissingContentEnglish": "E-mail uvidíte, keď doplníte anglický obsah.",
+  "emailCampaignsEmailPreviewMissingContentGerman": "E-mail uvidíte, keď doplníte nemecký obsah.",
+  "emailCampaignsEmailPreviewMissingContentSlovak": "E-mail uvidíte, keď doplníte slovenský obsah.",
+  "emailCampaignsEmailPreviewMissingContentUkrainian": "E-mail uvidíte, keď doplníte ukrajinský obsah.",
   "emailCampaignsEmailPreviewNoPreheader": "Bez textu náhľadu",
   "emailCampaignsEmailPreviewNoSubject": "Bez predmetu",
   "emailCampaignsEmailPreviewRenderFailed": "Náhľad sa nepodarilo vykresliť.",
@@ -1207,9 +1069,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} kampaň",
         "countPlural=few": "{formattedCount} kampane",
@@ -1284,7 +1144,7 @@
   "emailCampaignsSendingFailureContentMissing": "Najprv doplňte predmet a text aspoň v jednom jazyku.",
   "emailCampaignsSendingFailureDeliveryQueueFailed": "Doručenie sa nepodarilo zaradiť do frontu, preto je kampaň označená ako Zlyhala. O chvíľu ju znova odošlite nedoručeným príjemcom.",
   "emailCampaignsSendingFailureEmailDeliveryFailed": "Poskytovateľ e-mailov testovací e-mail neprijal. Skúste to znova o chvíľu.",
-  "emailCampaignsSendingFailureFallbackContentMissing": "Zákazníci bez obsahu vo svojom jazyku dostanú českú verziu, preto doplňte český obsah alebo obmedzte publikum na jeden z jazykov, ktoré kampaň má. Nič sa neodoslalo.",
+  "emailCampaignsSendingFailureFallbackContentMissing": "Český obsah je poslednou náhradnou verziou pre zákazníkov bez obsahu vo svojom jazyku, preto doplňte český obsah alebo obmedzte publikum na jeden z jazykov, ktoré kampaň má. Nič sa neodoslalo.",
   "emailCampaignsSendingFailureNoRecipients": "Publikum teraz nemá žiadnych dosiahnuteľných príjemcov, preto sa nič neodoslalo.",
   "emailCampaignsSendingFailureNotRetryable": "Znova odoslať nedoručeným príjemcom možno iba pri kampani, ktorá zlyhala.",
   "emailCampaignsSendingFailureSigningKeyInvalid": "Potvrdzovacie kódy nemožno vydať, pretože podpisový kľúč je nesprávne nastavený. Požiadajte vývojársky tím o kontrolu BETTER_AUTH_SECRETS.",
@@ -1307,9 +1167,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} príjemca",
         "countPlural=few": "{formattedCount} príjemcovia",
@@ -1349,9 +1207,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Znova odosielame e-mail {formattedCount} príjemcovi, ktorému sa ho nepodarilo doručiť.",
         "countPlural=few": "Znova odosielame e-mail {formattedCount} príjemcom, ktorým sa ho nepodarilo doručiť.",
@@ -1395,9 +1251,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Odoslali sme {formattedCount} testovací e-mail ({languages}).",
         "countPlural=few": "Odoslali sme {formattedCount} testovacie e-maily ({languages}).",
@@ -1414,6 +1268,7 @@
   "emailCampaignsDeliveryMismatch": "Táto akcia funguje iba pri jednorazových kampaniach a táto kampaň sa odosiela automaticky.",
   "emailCampaignsActionFailedUnexpectedly": "Na serveri sa niečo pokazilo. Skúste to znova.",
   "emailCampaignsAudienceInUseByDrafts": "Toto publikum používajú koncepty kampaní, takže ho možno iba archivovať. Skôr ako publikum odstránite, presuňte koncepty na iné publikum.",
+  "emailCampaignsComposerEnglishFallbackMissing": "Bez anglického obsahu dostanú nemeckí a ukrajinskí príjemcovia bez obsahu vo svojom jazyku českú verziu.",
   "emailCampaignsSendingFailureTestRecipientsInvalid": "Jedna z adries nie je platná e-mailová adresa. Skontrolujte ich a skúste to znova.",
   "emailCampaignsSendingFailureRecipientsOutsideTestDomain": "Mimo produkčného prostredia možno e-maily kampaní posielať iba na adresy @{domain} a niektorí príjemcovia medzi ne nepatria. Nič sa neodoslalo.",
   "emailCampaignsSendingFailureRecipientsUnavailable": "Príjemcov sa nepodarilo určiť, pretože Dotypos alebo databáza nie sú dostupné. Nič sa neodoslalo a kód stále platí; skúste to znova o chvíľu.",
