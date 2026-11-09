@@ -5,6 +5,8 @@
 /dist/
 /expo-env.d.ts
 /web-build/
+# Gradle output of the local Expo modules built by the app's android/ project
+/modules/*/android/build/
 
 # Signing material stays on the build machine
 credentials.json

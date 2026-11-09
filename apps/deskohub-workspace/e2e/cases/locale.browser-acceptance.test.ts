@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import { type Browser, chromium } from "@playwright/test";
 import { Effect } from "effect";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
+import { E2EBrowserSession } from "../browser-session";
 import { runE2ECase } from "../case-runner";
-import { makePlaywrightBrowserRunner } from "../runtime";
 import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
@@ -56,29 +56,42 @@ const serveHomePages = ({
     port: 0,
   });
 
-/** Runs the locale-switch case over the real argv runner. */
+/** Runs the locale-switch case over a session opened on its first use. */
 const runLocaleCase = async (pages: Parameters<typeof serveHomePages>[0]) => {
-  if (!browser) throw new Error("Chromium is not running");
+  const opened = browser;
+  if (!opened) throw new Error("Chromium is not running");
   const server = serveHomePages(pages);
-  const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
   const observations: E2ETelemetryObservation[] = [];
   try {
-    await Effect.runPromiseExit(
-      runE2ECase({
-        body: (runStep) =>
-          assertLocaleSwitcher({
-            config: {
-              baseUrl: server.url.origin,
-              bypassSecret: undefined,
-              timeouts: { ...workspaceE2ETimeouts, browserNavigation: 3000 },
-            },
-            run,
-            runStep,
-            session: `locale-switch-${randomUUID()}`,
-          }),
-        caseId: "locale-switch",
-        watchdogMs: 30_000,
-      }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const openSession = yield* E2EBrowserSession.openOnFirstUse({
+            browser: opened,
+            id: `locale-switch-${randomUUID()}`,
+            recordHar: false,
+          });
+          yield* Effect.exit(
+            runE2ECase({
+              body: (runStep) =>
+                assertLocaleSwitcher({
+                  config: {
+                    baseUrl: server.url.origin,
+                    bypassSecret: undefined,
+                    timeouts: {
+                      ...workspaceE2ETimeouts,
+                      browserNavigation: 3000,
+                    },
+                  },
+                  openSession,
+                  runStep,
+                }),
+              caseId: "locale-switch",
+              watchdogMs: 30_000,
+            }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
+          );
+        })
+      )
     );
     return {
       annotations: observations
@@ -86,7 +99,6 @@ const runLocaleCase = async (pages: Parameters<typeof serveHomePages>[0]) => {
         .map(({ scope: _scope, ...annotation }) => annotation),
     };
   } finally {
-    await run.close?.();
     await server.stop(true);
   }
 };

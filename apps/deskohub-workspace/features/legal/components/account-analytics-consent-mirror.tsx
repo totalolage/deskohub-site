@@ -19,15 +19,39 @@ const signedInAccount = (): CustomerAccountId | undefined => {
  * Records this device's analytics consent choice on the signed-in account:
  * it mirrors the saved choice once per page for each account the session
  * verifies, and records each banner save in this tab while signed in. The
- * server decides what the ledger keeps; nothing here is visible.
+ * server decides what the ledger keeps; nothing here is visible. When the
+ * account withdrew after the device's choice, as from another device, the
+ * device declines analytics too, unless its choice changed meanwhile.
  */
 export function AccountAnalyticsConsentMirror() {
   const hydration = useWorkspaceAction(recordDeviceAnalyticsConsent, {});
   const bannerSave = useWorkspaceAction(recordDeviceAnalyticsConsent, {});
 
-  const mirrorSavedChoice = useEffectEvent(() =>
-    hydration.execute({ occasion: "hydration" })
-  );
+  const mirrorSavedChoice = useEffectEvent((accountId: CustomerAccountId) => {
+    const mirroredChoice = visitorConsent.saveMark();
+    void hydration.executeAsync({ occasion: "hydration" }).then(
+      (result) => {
+        const withdrawnAt = result?.data;
+        // A choice saved since the request outranks the withdrawal here, and
+        // another account's withdrawal never applies; the next page's mirror
+        // orders them.
+        if (
+          !withdrawnAt ||
+          visitorConsent.saveMark() !== mirroredChoice ||
+          signedInAccount() !== accountId
+        ) {
+          return;
+        }
+        visitorConsent.applyAccountDecision({
+          analytics: false,
+          decidedAt: withdrawnAt,
+          change: "account",
+        });
+      },
+      // A failed mirror leaves the device as it is.
+      () => undefined
+    );
+  });
   const recordBannerSave = useEffectEvent(() =>
     bannerSave.execute({ occasion: "banner_save" })
   );
@@ -40,7 +64,9 @@ export function AccountAnalyticsConsentMirror() {
       const accountId = signedInAccount();
       if (accountId === mirroredAccount) return;
       mirroredAccount = accountId;
-      if (accountId !== undefined && savedConsent !== "") mirrorSavedChoice();
+      if (accountId !== undefined && savedConsent !== "") {
+        mirrorSavedChoice(accountId);
+      }
     };
 
     // The banner also announces the saved consent on every page load, which

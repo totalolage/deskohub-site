@@ -6,9 +6,11 @@ import {
   Text,
   View,
 } from "react-native";
+import { trackSignInStarted } from "../../analytics/events";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
+import { LiveMessage } from "../../ui/controls";
 import { passkeySignInFailureMessage } from "./passkey-failure-message";
 import { usePasskeyCeremony } from "./use-passkey-ceremony";
 
@@ -32,7 +34,11 @@ export function PasskeySignInOption({
   const { state, start, clearFailure } = usePasskeyCeremony({
     ceremony: (ceremonies) => ceremonies.signIn,
     onSucceeded: onSignedIn,
-    onPendingChange,
+    // A ceremony goes pending as it starts, so this records each attempt once.
+    onPendingChange: (pending) => {
+      if (pending) trackSignInStarted("passkey");
+      onPendingChange?.(pending);
+    },
   });
   const pending = state.status === "pending";
   // Another sign-in method starting holds this option; its earlier failure
@@ -58,15 +64,15 @@ export function PasskeySignInOption({
         {pending && <ActivityIndicator color={theme.colors.background} />}
         <Text style={styles.label}>{m.passkey_sign_in({}, { locale })}</Text>
       </Pressable>
-      <Text
-        accessibilityLiveRegion="assertive"
+      {/* Kept mounted so assistive tech announces each change. */}
+      <LiveMessage
         role="alert"
-        style={styles.error}
-      >
-        {state.status === "failed"
-          ? passkeySignInFailureMessage(state.failure, locale)
-          : ""}
-      </Text>
+        message={
+          state.status === "failed"
+            ? passkeySignInFailureMessage(state.failure, locale)
+            : undefined
+        }
+      />
     </View>
   );
 }
@@ -85,5 +91,4 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.8 },
   label: { color: theme.colors.background, ...theme.type.body },
-  error: { color: theme.colors.text, ...theme.type.body },
 });

@@ -139,7 +139,6 @@ test("finalizes and reports a failed verification step", async () => {
   const exit = await Effect.runPromiseExit(
     runWorkspaceE2EAccountCase({
       journalRef,
-      session: "account-runner-test",
       testCase,
       verifyPages: [verifyPage],
     }).pipe(
@@ -217,7 +216,6 @@ test("preserves verification failure when case cleanup also fails", async () => 
   const exit = await Effect.runPromiseExit(
     runWorkspaceE2EAccountCase({
       journalRef: makeJournalRef(),
-      session: "account-runner-test",
       testCase,
       verifyPages: [
         {
@@ -262,7 +260,6 @@ test("surfaces a cleanup-only failure", async () => {
   const exit = await Effect.runPromiseExit(
     runWorkspaceE2EAccountCase({
       journalRef: makeJournalRef(),
-      session: "account-runner-test",
       testCase,
     }).pipe(Effect.provide(makeRunnerLayer(observations)))
   );
@@ -301,7 +298,6 @@ test("bounds the case cleanup step by its semantic timeout", async () => {
       const fiber = yield* Effect.forkChild(
         runWorkspaceE2EAccountCase({
           journalRef: makeJournalRef(),
-          session: "account-runner-test",
           testCase,
         })
       );
@@ -350,7 +346,6 @@ test("keeps case acquisition interruptible", async () => {
       const fiber = yield* Effect.forkChild(
         runWorkspaceE2EAccountCase({
           journalRef: makeJournalRef(),
-          session: "account-runner-test",
           testCase,
         })
       );
@@ -400,7 +395,6 @@ test("stops verification after a failed page and preserves the failure", async (
       const fiber = yield* Effect.forkChild(
         runWorkspaceE2EAccountCase({
           journalRef: makeJournalRef(),
-          session: "account-runner-test",
           testCase,
           verifyPages,
         })
@@ -485,7 +479,6 @@ test("watchdog interrupts verification and releases before journal flush", async
       const fiber = yield* Effect.forkChild(
         runWorkspaceE2EAccountCase({
           journalRef: makeJournalRef(),
-          session: "account-runner-test",
           testCase,
           verifyPages,
         })

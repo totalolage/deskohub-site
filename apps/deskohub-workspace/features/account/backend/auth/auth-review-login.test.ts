@@ -364,7 +364,7 @@ describe("review login password sign-in", () => {
       const sentLinks: CapturedMagicLink[] = [];
       const { auth, store } = makeReviewAuth([login], {
         sentLinks,
-        isSignInCodeEnabled: async () => signInCodes,
+        signInCodeFlag: Effect.succeed(signInCodes),
       });
 
       const response = await signInForMagicLink(

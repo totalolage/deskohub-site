@@ -4,27 +4,18 @@ import { releaseGateForRequest } from "@/features/feature-flags/backend/release-
 import {
   accountReleaseRunPolicy,
   PasskeyReleaseGate,
-  SignInCodeReleaseGate,
 } from "../backend/account-release-gates";
 
-// A run failure rejects; the auth guard then refuses the request.
-const signInCodeRequest = releaseGateForRequest(SignInCodeReleaseGate, {
-  operation: "account.sign-in-code-enabled",
-  ...accountReleaseRunPolicy,
-});
-
+// A run that fails beyond the gate's own fail-closed policy, such as a
+// runtime that cannot start, rejects.
 const passkeyRequest = releaseGateForRequest(PasskeyReleaseGate, {
   operation: "account.passkeys-enabled",
   ...accountReleaseRunPolicy,
 });
 
-/** Read once per sign-in email by the send request's auth guard. */
-export const isSignInCodeEnabled = signInCodeRequest.isOpen;
-
 /**
  * `login_passkeys`, decided once per render: account pages read it to show
- * passkey surfaces, and the auth guard reads it once per registration
- * request.
+ * passkey surfaces. The auth guard decides it in its own run instead.
  */
 export const arePasskeysEnabled = passkeyRequest.isOpen;
 

@@ -6,13 +6,46 @@
 | --- | --- |
 | Connectionless options shared by schema generation and runtime | `features/account/backend/auth/auth-options.ts` |
 | Runtime instance, hooks, plugins, delivery wiring | `features/account/backend/auth/auth-server.ts` |
-| Server singleton | `features/account/server/auth.server.ts` |
+| Server singleton and its hook capabilities | `features/account/server/auth.server.ts` |
+| Hook capability test adapters | `features/account/backend/auth/auth-hook-services.test-utils.ts` |
 | Browser client (the only allowed `better-auth/client` import) | `features/account/auth.client.ts` |
 | Host allowlist, secrets parsing | `features/account/backend/auth/auth-hosts.ts`, `auth-secrets.ts` |
 | Drizzle auth schema and its test | `db/schema/auth.ts`, `db/schema/auth.test.ts` |
 | node-postgres facade over the shared pool | `db/auth-database-client.ts` |
 | Expired-row cleanup | `features/account/backend/auth/auth-cleanup.service.ts`, `app/api/cron/workspace/auth-cleanup/route.ts` |
 | OAuth server for customers' AI agents | [customer agent OAuth](customer-agent-oauth.md) |
+
+## Hook capabilities
+
+- `makeWorkspaceAuth` stays synchronous, so `auth.server.ts` builds the
+  singleton at module load and fails closed on bad configuration. Its hooks
+  read capabilities from Context, never from config callbacks:
+  `WorkspaceAuthHookServices` lists them, and each hook that needs them
+  provides `config.services` inside its own `runWorkspaceEffect`. Add a
+  capability to that union and to the Layer in `auth.server.ts`; capture no
+  context and start no runtime or nested run.
+- The release gates in `services` are `SignInCodeReleaseGateForRun` and
+  `PasskeyReleaseGateForRun` (`account-release-gates-run.ts`, built with
+  `releaseGateForRun`), decided once per hook run. Never use the eager
+  `Live` there: merged into `services`, it builds the flag
+  provider for every hook, so a provider that can't be built (a rejected
+  module import) rejects passkey sign-in, which reads no flag, and the
+  sign-in email, which should fall back to link-only. Built on first read,
+  that failure reaches only the gate's read, and a read that fails beyond
+  the gate's own policy counts as closed. Pages keep the request gate in `account-release-gates.server.ts`.
+- The deletion hook alone provides `config.accountDeletion`, so the
+  Dotypos, avatar, and record capabilities a deletion needs aren't built for
+  every auth request. `sendMagicLink` and `clientMetadataTransport` stay
+  explicit config.
+- Workspace records the hooks write without a domain service of their own
+  (the durable account, the captured locale, unconsented administration
+  tokens) go through `LoginLifecycleRecords`, so a test store without a
+  Workspace database can replace them.
+- Tests build `services` with `postgresAuthHookServices` (real capabilities on
+  the disposable database) or `memoryAuthHookServices` (no Workspace
+  records), overriding single operations and flag evaluations. Files that
+  mock `@/instrumentation` import these helpers only after the mock, as
+  `auth-handler.test-utils.ts` does: they load the Workspace runner.
 
 ## Persistence
 
@@ -65,8 +98,8 @@ Keep these settings unless a reviewed decision changes them:
   `/sign-in/email` guard runs BotID, answers any address outside the
   allowlist, or any password but the configured one (constant-time), with
   Better Auth's own `INVALID_EMAIL_OR_PASSWORD` 401 before any lookup, and
-  provisions an allowlisted login under `withSignInEmailLock`
-  (`review-account-sign-in.ts`): a new login gets
+  provisions an allowlisted login under the address's
+  `WorkspaceLockSections.signInEmail` section (`review-account-sign-in.ts`): a new login gets
   `ReviewAccounts.register(id)`, then `createUser` with that id, then a
   credential row shaped like Better Auth's `setPassword`; an existing review
   login gets a missing credential back or a rehash when the configured
@@ -90,7 +123,7 @@ Keep these settings unless a reviewed decision changes them:
   `before` hook evaluates the flag once, fail closed, and overwrites
   `metadata.signInCode` (Better Auth deep-merges the hook context, so the
   browser's `metadata.locale` survives); `sendMagicLink` then, under a per-address Postgres
-  advisory lock (`withSignInEmailLock`), deletes the email's older code, calls
+  advisory lock (`WorkspaceLockSections.signInEmail`), deletes the email's older code, calls
   server-only `auth.api.createVerificationOTP`, and writes the email's claim
   row (keyed by the link token's digest) and a binding row (keyed by a digest
   of address and code) that leads to it, and replaces the address's

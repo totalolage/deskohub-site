@@ -32,6 +32,8 @@ The summary page's code form is an independent action (`features/checkout/action
 1. Affirm every displayed discount. A change returns `pricing_changed`.
 2. An invalid or unavailable code returns a field error and leaves the current summary payable.
 3. A valid code returns a new signed summary. It creates no payment attempt, persists no application, and reserves no capacity.
+4. Ordinary and referral codes are priced between two live payable-reservation guards. An active payment attempt at either guard returns `payment_in_progress` and signs no repriced summary.
+5. A referral verdict (inactive, unknown, self-referral and the like) is a code failure. A referral store or Dotypos outage reaches no verdict and is a provider failure the customer can retry, never an unavailable code.
 
 Keep `submittedCode` and `changedKeys` in the common signed Pay-state envelope. Every reservation family quotes and affirms through its own canonical product identity; dispatch family-owned quote, summary, persistence, and checkout-details projections exhaustively, with no implicit cowork default.
 

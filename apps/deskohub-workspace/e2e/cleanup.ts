@@ -22,7 +22,8 @@ import {
   getDotyposLayer,
   waitForCancelledDotyposReservations,
 } from "./integrations/dotypos";
-import { log, redact } from "./runtime";
+import { redact } from "./redaction";
+import { log } from "./runtime";
 import type { CheckoutData, CheckoutFlowState, CheckoutRow } from "./types";
 
 export const cleanupCheckoutFlowStates = (

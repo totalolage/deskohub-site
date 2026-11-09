@@ -65,8 +65,11 @@ type CheckoutReferralUnavailable =
     }
   | {
       readonly status: "unavailable";
+      /** The reservation can't be paid now, or a payment already started. */
       readonly reason: "checkout";
-      readonly checkoutReason: PayableReservationUnavailableError["reason"];
+      readonly checkoutReason:
+        | "payment_in_progress"
+        | PayableReservationUnavailableError["reason"];
     };
 
 export type CheckoutReferralResult =
@@ -98,6 +101,11 @@ const codeUnavailable: CheckoutReferralUnavailable = {
 const providerUnavailable: CheckoutReferralUnavailable = {
   status: "unavailable",
   reason: "provider",
+};
+const paymentInProgress: CheckoutReferralUnavailable = {
+  status: "unavailable",
+  reason: "checkout",
+  checkoutReason: "payment_in_progress",
 };
 
 /**
@@ -293,10 +301,17 @@ export class CheckoutReferralService extends Context.Service<
 
           // The referral belongs to the booked customer: the account's own
           // customer, or the person it books for.
-          const currentReservation = yield* payableReservations.requireCurrent({
+          const payableReservation = {
             orderId: opened.orderId,
             checkoutSessionId: opened.checkoutSessionId,
-          });
+          };
+          const currentReservation =
+            yield* payableReservations.requireCurrent(payableReservation);
+          // Like an ordinary code, a referral never replaces the summary of a
+          // payment already in progress; payment admission rechecks it too.
+          if (currentReservation.activePaymentAttemptId) {
+            return paymentInProgress;
+          }
           const dotyposCustomerId = yield* Schema.decodeEffect(
             dotyposCustomerIdSchema
           )(currentReservation.dotyposCustomerId);
@@ -323,6 +338,13 @@ export class CheckoutReferralService extends Context.Service<
             prepared,
             dotyposCustomerId,
           });
+          // A payment that started while the referral was priced keeps the
+          // summary it was admitted with.
+          const repricedReservation =
+            yield* payableReservations.requireCurrent(payableReservation);
+          if (repricedReservation.activePaymentAttemptId) {
+            return paymentInProgress;
+          }
           const freshPayPathInput = {
             ...prepared,
             locale: input.locale,

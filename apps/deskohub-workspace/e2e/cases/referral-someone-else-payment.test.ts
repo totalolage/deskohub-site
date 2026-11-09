@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { m } from "@/features/i18n";
 import { makeCoworkCheckoutData } from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
-import { WorkspaceE2EError } from "../errors";
+import { WorkspaceE2EError, workspaceE2EError } from "../errors";
 import {
   assertDiscountApplications,
   type DiscountApplicationRow,
@@ -246,12 +246,15 @@ test("plans the someone-else referral payment on its own date and requires bindi
   expect(flowStates.at(-1)).toBe(planned.checkoutStates[0]);
   // The unbound case fails with its binding error before it could reach a
   // browser.
+  const unopenedBrowserSession = Effect.fail(
+    workspaceE2EError("the unbound case opens no browser session")
+  );
   const error = await Effect.runPromise(
     Effect.flip(
       planned.execute({
-        run: undefined as never,
+        openSeparateSession: () => unopenedBrowserSession,
+        openSession: unopenedBrowserSession,
         runStep: (step) => step.execute,
-        session: "session",
       }) as Effect.Effect<void, unknown>
     )
   );

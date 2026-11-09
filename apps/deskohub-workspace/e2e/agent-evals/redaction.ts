@@ -1,6 +1,6 @@
 import { algoPinLength } from "@deskohub/igloohome";
 import { escapeRegExp } from "@/shared/utils/escape-regexp";
-import { redactDiagnosticText } from "../runtime";
+import { redactDiagnosticText } from "../redaction";
 
 const emailPattern = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
 const uuidPattern =

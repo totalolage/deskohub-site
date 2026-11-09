@@ -5,16 +5,26 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import type { Browser } from "@playwright/test";
-import { Effect } from "effect";
+import { Effect, Exit, Scope } from "effect";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
+import {
+  E2EBrowserSession,
+  type OpenE2EBrowserSession,
+} from "../browser-session";
 import type { WorkspaceE2EStep } from "../case-runner";
-import { WorkspaceE2EError, workspaceE2EError } from "../errors";
+import { runUntracedE2EEffect } from "../effect-edge";
+import {
+  tryWorkspaceE2ESync,
+  WorkspaceE2EError,
+  workspaceE2EError,
+} from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
 import { readWorkspaceE2ERunPlan } from "../playwright-checkout/run-plan";
 import { runtimeTest } from "../playwright-checkout/runtime-fixtures";
-import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { verifyAccountLayoutNavigation } from "./account-layout-navigation";
+import { verifyWorkspaceE2EAnalyticsPreference } from "./analytics-preference";
 import {
   findAuthUserIdByEmail,
   findLinkedDotyposCustomerId,
@@ -68,6 +78,7 @@ import {
   type SignInHandoffReviewStage,
   signInHandoffReviewTargetByStage,
 } from "./review-targets";
+import { resolveWorkspaceE2ESessionSigningSecret } from "./seeded-session";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "./types";
 import {
   resolveWorkspaceE2EPreviewLogs,
@@ -133,8 +144,15 @@ type WorkspaceE2EAccountLane = {
   };
   readonly rateBudget: ReturnType<typeof makeMagicLinkRateBudget>;
   readonly runPlan: Awaited<ReturnType<typeof readWorkspaceE2ERunPlan>>;
-  readonly run: Runner;
-  readonly session: string;
+  /** The lane's one browser session, shared by every case. */
+  readonly openSession: OpenE2EBrowserSession;
+  /** The sign-in assistant's own browser session, in its own context. */
+  readonly openAssistantSession: OpenE2EBrowserSession;
+  /**
+   * Opens another browser session named `name`, in its own context, on first
+   * use; the lane's Scope closes it at worker teardown when its step did not.
+   */
+  readonly openSeparateSession: (name: string) => OpenE2EBrowserSession;
   /**
    * The selections the lane's sign-ins return to, built once per worker so
    * the case that requests a link and the case that consumes it agree.
@@ -160,7 +178,23 @@ const accountTest = runtimeTest.extend<
     async ({ browser, environment, runContext, runEffect }, applyFixture) => {
       const config = getAccountE2EConfig(environment, runContext.runId);
       const runPlan = await readWorkspaceE2ERunPlan();
-      const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
+      // The lane's Scope owns both sessions; each opens on first use.
+      const laneScope = Scope.makeUnsafe("parallel");
+      const laneSessionId = `workspace-account-e2e-${runContext.runId}`;
+      const openLaneSession = (id: string) =>
+        E2EBrowserSession.openOnFirstUse({ browser, id, recordHar: false });
+      const [openSession, openAssistantSession] = await runUntracedE2EEffect(
+        Effect.all([
+          openLaneSession(laneSessionId),
+          openLaneSession(`${laneSessionId}-assistant`),
+        ]).pipe(Scope.provide(laneScope))
+      );
+      const openSeparateSession = (name: string): OpenE2EBrowserSession =>
+        Effect.flatten(
+          openLaneSession(`${laneSessionId}-${name}`).pipe(
+            Scope.provide(laneScope)
+          )
+        );
       const lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff = {};
       const { makeWorkspaceE2ESignInReturns } = await import("./cases");
       const signInReturns = makeWorkspaceE2ESignInReturns();
@@ -218,9 +252,10 @@ const accountTest = runtimeTest.extend<
                   passkeys,
                   previewLogs,
                   rateBudget: makeMagicLinkRateBudget(),
+                  openAssistantSession,
+                  openSeparateSession,
+                  openSession,
                   runPlan,
-                  run,
-                  session: `workspace-account-e2e-${runContext.runId}`,
                   signInReturns,
                 })
               );
@@ -231,7 +266,7 @@ const accountTest = runtimeTest.extend<
         // A failed passkey case leaves its authenticator behind; the lane
         // page closes with the session either way.
         await runEffect(Effect.ignore(passkeys.removeAuthenticator));
-        await run.close?.();
+        await runUntracedE2EEffect(Scope.close(laneScope, Exit.void));
       }
     },
     { scope: "worker" },
@@ -272,8 +307,8 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         datasourceConfig,
         laneBrowser: makeWorkspaceE2EAccountLaneBrowser({
           config: accountLane.config,
-          run: accountLane.run,
-          session: accountLane.session,
+          openAssistantSession: accountLane.openAssistantSession,
+          openSession: accountLane.openSession,
         }),
         lifecycleHandoff: accountLane.lifecycleHandoff,
         passkeys: accountLane.passkeys,
@@ -378,8 +413,8 @@ for (const caseId of workspaceE2EAccountCaseIds) {
           },
         ];
       } else if (caseId === "account-reservation-transitions") {
-        const readAccountReservationCustomerId = Effect.fn(
-          "readAccountReservationCustomerId"
+        const readAccountReservationUserId = Effect.fn(
+          "readAccountReservationUserId"
         )(function* () {
           const recipient = makeWorkspaceE2EAccountRecipient(
             accountLane.config,
@@ -395,6 +430,12 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               }
             );
           }
+          return customerAccountIdSchema.make(userId);
+        });
+        const readAccountReservationCustomerId = Effect.fn(
+          "readAccountReservationCustomerId"
+        )(function* () {
+          const userId = yield* readAccountReservationUserId();
           const customerId = yield* findLinkedDotyposCustomerId(userId);
           if (!customerId) {
             return yield* workspaceE2EError(
@@ -472,6 +513,25 @@ for (const caseId of workspaceE2EAccountCaseIds) {
           },
           {
             execute: Effect.gen(function* () {
+              const sessionSecret = yield* tryWorkspaceE2ESync(
+                "configure workspace e2e session seeding",
+                () => resolveWorkspaceE2ESessionSigningSecret(environment)
+              );
+              yield* verifyWorkspaceE2EAnalyticsPreference({
+                accountId: yield* readAccountReservationUserId(),
+                baseUrl: accountLane.config.baseUrl,
+                bypassSecret: accountLane.config.bypassSecret,
+                openDevice: accountLane.openSeparateSession(
+                  "analytics-preference-device"
+                ),
+                sessionSecret,
+              });
+            }),
+            id: "verify-account-analytics-preference",
+            timeoutMs: workspaceE2ETimeouts.providerTransition,
+          },
+          {
+            execute: Effect.gen(function* () {
               const customerId = yield* readAccountReservationCustomerId();
               const [firstReservationId, secondReservationId] =
                 accountLane.journalRef.journal.dotyposReservationIds;
@@ -524,7 +584,6 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         runEffect(
           runWorkspaceE2EAccountCase({
             journalRef: accountLane.journalRef,
-            session: accountLane.session,
             testCase: selected,
             ...(verifyPages ? { verifyPages } : {}),
           })

@@ -249,6 +249,18 @@ export async function getMarketingPreferences(
 }
 `;
 
+// The fixture has no accounts, so the page shows no analytics preference.
+const fixtureAnalyticsPreference = `
+import type { Locale } from "@/features/i18n";
+import type { AnalyticsPreferenceState } from "@/features/legal/analytics-preference";
+
+export async function getAnalyticsPreference(
+  _locale: Locale
+): Promise<AnalyticsPreferenceState> {
+  return { status: "signed-out" };
+}
+`;
+
 const fixtureMarketingActionError =
   "Unavailable in account continuity fixture: backend action was not executed.";
 
@@ -274,6 +286,12 @@ export async function confirmMarketingManagementAction(
 }
 
 export async function clearMarketingManagementAction(
+  _input: unknown
+): Promise<UnavailableActionResult> {
+  return { serverError: unavailableMessage };
+}
+
+export async function saveAccountAnalyticsPreference(
   _input: unknown
 ): Promise<UnavailableActionResult> {
   return { serverError: unavailableMessage };
@@ -479,6 +497,7 @@ const writeFixture = async (
     "app/[locale]/layout.tsx": localeLayout(realCookieConsent),
     "fixture/account-release-gates.server.ts": fixtureAccountFeatureFlag,
     "fixture/account-actions.ts": fixtureAccountActions,
+    "fixture/analytics-preference.server.ts": fixtureAnalyticsPreference,
     "fixture/account-draft.tsx": fixtureAccountDraft,
     "fixture/account-page.tsx": fixtureAccountPage,
     "fixture/account-page-data.server.ts": fixtureAccountPageData,
@@ -537,6 +556,9 @@ const writeFixture = async (
         ...(realCookieConsent
           ? {}
           : { "@/features/cookie-consent": ["./fixture/cookie-consent.ts"] }),
+        "@/features/legal/analytics-preference.server": [
+          "./fixture/analytics-preference.server.ts",
+        ],
         "@/features/legal/marketing-preferences.server": [
           "./fixture/marketing-preferences.server.ts",
         ],

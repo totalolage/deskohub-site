@@ -2,10 +2,14 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { testEmailAddress } from "@deskohub/test-email";
 import { type Browser, type BrowserContext, chromium } from "@playwright/test";
-import { Effect } from "effect";
+import { Effect, Exit, Scope } from "effect";
 import { m } from "@/features/i18n";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { normalizeBrowserText } from "../browser";
+import {
+  E2EBrowserSession,
+  type OpenE2EBrowserSession,
+} from "../browser-session";
 import { runE2ECase } from "../case-runner";
 import {
   type BrowserStepDriver,
@@ -13,18 +17,20 @@ import {
   runBrowserStep,
 } from "../case-runner.browser.test-utils";
 import type { WorkspaceE2EError } from "../errors";
-import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
 } from "../services/telemetry.mock";
 import { workspaceE2ETimeouts } from "../timeouts";
-import { makeWorkspaceE2EAccountLaneBrowser } from "./lane-browser";
+import {
+  makeWorkspaceE2EAccountLaneBrowser,
+  type WorkspaceE2EAccountLaneBrowser,
+} from "./lane-browser";
 
 const laneEmail = testEmailAddress("lane-browser");
 
 // The account cases drive these steps on the lane's page and the assistant's,
-// so each runs through the real argv runner's sessions, as in the lane.
+// so each runs on real browser sessions, as in the lane.
 const chromiumAvailable = await playwrightChromiumAvailable();
 let browser: Browser | undefined;
 
@@ -134,27 +140,54 @@ const config = {
   },
 };
 
-const laneBrowserFor = (run: Runner, session: string) =>
-  makeWorkspaceE2EAccountLaneBrowser({ config, run, session });
+type LaneBrowser = WorkspaceE2EAccountLaneBrowser;
 
-/** Runs `drive` on the lane browser of a fresh runner as one C03 step. */
+/**
+ * The lane's two sessions in `laneBrowser`, owned by the caller's Scope and
+ * each opened on its first use, as the account lane opens them.
+ */
+const openLaneSessions = (laneBrowser: Browser) =>
+  Effect.gen(function* () {
+    const id = `account-lane-${randomUUID()}`;
+    const openOnFirstUse = (sessionId: string) =>
+      E2EBrowserSession.openOnFirstUse({
+        browser: laneBrowser,
+        id: sessionId,
+        recordHar: false,
+      });
+    return {
+      openAssistantSession: yield* openOnFirstUse(`${id}-assistant`),
+      openSession: yield* openOnFirstUse(id),
+    };
+  });
+
+const laneBrowserFor = (sessions: {
+  readonly openAssistantSession: OpenE2EBrowserSession;
+  readonly openSession: OpenE2EBrowserSession;
+}) => makeWorkspaceE2EAccountLaneBrowser({ config, ...sessions });
+
+/** Runs `drive` on the lane browser over a fresh session as one C03 step. */
 const runLaneStep = <A>(
-  drive: (
-    laneBrowser: ReturnType<typeof laneBrowserFor>
-  ) => Effect.Effect<A, WorkspaceE2EError>,
+  drive: (laneBrowser: LaneBrowser) => Effect.Effect<A, WorkspaceE2EError>,
   options: { readonly stepTimeoutMs?: number } = {}
 ) => {
   if (!browser) throw new Error("Chromium is not running");
   return runBrowserStep({
     browser,
-    drive: ({ id, run }: BrowserStepDriver) => drive(laneBrowserFor(run, id)),
+    // The assistant's session opens on its first use and is shared after.
+    drive: ({ openSeparateSession, openSession }: BrowserStepDriver) =>
+      Effect.flatMap(
+        Effect.cached(openSeparateSession("assistant")),
+        (openAssistantSession) =>
+          drive(laneBrowserFor({ openAssistantSession, openSession }))
+      ),
     prepare: () => Effect.void,
     stepTimeoutMs: options.stepTimeoutMs ?? 15_000,
   });
 };
 
 test.skipIf(!chromiumAvailable)(
-  "signs in through the form on the page the argv commands share",
+  "signs in through the form on the lane's page",
   async () => {
     const result = await runLaneStep((laneBrowser) =>
       Effect.gen(function* () {
@@ -250,9 +283,7 @@ const failingSteps: ReadonlyArray<
   readonly [
     string,
     "error" | "timeout",
-    (
-      laneBrowser: ReturnType<typeof laneBrowserFor>
-    ) => Effect.Effect<unknown, WorkspaceE2EError>,
+    (laneBrowser: LaneBrowser) => Effect.Effect<unknown, WorkspaceE2EError>,
   ]
 > = [
   [
@@ -388,64 +419,60 @@ test.skipIf(!chromiumAvailable)(
     await closed.close();
     const outcomes = await Promise.all(
       [
-        (laneBrowser: ReturnType<typeof laneBrowserFor>) =>
+        (laneBrowser: LaneBrowser) =>
           laneBrowser.readUrl.pipe(Effect.map((url) => ({ url }))),
-        (laneBrowser: ReturnType<typeof laneBrowserFor>) =>
+        (laneBrowser: LaneBrowser) =>
           laneBrowser.waitForText(
             "text",
             (text) => text.includes("Home"),
             1000
           ),
-        (laneBrowser: ReturnType<typeof laneBrowserFor>) =>
+        (laneBrowser: LaneBrowser) =>
           laneBrowser.waitForUrl("URL", (url) => url.includes("/en-US"), 1000),
-        (laneBrowser: ReturnType<typeof laneBrowserFor>) =>
-          laneBrowser.open(`${origin}/en-US`),
+        (laneBrowser: LaneBrowser) => laneBrowser.open(`${origin}/en-US`),
       ].map(async (drive) => {
-        const run = makePlaywrightBrowserRunner(closed, { recordHar: false });
         const observations: E2ETelemetryObservation[] = [];
         const failures: WorkspaceE2EError[] = [];
         let value: unknown;
-        try {
-          await Effect.runPromiseExit(
-            runE2ECase({
-              body: (step) =>
-                step({
-                  execute: drive(
-                    laneBrowserFor(run, `account-lane-${randomUUID()}`)
-                  ).pipe(
-                    Effect.tap((driven) =>
-                      Effect.sync(() => {
-                        value = driven;
-                      })
+        await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.flatMap(openLaneSessions(closed), (sessions) =>
+              runE2ECase({
+                body: (step) =>
+                  step({
+                    execute: drive(laneBrowserFor(sessions)).pipe(
+                      Effect.tap((driven) =>
+                        Effect.sync(() => {
+                          value = driven;
+                        })
+                      ),
+                      Effect.tapError((failure) =>
+                        Effect.sync(() => failures.push(failure))
+                      )
                     ),
-                    Effect.tapError((failure) =>
-                      Effect.sync(() => failures.push(failure))
-                    )
-                  ),
-                  id: "drive-browser-step",
-                  timeoutMs: 10_000,
-                }),
-              caseId: "browser-step",
-              watchdogMs: 15_000,
-            }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
-          );
-          return {
-            annotations: observations
-              .filter(({ scope }) => scope === "annotation")
-              .map(({ scope: _scope, ...annotation }) => annotation),
-            diagnostics: failures.map(({ message }) =>
-              message.endsWith("\nBrowser diagnostics unavailable")
-            ),
-            value,
-          };
-        } finally {
-          await run.close?.();
-        }
+                    id: "drive-browser-step",
+                    timeoutMs: 10_000,
+                  }),
+                caseId: "browser-step",
+                watchdogMs: 15_000,
+              }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
+            )
+          )
+        );
+        return {
+          annotations: observations
+            .filter(({ scope }) => scope === "annotation")
+            .map(({ scope: _scope, ...annotation }) => annotation),
+          diagnostics: failures.map(({ message }) =>
+            message.endsWith("\nBrowser diagnostics unavailable")
+          ),
+          value,
+        };
       })
     );
 
-    // As argv reads that allowed failure: no URL, polls that run out, and a
-    // URL wait that reports no diagnostics. Only the load itself fails.
+    // A read that allows failure reads no URL, polls run out, and a URL wait
+    // reports no diagnostics. Only the load itself fails.
     expect(outcomes).toEqual([
       { annotations: [], diagnostics: [], value: { url: undefined } },
       {
@@ -472,20 +499,19 @@ test.skipIf(!chromiumAvailable)(
   "keeps the assistant's browser in its own context until it closes",
   async () => {
     if (!browser) throw new Error("Chromium is not running");
-    const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
-    const lane = `account-lane-${randomUUID()}`;
-    const laneBrowser = laneBrowserFor(run, lane);
-    try {
-      const observed = await Effect.runPromise(
+    const real = browser;
+    const observed = await Effect.runPromise(
+      Effect.scoped(
         Effect.gen(function* () {
+          const sessions = yield* openLaneSessions(real);
+          const laneBrowser = laneBrowserFor(sessions);
           yield* laneBrowser.open(`${origin}/en-US/account`);
           // The lane remembers a cookie the assistant's browser never sees.
-          yield* Effect.promise(() =>
-            run("playwright", ["--session", lane, "eval", "--stdin"], {
-              input: `document.cookie = "lane=1; path=/"`,
-              logCommand: false,
-              logOutput: false,
-            })
+          const laneSession = yield* sessions.openSession;
+          yield* laneSession.use("set the lane cookie", (page) =>
+            page
+              .context()
+              .addCookies([{ name: "lane", url: origin, value: "1" }])
           );
           yield* laneBrowser.open(`${origin}/en-US/auth/sign-in`);
           yield* laneBrowser.assistant.open(`${origin}/en-US/auth/sign-in`);
@@ -505,15 +531,13 @@ test.skipIf(!chromiumAvailable)(
             laneText: normalizeBrowserText(yield* laneBrowser.readText),
           };
         })
-      );
-      expect(observed).toEqual({
-        afterClose: "failed",
-        assistantText: "cookie: Send",
-        laneText: "cookie:lane=1 Send",
-      });
-    } finally {
-      await run.close?.();
-    }
+      )
+    );
+    expect(observed).toEqual({
+      afterClose: "failed",
+      assistantText: "cookie: Send",
+      laneText: "cookie:lane=1 Send",
+    });
   }
 );
 
@@ -548,8 +572,13 @@ const runAssistantCase = async (hold: "close" | "open") => {
           }
         : Reflect.get(target, property, target),
   });
-  const run = makePlaywrightBrowserRunner(held, { recordHar: false });
-  const laneBrowser = laneBrowserFor(run, `account-lane-${randomUUID()}`);
+  // The lane's Scope owns both sessions and closes once the hold is released.
+  const laneScope = Scope.makeUnsafe();
+  const laneBrowser = laneBrowserFor(
+    await Effect.runPromise(
+      openLaneSessions(held).pipe(Scope.provide(laneScope))
+    )
+  );
   const observations: E2ETelemetryObservation[] = [];
   const started = Date.now();
   try {
@@ -587,7 +616,7 @@ const runAssistantCase = async (hold: "close" | "open") => {
     };
   } finally {
     release();
-    await run.close?.();
+    await Effect.runPromise(Scope.close(laneScope, Exit.void));
   }
 };
 

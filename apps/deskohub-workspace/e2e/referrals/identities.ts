@@ -18,8 +18,8 @@ import type { DatasourceConfig } from "../config";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { WorkspaceE2EReferralCaseId } from "../playwright-checkout/case-catalog";
+import { addRedaction } from "../redaction";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
-import { addRedaction } from "../runtime";
 import type { workspaceE2EReferralRecipientLabels } from "./journal-owners";
 
 type ReferralRecipientLabel<Id extends WorkspaceE2EReferralCaseId> =

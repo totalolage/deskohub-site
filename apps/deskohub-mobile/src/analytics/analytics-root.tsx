@@ -1,4 +1,4 @@
-import { usePathname } from "expo-router";
+import { usePathname, useSegments } from "expo-router";
 import { type ReactNode, useEffect } from "react";
 import { Platform } from "react-native";
 import { useAuthSession } from "../auth/use-auth-session";
@@ -15,6 +15,7 @@ import {
 import { trackScreenView } from "./events";
 import { detectOtherPostHogSdk } from "./other-posthog-sdk";
 import { createPostHogClient } from "./posthog-client";
+import { screenPathPattern } from "./screen-path";
 import { analyticsIdentityOf } from "./session-identity";
 
 const webHostname = () =>
@@ -65,6 +66,9 @@ const useSessionAnalyticsIdentity = () => {
  */
 export function AnalyticsRoot({ children }: { readonly children: ReactNode }) {
   const consent = useAnalyticsConsent();
+  // Views record the route pattern (`/reservations/[orderId]`), never the
+  // concrete path; the path only marks a new view, such as another order.
+  const screen = screenPathPattern(useSegments());
   const pathname = usePathname();
   // Screen views wait in memory while the answer loads; a later grant records
   // the current screen again, since it was dropped while undecided.
@@ -73,9 +77,10 @@ export function AnalyticsRoot({ children }: { readonly children: ReactNode }) {
 
   useEffect(connectAnalytics, []);
   useSessionAnalyticsIdentity();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname records a new view when only the order changes.
   useEffect(() => {
-    if (recording) trackScreenView(pathname);
-  }, [pathname, recording]);
+    if (recording) trackScreenView(screen);
+  }, [pathname, screen, recording]);
 
   return (
     <>

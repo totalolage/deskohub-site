@@ -8,7 +8,7 @@ import { WorkspaceE2EProviderVerificationPermitService } from "../coordination/p
 import type { WorkspaceE2EEnvironment } from "../e2e-env";
 import { toWorkspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
-import { addDatabaseUrlRedactions } from "../runtime";
+import { addDatabaseUrlRedactions } from "../redaction";
 import { WorkspaceE2ECleanupService } from "./cleanup";
 import {
   type E2ERunContext,

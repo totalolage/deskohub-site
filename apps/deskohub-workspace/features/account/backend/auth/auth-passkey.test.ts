@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Effect } from "effect";
 import {
   type CapturedMagicLink,
   callHandler,
@@ -10,6 +11,8 @@ import {
   signInForMagicLink,
   type TestAuth,
   testDatabase,
+  unavailableFlag,
+  unbuildableFlagProvider,
   uniqueEmail,
   uniqueIp,
   userIdForEmail,
@@ -206,27 +209,32 @@ describe.skipIf(!testDatabase)(
     });
 
     test("refuses new passkeys while login_passkeys is off or unreadable", async () => {
-      let flag: () => Promise<boolean> = async () => false;
-      const auth = makeTestAuth({ arePasskeysEnabled: () => flag() });
+      let flag: typeof unavailableFlag = Effect.succeed(false);
+      const auth = makeTestAuth({ passkeyFlag: Effect.suspend(() => flag) });
       const customer = await signInByEmail(auth, "passkey-flag");
 
       const refused = await requestRegistrationOptions(auth, customer.cookie);
       expect(refused.status).toBe(403);
       expect(await errorCode(refused)).toBe("PASSKEY_REGISTRATION_UNAVAILABLE");
 
-      flag = () => Promise.reject(new Error("unreadable"));
+      flag = unavailableFlag;
       const unreadable = await requestRegistrationOptions(
         auth,
         customer.cookie
       );
       expect(unreadable.status).toBe(403);
 
+      flag = Effect.die(new Error("synthetic gate defect"));
+      const failing = await requestRegistrationOptions(auth, customer.cookie);
+      expect(failing.status).toBe(403);
+      expect(await errorCode(failing)).toBe("PASSKEY_REGISTRATION_UNAVAILABLE");
+
       // Options issued while the flag was on can't be completed after it
       // turns off.
-      flag = async () => true;
+      flag = Effect.succeed(true);
       const options = await requestRegistrationOptions(auth, customer.cookie);
       expect(options.status).toBe(200);
-      flag = async () => false;
+      flag = Effect.succeed(false);
       const verify = await callHandler(auth, "/passkey/verify-registration", {
         method: "POST",
         headers: {
@@ -245,7 +253,7 @@ describe.skipIf(!testDatabase)(
     test("keeps passkey sign-in open while login_passkeys is off", async () => {
       let passkeysEnabled = true;
       const auth = makeTestAuth({
-        arePasskeysEnabled: async () => passkeysEnabled,
+        passkeyFlag: Effect.sync(() => passkeysEnabled),
       });
       const customer = await signInByEmail(auth, "passkey-sign-in");
       const authenticator = newPasskey();
@@ -259,6 +267,28 @@ describe.skipIf(!testDatabase)(
       expect(signedIn.status).toBe(200);
       const cookie = cookieJar(getSessionCookie(signedIn)!);
       expect(await sessionUserId(auth, cookie)).toBe(customer.userId);
+    });
+
+    test("keeps passkey sign-in open and refuses new passkeys while the flag provider can't be built", async () => {
+      const auth = makeTestAuth();
+      const customer = await signInByEmail(auth, "passkey-provider-down");
+      const authenticator = newPasskey();
+      expect(
+        (await registerPasskey(auth, customer.cookie, authenticator)).status
+      ).toBe(200);
+
+      const providerDown = makeTestAuth({
+        flagProvider: unbuildableFlagProvider,
+      });
+      const signedIn = await assertPasskey(providerDown, authenticator);
+
+      expect(signedIn.status).toBe(200);
+      const cookie = cookieJar(getSessionCookie(signedIn)!);
+      expect(await sessionUserId(providerDown, cookie)).toBe(customer.userId);
+
+      const refused = await requestRegistrationOptions(providerDown, cookie);
+      expect(refused.status).toBe(403);
+      expect(await errorCode(refused)).toBe("PASSKEY_REGISTRATION_UNAVAILABLE");
     });
 
     test("asks for user verification and the account's own passkeys only on reauthentication", async () => {

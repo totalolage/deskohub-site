@@ -34,7 +34,8 @@ import {
 import { tryWorkspaceE2EPromise, tryWorkspaceE2ESync } from "../errors";
 import { runtimeTest as test } from "../playwright-checkout/runtime-fixtures";
 import { waitForReactClickHandler } from "../react-handlers";
-import { addRedaction, assert, parseUrl, workspaceDir } from "../runtime";
+import { addRedaction } from "../redaction";
+import { assert, parseUrl, workspaceDir } from "../runtime";
 import {
   workspaceE2EAdministratorAgentToolsPlaywrightTimeout,
   workspaceE2ETimeouts,
@@ -466,7 +467,7 @@ const expectNoAdministrationTools = Effect.fn("expectNoAdministrationTools")(
 );
 
 /**
- * Waits for the browser to reach a URL by polling it, as `waitForBrowserUrl`
+ * Waits for the browser to reach a URL by polling it, as `waitForPageUrl`
  * does: after Allow, Better Auth's client and the consent page both navigate
  * to the agent's redirect URI, and `page.waitForURL` can reject on the first,
  * aborted navigation. On a timeout it fails with where the browser is

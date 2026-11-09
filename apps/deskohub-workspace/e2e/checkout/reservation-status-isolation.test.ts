@@ -3,15 +3,15 @@ import "../../shared/polyfills/temporal";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { type Browser, chromium } from "@playwright/test";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Scope } from "effect";
 import { customerAccounts } from "@/db/schema/customer-accounts";
 import { m } from "@/features/i18n";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
+import { E2EBrowserSession } from "../browser-session";
 import { runE2ECase } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";
 import { isWorkspaceE2ETimeout, type WorkspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
-import { browserSessionFor, makePlaywrightBrowserRunner } from "../runtime";
 import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
@@ -222,7 +222,7 @@ const makeDatabase = ({ cleanupConverges = true } = {}) => {
 
 /**
  * Holds one step of the signed-out visitor's context, the second one the
- * runner opens, over real Chromium: its opening, or its close, which either
+ * case opens, over real Chromium: its opening, or its close, which either
  * fails or never settles. `release` lets held work finish and closes a context
  * whose close failed, so nothing outlives the test.
  */
@@ -300,86 +300,109 @@ const runIsolation = async (
   requests.length = 0;
   authorizedStatusRequestedAt = undefined;
   const database = makeDatabase({ cleanupConverges });
-  const run = makePlaywrightBrowserRunner(held.browser, { recordHar: false });
   const observations: E2ETelemetryObservation[] = [];
   const failures: WorkspaceE2EError[] = [];
   const startedAt = Date.now();
-  try {
-    const exit = await Effect.runPromiseExit(
-      runE2ECase({
-        body: (step) =>
-          Effect.gen(function* () {
-            const booking = yield* browserSessionFor(run, bookingSession);
-            yield* booking.use("sign the booking session in", async (page) => {
-              await page
-                .context()
-                .addCookies([
-                  { name: signedInCookie, url: baseUrl, value: "1" },
-                ]);
-              await page.goto(originalUrl);
-            });
-            yield* step({
-              execute: assertReservationStatusIsolation({
-                config: caseConfig,
-                customerId: customerId as never,
-                data: { locale: "en-US" },
-                orderId: orderId as never,
-                run,
-                session: bookingSession,
-              }).pipe(
-                Effect.tapError((failure) =>
-                  Effect.sync(() => failures.push(failure))
-                ),
-                Effect.provideService(E2EDatabase, E2EDatabase.of(database))
-              ),
-              id: stepId,
-              timeoutMs: isolationStepTimeoutMs,
-            });
-          }),
-        caseId,
-        watchdogMs: caseWatchdogMs,
-      }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
-    );
-    const elapsedMs = Date.now() - startedAt;
-    const finalUrl = await Effect.runPromise(
-      Effect.flatMap(browserSessionFor(run, bookingSession), (booking) =>
-        booking.use("read the final URL", async (page) => page.url())
+  const { elapsedMs, exit, finalUrl, openContexts } = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        // The case's sessions, opened on first use and owned by this Scope,
+        // as the suite opens them.
+        const caseScope = yield* Effect.scope;
+        const openSessionOnFirstUse = (id: string) =>
+          E2EBrowserSession.openOnFirstUse({
+            browser: held.browser,
+            id,
+            recordHar: false,
+          }).pipe(Scope.provide(caseScope));
+        const openSession = yield* openSessionOnFirstUse(bookingSession);
+        const openSeparateSession = (name: string) =>
+          Effect.flatten(openSessionOnFirstUse(`${bookingSession}-${name}`));
+        const exit = yield* Effect.exit(
+          runE2ECase({
+            body: (step) =>
+              Effect.gen(function* () {
+                const booking = yield* openSession;
+                yield* booking.use(
+                  "sign the booking session in",
+                  async (page) => {
+                    await page
+                      .context()
+                      .addCookies([
+                        { name: signedInCookie, url: baseUrl, value: "1" },
+                      ]);
+                    await page.goto(originalUrl);
+                  }
+                );
+                yield* step({
+                  execute: assertReservationStatusIsolation({
+                    config: caseConfig,
+                    customerId: customerId as never,
+                    data: { locale: "en-US" },
+                    openSeparateSession,
+                    openSession,
+                    orderId: orderId as never,
+                  }).pipe(
+                    Effect.tapError((failure) =>
+                      Effect.sync(() => failures.push(failure))
+                    ),
+                    Effect.provideService(E2EDatabase, E2EDatabase.of(database))
+                  ),
+                  id: stepId,
+                  timeoutMs: isolationStepTimeoutMs,
+                });
+              }),
+            caseId,
+            watchdogMs: caseWatchdogMs,
+          }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
+        );
+        const elapsedMs = Date.now() - startedAt;
+        const finalUrl = yield* Effect.flatMap(openSession, (booking) =>
+          booking.use("read the final URL", async (page) => page.url())
+        );
+        return {
+          elapsedMs,
+          exit,
+          finalUrl,
+          openContexts: opened.contexts().length,
+        };
+      }).pipe(
+        // Held work finishes before the Scope closes the sessions, so no
+        // context opens after its session is gone.
+        Effect.ensuring(Effect.promise(() => held.release()))
       )
-    );
-    const annotations = observations
-      .filter(({ scope }) => scope === "annotation")
-      .map(({ scope: _scope, ...annotation }) => annotation);
-    return {
+    )
+  );
+  const annotations = observations
+    .filter(({ scope }) => scope === "annotation")
+    .map(({ scope: _scope, ...annotation }) => annotation);
+  return {
+    annotations,
+    database,
+    elapsedMs,
+    failures: failures.map((failure) => ({
+      operation: failure.operation,
+      timeout: isWorkspaceE2ETimeout(failure),
+    })),
+    finalUrl,
+    // How long the case waited for the signed-out browser's close before
+    // it went on to the booking session's checks.
+    closeWaitMs:
+      authorizedStatusRequestedAt === undefined ||
+      held.closeStartedAt() === undefined
+        ? undefined
+        : authorizedStatusRequestedAt - (held.closeStartedAt() ?? 0),
+    openContexts,
+    // The settled step spans, with their outcomes.
+    steps: observations.flatMap(({ scope, ...observation }) =>
+      scope === "step" ? [observation] : []
+    ),
+    reported: JSON.stringify({
       annotations,
-      database,
-      elapsedMs,
-      failures: failures.map((failure) => ({
-        operation: failure.operation,
-        timeout: isWorkspaceE2ETimeout(failure),
-      })),
-      finalUrl,
-      // How long the case waited for the signed-out browser's close before
-      // it went on to the booking session's checks.
-      closeWaitMs:
-        authorizedStatusRequestedAt === undefined ||
-        held.closeStartedAt() === undefined
-          ? undefined
-          : authorizedStatusRequestedAt - (held.closeStartedAt() ?? 0),
-      openContexts: opened.contexts().length,
-      // The settled step spans, with their outcomes.
-      steps: observations.flatMap(({ scope, ...observation }) =>
-        scope === "step" ? [observation] : []
-      ),
-      reported: JSON.stringify({
-        annotations,
-        messages: failures.map(({ message }) => message),
-      }),
-      succeeded: Exit.isSuccess(exit),
-    };
-  } finally {
-    await held.release();
-    await run.close?.();
-  }
+      messages: failures.map(({ message }) => message),
+    }),
+    succeeded: Exit.isSuccess(exit),
+  };
 };
 
 const failedWith = (operation: string, failureKind: "error" | "timeout") => ({
@@ -488,9 +511,8 @@ test.skipIf(!chromiumAvailable)(
       stepTimeoutMs: 8_000,
     });
 
-    // The step times out at its own deadline, without a diagnostic code. The
-    // argv close awaited the pending open, so the step was cancelled only
-    // after the case watchdog fired.
+    // The step times out at its own deadline, without a diagnostic code,
+    // well before the case watchdog fires.
     expect({
       annotations: result.annotations,
       steps: result.steps,

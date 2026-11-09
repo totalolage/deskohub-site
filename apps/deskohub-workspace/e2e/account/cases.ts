@@ -20,7 +20,8 @@ import {
   workspaceE2ETimeoutError,
 } from "../errors";
 import { pollUntil } from "../polling";
-import { addRedaction, assert, parseUrl } from "../runtime";
+import { addRedaction } from "../redaction";
+import { assert, parseUrl } from "../runtime";
 import {
   workspaceE2EPollInitialIntervalMs,
   workspaceE2EPollIntervalMs,

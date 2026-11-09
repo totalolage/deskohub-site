@@ -16,7 +16,8 @@ import {
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
 } from "../errors";
-import { addRedaction, assert } from "../runtime";
+import { addRedaction } from "../redaction";
+import { assert } from "../runtime";
 import {
   type CustomerAgentRequestedScope,
   customerAgentRedirectUri,

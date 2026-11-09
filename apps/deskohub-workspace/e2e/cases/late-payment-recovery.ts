@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { openPage, waitForPageText, waitForPageUrl } from "../browser";
+import type { OpenE2EBrowserSession } from "../browser-session";
 import { getWorkspaceE2EDateInterval } from "../capacity";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import { completeNexiHostedPayment } from "../checkout/nexi-hosted-payment";
@@ -27,8 +28,7 @@ import {
   validateDotypos,
   waitForCancelledDotyposReservations,
 } from "../integrations/dotypos";
-import type { Runner } from "../runtime";
-import { assert, browserSessionFor, log } from "../runtime";
+import { assert, log } from "../runtime";
 import type { CheckoutData, CheckoutFlowState } from "../types";
 import { isExpectedCheckoutStatusUrl, makeUrl, setSearchParams } from "../urls";
 import { assertFulfilledStatusPage } from "./checkout";
@@ -56,20 +56,18 @@ export const executeLatePaymentRecovery = ({
   config,
   data,
   datasourceConfig,
-  run,
   runStep,
   scenario,
-  session,
+  openSession,
   state,
   preparation,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
   readonly datasourceConfig: DatasourceConfig;
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
   readonly scenario: LatePaymentRecoveryScenario;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
   readonly state: CheckoutFlowState;
   readonly preparation: ReservationFormPreparation;
 }): Effect.Effect<
@@ -87,7 +85,7 @@ export const executeLatePaymentRecovery = ({
 
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         return yield* prepareCheckoutPaymentAttempt({
           config,
           data,
@@ -107,16 +105,14 @@ export const executeLatePaymentRecovery = ({
     // the hosted-payment permit spans submission through the status page.
     const { originalDotyposReservationId, providerSessionRow } =
       yield* hostedPaymentPermit.withPermit(
-        session,
+        "late hosted payment recovery",
         Effect.gen(function* () {
           const hostedPaymentPage = yield* runStep({
-            execute: Effect.flatMap(
-              browserSessionFor(run, session),
-              (browser) =>
-                submitPaymentAndWaitForHostedPage({
-                  session: browser,
-                  timeouts: config.timeouts,
-                })
+            execute: Effect.flatMap(openSession, (browser) =>
+              submitPaymentAndWaitForHostedPage({
+                session: browser,
+                timeouts: config.timeouts,
+              })
             ),
             id: "start-late-payment",
             timeoutMs: config.timeouts.providerTransition,
@@ -182,15 +178,13 @@ export const executeLatePaymentRecovery = ({
           state.checkoutRow = releasedRow;
 
           yield* runStep({
-            execute: Effect.flatMap(
-              browserSessionFor(run, session),
-              (browser) =>
-                completeNexiHostedPayment({
-                  data,
-                  hostedPaymentPage,
-                  session: browser,
-                  timeouts: config.timeouts,
-                })
+            execute: Effect.flatMap(openSession, (browser) =>
+              completeNexiHostedPayment({
+                data,
+                hostedPaymentPage,
+                session: browser,
+                timeouts: config.timeouts,
+              })
             ),
             id: "complete-late-hosted-payment",
             timeoutMs: config.timeouts.hostedPayment,
@@ -200,7 +194,7 @@ export const executeLatePaymentRecovery = ({
               description: "late-payment checkout status page",
               matches: (url) =>
                 isExpectedCheckoutStatusUrl(url, config.expectedHost),
-              session: browserSessionFor(run, session),
+              session: openSession,
               timeoutMs: config.timeouts.providerTransition,
             }).pipe(Effect.asVoid),
             id: "reach-late-payment-status-page",
@@ -239,12 +233,9 @@ export const executeLatePaymentRecovery = ({
             `${config.baseUrl}/en-US/reservation/status/${orderId}`
           );
           yield* setSearchParams(statusUrl, { e2eAt: String(Date.now()) });
-          yield* openPage(
-            yield* browserSessionFor(run, session),
-            config,
-            statusUrl.toString(),
-            { timeoutMs: config.timeouts.browserNavigation }
-          );
+          yield* openPage(yield* openSession, config, statusUrl.toString(), {
+            timeoutMs: config.timeouts.browserNavigation,
+          });
         }),
         id: "open-refund-status-page",
         timeoutMs: config.timeouts.browserNavigation,
@@ -260,7 +251,7 @@ export const executeLatePaymentRecovery = ({
               text
             ) &&
             !/We.re finishing your reservation/.test(text),
-          session: browserSessionFor(run, session),
+          session: openSession,
           timeoutMs: config.timeouts.uiTransition,
         }),
         id: "assert-refund-status-page",
@@ -297,12 +288,9 @@ export const executeLatePaymentRecovery = ({
           `${config.baseUrl}/${data.locale}/reservation/status/${orderId}`
         );
         yield* setSearchParams(statusUrl, { e2eAt: String(Date.now()) });
-        yield* openPage(
-          yield* browserSessionFor(run, session),
-          config,
-          statusUrl.toString(),
-          { timeoutMs: config.timeouts.browserNavigation }
-        );
+        yield* openPage(yield* openSession, config, statusUrl.toString(), {
+          timeoutMs: config.timeouts.browserNavigation,
+        });
       }),
       id: "open-recovered-status-page",
       timeoutMs: config.timeouts.browserNavigation,
@@ -314,8 +302,7 @@ export const executeLatePaymentRecovery = ({
         data,
         dotyposReservation,
         orderId,
-        run,
-        session,
+        openSession,
       }),
       id: "assert-recovered-status-page",
       timeoutMs: config.timeouts.uiTransition,

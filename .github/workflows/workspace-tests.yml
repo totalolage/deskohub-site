@@ -81,6 +81,28 @@ jobs:
         working-directory: apps/deskohub-workspace
         run: bun test scripts/test-shard.test.ts
 
+      # A *.repository-wide.test.ts reads files across the repository, so no
+      # package task caches it and the shards never depend on it. Every one
+      # runs here, uncached, on every pull request.
+      - name: Run repository-wide tests
+        run: |
+          if ! listing="$(git ls-files -- '*.repository-wide.test.ts' '*.repository-wide.test.tsx')"; then
+            echo "Could not list the repository-wide tests" >&2
+            exit 1
+          fi
+          if [[ -z "$listing" ]]; then
+            echo "No *.repository-wide.test.ts files found" >&2
+            exit 1
+          fi
+          mapfile -t tests <<< "$listing"
+          bun test "${tests[@]/#/./}"
+
+      # The shards don't depend on Mobile's tests (see test:dependencies in
+      # apps/deskohub-workspace/turbo.json), and Mobile CI is path-filtered,
+      # so the required gate runs them here.
+      - name: Test Mobile
+        run: bun turbo run test --filter=deskohub-mobile
+
       - name: Validate Workspace schema migration
         env:
           DATABASE_URL: postgresql://workspace:workspace@127.0.0.1:5432/workspace
@@ -106,8 +128,67 @@ jobs:
       - name: Lint and test the coverage tooling
         run: bun turbo lint test --filter=@deskohub/test-coverage
 
-  test-functional-shards:
+  # A shard task's cache key covers its own inputs, its dependencies' and the
+  # $TURBO_ROOT$ files it declares. futureFlags.affectedUsingTaskInputs in
+  # turbo.json makes --affected match changed files against exactly those
+  # inputs, so a pull request that changes none of them would only replay
+  # the base's results, and its shards are skipped.
+  select-workspace-shards:
     if: github.event.action != 'converted_to_draft'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      affected: ${{ steps.select.outputs.affected }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      # Pull request runs test the merge commit, whose first parent is the
+      # base it merged into, so that parent to HEAD is exactly what this run
+      # tests. The dry run needs no install. Any failure fails the selection,
+      # and test-functional with it; only a parsed task list without a shard
+      # task counts as unaffected.
+      - name: Select the affected Workspace test shards
+        id: select
+        run: |
+          set -euo pipefail
+          if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]] ||
+             ! git rev-parse --verify --quiet 'HEAD^2' > /dev/null; then
+            echo "Expected the pull request merge commit $GITHUB_SHA checked out." >&2
+            exit 1
+          fi
+          base="$(git rev-parse --verify 'HEAD^1')"
+          selection="$(
+            TURBO_SCM_BASE="$base" TURBO_SCM_HEAD=HEAD bunx turbo@2.11.4 run \
+              test:shard-1 test:shard-2 test:shard-3 test:shard-4 \
+              --affected --dry-run=json
+          )"
+          selected="$(jq -ers '
+            if length == 1 then .[0].tasks else error("expected one dry run") end
+            | if type == "array" then . else error("tasks is not a list") end
+            | map(.taskId | if type == "string" then . else error("task without an id") end)
+            | map(select(startswith("deskohub-workspace#test:shard-")))
+            | length
+          ' <<< "$selection")"
+          echo "Affected Workspace test shard tasks since $base: $selected"
+          if [[ "$selected" == 0 ]]; then
+            echo "affected=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "affected=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  test-functional-shards:
+    needs: select-workspace-shards
+    if: >-
+      github.event.action != 'converted_to_draft' &&
+      needs.select-workspace-shards.outputs.affected == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -229,6 +310,7 @@ jobs:
     needs:
       - validate-workspace
       - validate-workspace-migrations
+      - select-workspace-shards
       - test-functional-shards
       - validate-administration-messages
     if: always() && github.event.action != 'converted_to_draft'
@@ -240,13 +322,24 @@ jobs:
         env:
           VALIDATION_RESULT: ${{ needs.validate-workspace.result }}
           MIGRATION_COUNT_RESULT: ${{ needs.validate-workspace-migrations.result }}
+          SHARD_SELECTION_RESULT: ${{ needs.select-workspace-shards.result }}
           FUNCTIONAL_SHARDS_RESULT: ${{ needs.test-functional-shards.result }}
           ADMINISTRATION_MESSAGES_RESULT: ${{ needs.validate-administration-messages.result }}
+          WORKSPACE_SHARDS_AFFECTED: ${{ needs.select-workspace-shards.outputs.affected }}
         run: |
           if [[ "$VALIDATION_RESULT" != success || \
                 "$MIGRATION_COUNT_RESULT" != success || \
-                "$FUNCTIONAL_SHARDS_RESULT" != success || \
+                "$SHARD_SELECTION_RESULT" != success || \
                 "$ADMINISTRATION_MESSAGES_RESULT" != success ]]; then
             echo "Workspace CI dependency failed, was cancelled, or was skipped." >&2
             exit 1
           fi
+          # The shards pass by running, or by being skipped when the
+          # selection found no affected shard task; nothing else passes.
+          case "$WORKSPACE_SHARDS_AFFECTED/$FUNCTIONAL_SHARDS_RESULT" in
+            true/success | false/skipped) ;;
+            *)
+              echo "Workspace test shards were affected=${WORKSPACE_SHARDS_AFFECTED:-<missing>} but $FUNCTIONAL_SHARDS_RESULT." >&2
+              exit 1
+              ;;
+          esac

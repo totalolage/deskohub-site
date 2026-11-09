@@ -206,8 +206,8 @@ export type WorkspaceE2ETimeouts = Readonly<
   Record<keyof typeof workspaceE2ETimeouts, number>
 >;
 
-/** How long an argv runner command may run when its caller sets none. */
-export const argvCommandTimeoutMs = 2 * MINUTE;
+/** How long a URL wait that ran out may read the page diagnostics. */
+export const urlWaitDiagnosticsTimeoutMs = 2 * MINUTE;
 
 export const workspaceE2EPollIntervalMs = {
   advertisedPricing: 5 * SECOND,
@@ -216,10 +216,13 @@ export const workspaceE2EPollIntervalMs = {
   automationPlanner: 10 * SECOND,
   browser: SECOND,
   datasource: 5 * SECOND,
+  // A WebKit page on a loaded runner has stalled (frames, timers and network
+  // reads) until its wait timed out and Playwright sent it a command, so an
+  // in-page wait is re-issued this often in case a command wakes it.
+  pageFunctionWake: SECOND,
   // React handler waits read DOM state, so they poll on a timer. Playwright's
   // default animation-frame polling stops when WebKit stops delivering
-  // frames, which it can do for many seconds on a loaded runner after the
-  // page has hydrated.
+  // frames.
   reactHandler: 100,
 } as const;
 

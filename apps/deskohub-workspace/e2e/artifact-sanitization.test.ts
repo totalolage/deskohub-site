@@ -105,9 +105,8 @@ test("keeps only the error codes of a failed Nexi hosted-field response", () => 
     expect(entry.response.content.text).toBe("[redacted]");
 });
 
-// Sanitizing is idempotent: the session's close sanitizes the HAR once, the
-// argv failure capture it replaced sanitized that copy again, and both export
-// the same HAR.
+// Sanitizing is idempotent, so a HAR sanitized again, as an exported copy
+// can be, keeps the content the session's close exported.
 test("leaves an already sanitized HAR unchanged", () => {
   addRedaction("86420", true);
   addRedaction("synthetic-bypass-secret");

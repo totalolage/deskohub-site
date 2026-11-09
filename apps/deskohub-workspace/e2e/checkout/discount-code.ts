@@ -3,7 +3,7 @@ import type { CanonicalPromotionCode } from "@/features/discounts/persistence-co
 import { waitForPageTextContent, waitForReactFormSubmit } from "../browser";
 import type { E2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EConfig } from "../config";
-import { addRedaction } from "../runtime";
+import { addRedaction } from "../redaction";
 
 /** The checkout's discount-code box in the session's active page. */
 type DiscountCodeBox = {

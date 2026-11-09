@@ -13,7 +13,10 @@ import {
   waitForPageUrl,
   waitForReactHandler,
 } from "../browser";
-import type { E2EBrowserSession } from "../browser-session";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
   makeCoworkCheckoutData,
@@ -40,8 +43,7 @@ import {
   withoutWorkspaceE2ETimeout,
 } from "../errors";
 import { loadDotyposOfficeSeatCapacity } from "../integrations/dotypos";
-import type { Runner } from "../runtime";
-import { assert, browserSessionFor, log, parseUrl } from "../runtime";
+import { assert, log, parseUrl } from "../runtime";
 import type { CheckoutData, WorkspaceE2ECase } from "../types";
 import type { DiscountAvailabilityE2EPreparation } from "./discounts";
 import {
@@ -109,15 +111,13 @@ export const findReservationUrlStateMismatch = (
 
 type UrlStateCaseContext = {
   readonly config: WorkspaceE2EConfig;
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
 };
 
 // Resolved inside each step, so a browser that fails to open fails the step
 // that needed it.
-const browserOf = ({ run, session }: UrlStateCaseContext) =>
-  browserSessionFor(run, session);
+const browserOf = ({ openSession }: UrlStateCaseContext) => openSession;
 
 export const makeReservationUrlStateE2ECases = ({
   allocation,
@@ -189,9 +189,9 @@ export const makeReservationUrlStateE2ECases = ({
     const cases: WorkspaceE2ECase[] = [
       {
         checkoutStates: [],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           assertCoworkUrlState(
-            { config, run, runStep, session },
+            { config, openSession, runStep },
             { openSpaceData, reservedDeskData }
           ).pipe(
             Effect.mapError((cause) =>
@@ -203,9 +203,9 @@ export const makeReservationUrlStateE2ECases = ({
       },
       {
         checkoutStates: [],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           assertMeetingRoomUrlState(
-            { config, run, runStep, session },
+            { config, openSession, runStep },
             meetingRoomData
           ).pipe(
             Effect.mapError((cause) =>
@@ -228,9 +228,9 @@ export const makeReservationUrlStateE2ECases = ({
     cases.push(
       {
         checkoutStates: [],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           assertOfficeUrlState(
-            { config, run, runStep, session },
+            { config, openSession, runStep },
             officeData
           ).pipe(
             Effect.mapError((cause) =>
@@ -242,9 +242,9 @@ export const makeReservationUrlStateE2ECases = ({
       },
       {
         checkoutStates: [],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           assertOfficeStartsOnLink(
-            { config, run, runStep, session },
+            { config, openSession, runStep },
             datasourceConfig,
             officeData
           ).pipe(
@@ -270,7 +270,7 @@ const assertCoworkUrlState = (
   }
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const { config, run, runStep, session } = context;
+    const { config, openSession, runStep } = context;
     const pathname = "/en-US/reservation/cowork";
     yield* runStep({
       execute: openReservationPage(context, pathname),
@@ -279,7 +279,7 @@ const assertCoworkUrlState = (
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* prepareReservationSelection({
           preparation: toReservationSelectionPreparation(openSpaceData),
           session: browser,
@@ -294,7 +294,7 @@ const assertCoworkUrlState = (
     // must not write the contact into it.
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* continueToReservationContactStep({
           session: browser,
           timeouts: config.timeouts,
@@ -349,7 +349,7 @@ const assertCoworkUrlState = (
 
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* prepareReservationSelection({
           preparation: toReservationSelectionPreparation(reservedDeskData),
           session: browser,
@@ -397,7 +397,7 @@ const assertMeetingRoomUrlState = (
   data: CheckoutData
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const { config, run, runStep, session } = context;
+    const { config, openSession, runStep } = context;
     const pathname = "/en-US/reservation/meeting-room";
     const meetingRoom = yield* requireMeetingRoom(data);
     yield* runStep({
@@ -409,7 +409,7 @@ const assertMeetingRoomUrlState = (
     // contact, and waits for the selection's availability and price.
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* prepareReservationSelection({
           preparation: toReservationSelectionPreparation(data),
           session: browser,
@@ -450,7 +450,7 @@ const assertOfficeUrlState = (
   data: CheckoutData
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const { config, run, runStep, session } = context;
+    const { config, openSession, runStep } = context;
     const pathname = "/en-US/reservation/office";
     yield* runStep({
       execute: openReservationPage(context, pathname),
@@ -461,7 +461,7 @@ const assertOfficeUrlState = (
     // and waits for the selection's availability and price.
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* prepareReservationSelection({
           preparation: toReservationSelectionPreparation(data),
           session: browser,
@@ -502,7 +502,7 @@ const assertOfficeStartsOnLink = (
   data: CheckoutData
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const { config, run, runStep, session } = context;
+    const { config, openSession, runStep } = context;
     const pathname = "/en-US/reservation/office";
     const state = yield* getOfficeUrlState(data);
     const seats = yield* getOfficeSeats(data);
@@ -570,7 +570,7 @@ const assertOfficeStartsOnLink = (
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* prepareReservationSelection({
           preparation: toReservationSelectionPreparation(data),
           session: browser,
@@ -846,7 +846,7 @@ const readOfficeSelectionDisplay = (
       seatPriceSelector,
       { timeoutMs: context.config.timeouts.uiTransition }
     );
-    // An overrun fails rather than timing out, as the argv evaluation did.
+    // An overrun fails rather than timing out.
     const display = yield* browser
       .evaluate(
         "read office date and prices",
