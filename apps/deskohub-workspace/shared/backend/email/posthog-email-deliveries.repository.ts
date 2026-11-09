@@ -76,8 +76,10 @@ export interface IPostHogEmailDeliveryRepository {
   /**
    * Marks the deliveries a poll reads now as polled and returns them, oldest
    * next poll first. Concurrent claims never return the same delivery. The
-   * per-minute read budget counts claims committed before this one, so
-   * claims running at the same moment can together exceed it.
+   * per-minute read budget counts deliveries whose last read falls in the
+   * minute, as committed before this claim: claims running at the same
+   * moment, and a signal rereading a delivery after 30 seconds, can exceed
+   * it, which PostHog's rate limit then stops.
    */
   readonly claim: (request: {
     readonly trigger: PostHogEmailDeliveryPollTrigger;

@@ -251,6 +251,13 @@ describe.skipIf(!database)("PostHog email delivery repository", () => {
         expect(await claimedIds("schedule")).toEqual(claimable.slice(0, 50));
       });
 
+      test("leaves no claim after more than 500 reads in the last minute", async () => {
+        await insertRecentPolls(520, 30);
+        await insertClaimable(10);
+
+        expect(await claimedIds("schedule")).toEqual([]);
+      });
+
       test("leaves no claim after 500 reads in the last minute", async () => {
         await insertRecentPolls(500, 1);
         await insertClaimable(10);
@@ -296,9 +303,9 @@ describe.skipIf(!database)("PostHog email delivery repository", () => {
         claimedIds("signal"),
       ]);
 
-      const both = [...first, ...second];
-      expect(new Set(both).size).toBe(both.length);
-      expect(both.every((id) => ids.includes(id))).toBe(true);
+      expect(first.length).toBeLessThanOrEqual(100);
+      expect(second.length).toBeLessThanOrEqual(100);
+      expect([...first, ...second].toSorted()).toEqual(ids.toSorted());
     });
   });
 
@@ -360,6 +367,61 @@ describe.skipIf(!database)("PostHog email delivery repository", () => {
       expect(row?.statusAt?.equals(secondsAgo(20))).toBe(true);
       expect(row?.nextPollAt.equals(now.add({ seconds: 120 }))).toBe(true);
       expect(row?.settledAt).toBeNull();
+    });
+
+    test("clears the status time when the poll reports none", async () => {
+      const id = await insertDelivery();
+      await runRepository((repository) =>
+        repository.recordPoll({
+          messageId: id,
+          status: "sent",
+          statusAt: secondsAgo(20),
+          pollCount: 1,
+          nextPollAt: now,
+        })
+      );
+
+      await runRepository((repository) =>
+        repository.recordPoll({
+          messageId: id,
+          status: "sent",
+          statusAt: null,
+          pollCount: 2,
+          nextPollAt: now,
+        })
+      );
+
+      expect(await readDelivery(id)).toMatchObject({
+        status: "sent",
+        statusAt: null,
+        pollCount: 2,
+      });
+    });
+
+    test("leaves a settled row untouched", async () => {
+      const id = await insertDelivery({
+        status: "delivered",
+        settledAt: secondsAgo(100),
+        nextPollAt: secondsAgo(200),
+      });
+
+      await runRepository((repository) =>
+        repository.recordPoll({
+          messageId: id,
+          status: "sent",
+          statusAt: secondsAgo(20),
+          pollCount: 3,
+          nextPollAt: now.add({ seconds: 60 }),
+        })
+      );
+
+      const row = await readDelivery(id);
+      expect(row).toMatchObject({
+        status: "delivered",
+        statusAt: null,
+        pollCount: 0,
+      });
+      expect(row?.nextPollAt.equals(secondsAgo(200))).toBe(true);
     });
 
     test("keeps the stored status when the poll brought none", async () => {
