@@ -58,6 +58,7 @@ import type {
 import {
   getServiceDateWindowIssue,
   type ServiceDateWindow,
+  unrestrictedServiceDates,
 } from "../service-date-eligibility";
 import { isAssignableDotyposDiscountGroup } from "./admin-discount-group";
 import type {
@@ -569,19 +570,6 @@ export class DiscountAdministration extends Context.Service<
             )
       );
 
-      /**
-       * Stores a new code's service dates beside the rows the shared code
-       * writer inserts, in the caller's transaction.
-       */
-      const setCodeServiceDates = (
-        codeId: DiscountCodeId,
-        serviceDates: ServiceDateWindow
-      ) =>
-        db
-          .update(discountCodes)
-          .set(serviceDates)
-          .where(eq(discountCodes.id, codeId));
-
       const createCode = Effect.fn("DiscountAdministration.createCode")(
         function* (input: CreateManagedDiscountCodeAdminInput) {
           const serviceDates = yield* resolveServiceDateChange(input.code);
@@ -629,11 +617,12 @@ export class DiscountAdministration extends Context.Service<
                 discountId,
                 maxUses: input.code.maxUses,
                 maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
+                ...Option.getOrElse(
+                  serviceDates,
+                  () => unrestrictedServiceDates
+                ),
                 audience: [],
               });
-              if (Option.isSome(serviceDates)) {
-                yield* setCodeServiceDates(code.id, serviceDates.value);
-              }
               return code.id;
             })
           );
@@ -690,11 +679,9 @@ export class DiscountAdministration extends Context.Service<
               discountId,
               maxUses: input.code.maxUses,
               maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
+              ...Option.getOrElse(serviceDates, () => unrestrictedServiceDates),
               audience: [input.customerId],
             });
-            if (Option.isSome(serviceDates)) {
-              yield* setCodeServiceDates(code.id, serviceDates.value);
-            }
             return code.id;
           })
         );

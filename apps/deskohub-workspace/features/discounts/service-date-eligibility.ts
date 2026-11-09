@@ -10,6 +10,12 @@ export type ServiceDateWindow = {
   readonly serviceDateUntil: PlainDate | null;
 };
 
+/** The window of a code that covers every reservation date. */
+export const unrestrictedServiceDates: ServiceDateWindow = {
+  serviceDateFrom: null,
+  serviceDateUntil: null,
+};
+
 /**
  * Why a service-date window can't be stored or applied, or `undefined` when
  * it can: both dates are set or both are absent, and the last date isn't
