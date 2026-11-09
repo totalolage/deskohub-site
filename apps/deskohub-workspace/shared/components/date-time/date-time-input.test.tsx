@@ -375,6 +375,23 @@ describe("DateTimeInput", () => {
     });
   }
 
+  test("clearing the date drops a time kept on screen", async () => {
+    const { form, onSubmit, timeField, typeDate, view } = renderInForm({
+      defaultValue: "2099-06-10T16:00",
+      minimum: "2099-06-10T16:00",
+    });
+
+    await typeTimeAsBrowsers(timeField, "07:00");
+    fireEvent.blur(timeField);
+    typeDate("");
+
+    const clearedTime = view.getByLabelText(timeLabel) as HTMLInputElement;
+    expect(clearedTime.value).toBe("");
+    expect(clearedTime.getAttribute("aria-invalid")).toBe("false");
+    fireEvent.submit(form);
+    expect(onSubmit.mock.calls[0]?.[0].getAll("validFrom")).toEqual([""]);
+  });
+
   test("a form reset drops a partial draft", () => {
     const { form, onPartialDraftChange, submitted, timeField, typeDate } =
       renderInForm({ defaultValue: "2099-06-10T09:00" });

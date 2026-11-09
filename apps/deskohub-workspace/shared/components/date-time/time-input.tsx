@@ -168,6 +168,13 @@ export function TimeInput({
     readonly kind: "incomplete" | "unavailable";
     readonly value: string;
   }>();
+  const [syncedValue, setSyncedValue] = useState(committed.value);
+  if (committed.value !== syncedValue) {
+    // A value set from outside replaces the edit, and its problem for good.
+    setSyncedValue(committed.value);
+    if (problemState && problemState.value !== committed.value)
+      setProblemState(undefined);
+  }
   const problem =
     problemState?.value === committed.value ? problemState : undefined;
   const explainedProblem = problem?.explained ? problem.kind : undefined;

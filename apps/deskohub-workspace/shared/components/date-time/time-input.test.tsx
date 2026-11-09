@@ -258,6 +258,49 @@ describe("TimeInput", () => {
     expect(document.activeElement === editor).toBe(true);
   });
 
+  test("a value set from outside drops a kept edit's problem for good", async () => {
+    const onSubmit = mock((_data: FormData) => undefined);
+    function Controlled() {
+      const [value, setValue] = useState("12:00");
+      return (
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit(new FormData(event.currentTarget));
+          }}
+        >
+          <TimeInput
+            label={timeLabel}
+            minimum="11:00"
+            name="time"
+            onChange={setValue}
+            value={value}
+          />
+          <button onClick={() => setValue("15:00")} type="button">
+            Pick
+          </button>
+          <button onClick={() => setValue("")} type="button">
+            Clear
+          </button>
+        </form>
+      );
+    }
+    const view = render(<Controlled />);
+    const editor = view.getByLabelText(timeLabel) as HTMLInputElement;
+
+    await typeTimeAsBrowsers(editor, "10:00");
+    fireEvent.blur(editor);
+    expect(editor.getAttribute("aria-invalid")).toBe("true");
+
+    fireEvent.click(view.getByRole("button", { name: "Pick" }));
+    expect(editor.value).toBe("15:00");
+    fireEvent.click(view.getByRole("button", { name: "Clear" }));
+    expect(editor.getAttribute("aria-invalid")).toBe("false");
+    fireEvent.submit(view.container.querySelector("form") as HTMLFormElement);
+    expect(onSubmit.mock.calls[0]?.[0].getAll("time")).toEqual([""]);
+  });
+
   test("blocks submission of a prefilled time that the bounds no longer allow", () => {
     let minimum = "08:00";
     const { editor, form, onSubmit } = renderInForm({
