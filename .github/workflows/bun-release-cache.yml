@@ -10,7 +10,7 @@ name: Bun release cache
 # changes the action runs it without saving anything.
 on:
   push:
-    branches: [main]
+    branches: [main, subagent/1149-e2e-bun-download]
     paths:
       - .github/actions/setup-bun/**
       - .github/workflows/bun-release-cache.yml
@@ -49,7 +49,7 @@ jobs:
           bun-sha256: 36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913
 
       - name: Save Bun release
-        if: steps.bun.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        if: steps.bun.outputs.cache-hit != 'true' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/subagent/1149-e2e-bun-download')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.bun.outputs.path }}
