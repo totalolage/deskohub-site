@@ -34,8 +34,13 @@ Providers live in their own packages.
   `recipientIdentity`, else `systemIdentity`, because PostHog would
   otherwise use the recipient email; `template_key` = the message's
   category tag. It sends no custom headers, tags, or metadata, so no
-  List-Unsubscribe. Its batch sends run 4 at a time under `<batchKey>:<index>`;
-  two retries, 1 s base, 5 s an attempt in production and 30 s elsewhere.
+  List-Unsubscribe. Each request gets two retries (1 s base) and 5 s an
+  attempt in production, 30 s elsewhere. A batch sends 4 at a time under
+  `<batchKey>:<index>` and ends 15 s after it starts: unstarted messages
+  fail provider-level (`batch_deadline`), in-flight ones end as unknown
+  outcomes, and after one provider-level failure the rest fail
+  provider-level unsent (`not_attempted`). A lone `send` has no such
+  deadline.
 
 ## Streams and chains
 
