@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { continuesEmailChain } from "@deskohub/email";
 import { testEmailAddress } from "@deskohub/test-email";
 import { ConfigProvider, Duration, Effect, Fiber, Tracer } from "effect";
@@ -150,6 +151,12 @@ describe("ResendEmailProvider", () => {
   const unclassifiedRefusal =
     (error: unknown): SendImplementation =>
     async () => ({ error });
+  const accepted: SendImplementation = async () => ({
+    data: { id: "resend-id" },
+  });
+  const acceptedWithoutId: SendImplementation = async () => ({
+    data: { id: "" },
+  });
 
   for (const row of [
     {
@@ -469,32 +476,126 @@ describe("ResendEmailProvider", () => {
     }
   });
 
-  test("forwards the delivery idempotency key within Resend's limit", async () => {
+  test("forwards a key within Resend's limit and hashes a longer one whole", async () => {
+    const longKey = `${"k".repeat(256)}-fallback`;
+    const longRouteKey = `${"k".repeat(256)}-route`;
+    const sha256 = (key: string) =>
+      `sha256-${createHash("sha256").update(key).digest("hex")}`;
+
     await runProvider(
       Effect.gen(function* () {
         const provider = yield* resendProvider;
-        yield* provider.send({
-          ...message,
-          idempotencyKey: "invoice-resend-attempt-2",
-        });
-        yield* provider.send({
-          ...message,
-          idempotencyKey: "k".repeat(300),
-        });
-        yield* provider.send(message);
+        for (const idempotencyKey of [
+          "invoice-resend-attempt-2",
+          "k".repeat(256),
+          longKey,
+          longRouteKey,
+          undefined,
+        ]) {
+          yield* provider.send({ ...message, idempotencyKey });
+        }
+        yield* provider
+          .sendBatch(batchMessages, { idempotencyKey: longKey })
+          .pipe(Effect.result);
       })
     );
 
-    expect(
-      send.mock.calls.map(([, options]) => ({
-        idempotencyKey: options?.idempotencyKey,
-      }))
-    ).toEqual([
-      { idempotencyKey: "invoice-resend-attempt-2" },
-      { idempotencyKey: "k".repeat(256) },
-      { idempotencyKey: undefined },
+    const sentKeys = send.mock.calls.map(
+      ([, options]) => options?.idempotencyKey
+    );
+    expect(sentKeys).toEqual([
+      "invoice-resend-attempt-2",
+      "k".repeat(256),
+      sha256(longKey),
+      sha256(longRouteKey),
+      undefined,
     ]);
+    expect(sentKeys[2]).toMatch(/^sha256-[0-9a-f]{64}$/);
+    expect(sentKeys[2]).not.toBe(sentKeys[3]);
+    expect(batchSend.mock.calls[0]?.[1]?.idempotencyKey).toBe(sha256(longKey));
   });
+
+  for (const row of [
+    {
+      name: "a 409 then a 429",
+      responses: [refusal(409), refusal(429)],
+      expected: {
+        _tag: "Failure",
+        failure: {
+          _tag: "NetworkError",
+          failureKind: "unknown-outcome",
+          code: "http-429",
+        },
+      },
+      attempts: 2,
+    },
+    {
+      name: "an accepted response without a delivery ID then a 429",
+      responses: [acceptedWithoutId, refusal(429)],
+      expected: {
+        _tag: "Failure",
+        failure: {
+          _tag: "NetworkError",
+          failureKind: "unknown-outcome",
+          code: "http-429",
+        },
+      },
+      attempts: 2,
+    },
+    {
+      name: "a 409 then persistent 503s",
+      responses: [refusal(409), refusal(503)],
+      expected: {
+        _tag: "Failure",
+        failure: {
+          _tag: "NetworkError",
+          failureKind: "unknown-outcome",
+          code: "http-503",
+        },
+      },
+      attempts: 4,
+    },
+    {
+      name: "a 409 then a success",
+      responses: [refusal(409), accepted],
+      expected: {
+        _tag: "Success",
+        success: { id: "resend-id", status: "sent", provider: "resend" },
+      },
+      attempts: 2,
+    },
+    {
+      name: "a 503 then a 429",
+      responses: [refusal(503), refusal(429)],
+      expected: {
+        _tag: "Failure",
+        failure: {
+          _tag: "EmailServiceError",
+          failureKind: "provider",
+          code: "http-429",
+        },
+      },
+      attempts: 2,
+    },
+  ]) {
+    test(`keeps a send's outcome after ${row.name}`, async () => {
+      send = mock<SendImplementation>((payload, options) => {
+        const respond =
+          row.responses[send.mock.calls.length - 1] ?? row.responses.at(-1);
+        return respond?.(payload, options) ?? accepted();
+      });
+
+      const result = await runProvider(
+        Effect.gen(function* () {
+          const provider = yield* resendProvider;
+          return yield* settle(provider.send(message));
+        })
+      );
+
+      expect(result).toMatchObject(row.expected);
+      expect(send).toHaveBeenCalledTimes(row.attempts);
+    });
+  }
 
   test("sends a batch with its idempotency key and returns IDs in order", async () => {
     batchSend = mock<BatchSendImplementation>(async () => ({
