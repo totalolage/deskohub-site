@@ -1,5 +1,3 @@
-"use client";
-
 const DEFAULT_RETURN_LISTENER_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_HANDOFF_TIMEOUT_MS = 1500;
 const RETURN_LOCK_PREFIX = "deskohub:return-window:";
@@ -300,7 +298,7 @@ export const listenForReturn = ({
 
   stopLock = startReturnLock({
     key: getAttemptLockKey(attemptId),
-    lockOptions: { mode: "exclusive" },
+    lockOptions: { mode: "exclusive", signal: abortController.signal },
     onAcquired,
     onDuplicate: dispose,
     onError: dispose,

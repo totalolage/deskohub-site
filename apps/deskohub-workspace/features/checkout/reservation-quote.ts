@@ -1,8 +1,6 @@
 import { Effect, Match, Schema } from "effect";
 import { getCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 
-export { ReservationQuoteError } from "@/features/checkout/reservation-quote-error";
-
 import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
 import { reservationQuoteItemSchema } from "@/features/checkout/reservation-quote-item";
 import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
@@ -11,9 +9,7 @@ import { makeReservationQuoteSchema } from "@/features/checkout/reservation-quot
 import type { DiscountQuote } from "@/features/discounts/contracts";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
-export type { ReservationQuoteItem } from "@/features/checkout/reservation-quote-item";
-
-export const reservationQuoteSchema = makeReservationQuoteSchema(
+const reservationQuoteSchema = makeReservationQuoteSchema(
   Schema.Array(reservationQuoteItemSchema)
 ).annotate({
   identifier: "ReservationQuote",

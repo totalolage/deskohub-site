@@ -31,10 +31,10 @@ const ApplicationLive = Layer.mergeAll(
   Layer.provide(FetchHttpClient.layer)
 );
 
-const RuntimeLive = ApplicationLive.pipe(Layer.provideMerge(BunServices.layer));
-
-Command.run(dhwCommand, { version: DHW_VERSION }).pipe(
-  Effect.provide(RuntimeLive),
+Command.run(dhwCommand.pipe(Command.provide(ApplicationLive)), {
+  version: DHW_VERSION,
+}).pipe(
+  Effect.provide(BunServices.layer),
   Effect.updateService(Headers.CurrentRedactedNames, (names) => [
     ...names,
     "x-vercel-protection-bypass",

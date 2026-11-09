@@ -3,6 +3,7 @@ language js(typescript, jsx)
 
 file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/(?:features/checkout/backend/analytics|shared/backend/analytics)/.*\.(?:ts|tsx)$",
+  $body <: r"(?s).*\bvoid\b.*",
   $body <: contains bubble {
     `$condition ? $effect : Effect.void` as $conditional where {
       register_diagnostic(

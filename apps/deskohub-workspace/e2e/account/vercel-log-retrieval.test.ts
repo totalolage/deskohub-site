@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
@@ -6,15 +7,17 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { Effect, Layer, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { renderMagicLinkEmail } from "../../features/account/backend/auth/magic-link-email";
 import { createCensoredOtelSpanExporter } from "../../shared/backend/logging/censorship";
-import { createTracingLive } from "../../shared/backend/observability/otel-tracing";
+import { createTracingLive } from "../../shared/backend/observability/telemetry-sinks";
+import { withInstantSleeps } from "../../shared/testing/workspace-test-clock.test-utils";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
 import {
   makeTestE2EEnvironment,
   validE2ERuntimeEnvironment,
 } from "../e2e-env.test-fixture";
+import { redact } from "../redaction";
 import { workspaceE2ERunIdSchema } from "../run-identifiers";
-import { redact } from "../runtime";
 import {
   E2ERunContextService,
   E2ETelemetryService,
@@ -107,7 +110,9 @@ const makeHttpHarness = (
       url.origin === "https://api.vercel.com" &&
       url.pathname === `/v13/deployments/${expectedHost}`
     ) {
-      const payload = await deploymentPayload;
+      const payload = await (typeof deploymentPayload === "function"
+        ? deploymentPayload()
+        : deploymentPayload);
       return payload instanceof Response
         ? payload.clone()
         : Response.json(payload);
@@ -151,6 +156,31 @@ const makeRetrieval = (
   return { ...harness, result };
 };
 
+const makeSignInEmailRetrieval = (
+  handleHistory: FetchHandler,
+  requestOverrides: Partial<Partial<WorkspaceE2EMagicLinkRequest>> = {},
+  deploymentPayload: unknown = deployment
+) => {
+  const harness = makeHttpHarness(handleHistory, deploymentPayload);
+  const request = {
+    callbackPath,
+    deadlineAfterMs: 500,
+    pollIntervalMs: 5,
+    recipient,
+    startedAt: new Date("2026-10-01T12:00:00.000Z"),
+    ...requestOverrides,
+  };
+  const result = Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const previewLogs = yield* resolveWorkspaceE2EPreviewLogs(config);
+        return yield* previewLogs.retrieveSignInEmail(request);
+      })
+    ).pipe(Effect.provide(harness.layer))
+  );
+  return { ...harness, result };
+};
+
 const captureFailure = (result: Promise<string>) =>
   result.then(
     () => {
@@ -158,6 +188,88 @@ const captureFailure = (result: Promise<string>) =>
     },
     (failure: unknown) => failure
   );
+
+const traceFailedRetrieval = async (
+  handleHistory: FetchHandler,
+  requestOverrides: Partial<Partial<WorkspaceE2EMagicLinkRequest>> = {}
+) => {
+  const exporter = new InMemorySpanExporter();
+  const provider = new BasicTracerProvider({
+    spanProcessors: [
+      new SimpleSpanProcessor(createCensoredOtelSpanExporter(exporter)),
+    ],
+  });
+  const harness = makeHttpHarness(handleHistory);
+  const tracingLayer = createTracingLive({
+    provider,
+    serviceName: "deskohub-workspace-e2e-test",
+  });
+  const telemetryLayer = E2ETelemetryService.Default.pipe(
+    Layer.provide(E2ERunContextService.layer(makeTestE2EEnvironment()))
+  );
+  const e2eTelemetryLayer = Layer.merge(
+    Layer.merge(harness.layer, tracingLayer),
+    telemetryLayer
+  );
+  const request: WorkspaceE2EMagicLinkRequest = {
+    callbackPath,
+    deadlineAfterMs: 50,
+    pollIntervalMs: 5_000,
+    recipient,
+    startedAt: new Date("2026-10-01T12:00:00.000Z"),
+    ...requestOverrides,
+  };
+
+  let failure: unknown;
+  try {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const telemetry = yield* E2ETelemetryService;
+          return yield* telemetry.traceStep({
+            caseId: "account-magic-link",
+            effect: Effect.gen(function* () {
+              const previewLogs = yield* resolveWorkspaceE2EPreviewLogs(config);
+              return yield* previewLogs.retrieveMagicLink(request);
+            }),
+            stepId: "retrieves-delivered-single-use-link",
+            timeoutMs: config.timeouts.authDelivery,
+          });
+        })
+      ).pipe(Effect.provide(e2eTelemetryLayer))
+    );
+  } catch (error) {
+    failure = error;
+  }
+
+  try {
+    await provider.forceFlush();
+    return {
+      failure,
+      requests: harness.requests,
+      spans: exporter.getFinishedSpans(),
+    };
+  } finally {
+    await provider.shutdown();
+  }
+};
+
+const logPollStepAttributes = (
+  spans: ReturnType<InMemorySpanExporter["getFinishedSpans"]>
+) => {
+  const span = spans.find(
+    (candidate) =>
+      candidate.name === "e2e.step" &&
+      candidate.attributes["e2e.step.id"] ===
+        "retrieves-delivered-single-use-link"
+  );
+  if (!span) throw new Error("expected the log retrieval step span");
+  return Object.fromEntries(
+    Object.entries(span.attributes).filter(([key]) =>
+      key.startsWith("e2e.account.log_poll.")
+    )
+  );
+};
 
 describe("workspace e2e Vercel log retrieval", () => {
   test("uses only the selected deployment and project history resources", async () => {
@@ -207,46 +319,6 @@ describe("workspace e2e Vercel log retrieval", () => {
         /\/v2\/user|\/teams(?:\/|$)/.test(new URL(request.url).pathname)
       )
     ).toBe(false);
-  });
-
-  test("retrieves a matching history row that appeared after the baseline", async () => {
-    let historyRowAvailable = false;
-    const harness = makeHttpHarness((_request, call) =>
-      Response.json(
-        page(
-          historyRowAvailable && call > 0
-            ? [
-                row("req-reauth-after-baseline", [
-                  log(previewE2ELine(magicLink("reauth-after-baseline"))),
-                ]),
-              ]
-            : []
-        )
-      )
-    );
-    const result = await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const previewLogs = yield* resolveWorkspaceE2EPreviewLogs(config);
-          const startedAt = new Date("2026-10-01T12:00:00.000Z");
-          const baseline = yield* previewLogs.listSyntheticLogEntryIds({
-            recipient,
-            startedAt,
-          });
-          expect(baseline).toEqual([]);
-          historyRowAvailable = true;
-          return yield* previewLogs.retrieveMagicLink({
-            callbackPath,
-            deadlineAfterMs: 100,
-            pollIntervalMs: 1,
-            recipient,
-            startedAt,
-          });
-        })
-      ).pipe(Effect.provide(harness.layer))
-    );
-
-    expect(result).toBe(magicLink("reauth-after-baseline"));
   });
 
   test("excludes older rows by their provider timestamp", async () => {
@@ -321,6 +393,17 @@ describe("workspace e2e Vercel log retrieval", () => {
               "retrieves-delivered-single-use-link"
         )
       ).toBe(true);
+      expect(logPollStepAttributes(spans)).toEqual({
+        "e2e.account.log_poll.completed_query_count_cumulative": 1,
+        "e2e.account.log_poll.last_returned_entry_count": 1,
+        "e2e.account.log_poll.last_marker_count": 1,
+        "e2e.account.log_poll.baseline_excluded_marker_count_cumulative": 0,
+        "e2e.account.log_poll.before_started_at_marker_count_cumulative": 0,
+        "e2e.account.log_poll.other_recipient_candidate_count_cumulative": 0,
+        "e2e.account.log_poll.matching_entry_count_cumulative": 1,
+        "e2e.account.log_poll.last_marker_min_timestamp_delta_ms": 1,
+        "e2e.account.log_poll.last_marker_max_timestamp_delta_ms": 1,
+      });
       const exported = JSON.stringify(spans);
       expect(exported).not.toContain(expectedHost);
       expect(exported).not.toContain(deployment.id);
@@ -374,6 +457,157 @@ describe("workspace e2e Vercel log retrieval", () => {
     expect(failureText).not.toContain("private-value");
   });
 
+  test("retries a transient history gateway failure within the retrieval deadline", async () => {
+    const { requests, result } = makeRetrieval((_request, call) =>
+      call === 0
+        ? new Response("gateway timeout", { status: 504 })
+        : Response.json(
+            page([
+              row("req-after-gateway-timeout", [
+                log(previewE2ELine(magicLink("after-gateway-timeout"))),
+              ]),
+            ])
+          )
+    );
+
+    expect(await result).toBe(magicLink("after-gateway-timeout"));
+    expect(
+      requests.filter(
+        (request) => new URL(request.url).pathname === "/api/logs/request-logs"
+      )
+    ).toHaveLength(2);
+  });
+
+  test("reports the last transient provider failure when the deadline expires", async () => {
+    const { requests, result } = makeRetrieval(
+      () => new Response("bad gateway", { status: 502 }),
+      { deadlineAfterMs: 60 }
+    );
+
+    const failure = await captureFailure(result);
+    expect(failure).toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_retrieve_failed",
+      message: "query Vercel preview runtime logs failed (HTTP 502)",
+      operation: "query Vercel preview runtime logs",
+    });
+    expect(
+      requests.filter(
+        (request) => new URL(request.url).pathname === "/api/logs/request-logs"
+      ).length
+    ).toBeGreaterThan(1);
+  });
+
+  test("retries transient deployment metadata failures within the retrieval deadline", async () => {
+    let metadataCalls = 0;
+    const harness = makeHttpHarness(
+      () =>
+        Response.json(
+          page([
+            row("req-after-metadata-retry", [
+              log(previewE2ELine(magicLink("after-metadata-retry"))),
+            ]),
+          ])
+        ),
+      () => {
+        metadataCalls += 1;
+        return metadataCalls === 1
+          ? new Response("unavailable", { status: 503 })
+          : Response.json(deployment);
+      }
+    );
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const previewLogs = yield* resolveWorkspaceE2EPreviewLogs(config);
+          return yield* previewLogs.retrieveMagicLink({
+            callbackPath,
+            deadlineAfterMs: 500,
+            pollIntervalMs: 5,
+            recipient,
+            startedAt: new Date("2026-10-01T12:00:00.000Z"),
+          });
+        })
+      ).pipe(Effect.provide(harness.layer))
+    );
+
+    expect(result).toBe(magicLink("after-metadata-retry"));
+    expect(metadataCalls).toBe(2);
+  });
+
+  test("reports an unobserved entry when the deadline clips a request after history answered", async () => {
+    const { result } = makeRetrieval(
+      (_request, call) =>
+        call === 0
+          ? Response.json(page([]))
+          : new Response(new ReadableStream({ start() {} })),
+      { deadlineAfterMs: 60 }
+    );
+
+    const failure = await captureFailure(result);
+    expect(failure).toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_not_observed",
+      operation: "poll Vercel preview runtime logs",
+    });
+  });
+
+  test("retries a transient gateway failure while listing baseline entries", async () => {
+    const harness = makeHttpHarness((_request, call) =>
+      call === 0
+        ? new Response("gateway timeout", { status: 504 })
+        : Response.json(
+            page([
+              row("req-baseline", [log(previewE2ELine(magicLink("baseline")))]),
+            ])
+          )
+    );
+
+    const baseline = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const previewLogs = yield* resolveWorkspaceE2EPreviewLogs(config);
+          return yield* previewLogs.listSyntheticLogEntryIds({
+            recipient,
+            startedAt: new Date("2026-10-01T12:00:00.000Z"),
+          });
+        })
+      ).pipe(withInstantSleeps, Effect.provide(harness.layer))
+    );
+
+    expect(baseline).toEqual(["req-baseline:0"]);
+  });
+
+  test("keeps non-transient baseline failures terminal", async () => {
+    const harness = makeHttpHarness(
+      () => new Response("forbidden", { status: 403 })
+    );
+
+    const failure = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const previewLogs = yield* resolveWorkspaceE2EPreviewLogs(config);
+          return yield* previewLogs
+            .listSyntheticLogEntryIds({
+              recipient,
+              startedAt: new Date("2026-10-01T12:00:00.000Z"),
+            })
+            .pipe(Effect.flip);
+        })
+      ).pipe(Effect.provide(harness.layer))
+    );
+
+    expect(failure).toMatchObject({
+      diagnosticCode: "auth_delivery_message_retrieve_failed",
+      message: "query Vercel preview runtime logs failed (HTTP 403)",
+    });
+    expect(
+      harness.requests.filter(
+        (request) => new URL(request.url).pathname === "/api/logs/request-logs"
+      )
+    ).toHaveLength(1);
+  });
+
   test("discards transport failure details", async () => {
     const privateDetail = "sentinel-private-transport-value";
     const { result } = makeRetrieval(() => {
@@ -389,20 +623,6 @@ describe("workspace e2e Vercel log retrieval", () => {
     });
     expect((failure as { cause?: unknown }).cause).toBeUndefined();
     expect(JSON.stringify(failure)).not.toContain(privateDetail);
-  });
-
-  test("bounds a stalled historical request by the retrieval deadline", async () => {
-    const { result } = makeRetrieval(
-      () => new Response(new ReadableStream({ start() {} })),
-      { deadlineAfterMs: 30 }
-    );
-
-    await expect(result).rejects.toMatchObject({
-      _tag: "WorkspaceE2EError",
-      diagnosticCode: "auth_delivery_message_retrieve_failed",
-      message: "query Vercel preview runtime logs failed (timeout)",
-      operation: "query Vercel preview runtime logs",
-    });
   });
 
   test("bounds deployment metadata by the remaining retrieval deadline", async () => {
@@ -424,18 +644,17 @@ describe("workspace e2e Vercel log retrieval", () => {
     expect(requests).toHaveLength(1);
   });
 
-  test("clips an empty-history poll sleep to the remaining deadline", async () => {
-    const { requests, result } = makeRetrieval(() => Response.json(page([])), {
-      deadlineAfterMs: 30,
-      pollIntervalMs: 5_000,
-    });
+  test("clips an empty-history poll sleep and traces terminal poll counts", async () => {
     const startedAt = Date.now();
-
-    const failure = await captureFailure(result);
+    const { failure, requests, spans } = await traceFailedRetrieval(() =>
+      Response.json(page([]))
+    );
 
     expect(failure).toMatchObject({
       _tag: "WorkspaceE2EError",
       diagnosticCode: "auth_delivery_message_not_observed",
+      message:
+        "Vercel log retrieval did not observe the preview magic-link entry before the deadline",
       operation: "poll Vercel preview runtime logs",
     });
     expect(Date.now() - startedAt).toBeLessThan(1_000);
@@ -444,6 +663,81 @@ describe("workspace e2e Vercel log retrieval", () => {
         (request) => new URL(request.url).pathname === "/api/logs/request-logs"
       )
     ).toHaveLength(1);
+    const attributes = logPollStepAttributes(spans);
+    expect(attributes).toEqual({
+      "e2e.account.log_poll.completed_query_count_cumulative": 1,
+      "e2e.account.log_poll.last_returned_entry_count": 0,
+      "e2e.account.log_poll.last_marker_count": 0,
+      "e2e.account.log_poll.baseline_excluded_marker_count_cumulative": 0,
+      "e2e.account.log_poll.before_started_at_marker_count_cumulative": 0,
+      "e2e.account.log_poll.other_recipient_candidate_count_cumulative": 0,
+      "e2e.account.log_poll.matching_entry_count_cumulative": 0,
+    });
+  });
+
+  test("traces marker filters without exporting synthetic log content", async () => {
+    const syntheticRecipient = testEmailAddress("other-recipient-private");
+    const hiddenRowId = "request-row-private-baseline";
+    const startedAt = new Date("2026-10-01T12:00:00.000Z");
+    const excludedMarker = row(
+      hiddenRowId,
+      [log(previewE2ELine("excluded marker content"))],
+      { timestamp: "2026-10-01T12:00:00.001Z" }
+    );
+    const beforeStartMarker = row(
+      "request-row-private-before-start",
+      [log(previewE2ELine("before start marker content"))],
+      { timestamp: "2026-10-01T11:59:59.999Z" }
+    );
+    const otherRecipientMarker = row(
+      "request-row-private-other-recipient",
+      [
+        log(
+          previewE2ELine("other recipient marker content", syntheticRecipient)
+        ),
+      ],
+      { timestamp: "2026-10-01T12:00:00.003Z" }
+    );
+    const { failure, requests, spans } = await traceFailedRetrieval(
+      () =>
+        Response.json(
+          page([excludedMarker, beforeStartMarker, otherRecipientMarker])
+        ),
+      {
+        excludeLogEntryIds: [`${hiddenRowId}:0`],
+        startedAt,
+      }
+    );
+
+    expect(failure).toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_not_observed",
+      operation: "poll Vercel preview runtime logs",
+    });
+    expect(
+      requests.filter(
+        (request) => new URL(request.url).pathname === "/api/logs/request-logs"
+      )
+    ).toHaveLength(1);
+    expect(logPollStepAttributes(spans)).toEqual({
+      "e2e.account.log_poll.completed_query_count_cumulative": 1,
+      "e2e.account.log_poll.last_returned_entry_count": 3,
+      "e2e.account.log_poll.last_marker_count": 3,
+      "e2e.account.log_poll.baseline_excluded_marker_count_cumulative": 1,
+      "e2e.account.log_poll.before_started_at_marker_count_cumulative": 1,
+      "e2e.account.log_poll.other_recipient_candidate_count_cumulative": 1,
+      "e2e.account.log_poll.matching_entry_count_cumulative": 0,
+      "e2e.account.log_poll.last_marker_min_timestamp_delta_ms": -1,
+      "e2e.account.log_poll.last_marker_max_timestamp_delta_ms": 3,
+    });
+    const exported = JSON.stringify(spans);
+    expect(exported).not.toContain(syntheticRecipient);
+    expect(exported).not.toContain(hiddenRowId);
+    expect(exported).not.toContain("request-row-private-before-start");
+    expect(exported).not.toContain("request-row-private-other-recipient");
+    expect(exported).not.toContain("excluded marker content");
+    expect(exported).not.toContain("before start marker content");
+    expect(exported).not.toContain("other recipient marker content");
   });
 
   test("reads later pages when the history response reports more rows", async () => {
@@ -559,31 +853,6 @@ describe("workspace e2e Vercel log retrieval", () => {
     ).toEqual(["0", "1"]);
   });
 
-  test("caps history traversal at one hundred request rows", async () => {
-    const hundredRows = Array.from({ length: 100 }, (_, index) =>
-      row(`req-${index}`, [log("unrelated runtime log")])
-    );
-    const { requests, result } = makeRetrieval(() =>
-      Response.json(page(hundredRows, true))
-    );
-
-    await expect(result).rejects.toMatchObject({
-      _tag: "WorkspaceE2EError",
-      diagnosticCode: "auth_delivery_message_invalid",
-      message: "Vercel runtime log payload was invalid",
-    });
-    expect(
-      requests
-        .filter(
-          (request) =>
-            new URL(request.url).pathname === "/api/logs/request-logs"
-        )
-        .every(
-          (request) => new URL(request.url).searchParams.get("page") === "0"
-        )
-    ).toBe(true);
-  });
-
   test("matches the individual nested log, not the request-level message", async () => {
     const { result } = makeRetrieval(() =>
       Response.json(
@@ -649,20 +918,6 @@ describe("workspace e2e Vercel log retrieval", () => {
     );
 
     await expect(result).resolves.toBe(magicLink("nested-after-one-hundred"));
-  });
-
-  test("times out when only a different recipient is present", async () => {
-    const { result } = makeRetrieval(() =>
-      Response.json(
-        page([
-          row("req-other", [
-            log(previewE2ELine(magicLink("token"), "other@resend.dev")),
-          ]),
-        ])
-      )
-    );
-
-    await expect(result).rejects.toThrow("before the deadline");
   });
 
   test("rejects multiple matching links", async () => {
@@ -857,5 +1112,125 @@ describe("workspace e2e Vercel log retrieval", () => {
     expect(redact(`link ${magicLink("token")} end`)).toBe(
       "link [redacted] end"
     );
+  });
+
+  test("retrieves the sign-in link and code from one preview log line", async () => {
+    const link = magicLink("sign-in-email");
+    const { result } = makeSignInEmailRetrieval(() =>
+      Response.json(
+        page([
+          row("req-sign-in-email", [
+            log(previewE2ELine(`${link}\n \t482913 \t`)),
+          ]),
+        ])
+      )
+    );
+
+    await expect(result).resolves.toEqual({ link, code: "482913" });
+  });
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "retrieves the sign-in link and code from the rendered %s email",
+    async (locale) => {
+      const link = magicLink(`rendered-${locale}`);
+      const { text } = await Effect.runPromise(
+        renderMagicLinkEmail({
+          email: recipient,
+          url: link,
+          locale,
+          code: "482913",
+        })
+      );
+      const { result } = makeSignInEmailRetrieval(() =>
+        Response.json(
+          page([row(`req-rendered-${locale}`, [log(previewE2ELine(text))])])
+        )
+      );
+
+      await expect(result).resolves.toEqual({ link, code: "482913" });
+    }
+  );
+
+  test("rejects sign-in emails without a code line", async () => {
+    const { result } = makeSignInEmailRetrieval(() =>
+      Response.json(
+        page([
+          row("req-sign-in-no-code", [
+            log(previewE2ELine(magicLink("no-code"))),
+          ]),
+        ])
+      )
+    );
+
+    await expect(result).rejects.toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_invalid",
+      message:
+        "Vercel log retrieval did not return exactly one sign-in code for the exact preview",
+      operation: "extract preview sign-in code",
+    });
+  });
+
+  test("rejects sign-in emails with two distinct codes", async () => {
+    const body = `${magicLink("multiple-codes")}\n482913\n175604`;
+    const { result } = makeSignInEmailRetrieval(() =>
+      Response.json(
+        page([row("req-sign-in-multiple-codes", [log(previewE2ELine(body))])])
+      )
+    );
+
+    await expect(result).rejects.toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_invalid",
+      message:
+        "Vercel log retrieval did not return exactly one sign-in code for the exact preview",
+      operation: "extract preview sign-in code",
+    });
+  });
+
+  test("deduplicates identical repeated sign-in code lines", async () => {
+    const link = magicLink("repeated-code");
+    const body = `${link}\n482913\n 482913 \t`;
+    const { result } = makeSignInEmailRetrieval(() =>
+      Response.json(
+        page([row("req-sign-in-repeated-code", [log(previewE2ELine(body))])])
+      )
+    );
+
+    await expect(result).resolves.toEqual({ link, code: "482913" });
+  });
+
+  test("redacts the returned sign-in code immediately", async () => {
+    const { result } = makeSignInEmailRetrieval(() =>
+      Response.json(
+        page([
+          row("req-sign-in-redacted-code", [
+            log(previewE2ELine(`${magicLink("redacted-code")}\n813294`)),
+          ]),
+        ])
+      )
+    );
+
+    await result;
+    expect(redact("sign-in code 813294 end")).toBe(
+      "sign-in code [redacted] end"
+    );
+  });
+
+  test("does not treat a number embedded in a longer line as a code", async () => {
+    const body = `${magicLink("embedded-number")}\nOrder 123456 confirmed`;
+    const { result } = makeSignInEmailRetrieval(() =>
+      Response.json(
+        page([row("req-sign-in-embedded-number", [log(previewE2ELine(body))])])
+      )
+    );
+
+    await expect(result).rejects.toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_invalid",
+      message:
+        "Vercel log retrieval did not return exactly one sign-in code for the exact preview",
+      operation: "extract preview sign-in code",
+    });
   });
 });

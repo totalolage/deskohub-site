@@ -1,51 +1,24 @@
 import { expect, test } from "bun:test";
-import { constants } from "node:fs";
-import { access } from "node:fs/promises";
 import { createServer } from "node:http";
-import { normalizePhoneNumber } from "@deskohub/dotypos";
-import { chromium, type Page } from "@playwright/test";
-import { WorkspaceE2EError } from "../errors";
+import { parsePhoneNumber } from "@deskohub/phone-number";
+import { chromium, errors, type Page } from "@playwright/test";
+import { Option } from "effect";
 import {
-  accountSectionLabels,
-  accountSectionLandmarks,
-} from "./account-sections";
+  accountSectionLabel,
+  accountSections,
+} from "../../features/account/sections";
+import { playwrightChromiumAvailable } from "../../shared/testing/playwright-browser";
+import {
+  isWorkspaceE2EDiagnosticCode,
+  WorkspaceE2EError,
+  type WorkspaceE2EProfileNavigationDiagnosticCode,
+} from "../errors";
+import { formatWorkspaceE2EFailureAnnotation } from "../github-actions";
+import { accountSectionLandmarks } from "./account-sections";
 import {
   triggerProfileHistoryBack,
   verifyProfileNavigation,
 } from "./profile-navigation";
-
-type MockPage = {
-  readonly evaluateInputs: readonly unknown[];
-  readonly navigationWaitCalls: () => number;
-  readonly page: Page;
-  readonly goBackCalls: () => number;
-};
-
-const makeMockPage = (): MockPage => {
-  const evaluateInputs: unknown[] = [];
-  let goBackCallCount = 0;
-  let navigationWaitCallCount = 0;
-  const page = Object.assign({} as Page, {
-    evaluate: async (expression: unknown) => {
-      evaluateInputs.push(expression);
-    },
-    goBack: async () => {
-      goBackCallCount += 1;
-      throw new Error("page.goBack must not be used for guarded history");
-    },
-    waitForNavigation: async () => {
-      navigationWaitCallCount += 1;
-      throw new Error("navigation waits must not be used for guarded history");
-    },
-  });
-
-  return {
-    evaluateInputs,
-    goBackCalls: () => goBackCallCount,
-    navigationWaitCalls: () => navigationWaitCallCount,
-    page,
-  };
-};
 
 type ProfileNavigationSection =
   | "reservations"
@@ -70,15 +43,12 @@ type ProfileNavigationState = {
 };
 
 type ProfileNavigationFakePage = {
-  readonly actions: readonly string[];
   readonly page: Page;
-  readonly serverPhone: string;
-  readonly state: ProfileNavigationState;
 };
 
 type ProfileNavigationFailurePhase =
   | "saved-profile-baseline"
-  | "draft-retention";
+  | "profile-handler-wait";
 
 const privateFailureDetails = "private profile navigation fixture details";
 
@@ -93,9 +63,10 @@ const makeProfileNavigationFakePage = (
     lastName: "Example",
     phone: "+420 555 000 111",
   };
-  const normalizedPhone = normalizePhoneNumber(originalProfile.phone);
-  if (normalizedPhone === null)
-    throw new Error("fake profile phone is not a valid canonical phone number");
+  const normalizedPhone = Option.getOrThrowWith(
+    parsePhoneNumber(originalProfile.phone),
+    () => new Error("fake profile phone is not a valid canonical phone number")
+  );
   const serverSnapshot = {
     ...originalProfile,
     phone: normalizedPhone,
@@ -111,7 +82,6 @@ const makeProfileNavigationFakePage = (
     section: "reservations",
     url: accountUrl,
   };
-  const actions: string[] = [];
   let dialogResolver:
     | ((dialog: {
         readonly accept: () => Promise<void>;
@@ -119,6 +89,7 @@ const makeProfileNavigationFakePage = (
         readonly type: () => string;
       }) => void)
     | undefined;
+  let documentReloaded = false;
 
   const isProfileFormVisible = () =>
     state.section === "profile" || state.section === "billing";
@@ -164,6 +135,13 @@ const makeProfileNavigationFakePage = (
     return undefined;
   };
 
+  // Like the account layout, a section switch records its section in the
+  // account pathname.
+  const switchSection = (section: ProfileNavigationSection) => {
+    state.section = section;
+    state.url = `${accountUrl}/${section}`;
+  };
+
   const requestDialog = (kind: "history-back" | "home") => {
     let resolveAction!: () => void;
     const action = new Promise<void>((resolve) => {
@@ -171,22 +149,18 @@ const makeProfileNavigationFakePage = (
     });
     const dialog = {
       accept: async () => {
-        actions.push(`dialog:${kind}:accept`);
         if (kind === "home") {
           state.url = homeUrl;
           state.section = "reservations";
           state.dirty = false;
-          actions.push("navigate:home");
         }
         resolveAction();
       },
       dismiss: async () => {
-        actions.push(`dialog:${kind}:dismiss`);
         resolveAction();
       },
       type: () => "confirm",
     };
-    actions.push(`dialog:${kind}:open`);
     dialogResolver?.(dialog);
     dialogResolver = undefined;
     return action;
@@ -195,31 +169,25 @@ const makeProfileNavigationFakePage = (
   const makeLocator = (name: string) => {
     const locator = {
       _apiName: "Locator",
+      elementHandle: async () => ({
+        dispose: async () => {},
+        sectionLink: name,
+      }),
       _expect: async (
         expression: string,
         parameters: Record<string, unknown>
       ) => {
-        if (
-          failurePhase === "draft-retention" &&
-          expression === "to.have.value" &&
-          name === "#account-profile-first-name" &&
-          state.profile.firstName === "Ada draft"
-        ) {
-          throw new Error(privateFailureDetails);
-        }
         let actual: boolean | number | string;
         let matches: boolean;
         if (expression === "to.be.visible") {
           actual = isVisible(name);
           matches = actual;
-          actions.push(`assert-visible:${name}`);
         } else if (expression === "to.have.count") {
           actual = countFor(name);
           matches = actual === parameters.expectedNumber;
         } else if (expression === "to.have.value") {
           actual = valueFor(name);
           matches = actual === expectedText(parameters.expectedText);
-          actions.push(`assert-value:${name}:${actual}`);
         } else {
           actual = true;
           matches = true;
@@ -230,39 +198,33 @@ const makeProfileNavigationFakePage = (
         };
       },
       click: async () => {
-        actions.push(`click:${name}`);
         if (name.startsWith("section:")) {
-          state.section = name.slice(
-            "section:".length
-          ) as ProfileNavigationSection;
+          switchSection(
+            name.slice("section:".length) as ProfileNavigationSection
+          );
           return;
         }
         if (name === "home-link") {
           if (state.dirty) return requestDialog("home");
           state.url = homeUrl;
           state.section = "reservations";
-          actions.push("navigate:home");
           return;
         }
         if (name === "account-link") {
           state.url = accountUrl;
           state.section = "reservations";
-          actions.push("navigate:account");
           return;
         }
         if (name === "#account-profile-submit") {
-          actions.push("native-submit");
           if (
             state.billing.kind === "business" &&
             state.billing.companyName === ""
           ) {
-            state.section = "billing";
-            actions.push("native-invalid:billing");
+            switchSection("billing");
           }
         }
       },
       evaluate: async () => {
-        actions.push(`evaluate:${name}`);
         return "Please fill out this field.";
       },
       fill: async (value: string) => {
@@ -272,7 +234,6 @@ const makeProfileNavigationFakePage = (
         ) {
           throw new Error("billing company fill attempted while hidden");
         }
-        actions.push(`fill:${name}:${value}`);
         switch (name) {
           case "#account-profile-first-name":
             state.profile.firstName = value;
@@ -316,10 +277,10 @@ const makeProfileNavigationFakePage = (
     options: { readonly name?: string } = {}
   ) => {
     if (role === "banner") return makeLocator("banner");
-    if (role === "button") {
-      const section = Object.entries(accountSectionLabels).find(
-        ([, label]) => options.name === label
-      )?.[0];
+    if (role === "link") {
+      const section = accountSections.find(
+        (candidate) => options.name === accountSectionLabel(candidate, "en-US")
+      );
       if (section) return makeLocator(`section:${section}`);
     }
     if (role === "heading") return makeLocator(`heading:${options.name ?? ""}`);
@@ -332,7 +293,6 @@ const makeProfileNavigationFakePage = (
     evaluate: async (expression: unknown) => {
       const source = String(expression);
       if (source.includes("window.history.back()")) {
-        actions.push("evaluate:window.history.back()");
         return requestDialog("history-back");
       }
       throw new Error("unsupported page evaluation");
@@ -346,7 +306,7 @@ const makeProfileNavigationFakePage = (
       state.dirty = false;
       state.profile = { ...serverSnapshot };
       state.billing = { ...originalBilling };
-      actions.push("document-remount:account");
+      documentReloaded = true;
     },
     locator: (selector: string) => makeLocator(selector),
     mainFrame: () => ({
@@ -369,31 +329,41 @@ const makeProfileNavigationFakePage = (
       new Promise((resolve) => {
         dialogResolver = resolve;
       }),
-    waitForFunction: async (
-      _predicate: unknown,
-      argument: { readonly section?: string }
-    ) => {
-      if (argument.section) {
-        actions.push(`section-ready:${argument.section}`);
-        if (state.section !== argument.section) {
-          throw new Error(`section did not become ready: ${argument.section}`);
+    waitForFunction: async (_predicate: unknown, argument: unknown) => {
+      if (
+        typeof argument === "object" &&
+        argument !== null &&
+        "sectionLink" in argument
+      ) {
+        if (
+          documentReloaded &&
+          failurePhase === "profile-handler-wait" &&
+          (argument as { readonly sectionLink: string }).sectionLink ===
+            "section:profile"
+        ) {
+          throw new errors.TimeoutError(privateFailureDetails);
+        }
+        return { dispose: async () => {}, jsonValue: async () => "ready" };
+      }
+      if (
+        typeof argument === "object" &&
+        argument !== null &&
+        "section" in argument
+      ) {
+        const section = (argument as { readonly section: string }).section;
+        if (state.section !== section) {
+          throw new Error(`section did not become ready: ${section}`);
         }
       }
+      return { dispose: async () => {}, jsonValue: async () => true };
     },
-    waitForURL: async (url: string) => {
-      actions.push(`wait-url:${url}`);
-    },
+    waitForURL: async () => {},
   });
 
-  return { actions, page, serverPhone: serverSnapshot.phone, state };
+  return { page };
 };
 
-const chromiumAvailable = await access(
-  chromium.executablePath(),
-  constants.X_OK
-)
-  .then(() => true)
-  .catch(() => false);
+const chromiumAvailable = await playwrightChromiumAvailable();
 
 const startNavigationTestServer = async () => {
   const server = createServer((_request, response) => {
@@ -433,97 +403,6 @@ const startNavigationTestServer = async () => {
   };
 };
 
-test("uses one evaluated history trigger instead of Playwright navigation waits", async () => {
-  const mockPage = makeMockPage();
-
-  await triggerProfileHistoryBack(mockPage.page);
-
-  expect(mockPage.goBackCalls()).toBe(0);
-  expect(mockPage.navigationWaitCalls()).toBe(0);
-  expect(mockPage.evaluateInputs).toHaveLength(1);
-  expect(mockPage.evaluateInputs[0]).toBeInstanceOf(Function);
-  expect(String(mockPage.evaluateInputs[0])).toContain("window.history.back()");
-});
-
-test("keeps cached drafts through soft navigation and resets them on document remount", async () => {
-  const fake = makeProfileNavigationFakePage(
-    "https://account-navigation.example.test"
-  );
-
-  await verifyProfileNavigation(
-    fake.page,
-    "https://account-navigation.example.test"
-  );
-
-  const clearIndex = fake.actions.indexOf(
-    "fill:#account-profile-billing-company-name:"
-  );
-  expect(clearIndex).toBeGreaterThan(-1);
-  const billingSelectionIndex = fake.actions.lastIndexOf(
-    "click:section:billing",
-    clearIndex
-  );
-  const billingVisibleIndex = fake.actions.lastIndexOf(
-    "assert-visible:#account-profile-billing-kind",
-    clearIndex
-  );
-  expect(billingSelectionIndex).toBeGreaterThan(-1);
-  expect(billingVisibleIndex).toBeGreaterThan(billingSelectionIndex);
-  expect(billingVisibleIndex).toBeLessThan(clearIndex);
-
-  const profileAfterClearIndex = fake.actions.findIndex(
-    (action, index) => index > clearIndex && action === "click:section:profile"
-  );
-  const invalidBillingIndex = fake.actions.indexOf("native-invalid:billing");
-  const softAccountNavigationIndex = fake.actions.indexOf("navigate:account");
-  const draftAfterSoftNavigationIndex = fake.actions.findIndex(
-    (action, index) =>
-      index > softAccountNavigationIndex &&
-      action === "assert-value:#account-profile-first-name:Ada draft"
-  );
-  const leaveAcceptIndex = fake.actions.lastIndexOf("dialog:home:accept");
-  const leaveNavigationIndex = fake.actions.findIndex(
-    (action, index) => index > leaveAcceptIndex && action === "navigate:home"
-  );
-  const documentRemountIndex = fake.actions.indexOf("document-remount:account");
-  const originalAfterRemountIndex = fake.actions.findIndex(
-    (action, index) =>
-      index > documentRemountIndex &&
-      action === "assert-value:#account-profile-first-name:Ada"
-  );
-  expect(profileAfterClearIndex).toBeGreaterThan(clearIndex);
-  expect(invalidBillingIndex).toBeGreaterThan(profileAfterClearIndex);
-  expect(softAccountNavigationIndex).toBeGreaterThan(-1);
-  expect(draftAfterSoftNavigationIndex).toBeGreaterThan(
-    softAccountNavigationIndex
-  );
-  expect(draftAfterSoftNavigationIndex).toBeLessThan(documentRemountIndex);
-  expect(leaveAcceptIndex).toBeGreaterThan(-1);
-  expect(leaveNavigationIndex).toBeGreaterThan(leaveAcceptIndex);
-  expect(documentRemountIndex).toBeGreaterThan(leaveNavigationIndex);
-  expect(originalAfterRemountIndex).toBeGreaterThan(documentRemountIndex);
-  expect(
-    fake.actions.filter((action) => action === "navigate:account")
-  ).toEqual(["navigate:account"]);
-  expect(fake.actions.filter((action) => action.startsWith("dialog:"))).toEqual(
-    [
-      "dialog:home:open",
-      "dialog:home:dismiss",
-      "dialog:history-back:open",
-      "dialog:history-back:dismiss",
-      "dialog:home:open",
-      "dialog:home:accept",
-    ]
-  );
-  expect(fake.state.url).toBe(
-    "https://account-navigation.example.test/en-US/account"
-  );
-  expect(fake.state.section).toBe("profile");
-  expect(fake.state.profile.firstName).toBe("Ada");
-  expect(fake.state.profile.phone).toBe(fake.serverPhone);
-  expect(fake.state.billing.companyName).toBe("Original Company");
-});
-
 test("redacts a saved-profile baseline failure with its closed diagnostic", async () => {
   const fake = makeProfileNavigationFakePage(
     "https://account-navigation.example.test",
@@ -540,10 +419,10 @@ test("redacts a saved-profile baseline failure with its closed diagnostic", asyn
   expectProfileNavigationFailure(failure, "account_profile_baseline_failed");
 });
 
-test("redacts a draft-retention failure with its later-phase diagnostic", async () => {
+test("names the section selection stage and failure kind without the private cause", async () => {
   const fake = makeProfileNavigationFakePage(
     "https://account-navigation.example.test",
-    "draft-retention"
+    "profile-handler-wait"
   );
   const failure = await verifyProfileNavigation(
     fake.page,
@@ -555,25 +434,44 @@ test("redacts a draft-retention failure with its later-phase diagnostic", async 
 
   expectProfileNavigationFailure(
     failure,
-    "account_profile_draft_retention_failed"
+    "account_profile_persisted_profile_handler_wait_failed"
   );
+  expect(failure).toMatchObject({
+    message:
+      "Profile navigation verification failed at section selection stage link-handler-wait (timeout)",
+  });
 });
+
+const closedProfileNavigationFailureMessage =
+  /^Profile navigation verification failed (at section selection stage (link-handler-wait|panel-hydration-wait|native-link-click|selected-landmark-wait) )?\((timeout|strict-mode-violation|error)\)$/;
 
 const expectProfileNavigationFailure = (
   failure: unknown,
-  diagnosticCode: string
+  diagnosticCode: WorkspaceE2EProfileNavigationDiagnosticCode
 ) => {
   expect(failure).toBeInstanceOf(WorkspaceE2EError);
   if (!(failure instanceof WorkspaceE2EError)) return;
 
+  expect(failure.diagnosticCode).toBe(diagnosticCode);
+  expect(isWorkspaceE2EDiagnosticCode(failure.diagnosticCode)).toBe(true);
   expect(failure).toMatchObject({
     diagnosticCode,
-    message: "Profile navigation verification failed",
     operation: "verify profile navigation and unsaved changes",
   });
+  expect(failure.message).toMatch(closedProfileNavigationFailureMessage);
   expect(failure.cause).toBeUndefined();
   expect(failure.causes).toBeUndefined();
+  expect(failure.message).not.toContain(privateFailureDetails);
   expect(JSON.stringify(failure)).not.toContain(privateFailureDetails);
+  const annotation = formatWorkspaceE2EFailureAnnotation({
+    caseId: "account-profile-completion",
+    diagnosticCode: failure.diagnosticCode,
+    failureKind: "error",
+    outcome: "failed",
+    stepId: "verifyPages",
+  });
+  expect(annotation).toContain(`diagnostic_code=${diagnosticCode}`);
+  expect(annotation).not.toContain(privateFailureDetails);
 };
 
 test.skipIf(!chromiumAvailable)(

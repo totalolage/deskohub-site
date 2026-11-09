@@ -1,134 +1,25 @@
-# PostHog API service
-
-## Contents
-
-- [Generated API client](#generated-api-client)
-- [Typed feature flags](#typed-feature-flags)
+# `@deskohub/posthog` package
 
 ## Generated API client
 
-`@deskohub/posthog` provides the Effect client generated from PostHog's current
-public OpenAPI schema.
-
-Run generation from the repository root:
+The package's Effect client is generated from PostHog's complete public OpenAPI schema. Regenerate from the repository root and commit the result:
 
 ```sh
 bun turbo run generate --filter=@deskohub/posthog
 ```
 
-The generator downloads `https://eu.posthog.com/api/schema/?format=json` and
-runs Effect's OpenAPI generator against the complete schema. Set
-`POSTHOG_OPENAPI_SCHEMA_URL` only when generation should target another PostHog
-installation. Turbo caching is disabled for this task so each generation uses
-the schema currently published by PostHog.
+The task downloads `https://eu.posthog.com/api/schema/?format=json`; set `POSTHOG_OPENAPI_SCHEMA_URL` only to target another PostHog installation. It's uncached and nothing depends on it, so typecheck and consumers use the checked-in client.
 
-Before generation, nullable feature-flag fields are converted from OpenAPI 3.1's
-`type: [value, null]` notation to the equivalent `oneOf` notation because
-Effect's generator currently drops the null member of those unions. The patch
-covers the pagination links, `UserBasic.hedgehog_config`, and
-`FeatureFlag.last_called_at`. It also widens `FeatureFlag.surveys` and `features`
-because PostHog's live endpoint returns arrays while its published schema
-currently declares objects. The generated client itself remains untouched, and
-each compatibility patch can be removed independently when its upstream issue is
-fixed.
+`scripts/generate.ts` patches the schema, never the generated client. Effect's generator drops the null member of OpenAPI 3.1 `type: [value, null]` unions, so the patch rewrites the pagination links, `UserBasic.hedgehog_config`, and `FeatureFlag.last_called_at` as `oneOf`. It also widens `FeatureFlag.surveys` and `features`, which the live endpoint returns as arrays while the schema declares objects. Remove each patch entry when its upstream issue is fixed.
 
 ## Typed feature flags
 
-PostHog remains the source of truth for feature flag keys, variants, and
-payloads. Each application owns its generated contract because applications can
-use different PostHog projects and different sets of flags. The package exports
-an Effect-based generator, but does not read environment variables or choose an
-output location.
+Each application owns its generated contract, because applications can use different PostHog projects and flags. The package exports the generator (`feature-flags/codegen`), the management definition reader (`feature-flags/management`), and the Node and React adapters (`feature-flags/node`, `feature-flags/react`). The generator doesn't read environment variables or choose an output path; the consuming application validates its environment and passes both. `apps/deskohub-workspace/scripts/sync-posthog-feature-flags.ts` is the reference consumer.
 
-Create a generator script in the consuming application:
+The React adapter doesn't use `@posthog/react`, which imports the whole browser SDK at module load. Its hooks read the client from `PostHogClientProvider`, whose source can publish the client after the hooks mount, and return the default value until then. Workspace's `PostHogProvider` passes the consent-gated SDK module as that source.
 
-```ts
-import { generatePostHogFeatureFlagContract } from "@deskohub/posthog/feature-flags/codegen";
-import { PostHogProjectId } from "@deskohub/posthog/identifiers";
-import { Effect, Schema } from "effect";
-
-const projectId = Schema.decodeUnknownSync(PostHogProjectId)(
-  process.env.POSTHOG_PROJECT_ID
-);
-
-const program = generatePostHogFeatureFlagContract({
-  apiKey: process.env.POSTHOG_API_KEY!,
-  host: new URL(process.env.POSTHOG_API_HOST ?? "https://eu.posthog.com"),
-  outputFile: new URL(
-    "../features/feature-flags/generated/contract.ts",
-    import.meta.url
-  ),
-  projectId,
-});
-
-if (import.meta.main) await Effect.runPromise(program);
-```
-
-The consumer should validate its environment before calling the generator. The
-API key must be a PostHog personal API key restricted to reading feature flags.
-The generated file contains payload shapes, but never payload values. Inactive
-flags are included so code can be prepared before rollout; archived and deleted
-flags are excluded. Commit the generated contract so normal builds do not need
-the management key or network access.
-
-Pass the generated contract to the runtime adapter needed by the application:
-
-```tsx
-"use client";
-
-import { createPostHogReactFeatureFlags } from "@deskohub/posthog/feature-flags/react";
-import { postHogFeatureFlags } from "./generated/contract";
-
-export const { useFeatureFlagEnabled } =
-  createPostHogReactFeatureFlags(postHogFeatureFlags);
-
-export function MeetingRoomEntry() {
-  const enabled = useFeatureFlagEnabled("meeting_room_page", false);
-
-  return enabled ? <a href="/meeting-room">Meeting room</a> : null;
-}
-```
-
-Server code creates an app-configured service from the generated contract. The
-service lazily constructs one official Node SDK client and reuses it for the
-service lifetime. Client and evaluation options use the types exported by
-`posthog-node`:
-
-```ts
-import { makePostHogNodeFeatureFlagService } from "@deskohub/posthog/feature-flags/node";
-import { postHogFeatureFlags } from "./generated/contract";
-
-export const nodeFeatureFlags = makePostHogNodeFeatureFlagService(
-  postHogFeatureFlags,
-  {
-    clientOptions: {
-      host: process.env.POSTHOG_INGEST_HOST!,
-    },
-    defaultEvaluationOptions: {
-      disableGeoip: true,
-    },
-    projectToken: process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
-  }
-);
-
-const enabled = yield* nodeFeatureFlags.isEnabled({
-  key: "meeting_room_page",
-  subject: {
-    distinctId: visitorId,
-    sendFeatureFlagEvents: true,
-  },
-});
-```
-
-Run or yield `nodeFeatureFlags.shutdown` when a long-lived process shuts down.
-This closes the shared client; normal evaluations leave it open.
-
-The subject should use the same distinct ID as the browser SDK. If an
-application must use a shared fallback identity for a global release switch, it
-should set `sendFeatureFlagEvents` to `false` so fallback evaluations do not
-pollute per-user feature-flag analytics.
-
-Unknown or cross-application keys fail TypeScript compilation. Multivariate
-values and payloads are typed from the owning application's PostHog definition.
-The management API is used only during generation; browser and server SDKs
-perform runtime evaluation using the end user's context.
+- Use a PostHog personal API key restricted to reading feature flags. The management API runs only during generation and classification; browser and server SDKs evaluate at runtime.
+- The contract includes inactive flags, so code can ship before rollout, and excludes archived and deleted flags.
+- Unknown or cross-application keys fail TypeScript compilation. Variant and payload types come from the owning application's definitions.
+- `makePostHogNodeFeatureFlagService` creates one SDK client lazily and reuses it. Run `shutdown` when a long-lived process exits.
+- The server subject uses the browser SDK's distinct ID. A shared fallback identity for a global release switch sets `sendFeatureFlagEvents: false` so it doesn't pollute per-user flag analytics.

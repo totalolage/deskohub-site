@@ -1,11 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
-  GoogleCalendarChannelIdSchema,
   type GoogleCalendarEvent,
   GoogleCalendarEventIdSchema,
   GoogleCalendarIdSchema,
   type GoogleCalendarListEventsInput,
-  type GoogleCalendarWatchEventsInput,
 } from "@deskohub/google-calendar";
 import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/service.mock";
 import { Effect, Layer, Schema } from "effect";
@@ -28,9 +26,6 @@ const plainTime = Temporal.PlainTime.from;
 const eventId = Schema.decodeSync(GoogleCalendarEventIdSchema);
 const openingHoursCalendarId = Schema.decodeSync(GoogleCalendarIdSchema)(
   "opening-hours-calendar"
-);
-const openingHoursChannelId = Schema.decodeSync(GoogleCalendarChannelIdSchema)(
-  "channel-id"
 );
 
 const runWithEvents = async (
@@ -70,55 +65,6 @@ const runWithEvents = async (
 };
 
 describe("OpeningHoursCalendarService", () => {
-  test("watches the configured opening-hours calendar", async () => {
-    const watchInputs: GoogleCalendarWatchEventsInput[] = [];
-    const [{ OpeningHoursCalendarConfig }, { OpeningHoursCalendarService }] =
-      await Promise.all([
-        import("./opening-hours-calendar.config"),
-        import("./opening-hours-calendar.service"),
-      ]);
-
-    const channel = await Effect.gen(function* () {
-      const service = yield* OpeningHoursCalendarService;
-      return yield* service.watchChanges({
-        channelId: openingHoursChannelId,
-        webhookUrl: "https://bar.example.test/webhook",
-        webhookToken: "derived-token",
-        ttlSeconds: 259_200,
-      });
-    }).pipe(
-      Effect.provide(
-        OpeningHoursCalendarService.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              GoogleCalendarServiceMock({
-                watchEvents: mock((input) => {
-                  watchInputs.push(input);
-                  return Effect.succeed({ channelId: input.channelId });
-                }),
-              }),
-              Layer.succeed(OpeningHoursCalendarConfig, {
-                calendarId: openingHoursCalendarId,
-              })
-            )
-          )
-        )
-      ),
-      Effect.runPromise
-    );
-
-    expect(watchInputs).toEqual([
-      {
-        calendarId: openingHoursCalendarId,
-        channelId: openingHoursChannelId,
-        webhookUrl: "https://bar.example.test/webhook",
-        webhookToken: "derived-token",
-        ttlSeconds: 259_200,
-      },
-    ]);
-    expect(channel).toEqual({ channelId: openingHoursChannelId });
-  });
-
   test("loads the configured resource and translates marked events", async () => {
     const inputs: GoogleCalendarListEventsInput[] = [];
     const exceptions = await runWithEvents(
@@ -299,33 +245,6 @@ describe("OpeningHoursCalendarService", () => {
     ]);
   });
 
-  test("keeps same-day exceptions stable after their end time", async () => {
-    const exceptions = await runWithEvents(
-      [
-        {
-          id: eventId("same-day-ended"),
-          description: "[bar:hours]",
-          start: { dateTime: "2026-08-09T00:00:00+02:00" },
-          end: { dateTime: "2026-08-09T00:15:00+02:00" },
-        },
-      ],
-      {
-        from: plainDate("2026-08-09"),
-        to: plainDate("2026-08-10"),
-      }
-    );
-
-    expect(exceptions).toHaveLength(1);
-    expect(exceptions[0]).toMatchObject({
-      _tag: "SpecialHours",
-      date: plainDate("2026-08-09"),
-      opensAt: plainTime("00:00"),
-      closesAt: plainTime("00:15"),
-      closesNextDay: false,
-      sourceEventReference: "same-day-ended",
-    });
-  });
-
   test("ignores no-op and malformed events without dropping valid events", async () => {
     const exceptions = await runWithEvents([
       {
@@ -381,6 +300,81 @@ describe("OpeningHoursCalendarService", () => {
         sourceEventReference: "valid",
       },
     ]);
+  });
+
+  test("ignores timed events without a usable timed period", async () => {
+    const exceptions = await runWithEvents([
+      {
+        id: eventId("missing-end"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-04T10:00:00+02:00" },
+      },
+      {
+        id: eventId("missing-start-time"),
+        description: "[bar:hours]",
+        start: { date: "2026-08-04" },
+        end: { dateTime: "2026-08-04T18:00:00+02:00" },
+      },
+      {
+        id: eventId("start-also-all-day"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-05T10:00:00+02:00", date: "2026-08-05" },
+        end: { dateTime: "2026-08-05T18:00:00+02:00" },
+      },
+      {
+        id: eventId("end-also-all-day"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-05T10:00:00+02:00" },
+        end: { dateTime: "2026-08-05T18:00:00+02:00", date: "2026-08-06" },
+      },
+      {
+        id: eventId("invalid-end"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-06T10:00:00+02:00" },
+        end: { dateTime: "not-a-date-time" },
+      },
+      {
+        id: eventId("ends-before-start"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-07T18:00:00+02:00" },
+        end: { dateTime: "2026-08-07T10:00:00+02:00" },
+      },
+      {
+        id: eventId("spans-two-nights"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-08T18:00:00+02:00" },
+        end: { dateTime: "2026-08-10T02:00:00+02:00" },
+      },
+    ]);
+
+    expect(exceptions).toEqual([]);
+  });
+
+  test("orders special hours on the same date by opening time", async () => {
+    const exceptions = await runWithEvents([
+      {
+        id: eventId("evening"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-06T19:00:00+02:00" },
+        end: { dateTime: "2026-08-06T23:30:00+02:00" },
+      },
+      {
+        id: eventId("next-day"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-07T09:00:00+02:00" },
+        end: { dateTime: "2026-08-07T12:00:00+02:00" },
+      },
+      {
+        id: eventId("morning"),
+        description: "[bar:hours]",
+        start: { dateTime: "2026-08-06T09:00:00+02:00" },
+        end: { dateTime: "2026-08-06T12:00:00+02:00" },
+      },
+    ]);
+
+    expect(
+      exceptions.map(({ sourceEventReference }) => sourceEventReference)
+    ).toEqual(["morning", "evening", "next-day"]);
   });
 
   test("lets a closure win over special hours on the same date", async () => {

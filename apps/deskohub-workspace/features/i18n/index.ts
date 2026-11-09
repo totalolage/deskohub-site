@@ -1,19 +1,19 @@
-export { m } from "./paraglide/messages.js";
+export { getWorkspaceAlternates } from "./alternates";
+export type { LocalizedCopy } from "./localized-copy";
+export { getWorkspacePageUrl } from "./page-url";
+// Re-export the message modules directly; Turbopack drops unused messages only
+// when `m` is a namespace re-export, not a re-exported binding.
+export * as m from "./paraglide/messages/_index.js";
 export {
   baseLocale,
-  getLocale,
   isLocale,
   type Locale,
   locales,
-  setLocale,
 } from "./paraglide/runtime.js";
 export {
   defaultLocale,
-  getLocaleFromPathname,
-  getPreferredLocaleFromAcceptLanguage,
-  localeConfig,
-  localeCookieName,
-  resolveLocaleFromPolicy,
-  withLocalePrefix,
+  getLocalizedPagePath,
+  getUnprefixedPagePath,
+  type StaticLocalizedPageRoute,
   withLocalePrefixAndSearch,
 } from "./routing";

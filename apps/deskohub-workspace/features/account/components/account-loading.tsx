@@ -5,28 +5,27 @@ import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-import { getAccountScreenCopy } from "./account-screen-copy";
 import { AccountShell, type AccountShellProps } from "./shell/account-shell";
 
 const disabledAccountSections = [
   "reservations",
   "profile",
+  "assistants",
   "billing",
   "legal",
   "danger",
 ] as const;
+
+// The static shell renders before the referral and passkey flags are known,
+// so the skeleton never shows the sections of unreleased features.
+const hiddenAccountSections = ["referrals", "security"] as const;
 
 const noopSectionChange: AccountShellProps["onSectionChange"] = () => undefined;
 
 function AccountSignOutLoading({ locale }: { readonly locale: Locale }) {
   return (
     <div className="flex flex-col items-end gap-2">
-      <Button
-        id="account-sign-out"
-        type="button"
-        disabled
-        className="max-w-full whitespace-normal bg-red-800 hover:bg-red-900"
-      >
+      <Button id="account-sign-out" type="button" disabled tone="danger" wrap>
         <LogOut aria-hidden className="size-4" />
         {m.accountSignOut({}, { locale })}
       </Button>
@@ -39,10 +38,10 @@ export function AccountLoading({ locale }: { readonly locale: Locale }) {
     <AccountShell
       activeSection="reservations"
       disabledSections={disabledAccountSections}
-      labels={getAccountScreenCopy(locale).shell}
+      hiddenSections={hiddenAccountSections}
+      locale={locale}
       onSectionChange={noopSectionChange}
       signOut={<AccountSignOutLoading locale={locale} />}
-      title={m.accountTitle({}, { locale })}
     >
       <AccountContentLoading locale={locale} />
     </AccountShell>

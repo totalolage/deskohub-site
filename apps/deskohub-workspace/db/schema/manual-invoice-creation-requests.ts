@@ -32,6 +32,3 @@ export const manualInvoiceCreationRequests = pgTable(
     ),
   ]
 );
-
-export type ManualInvoiceCreationRequestRow =
-  typeof manualInvoiceCreationRequests.$inferSelect;

@@ -1,189 +1,142 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer } from "effect";
-import type { ICheckoutStatusService } from "./checkout-status.service";
+import type { PaymentReturnTarget } from "@/features/checkout/payment-return-target";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { handleCheckoutPaymentReturn } from "./checkout-payment-return-route.server";
 
-mock.module("server-only", () => ({}));
-
-let requestCookie: string | undefined;
-mock.module("next/headers", () => ({
-  cookies: async () => ({
-    get: () => (requestCookie ? { value: requestCookie } : undefined),
-  }),
-  headers: async () => new Headers(),
-}));
-
-const { CheckoutStatusService } = await import("./checkout-status.service");
-const { makeCheckoutPaymentReturnGet } = await import(
-  "./checkout-payment-return-route.server"
-);
-const { ReservationAuthorizationService } = await import(
-  "@/features/reservation/backend/reservation-authorization.service"
-);
-
-const makeStatusServiceLayer = (
-  refreshStatus: ICheckoutStatusService["refreshStatus"]
-) =>
-  Layer.succeed(CheckoutStatusService, {
-    getStatus: () => Effect.die("unused"),
-    refreshStatus,
-  });
-
-const makeAuthorizationServiceLayer = (isAuthorized: ReturnType<typeof mock>) =>
-  Layer.succeed(ReservationAuthorizationService, {
-    isAuthorized,
-  });
-
-const invoke = (
-  refreshStatus: ICheckoutStatusService["refreshStatus"],
-  isAuthorized = mock(() => Effect.succeed(true))
+const invoke = async (
+  search = "",
+  {
+    params = { locale: "en-US", orderId: "order-id" },
+    stored = undefined,
+    lookupFails = false,
+  }: {
+    readonly params?: { readonly locale: string; readonly orderId: string };
+    readonly stored?: PaymentReturnTarget;
+    readonly lookupFails?: boolean;
+  } = {}
 ) => {
-  const GET = makeCheckoutPaymentReturnGet(
-    makeStatusServiceLayer(refreshStatus),
-    makeAuthorizationServiceLayer(isAuthorized)
-  );
-
-  return invokeGet(GET);
-};
-
-const invokeGet = (
-  GET: ReturnType<typeof makeCheckoutPaymentReturnGet>,
-  params = { locale: "en-US", orderId: "order-id" }
-) =>
-  GET(
+  const lookups: string[] = [];
+  const reservations = Layer.mock(WorkspaceReservationRepository, {
+    findPaymentReturnTarget: (orderId) =>
+      Effect.suspend(() => {
+        lookups.push(orderId);
+        return lookupFails
+          ? Effect.fail(
+              new EffectDrizzleQueryError({
+                query: "select",
+                params: [],
+                cause: new Error("synthetic outage"),
+              })
+            )
+          : Effect.succeed(stored);
+      }),
+  });
+  const response = await handleCheckoutPaymentReturn(
     new Request(
-      "https://deskohub.test/en-US/checkout/pay/return/order-id?outcome=success"
+      `https://deskohub.test/en-US/checkout/pay/return/order-id${search}`
     ),
     { params: Promise.resolve(params) }
-  );
+  ).pipe(Effect.provide(reservations), Effect.runPromise);
+  return { response, lookups };
+};
+
+const expectReturnHeaders = (response: Response) => {
+  expect(response.status).toBe(307);
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+  expect(response.headers.has("set-cookie")).toBe(false);
+};
 
 describe("checkout pay return route", () => {
-  test("authorizes from the reservation access cookie before refreshing", async () => {
-    requestCookie = "reservation-access-cookie";
-    const isAuthorized = mock(() => Effect.succeed(true));
-    const refreshStatus = mock(() =>
-      Effect.succeed({
-        orderId: "order-id",
-        returnOutcome: "success" as const,
-        status: "fulfilled" as const,
-      })
+  test("hands a cookie-less provider return to the protected status page", async () => {
+    const { response, lookups } = await invoke("?paymentid=synthetic-payment");
+
+    expectReturnHeaders(response);
+    expect(response.headers.get("location")).toBe(
+      "https://deskohub.test/en-US/reservation/status/order-id"
     );
-
-    await invoke(refreshStatus, isAuthorized);
-
-    expect(isAuthorized).toHaveBeenCalledWith({
-      accessCookie: requestCookie,
-      locale: "en-US",
-      orderId: "order-id",
-    });
-    requestCookie = undefined;
+    expect(await response.text()).toBe("");
+    expect(lookups).toEqual(["order-id"]);
   });
 
-  test("refreshes the provider state and redirects to reservation status", async () => {
-    const refreshStatus = mock(() =>
-      Effect.succeed({
-        orderId: "order-id",
-        returnOutcome: "success" as const,
-        status: "fulfilled" as const,
-      })
-    );
+  test("preserves explicit return outcomes for status reconciliation", async () => {
+    for (const outcome of ["success", "cancelled"]) {
+      const { response } = await invoke(`?outcome=${outcome}`);
 
-    const response = await invoke(refreshStatus);
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "/en-US/reservation/status/order-id?outcome=success"
-    );
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
-    expect(refreshStatus).toHaveBeenCalledWith({
-      orderId: "order-id",
-      returnOutcome: "success",
-    });
-  });
-
-  test("briefly retries while provider settlement is not yet visible", async () => {
-    const refreshStatus = mock()
-      .mockReturnValueOnce(
-        Effect.succeed({
-          orderId: "order-id",
-          returnOutcome: "success" as const,
-          status: "created" as const,
-        })
-      )
-      .mockReturnValueOnce(
-        Effect.succeed({
-          orderId: "order-id",
-          returnOutcome: "success" as const,
-          status: "pending" as const,
-        })
-      )
-      .mockReturnValueOnce(
-        Effect.succeed({
-          orderId: "order-id",
-          returnOutcome: "success" as const,
-          status: "fulfilled" as const,
-        })
+      expectReturnHeaders(response);
+      expect(response.headers.get("location")).toBe(
+        `https://deskohub.test/en-US/reservation/status/order-id?outcome=${outcome}`
       );
-
-    const response = await invoke(refreshStatus);
-
-    expect(response.status).toBe(307);
-    expect(refreshStatus).toHaveBeenCalledTimes(3);
-  }, 30_000);
-
-  test("preserves the fail-open redirect when refresh fails", async () => {
-    const response = await invoke(() => Effect.fail(new Error("unavailable")));
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "/en-US/reservation/status/order-id?outcome=success"
-    );
-  }, 30_000);
-
-  test("does not hide refresh defects behind the fail-open redirect", async () => {
-    const defect = new Error("unexpected defect");
-
-    await expect(invoke(() => Effect.die(defect))).rejects.toBe(defect);
+    }
   });
 
-  test("does not refresh or redirect when reservation access is unauthorized", async () => {
-    const refreshStatus = mock(() =>
-      Effect.fail(new Error("must not refresh"))
+  test("discards unknown outcomes and provider query parameters", async () => {
+    const { response } = await invoke(
+      "?outcome=untrusted&paymentid=synthetic-payment&redirectUrl=https://elsewhere.test&accessToken=untrusted"
     );
-    const isAuthorized = mock(() => Effect.succeed(false));
 
-    const response = await invoke(refreshStatus, isAuthorized);
-
-    expect(response.status).toBe(404);
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
-    expect(refreshStatus).not.toHaveBeenCalled();
+    expect(response.headers.get("location")).toBe(
+      "https://deskohub.test/en-US/reservation/status/order-id"
+    );
   });
 
-  test("rejects invalid params before acquiring the status service", async () => {
-    let acquisitions = 0;
-    const GET = makeCheckoutPaymentReturnGet(
-      Layer.sync(CheckoutStatusService, () => {
-        acquisitions += 1;
-        return {
-          getStatus: () => Effect.die("unused"),
-          refreshStatus: () => Effect.die("unused"),
-        };
-      }),
-      makeAuthorizationServiceLayer(mock(() => Effect.die("unused")))
+  test.each([
+    ["native-app", () => "deskohub://reservations/order-id?after=payment"],
+    [
+      "web-app",
+      () =>
+        expect.stringMatching(
+          /^https?:\/\/[^/?]+\/app\/reservations\/order-id\?after=payment$/
+        ),
+    ],
+  ] as const)(
+    "returns a %s checkout to its app screen after success and cancellation",
+    async (stored, location) => {
+      for (const search of ["", "?outcome=cancelled"]) {
+        const { response } = await invoke(search, { stored });
+
+        expectReturnHeaders(response);
+        expect(response.headers.get("location")).toEqual(location());
+      }
+    }
+  );
+
+  test("never lets the query choose an app destination", async () => {
+    const { response } = await invoke(
+      "?returnTarget=native-app&target=web-app"
     );
 
-    const invalidParams = [
+    expect(response.headers.get("location")).toBe(
+      "https://deskohub.test/en-US/reservation/status/order-id"
+    );
+  });
+
+  test("returns to the site status page when the target lookup fails", async () => {
+    const { response } = await invoke("?outcome=cancelled", {
+      lookupFails: true,
+    });
+
+    expectReturnHeaders(response);
+    expect(response.headers.get("location")).toBe(
+      "https://deskohub.test/en-US/reservation/status/order-id?outcome=cancelled"
+    );
+  });
+
+  test("rejects invalid route params", async () => {
+    for (const params of [
       { locale: "en-US", orderId: "" },
       { locale: "sk-SK", orderId: "order-id" },
-    ];
-
-    for (const params of invalidParams) {
-      const response = await invokeGet(GET, params);
+    ]) {
+      const { response, lookups } = await invoke("", {
+        params,
+        stored: "native-app",
+      });
       expect(response.status).toBe(404);
+      expect(lookups).toEqual([]);
     }
-    expect(acquisitions).toBe(0);
   });
 });

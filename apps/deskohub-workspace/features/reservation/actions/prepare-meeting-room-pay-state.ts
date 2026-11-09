@@ -18,6 +18,7 @@ import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";
 import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
+import { getMeetingRoomOccupiedInterval } from "@/features/reservation/meeting-room-early-setup";
 import {
   getMeetingRoomAdvertisedPriceReservation,
   type MeetingRoomReservationDetails,
@@ -40,11 +41,17 @@ export type PreparedMeetingRoomPayState = PayStateSubmittedCodeMetadata & {
   readonly reservation: NormalizedMeetingRoomReservationOrder;
   readonly quote: MeetingRoomReservationQuote;
   readonly requestedDiscountCode?: CanonicalPromotionCode;
+  readonly referralCode?: CanonicalPromotionCode;
 };
 
 export const prepareMeetingRoomAdvertisement = Effect.fn(
   "prepareMeetingRoomPayState.prepareAdvertisement"
-)(function* (input: PrepareMeetingRoomPayStateInput) {
+)(function* (
+  input: PrepareMeetingRoomPayStateInput & {
+    /** Moment the reservation is submitted and its price is locked. */
+    readonly bookedAt: Temporal.Instant;
+  }
+) {
   const state = yield* openSubmittedAdvertisedPriceState(
     input.advertisedPriceToken
   );
@@ -80,6 +87,7 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
     reservation: getMeetingRoomAdvertisedPriceReservation(reservation),
     locale: input.locale,
     advertisedQuote: state.quote,
+    bookedAt: input.bookedAt,
     ...getSubmittedCodeMetadata(state),
   });
   const changed = state.quote.fingerprint !== affirmed.quote.fingerprint;
@@ -90,7 +98,7 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
     advertisedQuote: state.quote,
     discountQuote: affirmed.discountQuote,
     ...getSubmittedCodeMetadata(affirmed),
-    requestedDiscountCode: state.requestedDiscountCode ?? state.submittedCode,
+    requestedDiscountCode: state.requestedDiscountCode,
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
         getMeetingRoomCheckoutSummary(state.quote),
@@ -104,13 +112,12 @@ export const ensureMeetingRoomPayStateAvailable = (input: {
   readonly availability: typeof WorkspaceAvailabilityService.Service;
   readonly reservation: Pick<
     MeetingRoomReservationDetails,
-    "kind" | "startsAt" | "endsAt"
+    "kind" | "startsAt" | "endsAt" | "earlySetup"
   >;
 }) =>
   input.availability.ensureAvailable({
     kind: input.reservation.kind,
-    startsAt: input.reservation.startsAt,
-    endsAt: input.reservation.endsAt,
+    ...getMeetingRoomOccupiedInterval(input.reservation),
   });
 
 export const getPreparedMeetingRoomCheckoutDetails = (input: {

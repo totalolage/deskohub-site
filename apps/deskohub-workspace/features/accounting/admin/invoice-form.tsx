@@ -1,43 +1,173 @@
 "use client";
 
-import { BigDecimal, Option } from "effect";
-import { CircleAlert, Minus, Plus, Search } from "lucide-react";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import { BigDecimal, Option, Schema } from "effect";
+import { Minus, Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useId, useRef, useState } from "react";
+import type * as React from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import {
+  type Control,
+  useFieldArray,
+  useForm,
+  useWatch,
+} from "react-hook-form";
+import type { InvoiceAdministrationCustomer } from "@/features/accounting/admin/invoice-administration.service";
 import { AdministrationAlert } from "@/features/administration/components";
-import { DateInput } from "@/shared/components/date-time/date-input";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
+import { getLocalizedPagePath } from "@/features/i18n/routing";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
+import { ChoiceCard } from "@/shared/components/ui/choice-card";
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/components/ui/dialog";
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { SegmentedControl } from "@/shared/components/ui/segmented-control";
+import { formatCount } from "@/shared/utils/number";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import {
   createAdministrationInvoice,
   previewAdministrationInvoice,
   searchAdministrationInvoiceCustomers,
 } from "./actions";
-import type { InvoiceAdministrationCustomer } from "./invoice-administration.service";
-
-type Line = {
-  readonly id: string;
-  readonly description: string;
-  readonly price: string;
-};
+import { getInvoiceCustomerName } from "./invoice-display";
+import { InvoiceReviewDialog } from "./invoice-review-dialog";
 
 const selectClassName =
   "flex min-h-10 w-full rounded-lg border border-navy-blue/20 bg-white px-3 py-2 text-sm outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/20";
 
-const field = (form: FormData, name: string) =>
-  form.get(name)?.toString().trim() ?? "";
+const isCalendarDate = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return (
+    !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value)
+  );
+};
+
+export const createInvoiceFormSchema = (locale: Locale) => {
+  const requiredMessage = m.accountingInvoiceFormRequired({}, { locale });
+  const calendarDateMessage = m.accountingInvoiceFormCalendarDateInvalid(
+    {},
+    { locale }
+  );
+  const maxLength = (maximumLength: number) =>
+    Schema.isMaxLength(maximumLength, {
+      message: m.accountingInvoiceFormMaxLength({ maximumLength }, { locale }),
+    });
+  const requiredText = (maximumLength: number) =>
+    Schema.Trim.check(
+      Schema.isNonEmpty({ message: requiredMessage }),
+      maxLength(maximumLength)
+    );
+  const optionalText = (maximumLength: number) =>
+    Schema.Trim.check(maxLength(maximumLength));
+  const email = Schema.Trim.check(
+    Schema.isNonEmpty({ message: requiredMessage }),
+    maxLength(255),
+    Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, {
+      message: m.accountingInvoiceFormEmailInvalid({}, { locale }),
+    })
+  );
+  const address = {
+    line1: requiredText(180),
+    line2: optionalText(180),
+    city: requiredText(255),
+    postalCode: requiredText(20),
+    country: Schema.Trim.check(
+      Schema.isPattern(/^[A-Za-z]{2}$/, { message: requiredMessage })
+    ),
+  };
+  const values = Schema.Struct({
+    customer: Schema.Union([
+      Schema.Struct({
+        customerType: Schema.Literal("person"),
+        email,
+        firstName: requiredText(100),
+        lastName: requiredText(100),
+        // Business-only values: a type switch retains them in form state, but
+        // a person payload never sends them, so they stay unconstrained here.
+        companyName: Schema.String,
+        companyId: Schema.String,
+        vatId: Schema.String,
+        phone: optionalText(20),
+        ...address,
+      }),
+      Schema.Struct({
+        customerType: Schema.Literal("business"),
+        email,
+        firstName: optionalText(100),
+        lastName: optionalText(100),
+        companyName: requiredText(180),
+        companyId: requiredText(255),
+        vatId: optionalText(255),
+        phone: optionalText(20),
+        ...address,
+      }),
+    ]),
+    locale: Schema.Literals(["cs-CZ", "en-US"]),
+    serviceDate: Schema.Trim.check(
+      Schema.isNonEmpty({ message: requiredMessage }),
+      Schema.makeFilter(isCalendarDate, { message: calendarDateMessage })
+    ),
+    paid: Schema.Boolean,
+    paidOn: Schema.Trim,
+    dueDate: Schema.Trim,
+    currency: Schema.String.check(
+      Schema.isPattern(/^[A-Z]{3}$/, { message: requiredMessage })
+    ),
+    variableSymbol: Schema.String.check(
+      Schema.makeFilter<string>(
+        (value) => value.trim() === "" || /^\d{1,10}$/.test(value.trim()),
+        {
+          message: m.accountingInvoiceFormVariableSymbolInvalid({}, { locale }),
+        }
+      )
+    ),
+    lines: Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        description: requiredText(1000),
+        price: Schema.Trim.check(
+          Schema.isNonEmpty({ message: requiredMessage }),
+          Schema.isPattern(/^[+-]?\d+(?:\.\d+)?$/, {
+            message: m.accountingInvoiceFormPriceInvalid({}, { locale }),
+          })
+        ),
+      })
+    ).check(
+      Schema.isMinLength(1, {
+        message: m.accountingInvoiceFormLinesRequired({}, { locale }),
+      })
+    ),
+  });
+  return values.check(
+    // Only the payment date chosen by the "Already paid" toggle is visible,
+    // so only that field carries a validation rule.
+    Schema.makeFilter<typeof values.Type>((value) => {
+      const paymentDate = (value.paid ? value.paidOn : value.dueDate).trim();
+      if (paymentDate !== "" && isCalendarDate(paymentDate)) return true;
+      return {
+        path: [value.paid ? "paidOn" : "dueDate"],
+        issue: paymentDate === "" ? requiredMessage : calendarDateMessage,
+      };
+    })
+  );
+};
+
+type InvoiceFormSchema = ReturnType<typeof createInvoiceFormSchema>;
+
+export type InvoiceFormInput = InvoiceFormSchema["Encoded"];
+
+export type InvoiceFormOutput = InvoiceFormSchema["Type"];
 
 export function InvoiceCreationForm({
   currencies,
@@ -46,84 +176,79 @@ export function InvoiceCreationForm({
   defaultServiceDate,
   suggestedVariableSymbol,
 }: {
-  readonly currencies: readonly {
-    readonly code: string;
-    readonly exponent: number;
-    readonly name: string;
-  }[];
+  readonly currencies: readonly InvoiceCurrencyOption[];
   readonly defaultCurrency: string;
   readonly defaultDueDate: string;
   readonly defaultServiceDate: string;
   readonly suggestedVariableSymbol: string;
 }) {
   const router = useRouter();
-  const formRef = useRef<HTMLFormElement>(null);
-  const invoiceIdRef = useRef<string | null>(null);
-  const searchId = useId();
+  const locale = useRouteLocale();
+  // A currency outside the offered list accepts whole units only.
+  const getCurrencyExponent = (code: string) =>
+    currencies.find((option) => option.code === code)?.exponent ?? 0;
+  const draftRef = useRef<{
+    readonly fingerprint: string;
+    readonly invoiceId: string;
+  } | null>(null);
   const initialLineId = useId();
-  const paidId = useId();
   const [customer, setCustomer] =
     useState<InvoiceAdministrationCustomer | null>(null);
   const [customerMode, setCustomerMode] = useState<"existing" | "new">(
     "existing"
   );
-  const [customerType, setCustomerType] = useState<"person" | "business">(
-    "person"
-  );
-  const [currency, setCurrency] = useState(defaultCurrency);
-  const [paid, setPaid] = useState(false);
-  const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<
-    readonly InvoiceAdministrationCustomer[]
-  >([]);
-  const [lines, setLines] = useState<readonly Line[]>(() => [
-    { id: initialLineId, description: "", price: "" },
-  ]);
+  const customerSearch = useInvoiceCustomerSearch(locale);
   const [review, setReview] = useState<ReturnType<
     typeof readInvoiceForm
   > | null>(null);
-  const [searchError, setSearchError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
-  const { execute: search, isExecuting: isSearching } = useWorkspaceAction(
-    searchAdministrationInvoiceCustomers,
-    {
-      actionName: "searchAdministrationInvoiceCustomers",
-      onSuccess: ({ data }) => {
-        if (!data) return;
-        setSearchError(null);
-        setSearchResults(data);
-        setHasSearched(true);
-      },
-      onError: ({ error: actionError }) =>
-        setSearchError(actionError.serverError ?? "Customer search failed."),
-      onTransportError: () => setSearchError("Customer search failed."),
-    }
-  );
+  const form = useForm<InvoiceFormInput, unknown, InvoiceFormOutput>({
+    defaultValues: {
+      customer: getInvoiceCustomerFormDefaults(null),
+      locale: "cs-CZ",
+      serviceDate: defaultServiceDate,
+      paid: false,
+      paidOn: defaultServiceDate,
+      dueDate: defaultDueDate,
+      currency: defaultCurrency,
+      variableSymbol: suggestedVariableSymbol,
+      lines: [{ id: initialLineId, description: "", price: "" }],
+    },
+    mode: "onBlur",
+    reValidateMode: "onChange",
+    resolver: effectSchemaResolver(createInvoiceFormSchema(locale)),
+  });
+  const currency =
+    useWatch({ control: form.control, name: "currency" }) ?? defaultCurrency;
   const { execute: create, isExecuting: isCreating } = useWorkspaceAction(
     createAdministrationInvoice,
     {
-      actionName: "createAdministrationInvoice",
       onSuccess: ({ data }) => {
         if (data) {
-          invoiceIdRef.current = null;
-          router.push(`/admin/invoices/${data.invoiceId}`);
+          draftRef.current = null;
+          router.push(
+            getLocalizedPagePath(
+              locale,
+              "/[locale]/admin/invoices/[invoiceId]",
+              { invoiceId: data.invoiceId }
+            )
+          );
         }
       },
       onError: ({ error: actionError }) =>
         setCreateError(
-          actionError.serverError ?? "The invoice could not be created."
+          actionError.serverError ??
+            m.accountingInvoiceFormCreateError({}, { locale })
         ),
       onTransportError: () =>
-        setCreateError("The invoice could not be created."),
+        setCreateError(m.accountingInvoiceFormCreateError({}, { locale })),
     }
   );
   const { execute: preview, isExecuting: isPreviewing } = useWorkspaceAction(
     previewAdministrationInvoice,
     {
-      actionName: "previewAdministrationInvoice",
       onSuccess: ({ data }) => {
         if (!data) return;
         setPreviewError(null);
@@ -132,33 +257,50 @@ export function InvoiceCreationForm({
       onError: ({ error: actionError }) =>
         setPreviewError(
           actionError.serverError ??
-            "The invoice preview could not be generated."
+            m.accountingInvoiceFormPreviewError({}, { locale })
         ),
       onTransportError: () =>
-        setPreviewError("The invoice preview could not be generated."),
+        setPreviewError(m.accountingInvoiceFormPreviewError({}, { locale })),
     }
   );
 
-  const openReview = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const applyCustomer = (next: InvoiceAdministrationCustomer | null) => {
+    setCustomer(next);
+    form.reset({
+      ...form.getValues(),
+      customer: getInvoiceCustomerFormDefaults(next),
+    });
+  };
+
+  const openReview = (values: InvoiceFormOutput) => {
     setCreateError(null);
-    const form = new FormData(event.currentTarget);
-    invoiceIdRef.current = getInvoiceDraftId(invoiceIdRef.current);
-    const nextReview = readInvoiceForm({
+    // The draft UUID is idempotent for an equivalent normalized payload
+    // (trimming and hidden-field normalization included) and rotates when the
+    // normalized submitted payload changes: the server rejects a reused id
+    // with different input.
+    const payload = readInvoiceFormPayload({
       customer,
       customerMode,
-      customerType,
-      form,
-      invoiceId: invoiceIdRef.current,
-      lines,
+      suggestedVariableSymbol,
+      values,
     });
+    const fingerprint = JSON.stringify(payload);
+    const bound = draftRef.current;
+    const invoiceId =
+      bound && bound.fingerprint === fingerprint
+        ? bound.invoiceId
+        : getInvoiceDraftId(null);
+    draftRef.current = { fingerprint, invoiceId };
+    const nextReview = { invoiceId, ...payload };
     setPreviewError(null);
     setPreviewUrl(null);
     setReview(nextReview);
-    const exponent =
-      currencies.find(({ code }) => code === nextReview.currency)?.exponent ??
-      0;
-    if (getInvoiceReviewTotal(nextReview.lines, exponent) !== null) {
+    if (
+      getInvoiceReviewTotal(
+        nextReview.lines,
+        getCurrencyExponent(nextReview.currency)
+      ) !== null
+    ) {
       preview({
         ...nextReview,
         variableSymbol: nextReview.variableSymbol ?? suggestedVariableSymbol,
@@ -166,586 +308,1008 @@ export function InvoiceCreationForm({
     }
   };
 
-  const runSearch = () => {
-    const normalizedQuery = query.trim();
-    if (isSearching || normalizedQuery.length < 2) return;
-    setSearchError(null);
-    setSearchResults([]);
-    setHasSearched(false);
-    search({ query: normalizedQuery });
+  const changeReviewOpen = (open: boolean) => {
+    if (!open && !isCreating) {
+      setCreateError(null);
+      setPreviewError(null);
+      setPreviewUrl(null);
+      setReview(null);
+    }
   };
 
-  const currencyExponent =
-    currencies.find(({ code }) => code === currency)?.exponent ?? 0;
-  const reviewCurrencyExponent = review
-    ? (currencies.find(({ code }) => code === review.currency)?.exponent ?? 0)
-    : 0;
+  const createReviewedInvoice = () => {
+    if (review) {
+      setCreateError(null);
+      create(review);
+    }
+  };
+
+  const currencyExponent = getCurrencyExponent(currency);
   const reviewTotal = review
-    ? getInvoiceReviewTotal(review.lines, reviewCurrencyExponent)
+    ? getInvoiceReviewTotal(review.lines, getCurrencyExponent(review.currency))
     : null;
 
   return (
     <>
-      <form className="space-y-6" onSubmit={openReview} ref={formRef}>
-        <section className="rounded-2xl border border-navy-blue/10 bg-white p-5 sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-xl">Customer</h2>
-              <p className="mt-1 text-sm text-navy-blue/65">
-                Select a Dotypos customer or enter a new one. Confirmed details
-                are saved to Dotypos.
-              </p>
-            </div>
-            <fieldset className="flex rounded-lg bg-navy-blue/5 p-1">
-              <legend className="sr-only">Customer source</legend>
-              {(["existing", "new"] as const).map((mode) => (
-                <Button
-                  aria-pressed={customerMode === mode}
-                  className="rounded-sm"
-                  key={mode}
-                  onClick={() => {
-                    setCustomerMode(mode);
-                    if (mode === "new") setCustomer(null);
-                  }}
-                  size="sm"
-                  type="button"
-                  variant={customerMode === mode ? "primary" : "ghost"}
-                >
-                  {mode === "existing" ? "Existing" : "New"}
-                </Button>
-              ))}
-            </fieldset>
-          </div>
+      <Form {...form}>
+        <form
+          className="space-y-6"
+          noValidate
+          onSubmit={(event) => {
+            // Bound at event time so the draft ref is only read outside
+            // render.
+            form.handleSubmit(openReview)(event);
+          }}
+        >
+          <InvoiceCustomerSection
+            control={form.control}
+            customer={customer}
+            customerMode={customerMode}
+            locale={locale}
+            onCustomerChange={applyCustomer}
+            onCustomerModeChange={(mode) => {
+              setCustomerMode(mode);
+              if (mode === "new") applyCustomer(null);
+            }}
+            search={customerSearch}
+          />
+          <InvoiceDetailsSection
+            control={form.control}
+            currencies={currencies}
+            locale={locale}
+            suggestedVariableSymbol={suggestedVariableSymbol}
+          />
+          <InvoiceLinesSection
+            control={form.control}
+            currencyExponent={currencyExponent}
+            locale={locale}
+          />
 
-          {customerMode === "existing" && !customer && (
-            <div className="mt-5 space-y-3">
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                <div className="grid gap-1.5">
-                  <Label htmlFor={searchId}>Name or email</Label>
-                  <Input
-                    autoComplete="off"
-                    id={searchId}
-                    minLength={2}
-                    onChange={(event) => {
-                      setQuery(event.target.value);
-                      setSearchError(null);
-                      setSearchResults([]);
-                      setHasSearched(false);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter") return;
-                      event.preventDefault();
-                      runSearch();
-                    }}
-                    placeholder="Search Dotypos customers"
-                    type="search"
-                    value={query}
-                  />
-                </div>
-                <Button
-                  disabled={isSearching || query.trim().length < 2}
-                  onClick={runSearch}
-                  type="button"
-                >
-                  <Search aria-hidden className="size-4" />
-                  {isSearching ? "Searching…" : "Search"}
-                </Button>
-              </div>
-              <div aria-live="polite">
-                {searchError && (
-                  <AdministrationAlert role="alert" status="error">
-                    {searchError}
-                  </AdministrationAlert>
-                )}
-                {hasSearched && searchResults.length === 0 && (
-                  <p className="rounded-xl border border-navy-blue/10 px-4 py-6 text-center text-sm text-navy-blue/65">
-                    No customer matched.
-                  </p>
-                )}
-                {searchResults.length > 0 && (
-                  <ul className="divide-y divide-navy-blue/10 rounded-xl border border-navy-blue/10">
-                    {searchResults.map((result) => (
-                      <li
-                        className="flex items-center justify-between gap-4 p-4"
-                        key={result.id}
-                      >
-                        <div>
-                          <p className="font-semibold">{result.displayName}</p>
-                          <p className="text-sm text-navy-blue/65">
-                            {result.email || "No email"}
-                          </p>
-                        </div>
-                        <Button
-                          onClick={() => {
-                            setCustomer(result);
-                            setCustomerType(result.details.kind);
-                            setSearchResults([]);
-                            setHasSearched(false);
-                          }}
-                          size="sm"
-                          type="button"
-                          variant="secondary"
-                        >
-                          Select
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          )}
-
-          {(customerMode === "new" || customer) && (
-            <div
-              className="mt-5 space-y-5"
-              key={customer?.id ?? "new-customer"}
-            >
-              {customer && (
-                <div className="flex items-center justify-between gap-3 rounded-xl bg-aquamarine-green/10 px-4 py-3">
-                  <span className="font-semibold">{customer.displayName}</span>
-                  <Button
-                    onClick={() => setCustomer(null)}
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    Change
-                  </Button>
-                </div>
-              )}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="Customer type" name="customerType">
-                  <select
-                    className={selectClassName}
-                    defaultValue={customerType}
-                    id="customerType"
-                    name="customerType"
-                    onChange={(event) =>
-                      setCustomerType(
-                        event.target.value as "person" | "business"
-                      )
-                    }
-                  >
-                    <option value="person">Individual</option>
-                    <option value="business">Business</option>
-                  </select>
-                </FormField>
-                <FormField label="Invoice email" name="email">
-                  <Input
-                    defaultValue={customer?.details.email}
-                    id="email"
-                    name="email"
-                    required
-                    type="email"
-                  />
-                </FormField>
-                <FormField
-                  label={
-                    customerType === "business"
-                      ? "Contact first name (optional)"
-                      : "First name"
-                  }
-                  name="firstName"
-                >
-                  <Input
-                    defaultValue={customer?.details.firstName}
-                    id="firstName"
-                    name="firstName"
-                    required={customerType === "person"}
-                  />
-                </FormField>
-                <FormField
-                  label={
-                    customerType === "business"
-                      ? "Contact last name (optional)"
-                      : "Last name"
-                  }
-                  name="lastName"
-                >
-                  <Input
-                    defaultValue={customer?.details.lastName}
-                    id="lastName"
-                    name="lastName"
-                    required={customerType === "person"}
-                  />
-                </FormField>
-                {customerType === "business" && (
-                  <>
-                    <FormField label="Company name" name="companyName">
-                      <Input
-                        defaultValue={
-                          customer?.details.kind === "business"
-                            ? customer.details.companyName
-                            : ""
-                        }
-                        id="companyName"
-                        name="companyName"
-                        required
-                      />
-                    </FormField>
-                    <FormField label="Company ID" name="companyId">
-                      <Input
-                        defaultValue={
-                          customer?.details.kind === "business"
-                            ? customer.details.companyId
-                            : ""
-                        }
-                        id="companyId"
-                        name="companyId"
-                        required
-                      />
-                    </FormField>
-                    <FormField label="VAT ID (optional)" name="vatId">
-                      <Input
-                        defaultValue={
-                          customer?.details.kind === "business"
-                            ? customer.details.vatId
-                            : ""
-                        }
-                        id="vatId"
-                        name="vatId"
-                      />
-                    </FormField>
-                  </>
-                )}
-                <FormField label="Phone (optional)" name="phone">
-                  <Input
-                    defaultValue={customer?.details.phone}
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                  />
-                </FormField>
-                <FormField label="Address" name="line1">
-                  <Input
-                    defaultValue={customer?.details.address.line1}
-                    id="line1"
-                    name="line1"
-                    required
-                  />
-                </FormField>
-                <FormField label="Address line 2 (optional)" name="line2">
-                  <Input
-                    defaultValue={customer?.details.address.line2}
-                    id="line2"
-                    name="line2"
-                  />
-                </FormField>
-                <FormField label="City" name="city">
-                  <Input
-                    defaultValue={customer?.details.address.city}
-                    id="city"
-                    name="city"
-                    required
-                  />
-                </FormField>
-                <FormField label="Postal code" name="postalCode">
-                  <Input
-                    defaultValue={customer?.details.address.postalCode}
-                    id="postalCode"
-                    name="postalCode"
-                    required
-                  />
-                </FormField>
-                <FormField label="Country code" name="country">
-                  <Input
-                    defaultValue={customer?.details.address.country || "CZ"}
-                    id="country"
-                    maxLength={2}
-                    minLength={2}
-                    name="country"
-                    required
-                  />
-                </FormField>
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section className="rounded-2xl border border-navy-blue/10 bg-white p-5 sm:p-6">
-          <h2 className="text-xl">Invoice</h2>
-          <label
-            className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl border border-navy-blue/10 bg-navy-blue/2.5 p-4"
-            htmlFor={paidId}
-          >
-            <Checkbox
-              checked={paid}
-              id={paidId}
-              name="paid"
-              onCheckedChange={(checked) => setPaid(Boolean(checked))}
-            />
-            <span className="text-sm font-semibold">Already paid</span>
-          </label>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <FormField label="Service date" name="serviceDate">
-              <DateInput
-                ariaLabel="Service date"
-                defaultValue={defaultServiceDate}
-                id="serviceDate"
-                name="serviceDate"
-                required
-              />
-            </FormField>
-            {paid ? (
-              <FormField key="paid" label="Paid on" name="paidOn">
-                <DateInput
-                  ariaLabel="Paid on"
-                  defaultValue={defaultServiceDate}
-                  id="paidOn"
-                  name="paidOn"
-                  required
-                />
-              </FormField>
-            ) : (
-              <FormField key="due" label="Due date" name="dueDate">
-                <DateInput
-                  ariaLabel="Due date"
-                  defaultValue={defaultDueDate}
-                  id="dueDate"
-                  name="dueDate"
-                  required
-                />
-              </FormField>
-            )}
-            <FormField label="Language" name="locale">
-              <select
-                className={selectClassName}
-                defaultValue="cs-CZ"
-                id="locale"
-                name="locale"
-              >
-                <option value="cs-CZ">Czech</option>
-                <option value="en-US">English</option>
-              </select>
-            </FormField>
-            <FormField label="Currency" name="currency">
-              <select
-                className={selectClassName}
-                defaultValue={defaultCurrency}
-                id="currency"
-                name="currency"
-                onChange={(event) => setCurrency(event.target.value)}
-              >
-                {currencies.map((currency) => (
-                  <option key={currency.code} value={currency.code}>
-                    {currency.code} — {currency.name}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Variable symbol" name="variableSymbol">
-              <Input
-                defaultValue={suggestedVariableSymbol}
-                id="variableSymbol"
-                inputMode="numeric"
-                maxLength={10}
-                name="variableSymbol"
-                onBlur={(event) => {
-                  if (!event.currentTarget.value.trim()) {
-                    event.currentTarget.value = suggestedVariableSymbol;
-                  }
-                }}
-                onFocus={(event) => {
-                  if (event.currentTarget.value === suggestedVariableSymbol)
-                    event.currentTarget.select();
-                }}
-                pattern="[0-9]{1,10}"
-                required
-              />
-            </FormField>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-navy-blue/10 bg-white p-5 sm:p-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl">Line items</h2>
-              <p className="mt-1 text-sm text-navy-blue/65">
-                Enter signed prices with up to {currencyExponent} decimal
-                places.
-              </p>
-            </div>
-            <Button
-              onClick={() =>
-                setLines((current) => [
-                  ...current,
-                  { id: crypto.randomUUID(), description: "", price: "" },
-                ])
-              }
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <Plus aria-hidden className="size-4" /> Add line
-            </Button>
-          </div>
-          <div className="mt-5 space-y-3">
-            {lines.map((line, index) => (
-              <div
-                className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-end"
-                key={line.id}
-              >
-                <FormField
-                  label={`Description ${index + 1}`}
-                  name={`description-${line.id}`}
-                >
-                  <Input
-                    id={`description-${line.id}`}
-                    name={`description-${line.id}`}
-                    required
-                  />
-                </FormField>
-                <FormField label="Price" name={`price-${line.id}`}>
-                  <Input
-                    id={`price-${line.id}`}
-                    inputMode="decimal"
-                    name={`price-${line.id}`}
-                    onChange={(event) => {
-                      const price = event.target.value;
-                      if (!isInvoicePriceInput(price, currencyExponent)) return;
-                      setLines((current) =>
-                        current.map((currentLine) =>
-                          currentLine.id === line.id
-                            ? { ...currentLine, price }
-                            : currentLine
-                        )
-                      );
-                    }}
-                    pattern={invoicePricePattern(currencyExponent)}
-                    placeholder="0.00"
-                    required
-                    value={line.price}
-                  />
-                </FormField>
-                <Button
-                  aria-label={`Remove line ${index + 1}`}
-                  disabled={lines.length === 1}
-                  onClick={() =>
-                    setLines((current) =>
-                      current.filter(({ id }) => id !== line.id)
-                    )
-                  }
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Minus aria-hidden className="size-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <div className="flex justify-end">
-          <Button
-            disabled={isCreating || (customerMode === "existing" && !customer)}
-            type="submit"
-          >
-            Review invoice
-          </Button>
-        </div>
-      </form>
-
-      <Dialog
-        onOpenChange={(open) => {
-          if (!open && !isCreating) {
-            setCreateError(null);
-            setPreviewError(null);
-            setPreviewUrl(null);
-            setReview(null);
-          }
-        }}
-        open={Boolean(review)}
-      >
-        <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-5xl flex-col overflow-hidden">
-          <DialogHeader>
-            <div className="mb-2 flex size-11 items-center justify-center rounded-full bg-red-100 text-red-800">
-              <CircleAlert aria-hidden className="size-6" />
-            </div>
-            <DialogTitle>This action creates and sends the invoice</DialogTitle>
-            <DialogDescription className="text-base leading-6">
-              The invoice is immutable after creation. Clicking the final button
-              immediately emails it to the customer and Deskohub’s internal
-              recipient. The final invoice number, issue time, and automatically
-              suggested variable symbol are assigned after confirmation.
-            </DialogDescription>
-          </DialogHeader>
-          {review && (
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-navy-blue/10 bg-navy-blue/5">
-              {isPreviewing && (
-                <div
-                  aria-live="polite"
-                  className="grid min-h-96 place-items-center text-sm text-navy-blue/65"
-                >
-                  Generating PDF preview…
-                </div>
-              )}
-              {previewUrl && (
-                <>
-                  <iframe
-                    className="h-[60dvh] min-h-96 w-full bg-white"
-                    src={previewUrl}
-                    title="Invoice PDF preview"
-                  />
-                  <div className="border-t border-navy-blue/10 p-3 text-right text-sm">
-                    <a
-                      className="font-semibold text-burned-orange underline-offset-4 hover:underline"
-                      href={previewUrl}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      Open PDF preview
-                    </a>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-          {review && reviewTotal === null && (
-            <AdministrationAlert role="alert" status="error">
-              Correct the invalid line price before creating the invoice.
-            </AdministrationAlert>
-          )}
-          {createError && (
-            <AdministrationAlert role="alert" status="error">
-              {createError}
-            </AdministrationAlert>
-          )}
-          {previewError && (
-            <AdministrationAlert role="alert" status="error">
-              {previewError}
-            </AdministrationAlert>
-          )}
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button disabled={isCreating} type="button" variant="secondary">
-                Go back
-              </Button>
-            </DialogClose>
+          <div className="flex justify-end">
             <Button
               disabled={
-                isCreating ||
-                isPreviewing ||
-                !review ||
-                !previewUrl ||
-                reviewTotal === null
+                isCreating || (customerMode === "existing" && !customer)
               }
-              onClick={() => {
-                if (review) {
-                  setCreateError(null);
-                  create(review);
-                }
-              }}
-              type="button"
-              className="bg-red-700 text-white hover:bg-red-800"
+              type="submit"
             >
-              {isCreating ? "Creating and sending…" : "Create and send invoice"}
+              {m.accountingInvoiceFormReview({}, { locale })}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </form>
+      </Form>
+
+      <InvoiceReviewDialog
+        createError={createError}
+        isCreating={isCreating}
+        isPreviewing={isPreviewing}
+        locale={locale}
+        onCreate={createReviewedInvoice}
+        onOpenChange={changeReviewOpen}
+        open={Boolean(review)}
+        previewError={previewError}
+        previewUrl={previewUrl}
+        reviewTotal={reviewTotal}
+      />
     </>
+  );
+}
+
+type InvoiceCurrencyOption = {
+  readonly code: string;
+  readonly exponent: number;
+  readonly name: string;
+};
+
+type InvoiceFormControl = Control<InvoiceFormInput, unknown, InvoiceFormOutput>;
+
+type InvoiceCustomerDetails = InvoiceAdministrationCustomer["details"];
+
+const blankCustomerFormValues: InvoiceFormInput["customer"] = {
+  customerType: "person",
+  email: "",
+  firstName: "",
+  lastName: "",
+  companyName: "",
+  companyId: "",
+  vatId: "",
+  phone: "",
+  line1: "",
+  line2: "",
+  city: "",
+  postalCode: "",
+  country: "CZ",
+};
+
+const readBusinessIdentityFormValues = (details: InvoiceCustomerDetails) =>
+  details.kind === "business"
+    ? {
+        companyName: details.companyName ?? "",
+        companyId: details.companyId ?? "",
+        vatId: details.vatId ?? "",
+      }
+    : { companyName: "", companyId: "", vatId: "" };
+
+const readAddressFormValues = (address: InvoiceCustomerDetails["address"]) => ({
+  line1: address.line1 ?? "",
+  line2: address.line2 ?? "",
+  city: address.city ?? "",
+  postalCode: address.postalCode ?? "",
+  country: address.country || "CZ",
+});
+
+const readCustomerFormValues = (
+  details: InvoiceCustomerDetails
+): InvoiceFormInput["customer"] => ({
+  customerType: details.kind ?? "person",
+  email: details.email ?? "",
+  firstName: details.firstName ?? "",
+  lastName: details.lastName ?? "",
+  ...readBusinessIdentityFormValues(details),
+  phone: details.phone ?? "",
+  ...readAddressFormValues(details.address),
+});
+
+/** The customer fields as an operator starts editing them: blank for a new customer, prefilled from a selected one. */
+const getInvoiceCustomerFormDefaults = (
+  customer: InvoiceAdministrationCustomer | null
+) =>
+  customer
+    ? readCustomerFormValues(customer.details)
+    : { ...blankCustomerFormValues };
+
+// The search state lives with the form, not the search panel, so a query and
+// its results survive while a selected customer hides the panel.
+const useInvoiceCustomerSearch = (locale: Locale) => {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<
+    readonly InvoiceAdministrationCustomer[]
+  >([]);
+  const [error, setError] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
+  const { execute: search, isExecuting: isSearching } = useWorkspaceAction(
+    searchAdministrationInvoiceCustomers,
+    {
+      onSuccess: ({ data }) => {
+        if (!data) return;
+        setError(null);
+        setResults(data);
+        setHasSearched(true);
+      },
+      onError: ({ error: actionError }) =>
+        setError(
+          actionError.serverError ??
+            m.accountingInvoiceFormSearchError({}, { locale })
+        ),
+      onTransportError: () =>
+        setError(m.accountingInvoiceFormSearchError({}, { locale })),
+    }
+  );
+
+  const clearResults = () => {
+    setResults([]);
+    setHasSearched(false);
+  };
+
+  return {
+    query,
+    results,
+    error,
+    hasSearched,
+    isSearching,
+    changeQuery: (nextQuery: string) => {
+      setQuery(nextQuery);
+      setError(null);
+      clearResults();
+    },
+    clearResults,
+    runSearch: () => {
+      const normalizedQuery = query.trim();
+      if (isSearching || normalizedQuery.length < 2) return;
+      setError(null);
+      clearResults();
+      search({ query: normalizedQuery });
+    },
+  };
+};
+
+type InvoiceCustomerSearchState = ReturnType<typeof useInvoiceCustomerSearch>;
+
+function InvoiceCustomerSection({
+  control,
+  customer,
+  customerMode,
+  locale,
+  onCustomerChange,
+  onCustomerModeChange,
+  search,
+}: {
+  readonly control: InvoiceFormControl;
+  readonly customer: InvoiceAdministrationCustomer | null;
+  readonly customerMode: "existing" | "new";
+  readonly locale: Locale;
+  readonly onCustomerChange: (
+    customer: InvoiceAdministrationCustomer | null
+  ) => void;
+  readonly onCustomerModeChange: (mode: "existing" | "new") => void;
+  readonly search: InvoiceCustomerSearchState;
+}) {
+  return (
+    <section className="rounded-2xl border border-navy-blue/10 bg-white p-5 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl">
+            {m.accountingInvoiceFormCustomerHeading({}, { locale })}
+          </h2>
+          <p className="mt-1 text-sm text-navy-blue/65">
+            {m.accountingInvoiceFormCustomerIntro({}, { locale })}
+          </p>
+        </div>
+        <SegmentedControl
+          label={m.accountingInvoiceFormCustomerSource({}, { locale })}
+          name="customerSource"
+          onValueChange={onCustomerModeChange}
+          options={[
+            {
+              label: m.accountingInvoiceFormCustomerSourceExisting(
+                {},
+                { locale }
+              ),
+              value: "existing",
+            },
+            {
+              label: m.accountingInvoiceFormCustomerSourceNew({}, { locale }),
+              value: "new",
+            },
+          ]}
+          value={customerMode}
+        />
+      </div>
+
+      {customerMode === "existing" && !customer && (
+        <InvoiceCustomerSearch
+          locale={locale}
+          onSelect={(result) => {
+            onCustomerChange(result);
+            search.clearResults();
+          }}
+          search={search}
+        />
+      )}
+
+      {(customerMode === "new" || customer) && (
+        <InvoiceCustomerFields
+          control={control}
+          customer={customer}
+          key={customer?.id ?? "new-customer"}
+          locale={locale}
+          onCustomerChange={onCustomerChange}
+        />
+      )}
+    </section>
+  );
+}
+
+function InvoiceCustomerSearch({
+  locale,
+  onSelect,
+  search,
+}: {
+  readonly locale: Locale;
+  readonly onSelect: (customer: InvoiceAdministrationCustomer) => void;
+  readonly search: InvoiceCustomerSearchState;
+}) {
+  const searchId = useId();
+  return (
+    <div className="mt-5 space-y-3">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <div className="grid gap-1.5">
+          <Label htmlFor={searchId}>
+            {m.accountingInvoiceFormSearchLabel({}, { locale })}
+          </Label>
+          <Input
+            autoComplete="off"
+            id={searchId}
+            minLength={2}
+            onChange={(event) => search.changeQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              search.runSearch();
+            }}
+            placeholder={m.accountingInvoiceFormSearchPlaceholder(
+              {},
+              { locale }
+            )}
+            type="search"
+            value={search.query}
+          />
+        </div>
+        <Button
+          disabled={search.isSearching || search.query.trim().length < 2}
+          onClick={search.runSearch}
+          type="button"
+        >
+          <Search aria-hidden className="size-4" />
+          {search.isSearching
+            ? m.accountingInvoiceFormSearching({}, { locale })
+            : m.accountingInvoiceFormSearch({}, { locale })}
+        </Button>
+      </div>
+      <div aria-live="polite">
+        {search.error && (
+          <AdministrationAlert role="alert" status="error">
+            {search.error}
+          </AdministrationAlert>
+        )}
+        {search.hasSearched && search.results.length === 0 && (
+          <p className="rounded-xl border border-navy-blue/10 px-4 py-6 text-center text-sm text-navy-blue/65">
+            {m.accountingInvoiceFormSearchEmpty({}, { locale })}
+          </p>
+        )}
+        {search.results.length > 0 && (
+          <ul className="divide-y divide-navy-blue/10 rounded-xl border border-navy-blue/10">
+            {search.results.map((result) => (
+              <li
+                className="flex items-center justify-between gap-4 p-4"
+                key={result.id}
+              >
+                <div>
+                  <p className="font-semibold">
+                    {getInvoiceCustomerName(result, locale)}
+                  </p>
+                  <p className="text-sm text-navy-blue/65">
+                    {result.email ||
+                      m.accountingInvoiceFormCustomerNoEmail({}, { locale })}
+                  </p>
+                </div>
+                <Button
+                  onClick={() => onSelect(result)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  {m.accountingInvoiceFormSelectCustomer({}, { locale })}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InvoiceCustomerFields({
+  control,
+  customer,
+  locale,
+  onCustomerChange,
+}: {
+  readonly control: InvoiceFormControl;
+  readonly customer: InvoiceAdministrationCustomer | null;
+  readonly locale: Locale;
+  readonly onCustomerChange: (
+    customer: InvoiceAdministrationCustomer | null
+  ) => void;
+}) {
+  const customerType =
+    useWatch({ control, name: "customer.customerType" }) ?? "person";
+  return (
+    <div className="mt-5 space-y-5">
+      {customer && (
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-aquamarine-green/10 px-4 py-3">
+          <span className="font-semibold">
+            {getInvoiceCustomerName(customer, locale)}
+          </span>
+          <Button
+            onClick={() => onCustomerChange(null)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            {m.accountingInvoiceFormChangeCustomer({}, { locale })}
+          </Button>
+        </div>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField
+          control={control}
+          name="customer.customerType"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>
+                {m.accountingInvoiceFormCustomerType({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <select
+                  className={selectClassName}
+                  onChange={(event) =>
+                    field.onChange(event.target.value as "person" | "business")
+                  }
+                  value={field.value}
+                >
+                  <option value="person">
+                    {m.accountingInvoiceFormCustomerTypePerson({}, { locale })}
+                  </option>
+                  <option value="business">
+                    {m.accountingInvoiceFormCustomerTypeBusiness(
+                      {},
+                      { locale }
+                    )}
+                  </option>
+                </select>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={control}
+          name="customer.email"
+          render={({ field: { onChange, ...field }, fieldState }) => (
+            <FormItem>
+              <FormLabel>
+                {m.accountingInvoiceFormEmail({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  onInput={onChange}
+                  required
+                  type="email"
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={control}
+          name="customer.firstName"
+          render={({ field: { onChange, ...field }, fieldState }) => (
+            <FormItem>
+              <FormLabel>
+                {customerType === "business"
+                  ? m.accountingInvoiceFormContactFirstName({}, { locale })
+                  : m.accountingInvoiceFormFirstName({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  onInput={onChange}
+                  required={customerType === "person"}
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={control}
+          name="customer.lastName"
+          render={({ field: { onChange, ...field }, fieldState }) => (
+            <FormItem>
+              <FormLabel>
+                {customerType === "business"
+                  ? m.accountingInvoiceFormContactLastName({}, { locale })
+                  : m.accountingInvoiceFormLastName({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  onInput={onChange}
+                  required={customerType === "person"}
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        {customerType === "business" && (
+          <>
+            <FormField
+              control={control}
+              name="customer.companyName"
+              render={({ field: { onChange, ...field }, fieldState }) => (
+                <FormItem>
+                  <FormLabel>
+                    {m.accountingInvoiceFormCompanyName({}, { locale })}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      onInput={onChange}
+                      required
+                      variant={fieldState.error ? "error" : "default"}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={control}
+              name="customer.companyId"
+              render={({ field: { onChange, ...field }, fieldState }) => (
+                <FormItem>
+                  <FormLabel>
+                    {m.accountingInvoiceFormCompanyId({}, { locale })}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      onInput={onChange}
+                      required
+                      variant={fieldState.error ? "error" : "default"}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={control}
+              name="customer.vatId"
+              render={({ field: { onChange, ...field }, fieldState }) => (
+                <FormItem>
+                  <FormLabel>
+                    {m.accountingInvoiceFormVatId({}, { locale })}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      onInput={onChange}
+                      variant={fieldState.error ? "error" : "default"}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </>
+        )}
+        <FormField
+          control={control}
+          name="customer.phone"
+          render={({ field: { onChange, ...field }, fieldState }) => (
+            <FormItem>
+              <FormLabel>
+                {m.accountingInvoiceFormPhone({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  onInput={onChange}
+                  type="tel"
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={control}
+          name="customer.line1"
+          render={({ field: { onChange, ...field }, fieldState }) => (
+            <FormItem>
+              <FormLabel>
+                {m.accountingInvoiceFormAddressLine1({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  onInput={onChange}
+                  required
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={control}
+          name="customer.line2"
+          render={({ field: { onChange, ...field }, fieldState }) => (
+            <FormItem>
+              <FormLabel>
+                {m.accountingInvoiceFormAddressLine2({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  onInput={onChange}
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={control}
+          name="customer.city"
+          render={({ field: { onChange, ...field }, fieldState }) => (
+            <FormItem>
+              <FormLabel>
+                {m.accountingInvoiceFormCity({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  onInput={onChange}
+                  required
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={control}
+          name="customer.postalCode"
+          render={({ field: { onChange, ...field }, fieldState }) => (
+            <FormItem>
+              <FormLabel>
+                {m.accountingInvoiceFormPostalCode({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  onInput={onChange}
+                  required
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={control}
+          name="customer.country"
+          render={({ field: { onChange, ...field }, fieldState }) => (
+            <FormItem>
+              <FormLabel>
+                {m.accountingInvoiceFormCountryCode({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  maxLength={2}
+                  minLength={2}
+                  onInput={onChange}
+                  required
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+    </div>
+  );
+}
+
+function InvoiceDetailsSection({
+  control,
+  currencies,
+  locale,
+  suggestedVariableSymbol,
+}: {
+  readonly control: InvoiceFormControl;
+  readonly currencies: readonly InvoiceCurrencyOption[];
+  readonly locale: Locale;
+  readonly suggestedVariableSymbol: string;
+}) {
+  const paidId = useId();
+  const paid = useWatch({ control, name: "paid" }) ?? false;
+  return (
+    <section className="rounded-2xl border border-navy-blue/10 bg-white p-5 sm:p-6">
+      <h2 className="text-xl">
+        {m.accountingInvoiceFormInvoiceHeading({}, { locale })}
+      </h2>
+      <FormField
+        control={control}
+        name="paid"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel asChild htmlFor={paidId}>
+              <ChoiceCard align="center" className="mt-5">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    id={paidId}
+                    onCheckedChange={(checked) =>
+                      field.onChange(Boolean(checked))
+                    }
+                  />
+                </FormControl>
+                <span className="text-sm font-semibold">
+                  {m.accountingInvoiceFormAlreadyPaid({}, { locale })}
+                </span>
+              </ChoiceCard>
+            </FormLabel>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+      <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <FormField
+          control={control}
+          name="serviceDate"
+          render={({ field: { onChange, ...field }, fieldState }) => (
+            <FormItem>
+              <FormLabel>
+                {m.accountingInvoiceFormServiceDate({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  onInput={onChange}
+                  required
+                  type="date"
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        {paid ? (
+          <FormField
+            control={control}
+            key="paid"
+            name="paidOn"
+            render={({ field: { onChange, ...field }, fieldState }) => (
+              <FormItem>
+                <FormLabel>
+                  {m.accountingInvoiceFormPaidOn({}, { locale })}
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    onInput={onChange}
+                    required
+                    type="date"
+                    variant={fieldState.error ? "error" : "default"}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        ) : (
+          <FormField
+            control={control}
+            key="due"
+            name="dueDate"
+            render={({ field: { onChange, ...field }, fieldState }) => (
+              <FormItem>
+                <FormLabel>
+                  {m.accountingInvoiceFormDueDate({}, { locale })}
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    onInput={onChange}
+                    required
+                    type="date"
+                    variant={fieldState.error ? "error" : "default"}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+        <FormField
+          control={control}
+          name="locale"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>
+                {m.accountingInvoiceFormLanguage({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <select
+                  className={selectClassName}
+                  onChange={(event) =>
+                    field.onChange(
+                      event.target.value as InvoiceFormOutput["locale"]
+                    )
+                  }
+                  value={field.value}
+                >
+                  <option value="cs-CZ">
+                    {m.accountingInvoiceFormLanguageCzech({}, { locale })}
+                  </option>
+                  <option value="en-US">
+                    {m.accountingInvoiceFormLanguageEnglish({}, { locale })}
+                  </option>
+                </select>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={control}
+          name="currency"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>
+                {m.accountingInvoiceFormCurrency({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <select
+                  className={selectClassName}
+                  onChange={(event) => field.onChange(event.target.value)}
+                  value={field.value}
+                >
+                  {currencies.map((currency) => (
+                    <option key={currency.code} value={currency.code}>
+                      {currency.code} — {currency.name}
+                    </option>
+                  ))}
+                </select>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={control}
+          name="variableSymbol"
+          render={({ field: { onChange, onBlur, ...field }, fieldState }) => (
+            <FormItem>
+              <FormLabel>
+                {m.accountingInvoiceFormVariableSymbol({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  inputMode="numeric"
+                  maxLength={10}
+                  onBlur={(event) => {
+                    onBlur();
+                    if (!event.currentTarget.value.trim()) {
+                      onChange(suggestedVariableSymbol);
+                    }
+                  }}
+                  onFocus={(event) => {
+                    if (event.currentTarget.value === suggestedVariableSymbol)
+                      event.currentTarget.select();
+                  }}
+                  onInput={onChange}
+                  pattern="[0-9]{1,10}"
+                  required
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+    </section>
+  );
+}
+
+function InvoiceLinesSection({
+  control,
+  currencyExponent,
+  locale,
+}: {
+  readonly control: InvoiceFormControl;
+  readonly currencyExponent: number;
+  readonly locale: Locale;
+}) {
+  const { fields, append, remove } = useFieldArray({ control, name: "lines" });
+  return (
+    <section className="rounded-2xl border border-navy-blue/10 bg-white p-5 sm:p-6">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl">
+            {m.accountingInvoiceFormLinesHeading({}, { locale })}
+          </h2>
+          <p className="mt-1 text-sm text-navy-blue/65">
+            {m.accountingInvoiceFormLinesHint(
+              { decimalPlaces: currencyExponent },
+              { locale }
+            )}
+          </p>
+        </div>
+        <Button
+          onClick={() =>
+            append({
+              id: crypto.randomUUID(),
+              description: "",
+              price: "",
+            })
+          }
+          size="sm"
+          type="button"
+          variant="secondary"
+        >
+          <Plus aria-hidden className="size-4" />{" "}
+          {m.accountingInvoiceFormAddLine({}, { locale })}
+        </Button>
+      </div>
+      <div className="mt-5 space-y-3">
+        {fields.map((line, index) => (
+          <div
+            className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-end"
+            key={line.id}
+          >
+            <FormField
+              control={control}
+              name={`lines.${index}.description`}
+              render={({ field: { onChange, ...field }, fieldState }) => (
+                <FormItem>
+                  <FormLabel>
+                    {m.accountingInvoiceFormLineDescription(
+                      { lineNumber: formatCount(index + 1, locale) },
+                      { locale }
+                    )}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      onInput={onChange}
+                      required
+                      variant={fieldState.error ? "error" : "default"}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={control}
+              name={`lines.${index}.price`}
+              render={({ field: { onChange, ...field }, fieldState }) => (
+                <FormItem>
+                  <FormLabel>
+                    {m.accountingInvoiceFormLinePrice({}, { locale })}
+                  </FormLabel>
+                  <FormControl>
+                    <InvoicePriceInput
+                      exponent={currencyExponent}
+                      onBlur={field.onBlur}
+                      onChange={onChange}
+                      ref={field.ref}
+                      value={field.value}
+                      variant={fieldState.error ? "error" : "default"}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <Button
+              aria-label={m.accountingInvoiceFormRemoveLine(
+                { lineNumber: formatCount(index + 1, locale) },
+                { locale }
+              )}
+              disabled={fields.length === 1}
+              onClick={() => remove(index)}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <Minus aria-hidden className="size-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -770,79 +1334,164 @@ export const isInvoicePriceInput = (value: string, exponent: number) =>
     exponent === 0 ? "^[+-]?\\d*$" : `^[+-]?\\d*(?:\\.\\d{0,${exponent}})?$`
   ).test(value);
 
+/** Czech operators type a decimal comma; the price keeps the canonical dot. */
+const normalizeInvoicePriceInput = (value: string) => value.replace(",", ".");
+
 const invoicePricePattern = (exponent: number) =>
   exponent === 0 ? "[+-]?\\d+" : `[+-]?\\d+(?:\\.\\d{1,${exponent}})?`;
 
-function FormField({
-  children,
-  label,
-  name,
+// The price gate must also observe native `change` events (typed into the
+// field without a preceding `input` event, as some browsers and automation
+// dispatch them): React's synthetic `onChange` does not fire for those here,
+// so the DOM value could drift from the form state it is supposed to gate.
+function InvoicePriceInput({
+  exponent,
+  onBlur,
+  onChange,
+  ref,
+  value,
+  variant,
+  ...labelProps
 }: {
-  readonly children: React.ReactNode;
-  readonly label: string;
-  readonly name: string;
-}) {
+  readonly exponent: number;
+  readonly onBlur: () => void;
+  readonly onChange: (price: string) => void;
+  readonly ref?: (node: HTMLInputElement | null) => void;
+  readonly value: string;
+  readonly variant: "default" | "error";
+} & Omit<React.ComponentProps<"input">, "onChange" | "ref" | "value">) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const handleNativeChange = (event: Event) => {
+      const price = normalizeInvoicePriceInput(
+        (event.currentTarget as HTMLInputElement).value
+      );
+      if (!isInvoicePriceInput(price, exponent)) {
+        // Rejected input never reaches form state, so restore the DOM to the
+        // accepted value instead of letting it drift.
+        input.value = value;
+        return;
+      }
+      if (price !== value) onChange(price);
+    };
+    input.addEventListener("change", handleNativeChange);
+    return () => input.removeEventListener("change", handleNativeChange);
+  }, [exponent, onChange, value]);
+
   return (
-    <div className="grid gap-1.5">
-      <Label htmlFor={name}>{label}</Label>
-      {children}
-    </div>
+    <Input
+      inputMode="decimal"
+      onBlur={onBlur}
+      onChange={(event) => {
+        const price = normalizeInvoicePriceInput(event.target.value);
+        if (!isInvoicePriceInput(price, exponent)) return;
+        onChange(price);
+      }}
+      onInput={(event) => {
+        // Mirrors the other form fields: real typing dispatches input
+        // events, which React's synthetic onChange does not always surface.
+        const price = normalizeInvoicePriceInput(event.currentTarget.value);
+        if (!isInvoicePriceInput(price, exponent)) return;
+        if (price !== value) onChange(price);
+      }}
+      pattern={invoicePricePattern(exponent)}
+      placeholder="0.00"
+      ref={(node) => {
+        inputRef.current = node;
+        ref?.(node);
+      }}
+      required
+      value={value}
+      variant={variant}
+      {...labelProps}
+    />
   );
 }
 
 export function readInvoiceForm(input: {
   readonly customer: InvoiceAdministrationCustomer | null;
   readonly customerMode: "existing" | "new";
-  readonly customerType: "person" | "business";
-  readonly form: FormData;
   readonly invoiceId: string;
-  readonly lines: readonly Line[];
+  readonly suggestedVariableSymbol: string;
+  readonly values: InvoiceFormOutput;
 }) {
-  const address = {
-    line1: field(input.form, "line1"),
-    ...(field(input.form, "line2") && { line2: field(input.form, "line2") }),
-    city: field(input.form, "city"),
-    postalCode: field(input.form, "postalCode"),
-    country: field(input.form, "country").toUpperCase(),
-  };
-  const firstName = field(input.form, "firstName");
-  const lastName = field(input.form, "lastName");
-  const contact = {
-    email: field(input.form, "email"),
-    ...(field(input.form, "phone") && { phone: field(input.form, "phone") }),
-    address,
-  };
-  const details =
-    input.customerType === "business"
-      ? {
-          ...contact,
-          kind: "business" as const,
-          ...(firstName && { firstName }),
-          ...(lastName && { lastName }),
-          companyName: field(input.form, "companyName"),
-          companyId: field(input.form, "companyId"),
-          ...(field(input.form, "vatId") && {
-            vatId: field(input.form, "vatId"),
-          }),
-        }
-      : { ...contact, kind: "person" as const, firstName, lastName };
-  const variableSymbol = field(input.form, "variableSymbol");
   return {
     invoiceId: input.invoiceId,
+    ...readInvoiceFormPayload(input),
+  };
+}
+
+type InvoiceFormCustomer = InvoiceFormOutput["customer"];
+
+const readInvoiceCustomerAddress = (formCustomer: InvoiceFormCustomer) => ({
+  line1: formCustomer.line1,
+  ...(formCustomer.line2 && { line2: formCustomer.line2 }),
+  city: formCustomer.city,
+  postalCode: formCustomer.postalCode,
+  country: formCustomer.country.toUpperCase(),
+});
+
+const readInvoiceCustomerDetails = (formCustomer: InvoiceFormCustomer) => {
+  const contact = {
+    email: formCustomer.email,
+    ...(formCustomer.phone && { phone: formCustomer.phone }),
+    address: readInvoiceCustomerAddress(formCustomer),
+  };
+  return formCustomer.customerType === "business"
+    ? {
+        ...contact,
+        kind: "business" as const,
+        ...(formCustomer.firstName && { firstName: formCustomer.firstName }),
+        ...(formCustomer.lastName && { lastName: formCustomer.lastName }),
+        companyName: formCustomer.companyName,
+        companyId: formCustomer.companyId,
+        ...(formCustomer.vatId && { vatId: formCustomer.vatId }),
+      }
+    : {
+        ...contact,
+        kind: "person" as const,
+        firstName: formCustomer.firstName,
+        lastName: formCustomer.lastName,
+      };
+};
+
+function readInvoiceFormPayload(input: {
+  readonly customer: InvoiceAdministrationCustomer | null;
+  readonly customerMode: "existing" | "new";
+  readonly suggestedVariableSymbol: string;
+  readonly values: InvoiceFormOutput;
+}) {
+  const details = readInvoiceCustomerDetails(input.values.customer);
+  // The suggestion is computed when the page loads and goes stale once
+  // another invoice is issued. Send only an operator-edited symbol; the
+  // server derives the default from the final invoice number.
+  const enteredVariableSymbol = input.values.variableSymbol.trim();
+  const variableSymbol =
+    enteredVariableSymbol === input.suggestedVariableSymbol
+      ? ""
+      : enteredVariableSymbol;
+  return {
     customer:
       input.customerMode === "existing" && input.customer
-        ? { kind: "existing" as const, customerId: input.customer.id, details }
+        ? {
+            kind: "existing" as const,
+            customerId: input.customer.id,
+            details,
+          }
         : { kind: "new" as const, details },
-    locale: field(input.form, "locale") as "cs-CZ" | "en-US",
-    serviceDate: field(input.form, "serviceDate"),
-    payment: field(input.form, "paid")
-      ? { status: "paid" as const, date: field(input.form, "paidOn") }
-      : { status: "due" as const, date: field(input.form, "dueDate") },
-    currency: field(input.form, "currency"),
+    locale: input.values.locale,
+    serviceDate: input.values.serviceDate,
+    payment: input.values.paid
+      ? { status: "paid" as const, date: input.values.paidOn }
+      : { status: "due" as const, date: input.values.dueDate },
+    currency: input.values.currency,
     ...(variableSymbol && { variableSymbol }),
-    lines: input.lines.map(({ id }) => ({
-      description: field(input.form, `description-${id}`),
-      price: field(input.form, `price-${id}`),
+    lines: input.values.lines.map(({ description, price }) => ({
+      description,
+      price,
     })),
   };
 }

@@ -4,6 +4,7 @@ import {
   instantStringSchema,
   type LocalDateTime,
   localDateTimeSchema,
+  localDateTimeToTemporalInstantString,
 } from "@/shared/utils/temporal";
 import {
   type ReservationInterval,
@@ -49,9 +50,6 @@ const decodeReservationTimestamp = Schema.decodeUnknownEffect(
   reservationTimestampSchema
 );
 
-export const toPlainDateTime = (value: Instant, timeZone: string) =>
-  Temporal.Instant.from(value).toZonedDateTimeISO(timeZone).toPlainDateTime();
-
 export const toInstantMilliseconds = (value: Instant) =>
   Temporal.Instant.from(value).epochMilliseconds;
 
@@ -82,10 +80,10 @@ export const normalizeTimestampField = ({
       Match.value(timestamp).pipe(
         Match.tag("LocalDateTime", ({ value: localDateTime }) =>
           normalizeInstantString(path, () =>
-            Temporal.PlainDateTime.from(localDateTime)
-              .toZonedDateTime(timeZone)
-              .toInstant()
-              .toString()
+            localDateTimeToTemporalInstantString({
+              dateTime: localDateTime,
+              timeZone,
+            })
           )
         ),
         Match.tag("Instant", ({ value: instant }) =>
@@ -106,12 +104,12 @@ const normalizeInstantString = (
     Schema.decodeUnknownResult(instantStringSchema)(normalize())
   ).pipe(Effect.mapError((cause) => toValidationError(path, cause)));
 
-const toValidationError = (path: keyof ReservationInterval, cause: unknown) =>
+const toValidationError = (
+  path: keyof ReservationInterval,
+  cause: Schema.SchemaError
+) =>
   new ReservationIntervalValidationError({
     path,
-    message:
-      cause instanceof Error
-        ? cause.message
-        : "Reservation start and end must be valid timestamps.",
+    message: cause.message,
     cause,
   });

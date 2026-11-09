@@ -6,7 +6,9 @@ Every discount defines one customer benefit:
 
 - a positive percentage reduction or a positive fixed-money reduction;
 - a complete customer-facing label in every supported language; and
-- one or more eligible product families: cowork, meeting room, or office.
+- one or more eligible products: a whole family (cowork, meeting room, or office) or a single current cowork offer (Open Space or Reserved Desk).
+
+A whole-cowork target covers every cowork offer, including historical tiers in stored reservations; existing whole-cowork discounts keep that meaning. A single-offer target covers only that offer. One discount either targets the whole cowork family or lists individual cowork offers, never both.
 
 The label shown to a customer is preserved with the completed checkout so later wording changes cannot rewrite history. A missing or blank required translation makes that discount unavailable; labels never fall back from one language to another.
 
@@ -16,7 +18,16 @@ Several sales or codes may share the same benefit definition while keeping their
 
 An automatic sale separates its schedule from its benefit. The business calendar owns when the sale is active, while the discount definition owns the customer label, adjustment, and eligible products. The calendar title is for operators and is never used as customer copy.
 
-Sale timing uses Prague calendar time and an exclusive end. Cancelling or removing the scheduled occurrence stops the sale. A malformed occurrence or missing benefit suppresses only that sale; other valid discounts continue to work.
+Sale timing uses whole Prague calendar days with an exclusive end: a sale runs from the start of its first day until the start of the day after its last day. Cancelling or removing the scheduled occurrence stops the sale. A malformed occurrence or missing benefit suppresses only that sale; other valid discounts continue to work.
+
+A sale applies to a reservation only when both of these hold:
+
+- the reservation is booked while the sale runs; and
+- the reservation's last service date is no later than the sale's last day.
+
+For a cowork reservation the last service date is its reserved date. For an office reservation it is the final reserved day. For a meeting-room reservation it is the Prague date on which the booking ends: an hourly booking that runs past midnight ends on the next day, while one ending exactly at midnight still belongs to its start date. Service dates before or during the sale qualify. A reservation whose last service date falls after the sale's last day gets no sale at all, even when it is booked during the sale and some of its days fall inside the sale. The sale is never split across the days of one reservation.
+
+The booking moment is when the customer submits the reservation and its price is locked. Later checks in the same checkout judge the sale at that moment rather than at the current time, including accepting an updated summary, entering a code, and starting payment. A customer who submitted before the sale ended therefore keeps the sale through payment. Editing or resubmitting the reservation books it again. If the sale has ended by then, checkout shows an updated summary without it for acceptance.
 
 Overlapping valid sales may all participate in pricing. The home-page banner is intentionally narrower: it appears only when exactly one active sale can be advertised unambiguously.
 
@@ -25,17 +36,12 @@ Overlapping valid sales may all participate in pricing. The home-page banner is 
 Codes use uppercase ASCII letters, digits, underscores, and hyphens and contain between 3 and 64 characters. An ordinary discount code owns:
 
 - whether it is enabled;
-- an optional inclusive redemption start and exclusive redemption end;
-- an optional reservation-start-date range, with an inclusive start and exclusive end;
+- an optional inclusive start and exclusive end;
 - an optional positive global-use limit; and
 - an optional positive per-customer-use limit; and
 - an optional customer allowlist.
 
 Omitting either use limit makes that dimension unlimited. Existing codes with a finite global limit retain one use per customer; existing globally unlimited codes remain unlimited per customer. An empty customer allowlist means the code is open to every customer; adding the first customer makes it restricted.
-
-Service-date restrictions require both dates, or neither for unrestricted service dates. Existing codes remain unrestricted. Dates use the Workspace's Prague timezone. Only the reservation's start date determines eligibility; overnight and multi-day reservations may end outside the range. A code for September 21 alone uses September 21 through September 22, exclusive. This does not restrict reservation duration.
-
-The redemption window independently controls when the customer may use the code. A customer may redeem a code today for an eligible future service date. Service-date eligibility is checked in the reservation preview, customer quote, and final payment admission against the current code configuration. An eligibility change requires the customer to review updated pricing.
 
 ## Vouchers
 
@@ -59,7 +65,7 @@ The intended code and the applied code are kept distinct. A code that is eligibl
 
 Once shown, a discount cannot disappear, change, or be replaced silently. Checkout presents an updated summary for acceptance before payment begins. A code error does not prevent the customer from paying the prior valid summary without that code.
 
-A bounded discount may show a localized expiry countdown near the end of its active period. Automatic sales use a 24-hour countdown window; bounded codes use a one-hour window. The presentation depends on the declared expiry, not on how the discount was sourced.
+A bounded discount may show a localized expiry countdown near the end of its active period. Automatic sales use a 24-hour countdown window; bounded codes use a one-hour window. The presentation depends on the declared expiry, not on how the discount was sourced. An automatic sale's countdown and home-page banner both end when its booking window closes, which is the last moment a reservation can be submitted at the sale price.
 
 ## Usage evidence
 

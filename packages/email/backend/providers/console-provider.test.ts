@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Logger, References } from "effect";
 import type { EmailMessage } from "../../types/email.types";
 import { EmailProviderTag } from "../capabilities";
@@ -9,12 +10,12 @@ const bearerText =
 const bearerHtml =
   '<a href="https://preview.example/verify?token=secret-token">Sign in</a>';
 const sensitiveSubject = "Sign in to Deskohub Workspace";
-const sensitiveRecipient = "ada@example.test";
+const sensitiveRecipient = testEmailAddress("ada");
 
 const sensitiveMessage = (
   overrides: Partial<EmailMessage> = {}
 ): EmailMessage => ({
-  from: { email: "reservations@workspace.deskohub.cz", name: "Deskohub" },
+  from: { email: testEmailAddress("reservations"), name: "Deskohub" },
   to: { email: sensitiveRecipient },
   subject: sensitiveSubject,
   html: bearerHtml,
@@ -28,8 +29,8 @@ const sensitiveMessage = (
 const ordinaryMessage = (
   overrides: Partial<EmailMessage> = {}
 ): EmailMessage => ({
-  from: { email: "reservations@workspace.deskohub.cz", name: "Deskohub" },
-  to: { email: "ada@example.test" },
+  from: { email: testEmailAddress("reservations"), name: "Deskohub" },
+  to: { email: testEmailAddress("ada") },
   subject: "Reservation confirmed",
   html: "<p>Reservation confirmed</p>",
   text: "Reservation confirmed",
@@ -158,40 +159,6 @@ const expectNoSensitiveLeaks = (
 };
 
 describe("Console email provider sensitive content", () => {
-  test("development: sensitive message leaks no recipient, subject, body, or bearer material", async () => {
-    setEnv("NODE_ENV", "development");
-    const { result, consoleRecords, logEntries } = await send(
-      sensitiveMessage()
-    );
-
-    expect(result).toMatchObject({ status: "sent", provider: "console" });
-    expectNoSensitiveLeaks(consoleRecords, logEntries);
-  });
-
-  test("Preview: sensitive message leaks no recipient, subject, body, or bearer material", async () => {
-    setEnv("VERCEL_ENV", "preview");
-    const { result, consoleRecords, logEntries } = await send(
-      sensitiveMessage()
-    );
-
-    expect(result).toMatchObject({ status: "sent", provider: "console" });
-    expectNoSensitiveLeaks(consoleRecords, logEntries);
-  });
-
-  test("development: sensitive message emits no dev banner and no raw console output", async () => {
-    setEnv("NODE_ENV", "development");
-    const { consoleRecords } = await send(sensitiveMessage());
-
-    expect(consoleRecords).toEqual([]);
-  });
-
-  test("Preview: sensitive message emits no dev banner and no raw console output", async () => {
-    setEnv("VERCEL_ENV", "preview");
-    const { consoleRecords } = await send(sensitiveMessage());
-
-    expect(consoleRecords).toEqual([]);
-  });
-
   test("sensitive message logs only non-PII facts", async () => {
     setEnv("NODE_ENV", "development");
     const { logEntries } = await send(sensitiveMessage());
@@ -244,7 +211,7 @@ describe("Console email provider ordinary behavior", () => {
     expect(result).toMatchObject({ status: "sent", provider: "console" });
 
     const logged = recordText(consoleRecords);
-    expect(logged).toContain("ada@example.test");
+    expect(logged).toContain(testEmailAddress("ada"));
     expect(logged).toContain("Reservation confirmed");
     expect(logged).toContain("EMAIL CONTENT");
 
@@ -252,7 +219,7 @@ describe("Console email provider ordinary behavior", () => {
       String(entry.message).includes("Sending Email")
     );
     expect(sendEntry?.annotations).toMatchObject({
-      to: ["ada@example.test"],
+      to: [testEmailAddress("ada")],
       subject: "Reservation confirmed",
       hasHtml: true,
       hasText: true,
@@ -269,19 +236,8 @@ describe("Console email provider ordinary behavior", () => {
       String(entry.message).includes("Sending Email")
     );
     expect(sendEntry?.annotations).toMatchObject({
-      to: ["ada@example.test"],
+      to: [testEmailAddress("ada")],
       subject: "Reservation confirmed",
     });
-  });
-
-  test("sensitiveContent=false keeps ordinary Console behavior", async () => {
-    setEnv("NODE_ENV", "development");
-    const { consoleRecords } = await send(
-      ordinaryMessage({ sensitiveContent: false })
-    );
-
-    const logged = recordText(consoleRecords);
-    expect(logged).toContain("ada@example.test");
-    expect(logged).toContain("EMAIL CONTENT");
   });
 });

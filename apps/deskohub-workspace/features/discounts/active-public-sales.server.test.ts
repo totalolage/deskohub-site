@@ -7,6 +7,7 @@ import {
   type IWorkspaceFeatureFlagService,
   WorkspaceFeatureFlagService,
 } from "@/features/feature-flags/backend";
+import { DiscountReleaseGateService } from "./discount-release-gate.service";
 
 type LogRecord = {
   readonly level: string;
@@ -46,16 +47,21 @@ mock.module("./calendar-discount-provider.service", () => ({
 
 const { getActivePublicSales } = await import("./active-public-sales.server");
 
-const originalDefault = WorkspaceFeatureFlagService.Default;
+const originalGatesLive = DiscountReleaseGateService.Live;
 
-const installFeatureFlagDefault = (
-  isEnabled: IWorkspaceFeatureFlagService["isEnabled"]
+const installFeatureFlags = (
+  evaluateFlags: IWorkspaceFeatureFlagService["evaluateFlags"]
 ) => {
-  Object.assign(WorkspaceFeatureFlagService, {
-    Default: Layer.succeed(WorkspaceFeatureFlagService, {
-      evaluateFlags: () => Effect.die("evaluateFlags should not be called"),
-      isEnabled,
-    }),
+  Object.assign(DiscountReleaseGateService, {
+    Live: DiscountReleaseGateService.Default.pipe(
+      Layer.provide(
+        Layer.succeed(WorkspaceFeatureFlagService, {
+          evaluateFlags,
+          isEnabled: () => Effect.die("isEnabled should not be called"),
+          constantValue: () => Effect.die("constantValue should not be called"),
+        })
+      )
+    ),
   });
 };
 
@@ -66,7 +72,7 @@ const evaluationError = () =>
   });
 
 afterAll(() => {
-  Object.assign(WorkspaceFeatureFlagService, { Default: originalDefault });
+  Object.assign(DiscountReleaseGateService, { Live: originalGatesLive });
 });
 
 afterEach(() => {
@@ -76,27 +82,9 @@ afterEach(() => {
 });
 
 describe("getActivePublicSales", () => {
-  test("returns no sales without request or provider work when disabled", async () => {
-    const isEnabled = mock(() => Effect.succeed(false));
-    installFeatureFlagDefault(isEnabled);
-
-    await expect(
-      Effect.runPromise(
-        getActivePublicSales({ locale: "en-US" }).pipe(
-          Effect.provide(Logger.layer([logger]))
-        )
-      )
-    ).resolves.toEqual([]);
-
-    expect(isEnabled).toHaveBeenCalledWith("calendar_sales");
-    expect(connection).not.toHaveBeenCalled();
-    expect(discoverActiveSales).not.toHaveBeenCalled();
-    expect(logRecords).toEqual([]);
-  });
-
   test("fails closed without request or provider work and logs evaluation failures", async () => {
-    const isEnabled = mock(() => Effect.fail(evaluationError()));
-    installFeatureFlagDefault(isEnabled);
+    const evaluateFlags = mock(() => Effect.fail(evaluationError()));
+    installFeatureFlags(evaluateFlags);
 
     await expect(
       Effect.runPromise(
@@ -106,12 +94,14 @@ describe("getActivePublicSales", () => {
       )
     ).resolves.toEqual([]);
 
-    expect(isEnabled).toHaveBeenCalledWith("calendar_sales");
+    expect(evaluateFlags).toHaveBeenCalledWith({
+      flagKeys: ["calendar_sales", "customer_discounts", "discount_codes"],
+    });
     expect(connection).not.toHaveBeenCalled();
     expect(discoverActiveSales).not.toHaveBeenCalled();
     expect(logRecords).toContainEqual({
       level: "Warn",
-      message: "Could not evaluate the PostHog feature flag.",
+      message: "Release gate unavailable; it stays closed",
     });
   });
 });

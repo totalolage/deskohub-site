@@ -6,7 +6,6 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { customerMarketingManagementTokens } from "@/db/schema/customer-marketing-management-tokens";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 
 const tokenByteLength = 32;
 const tokenTextLength = 43;
@@ -47,7 +46,7 @@ export class MarketingManagementService extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
 
       const issue: IMarketingManagementService["issue"] = Effect.fn(
         "MarketingManagementService.issue"
@@ -58,7 +57,7 @@ export class MarketingManagementService extends Context.Service<
         yield* db
           .insert(customerMarketingManagementTokens)
           .values({
-            tokenHash: sensitiveDatabaseParameter(hashToken(token)),
+            tokenHash: hashToken(token),
             dotyposCustomerId: customerId,
             purpose: "link",
             expiresAt: now.add({ hours: linkLifetimeDays * 24 }),
@@ -81,47 +80,39 @@ export class MarketingManagementService extends Context.Service<
         const linkHash = hashToken(token);
         const sessionHash = hashToken(sessionToken);
 
-        const exchanged = yield* db
-          .transaction(
-            Effect.fn(function* (tx) {
-              const [link] = yield* tx
-                .update(customerMarketingManagementTokens)
-                .set({ revokedAt: now })
-                .where(
-                  and(
-                    eq(
-                      customerMarketingManagementTokens.tokenHash,
-                      sensitiveDatabaseParameter(linkHash)
-                    ),
-                    eq(customerMarketingManagementTokens.purpose, "link"),
-                    isNull(customerMarketingManagementTokens.revokedAt),
-                    gt(customerMarketingManagementTokens.expiresAt, now)
-                  )
+        const exchanged = yield* transaction(
+          Effect.gen(function* () {
+            const [link] = yield* db
+              .update(customerMarketingManagementTokens)
+              .set({ revokedAt: now })
+              .where(
+                and(
+                  eq(customerMarketingManagementTokens.tokenHash, linkHash),
+                  eq(customerMarketingManagementTokens.purpose, "link"),
+                  isNull(customerMarketingManagementTokens.revokedAt),
+                  gt(customerMarketingManagementTokens.expiresAt, now)
                 )
-                .returning({
-                  dotyposCustomerId:
-                    customerMarketingManagementTokens.dotyposCustomerId,
-                  expiresAt: customerMarketingManagementTokens.expiresAt,
-                });
-
-              if (!link) return null;
-
-              const expiresAt = earliestInstant(
-                sessionLifetime,
-                link.expiresAt
-              );
-              yield* tx.insert(customerMarketingManagementTokens).values({
-                tokenHash: sensitiveDatabaseParameter(sessionHash),
-                dotyposCustomerId: link.dotyposCustomerId,
-                purpose: "session",
-                expiresAt,
-                revokedAt: null,
+              )
+              .returning({
+                dotyposCustomerId:
+                  customerMarketingManagementTokens.dotyposCustomerId,
+                expiresAt: customerMarketingManagementTokens.expiresAt,
               });
 
-              return { token: sessionToken, expiresAt };
-            })
-          )
-          .pipe(Effect.mapError(() => unavailableError()));
+            if (!link) return null;
+
+            const expiresAt = earliestInstant(sessionLifetime, link.expiresAt);
+            yield* db.insert(customerMarketingManagementTokens).values({
+              tokenHash: sessionHash,
+              dotyposCustomerId: link.dotyposCustomerId,
+              purpose: "session",
+              expiresAt,
+              revokedAt: null,
+            });
+
+            return { token: sessionToken, expiresAt };
+          })
+        ).pipe(Effect.mapError(() => unavailableError()));
 
         if (exchanged === null) return yield* invalidCredentialError();
 
@@ -145,10 +136,7 @@ export class MarketingManagementService extends Context.Service<
           .from(customerMarketingManagementTokens)
           .where(
             and(
-              eq(
-                customerMarketingManagementTokens.tokenHash,
-                sensitiveDatabaseParameter(hashToken(token))
-              ),
+              eq(customerMarketingManagementTokens.tokenHash, hashToken(token)),
               eq(customerMarketingManagementTokens.purpose, "session"),
               isNull(customerMarketingManagementTokens.revokedAt),
               gt(
@@ -176,10 +164,7 @@ export class MarketingManagementService extends Context.Service<
           .set({ revokedAt: Temporal.Now.instant() })
           .where(
             and(
-              eq(
-                customerMarketingManagementTokens.tokenHash,
-                sensitiveDatabaseParameter(tokenHash)
-              ),
+              eq(customerMarketingManagementTokens.tokenHash, tokenHash),
               eq(customerMarketingManagementTokens.purpose, "session"),
               isNull(customerMarketingManagementTokens.revokedAt)
             )
@@ -192,12 +177,7 @@ export class MarketingManagementService extends Context.Service<
         const [existing] = yield* db
           .select({ purpose: customerMarketingManagementTokens.purpose })
           .from(customerMarketingManagementTokens)
-          .where(
-            eq(
-              customerMarketingManagementTokens.tokenHash,
-              sensitiveDatabaseParameter(tokenHash)
-            )
-          )
+          .where(eq(customerMarketingManagementTokens.tokenHash, tokenHash))
           .limit(1)
           .pipe(Effect.mapError(() => unavailableError()));
 

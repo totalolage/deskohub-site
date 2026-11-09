@@ -1,8 +1,6 @@
 import { Schema } from "effect";
-import {
-  currencyCZK,
-  type WorkspaceMoney,
-} from "@/features/checkout/workspace-money";
+import { currencyCZK } from "@/shared/money/currencies";
+import type { Money } from "@/shared/money/money";
 
 type WorkspaceMeetingRoomDurationUnit = "day" | "hour";
 
@@ -12,7 +10,7 @@ type WorkspaceMeetingRoomProductDefinition = {
     readonly amount: number;
   };
   readonly durationSchema: Schema.Top;
-  readonly price: WorkspaceMoney;
+  readonly price: Money;
 };
 
 type WorkspaceMeetingRoomDurationKeyFor<
@@ -37,7 +35,7 @@ const meetingRoomProduct = <
 >(
   unit: Unit,
   amount: Amount,
-  price: WorkspaceMoney
+  price: Money
 ) => ({
   duration: { unit, amount },
   durationSchema: Schema.Struct({

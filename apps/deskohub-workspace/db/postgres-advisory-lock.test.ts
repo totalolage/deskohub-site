@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Deferred, Effect, Exit, Fiber } from "effect";
 import { SqlError } from "effect/unstable/sql";
 import { Pool } from "pg";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { makeDatabasePool } from "./database-client";
 import { databasePoolTimeouts } from "./database-pool-timeouts";
@@ -11,12 +12,15 @@ import {
   type PostgresAdvisoryLockPool,
   WorkspaceDatabaseAdvisoryLock,
   withPostgresAdvisoryLock,
+  withPostgresAdvisoryLocks,
 } from "./postgres-advisory-lock";
+import { WorkspaceLockSections } from "./workspace-locks";
 
 const key: PostgresAdvisoryLockKey = ["test-namespace", "resource-1"];
 
 const makeFakePool = (options?: {
   readonly failAcquire?: boolean;
+  readonly failLock?: boolean;
   readonly failRollback?: boolean;
 }) => {
   const queries: string[] = [];
@@ -26,6 +30,9 @@ const makeFakePool = (options?: {
   const client: PostgresAdvisoryLockClient = {
     query: (text: string) => {
       queries.push(text);
+      if (options?.failLock && text.includes("pg_advisory_xact_lock")) {
+        return Promise.reject(new Error("lock went wrong"));
+      }
       if (options?.failRollback && text.includes("rollback")) {
         return Promise.reject(new Error("rollback went wrong"));
       }
@@ -81,6 +88,15 @@ const runLayerLock = <A, E, R>(
   Effect.gen(function* () {
     const advisoryLock = yield* WorkspaceDatabaseAdvisoryLock;
     return yield* advisoryLock.withLock(lockKey, effect);
+  }).pipe(Effect.provide(layer));
+
+const runLayerTransactionPermit = <A, E, R>(
+  layer: ReturnType<typeof WorkspaceDatabaseAdvisoryLock.makeLayer>,
+  effect: Effect.Effect<A, E, R>
+) =>
+  Effect.gen(function* () {
+    const advisoryLock = yield* WorkspaceDatabaseAdvisoryLock;
+    return yield* advisoryLock.withTransactionPermit(effect);
   }).pipe(Effect.provide(layer));
 
 const makeTransactionPoolingPostgres = (serverSessionCount: number) => {
@@ -231,6 +247,27 @@ describe("Postgres advisory lock helper", () => {
     expect(fake.released[0]).toBeUndefined();
   });
 
+  test("acquires multiple keys on one transaction client", async () => {
+    const fake = makeFakePool();
+
+    const result = await Effect.runPromise(
+      withPostgresAdvisoryLocks(
+        fake.pool,
+        [key, ["customer-account", "account-1"]],
+        Effect.succeed("inside")
+      )
+    );
+
+    expect(result).toBe("inside");
+    expect(fake.queries).toEqual([
+      "begin",
+      "select pg_advisory_xact_lock(hashtext($1), hashtext($2))",
+      "select pg_advisory_xact_lock(hashtext($1), hashtext($2))",
+      "rollback",
+    ]);
+    expect(fake.released).toHaveLength(1);
+  });
+
   test("releases the advisory lock at transaction end so the next same-key scope does not stall under transaction pooling", async () => {
     const fake = makeTransactionPoolingPostgres(3);
     const mutexKey: PostgresAdvisoryLockKey = ["account-pooler", "profile-1"];
@@ -306,6 +343,28 @@ describe("Postgres advisory lock helper", () => {
     expect(fake.released).toHaveLength(0);
   });
 
+  test("evicts the pooled client and fails with a SQL error when the lock cannot be taken", async () => {
+    const fake = makeFakePool({ failLock: true });
+    let guardedRuns = 0;
+
+    const error = await Effect.runPromise(
+      withPostgresAdvisoryLock(
+        fake.pool,
+        key,
+        Effect.sync(() => {
+          guardedRuns += 1;
+        })
+      ).pipe(Effect.flip)
+    );
+
+    expect(error._tag).toBe("SqlError");
+    expect(guardedRuns).toBe(0);
+    expect(fake.queries).toHaveLength(2);
+    expect(fake.queries).not.toContain("rollback");
+    expect(fake.released).toHaveLength(1);
+    expect(fake.released[0]).toBe(error);
+  });
+
   test("evicts the pooled client when the rollback fails", async () => {
     const fake = makeFakePool({ failRollback: true });
 
@@ -346,6 +405,85 @@ describe("Postgres advisory lock helper", () => {
           ["capacity", "one"],
           Effect.succeed("unreachable")
         ).pipe(Effect.flip)
+      );
+
+      expect(SqlError.isSqlError(error)).toBe(true);
+      if (SqlError.isSqlError(error)) {
+        expect(error.message).toBe(
+          "Postgres advisory lock pool capacity is too small"
+        );
+      }
+      expect(fake.connected).toBe(0);
+    } finally {
+      await fake.pool.end();
+    }
+  });
+
+  test("transaction permits share the bounded-pool gate without taking another client", async () => {
+    const fake = makeLayerPool(2);
+    const layer = WorkspaceDatabaseAdvisoryLock.makeLayer(fake.pool);
+    let enterLock!: () => void;
+    let releaseLock!: () => void;
+    const lockEntered = new Promise<void>((resolve) => {
+      enterLock = resolve;
+    });
+    const lockGate = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    let transactionEntered = false;
+    let lockPromise: Promise<unknown> | undefined;
+    let transactionPromise: Promise<unknown> | undefined;
+
+    try {
+      lockPromise = Effect.runPromise(
+        runLayerLock(
+          layer,
+          ["transaction-permit", "shared"],
+          Effect.promise(async () => {
+            enterLock();
+            await lockGate;
+          })
+        )
+      );
+      await lockEntered;
+      transactionPromise = Effect.runPromise(
+        runLayerTransactionPermit(
+          layer,
+          Effect.sync(() => {
+            transactionEntered = true;
+          })
+        )
+      );
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      expect(transactionEntered).toBe(false);
+      expect(fake.connected).toBe(1);
+
+      releaseLock();
+      await Promise.all([lockPromise, transactionPromise]);
+
+      expect(transactionEntered).toBe(true);
+      expect(fake.connected).toBe(1);
+    } finally {
+      releaseLock();
+      await Promise.allSettled(
+        [lockPromise, transactionPromise].filter(
+          (promise): promise is Promise<unknown> => promise !== undefined
+        )
+      );
+      await fake.pool.end();
+    }
+  });
+
+  test("fails closed when a transaction permit cannot leave a query connection available", async () => {
+    const fake = makeLayerPool(1);
+    const layer = WorkspaceDatabaseAdvisoryLock.makeLayer(fake.pool);
+
+    try {
+      const error = await Effect.runPromise(
+        runLayerTransactionPermit(layer, Effect.succeed("unreachable")).pipe(
+          Effect.flip
+        )
       );
 
       expect(SqlError.isSqlError(error)).toBe(true);
@@ -505,6 +643,64 @@ describe("Postgres advisory lock helper", () => {
         runLayerLock(layer, ["wait", "third"], Effect.succeed("available"))
       );
       expect(result).toBe("available");
+    } finally {
+      await fake.pool.end();
+    }
+  });
+});
+
+describe("Workspace lock sections", () => {
+  test("a section holds its key for its effect only, and is not reentrant", async () => {
+    const fake = makeLayerPool(4);
+    const layer = WorkspaceDatabaseAdvisoryLock.makeLayer(fake.pool);
+    const first = "account-1" as CustomerAccountId;
+    const second = "account-2" as CustomerAccountId;
+    const enter = <A, E>(
+      accountId: CustomerAccountId,
+      effect: Effect.Effect<A, E, WorkspaceDatabaseAdvisoryLock>
+    ) => WorkspaceLockSections.customerAccount(accountId)(effect);
+
+    try {
+      const run = <A, E>(
+        effect: Effect.Effect<A, E, WorkspaceDatabaseAdvisoryLock>
+      ) => Effect.runPromiseExit(effect.pipe(Effect.provide(layer)));
+
+      // Another key nests, and leaves when its section ends.
+      expect(
+        await run(
+          enter(
+            first,
+            enter(second, Effect.void).pipe(
+              Effect.andThen(enter(second, Effect.succeed("nested")))
+            )
+          )
+        )
+      ).toStrictEqual(Exit.succeed("nested"));
+      expect(fake.connected).toBe(3);
+
+      // The same key inside its own section dies before taking a connection.
+      const reentered = await run(enter(first, enter(first, Effect.void)));
+      expect(
+        Exit.isFailure(reentered) &&
+          Cause.pretty(reentered.cause).includes("not reentrant")
+      ).toBe(true);
+      expect(fake.connected).toBe(4);
+
+      // The key leaves after a failed section too.
+      expect(
+        await run(enter(first, Effect.fail("failed" as const)))
+      ).toStrictEqual(Exit.fail("failed"));
+      expect(await run(enter(first, Effect.succeed("again")))).toStrictEqual(
+        Exit.succeed("again")
+      );
+      expect(fake.released).toEqual([
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      ]);
     } finally {
       await fake.pool.end();
     }

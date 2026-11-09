@@ -1,0 +1,29 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// The customer-account domain surface speaks in account terms. Better Auth
+// imports are already confined to the auth boundary by the account
+// `noRestrictedImports` override in biome.json; this keeps Better Auth names
+// and module strings out of the domain modules as well.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/features/account/(?:customer-account|contracts|index|backend/customer-account-resolver\.service|backend/customer-account-link\.repository|backend/customer-profile\.service|backend/customer-reservation-history\.service|backend/customer-account-deletion)\.ts$",
+  $body <: r"(?s).*(?:BetterAuth|better-auth).*",
+  $body <: contains bubble {
+    or {
+      JsName() as $use,
+      JsLiteralMemberName() as $use,
+      JsReferenceIdentifier() as $use,
+      JsIdentifierBinding() as $use,
+      TsIdentifierBinding() as $use,
+      JsStringLiteralExpression() as $use,
+      JsModuleSource() as $use
+    } where {
+      $use <: r"(?s).*(?:BetterAuth|better-auth).*",
+      register_diagnostic(
+        span = $use,
+        message = "Keep Better Auth names out of the customer-account domain surface; translate them at the auth boundary.",
+        severity = "error"
+      )
+    }
+  }
+}

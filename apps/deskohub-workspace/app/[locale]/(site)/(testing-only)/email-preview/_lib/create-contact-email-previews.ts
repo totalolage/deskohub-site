@@ -1,0 +1,83 @@
+import "server-only";
+
+import {
+  type EmailConfig,
+  EmailDeliveryIdSchema,
+  type EmailMessage,
+  type EmailSendResult,
+} from "@deskohub/email";
+import type { EmailService } from "@deskohub/email/backend/service";
+import {
+  EmailConfigTag,
+  EmailServiceTag,
+} from "@deskohub/email/backend/service";
+import { testEmailAddress } from "@deskohub/test-email";
+import { Effect, Layer } from "effect";
+import { ContactService } from "@/features/contact/backend/contact.service";
+import type { Locale } from "@/features/i18n";
+import { workspaceDefaultFromAddress } from "@/shared/backend/config/email.config";
+
+const previewSubmission = {
+  name: "Ada Lovelace",
+  email: testEmailAddress("customer"),
+  phone: "+420 123 456 789",
+  message:
+    "Hello,\n\nI'd like to confirm that the Profi pass includes both monitors and coffee. Thank you!",
+} as const;
+
+const emailConfig: EmailConfig = {
+  defaultFrom: {
+    email: workspaceDefaultFromAddress,
+    name: "Deskohub Workspace",
+  },
+};
+
+/** The HTML of the first captured email tagged `tag`, if it was rendered. */
+const findRenderedEmail = (messages: readonly EmailMessage[], tag: string) =>
+  messages.find((message) => message.tags?.includes(tag))?.html;
+
+export const createContactEmailPreviews = (locale: Locale) => {
+  const sentMessages: EmailMessage[] = [];
+  const emailService: EmailService = {
+    send: (message) =>
+      Effect.sync(() => {
+        sentMessages.push(message);
+
+        return {
+          id: EmailDeliveryIdSchema.make(`preview-${sentMessages.length}`),
+          status: "sent",
+          provider: "preview",
+          timestamp: new Date(),
+        } satisfies EmailSendResult;
+      }),
+    sendBatch: () => Effect.die("Contact preview does not send batches."),
+  };
+
+  const PreviewContactService = ContactService.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.succeed(EmailServiceTag, emailService),
+        Layer.succeed(EmailConfigTag, emailConfig)
+      )
+    )
+  );
+
+  return Effect.gen(function* () {
+    const contactService = yield* ContactService;
+    yield* contactService.submit(previewSubmission, locale);
+
+    const business = findRenderedEmail(sentMessages, "workspace-contact-form");
+    const confirmation = findRenderedEmail(
+      sentMessages,
+      "workspace-contact-confirmation"
+    );
+
+    if (!(business && confirmation)) {
+      return yield* Effect.die(
+        "Contact preview did not capture both rendered emails."
+      );
+    }
+
+    return { business, confirmation } as const;
+  }).pipe(Effect.provide(PreviewContactService));
+};

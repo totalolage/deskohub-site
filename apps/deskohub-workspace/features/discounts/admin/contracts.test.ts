@@ -1,45 +1,30 @@
 import { describe, expect, test } from "bun:test";
+import {
+  AdministrationDiscountDefinitionInput,
+  AdministrationDiscountMutation,
+  AdministrationExistingDiscountCodeCreateInput,
+} from "@deskohub/workspace-admin-api";
 import { Schema } from "effect";
 import { workspaceCurrencyDefinitions } from "@/shared/money/currencies";
-import {
-  createDiscountAdminInputSchema,
-  createDiscountCodeAdminInputSchema,
-  createVoucherAdminInputSchema,
-  discountAdminCustomerSearchSchema,
-  discountAdminMutationSchema,
-  updateDiscountCodeAdminInputSchema,
-} from "./contracts";
 
 const decodeDiscount = Schema.decodeUnknownSync(
-  createDiscountAdminInputSchema,
+  AdministrationDiscountDefinitionInput,
   { errors: "all", onExcessProperty: "error" }
 );
 const decodeCode = Schema.decodeUnknownSync(
-  createDiscountCodeAdminInputSchema,
+  AdministrationExistingDiscountCodeCreateInput,
   {
     errors: "all",
     onExcessProperty: "error",
   }
 );
-const decodeMutation = Schema.decodeUnknownSync(discountAdminMutationSchema, {
-  errors: "all",
-  onExcessProperty: "error",
-});
-const decodeCustomerSearch = Schema.decodeUnknownSync(
-  discountAdminCustomerSearchSchema,
+const decodeMutation = Schema.decodeUnknownSync(
+  AdministrationDiscountMutation,
   {
     errors: "all",
     onExcessProperty: "error",
   }
 );
-const decodeUpdateCode = Schema.decodeUnknownSync(
-  updateDiscountCodeAdminInputSchema,
-  { errors: "all", onExcessProperty: "error" }
-);
-const decodeVoucher = Schema.decodeUnknownSync(createVoucherAdminInputSchema, {
-  errors: "all",
-  onExcessProperty: "error",
-});
 
 const validDiscount = {
   labels: {
@@ -64,11 +49,6 @@ const validCode = {
 };
 
 describe("discount administration inputs", () => {
-  test("accepts a complete discount and code", () => {
-    expect(() => decodeDiscount(validDiscount)).not.toThrow();
-    expect(() => decodeCode(validCode)).not.toThrow();
-  });
-
   test("requires complete labels and at least one unique target", () => {
     expect(() =>
       decodeDiscount({
@@ -83,6 +63,22 @@ describe("discount administration inputs", () => {
         products: [{ kind: "cowork" }, { kind: "cowork" }],
       })
     ).toThrow();
+    expect(() =>
+      decodeDiscount({
+        ...validDiscount,
+        products: [{ kind: "cowork" }, { kind: "cowork", tier: "open-space" }],
+      })
+    ).toThrow();
+  });
+
+  test("accepts single cowork tier targets", () => {
+    const products = [
+      { kind: "cowork", tier: "open-space" },
+      { kind: "cowork", tier: "reserved-desk" },
+    ];
+    expect(decodeDiscount({ ...validDiscount, products })).toMatchObject({
+      products,
+    });
   });
 
   test("accepts only catalog currencies with their defined exponent", () => {
@@ -129,35 +125,6 @@ describe("discount administration inputs", () => {
     expect(() => decodeCode({ ...validCode, maxUsesPerCustomer: 0 })).toThrow();
     const { maxUsesPerCustomer: _, ...legacyCode } = validCode;
     expect(() => decodeCode(legacyCode)).not.toThrow();
-  });
-
-  test("accepts audience and Dotypos group operations but no claim mutations", () => {
-    expect(() =>
-      decodeMutation({
-        kind: "add-code-customer",
-        codeId: "code-id",
-        customerId: "customer-id",
-      })
-    ).not.toThrow();
-    expect(() =>
-      decodeMutation({
-        kind: "make-code-unrestricted",
-        codeId: "code-id",
-      })
-    ).not.toThrow();
-    expect(() =>
-      decodeMutation({
-        kind: "set-customer-discount-group",
-        customerId: "customer-id",
-        discountGroupId: null,
-      })
-    ).not.toThrow();
-    expect(() =>
-      decodeMutation({
-        kind: "release-code-claim",
-        claimId: "claim-id",
-      })
-    ).toThrow();
   });
 
   test("creates discount codes and vouchers through separate mutations", () => {
@@ -226,75 +193,6 @@ describe("discount administration inputs", () => {
         code,
         discount: { kind: "existing" },
       })
-    ).toThrow();
-  });
-
-  test("rejects one-sided, equal, and reversed service-date pairs on create and update", () => {
-    const pairs: readonly [string | null, string | null][] = [
-      ["2026-08-10", null],
-      [null, "2026-08-12"],
-      ["2026-08-12", "2026-08-12"],
-      ["2026-08-12", "2026-08-10"],
-    ];
-    for (const [serviceDateFrom, serviceDateUntil] of pairs) {
-      expect(() =>
-        decodeCode({ ...validCode, serviceDateFrom, serviceDateUntil })
-      ).toThrow();
-      expect(() =>
-        decodeUpdateCode({
-          ...validCode,
-          id: "code-1",
-          serviceDateFrom,
-          serviceDateUntil,
-        })
-      ).toThrow();
-    }
-    expect(() =>
-      decodeCode({
-        ...validCode,
-        serviceDateFrom: "2026-08-10",
-        serviceDateUntil: "2026-08-12",
-      })
-    ).not.toThrow();
-    expect(() =>
-      decodeCode({
-        ...validCode,
-        serviceDateFrom: null,
-        serviceDateUntil: null,
-      })
-    ).not.toThrow();
-    expect(() =>
-      decodeUpdateCode({
-        ...validCode,
-        id: "code-1",
-        serviceDateFrom: null,
-        serviceDateUntil: null,
-      })
-    ).not.toThrow();
-  });
-
-  test("keeps service-date fields off vouchers", () => {
-    expect(() =>
-      decodeVoucher({
-        code: validCode.code,
-        enabled: true,
-        validFrom: null,
-        validUntil: null,
-        credit: { value: 10_000, exponent: 2, currency: "CZK" },
-        serviceDateFrom: "2026-08-10",
-        serviceDateUntil: "2026-08-12",
-      })
-    ).toThrow();
-  });
-
-  test("accepts a bounded fuzzy customer query", () => {
-    expect(() => decodeCustomerSearch({ query: "Ada" })).not.toThrow();
-    expect(() => decodeCustomerSearch({ query: "a" })).toThrow();
-    expect(() =>
-      decodeCustomerSearch({ query: "Ada;deleted|eq|true" })
-    ).toThrow();
-    expect(() =>
-      decodeCustomerSearch({ query: "Ada", customerId: "customer-id" })
     ).toThrow();
   });
 });

@@ -59,8 +59,5 @@ export class GithubRunStatusService extends Context.Service<
   );
 }
 
-export const githubRunAttemptUrl = (
-  githubApiUrl: string,
-  owner: AllocationOwner
-) =>
+const githubRunAttemptUrl = (githubApiUrl: string, owner: AllocationOwner) =>
   `${githubApiUrl}/repos/${owner.repository}/actions/runs/${owner.runId}/attempts/${owner.runAttempt}`;

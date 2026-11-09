@@ -1,44 +1,55 @@
-import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import type { Page } from "@playwright/test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { createElement, useState } from "react";
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
-import { ProfileScreen } from "@/features/account/components/profile/profile-screen";
+import { AccountShell } from "@/features/account/components/shell/account-shell";
 import {
   type AccountSection,
-  AccountShell,
-  type AccountShellProps,
-} from "@/features/account/components/shell/account-shell";
+  accountSectionLabel,
+} from "@/features/account/sections";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { WorkspaceE2EError } from "../errors";
+import { isWorkspaceE2EDiagnosticCode, WorkspaceE2EError } from "../errors";
 import {
   accountLayoutNavigationPhases,
   runAccountLayoutNavigationPhase,
   verifyAccountLayoutNavigation,
 } from "./account-layout-navigation";
-import {
-  accountSectionLabels,
-  accountSectionLandmarks,
-} from "./account-sections";
+
+mock.module("next/navigation", () => ({
+  useRouter: () => ({ refresh: () => undefined }),
+}));
+
+mock.module("@/features/account/actions", () => ({
+  updateLocalePreference: () => Promise.resolve({ data: { status: "saved" } }),
+}));
+
+mock.module("@/shared/utils/use-workspace-action", () => ({
+  useWorkspaceAction: () => ({
+    execute: () => undefined,
+    isExecuting: false,
+    reset: () => undefined,
+    result: {},
+  }),
+}));
+
+const { ProfileScreen } = await import(
+  "@/features/account/components/profile/profile-screen"
+);
 
 const sections = [
-  "reservations",
   "profile",
+  "reservations",
+  "referrals",
+  "security",
+  "assistants",
   "billing",
   "legal",
   "danger",
 ] as const satisfies readonly AccountSection[];
-
-const shellLabels = {
-  mobileSection: "Account section",
-  navigation: "Account navigation",
-  sections: accountSectionLabels,
-} as const satisfies AccountShellProps["labels"];
-
-const profileCopy = getAccountScreenCopy("en-US").profile;
 
 const sectionPanel = (section: AccountSection) => {
   switch (section) {
@@ -48,16 +59,34 @@ const sectionPanel = (section: AccountSection) => {
         { id: "account-reservations-past-title" },
         "Past reservations"
       );
+    case "referrals":
+      return createElement(
+        "section",
+        { "data-screen": "referrals-screen" },
+        createElement("h2", null, "Referrals")
+      );
     case "profile":
       return createElement(ProfileScreen, {
-        copy: profileCopy,
         // ProfileScreen's typed createElement overload requires children in props.
         // biome-ignore lint/correctness/noChildrenProp: the required child must be present in the props object.
         children: createElement("input", { id: "account-profile-first-name" }),
-        email: "synthetic@example.test",
+        email: testEmailAddress("synthetic"),
         firstName: "E2E",
         lastName: null,
+        locale: "en-US",
       });
+    case "security":
+      return createElement(
+        "h2",
+        { id: "account-security-passkeys-title" },
+        "Passkeys"
+      );
+    case "assistants":
+      return createElement(
+        "h2",
+        { id: "account-assistants-title" },
+        "Connected assistants"
+      );
     case "billing":
       return createElement(
         "section",
@@ -65,7 +94,7 @@ const sectionPanel = (section: AccountSection) => {
         createElement(
           "h2",
           { id: "account-billing-title" },
-          "Billing & Invoices"
+          accountSectionLabel("billing", "en-US")
         ),
         createElement("select", { id: "account-profile-billing-kind" })
       );
@@ -84,9 +113,19 @@ const sectionPanel = (section: AccountSection) => {
   }
 };
 
-function AccountShellHarness() {
+let selectedSections: AccountSection[] = [];
+
+function AccountShellHarness({
+  hiddenSections = [],
+}: {
+  readonly hiddenSections?: readonly AccountSection[];
+} = {}) {
   const [activeSection, setActiveSection] =
     useState<AccountSection>("reservations");
+  const selectSection = (section: AccountSection) => {
+    selectedSections = [...selectedSections, section];
+    setActiveSection(section);
+  };
 
   return createElement(
     "div",
@@ -98,10 +137,10 @@ function AccountShellHarness() {
         // AccountShell receives the rendered panels as variadic children below.
         // biome-ignore lint/correctness/noChildrenProp: AccountShellProps requires children in this createElement call.
         children: null,
-        labels: shellLabels,
-        onSectionChange: setActiveSection,
+        hiddenSections,
+        locale: "en-US",
+        onSectionChange: selectSection,
         signOut: createElement("button", { type: "button" }, "Sign out"),
-        title: "Workspace account",
       },
       ...sections.map((section) =>
         createElement(
@@ -121,8 +160,14 @@ function AccountShellHarness() {
 
 type FakeLocator = {
   readonly click: () => Promise<void>;
+  readonly elementHandle: () => Promise<FakeElementHandle>;
   readonly isVisible: () => Promise<boolean>;
   readonly waitFor: (options?: { readonly state?: string }) => Promise<void>;
+};
+
+type FakeElementHandle = {
+  readonly dispose: () => Promise<void>;
+  readonly element: Element;
 };
 
 type FakePageOptions = {
@@ -161,6 +206,10 @@ const fakeLocator = (element: Element): FakeLocator => ({
     if (!elementIsVisible(element)) throw new Error("fake target is hidden");
     fireEvent.click(element);
   },
+  elementHandle: async () => ({
+    dispose: async () => {},
+    element,
+  }),
   isVisible: async () => elementIsVisible(element),
   waitFor: async (waitOptions = {}) => {
     if (waitOptions.state === "visible" && !elementIsVisible(element))
@@ -176,11 +225,11 @@ const makeFakePage = (options: FakePageOptions = {}): Page => {
   });
 
   const getByRole = (
-    role: "button",
+    role: "link",
     roleOptions: { readonly exact?: boolean; readonly name?: string } = {}
   ) => {
     const candidates = Array.from(
-      document.querySelectorAll<HTMLElement>("button")
+      document.querySelectorAll<HTMLAnchorElement>("a")
     );
     const name = roleOptions.name ?? "";
     const exact = roleOptions.exact !== false;
@@ -227,113 +276,91 @@ const makeFakePage = (options: FakePageOptions = {}): Page => {
     waitForFunction: async (pageFunction: unknown, arg: unknown) => {
       if (typeof pageFunction !== "function")
         throw new Error("fake wait predicate was not a function");
-      if (!(pageFunction as (value: unknown) => boolean)(arg))
-        throw new Error("fake account section did not settle");
+      const predicateArgument =
+        typeof arg === "object" && arg !== null && "element" in arg
+          ? arg.element
+          : arg;
+      const result = (pageFunction as (value: unknown) => unknown)(
+        predicateArgument
+      );
+      if (!result) throw new Error("fake account section did not settle");
+      return { dispose: async () => {}, jsonValue: async () => result };
     },
   });
 
   return page;
 };
 
-const installLayoutGeometry = (): (() => void) => {
-  const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-  const originalScrollWidth = Object.getOwnPropertyDescriptor(
-    document.documentElement,
-    "scrollWidth"
-  );
-  Object.defineProperty(document.documentElement, "scrollWidth", {
-    configurable: true,
-    get: () => window.innerWidth,
-  });
-  Element.prototype.getBoundingClientRect = function () {
-    const navigation = document.querySelector(
-      'nav[aria-label="Account navigation"]'
-    );
-    const aside = navigation?.closest("aside");
-    const grid = aside?.parentElement;
-    const content =
-      aside && grid
-        ? Array.from(grid.children).find((child) => child !== aside)
-        : undefined;
-    const makeRect = (
-      left: number,
-      top: number,
-      width: number,
-      height: number
-    ) =>
-      ({
-        bottom: top + height,
-        height,
-        left,
-        right: left + width,
-        top,
-        width,
-        x: left,
-        y: top,
-        toJSON: () => ({}),
-      }) as DOMRect;
-
-    const isResponsiveHidden = (element: Element): boolean => {
-      for (
-        let current: Element | null = element;
-        current !== null;
-        current = current.parentElement
-      ) {
-        if (
-          (current.classList.contains("md:hidden") &&
-            window.innerWidth >= desktopBreakpoint) ||
-          (current.classList.contains("hidden") &&
-            window.innerWidth < desktopBreakpoint)
-        )
-          return true;
-      }
-      return false;
-    };
-
-    if (isResponsiveHidden(this)) return makeRect(0, 0, 0, 0);
-
-    if (this === navigation) return makeRect(16, 200, 264, 400);
-    if (this === aside) return makeRect(16, 200, 264, 600);
-    if (this === content) return makeRect(312, 200, 1_100, 600);
-    return makeRect(0, 0, 100, 20);
-  };
-
-  return () => {
-    Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
-    if (originalScrollWidth) {
-      Object.defineProperty(
-        document.documentElement,
-        "scrollWidth",
-        originalScrollWidth
-      );
-    } else {
-      delete (document.documentElement as { scrollWidth?: number }).scrollWidth;
-    }
-  };
-};
-
 beforeAll(registerWorkspaceComponentTestEnv);
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  selectedSections = [];
+});
 afterAll(unregisterWorkspaceComponentTestEnv);
 
-test("navigates every rendered account section across desktop and mobile layouts", async () => {
-  const restoreLayoutGeometry = installLayoutGeometry();
-  try {
-    render(createElement(AccountShellHarness));
-    let capturedSections: readonly AccountSection[] = [];
+const reservationsPanelIsVisible = () => {
+  const landmark = document.querySelector("#account-reservations-past-title");
+  return landmark !== null && elementIsVisible(landmark);
+};
 
-    await verifyAccountLayoutNavigation(makeFakePage(), async (section) => {
+test("switches one section per layout and restores the viewport", async () => {
+  const viewports: { readonly height: number; readonly width: number }[] = [];
+  let capturedSections: readonly AccountSection[] = [];
+  render(createElement(AccountShellHarness));
+
+  await verifyAccountLayoutNavigation(
+    makeFakePage({ onSetViewport: (viewport) => viewports.push(viewport) }),
+    async (section) => {
       capturedSections = [...capturedSections, section];
-    });
+    },
+    { screenshots: false }
+  );
 
-    expect(capturedSections).toEqual(sections);
-  } finally {
-    restoreLayoutGeometry();
-  }
+  expect(selectedSections).toEqual(["profile", "reservations"]);
+  expect(capturedSections).toEqual([]);
+  expect(viewports).toEqual([
+    { height: 1000, width: 1440 },
+    { height: 900, width: 375 },
+    { height: 900, width: 1024 },
+  ]);
+  expect(reservationsPanelIsVisible()).toBe(true);
 });
 
-const accountLayoutFailureMarker =
-  "https://private.example.test/account?email=secret@example.test&token=secret-token";
+test("visits and captures every desktop section in review runs", async () => {
+  let capturedSections: readonly AccountSection[] = [];
+  render(createElement(AccountShellHarness));
+
+  await verifyAccountLayoutNavigation(
+    makeFakePage(),
+    async (section) => {
+      capturedSections = [...capturedSections, section];
+    },
+    { screenshots: true }
+  );
+
+  expect(capturedSections).toEqual(sections);
+  expect(selectedSections).toEqual([...sections, "reservations"]);
+  expect(reservationsPanelIsVisible()).toBe(true);
+});
+
+test("skips a flag-hidden section in review runs", async () => {
+  let capturedSections: readonly AccountSection[] = [];
+  render(createElement(AccountShellHarness, { hiddenSections: ["security"] }));
+
+  await verifyAccountLayoutNavigation(
+    makeFakePage(),
+    async (section) => {
+      capturedSections = [...capturedSections, section];
+    },
+    { screenshots: true }
+  );
+
+  const offered = sections.filter((section) => section !== "security");
+  expect(capturedSections).toEqual(offered);
+  expect(selectedSections).toEqual([...offered, "reservations"]);
+});
+
+const accountLayoutFailureMarker = `https://private.example.test/account?email=${testEmailAddress("secret")}&token=secret-token`;
 const accountLayoutFailure = new Error(accountLayoutFailureMarker, {
   cause: accountLayoutFailureMarker,
 });
@@ -347,19 +374,7 @@ test("keeps every account layout phase diagnostic-safe", async () => {
       diagnosticViewport,
       async () => {
         throw accountLayoutFailure;
-      },
-      phase === "geometry"
-        ? async () => ({
-            activeButtonCount: 1,
-            contentLeft: 312,
-            contentWidth: 1_100,
-            hasHorizontalOverflow: false,
-            navigationLeft: 16,
-            navigationRight: 280,
-            navigationWidth: 264,
-            visibleLandmarkSelectors: [accountSectionLandmarks.legal],
-          })
-        : undefined
+      }
     ).then(
       () => {
         throw new Error("expected account layout phase to fail");
@@ -381,31 +396,58 @@ test("keeps every account layout phase diagnostic-safe", async () => {
     expect(String(failure)).not.toContain(accountLayoutFailureMarker);
     expect(JSON.stringify(failure)).not.toContain(accountLayoutFailureMarker);
     expect(failure.message.length).toBeLessThan(500);
+  }
+});
 
-    if (phase === "geometry") {
-      expect(failure.message).toContain("activeButtonCount=1");
-      expect(failure.message).toContain(
-        `visibleLandmarkSelectors=${accountSectionLandmarks.legal}`
+test("codes every account navigation phase and section with a closed diagnostic", async () => {
+  const diagnosticCodes = new Set<string>();
+
+  for (const phase of accountLayoutNavigationPhases) {
+    for (const section of sections) {
+      const failure = await runAccountLayoutNavigationPhase(
+        phase,
+        section,
+        diagnosticViewport,
+        async () => {
+          throw new Error(accountLayoutFailureMarker);
+        }
+      ).then(
+        () => {
+          throw new Error("expected account layout phase to fail");
+        },
+        (cause) => cause
       );
+
+      expect(failure).toBeInstanceOf(WorkspaceE2EError);
+      if (!(failure instanceof WorkspaceE2EError))
+        throw new Error("expected a Workspace E2E error");
+
+      const expectedCode = `account_layout_${phase}_${section}_failed`;
+      expect(failure.diagnosticCode).toBe(expectedCode);
+      expect(isWorkspaceE2EDiagnosticCode(failure.diagnosticCode)).toBe(true);
+      expect(failure.diagnosticCode).not.toContain(accountLayoutFailureMarker);
+      diagnosticCodes.add(failure.diagnosticCode ?? "");
     }
   }
+
+  expect(diagnosticCodes.size).toBe(
+    accountLayoutNavigationPhases.length * sections.length
+  );
 });
 
 const runLayoutVerificationFailure = async (
   options: FakePageOptions,
   captureSection?: (section: AccountSection) => Promise<void>
 ) => {
-  const restoreLayoutGeometry = installLayoutGeometry();
   try {
     render(createElement(AccountShellHarness));
     return await verifyAccountLayoutNavigation(
       makeFakePage(options),
-      captureSection
+      captureSection,
+      { screenshots: captureSection !== undefined }
     );
   } catch (cause) {
     return cause;
-  } finally {
-    restoreLayoutGeometry();
   }
 };
 
@@ -448,20 +490,18 @@ test("uses a fixed generic diagnostic when final viewport reset fails", async ()
   const failure = await runLayoutVerificationFailure({
     onSetViewport: () => {
       setViewportCalls += 1;
-      if (setViewportCalls === 4) throw new Error(failureMarker);
+      if (setViewportCalls === 3) throw new Error(failureMarker);
     },
   });
 
   expectGenericAccountLayoutFailure(failure, failureMarker);
-  expect(setViewportCalls).toBe(4);
+  expect(setViewportCalls).toBe(3);
 });
 
 test("preserves the phase diagnostic when final viewport reset also fails", async () => {
   let setViewportCalls = 0;
-  const captureFailureMarker =
-    "https://private.example.test/account/capture?email=secretA@example.test&token=secretA";
-  const restoreFailureMarker =
-    "https://private.example.test/account/restore?email=secretB@example.test&token=secretB";
+  const captureFailureMarker = `https://private.example.test/account/capture?email=${testEmailAddress("secretA")}&token=secretA`;
+  const restoreFailureMarker = `https://private.example.test/account/restore?email=${testEmailAddress("secretB")}&token=secretB`;
   const failure = await runLayoutVerificationFailure(
     {
       onSetViewport: () => {
@@ -481,7 +521,7 @@ test("preserves the phase diagnostic when final viewport reset also fails", asyn
   if (!(failure instanceof WorkspaceE2EError))
     throw new Error("expected a Workspace E2E error");
   expect(failure.message).toContain("at capture");
-  expect(failure.message).toContain("for reservations");
+  expect(failure.message).toContain("for profile");
   expect(failure.message).toContain("at viewport 1440x1000");
   expect(failure.message).not.toContain(captureFailureMarker);
   expect(failure.message).not.toContain(restoreFailureMarker);

@@ -1,14 +1,5 @@
 import { GoogleCalendarService } from "@deskohub/google-calendar";
-import {
-  Cache,
-  Clock,
-  Context,
-  Data,
-  Duration,
-  Effect,
-  Exit,
-  Layer,
-} from "effect";
+import { Cache, Context, Data, Duration, Effect, Exit, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   getWorkspaceProductKey,
@@ -17,6 +8,7 @@ import {
 import { workspaceProductTargetMatches } from "@/features/discounts/product-target";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
+import { currentInstant } from "@/shared/utils";
 import {
   type CalendarSalesSourceInput,
   type CalendarSalesSourceResult,
@@ -24,6 +16,11 @@ import {
   loadCalendarSalesSource,
   type ResolvedCalendarSale,
 } from "./calendar-discount-source.server";
+import {
+  calendarSaleAppliesToBooking,
+  getCalendarSaleBookingDate,
+  isCalendarSaleBookableAt,
+} from "./calendar-sale";
 import type {
   ActiveSale,
   ActiveSaleDiscoveryInput,
@@ -32,16 +29,19 @@ import type {
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import { DiscountProviderError } from "./errors";
 import { deriveOpaqueDiscountId } from "./opaque-discount-id";
-import type { DiscountCandidate } from "./provider";
+import type {
+  DiscountCandidate,
+  DiscountCandidateResolution,
+} from "./provider";
 
 const providerNamespace = "google-calendar-sales";
 
-export type CalendarDiscountProviderInput = Pick<
+type CalendarDiscountProviderInput = Pick<
   DiscountQuoteInput,
-  "locale" | "product" | "reservationDate"
+  "bookedAt" | "lastServiceDate" | "locale" | "product"
 >;
 
-export interface ActiveSaleDiscoveryResult {
+interface ActiveSaleDiscoveryResult {
   readonly activeSales: readonly ActiveSale[];
   readonly complete: boolean;
 }
@@ -52,10 +52,10 @@ export interface ICalendarDiscountProvider {
   ) => Effect.Effect<ActiveSaleDiscoveryResult, DiscountProviderError>;
   readonly discover: (
     input: CalendarDiscountProviderInput
-  ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderError>;
+  ) => Effect.Effect<DiscountCandidateResolution, DiscountProviderError>;
   readonly revalidate: (
     input: CalendarDiscountProviderInput
-  ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderError>;
+  ) => Effect.Effect<DiscountCandidateResolution, DiscountProviderError>;
 }
 
 export class CalendarDiscountProvider extends Context.Service<
@@ -85,7 +85,7 @@ const loadRemoteCalendarSalesSource = Effect.fn(
   "CalendarDiscountSource.loadRemote"
 )((input: CalendarSalesSourceInput) =>
   Effect.tryPromise({
-    try: () => loadCalendarDiscountSource(input.reservationDate),
+    try: () => loadCalendarDiscountSource(input.bookingDate),
     catch: DiscountProviderError.fromCause({
       reason: "provider_failure",
       message: "Remote Calendar sales could not be loaded.",
@@ -130,23 +130,24 @@ function makeCalendarDiscountProviderLayer(useRemoteDiscovery: boolean) {
           Effect.succeed(input).pipe(
             Effect.let(
               "sourceInput",
-              ({ reservationDate }) =>
+              ({ bookedAt }) =>
                 ({
                   calendarId: salesCalendarId,
-                  reservationDate,
+                  bookingDate: getCalendarSaleBookingDate(bookedAt),
                 }) satisfies CalendarSalesSourceInput
             ),
             Effect.bind("resolvedSales", ({ sourceInput }) =>
               loadDiscoverySales(sourceInput)
             ),
-            Effect.bind("at", () =>
-              Clock.currentTimeMillis.pipe(
-                Effect.map(Temporal.Instant.fromEpochMilliseconds)
-              )
-            ),
             Effect.let("sales", ({ resolvedSales }) => resolvedSales.sales),
             Effect.let("candidates", toEligibleCalendarCandidates),
-            Effect.map(({ candidates }) => candidates)
+            Effect.map(
+              ({ candidates, resolvedSales }) =>
+                ({
+                  candidates,
+                  complete: resolvedSales.complete,
+                }) satisfies DiscountCandidateResolution
+            )
           ),
         withProviderAnnotations("discover")
       );
@@ -156,21 +157,17 @@ function makeCalendarDiscountProviderLayer(useRemoteDiscovery: boolean) {
       )(
         (input: ActiveSaleDiscoveryInput) =>
           Effect.succeed(input).pipe(
+            Effect.bind("at", () => currentInstant),
             Effect.let(
               "sourceInput",
-              ({ currentDate }) =>
+              ({ at }) =>
                 ({
                   calendarId: salesCalendarId,
-                  reservationDate: currentDate.toString(),
+                  bookingDate: getCalendarSaleBookingDate(at),
                 }) satisfies CalendarSalesSourceInput
             ),
             Effect.bind("resolvedSales", ({ sourceInput }) =>
               loadDiscoverySales(sourceInput)
-            ),
-            Effect.bind("at", () =>
-              Clock.currentTimeMillis.pipe(
-                Effect.map(Temporal.Instant.fromEpochMilliseconds)
-              )
             ),
             Effect.let("sales", ({ resolvedSales }) => resolvedSales.sales),
             Effect.map(({ resolvedSales, ...activeSalesInput }) => ({
@@ -191,23 +188,24 @@ function makeCalendarDiscountProviderLayer(useRemoteDiscovery: boolean) {
           Effect.succeed(input).pipe(
             Effect.let(
               "sourceInput",
-              ({ reservationDate }) =>
+              ({ bookedAt }) =>
                 ({
                   calendarId: salesCalendarId,
-                  reservationDate,
+                  bookingDate: getCalendarSaleBookingDate(bookedAt),
                 }) satisfies CalendarSalesSourceInput
             ),
             Effect.bind("resolvedSales", ({ sourceInput }) =>
               loadDirectCalendarSalesSource(sourceInput)
             ),
-            Effect.bind("at", () =>
-              Clock.currentTimeMillis.pipe(
-                Effect.map(Temporal.Instant.fromEpochMilliseconds)
-              )
-            ),
             Effect.let("sales", ({ resolvedSales }) => resolvedSales.sales),
             Effect.let("candidates", toEligibleCalendarCandidates),
-            Effect.map(({ candidates }) => candidates)
+            Effect.map(
+              ({ candidates, resolvedSales }) =>
+                ({
+                  candidates,
+                  complete: resolvedSales.complete,
+                }) satisfies DiscountCandidateResolution
+            )
           ),
         withProviderAnnotations("revalidate")
       );
@@ -224,14 +222,19 @@ function makeCalendarDiscountProviderLayer(useRemoteDiscovery: boolean) {
 class CalendarSalesCacheKey extends Data.Class<CalendarSalesSourceInput> {}
 
 const toEligibleCalendarCandidates = (input: {
-  readonly at: Temporal.Instant;
+  readonly bookedAt: Temporal.Instant;
+  readonly lastServiceDate: string;
   readonly locale: CalendarDiscountProviderInput["locale"];
   readonly product: WorkspaceProductIdentity;
   readonly sales: readonly ResolvedCalendarSale[];
 }) =>
   input.sales
-    .filter(
-      ({ sale }) => Temporal.Instant.compare(input.at, sale.expiresAt) < 0
+    .filter(({ sale }) =>
+      calendarSaleAppliesToBooking({
+        sale,
+        bookedAt: input.bookedAt,
+        lastServiceDate: input.lastServiceDate,
+      })
     )
     .filter(({ definition }) =>
       definition.products.some((product) =>
@@ -254,9 +257,7 @@ const toActiveCalendarSales = (input: {
   readonly sales: readonly ResolvedCalendarSale[];
 }): readonly ActiveSale[] =>
   input.sales
-    .filter(
-      ({ sale }) => Temporal.Instant.compare(input.at, sale.expiresAt) < 0
-    )
+    .filter(({ sale }) => isCalendarSaleBookableAt(sale, input.at))
     .map((resolvedSale) => ({
       discount: toCalendarDiscountCandidate({
         locale: input.locale,

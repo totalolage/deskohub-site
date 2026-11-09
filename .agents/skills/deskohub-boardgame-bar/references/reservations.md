@@ -1,24 +1,18 @@
-# Reservation implementation
+# Reservations
+
+Business rules: `apps/deskohub-boardgame-bar/docs/reservations.md`.
 
 ## Table reservations
 
-The localized table-reservation page embeds the ChoiceQR booking experience. Keep ChoiceQR as the reservation and availability boundary; do not reintroduce the removed Boardgame Bar Dotypos reservation service or a local reservation webhook workflow.
+`app/[locale]/reservation/page.tsx` embeds the ChoiceQR booking widget. ChoiceQR owns reservations and availability; don't bring back a Boardgame Bar Dotypos reservation service or a local reservation webhook.
 
-The page is gated by `siteConstants.featureFlags.tableReservations`. Its locale mapping is explicit for every supported locale and must remain exhaustive.
-
-Inspect:
-
-- `app/[locale]/reservation/page.tsx` for the embed, locale mapping, metadata, and page gate;
-- `shared/utils/constants.ts` for the static gate;
-- `features/navigation/components/reservation-button.tsx` for the primary entry point; and
-- `project.inlang/settings.json` plus `features/i18n/messages/*.json` for supported locales and customer copy.
+- `siteConstants.featureFlags.tableReservations` gates the page and `features/navigation/components/reservation-button.tsx`.
+- The page's ChoiceQR locale map must stay exhaustive over the locales in `project.inlang/settings.json`.
 
 ## Training-room requests
 
-Training-room submissions use the feature-local schema, server action, and `TrainingReservationService`. The service sends the business notification before accepting the request. Map a business-delivery failure to the localized action error and do not redirect as if the request succeeded.
+Code lives under `features/training/reservation`: schema, server action, `TrainingReservationService`, form, and email rendering. `siteConstants.featureFlags.boardroomReservations` gates it.
 
-The customer acknowledgement is best effort after the business notification succeeds. Log a delivery failure without turning the already-received business request into an action failure.
-
-Keep the request business meaning clear in UI and email copy: it is received for telephone confirmation, not confirmed availability.
-
-The feature is gated by `siteConstants.featureFlags.boardroomReservations`. Keep family-specific form, rendering, and email code under `features/training/reservation`.
+- The service sends the business notification before accepting the request. If that fails, return the localized action error and don't redirect as if it succeeded.
+- The customer acknowledgement is best effort after the business notification. Log a delivery failure; don't fail the action.
+- UI and email copy say the request was received for telephone confirmation, never that availability is confirmed.

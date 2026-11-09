@@ -1,0 +1,74 @@
+{
+  "accessCodesPageTitle": "Vytvoření přístupového kódu",
+  "accessCodesFormLoading": "Načítání formuláře přístupového kódu",
+  "accessCodesFormName": "Vytvoření přístupového kódu",
+  "accessCodesNameLabel": "Název",
+  "accessCodesNameRequired": "Zadejte název tohoto přístupového kódu.",
+  "accessCodesNameTooLong": [
+    {
+      "declarations": [
+        "input maximum",
+        "local maximumPlural = maximum: plural",
+        "local formattedMaximum = maximum: number"
+      ],
+      "selectors": ["maximumPlural"],
+      "match": {
+        "maximumPlural=one": "Použijte nejvýše {formattedMaximum} znak.",
+        "maximumPlural=few": "Použijte nejvýše {formattedMaximum} znaky.",
+        "maximumPlural=other": "Použijte nejvýše {formattedMaximum} znaků."
+      }
+    }
+  ],
+  "accessCodesWindowLegend": "Časové okno přístupu ({timeZone})",
+  "accessCodesStartsLabel": "Začátek",
+  "accessCodesStartRequired": "Vyberte čas začátku.",
+  "accessCodesStartInvalid": "Vyberte platný čas začátku v celou hodinu.",
+  "accessCodesEndsLabel": "Konec",
+  "accessCodesEndRequired": "Vyberte čas konce.",
+  "accessCodesEndInvalid": "Vyberte platný čas konce v celou hodinu.",
+  "accessCodesWindowDurationInvalid": [
+    {
+      "declarations": [
+        "input minimum",
+        "input maximum",
+        "local maximumPlural = maximum: plural",
+        "local formattedMinimum = minimum: number",
+        "local formattedMaximum = maximum: number"
+      ],
+      "selectors": ["maximumPlural"],
+      "match": {
+        "maximumPlural=one": "Konec musí být {formattedMinimum} až {formattedMaximum} hodinu po začátku.",
+        "maximumPlural=few": "Konec musí být {formattedMinimum} až {formattedMaximum} hodiny po začátku.",
+        "maximumPlural=other": "Konec musí být {formattedMinimum} až {formattedMaximum} hodin po začátku."
+      }
+    }
+  ],
+  "accessCodesDurationSummary": "Trvání: {duration}",
+  "accessCodesSubmit": "Vytvořit přístupový kód",
+  "accessCodesSubmitting": "Vytváří se…",
+  "accessCodesPinShownOnceWarning": "Tento PIN se zobrazí jen jednou a později ho už nezískáte. Než stránku opustíte, uložte si ho na bezpečné místo.",
+  "accessCodesCopyCode": "Zkopírovat kód",
+  "accessCodesCopied": "Zkopírováno",
+  "accessCodesResultName": "Přístupový kód",
+  "accessCodesResultValidFrom": "Platí od",
+  "accessCodesResultValidUntil": "Platí do",
+  "accessCodesResultDuration": "Trvání",
+  "accessCodesCreateAnother": "Vytvořit další přístupový kód",
+  "accessCodesAlreadyCreated": "Tento přístupový kód už byl vytvořen. Jeho PIN se zobrazil jen jednou při vytvoření a znovu ho zobrazit nelze.",
+  "accessCodesAmbiguousNotice": "Poskytovatel nepotvrdil, zda tento přístupový kód existuje. Tento pokus je uzavřený a automaticky se nebude opakovat.",
+  "accessCodesCleanupRequiredNotice": "Výsledek předchozího pokusu pro toto časové okno je stále nejasný. Než vytvoříte další kód, musíte jeho případný přístupový údaj vyřešit přímo na zámku.",
+  "accessCodesCleanupInstructions": "Než pro toto časové okno vytvoříte další kód, zkontrolujte zámek v aplikaci Igloohome přes Bluetooth, a pokud na něm je „{name}“, odstraňte ho.",
+  "accessCodesCleanupFormName": "Potvrzení kontroly zámku",
+  "accessCodesCleanupConfirmationLabel": "Potvrzuji, že uvedený přístupový kód byl ze zámku odstraněn nebo že na zámku není.",
+  "accessCodesCleanupConfirmationRequired": "Před pokračováním potvrďte kontrolu zámku.",
+  "accessCodesStartOver": "Začít znovu",
+  "accessCodesFailureRejected": "Poskytovatel tento přístupový kód odmítl. Upravte údaje a zkuste to znovu.",
+  "accessCodesFailureInProgress": "Tento přístupový kód se už vytváří. Chvíli počkejte a zkuste to znovu.",
+  "accessCodesFailureUnavailable": "Vytváření přístupových kódů je dočasně nedostupné. Zkuste to znovu za několik minut.",
+  "accessCodesFailureReconciled": "Vaše potvrzení kontroly zámku bylo zaznamenáno u dřívějšího nejasného pokusu, který žádný přístupový kód nevytvořil. Odešlete formulář znovu a přístupový kód se vytvoří.",
+  "accessCodesCreateFailed": "Přístupový kód se nepodařilo vytvořit. Zkuste to znovu.",
+  "accessCodesServerUnreachable": "Server se nepodařilo kontaktovat. Tento pokus zůstává zachovaný, takže to můžete bezpečně zkusit znovu.",
+  "accessCodesActionTimedOut": "Server neodpověděl včas. Zkuste to znovu.",
+  "accessCodesActionFailedUnexpectedly": "Na serveru se něco pokazilo. Zkuste to znovu.",
+  "accessCodesAuthenticationRequired": "Je vyžadováno přihlášení administrátora."
+}

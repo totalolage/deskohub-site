@@ -1,36 +1,36 @@
-export type { AresBusinessBillingDraft } from "./backend/ares-business-draft";
-export { toAresBusinessBillingDraft } from "./backend/ares-business-draft";
+export type { CustomerAgentScope } from "./agent-scopes";
 export {
-  OptionalAccountActivityGuard,
-  requireAccountActivity,
-} from "./backend/customer-account-activity";
-export type { CustomerAccountActivityState } from "./backend/customer-account-link.repository";
+  CustomerAgentAuthorization,
+  CustomerAgentAuthorizationError,
+  type CustomerAgentCaller,
+  type CustomerAgentClientId,
+  type CustomerAgentGrant,
+  customerAgentClientIdSchema,
+  readAgentAccessToken,
+} from "./backend/auth/customer-agent-authorization.service";
+export {
+  type CustomerAgentChallengeReason,
+  customerAgentChallenge,
+} from "./backend/auth/customer-agent-challenge";
+export { nativeApp } from "./backend/auth/native-app";
+export { currentReservationHistoryAccount } from "./backend/current-reservation-history-account";
+export { OptionalAccountActivityGuard } from "./backend/customer-account-activity";
+export { findActiveCustomerAccountByEmail } from "./backend/customer-account-by-email";
+export { CustomerAccountContactService } from "./backend/customer-account-contact.service";
 export { CustomerAccountReservationOwnership } from "./backend/customer-account-reservation-ownership";
-export {
-  CustomerAccountResolver,
-  resolveCurrentCustomerAccount,
-} from "./backend/customer-account-resolver.service";
-export type {
-  CustomerProfile,
-  CustomerProfileBilling,
-} from "./backend/customer-dotypos-adapter.service";
-export { CustomerProfileService } from "./backend/customer-profile.service";
+export { CustomerAccountResolver } from "./backend/customer-account-resolver.service";
+export { customerAgentAccountServices } from "./backend/customer-agent-account-services";
+export { CustomerEmailLocaleService } from "./backend/customer-email-locale.service";
 export { CustomerReservationHistoryService } from "./backend/customer-reservation-history.service";
+export {
+  isCustomerOwnAuthor,
+  type ReservationAuthor,
+  ReservationAuthorDirectory,
+  ReservationAuthorReadError,
+} from "./backend/reservation-author-directory.service";
 export type {
-  CustomerProfileBillingInput,
-  CustomerProfileInput,
-  CustomerReservationGroups,
   CustomerReservationHistory,
-  CustomerReservationProduct,
-  CustomerReservationStatus,
+  CustomerReservationParty,
   CustomerReservationSummary,
 } from "./contracts";
-export {
-  updateCustomerProfileSchema,
-  updateCustomerProfileStandardSchema,
-} from "./contracts";
-export {
-  CustomerAccountAccessError,
-  type CustomerAccountId,
-  type LinkedCustomerAccount,
-} from "./customer-account";
+export { CustomerAccountAccessError } from "./customer-account";

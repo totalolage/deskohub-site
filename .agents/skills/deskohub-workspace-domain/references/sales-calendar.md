@@ -1,61 +1,40 @@
-# Sales calendar discounts
+# Calendar sales and discount definitions
 
-Model Workspace sales calendar events as references to stored discount definitions:
+The [discount specification](../../../../apps/deskohub-workspace/docs/discount-codes.md) defines customer-facing sale policy. A Calendar sale is a Google Calendar occurrence that references a discount definition stored in Postgres. The code lives in `features/discounts`.
 
-- Treat the trimmed event description as exactly one discount UUID; reject rich-text wrappers, prose, or any additional content.
-- Let Calendar own occurrence timing.
-- Treat the Calendar title as operator-facing metadata only; never use it as a
-  public label.
-- Let Postgres own the complete locale-indexed public label map, adjustment,
-  and product targets.
-- Select fixed-discount currencies from the shared Workspace currency catalog
-  in `shared/money/currencies.ts`, and derive the stored exponent from that
-  definition rather than accepting an independently entered exponent.
-- Keep that locale-indexed map as the sole definition-label source. Do not add
-  a second scalar operator or fallback label to stored discount definitions.
-- Log malformed events and missing, malformed, or unavailable definitions at
-  Error level, omit only the affected sale/definition, and keep every other
-  correctly resolved discount. A whole Calendar failure yields no Calendar
-  candidates and does not block initial discovery. Do not cache a partial
-  resolution as a complete success.
-- Treat reservation-page advertisement as an anonymous pricing boundary. It
-  evaluates Calendar sales and may provisionally preview an explicitly supplied
-  ordinary discount code without customer identity. Keep the canonical query
-  code inside the integrity-protected snapshot, exclude vouchers, and perform
-  full customer eligibility and usage validation after identity resolution. Do
-  not resolve or create a Dotypos customer merely to render an advertised price,
-  and do not put PII in the snapshot.
-- Once a Calendar discount has been advertised, do not silently omit it from a
-  quote or signed summary. Its disappearance produces `pricing_changed` for the
-  affected product. Do not add a newly available Calendar discount
-  retrospectively during quote generation or final affirmation.
-- After the advertised Calendar discounts are affirmed on reservation
-  submission, the server may evaluate a Dotypos customer discount after
-  identity resolution and include it for the first time in the signed summary
-  without `pricing_changed`. That explicit customer-pricing exception does not
-  apply to Calendar sales. Once shown, the customer discount follows the normal
-  affirmation and `pricing_changed` rules for accepted discounts.
-- Require a trimmed, non-empty label for every application locale and reject
-  missing or unsupported locale keys. Never fall back across languages.
-- Cache the complete locale-independent stored definition for Calendar
-  advertisement discovery and resolve the concrete label only when creating
-  the checkout candidate.
-- Share only complete Calendar-occurrence and stored-definition source
-  snapshots across requests, keyed by reservation date, through `use cache:
-  remote`. Give partial or failed loads no cache lifetime, and do not put a
-  process-memory cache in front of the remote boundary because it can hide
-  invalidation and cannot share entries across Vercel instances.
-- Keep feature-flag evaluation, current-time eligibility, locale and product
-  filtering, checkout revalidation, and advertised-price token sealing outside
-  the shared source cache.
-- Invalidate the shared source after stored discount-definition mutations and
-  prime it best-effort. Calendar edits remain bounded by normal time-based
-  revalidation because Workspace does not own that mutation boundary.
-- Snapshot the resolved string in checkout and application history so later
-  translation edits cannot rewrite what a customer saw.
-- Do not reintroduce TOML sale configuration.
-- Treat the home-page sale banner as a single-sale presentation boundary. Show
-  it only when Calendar discovery resolves exactly one active sale; if
-  overlapping sales are active, log the ambiguous count and omit the banner
-  rather than advertising an arbitrary discount. Pricing may still resolve
-  and stack those overlapping sales independently.
+## Ownership
+
+- Calendar owns occurrence timing. The trimmed event description must be exactly one discount UUID. Reject rich-text wrappers, prose, and any extra content.
+- The event title is operator metadata. Never show it to customers.
+- Postgres owns the definition: the locale-indexed label map, the adjustment, and the product targets. The label map is the only label source. Don't add a scalar or fallback label.
+- A product target names a reservation family or one saleable cowork tier. Match products only through `workspaceProductTargetMatches`, and lock claim targets through `getWorkspaceProductTargetsCovering`, both in `features/discounts/product-target.ts`. The legacy `discount_product_targets` sync triggers widened every cowork target to the whole family; migration `20261014063616_drop_legacy_discount_target_sync` dropped them, and they stay dropped.
+- Require a trimmed, non-empty label for every application locale, and reject missing or unsupported locale keys. Never fall back across languages.
+- Fixed discounts pick a currency from `shared/money/currencies.ts` and take the stored unit from `unitOf`. Never accept a separately entered exponent. A currency outside the catalog, such as one carried over from an existing record, has no unit, so the admin form sends no mutation and shows its check-the-form error.
+- Snapshot the resolved label in checkout and application history, so later translation edits can't rewrite what a customer saw.
+
+## Eligibility
+
+A sale applies only when the booking instant is inside the occurrence's Prague all-day booking window (exclusive end) and the reservation's last service date is on or before the sale's last day. Earlier service dates qualify. A range that extends past the last day gets no sale and is never prorated.
+
+- Express this only through `calendarSaleAppliesToBooking` and `isCalendarSaleBookableAt` in `features/discounts/calendar-sale.ts`.
+- `lastServiceDate` is the office `endsOn`, the cowork `date`, or, for a meeting room, the Prague date of its exclusive `endsAt`, because hourly bookings can cross midnight.
+- `expiresAt` is the end of the booking window. The countdown and the home-page banner both target it.
+
+Load [the checkout skill's pricing reference](../../deskohub-workspace-checkout/references/pricing.md#booking-instant) for where the booking instant comes from, the anonymous advertisement boundary, discount affirmation, and `pricing_changed`.
+
+## Resolution failures
+
+- Log a malformed event or a missing, malformed, or unavailable definition at Error level and omit only that sale. Keep every other resolved discount.
+- A whole Calendar failure yields no Calendar candidates and doesn't block initial discovery.
+- Mark a partial resolution incomplete (`complete: false`). Never cache it as a complete success.
+
+## Caching
+
+- `loadCalendarDiscountSource` (`features/discounts/calendar-discount-source.server.ts`) shares only complete occurrence and definition snapshots across requests through `use cache: remote`, keyed by the booking's Prague date, through `readSharedSnapshot`. Partial or failed loads expire at once (`expire: 0`), so the next request retries them.
+- Don't put a process-memory cache in front of the remote cache. It hides invalidation and can't share entries across Vercel instances.
+- Keep the source cache locale-independent. Run feature-flag evaluation, booking-time eligibility, locale and product filtering, label resolution, checkout revalidation, and advertised-price token sealing outside it.
+- Definition mutations call `refreshCalendarDiscountSourceAfterMutation` (`features/discounts/admin/calendar-discount-source-maintenance.server.ts`), which expires the cache tag and primes it best-effort. Calendar edits rely on time-based revalidation, because Workspace doesn't own that mutation.
+
+## Home-page banner
+
+`features/landing-page/landing-page-sale-banner.server.ts` shows the banner only when exactly one sale is active. With overlapping sales, it logs the count and omits the banner. Pricing still resolves and stacks overlapping sales independently.

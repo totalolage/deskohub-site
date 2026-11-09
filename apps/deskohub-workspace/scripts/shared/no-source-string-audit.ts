@@ -1,6 +1,6 @@
-import { execSync } from "node:child_process";
 import { lstatSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { commandOutput } from "./command";
 
 /**
  * Deterministic audit: no tracked test may pin literal substrings of tracked
@@ -84,16 +84,16 @@ const SEARCH_PIN_ON = (variable: string): readonly RegExp[] => [
   ),
 ];
 
-let cachedRepositoryRoot: string | undefined;
+let cachedRepositoryRoot: Promise<string> | undefined;
 
 /** Absolute root of the repository that owns this script. */
-export const repositoryRoot = (): string => {
-  if (cachedRepositoryRoot === undefined) {
-    cachedRepositoryRoot = execSync("git rev-parse --show-toplevel", {
+export const repositoryRoot = (): Promise<string> => {
+  cachedRepositoryRoot ??= commandOutput(
+    ["git", "rev-parse", "--show-toplevel"],
+    {
       cwd: resolve(import.meta.dir, "../.."),
-      encoding: "utf8",
-    }).trim();
-  }
+    }
+  ).then((output) => output.trim());
   return cachedRepositoryRoot;
 };
 
@@ -109,16 +109,29 @@ const presentPath = (root: string, relativePath: string): boolean => {
   }
 };
 
-export const listAuditedTestFiles = (
-  root: string = repositoryRoot()
-): readonly string[] =>
-  execSync(
-    "git ls-files --cached --others --exclude-standard -z -- '*.test.ts' '*.test.tsx'",
-    { cwd: root, encoding: "utf8" }
-  )
+export const listAuditedTestFiles = async (
+  root?: string
+): Promise<readonly string[]> => {
+  const cwd = root ?? (await repositoryRoot());
+  const output = await commandOutput(
+    [
+      "git",
+      "ls-files",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "-z",
+      "--",
+      "*.test.ts",
+      "*.test.tsx",
+    ],
+    { cwd }
+  );
+  return output
     .split("\0")
-    .filter((entry) => entry.length > 0 && presentPath(root, entry))
+    .filter((entry) => entry.length > 0 && presentPath(cwd, entry))
     .sort();
+};
 
 export const findViolations = (
   files: readonly { readonly path: string; readonly content: string }[]

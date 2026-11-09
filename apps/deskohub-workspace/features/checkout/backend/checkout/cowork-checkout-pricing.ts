@@ -5,16 +5,18 @@ import {
   buildCoworkReservationQuote,
   type CoworkReservationQuote,
 } from "@/features/checkout/reservation-quote-cowork";
-import type { WorkspaceMoneyError } from "@/features/checkout/workspace-money";
 import type {
+  DiscountAffirmationUnavailableError,
   DiscountQuote,
   DiscountResolutionError,
 } from "@/features/discounts";
 import type {
   CoworkAdvertisedPriceDetails,
   CoworkAdvertisedPriceReservation,
+  CoworkReservationDetails,
   NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
+import type { MoneyUnitMismatch } from "@/shared/money/money";
 import {
   type ReservationAdvertisementAffirmation,
   type ReservationAdvertisementAffirmationInput,
@@ -30,8 +32,9 @@ import {
 } from "./reservation-checkout-pricing";
 
 export type CoworkCheckoutPricingError =
-  | WorkspaceMoneyError
-  | DiscountResolutionError;
+  | MoneyUnitMismatch
+  | DiscountResolutionError
+  | DiscountAffirmationUnavailableError;
 
 export type CoworkAdvertisementQuoteInput =
   ReservationAdvertisementQuoteInput<CoworkAdvertisedPriceReservation>;
@@ -84,7 +87,7 @@ export type CoworkDiscountCodePriceResult = ReservationDiscountCodePriceResult<
 
 const getCoworkPricingContext = Effect.fn(
   "CoworkCheckoutPricing.getPricingContext"
-)((reservation: CoworkAdvertisedPriceDetails) => {
+)((reservation: CoworkPricingSelection) => {
   const product = getWorkspaceProductByTier(reservation.entryTier);
 
   return Effect.succeed({
@@ -92,10 +95,20 @@ const getCoworkPricingContext = Effect.fn(
     discountInput: {
       product: { kind: "cowork" as const, tier: reservation.entryTier },
       discountableSubtotal: product.price,
-      reservationDate: reservation.date,
+      lastServiceDate: reservation.date,
     },
   });
 });
+
+/**
+ * PII-free cowork selection that pricing accepts: advertised-price inputs or
+ * the reservation domain's details projection. A full order satisfies it
+ * structurally through `CoworkReservationDetails`, so the pricing selection
+ * concept never names customer identity.
+ */
+type CoworkPricingSelection =
+  | CoworkAdvertisedPriceDetails
+  | CoworkReservationDetails;
 
 type CoworkPricingContext = Effect.Success<
   ReturnType<typeof getCoworkPricingContext>
@@ -110,15 +123,14 @@ const buildCoworkQuote = Effect.fn("CoworkCheckoutPricing.buildQuote")(
       discountQuote: input.discountQuote,
     })
 );
-
 export const coworkCheckoutPricing = reservationCheckoutPricing<
-  CoworkAdvertisedPriceDetails,
+  CoworkPricingSelection,
   CoworkAdvertisedPriceReservation,
   NormalizedCoworkReservationOrder,
   CoworkPricingContext,
   CoworkReservationQuote,
   never,
-  WorkspaceMoneyError
+  MoneyUnitMismatch
 >({
   getPricingContext: getCoworkPricingContext,
   buildQuote: buildCoworkQuote,

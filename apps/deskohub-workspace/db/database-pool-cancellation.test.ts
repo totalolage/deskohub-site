@@ -18,6 +18,9 @@ const makeProductionStyleProbe = () => {
     idleTimeoutMillis: 1_000,
     max: 2,
     application_name: probeApplicationName,
+    // Without this a backend notices its destroyed socket only after pg_sleep
+    // returns, so teardown could not be observed while the statement runs.
+    options: "-c client_connection_check_interval=50",
   });
   const layer = PgClient.layerFrom(
     PgClient.fromPool({ acquire: Effect.succeed(pool) })
@@ -63,11 +66,15 @@ const pollUntilProbeStatementActive = async (): Promise<number> => {
   throw new Error("Probe statement did not become active");
 };
 
+// Shorter than the probes' pg_sleep(3), so a backend only counts as torn down
+// when its socket closed while the statement was still running.
+const backendTeardownDeadlineMillis = 2_000;
+
 const observeBackendTeardown = async (pid: number): Promise<boolean> => {
-  const deadline = Date.now() + 12_000;
+  const deadline = Date.now() + backendTeardownDeadlineMillis;
   while (Date.now() < deadline) {
     if (!(await isProbeBackendAlive(pid))) return true;
-    await Bun.sleep(100);
+    await Bun.sleep(20);
   }
   return !(await isProbeBackendAlive(pid));
 };

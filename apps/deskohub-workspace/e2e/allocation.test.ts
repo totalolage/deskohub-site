@@ -51,10 +51,17 @@ test("partitions the candidate range into deterministic disjoint shards", () => 
   );
 });
 
-test("uses the run identity deterministically when no PR number is available", () => {
-  expect(makeWorkspaceE2EDateAllocation({ runId: "manual-run" })).toEqual(
-    makeWorkspaceE2EDateAllocation({ runId: "manual-run" })
+test("spreads runs without a PR number across every shard", () => {
+  const shardIndexes = new Set(
+    Array.from(
+      { length: 30 },
+      (_, index) =>
+        makeWorkspaceE2EDateAllocation({ runId: `manual-run-${index}` })
+          .shardIndex
+    )
   );
+
+  expect(shardIndexes.size).toBe(workspaceE2EConcurrentRunTarget);
 });
 
 test("uses coordinated leases to separate colliding PR identities", () => {

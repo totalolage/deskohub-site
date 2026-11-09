@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Clock, Effect, Option, Schema, SchemaGetter } from "effect";
 
 export const unixTimestampSecondsSchema = Schema.Int.check(
   Schema.isGreaterThanOrEqualTo(0)
@@ -15,33 +15,59 @@ export const TemporalInstantSchema = Schema.declare(
   }
 );
 
-export const TemporalPlainDateSchema = Schema.declare(
-  (input): input is Temporal.PlainDate => input instanceof Temporal.PlainDate,
-  {
-    identifier: "TemporalPlainDate",
-    description: "Temporal plain date value.",
-  }
+/**
+ * Current instant read from the Effect `Clock`, so tests can control time.
+ */
+export const currentInstant: Effect.Effect<Temporal.Instant> =
+  Clock.currentTimeMillis.pipe(
+    Effect.map((epochMilliseconds) =>
+      Temporal.Instant.fromEpochMilliseconds(epochMilliseconds)
+    )
+  );
+
+/**
+ * Current instant read from the Effect `Clock` below the millisecond, so
+ * events less than a millisecond apart keep their order. Stored, it keeps
+ * microseconds (`toStoredInstant`).
+ */
+export const currentPreciseInstant: Effect.Effect<Temporal.Instant> =
+  Clock.currentTimeNanos.pipe(
+    Effect.map((epochNanoseconds) =>
+      Temporal.Instant.fromEpochNanoseconds(epochNanoseconds)
+    )
+  );
+
+const parsePlainTime = Option.liftThrowable((value: string) =>
+  Temporal.PlainTime.from(value)
 );
 
-export const TemporalPlainTimeSchema = Schema.declare(
-  (input): input is Temporal.PlainTime => input instanceof Temporal.PlainTime,
-  {
-    identifier: "TemporalPlainTime",
-    description: "Temporal plain time value.",
-  }
+const parsePlainDateTime = Option.liftThrowable((value: string) =>
+  Temporal.PlainDateTime.from(value)
+);
+
+/** The instant an ISO string with an offset names, or none when it names no valid instant. */
+export const parseInstant: (value: string) => Option.Option<Temporal.Instant> =
+  Option.liftThrowable((value: string) => Temporal.Instant.from(value));
+
+const parseZonedInstant = Option.liftThrowable(
+  (value: string, timeZone: string) =>
+    Temporal.Instant.from(value).toZonedDateTimeISO(timeZone)
+);
+
+/** The calendar date an ISO string names, or none when it names no valid date. */
+export const parsePlainDate: (
+  value: string
+) => Option.Option<Temporal.PlainDate> = Option.liftThrowable((value: string) =>
+  Temporal.PlainDate.from(value)
 );
 
 export const localTimeSchema = Schema.String.check(
-  Schema.makeFilter((value) => {
-    try {
-      return (
-        Temporal.PlainTime.from(value).toString({ smallestUnit: "minute" }) ===
-        value
-      );
-    } catch {
-      return false;
-    }
-  })
+  Schema.makeFilter((value) =>
+    Option.exists(
+      parsePlainTime(value),
+      (time) => time.toString({ smallestUnit: "minute" }) === value
+    )
+  )
 )
   .pipe(Schema.brand("LocalTime"))
   .annotate({
@@ -49,21 +75,16 @@ export const localTimeSchema = Schema.String.check(
     description: "Canonical local time in HH:mm format.",
   });
 
-export type LocalTime = typeof localTimeSchema.Type;
-
 export const localDateTimeSchema = Schema.String.check(
-  Schema.makeFilter((value) => {
-    try {
-      const dateTime = Temporal.PlainDateTime.from(value);
-      return (
+  Schema.makeFilter((value) =>
+    Option.exists(
+      parsePlainDateTime(value),
+      (dateTime) =>
         dateTime.toString({
           smallestUnit: dateTime.second === 0 ? "minute" : "second",
         }) === value
-      );
-    } catch {
-      return false;
-    }
-  })
+    )
+  )
 )
   .pipe(Schema.brand("LocalDateTime"))
   .annotate({
@@ -74,14 +95,7 @@ export const localDateTimeSchema = Schema.String.check(
 export type LocalDateTime = typeof localDateTimeSchema.Type;
 
 export const instantStringSchema = Schema.String.check(
-  Schema.makeFilter((value) => {
-    try {
-      Temporal.Instant.from(value);
-      return true;
-    } catch {
-      return false;
-    }
-  })
+  Schema.makeFilter((value) => Option.isSome(parseInstant(value)))
 )
   .pipe(Schema.brand("Instant"))
   .annotate({
@@ -91,14 +105,26 @@ export const instantStringSchema = Schema.String.check(
 
 export type Instant = typeof instantStringSchema.Type;
 
+/**
+ * A whole-millisecond instant stored as its ISO string, such as a work
+ * unit subject's window bound or fire time; the ISO form round-trips it
+ * exactly.
+ */
+export const instantFromIsoStringSchema = instantStringSchema.pipe(
+  Schema.decodeTo(TemporalInstantSchema, {
+    decode: SchemaGetter.transform((value) => Temporal.Instant.from(value)),
+    encode: SchemaGetter.transform(
+      (value) => temporalInstantToIsoString(value) as Instant
+    ),
+  })
+);
+
 export const isPlainDateString = (annotations?: Schema.Annotations.Filter) =>
-  Schema.makeFilter<string>((value) => {
-    try {
-      return Temporal.PlainDate.from(value).toString() === value;
-    } catch {
-      return false;
-    }
-  }, annotations);
+  Schema.makeFilter<string>(
+    (value) =>
+      Option.exists(parsePlainDate(value), (date) => date.toString() === value),
+    annotations
+  );
 
 export const plainDateStringSchema = Schema.String.check(isPlainDateString())
   .pipe(Schema.brand("PlainDate"))
@@ -109,7 +135,22 @@ export const plainDateStringSchema = Schema.String.check(isPlainDateString())
 
 export type PlainDate = typeof plainDateStringSchema.Type;
 
-export const isValidDate = (date: Date) => !Number.isNaN(date.getTime());
+/** Every calendar date from `start` through `end`, inclusive. */
+export const getPlainDatesBetween = (
+  start: Temporal.PlainDate,
+  end: Temporal.PlainDate
+): Temporal.PlainDate[] => {
+  const dates: Temporal.PlainDate[] = [];
+  for (
+    let cursor = start;
+    Temporal.PlainDate.compare(cursor, end) <= 0;
+    cursor = cursor.add({ days: 1 })
+  ) {
+    dates.push(cursor);
+  }
+
+  return dates;
+};
 
 export const temporalInstantToDate = (instant: Temporal.Instant) =>
   new Date(instant.epochMilliseconds);
@@ -140,25 +181,23 @@ export const localDateTimeToOffsetInstantString = ({
     .toZonedDateTime(timeZone)
     .toString({ smallestUnit: "second", timeZoneName: "never" });
 
-export const localDateTimeToTemporalInstantString = ({
+/**
+ * The instant a local date-time names in a time zone. Times skipped by a DST
+ * gap resolve forward and repeated times resolve to the earlier occurrence.
+ */
+export const localDateTimeToInstant = ({
   dateTime,
   timeZone,
 }: {
   readonly dateTime: string;
   readonly timeZone: string;
 }) =>
-  Temporal.PlainDateTime.from(dateTime)
-    .toZonedDateTime(timeZone)
-    .toInstant()
-    .toString();
+  Temporal.PlainDateTime.from(dateTime).toZonedDateTime(timeZone).toInstant();
 
-export const dateToTemporalInstant = (date: Date) =>
-  isValidDate(date)
-    ? Temporal.Instant.fromEpochMilliseconds(date.getTime())
-    : undefined;
-
-export const toTemporalInstant = (date: Date | Temporal.Instant) =>
-  date instanceof Date ? dateToTemporalInstant(date) : date;
+export const localDateTimeToTemporalInstantString = (input: {
+  readonly dateTime: string;
+  readonly timeZone: string;
+}) => localDateTimeToInstant(input).toString();
 
 export const temporalPlainDateToDate = ({
   date,
@@ -180,14 +219,6 @@ export const temporalInstantToPlainDate = ({
   readonly instant: Temporal.Instant;
   readonly timeZone: string;
 }) => instant.toZonedDateTimeISO(timeZone).toPlainDate();
-
-export const dateToTemporalPlainDate = ({
-  date,
-  timeZone,
-}: {
-  readonly date: Date;
-  readonly timeZone: string;
-}) => dateToTemporalInstant(date)?.toZonedDateTimeISO(timeZone).toPlainDate();
 
 export const isFuturePlainDateTime = ({
   dateTime,
@@ -236,15 +267,17 @@ export const ceilToWholeHour = (value: Temporal.ZonedDateTime) =>
 
 export const makeWholeHourInstantStringSchema = (timeZone: string) =>
   instantStringSchema.check(
-    Schema.makeFilter((value) => {
-      try {
-        const time = Temporal.Instant.from(value)
-          .toZonedDateTimeISO(timeZone)
-          .toPlainTime();
-
-        return isWholeHour(time);
-      } catch {
-        return false;
-      }
-    })
+    Schema.makeFilter((value) =>
+      Option.exists(parseZonedInstant(value, timeZone), isWholeHour)
+    )
   );
+
+export const addCalendarDuration = ({
+  instant,
+  duration,
+  timeZone,
+}: {
+  readonly instant: Temporal.Instant;
+  readonly duration: Temporal.DurationLike;
+  readonly timeZone: string;
+}) => instant.toZonedDateTimeISO(timeZone).add(duration).toInstant();

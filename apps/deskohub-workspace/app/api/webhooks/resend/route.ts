@@ -1,97 +1,47 @@
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { NextResponse } from "next/server";
 import {
-  ResendWebhookProcessingError,
-  ResendWebhookService,
+  customerAccessDeliveryReports,
+  ReservationFulfillment,
 } from "@/features/checkout/backend/fulfillment";
-import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
+import { campaignDeliveryReports } from "@/features/email-campaigns/backend/campaign-delivery-reports";
+import { CampaignDeliveryStatusService } from "@/features/email-campaigns/backend/campaign-delivery-status.service";
+import {
+  type DeliveryReportHandler,
+  ingestDeliveryReport,
+} from "@/shared/backend/email/delivery-reports";
+import { ResendWebhookConfig } from "@/shared/backend/email/resend-webhook.config";
+import { resendWebhookRefusal } from "@/shared/backend/email/resend-webhook-disposition";
+import { defineWebhookRoute } from "@/shared/backend/service-route";
 
-const processWebhookRequest = Effect.fn("processResendWebhookRequest")(
-  function* (request: Request) {
-    const payload = yield* Effect.tryPromise({
-      try: () => request.text(),
-      catch: (cause) =>
-        new ResendWebhookProcessingError({
-          errorCode: "resend_webhook_payload_invalid",
-          message: "Resend webhook request body could not be read.",
-          cause,
-        }),
-    });
-
-    const webhooks = yield* ResendWebhookService;
-    return yield* webhooks.processWebhook({
-      payload,
-      headers: {
-        id: request.headers.get("svix-id"),
-        timestamp: request.headers.get("svix-timestamp"),
-        signature: request.headers.get("svix-signature"),
-      },
-    });
-  },
-  Effect.scoped
-);
-
-const handleResendWebhookProcessingError = Effect.fn(
-  "handleResendWebhookProcessingError"
-)(function* (error: ResendWebhookProcessingError) {
-  const status =
-    error.errorCode === "resend_webhook_headers_missing" ||
-    error.errorCode === "resend_webhook_verification_failed" ||
-    error.errorCode === "resend_webhook_payload_invalid"
-      ? 400
-      : 500;
-
-  yield* Effect.logError("Resend webhook processing failed", {
-    errorCode: error.errorCode,
-    eventId: error.eventId,
-    workspaceReservationId: error.workspaceReservationId,
-    cause: error.cause,
-  });
-
-  if (status === 500) {
-    yield* Effect.logWarning("Resend webhook response will trigger retry", {
-      errorCode: error.errorCode,
-      eventId: error.eventId,
-      workspaceReservationId: error.workspaceReservationId,
-    });
-  }
-
-  return NextResponse.json(
-    {
-      error: "Webhook processing failed",
-      code: error.errorCode,
-    },
-    { status }
-  );
-});
+const deliveryReportHandlers: readonly DeliveryReportHandler<
+  ReservationFulfillment | CampaignDeliveryStatusService
+>[] = [customerAccessDeliveryReports, campaignDeliveryReports];
 
 /**
  * POST /api/webhooks/resend
  *
- * Receives Resend delivery status for workspace customer fulfilment emails.
+ * Receives Resend delivery reports for the customer confirmation and for
+ * campaign emails.
  */
-export const POST = defineWorkspaceRoute(
+export const POST = defineWebhookRoute(
   {
     operation: "resendWebhook",
-    cancellation: "continue-after-disconnect",
+    failureMessage: "Resend webhook processing failed",
   },
   (request) =>
-    processWebhookRequest(request).pipe(
+    ingestDeliveryReport(request, deliveryReportHandlers).pipe(
       Effect.tap((result) =>
         Effect.logInfo("Resend webhook response ready", { result })
       ),
-      Effect.map((result) =>
-        NextResponse.json({
-          message: "Webhook received",
-          status: result.status,
-          reason: result.reason,
-        })
-      ),
-      Effect.catchTag(
-        "ResendWebhookProcessingError",
-        handleResendWebhookProcessingError
-      ),
-      Effect.provide(ResendWebhookService.Live)
+      Effect.mapError(resendWebhookRefusal),
+      Effect.provide(
+        Layer.mergeAll(
+          ResendWebhookConfig.Default,
+          ReservationFulfillment.Live,
+          CampaignDeliveryStatusService.Live
+        )
+      )
     )
 );
 

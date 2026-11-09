@@ -1,28 +1,51 @@
 "use client";
 
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { useRouter } from "next/navigation";
 import {
   type FormEvent,
   type InvalidEvent,
+  type ReactNode,
   useEffect,
   useRef,
   useState,
   useTransition,
 } from "react";
+import { type FieldErrors, useForm } from "react-hook-form";
 import {
-  type AresBusinessLookupResult,
   completeCustomerProfile,
-  lookupAresBusiness,
   updateCustomerProfile,
 } from "@/features/account/actions";
-import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
-import type { CustomerProfileBilling } from "@/features/account/backend/customer-dotypos-adapter.service";
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
+import { refreshAnalyticsDotyposCustomerId } from "@/features/account/analytics-customer-link";
 import { BillingScreen } from "@/features/account/components/billing/billing-screen";
+import { AvatarControl } from "@/features/account/components/profile/avatar-control";
 import { ProfileScreen } from "@/features/account/components/profile/profile-screen";
-import type { CustomerProfileInput } from "@/features/account/contracts";
+import { ProfileBillingFields } from "@/features/account/components/profile-billing-fields";
+import {
+  ProfileIdentityFields,
+  ProfileReferralCodeField,
+} from "@/features/account/components/profile-form-fields";
+import { ProfileFormFooter } from "@/features/account/components/profile-form-footer";
+import {
+  completionFormSchema,
+  firstInvalidProfileFormSection,
+  type ProfileFormField,
+  type ProfileFormSection,
+  type ProfileFormValues,
+  profileFormDefaults,
+  profileFormErrorMessage,
+  profileFormFieldOfInputName,
+  profileFormSchema,
+  toProfileFormErrors,
+} from "@/features/account/components/profile-form-model";
+import { useAresBusinessLookup } from "@/features/account/components/use-ares-business-lookup";
+import type {
+  CustomerAvatarPresentation,
+  CustomerProfile,
+} from "@/features/account/contracts";
 import { type Locale, m } from "@/features/i18n";
-import { Button } from "@/shared/components/ui/button";
+import type { ReferralCode } from "@/features/referrals/client";
+import { Form } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { useUnsavedChanges } from "@/shared/components/unsaved-changes-guard";
@@ -34,305 +57,132 @@ type ProfileFormProps = {
   readonly email: string;
   readonly locale: Locale;
   readonly mode: CustomerProfileFormMode;
-  readonly onSectionChange?: (section: "profile" | "billing") => void;
-  readonly profile?: {
-    readonly firstName: string;
-    readonly lastName: string | null;
-    readonly phone: string | null;
-    readonly billing: CustomerProfileBilling | null;
-  };
-  readonly section?: "profile" | "billing";
+  readonly onSectionChange?: (section: ProfileFormSection) => void;
+  readonly profile?: CustomerProfile;
+  readonly avatarPresentation?: CustomerAvatarPresentation;
+  /** Server-checked invitation code that prefills first-time completion. */
+  readonly referralCode?: ReferralCode;
+  /**
+   * Whether first-time completion offers the referral code field; only a
+   * released referral program does.
+   */
+  readonly referralsEnabled?: boolean;
+  readonly section?: ProfileFormSection;
 };
-
-type BillingKind = "hidden" | "personal" | "business";
-
-type BillingValues = {
-  readonly companyName: string;
-  readonly companyId: string;
-  readonly vatId: string;
-  readonly addressLine1: string;
-  readonly addressLine2: string;
-  readonly city: string;
-  readonly zip: string;
-  readonly country: string;
-};
-
-type AresLookupStatus =
-  | "idle"
-  | "found"
-  | "invalid-ico"
-  | "not-found"
-  | "unavailable"
-  | "applied";
-
-type AresLookupUi = {
-  readonly isPending: boolean;
-  readonly status: AresLookupStatus;
-  readonly review?: AresBusinessBillingDraft;
-  readonly message?: string;
-  readonly onLookup: () => void;
-  readonly onApply: () => void;
-  readonly onDismiss: () => void;
-};
-
-type AresLookupUiState = {
-  status: AresLookupStatus;
-  review?: AresBusinessBillingDraft;
-  message?: string;
-  /** Invalidation generation at which this state was installed. */
-  generation?: number;
-};
-
-const aresDraftFields = [
-  "companyName",
-  "companyId",
-  "vatId",
-  "addressLine1",
-  "addressLine2",
-  "city",
-  "zip",
-  "country",
-] as const satisfies readonly (keyof BillingValues)[];
 
 type SavedIdentity = {
   readonly firstName: string;
   readonly lastName: string | null;
 };
 
-type SubmittedSnapshot = {
-  readonly identity: SavedIdentity;
-  readonly snapshot: string;
-};
-
-const readBilling = (
-  formData: FormData,
-  kind: BillingKind
-): CustomerProfileInput["billing"] => {
-  if (kind === "business") {
-    return {
-      kind: "business",
-      companyName: nonEmpty(formData.get("billingCompanyName")) ?? "",
-      companyId: nonEmpty(formData.get("billingCompanyId")),
-      vatId: nonEmpty(formData.get("billingVatId")),
-      addressLine1: nonEmpty(formData.get("billingAddressLine1")),
-      addressLine2: nonEmpty(formData.get("billingAddressLine2")),
-      city: nonEmpty(formData.get("billingCity")),
-      zip: nonEmpty(formData.get("billingZip")),
-      country: nonEmpty(formData.get("billingCountry")),
-    };
-  }
-  if (kind === "personal") {
-    return {
-      kind: "personal",
-      addressLine1: nonEmpty(formData.get("billingAddressLine1")),
-      addressLine2: nonEmpty(formData.get("billingAddressLine2")),
-      city: nonEmpty(formData.get("billingCity")),
-      zip: nonEmpty(formData.get("billingZip")),
-      country: nonEmpty(formData.get("billingCountry")),
-    };
-  }
-  return undefined;
-};
-
-const nonEmpty = (value: FormDataEntryValue | null) => {
-  if (value instanceof File) return undefined;
-  const text = value?.trim() ?? "";
-  return text ? text : undefined;
-};
-
-const formSnapshot = (form: HTMLFormElement) =>
-  JSON.stringify([...new FormData(form).entries()]);
-
 export function ProfileForm({
+  avatarPresentation,
   email,
   locale,
   mode,
   onSectionChange,
   profile,
+  referralCode,
+  referralsEnabled,
   section = "profile",
 }: ProfileFormProps) {
   const router = useRouter();
-  const [billingKind, setBillingKind] = useState<BillingKind>(
-    profile?.billing?.kind ?? "hidden"
-  );
-  const [billingValues, setBillingValues] = useState<BillingValues>(() => ({
-    companyName: profile?.billing?.companyName ?? "",
-    companyId: profile?.billing?.companyId ?? "",
-    vatId: profile?.billing?.vatId ?? "",
-    addressLine1: profile?.billing?.addressLine1 ?? "",
-    addressLine2: profile?.billing?.addressLine2 ?? "",
-    city: profile?.billing?.city ?? "",
-    zip: profile?.billing?.zip ?? "",
-    country: profile?.billing?.country ?? "",
-  }));
   const [savedIdentity, setSavedIdentity] = useState<SavedIdentity>(() => ({
     firstName: profile?.firstName ?? "",
     lastName: profile?.lastName ?? null,
   }));
-  const formRef = useRef<HTMLFormElement>(null);
-  const baselineSnapshotRef = useRef<string | undefined>(undefined);
-  const submittedSnapshotRef = useRef<SubmittedSnapshot | undefined>(undefined);
-  const submittingRef = useRef(false);
-  const [dirty, setDirty] = useState(false);
-  const [nativeFirstNameError, setNativeFirstNameError] = useState(false);
   const [hasCompletedInitialProfile, setHasCompletedInitialProfile] =
     useState(false);
   const [isRefreshPending, startRefreshTransition] = useTransition();
-  const [aresLookup, setAresLookup] = useState<AresLookupUiState>({
-    status: "idle",
-  });
-  // Any IČO edit or billing-kind change bumps the generation; a pending
-  // lookup is tagged with the generation at its start, so a response that
-  // resolves after an edit is discarded and can never be applied.
-  const aresGenerationRef = useRef(0);
-  const pendingAresRequestGenerationRef = useRef(0);
+  const aresLookup = useAresBusinessLookup(locale);
+  const submittedValuesRef = useRef<ProfileFormValues | undefined>(undefined);
+  const submittingRef = useRef(false);
 
   const isComplete = mode === "complete";
   const isInitialCompletion = isComplete && !hasCompletedInitialProfile;
-  const screenCopy = getAccountScreenCopy(locale);
 
-  const updateBillingValue = (field: keyof BillingValues, value: string) => {
-    if (field === "companyId") {
-      aresGenerationRef.current += 1;
-      setAresLookup({ status: "idle" });
-    }
-    setBillingValues((current) => ({ ...current, [field]: value }));
-  };
-
-  const handleBillingKindChange = (kind: BillingKind) => {
-    aresGenerationRef.current += 1;
-    setAresLookup({ status: "idle" });
-    setBillingKind(kind);
-  };
+  // Initial completion also submits the referral code; every later save
+  // submits the plain profile contract.
+  const formSchema = isInitialCompletion
+    ? completionFormSchema(locale, referralCode)
+    : profileFormSchema(locale);
+  const form = useForm<
+    typeof formSchema.Encoded,
+    unknown,
+    typeof formSchema.Type
+  >({
+    resolver: effectSchemaResolver(formSchema),
+    defaultValues: profileFormDefaults(profile, referralCode),
+    mode: "onBlur",
+    reValidateMode: "onChange",
+  });
+  const { isDirty: rhfIsDirty } = form.formState;
+  // RHF's reset(..., { keepDirtyValues: true }) can leave formState.isDirty
+  // false while dirty fields remain, so the guard also compares the live RHF
+  // values against the saved baseline (no DOM FormData snapshotting). The
+  // comparison runs at guard-event time so it never lags the last keystroke.
+  const savedBaselineRef = useRef<ProfileFormValues>(
+    profileFormDefaults(profile, referralCode)
+  );
+  const isDirty = () =>
+    rhfIsDirty ||
+    JSON.stringify(form.getValues()) !==
+      JSON.stringify(savedBaselineRef.current);
 
   const action = (
     isInitialCompletion ? completeCustomerProfile : updateCustomerProfile
-  ) as typeof updateCustomerProfile;
+  ) as typeof completeCustomerProfile;
 
-  const lookupAres = useWorkspaceAction(lookupAresBusiness, {
-    actionName: "account.ares-lookup",
-    onSuccess: ({ data }) => {
-      const lookupResult = data as AresBusinessLookupResult | undefined;
-      if (!lookupResult) return;
-      // A response that resolves after the IČO or the billing kind changed
-      // mid-flight is superseded and must not overwrite newer UI state.
-      if (pendingAresRequestGenerationRef.current !== aresGenerationRef.current)
-        return;
-      if (lookupResult.status === "found") {
-        setAresLookup({
-          status: "found",
-          review: lookupResult.company,
-        });
-      } else {
-        setAresLookup({
-          status: lookupResult.status,
-          message: lookupResult.message,
-        });
-      }
-    },
-    onError: ({ error }) => {
-      // A resolved failure (expired session, pending deletion, disabled
-      // accounts, …) must surface in the lookup status instead of silently
-      // resetting the region, and must be discarded when superseded.
-      if (pendingAresRequestGenerationRef.current !== aresGenerationRef.current)
-        return;
-      setAresLookup({
-        status: "unavailable",
-        message:
-          error.serverError || m.accountAresLookupActionError({}, { locale }),
-      });
-    },
-    onTransportError: () => {
-      if (pendingAresRequestGenerationRef.current !== aresGenerationRef.current)
-        return;
-      setAresLookup({
-        status: "unavailable",
-        message: m.accountAresLookupActionError({}, { locale }),
-      });
-    },
-  });
+  const showReferralCodeUnavailable = () =>
+    form.setError(
+      "referralCode",
+      {
+        type: "server",
+        message: profileFormErrorMessage("referralCode", locale),
+      },
+      { shouldFocus: true }
+    );
 
-  const handleAresLookup = () => {
-    if (lookupAres.isExecuting) return;
-    setAresLookup({ status: "idle" });
-    pendingAresRequestGenerationRef.current = aresGenerationRef.current;
-    lookupAres.execute({ ico: billingValues.companyId });
-  };
-
-  const applyAresReview = () => {
-    const review = aresLookup.review;
-    if (!review || aresLookup.status !== "found") return;
-    setBillingValues((current) => {
-      const next = { ...current };
-      for (const field of aresDraftFields) {
-        const value = review[field];
-        if (value !== undefined) next[field] = value;
-      }
-      return next;
-    });
-    setAresLookup({
-      status: "applied",
-      message: m.accountAresLookupApplied({}, { locale }),
-    });
-  };
-
-  const dismissAresReview = () => {
-    setAresLookup({ status: "idle" });
-  };
-
-  const updateDirtyState = () => {
-    const form = formRef.current;
-    const baselineSnapshot = baselineSnapshotRef.current;
-    if (!form || baselineSnapshot === undefined) return;
-    setDirty(formSnapshot(form) !== baselineSnapshot);
-  };
-
-  const { execute, isExecuting, result } = useWorkspaceAction(action, {
-    actionName: "account.profile",
-    onSuccess: () => {
-      const submittedSnapshot = submittedSnapshotRef.current;
-      const form = formRef.current;
-      const hasNoEditsSinceSubmit =
-        form !== null &&
-        submittedSnapshot !== undefined &&
-        formSnapshot(form) === submittedSnapshot.snapshot;
-      if (submittedSnapshot !== undefined) {
-        baselineSnapshotRef.current = submittedSnapshot.snapshot;
-        setSavedIdentity(submittedSnapshot.identity);
-        updateDirtyState();
-      }
-      if (isInitialCompletion) {
-        setHasCompletedInitialProfile(true);
-      }
-      if (isComplete && hasNoEditsSinceSubmit) {
-        startRefreshTransition(() => router.refresh());
-      }
-    },
-    onError: ({ error }) => {
-      const fieldErrors = error.validationErrors?.fieldErrors;
-      let sectionWithError: "profile" | "billing" | undefined;
-      if (
-        (fieldErrors?.firstName?.length ?? 0) > 0 ||
-        (fieldErrors?.phone?.length ?? 0) > 0
-      ) {
-        sectionWithError = "profile";
-      } else if ((fieldErrors?.billing?.length ?? 0) > 0) {
-        sectionWithError = "billing";
-      }
-      if (!isComplete && sectionWithError !== undefined) {
-        onSectionChange?.(sectionWithError);
-      }
-    },
-  });
+  const { execute, hasErrored, isExecuting, result } = useWorkspaceAction(
+    action,
+    {
+      onSuccess: ({ data }) => {
+        if (data?.status === "referral-code-unavailable") {
+          showReferralCodeUnavailable();
+          return;
+        }
+        const submittedValues = submittedValuesRef.current;
+        if (submittedValues !== undefined) {
+          // The saved baseline becomes the values as they were at submit time
+          // while every current value is preserved verbatim: an in-flight edit
+          // that returned a field to its original value must not be overwritten
+          // by the submitted snapshot, and dirty state is recomputed against
+          // the new baseline.
+          savedBaselineRef.current = submittedValues;
+          form.reset(submittedValues, { keepValues: true });
+          setSavedIdentity({
+            firstName: submittedValues.firstName.trim(),
+            lastName: submittedValues.lastName.trim() || null,
+          });
+        }
+        if (isInitialCompletion) {
+          setHasCompletedInitialProfile(true);
+          // Completion creates the Dotypos customer the analytics person links to.
+          refreshAnalyticsDotyposCustomerId();
+        }
+        const hasNoEditsSinceSubmit =
+          submittedValues !== undefined &&
+          JSON.stringify(form.getValues()) === JSON.stringify(submittedValues);
+        if (isComplete && hasNoEditsSinceSubmit) {
+          startRefreshTransition(() => router.refresh());
+        }
+      },
+    }
+  );
 
   useUnsavedChanges({
     enabled: !isRefreshPending,
-    isDirty: () => {
-      const form = formRef.current;
-      const baselineSnapshot = baselineSnapshotRef.current;
-      if (!form || baselineSnapshot === undefined) return dirty;
-      return formSnapshot(form) !== baselineSnapshot;
-    },
+    isDirty,
     message: m.accountProfileUnsavedChanges({}, { locale }),
   });
 
@@ -340,88 +190,69 @@ export function ProfileForm({
     if (!isExecuting) submittingRef.current = false;
   }, [isExecuting]);
 
+  // Server validationErrors surface on the matching form fields and, in edit
+  // mode, move the customer to the first invalid section.
+  const handledValidationResultRef = useRef<unknown>(undefined);
   useEffect(() => {
-    const form = formRef.current;
-    if (!form || baselineSnapshotRef.current !== undefined) return;
-    baselineSnapshotRef.current = formSnapshot(form);
-  }, []);
-
-  useEffect(() => {
-    const form = formRef.current;
-    const baselineSnapshot = baselineSnapshotRef.current;
-    const billingSelect = form?.querySelector<HTMLSelectElement>(
-      "#account-profile-billing-kind"
+    const fieldErrors = result.validationErrors?.fieldErrors;
+    if (!fieldErrors) return;
+    if (handledValidationResultRef.current === result) return;
+    handledValidationResultRef.current = result;
+    const { errors, firstSection } = toProfileFormErrors(
+      { fieldErrors },
+      locale
     );
-    if (
-      !form ||
-      baselineSnapshot === undefined ||
-      billingSelect?.value !== billingKind
-    ) {
-      return;
+    for (const [field, message] of Object.entries(errors)) {
+      form.setError(field as ProfileFormField, { type: "server", message });
     }
-    setDirty(formSnapshot(form) !== baselineSnapshot);
-  }, [billingKind]);
+    if (!isComplete && firstSection !== undefined) {
+      onSectionChange?.(firstSection);
+    }
+  }, [form, result, isComplete, locale, onSectionChange]);
 
-  const submit = (formData: FormData) => {
-    const input: CustomerProfileInput = {
-      firstName: String(formData.get("firstName") ?? "").trim(),
-      lastName: nonEmpty(formData.get("lastName")),
-      phone: nonEmpty(formData.get("phone")),
-      billing: readBilling(formData, billingKind),
-    };
+  const handleValid = (input: typeof formSchema.Type) => {
+    if (isExecuting || submittingRef.current) return;
+    submittedValuesRef.current = form.getValues();
+    submittingRef.current = true;
     execute(input);
+  };
+
+  const handleInvalid = (errors: FieldErrors<ProfileFormValues>) => {
+    if (isComplete) return;
+    const firstInvalidSection = firstInvalidProfileFormSection(
+      Object.keys(errors)
+    );
+    if (firstInvalidSection !== undefined && section !== firstInvalidSection) {
+      onSectionChange?.(firstInvalidSection);
+    }
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isExecuting || submittingRef.current) return;
-    const form = event.currentTarget;
-    if (!form.checkValidity()) return;
-    submittingRef.current = true;
-    const formData = new FormData(form);
-    submittedSnapshotRef.current = {
-      identity: {
-        firstName: String(formData.get("firstName") ?? "").trim(),
-        lastName: nonEmpty(formData.get("lastName")) ?? null,
-      },
-      snapshot: formSnapshot(form),
-    };
-    submit(formData);
+    void form.handleSubmit(handleValid, handleInvalid)(event);
   };
 
   const handleInvalidCapture = (event: InvalidEvent<HTMLFormElement>) => {
     const target = event.target;
-    if (
-      !(target instanceof HTMLElement) ||
-      target.getAttribute("name") === null
-    ) {
-      return;
-    }
-
-    const fieldName = target.getAttribute("name");
-
-    if (fieldName === "firstName") {
-      setNativeFirstNameError(true);
-    }
-
-    const invalidInputs = Array.from(event.currentTarget.elements).filter(
-      (element): element is HTMLInputElement =>
-        element instanceof HTMLInputElement && !element.validity.valid
+    if (!(target instanceof HTMLElement)) return;
+    const field = profileFormFieldOfInputName(
+      target.getAttribute("name") ?? ""
     );
-    const firstInvalidFieldName =
-      invalidInputs.find(({ name }) => name === "firstName" || name === "phone")
-        ?.name ??
-      invalidInputs.find(({ name }) => name.startsWith("billing"))?.name;
-    let firstInvalidSection: "profile" | "billing" | undefined;
-    if (
-      firstInvalidFieldName === "firstName" ||
-      firstInvalidFieldName === "phone"
-    ) {
-      firstInvalidSection = "profile";
-    } else if (firstInvalidFieldName?.startsWith("billing")) {
-      firstInvalidSection = "billing";
+    // `required` is the only native constraint a profile input can fail.
+    if (field !== undefined) {
+      form.setError(field, {
+        type: "required",
+        message: profileFormErrorMessage(field, locale),
+      });
     }
 
+    const firstInvalidSection = firstInvalidProfileFormSection(
+      Array.from(event.currentTarget.elements).flatMap((element) =>
+        element instanceof HTMLInputElement && !element.validity.valid
+          ? (profileFormFieldOfInputName(element.name) ?? [])
+          : []
+      )
+    );
     if (
       !isComplete &&
       firstInvalidSection !== undefined &&
@@ -431,665 +262,171 @@ export function ProfileForm({
     }
   };
 
-  const handleInput = (event: FormEvent<HTMLFormElement>) => {
-    const target = event.target;
-    if (
-      target instanceof HTMLInputElement &&
-      target.name === "firstName" &&
-      target.validity.valid
-    ) {
-      setNativeFirstNameError(false);
-    }
-    updateDirtyState();
-  };
+  useEffect(() => {
+    if (aresLookup.state.status !== "invalid-ico") return;
+    document.getElementById("account-profile-billing-company-id")?.focus();
+  }, [aresLookup.state.status]);
 
-  const submitLabel = isComplete
-    ? m.accountCompletionSubmit({}, { locale })
-    : m.accountProfileSave({}, { locale });
-  const validationErrors = result.validationErrors;
-  const hasValidationErrors = Boolean(
-    validationErrors && Object.keys(validationErrors).length > 0
-  );
-
-  const identityFields = (
-    <IdentityFields
-      firstNameError={
-        Boolean(validationErrors?.fieldErrors?.firstName?.length) ||
-        nativeFirstNameError
-      }
-      lastName={profile?.lastName}
+  const footer = (
+    <ProfileFormFooter
+      hasErrored={hasErrored}
+      isComplete={isComplete}
+      isExecuting={isExecuting}
+      isRefreshPending={isRefreshPending}
       locale={locale}
-      phone={profile?.phone}
-      phoneError={Boolean(validationErrors?.fieldErrors?.phone?.length)}
-      firstName={profile?.firstName}
+      result={result}
+      section={section}
     />
   );
+  const identityFields = <ProfileIdentityFields locale={locale} />;
   const billingFields = (
-    <BillingFields
-      ares={{
-        isPending: lookupAres.isExecuting,
-        status: aresLookup.status,
-        review: aresLookup.review,
-        message: aresLookup.message,
-        onLookup: handleAresLookup,
-        onApply: applyAresReview,
-        onDismiss: dismissAresReview,
-      }}
-      billingKind={billingKind}
-      billingValues={billingValues}
-      locale={locale}
-      onBillingKindChange={handleBillingKindChange}
-      onBillingValueChange={updateBillingValue}
-      billingErrors={validationErrors?.fieldErrors?.billing}
-    />
-  );
-  const formFooter = (
-    <>
-      <div
-        id="account-profile-feedback"
-        aria-live="polite"
-        className="min-h-5 text-sm"
-      >
-        {result.data ? (
-          <p className="text-emerald-800">
-            {isComplete
-              ? m.accountCompletionSaved({}, { locale })
-              : m.accountProfileSaved({}, { locale })}
-          </p>
-        ) : null}
-        {result.serverError ? (
-          <p className="text-red-700">{result.serverError}</p>
-        ) : null}
-        {hasValidationErrors && !result.serverError ? (
-          <p className="text-red-700">
-            {m.accountProfileValidationError({}, { locale })}
-          </p>
-        ) : null}
-      </div>
-
-      <Button
-        className={
-          isComplete
-            ? undefined
-            : {
-                billing:
-                  "rounded-xl bg-navy-blue px-4 text-xs uppercase tracking-[0.08em] hover:bg-navy-blue/90",
-                profile:
-                  "rounded-xl bg-burned-orange px-4 text-xs uppercase tracking-[0.08em] hover:bg-burned-orange/90",
-              }[section]
-        }
-        id="account-profile-submit"
-        size={isComplete ? "default" : "sm"}
-        type="submit"
-        disabled={isExecuting || isRefreshPending}
-      >
-        {isExecuting ? m.accountProfileSaving({}, { locale }) : submitLabel}
-      </Button>
-    </>
+    <ProfileBillingFields aresLookup={aresLookup} locale={locale} />
   );
 
   return (
-    <form
-      id="account-profile-form"
-      aria-describedby="account-profile-feedback"
-      aria-busy={isRefreshPending}
-      ref={formRef}
-      onInvalidCapture={handleInvalidCapture}
-      onSubmit={handleSubmit}
-      onChange={updateDirtyState}
-      onInput={handleInput}
-    >
-      <fieldset
-        className={isComplete ? "space-y-6" : undefined}
-        disabled={isRefreshPending}
+    <Form {...form}>
+      <form
+        aria-busy={isRefreshPending}
+        aria-describedby="account-profile-feedback"
+        id="account-profile-form"
+        onInvalidCapture={handleInvalidCapture}
+        onSubmit={handleSubmit}
       >
-        {isComplete ? (
-          <>
-            <div className="grid gap-5 sm:grid-cols-2">
-              {identityFields}
-              <div className="space-y-2">
-                <Label htmlFor="account-profile-email">
-                  {m.accountProfileEmailLabel({}, { locale })}
-                </Label>
-                <Input
-                  id="account-profile-email"
-                  value={email}
-                  type="email"
-                  autoComplete="email"
-                  readOnly
-                  aria-readonly="true"
-                  className="bg-navy-blue/3 text-navy-blue/70"
-                />
-              </div>
-            </div>
+        <fieldset
+          className={isComplete ? "space-y-6" : undefined}
+          disabled={isRefreshPending}
+        >
+          {mode === "complete" ? (
+            <ProfileCompletionLayout
+              billingFields={billingFields}
+              email={email}
+              footer={footer}
+              identityFields={identityFields}
+              isInitialCompletion={isInitialCompletion}
+              locale={locale}
+              referralsEnabled={referralsEnabled}
+            />
+          ) : (
+            <ProfileEditLayout
+              avatarPresentation={avatarPresentation}
+              billingFields={billingFields}
+              email={email}
+              footer={footer}
+              identityFields={identityFields}
+              locale={locale}
+              savedIdentity={savedIdentity}
+              section={section}
+            />
+          )}
+        </fieldset>
+      </form>
+    </Form>
+  );
+}
 
-            <details className="rounded-2xl border border-navy-blue/12 p-4">
-              <summary className="cursor-pointer text-sm font-bold text-navy-blue">
-                {m.accountProfileBillingSummary({}, { locale })}
-              </summary>
-              <div className="mt-4 grid gap-5 sm:grid-cols-2">
-                {billingFields}
-              </div>
-            </details>
+type ProfileFormLayoutProps = {
+  readonly email: string;
+  readonly locale: Locale;
+  readonly identityFields: ReactNode;
+  readonly billingFields: ReactNode;
+  readonly footer: ReactNode;
+};
 
-            {formFooter}
-          </>
-        ) : (
-          <>
-            <div hidden={section !== "profile"}>
-              <ProfileScreen
-                copy={screenCopy.profile}
-                email={email}
+/** First-time completion: one page with billing folded away. */
+function ProfileCompletionLayout({
+  billingFields,
+  email,
+  footer,
+  identityFields,
+  isInitialCompletion,
+  locale,
+  referralsEnabled = false,
+}: ProfileFormLayoutProps & {
+  readonly isInitialCompletion: boolean;
+  readonly referralsEnabled?: boolean;
+}) {
+  return (
+    <>
+      <div className="grid gap-5 @xl:grid-cols-2">
+        {identityFields}
+        <div className="space-y-2">
+          <Label htmlFor="account-profile-email">
+            {m.accountProfileEmailLabel({}, { locale })}
+          </Label>
+          <Input
+            aria-readonly="true"
+            autoComplete="email"
+            className="bg-navy-blue/3 text-navy-blue/70"
+            id="account-profile-email"
+            readOnly
+            type="email"
+            value={email}
+          />
+        </div>
+      </div>
+
+      {isInitialCompletion && referralsEnabled && (
+        <ProfileReferralCodeField locale={locale} />
+      )}
+
+      <details className="rounded-2xl border border-navy-blue/12 p-4">
+        <summary className="cursor-pointer text-sm font-bold text-navy-blue">
+          {m.accountProfileBillingSummary({}, { locale })}
+        </summary>
+        <div className="mt-4 grid gap-5 @xl:grid-cols-2">{billingFields}</div>
+      </details>
+
+      {footer}
+    </>
+  );
+}
+
+/** Editing a completed profile: the profile and billing sections. */
+function ProfileEditLayout({
+  avatarPresentation = { kind: "available", avatar: null },
+  billingFields,
+  email,
+  footer,
+  identityFields,
+  locale,
+  savedIdentity,
+  section,
+}: ProfileFormLayoutProps & {
+  readonly avatarPresentation?: CustomerAvatarPresentation;
+  readonly savedIdentity: SavedIdentity;
+  readonly section: ProfileFormSection;
+}) {
+  return (
+    <>
+      <div hidden={section !== "profile"}>
+        <ProfileScreen
+          avatar={
+            avatarPresentation.kind === "available" ? (
+              <AvatarControl
+                avatar={avatarPresentation.avatar}
                 firstName={savedIdentity.firstName}
-                footer={section === "profile" ? formFooter : undefined}
                 lastName={savedIdentity.lastName}
                 locale={locale}
-              >
-                {identityFields}
-              </ProfileScreen>
-            </div>
-            <div hidden={section !== "billing"}>
-              <BillingScreen
-                copy={screenCopy.billing}
-                footer={section === "billing" ? formFooter : undefined}
-                locale={locale}
-              >
-                <div className="grid gap-5 sm:grid-cols-2">{billingFields}</div>
-              </BillingScreen>
-            </div>
-          </>
-        )}
-      </fieldset>
-    </form>
-  );
-}
-
-function IdentityFields({
-  firstName,
-  firstNameError,
-  lastName,
-  locale,
-  phone,
-  phoneError,
-}: {
-  readonly firstName?: string;
-  readonly firstNameError: boolean;
-  readonly lastName?: string | null;
-  readonly locale: Locale;
-  readonly phone?: string | null;
-  readonly phoneError: boolean;
-}) {
-  return (
-    <>
-      <div className="space-y-2">
-        <Label htmlFor="account-profile-first-name">
-          {m.accountProfileFirstNameLabel({}, { locale })}
-        </Label>
-        <Input
-          id="account-profile-first-name"
-          name="firstName"
-          defaultValue={firstName}
-          required
-          maxLength={100}
-          autoComplete="given-name"
-          aria-invalid={firstNameError}
-          aria-describedby={
-            firstNameError ? "account-profile-first-name-error" : undefined
+              />
+            ) : undefined
           }
-        />
-        {firstNameError ? (
-          <p
-            id="account-profile-first-name-error"
-            className="text-sm text-red-700"
-          >
-            {m.accountProfileFirstNameRequired({}, { locale })}
-          </p>
-        ) : null}
+          email={email}
+          firstName={savedIdentity.firstName}
+          footer={section === "profile" ? footer : undefined}
+          lastName={savedIdentity.lastName}
+          locale={locale}
+        >
+          {identityFields}
+        </ProfileScreen>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="account-profile-last-name">
-          {m.accountProfileLastNameLabel({}, { locale })}
-        </Label>
-        <Input
-          id="account-profile-last-name"
-          name="lastName"
-          defaultValue={lastName ?? undefined}
-          maxLength={100}
-          autoComplete="family-name"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="account-profile-phone">
-          {m.accountProfilePhoneLabel({}, { locale })}
-        </Label>
-        <Input
-          id="account-profile-phone"
-          name="phone"
-          type="tel"
-          defaultValue={phone ?? undefined}
-          maxLength={32}
-          autoComplete="tel"
-          aria-invalid={phoneError}
-          aria-describedby={
-            phoneError ? "account-profile-phone-error" : undefined
-          }
-        />
-        {phoneError ? (
-          <p id="account-profile-phone-error" className="text-sm text-red-700">
-            {m.accountProfilePhoneInvalid({}, { locale })}
-          </p>
-        ) : null}
+      <div hidden={section !== "billing"}>
+        <BillingScreen
+          footer={section === "billing" ? footer : undefined}
+          locale={locale}
+        >
+          <div className="grid gap-5 @xl:grid-cols-2">{billingFields}</div>
+        </BillingScreen>
       </div>
     </>
-  );
-}
-
-function BillingFields({
-  ares,
-  billingErrors,
-  billingKind,
-  billingValues,
-  locale,
-  onBillingKindChange,
-  onBillingValueChange,
-}: {
-  readonly ares: AresLookupUi;
-  readonly billingErrors?: readonly string[];
-  readonly billingKind: BillingKind;
-  readonly billingValues: BillingValues;
-  readonly locale: Locale;
-  readonly onBillingKindChange: (kind: BillingKind) => void;
-  readonly onBillingValueChange: (
-    field: keyof BillingValues,
-    value: string
-  ) => void;
-}) {
-  const billingFieldNames = [
-    "companyName",
-    "companyId",
-    "vatId",
-    "addressLine1",
-    "addressLine2",
-    "city",
-    "zip",
-    "country",
-  ] as const satisfies readonly (keyof BillingValues)[];
-  const hasBillingFieldError = (error: string) =>
-    billingFieldNames.some(
-      (field) => error === field || error.startsWith(`${field}:`)
-    );
-  const genericBillingError =
-    billingErrors?.some((error) => !hasBillingFieldError(error)) === true;
-  const getBillingFieldErrors = (field: keyof BillingValues) =>
-    (billingErrors ?? []).flatMap((error) => {
-      if (error === field) return [error];
-      const prefix = `${field}:`;
-      if (!error.startsWith(prefix)) return [];
-      const message = error.slice(prefix.length).trim();
-      return message ? [message] : [];
-    });
-  const billingFieldErrorId = (field: keyof BillingValues) =>
-    `account-profile-billing-${field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}-error`;
-  const hasFieldError = (field: keyof BillingValues) =>
-    getBillingFieldErrors(field).length > 0;
-  const renderFieldError = (field: keyof BillingValues) => {
-    const errors = getBillingFieldErrors(field);
-    if (errors.length === 0) return null;
-    return (
-      <p id={billingFieldErrorId(field)} className="text-sm text-red-700">
-        {m.accountProfileValidationError({}, { locale })}
-      </p>
-    );
-  };
-
-  useEffect(() => {
-    if (ares.status !== "invalid-ico") return;
-    document.getElementById("account-profile-billing-company-id")?.focus();
-  }, [ares.status]);
-
-  const aresButtonLabel = (() => {
-    if (ares.isPending) return m.accountAresLookupLoading({}, { locale });
-    if (ares.status === "not-found" || ares.status === "unavailable") {
-      return m.accountAresLookupRetry({}, { locale });
-    }
-    return m.accountAresLookupSubmit({}, { locale });
-  })();
-
-  // The live region announces pending, found-for-review, and terminal
-  // outcomes; the review panel itself stays outside the region so nothing
-  // steals focus from manual entry.
-  const aresStatusContent = (() => {
-    if (ares.isPending) {
-      return <span>{m.accountAresLookupLoading({}, { locale })}</span>;
-    }
-    if (ares.status === "found") {
-      return (
-        <span className="text-emerald-800">
-          {m.accountAresLookupReviewReady({}, { locale })}
-        </span>
-      );
-    }
-    if (ares.message) {
-      return (
-        <span
-          className={
-            ares.status === "invalid-ico" ||
-            ares.status === "not-found" ||
-            ares.status === "unavailable"
-              ? "text-red-700"
-              : "text-emerald-800"
-          }
-        >
-          {ares.message}
-        </span>
-      );
-    }
-    return null;
-  })();
-
-  return (
-    <>
-      <div className="space-y-2 sm:col-span-2">
-        <Label htmlFor="account-profile-billing-kind">
-          {m.accountProfileBillingKindLabel({}, { locale })}
-        </Label>
-        <select
-          id="account-profile-billing-kind"
-          value={billingKind}
-          aria-invalid={genericBillingError}
-          aria-describedby={
-            genericBillingError ? "account-profile-billing-error" : undefined
-          }
-          onChange={(event) =>
-            onBillingKindChange(event.target.value as BillingKind)
-          }
-          className="w-full rounded-xl border border-navy-blue/14 bg-white px-3 py-2.5 text-navy-blue"
-        >
-          <option value="hidden">
-            {m.accountProfileBillingNone({}, { locale })}
-          </option>
-          <option value="personal">
-            {m.accountProfileBillingPersonal({}, { locale })}
-          </option>
-          <option value="business">
-            {m.accountProfileBillingBusiness({}, { locale })}
-          </option>
-        </select>
-        {genericBillingError ? (
-          <p
-            id="account-profile-billing-error"
-            className="text-sm text-red-700"
-          >
-            {m.accountProfileValidationError({}, { locale })}
-          </p>
-        ) : null}
-      </div>
-      {billingKind !== "hidden" ? (
-        <>
-          {billingKind === "business" ? (
-            <>
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="account-profile-billing-company-name">
-                  {m.accountProfileCompanyNameLabel({}, { locale })}
-                </Label>
-                <Input
-                  id="account-profile-billing-company-name"
-                  name="billingCompanyName"
-                  value={billingValues.companyName}
-                  onInput={(event) =>
-                    onBillingValueChange(
-                      "companyName",
-                      event.currentTarget.value
-                    )
-                  }
-                  required={billingKind === "business"}
-                  aria-invalid={hasFieldError("companyName")}
-                  aria-describedby={
-                    hasFieldError("companyName")
-                      ? billingFieldErrorId("companyName")
-                      : undefined
-                  }
-                  maxLength={200}
-                />
-                {renderFieldError("companyName")}
-              </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="account-profile-billing-company-id">
-                  {m.accountAresLookupIcoLabel({}, { locale })}
-                </Label>
-                <Input
-                  id="account-profile-billing-company-id"
-                  name="billingCompanyId"
-                  value={billingValues.companyId}
-                  onInput={(event) =>
-                    onBillingValueChange("companyId", event.currentTarget.value)
-                  }
-                  aria-invalid={
-                    hasFieldError("companyId") || ares.status === "invalid-ico"
-                  }
-                  aria-describedby={[
-                    hasFieldError("companyId")
-                      ? billingFieldErrorId("companyId")
-                      : undefined,
-                    ares.status === "invalid-ico"
-                      ? "account-profile-ares-status"
-                      : undefined,
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  maxLength={32}
-                  inputMode="numeric"
-                />
-                {renderFieldError("companyId")}
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button
-                    className="rounded-xl bg-navy-blue px-4 text-xs uppercase tracking-[0.08em] hover:bg-navy-blue/90"
-                    disabled={ares.isPending}
-                    onClick={ares.onLookup}
-                    size="sm"
-                    type="button"
-                  >
-                    {aresButtonLabel}
-                  </Button>
-                </div>
-                <p
-                  id="account-profile-ares-status"
-                  aria-live="polite"
-                  className="min-h-5 text-sm"
-                >
-                  {aresStatusContent}
-                </p>
-                {Boolean(ares.review && ares.status === "found") && (
-                  <AresReviewPanel ares={ares} locale={locale} />
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="account-profile-billing-vat-id">
-                  {m.accountProfileVatIdLabel({}, { locale })}
-                </Label>
-                <Input
-                  id="account-profile-billing-vat-id"
-                  name="billingVatId"
-                  value={billingValues.vatId}
-                  onInput={(event) =>
-                    onBillingValueChange("vatId", event.currentTarget.value)
-                  }
-                  aria-invalid={hasFieldError("vatId")}
-                  aria-describedby={
-                    hasFieldError("vatId")
-                      ? billingFieldErrorId("vatId")
-                      : undefined
-                  }
-                  maxLength={32}
-                />
-                {renderFieldError("vatId")}
-              </div>
-            </>
-          ) : null}
-          <div className="min-w-0 space-y-2">
-            <Label htmlFor="account-profile-billing-address-line1">
-              {m.accountProfileAddressLine1Label({}, { locale })}
-            </Label>
-            <Input
-              id="account-profile-billing-address-line1"
-              name="billingAddressLine1"
-              value={billingValues.addressLine1}
-              onInput={(event) =>
-                onBillingValueChange("addressLine1", event.currentTarget.value)
-              }
-              aria-invalid={hasFieldError("addressLine1")}
-              aria-describedby={
-                hasFieldError("addressLine1")
-                  ? billingFieldErrorId("addressLine1")
-                  : undefined
-              }
-              maxLength={200}
-            />
-            {renderFieldError("addressLine1")}
-          </div>
-          <div className="min-w-0 space-y-2">
-            <Label htmlFor="account-profile-billing-address-line2">
-              {m.accountProfileAddressLine2Label({}, { locale })}
-            </Label>
-            <Input
-              id="account-profile-billing-address-line2"
-              name="billingAddressLine2"
-              value={billingValues.addressLine2}
-              onInput={(event) =>
-                onBillingValueChange("addressLine2", event.currentTarget.value)
-              }
-              aria-invalid={hasFieldError("addressLine2")}
-              aria-describedby={
-                hasFieldError("addressLine2")
-                  ? billingFieldErrorId("addressLine2")
-                  : undefined
-              }
-              maxLength={200}
-            />
-            {renderFieldError("addressLine2")}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="account-profile-billing-city">
-              {m.accountProfileCityLabel({}, { locale })}
-            </Label>
-            <Input
-              id="account-profile-billing-city"
-              name="billingCity"
-              value={billingValues.city}
-              onInput={(event) =>
-                onBillingValueChange("city", event.currentTarget.value)
-              }
-              aria-invalid={hasFieldError("city")}
-              aria-describedby={
-                hasFieldError("city") ? billingFieldErrorId("city") : undefined
-              }
-              maxLength={100}
-            />
-            {renderFieldError("city")}
-          </div>
-          <div className="min-w-0 grid gap-5 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="account-profile-billing-zip">
-                {m.accountProfileZipLabel({}, { locale })}
-              </Label>
-              <Input
-                id="account-profile-billing-zip"
-                name="billingZip"
-                value={billingValues.zip}
-                onInput={(event) =>
-                  onBillingValueChange("zip", event.currentTarget.value)
-                }
-                aria-invalid={hasFieldError("zip")}
-                aria-describedby={
-                  hasFieldError("zip") ? billingFieldErrorId("zip") : undefined
-                }
-                maxLength={20}
-              />
-              {renderFieldError("zip")}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="account-profile-billing-country">
-                {m.accountProfileCountryLabel({}, { locale })}
-              </Label>
-              <Input
-                id="account-profile-billing-country"
-                name="billingCountry"
-                value={billingValues.country}
-                onInput={(event) =>
-                  onBillingValueChange("country", event.currentTarget.value)
-                }
-                aria-invalid={hasFieldError("country")}
-                aria-describedby={
-                  hasFieldError("country")
-                    ? billingFieldErrorId("country")
-                    : undefined
-                }
-                maxLength={2}
-                autoComplete="country"
-              />
-              {renderFieldError("country")}
-            </div>
-          </div>
-        </>
-      ) : null}
-    </>
-  );
-}
-
-function AresReviewPanel({
-  ares,
-  locale,
-}: {
-  readonly ares: AresLookupUi;
-  readonly locale: Locale;
-}) {
-  const review = ares.review;
-  if (!review) return null;
-  const presentEntries = (
-    [
-      ["companyName", m.accountProfileCompanyNameLabel({}, { locale })],
-      ["companyId", m.accountProfileCompanyIdLabel({}, { locale })],
-      ["vatId", m.accountProfileVatIdLabel({}, { locale })],
-      ["addressLine1", m.accountProfileAddressLine1Label({}, { locale })],
-      ["addressLine2", m.accountProfileAddressLine2Label({}, { locale })],
-      ["city", m.accountProfileCityLabel({}, { locale })],
-      ["zip", m.accountProfileZipLabel({}, { locale })],
-      ["country", m.accountProfileCountryLabel({}, { locale })],
-    ] as const
-  ).filter(([field]) => review[field] !== undefined);
-
-  return (
-    <div className="space-y-3 rounded-2xl border border-navy-blue/12 bg-navy-blue/3 p-4">
-      <p className="text-sm font-bold text-navy-blue">
-        {m.accountAresLookupReviewTitle({}, { locale })}
-      </p>
-      <dl className="grid gap-1 text-sm text-navy-blue">
-        {presentEntries.map(([field, label]) => (
-          <div className="flex min-w-0 gap-2" key={field}>
-            <dt className="shrink-0 font-semibold">{label}:</dt>
-            <dd className="min-w-0 break-words">{review[field]}</dd>
-          </div>
-        ))}
-      </dl>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          className="rounded-xl bg-burned-orange px-4 text-xs uppercase tracking-[0.08em] hover:bg-burned-orange/90"
-          onClick={ares.onApply}
-          size="sm"
-          type="button"
-        >
-          {m.accountAresLookupApply({}, { locale })}
-        </Button>
-        <Button
-          className="rounded-xl border border-navy-blue/14 px-4 text-xs uppercase tracking-[0.08em] text-navy-blue hover:bg-navy-blue/5"
-          onClick={ares.onDismiss}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          {m.accountAresLookupDismiss({}, { locale })}
-        </Button>
-      </div>
-    </div>
   );
 }

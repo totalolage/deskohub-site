@@ -1,11 +1,12 @@
 "use client";
 
+import { testEmailAddress } from "@deskohub/test-email";
 import { Schema } from "effect";
 import posthog from "posthog-js";
 import { useCallback, useEffect } from "react";
 import { createRoot } from "react-dom/client";
+import { signOutOfAccount } from "@/features/account/account-exit";
 import {
-  beginAnalyticsAccountTransition,
   completeAnalyticsAccountSignOut,
   getAnalyticsAccountIdentity,
   refreshAnalyticsAccountIdentity,
@@ -15,15 +16,19 @@ import {
   PostHogAnalytics,
   PostHogProvider,
 } from "@/features/cookie-consent/components/posthog-analytics";
-import { useCookieConsent } from "@/features/cookie-consent/hooks/use-cookie-consent";
-import { dispatchConsentUpdatedEvent } from "@/features/cookie-consent/utils/consent-event";
+import {
+  announceVisitorConsentChange,
+  bindVisitorConsentRevision,
+  useVisitorConsent,
+} from "@/features/cookie-consent/visitor-consent";
 import {
   CONSENT_COOKIE_NAME,
   getAcceptedConsentCategoriesFromCookie,
   getConsentCookieValuesFromCookie,
 } from "@/shared/utils/consent-cookie";
 
-const syntheticEmail = "posthog.identity.synthetic@example.test";
+const syntheticEmail = testEmailAddress("posthog.identity.synthetic");
+
 const syntheticName = "PostHog Identity Synthetic Name";
 const syntheticBilling = "Synthetic Billing Street, Test City";
 const syntheticPin = "583104729";
@@ -31,17 +36,23 @@ const legacyInitialRawQueryToken = "posthog-identity-legacy-raw-query-token";
 const legacyInitialReferrerToken = "posthog-identity-legacy-referrer-token";
 const legacyInitialUtmToken = "posthog-identity-legacy-utm-token";
 
+// The fixture page serves no legal documents, so it binds a banner revision
+// of its own.
+const fixtureConsentRevision = 1;
+
 const writeAnalyticsConsentCookie = (accepted: boolean) => {
   // biome-ignore lint/suspicious/noDocumentCookie: The browser fixture controls synthetic consent synchronously.
   document.cookie = `cc_cookie=${encodeURIComponent(
     JSON.stringify({
       categories: accepted ? ["necessary", "analytics"] : ["necessary"],
+      revision: fixtureConsentRevision,
     })
   )}; Path=/`;
 };
 
 const initializeAnalyticsConsentCookie = () => {
   if (globalThis.window === undefined) return;
+  bindVisitorConsentRevision(fixtureConsentRevision);
   const accepted =
     new URLSearchParams(window.location.search).get("consent") === "on";
   writeAnalyticsConsentCookie(accepted);
@@ -135,15 +146,17 @@ const readIdentityState = (): FixtureIdentityState => ({
   status: getAnalyticsAccountIdentity().status,
 });
 
-const readConsentState = (): FixtureConsentState => ({
-  analyticsAccepted: getAcceptedConsentCategoriesFromCookie(
-    document.cookie
-  ).includes("analytics"),
-  cookiePresent: getConsentCookieValuesFromCookie(document.cookie).length > 0,
-  necessaryAccepted: getAcceptedConsentCategoriesFromCookie(
-    document.cookie
-  ).includes("necessary"),
-});
+const readConsentState = (): FixtureConsentState => {
+  const acceptedCategories = getAcceptedConsentCategoriesFromCookie(
+    document.cookie,
+    { revision: fixtureConsentRevision }
+  );
+  return {
+    analyticsAccepted: acceptedCategories.includes("analytics"),
+    cookiePresent: getConsentCookieValuesFromCookie(document.cookie).length > 0,
+    necessaryAccepted: acceptedCategories.includes("necessary"),
+  };
+};
 
 const readStringPostHogProperty = (name: string) => {
   try {
@@ -250,39 +263,16 @@ const removeConsentCookie = () => {
   document.cookie = `${CONSENT_COOKIE_NAME}=; Max-Age=0; Path=/`;
 };
 
-// This control covers the account-domain lifecycle used by SignOutButton, not
-// the button's UI click behavior.
-const signOut = async () => {
-  beginAnalyticsAccountTransition();
-
-  try {
-    const result = await authClient.signOut();
-    if (result.error) {
-      void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
-        () => undefined
-      );
-      return false;
-    }
-
-    completeAnalyticsAccountSignOut();
-    return true;
-  } catch {
-    void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
-      () => undefined
-    );
-    return false;
-  }
-};
+// This control runs the account sign-out SignOutButton uses, without the
+// button's UI click behavior or page leave.
+const signOut = async () => (await signOutOfAccount()) === "signed-out";
 
 export function PostHogIdentityBrowserFixture() {
-  const { isAccepted } = useCookieConsent();
-  const analyticsAccepted = isAccepted("analytics");
+  const analyticsAccepted = useVisitorConsent("analytics");
 
   const setAnalyticsConsent = useCallback((accepted: boolean) => {
     writeAnalyticsConsentCookie(accepted);
-    dispatchConsentUpdatedEvent(
-      accepted ? ["necessary", "analytics"] : ["necessary"]
-    );
+    announceVisitorConsentChange();
   }, []);
 
   useEffect(() => {

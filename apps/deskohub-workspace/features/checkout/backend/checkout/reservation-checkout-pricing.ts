@@ -5,12 +5,12 @@ import {
   getCheckoutSummaryChangedKeys,
 } from "@/features/checkout/checkout-summary";
 import type { ReservationQuotePayment } from "@/features/checkout/reservation-quote-schema";
-import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import {
   type AffirmedDiscountAdvertisementQuote,
   affirmedDiscountAdvertisementQuoteCodec,
   type CanonicalPromotionCode,
   type DiscountAdvertisementInput,
+  DiscountAffirmationUnavailableError,
   type DiscountCommitment,
   type DiscountId,
   type DiscountQuote,
@@ -19,10 +19,17 @@ import {
 } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import { moneyEquals } from "@/shared/money/money";
+import { currentInstant } from "@/shared/utils";
 import {
   getSubmittedCodeMetadata,
   type PayStateSubmittedCodeMetadata,
 } from "./pay-state-contract";
+
+const getReferralCode = (input: {
+  readonly referralCode?: CanonicalPromotionCode;
+}) =>
+  input.referralCode === undefined ? {} : { referralCode: input.referralCode };
 
 type ReservationDetails = {
   readonly kind: string;
@@ -52,6 +59,8 @@ export type ReservationAdvertisementAffirmationInput<
 > = ReservationAdvertisementQuoteInput<Reservation> &
   PayStateSubmittedCodeMetadata & {
     readonly advertisedQuote: Quote;
+    /** Moment the reservation is submitted and its price is locked. */
+    readonly bookedAt: Temporal.Instant;
   };
 
 export type ReservationCustomerQuoteInput<
@@ -61,6 +70,8 @@ export type ReservationCustomerQuoteInput<
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
   readonly affirmedAdvertisement: AffirmedDiscountAdvertisementQuote;
+  /** Referral code the checkout carries for an unattributed customer. */
+  readonly referralCode?: CanonicalPromotionCode;
 };
 
 export type ReservationPaymentPriceAffirmationInput<
@@ -71,7 +82,11 @@ export type ReservationPaymentPriceAffirmationInput<
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
   readonly quote: Quote;
+  /** Booking moment stored when the price was locked. */
+  readonly bookedAt: Temporal.Instant;
   readonly submittedCode?: CanonicalPromotionCode;
+  /** Referral code the checkout carries for an unattributed customer. */
+  readonly referralCode?: CanonicalPromotionCode;
 };
 
 export type ReservationDiscountCodePriceInput<
@@ -84,7 +99,7 @@ export type ReservationDiscountCodePriceInput<
   readonly submittedCode: CanonicalPromotionCode;
 };
 
-export type ReservationAdvertisementQuote<
+type ReservationAdvertisedPrice<
   Reservation extends AdvertisedReservation<ReservationDetails>,
   Quote extends ReservationQuote,
 > = PayStateSubmittedCodeMetadata & {
@@ -93,14 +108,25 @@ export type ReservationAdvertisementQuote<
   readonly quote: Quote;
 };
 
+export type ReservationAdvertisementQuote<
+  Reservation extends AdvertisedReservation<ReservationDetails>,
+  Quote extends ReservationQuote,
+> = ReservationAdvertisedPrice<Reservation, Quote> & {
+  /**
+   * False when a discount source could not answer, so the price may miss a
+   * running sale. Such a price is right for this request but not to share.
+   */
+  readonly discountsComplete: boolean;
+};
+
 export type ReservationAdvertisementAffirmation<
   Reservation extends AdvertisedReservation<ReservationDetails>,
   Quote extends ReservationQuote,
-> = ReservationAdvertisementQuote<Reservation, Quote> & {
+> = ReservationAdvertisedPrice<Reservation, Quote> & {
   readonly discountQuote: AffirmedDiscountAdvertisementQuote;
 };
 
-export type ReservationCustomerQuote<
+type ReservationCustomerQuote<
   Reservation extends ReservationDetails,
   Quote extends ReservationQuote,
 > = {
@@ -138,7 +164,10 @@ export type ReservationDiscountCodePriceResult<
     });
 
 type PricingContext = {
-  readonly discountInput: Omit<DiscountAdvertisementInput, "locale">;
+  readonly discountInput: Omit<
+    DiscountAdvertisementInput,
+    "bookedAt" | "locale"
+  >;
 };
 
 type ReservationPricingDomain<
@@ -222,7 +251,10 @@ export const reservationCheckoutPricing = <
     Advertisement,
     CustomerReservation,
     Quote,
-    ContextError | QuoteError | DiscountResolutionError
+    | ContextError
+    | QuoteError
+    | DiscountResolutionError
+    | DiscountAffirmationUnavailableError
   >,
   never,
   DiscountService
@@ -230,26 +262,44 @@ export const reservationCheckoutPricing = <
   Effect.gen(function* () {
     const discounts = yield* DiscountService;
 
+    /**
+     * Previews a query code on top of the anonymous discounts. Discovery omits
+     * a code it cannot preview. Affirming an advertised code treats a provider
+     * failure as unknown rather than gone, so it fails instead of silently
+     * dropping the code; an unavailable code is still gone.
+     */
     const previewSubmittedCode = Effect.fn(
       "ReservationCheckoutPricing.previewSubmittedCode"
     )(function* (input: {
       readonly discountQuote: DiscountQuote;
       readonly locale: Locale;
-      readonly reservationDate: string;
       readonly submittedCode?: CanonicalPromotionCode;
+      readonly advertisedCodeDiscountId?: DiscountId;
     }) {
       if (!input.submittedCode) return undefined;
 
-      const preview = Option.getOrUndefined(
-        yield* discounts
-          .previewDiscountCode({
-            baseQuote: input.discountQuote,
-            locale: input.locale,
-            reservationDate: input.reservationDate,
-            submittedCode: input.submittedCode,
-          })
-          .pipe(Effect.option)
-      );
+      const preview = yield* discounts
+        .previewDiscountCode({
+          baseQuote: input.discountQuote,
+          locale: input.locale,
+          submittedCode: input.submittedCode,
+        })
+        .pipe(
+          Effect.map(Option.some),
+          Effect.catch((cause) =>
+            cause._tag === "DiscountProviderError" &&
+            input.advertisedCodeDiscountId !== undefined
+              ? Effect.fail(
+                  new DiscountAffirmationUnavailableError({
+                    message:
+                      "The advertised discount code could not be affirmed because its provider was unavailable.",
+                    discountIds: [input.advertisedCodeDiscountId],
+                  })
+                )
+              : Effect.succeed(Option.none())
+          ),
+          Effect.map(Option.getOrUndefined)
+        );
       if (
         !preview ||
         input.discountQuote.discounts.some(
@@ -271,30 +321,33 @@ export const reservationCheckoutPricing = <
     )((input: ReservationAdvertisementQuoteInput<Advertisement>) =>
       domain.getPricingContext(input.reservation.details).pipe(
         Effect.bindTo("pricing"),
-        Effect.bind("discountQuote", ({ pricing }) =>
+        // An advertised price previews a booking made right now.
+        Effect.bind("bookedAt", () => currentInstant),
+        Effect.bind("advertisement", ({ bookedAt, pricing }) =>
           discounts.discoverAdvertisedDiscounts({
             ...pricing.discountInput,
+            bookedAt,
             locale: input.locale,
           })
         ),
-        Effect.bind("preview", ({ discountQuote, pricing }) =>
+        Effect.bind("preview", ({ advertisement }) =>
           previewSubmittedCode({
-            discountQuote,
+            discountQuote: advertisement.quote,
             locale: input.locale,
-            reservationDate: pricing.discountInput.reservationDate,
             submittedCode: input.submittedCode,
           })
         ),
-        Effect.bind("quote", ({ discountQuote, preview, pricing }) =>
+        Effect.bind("quote", ({ advertisement, preview, pricing }) =>
           domain.buildQuote({
             pricing,
-            discountQuote: preview?.discountQuote ?? discountQuote,
+            discountQuote: preview?.discountQuote ?? advertisement.quote,
           })
         ),
-        Effect.map(({ preview, quote }) => ({
+        Effect.map(({ advertisement, preview, quote }) => ({
           kind: input.reservation.kind,
           reservation: input.reservation,
           quote,
+          discountsComplete: advertisement.complete,
           ...getSubmittedCodeMetadata(preview ?? {}),
         }))
       )
@@ -308,6 +361,7 @@ export const reservationCheckoutPricing = <
         Effect.bind("discountQuote", ({ pricing }) =>
           discounts.affirmAdvertisement({
             ...pricing.discountInput,
+            bookedAt: input.bookedAt,
             locale: input.locale,
             advertisedDiscountIds: input.advertisedQuote.payment.discounts
               .map(({ discount }) => discount.id)
@@ -316,12 +370,12 @@ export const reservationCheckoutPricing = <
               ),
           })
         ),
-        Effect.bind("preview", ({ discountQuote, pricing }) =>
+        Effect.bind("preview", ({ discountQuote }) =>
           previewSubmittedCode({
             discountQuote,
             locale: input.locale,
-            reservationDate: pricing.discountInput.reservationDate,
             submittedCode: input.submittedCode,
+            advertisedCodeDiscountId: input.submittedCodeDiscountId,
           })
         ),
         Effect.bind("quote", ({ discountQuote, preview, pricing }) =>
@@ -349,13 +403,13 @@ export const reservationCheckoutPricing = <
     )((input: ReservationCustomerQuoteInput<CustomerReservation>) =>
       domain.getPricingContext(input.reservation).pipe(
         Effect.bindTo("pricing"),
-        Effect.bind("customerQuote", ({ pricing }) =>
+        Effect.bind("customerQuote", () =>
           discounts.applyCustomerDiscount({
             affirmedAdvertisement: input.affirmedAdvertisement,
             dotyposCustomerId: input.dotyposCustomerId,
             locale: input.locale,
-            reservationDate: pricing.discountInput.reservationDate,
             ...getSubmittedCodeMetadata(input),
+            ...getReferralCode(input),
           })
         ),
         Effect.bind("quote", ({ customerQuote, pricing }) =>
@@ -388,9 +442,11 @@ export const reservationCheckoutPricing = <
           Effect.bind("affirmation", ({ pricing }) =>
             discounts.affirmDisplayedDiscounts({
               ...pricing.discountInput,
+              bookedAt: input.bookedAt,
               dotyposCustomerId: input.dotyposCustomerId,
               locale: input.locale,
               submittedCode: input.submittedCode,
+              ...getReferralCode(input),
               displayedDiscountIds: input.quote.payment.discounts.map(
                 ({ discount }) => discount.id
               ),
@@ -434,6 +490,8 @@ export const reservationCheckoutPricing = <
         dotyposCustomerId: input.dotyposCustomerId,
         locale: input.locale,
         quote: input.quote,
+        bookedAt: input.bookedAt,
+        ...getReferralCode(input),
       });
       const displayedSummary = domain.getCheckoutSummary({
         reservation: input.reservation,
@@ -445,7 +503,7 @@ export const reservationCheckoutPricing = <
       });
       const displayedPriceIsCurrent =
         quote.fingerprint === input.quote.fingerprint &&
-        workspaceMoneyEquals(affirmedSummary.total, displayedSummary.total);
+        moneyEquals(affirmedSummary.total, displayedSummary.total);
 
       if (!displayedPriceIsCurrent) {
         return {
@@ -464,8 +522,8 @@ export const reservationCheckoutPricing = <
         baseQuote: affirmation.quote,
         dotyposCustomerId: input.dotyposCustomerId,
         locale: input.locale,
-        reservationDate: pricing.discountInput.reservationDate,
         submittedCode: input.submittedCode,
+        ...getReferralCode(input),
       });
       const appliedQuote = yield* domain.buildQuote({
         pricing,

@@ -1,14 +1,41 @@
 import "server-only";
 
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
-import { APIError, type BetterAuthOptions, betterAuth } from "better-auth";
-import { createAuthMiddleware, isAPIError } from "better-auth/api";
+import { expo } from "@better-auth/expo";
+import {
+  getAuthenticatorName,
+  type PasskeyOptions,
+  passkey,
+} from "@better-auth/passkey";
+import { getLocaleFromPathname } from "@deskohub/i18n/pathname";
+import {
+  APIError,
+  type AuthContext,
+  type BetterAuthOptions,
+  betterAuth,
+  type DBAdapter,
+} from "better-auth";
+import {
+  createAuthMiddleware,
+  getSessionFromCtx,
+  isAPIError,
+} from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
-import { magicLink } from "better-auth/plugins";
-import { Effect, Option, Schema } from "effect";
+import { emailOTP, magicLink } from "better-auth/plugins";
+import {
+  Data,
+  Effect,
+  type Layer,
+  Match,
+  Option,
+  Predicate,
+  Schema,
+} from "effect";
 import { after } from "next/server";
 import { makeAuthDatabase } from "@/db/auth-database-client";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceDatabasePool } from "@/db/database-provider.server";
+import type { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { drizzleAuthTables } from "@/db/schema/auth";
 import { env } from "@/env";
 import { CustomerAccountDeletionService } from "@/features/account/backend/customer-account-deletion";
@@ -16,55 +43,1010 @@ import {
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
-import { defaultLocale, isLocale, type Locale } from "@/features/i18n";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import { authOptions, betterAuthMagicLinkOptions } from "./auth-options";
+import type { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
+import { defaultLocale, isLocale, type Locale, locales } from "@/features/i18n";
+import type { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
+import { mirrorDeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
+import { ReviewAccounts } from "@/features/review-accounts";
+import {
+  classifyAgentTraffic,
+  unclassifiedTraffic,
+} from "@/shared/agent-traffic/agent-traffic";
+import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
+import {
+  catchRecoverableCause,
+  runWorkspaceEffect,
+  runWorkspaceEffectOrElse,
+} from "@/shared/backend/workspace-effect";
+import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
+import {
+  PasskeyReleaseGate,
+  SignInCodeReleaseGate,
+} from "../account-release-gates";
+import {
+  lookupMagicLinkDeliveryLocale,
+  type MagicLinkLocaleLookup,
+} from "../customer-locale-preference";
+import {
+  guardAdministrationScope,
+  narrowAdministrationOnConsent,
+} from "./administration-scope-guard";
+import type { PasskeyRelyingParty } from "./auth-hosts";
+import {
+  authOptions,
+  betterAuthMagicLinkOptions,
+  betterAuthSignInCodeOptions,
+} from "./auth-options";
+import {
+  type CustomerAgentClientMetadataTransport,
+  disabledCustomerAgentClientPaths,
+  makeCustomerAgentAuthorizationPlugins,
+} from "./customer-agent-authorization-server";
+import { LoginLifecycleRecords } from "./login-lifecycle-records.service";
 import { renderMagicLinkEmail } from "./magic-link-email";
-import { makeMagicLinkEmailDelivery } from "./send-magic-link-email";
+import { nativeAppOrigin } from "./native-app";
+import {
+  appSignInLocale,
+  nativeAppLinkFor,
+  nativeSignIn,
+  refuseMagicLinkAccountSwitch,
+  refuseUnsupportedAppLocale,
+} from "./native-sign-in";
+import {
+  findReviewAccountCredential,
+  type ReviewAccountCredential,
+} from "./review-account-credentials";
+import {
+  isConfiguredPassword,
+  makeInvalidEmailOrPasswordError,
+  provisionReviewLogin,
+} from "./review-account-sign-in";
+import {
+  magicLinkDeliveryEnvironment,
+  makeMagicLinkEmailDelivery,
+} from "./send-magic-link-email";
+import {
+  claimSignInCode,
+  claimSignInLink,
+  dateSignInCodeRow,
+  issueSignInCode,
+  reserveSignInEmail,
+} from "./sign-in-code";
 
-export type MagicLinkSendFunction = NonNullable<
-  Parameters<typeof magicLink>[0]["sendMagicLink"]
->;
+/**
+ * A sign-in email: the magic link and, while sign-in codes are on, the code
+ * that signs in the same way.
+ */
+export type SignInEmail = Parameters<
+  NonNullable<Parameters<typeof magicLink>[0]["sendMagicLink"]>
+>[0] & { readonly code?: string };
+
+export type MagicLinkSendFunction = (
+  email: SignInEmail
+) => Promise<void> | void;
+
+/**
+ * The capabilities the Workspace Better Auth hooks run against. Each hook
+ * run that needs them provides `WorkspaceAuthConfig.services` inside its own
+ * `runWorkspaceEffect`, so every run builds them once and decides each
+ * release gate at most once.
+ */
+export type WorkspaceAuthHookServices =
+  | AccountRoleGrants
+  | AnalyticsConsentLedger
+  | BotProtectionService
+  | LoginLifecycleRecords
+  | PasskeyReleaseGate
+  | ReviewAccounts
+  | SignInCodeReleaseGate
+  | WorkspaceDatabaseAdvisoryLock;
 
 export type WorkspaceAuthConfig = {
   readonly database: NonNullable<BetterAuthOptions["database"]>;
   readonly secrets: NonNullable<BetterAuthOptions["secrets"]>;
   readonly allowedHosts: readonly string[];
+  /** The customer-facing HTTPS origin whose `/app/` App Links open the app. */
+  readonly nativeAppLinkOrigin: string;
+  /** This deployment's passkey RP ID and origins, never the plugin default. */
+  readonly passkeyRelyingParty: PasskeyRelyingParty;
+  /** The canonical URL of this deployment's customer MCP server. */
+  readonly customerMcpResource: string;
+  /** Test-only stub for fetching agents' Client ID Metadata Documents. */
+  readonly clientMetadataTransport?: CustomerAgentClientMetadataTransport;
   readonly httpsOnly: boolean;
-  readonly areAccountsEnabled: () => Promise<boolean>;
+  /** The allowlisted review logins, from `REVIEW_ACCOUNT_CREDENTIALS`. */
+  readonly reviewAccountCredentials: readonly ReviewAccountCredential[];
   readonly sendMagicLink: MagicLinkSendFunction;
-  readonly beforeDeleteUser: (accountId: CustomerAccountId) => Promise<void>;
+  /** Provided to every hook run that reads a capability. */
+  readonly services: Layer.Layer<WorkspaceAuthHookServices>;
+  /**
+   * Provided only to the deletion hook's run, so the Dotypos, avatar, and
+   * account-record capabilities a deletion needs stay out of every other
+   * hook. The deletion's failures stay typed up to the hook's Promise
+   * boundary.
+   */
+  readonly accountDeletion: Layer.Layer<CustomerAccountDeletionService>;
 };
 
-const accountMagicLinkPaths = new Set([
-  "/sign-in/magic-link",
-  "/magic-link/verify",
+/** Both steps of adding a passkey; `login_passkeys` gates them. */
+const passkeyRegistrationPaths = new Set([
+  "/passkey/generate-register-options",
+  "/passkey/verify-registration",
 ]);
-const accountsUnavailableErrors = new WeakSet<object>();
 
-const makeAccountsUnavailableError = () => {
-  const error = new APIError("SERVICE_UNAVAILABLE", {
-    message: "Service Unavailable",
-  });
-  accountsUnavailableErrors.add(error);
-  return error;
-};
+/**
+ * The email-OTP plugin serves only code sign-in. Codes are issued with the
+ * magic link, so every other plugin endpoint stays unreachable over HTTP;
+ * `check-verification-otp` would otherwise be a non-consuming guessing
+ * oracle.
+ */
+const disabledSignInCodePaths = [
+  "/email-otp/send-verification-otp",
+  "/email-otp/check-verification-otp",
+  "/email-otp/verify-email",
+  "/email-otp/request-password-reset",
+  "/forget-password/email-otp",
+  "/email-otp/reset-password",
+  "/email-otp/request-email-change",
+  "/email-otp/change-email",
+];
 
-const isAccountsUnavailableError = (error: APIError) =>
-  accountsUnavailableErrors.has(error);
+/**
+ * Password sign-in serves only review logins, which the `/sign-in/email`
+ * guard provisions. Nobody can sign up, reset, set, verify, or change a
+ * password, change the login email, or list or unlink login methods over
+ * HTTP. Better Auth matches these literally against the request path, so the
+ * guard also refuses the parameterised reset route.
+ */
+const disabledPasswordPaths = [
+  "/sign-up/email",
+  "/request-password-reset",
+  "/reset-password",
+  "/reset-password/:token",
+  "/change-password",
+  "/verify-password",
+  "/change-email",
+  "/list-accounts",
+  "/unlink-account",
+];
+
+/** The only body fields code sign-in accepts; none reach the user insert. */
+const signInCodeBodyFields = new Set(["email", "otp", "callbackURL"]);
 
 const magicLinkMetadataSchema = Schema.Struct({
-  locale: Schema.optional(Schema.String),
+  locale: Schema.optional(Schema.Literals(locales)),
 });
 
+const signInCodeMetadataSchema = Schema.Struct({
+  signInCode: Schema.Boolean,
+});
+
+/**
+ * Whether the sign-in email carries a code. Only the server writes this
+ * metadata: the `/sign-in/magic-link` guard overwrites any client value.
+ */
+const isSignInCodeRequested = (metadata: SignInEmail["metadata"]) =>
+  Option.match(Schema.decodeUnknownOption(signInCodeMetadataSchema)(metadata), {
+    onNone: () => false,
+    onSome: ({ signInCode }) => signInCode,
+  });
+
+const makeBotDetectedError = () =>
+  new APIError("FORBIDDEN", {
+    code: "BOT_DETECTED",
+    message: "Automated request detected.",
+  });
+
+const makePasskeyRegistrationUnavailableError = () =>
+  new APIError("FORBIDDEN", {
+    code: "PASSKEY_REGISTRATION_UNAVAILABLE",
+    message: "Passkeys can't be added right now.",
+  });
+
+const makePasskeyAccountMismatchError = () =>
+  new APIError("FORBIDDEN", {
+    code: "PASSKEY_ACCOUNT_MISMATCH",
+    message: "This passkey belongs to a different account.",
+  });
+
+const makePasskeyUserVerificationRequiredError = () =>
+  new APIError("FORBIDDEN", {
+    code: "PASSKEY_USER_VERIFICATION_REQUIRED",
+    message: "Confirming with a passkey requires user verification.",
+  });
+
+/** A shared app-directory review account must keep working. */
+const makeReviewAccountDeletionRefusedError = () =>
+  new APIError("FORBIDDEN", {
+    code: "REVIEW_ACCOUNT_DELETION_REFUSED",
+    message: "A review account can't be deleted.",
+  });
+
+/** Better Auth's response to a wrong or used code. */
+const makeInvalidSignInCodeError = () =>
+  new APIError("BAD_REQUEST", { code: "INVALID_OTP", message: "Invalid OTP" });
+
+const makeSignInEmailLimitError = () =>
+  new APIError("TOO_MANY_REQUESTS", {
+    code: "SIGN_IN_EMAIL_LIMIT_REACHED",
+    message: "Too many sign-in emails were requested for this address.",
+  });
+
+/** The initiating site locale in the magic-link metadata, else the default. */
 const decodeMagicLinkLocale = (
   data: Parameters<MagicLinkSendFunction>[0]
-): Locale => {
-  const decoded = Option.getOrUndefined(
+): Locale =>
+  Option.getOrUndefined(
     Schema.decodeOption(magicLinkMetadataSchema)(data.metadata ?? {})
+  )?.locale ?? defaultLocale;
+
+const authContextSchema = Schema.Struct({
+  path: Schema.optional(Schema.String),
+  query: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  body: Schema.optional(
+    Schema.Struct({ callbackURL: Schema.optional(Schema.String) })
+  ),
+});
+
+type ParsedAuthContext = {
+  readonly path?: string;
+  readonly query?: Readonly<Record<string, string>>;
+  readonly body?: { readonly callbackURL?: string };
+};
+
+/**
+ * Reads the site language from the auth request's localized callback URL:
+ * the magic-link verify request carries it in its query, a code sign-in in
+ * its body. Returns nothing when the callback is absent, unparseable, or
+ * carries no locale.
+ */
+const callbackLocaleFromAuthContext = (
+  ctx: ParsedAuthContext
+): Locale | undefined => {
+  const callbackURL =
+    ctx.query?.callbackURL ?? ctx.body?.callbackURL ?? ctx.path;
+  if (!callbackURL) return undefined;
+  const parsed = URL.parse(callbackURL, "https://auth.internal.invalid");
+  return parsed ? getLocaleFromPathname(parsed.pathname, locales) : undefined;
+};
+
+/**
+ * The sign-in's locale: its localized callback URL's, else the app's locale
+ * on its sign-in code or magic-link verification.
+ */
+const signInLocaleFromAuthContext = (
+  ctx: Parameters<typeof appSignInLocale>[0]
+): Locale | undefined =>
+  callbackLocaleFromAuthContext(
+    Option.getOrElse(decodeAuthContext(ctx), () => ({}))
+  ) ?? appSignInLocale(ctx);
+
+/**
+ * Captures the sign-in locale as the preference of an account that
+ * has none, such as one created before preferences existed. The update never
+ * overwrites a saved preference. A failure is logged with a fixed code and
+ * never blocks the login: readers fall back without a preference, and the
+ * next sign-in retries.
+ */
+const captureLocalePreference = (
+  accountId: CustomerAccountId,
+  locale: Locale
+) =>
+  Effect.flatMap(LoginLifecycleRecords, (records) =>
+    records.captureLocalePreference(accountId, locale)
+  ).pipe(
+    Effect.catch(() =>
+      Effect.logWarning(
+        "Customer language preference capture failed; continuing the sign-in.",
+        { code: "account-locale-preference.capture-failed" }
+      )
+    )
   );
-  const locale = decoded?.locale;
-  return locale && isLocale(locale) ? locale : defaultLocale;
+
+/** Better Auth gave the login it is creating no usable account id. */
+class CreatingAccountIdInvalidError extends Data.TaggedError(
+  "CreatingAccountIdInvalidError"
+)<Record<never, never>> {
+  override readonly message =
+    "The login being created has no valid account identifier.";
+}
+
+/** The deleting session's user id is not a customer account id. */
+class DeletingAccountIdInvalidError extends Data.TaggedError(
+  "DeletingAccountIdInvalidError"
+)<Record<never, never>> {
+  override readonly message =
+    "The deleting session carried an invalid account identifier.";
+}
+
+/** The account id of a Better Auth user or session, when it is one of ours. */
+const decodeAccountId = (userId: string) =>
+  Option.getOrUndefined(Schema.decodeOption(customerAccountIdSchema)(userId));
+
+/** Decodes the auth request context, the hooks' I/O boundary. */
+const decodeAuthContext = Schema.decodeUnknownOption(authContextSchema);
+
+type GuardedAuthRequest = {
+  readonly path: string;
+  /** The HTTP request; a server-side `auth.api` call has none. */
+  readonly request?: Request;
+  readonly headers?: Headers;
+  readonly body?: unknown;
+  readonly query?: unknown;
+  readonly json: (body: PasswordSignInStep) => unknown;
+  readonly context: {
+    readonly adapter: DBAdapter;
+    readonly internalAdapter: AuthContext["internalAdapter"];
+    readonly password: AuthContext["password"];
+    readonly generateId: AuthContext["generateId"];
+  };
+};
+
+type AuthRequestGuard = {
+  readonly config: WorkspaceAuthConfig;
+  readonly request: GuardedAuthRequest;
+  /** The id of the login the request's session belongs to, if any. */
+  readonly sessionUserId: () => Promise<string | undefined>;
+};
+
+/** The sign-in email response that sends a review login to its password. */
+type PasswordSignInStep = {
+  readonly status: true;
+  readonly method: "password";
+};
+
+/**
+ * BotID screens every sign-in email, code sign-in, and password sign-in. A
+ * verification outage lets the request through; the per-IP rate limits still
+ * apply, and so do the per-email limit and the attempt budget while sign-in
+ * codes are on. Verified customer agents may sign in because a session still
+ * needs the link or code from the customer's inbox, or a review login's
+ * password.
+ */
+const verifySignInHuman = Effect.flatMap(
+  BotProtectionService,
+  (botProtection) =>
+    botProtection.verifyHuman({
+      verificationFailurePolicy: "allow",
+      verifiedBots: { allow: customerAgentNames },
+      callSite: "account.sign-in",
+    })
+).pipe(Effect.mapError(() => makeBotDetectedError()));
+
+/** Whether the request's session belongs to a review account. */
+const isReviewAccountSession = ({ sessionUserId }: AuthRequestGuard) =>
+  Effect.promise(sessionUserId).pipe(
+    Effect.map((userId) =>
+      Option.fromNullishOr(
+        userId === undefined ? undefined : decodeAccountId(userId)
+      )
+    ),
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.succeed(false),
+        onSome: (accountId) =>
+          Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
+            reviewAccounts.isReviewAccount(accountId)
+          ),
+      })
+    )
+  );
+
+/**
+ * A release gate's decision for this run. The gate closes itself when PostHog
+ * can't evaluate its flag; a read that fails beyond that, such as a gate that
+ * can't be built, counts as closed too.
+ */
+const readGate = <Gate>(isOpen: Effect.Effect<boolean, never, Gate>) =>
+  isOpen.pipe(
+    catchRecoverableCause(() =>
+      Effect.logWarning("Release gate read failed; it counts as closed.", {
+        code: "account.auth.release-gate-read-failed",
+      }).pipe(Effect.as(false))
+    )
+  );
+
+/**
+ * Adding a passkey needs `login_passkeys` on; an unreadable flag counts as
+ * off. Passkey sign-in never reads it, so turning the flag off locks no one
+ * out. A review account signs in only with its password, so it never adds a
+ * passkey.
+ */
+const requirePasskeyRegistration = (guard: AuthRequestGuard) =>
+  readGate(PasskeyReleaseGate.isOpen).pipe(
+    Effect.filterOrFail(Boolean, makePasskeyRegistrationUnavailableError),
+    Effect.andThen(isReviewAccountSession(guard)),
+    Effect.filterOrFail(
+      (isReviewAccount) => !isReviewAccount,
+      makePasskeyRegistrationUnavailableError
+    ),
+    Effect.when(
+      Effect.succeed(passkeyRegistrationPaths.has(guard.request.path))
+    )
+  );
+
+/**
+ * `disabledPaths` misses the reset route's token form, which Better Auth
+ * names by its pattern here; no reset can be requested, so it answers like
+ * the disabled routes.
+ */
+const rejectPasswordResetToken = ({ request }: AuthRequestGuard) =>
+  Effect.failSync(() => new APIError("NOT_FOUND")).pipe(
+    Effect.when(Effect.succeed(request.path === "/reset-password/:token"))
+  );
+
+const hasProfileFields = ({ path, body }: GuardedAuthRequest) =>
+  path === "/update-user" ||
+  (path === "/sign-in/magic-link" &&
+    Predicate.isObject(body) &&
+    (Object.hasOwn(body, "name") || Object.hasOwn(body, "image")));
+
+const rejectProfileFields = ({ request }: AuthRequestGuard) =>
+  Effect.failSync(
+    () =>
+      new APIError("BAD_REQUEST", {
+        message: "Profile fields are not accepted.",
+      })
+  ).pipe(Effect.when(Effect.succeed(hasProfileFields(request))));
+
+const hasOnlySignInCodeFields = ({ body }: GuardedAuthRequest) =>
+  !Predicate.isObject(body) ||
+  Object.keys(body).every((field) => signInCodeBodyFields.has(field));
+
+/** A code sign-in carries only the email, code, and callback URL. */
+const screenSignInCode = ({ request }: AuthRequestGuard) =>
+  Effect.succeed(request).pipe(
+    Effect.filterOrFail(
+      hasOnlySignInCodeFields,
+      () =>
+        new APIError("BAD_REQUEST", {
+          message: "Only the email, code, and callback URL are accepted.",
+        })
+    ),
+    Effect.andThen(verifySignInHuman)
+  );
+
+const magicLinkQuerySchema = Schema.Struct({ token: Schema.String });
+
+/**
+ * A magic link takes its email's claim before Better Auth consumes it. Better
+ * Auth rejects a missing token after the hook.
+ */
+const claimMagicLink = ({ request }: AuthRequestGuard) =>
+  Option.match(
+    Schema.decodeUnknownOption(magicLinkQuerySchema)(request.query),
+    {
+      onNone: () => Effect.void,
+      onSome: ({ token }) =>
+        claimSignInLink({
+          token,
+          verifications: request.context.adapter,
+          signInLinks: request.context.internalAdapter,
+        }),
+    }
+  );
+
+const signInEmailBodySchema = Schema.Struct({ email: Schema.String });
+
+/** The review login of the request's email, if it names an allowlisted one. */
+const requestedReviewLogin = ({ config, request }: AuthRequestGuard) =>
+  Option.flatMap(
+    Schema.decodeUnknownOption(signInEmailBodySchema)(request.body),
+    ({ email }) =>
+      Option.fromNullishOr(
+        findReviewAccountCredential(config.reviewAccountCredentials, email)
+      )
+  );
+
+/**
+ * The per-email limit counts sign-in emails that carry a code. Better Auth
+ * rejects a missing or malformed email after the hook.
+ */
+const reserveSignInCodeEmail = ({ request }: AuthRequestGuard) =>
+  Option.match(
+    Schema.decodeUnknownOption(signInEmailBodySchema)(request.body),
+    {
+      onNone: () => Effect.void,
+      onSome: ({ email }) =>
+        reserveSignInEmail({
+          verifications: request.context.adapter,
+          email,
+        }).pipe(
+          Effect.filterOrFail(Boolean, makeSignInEmailLimitError),
+          Effect.asVoid
+        ),
+    }
+  );
+
+/**
+ * Evaluates `login_email_code` once for a sign-in email (fail closed) and
+ * records the decision in the request metadata, replacing any client value,
+ * so the email and the response follow one evaluation. While the flag is on,
+ * the send also counts against the per-email limit.
+ */
+const decideSignInCode = (guard: AuthRequestGuard) =>
+  Effect.succeed(guard).pipe(
+    Effect.bind("signInCode", () => readGate(SignInCodeReleaseGate.isOpen)),
+    Effect.tap(({ signInCode }) =>
+      reserveSignInCodeEmail(guard).pipe(
+        Effect.when(Effect.succeed(signInCode))
+      )
+    ),
+    Effect.map(({ signInCode }) => ({
+      context: { body: { metadata: { signInCode } } },
+    })),
+    Effect.withSpan("WorkspaceAuth.decideSignInCode")
+  );
+
+/**
+ * Every sign-in email request is BotID-checked, matching the client's
+ * `protect` entry for this path. A review login's address gets the password
+ * step instead: the response ends the request, so no link, code, or
+ * verification row is created and no email is sent.
+ */
+const guardSignInEmail = (guard: AuthRequestGuard) =>
+  verifySignInHuman.pipe(
+    Effect.andThen(
+      Effect.suspend(() =>
+        Option.match(requestedReviewLogin(guard), {
+          onNone: () => decideSignInCode(guard),
+          onSome: () =>
+            Effect.sync(() =>
+              guard.request.json({ status: true, method: "password" })
+            ),
+        })
+      )
+    )
+  );
+
+const passwordSignInBodySchema = Schema.Struct({ password: Schema.String });
+
+/** Whether the password sign-in carries the review login's password. */
+const hasConfiguredPassword = (
+  { request }: AuthRequestGuard,
+  credential: ReviewAccountCredential
+) =>
+  Option.match(
+    Schema.decodeUnknownOption(passwordSignInBodySchema)(request.body),
+    {
+      onNone: () => false,
+      onSome: ({ password }) => isConfiguredPassword(credential, password),
+    }
+  );
+
+/**
+ * Password sign-in is only for review logins with their configured password:
+ * any other address or password gets Better Auth's invalid-credentials
+ * answer before any lookup, even an address with a password on record. A
+ * review login is provisioned or repaired first, then Better Auth's own
+ * handler checks the password again and creates the session.
+ * BotID runs first, matching the client's `protect` entry; rate limiting
+ * already ran before the hook.
+ */
+const screenPasswordSignIn = (guard: AuthRequestGuard) =>
+  verifySignInHuman.pipe(
+    Effect.andThen(
+      Effect.suspend(() =>
+        Option.match(requestedReviewLogin(guard), {
+          onNone: () => Effect.fail(makeInvalidEmailOrPasswordError()),
+          onSome: (credential) =>
+            hasConfiguredPassword(guard, credential)
+              ? provisionReviewLogin({
+                  credential,
+                  context: guard.request.context,
+                  locale: callbackLocaleFromAuthContext(
+                    Option.getOrElse(
+                      decodeAuthContext(guard.request),
+                      () => ({})
+                    )
+                  ),
+                })
+              : Effect.fail(makeInvalidEmailOrPasswordError()),
+        })
+      )
+    ),
+    Effect.withSpan("WorkspaceAuth.screenPasswordSignIn")
+  );
+
+const guardSignInPath = (guard: AuthRequestGuard) =>
+  Match.value(guard.request.path).pipe(
+    Match.when("/sign-in/magic-link", () => guardSignInEmail(guard)),
+    Match.when("/magic-link/verify", () =>
+      refuseMagicLinkAccountSwitch(guard).pipe(
+        Effect.andThen(claimMagicLink(guard))
+      )
+    ),
+    Match.when("/sign-in/email-otp", () => screenSignInCode(guard)),
+    Match.when("/sign-in/email", () => screenPasswordSignIn(guard)),
+    Match.orElse(() => Effect.void)
+  );
+
+/**
+ * Rejects passkey registrations while passkeys are disabled (an unreadable
+ * flag counts as disabled) or for a review account, any request carrying
+ * profile fields, the password reset token route, code sign-ins carrying
+ * anything beyond the email, code, and callback URL, and password sign-ins
+ * outside the review logins, and an app sign-in naming an unsupported locale.
+ */
+const guardAuthRequest = (guard: AuthRequestGuard) =>
+  Effect.succeed(guard).pipe(
+    Effect.tap(requirePasskeyRegistration),
+    Effect.tap(rejectProfileFields),
+    Effect.tap(rejectPasswordResetToken),
+    Effect.tap(({ request }) => refuseUnsupportedAppLocale(request)),
+    Effect.flatMap(guardSignInPath),
+    Effect.withSpan("WorkspaceAuth.guardRequest")
+  );
+
+type SignInEmailSend = {
+  readonly sendMagicLink: MagicLinkSendFunction;
+  readonly email: Omit<SignInEmail, "code">;
+  /** The sign-in request's auth context; absent outside a request. */
+  readonly context: AuthContext | undefined;
+  readonly createSignInCode: (email: string) => Promise<string>;
+};
+
+/**
+ * Issues the code when the request's decision says so. A code that can't be
+ * stored fails the request: the response would otherwise promise a code the
+ * email lacks.
+ */
+const issueRequestedSignInCode = ({
+  email,
+  context,
+  createSignInCode,
+}: SignInEmailSend) =>
+  Option.fromNullishOr(context).pipe(
+    Option.filter(() => isSignInCodeRequested(email.metadata)),
+    Option.match({
+      onNone: () => Effect.succeedNone,
+      onSome: ({ adapter, internalAdapter }) =>
+        issueSignInCode({
+          email: email.email,
+          token: email.token,
+          verifications: adapter,
+          signInCodes: internalAdapter,
+          createSignInCode,
+        }).pipe(
+          Effect.tapError(({ code }) =>
+            Effect.logWarning("Sign-in code issuance failed.", { code })
+          ),
+          Effect.map(Option.some)
+        ),
+    })
+  );
+
+/** Sends the sign-in email, adding a code when the request's decision says so. */
+const sendSignInEmail = (send: SignInEmailSend) =>
+  Effect.succeed(send).pipe(
+    Effect.bind("code", issueRequestedSignInCode),
+    Effect.flatMap(({ sendMagicLink, email, code }) =>
+      Effect.promise(async () =>
+        sendMagicLink(
+          Option.match(code, {
+            onNone: () => email,
+            onSome: (signInCode) => ({ ...email, code: signInCode }),
+          })
+        )
+      )
+    ),
+    Effect.withSpan("WorkspaceAuth.sendSignInEmail")
+  );
+
+const signInCodeBodySchema = Schema.Struct({
+  email: Schema.String,
+  otp: Schema.String,
+});
+
+type AuthEndpointContext = {
+  readonly path?: string;
+  readonly body?: unknown;
+  /** The HTTP request's headers; a server-side `auth.api` call may have none. */
+  readonly headers?: Headers;
+  readonly context: { readonly adapter: DBAdapter };
+} | null;
+
+/** The code sign-in a Better Auth database hook runs within, if any. */
+const signInCodeRequest = (ctx: AuthEndpointContext) =>
+  Option.fromNullishOr(ctx).pipe(
+    Option.filter(({ path }) => path === "/sign-in/email-otp"),
+    Option.flatMap(({ body, context }) =>
+      Option.map(
+        Schema.decodeUnknownOption(signInCodeBodySchema)(body),
+        ({ email, otp }) => ({
+          email,
+          code: otp,
+          verifications: context.adapter,
+        })
+      )
+    )
+  );
+
+/**
+ * A code sign-in takes its email's claim after Better Auth accepts the code
+ * and before it creates the session. Losing to the link reads like any used
+ * code.
+ */
+const claimSignInCodeSession = ({
+  ctx,
+}: {
+  readonly ctx: AuthEndpointContext;
+}) =>
+  signInCodeRequest(ctx).pipe(
+    Option.match({
+      onNone: () => Effect.void,
+      onSome: (request) =>
+        claimSignInCode(request).pipe(
+          Effect.catchTag("SignInEmailUsedError", () =>
+            Effect.fail(makeInvalidSignInCodeError())
+          )
+        ),
+    })
+  );
+
+/**
+ * A code that Better Auth writes back after a wrong guess keeps its issue
+ * time, so it never outranks a newer email's code.
+ */
+const dateRestoredSignInCode = ({
+  verification,
+  ctx,
+}: {
+  readonly verification: {
+    readonly identifier: string;
+    readonly expiresAt: Date;
+  };
+  readonly ctx: AuthEndpointContext;
+}) =>
+  signInCodeRequest(ctx).pipe(
+    Option.map(({ email }) => dateSignInCodeRow({ email, row: verification })),
+    Effect.transposeOption,
+    Effect.map((dated) =>
+      Option.getOrUndefined(
+        Option.map(Option.flatten(dated), (data) => ({ data }))
+      )
+    )
+  );
+
+/**
+ * Captures the sign-in locale for the session's account, when both
+ * are known.
+ */
+const captureSessionLocale = ({
+  session,
+  ctx,
+}: {
+  readonly session: { readonly userId: string };
+  readonly ctx: AuthEndpointContext;
+}) =>
+  Option.all({
+    accountId: Option.fromNullishOr(decodeAccountId(session.userId)),
+    locale: Option.fromNullishOr(signInLocaleFromAuthContext(ctx)),
+  }).pipe(
+    Option.match({
+      onNone: () => Effect.void,
+      onSome: ({ accountId, locale }) =>
+        captureLocalePreference(accountId, locale),
+    })
+  );
+
+/**
+ * Prepares a session before Better Auth stores it: a code sign-in takes its
+ * claim first, the callback locale is captured, and the session keeps no IP
+ * address or user agent.
+ */
+const prepareSession = <Session extends { readonly userId: string }>(request: {
+  readonly session: Session;
+  readonly ctx: AuthEndpointContext;
+}) =>
+  Effect.succeed(request).pipe(
+    Effect.tap(claimSignInCodeSession),
+    Effect.tap(captureSessionLocale),
+    Effect.map(({ session }) => ({
+      data: { ...session, ipAddress: null, userAgent: null },
+    }))
+  );
+
+/**
+ * Mirrors the signing-in device's analytics consent choice for the account
+ * of the session Better Auth just created, in the banner language the choice
+ * was saved in, else the sign-in callback locale. A session created without
+ * a request cookie, such as a server-side one, mirrors nothing.
+ */
+const mirrorSessionAnalyticsConsent = ({
+  session,
+  ctx,
+}: {
+  readonly session: { readonly userId: string };
+  readonly ctx: AuthEndpointContext;
+}) => {
+  const accountId = decodeAccountId(session.userId);
+  const cookieHeader = ctx?.headers?.get("cookie");
+  if (!accountId || !cookieHeader) return Effect.void;
+  return mirrorDeviceAnalyticsConsent({
+    accountId,
+    cookieHeader,
+    locale:
+      callbackLocaleFromAuthContext(
+        Option.getOrElse(decodeAuthContext(ctx), () => ({}))
+      ) ?? defaultLocale,
+    source: "sign_in_mirror",
+  }).pipe(Effect.asVoid);
+};
+
+type SignInEmailCompletion = {
+  readonly status: true;
+  readonly signInCode: boolean;
+};
+
+/** Better Auth's credential sign-in response, minus its redirect field. */
+const passwordSignInResponseSchema = Schema.Struct({
+  token: Schema.String,
+  url: Schema.optional(Schema.String),
+  user: Schema.Unknown,
+});
+
+type PasswordSignInCompletion = typeof passwordSignInResponseSchema.Type & {
+  readonly redirect: false;
+};
+
+type CompletedAuthRequest = {
+  readonly path: string;
+  readonly body?: { readonly metadata?: SignInEmail["metadata"] };
+  readonly json: (
+    body: SignInEmailCompletion | PasswordSignInCompletion
+  ) => unknown;
+  readonly context: { readonly returned?: unknown };
+};
+
+/**
+ * Returns the sign-in code decision with the sign-in email response, so the
+ * client shows the code step only for an email that carries a code. A
+ * password sign-in answers like a code sign-in, without Better Auth's
+ * redirect instruction: the page continues through its callback itself, and
+ * a reauthentication stays in its dialog.
+ */
+const completeAuthRequest = (ctx: CompletedAuthRequest) => {
+  if (isAPIError(ctx.context.returned)) return undefined;
+  if (ctx.path === "/sign-in/magic-link") {
+    return ctx.json({
+      status: true,
+      signInCode: isSignInCodeRequested(ctx.body?.metadata),
+    });
+  }
+  if (ctx.path !== "/sign-in/email") return undefined;
+  return Option.match(
+    Schema.decodeUnknownOption(passwordSignInResponseSchema)(
+      ctx.context.returned
+    ),
+    {
+      onNone: () => undefined,
+      onSome: (response) => ctx.json({ ...response, redirect: false }),
+    }
+  );
+};
+
+type PasskeyAssertion = Parameters<
+  NonNullable<
+    NonNullable<PasskeyOptions["authentication"]>["afterVerification"]
+  >
+>[0];
+
+const passkeyOwnerSchema = Schema.Struct({ userId: Schema.String });
+
+/** The account a verified passkey belongs to, if its row still exists. */
+const passkeyOwner = ({ ctx, verification }: PasskeyAssertion) =>
+  Effect.promise(() =>
+    ctx.context.adapter.findOne({
+      model: "passkey",
+      where: [
+        {
+          field: "credentialID",
+          value: verification.authenticationInfo.credentialID,
+        },
+      ],
+    })
+  ).pipe(
+    Effect.map((row) =>
+      Option.map(
+        Schema.decodeUnknownOption(passkeyOwnerSchema)(row),
+        ({ userId }) => userId
+      )
+    )
+  );
+
+/**
+ * A passkey assertion from a browser that already holds a session confirms
+ * that same customer, as the delete-account and stale-enrolment
+ * reauthentication do: it must come from one of the session account's own
+ * passkeys and carry user verification. Otherwise it fails before the
+ * plugin creates a session, so the current session stays in place. Better
+ * Auth already limits the options' `allowCredentials` to the session
+ * account's passkeys; this check doesn't rely on the browser honouring it.
+ * An anonymous assertion is an ordinary passkey sign-in.
+ */
+const confirmSessionPasskey = (assertion: PasskeyAssertion) =>
+  Effect.promise(() => getSessionFromCtx(assertion.ctx)).pipe(
+    Effect.map(Option.fromNullishOr),
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.void,
+        onSome: (session) =>
+          passkeyOwner(assertion).pipe(
+            Effect.filterOrFail(
+              (owner) => Option.contains(owner, session.user.id),
+              makePasskeyAccountMismatchError
+            ),
+            Effect.filterOrFail(
+              () => assertion.verification.authenticationInfo.userVerified,
+              makePasskeyUserVerificationRequiredError
+            ),
+            Effect.asVoid
+          ),
+      })
+    ),
+    Effect.withSpan("WorkspaceAuth.confirmSessionPasskey")
+  );
+
+type PasskeyOptionsRequest = Parameters<
+  Parameters<typeof createAuthMiddleware>[0]
+>[0];
+
+/**
+ * Asks the browser for user verification on a reauthentication: options
+ * requested with a session, which `confirmSessionPasskey` then requires.
+ * Sign-in options keep the plugin's `preferred` setting.
+ */
+const requireReauthenticationUserVerification = (ctx: PasskeyOptionsRequest) =>
+  Option.liftPredicate(ctx.context.returned, Predicate.isObject).pipe(
+    Option.filter(
+      (returned) =>
+        ctx.path === "/passkey/generate-authenticate-options" &&
+        !isAPIError(returned)
+    ),
+    Option.match({
+      onNone: () => Effect.void,
+      onSome: (returned) =>
+        Effect.promise(() => getSessionFromCtx(ctx)).pipe(
+          Effect.map(Option.fromNullishOr),
+          Effect.flatMap(
+            Option.match({
+              onNone: () => Effect.void,
+              onSome: () =>
+                Effect.promise(async () =>
+                  ctx.json({ ...returned, userVerification: "required" })
+                ),
+            })
+          )
+        ),
+    })
+  );
+
+/**
+ * Picks the magic-link email language. A verified existing account uses its
+ * saved preference. An account without a preference, a pre-account (first)
+ * delivery, and a pending unverified signup use the initiating site locale.
+ * An unreadable preference skips delivery so no wrong-language magic link
+ * reaches a customer.
+ */
+type MagicLinkDeliveryDecision =
+  | { readonly action: "deliver"; readonly locale: Locale }
+  | {
+      readonly action: "skip";
+      readonly code: "account.magic-link.locale.read-failed";
+    };
+
+const decideMagicLinkDelivery = (
+  lookup: MagicLinkLocaleLookup,
+  fallback: Locale
+): MagicLinkDeliveryDecision => {
+  if (lookup.kind === "account")
+    return { action: "deliver", locale: lookup.locale };
+  if (lookup.kind === "read-failed") {
+    return { action: "skip", code: "account.magic-link.locale.read-failed" };
+  }
+  return { action: "deliver", locale: fallback };
 };
 
 /**
@@ -76,20 +1058,30 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
   const baseURL = { allowedHosts: [...config.allowedHosts] };
   if (config.httpsOnly) Object.assign(baseURL, { protocol: "https" as const });
 
-  return betterAuth({
+  // Resolved lazily: `sendMagicLink` runs only after the instance exists.
+  // The sign-in request resolves the dynamic base URL for the direct call.
+  const createSignInCode = (
+    email: string,
+    request: Request | undefined
+  ): Promise<string> =>
+    auth.api.createVerificationOTP({
+      body: { email, type: "sign-in" },
+      request,
+      asResponse: false,
+    });
+
+  const auth = betterAuth({
     ...authOptions,
     secrets: config.secrets,
     baseURL,
+    // The hosts in `baseURL` are trusted already; the native app adds its
+    // scheme, which its Expo client sends as `expo-origin`.
+    trustedOrigins: [nativeAppOrigin],
     database: config.database,
     logger: { disabled: true },
     onAPIError: {
       onError: (error) => {
-        if (
-          isAPIError(error) &&
-          (error.statusCode < 500 || isAccountsUnavailableError(error))
-        ) {
-          return;
-        }
+        if (isAPIError(error) && error.statusCode < 500) return;
 
         void runWorkspaceEffect("account.auth.handler", { boundary: "route" })(
           Effect.logError("Better Auth request failed.", {
@@ -104,37 +1096,100 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
         });
       },
     },
-    disabledPaths: ["/update-user"],
+    disabledPaths: [
+      "/update-user",
+      ...disabledPasswordPaths,
+      ...disabledSignInCodePaths,
+      ...disabledCustomerAgentClientPaths,
+    ],
     hooks: {
-      before: createAuthMiddleware(async (ctx) => {
-        if (accountMagicLinkPaths.has(ctx.path)) {
-          let enabled = false;
-          try {
-            enabled = await config.areAccountsEnabled();
-          } catch {
-            enabled = false;
-          }
-          if (!enabled) return Promise.reject(makeAccountsUnavailableError());
-        }
-
-        const hasProfileFields =
-          ctx.path === "/sign-in/magic-link" &&
-          (Object.hasOwn(ctx.body, "name") || Object.hasOwn(ctx.body, "image"));
-
-        if (ctx.path === "/update-user" || hasProfileFields) {
-          return Promise.reject(
-            new APIError("BAD_REQUEST", {
-              message: "Profile fields are not accepted.",
-            })
-          );
-        }
-      }),
+      before: createAuthMiddleware((ctx) =>
+        runWorkspaceEffect("account.auth.guard", { boundary: "route" })(
+          guardAdministrationScope(ctx).pipe(
+            Effect.andThen(
+              guardAuthRequest({
+                config,
+                request: ctx,
+                sessionUserId: async () =>
+                  (await getSessionFromCtx(ctx))?.user.id ?? undefined,
+              })
+            ),
+            Effect.provide(config.services),
+            // Auth routes bypass the proxy, so they classify their own headers.
+            Effect.provideService(
+              CurrentAgentTraffic,
+              ctx.headers
+                ? classifyAgentTraffic(ctx.headers)
+                : unclassifiedTraffic
+            )
+          )
+        )
+      ),
+      after: createAuthMiddleware(
+        async (ctx) =>
+          completeAuthRequest(ctx) ??
+          (await runWorkspaceEffect("account.agent-consent.narrow", {
+            boundary: "route",
+          })(
+            narrowAdministrationOnConsent(ctx).pipe(
+              Effect.provide(config.services)
+            )
+          )) ??
+          runWorkspaceEffect("account.passkey.reauthentication-options", {
+            boundary: "route",
+          })(requireReauthenticationUserVerification(ctx))
+      ),
     },
     plugins: [
       magicLink({
         ...betterAuthMagicLinkOptions,
-        sendMagicLink: config.sendMagicLink,
+        sendMagicLink: (data, ctx) =>
+          runWorkspaceEffect("account.sign-in-email.send", {
+            boundary: "route",
+          })(
+            sendSignInEmail({
+              sendMagicLink: config.sendMagicLink,
+              email: { ...data, url: nativeAppLinkFor(data.url) },
+              context: ctx?.context,
+              createSignInCode: (email) =>
+                createSignInCode(email, ctx?.request),
+            }).pipe(Effect.provide(config.services))
+          ),
       }),
+      emailOTP({
+        ...betterAuthSignInCodeOptions,
+        // Codes are issued only with a magic link; this plugin's own send
+        // endpoint is disabled.
+        sendVerificationOTP: () => Promise.reject(new APIError("NOT_FOUND")),
+      }),
+      passkey({
+        rpID: config.passkeyRelyingParty.rpID,
+        rpName: authOptions.appName,
+        origin: [...config.passkeyRelyingParty.origins],
+        registration: {
+          // Labels a passkey the client didn't name with its provider, such
+          // as "Google Password Manager". Unknown and anonymous authenticators
+          // stay unnamed, and the client shows a generic localized label.
+          afterVerification: ({ verification }) => ({
+            name: getAuthenticatorName(verification.registrationInfo?.aaguid),
+          }),
+        },
+        authentication: {
+          afterVerification: (assertion) =>
+            runWorkspaceEffect("account.passkey.confirm-session", {
+              boundary: "route",
+            })(confirmSessionPasskey(assertion)),
+        },
+      }),
+      ...makeCustomerAgentAuthorizationPlugins({
+        resource: config.customerMcpResource,
+        clientMetadataTransport: config.clientMetadataTransport,
+      }),
+      nativeSignIn({ appLinkOrigin: config.nativeAppLinkOrigin }),
+      // The native app's requests carry no browser `Origin`: the plugin takes
+      // it from `expo-origin`, and a magic link the app started returns to
+      // the app scheme with the session cookie.
+      expo(),
       // Better Auth requires `nextCookies` to be the last plugin: it forwards
       // Set-Cookie headers into the Next.js cookie store for Server Action
       // `auth.api` calls and defers RSC-only session refreshes.
@@ -143,13 +1198,69 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
     databaseHooks: {
       session: {
         create: {
-          before: async (session) => ({
-            data: {
-              ...session,
-              ipAddress: null,
-              userAgent: null,
-            },
-          }),
+          before: (session, ctx) =>
+            runWorkspaceEffect("account.auth.capture-locale", {
+              boundary: "route",
+            })(
+              prepareSession({ session, ctx }).pipe(
+                Effect.provide(config.services)
+              )
+            ),
+          // A failed mirror is logged and never fails the sign-in; the next
+          // hydration of the session mirrors the choice again.
+          after: (session, ctx) =>
+            runWorkspaceEffectOrElse("account.auth.mirror-analytics-consent", {
+              boundary: "route",
+              failureCode: "analytics-consent.sign-in-mirror-failed",
+              orElse: () => undefined,
+            })(
+              mirrorSessionAnalyticsConsent({ session, ctx }).pipe(
+                Effect.provide(config.services)
+              )
+            ),
+        },
+      },
+      verification: {
+        create: {
+          before: (verification, ctx) =>
+            runWorkspaceEffect("account.sign-in-code.date", {
+              boundary: "route",
+            })(dateRestoredSignInCode({ verification, ctx })),
+        },
+      },
+      user: {
+        create: {
+          // The durable customer account is created before its login, so no
+          // login exists without one; Better Auth keeps the id returned here.
+          // A sign-in request supplies the id generator; a server-side
+          // creation has no request, so it must pass the id itself. A login
+          // insert that fails afterwards leaves an unused account that the
+          // auth cleanup cron tombstones a day later.
+          //
+          // The locale preference is part of the user insert, so no account
+          // exists without one. A server-side creation supplies it; otherwise
+          // it comes from the initiating site locale in the callback URL, else
+          // the app's locale header, else the site default.
+          before: (user, ctx) =>
+            runWorkspaceEffect("account.customer-account.create", {
+              boundary: "route",
+            })(
+              Effect.gen(function* () {
+                const accountId = decodeAccountId(
+                  user.id ?? ctx?.context.generateId({ model: "user" }) ?? ""
+                );
+                if (!accountId) {
+                  return yield* new CreatingAccountIdInvalidError();
+                }
+                const records = yield* LoginLifecycleRecords;
+                yield* records.createCustomerAccount(accountId);
+                const locale =
+                  Predicate.isString(user.locale) && isLocale(user.locale)
+                    ? user.locale
+                    : (signInLocaleFromAuthContext(ctx) ?? defaultLocale);
+                return { data: { ...user, id: accountId, locale } };
+              }).pipe(Effect.provide(config.services))
+            ),
         },
       },
     },
@@ -158,28 +1269,39 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
       deleteUser: {
         ...authOptions.user?.deleteUser,
         enabled: true,
-        beforeDelete: (user) => {
-          const accountId = Option.getOrUndefined(
-            Schema.decodeOption(customerAccountIdSchema)(user.id)
-          );
-          if (!accountId) {
-            return Promise.reject(
-              new Error(
-                "The deleting session carried an invalid account identifier."
-              )
-            );
-          }
-          return config.beforeDeleteUser(accountId);
-        },
+        beforeDelete: (user) =>
+          runWorkspaceEffect("account.deletion.provider-expiration", {
+            boundary: "task",
+          })(
+            Effect.gen(function* () {
+              const accountId = decodeAccountId(user.id);
+              if (!accountId) {
+                return yield* new DeletingAccountIdInvalidError();
+              }
+              const deletion = yield* CustomerAccountDeletionService;
+              yield* deletion
+                .requestDeletion(accountId)
+                .pipe(
+                  Effect.catchTag("ReviewAccountDeletionRefusedError", () =>
+                    Effect.fail(makeReviewAccountDeletionRefusedError())
+                  )
+                );
+            }).pipe(Effect.provide(config.accountDeletion))
+          ),
       },
     },
   });
+  return auth;
 };
 
-export const makeWorkspaceMagicLinkDelivery = () =>
-  makeMagicLinkEmailDelivery(renderMagicLinkEmail, {
-    isVercelPreview: env.VERCEL_ENV === "preview",
-  });
+const makeWorkspaceMagicLinkDelivery = () =>
+  makeMagicLinkEmailDelivery(
+    renderMagicLinkEmail,
+    magicLinkDeliveryEnvironment({
+      VERCEL_ENV: env.VERCEL_ENV,
+      NODE_ENV: process.env.NODE_ENV,
+    })
+  );
 
 export const makeWorkspaceAuthDatabase = () =>
   drizzleAdapter(makeAuthDatabase(workspaceDatabasePool), {
@@ -188,31 +1310,38 @@ export const makeWorkspaceAuthDatabase = () =>
     schemaName: "auth",
   });
 
-export const workspaceSendMagicLink: MagicLinkSendFunction = (data) => {
-  const locale = decodeMagicLinkLocale(data);
-  after(() =>
-    runWorkspaceEffect("account.magic-link.deliver", { boundary: "task" })(
-      makeWorkspaceMagicLinkDelivery().deliver({
-        email: data.email,
-        url: data.url,
-        locale,
-      })
-    )
-  );
-};
-
-export const workspaceBeforeDeleteUser = (accountId: CustomerAccountId) =>
-  runWorkspaceEffect("account.deletion.provider-expiration", {
-    boundary: "task",
-  })(
-    Effect.flatMap(CustomerAccountDeletionService, (service) =>
-      service.requestDeletion(accountId)
-    ).pipe(
-      Effect.provide(CustomerAccountDeletionService.Live),
-      Effect.tapError(() =>
-        Effect.logWarning(
-          "Customer account deletion: Dotypos expiration failed; deletion stays retryable.",
-          { code: "account.deletion.retryable" }
+export const workspaceSendMagicLink: MagicLinkSendFunction = (data) =>
+  runWorkspaceEffect("account.magic-link.locale", { boundary: "route" })(
+    lookupMagicLinkDeliveryLocale(data.email).pipe(
+      Effect.provide(WorkspaceDatabase.Default),
+      Effect.orElseSucceed(() => ({ kind: "read-failed" }) as const),
+      Effect.map((lookup) =>
+        decideMagicLinkDelivery(lookup, decodeMagicLinkLocale(data))
+      ),
+      Effect.flatMap((decision) =>
+        Match.value(decision).pipe(
+          Match.discriminatorsExhaustive("action")({
+            skip: ({ code }) =>
+              Effect.logWarning(
+                "Magic-link delivery skipped for an existing account with an unreadable language preference.",
+                { code }
+              ),
+            deliver: ({ locale }) =>
+              Effect.sync(() =>
+                after(() =>
+                  runWorkspaceEffect("account.magic-link.deliver", {
+                    boundary: "task",
+                  })(
+                    makeWorkspaceMagicLinkDelivery().deliver({
+                      email: data.email,
+                      url: data.url,
+                      code: data.code,
+                      locale,
+                    })
+                  )
+                )
+              ),
+          })
         )
       )
     )

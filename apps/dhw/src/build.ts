@@ -1,11 +1,27 @@
 import { Schema } from "effect";
 import packageMetadata from "../package.json";
 import { ReleaseBuildTarget } from "./build-info";
-import { makeDhwBuildVersion } from "./build-version";
+import { type DhwBuildChannel, makeDhwBuildDefinitions } from "./build-version";
 
 const buildTarget = Schema.decodeUnknownSync(
   Schema.Union([ReleaseBuildTarget, Schema.Literal("development")])
 )(Bun.argv[2] ?? "development");
+
+// Only the release workflow sets `DHW_BUILD_CHANNEL=release`; any other
+// build is tagged and has no default Workspace.
+const isRelease =
+  Schema.decodeUnknownSync(Schema.UndefinedOr(Schema.Literal("release")))(
+    Bun.env.DHW_BUILD_CHANNEL
+  ) === "release";
+const versionTag = Bun.env.DHW_BUILD_VERSION_TAG;
+
+if (isRelease && versionTag !== undefined) {
+  throw new Error("A dhw release can't carry DHW_BUILD_VERSION_TAG.");
+}
+
+const buildChannel: DhwBuildChannel = isRelease
+  ? { release: true }
+  : { release: false, versionTag };
 
 const bunTargets = {
   "darwin-arm64": "bun-darwin-arm64",
@@ -18,11 +34,6 @@ const bunTarget =
   buildTarget === "development" ? undefined : bunTargets[buildTarget];
 
 const outputName = buildTarget === "development" ? "dhw" : `dhw-${buildTarget}`;
-const buildVersion = makeDhwBuildVersion(
-  packageMetadata.version,
-  buildTarget,
-  Bun.env.DHW_BUILD_VERSION_TAG
-);
 
 const result = await Bun.build({
   entrypoints: [new URL("./main.ts", import.meta.url).pathname],
@@ -32,10 +43,11 @@ const result = await Bun.build({
     autoloadDotenv: false,
     autoloadBunfig: false,
   },
-  define: {
-    __DHW_VERSION__: JSON.stringify(buildVersion),
-    __DHW_BUILD_TARGET__: JSON.stringify(buildTarget),
-  },
+  define: makeDhwBuildDefinitions(
+    packageMetadata.version,
+    buildTarget,
+    buildChannel
+  ),
 });
 
 if (!result.success) {

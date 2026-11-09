@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 import { locales } from "@/features/i18n";
-import { checkoutStateClaimsSchema } from "./checkout-state-token";
+import { sealedStateClaimsSchema } from "@/shared/backend/sealed-state";
 
 export const workspaceCheckoutPriceStateSchema = Schema.Struct({
-  ...checkoutStateClaimsSchema.fields,
+  ...sealedStateClaimsSchema.fields,
   locale: Schema.Literals(locales),
 });

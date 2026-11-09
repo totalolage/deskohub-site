@@ -1,8 +1,4 @@
-export type {
-  ICalendarResourceConfig,
-  SalesCalendarId,
-  WorkspaceLimitationsCalendarId,
-} from "./google-calendar.config";
+export type { SalesCalendarId } from "./google-calendar.config";
 export {
   CalendarResourceConfig,
   salesCalendarIdSchema,

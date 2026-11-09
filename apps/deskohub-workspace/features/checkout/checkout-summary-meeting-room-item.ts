@@ -4,8 +4,8 @@ import {
   checkoutSummaryProductItemBaseSchema,
   checkoutSummaryProductKeyFilter,
 } from "@/features/checkout/checkout-summary-product-item";
-import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import { workspaceMeetingRoomProductIdentitySchema } from "@/features/reservation/meeting-room-reservation";
+import { positiveMoneyCodec } from "@/shared/money/money";
 
 const meetingRoomCheckoutSummaryProductItemBaseSchema = Schema.Struct({
   ...checkoutSummaryProductItemBaseSchema.fields,
@@ -21,6 +21,6 @@ export const meetingRoomCheckoutSummaryProductItemSchema = Schema.Struct({
 export const meetingRoomCheckoutSummaryDiscountedProductItemSchema =
   Schema.Struct({
     ...meetingRoomCheckoutSummaryProductItemBaseSchema.fields,
-    originalAmount: positiveWorkspaceMoneyCodec,
+    originalAmount: positiveMoneyCodec,
     discounts: Schema.NonEmptyArray(checkoutSummaryDiscountSchema),
   }).check(checkoutSummaryProductKeyFilter);

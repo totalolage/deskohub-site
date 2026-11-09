@@ -9,11 +9,10 @@ type WorkspaceTableMapViewProps = {
   readonly tableMap: WorkspaceTableMap;
 };
 
-export const workspaceTableMapFontFamily = "Sculpin";
-export const workspaceTableMapFontStack = `${workspaceTableMapFontFamily}, "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
-export const workspaceTableMapLabelWidth = 96;
-export const workspaceTableMapImageWidth = 720;
-export const workspaceTableMapImageHeight = 540;
+const workspaceTableMapFontFamily = "Sculpin";
+const workspaceTableMapFontStack = `${workspaceTableMapFontFamily}, "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
+const workspaceTableMapImageWidth = 720;
+const workspaceTableMapImageHeight = 540;
 
 const getRoomLayout = (roomName: string | undefined) => ({
   ...getWorkspaceRoomLayout(roomName),

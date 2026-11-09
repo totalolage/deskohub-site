@@ -1,247 +1,124 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
+import { Effect, Schema } from "effect";
 import {
-  DotyposCustomerIdSchema,
-  DotyposReservationIdSchema,
-} from "@deskohub/dotypos";
-import { getTableColumns } from "drizzle-orm";
-import { Effect, Layer, Schema } from "effect";
-import { paymentAttempts } from "@/db/schema";
-import {
-  type AccountingDocumentSnapshot,
-  accountingDocumentSnapshotSchema,
-  makeAccountingDocumentSnapshot,
-} from "@/features/accounting/accounting-document-snapshot";
-import { makeCoworkInvoiceDocument } from "@/features/accounting/invoice.test-utils";
-import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
-import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
-import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
-import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
-import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
+  WorkspaceDatabase,
+  type WorkspaceTransaction,
+} from "@/db/database.service";
 import {
   getDiscountCommitmentPayload,
   makeDiscountCommitment,
 } from "@/features/discounts/commitment";
 import { discountIdSchema } from "@/features/discounts/contracts";
-import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
-import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
-import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
+import type { DiscountClaimInstruction } from "@/features/discounts/provider";
 import { makeRecordingWorkspaceDatabase } from "@/shared/testing/workspace-recording-database.test-utils";
 import {
-  getAccountingSnapshotServiceDate,
-  PaymentLifecycleRepository,
-  validateCommitmentServiceDate,
+  redeemCodeClaim,
+  redeemReferralInvitationClaim,
   validateDiscountCommitment,
   validateInternalPaymentCommitment,
 } from "./payment-lifecycle.repository";
 
-const readRepository = () =>
-  Bun.file(
-    new URL("./payment-lifecycle.repository.ts", import.meta.url)
-  ).text();
+const product = { kind: "cowork", tier: "basic" } as const;
+const czk = (value: number) => ({ value, exponent: 2, currency: "CZK" });
 
-const sliceFrom = (source: string, startNeedle: string, endNeedle: string) => {
-  const start = source.indexOf(startNeedle);
-  const end = source.indexOf(endNeedle, start);
-  expect(start).toBeGreaterThanOrEqual(0);
-  expect(end).toBeGreaterThan(start);
-  return source.slice(start, end);
-};
-
-const makeSource = (): AccountingDocumentSnapshot => {
-  const document = makeCoworkInvoiceDocument("en-US");
-  const {
-    fulfilledAt: _fulfilledAt,
-    invoiceNumber: _invoiceNumber,
-    issuedAt: _issuedAt,
-    paidAt: _paidAt,
-    paymentAttemptId: _paymentAttemptId,
-    supplier: invoiceSupplier,
-    ...identity
-  } = document;
-  const { commercialRegister: _commercialRegister, ...supplier } =
-    invoiceSupplier;
-
-  return Schema.decodeUnknownSync(accountingDocumentSnapshotSchema)({
-    ...identity,
-    supplier,
-    billing: {
-      purpose: "personal",
-      invoice: "none",
+/** A consistent 10% application of `claim` to `subtotal`. */
+const claimedApplication = (
+  subtotal: number,
+  claim: DiscountClaimInstruction | undefined,
+  id: string
+) => {
+  const discount = {
+    id: Schema.decodeUnknownSync(discountIdSchema)(id),
+    label: "Test discount",
+    adjustment: { kind: "percentage" as const, basisPoints: 1000 },
+  };
+  return {
+    application: {
+      discount,
+      subtotalBefore: czk(subtotal),
+      amount: czk(subtotal / 10),
+      subtotalAfter: czk(subtotal - subtotal / 10),
     },
-    delivery: { email: "synthetic@example.test" },
-  });
-};
-
-const makeAccountingSnapshot = (
-  prepared: PreparedCustomerQuote
-): AccountingDocumentSnapshot =>
-  makeAccountingDocumentSnapshot({
-    workspaceReservationId: workspaceReservationIdSchema.make(
-      "service-date-test-reservation"
-    ),
-    dotyposReservationId: DotyposReservationIdSchema.make(
-      "service-date-test-reservation"
-    ),
-    dotyposCustomerId: DotyposCustomerIdSchema.make(
-      "service-date-test-customer"
-    ),
-    locale: "en-US",
-    prepared,
-  });
-
-const makeCoworkSnapshot = (date: string): AccountingDocumentSnapshot => {
-  const reservation = normalizedCoworkReservationOrderSchema.make({
-    kind: "cowork",
-    entryTier: "basic",
-    coffee: false,
-    date,
-    name: "Synthetic Customer",
-    email: "service-date@example.test",
-    phone: "+420 700 000 000",
-    billing: defaultReservationBillingSelection,
-  });
-
-  return makeAccountingSnapshot({
-    kind: "cowork",
-    reservation,
-    quote: Effect.runSync(buildCoworkReservationQuote(reservation)),
-  });
-};
-
-const makeOfficeSnapshot = (
-  startsOn: string,
-  endsOn: string
-): AccountingDocumentSnapshot => {
-  const reservation = normalizedOfficeReservationOrderSchema.make({
-    kind: "office",
-    startsOn,
-    endsOn,
-    seats: 2,
-    name: "Synthetic Customer",
-    email: "service-date@example.test",
-    phone: "+420 700 000 000",
-    billing: defaultReservationBillingSelection,
-  });
-
-  return makeAccountingSnapshot({
-    kind: "office",
-    reservation,
-    quote: Effect.runSync(buildOfficeReservationQuote(reservation)),
-  });
-};
-
-const makeMeetingRoomSnapshot = (input: {
-  readonly reservationDate: string;
-  readonly startsAt: string;
-  readonly endsAt: string;
-}): AccountingDocumentSnapshot => {
-  const reservation = normalizedMeetingRoomReservationOrderSchema.make({
-    kind: "meeting-room",
-    duration: { unit: "day", amount: 1 },
-    reservationDate: input.reservationDate,
-    startsAt: input.startsAt,
-    endsAt: input.endsAt,
-    name: "Synthetic Customer",
-    email: "service-date@example.test",
-    phone: "+420 700 000 000",
-    billing: defaultReservationBillingSelection,
-  });
-  const quote = Effect.runSync(getMeetingRoomReservationQuote(reservation));
-
-  return makeAccountingSnapshot({
-    kind: "meeting-room",
-    reservation,
-    quote: {
-      ...quote,
-      fingerprint: getReservationQuoteFingerprint(reservation, quote),
+    candidate: {
+      discount,
+      provenance: { providerNamespace: "test", providerReference: id },
+      ...(claim && { claim }),
     },
-  });
+  };
 };
 
-const makeRepository = async () => {
-  const recording = await makeRecordingWorkspaceDatabase();
-  const repository = await Effect.runPromise(
-    Effect.gen(function* () {
-      return yield* PaymentLifecycleRepository;
-    }).pipe(
-      Effect.provide(
-        PaymentLifecycleRepository.Default.pipe(Layer.provide(recording.layer))
+const codeClaim = (codeId: string, tier: "basic" | "pro" = "basic") =>
+  ({
+    kind: "discount_code",
+    codeId,
+    storedDiscountId: `stored-${codeId}`,
+    dotyposCustomerId: "customer-1",
+    product: { kind: "cowork", tier },
+  }) as DiscountClaimInstruction;
+
+const voucherClaim = (voucherId: string) =>
+  ({
+    kind: "voucher",
+    voucherId,
+    availableAmount: czk(1000),
+    dotyposCustomerId: "customer-1",
+  }) as DiscountClaimInstruction;
+
+const invitationClaim = () =>
+  ({
+    kind: "referral_invitation",
+    invitedDotyposCustomerId: "customer-1",
+    referrerDotyposCustomerId: "customer-2",
+    promotionCodeId: "promotion-1",
+  }) as DiscountClaimInstruction;
+
+const validateClaims = (
+  claims: readonly (DiscountClaimInstruction | undefined)[],
+  committedProduct: {
+    readonly kind: "cowork";
+    readonly tier: "basic" | "pro";
+  } = product
+) =>
+  Effect.runPromise(
+    Effect.result(
+      validateDiscountCommitment(
+        getDiscountCommitmentPayload(
+          makeDiscountCommitment({
+            product: committedProduct,
+            applications: claims.map((claim, index) =>
+              claimedApplication(
+                10_000 * 0.9 ** index,
+                claim,
+                `discount-${index}`
+              )
+            ),
+          })
+        )
       )
     )
   );
-  return { recording, repository };
+
+/** Runs a claim redemption in a transaction on the recording database. */
+const redeemOnRecording = async (
+  rows: (readonly unknown[])[],
+  redeem: () => Effect.Effect<void, unknown, WorkspaceTransaction>
+) => {
+  const recording = await makeRecordingWorkspaceDatabase();
+  recording.setRows(rows);
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const { transaction } = yield* WorkspaceDatabase;
+      return yield* transaction(redeem());
+    }).pipe(Effect.provide(recording.layer), Effect.result)
+  );
+  return { result, statements: recording.statements };
 };
 
-// The recording database answers in pg's array row mode: build positional
-// rows from the table's column order.
-const attemptRow = (): readonly unknown[] =>
-  Object.entries(getTableColumns(paymentAttempts)).map(([propertyKey]) =>
-    propertyKey === "id" ? "attempt-1" : null
-  );
+const redeemedAt = Temporal.Instant.from("2026-01-01T00:00:00Z");
 
 describe("PaymentLifecycleRepository", () => {
-  test("owns attempt, reservation, and snapshot admission in one transaction", async () => {
-    const { recording, repository } = await makeRepository();
-    const snapshot = makeSource();
-    recording.setRows([
-      // BEGIN
-      [
-        [
-          "reservation-1",
-          "dotypos-customer-1",
-          "dotypos-reservation-1",
-          "2099-01-01T00:00:00Z",
-        ],
-      ],
-      [attemptRow()],
-      [], // snapshot insert
-      [["reservation-1"]], // linking the attempt to the held reservation
-    ]);
-
-    await Effect.runPromise(
-      repository.createPendingNexiAttempt({
-        workspaceReservationId: "reservation-1" as never,
-        providerOrderId: "order-1" as never,
-        amount: snapshot.quote.payment.expectedPrice,
-        commitment: makeDiscountCommitment({
-          product: { kind: "cowork", tier: "basic" },
-          reservationDate: getAccountingSnapshotServiceDate(snapshot),
-          applications: [],
-        }),
-        locale: "en-US",
-        accountingSnapshot: snapshot,
-      })
-    ).catch(() => undefined);
-
-    const statements = recording.statements;
-    expect(statements[0].sql.toLowerCase()).toBe("begin");
-    const reservationLockIndex = statements.findIndex(
-      ({ sql }) =>
-        sql.includes('from "workspace_reservations"') &&
-        sql.includes("for update")
-    );
-    const attemptInsertIndex = statements.findIndex(({ sql }) =>
-      sql.includes('insert into "payment_attempts"')
-    );
-    const snapshotInsertIndex = statements.findIndex(({ sql }) =>
-      sql.includes('insert into "accounting_document_snapshots"')
-    );
-    const linkUpdateIndex = statements.findIndex(
-      ({ sql }) =>
-        sql.startsWith('update "workspace_reservations"') &&
-        sql.includes('"active_payment_attempt_id"')
-    );
-
-    expect(reservationLockIndex).toBeGreaterThan(0);
-    expect(attemptInsertIndex).toBeGreaterThan(reservationLockIndex);
-    expect(snapshotInsertIndex).toBeGreaterThan(attemptInsertIndex);
-    expect(linkUpdateIndex).toBeGreaterThan(snapshotInsertIndex);
-  });
-
   test("rejects inconsistent committed money before opening a transaction", async () => {
     const discountId =
       Schema.decodeUnknownSync(discountIdSchema)("public-discount");
@@ -265,7 +142,6 @@ describe("PaymentLifecycleRepository", () => {
     };
     const commitment = makeDiscountCommitment({
       product: { kind: "cowork", tier: "basic" },
-      reservationDate: "2026-07-15",
       applications: [
         {
           application,
@@ -299,7 +175,6 @@ describe("PaymentLifecycleRepository", () => {
   test("rejects an internal payment without a full-discount commitment", async () => {
     const commitment = makeDiscountCommitment({
       product: { kind: "cowork", tier: "basic" },
-      reservationDate: "2026-07-15",
       applications: [],
     });
 
@@ -326,96 +201,260 @@ describe("PaymentLifecycleRepository", () => {
     });
   });
 
-  test("derives the authoritative service date from the validated accounting snapshot", () => {
-    const coworkSnapshot = makeCoworkSnapshot("2026-07-15");
-    const officeSnapshot = makeOfficeSnapshot("2026-07-15", "2026-07-20");
-    const winterMeetingRoomSnapshot = makeMeetingRoomSnapshot({
-      reservationDate: "2026-01-16",
-      startsAt: "2026-01-15T23:30:00Z",
-      endsAt: "2026-01-16T00:30:00Z",
-    });
-    const springMeetingRoomSnapshots = [
-      makeMeetingRoomSnapshot({
-        reservationDate: "2026-03-29",
-        startsAt: "2026-03-29T00:30:00Z",
-        endsAt: "2026-03-29T01:30:00Z",
-      }),
-      makeMeetingRoomSnapshot({
-        reservationDate: "2026-03-29",
-        startsAt: "2026-03-29T01:30:00Z",
-        endsAt: "2026-03-29T02:30:00Z",
-      }),
-    ];
-    const fallMeetingRoomSnapshots = [
-      makeMeetingRoomSnapshot({
-        reservationDate: "2026-10-25",
-        startsAt: "2026-10-25T00:30:00Z",
-        endsAt: "2026-10-25T01:30:00Z",
-      }),
-      makeMeetingRoomSnapshot({
-        reservationDate: "2026-10-25",
-        startsAt: "2026-10-25T01:30:00Z",
-        endsAt: "2026-10-25T02:30:00Z",
-      }),
-    ];
+  test("re-redeems a released code claim within the per-customer use limit", async () => {
+    const recording = await makeRecordingWorkspaceDatabase();
+    recording.setRows([
+      // Released claim of this payment attempt.
+      [["customer-1", "code-1", "released"]],
+      // No voucher claim.
+      [],
+      // Code without total or per-customer limits.
+      [[null, null]],
+      // The same customer redeemed the code once more since the release.
+      [[1]],
+      [],
+    ]);
 
-    expect(getAccountingSnapshotServiceDate(coworkSnapshot)).toBe("2026-07-15");
-    expect(getAccountingSnapshotServiceDate(officeSnapshot)).toBe("2026-07-15");
-    // Prague is UTC+1 in winter: 23:30Z is already the next local day.
-    expect(getAccountingSnapshotServiceDate(winterMeetingRoomSnapshot)).toBe(
-      "2026-01-16"
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const { transaction } = yield* WorkspaceDatabase;
+        return yield* transaction(
+          redeemCodeClaim(
+            "attempt-1" as never,
+            Temporal.Instant.from("2026-01-01T00:00:00Z"),
+            true
+          )
+        );
+      }).pipe(Effect.provide(recording.layer), Effect.result)
     );
-    // Spring forward (CET -> CEST): both instants resolve on the transition day.
-    for (const snapshot of springMeetingRoomSnapshots) {
-      expect(getAccountingSnapshotServiceDate(snapshot)).toBe("2026-03-29");
-    }
-    // Fall back (CEST -> CET): both offsets still resolve on the same day.
-    for (const snapshot of fallMeetingRoomSnapshots) {
-      expect(getAccountingSnapshotServiceDate(snapshot)).toBe("2026-10-25");
-    }
+
+    expect(result._tag).toBe("Success");
+    expect(
+      recording.statements.some(({ sql }) =>
+        sql.startsWith('update "discount_code_redemptions"')
+      )
+    ).toBe(true);
   });
 
-  test("rejects a commitment whose service date no longer matches the accounting snapshot", async () => {
-    const commitment = makeDiscountCommitment({
-      product: { kind: "cowork", tier: "basic" },
-      reservationDate: "2026-07-15",
-      applications: [],
-    });
-    const payload = getDiscountCommitmentPayload(commitment);
+  test("refuses to re-redeem a released code claim beyond the per-customer use limit", async () => {
+    const recording = await makeRecordingWorkspaceDatabase();
+    recording.setRows([
+      [["customer-1", "code-1", "released"]],
+      [],
+      // One use per customer.
+      [[null, 1]],
+      // The customer already holds another active use.
+      [[1]],
+      [],
+    ]);
 
-    const mismatch = await Effect.runPromise(
-      Effect.result(validateCommitmentServiceDate(payload, "2026-07-16"))
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const { transaction } = yield* WorkspaceDatabase;
+        return yield* transaction(
+          redeemCodeClaim(
+            "attempt-1" as never,
+            Temporal.Instant.from("2026-01-01T00:00:00Z"),
+            true
+          )
+        );
+      }).pipe(Effect.provide(recording.layer), Effect.result)
     );
-    expect(mismatch).toMatchObject({
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new Error("Expected failure");
+    expect(result.failure).toMatchObject({
+      _tag: "DiscountClaimError",
+      reason: "usage_limit_reached",
+    });
+    expect(
+      recording.statements.some(({ sql }) =>
+        sql.startsWith('update "discount_code_redemptions"')
+      )
+    ).toBe(false);
+  });
+
+  test("keeps one ordinary and one invitation claim with their positions", async () => {
+    const result = await validateClaims([
+      undefined,
+      codeClaim("code-1"),
+      invitationClaim(),
+    ]);
+
+    expect(result._tag).toBe("Success");
+    if (result._tag !== "Success") throw new Error("Expected success");
+    expect(result.success.code).toMatchObject({
+      index: 1,
+      claim: { codeId: "code-1" },
+    });
+    expect(result.success.referral).toMatchObject({
+      index: 2,
+      claim: { kind: "referral_invitation" },
+    });
+  });
+
+  test("keeps no claim for unclaimed applications", async () => {
+    const result = await validateClaims([undefined, undefined]);
+
+    expect(result._tag).toBe("Success");
+    expect(result).toMatchObject({
+      success: { code: undefined, referral: undefined },
+    });
+  });
+
+  test("refuses a second ordinary claim with the second claim's code", async () => {
+    expect(
+      await validateClaims([codeClaim("code-1"), voucherClaim("voucher-1")])
+    ).toMatchObject({
       _tag: "Failure",
       failure: {
         _tag: "DiscountClaimError",
         operation: "reserve",
         reason: "claim_conflict",
+        codeId: "voucher-1",
       },
     });
-
-    const match = await Effect.runPromise(
-      Effect.result(validateCommitmentServiceDate(payload, "2026-07-15"))
-    );
-    expect(match._tag).toBe("Success");
   });
 
-  test("rechecks the locked discount code service window for the snapshot date and leaves vouchers exempt", async () => {
-    const source = await readRepository();
-    const reserveClaim = sliceFrom(
-      source,
-      'const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")',
-      'export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")'
+  test("refuses a second invitation claim", async () => {
+    expect(
+      await validateClaims([invitationClaim(), invitationClaim()])
+    ).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "claim_conflict", codeId: undefined },
+    });
+  });
+
+  test("refuses a discount-code claim for another product", async () => {
+    expect(
+      await validateClaims([invitationClaim(), codeClaim("code-1", "pro")])
+    ).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "product_ineligible", codeId: "code-1" },
+    });
+  });
+
+  test("checks an application's money before its claim", async () => {
+    const commitment = makeDiscountCommitment({
+      product,
+      applications: [
+        claimedApplication(10_000, codeClaim("code-1"), "discount-0"),
+        (() => {
+          const next = claimedApplication(
+            9000,
+            voucherClaim("voucher-1"),
+            "discount-1"
+          );
+          return {
+            ...next,
+            application: { ...next.application, subtotalAfter: czk(1) },
+          };
+        })(),
+      ],
+    });
+
+    expect(
+      await Effect.runPromise(
+        Effect.result(
+          validateDiscountCommitment(getDiscountCommitmentPayload(commitment))
+        )
+      )
+    ).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "money_mismatch", codeId: "voucher-1" },
+    });
+  });
+
+  test("refuses to re-redeem a released claim whose code no longer exists", async () => {
+    const { result, statements } = await redeemOnRecording(
+      [[["customer-1", "code-1", "released"]], [], []],
+      () => redeemCodeClaim("attempt-1" as never, redeemedAt, true)
     );
 
-    expect(reserveClaim).toContain(
-      "isReservationServiceDateEligible(stored.code, input.reservationDate)"
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        operation: "redeem",
+        reason: "unknown_code",
+        codeId: "code-1",
+      },
+    });
+    expect(statements.some(({ sql }) => sql.startsWith("update"))).toBe(false);
+  });
+
+  test("refuses to re-redeem a released claim whose voucher no longer exists", async () => {
+    const { result, statements } = await redeemOnRecording(
+      [[], [["application-1", "voucher-1", "released"]], []],
+      () => redeemCodeClaim("attempt-1" as never, redeemedAt, true)
     );
-    expect(reserveClaim).toContain('"service_date_ineligible"');
-    // The eligibility recheck runs only for discount-code claims.
-    expect(reserveClaim).toMatch(
-      /stored\.kind === "discount_code" &&\n\s+!isReservationServiceDateEligible/
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        operation: "redeem",
+        reason: "unknown_code",
+        codeId: "voucher-1",
+      },
+    });
+    expect(statements.some(({ sql }) => sql.startsWith("update"))).toBe(false);
+  });
+
+  test("refuses to re-redeem a released voucher claim whose application is gone", async () => {
+    const { result } = await redeemOnRecording(
+      [
+        [],
+        [["application-1", "voucher-1", "released"]],
+        [
+          [
+            "voucher-1",
+            "promotion-1",
+            "voucher",
+            1000,
+            2,
+            "CZK",
+            "2026-01-01T00:00:00Z",
+            "2026-01-01T00:00:00Z",
+          ],
+        ],
+        [],
+        [[0]],
+      ],
+      () => redeemCodeClaim("attempt-1" as never, redeemedAt, true)
     );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "claim_conflict", codeId: "voucher-1" },
+    });
+  });
+
+  test("refuses to re-redeem a released invitation another booking consumed", async () => {
+    for (const [previousPayment, otherActiveClaim] of [
+      [[["reservation-2"]], []],
+      [[], [["claim-2"]]],
+    ]) {
+      const { result, statements } = await redeemOnRecording(
+        [
+          [["customer-1", "customer-2", "promotion-1", "released"]],
+          previousPayment!,
+          otherActiveClaim!,
+        ],
+        () =>
+          redeemReferralInvitationClaim(
+            "attempt-1" as never,
+            "reservation-1" as never,
+            redeemedAt,
+            true
+          )
+      );
+
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { operation: "redeem", reason: "claim_conflict" },
+      });
+      expect(statements.some(({ sql }) => sql.startsWith("update"))).toBe(
+        false
+      );
+    }
   });
 });

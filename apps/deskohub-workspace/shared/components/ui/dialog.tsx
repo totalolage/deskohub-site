@@ -3,6 +3,8 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type * as React from "react";
+import { baseLocale, type Locale, m } from "@/features/i18n";
+import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 
 const Dialog = DialogPrimitive.Root;
@@ -12,8 +14,11 @@ const DialogClose = DialogPrimitive.Close;
 function DialogContent({
   children,
   className,
+  locale = baseLocale,
   ...props
-}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>) {
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  readonly locale?: Locale;
+}) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-navy-blue/70 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
@@ -25,10 +30,20 @@ function DialogContent({
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-navy-blue/65 hover:bg-navy-blue/5 hover:text-navy-blue focus:outline-none focus:ring-2 focus:ring-navy-blue/30">
-          <X aria-hidden className="size-4" />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
+        <Button
+          asChild
+          className="absolute right-3 top-3"
+          size="icon-sm"
+          tone="muted"
+          variant="ghost"
+        >
+          <DialogPrimitive.Close>
+            <X aria-hidden className="size-4" />
+            <span className="sr-only">
+              {m.closeDialogLabel({}, { locale })}
+            </span>
+          </DialogPrimitive.Close>
+        </Button>
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
   );

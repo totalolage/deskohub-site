@@ -5,6 +5,7 @@ export {
 } from "./errors";
 export {
   generateStaticMapImage,
+  type StaticMapAttributionFont,
   type StaticMapImageOptions,
 } from "./static-map";
 export {

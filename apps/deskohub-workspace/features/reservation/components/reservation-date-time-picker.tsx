@@ -1,0 +1,223 @@
+"use client";
+
+import { Option, Predicate, Schema } from "effect";
+import { Clock } from "lucide-react";
+import { type FormEvent, useMemo, useState } from "react";
+import { useFormField } from "@/shared/components/ui/form";
+import { Input } from "@/shared/components/ui/input";
+import { cn } from "@/shared/utils";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { localDateTimeSchema, localTimeSchema } from "@/shared/utils/temporal";
+import { ReservationDatePicker } from "./reservation-date-picker";
+
+export type ReservationDateTimePickerProps = {
+  readonly ariaDescribedBy?: string;
+  readonly ariaInvalid?: boolean;
+  /** The visible label that names the date field. */
+  readonly ariaLabelledBy?: string;
+  readonly ariaRequired?: boolean;
+  readonly dateLabel: string;
+  readonly className?: string;
+  readonly locale?: string;
+  readonly id?: string;
+  readonly minimum?: string | (() => string);
+  readonly name?: string;
+  readonly onBlur?: () => void;
+  readonly onChange?: (value: string) => void;
+  readonly showTime?: boolean;
+  readonly timeStepMinutes?: number;
+  readonly timeLabel: string;
+  readonly value?: string;
+  readonly variant?: "default" | "error";
+};
+
+const defaultTime = workspaceSiteConstants.reservation.defaultStartTime;
+const decodeLocalDateTime = Schema.decodeUnknownOption(localDateTimeSchema);
+const decodeLocalTime = Schema.decodeUnknownOption(localTimeSchema);
+
+const parsePlainDateTime = (value: string | undefined) =>
+  decodeLocalDateTime(value).pipe(
+    Option.map((dateTime) => Temporal.PlainDateTime.from(dateTime)),
+    Option.getOrUndefined
+  );
+
+const resolveMinimumDateTime = (
+  minimum: ReservationDateTimePickerProps["minimum"]
+) => parsePlainDateTime(Predicate.isFunction(minimum) ? minimum() : minimum);
+
+const getMinimumTimeForDate = (
+  date: Temporal.PlainDate | undefined,
+  minimum: Temporal.PlainDateTime | undefined
+) =>
+  date &&
+  minimum &&
+  Temporal.PlainDate.compare(date, minimum.toPlainDate()) === 0
+    ? minimum.toPlainTime().toString({ smallestUnit: "minute" })
+    : undefined;
+
+const formatDateTimeValue = ({
+  date,
+  time,
+}: {
+  readonly date: Temporal.PlainDate;
+  readonly time: string;
+}) => `${date.toString()}T${time}`;
+
+const getAcceptedTime = ({
+  minimum,
+  stepMinutes,
+  value,
+}: {
+  readonly minimum: string | undefined;
+  readonly stepMinutes: number;
+  readonly value: string;
+}) =>
+  decodeLocalTime(value).pipe(
+    Option.filter((time) => {
+      const parsed = Temporal.PlainTime.from(time);
+      return (parsed.hour * 60 + parsed.minute) % stepMinutes === 0;
+    }),
+    Option.filter((time) => minimum === undefined || time >= minimum),
+    Option.getOrUndefined
+  );
+
+export function ReservationDateTimePicker({
+  ariaDescribedBy,
+  ariaInvalid,
+  ariaLabelledBy,
+  ariaRequired,
+  className,
+  dateLabel,
+  locale,
+  id,
+  minimum,
+  name,
+  onBlur,
+  onChange,
+  showTime = true,
+  timeStepMinutes = 1,
+  timeLabel,
+  value,
+  variant = "default",
+}: ReservationDateTimePickerProps) {
+  const dateTime = useMemo(() => parsePlainDateTime(value), [value]);
+  const [pendingTime, setPendingTime] = useState(
+    () =>
+      dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ??
+      defaultTime
+  );
+  const minimumDateTime = resolveMinimumDateTime(minimum);
+  const selectedDate = dateTime?.toPlainDate();
+  const selectedTime =
+    dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ?? pendingTime;
+  const resolvedTimeStepMinutes = Math.max(1, Math.trunc(timeStepMinutes));
+  const selectedDateMinimumTime = getMinimumTimeForDate(
+    selectedDate,
+    minimumDateTime
+  );
+  const handleDateChange = (date: string) => {
+    // Typed text that is no usable date clears the date and time together.
+    if (!date) {
+      onChange?.("");
+      return;
+    }
+
+    const nextDate = Temporal.PlainDate.from(date);
+    const minimumTime = showTime
+      ? getMinimumTimeForDate(nextDate, resolveMinimumDateTime(minimum))
+      : undefined;
+    const isBeforeMinimumTime =
+      minimumTime !== undefined && selectedTime < minimumTime;
+    const nextTime = isBeforeMinimumTime ? minimumTime : selectedTime;
+    onChange?.(formatDateTimeValue({ date: nextDate, time: nextTime }));
+  };
+
+  const handleTimeInput = (event: FormEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const acceptedTime = getAcceptedTime({
+      minimum: getMinimumTimeForDate(
+        selectedDate,
+        resolveMinimumDateTime(minimum)
+      ),
+      stepMinutes: resolvedTimeStepMinutes,
+      value: input.value,
+    });
+    if (!acceptedTime) {
+      input.value = selectedTime;
+      return;
+    }
+
+    setPendingTime(acceptedTime);
+    if (selectedDate) {
+      onChange?.(
+        formatDateTimeValue({ date: selectedDate, time: acceptedTime })
+      );
+    }
+  };
+
+  return (
+    <div className={cn("grid gap-3", className)}>
+      <ReservationDatePicker
+        id={id}
+        ariaDescribedBy={ariaDescribedBy}
+        ariaInvalid={ariaInvalid}
+        ariaLabel={dateLabel}
+        ariaLabelledBy={ariaLabelledBy}
+        ariaRequired={ariaRequired}
+        locale={locale}
+        minimum={minimumDateTime?.toPlainDate().toString()}
+        name={name}
+        onBlur={onBlur}
+        onChange={handleDateChange}
+        value={selectedDate?.toString()}
+        variant={variant}
+      />
+      {showTime && (
+        // The time field keeps its own height when the date column grows
+        // with its description, so the clock centers on the field.
+        <div className="relative self-start">
+          <Input
+            id={id ? `${id}-time` : undefined}
+            aria-describedby={ariaDescribedBy}
+            aria-invalid={ariaInvalid}
+            aria-label={timeLabel}
+            // Chromium draws its own clock button. It stays clickable as a
+            // transparent hit area under the orange clock, so the field shows
+            // one clock.
+            className="relative pe-12 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-y-0 [&::-webkit-calendar-picker-indicator]:end-0 [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:h-auto [&::-webkit-calendar-picker-indicator]:w-12 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0"
+            min={selectedDateMinimumTime}
+            onBlur={onBlur}
+            onInput={handleTimeInput}
+            step={resolvedTimeStepMinutes * 60}
+            type="time"
+            required={ariaRequired}
+            value={selectedTime}
+            variant={variant}
+          />
+          {/* After the field, so the positioned field doesn't paint over it. */}
+          <Clock
+            aria-hidden="true"
+            className="pointer-events-none absolute end-4 top-1/2 h-5 w-5 -translate-y-1/2 text-burned-orange"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ReservationFormDateTimePicker(
+  props: ReservationDateTimePickerProps
+) {
+  const { error, formItemId, formLabelId, formMessageId } = useFormField();
+
+  return (
+    <ReservationDateTimePicker
+      {...props}
+      id={formItemId}
+      ariaDescribedBy={error ? formMessageId : undefined}
+      ariaInvalid={Boolean(error)}
+      ariaLabelledBy={formLabelId}
+      ariaRequired
+    />
+  );
+}

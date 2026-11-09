@@ -1,70 +1,77 @@
 import { Effect } from "effect";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
-  activateHydratedBrowserElement,
-  openBrowserPage,
-  waitForBrowserCondition,
-  waitForBrowserReactHydration,
-  waitForBrowserUrl,
+  activateHydratedElement,
+  openPage,
+  readPageUrl,
+  waitForPageCondition,
+  waitForPageUrl,
+  waitForReactHydration,
 } from "../browser";
-import { getPrefilledReservationConditionScript } from "../browser-scripts";
-import { submitReservationForPayPage } from "../checkout/payment";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
+import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
+import {
+  prepareReservationSelection,
+  submitReservationForPayPage,
+} from "../checkout/payment";
+import {
+  isPrefilledReservation,
+  toPrefilledReservation,
+} from "../checkout/prefilled-reservation";
+import type { ReservationFormPreparation } from "../checkout/reservation-form-preparation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import { tryWorkspaceE2ESync } from "../errors";
 import { readCheckoutRow, waitForCheckoutRow } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import { readDotyposReservationStatus } from "../integrations/dotypos";
-import type { Runner } from "../runtime";
 import { assert, log, parseUrl } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
-import type {
-  CheckoutData,
-  CheckoutFlowState,
-  CheckoutRow,
-  WorkspaceE2EStep,
-  WorkspaceE2EStepRunner,
-} from "../types";
+import type { CheckoutData, CheckoutFlowState, CheckoutRow } from "../types";
 
 export const assertReservationReplacement = ({
   config,
   data,
   datasourceConfig,
   initialHoldStep,
+  toSelectionPreparation,
   replacementData,
   reservationPath,
-  run,
   runStep,
-  session,
+  openSession,
   state,
-  submitReservationScript,
+  toReservationPreparation,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
   initialHoldStep?: (row: CheckoutRow) => WorkspaceE2EStep<void>;
+  toSelectionPreparation: (data: CheckoutData) => ReservationFormPreparation;
   replacementData: CheckoutData;
   reservationPath: string;
-  run: Runner;
   runStep: WorkspaceE2EStepRunner;
-  session: string;
+  openSession: OpenE2EBrowserSession;
   state: CheckoutFlowState;
-  submitReservationScript: (data: CheckoutData) => string;
+  toReservationPreparation: (data: CheckoutData) => ReservationFormPreparation;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
     const firstOrderId = yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openBrowserPage(config, run, session, data.checkoutUrl, {
+        const browser = yield* openSession;
+        yield* openPage(browser, config, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
         });
         return yield* submitReservationForPayPage({
+          data,
           onOrderId: (orderId) => {
             state.orderId = orderId;
           },
-          run,
-          session,
-          submitReservationScript: submitReservationScript(data),
+          preparation: toReservationPreparation(data),
+          session: browser,
           timeouts: config.timeouts,
         });
       }),
@@ -90,22 +97,36 @@ export const assertReservationReplacement = ({
       yield* runStep(initialHoldStep(firstRow));
     }
 
-    const secondOrderId = yield* runStep({
+    yield* runStep({
       execute: Effect.gen(function* () {
+        const browser = yield* openSession;
         yield* returnToPrefilledReservation({
+          browser,
           data,
           reservationPath,
-          run,
-          session,
           timeouts: config.timeouts,
         });
+        yield* editAndReloadRestoredReservation({
+          browser,
+          config,
+          preparation: toSelectionPreparation(replacementData),
+          replacementData,
+          reservationPath,
+        });
+      }),
+      id: "edit-and-reload-prefilled-reservation",
+      timeoutMs: config.timeouts.checkoutStart,
+    });
+    const secondOrderId = yield* runStep({
+      execute: Effect.gen(function* () {
+        const browser = yield* openSession;
         return yield* submitReservationForPayPage({
+          data: replacementData,
           onOrderId: (orderId) => {
             state.orderId = orderId;
           },
-          run,
-          session,
-          submitReservationScript: submitReservationScript(replacementData),
+          preparation: toReservationPreparation(replacementData),
+          session: browser,
           timeouts: config.timeouts,
         });
       }),
@@ -170,30 +191,27 @@ export const assertReservationReplacement = ({
     log(`Reservation replacement e2e passed for order ${secondOrderId}`);
   });
 
-export const returnToPrefilledReservation = ({
+const returnToPrefilledReservation = ({
+  browser,
   data,
   reservationPath,
-  run,
-  session,
   timeouts,
 }: {
+  browser: E2EBrowserSession;
   data: CheckoutData;
   reservationPath: string;
-  run: Runner;
-  session: string;
   timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const reservationStepSelector = `a[href^="${reservationPath}?payState="]`;
-    const consentSelector = "#reservation-marketing-consent";
-    const browserActionTimeoutMs = timeouts.browserAction;
-    yield* activateHydratedBrowserElement(
-      run,
-      session,
-      reservationStepSelector,
-      { timeoutMs: browserActionTimeoutMs }
-    );
-    yield* waitForBrowserUrl({
+    // The Pay page links back to both reservation steps; the selection step's
+    // link carries no `step`.
+    const reservationStepSelector = `a[href^="${reservationPath}?payState="]:not([href*="step="])`;
+    // Continue renders on the selection step whoever books.
+    const selectionStepSelector = "#reservation-continue";
+    yield* activateHydratedElement(browser, reservationStepSelector, {
+      timeoutMs: timeouts.browserAction,
+    });
+    yield* waitForPageUrl({
       description: "prefilled reservation page",
       matches: (value) => {
         const url = parseUrl(value);
@@ -201,21 +219,72 @@ export const returnToPrefilledReservation = ({
           url?.pathname === reservationPath && url.searchParams.has("payState")
         );
       },
-      run,
-      session,
+      session: browser,
       timeoutMs: timeouts.uiTransition,
     });
-    yield* waitForBrowserReactHydration(run, session, consentSelector, {
+    yield* waitForReactHydration(browser, selectionStepSelector, {
       timeoutMs: timeouts.uiTransition,
     });
-    yield* waitForBrowserCondition(
-      run,
-      session,
+    yield* waitForPageCondition(
+      browser,
       "prefilled reservation fields",
-      getPrefilledReservationConditionScript(data),
-      {
-        timeoutMs: timeouts.uiTransition,
-      }
+      isPrefilledReservation,
+      toPrefilledReservation(data),
+      { timeoutMs: timeouts.uiTransition }
+    );
+  });
+
+/**
+ * Edits the restored reservation through the form, then reloads the URL the
+ * page wrote. The reload must show the edit while the URL keeps the signed
+ * restoration, so the resubmission still replaces the first hold.
+ */
+const editAndReloadRestoredReservation = ({
+  browser,
+  config,
+  preparation,
+  replacementData,
+  reservationPath,
+}: {
+  browser: E2EBrowserSession;
+  config: WorkspaceE2EConfig;
+  preparation: ReservationFormPreparation;
+  replacementData: CheckoutData;
+  reservationPath: string;
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const restoredUrl = yield* readPageUrl(browser);
+    yield* prepareReservationSelection({
+      preparation,
+      session: browser,
+      timeoutMs: config.timeouts.checkoutStart,
+      timeouts: config.timeouts,
+    });
+    const editedUrl = yield* waitForPageUrl({
+      description: "edited selection written beside the restoration",
+      matches: (value) => {
+        const url = parseUrl(value);
+        return (
+          value !== restoredUrl &&
+          url?.pathname === reservationPath &&
+          url.searchParams.has("payState")
+        );
+      },
+      session: browser,
+      timeoutMs: config.timeouts.uiTransition,
+    });
+    yield* openPage(browser, config, editedUrl, {
+      timeoutMs: config.timeouts.browserNavigation,
+    });
+    yield* waitForReactHydration(browser, "#reservation-continue", {
+      timeoutMs: config.timeouts.uiTransition,
+    });
+    yield* waitForPageCondition(
+      browser,
+      "reloaded edit over the restored reservation",
+      isPrefilledReservation,
+      toPrefilledReservation(replacementData),
+      { timeoutMs: config.timeouts.uiTransition }
     );
   });
 

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { Effect, Result, Schema } from "effect";
 import "@/shared/polyfills/temporal";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
   getMeetingRoomReservationDefaultValues,
   getMeetingRoomReservationIssues,
@@ -14,6 +15,8 @@ import {
   workspaceMeetingRoomProductKeySchema,
 } from "./meeting-room-reservation";
 
+const testEmailAddressForAda = testEmailAddress("ada");
+
 const safeParseForm = Schema.decodeUnknownResult(meetingRoomReservationSchema);
 const decodeOrder = Schema.decodeUnknownSync(
   meetingRoomReservationOrderInputSchema
@@ -24,7 +27,7 @@ const safeParseStoredDetails = Schema.decodeUnknownResult(
 );
 const customer = {
   name: "Ada Lovelace",
-  email: "ada@example.com",
+  email: testEmailAddressForAda,
   phone: "+420777777777",
 };
 
@@ -63,33 +66,11 @@ describe("meetingRoomReservationSchema", () => {
       startDateTime: "",
       duration: "hour:1",
       ...customer,
-      message: "",
+      earlySetup: false,
       marketingConsent: false,
     });
 
     expect(Result.isFailure(result)).toBe(true);
-  });
-
-  test("reuses contact normalization for a valid meeting-room form", () => {
-    const result = safeParseForm({
-      startDateTime: "2099-06-10T10:00",
-      duration: "hour:4",
-      name: "  Ada Lovelace  ",
-      email: "  ada@example.com  ",
-      phone: customer.phone,
-      message: "  Project workshop  ",
-      marketingConsent: true,
-    });
-
-    expect(Result.isSuccess(result)).toBe(true);
-    if (Result.isSuccess(result)) {
-      expect(result.success).toMatchObject({
-        name: "Ada Lovelace",
-        email: "ada@example.com",
-        message: "Project workshop",
-        marketingConsent: true,
-      });
-    }
   });
 
   test("allows a reservation that has started but not ended", () => {
@@ -99,7 +80,7 @@ describe("meetingRoomReservationSchema", () => {
       startDateTime: "2099-06-10T12:00",
       duration: "hour:1",
       ...customer,
-      message: "",
+      earlySetup: false,
       marketingConsent: false,
     });
     const issues = Effect.runSync(
@@ -119,23 +100,7 @@ describe("meetingRoomReservationSchema", () => {
     expect(issues).toEqual([]);
   });
 
-  test("decodes explicit product intent with the interval", () => {
-    const result = decodeOrder({
-      kind: "meeting-room",
-      duration: { unit: "hour", amount: 1 },
-      reservationDate: "2099-06-10",
-      startsAt: "2099-06-10T10:00:00Z",
-      endsAt: "2099-06-10T11:00:00Z",
-      ...customer,
-    });
-
-    expect(result).toMatchObject({
-      kind: "meeting-room",
-      duration: { unit: "hour", amount: 1 },
-    });
-  });
-
-  test("keeps Dotypos-owned meeting-room facts out of local persistence", () => {
+  test("persists the meeting-room offer without Dotypos-owned facts", () => {
     expect(
       getStoredMeetingRoomReservationDetails({
         kind: "meeting-room",
@@ -143,16 +108,28 @@ describe("meetingRoomReservationSchema", () => {
       })
     ).toEqual({
       kind: "meeting-room",
+      duration: { unit: "day", amount: 1 },
     });
 
-    expect(
-      Result.isFailure(
-        safeParseStoredDetails({
-          kind: "meeting-room",
-          duration: { unit: "day", amount: 1 },
-        })
-      )
-    ).toBe(true);
+    for (const details of [
+      { kind: "meeting-room", duration: { unit: "day", amount: 1 } },
+      // Written before snapshots recorded the offer.
+      { kind: "meeting-room" },
+      // Written by a release that offers early setup.
+      {
+        kind: "meeting-room",
+        duration: { unit: "hour", amount: 1 },
+        earlySetup: true,
+      },
+    ]) {
+      expect(Result.isSuccess(safeParseStoredDetails(details))).toBe(true);
+    }
+    for (const details of [
+      { kind: "meeting-room", reservationDate: "2099-06-10" },
+      { kind: "meeting-room", duration: { unit: "hour", amount: 3 } },
+    ]) {
+      expect(Result.isFailure(safeParseStoredDetails(details))).toBe(true);
+    }
   });
 
   test("rejects Prague times that cannot identify one instant", () => {
@@ -163,7 +140,7 @@ describe("meetingRoomReservationSchema", () => {
         startDateTime,
         duration: "hour:1",
         ...customer,
-        message: "",
+        earlySetup: false,
         marketingConsent: false,
       });
 
@@ -179,7 +156,6 @@ describe("meetingRoomReservationSchema", () => {
       startsAt: "2099-07-30T08:00:00Z",
       endsAt: "2099-07-30T12:00:00Z",
       ...customer,
-      message: "Workshop",
     });
 
     const defaults = getMeetingRoomReservationDefaultValues(reservation);
@@ -187,8 +163,8 @@ describe("meetingRoomReservationSchema", () => {
       startDateTime: "2099-07-30T10:00",
       duration: "hour:4",
       ...customer,
-      message: "Workshop",
       billing: { purpose: "personal", invoice: "none" },
+      earlySetup: false,
       marketingConsent: false,
     });
     expect(
@@ -255,7 +231,7 @@ describe("meetingRoomReservationSchema", () => {
       startDateTime: "2099-06-10T15:00",
       duration: "day:1",
       ...customer,
-      message: "",
+      earlySetup: false,
       marketingConsent: false,
     });
 
@@ -268,5 +244,28 @@ describe("meetingRoomReservationSchema", () => {
         endsAt: "2099-06-10T22:00:00Z",
       });
     }
+  });
+});
+
+describe("retired reservation customer message", () => {
+  test("drops a legacy customer message on order decode", () => {
+    const reservation = Schema.decodeUnknownSync(
+      normalizedMeetingRoomReservationOrderSchema,
+      { onExcessProperty: "error" }
+    )({
+      kind: "meeting-room",
+      duration: { unit: "hour", amount: 1 },
+      reservationDate: "2099-06-10",
+      startsAt: "2099-06-10T08:00:00Z",
+      endsAt: "2099-06-10T09:00:00Z",
+      ...customer,
+      message: "Legacy workshop note.",
+    });
+
+    expect(reservation).not.toHaveProperty("message");
+    expect(reservation.name).toBe("Ada Lovelace");
+    expect(
+      getMeetingRoomReservationDefaultValues(reservation)
+    ).not.toHaveProperty("message");
   });
 });

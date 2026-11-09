@@ -1,5 +1,8 @@
 export type { IGoogleCalendarService } from "./backend/service";
-export { GoogleCalendarService } from "./backend/service";
+export {
+  GoogleCalendarService,
+  getGoogleCalendarRequestWorstCaseDuration,
+} from "./backend/service";
 export type { IGoogleCalendarRuntimeConfig } from "./config";
 export { GoogleCalendarRuntimeConfig } from "./config";
 export type { GoogleCalendarError } from "./errors";

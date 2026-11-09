@@ -1,5 +1,236 @@
 # Changelog
 
+## [1.33.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.32.0...dhw-v1.33.0) (2026-11-04)
+
+
+### Features
+
+* **dhw:** bundle multilingual email body and publication contracts ([22b58a6](https://github.com/totalolage/deskohub-site/commit/22b58a6c31de9d568435a458140c1dfbcdd6201d))
+* **emails:** render and edit one multilingual email structure ([f4eb619](https://github.com/totalolage/deskohub-site/commit/f4eb6198b3faacf252d48ff9b474926cc8e0626a))
+
+## [1.32.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.31.0...dhw-v1.32.0) (2026-11-04)
+
+
+### Features
+
+* **dhw:** add reusable email publication and recipient storage ([ba444cc](https://github.com/totalolage/deskohub-site/commit/ba444cc09cac33bfb4687a7d15193e65e296c3fc))
+* **dhw:** bundle typed customer email value resolution ([a62a737](https://github.com/totalolage/deskohub-site/commit/a62a7379428db484c592e8caf7d48c069b56ec2c))
+* **workspace:** resolve typed customer email values ([c2a33e0](https://github.com/totalolage/deskohub-site/commit/c2a33e0872aea04061155c954a4c3bc319e06244))
+
+## [1.31.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.30.0...dhw-v1.31.0) (2026-11-01)
+
+
+### Features
+
+* **dhw:** count completed visits with ordinary conditions ([a6ac071](https://github.com/totalolage/deskohub-site/commit/a6ac0714ca8350b4332a26deb930ce8cac06172a))
+* **dhw:** require the first release decoding visit-end conditions ([b02a071](https://github.com/totalolage/deskohub-site/commit/b02a0715cf96925099fb9144dcd0b87f46822d5b))
+
+
+### Bug Fixes
+
+* **dhw:** explain completion filters and correct scenario setup ([9b5dd2c](https://github.com/totalolage/deskohub-site/commit/9b5dd2ce027fca8d21945f79ac8134a54c24035e))
+
+## [1.30.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.29.0...dhw-v1.30.0) (2026-10-30)
+
+
+### Features
+
+* **dhw:** show the early-setup start of meeting-room reservations ([f015d85](https://github.com/totalolage/deskohub-site/commit/f015d85fd1a1a0cfc5e5fa9b6e1c8ebc9efdfa64))
+
+## [1.29.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.28.0...dhw-v1.29.0) (2026-10-27)
+
+
+### Features
+
+* **admin:** add reservation activity calendar ([706b7ba](https://github.com/totalolage/deskohub-site/commit/706b7ba950870b4cb7498d5a5bbdb572dc4fd6fa))
+
+## [1.28.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.27.0...dhw-v1.28.0) (2026-10-25)
+
+
+### Features
+
+* **dhw:** warn when the hourly reservation reconcile stalls ([39a999c](https://github.com/totalolage/deskohub-site/commit/39a999cb7405e8560b38f87fe9f2bdb562265ae7))
+* **dhw:** warn when the hourly reservation reconcile stalls ([ead84a5](https://github.com/totalolage/deskohub-site/commit/ead84a5c78f8a213a6930fe5590275de621a63c6))
+
+## [1.27.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.26.0...dhw-v1.27.0) (2026-10-24)
+
+
+### Features
+
+* **account:** password sign-in and a reservation sandbox for app-directory reviewers ([409ac4e](https://github.com/totalolage/deskohub-site/commit/409ac4e2f3e9349c600d9915c3032a8ab444ba81))
+* **dhw:** print run contacts and skip reasons; filter runs by skip reason ([e2b9436](https://github.com/totalolage/deskohub-site/commit/e2b943623dccea726df6107dd372d72ebeee68d0))
+* **workspace:** automation flow builder and run log ([dc4a915](https://github.com/totalolage/deskohub-site/commit/dc4a915870002333045015319e7aef3ec041196c))
+* **workspace:** serve the administration to administrators' AI agents as MCP tools ([024d815](https://github.com/totalolage/deskohub-site/commit/024d815abd37bdd56ab9537b029946ab5d3889c6))
+
+## [1.26.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.25.0...dhw-v1.26.0) (2026-10-22)
+
+
+### Features
+
+* **workspace-admin-api:** move the remaining admin UI operations into the administration API ([69f4970](https://github.com/totalolage/deskohub-site/commit/69f4970cb27025b21d7d612175b9807278d4d25c))
+
+## [1.25.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.24.0...dhw-v1.25.0) (2026-10-22)
+
+
+### Features
+
+* **dhw:** decode invoices issued through an AI assistant ([436be91](https://github.com/totalolage/deskohub-site/commit/436be9169870c4c02e7c246deb9cba056c2db997))
+* **dhw:** name the destructive operation each confirmation guards ([c3a434e](https://github.com/totalolage/deskohub-site/commit/c3a434e3c7c1611dca34b9e64b81ae3742afb9ee))
+* **workspace-admin-api:** annotate administration operations and authenticate a channel-neutral caller ([d6dd6be](https://github.com/totalolage/deskohub-site/commit/d6dd6be1161dbd1313860f038aec154b1fad02fb))
+
+## [1.24.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.23.0...dhw-v1.24.0) (2026-10-22)
+
+
+### Features
+
+* **workspace:** automation engine, lifecycle, operations port and dhw automations ([80b177a](https://github.com/totalolage/deskohub-site/commit/80b177a2a763bc2879f6011891f553b3057a2afc))
+
+
+### Bug Fixes
+
+* **dhw:** keep PR binaries off the production default ([5222b75](https://github.com/totalolage/deskohub-site/commit/5222b7504dd18ffc60926a80fae01d978b2bef7e))
+* **dhw:** make the release build an explicit opt-in ([6b57a39](https://github.com/totalolage/deskohub-site/commit/6b57a3918b7f88f60e57e0c6b6f2ede968cf8197))
+* **email-campaigns:** date account creation by the account, gate automations on dhw 1.24.0 ([42ad0d2](https://github.com/totalolage/deskohub-site/commit/42ad0d2037db97defcdbcc95ee7640c75efc34bd))
+* **workspace:** mark a retried fulfillment failure as undated in replays ([00d517d](https://github.com/totalolage/deskohub-site/commit/00d517d22a21525f5aff84e4226517ef53dbfaf9))
+* **workspace:** name Igloohome access by grant, not reservation ([7a2a058](https://github.com/totalolage/deskohub-site/commit/7a2a058a2f36ace6f0868fdd9057a308f3fc8d45)), closes [#780](https://github.com/totalolage/deskohub-site/issues/780)
+* **workspace:** replay account creations and reservation statuses as of the event ([294daae](https://github.com/totalolage/deskohub-site/commit/294daae6f95bb354f2ba7d1888d55734c72f3c34))
+
+## [1.23.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.22.0...dhw-v1.23.0) (2026-10-20)
+
+
+### Features
+
+* **account:** fold customer links into customer accounts, enforce authors ([#682](https://github.com/totalolage/deskohub-site/issues/682) release B) ([75603b6](https://github.com/totalolage/deskohub-site/commit/75603b67828ea5a2cb66e21aee1fa831c69787b6))
+
+## [1.22.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.21.0...dhw-v1.22.0) (2026-10-20)
+
+
+### Features
+
+* **account:** link column, eager customer accounts and account backfill ([#682](https://github.com/totalolage/deskohub-site/issues/682) release A) ([c763766](https://github.com/totalolage/deskohub-site/commit/c7637666798d73dd21000931dd2902a67d6d2c97))
+* **dhw:** add accounts backfill command ([6e76dbc](https://github.com/totalolage/deskohub-site/commit/6e76dbc65fc1f6363fd19b54f50f6a2e90e1716a))
+* **dhw:** label the account backfill's deleted-account step ([15776e2](https://github.com/totalolage/deskohub-site/commit/15776e2e8ce6c925ac343b02d403ea0ffaa1a2ae))
+
+## [1.21.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.20.0...dhw-v1.21.0) (2026-10-19)
+
+
+### Features
+
+* **workspace:** let saved audiences count one campaign's emails, first visits and "any time so far" ([194a13f](https://github.com/totalolage/deskohub-site/commit/194a13fc965b65485e807a1d01f7ff37f76bb0f0))
+
+## [1.20.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.19.0...dhw-v1.20.0) (2026-10-19)
+
+
+### Features
+
+* **dhw:** decode upcoming audience attributes ([1a7e3c5](https://github.com/totalolage/deskohub-site/commit/1a7e3c5e9e274469acb8db8345ef191db10dc34d))
+* **dhw:** send client version ([a138e31](https://github.com/totalolage/deskohub-site/commit/a138e313727940dc7777ea98918aa9d28a88bdee))
+* **email-campaigns:** calendar expressions, trigger periods and campaign-scoped email counts (readers) ([6c3e43c](https://github.com/totalolage/deskohub-site/commit/6c3e43c1377e734bdb2d1312275e18d9fdea3447))
+
+## [1.19.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.18.0...dhw-v1.19.0) (2026-10-19)
+
+
+### Features
+
+* **administration:** show who booked a reservation for someone else ([0b0a9f2](https://github.com/totalolage/deskohub-site/commit/0b0a9f2bc8d2535db00e4ecca872d7ba15a97320))
+* **dhw:** show who booked a reservation for someone else ([af2c28a](https://github.com/totalolage/deskohub-site/commit/af2c28ad4b388f967a096eb2c3643179705c203a))
+* **workspace:** author-aware status access, emails, history and admin ([6964543](https://github.com/totalolage/deskohub-site/commit/6964543aba1c661b63bc331b5df9916c876ccdd4))
+
+## [1.18.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.17.0...dhw-v1.18.0) (2026-10-17)
+
+
+### Features
+
+* **admin:** sign administrators in with their accounts and remove Basic auth ([cfb8afa](https://github.com/totalolage/deskohub-site/commit/cfb8afab11ec7347bc886a84bde129b9002a5935))
+* **dhw:** CLI sessions follow the approving administrator account ([30b4a21](https://github.com/totalolage/deskohub-site/commit/30b4a21f57c179ae0b29cb40e501723c835f364b))
+
+
+### Bug Fixes
+
+* **admin:** close dot-segment return redirects and keep released dhw sessions readable ([9f8a9f2](https://github.com/totalolage/deskohub-site/commit/9f8a9f2ae59169e72967eb94ecf0808784d73ae1))
+
+## [1.17.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.16.0...dhw-v1.17.0) (2026-10-16)
+
+
+### Features
+
+* **dhw:** grant administrator roles and backfill legacy administrators ([8873d2a](https://github.com/totalolage/deskohub-site/commit/8873d2a067a5bfab617cd6b80cd0e1d49c808a35))
+* **dhw:** grant administrator roles and backfill legacy administrators ([3cc3064](https://github.com/totalolage/deskohub-site/commit/3cc306486ae4919196f866267e5c707ef9c7378c))
+
+## [1.16.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.15.0...dhw-v1.16.0) (2026-10-15)
+
+
+### Features
+
+* **dhw:** backfill reservation product details from Dotypos ([d046899](https://github.com/totalolage/deskohub-site/commit/d046899c6f6e6655f2df675c271d287f513094ff))
+* **workspace:** attribute-catalogue audience filters with counts, date periods and product filters ([4cfa877](https://github.com/totalolage/deskohub-site/commit/4cfa8774949e85c82a9f449d659888028ad13b0a))
+
+## [1.15.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.14.1...dhw-v1.15.0) (2026-10-15)
+
+
+### Features
+
+* **dhw:** align campaign commands with the final send API ([d8ec008](https://github.com/totalolage/deskohub-site/commit/d8ec0081f05c26ec524e3931d860d4884a4c8f81))
+* **dhw:** manage and send email campaigns ([47714c8](https://github.com/totalolage/deskohub-site/commit/47714c85d1c901056c052dcaae8e91f0c442da93))
+* **workspace:** admin email campaigns with audiences, templates and composer ([2035c0d](https://github.com/totalolage/deskohub-site/commit/2035c0d7e950339b8966d6fabc68280653523138))
+
+
+### Bug Fixes
+
+* **dhw:** keep every campaign endpoint's declared errors ([652d311](https://github.com/totalolage/deskohub-site/commit/652d311abe3a0f61c02616ed617c16a66b57d3c7))
+
+## [1.14.1](https://github.com/totalolage/deskohub-site/compare/dhw-v1.14.0...dhw-v1.14.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **dhw:** remove redundant and trivially true tests ([817f1e9](https://github.com/totalolage/deskohub-site/commit/817f1e9d577c856784a8f3d29f5a9f02c74e1e7a))
+* **dhw:** remove redundant and trivially true tests ([4593fa6](https://github.com/totalolage/deskohub-site/commit/4593fa63538cee5fb3129086782cb5ba00ed58c1))
+
+## [1.14.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.13.0...dhw-v1.14.0) (2026-10-14)
+
+
+### Features
+
+* **discounts:** gate new cowork tier targets behind a release flag ([23e92d8](https://github.com/totalolage/deskohub-site/commit/23e92d8a4b7d2dd73841055ffd0d557488b98c78))
+
+
+### Bug Fixes
+
+* **dhw:** explain that new cowork tier targets need the release flag ([5548286](https://github.com/totalolage/deskohub-site/commit/5548286e5725f60ec3f26024c889be4cd81084de))
+
+
+### Performance Improvements
+
+* **e2e:** pool checkout cases and drop serial E2E tails ([6de60e0](https://github.com/totalolage/deskohub-site/commit/6de60e06aacba4cdb7d0aa57d88e517809af6ae2))
+
+## [1.13.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.12.0...dhw-v1.13.0) (2026-10-12)
+
+
+### Features
+
+* **email:** route test mail by EMAIL_TEST_DOMAIN ([34353e6](https://github.com/totalolage/deskohub-site/commit/34353e6d5639abe04146d97982584762197aba27))
+
+
+### Bug Fixes
+
+* **dhw:** build test addresses without an env preload ([671cc6c](https://github.com/totalolage/deskohub-site/commit/671cc6cdd7d3861e91586c7ac0dd491a28a8a185))
+* **email:** route Workspace mail by test domain instead of EMAIL_PROVIDER ([1a813b8](https://github.com/totalolage/deskohub-site/commit/1a813b8292e0389b9916c4e86c620c7afe7f2d40))
+
+
+### Performance Improvements
+
+* **ci:** shorten Workspace CI and E2E, audit test layering, fix refund claim limit ([157db66](https://github.com/totalolage/deskohub-site/commit/157db662aa075377dd1df95995bc488f92523028))
+
+## [1.12.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.11.1...dhw-v1.12.0) (2026-10-10)
+
+
+### Features
+
+* **dhw:** filter reservations needing a refund ([d56707c](https://github.com/totalolage/deskohub-site/commit/d56707c7c03eef464a3c23bf4680a95c2d52b047))
+* **dhw:** let administrators choose CLI session expiry ([22a8fd1](https://github.com/totalolage/deskohub-site/commit/22a8fd1158e7081cf1af1cdeace6d6ba923ac982))
+* **dhw:** let administrators choose CLI session expiry ([c454b21](https://github.com/totalolage/deskohub-site/commit/c454b21f62af218ab5ab572a7385327fdd3de5fd))
+
 ## [1.11.1](https://github.com/totalolage/deskohub-site/compare/dhw-v1.11.0...dhw-v1.11.1) (2026-09-25)
 
 

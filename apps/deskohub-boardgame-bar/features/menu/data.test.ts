@@ -5,14 +5,15 @@ import {
   type DotyposProduct,
   DotyposProductSchema,
 } from "@deskohub/dotypos";
-import type { Category, Product } from "@deskohub/dotypos/generated";
 import { Effect, Layer, Schema } from "effect";
 import { setBoardgameTestEnv } from "@/shared/testing/boardgame-test-env";
 import { siteConstants } from "@/shared/utils/constants";
 
 setBoardgameTestEnv();
 
-const category = (overrides: Partial<Category>): DotyposCategory =>
+const category = (
+  overrides: Partial<typeof DotyposCategorySchema.Encoded>
+): DotyposCategory =>
   Schema.decodeSync(DotyposCategorySchema)({
     id: "category-id",
     name: "Category",
@@ -21,7 +22,9 @@ const category = (overrides: Partial<Category>): DotyposCategory =>
     ...overrides,
   });
 
-const product = (overrides: Partial<Product>): DotyposProduct =>
+const product = (
+  overrides: Partial<typeof DotyposProductSchema.Encoded>
+): DotyposProduct =>
   Schema.decodeSync(DotyposProductSchema)({
     id: "product-id",
     _categoryId: "category-id",
@@ -81,12 +84,10 @@ describe("MenuService", () => {
       ],
     });
 
-    expect(result.categories.map((item) => item.id)).toEqual([
-      first,
-      second,
-      extraWithProduct,
-    ]);
-    expect(result.products.map((item) => item.id)).toEqual([
+    expect(
+      result.categories.map((item): string | undefined => item.id)
+    ).toEqual([first, second, extraWithProduct]);
+    expect(result.products.map((item): string | undefined => item.id)).toEqual([
       "first-product",
       "second-product",
       "extra-product",

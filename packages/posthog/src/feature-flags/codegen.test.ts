@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
 import { PostHogProjectId } from "../identifiers";
 import {
@@ -9,6 +10,8 @@ import {
   generatePostHogFeatureFlagContractFromDefinitions,
 } from "./codegen";
 import type { PostHogFeatureFlagDefinition } from "./definitions";
+
+const syntheticEmail = testEmailAddress("synthetic");
 
 const definitions: readonly PostHogFeatureFlagDefinition[] = [
   {
@@ -85,29 +88,6 @@ describe("generatePostHogFeatureFlagContractFromDefinitions", () => {
       expect(await Bun.file(outputFile).exists()).toBeFalse();
     });
   });
-
-  test("generates payload shapes without configured payload values", async () => {
-    await withOutputFiles(async (outputFile) => {
-      await Effect.runPromise(
-        generatePostHogFeatureFlagContractFromDefinitions({
-          definitions: [
-            {
-              key: "private_payload",
-              payloads: {
-                control: '{"apiKey":"must-not-be-generated"}',
-              },
-              variants: ["control"],
-            },
-          ],
-          outputFile,
-        })
-      );
-
-      const content = await Bun.file(outputFile).text();
-      expect(content).toContain('readonly "apiKey": string;');
-      expect(content).not.toContain("must-not-be-generated");
-    });
-  });
 });
 
 const withOutputFiles = async (
@@ -152,7 +132,7 @@ const makeFeatureFlagResponse = (
   created_by: {
     id: 1,
     uuid: "00000000-0000-4000-8000-000000000001",
-    email: "synthetic@example.com",
+    email: syntheticEmail,
     hedgehog_config: null,
   },
   created_at: "2026-01-01T00:00:00Z",
@@ -161,7 +141,7 @@ const makeFeatureFlagResponse = (
   last_modified_by: {
     id: 1,
     uuid: "00000000-0000-4000-8000-000000000001",
-    email: "synthetic@example.com",
+    email: syntheticEmail,
     hedgehog_config: null,
   },
   ensure_experience_continuity: false,

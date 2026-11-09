@@ -1,0 +1,291 @@
+{
+  "emailAutomationRunsStepLabel": "Step {position} · {step}",
+  "emailAutomationRunsStepById": "Step “{stepId}”",
+  "emailAutomationRunsStepCondition": "Condition",
+  "emailAutomationRunsStepSend": "Send email",
+  "emailAutomationRunsStepWaitUntil": "Wait until {target}",
+  "emailAutomationRunsStepWaitMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Wait {formattedCount} minute",
+        "countPlural=other": "Wait {formattedCount} minutes"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Wait {formattedCount} hour",
+        "countPlural=other": "Wait {formattedCount} hours"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Wait {formattedCount} day",
+        "countPlural=other": "Wait {formattedCount} days"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitWeeks": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Wait {formattedCount} week",
+        "countPlural=other": "Wait {formattedCount} weeks"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitMonths": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Wait {formattedCount} month",
+        "countPlural=other": "Wait {formattedCount} months"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} minute",
+        "countPlural=other": "{formattedCount} minutes"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} hour",
+        "countPlural=other": "{formattedCount} hours"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} day",
+        "countPlural=other": "{formattedCount} days"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeJustNow": "less than a minute ago",
+  "emailAutomationRunsAgeMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} minute ago",
+        "countPlural=other": "{formattedCount} minutes ago"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} hour ago",
+        "countPlural=other": "{formattedCount} hours ago"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} day ago",
+        "countPlural=other": "{formattedCount} days ago"
+      }
+    }
+  ],
+  "emailAutomationRunsHealthRunning": "Automation engine running · last planned {lastPlanned}",
+  "emailAutomationRunsHealthBehind": "Automation engine needs attention · last planned {lastPlanned}",
+  "emailAutomationRunsHealthNotPlannedYet": "never",
+  "emailAutomationRunsHealthUnavailable": "The automation engine's status can't be read right now.",
+  "emailAutomationRunsHealthWarningTitle": "The automation engine is falling behind. Runs of every automated campaign may start or send late.",
+  "emailAutomationRunsHealthCampaignTitle": "This campaign's schedule is busy.",
+  "emailAutomationRunsHealthPlannerStale": "The planner last ran {age}.",
+  "emailAutomationRunsHealthPlannerNeverRan": "The planner hasn't run yet.",
+  "emailAutomationRunsHealthSweepLagging": "Reservation starts and ends are detected {duration} late.",
+  "emailAutomationRunsHealthSweepLaggingUnknown": "Reservation starts and ends are detected late.",
+  "emailAutomationRunsHealthReconcileStalled": "The hourly re-check of reservation starts and ends is {duration} behind.",
+  "emailAutomationRunsHealthReconcileStalledUnknown": "The hourly re-check of reservation starts and ends isn't running.",
+  "emailAutomationRunsHealthEventBacklog": "Customer events are waiting to be processed; the oldest is from {date}.",
+  "emailAutomationRunsHealthEventBacklogUnknown": "Customer events are waiting to be processed.",
+  "emailAutomationRunsHealthUnitBacklog": "Planned work is waiting to run; the oldest has waited since {date}.",
+  "emailAutomationRunsHealthUnitBacklogUnknown": "Planned work is waiting to run.",
+  "emailAutomationRunsHealthScheduleLagging": "Scheduled campaigns are firing late.",
+  "emailAutomationRunsHealthFallingBehind": "A scheduled campaign takes longer to process a fire than the time until its next one.",
+  "emailAutomationRunsHealthUnrecognized": "The automation engine reports a warning this page doesn't recognize: {code}.",
+  "emailAutomationRunsHealthCampaignScheduleLag": "This campaign's schedule is {duration} behind.",
+  "emailAutomationRunsHealthCampaignEnteringFire": "This campaign is starting runs for its {date} fire: {done} of {total} parts done.",
+  "emailAutomationRunsHealthCampaignFallingBehind": "This campaign's last fire took {duration}, longer than the {interval} until its next fire.",
+  "emailAutomationRunsHealthCampaignFallingBehindUnknown": "This campaign's last fire took {duration}, longer than the time until its next fire.",
+  "emailAutomationRunsCountsTitle": "Runs by state",
+  "emailAutomationRunsCountsScopeAll": "All versions",
+  "emailAutomationRunsCountsScopeVersion": "Version {versionNumber}",
+  "emailAutomationRunsCountsWaiting": "Waiting",
+  "emailAutomationRunsCountsSendingNow": "Sending now",
+  "emailAutomationRunsCountsSent": "Sent",
+  "emailAutomationRunsCountsFailed": "Failed",
+  "emailAutomationRunsCountsSkipped": "Skipped",
+  "emailAutomationRunsCountsArchived": "Ended by archiving",
+  "emailAutomationRunsOutcomeSent": "Sent",
+  "emailAutomationRunsOutcomeUnconfirmed": "May have been sent",
+  "emailAutomationRunsOutcomeConditionFailed": "Ended at a condition",
+  "emailAutomationRunsOutcomeSkipped": "Skipped",
+  "emailAutomationRunsOutcomeSkippedBecause": "Skipped · {reason}",
+  "emailAutomationRunsOutcomeFailed": "Failed",
+  "emailAutomationRunsOutcomeFailedBecause": "Failed · {reason}",
+  "emailAutomationRunsOutcomeWithdrawn": "Trigger withdrawn",
+  "emailAutomationRunsOutcomeArchived": "Ended by archiving",
+  "emailAutomationRunsSkipOutsideTestDomain": "non-test recipient",
+  "emailAutomationRunsSkipConsentWithdrawn": "consent withdrawn",
+  "emailAutomationRunsSkipMissingEmail": "no email address",
+  "emailAutomationRunsSkipInvalidEmail": "invalid email address",
+  "emailAutomationRunsSkipDeletedCustomer": "customer deleted",
+  "emailAutomationRunsSkipMissingFromDotypos": "customer not in Dotypos",
+  "emailAutomationRunsFailureDeliveryRefused": "delivery refused",
+  "emailAutomationRunsFailureEvaluationUnavailable": "evaluation unavailable",
+  "emailAutomationRunsStatusWaitingUntil": "Waiting until {date}",
+  "emailAutomationRunsStatusInProgress": "In progress",
+  "emailAutomationRunsStatusSending": "Sending",
+  "emailAutomationRunsStateActive": "In progress",
+  "emailAutomationRunsStateSending": "Sending",
+  "emailAutomationRunsStateEnded": "Ended",
+  "emailAutomationRunsFilterState": "State",
+  "emailAutomationRunsFilterStateAny": "Any state",
+  "emailAutomationRunsFilterOutcome": "Outcome",
+  "emailAutomationRunsFilterOutcomeAny": "Any outcome",
+  "emailAutomationRunsFilterSkipReason": "Skip reason",
+  "emailAutomationRunsFilterSkipReasonAny": "Any reason",
+  "emailAutomationRunsFilterStep": "Step",
+  "emailAutomationRunsFilterStepAny": "Any step",
+  "emailAutomationRunsFilterVersion": "Version",
+  "emailAutomationRunsFilterVersionAll": "All versions",
+  "emailAutomationRunsFilterCustomer": "Customer",
+  "emailAutomationRunsFilterCustomerPlaceholder": "Dotypos customer ID",
+  "emailAutomationRunsFilterApply": "Show runs",
+  "emailAutomationRunsFilterClear": "Clear filters",
+  "emailAutomationRunsVersion": "Version {versionNumber}",
+  "emailAutomationRunsVersionLive": "Version {versionNumber} (live)",
+  "emailAutomationRunsListControls": "Run list controls",
+  "emailAutomationRunsListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} run on this page",
+        "countPlural=other": "{formattedCount} runs on this page"
+      }
+    }
+  ],
+  "emailAutomationRunsListEmpty": "No runs yet. Runs appear here once the automation is active and its trigger fires.",
+  "emailAutomationRunsListEmptyFiltered": "No runs match these filters.",
+  "emailAutomationRunsColumnStarted": "Started",
+  "emailAutomationRunsColumnCustomer": "Customer",
+  "emailAutomationRunsCustomerProfileNotFound": "Not found in Dotypos",
+  "emailAutomationRunsCustomerProfileUnavailable": "Profile unavailable",
+  "emailAutomationRunsCustomerContactsUnavailable": "Customer names can't be read from Dotypos right now, so runs show customer IDs.",
+  "emailAutomationRunsColumnTrigger": "Trigger",
+  "emailAutomationRunsColumnStep": "Step",
+  "emailAutomationRunsColumnStatus": "Status",
+  "emailAutomationRunsColumnEnded": "Ended",
+  "emailAutomationRunsColumnVersion": "Version",
+  "emailAutomationRunsPagination": "Run list pages",
+  "emailAutomationRunsFirstPage": "First page",
+  "emailAutomationRunsNextPage": "Next page",
+  "emailAutomationRunsLoadFailed": "The run log couldn't be loaded. Try again in a moment.",
+  "emailAutomationRunsCursorInvalid": "This page link no longer works. Start again from the first page.",
+  "emailAutomationRunsBackToList": "All runs",
+  "emailAutomationRunsRunTitle": "Run",
+  "emailAutomationRunsTriggeredAt": "{trigger} · {date}",
+  "emailAutomationRunsCurrentStep": "Current step",
+  "emailAutomationRunsEndedAtStep": "Ended at step",
+  "emailAutomationRunsNotEnded": "Not ended yet",
+  "emailAutomationRunsTimelineTitle": "Timeline",
+  "emailAutomationRunsTimelineLabel": "Run timeline",
+  "emailAutomationRunsEventStarted": "Run started",
+  "emailAutomationRunsEventConditionPassed": "Condition met",
+  "emailAutomationRunsEventConditionFailed": "Condition not met; the run ended here",
+  "emailAutomationRunsEventConditionFailedClause": "Not met: {clause}",
+  "emailAutomationRunsEventWaiting": "Waiting until {date}",
+  "emailAutomationRunsEventWoke": "Wait over",
+  "emailAutomationRunsEventDeferred": "The triggering visit hasn't started yet; checking again at {date}",
+  "emailAutomationRunsEventSendQueued": "Email queued for sending",
+  "emailAutomationRunsEventSent": "Email sent",
+  "emailAutomationRunsEventUnconfirmed": "Email may have been sent",
+  "emailAutomationRunsEventUnconfirmedDetail": "The email service didn't confirm delivery, so the run won't send it again.",
+  "emailAutomationRunsEventWithdrawnDetail": "The triggering reservation was cancelled while the run was waiting.",
+  "emailAutomationRunsEventArchivedDetail": "The campaign was archived while the run was in progress.",
+  "emailAutomationRunsEventUnknown": "Recorded event “{kind}”",
+  "emailAutomationRunsConditionClause": "Clause {position} of the condition",
+  "emailAutomationRunsConditionInAudience": "Customers in the saved audience “{audience}”",
+  "emailAutomationRunsConditionNotInAudience": "Customers outside the saved audience “{audience}”",
+  "emailAutomationRunsConditionAudienceUnknown": "a deleted audience"
+}

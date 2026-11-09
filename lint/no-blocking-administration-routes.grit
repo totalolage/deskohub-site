@@ -1,0 +1,21 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Administration pages and layouts render their frame synchronously and stream
+// data through local Suspense boundaries; an async default export blocks the
+// instant shell. Parallel breadcrumb slots may await their narrow label.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/app/\[locale\]/admin/(?:.*/)?(?:page|layout)\.tsx$",
+  not $name <: r".*/app/\[locale\]/admin/@breadcrumb/.*",
+  $body <: r"(?s).*export\s+default\s+async\b.*",
+  $body <: contains bubble {
+    JsExport() as $export where {
+      $export <: r"(?s)^export\s+default\s+async\b.*",
+      register_diagnostic(
+        span = $export,
+        message = "Administration routes must not export an async default component; render the frame synchronously and await data inside a Suspense boundary.",
+        severity = "error"
+      )
+    }
+  }
+}

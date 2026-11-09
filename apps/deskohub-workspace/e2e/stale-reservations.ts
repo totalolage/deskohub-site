@@ -3,6 +3,7 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import type { Customer, Reservation } from "@deskohub/dotypos/generated";
+import { EMAIL_TEST_DOMAIN, resendSimulatorDomain } from "@deskohub/test-email";
 import { Effect, Exit, Option, Schema } from "effect";
 
 export type WorkspaceE2EStaleReservationReport = {
@@ -169,10 +170,19 @@ const getWorkspaceE2ETestCustomerCreatedAt = (customer: Customer) => {
 
   return createdAt &&
     email?.startsWith("delivered+") === true &&
-    email.endsWith("@resend.dev")
+    workspaceE2ECustomerDomains().some((domain) => email.endsWith(`@${domain}`))
     ? createdAt
     : undefined;
 };
+
+/**
+ * Current runs book on the test domain; runs before it booked on Resend's
+ * simulator domain, and those customers still need cleanup.
+ */
+const workspaceE2ECustomerDomains = () => [
+  EMAIL_TEST_DOMAIN,
+  resendSimulatorDomain,
+];
 
 const parseWorkspaceE2ECustomerTimestamp = (name: string) => {
   const timestamp = workspaceE2ECustomerName.exec(name)?.[1];

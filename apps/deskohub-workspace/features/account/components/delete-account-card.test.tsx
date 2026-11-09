@@ -7,6 +7,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import React from "react";
 import { type Locale, m } from "@/features/i18n";
@@ -20,6 +21,8 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
+const adaAddress = testEmailAddress("ada");
+
 type ActionResult = {
   data?: { status?: string };
   serverError?: string;
@@ -30,38 +33,62 @@ const deleteCustomerAccount = mock(
   (): Promise<ActionResult> => Promise.resolve({ data: { status: "deleted" } })
 );
 const analyticsEvents: string[] = [];
-const beginAnalyticsAccountTransition = mock(() => {
+const accountExitLeft = mock(() => {
+  analyticsEvents.push("left");
+});
+const accountExitStayed = mock(() => {
+  analyticsEvents.push("stayed");
+});
+const beginAccountExit = mock(() => {
   analyticsEvents.push("begin");
+  return { left: accountExitLeft, stayed: accountExitStayed };
 });
-const completeAnalyticsAccountSignOut = mock(() => {
-  analyticsEvents.push("complete");
-});
-const refreshAnalyticsAccountIdentity = mock(() => Promise.resolve());
 mock.module("@/features/account/actions", () => ({
+  acknowledgeSignupReferralNotice: mock(() =>
+    Promise.resolve({ data: { status: "acknowledged" } })
+  ),
   deleteCustomerAccount,
 }));
 
-mock.module("@/features/account/analytics-identity", () => ({
-  beginAnalyticsAccountTransition,
-  completeAnalyticsAccountSignOut,
-  refreshAnalyticsAccountIdentity,
+mock.module("@/features/account/account-exit", () => ({
+  beginAccountExit,
 }));
 
-const signInMagicLink = mock(() => Promise.resolve({ error: null }));
+type AuthResponse = {
+  readonly data?: unknown;
+  readonly error: { readonly status?: number; readonly code?: string } | null;
+};
+const signInMagicLink = mock(
+  (): Promise<AuthResponse> => Promise.resolve({ error: null })
+);
+const signInEmailOtp = mock(
+  (_body: {
+    readonly email: string;
+    readonly otp: string;
+    readonly callbackURL: string;
+  }): Promise<AuthResponse> =>
+    Promise.resolve({ data: { token: "synthetic" }, error: null })
+);
 mock.module("@/features/account/auth.client", () => ({
   authClient: {
-    signIn: { magicLink: signInMagicLink },
+    signIn: { magicLink: signInMagicLink, emailOtp: signInEmailOtp },
     signOut: () => Promise.resolve({ error: null }),
     getSession: () => Promise.resolve({ data: null, error: null }),
   },
 }));
 
+// Mirrors next-safe-action 8 as wrapped by useWorkspaceAction: a thrown
+// (transport) failure settles as "hasErrored" with an empty result and fires
+// both onError (with thrownError) and onTransportError, and reset() discards
+// the outcome of an in-flight request.
 mock.module("@/shared/utils/use-workspace-action", () => ({
   useWorkspaceAction: (
     action: (input: never) => Promise<unknown>,
     options?: {
       readonly onSuccess?: (args: { readonly data?: unknown }) => void;
-      readonly onError?: (args: { readonly error: ActionResult }) => void;
+      readonly onError?: (args: {
+        readonly error: ActionResult & { readonly thrownError?: unknown };
+      }) => void;
       readonly onTransportError?: (args: {
         readonly error: unknown;
         readonly input: never;
@@ -69,33 +96,49 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
     }
   ) => {
     const [result, setResult] = React.useState<ActionResult>({});
-    const [isExecuting, setExecuting] = React.useState(false);
+    const [status, setStatus] = React.useState<
+      "idle" | "executing" | "hasSucceeded" | "hasErrored"
+    >("idle");
+    const requestId = React.useRef(0);
     return {
       result,
-      isExecuting,
+      status,
+      isIdle: status === "idle",
+      isExecuting: status === "executing",
+      hasSucceeded: status === "hasSucceeded",
+      hasErrored: status === "hasErrored",
       execute: (input: never) => {
-        setExecuting(true);
+        const thisRequestId = ++requestId.current;
+        setStatus("executing");
         void action(input)
           .then((outcome) => {
-            setExecuting(false);
+            if (thisRequestId !== requestId.current) return;
             const result = (outcome ?? {}) as ActionResult;
             setResult(result);
             if (
               result.serverError !== undefined ||
               result.validationErrors !== undefined
             ) {
+              setStatus("hasErrored");
               options?.onError?.({ error: result });
             } else {
+              setStatus("hasSucceeded");
               options?.onSuccess?.({ data: result.data });
             }
           })
           .catch((error) => {
-            setExecuting(false);
-            setResult({});
             options?.onTransportError?.({ error, input });
+            if (thisRequestId !== requestId.current) return;
+            setResult({});
+            setStatus("hasErrored");
+            options?.onError?.({ error: { thrownError: error } });
           });
       },
-      reset: () => setResult({}),
+      reset: () => {
+        requestId.current += 1;
+        setResult({});
+        setStatus("idle");
+      },
     };
   },
 }));
@@ -108,16 +151,17 @@ describe("DeleteAccountCard", () => {
   afterEach(() => {
     cleanup();
     analyticsEvents.length = 0;
-    beginAnalyticsAccountTransition.mockClear();
-    completeAnalyticsAccountSignOut.mockClear();
-    refreshAnalyticsAccountIdentity.mockClear();
+    beginAccountExit.mockClear();
+    accountExitLeft.mockClear();
+    accountExitStayed.mockClear();
     deleteCustomerAccount.mockClear();
     signInMagicLink.mockClear();
+    signInEmailOtp.mockClear();
     workspaceRouterRefresh.mockClear();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   const openDialog = async (
@@ -153,87 +197,12 @@ describe("DeleteAccountCard", () => {
     return event;
   }
 
-  test("renders inside the shared destructive account section panel", async () => {
-    const { DeleteAccountCard } = await import("./delete-account-card");
-
-    const view = render(
-      <DeleteAccountCard
-        deletionPending={false}
-        email="ada@example.test"
-        locale="en-US"
-      />
-    );
-
-    const panel = view.container.querySelector(
-      '[data-slot="account-section-panel"]'
-    );
-    expect(panel).not.toBeNull();
-    expect(panel?.getAttribute("data-variant")).toBe("destructive");
-  });
-
-  test("renders an optional h2 heading and keeps the default heading compatible", async () => {
-    const { DeleteAccountCard } = await import("./delete-account-card");
-
-    const view = render(
-      <DeleteAccountCard
-        email="ada@example.test"
-        locale="en-US"
-        deletionPending={false}
-        heading="Synthetic danger heading"
-      />
-    );
-    expect(
-      view.getByRole("heading", {
-        level: 2,
-        name: "Synthetic danger heading",
-      })
-    ).toBeTruthy();
-    expect(
-      view.getByRole("heading", {
-        level: 3,
-        name: m.accountDeletionTitle({}, { locale: "en-US" }),
-      })
-    ).toBeTruthy();
-
-    view.rerender(
-      <DeleteAccountCard
-        email="ada@example.test"
-        locale="en-US"
-        deletionPending={false}
-      />
-    );
-    expect(
-      view.getByRole("heading", {
-        level: 2,
-        name: m.accountDeletionTitle({}, { locale: "en-US" }),
-      })
-    ).toBeTruthy();
-  });
-
-  test.each(["en-US", "cs-CZ"] as const)(
-    "shows the truthful normal deletion notice in %s",
-    async (locale) => {
-      const { DeleteAccountCard } = await import("./delete-account-card");
-
-      const view = render(
-        <DeleteAccountCard
-          email="ada@example.test"
-          locale={locale}
-          deletionPending={false}
-        />
-      );
-      expect(
-        view.getByText(m.accountDeletionDescription({}, { locale }))
-      ).toBeTruthy();
-    }
-  );
-
   test("keeps the destructive confirmation disabled until the checkbox is checked", async () => {
     const { DeleteAccountCard } = await import("./delete-account-card");
 
     const view = render(
       <DeleteAccountCard
-        email="ada@example.test"
+        email={adaAddress}
         locale="en-US"
         deletionPending={false}
       />
@@ -272,7 +241,7 @@ describe("DeleteAccountCard", () => {
 
     const view = render(
       <DeleteAccountCard
-        email="ada@example.test"
+        email={adaAddress}
         locale="en-US"
         deletionPending={false}
       />
@@ -290,15 +259,10 @@ describe("DeleteAccountCard", () => {
     });
 
     expect(deleteCustomerAccount).toHaveBeenCalledWith({ confirmed: true });
-    expect(analyticsEvents).toEqual([
-      "begin",
-      "request",
-      "complete",
-      "navigation",
-    ]);
-    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
-    expect(completeAnalyticsAccountSignOut).toHaveBeenCalledTimes(1);
-    expect(refreshAnalyticsAccountIdentity).not.toHaveBeenCalled();
+    expect(analyticsEvents).toEqual(["begin", "request", "left", "navigation"]);
+    expect(beginAccountExit).toHaveBeenCalledTimes(1);
+    expect(accountExitLeft).toHaveBeenCalledTimes(1);
+    expect(accountExitStayed).not.toHaveBeenCalled();
     expect(assigned).toBe("/en-US/account/deleted");
     window.location.assign = originalAssign;
   });
@@ -317,7 +281,7 @@ describe("DeleteAccountCard", () => {
         <UnsavedChangesProvider>
           <DirtyForm />
           <DeleteAccountCard
-            email="ada@example.test"
+            email={adaAddress}
             locale="en-US"
             deletionPending={false}
           />
@@ -336,9 +300,9 @@ describe("DeleteAccountCard", () => {
       });
 
       expect(assigned).toBe("/en-US/account/deleted");
-      expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
-      expect(completeAnalyticsAccountSignOut).toHaveBeenCalledTimes(1);
-      expect(refreshAnalyticsAccountIdentity).not.toHaveBeenCalled();
+      expect(beginAccountExit).toHaveBeenCalledTimes(1);
+      expect(accountExitLeft).toHaveBeenCalledTimes(1);
+      expect(accountExitStayed).not.toHaveBeenCalled();
       expect(dispatchBeforeUnload().defaultPrevented).toBe(false);
       expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     } finally {
@@ -352,7 +316,7 @@ describe("DeleteAccountCard", () => {
       <UnsavedChangesProvider>
         <DirtyForm />
         <DeleteAccountCard
-          email="ada@example.test"
+          email={adaAddress}
           locale="en-US"
           deletionPending={false}
         />
@@ -371,9 +335,9 @@ describe("DeleteAccountCard", () => {
     });
 
     expect(deleteCustomerAccount).not.toHaveBeenCalled();
-    expect(beginAnalyticsAccountTransition).not.toHaveBeenCalled();
-    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
-    expect(refreshAnalyticsAccountIdentity).not.toHaveBeenCalled();
+    expect(beginAccountExit).not.toHaveBeenCalled();
+    expect(accountExitLeft).not.toHaveBeenCalled();
+    expect(accountExitStayed).not.toHaveBeenCalled();
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
   });
 
@@ -387,7 +351,7 @@ describe("DeleteAccountCard", () => {
       <UnsavedChangesProvider>
         <DirtyForm />
         <DeleteAccountCard
-          email="ada@example.test"
+          email={adaAddress}
           locale="en-US"
           deletionPending={false}
         />
@@ -405,31 +369,271 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
-    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
-    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
-      settleTransition: true,
-    });
+    expect(beginAccountExit).toHaveBeenCalledTimes(1);
+    expect(accountExitLeft).not.toHaveBeenCalled();
+    expect(accountExitStayed).toHaveBeenCalledTimes(1);
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     expect(view.getByText("Sign in again to delete")).toBeTruthy();
     expect(
       view.getByText(
         "Your sign-in is too old for deleting the account. Use a new magic link, then confirm the deletion again."
-      )
-    ).toBeTruthy();
+      ).className
+    ).not.toContain("sr-only");
 
     await act(async () => {
-      fireEvent.click(view.getByText("Email me a new link"));
+      fireEvent.click(view.getByText("Confirm by email"));
     });
 
     expect(signInMagicLink).toHaveBeenCalledWith(
       expect.objectContaining({
-        email: "ada@example.test",
+        email: adaAddress,
         callbackURL: "/en-US/auth/callback",
       })
     );
     expect(view.getByText(/a new link is on its way/)).toBeTruthy();
+  });
+
+  const requestStaleDeletion = async (view: ReturnType<typeof render>) => {
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.resolve({ data: { status: "reauthentication-required" } })
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          m.accountDeletionConfirmLabel({}, { locale: "en-US" })
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(view.getByText("Delete permanently"));
+    });
+  };
+
+  test("presents the passkey-era confirmation while passkeys are on, even without one", async () => {
+    const { DeleteAccountCard } = await import("./delete-account-card");
+    const view = render(
+      <DeleteAccountCard
+        email={adaAddress}
+        locale="en-US"
+        deletionPending={false}
+        passkeys={{ confirmWithPasskey: undefined }}
+      />
+    );
+    await requestStaleDeletion(view);
+
+    expect(
+      view.getByRole("heading", { name: "Sign in again to delete" })
+    ).toBeTruthy();
+    expect(
+      view.getByText(m.accountDeletionReauthBody({}, { locale: "en-US" }))
+        .className
+    ).toContain("sr-only");
+    expect(
+      view.container.ownerDocument.querySelector("svg.lucide-shield-check")
+    ).toBeTruthy();
+    expect(
+      view.queryByRole("button", {
+        name: m.accountReauthPasskey({}, { locale: "en-US" }),
+      })
+    ).toBeNull();
+    expect(
+      view.getByRole("button", {
+        name: m.accountReauthSendEmail({}, { locale: "en-US" }),
+      }).id
+    ).toBe("delete-account-reauth-send");
+  });
+
+  test("confirms with a passkey and returns to the final confirmation", async () => {
+    const confirmWithPasskey = mock(() =>
+      Promise.resolve("confirmed" as const)
+    );
+    const { DeleteAccountCard } = await import("./delete-account-card");
+    const view = render(
+      <DeleteAccountCard
+        email={adaAddress}
+        locale="en-US"
+        deletionPending={false}
+        passkeys={{ confirmWithPasskey }}
+      />
+    );
+    await requestStaleDeletion(view);
+
+    expect(
+      view.getByText(
+        m.accountDeletionReauthPasskeyBody({}, { locale: "en-US" })
+      ).className
+    ).toContain("sr-only");
+    const passkey = view.getByRole("button", {
+      name: m.accountReauthPasskey({}, { locale: "en-US" }),
+    });
+    expect(passkey.id).toBe("delete-account-reauth-passkey");
+    await act(async () => {
+      fireEvent.click(passkey);
+    });
+
+    expect(confirmWithPasskey).toHaveBeenCalledTimes(1);
+    expect(
+      view.getByText(m.accountDeletionConfirmTitle({}, { locale: "en-US" }))
+    ).toBeTruthy();
+  });
+
+  test("re-authenticates with a typed code and returns to the final confirmation", async () => {
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.resolve({ data: { status: "reauthentication-required" } })
+    );
+    signInMagicLink.mockImplementationOnce(() =>
+      Promise.resolve({ data: { status: true, signInCode: true }, error: null })
+    );
+    signInEmailOtp.mockImplementationOnce(() =>
+      Promise.resolve({
+        data: null,
+        error: { status: 400, code: "INVALID_OTP" },
+      })
+    );
+    const originalReplace = window.location.replace;
+    const navigations: string[] = [];
+    window.location.replace = ((href: string) => {
+      navigations.push(href);
+    }) as typeof window.location.replace;
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email={adaAddress}
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          "I understand that my account and every session will be permanently deleted."
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(view.getByText("Delete permanently"));
+    });
+    await act(async () => {
+      fireEvent.click(view.getByText("Confirm by email"));
+    });
+
+    expect(
+      view.getByText(m.accountDeletionReauthCodeTitle({}, { locale: "en-US" }))
+    ).toBeTruthy();
+    const codeInput = () =>
+      view.getByLabelText(
+        m.accountSignInCodeLabel({}, { locale: "en-US" })
+      ) as HTMLInputElement;
+
+    await act(async () => {
+      // This file loads React before happy-dom, so typed changes never reach
+      // React; the OTP paste handler updates the value directly.
+      codeInput().focus();
+      fireEvent.paste(codeInput(), {
+        clipboardData: { getData: () => "000000" },
+      });
+    });
+    expect(
+      view.getByText(m.accountSignInCodeInvalid({}, { locale: "en-US" }))
+    ).toBeTruthy();
+
+    await act(async () => {
+      // This file loads React before happy-dom, so typed changes never reach
+      // React; the OTP paste handler updates the value directly.
+      codeInput().focus();
+      fireEvent.paste(codeInput(), {
+        clipboardData: { getData: () => "482913" },
+      });
+    });
+
+    expect(signInEmailOtp).toHaveBeenLastCalledWith({
+      email: adaAddress,
+      otp: "482913",
+      callbackURL: "/en-US/auth/callback",
+    });
+    // Deletion still waits for an explicit click on the final confirmation.
+    expect(view.getByText("Delete permanently")).toBeTruthy();
+    expect(deleteCustomerAccount).toHaveBeenCalledTimes(1);
+    expect(navigations).toEqual([]);
+
+    await act(async () => {
+      fireEvent.click(view.getByText("Delete permanently"));
+    });
+    expect(deleteCustomerAccount).toHaveBeenCalledTimes(2);
+    window.location.replace = originalReplace;
+  });
+
+  test("falls back to the link-only confirmation when a new email has no code", async () => {
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.resolve({ data: { status: "reauthentication-required" } })
+    );
+    signInMagicLink.mockImplementationOnce(() => {
+      // Date the code email past the resend cooldown.
+      const realNow = Date.now;
+      Date.now = () => {
+        Date.now = realNow;
+        return realNow() - 61 * 1000;
+      };
+      return Promise.resolve({
+        data: { status: true, signInCode: true },
+        error: null,
+      });
+    });
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email={adaAddress}
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          "I understand that my account and every session will be permanently deleted."
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(view.getByText("Delete permanently"));
+    });
+    await act(async () => {
+      fireEvent.click(view.getByText("Confirm by email"));
+    });
+    const resend = view.getByText(
+      m.accountSignInCodeResend({}, { locale: "en-US" })
+    );
+    expect(resend.closest("button")?.disabled).toBe(false);
+    const liveRegionsBeforeFallback = [
+      ...document.querySelectorAll("[aria-live]"),
+    ];
+
+    signInMagicLink.mockImplementationOnce(() =>
+      Promise.resolve({
+        data: { status: true, signInCode: false },
+        error: null,
+      })
+    );
+    await act(async () => {
+      fireEvent.click(resend);
+    });
+
+    expect(signInMagicLink).toHaveBeenCalledTimes(2);
+    expect(
+      view.queryByLabelText(m.accountSignInCodeLabel({}, { locale: "en-US" }))
+    ).toBeNull();
+    const linkSent = view.getByText(
+      m.accountDeletionReauthLinkSent({}, { locale: "en-US" })
+    );
+    // Screen readers announce changes to a region that was already mounted.
+    const announcement = linkSent.closest("[aria-live]");
+    expect(announcement).not.toBeNull();
+    expect(liveRegionsBeforeFallback).toContain(announcement as Element);
   });
 
   test("keeps the reauthentication request disabled until the link request resolves", async () => {
@@ -447,7 +651,7 @@ describe("DeleteAccountCard", () => {
       <UnsavedChangesProvider>
         <DirtyForm />
         <DeleteAccountCard
-          email="ada@example.test"
+          email={adaAddress}
           locale="en-US"
           deletionPending={false}
         />
@@ -465,15 +669,12 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
-    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
-    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
-      settleTransition: true,
-    });
+    expect(beginAccountExit).toHaveBeenCalledTimes(1);
+    expect(accountExitLeft).not.toHaveBeenCalled();
+    expect(accountExitStayed).toHaveBeenCalledTimes(1);
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     const send = view.getByRole("button", {
-      name: "Email me a new link",
+      name: "Confirm by email",
     }) as HTMLButtonElement;
     await act(async () => {
       fireEvent.click(send);
@@ -504,7 +705,7 @@ describe("DeleteAccountCard", () => {
       <UnsavedChangesProvider>
         <DirtyForm />
         <DeleteAccountCard
-          email="ada@example.test"
+          email={adaAddress}
           locale="en-US"
           deletionPending={false}
         />
@@ -522,17 +723,12 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
-    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
-    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
-      settleTransition: true,
-    });
+    expect(beginAccountExit).toHaveBeenCalledTimes(1);
+    expect(accountExitLeft).not.toHaveBeenCalled();
+    expect(accountExitStayed).toHaveBeenCalledTimes(1);
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     await act(async () => {
-      fireEvent.click(
-        view.getByRole("button", { name: "Email me a new link" })
-      );
+      fireEvent.click(view.getByRole("button", { name: "Confirm by email" }));
     });
 
     expect(view.getByRole("alert").textContent).toBe(
@@ -541,7 +737,7 @@ describe("DeleteAccountCard", () => {
     expect(
       (
         view.getByRole("button", {
-          name: "Email me a new link",
+          name: "Confirm by email",
         }) as HTMLButtonElement
       ).disabled
     ).toBe(false);
@@ -565,7 +761,7 @@ describe("DeleteAccountCard", () => {
       <UnsavedChangesProvider>
         <DirtyForm />
         <DeleteAccountCard
-          email="ada@example.test"
+          email={adaAddress}
           locale="en-US"
           deletionPending={false}
         />
@@ -583,15 +779,12 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
-    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
-    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
-      settleTransition: true,
-    });
+    expect(beginAccountExit).toHaveBeenCalledTimes(1);
+    expect(accountExitLeft).not.toHaveBeenCalled();
+    expect(accountExitStayed).toHaveBeenCalledTimes(1);
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     const send = view.getByRole("button", {
-      name: "Email me a new link",
+      name: "Confirm by email",
     }) as HTMLButtonElement;
     await act(async () => {
       fireEvent.click(send);
@@ -631,7 +824,7 @@ describe("DeleteAccountCard", () => {
       <UnsavedChangesProvider>
         <DirtyForm />
         <DeleteAccountCard
-          email="ada@example.test"
+          email={adaAddress}
           locale="en-US"
           deletionPending={false}
         />
@@ -649,12 +842,9 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
-    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
-    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
-      settleTransition: true,
-    });
+    expect(beginAccountExit).toHaveBeenCalledTimes(1);
+    expect(accountExitLeft).not.toHaveBeenCalled();
+    expect(accountExitStayed).toHaveBeenCalledTimes(1);
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     expect(
       view.getByText(
@@ -666,6 +856,44 @@ describe("DeleteAccountCard", () => {
     ).toBe(false);
   });
 
+  test("reports a refused deletion without offering a retry", async () => {
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.resolve({ data: { status: "refused" } })
+    );
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email={adaAddress}
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          "I understand that my account and every session will be permanently deleted."
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(view.getByText("Delete permanently"));
+    });
+
+    expect(accountExitLeft).not.toHaveBeenCalled();
+    expect(accountExitStayed).toHaveBeenCalledTimes(1);
+    expect(
+      document
+        .querySelector("[role='dialog'] [aria-live='assertive']")
+        ?.textContent?.trim()
+    ).toBeTruthy();
+    expect(
+      (document.querySelector("#delete-account-confirm") as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+  });
+
   test("shows an explicit server error while keeping the dialog open", async () => {
     const serverError = "Synthetic deletion server failure";
     deleteCustomerAccount.mockImplementationOnce(() =>
@@ -675,7 +903,7 @@ describe("DeleteAccountCard", () => {
 
     const view = render(
       <DeleteAccountCard
-        email="ada@example.test"
+        email={adaAddress}
         locale="en-US"
         deletionPending={false}
       />
@@ -698,15 +926,12 @@ describe("DeleteAccountCard", () => {
 
     expect(view.getByText(serverError)).toBeTruthy();
     expect(view.getByRole("dialog")).toBeTruthy();
-    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
-    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
-      settleTransition: true,
-    });
+    expect(beginAccountExit).toHaveBeenCalledTimes(1);
+    expect(accountExitLeft).not.toHaveBeenCalled();
+    expect(accountExitStayed).toHaveBeenCalledTimes(1);
   });
 
-  test("refreshes identity after a transport error without completing sign-out", async () => {
+  test("shows a retryable error and refreshes identity after a transport failure", async () => {
     deleteCustomerAccount.mockImplementationOnce(() =>
       Promise.reject(new Error("synthetic transport failure"))
     );
@@ -714,7 +939,7 @@ describe("DeleteAccountCard", () => {
 
     const view = render(
       <DeleteAccountCard
-        email="ada@example.test"
+        email={adaAddress}
         locale="en-US"
         deletionPending={false}
       />
@@ -736,13 +961,131 @@ describe("DeleteAccountCard", () => {
       await Promise.resolve();
     });
 
-    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
-    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
-      settleTransition: true,
-    });
+    expect(
+      view.getByText(m.accountDeletionRequestFailed({}, { locale: "en-US" }))
+    ).toBeTruthy();
+    expect(view.queryByText("synthetic transport failure")).toBeNull();
+    expect(
+      (
+        view.getByRole("button", {
+          name: m.accountDeletionConfirm({}, { locale: "en-US" }),
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
     expect(view.getByRole("dialog")).toBeTruthy();
+    expect(beginAccountExit).toHaveBeenCalledTimes(1);
+    expect(accountExitLeft).not.toHaveBeenCalled();
+    expect(accountExitStayed).toHaveBeenCalledTimes(1);
+  });
+
+  test("ignores close requests while deletion is in flight and still redirects", async () => {
+    let resolveDeletion!: (result: ActionResult) => void;
+    const pendingDeletion = new Promise<ActionResult>((resolve) => {
+      resolveDeletion = resolve;
+    });
+    deleteCustomerAccount.mockImplementationOnce(() => pendingDeletion);
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    let assigned: string | null = null;
+    const originalAssign = window.location.assign;
+    window.location.assign = ((href: string) => {
+      assigned = href;
+    }) as typeof window.location.assign;
+
+    try {
+      const view = render(
+        <DeleteAccountCard
+          email={adaAddress}
+          locale="en-US"
+          deletionPending={false}
+        />
+      );
+      await openDialog(view);
+      await act(async () => {
+        fireEvent.click(
+          view.getByLabelText(
+            m.accountDeletionConfirmLabel({}, { locale: "en-US" })
+          )
+        );
+      });
+      await act(async () => {
+        fireEvent.click(
+          view.getByRole("button", {
+            name: m.accountDeletionConfirm({}, { locale: "en-US" }),
+          })
+        );
+      });
+
+      const cancel = view.getByRole("button", {
+        name: m.accountDeletionCancel({}, { locale: "en-US" }),
+      }) as HTMLButtonElement;
+      expect(cancel.disabled).toBe(true);
+
+      await act(async () => {
+        fireEvent.keyDown(view.getByRole("dialog"), {
+          key: "Escape",
+          code: "Escape",
+        });
+      });
+      expect(view.getByRole("dialog")).toBeTruthy();
+      expect(workspaceRouterRefresh).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveDeletion({ data: { status: "deleted" } });
+        await pendingDeletion;
+      });
+
+      expect(accountExitLeft).toHaveBeenCalledTimes(1);
+      expect(assigned).toBe("/en-US/account/deleted");
+    } finally {
+      window.location.assign = originalAssign;
+    }
+  });
+
+  test("refreshes the page only when cancelling after a deletion attempt", async () => {
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.resolve({ data: { status: "failed" } })
+    );
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email={adaAddress}
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    const cancelDialog = async () => {
+      await act(async () => {
+        fireEvent.click(
+          view.getByRole("button", {
+            name: m.accountDeletionCancel({}, { locale: "en-US" }),
+          })
+        );
+      });
+    };
+
+    await openDialog(view);
+    await cancelDialog();
+    expect(workspaceRouterRefresh).not.toHaveBeenCalled();
+
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          m.accountDeletionConfirmLabel({}, { locale: "en-US" })
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountDeletionConfirm({}, { locale: "en-US" }),
+        })
+      );
+    });
+    await cancelDialog();
+    expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
   });
 
   test("keeps the deletion confirmation disabled while the request is in flight", async () => {
@@ -755,7 +1098,7 @@ describe("DeleteAccountCard", () => {
 
     const view = render(
       <DeleteAccountCard
-        email="ada@example.test"
+        email={adaAddress}
         locale="en-US"
         deletionPending={false}
       />
@@ -790,12 +1133,9 @@ describe("DeleteAccountCard", () => {
         }) as HTMLButtonElement
       ).disabled
     ).toBe(false);
-    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
-    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
-    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
-      settleTransition: true,
-    });
+    expect(beginAccountExit).toHaveBeenCalledTimes(1);
+    expect(accountExitLeft).not.toHaveBeenCalled();
+    expect(accountExitStayed).toHaveBeenCalledTimes(1);
   });
 
   test("resets confirmation after cancelling and reopening the dialog", async () => {
@@ -803,7 +1143,7 @@ describe("DeleteAccountCard", () => {
 
     const view = render(
       <DeleteAccountCard
-        email="ada@example.test"
+        email={adaAddress}
         locale="en-US"
         deletionPending={false}
       />
@@ -845,11 +1185,7 @@ describe("DeleteAccountCard", () => {
     const { DeleteAccountCard } = await import("./delete-account-card");
 
     const view = render(
-      <DeleteAccountCard
-        email="ada@example.test"
-        locale="en-US"
-        deletionPending
-      />
+      <DeleteAccountCard email={adaAddress} locale="en-US" deletionPending />
     );
     expect(view.getByText("Account deletion is pending")).toBeTruthy();
     expect(

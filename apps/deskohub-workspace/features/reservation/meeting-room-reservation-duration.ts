@@ -16,7 +16,7 @@ export const meetingRoomReservationDurationSchema = Schema.Union(
 export type MeetingRoomReservationDuration =
   typeof meetingRoomReservationDurationSchema.Type;
 
-export const meetingRoomReservationDurationKeys = Struct.keys(
+const meetingRoomReservationDurationKeys = Struct.keys(
   workspaceMeetingRoomProductsByDurationKey
 );
 

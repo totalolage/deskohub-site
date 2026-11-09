@@ -1,65 +1,148 @@
 import { describe, expect, mock, test } from "bun:test";
-import {
-  createElement,
-  isValidElement,
-  type ReactElement,
-  type ReactNode,
-} from "react";
+import { createElement } from "react";
+import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
+import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
+import { publicSiteShareImage } from "@/features/public-pages/page-metadata";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 mock.module("next/font/local", () => ({
   default: () => ({ variable: "--font-sculpin" }),
 }));
-mock.module("@next/third-parties/google", () => ({
-  GoogleTagManager: () => null,
-}));
-mock.module("@/env", () => ({
-  env: { NEXT_PUBLIC_GTM_ID: undefined },
-}));
+
+// Outside a Next.js render there is no cache to configure.
+const nextCache = await import("next/cache");
+mock.module("next/cache", () => ({ ...nextCache, cacheLife: () => {} }));
+
+// The flags that are the same for every visitor; any other is decided per
+// visitor.
+let constantFlags: Partial<Record<PostHogFeatureFlagKey, boolean>> = {};
 mock.module(
-  "@/features/cookie-consent/components/consent-aware-analytics",
-  () => ({ ConsentAwareAnalytics: () => null })
+  "@/features/feature-flags/backend/feature-flag-evaluation-mode.server",
+  () => ({
+    getGlobalWorkspaceFeatureFlagValues: () => Promise.resolve(undefined),
+    getGlobalWorkspaceFeatureFlagValue: (key: PostHogFeatureFlagKey) =>
+      Promise.resolve(constantFlags[key]),
+  })
 );
-mock.module(
-  "@/features/cookie-consent/components/cookie-consent-provider",
-  () => ({ CookieConsentProvider: () => null })
-);
-mock.module("@/features/cookie-consent/components/posthog-analytics", () => ({
-  PostHogProvider: ({ children }: { children: ReactNode }) => children,
-}));
-mock.module("@/shared/components/unsaved-changes-guard", () => ({
-  UnsavedChangesProvider: ({ children }: { children: ReactNode }) =>
-    createElement("unsaved-changes-guard", null, children),
-}));
 
 const page = createElement("page");
 
 describe("localized route layout", () => {
-  test("renders children without owning an account reservation modal slot", async () => {
+  test("describes the coworking space in each locale against the site origin", async () => {
+    const { generateMetadata } = await import("./layout");
+    const english = await generateMetadata({
+      params: Promise.resolve({ locale: "en-US" }),
+    });
+    const czech = await generateMetadata({
+      params: Promise.resolve({ locale: "cs-CZ" }),
+    });
+
+    for (const metadata of [english, czech]) {
+      expect(metadata.metadataBase?.href).toBe(
+        "https://workspace.deskohub.cz/"
+      );
+      expect(metadata.description).toContain(
+        workspaceSiteConstants.location.address.street
+      );
+      expect(metadata.description).not.toContain("shell application");
+    }
+    for (const [locale, metadata] of [
+      ["en-US", english],
+      ["cs-CZ", czech],
+    ] as const) {
+      // No flag is the same for every visitor here, so the office stays out.
+      for (const { kind, name } of getPublicCatalogOfferings({
+        locale,
+        office: {},
+      })) {
+        if (kind === "office") {
+          expect(metadata.description).not.toContain(name);
+        } else {
+          expect(metadata.description).toContain(name);
+        }
+      }
+    }
+    expect(czech.description).not.toEqual(english.description);
+    expect(czech.title).not.toEqual(english.title);
+  });
+
+  test("names the office only while it is open for every visitor", async () => {
+    const { generateMetadata } = await import("./layout");
+
+    for (const officePage of [true, false, undefined]) {
+      constantFlags =
+        officePage === undefined ? {} : { office_page: officePage };
+
+      for (const locale of ["en-US", "cs-CZ"] as const) {
+        const { description } = await generateMetadata({
+          params: Promise.resolve({ locale }),
+        });
+        const office = getPublicCatalogOfferings({ locale, office: {} }).find(
+          ({ kind }) => kind === "office"
+        );
+        if (!office) throw new Error("The catalog has no office offering.");
+
+        if (officePage === true) {
+          expect(description).toContain(office.name);
+        } else {
+          expect(description).not.toContain(office.name);
+        }
+      }
+    }
+    constantFlags = {};
+  });
+
+  test("links icons that the app serves, a share image and a theme colour", async () => {
+    const { generateMetadata, viewport } = await import("./layout");
+    type Icon = { url: string; type: string };
+    const { icons, openGraph } = await generateMetadata({
+      params: Promise.resolve({ locale: "en-US" }),
+    });
+    const { icon, apple } = icons as { icon: Icon[]; apple: Icon };
+    const linked = [...icon, apple];
+
+    expect(linked.map(({ type }) => type)).toEqual([
+      "image/x-icon",
+      "image/svg+xml",
+      "image/png",
+      "image/png",
+    ]);
+    for (const { url } of linked) {
+      // `/favicon.png` is rendered from `/favicon.svg` by its route.
+      const file =
+        url === "/favicon.png"
+          ? new URL("../favicon.png/route.ts", import.meta.url)
+          : new URL(`../../public${url}`, import.meta.url);
+      expect(await Bun.file(file).exists()).toBe(true);
+    }
+    expect(openGraph?.images).toEqual([publicSiteShareImage]);
+    expect(viewport.themeColor).toBeDefined();
+  });
+
+  test("links the manifest of the app installed under /app/", async () => {
+    const { generateMetadata } = await import("./layout");
+    const { manifest } = await generateMetadata({
+      params: Promise.resolve({ locale: "cs-CZ" }),
+    });
+
+    expect(manifest).toBe("/app/manifest.webmanifest");
+  });
+
+  test("starts the document head with the Temporal loader", async () => {
     const { default: LocaleLayout } = await import("./layout");
-    const tree = (await LocaleLayout({
+    const { TemporalLoader } = await import(
+      "@/shared/polyfills/temporal-loader"
+    );
+    type Element = { type: unknown; props: { children?: unknown } };
+    const html = (await LocaleLayout({
       children: page,
       params: Promise.resolve({ locale: "en-US" }),
-    })) as ReactElement<{ children: ReactNode; lang?: string }>;
+    })) as Element;
+    const [head] = [html.props.children].flat() as Element[];
+    const [first] = [head?.props.children].flat() as Element[];
 
-    expect(tree.type).toBe("html");
-    expect(tree.props.lang).toBe("en-US");
-
-    let ownsModalSlot = false;
-    let rendersChildren = false;
-    const visit = (node: ReactNode): void => {
-      if (isValidElement(node)) {
-        const element = node as ReactElement<{ children?: ReactNode }>;
-        if ("modal" in element.props) ownsModalSlot = true;
-        if (element.props.children === page) rendersChildren = true;
-        visit(element.props.children);
-        return;
-      }
-      if (Array.isArray(node)) node.forEach(visit);
-    };
-    visit(tree);
-
-    expect(ownsModalSlot).toBe(false);
-    expect(rendersChildren).toBe(true);
+    expect(head?.type).toBe("head");
+    expect(first?.type).toBe(TemporalLoader);
   });
 
   test("rejects an unknown locale", async () => {

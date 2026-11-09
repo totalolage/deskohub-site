@@ -1,13 +1,30 @@
 import { Temporal } from "@js-temporal/polyfill";
-import { Context, Effect, Schema } from "effect";
+import { Context, Effect, Option, Schema } from "effect";
 import {
-  HttpApi,
   HttpApiEndpoint,
   HttpApiGroup,
   HttpApiMiddleware,
   HttpApiSchema,
   HttpApiSecurity,
 } from "effect/unstable/httpapi";
+import {
+  AdministrationOperationBehavior,
+  AdministrationOperationVariants,
+  CliOnly,
+  destructiveOperation,
+  dryRunPreview,
+  readOperation,
+  readPreview,
+  readPreviewWithArguments,
+  writeOperation,
+} from "./administration-operation";
+import { administrationCalendarDate } from "./calendar-date";
+import {
+  DhwVersion,
+  MinimumDhwVersion,
+  OutdatedDhwRefusal,
+} from "./dhw-version";
+import { fieldWithDefault } from "./response-fields";
 import { WORKSPACE_SITE_TIME_ZONE } from "./site-time-zone";
 
 export const WORKSPACE_ADMIN_API_VERSION = "v1" as const;
@@ -24,12 +41,12 @@ const uuidSchema = Schema.String.check(
 
 export const CliAuthenticationCode = base64UrlSecretSchema
   .pipe(Schema.brand("CliAuthenticationCode"))
-  .annotate({ identifier: "CliAuthenticationCode" });
+  .annotate({ identifier: "CliAuthenticationCode", credential: true });
 export type CliAuthenticationCode = typeof CliAuthenticationCode.Type;
 
 export const CliAuthenticationVerifier = base64UrlSecretSchema
   .pipe(Schema.brand("CliAuthenticationVerifier"))
-  .annotate({ identifier: "CliAuthenticationVerifier" });
+  .annotate({ identifier: "CliAuthenticationVerifier", credential: true });
 export type CliAuthenticationVerifier = typeof CliAuthenticationVerifier.Type;
 
 export const CliAuthenticationChallenge = base64UrlSecretSchema
@@ -39,12 +56,12 @@ export type CliAuthenticationChallenge = typeof CliAuthenticationChallenge.Type;
 
 export const CliGrantToken = base64UrlSecretSchema
   .pipe(Schema.brand("CliGrantToken"))
-  .annotate({ identifier: "CliGrantToken" });
+  .annotate({ identifier: "CliGrantToken", credential: true });
 export type CliGrantToken = typeof CliGrantToken.Type;
 
 export const CliAccessToken = base64UrlSecretSchema
   .pipe(Schema.brand("CliAccessToken"))
-  .annotate({ identifier: "CliAccessToken" });
+  .annotate({ identifier: "CliAccessToken", credential: true });
 export type CliAccessToken = typeof CliAccessToken.Type;
 
 export const CliSessionId = uuidSchema
@@ -52,9 +69,19 @@ export const CliSessionId = uuidSchema
   .annotate({ identifier: "CliSessionId" });
 export type CliSessionId = typeof CliSessionId.Type;
 
+export const AdministrationAssistantConnectionId = uuidSchema
+  .pipe(Schema.brand("AdministrationAssistantConnectionId"))
+  .annotate({
+    identifier: "AdministrationAssistantConnectionId",
+    description:
+      "An administrator's connection of one AI assistant (OAuth client).",
+  });
+export type AdministrationAssistantConnectionId =
+  typeof AdministrationAssistantConnectionId.Type;
+
 export const CliMutationRequestId = uuidSchema
   .pipe(Schema.brand("CliMutationRequestId"))
-  .annotate({ identifier: "CliMutationRequestId" });
+  .annotate({ identifier: "CliMutationRequestId", changeKey: true });
 export type CliMutationRequestId = typeof CliMutationRequestId.Type;
 
 export const AdministrationStandaloneAccessCodeAttemptId = uuidSchema
@@ -92,17 +119,49 @@ export const AdministrationStandaloneAccessCodeCleanupTarget = Schema.Struct({
 export type AdministrationStandaloneAccessCodeCleanupTarget =
   typeof AdministrationStandaloneAccessCodeCleanupTarget.Type;
 
-export const AdministrationActorUsername = Schema.Trim.check(
+export const AdministrationLegacyUsername = Schema.Trim.check(
   Schema.isNonEmpty(),
   Schema.isMaxLength(80)
 )
-  .pipe(Schema.brand("AdministrationActorUsername"))
+  .pipe(Schema.brand("AdministrationLegacyUsername"))
   .annotate({
-    identifier: "AdministrationActorUsername",
-    description: "Validated Basic-auth username identifying an administrator.",
+    identifier: "AdministrationLegacyUsername",
+    description:
+      "Basic-auth username an administrator used before administrator accounts; only records written before then carry it.",
   });
-export type AdministrationActorUsername =
-  typeof AdministrationActorUsername.Type;
+export type AdministrationLegacyUsername =
+  typeof AdministrationLegacyUsername.Type;
+
+export const AdministrationActorEmail = Schema.Trim.check(Schema.isNonEmpty())
+  .pipe(Schema.brand("AdministrationActorEmail"))
+  .annotate({
+    identifier: "AdministrationActorEmail",
+    description:
+      "Login email of the administrator account that approved or performed an action, as it was at that time.",
+  });
+export type AdministrationActorEmail = typeof AdministrationActorEmail.Type;
+
+const maxActorNameLength = 80;
+
+export const AdministrationActorName = Schema.Trim.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(maxActorNameLength)
+)
+  .pipe(Schema.brand("AdministrationActorName"))
+  .annotate({
+    identifier: "AdministrationActorName",
+    description:
+      "Short name of the administrator that approved an action: the account email, shortened to 80 characters, or the Basic-auth username from servers that predate administrator accounts.",
+  });
+export type AdministrationActorName = typeof AdministrationActorName.Type;
+
+/** The account email as an actor name, ending in an ellipsis when too long. */
+export const toAdministrationActorName = (email: AdministrationActorEmail) =>
+  AdministrationActorName.make(
+    email.length <= maxActorNameLength
+      ? email
+      : `${email.slice(0, maxActorNameLength - 1).replace(/[\uD800-\uDBFF]$/, "")}…`
+  );
 
 export const CLI_BUILD_TARGETS = [
   "development",
@@ -124,6 +183,13 @@ export type CliClientName = typeof CliClientName.Type;
 export const AdminCliInfo = Schema.Struct({
   apiVersion: Schema.Literal(WORKSPACE_ADMIN_API_VERSION),
   service: Schema.Literal("deskohub-workspace"),
+  /**
+   * The oldest `dhw` each restricted operation accepts, keyed by
+   * `<group>.<endpoint>`, for diagnostics. Older servers omit it.
+   */
+  minimumDhwVersions: Schema.Record(Schema.String, DhwVersion).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed({}))
+  ),
 });
 export type AdminCliInfo = typeof AdminCliInfo.Type;
 
@@ -185,7 +251,15 @@ export type ExchangeCliGrant = typeof ExchangeCliGrant.Type;
 
 export const CliSession = Schema.Struct({
   id: CliSessionId,
-  approvedBy: Schema.NullOr(AdministrationActorUsername).pipe(
+  /**
+   * Released dhw versions cap the approver at 80 characters and read null as a
+   * legacy session, so this stays a short name.
+   */
+  approvedBy: Schema.NullOr(AdministrationActorName).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
+  /** Null only from servers that predate administrator accounts. */
+  approvedByEmail: Schema.NullOr(AdministrationActorEmail).pipe(
     Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
   ),
   clientName: CliClientName,
@@ -193,6 +267,9 @@ export const CliSession = Schema.Struct({
   buildTarget: CliBuildTarget,
   createdAt: Schema.String,
   lastUsedAt: Schema.String,
+  expiresAt: Schema.NullOr(Schema.String).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
 });
 export type CliSession = typeof CliSession.Type;
 
@@ -228,23 +305,37 @@ export class CliSessionUnauthorized extends Schema.TaggedErrorClass<CliSessionUn
   static schema = this.pipe(HttpApiSchema.status("Unauthorized"));
 }
 
+/**
+ * The campaign port's stable error code, when the failure came from it.
+ * Older servers omit it.
+ */
+const cliErrorCode = Schema.optionalKey(Schema.String);
+
 export class CliServiceUnavailable extends Schema.TaggedErrorClass<CliServiceUnavailable>()(
   "CliServiceUnavailable",
-  { message: Schema.String }
+  { message: Schema.String, code: cliErrorCode }
 ) {
   static schema = this.pipe(HttpApiSchema.status("ServiceUnavailable"));
 }
 
 export class CliResourceNotFound extends Schema.TaggedErrorClass<CliResourceNotFound>()(
   "CliResourceNotFound",
-  { message: Schema.String }
+  { message: Schema.String, code: cliErrorCode }
 ) {
   static schema = this.pipe(HttpApiSchema.status("NotFound"));
 }
 
+/** Request content the server can't accept, such as an unparsable body. */
+export class CliInputInvalid extends Schema.TaggedErrorClass<CliInputInvalid>()(
+  "CliInputInvalid",
+  { message: Schema.String, code: cliErrorCode }
+) {
+  static schema = this.pipe(HttpApiSchema.status("BadRequest"));
+}
+
 export class CliMutationRejected extends Schema.TaggedErrorClass<CliMutationRejected>()(
   "CliMutationRejected",
-  { message: Schema.String }
+  { message: Schema.String, code: cliErrorCode }
 ) {
   static schema = this.pipe(HttpApiSchema.status("Conflict"));
 }
@@ -291,6 +382,216 @@ export class CliBearerAuthentication extends HttpApiMiddleware.Service<
   security: { bearer: HttpApiSecurity.bearer },
 }) {}
 
+/**
+ * Rejects a `dhw` older than the operation's `MinimumDhwVersion` with the
+ * error its `OutdatedDhwRefusal` names. The operation must have declared
+ * that error since its first release, so released binaries decode and print
+ * the rejection.
+ */
+export class CliClientCompatibility extends HttpApiMiddleware.Service<CliClientCompatibility>()(
+  "@deskohub/workspace-admin-api/CliClientCompatibility",
+  { error: [CliInputInvalid.schema, CliServiceUnavailable.schema] }
+) {}
+
+/**
+ * A Workspace account id, as Better Auth assigns it. It carries the
+ * Workspace's `CustomerAccountId` brand, so either side's ids pass unchanged.
+ */
+export const AdministrationAccountId = Schema.Trim.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(255)
+)
+  .pipe(Schema.brand("CustomerAccountId"))
+  .annotate({
+    identifier: "AdministrationAccountId",
+    description: "Opaque Workspace account identifier.",
+  });
+export type AdministrationAccountId = typeof AdministrationAccountId.Type;
+
+/**
+ * The account an administrator acts as, with its login email at the time, so
+ * provenance stays readable after the account is deleted.
+ */
+export type AdministratorActor = {
+  readonly accountId: AdministrationAccountId;
+  readonly email: string;
+};
+
+/**
+ * How an administrator reached the administration API: a `dhw` session, or an
+ * AI assistant the administrator connected, identified by its OAuth client.
+ */
+export type AdministrationChannel =
+  | {
+      readonly _tag: "CliSession";
+      readonly sessionId: CliSessionId;
+    }
+  | {
+      readonly _tag: "AssistantConnection";
+      readonly connectionId: AdministrationAssistantConnectionId;
+      readonly oauthClientId: string;
+    };
+
+/**
+ * Who calls an administration operation and through which channel. Handlers
+ * take the actor for provenance and the channel for request scoping, and
+ * never from request input.
+ */
+export class CurrentAdministrationCaller extends Context.Service<
+  CurrentAdministrationCaller,
+  {
+    readonly actor: AdministratorActor;
+    readonly channel: AdministrationChannel;
+  }
+>()("@deskohub/workspace-admin-api/CurrentAdministrationCaller") {}
+
+/**
+ * Authenticates an administration operation's bearer and provides its
+ * caller. The bearer and the errors match `CliBearerAuthentication`, so
+ * released `dhw` binaries call and decode it unchanged.
+ */
+export class AdministrationAuthentication extends HttpApiMiddleware.Service<
+  AdministrationAuthentication,
+  { provides: CurrentAdministrationCaller }
+>()("@deskohub/workspace-admin-api/AdministrationAuthentication", {
+  error: [CliSessionUnauthorized.schema, CliServiceUnavailable.schema],
+  security: { bearer: HttpApiSecurity.bearer },
+}) {}
+
+/**
+ * Records each `write` and `destructive` operation with its caller and
+ * outcome. `administrationOperationGroup` runs it inside
+ * `AdministrationAuthentication`, so it sees the caller. It fails with
+ * `CliServiceUnavailable`, which every authenticated endpoint already
+ * declares, when it can't record the call before the operation runs.
+ */
+export class AdministrationActionRecord extends HttpApiMiddleware.Service<
+  AdministrationActionRecord,
+  { requires: CurrentAdministrationCaller }
+>()("@deskohub/workspace-admin-api/AdministrationActionRecord", {
+  error: CliServiceUnavailable.schema,
+}) {}
+
+/**
+ * Requires `minimum` of the calling `dhw` on an endpoint, refusing an older
+ * one after authentication with `refusal`, or `OutdatedDhwRefusal`'s
+ * default. An endpoint that gains a minimum after release refuses with
+ * `CliServiceUnavailable` unless it declared `CliInputInvalid` from the start.
+ */
+export const requiresDhw =
+  (minimum: DhwVersion, refusal?: (typeof OutdatedDhwRefusal)["Service"]) =>
+  <Endpoint extends HttpApiEndpoint.Any>(
+    endpoint: Endpoint
+  ): HttpApiEndpoint.AddMiddleware<Endpoint, CliClientCompatibility> => {
+    const required = (endpoint as unknown as HttpApiEndpoint.AnyWithProps)
+      .annotate(MinimumDhwVersion, Option.some(minimum))
+      .middleware(CliClientCompatibility);
+    return (
+      refusal === undefined
+        ? required
+        : required.annotate(OutdatedDhwRefusal, refusal)
+    ) as never;
+  };
+
+interface AdministrationOperationGroupOptions {
+  /**
+   * Refuses a `dhw` older than an endpoint's `MinimumDhwVersion` on every
+   * endpoint before reading its session, in place of `requiresDhw`.
+   */
+  readonly checkDhwVersionBeforeAuthentication?: true;
+}
+
+type AuthenticatedGroup<Group> = HttpApiGroup.AddMiddleware<
+  HttpApiGroup.AddMiddleware<Group, AdministrationActionRecord>,
+  AdministrationAuthentication
+>;
+
+export type AdministrationOperationGroup<
+  Group,
+  Options extends AdministrationOperationGroupOptions,
+> = HttpApiGroup.AddPrefix<
+  Options["checkDhwVersionBeforeAuthentication"] extends true
+    ? HttpApiGroup.AddMiddleware<
+        AuthenticatedGroup<Group>,
+        CliClientCompatibility
+      >
+    : AuthenticatedGroup<Group>,
+  "/api/v1/cli"
+>;
+
+/**
+ * Throws when an endpoint can't be an administration operation in its group:
+ * it is CLI-only, or the group and the endpoint disagree on who checks the
+ * minimum `dhw`.
+ */
+const assertAdministrationOperationEndpoint = (
+  declared: HttpApiGroup.AnyWithProps,
+  endpoint: HttpApiEndpoint.AnyWithProps,
+  checksFirst: boolean
+) => {
+  const reference = `${declared.identifier}.${endpoint.name}`;
+  const checksOwn = (endpoint.middlewares as ReadonlySet<unknown>).has(
+    CliClientCompatibility
+  );
+  const annotations = Context.merge(declared.annotations, endpoint.annotations);
+  const minimum = Context.get(annotations, MinimumDhwVersion);
+  if (Option.isSome(Context.getOption(annotations, CliOnly))) {
+    throw new Error(
+      `${reference} is CLI-only and can't be an administration operation.`
+    );
+  }
+  if (checksFirst && checksOwn) {
+    throw new Error(
+      `${reference} checks its dhw version after authentication in a group that checks it first.`
+    );
+  }
+  if (!checksFirst && !checksOwn && Option.isSome(minimum)) {
+    throw new Error(
+      `${reference} requires a minimum dhw that nothing checks; declare it with requiresDhw.`
+    );
+  }
+};
+
+/**
+ * `group` served as administration operations under `/api/v1/cli`: each runs
+ * as the authenticated administrator's, and each change is recorded. Add
+ * every endpoint before declaring the group, since later ones get neither.
+ * Throws on a CLI-only endpoint, which the CLI authenticates itself, on an
+ * endpoint whose minimum `dhw` nothing checks, and on one that checks its
+ * own in a group that checks every endpoint's first.
+ */
+export const administrationOperationGroup = <
+  Group extends HttpApiGroup.Any,
+  const Options extends AdministrationOperationGroupOptions = Record<
+    never,
+    never
+  >,
+>(
+  group: Group,
+  options?: Options
+): AdministrationOperationGroup<Group, Options> => {
+  const declared = group as unknown as HttpApiGroup.AnyWithProps;
+  const checksFirst = options?.checkDhwVersionBeforeAuthentication ?? false;
+  for (const endpoint of Object.values(declared.endpoints)) {
+    assertAdministrationOperationEndpoint(declared, endpoint, checksFirst);
+  }
+  // Each middleware added later runs outside the earlier ones.
+  const middleware: ReadonlyArray<
+    Context.Key<HttpApiMiddleware.AnyId, unknown>
+  > = [
+    AdministrationActionRecord,
+    AdministrationAuthentication,
+    ...(checksFirst ? [CliClientCompatibility] : []),
+  ];
+  return middleware
+    .reduce(
+      (served, service) =>
+        served.middleware(service) as unknown as HttpApiGroup.AnyWithProps,
+      declared
+    )
+    .prefix("/api/v1/cli") as never;
+};
+
 export const AdministrationOverviewMetric = Schema.Struct({
   completed: Schema.Number,
   unavailable: Schema.Boolean,
@@ -299,12 +600,13 @@ export const AdministrationOverviewMetric = Schema.Struct({
 export type AdministrationOverviewMetric =
   typeof AdministrationOverviewMetric.Type;
 
-export const AdministrationOverview = Schema.Struct({
-  today: AdministrationOverviewMetric,
-  upcoming: AdministrationOverviewMetric,
-  lastSevenDays: AdministrationOverviewMetric,
+/** A count the overview reports, or `unavailable` when it couldn't. */
+export const AdministrationOverviewCount = Schema.Struct({
+  unavailable: Schema.Boolean,
+  value: Schema.Number,
 });
-export type AdministrationOverview = typeof AdministrationOverview.Type;
+export type AdministrationOverviewCount =
+  typeof AdministrationOverviewCount.Type;
 
 export const AdministrationReservationSort = Schema.Literals([
   "created",
@@ -462,20 +764,6 @@ export const AdministrationGoogleCalendarICalUid = Schema.NonEmptyString.pipe(
 export type AdministrationGoogleCalendarICalUid =
   typeof AdministrationGoogleCalendarICalUid.Type;
 
-const isCalendarDate = (value: string) => {
-  try {
-    return Temporal.PlainDate.from(value).toString() === value;
-  } catch {
-    return false;
-  }
-};
-
-const administrationCalendarDate = Schema.String.check(
-  Schema.makeFilter(isCalendarDate, {
-    description: "A calendar date in YYYY-MM-DD format.",
-  })
-).annotate({ format: "date" });
-
 export const AdministrationInvoiceId = Schema.String.check(Schema.isUUID())
   .pipe(Schema.brand("AdministrationInvoiceId"))
   .annotate({ identifier: "AdministrationInvoiceId" });
@@ -539,7 +827,8 @@ export type AdministrationInvoiceCustomerInput =
   typeof AdministrationInvoiceCustomerInput.Type;
 
 export const AdministrationInvoiceCreateInput = Schema.Struct({
-  invoiceId: AdministrationInvoiceId,
+  /** Chosen by the caller, so a retried creation names the same invoice. */
+  invoiceId: AdministrationInvoiceId.annotateKey({ changeKey: true }),
   customer: AdministrationInvoiceCustomerInput,
   locale: Schema.Literals(["cs-CZ", "en-US"]),
   serviceDate: administrationCalendarDate,
@@ -639,6 +928,7 @@ export const AdministrationInvoiceListItem = Schema.Struct({
     "post-order-link",
     "admin-ui",
     "dhw-cli",
+    "assistant",
     "legacy",
   ]),
   actor: Schema.NullOr(Schema.String),
@@ -712,6 +1002,44 @@ export const AdministrationInvoicePdf = Schema.Uint8Array.pipe(
   HttpApiSchema.asUint8Array({ contentType: "application/pdf" })
 );
 
+/** What a new invoice starts from: payable currencies, dates, and a symbol. */
+export const AdministrationInvoiceCreationDefaults = Schema.Struct({
+  /** The currencies a receiving account is configured for. */
+  currencies: Schema.Array(
+    Schema.Struct({
+      code: AdministrationInvoiceCreateInput.fields.currency,
+      exponent: Schema.Number,
+      name: Schema.String,
+    })
+  ),
+  defaultCurrency: AdministrationInvoiceCreateInput.fields.currency,
+  /** Today in the Workspace's time zone. */
+  defaultServiceDate: administrationCalendarDate,
+  defaultDueDate: administrationCalendarDate,
+  suggestedVariableSymbol: Schema.String,
+});
+export type AdministrationInvoiceCreationDefaults =
+  typeof AdministrationInvoiceCreationDefaults.Type;
+
+/** The reservation product families. */
+export const AdministrationReservationFamily = Schema.Literals([
+  "cowork",
+  "meeting-room",
+  "office",
+]);
+export type AdministrationReservationFamily =
+  typeof AdministrationReservationFamily.Type;
+
+/** The reservation states an admin list or campaign audience can filter by. */
+export const AdministrationReservationStatusFilter = Schema.Literals([
+  "in_progress",
+  "complete",
+  "cancelled",
+  "needs_refund",
+]);
+export type AdministrationReservationStatusFilter =
+  typeof AdministrationReservationStatusFilter.Type;
+
 export const AdministrationReservationQuery = Schema.Struct({
   customerId: Schema.optional(AdministrationDotyposCustomerId),
   date: Schema.optional(administrationCalendarDate),
@@ -720,10 +1048,8 @@ export const AdministrationReservationQuery = Schema.Struct({
     Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))
   ),
   sort: Schema.optional(AdministrationReservationSort),
-  status: Schema.optional(
-    Schema.Literals(["in_progress", "complete", "cancelled"])
-  ),
-  type: Schema.optional(Schema.Literals(["cowork", "meeting-room", "office"])),
+  status: Schema.optional(AdministrationReservationStatusFilter),
+  type: Schema.optional(AdministrationReservationFamily),
 });
 export type AdministrationReservationQuery =
   typeof AdministrationReservationQuery.Type;
@@ -748,6 +1074,45 @@ export const AdministrationCustomer = Schema.Struct({
 });
 export type AdministrationCustomer = typeof AdministrationCustomer.Type;
 
+/** A customer count with up to three of the customers it counts. */
+export const AdministrationOverviewCustomerMetric = Schema.Struct({
+  customers: Schema.Array(
+    Schema.Struct({
+      customerId: AdministrationDotyposCustomerId,
+      customer: Schema.NullOr(AdministrationCustomer),
+    })
+  ),
+  unavailable: Schema.Boolean,
+  value: Schema.Number,
+});
+export type AdministrationOverviewCustomerMetric =
+  typeof AdministrationOverviewCustomerMetric.Type;
+
+/** An older server omits the newer counts; they decode as unavailable. */
+const unreportedOverviewCount = { unavailable: true, value: 0 };
+
+export const AdministrationOverview = Schema.Struct({
+  today: AdministrationOverviewMetric,
+  upcoming: AdministrationOverviewMetric,
+  lastSevenDays: AdministrationOverviewMetric,
+  /** Distinct customers with a completed reservation in the last 7 days. */
+  uniqueCustomers: fieldWithDefault(AdministrationOverviewCustomerMetric, {
+    ...unreportedOverviewCount,
+    customers: [],
+  }),
+  /** Those of `uniqueCustomers` whose first reservation is that recent. */
+  newCustomers: fieldWithDefault(AdministrationOverviewCustomerMetric, {
+    ...unreportedOverviewCount,
+    customers: [],
+  }),
+  /** Reservations with a paid attempt awaiting refund work. */
+  refundAttention: fieldWithDefault(
+    AdministrationOverviewCount,
+    unreportedOverviewCount
+  ),
+});
+export type AdministrationOverview = typeof AdministrationOverview.Type;
+
 export const AdministrationMoney = Schema.Struct({
   value: Schema.Number,
   exponent: Schema.Number,
@@ -765,11 +1130,18 @@ export const AdministrationPaymentAttempt = Schema.Struct({
     "cancelled",
     "expired",
   ]),
-  refundState: Schema.Literals(["not_required", "required"]),
+  refundState: Schema.Literals(["not_required", "required", "refunded"]),
   providerOrderId: Schema.NullOr(AdministrationNexiOrderId),
   providerLabel: Schema.String,
   stateLabel: Schema.String,
   amount: AdministrationMoney,
+  /** Total Nexi reports as refunded; set only when `refundState` is `refunded`. */
+  refundedAmount: Schema.NullOr(AdministrationMoney).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
+  refundedAt: Schema.NullOr(Schema.String).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
   createdAt: Schema.String,
   providerOrderCreatedAt: Schema.NullOr(Schema.String),
   updatedAt: Schema.String,
@@ -784,8 +1156,12 @@ export const AdministrationReservationSummary = Schema.Struct({
   liveDetailsAvailable: Schema.Boolean,
   startsAt: Schema.NullOr(Schema.String),
   endsAt: Schema.NullOr(Schema.String),
+  /** When a meeting room booked with early setup is held from, before `startsAt`. */
+  setupStartsAt: Schema.NullOr(Schema.String).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
   date: Schema.NullOr(Schema.String),
-  type: Schema.Literals(["cowork", "meeting-room", "office"]),
+  type: AdministrationReservationFamily,
   typeLabel: Schema.String,
   purpose: Schema.NullOr(Schema.Literals(["personal", "business"])).pipe(
     Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
@@ -1050,6 +1426,25 @@ export const AdministrationReservationAccessMutation = Schema.Union([
 export type AdministrationReservationAccessMutation =
   typeof AdministrationReservationAccessMutation.Type;
 
+/** Each reservation-access mutation as an administration operation. */
+export const reservationAccessMutationOperations = {
+  field: "mutation",
+  discriminator: "kind",
+  operations: {
+    "retry-failed": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getReservation"),
+    }),
+    "confirm-provider-credential-removed": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getReservation"),
+    }),
+  } satisfies Record<
+    AdministrationReservationAccessMutation["kind"],
+    AdministrationOperationBehavior["Service"]
+  >,
+};
+
 export const AdministrationInstant = Schema.String.check(
   Schema.makeFilter((value) => {
     try {
@@ -1142,6 +1537,7 @@ export const AdministrationStandaloneAccessCodePin = Schema.String.check(
     identifier: "AdministrationStandaloneAccessCodePin",
     description:
       "Seven-to-nine-digit access PIN, disclosed only by the created outcome.",
+    credential: true,
   });
 export type AdministrationStandaloneAccessCodePin =
   typeof AdministrationStandaloneAccessCodePin.Type;
@@ -1186,7 +1582,9 @@ export type AdministrationStandaloneAccessCodeCreateInput =
   typeof AdministrationStandaloneAccessCodeCreateInput.Type;
 
 export const AdministrationStandaloneAccessCodeCreateRequest = Schema.Struct({
-  attemptId: AdministrationStandaloneAccessCodeAttemptId,
+  attemptId: AdministrationStandaloneAccessCodeAttemptId.annotateKey({
+    changeKey: true,
+  }),
   input: AdministrationStandaloneAccessCodeCreateInput,
   providerCredentialRemovedAttemptId: Schema.optionalKey(
     AdministrationStandaloneAccessCodeAttemptId
@@ -1223,7 +1621,32 @@ export const AdministrationStandaloneAccessCodeCreationOutcome = Schema.Union([
 export type AdministrationStandaloneAccessCodeCreationOutcome =
   typeof AdministrationStandaloneAccessCodeCreationOutcome.Type;
 
+/**
+ * The customer account that made a reservation for someone else: its own
+ * customer's name and its login email, only that it was deleted, or that it
+ * could not be read.
+ */
+export const AdministrationReservationAuthor = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("account"),
+    customerId: Schema.NullOr(AdministrationDotyposCustomerId),
+    displayName: Schema.String,
+    email: Schema.String,
+  }),
+  Schema.Struct({ kind: Schema.Literal("deleted") }),
+  Schema.Struct({ kind: Schema.Literal("unavailable") }),
+]);
+export type AdministrationReservationAuthor =
+  typeof AdministrationReservationAuthor.Type;
+
 export const AdministrationReservationDetail = Schema.Struct({
+  /**
+   * Null when the reservation is authorless or its customer booked it, and
+   * from servers that predate reservation authors.
+   */
+  author: Schema.NullOr(AdministrationReservationAuthor).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
   reservation: AdministrationReservationSummary,
   booking: Schema.NullOr(AdministrationBookingSummary),
   lifecycle: AdministrationReservationLifecycle,
@@ -1262,6 +1685,50 @@ export const AdministrationReservationCancellationResult = Schema.Struct({
 });
 export type AdministrationReservationCancellationResult =
   typeof AdministrationReservationCancellationResult.Type;
+
+export const AdministrationReservationProductDetailsBackfillInput =
+  Schema.Struct({
+    /** Report what would change without writing. */
+    dryRun: Schema.Boolean,
+    /** The previous batch's `nextCursor`, or null for the first batch. */
+    after: Schema.NullOr(AdministrationWorkspaceReservationId),
+  }).annotate({
+    parseOptions: { errors: "all", onExcessProperty: "error" },
+  });
+export type AdministrationReservationProductDetailsBackfillInput =
+  typeof AdministrationReservationProductDetailsBackfillInput.Type;
+
+/** Why a reservation snapshot's product details couldn't be filled. */
+export const AdministrationReservationProductDetailsUnresolvedReason =
+  Schema.Literals([
+    "stored_details_malformed",
+    "dotypos_reservation_id_missing",
+    "dotypos_reservation_not_found",
+    "dotypos_interval_invalid",
+    "interval_not_in_catalog",
+    "dotypos_seats_invalid",
+  ]);
+export type AdministrationReservationProductDetailsUnresolvedReason =
+  typeof AdministrationReservationProductDetailsUnresolvedReason.Type;
+
+/** One batch of the reservation product-details backfill. */
+export const AdministrationReservationProductDetailsBackfillBatch =
+  Schema.Struct({
+    /** Rows filled, or that a dry run would fill. */
+    updated: Schema.Number,
+    alreadyComplete: Schema.Number,
+    unresolved: Schema.Array(
+      Schema.Struct({
+        reservationId: AdministrationWorkspaceReservationId,
+        family: Schema.Literals(["meeting-room", "office"]),
+        reason: AdministrationReservationProductDetailsUnresolvedReason,
+      })
+    ),
+    /** Pass as `after` for the next batch; null after the last one. */
+    nextCursor: Schema.NullOr(AdministrationWorkspaceReservationId),
+  });
+export type AdministrationReservationProductDetailsBackfillBatch =
+  typeof AdministrationReservationProductDetailsBackfillBatch.Type;
 
 export const AdministrationCustomerSummary = Schema.Struct({
   customer: Schema.NullOr(AdministrationCustomer),
@@ -1350,6 +1817,48 @@ export const AdministrationCustomerActivity = Schema.Struct({
 export type AdministrationCustomerActivity =
   typeof AdministrationCustomerActivity.Type;
 
+/**
+ * Reservations per day over the last 365 days, counting every Workspace-linked
+ * live reservation, including new and cancelled ones.
+ */
+export const AdministrationReservationActivity = Schema.Struct({
+  from: administrationCalendarDate,
+  to: administrationCalendarDate,
+  /** Null when Dotypos couldn't be reached. */
+  dates: Schema.NullOr(
+    Schema.Array(
+      Schema.Struct({
+        date: administrationCalendarDate,
+        count: Schema.Number,
+      })
+    )
+  ),
+});
+export type AdministrationReservationActivity =
+  typeof AdministrationReservationActivity.Type;
+
+/** A customer's completed reservations per day over the last 365 days. */
+export const AdministrationCustomerReservationActivity = Schema.Struct({
+  from: administrationCalendarDate,
+  to: administrationCalendarDate,
+  /** Null when Dotypos couldn't be reached. */
+  dates: Schema.NullOr(
+    Schema.Array(
+      Schema.Struct({
+        date: administrationCalendarDate,
+        count: Schema.Number,
+        /**
+         * The product of that day's reservations, such as `meeting-room` or
+         * `cowork-open-space`. Open-ended, so a new product decodes.
+         */
+        category: Schema.String,
+      })
+    )
+  ),
+});
+export type AdministrationCustomerReservationActivity =
+  typeof AdministrationCustomerReservationActivity.Type;
+
 export const AdministrationDiscountGroup = Schema.Struct({
   id: AdministrationDotyposDiscountGroupId,
   name: Schema.String,
@@ -1357,6 +1866,18 @@ export const AdministrationDiscountGroup = Schema.Struct({
 });
 export type AdministrationDiscountGroup =
   typeof AdministrationDiscountGroup.Type;
+
+/** The Dotypos discount groups that exist, by name where they have one. */
+export const AdministrationDiscountGroupList = Schema.Struct({
+  discountGroups: Schema.Array(
+    Schema.Struct({
+      id: AdministrationDotyposDiscountGroupId,
+      name: Schema.NullOr(Schema.String),
+    })
+  ),
+});
+export type AdministrationDiscountGroupList =
+  typeof AdministrationDiscountGroupList.Type;
 
 const administrationPromotionFields = {
   code: Schema.String,
@@ -1378,8 +1899,6 @@ export const AdministrationDiscountCode = Schema.Struct({
   maxUses: Schema.NullOr(Schema.Number),
   maxUsesPerCustomer: Schema.NullOr(Schema.Number),
   remainingUses: Schema.NullOr(Schema.Number),
-  serviceDateFrom: Schema.NullOr(administrationCalendarDate),
-  serviceDateUntil: Schema.NullOr(administrationCalendarDate),
 });
 export type AdministrationDiscountCode = typeof AdministrationDiscountCode.Type;
 
@@ -1482,8 +2001,17 @@ export const AdministrationCustomerReservationPage = Schema.Struct({
 export type AdministrationCustomerReservationPage =
   typeof AdministrationCustomerReservationPage.Type;
 
+export const administrationCoworkTargetTiers = [
+  "open-space",
+  "reserved-desk",
+] as const;
+
+/** A cowork target without a tier covers every cowork tier. */
 export const AdministrationWorkspaceProductTarget = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("cowork") }),
+  Schema.Struct({
+    kind: Schema.Literal("cowork"),
+    tier: Schema.optional(Schema.Literals(administrationCoworkTargetTiers)),
+  }),
   Schema.Struct({ kind: Schema.Literal("meeting-room") }),
   Schema.Struct({ kind: Schema.Literal("office") }),
 ]);
@@ -1543,10 +2071,19 @@ const administrationDiscountAdjustmentInput =
 const administrationDiscountProducts = Schema.NonEmptyArray(
   AdministrationWorkspaceProductTarget
 ).check(
-  Schema.makeFilter(
-    (products) =>
-      new Set(products.map(({ kind }) => kind)).size === products.length
-  )
+  Schema.makeFilter((products) => {
+    const keys = products.map((product) =>
+      product.kind === "cowork" && product.tier !== undefined
+        ? `cowork:${product.tier}`
+        : product.kind
+    );
+    return (
+      new Set(keys).size === keys.length &&
+      !(
+        keys.includes("cowork") && keys.some((key) => key.startsWith("cowork:"))
+      )
+    );
+  })
 );
 
 export const AdministrationDiscountDefinitionInput = Schema.Struct({
@@ -1577,40 +2114,6 @@ const administrationDiscountCodeWindow = Schema.makeFilter<{
     ) > 0
 );
 
-const administrationDiscountCodeWindowChecks = Schema.makeFilter<{
-  readonly validFrom: string | null;
-  readonly validUntil: string | null;
-  readonly serviceDateFrom?: string | null;
-  readonly serviceDateUntil?: string | null;
-}>((input) => {
-  const instantWindowValid =
-    input.validFrom === null ||
-    input.validUntil === null ||
-    Temporal.Instant.compare(
-      Temporal.Instant.from(input.validUntil),
-      Temporal.Instant.from(input.validFrom)
-    ) > 0;
-  if (!instantWindowValid) return false;
-
-  const serviceDateFrom = input.serviceDateFrom;
-  const serviceDateUntil = input.serviceDateUntil;
-  if (serviceDateFrom === undefined && serviceDateUntil === undefined)
-    return true;
-  if (serviceDateFrom === null && serviceDateUntil === null) return true;
-  if (
-    typeof serviceDateFrom === "string" &&
-    typeof serviceDateUntil === "string"
-  ) {
-    return (
-      Temporal.PlainDate.compare(
-        Temporal.PlainDate.from(serviceDateUntil),
-        Temporal.PlainDate.from(serviceDateFrom)
-      ) > 0
-    );
-  }
-  return false;
-});
-
 export const AdministrationDiscountCodeConfigurationInput = Schema.Struct({
   code: AdministrationCanonicalPromotionCode,
   enabled: Schema.Boolean,
@@ -1620,16 +2123,14 @@ export const AdministrationDiscountCodeConfigurationInput = Schema.Struct({
   maxUsesPerCustomer: Schema.optional(
     Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0)))
   ),
-  serviceDateFrom: Schema.optional(Schema.NullOr(administrationCalendarDate)),
-  serviceDateUntil: Schema.optional(Schema.NullOr(administrationCalendarDate)),
-}).check(administrationDiscountCodeWindowChecks);
+}).check(administrationDiscountCodeWindow);
 export type AdministrationDiscountCodeConfigurationInput =
   typeof AdministrationDiscountCodeConfigurationInput.Type;
 
 export const AdministrationExistingDiscountCodeCreateInput = Schema.Struct({
   discountId: AdministrationStoredDiscountId,
   ...AdministrationDiscountCodeConfigurationInput.fields,
-}).check(administrationDiscountCodeWindowChecks);
+}).check(administrationDiscountCodeWindow);
 export type AdministrationExistingDiscountCodeCreateInput =
   typeof AdministrationExistingDiscountCodeCreateInput.Type;
 
@@ -1672,7 +2173,7 @@ export const AdministrationDiscountCodeUpdateInput = Schema.Struct({
   id: AdministrationDiscountCodeId,
   discountId: AdministrationStoredDiscountId,
   ...AdministrationDiscountCodeConfigurationInput.fields,
-}).check(administrationDiscountCodeWindowChecks);
+}).check(administrationDiscountCodeWindow);
 export type AdministrationDiscountCodeUpdateInput =
   typeof AdministrationDiscountCodeUpdateInput.Type;
 
@@ -1810,6 +2311,75 @@ export const AdministrationDiscountMutation = Schema.Union([
 export type AdministrationDiscountMutation =
   typeof AdministrationDiscountMutation.Type;
 
+/**
+ * Each discount mutation as an administration operation. Changing who may
+ * claim a code or voucher, or a customer's discount group, is destructive:
+ * `dhw` confirms it like a deletion.
+ */
+export const discountMutationOperations = {
+  field: "mutation",
+  discriminator: "kind",
+  operations: {
+    "create-discount": writeOperation({ idempotent: true }),
+    "update-discount": writeOperation({ idempotent: true }),
+    "delete-discount": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getDiscountDashboard"),
+    }),
+    "create-code": writeOperation({ idempotent: true }),
+    "create-customer-code": writeOperation({ idempotent: true }),
+    "update-code": writeOperation({ idempotent: true }),
+    "delete-code": destructiveOperation({
+      idempotent: true,
+      preview: readPreviewWithArguments(
+        { codeId: "id" },
+        "administration.getDiscountCode"
+      ),
+    }),
+    "add-code-customer": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getDiscountCode"),
+    }),
+    "remove-code-customer": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getDiscountCode"),
+    }),
+    "make-code-unrestricted": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getDiscountCode"),
+    }),
+    "create-voucher": writeOperation({ idempotent: true }),
+    "create-customer-voucher": writeOperation({ idempotent: true }),
+    "update-voucher": writeOperation({ idempotent: true }),
+    "delete-voucher": destructiveOperation({
+      idempotent: true,
+      preview: readPreviewWithArguments(
+        { voucherId: "id" },
+        "administration.getVoucher"
+      ),
+    }),
+    "add-voucher-customer": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getVoucher"),
+    }),
+    "remove-voucher-customer": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getVoucher"),
+    }),
+    "make-voucher-unrestricted": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getVoucher"),
+    }),
+    "set-customer-discount-group": destructiveOperation({
+      idempotent: true,
+      preview: readPreview("administration.getCustomer"),
+    }),
+  } satisfies Record<
+    AdministrationDiscountMutation["kind"],
+    AdministrationOperationBehavior["Service"]
+  >,
+};
+
 export const AdministrationDiscountMutationResult = Schema.Struct({
   kind: Schema.Literals(ADMINISTRATION_DISCOUNT_MUTATION_KINDS),
   createdDiscountId: Schema.NullOr(AdministrationStoredDiscountId),
@@ -1926,6 +2496,8 @@ export const AdminCliApi = HttpApiGroup.make("cli")
   .add(
     HttpApiEndpoint.get("getInfo", "/info", {
       success: AdminCliInfo,
+    }).annotate(CliOnly, {
+      reason: "Reports the server's dhw compatibility to the CLI.",
     })
   )
   .add(
@@ -1936,6 +2508,8 @@ export const AdminCliApi = HttpApiGroup.make("cli")
         CliAuthenticationRateLimited.schema,
         CliServiceUnavailable.schema,
       ],
+    }).annotate(CliOnly, {
+      reason: "CLI sign-in handshake; it hands out CLI credentials.",
     })
   )
   .add(
@@ -1943,6 +2517,8 @@ export const AdminCliApi = HttpApiGroup.make("cli")
       query: { code: CliAuthenticationCode },
       success: CliAuthenticationStatus,
       error: CliServiceUnavailable.schema,
+    }).annotate(CliOnly, {
+      reason: "CLI sign-in handshake; it hands out CLI credentials.",
     })
   )
   .add(
@@ -1950,33 +2526,53 @@ export const AdminCliApi = HttpApiGroup.make("cli")
       payload: ExchangeCliGrant,
       success: GrantedCliSession,
       error: [CliGrantRejected.schema, CliServiceUnavailable.schema],
+    }).annotate(CliOnly, {
+      reason: "CLI sign-in handshake; it hands out CLI credentials.",
     })
   )
   .add(
     HttpApiEndpoint.get("getCurrentSession", "/session", {
       success: CliSession,
-    }).middleware(CliBearerAuthentication)
+    })
+      .middleware(CliBearerAuthentication)
+      .annotate(CliOnly, { reason: "Reports the calling CLI session." })
   )
   .prefix("/api/v1/cli");
+
+/**
+ * The first `dhw` that decodes every invoice `source`, including invoices
+ * issued through an AI assistant. Released binaries fail to decode a
+ * `source` they don't know, such as `assistant`, and declared no
+ * `CliInputInvalid` on the invoice reads, so an older one is refused with a
+ * `CliServiceUnavailable` it prints.
+ */
+export const invoicesMinimumDhwVersion = DhwVersion.make("1.25.0");
 
 export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
   .add(
     HttpApiEndpoint.get("getOverview", "/overview", {
       success: AdministrationOverview,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "getReservationActivity",
+      "/overview/reservation-activity",
+      { success: AdministrationReservationActivity }
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listReservations", "/reservations", {
       query: AdministrationReservationQuery,
       success: AdministrationReservationPage,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getReservation", "/reservations/:reservationId", {
       params: { reservationId: AdministrationWorkspaceReservationId },
       success: AdministrationReservationDetail,
       error: CliResourceNotFound.schema,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post(
@@ -1992,6 +2588,26 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
           CliServiceUnavailable.schema,
         ],
       }
+    ).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: false,
+        preview: readPreview("administration.getReservation"),
+      })
+    )
+  )
+  .add(
+    HttpApiEndpoint.post(
+      "backfillReservationProductDetails",
+      "/reservations/product-details-backfill",
+      {
+        payload: AdministrationReservationProductDetailsBackfillInput,
+        success: AdministrationReservationProductDetailsBackfillBatch,
+        error: CliServiceUnavailable.schema,
+      }
+    ).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({ idempotent: true, preview: dryRunPreview })
     )
   )
   .add(
@@ -2014,68 +2630,81 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
           CliServiceUnavailable.schema,
         ],
       }
+    ).annotate(
+      AdministrationOperationVariants,
+      reservationAccessMutationOperations
     )
   )
   .add(
     HttpApiEndpoint.get("findReservation", "/reservations/find", {
       query: AdministrationReservationLookupQuery,
       success: AdministrationReservationLookupResult,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listBookings", "/bookings", {
       query: AdministrationBookingQuery,
       success: AdministrationBookingPage,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getBooking", "/bookings/:bookingId", {
       params: { bookingId: AdministrationDotyposReservationId },
       success: AdministrationBookingDetail,
       error: CliResourceNotFound.schema,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listOrders", "/orders", {
       query: AdministrationOrderQuery,
       success: AdministrationOrderList,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getOrder", "/orders/:orderId", {
       params: { orderId: AdministrationNexiOrderId },
       success: AdministrationOrder,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listOperations", "/operations", {
       query: AdministrationOperationQuery,
       success: AdministrationOperationList,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getOperation", "/operations/:operationId", {
       params: { operationId: AdministrationNexiOperationId },
       success: AdministrationOperationDetail,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listCustomers", "/customers", {
       query: AdministrationCustomerQuery,
       success: AdministrationCustomerPage,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("searchCustomers", "/customers/search", {
       query: AdministrationCustomerSearchQuery,
       success: AdministrationCustomerSearchResult,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getCustomer", "/customers/:customerId", {
       params: { customerId: AdministrationDotyposCustomerId },
       success: AdministrationCustomerDetail,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "getCustomerReservationActivity",
+      "/customers/:customerId/reservation-activity",
+      {
+        params: { customerId: AdministrationDotyposCustomerId },
+        success: AdministrationCustomerReservationActivity,
+      }
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get(
@@ -2086,32 +2715,39 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
         query: AdministrationCustomerReservationsQuery,
         success: AdministrationCustomerReservationPage,
       }
-    )
+    ).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getDiscountDashboard", "/discounts", {
       success: AdministrationDiscountDashboard,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
+    HttpApiEndpoint.get("listDiscountGroups", "/discount-groups", {
+      success: AdministrationDiscountGroupList,
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getDiscountCode", "/codes/:codeId", {
       params: { codeId: AdministrationDiscountCodeId },
       success: AdministrationDiscountCodeDetail,
       error: CliResourceNotFound.schema,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("getVoucher", "/vouchers/:voucherId", {
       params: { voucherId: AdministrationVoucherId },
       success: AdministrationVoucherDetail,
       error: CliResourceNotFound.schema,
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.get("listInvoices", "/invoices", {
       query: AdministrationInvoiceQuery,
       success: AdministrationInvoicePage,
     })
+      .annotate(AdministrationOperationBehavior, readOperation)
+      .pipe(requiresDhw(invoicesMinimumDhwVersion, "CliServiceUnavailable"))
   )
   .add(
     HttpApiEndpoint.get("getInvoice", "/invoices/:invoiceId", {
@@ -2119,13 +2755,31 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       success: AdministrationInvoiceDetail,
       error: [CliResourceNotFound.schema, CliServiceUnavailable.schema],
     })
+      .annotate(AdministrationOperationBehavior, readOperation)
+      .pipe(requiresDhw(invoicesMinimumDhwVersion, "CliServiceUnavailable"))
   )
   .add(
     HttpApiEndpoint.get("getInvoicePdf", "/invoices/:invoiceId/pdf", {
       params: { invoiceId: AdministrationInvoiceId },
       success: AdministrationInvoicePdf,
       error: [CliResourceNotFound.schema, CliServiceUnavailable.schema],
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
+    HttpApiEndpoint.get(
+      "getInvoiceCreationDefaults",
+      "/invoices/creation-defaults",
+      { success: AdministrationInvoiceCreationDefaults }
+    ).annotate(AdministrationOperationBehavior, readOperation)
+  )
+  .add(
+    // A read: it renders the unsaved invoice and writes nothing. POST only
+    // because it takes the invoice as a body.
+    HttpApiEndpoint.post("previewInvoice", "/invoices/preview", {
+      payload: AdministrationInvoiceCreateInput,
+      success: AdministrationInvoicePdf,
+      error: [CliMutationRejected.schema, CliServiceUnavailable.schema],
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post("createInvoice", "/invoices", {
@@ -2136,7 +2790,13 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
         CliMutationRejected.schema,
         CliServiceUnavailable.schema,
       ],
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("administration.previewInvoice"),
+      })
+    )
   )
   .add(
     HttpApiEndpoint.post("createStandaloneAccessCode", "/access-codes", {
@@ -2150,7 +2810,10 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
         CliStandaloneAccessCodeCleanupRequired.schema,
         CliStandaloneAccessCodeReconciled.schema,
       ],
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({ idempotent: true })
+    )
   )
   .add(
     HttpApiEndpoint.post("resendInvoice", "/invoices/:invoiceId/resend", {
@@ -2161,12 +2824,18 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
         CliResourceNotFound.schema,
         CliServiceUnavailable.schema,
       ],
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: false,
+        preview: readPreview("administration.getInvoice"),
+      })
+    )
   )
   .add(
     HttpApiEndpoint.get("listSessions", "/sessions", {
       success: Schema.Array(CliSessionAdministration),
-    })
+    }).annotate(AdministrationOperationBehavior, readOperation)
   )
   .add(
     HttpApiEndpoint.post("mutateDiscounts", "/discounts/mutations", {
@@ -2182,7 +2851,7 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
         CliMutationRejected.schema,
         CliResourceNotFound.schema,
       ],
-    })
+    }).annotate(AdministrationOperationVariants, discountMutationOperations)
   )
   .add(
     HttpApiEndpoint.patch("renameSession", "/sessions/:sessionId", {
@@ -2190,17 +2859,21 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       payload: RenameCliSession,
       success: CliSessionMutationResult,
       error: CliResourceNotFound.schema,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      writeOperation({ idempotent: true })
+    )
   )
   .add(
     HttpApiEndpoint.delete("revokeSession", "/sessions/:sessionId", {
       params: { sessionId: CliSessionId },
       success: CliSessionMutationResult,
-    })
+    }).annotate(
+      AdministrationOperationBehavior,
+      destructiveOperation({
+        idempotent: true,
+        preview: readPreview("administration.listSessions"),
+      })
+    )
   )
-  .middleware(CliBearerAuthentication)
-  .prefix("/api/v1/cli");
-
-export const WorkspaceAdminApi = HttpApi.make("workspaceAdminApi")
-  .add(AdminCliApi)
-  .add(AdminCliAdministrationApi);
+  .pipe(administrationOperationGroup);

@@ -11,14 +11,13 @@ import { useEffect, useRef, useState } from "react";
 
 type UseMotionSwipeCarouselOptions = {
   count: number;
-  autoPlayInterval?: number;
   getSwipeDistance?: (stageWidth: number) => number;
 };
 
-export const swipeTimelineThreshold = 0.32;
-export const swipeVelocityThreshold = 520;
-export const swipeClickSuppressionDistance = 8;
-export const clickSuppressionAfterSwipeMs = 180;
+const swipeTimelineThreshold = 0.32;
+const swipeVelocityThreshold = 520;
+const swipeClickSuppressionDistance = 8;
+const clickSuppressionAfterSwipeMs = 180;
 
 export const wrapIndex = (index: number, length: number) => {
   if (length <= 0) return 0;
@@ -45,7 +44,7 @@ export const getClosestVirtualIndex = (
 export const truncateTowardZero = (value: number) =>
   value < 0 ? Math.ceil(value) : Math.floor(value);
 
-export const getDefaultSwipeDistance = (stageWidth: number) =>
+const getDefaultSwipeDistance = (stageWidth: number) =>
   Math.max(96, Math.min(stageWidth * 0.28, 260));
 
 export const getSwipeTargetVirtualIndex = ({
@@ -90,15 +89,11 @@ export const getSwipeTargetVirtualIndex = ({
 
 export function useMotionSwipeCarousel({
   count,
-  autoPlayInterval,
   getSwipeDistance = getDefaultSwipeDistance,
 }: UseMotionSwipeCarouselOptions) {
   const shouldReduceMotion = useReducedMotion();
   const [virtualIndex, setVirtualIndex] = useState(0);
   const [swipeTimelineOffset, setSwipeTimelineOffset] = useState(0);
-  const [isPointerOver, setIsPointerOver] = useState(false);
-  const [isFocusWithin, setIsFocusWithin] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const dragControls = useDragControls();
   const dragX = useMotionValue(0);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -106,7 +101,6 @@ export function useMotionSwipeCarousel({
   const dragStartVirtualIndexRef = useRef(virtualIndex);
   const lastSwipeAtRef = useRef(0);
   const canSwipe = count > 1;
-  const isPaused = isPointerOver || isFocusWithin || isDragging;
   const visibleVirtualIndex = virtualIndex + swipeTimelineOffset;
   const activeIndex =
     count > 0 ? wrapIndex(Math.round(visibleVirtualIndex), count) : 0;
@@ -115,23 +109,6 @@ export function useMotionSwipeCarousel({
   useEffect(() => {
     virtualIndexRef.current = virtualIndex;
   }, [virtualIndex]);
-
-  useEffect(() => {
-    if (!canSwipe || isPaused || shouldReduceMotion || !autoPlayInterval)
-      return;
-
-    const interval = setInterval(() => {
-      setVirtualIndex((index) => {
-        const nextIndex = index + 1;
-
-        virtualIndexRef.current = nextIndex;
-
-        return nextIndex;
-      });
-    }, autoPlayInterval);
-
-    return () => clearInterval(interval);
-  }, [autoPlayInterval, canSwipe, isPaused, shouldReduceMotion]);
 
   const moveToVirtualIndex = (nextIndex: number) => {
     if (count <= 0) return;
@@ -179,7 +156,6 @@ export function useMotionSwipeCarousel({
 
     dragStartVirtualIndexRef.current = virtualIndexRef.current;
     resetDragCarrier();
-    setIsDragging(true);
     setSwipeTimelineOffset(0);
   };
   const handleDragMove = (
@@ -223,7 +199,6 @@ export function useMotionSwipeCarousel({
 
     moveToVirtualIndex(nextIndex);
     resetDragCarrier();
-    setIsDragging(false);
   };
   const shouldSuppressClickAfterSwipe = () =>
     Date.now() - lastSwipeAtRef.current < clickSuppressionAfterSwipeMs;
@@ -236,14 +211,9 @@ export function useMotionSwipeCarousel({
     handleDragEnd,
     handleDragMove,
     handleDragStart,
-    isFocusWithin,
-    isPaused,
-    isPointerOver,
     isSwiping,
     moveToIndex,
     moveToVirtualIndex,
-    setIsFocusWithin,
-    setIsPointerOver,
     shouldReduceMotion,
     shouldSuppressClickAfterSwipe,
     stageRef,

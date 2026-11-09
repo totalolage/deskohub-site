@@ -1,6 +1,6 @@
 {
   "name": "dhw",
-  "version": "1.11.1",
+  "version": "1.33.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,6 +16,7 @@
     "semver": "^7.7.4"
   },
   "devDependencies": {
+    "@deskohub/test-email": "workspace:*",
     "@types/semver": "^7.7.1",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   }

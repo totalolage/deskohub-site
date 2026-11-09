@@ -1,7 +1,20 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
-  AdministrationActorUsername,
+  AdministrationActorEmail,
+  AdministrationCustomerReservationActivity,
   AdministrationDiscountCodeId,
+  AdministrationDiscountGroupList,
+  AdministrationDotyposCustomerId,
+  AdministrationInvoiceCreateInput,
+  AdministrationInvoiceCreationDefaults,
+  AdministrationLegacyUsername,
+  AdministrationOverview,
+  AdministrationReservationActivity,
+  type AdministrationReservationDetailType,
   AdministrationStandaloneAccessCodeAttemptId,
   type AdministrationStandaloneAccessCodeAttemptIdType,
   type AdministrationStandaloneAccessCodeCreateInputType,
@@ -14,11 +27,13 @@ import {
   type CliAccessTokenType,
   CliMutationRejected,
   CliMutationUncertain,
+  CliResourceNotFound,
   CliServiceUnavailable,
   CliSessionId,
   type CliSessionType,
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
+  toAdministrationActorName,
 } from "@deskohub/workspace-admin-api";
 import { BunServices } from "@effect/platform-bun";
 import { Console, Effect, Exit, Layer, Option, Redacted, Schema } from "effect";
@@ -26,12 +41,36 @@ import { Command } from "effect/unstable/cli";
 import { AccessCodeAttemptStore } from "./access-codes/access-code-attempt-store.service";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
-import {
-  dhwCommand,
-  formatInvoiceCreationOutput,
-  formatStandaloneAccessCodeOutcome,
-} from "./command";
+import { dhwCommand } from "./command";
 import { DhwConfig } from "./config/dhw-config.service";
+
+const syntheticEmail = testEmailAddress("synthetic");
+
+const previewInvoiceInput = Schema.decodeUnknownSync(
+  AdministrationInvoiceCreateInput
+)({
+  invoiceId: "01980000-0000-7000-8000-000000000019",
+  customer: {
+    kind: "new",
+    details: {
+      kind: "person",
+      email: syntheticEmail,
+      firstName: "Synthetic",
+      lastName: "Customer",
+      address: {
+        line1: "Test street 1",
+        city: "Prague",
+        postalCode: "100 00",
+        country: "CZ",
+      },
+    },
+  },
+  locale: "cs-CZ",
+  serviceDate: "2026-08-10",
+  payment: { status: "due", date: "2026-08-24" },
+  currency: "CZK",
+  lines: [{ description: "Synthetic service", price: "1000" }],
+});
 
 const accessToken = Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43));
 const sessionId = Schema.decodeUnknownSync(CliSessionId)(
@@ -58,11 +97,20 @@ const cleanupTarget = {
 const session = {
   id: sessionId,
   approvedBy: null,
+  approvedByEmail: null,
   clientName: "test client",
   cliVersion: "1.3.0",
   buildTarget: "development" as const,
   createdAt: "2026-08-10T10:00:00.000Z",
   lastUsedAt: "2026-08-10T10:00:00.000Z",
+  expiresAt: null,
+};
+const accountApproverEmail = AdministrationActorEmail.make(
+  testEmailAddress("admin")
+);
+const accountApprover = {
+  approvedBy: toAdministrationActorName(accountApproverEmail),
+  approvedByEmail: accountApproverEmail,
 };
 const createdAccessCodeOutcome = Schema.decodeUnknownSync(
   AdministrationStandaloneAccessCodeCreationOutcome
@@ -89,17 +137,6 @@ const alreadyCreatedAccessCodeOutcome = Schema.decodeUnknownSync(
 }) satisfies AdministrationStandaloneAccessCodeCreationOutcomeType;
 
 describe("dhw mutation commands", () => {
-  test("does not call a partially delivered invoice sent", () => {
-    const output = formatInvoiceCreationOutput({
-      invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb21",
-      invoiceNumber: "WS-FV-2026-000001",
-      needsAttention: true,
-    });
-
-    expect(output).not.toContain("sent");
-    expect(output).toContain("delivery needs attention");
-  });
-
   test("requires reauthentication before a legacy session can create invoices", async () => {
     const { layer } = makeCommandLayer();
 
@@ -121,7 +158,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createInvoice: (_accessToken, input) =>
         Effect.sync(() => {
@@ -142,7 +179,7 @@ describe("dhw mutation commands", () => {
           kind: "new",
           details: {
             kind: "person",
-            email: "synthetic@example.test",
+            email: syntheticEmail,
             firstName: "Synthetic",
             lastName: "Customer",
             address: {
@@ -181,6 +218,194 @@ describe("dhw mutation commands", () => {
       expect.objectContaining({ invoiceId }),
       expect.objectContaining({ invoiceId }),
     ]);
+  });
+
+  test("previews an invoice from a strict input file and writes the PDF", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "dhw-command-invoice-"));
+    const inputPath = join(directory, "invoice.json");
+    const outputPath = join(directory, "preview.pdf");
+    const pdf = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 55]);
+    const previews: unknown[] = [];
+    const { layer, output } = makeCommandLayer({
+      previewInvoice: (_accessToken, input) =>
+        Effect.sync(() => {
+          previews.push(input);
+          return pdf;
+        }),
+    });
+    await writeFile(inputPath, JSON.stringify(previewInvoiceInput));
+
+    try {
+      await runCommand(
+        [
+          "--json",
+          "invoices",
+          "preview",
+          "--input",
+          inputPath,
+          "--output",
+          outputPath,
+        ],
+        layer
+      ).pipe(Effect.runPromise);
+
+      expect(previews).toEqual([previewInvoiceInput]);
+      expect(await readFile(outputPath)).toEqual(Buffer.from(pdf));
+      expect(JSON.parse(output.join(""))).toEqual({
+        invoiceId: previewInvoiceInput.invoiceId,
+        path: outputPath,
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects invoice preview input with an unknown property before the API call", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "dhw-command-invoice-"));
+    const inputPath = join(directory, "invoice.json");
+    const previews: unknown[] = [];
+    const { layer } = makeCommandLayer({
+      previewInvoice: (_accessToken, input) =>
+        Effect.sync(() => {
+          previews.push(input);
+          return new Uint8Array();
+        }),
+    });
+    await writeFile(
+      inputPath,
+      JSON.stringify({ ...previewInvoiceInput, unknownProperty: true })
+    );
+
+    try {
+      const error = await runCommand(
+        ["--json", "invoices", "preview", "--input", inputPath],
+        layer
+      ).pipe(Effect.flip, Effect.runPromise);
+
+      expect(error).toMatchObject({ _tag: "InvalidMutationInputError" });
+      expect(previews).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("prints invoice creation defaults as JSON", async () => {
+    const defaults = Schema.decodeUnknownSync(
+      AdministrationInvoiceCreationDefaults
+    )({
+      currencies: [{ code: "CZK", exponent: 2, name: "Czech koruna" }],
+      defaultCurrency: "CZK",
+      defaultServiceDate: "2026-08-10",
+      defaultDueDate: "2026-08-24",
+      suggestedVariableSymbol: "260810",
+    });
+    const { layer, output } = makeCommandLayer({
+      getInvoiceCreationDefaults: () => Effect.succeed(defaults),
+    });
+
+    await runCommand(["--json", "invoices", "defaults"], layer).pipe(
+      Effect.runPromise
+    );
+
+    expect(JSON.parse(output.join(""))).toEqual(defaults);
+  });
+
+  test("passes a decoded customer ID to the activity command and prints its JSON", async () => {
+    const customerId = "customer-1";
+    const decodedCustomerId = Schema.decodeUnknownSync(
+      AdministrationDotyposCustomerId
+    )(customerId);
+    const activity = Schema.decodeUnknownSync(
+      AdministrationCustomerReservationActivity
+    )({
+      from: "2026-08-01",
+      to: "2026-08-02",
+      dates: [{ date: "2026-08-01", count: 2, category: "meeting-room" }],
+    });
+    const requestedCustomerIds: AdministrationDotyposCustomerId[] = [];
+    const { layer, output } = makeCommandLayer({
+      getCustomerReservationActivity: (_accessToken, decodedCustomerId) =>
+        Effect.sync(() => {
+          requestedCustomerIds.push(decodedCustomerId);
+          return activity;
+        }),
+    });
+
+    await runCommand(
+      ["--json", "customers", "activity", customerId],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(requestedCustomerIds).toEqual([decodedCustomerId]);
+    expect(JSON.parse(output.join(""))).toEqual(activity);
+  });
+
+  test("prints global reservation activity as JSON", async () => {
+    const activity = Schema.decodeUnknownSync(
+      AdministrationReservationActivity
+    )({
+      from: "2026-08-01",
+      to: "2026-08-02",
+      dates: [{ date: "2026-08-01", count: 2 }],
+    });
+    const { layer, output } = makeCommandLayer({
+      getReservationActivity: () => Effect.succeed(activity),
+    });
+
+    await runCommand(["--json", "reservations", "activity"], layer).pipe(
+      Effect.runPromise
+    );
+
+    expect(JSON.parse(output.join(""))).toEqual(activity);
+  });
+
+  test("prints unavailable global reservation activity for people", async () => {
+    const activity = Schema.decodeUnknownSync(
+      AdministrationReservationActivity
+    )({
+      from: "2026-08-01",
+      to: "2026-08-02",
+      dates: null,
+    });
+    const { layer, output } = makeCommandLayer({
+      getReservationActivity: () => Effect.succeed(activity),
+    });
+
+    await runCommand(["reservations", "activity"], layer).pipe(
+      Effect.runPromise
+    );
+
+    expect(output.join("")).toBe(
+      "Reservation activity 2026-08-01 to 2026-08-02: unavailable"
+    );
+  });
+
+  test("includes refund attention in overview JSON", async () => {
+    const overview = Schema.decodeUnknownSync(AdministrationOverview)({
+      today: { completed: 1, unavailable: false, value: 2 },
+      upcoming: { completed: 3, unavailable: false, value: 4 },
+      lastSevenDays: { completed: 5, unavailable: false, value: 6 },
+      uniqueCustomers: {
+        customers: [],
+        unavailable: false,
+        value: 7,
+      },
+      newCustomers: {
+        customers: [],
+        unavailable: false,
+        value: 8,
+      },
+      refundAttention: { unavailable: false, value: 9 },
+    });
+    const { layer, output } = makeCommandLayer({
+      getOverview: () => Effect.succeed(overview),
+    });
+
+    await runCommand(["--json", "overview"], layer).pipe(Effect.runPromise);
+
+    expect(JSON.parse(output.join("")).refundAttention).toEqual(
+      overview.refundAttention
+    );
   });
 
   test("requires explicit confirmation for non-interactive revocation", async () => {
@@ -239,6 +464,361 @@ describe("dhw mutation commands", () => {
     ]);
   });
 
+  test("shows who booked a reservation for someone else", async () => {
+    const output: string[] = [];
+    const capturedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        output.push(args.join(" "));
+      },
+    } satisfies Console.Console);
+    const detail = (author: AdministrationReservationDetailType["author"]) =>
+      ({
+        author,
+        accessGrant: null,
+        discounts: [],
+        orders: [],
+        paymentAttempts: [],
+        reservation: {
+          id: reservationId,
+          customerId: "booked-for-customer",
+          customer: null,
+          date: "2026-08-10",
+          startsAt: null,
+          typeLabel: "Cowork",
+          status: { label: "Held" },
+        },
+      }) as unknown as AdministrationReservationDetailType;
+
+    for (const author of [
+      {
+        kind: "account" as const,
+        customerId: null,
+        displayName: "Ada Author",
+        email: testEmailAddress("ada-author"),
+      },
+      { kind: "deleted" as const },
+      { kind: "unavailable" as const },
+      null,
+    ]) {
+      const { layer } = makeCommandLayer({
+        getReservation: () => Effect.succeed(detail(author)),
+      });
+      await runCommand(
+        ["reservations", "get", reservationId],
+        Layer.mergeAll(layer, capturedOutput)
+      ).pipe(Effect.runPromise);
+    }
+
+    expect(output.filter((line) => line.startsWith("Booked by"))).toEqual([
+      `Booked by: Ada Author <${testEmailAddress("ada-author")}>`,
+      "Booked by: deleted account",
+      "Booked by: unavailable",
+    ]);
+  });
+
+  test("shows when an early-setup meeting room is held from", async () => {
+    const output: string[] = [];
+    const capturedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        output.push(args.join(" "));
+      },
+    } satisfies Console.Console);
+    const detail = (setupStartsAt: string | null) =>
+      ({
+        author: null,
+        accessGrant: null,
+        discounts: [],
+        orders: [],
+        paymentAttempts: [],
+        reservation: {
+          id: reservationId,
+          customerId: "meeting-room-customer",
+          customer: null,
+          date: "2026-08-10",
+          startsAt: "2026-08-10T08:00:00Z",
+          endsAt: "2026-08-10T09:00:00Z",
+          setupStartsAt,
+          typeLabel: "Meeting Room",
+          status: { label: "Paid" },
+        },
+      }) as unknown as AdministrationReservationDetailType;
+
+    for (const setupStartsAt of ["2026-08-10T07:45:00Z", null]) {
+      const { layer } = makeCommandLayer({
+        getReservation: () => Effect.succeed(detail(setupStartsAt)),
+      });
+      await runCommand(
+        ["reservations", "get", reservationId],
+        Layer.mergeAll(layer, capturedOutput)
+      ).pipe(Effect.runPromise);
+    }
+
+    expect(output.filter((line) => line.startsWith("Early setup"))).toEqual([
+      "Early setup: from 2026-08-10T07:45:00Z, booked 2026-08-10T08:00:00Z to 2026-08-10T09:00:00Z",
+    ]);
+  });
+
+  test("dry-runs the product-details backfill across every batch without confirmation", async () => {
+    const requests: unknown[] = [];
+    const nextReservationId = Schema.decodeUnknownSync(
+      AdministrationWorkspaceReservationId
+    )("reservation-next");
+    const { layer } = makeCommandLayer({
+      backfillReservationProductDetails: (_accessToken, input) =>
+        Effect.sync(() => {
+          requests.push(input);
+          return input.after === null
+            ? {
+                updated: 2,
+                alreadyComplete: 1,
+                unresolved: [
+                  {
+                    reservationId,
+                    family: "office" as const,
+                    reason: "dotypos_seats_invalid" as const,
+                  },
+                ],
+                nextCursor: nextReservationId,
+              }
+            : {
+                updated: 1,
+                alreadyComplete: 3,
+                unresolved: [],
+                nextCursor: null,
+              };
+        }),
+    });
+    const output: string[] = [];
+    const capturedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        output.push(args.join(" "));
+      },
+    } satisfies Console.Console);
+
+    await runCommand(
+      ["--json", "reservations", "backfill-product-details", "--dry-run"],
+      Layer.mergeAll(layer, capturedOutput)
+    ).pipe(Effect.runPromise);
+
+    expect(requests).toEqual([
+      { dryRun: true, after: null },
+      { dryRun: true, after: nextReservationId },
+    ]);
+    expect(output.map((line) => JSON.parse(line))).toEqual([
+      {
+        dryRun: true,
+        updated: 3,
+        alreadyComplete: 4,
+        unresolved: [
+          {
+            reservationId,
+            family: "office",
+            reason: "dotypos_seats_invalid",
+          },
+        ],
+      },
+    ]);
+  });
+
+  test("requires confirmation before the product-details backfill writes", async () => {
+    const requests: unknown[] = [];
+    const { layer } = makeCommandLayer({
+      backfillReservationProductDetails: (_accessToken, input) =>
+        Effect.sync(() => {
+          requests.push(input);
+          return {
+            updated: 0,
+            alreadyComplete: 0,
+            unresolved: [],
+            nextCursor: null,
+          };
+        }),
+    });
+
+    const error = await runCommand(
+      ["--json", "reservations", "backfill-product-details"],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+    expect(error).toMatchObject({ _tag: "ConfirmationRequiredError" });
+    expect(requests).toEqual([]);
+
+    await runCommand(
+      ["--json", "reservations", "backfill-product-details", "--yes"],
+      layer
+    ).pipe(Effect.runPromise);
+    expect(requests).toEqual([{ dryRun: false, after: null }]);
+  });
+
+  test("dry-runs a legacy administrator backfill and prints its JSON result", async () => {
+    const legacyUsername = AdministrationLegacyUsername.make("legacy-admin");
+    const email = testEmailAddress("legacy-admin");
+    const requests: unknown[] = [];
+    const result = {
+      dryRun: true,
+      administratorRole: "granted" as const,
+      cliSessions: { linked: 2, alreadyLinked: 1, linkedToOtherAccount: 3 },
+      manualInvoices: { linked: 4, alreadyLinked: 5, linkedToOtherAccount: 6 },
+      standaloneAccessCodeEvents: {
+        linked: 7,
+        alreadyLinked: 8,
+        linkedToOtherAccount: 9,
+      },
+    };
+    const { layer } = makeCommandLayer({
+      backfillLegacyAdministrator: (_accessToken, input) =>
+        Effect.sync(() => {
+          requests.push(input);
+          return result;
+        }),
+    });
+    const output: string[] = [];
+    const capturedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        output.push(args.join(" "));
+      },
+    } satisfies Console.Console);
+
+    await runCommand(
+      [
+        "--json",
+        "administrators",
+        "backfill-legacy",
+        "--legacy-username",
+        legacyUsername,
+        "--email",
+        email,
+        "--dry-run",
+      ],
+      Layer.mergeAll(layer, capturedOutput)
+    ).pipe(Effect.runPromise);
+
+    expect(requests).toEqual([{ legacyUsername, email, dryRun: true }]);
+    expect(output.map((line) => JSON.parse(line))).toEqual([result]);
+  });
+
+  test("requires confirmation for a real legacy administrator backfill", async () => {
+    const legacyUsername = AdministrationLegacyUsername.make("legacy-admin");
+    const email = testEmailAddress("legacy-admin");
+    const requests: unknown[] = [];
+    const { layer } = makeCommandLayer({
+      backfillLegacyAdministrator: (_accessToken, input) =>
+        Effect.sync(() => {
+          requests.push(input);
+          return {
+            dryRun: false,
+            administratorRole: "granted" as const,
+            cliSessions: {
+              linked: 1,
+              alreadyLinked: 0,
+              linkedToOtherAccount: 0,
+            },
+            manualInvoices: {
+              linked: 1,
+              alreadyLinked: 0,
+              linkedToOtherAccount: 0,
+            },
+            standaloneAccessCodeEvents: {
+              linked: 1,
+              alreadyLinked: 0,
+              linkedToOtherAccount: 0,
+            },
+          };
+        }),
+    });
+    const args = [
+      "--json",
+      "administrators",
+      "backfill-legacy",
+      "--legacy-username",
+      legacyUsername,
+      "--email",
+      email,
+    ];
+
+    const error = await runCommand(args, layer).pipe(
+      Effect.flip,
+      Effect.runPromise
+    );
+    expect(error).toMatchObject({ _tag: "ConfirmationRequiredError" });
+    expect(requests).toEqual([]);
+
+    await runCommand([...args, "--yes"], layer).pipe(Effect.runPromise);
+    expect(requests).toEqual([{ legacyUsername, email, dryRun: false }]);
+  });
+
+  test("formats legacy administrator backfill counts for operators", async () => {
+    const result = {
+      dryRun: true,
+      administratorRole: "already_granted" as const,
+      cliSessions: { linked: 2, alreadyLinked: 1, linkedToOtherAccount: 3 },
+      manualInvoices: { linked: 4, alreadyLinked: 5, linkedToOtherAccount: 6 },
+      standaloneAccessCodeEvents: {
+        linked: 7,
+        alreadyLinked: 8,
+        linkedToOtherAccount: 9,
+      },
+    };
+    const { layer } = makeCommandLayer({
+      backfillLegacyAdministrator: () => Effect.succeed(result),
+    });
+    const output: string[] = [];
+    const capturedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        output.push(args.join(" "));
+      },
+    } satisfies Console.Console);
+
+    await runCommand(
+      [
+        "administrators",
+        "backfill-legacy",
+        "--legacy-username",
+        "legacy-admin",
+        "--email",
+        testEmailAddress("legacy-admin"),
+        "--dry-run",
+      ],
+      Layer.mergeAll(layer, capturedOutput)
+    ).pipe(Effect.runPromise);
+
+    expect(output).toEqual([
+      "Administrator role: already granted",
+      "CLI sessions: would link 2, already linked 1, linked to another account 3",
+      "Manual invoices: would link 4, already linked 5, linked to another account 6",
+      "Standalone access-code events: would link 7, already linked 8, linked to another account 9",
+    ]);
+  });
+
+  test("propagates CliResourceNotFound from legacy administrator backfill", async () => {
+    const notFound = new CliResourceNotFound({
+      message: "No active account has that email.",
+    });
+    const { layer } = makeCommandLayer({
+      backfillLegacyAdministrator: () => Effect.fail(notFound),
+    });
+
+    const error = await runCommand(
+      [
+        "--json",
+        "administrators",
+        "backfill-legacy",
+        "--legacy-username",
+        "legacy-admin",
+        "--email",
+        testEmailAddress("legacy-admin"),
+        "--dry-run",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(error).toBe(notFound);
+  });
+
   test("clears the local credential after revoking its own session", async () => {
     let clears = 0;
     const { layer } = makeCommandLayer({
@@ -286,7 +866,7 @@ describe("dhw mutation commands", () => {
     const { accessCodeCreations, layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
     });
 
@@ -325,7 +905,7 @@ describe("dhw mutation commands", () => {
     const { accessCodeCreations, layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
     });
 
@@ -363,11 +943,11 @@ describe("dhw mutation commands", () => {
     expect(accessCodeCreations).toHaveLength(0);
   });
 
-  test("generates one valid attempt id per invocation and forwards the decoded request", async () => {
+  test("reserves a fresh valid attempt id after each concluded creation and forwards the decoded request", async () => {
     const { accessCodeCreations, layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: () =>
         Effect.succeed(createdAccessCodeOutcome),
@@ -413,7 +993,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         attemptIds.push(attemptId);
@@ -449,7 +1029,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         attemptIds.push(attemptId);
@@ -491,43 +1071,12 @@ describe("dhw mutation commands", () => {
     expect(attemptIds[1]).toBe(attemptIds[0]);
   });
 
-  test("reserves a fresh attempt id once an access-code creation concludes", async () => {
-    const attemptIds: AdministrationStandaloneAccessCodeAttemptIdType[] = [];
-    const { layer } = makeCommandLayer({
-      authenticatedSession: {
-        ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
-      },
-      createStandaloneAccessCode: (_accessToken, attemptId) => {
-        attemptIds.push(attemptId);
-        return Effect.succeed(createdAccessCodeOutcome);
-      },
-    });
-    const args = [
-      "--json",
-      "access-codes",
-      "create",
-      "Booth A",
-      "--starts-at",
-      "2026-09-10T10:00",
-      "--ends-at",
-      "2026-09-10T12:00",
-      "--yes",
-    ];
-
-    await runCommand(args, layer).pipe(Effect.runPromise);
-    await runCommand(args, layer).pipe(Effect.runPromise);
-
-    expect(attemptIds).toHaveLength(2);
-    expect(attemptIds[1]).not.toBe(attemptIds[0]);
-  });
-
   test("does not reuse a reserved attempt id for a changed access window", async () => {
     const attemptIds: AdministrationStandaloneAccessCodeAttemptIdType[] = [];
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         attemptIds.push(attemptId);
@@ -575,7 +1124,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         attemptIds.push(attemptId);
@@ -608,7 +1157,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         attemptIds.push(attemptId);
@@ -644,7 +1193,7 @@ describe("dhw mutation commands", () => {
     const { accessCodeCreations, layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       stateDirectory: blockedPath,
     });
@@ -674,172 +1223,12 @@ describe("dhw mutation commands", () => {
     }
   });
 
-  test("keeps each unresolved access-code reservation independent of later requests", async () => {
-    const attemptIds: AdministrationStandaloneAccessCodeAttemptIdType[] = [];
-    const { layer } = makeCommandLayer({
-      authenticatedSession: {
-        ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
-      },
-      createStandaloneAccessCode: (_accessToken, attemptId) => {
-        attemptIds.push(attemptId);
-        return Effect.fail(
-          new CliServiceUnavailable({ message: "The response was lost." })
-        );
-      },
-    });
-
-    await runCommand(
-      [
-        "--json",
-        "access-codes",
-        "create",
-        "Booth A",
-        "--starts-at",
-        "2026-09-10T10:00",
-        "--ends-at",
-        "2026-09-10T12:00",
-        "--yes",
-      ],
-      layer
-    ).pipe(Effect.flip, Effect.runPromise);
-    await runCommand(
-      [
-        "--json",
-        "access-codes",
-        "create",
-        "Booth B",
-        "--starts-at",
-        "2026-09-10T14:00",
-        "--ends-at",
-        "2026-09-10T16:00",
-        "--yes",
-      ],
-      layer
-    ).pipe(Effect.flip, Effect.runPromise);
-    await runCommand(
-      [
-        "--json",
-        "access-codes",
-        "create",
-        "Booth A",
-        "--starts-at",
-        "2026-09-10T10:00",
-        "--ends-at",
-        "2026-09-10T12:00",
-        "--yes",
-      ],
-      layer
-    ).pipe(Effect.flip, Effect.runPromise);
-
-    expect(attemptIds).toHaveLength(3);
-    expect(attemptIds[1]).not.toBe(attemptIds[0]);
-    expect(attemptIds[2]).toBe(attemptIds[0]);
-  });
-
-  test("forwards the confirmed cleanup target for access-code recreation", async () => {
-    const { accessCodeCreations, layer } = makeCommandLayer({
-      authenticatedSession: {
-        ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
-      },
-      createStandaloneAccessCode: () =>
-        Effect.succeed(createdAccessCodeOutcome),
-    });
-
-    await runCommand(
-      [
-        "--json",
-        "access-codes",
-        "create",
-        "Booth A",
-        "--starts-at",
-        "2026-09-10T10:00",
-        "--ends-at",
-        "2026-09-10T12:00",
-        "--provider-credential-removed",
-        cleanupTargetAttemptId,
-        "--yes",
-      ],
-      layer
-    ).pipe(Effect.runPromise);
-
-    expect(accessCodeCreations).toHaveLength(1);
-    expect(accessCodeCreations[0]?.providerCredentialRemovedAttemptId).toBe(
-      cleanupTargetAttemptId
-    );
-    expect(accessCodeCreations[0]?.attemptId).not.toBe(cleanupTargetAttemptId);
-    expect("providerCredentialRemoved" in (accessCodeCreations[0] ?? {})).toBe(
-      false
-    );
-  });
-
-  test("requires a valid attempt id for the cleanup confirmation flag", async () => {
-    const { accessCodeCreations, layer } = makeCommandLayer({
-      authenticatedSession: {
-        ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
-      },
-    });
-
-    const parseError = await runCommand(
-      [
-        "--json",
-        "access-codes",
-        "create",
-        "Booth A",
-        "--starts-at",
-        "2026-09-10T10:00",
-        "--ends-at",
-        "2026-09-10T12:00",
-        "--provider-credential-removed",
-        "not-a-uuid",
-        "--yes",
-      ],
-      layer
-    ).pipe(Effect.flip, Effect.runPromise);
-
-    expect(parseError).toBeDefined();
-    expect(accessCodeCreations).toHaveLength(0);
-  });
-
-  test("omits the cleanup confirmation when the operator does not pass it", async () => {
-    const { accessCodeCreations, layer } = makeCommandLayer({
-      authenticatedSession: {
-        ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
-      },
-      createStandaloneAccessCode: () =>
-        Effect.succeed(createdAccessCodeOutcome),
-    });
-
-    await runCommand(
-      [
-        "--json",
-        "access-codes",
-        "create",
-        "Booth A",
-        "--starts-at",
-        "2026-09-10T10:00",
-        "--ends-at",
-        "2026-09-10T12:00",
-        "--yes",
-      ],
-      layer
-    ).pipe(Effect.runPromise);
-
-    expect(accessCodeCreations).toHaveLength(1);
-    expect(
-      accessCodeCreations[0]?.providerCredentialRemovedAttemptId
-    ).toBeUndefined();
-  });
-
   test("reserves a fresh attempt id after required at-lock cleanup", async () => {
     const attemptIds: AdministrationStandaloneAccessCodeAttemptIdType[] = [];
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         attemptIds.push(attemptId);
@@ -878,7 +1267,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (
         _accessToken,
@@ -931,7 +1320,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         calls.push({ attemptId });
@@ -976,7 +1365,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (
         _accessToken,
@@ -1014,23 +1403,6 @@ describe("dhw mutation commands", () => {
     );
   });
 
-  test("formats the one-time PIN disclosure and the PIN-free replay", () => {
-    const created = formatStandaloneAccessCodeOutcome(createdAccessCodeOutcome);
-    expect(created).toContain("7654321");
-    expect(created).toContain("Booth A");
-    expect(created).toContain("2026-09-10T10:00");
-    expect(created).toContain("2026-09-10T12:00");
-    expect(created).toContain("Europe/Prague");
-    expect(created.toLowerCase()).toContain("only once");
-
-    const alreadyCreated = formatStandaloneAccessCodeOutcome(
-      alreadyCreatedAccessCodeOutcome
-    );
-    expect(alreadyCreated).toContain("Booth A");
-    expect(alreadyCreated).toContain("cannot be shown again");
-    expect(alreadyCreated).not.toContain("7654321");
-  });
-
   test("requires confirmation and provider cleanup before reconciling access", async () => {
     const { accessMutations, layer } = makeCommandLayer();
 
@@ -1050,35 +1422,19 @@ describe("dhw mutation commands", () => {
     expect(accessMutations).toHaveLength(0);
   });
 
-  test("dispatches the confirmed reservation access mutations", async () => {
-    const { accessMutations, layer } = makeCommandLayer();
+  test("prints discount groups as the API result in JSON mode", async () => {
+    const discountGroups = Schema.decodeUnknownSync(
+      AdministrationDiscountGroupList
+    )({ discountGroups: [{ id: "group-1", name: "Community" }] });
+    const { layer, output } = makeCommandLayer({
+      listDiscountGroups: () => Effect.succeed(discountGroups),
+    });
 
-    await runCommand(
-      ["--json", "reservations", "retry-access", "reservation-1", "--yes"],
-      layer
-    ).pipe(Effect.runPromise);
-    await runCommand(
-      [
-        "--json",
-        "reservations",
-        "reconcile-access",
-        "reservation-1",
-        "--provider-credential-removed",
-        "--yes",
-      ],
-      layer
-    ).pipe(Effect.runPromise);
+    await runCommand(["--json", "discounts", "groups"], layer).pipe(
+      Effect.runPromise
+    );
 
-    expect(accessMutations).toEqual([
-      ["reservation-1", { kind: "retry-failed" }],
-      [
-        "reservation-1",
-        {
-          kind: "confirm-provider-credential-removed",
-          providerCredentialRemoved: true,
-        },
-      ],
-    ]);
+    expect(JSON.parse(output.join(""))).toEqual(discountGroups.discountGroups);
   });
 
   test("rejects percentages that cannot be represented as whole basis points", async () => {
@@ -1140,100 +1496,31 @@ describe("dhw mutation commands", () => {
     ]);
   });
 
-  test("maps a per-customer code limit", async () => {
+  test("rejects every cowork tier combined with a single tier before making a request", async () => {
     const { layer, mutations } = makeCommandLayer();
 
-    await runCommand(
+    const error = await runCommand(
       [
         "--json",
-        "codes",
+        "discounts",
         "create",
-        "existing",
-        "SUMMER10",
-        "01980000-0000-7000-8000-000000000002",
-        "--max-uses-per-customer",
-        "2",
+        "percentage",
+        "--label-en",
+        "Summer",
+        "--label-cs",
+        "Léto",
+        "--percentage",
+        "10",
+        "--product",
+        "cowork",
+        "--product",
+        "cowork:open-space",
       ],
       layer
-    ).pipe(Effect.runPromise);
+    ).pipe(Effect.flip, Effect.runPromise);
 
-    expect(mutations).toEqual([
-      {
-        kind: "create-code",
-        code: {
-          code: "SUMMER10",
-          enabled: true,
-          maxUses: null,
-          maxUsesPerCustomer: 2,
-          validFrom: null,
-          validUntil: null,
-        },
-        discount: {
-          kind: "existing",
-          discountId: "01980000-0000-7000-8000-000000000002",
-        },
-      },
-    ]);
-  });
-
-  test("maps a service date range and preserves or explicitly clears it on update", async () => {
-    const { layer, mutations } = makeCommandLayer();
-    const discountId = "01980000-0000-7000-8000-000000000002";
-    await runCommand(
-      [
-        "--json",
-        "codes",
-        "create",
-        "existing",
-        "DAY10",
-        discountId,
-        "--service-date-from",
-        "2026-09-21",
-        "--service-date-until",
-        "2026-09-22",
-      ],
-      layer
-    ).pipe(Effect.runPromise);
-    expect(mutations[0]).toMatchObject({
-      code: { serviceDateFrom: "2026-09-21", serviceDateUntil: "2026-09-22" },
-    });
-    const update = [
-      "--json",
-      "codes",
-      "update",
-      "01980000-0000-7000-8000-000000000003",
-      "DAY10",
-      discountId,
-      "--enabled",
-      "true",
-    ];
-    await runCommand(update, layer).pipe(Effect.runPromise);
-    expect(mutations[1]).toMatchObject({ kind: "update-code" });
-    expect(mutations[1]).not.toHaveProperty("code.serviceDateFrom");
-    expect(mutations[1]).not.toHaveProperty("code.serviceDateUntil");
-    await runCommand([...update, "--clear-service-dates"], layer).pipe(
-      Effect.runPromise
-    );
-    expect(mutations[2]).toMatchObject({
-      code: { serviceDateFrom: null, serviceDateUntil: null },
-    });
-    await expect(
-      runCommand(
-        [
-          ...update,
-          "--clear-service-dates",
-          "--service-date-from",
-          "2026-09-21",
-        ],
-        layer
-      ).pipe(Effect.runPromise)
-    ).rejects.toBeDefined();
-    await expect(
-      runCommand([...update, "--service-date-from", "2026-09-21"], layer).pipe(
-        Effect.runPromise
-      )
-    ).rejects.toBeDefined();
-    expect(mutations).toHaveLength(3);
+    expect(error).toMatchObject({ _tag: "InvalidMutationInputError" });
+    expect(mutations).toHaveLength(0);
   });
 
   test("rejects duplicate product flags before making a request", async () => {
@@ -1262,107 +1549,6 @@ describe("dhw mutation commands", () => {
     expect(error).toMatchObject({ _tag: "InvalidMutationInputError" });
     expect(mutations).toHaveLength(0);
   });
-
-  test("creates reusable voucher credit", async () => {
-    const { layer, mutations } = makeCommandLayer();
-
-    await runCommand(
-      [
-        "--json",
-        "vouchers",
-        "create",
-        "VOUCHER100",
-        "--credit-value",
-        "10000",
-        "--currency",
-        "CZK",
-      ],
-      layer
-    ).pipe(Effect.runPromise);
-
-    expect(mutations).toEqual([
-      {
-        kind: "create-voucher",
-        voucher: {
-          code: "VOUCHER100",
-          credit: { value: 10_000, exponent: 2, currency: "CZK" },
-          enabled: true,
-          validFrom: null,
-          validUntil: null,
-        },
-      },
-    ]);
-  });
-
-  test("updates reusable voucher credit and configuration", async () => {
-    const { layer, mutations } = makeCommandLayer();
-
-    await runCommand(
-      [
-        "--json",
-        "vouchers",
-        "update",
-        voucherId,
-        "GIFT150",
-        "--credit-value",
-        "15000",
-        "--currency",
-        "CZK",
-        "--enabled",
-        "false",
-      ],
-      layer
-    ).pipe(Effect.runPromise);
-
-    expect(mutations).toEqual([
-      {
-        kind: "update-voucher",
-        voucher: {
-          id: voucherId,
-          code: "GIFT150",
-          credit: { value: 15_000, exponent: 2, currency: "CZK" },
-          enabled: false,
-          validFrom: null,
-          validUntil: null,
-        },
-      },
-    ]);
-  });
-
-  test("manages a voucher audience and deletion", async () => {
-    const { layer, mutations } = makeCommandLayer();
-
-    await runCommand(
-      ["--json", "vouchers", "add-customer", voucherId, "customer-1", "--yes"],
-      layer
-    ).pipe(Effect.runPromise);
-    await runCommand(
-      [
-        "--json",
-        "vouchers",
-        "remove-customer",
-        voucherId,
-        "customer-1",
-        "--yes",
-      ],
-      layer
-    ).pipe(Effect.runPromise);
-    await runCommand(
-      ["--json", "vouchers", "make-unrestricted", voucherId, "--yes"],
-      layer
-    ).pipe(Effect.runPromise);
-    await runCommand(
-      ["--json", "vouchers", "delete", voucherId, "--yes"],
-      layer
-    ).pipe(Effect.runPromise);
-
-    expect(mutations).toEqual([
-      { kind: "add-voucher-customer", voucherId, customerId: "customer-1" },
-      { kind: "remove-voucher-customer", voucherId, customerId: "customer-1" },
-      { kind: "make-voucher-unrestricted", voucherId },
-      { kind: "delete-voucher", id: voucherId },
-    ]);
-  });
 });
 
 const runCommand = <R>(
@@ -1374,19 +1560,40 @@ const runCommand = <R>(
   );
 
 const makeCommandLayer = ({
+  backfillLegacyAdministrator = () => Effect.die("not used"),
+  backfillReservationProductDetails = () => Effect.die("not used"),
   cancelReservation = () =>
     Effect.succeed({ outcome: "already_cancelled", email: "not_requested" }),
   clear = Effect.succeed(true),
   createInvoice = () => Effect.die("not used"),
   createStandaloneAccessCode = () => Effect.die("not used"),
+  getCustomerReservationActivity = () => Effect.die("not used"),
+  getReservationActivity = () => Effect.die("not used"),
+  getInvoiceCreationDefaults = () => Effect.die("not used"),
+  getOverview = () => Effect.die("not used"),
+  listDiscountGroups = () => Effect.die("not used"),
+  previewInvoice = () => Effect.die("not used"),
+  getReservation = () =>
+    Effect.succeed({
+      accessGrant: { updatedAt: "2026-08-10T10:00:00.000Z" },
+    } as never),
   authenticatedSession = session,
   revokeSession = () => Effect.succeed({ changed: false }),
   stateDirectory = `/tmp/dhw-command-test-${crypto.randomUUID()}`,
 }: {
+  readonly backfillLegacyAdministrator?: WorkspaceAdminApiClient["Service"]["backfillLegacyAdministrator"];
+  readonly backfillReservationProductDetails?: WorkspaceAdminApiClient["Service"]["backfillReservationProductDetails"];
   readonly cancelReservation?: WorkspaceAdminApiClient["Service"]["cancelReservation"];
   readonly clear?: AuthenticationService["Service"]["clear"];
   readonly createInvoice?: WorkspaceAdminApiClient["Service"]["createInvoice"];
   readonly createStandaloneAccessCode?: WorkspaceAdminApiClient["Service"]["createStandaloneAccessCode"];
+  readonly getCustomerReservationActivity?: WorkspaceAdminApiClient["Service"]["getCustomerReservationActivity"];
+  readonly getReservationActivity?: WorkspaceAdminApiClient["Service"]["getReservationActivity"];
+  readonly getInvoiceCreationDefaults?: WorkspaceAdminApiClient["Service"]["getInvoiceCreationDefaults"];
+  readonly getOverview?: WorkspaceAdminApiClient["Service"]["getOverview"];
+  readonly listDiscountGroups?: WorkspaceAdminApiClient["Service"]["listDiscountGroups"];
+  readonly previewInvoice?: WorkspaceAdminApiClient["Service"]["previewInvoice"];
+  readonly getReservation?: WorkspaceAdminApiClient["Service"]["getReservation"];
   readonly authenticatedSession?: CliSessionType;
   readonly revokeSession?: WorkspaceAdminApiClient["Service"]["revokeSession"];
   readonly stateDirectory?: string;
@@ -1399,8 +1606,11 @@ const makeCommandLayer = ({
     readonly input: AdministrationStandaloneAccessCodeCreateInputType;
     readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptIdType;
   }> = [];
+  const output: string[] = [];
   const api = Layer.succeed(WorkspaceAdminApiClient, {
     ...({} as WorkspaceAdminApiClient["Service"]),
+    backfillLegacyAdministrator,
+    backfillReservationProductDetails,
     cancelReservation,
     createInvoice,
     createStandaloneAccessCode: (
@@ -1423,10 +1633,12 @@ const makeCommandLayer = ({
           providerCredentialRemovedAttemptId
         );
       }),
-    getReservation: () =>
-      Effect.succeed({
-        accessGrant: { updatedAt: "2026-08-10T10:00:00.000Z" },
-      } as never),
+    getCustomerReservationActivity,
+    getReservationActivity,
+    getInvoiceCreationDefaults,
+    getOverview,
+    getReservation,
+    listDiscountGroups,
     mutateDiscounts: (_accessToken, _requestId, mutation) =>
       Effect.sync(() => {
         mutations.push(mutation);
@@ -1473,8 +1685,15 @@ const makeCommandLayer = ({
           updatedAt: timestamp,
         };
       }),
+    previewInvoice,
     revokeSession,
   });
+  const console = Layer.succeed(Console.Console, {
+    ...globalThis.console,
+    log: (...args: ReadonlyArray<unknown>) => {
+      output.push(args.join(" "));
+    },
+  } satisfies Console.Console);
   const authentication = Layer.succeed(AuthenticationService, {
     current: Effect.succeed(
       Option.some({
@@ -1500,7 +1719,9 @@ const makeCommandLayer = ({
     layer: Layer.mergeAll(
       api,
       authentication,
+      console,
       AccessCodeAttemptStore.Default
     ).pipe(Layer.provideMerge(config), Layer.provideMerge(BunServices.layer)),
+    output,
   };
 };

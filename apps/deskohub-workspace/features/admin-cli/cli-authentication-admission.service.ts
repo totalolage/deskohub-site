@@ -2,7 +2,7 @@ import { checkRateLimit } from "@vercel/firewall";
 import { Context, Data, Effect, Layer } from "effect";
 import { HttpServerRequest } from "effect/unstable/http";
 
-export const cliAuthenticationStartRateLimitId = "cli-authentication-start";
+const cliAuthenticationStartRateLimitId = "cli-authentication-start";
 
 interface ICliAuthenticationAdmission {
   readonly isStartAllowed: Effect.Effect<
@@ -36,6 +36,6 @@ export class CliAuthenticationAdmission extends Context.Service<
   });
 }
 
-export class CliAuthenticationAdmissionError extends Data.TaggedError(
+class CliAuthenticationAdmissionError extends Data.TaggedError(
   "CliAuthenticationAdmissionError"
 ) {}

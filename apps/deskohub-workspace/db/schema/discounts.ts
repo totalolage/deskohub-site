@@ -3,7 +3,6 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
-  date,
   foreignKey,
   index,
   integer,
@@ -22,13 +21,13 @@ import type {
 } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { Locale } from "@/features/i18n";
-import type { PlainDate } from "@/shared/utils/temporal";
 import { instant } from "../instant";
+import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 
 export type DiscountLabels = Readonly<Record<Locale, string>>;
 
-export const promotionCodeKinds = ["discount", "voucher"] as const;
+export const promotionCodeKinds = ["discount", "voucher", "referral"] as const;
 export type PromotionCodeKind = (typeof promotionCodeKinds)[number];
 
 export const discounts = pgTable(
@@ -103,7 +102,7 @@ export const promotionCodes = pgTable(
       .default(postgresUuidV7)
       .$type<PromotionCodeId>(),
     kind: text("kind").notNull().$type<PromotionCodeKind>(),
-    code: text("code").notNull().$type<CanonicalPromotionCode>(),
+    code: sensitiveText("code").notNull().$type<CanonicalPromotionCode>(),
     enabled: boolean("enabled").notNull(),
     validFrom: instant("valid_from"),
     validUntil: instant("valid_until"),
@@ -123,7 +122,7 @@ export const promotionCodes = pgTable(
     ),
     check(
       "promotion_codes_kind_check",
-      sql`${t.kind} in ('discount', 'voucher')`
+      sql`${t.kind} in ('discount', 'voucher', 'referral')`
     ),
   ]
 );
@@ -155,7 +154,7 @@ export const discountCodes = pgTable(
   "discount_codes",
   {
     id: text("id").primaryKey().default(postgresUuidV7).$type<DiscountCodeId>(),
-    code: text("code").notNull().$type<CanonicalPromotionCode>(),
+    code: sensitiveText("code").notNull().$type<CanonicalPromotionCode>(),
     enabled: boolean("enabled").notNull(),
     validFrom: instant("valid_from"),
     validUntil: instant("valid_until"),
@@ -173,8 +172,6 @@ export const discountCodes = pgTable(
       .references(() => discounts.id),
     maxUses: integer("max_uses"),
     maxUsesPerCustomer: integer("max_uses_per_customer"),
-    serviceDateFrom: date("service_date_from").$type<PlainDate | null>(),
-    serviceDateUntil: date("service_date_until").$type<PlainDate | null>(),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
@@ -197,16 +194,6 @@ export const discountCodes = pgTable(
     check(
       "discount_codes_valid_window_check",
       sql`${t.validFrom} is null or ${t.validUntil} is null or ${t.validUntil} > ${t.validFrom}`
-    ),
-    check(
-      "discount_codes_service_window_check",
-      sql`(
-        ${t.serviceDateFrom} is null and ${t.serviceDateUntil} is null
-      ) or (
-        ${t.serviceDateFrom} is not null
-        and ${t.serviceDateUntil} is not null
-        and ${t.serviceDateUntil} > ${t.serviceDateFrom}
-      )`
     ),
     check(
       "discount_codes_max_uses_check",
@@ -275,18 +262,7 @@ export const vouchers = pgTable(
 );
 
 export type StoredDiscount = typeof discounts.$inferSelect;
-export type NewStoredDiscount = typeof discounts.$inferInsert;
 export type DiscountProductTarget = typeof discountProductTargets.$inferSelect;
-export type NewDiscountProductTarget =
-  typeof discountProductTargets.$inferInsert;
 export type DiscountCode = typeof discountCodes.$inferSelect;
-export type NewDiscountCode = typeof discountCodes.$inferInsert;
-export type DiscountCodeCustomer = typeof discountCodeCustomers.$inferSelect;
-export type NewDiscountCodeCustomer = typeof discountCodeCustomers.$inferInsert;
 export type PromotionCode = typeof promotionCodes.$inferSelect;
-export type NewPromotionCode = typeof promotionCodes.$inferInsert;
-export type PromotionCodeCustomer = typeof promotionCodeCustomers.$inferSelect;
-export type NewPromotionCodeCustomer =
-  typeof promotionCodeCustomers.$inferInsert;
 export type Voucher = typeof vouchers.$inferSelect;
-export type NewVoucher = typeof vouchers.$inferInsert;

@@ -1,14 +1,11 @@
 import { EffectLogger } from "drizzle-orm/effect-postgres";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Result } from "effect";
 import { censorDatabaseQueryParams } from "./censorship";
 
-const stringifyDatabaseQueryParameter = <T>(value: T): string => {
-  try {
-    return JSON.stringify(value) ?? String(value);
-  } catch {
-    return String(value);
-  }
-};
+const stringifyDatabaseQueryParameter = <T>(value: T): string =>
+  Result.try(() => JSON.stringify(value) ?? String(value)).pipe(
+    Result.getOrElse(() => String(value))
+  );
 
 export const DatabaseQueryLoggerLive = Layer.succeed(EffectLogger, {
   logQuery: (query, params) =>

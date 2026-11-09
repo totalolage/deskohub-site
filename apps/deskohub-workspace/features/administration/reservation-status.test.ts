@@ -8,6 +8,7 @@ import {
   canCancelReservation,
   getAdministrationReservationLifecycle,
   getAdministrationReservationStatus,
+  getAdministrationReservationStatusNoteFields,
 } from "./reservation-status";
 
 const status = (
@@ -91,37 +92,117 @@ describe("administration reservation status", () => {
   });
 
   test.each([
-    ["confirmed", "paid", "failed", "Confirmation issue", "attention"],
+    [
+      "confirmed",
+      "paid",
+      "failed",
+      "confirmation_issue",
+      "Confirmation issue",
+      "attention",
+    ],
     [
       "cancellation_failed",
       "failed",
       "not_started",
+      "cancellation_issue",
       "Cancellation issue",
       "attention",
     ],
-    ["confirmed", "paid", "fulfilled", "Complete", "complete"],
-    ["cancelled", "cancelled", "not_started", "Cancelled", "cancelled"],
-    ["cancelling", "paid", "not_started", "Cancelling", "in_progress"],
-    ["hold_expired", "expired", "not_started", "Expired", "cancelled"],
+    ["confirmed", "paid", "fulfilled", "complete", "Complete", "complete"],
+    [
+      "cancelled",
+      "cancelled",
+      "not_started",
+      "cancelled",
+      "Cancelled",
+      "cancelled",
+    ],
+    [
+      "cancelling",
+      "paid",
+      "not_started",
+      "cancelling",
+      "Cancelling",
+      "in_progress",
+    ],
+    [
+      "hold_expired",
+      "expired",
+      "not_started",
+      "expired",
+      "Expired",
+      "cancelled",
+    ],
     [
       "confirmed",
       "paid",
       "awaiting_delivery",
+      "delivering_confirmation",
       "Delivering confirmation",
       "in_progress",
     ],
-    ["confirmed", "paid", "processing", "Confirming", "in_progress"],
-    ["held", "pending", "not_started", "Payment pending", "in_progress"],
-    ["held", "failed", "not_started", "Payment failed", "in_progress"],
-    ["held", "expired", "not_started", "Payment expired", "in_progress"],
-    ["held", "not_started", "not_started", "Awaiting payment", "in_progress"],
-    ["draft", "not_started", "not_started", "Starting", "in_progress"],
-    ["creating_hold", "not_started", "not_started", "Starting", "in_progress"],
+    [
+      "confirmed",
+      "paid",
+      "processing",
+      "confirming",
+      "Confirming",
+      "in_progress",
+    ],
+    [
+      "held",
+      "pending",
+      "not_started",
+      "payment_pending",
+      "Payment pending",
+      "in_progress",
+    ],
+    [
+      "held",
+      "failed",
+      "not_started",
+      "payment_failed",
+      "Payment failed",
+      "in_progress",
+    ],
+    [
+      "held",
+      "expired",
+      "not_started",
+      "payment_expired",
+      "Payment expired",
+      "in_progress",
+    ],
+    [
+      "held",
+      "not_started",
+      "not_started",
+      "awaiting_payment",
+      "Awaiting payment",
+      "in_progress",
+    ],
+    [
+      "draft",
+      "not_started",
+      "not_started",
+      "starting",
+      "Starting",
+      "in_progress",
+    ],
+    [
+      "creating_hold",
+      "not_started",
+      "not_started",
+      "starting",
+      "Starting",
+      "in_progress",
+    ],
   ] as const)(
-    "%s / %s / %s becomes %s",
-    (reservationState, paymentState, fulfillmentState, label, group) => {
+    "%s / %s / %s becomes %s (%s)",
+    (reservationState, paymentState, fulfillmentState, code, label, group) => {
       expect(status(reservationState, paymentState, fulfillmentState)).toEqual({
         group,
+        code,
         label,
       });
     }
@@ -130,10 +211,12 @@ describe("administration reservation status", () => {
   test("keeps cancellation states ahead of fulfillment states", () => {
     expect(status("cancelled", "cancelled", "failed")).toEqual({
       group: "cancelled",
+      code: "cancelled",
       label: "Cancelled",
     });
     expect(status("cancellation_failed", "cancelled", "fulfilled")).toEqual({
       group: "attention",
+      code: "cancellation_issue",
       label: "Cancellation issue",
     });
   });
@@ -146,7 +229,7 @@ describe("administration reservation status", () => {
         paymentState: "expired",
         reservationState: "cancelled",
       })
-    ).toEqual({ group: "cancelled", label: "Abandoned" });
+    ).toEqual({ group: "cancelled", code: "abandoned", label: "Abandoned" });
   });
 
   test("prioritizes a late payment requiring refund in the primary status", () => {
@@ -158,16 +241,33 @@ describe("administration reservation status", () => {
         paymentState: "expired",
         reservationState: "cancelled",
       })
-    ).toEqual({ group: "attention", label: "Refund required" });
+    ).toEqual({
+      group: "attention",
+      code: "refund_required",
+      label: "Refund required",
+    });
+  });
+
+  test("clears the refund requirement once Nexi reports the refund", () => {
+    expect(
+      getAdministrationReservationStatus({
+        failureCode: "payment_abandoned_after_provider_cutoff",
+        fulfillmentState: "not_started",
+        latePayment: true,
+        paymentState: "expired",
+        refunded: true,
+        reservationState: "cancelled",
+      })
+    ).toEqual({ group: "cancelled", code: "refunded", label: "Refunded" });
   });
 
   test.each([
-    ["pending", "Recovering payment"],
-    ["processing", "Recovering payment"],
-    ["review_required", "Recovery review"],
+    ["pending", "recovering_payment", "Recovering payment"],
+    ["processing", "recovering_payment", "Recovering payment"],
+    ["review_required", "recovery_review", "Recovery review"],
   ] as const)(
     "flags %s late-payment recovery",
-    (latePaymentRecovery, label) => {
+    (latePaymentRecovery, code, label) => {
       expect(
         getAdministrationReservationStatus({
           fulfillmentState: "not_started",
@@ -175,7 +275,7 @@ describe("administration reservation status", () => {
           paymentState: "expired",
           reservationState: "cancelled",
         })
-      ).toEqual({ group: "attention", label });
+      ).toEqual({ group: "attention", code, label });
     }
   );
 });
@@ -191,10 +291,12 @@ describe("administration reservation lifecycle", () => {
 
     expect(getAdministrationReservationStatus(input)).toEqual({
       group: "in_progress",
+      code: "awaiting_payment",
       label: "Awaiting payment",
     });
     expect(getAdministrationReservationLifecycle(input)).toEqual({
       currentStage: "cancelled",
+      condition: "cancelled_in_dotypos",
       label: "Cancelled in Dotypos",
       reachedStages: ["started", "held", "cancelled"],
       tone: "attention",
@@ -211,6 +313,7 @@ describe("administration reservation lifecycle", () => {
 
     expect(getAdministrationReservationStatus(input)).toEqual({
       group: "complete",
+      code: "complete",
       label: "Complete",
     });
     expect(getAdministrationReservationLifecycle(input).currentStage).toBe(
@@ -223,7 +326,6 @@ describe("administration reservation lifecycle", () => {
     ["held", "pending", "not_started", "held", "neutral"],
     ["held", "failed", "not_started", "held", "attention"],
     ["confirmed", "paid", "processing", "paid", "neutral"],
-    ["confirmed", "paid", "awaiting_delivery", "paid", "neutral"],
     ["confirmed", "paid", "failed", "paid", "attention"],
     ["confirmed", "paid", "fulfilled", "complete", "positive"],
     ["cancelling", "cancelled", "not_started", "cancelling", "neutral"],
@@ -258,6 +360,7 @@ describe("administration reservation lifecycle", () => {
       })
     ).toEqual({
       currentStage: "paid",
+      condition: "being_confirmed",
       label: "Being confirmed",
       reachedStages: ["started", "held", "paid"],
       tone: "neutral",
@@ -273,6 +376,7 @@ describe("administration reservation lifecycle", () => {
       })
     ).toEqual({
       currentStage: "held",
+      condition: "payment_expired",
       label: "Payment expired",
       reachedStages: ["started", "held"],
       tone: "attention",
@@ -289,6 +393,7 @@ describe("administration reservation lifecycle", () => {
       })
     ).toEqual({
       currentStage: "held",
+      condition: "payment_needs_review",
       label: "Payment needs review",
       reachedStages: ["started", "held"],
       tone: "attention",
@@ -305,6 +410,7 @@ describe("administration reservation lifecycle", () => {
       })
     ).toMatchObject({
       currentStage: "cancelled",
+      condition: "payment_abandoned",
       label: "Payment abandoned; hold released",
       tone: "neutral",
     });
@@ -321,8 +427,27 @@ describe("administration reservation lifecycle", () => {
       })
     ).toMatchObject({
       currentStage: "cancelled",
+      condition: "late_payment_refund_required",
       label: "Late payment — refund required",
       tone: "attention",
+    });
+  });
+
+  test("settles a refunded late payment as a neutral cancellation", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        latePayment: true,
+        paymentState: "expired",
+        refunded: true,
+        reservationState: "cancelled",
+      })
+    ).toEqual({
+      currentStage: "cancelled",
+      condition: "late_payment_refunded",
+      label: "Late payment refunded",
+      reachedStages: ["started", "held", "cancelled"],
+      tone: "neutral",
     });
   });
 
@@ -335,8 +460,40 @@ describe("administration reservation lifecycle", () => {
         reservationState: "cancelled",
       })
     ).toMatchObject({
+      condition: "late_payment_recovery_in_progress",
       label: "Late payment recovery in progress",
       tone: "attention",
+    });
+  });
+
+  test("keeps a late payment awaiting recovery review cancelled for attention", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        latePaymentRecovery: "review_required",
+        paymentState: "paid",
+        reservationState: "held",
+      })
+    ).toMatchObject({
+      currentStage: "cancelled",
+      condition: "late_payment_recovery_review",
+      reachedStages: ["started", "held", "cancelled"],
+      tone: "attention",
+    });
+  });
+
+  test("keeps queued late-payment recovery on a live hold at the held stage", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        latePaymentRecovery: "pending",
+        paymentState: "paid",
+        reservationState: "held",
+      })
+    ).toMatchObject({
+      currentStage: "held",
+      condition: "late_payment_recovery_in_progress",
+      reachedStages: ["started", "held"],
     });
   });
 
@@ -350,6 +507,7 @@ describe("administration reservation lifecycle", () => {
       })
     ).toEqual({
       currentStage: "held",
+      condition: "awaiting_payment",
       label: "Awaiting payment",
       reachedStages: ["started", "held"],
       tone: "neutral",
@@ -372,4 +530,23 @@ describe("administration reservation lifecycle", () => {
       expect(lifecycle.reachedStages).not.toContain("cancelled");
     }
   );
+});
+
+describe("administration reservation status note fields", () => {
+  test("pairs a note code with the label the API shows", () => {
+    const fields = getAdministrationReservationStatusNoteFields("needs_refund");
+
+    expect(fields.statusNoteCode).toBe("needs_refund");
+    expect(fields.statusNote).toEqual(expect.any(String));
+    expect(fields.statusNote).not.toBe(
+      getAdministrationReservationStatusNoteFields("refunded").statusNote
+    );
+  });
+
+  test("leaves both fields empty without a note", () => {
+    expect(getAdministrationReservationStatusNoteFields(null)).toEqual({
+      statusNote: null,
+      statusNoteCode: null,
+    });
+  });
 });

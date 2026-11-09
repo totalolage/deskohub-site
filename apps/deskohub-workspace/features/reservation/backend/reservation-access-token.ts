@@ -1,4 +1,3 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { Data, Effect, Schema } from "effect";
 import { env } from "@/env";
 import { type Locale, locales } from "@/features/i18n";
@@ -10,6 +9,7 @@ import {
   type ReservationAccessToken,
   reservationAccessTokenSchema,
 } from "@/features/reservation/reservation-access-token";
+import { makeSignedClaims } from "@/shared/backend/signed-claims";
 
 const reservationAccessTokenPurpose = "reservation-access";
 const reservationAccessTokenClaimsSchema = Schema.Struct({
@@ -21,6 +21,11 @@ const reservationAccessTokenClaimsSchema = Schema.Struct({
 
 type ReservationAccessTokenClaims =
   typeof reservationAccessTokenClaimsSchema.Type;
+
+const reservationAccessTokenClaims = makeSignedClaims({
+  purpose: reservationAccessTokenPurpose,
+  schema: reservationAccessTokenClaimsSchema,
+});
 
 export class ReservationAccessTokenError extends Data.TaggedError(
   "ReservationAccessTokenError"
@@ -67,11 +72,6 @@ export const getReservationAccessTokenSecret = Effect.fn(
   return secret;
 });
 
-const signClaims = (encodedClaims: string, key: Buffer) =>
-  createHmac("sha256", key)
-    .update(`${reservationAccessTokenPurpose}.${encodedClaims}`)
-    .digest();
-
 export const createReservationAccessToken = Effect.fn(
   "reservationAccessToken.create"
 )(function* (
@@ -82,24 +82,23 @@ export const createReservationAccessToken = Effect.fn(
   options: ReservationAccessTokenOptions = {}
 ) {
   const secret = yield* getReservationAccessTokenSecret(options);
-  const claims = yield* Schema.decodeUnknownEffect(
-    reservationAccessTokenClaimsSchema
-  )({
-    purpose: reservationAccessTokenPurpose,
-    orderId: input.orderId,
-    locale: input.locale,
-    issuedAtEpochMilliseconds: options.now?.() ?? Date.now(),
-  }).pipe(
-    Effect.mapError((cause) =>
-      invalidToken("Reservation access token claims are invalid.", cause)
+  const token = yield* reservationAccessTokenClaims
+    .sign(
+      {
+        purpose: reservationAccessTokenPurpose,
+        orderId: input.orderId,
+        locale: input.locale,
+        issuedAtEpochMilliseconds: options.now?.() ?? Date.now(),
+      },
+      [secret]
     )
-  );
-  const encodedClaims = Buffer.from(JSON.stringify(claims)).toString(
-    "base64url"
-  );
-  const signature = signClaims(encodedClaims, secret).toString("base64url");
+    .pipe(
+      Effect.mapError((cause) =>
+        invalidToken("Reservation access token claims are invalid.", cause)
+      )
+    );
 
-  return reservationAccessTokenSchema.make(`${encodedClaims}.${signature}`);
+  return reservationAccessTokenSchema.make(token);
 });
 
 export const openReservationAccessToken = Effect.fn(
@@ -112,44 +111,18 @@ export const openReservationAccessToken = Effect.fn(
   },
   options: ReservationAccessTokenOptions = {}
 ) {
-  const parts = input.token.split(".");
-  const [encodedClaims, encodedSignature] = parts;
-  if (parts.length !== 2 || !encodedClaims || !encodedSignature) {
-    return yield* invalidToken("Reservation access token is invalid.");
-  }
-
-  const claims = yield* Effect.try({
-    try: () =>
-      JSON.parse(
-        Buffer.from(encodedClaims, "base64url").toString("utf8")
-      ) as unknown,
-    catch: (cause) =>
-      invalidToken("Reservation access token is invalid.", cause),
-  }).pipe(
-    Effect.flatMap(
-      Schema.decodeUnknownEffect(reservationAccessTokenClaimsSchema, {
-        onExcessProperty: "error",
-      })
-    ),
-    Effect.mapError((cause) =>
-      cause instanceof ReservationAccessTokenError
-        ? cause
-        : invalidToken("Reservation access token is invalid.", cause)
+  const claims = yield* reservationAccessTokenClaims
+    .open(
+      input.token,
+      getReservationAccessTokenSecret(options).pipe(
+        Effect.map((secret) => [secret] as const)
+      )
     )
-  );
-  const secret = yield* getReservationAccessTokenSecret(options);
-  const providedSignature = yield* Effect.try({
-    try: () => Buffer.from(encodedSignature, "base64url"),
-    catch: (cause) =>
-      invalidToken("Reservation access token is invalid.", cause),
-  });
-  const expectedSignature = signClaims(encodedClaims, secret);
-  if (
-    providedSignature.length !== expectedSignature.length ||
-    !timingSafeEqual(providedSignature, expectedSignature)
-  ) {
-    return yield* invalidToken("Reservation access token is invalid.");
-  }
+    .pipe(
+      Effect.catchTag("SignedClaimsError", (cause) =>
+        Effect.fail(invalidToken("Reservation access token is invalid.", cause))
+      )
+    );
 
   if (claims.orderId !== input.orderId || claims.locale !== input.locale) {
     return yield* invalidToken(

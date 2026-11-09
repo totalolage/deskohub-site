@@ -1,11 +1,9 @@
 import { Data, Effect, Match, Option, Schema } from "effect";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { Money } from "@/shared/money/money";
 import {
-  plainDateStringSchema,
   TemporalInstantSchema,
   temporalInstantToIsoString,
 } from "@/shared/utils";
-import type { PlainDate } from "@/shared/utils/temporal";
 import { canonicalPromotionCodeSchema, type Discount } from "./contracts";
 import { PromotionCodeUnavailableError } from "./errors";
 import {
@@ -32,21 +30,19 @@ export type DiscountCodeConfiguration = PromotionConfiguration & {
   readonly discountId: StoredDiscountId;
   readonly maxUses: number | null;
   readonly maxUsesPerCustomer: number | null;
-  readonly serviceDateFrom: PlainDate | null;
-  readonly serviceDateUntil: PlainDate | null;
 };
 
 export type VoucherConfiguration = PromotionConfiguration & {
   readonly kind: "voucher";
   readonly id: VoucherId;
-  readonly amount: WorkspaceMoney;
+  readonly amount: Money;
 };
 
 export type SubmittedPromotionConfiguration =
   | DiscountCodeConfiguration
   | VoucherConfiguration;
 
-export type PromotionAudienceAvailability = {
+type PromotionAudienceAvailability = {
   readonly allowlistSize: number;
   readonly customerAllowed: boolean;
 };
@@ -130,8 +126,6 @@ export type PromotionConfigurationRow = {
   readonly discountId: StoredDiscountId | null;
   readonly maxUses: number | null;
   readonly maxUsesPerCustomer: number | null;
-  readonly serviceDateFrom: string | null;
-  readonly serviceDateUntil: string | null;
   readonly voucherId: VoucherId | null;
   readonly issuedAmountValue: number | null;
   readonly issuedAmountExponent: number | null;
@@ -159,8 +153,6 @@ export const decodePromotionConfiguration = Effect.fn(
               validUntil: discount.validUntil,
               maxUses: discount.maxUses,
               maxUsesPerCustomer: discount.maxUsesPerCustomer,
-              serviceDateFrom: discount.serviceDateFrom,
-              serviceDateUntil: discount.serviceDateUntil,
             }),
             voucher: (voucher): VoucherConfiguration => ({
               kind: "voucher",
@@ -207,8 +199,6 @@ const promotionConfigurationSchema = Schema.Union([
     maxUsesPerCustomer: Schema.NullOr(
       Schema.Int.check(Schema.isGreaterThan(0))
     ),
-    serviceDateFrom: Schema.NullOr(plainDateStringSchema),
-    serviceDateUntil: Schema.NullOr(plainDateStringSchema),
     voucherId: Schema.Null,
     issuedAmountValue: Schema.Null,
     issuedAmountExponent: Schema.Null,
@@ -221,46 +211,22 @@ const promotionConfigurationSchema = Schema.Union([
     discountId: Schema.Null,
     maxUses: Schema.Null,
     maxUsesPerCustomer: Schema.Null,
-    serviceDateFrom: Schema.Null,
-    serviceDateUntil: Schema.Null,
     voucherId: voucherIdSchema,
     issuedAmountValue: Schema.Int.check(Schema.isGreaterThan(0)),
     issuedAmountExponent: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
     issuedAmountCurrency: Schema.String.check(Schema.isPattern(/^[A-Z]{3}$/)),
   }),
-])
-  .check(
-    Schema.makeFilter((configuration) => {
-      if (configuration.kind === "voucher") return true;
-      const { serviceDateFrom, serviceDateUntil } = configuration;
-      if (serviceDateFrom === null || serviceDateUntil === null) {
-        return (
-          (serviceDateFrom === null && serviceDateUntil === null) || {
-            path: ["serviceDateUntil"],
-            issue:
-              "service dates must be stored as a pair with the end after the start",
-          }
-        );
+]).check(
+  Schema.makeFilter(
+    ({ validFrom, validUntil }) =>
+      validFrom === null ||
+      validUntil === null ||
+      Temporal.Instant.compare(validUntil, validFrom) > 0 || {
+        path: ["validUntil"],
+        issue: "validUntil must be later than validFrom",
       }
-      return (
-        serviceDateFrom < serviceDateUntil || {
-          path: ["serviceDateUntil"],
-          issue: "serviceDateUntil must be later than serviceDateFrom",
-        }
-      );
-    })
   )
-  .check(
-    Schema.makeFilter(
-      ({ validFrom, validUntil }) =>
-        validFrom === null ||
-        validUntil === null ||
-        Temporal.Instant.compare(validUntil, validFrom) > 0 || {
-          path: ["validUntil"],
-          issue: "validUntil must be later than validFrom",
-        }
-    )
-  );
+);
 
 const generatedDiscountCodeAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 

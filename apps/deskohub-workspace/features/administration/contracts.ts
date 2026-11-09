@@ -4,7 +4,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Schema } from "effect";
 
-export const reservationCancellationSchema = Schema.Struct({
+const reservationCancellationSchema = Schema.Struct({
   reservationId: AdministrationWorkspaceReservationId,
   ...AdministrationReservationCancellationInput.fields,
 });
@@ -16,7 +16,7 @@ export const reservationCancellationStandardSchema = Schema.toStandardSchemaV1(
 export type ReservationCancellationInput =
   typeof reservationCancellationSchema.Type;
 
-export const reservationLookupSchema = Schema.Struct({
+const reservationLookupSchema = Schema.Struct({
   identifier: Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(256)),
 });
 

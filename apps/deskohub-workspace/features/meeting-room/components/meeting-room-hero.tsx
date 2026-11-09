@@ -1,13 +1,13 @@
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { ArrowDown, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import type { VenuePhoto } from "@/features/gallery/types/venue-photo";
 import { type Locale, m } from "@/features/i18n";
 import { getMeetingRoomReservationPath } from "@/features/reservation/routes";
 import { Button } from "@/shared/components/ui/button";
 
 type MeetingRoomHeroProps = {
-  image?: CloudinaryAsset;
+  image?: VenuePhoto;
   locale: Locale;
 };
 
@@ -52,26 +52,36 @@ export function MeetingRoomHero({ image, locale }: MeetingRoomHeroProps) {
           <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
             <Button
               asChild
-              className="group h-16 justify-between rounded-2xl bg-chilean-fire px-7 text-xs text-navy-blue uppercase tracking-[0.09em] hover:bg-chilean-fire/90 sm:min-w-[17rem]"
+              tone="chilean-fire"
+              size="2xl"
+              shape="rounded"
+              caps
+              className="group sm:min-w-[17rem]"
             >
               <Link href={getMeetingRoomReservationPath(locale)}>
                 {m.meetingRoomReservationCta({}, { locale })}
                 <ArrowUpRight
                   aria-hidden="true"
-                  className="size-5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                  className="ml-auto size-5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
                 />
               </Link>
             </Button>
-            <a
-              className="inline-flex h-14 items-center justify-center gap-3 px-4 text-xs font-semibold uppercase tracking-[0.09em] text-white/82 transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-burned-orange"
-              href="#meeting-room-gallery"
+            <Button
+              asChild
+              variant="ghost"
+              tone="inverse"
+              size="2xl"
+              shape="rounded"
+              caps
             >
-              {m.meetingRoomGalleryCta({}, { locale })}
-              <ArrowDown
-                aria-hidden="true"
-                className="size-4 text-burned-orange"
-              />
-            </a>
+              <a href="#meeting-room-gallery">
+                {m.meetingRoomGalleryCta({}, { locale })}
+                <ArrowDown
+                  aria-hidden="true"
+                  className="size-4 text-burned-orange"
+                />
+              </a>
+            </Button>
           </div>
 
           <ul
@@ -104,12 +114,12 @@ export function MeetingRoomHero({ image, locale }: MeetingRoomHeroProps) {
             <div className="relative aspect-[9/10] overflow-hidden rounded-t-[15.625rem] rounded-b-[1.625rem] border border-white/25 bg-white/6">
               {image ? (
                 <CloudinaryImage
-                  alt={m.meetingRoomHeroImageAlt({}, { locale })}
+                  alt={image.alt}
                   className="absolute inset-0 size-full object-cover brightness-[0.74] contrast-[1.08] saturate-[0.76]"
                   preload
                   sizes="(min-width: 1024px) 46vw, (min-width: 640px) 75vw, 92vw"
                   size={{ width: "fill", height: "fill" }}
-                  source={image}
+                  source={image.publicId}
                   variant="gallery"
                 />
               ) : (

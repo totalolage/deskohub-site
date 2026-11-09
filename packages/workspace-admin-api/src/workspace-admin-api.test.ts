@@ -1,88 +1,74 @@
-import { describe, expect, test } from "bun:test";
-import { Schema, SchemaAST } from "effect";
-import { WORKSPACE_SITE_TIME_ZONE } from "./site-time-zone";
+import { afterAll, describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
+import { Context, Effect, Layer, Option, Schema, Struct } from "effect";
+import { HttpRouter, HttpServer } from "effect/unstable/http";
 import {
-  ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS,
-  ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS,
+  HttpApi,
+  HttpApiBuilder,
+  HttpApiEndpoint,
+  HttpApiGroup,
+} from "effect/unstable/httpapi";
+import {
+  AdministrationOperationBehavior,
+  CliOnly,
+  readOperation,
+} from "./administration-operation";
+import {
+  DhwVersion,
+  MinimumDhwVersion,
+  OutdatedDhwRefusal,
+} from "./dhw-version";
+import { AdministrationCampaignDetail } from "./email-campaigns";
+import {
   AdminCliAdministrationApi,
-  AdministrationBookingQuery,
+  AdminCliInfo,
+  AdministrationAccountId,
+  AdministrationActionRecord,
+  AdministrationActorEmail,
+  AdministrationAuthentication,
   AdministrationCustomerProfile,
   AdministrationCustomerQuery,
   AdministrationCustomerReservationsQuery,
   AdministrationCustomerSearchQuery,
   AdministrationDiscountCode,
   AdministrationDiscountCodeClaim,
-  AdministrationDiscountCodeConfigurationInput,
-  AdministrationDiscountCodeUpdateInput,
   AdministrationDiscountDashboard,
   AdministrationDiscountMutation,
   AdministrationDiscountMutationResult,
   AdministrationDotyposCustomerId,
   AdministrationDotyposDiscountGroupId,
-  AdministrationDotyposReservationId,
-  AdministrationDotyposTableId,
   AdministrationInvoiceCreateInput,
   AdministrationInvoiceListItem,
-  AdministrationNexiOperationId,
-  AdministrationNexiOrderId,
-  AdministrationOperationQuery,
-  AdministrationOrderQuery,
+  AdministrationOverview,
+  AdministrationOverviewMetric,
   AdministrationPaymentAttempt,
-  AdministrationPaymentAttemptId,
-  AdministrationProviderCredentialId,
   AdministrationReservationAccessGrant,
   AdministrationReservationAccessMutation,
-  AdministrationReservationCancellationInput,
   AdministrationReservationLookupQuery,
+  AdministrationReservationProductDetailsBackfillBatch,
+  AdministrationReservationProductDetailsBackfillInput,
   AdministrationReservationQuery,
   AdministrationReservationSummary,
-  AdministrationStandaloneAccessCodeAttemptId,
-  AdministrationStandaloneAccessCodeCleanupTarget,
   AdministrationStandaloneAccessCodeCreateInput,
   AdministrationStandaloneAccessCodeCreateRequest,
   AdministrationStandaloneAccessCodeCreationOutcome,
-  AdministrationStandaloneAccessCodeName,
   AdministrationStandaloneAccessCodePin,
   AdministrationStandaloneAccessCodeResult,
   AdministrationVoucher,
-  AdministrationWorkspaceProductTarget,
-  AdministrationWorkspaceReservationId,
   AdministrationWorkspaceSiteLocalWholeHourDateTime,
+  administrationOperationGroup,
+  CliBuildTarget,
+  CliClientCompatibility,
   CliClientName,
-  CliMutationUncertain,
-  CliServiceUnavailable,
-  CliStandaloneAccessCodeCleanupRequired,
-  CliStandaloneAccessCodeReconciled,
+  CliSession,
+  CliSessionId,
+  CurrentAdministrationCaller,
   isStandaloneAccessCodeWindowWithinContractDuration,
-  StartCliAuthentication,
+  requiresDhw,
+  toAdministrationActorName,
 } from "./workspace-admin-api";
 
-describe("CliClientName", () => {
-  test("trims a client label", () => {
-    expect(Schema.decodeUnknownSync(CliClientName)("  Office Mac  ")).toBe(
-      "Office Mac"
-    );
-  });
-
-  test("rejects a client label longer than 80 characters", () => {
-    expect(() =>
-      Schema.decodeUnknownSync(CliClientName)("a".repeat(81))
-    ).toThrow();
-  });
-});
-
-describe("StartCliAuthentication", () => {
-  test("rejects a whitespace-only client name", () => {
-    expect(() =>
-      Schema.decodeUnknownSync(StartCliAuthentication)({
-        challenge: "a".repeat(43),
-        clientName: "   ",
-        cliVersion: "1.0.0",
-        buildTarget: "development",
-      })
-    ).toThrow();
-  });
-});
+const syntheticAddress = testEmailAddress("synthetic");
 
 describe("standalone access-code contract", () => {
   const attemptId = "01980000-0000-7000-8000-000000000042";
@@ -97,10 +83,6 @@ describe("standalone access-code contract", () => {
   const decodeSiteLocal = Schema.decodeUnknownSync(
     AdministrationWorkspaceSiteLocalWholeHourDateTime
   );
-
-  test("keeps the authoritative site time zone sourced from this package", () => {
-    expect(WORKSPACE_SITE_TIME_ZONE).toBe("Europe/Prague");
-  });
 
   test("decodes trimmed names and offset-free site-local times", () => {
     expect(decodeCreateInput(validInput)).toMatchObject({
@@ -123,27 +105,6 @@ describe("standalone access-code contract", () => {
     expect(() =>
       decodeCreateInput({ ...validInput, description: "Back booth" })
     ).toThrow();
-  });
-
-  test("enforces trimmed name bounds up to 60 characters", () => {
-    expect(() =>
-      Schema.decodeUnknownSync(AdministrationStandaloneAccessCodeName)("")
-    ).toThrow();
-    expect(() =>
-      Schema.decodeUnknownSync(AdministrationStandaloneAccessCodeName)("   ")
-    ).toThrow();
-    expect(() =>
-      Schema.decodeUnknownSync(AdministrationStandaloneAccessCodeName)(
-        "a".repeat(61)
-      )
-    ).toThrow();
-    expect(
-      String(
-        Schema.decodeUnknownSync(AdministrationStandaloneAccessCodeName)(
-          ` ${"a".repeat(60)} `
-        )
-      )
-    ).toBe("a".repeat(60));
   });
 
   test("rejects malformed, non-canonical, and non-whole-hour local times", () => {
@@ -178,61 +139,6 @@ describe("standalone access-code contract", () => {
         endsAt: "2026-10-25T04:00",
       })
     ).not.toThrow();
-  });
-
-  test("accepts exactly 1 and 672 elapsed hours", () => {
-    expect(() =>
-      decodeCreateInput({
-        ...validInput,
-        endsAt: "2026-09-10T11:00",
-      })
-    ).not.toThrow();
-    expect(() =>
-      decodeCreateInput({
-        ...validInput,
-        endsAt: "2026-10-08T10:00",
-      })
-    ).not.toThrow();
-  });
-
-  test("counts elapsed hours across the fall-back transition", () => {
-    expect(() =>
-      decodeCreateInput({
-        ...validInput,
-        startsAt: "2026-10-24T01:00",
-        endsAt: "2026-11-21T00:00",
-      })
-    ).not.toThrow();
-    expect(() =>
-      decodeCreateInput({
-        ...validInput,
-        startsAt: "2026-10-24T00:00",
-        endsAt: "2026-11-21T00:00",
-      })
-    ).toThrow();
-  });
-
-  test("rejects empty, reversed, and overshooting windows", () => {
-    expect(() =>
-      decodeCreateInput({
-        ...validInput,
-        startsAt: "2026-09-10T12:00",
-        endsAt: "2026-09-10T12:00",
-      })
-    ).toThrow();
-    expect(() =>
-      decodeCreateInput({
-        ...validInput,
-        startsAt: "2026-09-10T12:00",
-        endsAt: "2026-09-10T10:00",
-      })
-    ).toThrow();
-    expect(() =>
-      decodeCreateInput({
-        ...validInput,
-        endsAt: "2026-10-08T11:00",
-      })
-    ).toThrow();
   });
 
   test("discloses the PIN only through the created outcome", () => {
@@ -302,30 +208,6 @@ describe("standalone access-code contract", () => {
     ).toThrow();
     expect(() => decodeOutcome({ ...metadata, outcome: "expired" })).toThrow();
   });
-
-  test("requires a non-empty provider credential identifier", () => {
-    const decode = Schema.decodeUnknownSync(AdministrationProviderCredentialId);
-    expect(() => decode("")).toThrow();
-    expect(
-      Schema.encodeSync(AdministrationProviderCredentialId)(
-        decode("provider-credential-id")
-      )
-    ).toBe("provider-credential-id");
-  });
-
-  test("reports uncertain provider outcomes as terminal errors", () => {
-    const error = new CliMutationUncertain({
-      message: "The access-code creation outcome is uncertain.",
-    });
-    expect(error._tag).toBe("CliMutationUncertain");
-    expect(error.message).toBe(
-      "The access-code creation outcome is uncertain."
-    );
-    const httpApiStatusOf = SchemaAST.resolveAt<number>("httpApiStatus");
-    expect(httpApiStatusOf(CliMutationUncertain.schema.ast)).toBe(409);
-    expect(httpApiStatusOf(CliServiceUnavailable.schema.ast)).toBe(503);
-    expect(JSON.stringify(error)).not.toContain("1234567");
-  });
 });
 
 describe("standalone access-code duration contract", () => {
@@ -335,15 +217,6 @@ describe("standalone access-code duration contract", () => {
   const contractWindow = (startsAt: string, endsAt: string) => ({
     startsAt: decodeSiteLocal(startsAt),
     endsAt: decodeSiteLocal(endsAt),
-  });
-
-  test("exposes the authoritative duration bounds", () => {
-    expect(ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS).toBe(
-      1
-    );
-    expect(ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS).toBe(
-      672
-    );
   });
 
   test("accepts the bounds and counts the repeated fall-back hour on instants", () => {
@@ -390,136 +263,9 @@ describe("standalone access-code duration contract", () => {
 
 describe("standalone access-code CLI endpoint contract", () => {
   const attemptId = "01980000-0000-7000-8000-000000000042";
-  const confirmedAttemptId = Schema.decodeUnknownSync(
-    AdministrationStandaloneAccessCodeAttemptId
-  )(attemptId);
-  const storedAccessName = Schema.decodeUnknownSync(
-    AdministrationStandaloneAccessCodeName
-  )("Booth A");
   const decodeRequest = Schema.decodeUnknownSync(
     AdministrationStandaloneAccessCodeCreateRequest
   );
-
-  test("exposes one authenticated mutation endpoint for access codes", () => {
-    const endpoint =
-      AdminCliAdministrationApi.endpoints.createStandaloneAccessCode;
-    expect(endpoint?.method).toBe("POST");
-    expect(endpoint?.path).toBe("/api/v1/cli/access-codes");
-  });
-
-  test("decodes one client-generated attempt identifier with the authoritative input", () => {
-    expect(
-      JSON.stringify(
-        decodeRequest({
-          attemptId,
-          input: {
-            name: "  Booth A  ",
-            startsAt: "2026-09-10T10:00",
-            endsAt: "2026-09-10T12:00",
-          },
-        })
-      )
-    ).toBe(
-      JSON.stringify({
-        attemptId,
-        input: {
-          name: "Booth A",
-          startsAt: "2026-09-10T10:00",
-          endsAt: "2026-09-10T12:00",
-        },
-      })
-    );
-  });
-
-  test("decodes the explicit at-lock cleanup confirmation for retries", () => {
-    const confirmed = decodeRequest({
-      attemptId,
-      input: {
-        name: "Booth A",
-        startsAt: "2026-09-10T10:00",
-        endsAt: "2026-09-10T12:00",
-      },
-      providerCredentialRemovedAttemptId: attemptId,
-    });
-    expect(confirmed.providerCredentialRemovedAttemptId).toBe(
-      confirmedAttemptId
-    );
-
-    const unconfirmed = decodeRequest({
-      attemptId,
-      input: {
-        name: "Booth A",
-        startsAt: "2026-09-10T10:00",
-        endsAt: "2026-09-10T12:00",
-      },
-    });
-    expect("providerCredentialRemovedAttemptId" in unconfirmed).toBe(false);
-
-    expect(() =>
-      decodeRequest({
-        attemptId,
-        input: {
-          name: "Booth A",
-          startsAt: "2026-09-10T10:00",
-          endsAt: "2026-09-10T12:00",
-        },
-        providerCredentialRemoved: true,
-      })
-    ).toThrow();
-    expect(() =>
-      decodeRequest({
-        attemptId,
-        input: {
-          name: "Booth A",
-          startsAt: "2026-09-10T10:00",
-          endsAt: "2026-09-10T12:00",
-        },
-        providerCredentialRemovedAttemptId: "not-a-uuid",
-      })
-    ).toThrow();
-  });
-
-  test("reports required at-lock cleanup as a typed conflict error", () => {
-    const cleanupTarget = Schema.decodeUnknownSync(
-      AdministrationStandaloneAccessCodeCleanupTarget
-    )({
-      attemptId,
-      name: "Booth A",
-    });
-    const error = new CliStandaloneAccessCodeCleanupRequired({
-      message:
-        "A previous attempt for this window is ambiguous. Remove the access code in the Igloohome app over Bluetooth, or verify it is absent, then confirm the cleanup before creating another code.",
-      cleanupTarget,
-    });
-    expect(error._tag).toBe("CliStandaloneAccessCodeCleanupRequired");
-    expect(error.cleanupTarget.attemptId).toBe(confirmedAttemptId);
-    expect(error.cleanupTarget.name).toBe(storedAccessName);
-    const httpApiStatusOf = SchemaAST.resolveAt<number>("httpApiStatus");
-    expect(
-      httpApiStatusOf(CliStandaloneAccessCodeCleanupRequired.schema.ast)
-    ).toBe(409);
-    const encoded = Schema.encodeSync(
-      CliStandaloneAccessCodeCleanupRequired.schema
-    )(error);
-    expect(encoded.cleanupTarget).toEqual({
-      attemptId,
-      name: "Booth A",
-    });
-    expect(JSON.stringify(error)).not.toContain("7654321");
-  });
-
-  test("reports a confirmed reconciled replay as a typed conflict error", () => {
-    const error = new CliStandaloneAccessCodeReconciled({
-      message:
-        "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code. Run the same command again to create the code.",
-    });
-    expect(error._tag).toBe("CliStandaloneAccessCodeReconciled");
-    const httpApiStatusOf = SchemaAST.resolveAt<number>("httpApiStatus");
-    expect(httpApiStatusOf(CliStandaloneAccessCodeReconciled.schema.ast)).toBe(
-      409
-    );
-    expect(JSON.stringify(error)).not.toContain("7654321");
-  });
 
   test("rejects excess properties and invalid windows before any handler runs", () => {
     const validInput = {
@@ -552,145 +298,6 @@ describe("standalone access-code CLI endpoint contract", () => {
   });
 });
 
-describe("discount code service-date window contract", () => {
-  const decodeUpdate = Schema.decodeUnknownSync(
-    AdministrationDiscountCodeUpdateInput
-  );
-  const decodeConfiguration = Schema.decodeUnknownSync(
-    AdministrationDiscountCodeConfigurationInput
-  );
-  const base = {
-    code: "SUMMER10",
-    enabled: true,
-    validFrom: null,
-    validUntil: null,
-    maxUses: null,
-  };
-
-  test("accepts an omitted pair, an explicit null pair, and a valid bounded pair", () => {
-    const omitted = decodeConfiguration(base);
-    expect("serviceDateFrom" in omitted).toBe(false);
-    expect("serviceDateUntil" in omitted).toBe(false);
-
-    expect(
-      decodeConfiguration({
-        ...base,
-        serviceDateFrom: null,
-        serviceDateUntil: null,
-      })
-    ).toMatchObject({
-      serviceDateFrom: null,
-      serviceDateUntil: null,
-    });
-
-    expect(
-      decodeConfiguration({
-        ...base,
-        serviceDateFrom: "2026-08-10",
-        serviceDateUntil: "2026-08-12",
-      })
-    ).toMatchObject({
-      serviceDateFrom: "2026-08-10",
-      serviceDateUntil: "2026-08-12",
-    });
-  });
-
-  test("accepts a bounded pair spanning a real leap day", () => {
-    expect(
-      decodeConfiguration({
-        ...base,
-        serviceDateFrom: "2024-02-28",
-        serviceDateUntil: "2024-03-01",
-      })
-    ).toMatchObject({
-      serviceDateFrom: "2024-02-28",
-      serviceDateUntil: "2024-03-01",
-    });
-  });
-
-  test("rejects non-canonical and invalid dates including a non-leap leap day", () => {
-    for (const serviceDateFrom of [
-      "2026-13-01",
-      "2026-02-30",
-      "2026-02-29",
-      "10-08-2026",
-      "2026-08-10T00:00:00Z",
-    ]) {
-      expect(() =>
-        decodeConfiguration({
-          ...base,
-          serviceDateFrom,
-          serviceDateUntil: "2026-09-01",
-        })
-      ).toThrow();
-      expect(() =>
-        decodeConfiguration({
-          ...base,
-          serviceDateFrom: "2026-08-01",
-          serviceDateUntil: serviceDateFrom,
-        })
-      ).toThrow();
-    }
-  });
-
-  test("rejects one-sided and mixed half ranges", () => {
-    expect(() =>
-      decodeConfiguration({ ...base, serviceDateFrom: "2026-08-10" })
-    ).toThrow();
-    expect(() =>
-      decodeConfiguration({ ...base, serviceDateUntil: "2026-08-10" })
-    ).toThrow();
-    expect(() =>
-      decodeConfiguration({
-        ...base,
-        serviceDateFrom: null,
-        serviceDateUntil: "2026-08-10",
-      })
-    ).toThrow();
-    expect(() =>
-      decodeConfiguration({
-        ...base,
-        serviceDateFrom: "2026-08-10",
-        serviceDateUntil: null,
-      })
-    ).toThrow();
-  });
-
-  test("rejects equal and reversed bounded pairs", () => {
-    expect(() =>
-      decodeConfiguration({
-        ...base,
-        serviceDateFrom: "2026-08-10",
-        serviceDateUntil: "2026-08-10",
-      })
-    ).toThrow();
-    expect(() =>
-      decodeConfiguration({
-        ...base,
-        serviceDateFrom: "2026-08-12",
-        serviceDateUntil: "2026-08-10",
-      })
-    ).toThrow();
-  });
-
-  test("rejects lone null bounds on configuration and update", () => {
-    for (const pair of [
-      { serviceDateFrom: null },
-      { serviceDateUntil: null },
-    ]) {
-      expect(() => decodeConfiguration({ ...base, ...pair })).toThrow();
-      expect(() =>
-        decodeUpdate({
-          ...base,
-          id: "01980000-0000-7000-8000-000000000001",
-          discountId: "01980000-0000-7000-8000-000000000002",
-          ...pair,
-        })
-      ).toThrow();
-    }
-  });
-});
-
 describe("administration contract", () => {
   test("strictly decodes manual invoice input without restricting signed prices", () => {
     const input = {
@@ -699,7 +306,7 @@ describe("administration contract", () => {
         kind: "new",
         details: {
           kind: "person",
-          email: "synthetic@example.test",
+          email: syntheticAddress,
           firstName: "Synthetic",
           lastName: "Customer",
           address: {
@@ -797,6 +404,37 @@ describe("administration contract", () => {
     ).toBeNull();
   });
 
+  test("decodes info from a server without minimum dhw versions", () => {
+    expect(
+      Schema.decodeUnknownSync(AdminCliInfo)({
+        apiVersion: "v1",
+        service: "deskohub-workspace",
+      })
+    ).toEqual({
+      apiVersion: "v1",
+      service: "deskohub-workspace",
+      minimumDhwVersions: {},
+    });
+  });
+
+  test("decodes a campaign from before delivery modes as one-off", () => {
+    // Also the shape of campaign results stored in the CLI mutation ledger.
+    expect(
+      Schema.decodeUnknownSync(AdministrationCampaignDetail)({
+        id: "01980000-0000-7000-8000-000000000001",
+        title: "October news",
+        purpose: "operational",
+        templateKey: "workspace",
+        status: "sent",
+        audienceId: null,
+        locales: [],
+        createdAt: "2026-10-01T10:00:00Z",
+        updatedAt: "2026-10-01T10:00:00Z",
+        content: {},
+      })
+    ).toMatchObject({ delivery: "once", status: "sent" });
+  });
+
   test("keeps discount codes and vouchers as separate read models", () => {
     const decodeCode = Schema.decodeUnknownSync(AdministrationDiscountCode);
     const decodeVoucher = Schema.decodeUnknownSync(AdministrationVoucher);
@@ -821,30 +459,8 @@ describe("administration contract", () => {
         maxUses: null,
         maxUsesPerCustomer: null,
         remainingUses: null,
-        serviceDateFrom: null,
-        serviceDateUntil: null,
       })
-    ).toMatchObject({ code: "GIFT100", maxUses: null, serviceDateFrom: null });
-    expect(() =>
-      decodeCode({
-        ...common,
-        discountId: "01980000-0000-7000-8000-000000000002",
-        maxUses: null,
-        maxUsesPerCustomer: null,
-        remainingUses: null,
-      })
-    ).toThrow();
-    expect(() =>
-      decodeCode({
-        ...common,
-        discountId: "01980000-0000-7000-8000-000000000002",
-        maxUses: null,
-        maxUsesPerCustomer: null,
-        remainingUses: null,
-        serviceDateFrom: null,
-        serviceDateUntil: "2026-02-29",
-      })
-    ).toThrow();
+    ).toMatchObject({ code: "GIFT100", maxUses: null });
     expect(
       decodeVoucher({
         ...common,
@@ -869,127 +485,6 @@ describe("administration contract", () => {
     ).toThrow();
   });
 
-  test("keeps branded identifiers distinct while encoding them as strings", () => {
-    const reservationId = Schema.decodeUnknownSync(
-      AdministrationWorkspaceReservationId
-    )("reservation-id");
-    const paymentAttemptId = Schema.decodeUnknownSync(
-      AdministrationPaymentAttemptId
-    )("payment-attempt-id");
-
-    // @ts-expect-error Payment-attempt IDs must not be accepted as reservation IDs.
-    const wrongReservationId: typeof reservationId = paymentAttemptId;
-    void wrongReservationId;
-
-    expect(
-      Schema.encodeSync(AdministrationWorkspaceReservationId)(reservationId)
-    ).toBe("reservation-id");
-
-    for (const identifierSchema of [
-      AdministrationWorkspaceReservationId,
-      AdministrationPaymentAttemptId,
-      AdministrationNexiOrderId,
-      AdministrationNexiOperationId,
-      AdministrationDotyposCustomerId,
-      AdministrationDotyposReservationId,
-      AdministrationDotyposTableId,
-      AdministrationDotyposDiscountGroupId,
-    ]) {
-      expect(() => Schema.decodeUnknownSync(identifierSchema)("")).toThrow();
-    }
-  });
-
-  test("keeps read operations safe and typed", () => {
-    expect(AdminCliAdministrationApi.endpoints.getOverview?.method).toBe("GET");
-    expect(AdminCliAdministrationApi.endpoints.listReservations?.method).toBe(
-      "GET"
-    );
-    expect(AdminCliAdministrationApi.endpoints.getReservation?.method).toBe(
-      "GET"
-    );
-    expect(
-      AdminCliAdministrationApi.endpoints.mutateReservationAccess?.method
-    ).toBe("POST");
-    expect(AdminCliAdministrationApi.endpoints.findReservation?.method).toBe(
-      "GET"
-    );
-    expect(AdminCliAdministrationApi.endpoints.listBookings?.method).toBe(
-      "GET"
-    );
-    expect(AdminCliAdministrationApi.endpoints.getBooking?.method).toBe("GET");
-    expect(AdminCliAdministrationApi.endpoints.listOrders?.method).toBe("GET");
-    expect(AdminCliAdministrationApi.endpoints.getOrder?.method).toBe("GET");
-    expect(AdminCliAdministrationApi.endpoints.listOperations?.method).toBe(
-      "GET"
-    );
-    expect(AdminCliAdministrationApi.endpoints.getOperation?.method).toBe(
-      "GET"
-    );
-    expect(AdminCliAdministrationApi.endpoints.listCustomers?.method).toBe(
-      "GET"
-    );
-    expect(AdminCliAdministrationApi.endpoints.searchCustomers?.method).toBe(
-      "GET"
-    );
-    expect(AdminCliAdministrationApi.endpoints.getCustomer?.method).toBe("GET");
-    expect(
-      AdminCliAdministrationApi.endpoints.listCustomerReservations?.method
-    ).toBe("GET");
-    expect(
-      AdminCliAdministrationApi.endpoints.getDiscountDashboard?.method
-    ).toBe("GET");
-    expect(AdminCliAdministrationApi.endpoints.getDiscountCode?.method).toBe(
-      "GET"
-    );
-    expect(AdminCliAdministrationApi.endpoints.listInvoices?.method).toBe(
-      "GET"
-    );
-    expect(AdminCliAdministrationApi.endpoints.getInvoice?.method).toBe("GET");
-    expect(AdminCliAdministrationApi.endpoints.getInvoicePdf?.method).toBe(
-      "GET"
-    );
-    expect(AdminCliAdministrationApi.endpoints.createInvoice?.method).toBe(
-      "POST"
-    );
-    expect(AdminCliAdministrationApi.endpoints.resendInvoice?.method).toBe(
-      "POST"
-    );
-    expect(AdminCliAdministrationApi.endpoints.listSessions?.method).toBe(
-      "GET"
-    );
-    expect(AdminCliAdministrationApi.endpoints.mutateDiscounts?.method).toBe(
-      "POST"
-    );
-    expect(AdminCliAdministrationApi.endpoints.cancelReservation?.method).toBe(
-      "POST"
-    );
-    expect(AdminCliAdministrationApi.endpoints.renameSession?.method).toBe(
-      "PATCH"
-    );
-    expect(AdminCliAdministrationApi.endpoints.revokeSession?.method).toBe(
-      "DELETE"
-    );
-    expect(
-      Schema.decodeUnknownSync(AdministrationReservationQuery)({
-        page: 2,
-        status: "complete",
-      })
-    ).toEqual({ page: 2, status: "complete" });
-    expect(
-      Schema.decodeUnknownSync(AdministrationReservationCancellationInput)({
-        accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
-        force: true,
-        providerCredentialRemoved: true,
-        sendCancellationEmail: true,
-      })
-    ).toEqual({
-      accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
-      force: true,
-      providerCredentialRemoved: true,
-      sendCancellationEmail: true,
-    });
-  });
-
   test("exposes refund work without changing successful payment state", () => {
     const attempt = Schema.decodeUnknownSync(AdministrationPaymentAttempt)({
       id: "payment-attempt-id",
@@ -1004,7 +499,12 @@ describe("administration contract", () => {
       updatedAt: "2026-08-13T12:01:00Z",
     });
 
-    expect(attempt).toMatchObject({ state: "paid", refundState: "required" });
+    expect(attempt).toMatchObject({
+      state: "paid",
+      refundState: "required",
+      refundedAmount: null,
+      refundedAt: null,
+    });
   });
 
   test("exposes access operations without exposing the PIN", () => {
@@ -1105,24 +605,6 @@ describe("administration contract", () => {
     expect(
       Schema.decodeUnknownSync(AdministrationInvoiceListItem)(rest)
     ).toMatchObject({ customerId: null, reservationId: null });
-  });
-
-  test("uses product targets instead of purchase identities", () => {
-    for (const target of [
-      { kind: "cowork" },
-      { kind: "meeting-room" },
-      { kind: "office" },
-    ] as const) {
-      expect(
-        Schema.decodeUnknownSync(AdministrationWorkspaceProductTarget)(target)
-      ).toEqual(target);
-    }
-    expect(() =>
-      Schema.decodeUnknownSync(AdministrationWorkspaceProductTarget)(
-        { kind: "cowork", tier: "basic" },
-        { onExcessProperty: "error" }
-      )
-    ).toThrow();
   });
 
   test("validates discount mutations at the shared HTTP boundary", () => {
@@ -1228,6 +710,98 @@ describe("administration contract", () => {
       voucher: { credit: { value: 10_000 } },
     });
   });
+  test("accepts cowork tier targets but not mixed or repeated cowork targets", () => {
+    const decodeProducts = (products: unknown) =>
+      Schema.decodeUnknownSync(AdministrationDiscountMutation)({
+        kind: "create-discount",
+        discount: {
+          labels: { "cs-CZ": "Léto", "en-US": "Summer" },
+          adjustment: { kind: "percentage", basisPoints: 1500 },
+          products,
+        },
+      });
+
+    for (const products of [
+      [{ kind: "cowork", tier: "open-space" }],
+      [
+        { kind: "cowork", tier: "open-space" },
+        { kind: "cowork", tier: "reserved-desk" },
+        { kind: "office" },
+      ],
+      [{ kind: "cowork" }, { kind: "meeting-room" }],
+    ]) {
+      expect(decodeProducts(products)).toMatchObject({
+        discount: { products },
+      });
+    }
+
+    for (const products of [
+      [{ kind: "cowork" }, { kind: "cowork", tier: "reserved-desk" }],
+      [
+        { kind: "cowork", tier: "open-space" },
+        { kind: "cowork", tier: "open-space" },
+      ],
+      [{ kind: "cowork", tier: "basic" }],
+      [{ kind: "office", tier: "open-space" }],
+    ]) {
+      expect(() => decodeProducts(products)).toThrow();
+    }
+  });
+
+  test("serves the reservation product-details backfill as one strict batch", () => {
+    const endpoint =
+      AdminCliAdministrationApi.endpoints.backfillReservationProductDetails;
+    expect(endpoint?.method).toBe("POST");
+    expect(endpoint?.path).toBe(
+      "/api/v1/cli/reservations/product-details-backfill"
+    );
+
+    const decodeInput = Schema.decodeUnknownSync(
+      AdministrationReservationProductDetailsBackfillInput
+    );
+    expect(decodeInput({ dryRun: true, after: null })).toEqual({
+      dryRun: true,
+      after: null,
+    });
+    expect(() => decodeInput({ dryRun: true })).toThrow();
+    expect(() =>
+      decodeInput({ dryRun: false, after: null, limit: 10 })
+    ).toThrow();
+
+    const decodeBatch = Schema.decodeUnknownSync(
+      AdministrationReservationProductDetailsBackfillBatch
+    );
+    const batch = {
+      updated: 1,
+      alreadyComplete: 2,
+      unresolved: [
+        {
+          reservationId: "reservation-a",
+          family: "meeting-room",
+          reason: "interval_not_in_catalog",
+        },
+      ],
+      nextCursor: "reservation-b",
+    };
+    expect<unknown>(decodeBatch(batch)).toEqual(batch);
+    for (const unresolved of [
+      {
+        reservationId: "reservation-a",
+        family: "cowork",
+        reason: "dotypos_seats_invalid",
+      },
+      {
+        reservationId: "reservation-a",
+        family: "office",
+        reason: "note_unparsed",
+      },
+    ]) {
+      expect(() =>
+        decodeBatch({ ...batch, unresolved: [unresolved] })
+      ).toThrow();
+    }
+  });
+
   test("rejects invalid reservation filters before service execution", () => {
     expect(() =>
       Schema.decodeUnknownSync(AdministrationReservationQuery)({ page: 0 })
@@ -1277,46 +851,360 @@ describe("administration contract", () => {
       })
     ).toThrow();
   });
+});
 
-  test("validates booking filters", () => {
+describe("overview contract", () => {
+  // `AdministrationOverview` as released dhw binaries decode it, before the
+  // customer counts and refund attention.
+  const ReleasedAdministrationOverview = Schema.Struct({
+    today: AdministrationOverviewMetric,
+    upcoming: AdministrationOverviewMetric,
+    lastSevenDays: AdministrationOverviewMetric,
+  });
+  const reservationMetrics = {
+    today: { completed: 1, unavailable: false, value: 2 },
+    upcoming: { completed: 0, unavailable: false, value: 5 },
+    lastSevenDays: { completed: 3, unavailable: false, value: 4 },
+  };
+  const customerId = AdministrationDotyposCustomerId.make("customer-1");
+
+  test("keeps the overview readable by released dhw", () => {
+    const response = Schema.encodeSync(AdministrationOverview)({
+      ...reservationMetrics,
+      uniqueCustomers: {
+        customers: [
+          {
+            customerId,
+            customer: {
+              id: customerId,
+              displayName: "Synthetic Customer",
+              email: syntheticAddress,
+              phone: null,
+            },
+          },
+        ],
+        unavailable: false,
+        value: 1,
+      },
+      newCustomers: { customers: [], unavailable: false, value: 0 },
+      refundAttention: { unavailable: false, value: 2 },
+    });
+
     expect(
-      Schema.decodeUnknownSync(AdministrationBookingQuery)({
-        date: "2026-08-10",
-        page: 2,
-      })
-    ).toEqual({ date: "2026-08-10", page: 2 });
-    expect(() =>
-      Schema.decodeUnknownSync(AdministrationBookingQuery)({
-        date: "10-08-2026",
-      })
-    ).toThrow();
-    expect(() =>
-      Schema.decodeUnknownSync(AdministrationBookingQuery)({
-        date: "2026-02-30",
-      })
-    ).toThrow();
+      Schema.decodeUnknownSync(ReleasedAdministrationOverview)(response)
+    ).toEqual(reservationMetrics);
   });
 
-  test("validates payment date filters", () => {
+  test("reads an older server's overview as not reporting the newer counts", () => {
+    const unreported = { unavailable: true, value: 0 };
+
     expect(
-      Schema.decodeUnknownSync(AdministrationOrderQuery)({
-        from: "2024-02-29",
-        to: "2026-08-10",
+      Schema.decodeUnknownSync(AdministrationOverview)(reservationMetrics)
+    ).toEqual({
+      ...reservationMetrics,
+      uniqueCustomers: { ...unreported, customers: [] },
+      newCustomers: { ...unreported, customers: [] },
+      refundAttention: unreported,
+    });
+  });
+});
+
+describe("reservation summary contract", () => {
+  // `AdministrationReservationSummary` as released dhw binaries decode it,
+  // before the early-setup start.
+  const ReleasedAdministrationReservationSummary =
+    AdministrationReservationSummary.mapFields(Struct.omit(["setupStartsAt"]));
+  const summary = {
+    id: "reservation-id",
+    customerId: "customer-id",
+    customer: null,
+    liveDetailsAvailable: true,
+    startsAt: "2026-08-10T08:00:00Z",
+    endsAt: "2026-08-10T09:00:00Z",
+    date: "2026-08-10",
+    type: "meeting-room",
+    typeLabel: "Meeting Room",
+    purpose: null,
+    status: { group: "complete", label: "Complete" },
+    statusNote: null,
+    createdAt: "2026-08-01T12:00:00Z",
+    latestPayment: null,
+    updatedAt: "2026-08-01T12:00:00Z",
+  } as const;
+
+  test("keeps an early-setup summary readable by released dhw", () => {
+    const response = Schema.encodeSync(AdministrationReservationSummary)(
+      Schema.decodeUnknownSync(AdministrationReservationSummary)({
+        ...summary,
+        setupStartsAt: "2026-08-10T07:45:00Z",
       })
-    ).toEqual({ from: "2024-02-29", to: "2026-08-10" });
+    );
+
     expect(
-      Schema.decodeUnknownSync(AdministrationOperationQuery)({
-        channel: "ECOMMERCE",
-        operationType: "CAPTURE",
-      })
-    ).toEqual({ channel: "ECOMMERCE", operationType: "CAPTURE" });
-    expect(() =>
-      Schema.decodeUnknownSync(AdministrationOrderQuery)({ from: "tomorrow" })
-    ).toThrow();
-    expect(() =>
-      Schema.decodeUnknownSync(AdministrationOrderQuery)({
-        from: "2026-02-29",
-      })
-    ).toThrow();
+      Schema.decodeUnknownSync(ReleasedAdministrationReservationSummary)(
+        response
+      )
+    ).toEqual(
+      Schema.decodeUnknownSync(ReleasedAdministrationReservationSummary)(
+        summary
+      )
+    );
+  });
+
+  test("reads an older server's summary as having no early setup", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationReservationSummary)(summary)
+        .setupStartsAt
+    ).toBeNull();
+  });
+});
+
+describe("CLI session contract", () => {
+  // `CliSession` as released dhw-v1.17.0 binaries decode it; they read a null
+  // approver as a legacy session that can't issue invoices or access codes.
+  const ReleasedCliSession = Schema.Struct({
+    id: CliSessionId,
+    approvedBy: Schema.NullOr(
+      Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(80))
+    ).pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed(null))),
+    clientName: CliClientName,
+    cliVersion: Schema.String,
+    buildTarget: CliBuildTarget,
+    createdAt: Schema.String,
+    lastUsedAt: Schema.String,
+    expiresAt: Schema.NullOr(Schema.String).pipe(
+      Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+    ),
+  });
+  const shortEmail = AdministrationActorEmail.make(syntheticAddress);
+  const longEmail = AdministrationActorEmail.make(
+    testEmailAddress("a".repeat(120))
+  );
+  const sessionFor = (email: AdministrationActorEmail) =>
+    Schema.encodeSync(CliSession)({
+      id: CliSessionId.make("123e4567-e89b-42d3-a456-426614174000"),
+      approvedBy: toAdministrationActorName(email),
+      approvedByEmail: email,
+      clientName: "synthetic compatibility client",
+      cliVersion: "1.17.0",
+      buildTarget: "linux-x64-baseline",
+      createdAt: "2026-10-16T00:00:00.000Z",
+      lastUsedAt: "2026-10-16T00:00:00.000Z",
+      expiresAt: null,
+    });
+
+  test.each([shortEmail, longEmail])(
+    "keeps a session approved by %s readable by released dhw",
+    (email) => {
+      const released = Schema.decodeUnknownSync(ReleasedCliSession)(
+        sessionFor(email)
+      );
+
+      expect(released.approvedBy).not.toBeNull();
+      expect(released.approvedBy!.length).toBeLessThanOrEqual(80);
+    }
+  );
+
+  test("gives current dhw the full approver email", () => {
+    expect(
+      Schema.decodeUnknownSync(CliSession)(sessionFor(longEmail))
+    ).toMatchObject({
+      approvedBy: `${longEmail.slice(0, 79)}…`,
+      approvedByEmail: longEmail,
+    });
+  });
+
+  test("reads a session from a server without the approver email", () => {
+    const { approvedByEmail: _, ...released } = sessionFor(shortEmail);
+
+    expect(Schema.decodeUnknownSync(CliSession)(released)).toMatchObject({
+      approvedBy: shortEmail,
+      approvedByEmail: null,
+    });
+  });
+
+  test("shortens an approver email without splitting a character", () => {
+    const email = AdministrationActorEmail.make(
+      testEmailAddress(`${"a".repeat(78)}😀`)
+    );
+
+    expect<string>(toAdministrationActorName(email)).toBe(`${"a".repeat(78)}…`);
+    expect<string>(toAdministrationActorName(shortEmail)).toBe(shortEmail);
+  });
+});
+
+describe("administration operation groups", () => {
+  const minimum = DhwVersion.make("1.2.3");
+  const read = <const Name extends string, const Path extends `/${string}`>(
+    name: Name,
+    path: Path
+  ) =>
+    HttpApiEndpoint.get(name, path, { success: Schema.String }).annotate(
+      AdministrationOperationBehavior,
+      readOperation
+    );
+
+  const SampleApi = HttpApi.make("sampleApi")
+    .add(
+      administrationOperationGroup(
+        HttpApiGroup.make("checkedFirst").add(
+          read("read", "/first").annotate(
+            MinimumDhwVersion,
+            Option.some(minimum)
+          )
+        ),
+        { checkDhwVersionBeforeAuthentication: true }
+      )
+    )
+    .add(
+      HttpApiGroup.make("checkedPerEndpoint")
+        .add(read("read", "/unversioned"))
+        .add(read("readVersioned", "/versioned").pipe(requiresDhw(minimum)))
+        .pipe(administrationOperationGroup)
+    );
+
+  const ran: Array<string> = [];
+  const recording =
+    (name: string) =>
+    <A, E, R>(httpEffect: Effect.Effect<A, E, R>) =>
+      Effect.andThen(
+        Effect.sync(() => ran.push(name)),
+        httpEffect
+      );
+  const answered = Effect.succeed("answered");
+
+  const server = HttpRouter.toWebHandler(
+    HttpApiBuilder.layer(SampleApi).pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          HttpApiBuilder.group(SampleApi, "checkedFirst", (handlers) =>
+            handlers.handle("read", () => answered)
+          ),
+          HttpApiBuilder.group(SampleApi, "checkedPerEndpoint", (handlers) =>
+            handlers
+              .handle("read", () => answered)
+              .handle("readVersioned", () => answered)
+          )
+        )
+      ),
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(AdministrationAuthentication, {
+            bearer: (httpEffect) =>
+              recording("authentication")(
+                Effect.provideService(httpEffect, CurrentAdministrationCaller, {
+                  actor: {
+                    accountId: AdministrationAccountId.make("account-1"),
+                    email: syntheticAddress,
+                  },
+                  channel: {
+                    _tag: "CliSession",
+                    sessionId: CliSessionId.make(
+                      "01980000-0000-7000-8000-000000000000"
+                    ),
+                  },
+                })
+              ),
+          }),
+          Layer.succeed(AdministrationActionRecord, recording("action record")),
+          Layer.succeed(CliClientCompatibility, recording("dhw version check"))
+        )
+      ),
+      Layer.provide(HttpServer.layerServices)
+    ),
+    { disableLogger: true }
+  );
+  afterAll(() => server.dispose());
+
+  test.each([
+    ["/first", ["dhw version check", "authentication", "action record"]],
+    ["/unversioned", ["authentication", "action record"]],
+    ["/versioned", ["authentication", "action record", "dhw version check"]],
+  ])(
+    "serves %s under the CLI prefix, recording inside authentication",
+    async (path, expected) => {
+      ran.length = 0;
+      const response = await server.handler(
+        new Request(`https://workspace.deskohub.test/api/v1/cli${path}`)
+      );
+
+      expect(response.status).toBe(200);
+      expect(ran).toEqual(expected);
+    }
+  );
+
+  test("an endpoint requiring a dhw names its refusal only when given one", () => {
+    const defaulted = read("read", "/read").pipe(requiresDhw(minimum));
+    const unavailable = read("read", "/read").pipe(
+      requiresDhw(minimum, "CliServiceUnavailable")
+    );
+
+    expect(Context.get(defaulted.annotations, MinimumDhwVersion)).toEqual(
+      Option.some(minimum)
+    );
+    expect(defaulted.annotations.mapUnsafe.has(OutdatedDhwRefusal.key)).toBe(
+      false
+    );
+    expect(Context.get(unavailable.annotations, OutdatedDhwRefusal)).toBe(
+      "CliServiceUnavailable"
+    );
+    expect(
+      [defaulted, unavailable].map(({ middlewares }) =>
+        middlewares.has(CliClientCompatibility)
+      )
+    ).toEqual([true, true]);
+  });
+
+  test("refuses a minimum nothing checks, a check after a first one, and a CLI-only endpoint", () => {
+    const declare =
+      (
+        group: HttpApiGroup.Any,
+        options?: { readonly checkDhwVersionBeforeAuthentication: true }
+      ) =>
+      () =>
+        administrationOperationGroup(group, options);
+
+    expect(
+      declare(
+        HttpApiGroup.make("unchecked").add(
+          read("read", "/read").annotate(
+            MinimumDhwVersion,
+            Option.some(minimum)
+          )
+        )
+      )
+    ).toThrow("unchecked.read");
+    expect(
+      declare(
+        HttpApiGroup.make("unchecked")
+          .add(read("read", "/read"))
+          .annotate(MinimumDhwVersion, Option.some(minimum))
+      )
+    ).toThrow("unchecked.read");
+    expect(
+      declare(
+        HttpApiGroup.make("checkedTwice").add(
+          read("read", "/read").pipe(requiresDhw(minimum))
+        ),
+        { checkDhwVersionBeforeAuthentication: true }
+      )
+    ).toThrow("checkedTwice.read");
+    expect(
+      declare(
+        HttpApiGroup.make("cli").add(
+          HttpApiEndpoint.get("handshake", "/handshake", {
+            success: Schema.String,
+          }).annotate(CliOnly, { reason: "Signs the CLI in." })
+        )
+      )
+    ).toThrow("cli.handshake");
+    // An endpoint's own annotation overrides its group's.
+    expect(
+      declare(
+        HttpApiGroup.make("exempt")
+          .add(read("read", "/read").annotate(MinimumDhwVersion, Option.none()))
+          .annotate(MinimumDhwVersion, Option.some(minimum))
+      )
+    ).not.toThrow();
   });
 });

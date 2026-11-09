@@ -1,0 +1,40 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Playwright E2E, the invoice persistence integration, and the auth database
+// schema load these modules outside the Next.js server. `@/env` validates the
+// full server environment on import and `server-only` throws outside React
+// Server Components, so neither may be imported here. The Better Auth options
+// stay connectionless: only auth-server.ts constructs the auth instance.
+file($name, $body) where {
+  or {
+    and {
+      $name <: r".*apps/deskohub-workspace/(?:db/database\.service|features/accounting/backend/accounting-snapshot-key\.service|features/account/backend/auth/auth-options)\.ts$",
+      $body <: contains bubble {
+        JsModuleSource() as $source where {
+          $source <: r"^['\"](?:@/env|(?:\.\.?/)+env|server-only)['\"]$",
+          register_diagnostic(
+            span = $source,
+            message = "This module is loaded outside the Next.js server; do not import `@/env` or `server-only` here.",
+            severity = "error"
+          )
+        }
+      }
+    },
+    and {
+      $name <: r".*apps/deskohub-workspace/features/account/backend/auth/auth-options\.ts$",
+      $body <: contains bubble {
+        or {
+          JsReferenceIdentifier() as $use where { $use <: r"^betterAuth$" },
+          JsIdentifierBinding() as $use where { $use <: r"^betterAuth$" }
+        } where {
+          register_diagnostic(
+            span = $use,
+            message = "Keep the Better Auth options connectionless; construct the auth instance only in auth-server.ts.",
+            severity = "error"
+          )
+        }
+      }
+    }
+  }
+}

@@ -38,6 +38,14 @@ export function normalizeLocaleTag(locale: string): string {
     : `${language}-${region}`;
 }
 
+/**
+ * The Open Graph form of a locale, `language_TERRITORY` (`cs-CZ` becomes
+ * `cs_CZ`), as `og:locale` and `og:locale:alternate` expect.
+ */
+export function toOpenGraphLocale(locale: string): string {
+  return normalizeLocaleTag(locale).replaceAll("-", "_");
+}
+
 export function isLocale<Locale extends string>(
   locales: LocaleList<Locale>,
   value: string

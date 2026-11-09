@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect";
 import {
+  type EmailDeliveryId,
   EmailDeliveryIdSchema,
   type EmailMessage,
   type EmailSendResult,
@@ -11,7 +12,16 @@ const recipientAddresses = (message: EmailMessage): readonly string[] =>
     ? message.to.map((r) => (typeof r === "string" ? r : r.email))
     : [typeof message.to === "string" ? message.to : message.to.email];
 
-const ConsoleEmailProvider: EmailProvider = {
+const consoleDeliveryIdPrefix = "console-";
+
+/**
+ * Console never reports delivery, so callers treat its acceptance as final
+ * instead of waiting for a provider webhook.
+ */
+export const isConsoleEmailDeliveryId = (id: EmailDeliveryId): boolean =>
+  id.startsWith(consoleDeliveryIdPrefix);
+
+export const ConsoleEmailProvider: EmailProvider = {
   name: "console",
 
   send: Effect.fn("consoleEmailProvider.send")(function* (
@@ -77,7 +87,7 @@ const ConsoleEmailProvider: EmailProvider = {
 
     const result: EmailSendResult = {
       id: EmailDeliveryIdSchema.make(
-        `console-${Date.now()}-${Math.random().toString(36).substring(7)}`
+        `${consoleDeliveryIdPrefix}${Date.now()}-${Math.random().toString(36).substring(7)}`
       ),
       status: "sent",
       provider: "console",
@@ -91,11 +101,10 @@ const ConsoleEmailProvider: EmailProvider = {
     return result;
   }),
 
-  verify: Effect.gen(function* () {
-    yield* Effect.logInfo("Console Email Provider verification", {
-      status: "always valid in development",
-    });
-    return true;
+  sendBatch: Effect.fn("consoleEmailProvider.sendBatch")(function* (messages) {
+    return yield* Effect.forEach(messages, (message) =>
+      ConsoleEmailProvider.send(message)
+    );
   }),
 };
 

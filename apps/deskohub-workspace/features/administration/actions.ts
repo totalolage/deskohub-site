@@ -2,17 +2,17 @@
 
 import { AdministrationWorkspaceReservationId } from "@deskohub/workspace-admin-api";
 import { Effect, Schema } from "effect";
-import { revalidatePath } from "next/cache";
-import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
-import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
-import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
+import { defineAdministrationAction } from "@/features/administrators/server/administration-request.server";
+import type { WorkspaceActionFailureCopy } from "@/shared/backend/workspace-action";
 import { AdministrationService } from "./administration.service";
+import { administrationHref } from "./administration-href";
 import {
   type ReservationCancellationInput,
   type ReservationLookupInput,
   reservationCancellationStandardSchema,
   reservationLookupStandardSchema,
 } from "./contracts";
+import { m } from "./i18n";
 import {
   ReservationAccessAdministration,
   ReservationAccessAdministrationError,
@@ -21,6 +21,15 @@ import {
   ReservationAdministrationError,
   ReservationAdministrationService,
 } from "./reservation-administration.service";
+import {
+  getReservationAccessErrorMessage,
+  getReservationCancellationErrorMessage,
+} from "./reservation-error-messages";
+
+const failureCopy: WorkspaceActionFailureCopy = {
+  timeout: m.administrationActionTimedOut,
+  unexpected: m.administrationActionFailedUnexpectedly,
+};
 
 const findReservation = Effect.fn("AdministrationService.findReservation")(
   function* (input: ReservationLookupInput) {
@@ -31,24 +40,16 @@ const findReservation = Effect.fn("AdministrationService.findReservation")(
   }
 );
 
-const getAdministrationReservationAction = defineWorkspaceAction(
+const getAdministrationReservationAction = defineAdministrationAction(
   {
     operation: "administration.get-reservation",
+    failureCopy,
     schema: reservationLookupStandardSchema,
     logInput: false,
+    capabilities: AdministrationService.Live,
+    fallback: m.administrationReservationLookupUnavailable,
   },
-  (input) =>
-    requireAdministratorAuthorization.pipe(
-      Effect.andThen(findReservation(input)),
-      Effect.provide(AdministrationService.Live),
-      Effect.mapError(
-        (cause) =>
-          new PublicSafeActionError({
-            message: "The reservation lookup is temporarily unavailable.",
-            cause: cause instanceof Error ? cause : undefined,
-          })
-      )
-    )
+  findReservation
 );
 
 export const getAdministrationReservation: typeof getAdministrationReservationAction =
@@ -57,35 +58,28 @@ export const getAdministrationReservation: typeof getAdministrationReservationAc
     return await getAdministrationReservationAction(...args);
   };
 
-const cancelAdministrationReservationAction = defineWorkspaceAction(
+const reservationPath = ({ reservationId }: { reservationId: string }) => [
+  administrationHref("/[locale]/admin/reservations/[reservationId]", {
+    reservationId,
+  }),
+];
+
+const cancelAdministrationReservationAction = defineAdministrationAction(
   {
     operation: "administration.cancel-reservation",
+    failureCopy,
     schema: reservationCancellationStandardSchema,
+    capabilities: ReservationAdministrationService.Live,
+    publicFailure: (cause, locale) =>
+      cause instanceof ReservationAdministrationError
+        ? getReservationCancellationErrorMessage(cause.reason, locale)
+        : m.administrationReservationCancellationFailed({}, { locale }),
+    revalidates: reservationPath,
   },
-  (input: ReservationCancellationInput) =>
-    requireAdministratorAuthorization.pipe(
-      Effect.andThen(
-        Effect.gen(function* () {
-          const administration = yield* ReservationAdministrationService;
-          const result = yield* administration.cancel(input);
-          yield* Effect.sync(() =>
-            revalidatePath(`/admin/reservations/${input.reservationId}`)
-          );
-          return result;
-        })
-      ),
-      Effect.provide(ReservationAdministrationService.Live),
-      Effect.mapError(
-        (cause) =>
-          new PublicSafeActionError({
-            message:
-              cause instanceof ReservationAdministrationError
-                ? cause.message
-                : "The reservation could not be cancelled.",
-            cause,
-          })
-      )
-    )
+  Effect.fn(function* (input: ReservationCancellationInput) {
+    const administration = yield* ReservationAdministrationService;
+    return yield* administration.cancel(input);
+  })
 );
 
 export const cancelAdministrationReservation: typeof cancelAdministrationReservationAction =
@@ -108,38 +102,23 @@ const reservationAccessMutationSchema = Schema.toStandardSchemaV1(
   ])
 );
 
-const mutateReservationAccessAction = defineWorkspaceAction(
+const mutateReservationAccessAction = defineAdministrationAction(
   {
     operation: "administration.mutate-reservation-access",
+    failureCopy,
     schema: reservationAccessMutationSchema,
+    capabilities: ReservationAccessAdministration.Live,
+    publicFailure: (cause, locale) =>
+      cause instanceof ReservationAccessAdministrationError
+        ? getReservationAccessErrorMessage(cause.reason, locale)
+        : m.administrationReservationAccessRecoveryFailed({}, { locale }),
+    revalidates: reservationPath,
   },
-  (input) =>
-    requireAdministratorAuthorization.pipe(
-      Effect.andThen(
-        Effect.gen(function* () {
-          const administration = yield* ReservationAccessAdministration;
-          const grant = yield* administration.mutate(input);
-          yield* Effect.sync(() =>
-            revalidatePath(`/admin/reservations/${input.reservationId}`)
-          );
-          return {
-            grantState: grant.state,
-            notice: "Reservation access recovery completed.",
-          };
-        })
-      ),
-      Effect.provide(ReservationAccessAdministration.Live),
-      Effect.mapError(
-        (cause) =>
-          new PublicSafeActionError({
-            message:
-              cause instanceof ReservationAccessAdministrationError
-                ? cause.message
-                : "Reservation access recovery could not be completed.",
-            cause,
-          })
-      )
-    )
+  Effect.fn(function* (input) {
+    const administration = yield* ReservationAccessAdministration;
+    const grant = yield* administration.mutate(input);
+    return { grantState: grant.state };
+  })
 );
 
 export const mutateReservationAccess: typeof mutateReservationAccessAction =

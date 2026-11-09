@@ -28,7 +28,6 @@ export type PromotionCodeUnavailableReason =
   | "claim_conflict"
   | "customer_ineligible"
   | "product_ineligible"
-  | "service_date_ineligible"
   | "no_eligible_subtotal";
 
 export class PromotionCodeUnavailableError extends Data.TaggedError(
@@ -60,6 +59,18 @@ export class DiscountProviderError extends Data.TaggedError(
       new DiscountProviderError({ ...input, cause });
 }
 
+/**
+ * A discount the customer was already shown could be neither affirmed nor
+ * shown to be gone, because a provider failed or returned incomplete data.
+ * Checkout must neither drop nor apply it; the customer retries instead.
+ */
+export class DiscountAffirmationUnavailableError extends Data.TaggedError(
+  "DiscountAffirmationUnavailableError"
+)<{
+  readonly message: string;
+  readonly discountIds: readonly DiscountId[];
+}> {}
+
 export type DiscountClaimFailureReason =
   | "unknown_code"
   | "inactive"
@@ -69,7 +80,6 @@ export type DiscountClaimFailureReason =
   | "already_redeemed"
   | "customer_ineligible"
   | "product_ineligible"
-  | "service_date_ineligible"
   | "malformed_configuration"
   | "claim_conflict"
   | "money_mismatch";
@@ -86,5 +96,3 @@ export type DiscountResolutionError =
   | DiscountCalculationError
   | PromotionCodeUnavailableError
   | DiscountProviderError;
-
-export type DiscountError = DiscountClaimError | DiscountResolutionError;

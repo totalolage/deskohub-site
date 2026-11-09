@@ -1,63 +1,30 @@
 import "./shared/testing/workspace-test-environment";
 
 import { defineConfig } from "@playwright/test";
-import { parseWorkspaceE2EBaseUrl } from "./e2e/config";
+import {
+  workspaceE2EPlaywrightDefaults,
+  workspaceE2EPlaywrightReporter,
+} from "./e2e/playwright-defaults";
 import {
   workspaceE2EAccessCodePlaywrightTimeout,
+  workspaceE2EAdministratorAccessPlaywrightTimeout,
+  workspaceE2EEmailCampaignPlaywrightTimeout,
   workspaceE2EPlaywrightCheckoutTimeout,
-  workspaceE2ETimeouts,
 } from "./e2e/timeouts";
-import { env } from "./env";
-import { resolvePlaywrightChromiumExecutable } from "./shared/testing/playwright-browser";
-
-const remoteBaseUrl = env.WORKSPACE_E2E_BASE_URL;
-const baseUrl = remoteBaseUrl
-  ? parseWorkspaceE2EBaseUrl(remoteBaseUrl).baseUrl
-  : "http://localhost:3000";
-const browserExecutablePath = await resolvePlaywrightChromiumExecutable(
-  env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
-  process.env.PATH
-);
-const checkoutCaseProjects = [
-  "checkout-non-payment",
-  "checkout-payment-1",
-  "checkout-payment-2",
-  "checkout-payment-3",
-] as const;
 
 export default defineConfig({
-  expect: { timeout: workspaceE2ETimeouts.browserAction },
-  forbidOnly: true,
-  fullyParallel: true,
-  maxFailures: 1,
+  ...workspaceE2EPlaywrightDefaults,
   outputDir: "./e2e-artifacts/checkout",
   projects: [
-    {
-      name: "instant-navigation",
-      testDir: "./e2e/instant-navigation",
-      testMatch: "**/*.pw.ts",
-      timeout: workspaceE2ETimeouts.browserNavigation,
-    },
-    {
-      dependencies: ["checkout-setup"],
-      name: "access-code-creation",
-      testDir: "./e2e/access-codes",
-      testMatch: "**/*.pw.ts",
-      timeout: workspaceE2EAccessCodePlaywrightTimeout,
-    },
     {
       name: "checkout-setup",
       teardown: "checkout-cleanup",
       testMatch: "setup.pw.ts",
     },
     {
+      // Playwright awaits every project of a dependency phase before the next
+      // one, so the long serial account lane shares the case phase.
       dependencies: ["checkout-setup"],
-      name: "checkout-seed",
-      testMatch: "seed.pw.ts",
-    },
-    {
-      // Playwright waits for the entire dependency phase before advancing.
-      dependencies: ["checkout-plan"],
       name: "account-auth",
       testDir: "./e2e/account",
       testMatch: "account-lane.pw.ts",
@@ -68,89 +35,50 @@ export default defineConfig({
       },
     },
     {
-      dependencies: ["checkout-setup", "checkout-seed"],
-      name: "checkout-availability",
-      testMatch: "availability.pw.ts",
-    },
-    {
       dependencies: ["checkout-setup"],
-      name: "checkout-provider-preparation",
-      testMatch: "provider-preparation.pw.ts",
-    },
-    {
-      dependencies: ["checkout-setup"],
-      name: "checkout-invoice-persistence",
-      testMatch: "invoice-persistence.pw.ts",
-    },
-    {
-      dependencies: [
-        "checkout-availability",
-        "checkout-provider-preparation",
-        "checkout-invoice-persistence",
-      ],
-      name: "checkout-plan",
-      testMatch: "plan.pw.ts",
-    },
-    {
-      dependencies: ["checkout-plan"],
-      name: "checkout-non-payment",
-      testMatch: "non-payment.pw.ts",
-    },
-    {
-      dependencies: ["checkout-plan"],
-      name: "checkout-payment-1",
-      testMatch: "payment-lane-1.pw.ts",
-    },
-    {
-      dependencies: ["checkout-plan"],
-      name: "checkout-payment-2",
-      testMatch: "payment-lane-2.pw.ts",
-    },
-    {
-      dependencies: ["checkout-plan"],
-      name: "checkout-payment-3",
-      testMatch: "payment-lane-3.pw.ts",
-    },
-    {
-      dependencies: [...checkoutCaseProjects],
-      name: "checkout-shared-fixture",
-      testMatch: "shared-fixture.pw.ts",
+      name: "checkout-cases",
+      testMatch: "cases.pw.ts",
+      // The hosted-payment permit, not the project, bounds Nexi sessions. The
+      // case phase may queue account-auth after every case; the cap leaves a
+      // worker free for the account lane from the first batch.
+      workers: 5,
     },
     {
       name: "checkout-cleanup",
       testMatch: "cleanup.pw.ts",
     },
+    {
+      // Short seeded-session admin access cases, queued after the case pools
+      // like the other admin cases, so they take a worker that frees up
+      // instead of a slot of the first case batch.
+      dependencies: ["checkout-setup"],
+      name: "administrator-access",
+      testDir: "./e2e/administrators",
+      testMatch: "**/*.pw.ts",
+      timeout: workspaceE2EAdministratorAccessPlaywrightTimeout,
+    },
+    {
+      // Queued after the case pools like the access-code case, so it takes a
+      // worker that frees up instead of a slot of the first case batch.
+      dependencies: ["checkout-setup"],
+      name: "email-campaign-recipient-preview",
+      testDir: "./e2e/email-campaigns",
+      testMatch: "**/*.pw.ts",
+      timeout: workspaceE2EEmailCampaignPlaywrightTimeout,
+    },
+    {
+      // Shares the case phase as its last-queued group: Playwright queues
+      // top-level projects in config order, so it takes the first worker
+      // that frees up instead of a slot of the first case batch.
+      dependencies: ["checkout-setup"],
+      name: "access-code-creation",
+      testDir: "./e2e/access-codes",
+      testMatch: "**/*.pw.ts",
+      timeout: workspaceE2EAccessCodePlaywrightTimeout,
+    },
   ],
-  reporter: [
-    ["line"],
-    [
-      "./e2e/playwright-github-summary.ts",
-      {
-        outputFile: env.GITHUB_STEP_SUMMARY,
-        title: "Workspace E2E",
-      },
-    ],
-  ],
-  retries: 0,
+  reporter: workspaceE2EPlaywrightReporter("Workspace E2E"),
   testDir: "./e2e/playwright-checkout",
   timeout: workspaceE2EPlaywrightCheckoutTimeout,
-  use: {
-    baseURL: baseUrl,
-    launchOptions: browserExecutablePath
-      ? { executablePath: browserExecutablePath }
-      : undefined,
-    screenshot: "only-on-failure",
-    trace: "off",
-    video: "off",
-    viewport: { height: 900, width: 1440 },
-  },
-  webServer: remoteBaseUrl
-    ? undefined
-    : {
-        command: "bun --cwd ../.. turbo dev --filter=deskohub-workspace",
-        reuseExistingServer: true,
-        timeout: workspaceE2ETimeouts.checkoutStart,
-        url: `${baseUrl}/en-US`,
-      },
   workers: 6,
 });

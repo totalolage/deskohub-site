@@ -4,7 +4,6 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { discountCodes, promotionCodes, vouchers } from "@/db/schema";
-import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import type {
   CanonicalPromotionCode,
   DiscountCodeId,
@@ -76,8 +75,6 @@ export class PromotionCodeRepository extends Context.Service<
               discountId: discountCodes.discountId,
               maxUses: discountCodes.maxUses,
               maxUsesPerCustomer: discountCodes.maxUsesPerCustomer,
-              serviceDateFrom: discountCodes.serviceDateFrom,
-              serviceDateUntil: discountCodes.serviceDateUntil,
               voucherId: vouchers.id,
               issuedAmountValue: vouchers.issuedAmountValue,
               issuedAmountExponent: vouchers.issuedAmountExponent,
@@ -89,14 +86,16 @@ export class PromotionCodeRepository extends Context.Service<
               eq(discountCodes.promotionCodeId, promotionCodes.id)
             )
             .leftJoin(vouchers, eq(vouchers.promotionCodeId, promotionCodes.id))
-            .where(
-              eq(promotionCodes.code, sensitiveDatabaseParameter(input.code))
-            )
+            .where(eq(promotionCodes.code, input.code))
             .limit(1);
 
-          return yield* Option.fromNullishOr(row).pipe(
-            Option.map((found) => decodePromotionConfiguration({ row: found })),
-            Effect.transposeOption
+          if (!row || (row.kind !== "discount" && row.kind !== "voucher")) {
+            return Option.none();
+          }
+          return Option.some(
+            yield* decodePromotionConfiguration({
+              row: { ...row, kind: row.kind as "discount" | "voucher" },
+            })
           );
         }
       );
@@ -212,7 +211,7 @@ const voucherAvailabilitySchema = Schema.Struct({
 
 const malformedAvailability = (
   promotionCodeId: PromotionCodeId,
-  cause: unknown
+  cause: Schema.SchemaError
 ) =>
   new PromotionCodeConfigurationError({
     promotionCodeId,

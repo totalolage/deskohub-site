@@ -1,49 +1,24 @@
 export type { DiscountCommitment } from "./commitment";
 export {
   type ActiveSale,
-  type ActiveSaleDiscoveryInput,
   type AffirmedDiscountAdvertisementQuote,
   type AppliedDiscount,
   affirmedDiscountAdvertisementQuoteCodec,
-  appliedDiscountCodec,
   type CanonicalPromotionCode,
   canonicalPromotionCodeSchema,
-  type Discount,
-  type DiscountAdjustment,
   type DiscountAdvertisementInput,
   type DiscountAdvertisementQuote,
   type DiscountId,
   type DiscountQuote,
-  type DiscountQuoteInput,
   discountAdvertisementQuoteCodec,
   discountIdSchema,
-  discountProductTargetSchema,
-  discountQuoteCodec,
-  isAppliedDiscount,
 } from "./contracts";
+export { DiscountService } from "./discount.service";
 export {
-  type AppliedCustomerDiscountQuote,
-  type AppliedDiscountCodeQuote,
-  type ApplyCustomerDiscountInput,
-  type ApplyDiscountCodeInput,
-  type DiscountAdvertisementAffirmationInput,
-  DiscountService,
-  type DisplayedDiscountAffirmation,
-  type DisplayedDiscountAffirmationInput,
-  type IDiscountService,
-  type PreviewDiscountCodeInput,
-} from "./discount.service";
-export {
-  DiscountCalculationError,
-  type DiscountCalculationFailureReason,
-  DiscountClaimError,
-  type DiscountClaimFailureReason,
-  type DiscountError,
+  DiscountAffirmationUnavailableError,
   DiscountProviderError,
-  type DiscountProviderFailureReason,
   type DiscountResolutionError,
   PromotionCodeUnavailableError,
-  type PromotionCodeUnavailableReason,
 } from "./errors";
 export {
   discountCodeQueryParam,

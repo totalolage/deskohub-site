@@ -1,9 +1,7 @@
-import { Predicate } from "effect";
-import {
-  type WorkspaceProductTarget,
-  workspaceProductTargets,
-} from "@/features/discounts/product-target";
-import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
+import { Option } from "effect";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
+import { unitOf } from "@/shared/money/currencies";
+import { type Money, moneyWithValue } from "@/shared/money/money";
 import {
   localDateTimeToTemporalInstantString,
   workspaceSiteConstants,
@@ -14,128 +12,104 @@ import type {
   CreateDiscountCodeAdminInput,
   CreateVoucherAdminInput,
 } from "./contracts";
+import type {
+  DiscountCodeConfigurationFormValues,
+  DiscountCodeFormValues,
+  DiscountDefinitionFormValues,
+  VoucherFormValues,
+} from "./form-schemas";
+import { toDiscountProductTargets } from "./product-target-options";
 
-export const readDiscountForm = (
-  formData: FormData
-): CreateDiscountAdminInput => {
-  const kind = readString(formData, "adjustmentKind");
-  const fixedCurrency = findWorkspaceCurrencyDefinition(
-    readString(formData, "fixedAmountCurrency").toUpperCase()
-  );
-
-  return {
+/** None when a fixed amount's currency is outside the catalog. */
+export const toCreateDiscountInput = (
+  values: DiscountDefinitionFormValues
+): Option.Option<CreateDiscountAdminInput> =>
+  Option.map(toDiscountAdjustment(values), (adjustment) => ({
     labels: {
-      "cs-CZ": readString(formData, "labelCs"),
-      "en-US": readString(formData, "labelEn"),
+      "cs-CZ": values.labelCs,
+      "en-US": values.labelEn,
     },
-    adjustment:
-      kind === "fixed"
-        ? {
-            kind: "fixed",
-            amount: {
-              value: Number(readString(formData, "fixedAmountValue")),
-              exponent: fixedCurrency?.exponent ?? -1,
-              currency: fixedCurrency?.code ?? "",
-            },
-          }
-        : {
-            kind: "percentage",
-            basisPoints: Math.round(
-              Number(readString(formData, "percentage")) * 100
-            ),
-          },
-    products: formData
-      .getAll("products")
-      .flatMap((value) =>
-        Predicate.isString(value) ? (productTargets[value] ?? []) : []
-      ) as [WorkspaceProductTarget, ...WorkspaceProductTarget[]],
-  };
-};
+    adjustment,
+    products: toDiscountProductTargets(values.products) as [
+      WorkspaceProductTarget,
+      ...WorkspaceProductTarget[],
+    ],
+  }));
 
-export const readDiscountCodeForm = (
-  formData: FormData
+const toDiscountAdjustment = (
+  values: DiscountDefinitionFormValues
+): Option.Option<CreateDiscountAdminInput["adjustment"]> =>
+  values.adjustmentKind === "fixed"
+    ? Option.map(
+        toCatalogMoney(values.fixedAmountValue, values.fixedAmountCurrency),
+        (amount) => ({ kind: "fixed", amount })
+      )
+    : Option.some({
+        kind: "percentage",
+        basisPoints: Math.round(Number(values.percentage) * 100),
+      });
+
+export const toCreateDiscountCodeInput = (
+  values: DiscountCodeFormValues
 ): CreateDiscountCodeAdminInput => ({
-  discountId: readString(
-    formData,
-    "discountId"
-  ) as CreateDiscountCodeAdminInput["discountId"],
-  ...readDiscountCodeConfigurationForm(formData),
+  discountId: values.discountId as CreateDiscountCodeAdminInput["discountId"],
+  ...toDiscountCodeConfigurationInput(values),
 });
 
-export const readDiscountCodeConfigurationForm = (
-  formData: FormData
+export const toDiscountCodeConfigurationInput = (
+  values: DiscountCodeConfigurationFormValues
 ): CreateCustomerDiscountCodeAdminInput["code"] => ({
-  code: readString(formData, "code")
+  code: values.code
     .trim()
     .toUpperCase() as CreateCustomerDiscountCodeAdminInput["code"]["code"],
-  enabled: formData.get("enabled") === "on",
-  validFrom: readOptionalLocalDateTime(
-    formData,
-    "validFrom"
+  enabled: values.enabled,
+  validFrom: toOptionalLocalDateTimeInstant(
+    values.validFrom
   ) as CreateCustomerDiscountCodeAdminInput["code"]["validFrom"],
-  validUntil: readOptionalLocalDateTime(
-    formData,
-    "validUntil"
+  validUntil: toOptionalLocalDateTimeInstant(
+    values.validUntil
   ) as CreateCustomerDiscountCodeAdminInput["code"]["validUntil"],
-  maxUses: readOptionalNumber(formData, "maxUses"),
-  maxUsesPerCustomer: readOptionalNumber(formData, "maxUsesPerCustomer"),
-  serviceDateFrom: readOptionalString(formData, "serviceDateFrom"),
-  serviceDateUntil: readOptionalString(formData, "serviceDateUntil"),
+  maxUses: toOptionalCount(values.maxUses),
+  maxUsesPerCustomer: toOptionalCount(values.maxUsesPerCustomer),
 });
 
-export const readVoucherCreditForm = (
-  formData: FormData
-): CreateVoucherAdminInput["credit"] => {
-  const currency = findWorkspaceCurrencyDefinition(
-    readString(formData, "voucherCurrency").toUpperCase()
-  );
-  return {
-    value: Number(readString(formData, "voucherValue")),
-    exponent: currency?.exponent ?? -1,
-    currency: currency?.code ?? "",
-  };
-};
+/** None when the voucher currency is outside the catalog. */
+export const toVoucherCreditInput = (
+  values: Pick<VoucherFormValues, "voucherValue" | "voucherCurrency">
+): Option.Option<CreateVoucherAdminInput["credit"]> =>
+  toCatalogMoney(values.voucherValue, values.voucherCurrency);
 
-export const readVoucherConfigurationForm = (
-  formData: FormData
+export const toVoucherConfigurationInput = (
+  values: VoucherFormValues
 ): Omit<CreateVoucherAdminInput, "credit"> => {
   const {
     maxUses: _maxUses,
     maxUsesPerCustomer: _maxUsesPerCustomer,
-    serviceDateFrom: _serviceDateFrom,
-    serviceDateUntil: _serviceDateUntil,
     ...configuration
-  } = readDiscountCodeConfigurationForm(formData);
+  } = toDiscountCodeConfigurationInput({
+    ...values,
+    maxUses: "",
+    maxUsesPerCustomer: "",
+  });
   return configuration;
 };
 
-const readString = (formData: FormData, field: string) => {
-  const value = formData.get(field);
-  return Predicate.isString(value) ? value : "";
-};
-
-const readOptionalString = (formData: FormData, field: string) => {
-  const value = readString(formData, field).trim();
-  return value.length > 0 ? value : null;
-};
-
-const readOptionalLocalDateTime = (formData: FormData, field: string) => {
-  const value = readOptionalString(formData, field);
-  return value === null
+const toOptionalLocalDateTimeInstant = (value: string) =>
+  value.length === 0
     ? null
     : localDateTimeToTemporalInstantString({
         dateTime: value,
         timeZone: workspaceSiteConstants.location.timeZone,
       });
-};
 
-const readOptionalNumber = (formData: FormData, field: string) => {
-  const value = readOptionalString(formData, field);
-  return value === null ? null : Number(value);
-};
+const toOptionalCount = (value: string) =>
+  value.length === 0 ? null : Number(value);
 
-const productTargets: Readonly<
-  Record<string, readonly WorkspaceProductTarget[]>
-> = Object.fromEntries(
-  workspaceProductTargets.map((product) => [product.kind, [product]])
-);
+/** Entered minor units in the selected catalog currency. */
+const toCatalogMoney = (
+  minorUnits: string,
+  currencyCode: string
+): Option.Option<Money> =>
+  Option.map(unitOf(currencyCode.toUpperCase()), (unit) =>
+    moneyWithValue(Number(minorUnits), unit)
+  );

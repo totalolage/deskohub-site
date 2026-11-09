@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect, Fiber, Layer, Tracer } from "effect";
+import { testEmailAddress } from "@deskohub/test-email";
+import { ConfigProvider, Effect, Fiber, Layer, Tracer } from "effect";
 import { TestClock } from "effect/testing";
-import { EmailDeliveryIdSchema } from "../../types/email.types";
+
+const adaAddress = testEmailAddress("ada");
+const deskohubAddress = testEmailAddress("deskohub");
 
 type SendResponse =
   | { readonly data: { readonly id: string }; readonly error?: never }
@@ -11,25 +14,39 @@ type SendResponse =
         readonly message: string;
         readonly statusCode?: number;
       };
-    };
+    }
+  | { readonly data?: never; readonly error: unknown };
 type SendImplementation = (
   payload?: unknown,
-  options?: { readonly idempotencyKey?: string }
+  options?: { readonly idempotencyKey?: string; readonly signal?: AbortSignal }
 ) => Promise<SendResponse>;
-type ListDomainsResponse =
-  | { readonly data: readonly unknown[]; readonly error?: never }
-  | { readonly data?: never; readonly error: { readonly message: string } };
-type ListDomainsImplementation = () => Promise<ListDomainsResponse>;
-
+type BatchSendResponse =
+  | {
+      readonly data: { readonly data: readonly { readonly id: string }[] };
+      readonly error?: never;
+    }
+  | {
+      readonly data?: null;
+      readonly error: {
+        readonly message: string;
+        readonly statusCode?: number;
+      };
+    };
+type BatchSendImplementation = (
+  payload?: unknown,
+  options?: { readonly idempotencyKey?: string; readonly signal?: AbortSignal }
+) => Promise<BatchSendResponse>;
 let send = mock<SendImplementation>(async () => ({
   data: { id: "resend-id" },
 }));
-let listDomains = mock<ListDomainsImplementation>(async () => ({ data: [] }));
+let batchSend = mock<BatchSendImplementation>(async () => ({
+  data: { data: [] },
+}));
 
 mock.module("resend", () => ({
   Resend: class {
     emails = { send: send };
-    domains = { list: listDomains };
+    batch = { send: batchSend };
   },
 }));
 
@@ -42,17 +59,20 @@ beforeEach(() => {
   send = mock<SendImplementation>(async () => ({
     data: { id: "resend-id" },
   }));
-  listDomains = mock<ListDomainsImplementation>(async () => ({ data: [] }));
+  batchSend = mock<BatchSendImplementation>(async () => ({
+    data: { data: [] },
+  }));
 });
 
 const config = {
   provider: "resend" as const,
-  defaultFrom: { email: "deskohub@example.test" },
+  defaultFrom: { email: deskohubAddress },
   apiKey: "api-key",
 };
 
 const runProvider = <A, E>(
-  effect: Effect.Effect<A, E, EmailProviderRequirement>
+  effect: Effect.Effect<A, E, EmailProviderRequirement>,
+  env: Record<string, string> = {}
 ) =>
   Effect.runPromise(
     effect.pipe(
@@ -60,16 +80,28 @@ const runProvider = <A, E>(
         ResendEmailProviderLive.pipe(
           Layer.provide(Layer.succeed(EmailConfigTag, config))
         )
+      ),
+      Effect.provideService(
+        ConfigProvider.ConfigProvider,
+        ConfigProvider.fromUnknown(env)
       )
     )
   );
 
 const message = {
-  from: { email: "deskohub@example.test" },
-  to: { email: "ada@example.test" },
+  from: { email: deskohubAddress },
+  to: { email: adaAddress },
   subject: "Hello",
   html: "<p>Hello</p>",
 };
+const batchMessages = [
+  message,
+  {
+    ...message,
+    to: { email: testEmailAddress("grace") },
+    subject: "Second email",
+  },
+];
 
 describe("ResendEmailProvider", () => {
   test("maps 4xx and invalid errors to EmailServiceError", async () => {
@@ -114,46 +146,128 @@ describe("ResendEmailProvider", () => {
     }
   });
 
-  test("maps a stalled request to NetworkError", async () => {
-    send = mock<SendImplementation>(() => new Promise(() => {}));
+  test("classifies an error without a status code by its message, then its error code", async () => {
+    for (const [error, expectedTag] of [
+      [{ error: "invalid_api_key" }, "EmailServiceError"],
+      [
+        { message: 42, error: "restricted_api_key forbidden" },
+        "EmailServiceError",
+      ],
+      [{ message: "Rate limited", error: "invalid_request" }, "NetworkError"],
+      [{ error: 42 }, "NetworkError"],
+      ["Forbidden", "NetworkError"],
+    ] as const) {
+      send = mock<SendImplementation>(async () => ({ error }));
+      const result = await runProvider(
+        Effect.gen(function* () {
+          const provider = yield* EmailProviderTag;
+          return yield* provider.send(message).pipe(Effect.result);
+        })
+      );
 
-    const result = await runProvider(
-      Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
-        const fiber = yield* provider
-          .send(message)
-          .pipe(Effect.result, Effect.forkChild);
-        yield* TestClock.adjust("5 seconds");
-        return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(TestClock.layer()))
-    );
-
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: {
-        _tag: "NetworkError",
-        message: "Resend send timed out",
-      },
-    });
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure._tag).toBe(expectedTag);
+      }
+    }
   });
 
-  test("send result includes status", async () => {
-    const result = await runProvider(
+  test("sends no Resend tags for a message without categories or string metadata", async () => {
+    await runProvider(
       Effect.gen(function* () {
         const provider = yield* EmailProviderTag;
-        return yield* provider.send(message);
+        yield* provider.send({ ...message, metadata: { attempt: 1 } });
       })
     );
 
-    expect(result).toMatchObject({
-      id: EmailDeliveryIdSchema.make("resend-id"),
-      provider: "resend",
-      status: "sent",
-    });
+    const payload = send.mock.calls[0]?.[0] as { tags?: unknown } | undefined;
+    expect(payload?.tags).toBeUndefined();
   });
 
-  test("rejects a Resend response without a valid delivery ID", async () => {
+  for (const [env, single, batch] of [
+    [{ VERCEL_ENV: "production" }, "5 seconds", "10 seconds"],
+    [{ VERCEL_ENV: "preview" }, "30 seconds", "30 seconds"],
+    [{}, "30 seconds", "30 seconds"],
+  ] as const) {
+    test(`times out a stalled request after ${single} (batch ${batch}) in ${env.VERCEL_ENV ?? "an unnamed deployment"}`, async () => {
+      send = mock<SendImplementation>(() => new Promise(() => {}));
+      batchSend = mock<BatchSendImplementation>(() => new Promise(() => {}));
+
+      const stalled = <A>(
+        request: Effect.Effect<A, unknown>,
+        timeout: string
+      ) =>
+        Effect.gen(function* () {
+          const fiber = yield* request.pipe(Effect.result, Effect.forkChild);
+          yield* TestClock.adjust(timeout);
+          return yield* Fiber.join(fiber);
+        });
+
+      const [sent, sentBeforeBatchTimeout, sentBatch] = await runProvider(
+        Effect.gen(function* () {
+          const provider = yield* EmailProviderTag;
+          const timedOut = yield* stalled(provider.send(message), single);
+          const early = yield* provider
+            .sendBatch(batchMessages, { idempotencyKey: "stalled" })
+            .pipe(Effect.timeoutOption("1 second"), Effect.forkChild);
+          yield* TestClock.adjust("1 second");
+          const beforeBatchTimeout = yield* Fiber.join(early);
+          const batchTimedOut = yield* stalled(
+            provider.sendBatch(batchMessages, { idempotencyKey: "stalled" }),
+            batch
+          );
+          return [timedOut, beforeBatchTimeout, batchTimedOut] as const;
+        }).pipe(Effect.provide(TestClock.layer())),
+        env
+      );
+
+      expect(send).toHaveBeenCalledTimes(1);
+      for (const result of [sent, sentBatch]) {
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "NetworkError",
+            message: "Resend send timed out",
+          },
+        });
+      }
+      expect(sentBeforeBatchTimeout._tag).toBe("None");
+    });
+  }
+
+  test("aborts a stalled request when its timeout releases it", async () => {
+    const signals: (AbortSignal | undefined)[] = [];
+    send = mock<SendImplementation>((_, options) => {
+      signals.push(options?.signal);
+      return new Promise(() => {});
+    });
+    batchSend = mock<BatchSendImplementation>((_, options) => {
+      signals.push(options?.signal);
+      return new Promise(() => {});
+    });
+
+    await runProvider(
+      Effect.gen(function* () {
+        const provider = yield* EmailProviderTag;
+        const single = yield* provider
+          .send(message)
+          .pipe(Effect.result, Effect.forkChild);
+        const batch = yield* provider
+          .sendBatch(batchMessages, { idempotencyKey: "stalled" })
+          .pipe(Effect.result, Effect.forkChild);
+        yield* TestClock.adjust("30 seconds");
+        yield* Fiber.join(single);
+        yield* Fiber.join(batch);
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(signals).toHaveLength(2);
+    for (const signal of signals) {
+      expect(signal?.aborted).toBe(true);
+    }
+  });
+
+  test("treats an accepted response without a valid delivery ID as unconfirmed", async () => {
     send = mock<SendImplementation>(async () => ({ data: { id: "" } }));
 
     const result = await runProvider(
@@ -166,56 +280,143 @@ describe("ResendEmailProvider", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(result.failure).toMatchObject({
-        _tag: "EmailServiceError",
+        _tag: "NetworkError",
         message: "Resend response did not contain a valid email delivery ID",
-        provider: "resend",
       });
     }
   });
 
-  test("uses stable access and invoice delivery idempotency keys", async () => {
-    await runProvider(
-      Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
-        for (const category of [
-          "workspace-paid-reservation-access",
-          "workspace-invoice-customer",
-          "workspace-invoice-internal",
-        ]) {
-          yield* provider.send({
-            ...message,
-            tags: [category],
-            metadata: { workspaceReservationId: "reservation-id" },
-          });
-        }
-      })
-    );
-
-    expect(send.mock.calls.map(([, options]) => options)).toEqual([
-      {
-        idempotencyKey: "workspace-paid-reservation-access-reservation-id",
-      },
-      { idempotencyKey: "workspace-invoice-customer-reservation-id" },
-      { idempotencyKey: "workspace-invoice-internal-reservation-id" },
-    ]);
-  });
-
-  test("prefers an explicit idempotency key", async () => {
+  test("forwards the delivery idempotency key within Resend's limit", async () => {
     await runProvider(
       Effect.gen(function* () {
         const provider = yield* EmailProviderTag;
         yield* provider.send({
           ...message,
           idempotencyKey: "invoice-resend-attempt-2",
-          tags: ["workspace-invoice-customer"],
-          metadata: { workspaceReservationId: "reservation-id" },
+        });
+        yield* provider.send({
+          ...message,
+          idempotencyKey: "k".repeat(300),
+        });
+        yield* provider.send(message);
+      })
+    );
+
+    expect(
+      send.mock.calls.map(([, options]) => ({
+        idempotencyKey: options?.idempotencyKey,
+      }))
+    ).toEqual([
+      { idempotencyKey: "invoice-resend-attempt-2" },
+      { idempotencyKey: "k".repeat(256) },
+      { idempotencyKey: undefined },
+    ]);
+  });
+
+  test("sends a batch with its idempotency key and returns IDs in order", async () => {
+    batchSend = mock<BatchSendImplementation>(async () => ({
+      data: { data: [{ id: "batch-id-1" }, { id: "batch-id-2" }] },
+    }));
+
+    const results = await runProvider(
+      Effect.gen(function* () {
+        const provider = yield* EmailProviderTag;
+        return yield* provider.sendBatch(batchMessages, {
+          idempotencyKey: "campaign-batch-key",
         });
       })
     );
 
-    expect(send.mock.calls[0]?.[1]).toEqual({
-      idempotencyKey: "invoice-resend-attempt-2",
+    expect(batchSend).toHaveBeenCalledTimes(1);
+    const [payload, options] = batchSend.mock.calls[0] ?? [];
+    expect(payload).toHaveLength(batchMessages.length);
+    expect(options).toEqual({
+      idempotencyKey: "campaign-batch-key",
+      signal: expect.any(AbortSignal),
     });
+    expect(results.map((result) => result.id)).toEqual([
+      "batch-id-1",
+      "batch-id-2",
+    ]);
+  });
+
+  test("maps batch refusals to EmailServiceError and unknown outcomes to NetworkError", async () => {
+    for (const [statusCode, errorMessage, expectedTag] of [
+      [400, "Batch request failed", "EmailServiceError"],
+      [422, "Invalid recipient", "EmailServiceError"],
+      [429, "Too many requests", "EmailServiceError"],
+      // A reused key: an earlier request under it may have been delivered.
+      [409, "Invalid idempotent request", "NetworkError"],
+      [500, "Invalid upstream response", "NetworkError"],
+    ] as const) {
+      batchSend = mock<BatchSendImplementation>(async () => ({
+        error: { statusCode, message: errorMessage },
+      }));
+
+      const result = await runProvider(
+        Effect.gen(function* () {
+          const provider = yield* EmailProviderTag;
+          return yield* provider
+            .sendBatch(batchMessages, { idempotencyKey: "campaign-batch-key" })
+            .pipe(Effect.result);
+        })
+      );
+
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure._tag).toBe(expectedTag);
+      }
+    }
+  });
+
+  test("treats a batch response with fewer IDs than messages as unconfirmed", async () => {
+    batchSend = mock<BatchSendImplementation>(async () => ({
+      data: { data: [{ id: "batch-id-1" }] },
+    }));
+
+    const result = await runProvider(
+      Effect.gen(function* () {
+        const provider = yield* EmailProviderTag;
+        return yield* provider
+          .sendBatch(batchMessages, { idempotencyKey: "campaign-batch-key" })
+          .pipe(Effect.result);
+      })
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("NetworkError");
+    }
+  });
+
+  test("rejects batches with attachments without calling Resend", async () => {
+    const result = await runProvider(
+      Effect.gen(function* () {
+        const provider = yield* EmailProviderTag;
+        return yield* provider
+          .sendBatch(
+            [
+              {
+                ...message,
+                attachments: [
+                  {
+                    content: Buffer.from("location-map"),
+                    filename: "location-map.jpeg",
+                  },
+                ],
+              },
+            ],
+            { idempotencyKey: "campaign-batch-key" }
+          )
+          .pipe(Effect.result);
+      })
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("EmailServiceError");
+    }
+    expect(batchSend).not.toHaveBeenCalled();
   });
 
   test("maps the magic-link tags and surface metadata to Resend tags", async () => {
@@ -237,22 +438,40 @@ describe("ResendEmailProvider", () => {
     ]);
   });
 
-  test("verify fails when Resend returns an error", async () => {
-    listDomains = mock<ListDomainsImplementation>(async () => ({
-      error: { message: "Invalid API key" },
-    }));
+  test("drops tags and metadata Resend cannot carry and forwards headers and attachments", async () => {
+    const attachment = {
+      content: Buffer.from("location-map"),
+      contentId: "location-map",
+      contentType: "image/jpeg",
+      filename: "location-map.jpeg",
+    };
 
-    const result = await runProvider(
+    await runProvider(
       Effect.gen(function* () {
         const provider = yield* EmailProviderTag;
-        return yield* provider.verify.pipe(Effect.result);
+        yield* provider.send({
+          ...message,
+          attachments: [attachment],
+          headers: { "X-Entity-Ref-ID": "reservation-id" },
+          tags: ["reservation-access", "unsafe category"],
+          metadata: {
+            reservationId: "reservation-id",
+            ignoredNumber: 42,
+            unsafeValue: "contains spaces",
+            "unsafe name": "value",
+          },
+        });
       })
     );
 
-    expect(result._tag).toBe("Failure");
-    if (result._tag === "Failure") {
-      expect(result.failure._tag).toBe("EmailServiceError");
-    }
+    expect(send.mock.calls[0]?.[0]).toMatchObject({
+      attachments: [attachment],
+      headers: { "X-Entity-Ref-ID": "reservation-id" },
+      tags: [
+        { name: "category", value: "reservation-access" },
+        { name: "reservationId", value: "reservation-id" },
+      ],
+    });
   });
 
   test("layer fails when EMAIL_API_KEY is missing", async () => {
@@ -263,7 +482,7 @@ describe("ResendEmailProvider", () => {
             Layer.provide(
               Layer.succeed(EmailConfigTag, {
                 provider: "resend" as const,
-                defaultFrom: { email: "deskohub@example.test" },
+                defaultFrom: { email: deskohubAddress },
               })
             )
           )
@@ -371,7 +590,7 @@ describe("ResendEmailProvider span censorship", () => {
     expect(traced).not.toContain(rawProviderDetail);
     expect(traced).not.toContain("quota");
     expect(traced).not.toContain("rk_123");
-    expect(traced).not.toContain("ada@example.test");
+    expect(traced).not.toContain(adaAddress);
     expect(traced).not.toContain("secret-token");
     expect(traced).not.toContain("bearer text");
     if (result._tag === "Failure") {
@@ -395,75 +614,10 @@ describe("ResendEmailProvider span censorship", () => {
     expect(traced).not.toContain(rawTransportDetail);
     expect(traced).not.toContain("getaddrinfo");
     expect(traced).not.toContain("ENOTFOUND");
-    expect(traced).not.toContain("ada@example.test");
+    expect(traced).not.toContain(adaAddress);
     expect(traced).not.toContain("secret-token");
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("NetworkError");
     }
-  });
-
-  test("verification failure carries only the fixed message", async () => {
-    listDomains = mock<ListDomainsImplementation>(async () => ({
-      error: { message: rawProviderDetail },
-    }));
-
-    const result = await runProvider(
-      Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
-        return yield* provider.verify.pipe(Effect.result);
-      })
-    );
-
-    expect(result._tag).toBe("Failure");
-    if (result._tag === "Failure") {
-      expect(result.failure).toMatchObject({
-        _tag: "EmailServiceError",
-        message: "Failed to verify Resend API key",
-      });
-      expect(JSON.stringify(result.failure)).not.toContain(rawProviderDetail);
-    }
-  });
-
-  test("a rejected domains.list keeps only the fixed message in failure and spans", async () => {
-    const rawRejectDetail =
-      "raw rejection detail: fetch failed with ECONNRESET for key rk_123";
-    listDomains = mock<ListDomainsImplementation>(async () => {
-      throw new Error(rawRejectDetail);
-    });
-    const { ended, tracer } = captureSpans();
-
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
-        return yield* provider.verify.pipe(
-          Effect.withSpan("resend.verify.test"),
-          Effect.result
-        );
-      }).pipe(
-        Effect.provide(
-          ResendEmailProviderLive.pipe(
-            Layer.provide(Layer.succeed(EmailConfigTag, config))
-          )
-        ),
-        Effect.provide(Layer.succeed(Tracer.Tracer, tracer))
-      )
-    );
-
-    expect(result._tag).toBe("Failure");
-    if (result._tag === "Failure") {
-      expect(result.failure).toMatchObject({
-        _tag: "EmailServiceError",
-        message: "Failed to verify Resend API key",
-      });
-      const serialized = JSON.stringify(result.failure);
-      expect(serialized).not.toContain(rawRejectDetail);
-      expect(serialized).not.toContain("ECONNRESET");
-    }
-
-    expect(ended.length).toBeGreaterThan(0);
-    const traced = JSON.stringify(ended);
-    expect(traced).not.toContain(rawRejectDetail);
-    expect(traced).not.toContain("ECONNRESET");
-    expect(traced).not.toContain("rk_123");
   });
 });

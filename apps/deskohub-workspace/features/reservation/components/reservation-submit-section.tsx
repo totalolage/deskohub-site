@@ -9,6 +9,8 @@ type ReservationSubmitSectionProps = {
   readonly isAvailabilityLoading: boolean;
   readonly isPriceLoading: boolean;
   readonly locale: Locale;
+  /** Continues to the next step instead of submitting the form. */
+  readonly onContinue?: () => void;
   readonly onRetryPrice: () => void;
   readonly priceError: boolean;
   readonly retryingPrice: boolean;
@@ -21,6 +23,7 @@ export function ReservationSubmitSection({
   isAvailabilityLoading,
   isPriceLoading,
   locale,
+  onContinue,
   onRetryPrice,
   priceError,
   retryingPrice,
@@ -30,36 +33,70 @@ export function ReservationSubmitSection({
   return (
     <div className="space-y-3 pt-1">
       <Button
-        className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
+        size="xl"
+        caps
+        fullWidth
         data-reservation-availability-loading={isAvailabilityLoading}
         data-reservation-price-error={priceError}
         data-reservation-price-loading={isPriceLoading}
         data-reservation-unavailable={Boolean(unavailableMessage)}
         disabled={disabled}
-        id="reservation-submit"
-        type="submit"
+        id={onContinue ? "reservation-continue" : "reservation-submit"}
+        onClick={onContinue}
+        type={onContinue ? "button" : "submit"}
       >
         <ArrowRight className="h-4 w-4" />
         {m.checkoutContinueButton({}, { locale })}
       </Button>
 
-      {submissionError && (
-        <ReservationError>{submissionError}</ReservationError>
-      )}
-      {unavailableMessage && !submissionError && (
+      <ReservationSubmitStatus
+        isAvailabilityLoading={isAvailabilityLoading}
+        isPriceLoading={isPriceLoading}
+        locale={locale}
+        onRetryPrice={onRetryPrice}
+        priceError={priceError}
+        retryingPrice={retryingPrice}
+        submissionError={submissionError}
+        unavailableMessage={unavailableMessage}
+      />
+    </div>
+  );
+}
+
+/**
+ * What the submission is waiting on or why it failed. A submission error
+ * replaces the availability and price states.
+ */
+function ReservationSubmitStatus({
+  isAvailabilityLoading,
+  isPriceLoading,
+  locale,
+  onRetryPrice,
+  priceError,
+  retryingPrice,
+  submissionError,
+  unavailableMessage,
+}: Omit<ReservationSubmitSectionProps, "disabled" | "onContinue">) {
+  if (submissionError) {
+    return <ReservationError role="alert">{submissionError}</ReservationError>;
+  }
+
+  return (
+    <>
+      {unavailableMessage && (
         <ReservationError>{unavailableMessage}</ReservationError>
       )}
-      {isAvailabilityLoading && !submissionError && (
+      {isAvailabilityLoading && (
         <ReservationLoadingMessage>
           {m.reservationAvailabilityLoading({}, { locale })}
         </ReservationLoadingMessage>
       )}
-      {isPriceLoading && !submissionError && (
+      {isPriceLoading && (
         <ReservationLoadingMessage>
           {m.reservationAdvertisedPriceLoading({}, { locale })}
         </ReservationLoadingMessage>
       )}
-      {priceError && !submissionError && (
+      {priceError && (
         <div
           className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"
           role="alert"
@@ -69,8 +106,8 @@ export function ReservationSubmitSection({
             <span>{m.reservationAdvertisedPriceError({}, { locale })}</span>
           </span>
           <Button
-            className="h-9 rounded-full px-4"
-            disabled={retryingPrice}
+            size="sm"
+            pending={retryingPrice}
             id="reservation-advertised-price-retry"
             onClick={onRetryPrice}
             type="button"
@@ -80,17 +117,28 @@ export function ReservationSubmitSection({
           </Button>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
-function ReservationError({ children }: { readonly children: string }) {
+function ReservationError({
+  children,
+  role,
+}: {
+  readonly children: string;
+  readonly role?: "alert";
+}) {
   return (
     <p
-      aria-live="polite"
+      // A failed submission remounts the form with its error, so it needs an
+      // alert role: a live region mounted with its text may go unannounced.
+      {...(role ? { role } : { "aria-live": "polite" as const })}
       className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"
     >
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />
+      <AlertTriangle
+        aria-hidden="true"
+        className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange"
+      />
       <span>{children}</span>
     </p>
   );

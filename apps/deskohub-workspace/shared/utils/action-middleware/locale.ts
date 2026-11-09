@@ -1,9 +1,10 @@
 import { createLocaleActionMiddleware } from "@deskohub/i18n/action";
-import { baseLocale, setLocale } from "@/features/i18n";
-import { getLocaleFromServer } from "@/features/i18n/utils/get-locale.server";
+import { baseLocale } from "@/features/i18n";
+import { resolveActionLocale } from "@/features/i18n/server/action-locale";
+import { requestLocaleScope } from "@/features/i18n/server/request-locale-scope";
 
 export const localeMiddleware = createLocaleActionMiddleware({
-  resolveLocale: getLocaleFromServer,
+  resolveLocale: resolveActionLocale,
   fallbackLocale: baseLocale,
-  setLocale,
+  scope: requestLocaleScope,
 });

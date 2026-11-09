@@ -1,28 +1,13 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "../shared/styles/brand-theme.css";
 @import "../shared/styles/glow-border.css";
 
 @theme inline {
-  --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
-    sans-serif;
-  --font-subheading: var(--font-sculpin), "Avenir Next", "Segoe UI",
-    "Helvetica Neue", Arial, sans-serif;
-  --font-body: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue",
-    Arial, sans-serif;
-  --color-navy-blue: var(--brand-navy-blue);
-  --color-silver: var(--brand-silver);
-  --color-sunset-yellow: var(--brand-sunset-yellow);
-  --color-chilean-fire: var(--brand-chilean-fire);
-  --color-burned-orange: var(--brand-burned-orange);
-  --color-burned-orange-ink: var(--brand-burned-orange-ink);
-  --color-aquamarine-green: var(--brand-aquamarine-green);
-  --color-aquamarine-ink: var(--brand-aquamarine-ink);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
   --animate-skeleton-glimmer: skeleton-glimmer 1.5s ease-out infinite;
+  --animate-caret-blink: caret-blink 1.25s ease-out infinite;
   --container-8xl: 100rem;
 
   @keyframes accordion-down {
@@ -43,6 +28,18 @@
     }
   }
 
+  @keyframes caret-blink {
+    0%,
+    70%,
+    100% {
+      opacity: 1;
+    }
+    20%,
+    50% {
+      opacity: 0;
+    }
+  }
+
   @keyframes skeleton-glimmer {
     0% {
       transform: translateX(-100%);
@@ -55,28 +52,8 @@
 }
 
 :root {
-  --brand-navy-blue: #00024f;
-  --brand-silver: #d8d8d8;
-  --brand-sunset-yellow: #eca423;
-  --brand-chilean-fire: #f57c00;
-  --brand-burned-orange: #b83b06;
-  --brand-burned-orange-ink: #7a2e0a;
-  --brand-aquamarine-green: #00df99;
-  --brand-aquamarine-ink: #004c3b;
   --site-header-height: 6rem;
   --anchor-scroll-offset: var(--site-header-height);
-
-  --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI",
-    "Helvetica Neue", Arial, sans-serif;
-  --font-subheading: var(--font-sculpin), "Avenir Next", "Segoe UI",
-    "Helvetica Neue", Arial, sans-serif;
-  --font-body: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue",
-    Arial, sans-serif;
-  --font-heading-weight: 400;
-  --font-subheading-weight: 400;
-  --font-body-weight: 400;
-
-  --radius: 0.65rem;
 }
 
 html {

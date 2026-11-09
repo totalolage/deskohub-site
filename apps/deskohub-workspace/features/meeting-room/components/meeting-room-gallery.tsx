@@ -1,16 +1,15 @@
 "use client";
 
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
-import { getCloudinaryImageUrl } from "@deskohub/cloudinary-image/url";
 import { useMemo, useState } from "react";
-import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
+import Lightbox from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
-import { getLocalizedCloudinaryContextValue } from "@/features/gallery/types/localized-cloudinary-context";
+import type { VenuePhoto } from "@/features/gallery/types/venue-photo";
 import { type Locale, m } from "@/features/i18n";
+import { UnstyledButton } from "@/shared/components/ui/unstyled-button";
 
 type MeetingRoomGalleryProps = {
-  images: readonly CloudinaryAsset[];
+  images: readonly VenuePhoto[];
   locale: Locale;
 };
 
@@ -19,33 +18,9 @@ export function MeetingRoomGallery({
   locale,
 }: MeetingRoomGalleryProps) {
   const [lightboxIndex, setLightboxIndex] = useState(-1);
-  const lightboxSlides: SlideImage[] = useMemo(
-    () =>
-      images.map((image) => {
-        const caption = getLocalizedCloudinaryContextValue(
-          image,
-          "caption",
-          locale
-        );
-
-        return {
-          alt: getLocalizedCloudinaryContextValue(image, "alt", locale),
-          description: getLocalizedCloudinaryContextValue(
-            image,
-            "detail",
-            locale
-          ),
-          height: image.height,
-          src: getCloudinaryImageUrl({
-            asset: image,
-            height: 1920,
-            width: 1920,
-          }),
-          title: caption,
-          width: image.width,
-        };
-      }),
-    [images, locale]
+  const lightboxSlides = useMemo(
+    () => images.map((image) => image.lightbox),
+    [images]
   );
 
   return (
@@ -70,32 +45,25 @@ export function MeetingRoomGallery({
         {images.length > 0 ? (
           <div className="grid grid-cols-1 gap-x-5 gap-y-8 md:grid-cols-2 xl:grid-cols-3">
             {images.map((image, index) => {
-              const alt = getLocalizedCloudinaryContextValue(
-                image,
-                "alt",
-                locale
-              );
-              const caption = getLocalizedCloudinaryContextValue(
-                image,
-                "caption",
-                locale
-              );
-              const detail = getLocalizedCloudinaryContextValue(
-                image,
-                "detail",
-                locale
-              );
+              const { alt, caption, detail } = image;
+              const imageName = alt || caption;
 
               return (
-                <figure className="m-0 min-w-0" key={image.public_id}>
-                  <button
-                    aria-label={m.meetingRoomGalleryOpenImage(
-                      { image: alt || caption || image.public_id },
-                      { locale }
-                    )}
+                <figure className="m-0 min-w-0" key={image.id}>
+                  <UnstyledButton
+                    aria-label={
+                      imageName
+                        ? m.meetingRoomGalleryOpenImage(
+                            { image: imageName },
+                            { locale }
+                          )
+                        : m.meetingRoomGalleryOpenNumberedImage(
+                            { number: index + 1 },
+                            { locale }
+                          )
+                    }
                     className="group relative block aspect-[4/3] w-full cursor-zoom-in overflow-hidden rounded-[1.375rem] bg-navy-blue/8 p-0 text-left focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-burned-orange"
                     onClick={() => setLightboxIndex(index)}
-                    type="button"
                   >
                     <CloudinaryImage
                       alt={alt}
@@ -103,10 +71,10 @@ export function MeetingRoomGallery({
                       preload={false}
                       sizes="(min-width: 1280px) 30vw, (min-width: 768px) 48vw, 100vw"
                       size={{ width: "fill", height: "fill" }}
-                      source={image}
+                      source={image.publicId}
                       variant="gallery"
                     />
-                  </button>
+                  </UnstyledButton>
                   {(caption || detail) && (
                     <figcaption className="flex items-center justify-between gap-5 px-1 pb-2 pt-4 font-mono text-[0.625rem] uppercase tracking-[0.08em]">
                       {caption && (

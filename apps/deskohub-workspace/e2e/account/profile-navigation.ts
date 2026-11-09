@@ -1,9 +1,17 @@
-import { normalizePhoneNumber } from "@deskohub/dotypos";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import { expect, type Page } from "@playwright/test";
-import { type WorkspaceE2EDiagnosticCode, workspaceE2EError } from "../errors";
+import { Option } from "effect";
+import {
+  type AccountSection,
+  accountSectionLabel,
+} from "@/features/account/sections";
+import {
+  type WorkspaceE2EProfileNavigationDiagnosticCode,
+  workspaceE2EError,
+} from "../errors";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
-  accountSectionLabels,
+  type AccountSectionSelectionStage,
   accountSectionLandmarks,
   selectAccountSection,
 } from "./account-sections";
@@ -18,6 +26,38 @@ const billingKindSelector = "#account-profile-billing-kind";
 const billingCompanyNameSelector = "#account-profile-billing-company-name";
 const profileSubmitSelector = "#account-profile-submit";
 const unavailableHeading = "Customer accounts are temporarily unavailable";
+const persistedProfileSelectionDiagnostics: Readonly<
+  Record<
+    AccountSectionSelectionStage,
+    WorkspaceE2EProfileNavigationDiagnosticCode
+  >
+> = {
+  "link-handler-wait": "account_profile_persisted_profile_handler_wait_failed",
+  "panel-hydration-wait":
+    "account_profile_persisted_profile_panel_hydration_wait_failed",
+  "native-link-click": "account_profile_persisted_profile_click_failed",
+  "selected-landmark-wait":
+    "account_profile_persisted_profile_landmark_wait_failed",
+};
+
+type ProfileNavigationFailureKind =
+  | "timeout"
+  | "strict-mode-violation"
+  | "error";
+
+/**
+ * Closed, value-free summary of a Playwright failure. The raw error can carry
+ * private profile values, so only its kind leaves this module.
+ */
+const classifyProfileNavigationFailure = (
+  cause: unknown
+): ProfileNavigationFailureKind => {
+  if (!(cause instanceof Error)) return "error";
+  if (cause.name === "TimeoutError") return "timeout";
+  return cause.message.includes("strict mode violation")
+    ? "strict-mode-violation"
+    : "error";
+};
 
 export function triggerProfileHistoryBack(page: Page): Promise<void> {
   return page.evaluate(() => {
@@ -29,12 +69,26 @@ export async function verifyProfileNavigation(
   page: Page,
   baseUrl: string
 ): Promise<void> {
-  let diagnosticCode: WorkspaceE2EDiagnosticCode =
+  let diagnosticCode: WorkspaceE2EProfileNavigationDiagnosticCode =
     "account_profile_baseline_failed";
+  let selectionStage: AccountSectionSelectionStage | undefined;
+  const selectSection = async (
+    section: AccountSection,
+    onSelectionStage?: (stage: AccountSectionSelectionStage) => void
+  ): Promise<void> => {
+    await selectAccountSection(page, section, (stage) => {
+      selectionStage = stage;
+      onSelectionStage?.(stage);
+    });
+    selectionStage = undefined;
+  };
 
   try {
     const homeUrl = new URL(homePath, baseUrl).toString();
     const accountUrl = new URL(accountPath, baseUrl).toString();
+    // A section switch records its section in the account pathname.
+    const accountSectionUrl = (section: AccountSection) =>
+      `${accountUrl}/${section}`;
     const profileForm = page.locator(profileFormSelector);
     const firstName = page.locator(profileFirstNameSelector);
     const header = page.getByRole("banner");
@@ -47,8 +101,14 @@ export async function verifyProfileNavigation(
       name: "Account",
     });
 
-    const selectProfileSection = async (): Promise<void> => {
-      await selectAccountSection(page, "profile");
+    const selectProfileSection = async (
+      onSelectionStage?: (stage: AccountSectionSelectionStage) => void
+    ): Promise<void> => {
+      await selectSection("profile", onSelectionStage);
+      if (onSelectionStage) {
+        diagnosticCode =
+          "account_profile_persisted_profile_form_visibility_failed";
+      }
       await expect(profileForm).toBeVisible({
         timeout: workspaceE2ETimeouts.browserAction,
       });
@@ -66,10 +126,11 @@ export async function verifyProfileNavigation(
         timeout: workspaceE2ETimeouts.browserAction,
       }),
     };
-    const canonicalOriginalPhone = normalizePhoneNumber(originalProfile.phone);
-    if (canonicalOriginalPhone === null)
-      throw new Error("profile phone is not a valid canonical phone number");
-    await selectAccountSection(page, "billing");
+    const canonicalOriginalPhone = Option.getOrThrowWith(
+      parsePhoneNumber(originalProfile.phone),
+      () => new Error("profile phone is not a valid canonical phone number")
+    );
+    await selectSection("billing");
     await expect(page.locator(accountSectionLandmarks.billing)).toBeVisible({
       timeout: workspaceE2ETimeouts.browserAction,
     });
@@ -77,7 +138,7 @@ export async function verifyProfileNavigation(
       page.getByRole("heading", {
         exact: true,
         level: 2,
-        name: accountSectionLabels.billing,
+        name: accountSectionLabel("billing", "en-US"),
       })
     ).toBeVisible({ timeout: workspaceE2ETimeouts.browserAction });
     const originalBilling = {
@@ -102,6 +163,9 @@ export async function verifyProfileNavigation(
     await expect(accountLink).toBeVisible({
       timeout: workspaceE2ETimeouts.browserAction,
     });
+    await expect(accountLink).toHaveAttribute("href", accountPath, {
+      timeout: workspaceE2ETimeouts.browserAction,
+    });
     await Promise.all([
       page.waitForURL(accountUrl, {
         timeout: workspaceE2ETimeouts.browserNavigation,
@@ -122,7 +186,7 @@ export async function verifyProfileNavigation(
       timeout: workspaceE2ETimeouts.browserAction,
     });
 
-    await selectAccountSection(page, "billing");
+    await selectSection("billing");
     await expect(page.locator(accountSectionLandmarks.billing)).toBeVisible({
       timeout: workspaceE2ETimeouts.browserAction,
     });
@@ -130,7 +194,7 @@ export async function verifyProfileNavigation(
       page.getByRole("heading", {
         exact: true,
         level: 2,
-        name: accountSectionLabels.billing,
+        name: accountSectionLabel("billing", "en-US"),
       })
     ).toBeVisible({ timeout: workspaceE2ETimeouts.browserAction });
     await selectProfileSection();
@@ -139,7 +203,7 @@ export async function verifyProfileNavigation(
     });
 
     diagnosticCode = "account_profile_hidden_billing_validation_failed";
-    await selectAccountSection(page, "billing");
+    await selectSection("billing");
     await expect(page.locator(accountSectionLandmarks.billing)).toBeVisible({
       timeout: workspaceE2ETimeouts.browserAction,
     });
@@ -177,7 +241,7 @@ export async function verifyProfileNavigation(
 
     // The profile form remains mounted while its profile panel is hidden.
     diagnosticCode = "account_profile_header_dismissal_failed";
-    await selectAccountSection(page, "billing");
+    await selectSection("billing");
     const headerClickDialogPromise = page.waitForEvent("dialog", {
       timeout: workspaceE2ETimeouts.browserAction,
     });
@@ -188,7 +252,7 @@ export async function verifyProfileNavigation(
     expect(headerClickDialog.type()).toBe("confirm");
     await headerClickDialog.dismiss();
     await headerClickPromise;
-    await expect(page).toHaveURL(accountUrl, {
+    await expect(page).toHaveURL(accountSectionUrl("billing"), {
       timeout: workspaceE2ETimeouts.browserAction,
     });
     await selectProfileSection();
@@ -205,7 +269,7 @@ export async function verifyProfileNavigation(
     expect(backDialog.type()).toBe("confirm");
     await backDialog.dismiss();
     await backTriggerPromise;
-    await expect(page).toHaveURL(accountUrl, {
+    await expect(page).toHaveURL(accountSectionUrl("profile"), {
       timeout: workspaceE2ETimeouts.browserAction,
     });
     await selectProfileSection();
@@ -228,33 +292,55 @@ export async function verifyProfileNavigation(
       timeout: workspaceE2ETimeouts.browserNavigation,
     });
 
-    diagnosticCode = "account_profile_persisted_restore_failed";
+    diagnosticCode = "account_profile_persisted_document_reload_failed";
     await page.goto(accountUrl, {
       waitUntil: "load",
       timeout: workspaceE2ETimeouts.browserNavigation,
     });
-    await selectProfileSection();
+
+    diagnosticCode = "account_profile_persisted_profile_navigation_failed";
+    await selectProfileSection((stage) => {
+      diagnosticCode = persistedProfileSelectionDiagnostics[stage];
+    });
+
+    diagnosticCode = "account_profile_persisted_first_name_restore_failed";
     await expect(firstName).toHaveValue(originalProfile.firstName, {
       timeout: workspaceE2ETimeouts.browserAction,
     });
+
+    diagnosticCode = "account_profile_persisted_last_name_restore_failed";
     await expect(page.locator(profileLastNameSelector)).toHaveValue(
       originalProfile.lastName,
       { timeout: workspaceE2ETimeouts.browserAction }
     );
+
+    diagnosticCode = "account_profile_persisted_phone_restore_failed";
     await expect(page.locator(profilePhoneSelector)).toHaveValue(
       canonicalOriginalPhone,
       { timeout: workspaceE2ETimeouts.browserAction }
     );
-    await selectAccountSection(page, "billing");
+
+    diagnosticCode = "account_profile_persisted_billing_navigation_failed";
+    await selectSection("billing");
+
+    diagnosticCode = "account_profile_persisted_billing_kind_restore_failed";
     await expect(page.locator(billingKindSelector)).toHaveValue(
       originalBilling.kind,
       { timeout: workspaceE2ETimeouts.browserAction }
     );
+
+    diagnosticCode = "account_profile_persisted_billing_company_restore_failed";
     await expect(page.locator(billingCompanyNameSelector)).toHaveValue(
       originalBilling.companyName,
       { timeout: workspaceE2ETimeouts.browserAction }
     );
+
+    diagnosticCode =
+      "account_profile_persisted_return_profile_navigation_failed";
     await selectProfileSection();
+
+    diagnosticCode =
+      "account_profile_persisted_unavailable_heading_expectation_failed";
     await expect(
       page.getByRole("heading", {
         exact: true,
@@ -262,10 +348,16 @@ export async function verifyProfileNavigation(
         name: unavailableHeading,
       })
     ).toHaveCount(0, { timeout: workspaceE2ETimeouts.browserAction });
-  } catch {
-    throw workspaceE2EError("Profile navigation verification failed", {
-      diagnosticCode,
-      operation: "verify profile navigation and unsaved changes",
-    });
+  } catch (cause) {
+    const failureKind = classifyProfileNavigationFailure(cause);
+    throw workspaceE2EError(
+      selectionStage === undefined
+        ? `Profile navigation verification failed (${failureKind})`
+        : `Profile navigation verification failed at section selection stage ${selectionStage} (${failureKind})`,
+      {
+        diagnosticCode,
+        operation: "verify profile navigation and unsaved changes",
+      }
+    );
   }
 }

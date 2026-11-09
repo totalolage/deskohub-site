@@ -34,6 +34,7 @@ export const allocationRequests = workspaceE2eCoordination.table(
     runId: bigint("run_id", { mode: "number" }).notNull(),
     runAttempt: integer("run_attempt").notNull(),
     preferredShard: smallint("preferred_shard").notNull(),
+    previewBranch: text("preview_branch"),
     queuePosition: bigint("queue_position", { mode: "number" })
       .generatedAlwaysAsIdentity()
       .notNull(),
@@ -62,6 +63,11 @@ export const allocationRequests = workspaceE2eCoordination.table(
     uniqueIndex("allocation_requests_one_owner_per_shard_idx")
       .on(table.poolName, table.allocatedShard)
       .where(sql`${table.allocatedShard} is not null`),
+    uniqueIndex("allocation_requests_one_owner_per_preview_branch_idx")
+      .on(table.poolName, table.previewBranch)
+      .where(
+        sql`${table.allocatedShard} is not null and ${table.previewBranch} is not null`
+      ),
     check("allocation_requests_run_id_check", sql`${table.runId} > 0`),
     check(
       "allocation_requests_run_attempt_check",

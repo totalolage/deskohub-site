@@ -1,0 +1,45 @@
+name: Portal skipped deployments
+
+permissions:
+  contents: read
+
+# Vercel skips the portal when a commit doesn't affect it relative to its
+# parent alone. After a multi-commit push, or a parent whose deployment
+# failed or was canceled, that can leave a portal change undeployed, so this
+# compares each skipped portal deployment with the last ready one of its
+# branch and target, and builds it when anything the portal uses changed:
+# previews by redeploying, production by deploying main's current head.
+on:
+  repository_dispatch:
+    types: [vercel.deployment.skipped]
+
+concurrency:
+  group: portal-skipped-deployment-${{ github.event.client_payload.git.ref }}
+  cancel-in-progress: false
+
+jobs:
+  rebuild-changed-portal:
+    if: github.event.client_payload.project.id == 'prj_uLtBaMFL1FbS9GYAAPEPzziTTGGm'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Rebuild the skipped deployment if the portal changed
+        env:
+          PORTAL_PROJECT_ID: prj_uLtBaMFL1FbS9GYAAPEPzziTTGGm
+          SKIPPED_DEPLOYMENT_SHA: ${{ github.event.client_payload.git.sha }}
+          SKIPPED_DEPLOYMENT_URL: ${{ github.event.client_payload.url }}
+          VERCEL_TEAM_ID: team_MgMQ4MEWijWnYa1R48C2JU5e
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: bun apps/deskohub-portal/scripts/rebuild-skipped-deployment.ts

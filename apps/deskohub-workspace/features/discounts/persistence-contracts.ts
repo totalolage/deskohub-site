@@ -60,7 +60,7 @@ export type DiscountApplicationId = Schema.Schema.Type<
   typeof discountApplicationIdSchema
 >;
 
-export const discountCodeClaimIdSchema = Schema.NonEmptyString.pipe(
+const discountCodeClaimIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("DiscountCodeClaimId")
 ).annotate({
   identifier: "DiscountCodeClaimId",
@@ -71,7 +71,7 @@ export type DiscountCodeClaimId = Schema.Schema.Type<
   typeof discountCodeClaimIdSchema
 >;
 
-export const voucherClaimIdSchema = Schema.NonEmptyString.pipe(
+const voucherClaimIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("VoucherClaimId")
 ).annotate({
   identifier: "VoucherClaimId",

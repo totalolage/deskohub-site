@@ -6,7 +6,7 @@ import type {
 import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
-import { ensureOfficeReservationsEnabled } from "@/features/office/backend/office-reservation-feature-flag.service";
+import { ensureOfficeReservationsEnabled } from "@/features/office/backend/office-release-gate";
 import {
   buildAdvertisedPriceState,
   sealAdvertisedPriceState,

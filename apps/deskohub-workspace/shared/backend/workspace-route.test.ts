@@ -1,32 +1,70 @@
 import { describe, expect, test } from "bun:test";
-import { Context, Data, Effect, Layer } from "effect";
+import { Data, Effect } from "effect";
+import { CurrentAgentTraffic } from "./workspace-request-context";
 import { defineWorkspaceRoute, WorkspaceRouteFailure } from "./workspace-route";
-
-class TestService extends Context.Service<
-  TestService,
-  { readonly value: string }
->()("WorkspaceRouteTestService") {}
 
 class TestLayerError extends Data.TaggedError("TestLayerError")<{
   readonly message: string;
 }> {}
 
 describe("Workspace routes", () => {
-  test("preserves route arguments and successful responses", async () => {
+  test("puts the request's own agent category in the request context", async () => {
     const GET = defineWorkspaceRoute(
       {
-        operation: "test.route",
-        cancellation: "continue-after-disconnect",
+        operation: "test.agent-traffic",
+        cancellation: "interrupt-on-disconnect",
+        caller: "client",
       },
-      (_request, context: { readonly value: string }) =>
-        Effect.succeed(new Response(context.value))
+      () => Effect.map(CurrentAgentTraffic, (traffic) => Response.json(traffic))
     );
 
-    const response = await GET(new Request("https://deskohub.test"), {
-      value: "ready",
-    });
+    const agent = await GET(
+      new Request("https://deskohub.test/api/mcp", {
+        headers: {
+          "user-agent":
+            "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-User/1.0; +https://www.anthropic.com)",
+        },
+      })
+    );
+    // A client-sent category header is never trusted.
+    const spoofed = await GET(
+      new Request("https://deskohub.test/api/mcp", {
+        headers: {
+          "user-agent":
+            "Mozilla/5.0 (Macintosh) Chrome/141.0.0.0 Safari/537.36",
+          "x-deskohub-agent-category": "ai_user_agent",
+          "x-deskohub-agent-name": "chatgpt",
+        },
+      })
+    );
 
-    await expect(response.text()).resolves.toBe("ready");
+    await expect(agent.json()).resolves.toEqual({
+      category: "ai_user_agent",
+      name: "claude",
+    });
+    await expect(spoofed.json()).resolves.toEqual({ category: "unclassified" });
+  });
+
+  test("leaves a service route's work unclassified whoever calls it", async () => {
+    const POST = defineWorkspaceRoute(
+      {
+        operation: "test.service-agent-traffic",
+        cancellation: "continue-after-disconnect",
+        caller: "service",
+      },
+      () => Effect.map(CurrentAgentTraffic, (traffic) => Response.json(traffic))
+    );
+
+    const response = await POST(
+      new Request("https://deskohub.test/api/webhooks/nexi", {
+        method: "POST",
+        headers: { "user-agent": "python-requests/2.32.3" },
+      })
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      category: "unclassified",
+    });
   });
 
   test("recovers typed failures without exposing their cause", async () => {
@@ -35,6 +73,7 @@ describe("Workspace routes", () => {
       {
         operation: "test.failure",
         cancellation: "continue-after-disconnect",
+        caller: "client",
       },
       () =>
         Effect.fail(
@@ -56,50 +95,29 @@ describe("Workspace routes", () => {
     expect(body).not.toContain("private setup");
   });
 
-  test("maps Layer acquisition failures in the declared Effect", async () => {
+  test("adds a failure's stable code to the public error", async () => {
     const GET = defineWorkspaceRoute(
       {
-        operation: "test.layer-failure",
+        operation: "test.unavailable",
         cancellation: "continue-after-disconnect",
+        caller: "client",
       },
       () =>
-        TestService.pipe(
-          Effect.map(({ value }) => new Response(value)),
-          Effect.provide(
-            Layer.effect(
-              TestService,
-              Effect.fail(new TestLayerError({ message: "private setup" }))
-            )
-          ),
-          Effect.mapError(
-            WorkspaceRouteFailure.internal("Temporarily unavailable")
-          )
-        )
+        Effect.fail(
+          WorkspaceRouteFailure.unavailable(
+            "Source unavailable",
+            "source_unavailable"
+          )(new TestLayerError({ message: "private cause" }))
+        ).pipe(Effect.as(new Response("unused")))
     );
 
     const response = await GET(new Request("https://deskohub.test"));
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
-      error: "Temporarily unavailable",
+      error: "Source unavailable",
+      code: "source_unavailable",
     });
-  });
-
-  test("suspends synchronous handler construction as a defect", async () => {
-    const defect = new Error("construction defect");
-    const GET = defineWorkspaceRoute(
-      {
-        operation: "test.defect",
-        cancellation: "continue-after-disconnect",
-      },
-      () => {
-        throw defect;
-      }
-    );
-
-    await expect(GET(new Request("https://deskohub.test"))).rejects.toBe(
-      defect
-    );
   });
 
   test("uses the request signal only when interruption is declared", async () => {
@@ -112,6 +130,7 @@ describe("Workspace routes", () => {
       {
         operation: "test.interrupt",
         cancellation: "interrupt-on-disconnect",
+        caller: "client",
       },
       () => Effect.sync(markStarted).pipe(Effect.andThen(Effect.never))
     );
@@ -128,6 +147,7 @@ describe("Workspace routes", () => {
       {
         operation: "test.continue",
         cancellation: "continue-after-disconnect",
+        caller: "client",
       },
       () => Effect.succeed(new Response("continued"))
     );

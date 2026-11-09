@@ -6,7 +6,7 @@ import type { CalculatedDiscountApplication } from "./calculator";
 import type { AppliedDiscount } from "./contracts";
 import type { DiscountClaimInstruction, DiscountProvenance } from "./provider";
 
-export interface DiscountCommitmentApplication {
+interface DiscountCommitmentApplication {
   readonly application: AppliedDiscount;
   readonly provenance: DiscountProvenance;
   readonly claim?: DiscountClaimInstruction;
@@ -14,7 +14,6 @@ export interface DiscountCommitmentApplication {
 
 export interface DiscountCommitmentPayload {
   readonly product: WorkspaceProductIdentity;
-  readonly reservationDate: string;
   readonly applications: readonly DiscountCommitmentApplication[];
 }
 
@@ -36,12 +35,10 @@ export type DiscountCommitment = DiscountCommitmentValue;
 
 export const makeDiscountCommitment = (input: {
   readonly product: WorkspaceProductIdentity;
-  readonly reservationDate: string;
   readonly applications: readonly CalculatedDiscountApplication[];
 }): DiscountCommitment => {
   return new DiscountCommitmentValue({
     product: getCanonicalWorkspaceProductIdentity(input.product),
-    reservationDate: input.reservationDate,
     applications: input.applications.map(({ application, candidate }) => ({
       application,
       provenance: candidate.provenance,
@@ -53,19 +50,3 @@ export const makeDiscountCommitment = (input: {
 export const getDiscountCommitmentPayload = (
   commitment: DiscountCommitment
 ): DiscountCommitmentPayload => commitment[readDiscountCommitment]();
-
-type Assert<T extends true> = T;
-
-export type CommitmentPayloadRemainsPrivate = Assert<
-  Extract<
-    keyof DiscountCommitment,
-    | "product"
-    | "applications"
-    | "claimInstructions"
-    | "provenance"
-    | "providerNamespace"
-    | "providerReference"
-  > extends never
-    ? true
-    : false
->;

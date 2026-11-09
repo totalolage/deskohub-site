@@ -17,7 +17,7 @@ const inputVariants = cva(
   }
 );
 
-export interface InputProps
+interface InputProps
   extends React.ComponentProps<"input">,
     VariantProps<typeof inputVariants> {
   ref?: React.Ref<HTMLInputElement>;

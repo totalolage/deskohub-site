@@ -1,50 +1,88 @@
 import "server-only";
 
-import { loadPostHogFeatureFlagDefinitions } from "@deskohub/posthog/feature-flags/management";
+import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
+import {
+  loadPostHogFeatureFlagDefinitions,
+  type PostHogFeatureFlagDefinition,
+} from "@deskohub/posthog/feature-flags/management";
 import { Effect } from "effect";
 import { cacheLife } from "next/cache";
 import { env } from "@/env";
 import { postHogRuntimeConfig } from "@/shared/backend/config/posthog.config";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
 import {
+  type PostHogFeatureFlagDefinitions,
   type PostHogFeatureFlagKey,
   postHogFeatureFlags,
 } from "../generated/contract";
 
-export async function areWorkspaceFeatureFlagsGlobal(
+type GlobalWorkspaceFeatureFlagValues =
+  PostHogFeatureFlagOverrides<PostHogFeatureFlagDefinitions>;
+
+/** Returns the requested values only when every requested flag is constant. */
+export async function getGlobalWorkspaceFeatureFlagValues(
   keys: readonly PostHogFeatureFlagKey[]
-) {
-  const values = await getGlobalWorkspaceFeatureFlagValues();
-  return keys.every((key) => Object.hasOwn(values, key));
+): Promise<GlobalWorkspaceFeatureFlagValues | undefined> {
+  const values = await classifyWorkspaceFeatureFlags();
+  if (!keys.every((key) => Object.hasOwn(values, key))) return undefined;
+
+  return Object.fromEntries(keys.map((key) => [key, values[key]]));
 }
 
 export async function getGlobalWorkspaceFeatureFlagValue(
   key: PostHogFeatureFlagKey
 ) {
-  return (await getGlobalWorkspaceFeatureFlagValues())[key];
+  return (await classifyWorkspaceFeatureFlags())[key];
 }
 
-async function getGlobalWorkspaceFeatureFlagValues() {
+interface ClassifiedDefinitions {
+  readonly definitions: ReadonlyArray<PostHogFeatureFlagDefinition>;
+  /** False when PostHog couldn't answer with the management definitions. */
+  readonly complete: boolean;
+}
+
+async function classifyWorkspaceFeatureFlags(): Promise<GlobalWorkspaceFeatureFlagValues> {
   "use cache";
-  cacheLife("publicContent");
 
   const overrides = postHogRuntimeConfig.featureFlagOverrides ?? {};
   const apiKey = env.POSTHOG_API_KEY;
   const host = env.POSTHOG_API_HOST;
   const projectId = env.POSTHOG_PROJECT_ID;
-  if (!(apiKey && host && projectId)) return overrides;
+  if (!(apiKey && host && projectId)) {
+    cacheLife("publicContent");
+    return overrides;
+  }
 
-  const definitions = await loadPostHogFeatureFlagDefinitions({
-    apiKey,
-    host: new URL(host),
-    projectId,
-  }).pipe(
-    Effect.catch((error) =>
-      Effect.logWarning(error.message, { cause: error.cause }).pipe(
-        Effect.as([])
+  const { definitions } = await readSharedSnapshot(
+    "feature-flags.classify",
+    Effect.suspend(() =>
+      loadPostHogFeatureFlagDefinitions({
+        apiKey,
+        host: new URL(host),
+        projectId,
+      })
+    ).pipe(
+      Effect.map(
+        (definitions): ClassifiedDefinitions => ({
+          definitions,
+          complete: true,
+        })
+      ),
+      // Without the definitions only the overrides are constant.
+      Effect.catch((error) =>
+        Effect.logWarning(error.message, { cause: error.cause }).pipe(
+          Effect.as<ClassifiedDefinitions>({ definitions: [], complete: false })
+        )
       )
     ),
-    runWorkspaceEffect("feature-flags.classify")
+    {
+      complete: { lifetime: "publicContent" },
+      // Shared as long as a complete classification.
+      incomplete: {
+        when: ({ complete }) => !complete,
+        lifetime: "publicContent",
+      },
+    }
   );
 
   const values: Partial<Record<PostHogFeatureFlagKey, boolean>> = {};

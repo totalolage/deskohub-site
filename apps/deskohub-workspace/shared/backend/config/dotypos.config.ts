@@ -3,8 +3,14 @@ import {
   DotyposRuntimeConfigSchema,
   DotyposService,
 } from "@deskohub/dotypos";
-import { Layer, Schema, Scope } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
+import { expireCacheTag } from "@/shared/backend/cache-invalidation";
+import { shareAcrossRequests } from "@/shared/backend/share-across-requests";
+import {
+  availabilityTags,
+  reservationRecordTags,
+} from "@/shared/utils/cache-tags";
 
 export const WorkspaceDotyposRuntimeConfigLayer = Layer.effect(
   DotyposRuntimeConfig,
@@ -21,12 +27,45 @@ export const WorkspaceDotyposRuntimeConfigLayer = Layer.effect(
   })
 );
 
-const configuredDotyposLayer = DotyposService.Live.pipe(
-  Layer.provide(WorkspaceDotyposRuntimeConfigLayer)
+/**
+ * Every reservation write marks the shared reservation snapshots stale, even
+ * when the write fails, because a timed-out write may still have landed.
+ * Confirming a hold keeps its seats occupied, so it expires only the
+ * customer-facing reservation records, not availability.
+ */
+export const ReservationWritesExpireSharedReads = Layer.effect(
+  DotyposService,
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    const expiringOccupancy = expiringTags(
+      availabilityTags.reservations,
+      reservationRecordTags.records
+    );
+    const expiringRecords = expiringTags(reservationRecordTags.records);
+    return {
+      ...dotypos,
+      createReservation: expiringOccupancy(dotypos.createReservation),
+      updateReservation: expiringOccupancy(dotypos.updateReservation),
+      cancelReservation: expiringOccupancy(dotypos.cancelReservation),
+      confirmReservation: expiringRecords(dotypos.confirmReservation),
+    };
+  })
 );
-const processScope = Scope.makeUnsafe();
-const processMemoMap = Layer.makeMemoMapUnsafe();
 
-export const WorkspaceDotyposLayer = Layer.fromBuild(() =>
-  Layer.buildWithMemoMap(configuredDotyposLayer, processMemoMap, processScope)
+/** One Dotypos adapter, and its token cache, for the whole process. */
+export const WorkspaceDotyposLayer = shareAcrossRequests(
+  ReservationWritesExpireSharedReads.pipe(
+    Layer.provide(DotyposService.Live),
+    Layer.provide(WorkspaceDotyposRuntimeConfigLayer)
+  )
 );
+
+function expiringTags(...tags: readonly string[]) {
+  return <Args extends readonly unknown[], A, E, R>(
+    write: (...args: Args) => Effect.Effect<A, E, R>
+  ) =>
+    (...args: Args) =>
+      write(...args).pipe(
+        Effect.ensuring(Effect.forEach(tags, expireCacheTag, { discard: true }))
+      );
+}

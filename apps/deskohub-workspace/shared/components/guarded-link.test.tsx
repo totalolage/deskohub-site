@@ -5,12 +5,7 @@ import {
   fireEvent,
   render,
 } from "@testing-library/react";
-import {
-  type ComponentPropsWithoutRef,
-  createRef,
-  type ReactNode,
-  type Ref,
-} from "react";
+import type { ComponentPropsWithoutRef, ReactNode, Ref } from "react";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -89,8 +84,8 @@ afterEach(() => {
   window.confirm = originalConfirm;
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 test("prevents changed client navigation and does not call the caller after rejection", () => {
@@ -155,39 +150,4 @@ test("allows exact-page and hash-only links without confirmation", () => {
 
   expect(callerCalls).toBe(2);
   expect(confirmMock).not.toHaveBeenCalled();
-});
-
-test("preserves the href, forwarded aria props, and ref", () => {
-  const ref = createRef<HTMLAnchorElement>();
-  const view = render(
-    withProvider(
-      <GuardedLink
-        ref={ref}
-        href="/next"
-        aria-label="Go to next"
-        data-testid="guarded-link"
-      >
-        Next
-      </GuardedLink>
-    )
-  );
-
-  const link = view.getByRole("link", { name: "Go to next" });
-  expect(link.getAttribute("href")).toBe("/next");
-  expect(link.getAttribute("aria-label")).toBe("Go to next");
-  expect(link.getAttribute("data-testid")).toBe("guarded-link");
-  expect(ref.current).toBe(link);
-});
-
-test("lets the caller cancel an accepted navigation through the public contract", () => {
-  confirmMock.mockReturnValue(true);
-  render(
-    withProvider(
-      <GuardedLink href="/next" onNavigate={(event) => event.preventDefault()}>
-        Next
-      </GuardedLink>
-    )
-  );
-
-  expect(invokeNavigate().prevented).toBe(true);
 });

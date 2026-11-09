@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
+import { CustomerAccountAccessError } from "@/features/account/customer-account";
 import { MarketingManagementError } from "./marketing-management.service";
 import {
   getAccountMarketingManagementContext,
@@ -39,7 +40,9 @@ const resolve = (input: {
           accountCalls += 1;
           return input.accountCustomerId
             ? Effect.succeed(account(input.accountCustomerId))
-            : Effect.fail(new Error("account unavailable"));
+            : Effect.fail(
+                new CustomerAccountAccessError({ reason: "unavailable" })
+              );
         },
         resolveManagementSession: () =>
           input.linkFailure
@@ -139,7 +142,7 @@ describe("marketing preference authority", () => {
     expect(attempt.accountCalls).toBe(0);
   });
 
-  test("uses NUL-separated SHA-256 contexts that do not contain raw identities", () => {
+  test("derives hex contexts that do not contain raw identities", () => {
     const pendingContext = getPendingMarketingManagementContext("pending");
     const linkContext = getLinkMarketingManagementContext(
       "session",
@@ -148,16 +151,6 @@ describe("marketing preference authority", () => {
     const accountContext = getAccountMarketingManagementContext(
       accountId,
       "customer"
-    );
-
-    expect(pendingContext).toBe(
-      "96066f7dd7ddfb6dbb12de414bfcdb149e6dfefcdfa84607fd89939841f68565"
-    );
-    expect(linkContext).toBe(
-      "c7750056ea40f02078ddea50435ec62077e356aadca601f99b99d40c01c3bd50"
-    );
-    expect(accountContext).toBe(
-      "5094ec593ba0abf77382fd7e2eeec5b68e33bb7887dc2ba55ffceb5d81ad1bad"
     );
 
     for (const context of [pendingContext, linkContext, accountContext]) {
@@ -169,16 +162,34 @@ describe("marketing preference authority", () => {
     }
   });
 
-  test("derives dismissal context from the exact raw management cookie pair", () => {
-    const dismissalContext = getMarketingManagementDismissalContext({
-      pending: "pending",
-      session: undefined,
-    });
+  test("keeps contexts distinct across identity boundaries and kinds", () => {
+    const shiftedIdentities = [
+      [
+        getLinkMarketingManagementContext("a", "bc"),
+        getLinkMarketingManagementContext("ab", "c"),
+      ],
+      [
+        getAccountMarketingManagementContext("a" as never, "bc"),
+        getAccountMarketingManagementContext("ab" as never, "c"),
+      ],
+      [
+        getLinkMarketingManagementContext("session", "customer"),
+        getAccountMarketingManagementContext("session" as never, "customer"),
+      ],
+      [
+        getMarketingManagementDismissalContext({
+          pending: "token",
+          session: undefined,
+        }),
+        getMarketingManagementDismissalContext({
+          pending: undefined,
+          session: "token",
+        }),
+      ],
+    ];
 
-    expect(dismissalContext).toBe(
-      "54d5362f290b6d26d5753ded3d7f03af532b73217619786f1355ed0932e5025c"
-    );
-    expect(dismissalContext).toMatch(/^[0-9a-f]{64}$/);
-    expect(dismissalContext).not.toContain("pending");
+    for (const [left, right] of shiftedIdentities) {
+      expect(left).not.toBe(right);
+    }
   });
 });

@@ -1,0 +1,50 @@
+{
+  "emailAutomationsEyebrow": "Automatická kampaň",
+  "emailAutomationsFrequencyBannerBody": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Tento plán se spouští až {count}krát za hodinu. Každé spuštění vyhodnotí celé publikum, proto ověřte, že je tato četnost záměrná.",
+        "countPlural=few": "Tento plán se spouští až {count}krát za hodinu. Každé spuštění vyhodnotí celé publikum, proto ověřte, že je tato četnost záměrná.",
+        "countPlural=other": "Tento plán se spouští až {count}krát za hodinu. Každé spuštění vyhodnotí celé publikum, proto ověřte, že je tato četnost záměrná."
+      }
+    }
+  ],
+  "emailAutomationsFrequencyBannerTitle": "Možná příliš častá spouštění",
+  "emailAutomationsNeverActivated": "Zatím neaktivováno",
+  "emailAutomationsPendingChanges": "Nepublikované změny",
+  "emailAutomationsSectionEmail": "E-mail",
+  "emailAutomationsSectionFlow": "Scénář",
+  "emailAutomationsSectionPreview": "Náhled a aktivace",
+  "emailAutomationsSectionRuns": "Záznam běhů",
+  "emailAutomationsSectionsLabel": "Části automatické kampaně",
+  "emailAutomationsStatusActive": "Aktivní",
+  "emailAutomationsStatusArchived": "Archivováno",
+  "emailAutomationsStatusDraft": "Koncept",
+  "emailAutomationsStatusPaused": "Pozastaveno",
+  "emailAutomationsTriggerAccountCreated": "Vytvoření účtu",
+  "emailAutomationsTriggerReservationBooked": "Potvrzení rezervace",
+  "emailAutomationsTriggerReservationCancelled": "Zrušení rezervace",
+  "emailAutomationsTriggerReservationFinished": "Konec rezervace",
+  "emailAutomationsTriggerReservationStarted": "Začátek rezervace",
+  "emailAutomationsTriggerSchedule": "Podle plánu",
+  "emailAutomationsVersionLive": "Verze {version} běží od {date}",
+  "emailAutomationsListDeliveryFilter": "Způsob odeslání",
+  "emailAutomationsListDeliveryAll": "Všechny kampaně",
+  "emailAutomationsListDeliveryOnce": "Jednorázové",
+  "emailAutomationsListDeliveryAutomated": "Automatické",
+  "emailAutomationsComposerDeliveryLabel": "Způsob odeslání",
+  "emailAutomationsComposerDeliveryOnce": "Odeslat jednou",
+  "emailAutomationsComposerDeliveryOnceDescription": "Jeden e-mail okruhu příjemců, odeslaný po testovacím odeslání.",
+  "emailAutomationsComposerDeliveryAutomated": "Automaticky",
+  "emailAutomationsComposerDeliveryAutomatedDescription": "Scénář pošle tento e-mail každému zákazníkovi, jakmile splní podmínky.",
+  "emailAutomationsComposerDeliveryHint": "Po vytvoření kampaně už to nelze změnit.",
+  "emailAutomationsComposerNewDescription": "Napište e-mail a pak kampaň vytvořte, abyste mohli sestavit scénář, který ho odešle.",
+  "emailAutomationsComposerAudienceLabel": "Okruh příjemců (vstupní skupina u plánu, vstupní podmínka u událostí)",
+  "emailAutomationsComposerAudiencePlaceholder": "Vyberte okruh příjemců",
+  "emailAutomationsEmailSave": "Uložit změny",
+  "emailAutomationsEmailUnpublishedNote": "Úpravy zde nejsou zveřejněné, dokud je neprověříte v náhledu a neaktivujete. Běhy, které už probíhají, si ponechají e-mail, se kterým začaly.",
+  "emailAutomationsEmailArchivedNote": "Tato kampaň je archivovaná, takže její e-mail ani okruh příjemců už nelze změnit.",
+  "emailAutomationsEmailSaveArchived": "Tato kampaň je archivovaná, takže její e-mail už nelze upravit."
+}

@@ -7,6 +7,7 @@ import {
   type UseActionHookReturn,
   useAction,
 } from "next-safe-action/hooks";
+import { useRef } from "react";
 
 type WorkspaceActionTransportErrorInput<
   Schema extends StandardSchemaV1 | undefined,
@@ -20,7 +21,6 @@ type UseWorkspaceActionOptions<
   ShapedErrors,
   Data,
 > = HookBaseOptions<ServerError, Schema, ShapedErrors, Data> & {
-  readonly actionName: string;
   readonly onTransportError?: (args: {
     readonly error: unknown;
     readonly input: WorkspaceActionTransportErrorInput<Schema>;
@@ -36,8 +36,23 @@ export function useWorkspaceAction<
   safeActionFn: SingleInputActionFn<ServerError, Schema, ShapedErrors, Data>,
   opts: UseWorkspaceActionOptions<ServerError, Schema, ShapedErrors, Data>
 ): UseActionHookReturn<ServerError, Schema, ShapedErrors, Data> {
-  const { actionName: _actionName, onTransportError, ...hookOptions } = opts;
-  const action = useAction(safeActionFn, hookOptions);
+  const { onError, onTransportError, ...hookOptions } = opts;
+  const action = useAction(safeActionFn, {
+    ...hookOptions,
+    ...(onError && {
+      onError: (args: Parameters<typeof onError>[0]) => {
+        // A rejected action call is already reported through onTransportError,
+        // and this later callback would overwrite that transport message.
+        if (onTransportError && isTransportOnlyError(args.error)) return;
+        return onError(args);
+      },
+    }),
+  });
+
+  // The library applies only the latest call's result and callbacks, so a
+  // call superseded before it settles mustn't report its transport error
+  // over the newer call's outcome either.
+  const latestCall = useRef(0);
 
   const handleTransportError = (
     cause: unknown,
@@ -51,13 +66,16 @@ export function useWorkspaceAction<
   const executeAsync = async (
     input: Parameters<typeof action.executeAsync>[0]
   ) => {
+    const call = ++latestCall.current;
     try {
       return await action.executeAsync(input);
     } catch (error) {
-      handleTransportError(
-        error,
-        input as WorkspaceActionTransportErrorInput<Schema>
-      );
+      if (call === latestCall.current) {
+        handleTransportError(
+          error,
+          input as WorkspaceActionTransportErrorInput<Schema>
+        );
+      }
       throw error;
     }
   };
@@ -66,9 +84,24 @@ export function useWorkspaceAction<
     void executeAsync(input).catch(() => undefined);
   };
 
+  const reset = () => {
+    latestCall.current += 1;
+    action.reset();
+  };
+
   return {
     ...action,
     execute,
     executeAsync,
+    reset,
   };
 }
+
+const isTransportOnlyError = (error: {
+  readonly serverError?: unknown;
+  readonly thrownError?: Error;
+  readonly validationErrors?: unknown;
+}) =>
+  error.thrownError !== undefined &&
+  error.serverError === undefined &&
+  error.validationErrors === undefined;

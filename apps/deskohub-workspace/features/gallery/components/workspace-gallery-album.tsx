@@ -3,57 +3,53 @@
 import { useMemo, useState } from "react";
 import { MasonryPhotoAlbum, type Photo } from "react-photo-album";
 import "react-photo-album/masonry.css";
-import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
+import Lightbox from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
-import type { GalleryPhoto } from "../types/gallery-photo";
+import { type Locale, m } from "@/features/i18n";
+import type { VenuePhoto } from "../types/venue-photo";
+import {
+  galleryAlbumColumns,
+  galleryAlbumSpacing,
+} from "./workspace-gallery-album-layout";
 
-type WorkspaceAlbumPhoto = Photo & GalleryPhoto;
+type WorkspaceAlbumPhoto = Photo & VenuePhoto;
 
 type WorkspaceGalleryAlbumProps = {
-  photos: readonly GalleryPhoto[];
-  openLabel: string;
+  locale: Locale;
+  photos: readonly VenuePhoto[];
 };
 
 const eagerGalleryImageCount = 3;
 
 export function WorkspaceGalleryAlbum({
+  locale,
   photos,
-  openLabel,
 }: WorkspaceGalleryAlbumProps) {
   const [lightboxIndex, setLightboxIndex] = useState(-1);
 
   const albumPhotos: readonly WorkspaceAlbumPhoto[] = useMemo(
     () =>
-      photos.map((photo) => ({
+      photos.map((photo, index) => ({
         ...photo,
         key: photo.id,
-        label: `${openLabel}: ${photo.caption ?? photo.alt}`,
+        label: m.galleryOpenImage(
+          { image: photo.caption ?? photo.alt, number: index + 1 },
+          { locale }
+        ),
         title: photo.caption,
       })),
-    [openLabel, photos]
+    [locale, photos]
   );
 
-  const lightboxSlides: SlideImage[] = useMemo(
-    () =>
-      photos.map((photo) => ({
-        alt: photo.alt,
-        description: photo.caption,
-        height: photo.height,
-        src: photo.fullSrc,
-        title: photo.caption,
-        width: photo.width,
-      })),
+  const lightboxSlides = useMemo(
+    () => photos.map((photo) => photo.lightbox),
     [photos]
   );
 
   return (
     <>
       <MasonryPhotoAlbum<WorkspaceAlbumPhoto>
-        columns={(containerWidth) => {
-          if (containerWidth < 520) return 1;
-          if (containerWidth < 900) return 2;
-          return 3;
-        }}
+        columns={galleryAlbumColumns}
         componentsProps={{
           button: () => ({
             className:
@@ -108,7 +104,7 @@ export function WorkspaceGalleryAlbum({
             },
           ],
         }}
-        spacing={(containerWidth) => (containerWidth < 640 ? 14 : 18)}
+        spacing={galleryAlbumSpacing}
       />
 
       <Lightbox

@@ -1,4 +1,8 @@
+import type { AdministrationReservationStatusFilter } from "@deskohub/workspace-admin-api";
+import { Option } from "effect";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { workspaceSiteConstants } from "@/shared/utils";
+import { parsePlainDate } from "@/shared/utils/temporal";
 
 export type AdministrationReservationDateRange = {
   readonly from?: string;
@@ -34,6 +38,36 @@ export const getAdministrationReservationDateRange = ({
 
   return fromDate ? { from: fromDate.toString() } : { to: toDate?.toString() };
 };
+
+/**
+ * Resolves the start-date range an operator's reservation list shows. Without
+ * an explicit range the list starts on January 1 of the current Workspace year
+ * and stays open-ended, so upcoming bookings remain visible while date sorting
+ * never pages through the complete provider history. A single customer's list
+ * keeps that customer's complete history, and the refund queue keeps every
+ * refund still owed.
+ */
+export const getAdministrationReservationListDateRange = (
+  {
+    customerId,
+    status,
+    ...filters
+  }: Parameters<typeof getAdministrationReservationDateRange>[0] & {
+    readonly customerId?: string;
+    readonly status?: AdministrationReservationStatusFilter;
+  },
+  currentDate = getCurrentWorkspaceDate()
+): AdministrationReservationDateRange | undefined =>
+  getAdministrationReservationDateRange(filters) ??
+  (customerId || status === "needs_refund"
+    ? undefined
+    : getAdministrationReservationListDefaultDateRange(currentDate));
+
+export const getAdministrationReservationListDefaultDateRange = (
+  currentDate = getCurrentWorkspaceDate()
+): { readonly from: string } => ({
+  from: currentDate.with({ month: 1, day: 1 }).toString(),
+});
 
 export const getAdministrationOverviewDateRanges = (
   currentDate = getCurrentWorkspaceDate()
@@ -75,11 +109,33 @@ export const getAdministrationReservationDateShortcuts = (
   },
 });
 
-const parseCalendarDate = (value: string | undefined) => {
-  if (!value) return undefined;
-  try {
-    return Temporal.PlainDate.from(value);
-  } catch {
-    return undefined;
-  }
-};
+const parseCalendarDate = (value: string | undefined) =>
+  value ? Option.getOrUndefined(parsePlainDate(value)) : undefined;
+
+/**
+ * Dotypos start-time bounds for an inclusive Workspace calendar date range:
+ * from midnight of `from` up to midnight after `to`, in the Workspace timezone.
+ */
+export const getAdministrationReservationDateRangeBounds = (
+  range: AdministrationReservationDateRange
+) => ({
+  ...(range.from && {
+    startsAtOrAfter: Temporal.PlainDate.from(range.from)
+      .toZonedDateTime({
+        plainTime: Temporal.PlainTime.from("00:00"),
+        timeZone: workspaceSiteConstants.location.timeZone,
+      })
+      .toInstant()
+      .toString(),
+  }),
+  ...(range.to && {
+    startsBefore: Temporal.PlainDate.from(range.to)
+      .add({ days: 1 })
+      .toZonedDateTime({
+        plainTime: Temporal.PlainTime.from("00:00"),
+        timeZone: workspaceSiteConstants.location.timeZone,
+      })
+      .toInstant()
+      .toString(),
+  }),
+});

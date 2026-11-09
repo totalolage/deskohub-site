@@ -2,7 +2,7 @@
 
 ## Declare services
 
-Declare the public interface first. Define the service with `Context.Service` and static Layer properties. Do not introduce `Effect.Service`, `Context.Tag`, or `Context.GenericTag`.
+Declare the public interface first, then the service with `Context.Service` and static Layer properties. V4 has no `Effect.Service`, `Context.Tag`, or `Context.GenericTag`.
 
 ```ts
 interface IFooService {
@@ -17,70 +17,66 @@ export class FooService extends Context.Service<
 }
 ```
 
-Select the Layer constructor by setup behavior:
+Choose the Layer constructor by setup behavior:
 
-- Use `Layer.effect(this, ...)` for effectful or fallible setup.
-- Use `Layer.sync(this, ...)` for pure lazy construction.
-- Use `Layer.succeed(this, ...)` for an already-created implementation or test fake.
+- `Layer.effect(this, ...)` for effectful or fallible setup.
+- `Layer.sync(this, ...)` for pure lazy construction.
+- `Layer.succeed(this, ...)` for an existing implementation or a test fake.
 
-Keep live Layers on their owning Context capability. Do not declare standalone
-aliases such as `FooServiceDefault` or `FooServiceLive`; callers use
-`FooService.Default` while composing dependencies and `FooService.Live` when
-the capability exposes a standard fully wired composition. This applies to
-repositories, configuration, and other Context capabilities as well as classes
-whose names end in `Service`.
+Name the default implementation `Default`, even when it still requires dependencies from Context. When a standard fully wired production composition exists, expose it as static `Live` on the same class, not in a separate runtime module. This applies to every Context capability, including repositories and configuration. The `no-standalone-capability-layers` Grit rule rejects standalone `FooDefault` or `FooLive` constants.
 
-Name the default implementation `Default`, even when it still requires Context
-dependencies. Name a standard production composition `Live` when one exists.
+When a runtime that can't load application environment modules must still import the capability, keep `Live` on the class and lazily load an environment-bound factory named for construction, such as `makeFooLayer`. See `accounting-snapshot-key.service.ts`.
 
-Represent service construction directly as an Effect when a factory adds no behavior or reuse. Do not add a `make*` function that merely returns one Effect expression.
+Write service construction directly as an Effect. Add a `make*` function only when it adds behavior or reuse.
 
-## Structure modules
+## Lay out modules
 
-Write service modules as top-down narratives. After imports, place the public interface and `Context.Service` declaration first, then the primary workflow, then progressively more concrete operations. Split the module when implementation detail branches into a separate concern.
-
-Place newly introduced private helper definitions below their callers so the primary workflow remains the module's entry point and implementation details unfold afterward. Keep a helper above when its inferred return type establishes a public contract there.
-
-Keep the interface, Context service declaration, and live layer in the `*.service.ts` module. Put the mock layer in an adjacent `*.service.mock.ts` module and use `Layer.mock` for partial test implementations instead of inline test mocks.
-
-When a capability declaration must remain importable by a runtime that cannot
-load application environment modules, keep its static `Live` property on the
-class and lazily load an environment-bound provider factory. Name that export
-for construction (for example `makeFooLayer`), never as a standalone
-`FooLive` alias.
-
-When a service has one standard fully wired live composition, expose it as the
-service's static `Live` layer. Do not create a separate runtime module whose
-only job is to export that composition.
+- Write a service module top-down: imports, public interface, `Context.Service` declaration, primary workflow, then progressively more concrete operations. Place new private helpers below their callers, unless a helper's inferred return type defines a public contract above.
+- Split the module when a detail becomes a separate concern.
+- Keep the interface, service declaration, and live Layer in `*.service.ts`. Put the mock Layer in an adjacent `*.service.mock.ts` and build partial fakes with `Layer.mock`.
+- Expose a feature's public service API through explicit named exports in its `index.ts` barrel. Keep providers, repositories, and other implementation modules private. In tests, import the module under test directly, not through the barrel. The `no-wildcard-reexport` Grit rule rejects `export *` in Workspace source.
 
 ## Model capabilities
 
-Treat services, providers, repositories, and external clients as Effect capabilities. Supply them through Context and compose implementations with Layers; do not pass them as ordinary function arguments or dependency objects.
+Treat services, providers, repositories, and external clients as Effect capabilities. Supply them through Context and compose them with Layers, never as function arguments or dependency objects.
 
-Use Effect's `HttpClient` capability for outbound HTTP. Provide the live transport with a `FetchHttpClient` Layer at the closest application adapter that owns the external operation, so unrelated upstream orchestration services do not inherit the low-level `HttpClient` requirement. Replace it with a Layer-provided client or fetch implementation in tests. Do not thread `fetch` functions through operation parameters as an ad hoc mocking seam.
+- Resolve capabilities while you construct the consuming service, and close over them so public methods take domain input only.
+- Let `Default` require dependencies from Context. Provide live dependencies in `Live` and swap in test Layers in tests.
+- Use Effect's `HttpClient` for outbound HTTP. Provide the `FetchHttpClient` Layer at the closest adapter that owns the external call, so upstream services don't inherit the `HttpClient` requirement. In tests, provide a test client or fetch through a Layer instead of passing `fetch` as a parameter.
+- Import unstable modules as namespaces from their barrel: `import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"` or `import { SqlError } from "effect/unstable/sql"`. Don't deep-import paths such as `effect/unstable/http/HttpClient`.
 
-Import HTTP modules as named namespaces from the `effect/unstable/http` barrel, for example `import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"`. Do not add per-module namespace imports such as `import * as HttpClient from "effect/unstable/http/HttpClient"` in handwritten code.
+## Call external providers
 
-Resolve capabilities while constructing the consuming service and close over them in its implementation so public methods accept domain input only. Let a service's `Default` layer require its dependencies from Context. Provide live dependency layers in the service's `Live` composition and replace them with test layers in tests.
+- Bound every outbound request with a timeout that fails with the capability's typed error. Pass the `Effect.tryPromise` abort signal to promise-based SDKs so a timeout or interruption cancels the request.
+- Declare a provider's retry backoff once with `ProviderRetryPolicy.make` from `@deskohub/provider-request` (log label, base delay, maximum retries) and add the deployment's per-attempt timeout with `withAttemptTimeout`. Bound each attempt with `policy.attempt(onTimeout)` and retry with `policy.retryWhile(isRetryable)`; a request that must run once skips `retryWhile`. Derive deadlines from `policy.worstCase` (`once`, `retried`, `sequential(calls, each)`, `paginated({ pages, retry, deadline })`) or the bound the provider package exports, and never restate the backoff arithmetic. Pick the pagination `retry` mode the load really uses (`each-page`, `resume` for one retry budget shared across pages that resends the failed page, `none`). An `"unknown"` page count has no finite bound unless the load enforces its own deadline over all pages. In Workspace, pick a deployment's provider timeout with `byStage` from `shared/deployment/deployment-stage.ts`; the timeout numbers stay in each provider's config. A provider on Effect's `HttpClient` may use `HttpClient.retryTransient` instead.
+- Per-deployment timeouts stay with their owner: the Workspace config module for Nexi and Google Calendar, `deploymentResendRequestTimeouts` in `@deskohub/email`. Dotypos waits the same 30 seconds everywhere. Don't merge them into one production/non-production table.
+- Retry idempotent reads on Unavailable failures. Retry a write only when the provider honors a stable idempotency key or an `If-Match` precondition. Otherwise retry only failures that prove nothing was applied, such as 429 or an empty creation response. Keep each operation's retry ceiling in one private table in the provider package, guarded by a test that pins the table and the request counts.
+- When a provider rejects a cached credential with 401, invalidate the cached credential.
+- Keep the original error as `cause` unless it carries request bodies, credentials, or personal data. Then strip those parts and log only tags, identifiers, status codes, and field names.
 
-## Name and expose operations
+### Report provider outcomes
 
-Name public service operations with `Effect.fn("Service.operation")`. Do not wrap the entire named operation in a redundant `Effect.withSpan`; add explicit spans only for meaningful nested trace boundaries.
+A provider package's errors are part of its port, not its transport. Every provider failure is one of three tags, named `<Prefix><Outcome>`, where the prefix is the service class name without `Service` (`DotyposService` → `Dotypos`):
 
-In a named Effect operation, do not add a scoped annotation for the entire input when the operation wrapper already annotates the same input fields individually.
+- `<Prefix>Unavailable`: the provider could not serve the request and nothing was applied. A later attempt can succeed.
+- `<Prefix>Rejected`: the provider refused, or answered unusably in a way a retry would repeat. Nothing was applied.
+- `<Prefix>Uncertain`: a write may have been applied. Only writes raise it; read signatures exclude it. The caller settles before acting, by rereading, replaying with the same key, or reconciling.
 
-Prefer explicit type annotations for constructed service-boundary and public
-projection values. Reserve `satisfies` for configuration and other literals
-whose narrow inferred type is intentionally retained.
+Rules:
 
-Collection combinators such as `Effect.all` and `Effect.forEach` are sequential by default. When all collection items are independent and all results are required, prefer `Effect.all(items.map(operation), { concurrency: "inherit" })`. Use `Effect.forEach` when the workflow is intrinsically iterative. Do not manually fork and join fibers to obtain concurrency. Use a numeric limit only when the operation has a real local concurrency constraint.
+- Each tag carries `operation` (the public operation), a closed `reason` literal, and diagnostic fields: `request`, `httpStatus`, `message`, `cause`. Branch on the tag. Use `reason` only for diagnostics and for the rare caller that needs a cause, such as honoring a rate limit. `httpStatus` is for logs only: apps log it through the provider's failure log fields, and the `no-provider-status-branching` Grit rule rejects any other read in app code.
+- Provider facts that callers act on get their own tag, `<Prefix><Fact>`, such as `DotyposVersionConflict`. Business results, such as a payment state or an already-confirmed reservation, are success values.
+- A lookup whose caller gives absence a meaning returns `Option`. A list returns empty. Any other absence is `<Prefix>Rejected` with reason `not-found`.
+- A write that got a 2xx with an unreadable body is `<Prefix>Uncertain` with reason `invalid-response`. A read with an unreadable body is `<Prefix>Rejected`.
+- A surfaced failure means the package's own retries are spent. Callers retry at a coarser grain: a queue, a job, or a user action.
+- Uncertainty is sticky within one call. Once an attempt of a replayed write was uncertain, the call fails `<Prefix>Uncertain` unless it succeeds.
+- Export one stable machine code per tag (`<prefix>-unavailable`, …) and a log-fields helper. Failure codes and log annotations use these, not HTTP statuses.
+- Export the read, write and conditional-write unions (`<Prefix>ReadFailure`, `<Prefix>WriteFailure`, `<Prefix>ConditionalWriteFailure`) and annotate with them instead of listing tags.
+- Only the provider package and tests construct its outcome classes. Application conditions get application-owned errors. The `no-borrowed-provider-outcomes` Grit rule enforces this.
+- Each provider package keeps a colocated `errors.test.ts` with the type assertions: the tags are prefixed, reads exclude `Uncertain`, and the codes are total. Its service test holds the table-driven classification test over its fake transport.
 
-Expose each feature's public service API through explicit named exports in its `index.ts` barrel; do not use wildcard exports. Keep providers, repositories, intermediate candidates, and other implementation modules private. In tests, import the declaration module under test directly rather than through the feature barrel.
+## Name and run operations
 
-## Adapt Next boundaries
-
-For same-app UI operations that do not need an independently addressable HTTP resource, use `defineWorkspaceAction` and validate untrusted input with its Standard Schema boundary. Provide feature capabilities inside the handler so the shared action runtime owns execution, request context, bot protection, failure mapping, timeouts, and telemetry. Do not make client components construct requests to app-owned endpoints merely to call server code.
-
-For independently addressable HTTP resources, use `defineWorkspaceRoute` and choose its request-disconnect cancellation policy explicitly. Interrupt pure response generation when the requester disconnects; continue after disconnect only for side effects that must finish independently of the response. Keep status codes and safe public messages out of reusable domain and Layer errors. Before returning the handler Effect, provide all feature capabilities and map the final expected error channel to `WorkspaceRouteFailure`, preserving the original error as `cause`.
-
-Map unexpected internal route errors with `WorkspaceRouteFailure.internal(publicMessage)` so HTTP 500 construction stays on the boundary error class and call sites remain concise.
+- Name public service operations with `Effect.fn("Service.operation")`. It already creates the span; add `Effect.withSpan` only for a meaningful nested boundary. Don't add a scoped annotation for the whole input when the wrapper already annotates its fields.
+- Annotate the type of constructed service-boundary and public projection values. Reserve `satisfies` for configuration and other literals whose narrow inferred type you want to keep.
+- `Effect.all` and `Effect.forEach` run sequentially by default. For independent items whose results you all need, use `Effect.all(items.map(operation), { concurrency: "inherit" })`. `"inherit"` is unbounded unless a caller sets `Effect.withConcurrency`. Use `Effect.forEach` for intrinsically iterative work, a numeric limit only for a real local constraint, and never fork and join fibers by hand for concurrency. Inside a Workspace transaction everything runs on one connection: state no concurrency there, not even `"inherit"` ([workspace-transactions.md](workspace-transactions.md)).

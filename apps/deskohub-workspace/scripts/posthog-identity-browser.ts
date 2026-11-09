@@ -1,13 +1,7 @@
-import {
-  access,
-  mkdir,
-  readdir,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
   type Browser,
   type BrowserContext,
@@ -15,6 +9,17 @@ import {
   type Page,
 } from "@playwright/test";
 import { Schema } from "effect";
+import {
+  accountCustomerLinkPath,
+  type accountCustomerLinkResponseSchema,
+} from "@/features/account/account-customer-link";
+import { buildPosthogIdentityFixtureBundle } from "./posthog-identity-fixture-bundle";
+import {
+  capturedOnlyByPinnedSdk,
+  expectedPosthogSdkVersion,
+} from "./posthog-sdk-version";
+
+const syntheticEmail = testEmailAddress("posthog.identity.synthetic");
 
 const port = 3211;
 const fixtureBaseUrl = `http://127.0.0.1:${port}`;
@@ -24,10 +29,6 @@ const appRoot = resolve(import.meta.dir, "..");
 const repositoryRoot = resolve(appRoot, "../..");
 const artifactRoot = join(repositoryRoot, ".artifacts/posthog-identity");
 const bundleRoot = join(artifactRoot, "bundle");
-const fixturePath = join(
-  appRoot,
-  "shared/testing/posthog-identity-browser-fixture.tsx"
-);
 const posthogPackagePath = join(
   appRoot,
   "node_modules/posthog-js/package.json"
@@ -63,8 +64,6 @@ const legacyInitialRawQueryToken = "posthog-identity-legacy-raw-query-token";
 const legacyInitialReferrerToken = "posthog-identity-legacy-referrer-token";
 const legacyInitialUtmToken = "posthog-identity-legacy-utm-token";
 const syntheticPinCanary = "583104729";
-const posthogProjectToken = "phc_posthog_identity_browser_fixture";
-const posthogSdkVersion = "1.418.1";
 const localCorsHeaders = {
   "Access-Control-Allow-Headers":
     "Authorization, Content-Type, X-PostHog-Session-Id",
@@ -76,7 +75,7 @@ const localCorsHeaders = {
 const sensitivePayloadMarkers = [
   {
     code: "synthetic-email",
-    value: "posthog.identity.synthetic@example.test",
+    value: syntheticEmail,
   },
   { code: "synthetic-name", value: "PostHog Identity Synthetic Name" },
   { code: "synthetic-billing", value: "Synthetic Billing Street, Test City" },
@@ -491,7 +490,10 @@ class LocalPostHogServer {
   async start() {
     const packageJson = parseJson(await readFile(posthogPackagePath, "utf8"));
     check(isJsonObject(packageJson), "posthog-sdk-package-json");
-    check(packageJson.version === posthogSdkVersion, "posthog-sdk-version");
+    check(
+      packageJson.version === expectedPosthogSdkVersion,
+      "posthog-sdk-version"
+    );
 
     for (const entry of await readdir(posthogDistPath, {
       withFileTypes: true,
@@ -715,7 +717,7 @@ class LocalPostHogServer {
         userId,
       },
       user: {
-        email: "posthog.identity.synthetic@example.test",
+        email: syntheticEmail,
         emailVerified: true,
         id: userId,
         name: "PostHog Identity Synthetic Name",
@@ -738,7 +740,10 @@ class LocalPostHogServer {
     if (delayMs > 0) await sleep(delayMs);
     if (getSessionUnavailable) {
       return this.json(
-        { code: "synthetic-session-unavailable", message: "Unavailable" },
+        {
+          code: "synthetic-session-unavailable",
+          message: `Unavailable for ${syntheticEmail}`,
+        },
         { status: 503 }
       );
     }
@@ -750,6 +755,19 @@ class LocalPostHogServer {
     return this.json(this.sessionBody(session, sessionExpiresAtMs), {
       headers: { "X-Fixture-Authority": "authoritative" },
     });
+  }
+
+  // Synthetic accounts have no Dotypos customer, so the identity never sends
+  // a `dotypos_customer_id` person property.
+  private handleCustomerLink(runId: string | undefined) {
+    const session = runId ? this.runs.get(runId)?.session : undefined;
+    return this.json({
+      accountId:
+        session === undefined || session === "anonymous"
+          ? null
+          : userIds[session],
+      dotyposCustomerId: null,
+    } satisfies typeof accountCustomerLinkResponseSchema.Encoded);
   }
 
   private async handleSignOut(runId: string | undefined) {
@@ -937,6 +955,10 @@ class LocalPostHogServer {
       return this.handleSignOut(runId);
     }
 
+    if (pathname === accountCustomerLinkPath && request.method === "GET") {
+      return this.handleCustomerLink(runId);
+    }
+
     if (this.isRemoteConfigScriptPath(pathname) && request.method === "GET") {
       return new Response("", {
         headers: {
@@ -949,6 +971,10 @@ class LocalPostHogServer {
 
     if (this.isRemoteConfigPath(pathname)) {
       return this.json(this.remoteConfig());
+    }
+
+    if (request.method === "POST" && pathname === browserLogsPath) {
+      return this.json({});
     }
 
     if (request.method === "POST" && this.isIngestPath(pathname)) {
@@ -1573,6 +1599,113 @@ const waitForEvent = async (
 const waitForFixtureEvent = async (server: LocalPostHogServer) =>
   waitForEvent(server, "fixture-sensitive-event");
 
+const browserLogsPath = "/i/v1/logs";
+
+type CapturedLogRecord = {
+  readonly attributes: ReadonlyMap<string, string>;
+  readonly body: string | undefined;
+};
+
+const otlpValueText = (value: JsonValue | undefined) => {
+  if (!isJsonObject(value)) return undefined;
+  const [first] = Object.values(value);
+  return first === undefined ? undefined : String(first);
+};
+
+const jsonArrayAt = (value: JsonValue | undefined, key: string) => {
+  if (!isJsonObject(value)) return [];
+  const nested = value[key];
+  return nested !== undefined && isJsonArray(nested) ? nested : [];
+};
+
+const extractLogRecords = (value: JsonValue): CapturedLogRecord[] =>
+  jsonArrayAt(value, "resourceLogs").flatMap((resourceLog) =>
+    jsonArrayAt(resourceLog, "scopeLogs").flatMap((scopeLog) =>
+      jsonArrayAt(scopeLog, "logRecords").flatMap((logRecord) => {
+        if (!isJsonObject(logRecord)) return [];
+        const attributes = new Map<string, string>();
+        for (const attribute of jsonArrayAt(logRecord, "attributes")) {
+          if (!isJsonObject(attribute) || !isJsonString(attribute.key))
+            continue;
+          attributes.set(
+            attribute.key,
+            otlpValueText(attribute.value) ?? "<unreadable>"
+          );
+        }
+        return [{ attributes, body: otlpValueText(logRecord.body) }];
+      })
+    )
+  );
+
+const capturedLogRecords = (
+  server: LocalPostHogServer,
+  sinceRequest: number
+): CapturedLogRecord[] =>
+  server
+    .allPostHogRequests()
+    .slice(sinceRequest)
+    .filter(
+      (request) => request.method === "POST" && request.path === browserLogsPath
+    )
+    .flatMap((request) => {
+      check(request.body.ok, "browser-log-unreadable");
+      return extractLogRecords(request.body.value);
+    });
+
+// Attributes the refresh-failure report sets, plus the SDK's own context.
+const allowedBrowserLogAttributes = new Set([
+  "boundary",
+  "deployment.environment.name",
+  "errorType",
+  "failureCode",
+  "lastActivityTimestamp",
+  "operation",
+  "posthogDistinctId",
+  "sessionId",
+  "sessionStartTimestamp",
+  "status",
+  "url.full",
+  "window.id",
+]);
+
+const assertRefreshFailureLog = (record: CapturedLogRecord) => {
+  check(
+    record.body === "Workspace browser failure",
+    "refresh-failure-log-body"
+  );
+  for (const key of record.attributes.keys()) {
+    check(
+      allowedBrowserLogAttributes.has(key),
+      `refresh-failure-log-attribute:${key}`
+    );
+  }
+  const attribute = (key: string) => record.attributes.get(key);
+  check(
+    attribute("failureCode") === "account.analytics-session.refresh-failed",
+    "refresh-failure-log-code"
+  );
+  check(
+    attribute("operation") === "account.analytics-identity.refresh" &&
+      attribute("boundary") === "browser",
+    "refresh-failure-log-operation"
+  );
+  check(
+    attribute("errorType") === "unclassified" && attribute("status") === "503",
+    "refresh-failure-log-classification"
+  );
+  const pageUrl = attribute("url.full") ?? "";
+  check(
+    pageUrl.startsWith(`${fixtureBaseUrl}/`) &&
+      !pageUrl.includes("?") &&
+      !pageUrl.includes("#"),
+    "refresh-failure-log-url"
+  );
+  check(
+    attribute("posthogDistinctId") === accountDistinctIds.B,
+    "refresh-failure-log-distinct-id"
+  );
+};
+
 const isFeatureFlagsRequest = (request: PostHogRequestRecord) =>
   request.path === "/flags" || request.path.startsWith("/flags/");
 
@@ -1669,19 +1802,18 @@ const openFixture = async (
     readonly sessionExpiresAtMs?: number;
   }
 ): Promise<FixtureHandle> => {
-  const problems = runnerProblems;
   const runId = server.createRun(options);
-  const context = await createContext(browser, problems);
+  const context = await createContext(browser, runnerProblems);
   try {
     const page = await openPage(
       context,
       runId,
       options.consent,
-      problems,
+      runnerProblems,
       options.fixtureMode
     );
     await assertFixtureConsentCookie(page, options.consent === "on");
-    return { context, page, problems, runId };
+    return { context, page, problems: runnerProblems, runId };
   } catch (error) {
     await context.close().catch(() => undefined);
     throw error;
@@ -2252,6 +2384,24 @@ const runUnavailableSessionScenario = async (
     );
     check(server.ingestMark() === 0, "unavailable-stale-ingest");
 
+    // An authoritative refresh that fails while analytics is paused is held,
+    // then delivered once to PostHog Logs after analytics resumes.
+    const logsRequestMark = server.allPostHogRequests().length;
+    const consoleErrorsBeforeLoggedRefresh = fixture.problems.consoleErrors;
+    await refreshAnalyticsAccountIdentity(fixture.page);
+    await waitForSessionUnavailable(fixture.page);
+    await waitFor(
+      () =>
+        fixture.problems.consoleErrors === consoleErrorsBeforeLoggedRefresh + 1,
+      "unavailable-logged-refresh-console-error"
+    );
+    fixture.problems.expectedConsoleErrors += 1;
+    await sleep(3_500);
+    check(
+      capturedLogRecords(server, logsRequestMark).length === 0,
+      "unavailable-log-sent-while-paused"
+    );
+
     server.updateRun(fixture.runId, {
       getSessionDelayMs: 0,
       getSessionUnavailable: false,
@@ -2267,6 +2417,13 @@ const runUnavailableSessionScenario = async (
       captures.some((event) => eventDistinctId(event) === accountDistinctIds.B),
       "unavailable-recovery-identity"
     );
+    await waitFor(
+      () => capturedLogRecords(server, logsRequestMark).length > 0,
+      "refresh-failure-log-missing"
+    );
+    for (const record of capturedLogRecords(server, logsRequestMark)) {
+      assertRefreshFailureLog(record);
+    }
   } finally {
     await closeFixture(fixture);
   }
@@ -2552,14 +2709,13 @@ const runCrossTabAndFocusScenario = async (
   server: LocalPostHogServer
 ) => {
   server.clearIngest();
-  const problems = runnerProblems;
   const runId = server.createRun({ session: "A" });
-  const context = await createContext(browser, problems);
+  const context = await createContext(browser, runnerProblems);
   let pageOne: Page | undefined;
   let pageTwo: Page | undefined;
   try {
-    pageOne = await openPage(context, runId, "on", problems);
-    pageTwo = await openPage(context, runId, "on", problems);
+    pageOne = await openPage(context, runId, "on", runnerProblems);
+    pageTwo = await openPage(context, runId, "on", runnerProblems);
     await waitForAuthenticated(pageOne);
     await waitForAuthenticated(pageTwo);
     await waitForAuthenticatedIdentity(pageOne);
@@ -2615,10 +2771,10 @@ const runCrossTabAndFocusScenario = async (
   } finally {
     await context.close().catch(() => undefined);
   }
-  check(problems.externalRequests === 0, "external-request");
-  check(problems.pageErrors === 0, "page-error");
+  check(runnerProblems.externalRequests === 0, "external-request");
+  check(runnerProblems.pageErrors === 0, "page-error");
   check(
-    problems.consoleErrors === problems.expectedConsoleErrors,
+    runnerProblems.consoleErrors === runnerProblems.expectedConsoleErrors,
     "console-error"
   );
 };
@@ -2631,14 +2787,13 @@ const runDomainNotificationIntegrationScenario = async (
   server: LocalPostHogServer
 ) => {
   server.clearIngest();
-  const problems = runnerProblems;
   const runId = server.createRun({ session: "A" });
-  const context = await createContext(browser, problems);
+  const context = await createContext(browser, runnerProblems);
   let pageOne: Page | undefined;
   let pageTwo: Page | undefined;
   try {
-    pageOne = await openPage(context, runId, "on", problems);
-    pageTwo = await openPage(context, runId, "on", problems);
+    pageOne = await openPage(context, runId, "on", runnerProblems);
+    pageTwo = await openPage(context, runId, "on", runnerProblems);
     await waitForAuthenticated(pageOne);
     await waitForAuthenticated(pageTwo);
     await waitForAuthenticatedIdentity(pageOne);
@@ -2713,10 +2868,10 @@ const runDomainNotificationIntegrationScenario = async (
   } finally {
     await context.close().catch(() => undefined);
   }
-  check(problems.externalRequests === 0, "external-request");
-  check(problems.pageErrors === 0, "page-error");
+  check(runnerProblems.externalRequests === 0, "external-request");
+  check(runnerProblems.pageErrors === 0, "page-error");
   check(
-    problems.consoleErrors === problems.expectedConsoleErrors,
+    runnerProblems.consoleErrors === runnerProblems.expectedConsoleErrors,
     "console-error"
   );
 };
@@ -2726,14 +2881,13 @@ const runCrossTabConsentWithdrawalScenario = async (
   server: LocalPostHogServer
 ) => {
   server.clearIngest();
-  const problems = runnerProblems;
   const runId = server.createRun({ session: "B" });
-  const context = await createContext(browser, problems);
+  const context = await createContext(browser, runnerProblems);
   let pageOne: Page | undefined;
   let pageTwo: Page | undefined;
   try {
-    pageOne = await openPage(context, runId, "on", problems);
-    pageTwo = await openPage(context, runId, "on", problems);
+    pageOne = await openPage(context, runId, "on", runnerProblems);
+    pageTwo = await openPage(context, runId, "on", runnerProblems);
     await waitForAuthenticated(pageOne);
     await waitForAuthenticated(pageTwo);
     await waitForAuthenticatedIdentity(pageOne);
@@ -2870,10 +3024,10 @@ const runCrossTabConsentWithdrawalScenario = async (
   } finally {
     await context.close().catch(() => undefined);
   }
-  check(problems.externalRequests === 0, "external-request");
-  check(problems.pageErrors === 0, "page-error");
+  check(runnerProblems.externalRequests === 0, "external-request");
+  check(runnerProblems.pageErrors === 0, "page-error");
   check(
-    problems.consoleErrors === problems.expectedConsoleErrors,
+    runnerProblems.consoleErrors === runnerProblems.expectedConsoleErrors,
     "console-error"
   );
 };
@@ -3047,89 +3201,16 @@ const runConsentWithdrawalScenario = async (
   assertBrowserProblems(fixture);
 };
 
-const createBuildPlugin = (posthogHost: string): Bun.BunPlugin => ({
-  name: "posthog-identity-browser-build",
-  setup(build) {
-    const envNamespace = "posthog-identity-fixture-env";
-    const navigationNamespace = "posthog-identity-fixture-navigation";
-    const sourceExtensions = ["", ".ts", ".tsx", ".js", ".jsx", ".mjs"];
-
-    const fileExists = async (path: string) => {
-      try {
-        await access(path);
-        return true;
-      } catch {
-        return false;
-      }
-    };
-
-    const resolveAppModule = async (specifier: string) => {
-      const candidate = join(appRoot, specifier);
-      for (const extension of sourceExtensions) {
-        const path = `${candidate}${extension}`;
-        if (await fileExists(path)) return path;
-      }
-      for (const extension of sourceExtensions.slice(1)) {
-        const path = join(candidate, `index${extension}`);
-        if (await fileExists(path)) return path;
-      }
-      throw new Error(`missing app module: ${specifier}`);
-    };
-
-    build.onResolve({ filter: /^@\/env$/ }, () => ({
-      namespace: envNamespace,
-      path: "env",
-    }));
-    build.onLoad({ filter: /^env$/, namespace: envNamespace }, () => ({
-      contents: `export const env = { NEXT_PUBLIC_POSTHOG_HOST: ${JSON.stringify(
-        posthogHost
-      )}, NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: ${JSON.stringify(
-        posthogProjectToken
-      )} } as const;`,
-      loader: "ts",
-    }));
-
-    build.onResolve({ filter: /^@\// }, async (args) => ({
-      path: await resolveAppModule(args.path.slice(2)),
-    }));
-
-    build.onResolve({ filter: /^next\/navigation$/ }, () => ({
-      namespace: navigationNamespace,
-      path: "navigation",
-    }));
-    build.onLoad(
-      { filter: /^navigation$/, namespace: navigationNamespace },
-      () => ({
-        contents: `
-          export const usePathname = () => globalThis.location.pathname;
-          export const useSearchParams = () => new URLSearchParams(globalThis.location.search);
-          export const useParams = () => ({});
-          export const useRouter = () => ({ push() {}, replace() {}, refresh() {}, back() {} });
-          export const redirect = () => {};
-          export const notFound = () => {};
-        `,
-        loader: "js",
-      })
-    );
-  },
-});
-
 const buildFixtureBundle = async () => {
   await rm(artifactRoot, { force: true, recursive: true });
   await mkdir(bundleRoot, { recursive: true });
   for (const mode of fixtureModes) {
     let result: Awaited<ReturnType<typeof Bun.build>>;
     try {
-      result = await Bun.build({
-        define: { "process.env.NODE_ENV": JSON.stringify("development") },
-        entrypoints: [fixturePath],
-        format: "esm",
-        minify: false,
-        outdir: join(bundleRoot, mode),
-        plugins: [createBuildPlugin(posthogHostByFixtureMode[mode])],
-        sourcemap: "none",
-        target: "browser",
-      });
+      result = await buildPosthogIdentityFixtureBundle(
+        posthogHostByFixtureMode[mode],
+        join(bundleRoot, mode)
+      );
     } catch {
       throw new CheckFailure("fixture-bundle-build");
     }
@@ -3250,7 +3331,7 @@ const browserReport = (
       sensitivePostHogRequestHits
     ),
     replay,
-    sdk: { package: "posthog-js", version: posthogSdkVersion },
+    sdk: { package: "posthog-js", version: expectedPosthogSdkVersion },
     expiryDiagnostics: expiryDiagnosticsReport(server),
     status,
     passedScenarios,
@@ -3267,10 +3348,22 @@ const writeReport = async (report: ReturnType<typeof browserReport>) => {
   );
 };
 
+/** Every captured event must come from the pinned SDK the report names. */
+const assertCapturedSdkVersion = (server: LocalPostHogServer) => {
+  check(
+    capturedOnlyByPinnedSdk(
+      server
+        .allIngestHistory()
+        .flatMap((record) => record.events)
+        .map((event) => event.properties.$lib_version)
+    ),
+    "posthog-sdk-runtime-version"
+  );
+};
+
 const main = async () => {
   const server = new LocalPostHogServer();
   let browser: Browser | undefined;
-  const problems = runnerProblems;
   const passedScenarios: string[] = [];
   let replay: ReplayCoverage = {
     autocaptures: 0,
@@ -3328,6 +3421,7 @@ const main = async () => {
     assertPositiveIngest(server);
     assertPostHogTransportSecurity(server);
     check(server.report().unreadableIngestCount === 0, "ingest-decode");
+    assertCapturedSdkVersion(server);
     check(
       eventNamed(server.allIngestHistory(), "$snapshot").length === 0,
       "snapshot-captured"
@@ -3338,7 +3432,7 @@ const main = async () => {
     );
     const report = browserReport(
       server,
-      problems,
+      runnerProblems,
       replay,
       passedScenarios,
       null,
@@ -3349,7 +3443,7 @@ const main = async () => {
     await writeReport(report);
     process.stdout.write(
       `${JSON.stringify({
-        externalRequests: problems.externalRequests,
+        externalRequests: runnerProblems.externalRequests,
         ingestRecords: server.report().ingestRecordCount,
         payloadMarkersAbsent: true,
         replayMode: replay.mode,
@@ -3361,7 +3455,7 @@ const main = async () => {
     failureCode = error instanceof CheckFailure ? error.code : "runner-error";
     const report = browserReport(
       server,
-      problems,
+      runnerProblems,
       replay,
       passedScenarios,
       currentScenario,
@@ -3371,7 +3465,7 @@ const main = async () => {
     await writeReport(report);
     process.stdout.write(
       `${JSON.stringify({
-        externalRequests: problems.externalRequests,
+        externalRequests: runnerProblems.externalRequests,
         failureCode,
         passedScenarios: passedScenarios.length,
         privacyHits: report.posthogPrivacyHits,
@@ -3387,4 +3481,4 @@ const main = async () => {
   }
 };
 
-await main();
+if (import.meta.main) await main();

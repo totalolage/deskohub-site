@@ -1,7 +1,13 @@
-import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
+import {
+  getAccountPath,
+  getAccountSignInPath,
+} from "@/features/account/routes";
+import { isCustomerSignedIn } from "@/features/account/server/customer-session.server";
+import { createLocalePreferenceSaving } from "@/features/account/server/locale-preference-saving.server";
+import { isCurrentAccountAdministrator } from "@/features/administrators/server/current-account-administrator.server";
 import { type Locale, m } from "@/features/i18n";
-import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
-import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
+import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-release-gate.server";
+import { isOfficePageEnabled } from "@/features/office/backend/office-release-gate.server";
 import {
   getCoworkReservationPath,
   getOfficeReservationPath,
@@ -9,21 +15,20 @@ import {
 
 const siteHeaderSectionIds = {
   overview: "overview",
-  teambuildings: "teambuildings",
   ttrpg: "ttrpg",
   events: "events",
-  founders: "founders",
   locationMap: "location-map",
-  faqContact: "faq-contact",
 } as const;
 
-export type SiteHeaderMenuItemId =
+type SiteHeaderMenuItemId =
   | "locationMap"
+  | "coworking"
   | "meetingRoom"
   | "office"
+  | "pricing"
   | "gallery"
-  | "founders"
-  | "faqContact"
+  | "team"
+  | "faq"
   | "contact";
 
 export type SiteHeaderMenuItem = {
@@ -32,16 +37,24 @@ export type SiteHeaderMenuItem = {
   readonly href: string;
 };
 
+export type SiteHeaderAccountEntry = {
+  readonly label: string;
+  /** Account page for a signed-in customer, otherwise the sign-in page. */
+  readonly href: Promise<string>;
+  /** Shown while the session check is still pending. */
+  readonly signInHref: string;
+};
+
+export type SiteHeaderAdministratorEntry = {
+  /** True only for a signed-in administrator; customers never see the entry. */
+  readonly visible: Promise<boolean>;
+  readonly href: string;
+  readonly label: string;
+};
+
 type DisabledSiteHeaderMenuItems = Partial<
   Record<SiteHeaderMenuItemId, boolean>
 >;
-
-export const getSiteHeaderLanguageLabels = (
-  locale: Locale
-): Record<Locale, string> => ({
-  "cs-CZ": m.languageCzech({}, { locale }),
-  "en-US": m.languageEnglish({}, { locale }),
-});
 
 export const getSiteHeaderAccessibilityLabels = (locale: Locale) => ({
   closeNavigationMenuLabel: m.closeNavigationMenuLabel({}, { locale }),
@@ -52,15 +65,12 @@ export const getSiteHeaderAccessibilityLabels = (locale: Locale) => ({
 });
 
 export async function getSiteHeaderConfig(locale: Locale) {
-  const [accountsEnabled, meetingRoomPageEnabled, officePageEnabled] =
-    await Promise.all([
-      areAccountsEnabled(),
-      isMeetingRoomPageEnabled(),
-      isOfficePageEnabled(),
-    ]);
+  const [meetingRoomPageEnabled, officePageEnabled] = await Promise.all([
+    isMeetingRoomPageEnabled(),
+    isOfficePageEnabled(),
+  ]);
 
   return createSiteHeaderConfig(locale, {
-    accountsEnabled,
     disabledMenuItems: {
       meetingRoom: !meetingRoomPageEnabled,
       office: !officePageEnabled,
@@ -71,10 +81,8 @@ export async function getSiteHeaderConfig(locale: Locale) {
 const createSiteHeaderConfig = (
   locale: Locale,
   {
-    accountsEnabled,
     disabledMenuItems,
   }: {
-    readonly accountsEnabled: boolean;
     readonly disabledMenuItems: DisabledSiteHeaderMenuItems;
   }
 ) => {
@@ -87,6 +95,11 @@ const createSiteHeaderConfig = (
       href: localizedHash(`#${siteHeaderSectionIds.locationMap}`),
     },
     {
+      id: "coworking",
+      label: m.landingNavCoworking({}, { locale }),
+      href: `${localePath}/coworking`,
+    },
+    {
       id: "meetingRoom",
       label: m.landingNavMeetingRoom({}, { locale }),
       href: `${localePath}/meeting-room`,
@@ -97,19 +110,24 @@ const createSiteHeaderConfig = (
       href: getOfficeReservationPath(locale),
     },
     {
+      id: "pricing",
+      label: m.landingNavPricing({}, { locale }),
+      href: `${localePath}/pricing`,
+    },
+    {
       id: "gallery",
       label: m.landingNavGallery({}, { locale }),
       href: `${localePath}/gallery`,
     },
     {
-      id: "founders",
+      id: "team",
       label: m.landingNavOurTeam({}, { locale }),
-      href: localizedHash(`#${siteHeaderSectionIds.founders}`),
+      href: `${localePath}/team`,
     },
     {
-      id: "faqContact",
-      label: m.landingNavFaqContact({}, { locale }),
-      href: localizedHash(`#${siteHeaderSectionIds.faqContact}`),
+      id: "faq",
+      label: m.landingNavFaq({}, { locale }),
+      href: `${localePath}/faq`,
     },
     {
       id: "contact",
@@ -120,15 +138,37 @@ const createSiteHeaderConfig = (
 
   return {
     ...getSiteHeaderAccessibilityLabels(locale),
-    ...(accountsEnabled && {
-      accountHref: `${localePath}/account`,
-      accountLabel: m.accountNavLabel({}, { locale }),
-    }),
-    languageLabels: getSiteHeaderLanguageLabels(locale),
+    account: createSiteHeaderAccountEntry(locale),
+    administrator: createSiteHeaderAdministratorEntry(locale),
+    localePreference: createLocalePreferenceSaving(),
     links: links.filter(({ id }) => disabledMenuItems[id] !== true),
     contactLabel: m.reservationNavCta({}, { locale }),
     contactHref: getCoworkReservationPath(locale),
   };
 };
+
+// Not awaited: the header streams the resolved link while the sign-in link
+// stays in the static shell.
+const createSiteHeaderAccountEntry = (
+  locale: Locale
+): SiteHeaderAccountEntry => ({
+  label: m.accountNavLabel({}, { locale }),
+  href: isCustomerSignedIn().then(
+    (signedIn) =>
+      signedIn ? getAccountPath(locale) : getAccountSignInPath(locale),
+    () => getAccountSignInPath(locale)
+  ),
+  signInHref: getAccountSignInPath(locale),
+});
+
+// Not awaited, like the account entry: the static shell renders without it and
+// a failed check hides it.
+const createSiteHeaderAdministratorEntry = (
+  locale: Locale
+): SiteHeaderAdministratorEntry => ({
+  visible: isCurrentAccountAdministrator().catch(() => false),
+  href: `/${locale}/admin`,
+  label: m.siteHeaderAdminLabel({}, { locale }),
+});
 
 export { siteHeaderSectionIds };

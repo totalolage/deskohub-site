@@ -67,39 +67,22 @@ export interface EmailSendResult {
 }
 
 /**
- * Email template data types for different email types
+ * Email delivery configuration. `EmailServiceTag.RecipientRouted` sends mail
+ * for `EMAIL_TEST_DOMAIN` recipients to Console and everything else to Resend
+ * with `apiKey`, or everything to Console when `apiKey` is missing;
+ * `EmailServiceTag.Live` instead selects one provider from `provider` and
+ * `testMode`.
  */
-export interface ReservationConfirmationData {
-  customerName: string;
-  datetime: Date;
-  duration: number;
-  guestCount: number;
-  specialRequests?: string;
-  tableName?: string;
-  confirmationUrl?: URL;
-  cancelUrl?: string;
-  reservationUrl?: URL;
+export interface EmailConfig {
+  provider?: "resend" | "console";
+  apiKey?: string;
+  defaultFrom: EmailRecipient;
+  testMode?: boolean;
 }
-
-/**
- * Supported email template types
- */
-export type EmailTemplateType = "reservation-confirmation";
-
-/**
- * Template data union type
- */
-export type EmailTemplateData = {
-  type: "reservation-confirmation";
-  data: ReservationConfirmationData;
-};
 
 /**
  * Email provider configuration
  */
-export interface EmailProviderConfig {
+export interface EmailProviderConfig extends EmailConfig {
   provider: "resend" | "console";
-  apiKey?: string;
-  defaultFrom: EmailRecipient;
-  testMode?: boolean;
 }

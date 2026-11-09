@@ -1,0 +1,56 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// `@/env` carries the server environment schema and its administrator,
+// igloohome, and admin API dependencies. Browser modules read the
+// browser-visible environment from `@/client-env` so that graph stays out of
+// client bundles, whether loaded statically, with `import()`, or `require`.
+// Type-only imports and re-exports are erased and add no client code.
+// Only literal specifiers are checked: computed or concatenated `import()` and
+// `require` arguments, including templates with substitutions, are not.
+// Targets the app-root env module: `@/env` or only `./`/`../` segments then `env`;
+// nested modules like `../shared/env` and unnormalized paths are out of scope.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  or {
+    $name <: r".*apps/deskohub-workspace/instrumentation-client\.ts$",
+    and {
+      $body <: r"(?s).*use client.*",
+      $body <: contains JsDirective() as $directive where {
+        $directive <: r"(?s)^['\"]use client['\"];?$"
+      }
+    }
+  },
+  $body <: contains bubble {
+    or {
+      JsModuleSource() as $span where {
+        $span <: r"^['\"](?:@/env|(?:\.\.?/)+env)['\"]$",
+        not $span <: within JsImport() as $import where {
+          $import <: r"(?s)^import\s+type\s.*"
+        },
+        not $span <: within JsExport() as $export where {
+          $export <: r"(?s)^export\s+type\s.*"
+        }
+      },
+      or {
+        `import($specifier, $...)` as $span,
+        `require($specifier, $...)` as $span
+      } where {
+        $specifier <: or {
+          JsStringLiteralExpression() as $literal where {
+            $literal <: r"^['\"](?:@/env|(?:\.\.?/)+env)['\"]$"
+          },
+          JsTemplateExpression() as $literal where {
+            $literal <: r"^`(?:@/env|(?:\.\.?/)+env)`$"
+          }
+        }
+      }
+    } where {
+      register_diagnostic(
+        span = $span,
+        message = "Browser modules must read the browser-visible environment from `@/client-env`, not the server `@/env`.",
+        severity = "error"
+      )
+    }
+  }
+}

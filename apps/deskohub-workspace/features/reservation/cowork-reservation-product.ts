@@ -1,9 +1,13 @@
 import { Match, Schema, SchemaGetter } from "effect";
 import {
+  getCoworkTierWorkstationAddon,
   getWorkspaceProductByTier,
+  type WorkspaceCoworkCurrentTier,
+  type WorkspaceCoworkHistoricalTier,
   type WorkspaceCoworkProductTier,
   type WorkspaceProductMonitorOption,
-  workspaceCoworkProductTiers,
+  workspaceCoworkCurrentTiers,
+  workspaceCoworkTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
@@ -20,27 +24,30 @@ const coworkReservationMonitorOptionInputSchema = Schema.optional(
 );
 
 export const coworkReservationProductInputSchema = Schema.Struct({
-  entryTier: Schema.Literals(workspaceCoworkProductTiers),
+  entryTier: Schema.Literals(workspaceCoworkTiers),
   coffee: Schema.Boolean,
   monitorOption: coworkReservationMonitorOptionInputSchema,
 });
 
 export const workspaceCoworkProductIdentitySchema = Schema.Struct({
   kind: Schema.Literal(coworkReservationKind),
-  tier: coworkReservationProductInputSchema.fields.entryTier,
+  tier: Schema.Literals(workspaceCoworkTiers),
 });
 
 export type WorkspaceCoworkProductIdentity =
   typeof workspaceCoworkProductIdentitySchema.Type;
 
+/**
+ * A discount target for cowork. Without a tier it covers every cowork tier;
+ * with one it covers only that saleable tier.
+ */
 export const workspaceCoworkProductTargetSchema = Schema.Struct({
   kind: workspaceCoworkProductIdentitySchema.fields.kind,
+  tier: Schema.optional(Schema.Literals(workspaceCoworkCurrentTiers)),
 });
 
-export type WorkspaceCoworkProductTarget =
-  typeof workspaceCoworkProductTargetSchema.Type;
-
-export type WorkspaceCoworkAvailabilityTarget = WorkspaceCoworkProductTarget & {
+export type WorkspaceCoworkAvailabilityTarget = {
+  readonly kind: typeof coworkReservationKind;
   readonly entryTier: WorkspaceCoworkProductTier;
   readonly monitorOption?: WorkspaceProductMonitorOption;
 };
@@ -60,25 +67,44 @@ export const getWorkspaceCoworkProductKey = ({
 }: WorkspaceCoworkProductIdentity): WorkspaceCoworkProductKey =>
   `${kind}:${tier}`;
 
+export const normalizedOpenSpaceCoworkReservationProductSchema = Schema.Struct({
+  entryTier: Schema.Literal("open-space" satisfies WorkspaceCoworkCurrentTier),
+  coffee: Schema.Boolean,
+  monitorOption: Schema.optional(Schema.Never),
+});
+
+export const normalizedReservedDeskCoworkReservationProductSchema =
+  Schema.Struct({
+    entryTier: Schema.Literal(
+      "reserved-desk" satisfies WorkspaceCoworkCurrentTier
+    ),
+    coffee: Schema.Literal(true),
+    monitorOption: Schema.optional(
+      Schema.Literals(workspaceProductMonitorOptions)
+    ),
+  });
+
 export const normalizedBasicCoworkReservationProductSchema = Schema.Struct({
-  entryTier: Schema.Literal("basic"),
+  entryTier: Schema.Literal("basic" satisfies WorkspaceCoworkHistoricalTier),
   coffee: Schema.Boolean,
   monitorOption: Schema.optional(Schema.Never),
 });
 
 export const normalizedPlusCoworkReservationProductSchema = Schema.Struct({
-  entryTier: Schema.Literal("plus"),
+  entryTier: Schema.Literal("plus" satisfies WorkspaceCoworkHistoricalTier),
   coffee: Schema.Literal(true),
   monitorOption: Schema.optional(Schema.Never),
 });
 
 export const normalizedProfiCoworkReservationProductSchema = Schema.Struct({
-  entryTier: Schema.Literal("profi"),
+  entryTier: Schema.Literal("profi" satisfies WorkspaceCoworkHistoricalTier),
   coffee: Schema.Literal(true),
   monitorOption: Schema.Literals(workspaceProductMonitorOptions),
 });
 
 export const normalizedCoworkReservationProductSchema = Schema.Union([
+  normalizedOpenSpaceCoworkReservationProductSchema,
+  normalizedReservedDeskCoworkReservationProductSchema,
   normalizedBasicCoworkReservationProductSchema,
   normalizedPlusCoworkReservationProductSchema,
   normalizedProfiCoworkReservationProductSchema,
@@ -86,6 +112,16 @@ export const normalizedCoworkReservationProductSchema = Schema.Union([
   identifier: "NormalizedCoworkReservationProduct",
   description:
     "Canonical cowork product selection after tier-specific normalization.",
+});
+
+const storedOpenSpaceCoworkReservationDetailsSchema = Schema.Struct({
+  kind: workspaceCoworkProductIdentitySchema.fields.kind,
+  ...normalizedOpenSpaceCoworkReservationProductSchema.fields,
+});
+
+const storedReservedDeskCoworkReservationDetailsSchema = Schema.Struct({
+  kind: workspaceCoworkProductIdentitySchema.fields.kind,
+  ...normalizedReservedDeskCoworkReservationProductSchema.fields,
 });
 
 const storedBasicCoworkReservationDetailsSchema = Schema.Struct({
@@ -104,6 +140,8 @@ const storedProfiCoworkReservationDetailsSchema = Schema.Struct({
 });
 
 export const storedCoworkReservationDetailsSchema = Schema.Union([
+  storedOpenSpaceCoworkReservationDetailsSchema,
+  storedReservedDeskCoworkReservationDetailsSchema,
   storedBasicCoworkReservationDetailsSchema,
   storedPlusCoworkReservationDetailsSchema,
   storedProfiCoworkReservationDetailsSchema,
@@ -140,22 +178,6 @@ const normalizeMonitorOption = (
   monitorOption: WorkspaceProductMonitorOption | "" | undefined
 ) => monitorOption || undefined;
 
-export const getCoworkReservationProductCoffee = (
-  reservation: CoworkReservationProductInput
-) => Boolean(reservation.coffee);
-
-export const getCoworkReservationProductMonitorOption = (
-  reservation: CoworkReservationProductInput
-) => normalizeMonitorOption(reservation.monitorOption);
-
-export const getCoworkTierIncludesCourtesyCoffee = (
-  tier: WorkspaceCoworkProductTier
-) => getWorkspaceProductByTier(tier).includesCourtesyCoffee;
-
-export const getCoworkTierRequiresMonitorOption = (
-  tier: WorkspaceCoworkProductTier
-) => getWorkspaceProductByTier(tier).requiresMonitorOption;
-
 export const getAllowedMonitorOptionsForCoworkTier = (
   tier: WorkspaceCoworkProductTier
 ) => getWorkspaceProductByTier(tier).allowedMonitorOptions;
@@ -163,10 +185,10 @@ export const getAllowedMonitorOptionsForCoworkTier = (
 export const getCoworkReservationProductIssues = (
   data: CoworkReservationProductInput
 ): readonly Schema.FilterIssue[] => {
-  const product = getWorkspaceProductByTier(data.entryTier);
+  const workstationAddon = getCoworkTierWorkstationAddon(data.entryTier);
   const monitorOption = normalizeMonitorOption(data.monitorOption);
 
-  if (product.requiresMonitorOption && !monitorOption) {
+  if (workstationAddon === "required" && !monitorOption) {
     return [
       {
         path: ["monitorOption"],
@@ -176,9 +198,11 @@ export const getCoworkReservationProductIssues = (
   }
 
   if (
-    product.requiresMonitorOption &&
+    workstationAddon !== "unavailable" &&
     monitorOption &&
-    !product.allowedMonitorOptions.includes(monitorOption)
+    !getAllowedMonitorOptionsForCoworkTier(data.entryTier).some(
+      (allowed) => allowed === monitorOption
+    )
   ) {
     return [
       {
@@ -188,7 +212,7 @@ export const getCoworkReservationProductIssues = (
     ];
   }
 
-  if (!product.requiresMonitorOption && monitorOption) {
+  if (workstationAddon === "unavailable" && monitorOption) {
     return [
       {
         path: ["monitorOption"],
@@ -204,6 +228,20 @@ export const normalizeCoworkReservationProduct = (
   data: CoworkReservationProductInput
 ): NormalizedCoworkReservationProduct =>
   Match.value(data.entryTier).pipe(
+    Match.when("open-space", () =>
+      normalizedOpenSpaceCoworkReservationProductSchema.make({
+        entryTier: "open-space",
+        coffee: data.coffee,
+      })
+    ),
+    Match.when("reserved-desk", () =>
+      normalizedReservedDeskCoworkReservationProductSchema.make({
+        entryTier: "reserved-desk",
+        coffee: true,
+        monitorOption: normalizeMonitorOption(data.monitorOption),
+      })
+    ),
+    // Historical tiers keep their original normalization for total decodability.
     Match.when("basic", () =>
       normalizedBasicCoworkReservationProductSchema.make({
         entryTier: "basic",
@@ -231,6 +269,19 @@ export const getStoredCoworkReservationDetails = (
 ): StoredCoworkReservationDetails =>
   Match.value(product).pipe(
     Match.discriminatorsExhaustive("entryTier")({
+      "open-space": (openSpaceProduct) =>
+        storedOpenSpaceCoworkReservationDetailsSchema.make({
+          kind: coworkReservationKind,
+          entryTier: openSpaceProduct.entryTier,
+          coffee: openSpaceProduct.coffee,
+        }),
+      "reserved-desk": (reservedDeskProduct) =>
+        storedReservedDeskCoworkReservationDetailsSchema.make({
+          kind: coworkReservationKind,
+          entryTier: reservedDeskProduct.entryTier,
+          coffee: true,
+          monitorOption: reservedDeskProduct.monitorOption,
+        }),
       basic: (basicProduct) =>
         storedBasicCoworkReservationDetailsSchema.make({
           kind: coworkReservationKind,
@@ -258,6 +309,16 @@ const getCoworkReservationProductFields = (
 ): CoworkProductFields =>
   Match.value(details).pipe(
     Match.discriminatorsExhaustive("entryTier")({
+      "open-space": (openSpaceDetails) => ({
+        productTier: openSpaceDetails.entryTier,
+        productCoffee: openSpaceDetails.coffee,
+        productMonitorOption: null,
+      }),
+      "reserved-desk": (reservedDeskDetails) => ({
+        productTier: reservedDeskDetails.entryTier,
+        productCoffee: reservedDeskDetails.coffee,
+        productMonitorOption: reservedDeskDetails.monitorOption ?? null,
+      }),
       basic: (basicDetails) => ({
         productTier: basicDetails.entryTier,
         productCoffee: basicDetails.coffee,

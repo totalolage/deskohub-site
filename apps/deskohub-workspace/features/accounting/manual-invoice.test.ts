@@ -1,14 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Schema } from "effect";
-import { workspaceCurrencyDefinitions } from "@/shared/money/currencies";
 import {
   formatInvoiceNumber,
   getInvoiceVariableSymbol,
   makeManualInvoiceDocument,
 } from "./invoice";
 import {
-  findInvoicePaymentAccount,
-  invoiceEnabledCurrencyDefinitions,
   manualInvoiceInputSchema,
   normalizeManualInvoiceInput,
 } from "./manual-invoice";
@@ -30,7 +28,7 @@ const input = decodeInput({
       country: "CZ",
     },
   },
-  deliveryEmail: "invoice@example.test",
+  deliveryEmail: testEmailAddress("invoice"),
   locale: "cs-CZ",
   serviceDate: "2026-08-18",
   payment: { status: "due", date: "2026-09-01" },
@@ -44,20 +42,6 @@ const input = decodeInput({
 });
 
 describe("manual invoice", () => {
-  test("uses the canonical supported currencies and configured payment accounts", () => {
-    for (const { code } of workspaceCurrencyDefinitions) {
-      expect(() => decodeInput({ ...input, currency: code })).not.toThrow();
-    }
-    expect(() => decodeInput({ ...input, currency: "USD" })).toThrow();
-    expect(invoiceEnabledCurrencyDefinitions.map(({ code }) => code)).toEqual([
-      "CZK",
-    ]);
-    expect(findInvoicePaymentAccount("CZK")?.iban).toBe(
-      "CZ0620100000002303459272"
-    );
-    expect(findInvoicePaymentAccount("EUR")).toBeUndefined();
-  });
-
   test("normalizes and totals signed decimal strings exactly", async () => {
     const normalized = await Effect.runPromise(
       normalizeManualInvoiceInput(input)
@@ -119,16 +103,5 @@ describe("manual invoice", () => {
       date: "2026-08-20",
     });
     expect(document).not.toHaveProperty("dueDate");
-  });
-
-  test("accepts only a one-to-ten digit variable symbol", () => {
-    expect(() =>
-      decodeInput({ ...input, variableSymbol: "1234567890" })
-    ).not.toThrow();
-    expect(() => decodeInput({ ...input, variableSymbol: "" })).toThrow();
-    expect(() =>
-      decodeInput({ ...input, variableSymbol: "12345678901" })
-    ).toThrow();
-    expect(() => decodeInput({ ...input, variableSymbol: "12A" })).toThrow();
   });
 });

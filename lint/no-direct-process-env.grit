@@ -6,6 +6,7 @@ file($name, $body) where {
   not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
   not $name <: r".*apps/deskohub-workspace/shared/backend/logging/censorship\.ts$",
   not $name <: r".*apps/deskohub-workspace/shared/testing/.*",
+  $body <: r"(?s).*\bprocess\b.*",
   $body <: contains bubble {
     or {
       `process.env.$property` as $access where {
