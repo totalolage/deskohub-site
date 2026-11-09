@@ -131,7 +131,7 @@ export const workspaceTestArguments = [
   "--parallel=1",
   "--timeout",
   "30000",
-  "--path-ignore-patterns=**/*.build.test.ts",
+  "--path-ignore-patterns=**/*.{build,repository-wide}.test.ts",
 ] as const;
 
 /** The shard's `bun test` arguments, run from the package root. */
