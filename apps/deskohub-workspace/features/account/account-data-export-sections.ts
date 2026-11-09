@@ -81,9 +81,6 @@ export const accountDataExportSections = [
   },
 ] as const satisfies readonly AccountDataExportSection[];
 
-export type AccountDataExportSectionPath =
-  (typeof accountDataExportSections)[number]["path"];
-
 /**
  * The fixed human-readable note carried in the manifest and every archive
  * consumer. It states the snapshot's non-atomic assembly so the reader of
