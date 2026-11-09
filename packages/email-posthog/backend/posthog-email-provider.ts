@@ -290,7 +290,11 @@ const messageIdempotencyKey = (key: string | undefined) =>
 class PostHogSendAttemptFailure extends Data.TaggedError(
   "PostHogSendAttemptFailure"
 )<{
-  readonly kind: "transport" | "timeout" | "answered";
+  /**
+   * `accepted`: PostHog answered 2xx but its body could not be read in time,
+   * so the email may be queued.
+   */
+  readonly kind: "transport" | "timeout" | "answered" | "accepted";
   readonly status?: number;
   readonly code: string;
   readonly retryAfter?: Duration.Duration;
@@ -300,8 +304,16 @@ class PostHogSendAttemptFailure extends Data.TaggedError(
 
 /** Throttling, an in-flight key, and outages pass; quota and refusals do not. */
 const isRetryableAttempt = (failure: PostHogSendAttemptFailure) =>
-  failure.kind !== "answered" ||
-  (!failure.retryAfterPastDeadline && isRetryableAnswer(failure));
+  Match.value(failure.kind).pipe(
+    Match.when("transport", () => true),
+    Match.when("timeout", () => true),
+    Match.when("accepted", () => false),
+    Match.when(
+      "answered",
+      () => !failure.retryAfterPastDeadline && isRetryableAnswer(failure)
+    ),
+    Match.exhaustive
+  );
 
 const isRetryableAnswer = (failure: PostHogSendAttemptFailure) =>
   (failure.status === 429 && failure.code !== "quota_limited") ||
@@ -336,47 +348,69 @@ const requestSend = ({
       HttpClientRequest.bodyJsonUnsafe(email)
     );
 
-    const attempt = httpClient.execute(request).pipe(
-      Effect.mapError(
-        () =>
-          new PostHogSendAttemptFailure({
-            kind: "transport",
-            code: "network_error",
-          })
-      ),
-      // The body is read within the attempt, so its timeout bounds a stalled
-      // body too.
-      Effect.flatMap((response) =>
-        response.status >= 200 && response.status < 300
-          ? response.text.pipe(
-              Effect.mapError(
-                () =>
-                  new PostHogSendAttemptFailure({
-                    kind: "transport",
-                    code: "network_error",
-                  })
-              )
-            )
-          : Effect.gen(function* () {
-              const retryAfter = yield* readRetryAfter(response);
-              const now = yield* Clock.currentTimeMillis;
-              return yield* new PostHogSendAttemptFailure({
-                kind: "answered",
-                status: response.status,
-                code: yield* postHogFailureCode(response),
-                retryAfter,
-                retryAfterPastDeadline:
-                  retryAfter !== undefined &&
-                  deadline !== undefined &&
-                  now + Duration.toMillis(retryAfter) >= deadline,
-              });
+    const answeredAttempt = (accepted: Ref.Ref<boolean>) =>
+      httpClient.execute(request).pipe(
+        Effect.mapError(
+          () =>
+            new PostHogSendAttemptFailure({
+              kind: "transport",
+              code: "network_error",
             })
-      ),
-      policy.attempt(
-        () =>
-          new PostHogSendAttemptFailure({ kind: "timeout", code: "timeout" })
-      )
-    );
+        ),
+        // The body is read within the attempt, so its timeout bounds a
+        // stalled body too.
+        Effect.flatMap((response) =>
+          response.status >= 200 && response.status < 300
+            ? Ref.set(accepted, true).pipe(
+                Effect.andThen(response.text),
+                Effect.mapError(
+                  () =>
+                    new PostHogSendAttemptFailure({
+                      kind: "accepted",
+                      code: "invalid_response",
+                    })
+                )
+              )
+            : Effect.gen(function* () {
+                const retryAfter = yield* readRetryAfter(response);
+                const now = yield* Clock.currentTimeMillis;
+                return yield* new PostHogSendAttemptFailure({
+                  kind: "answered",
+                  status: response.status,
+                  code: yield* postHogFailureCode(response),
+                  retryAfter,
+                  retryAfterPastDeadline:
+                    retryAfter !== undefined &&
+                    deadline !== undefined &&
+                    now + Duration.toMillis(retryAfter) >= deadline,
+                });
+              })
+        ),
+        policy.attempt(
+          () =>
+            new PostHogSendAttemptFailure({ kind: "timeout", code: "timeout" })
+        )
+      );
+
+    // Once PostHog answered 2xx, a body that fails or times out leaves the
+    // email possibly queued, so the attempt is not retried or handed on.
+    const attempt = Effect.gen(function* () {
+      const accepted = yield* Ref.make(false);
+      return yield* answeredAttempt(accepted).pipe(
+        Effect.catch((failure) =>
+          Effect.flatMap(Ref.get(accepted), (wasAccepted) =>
+            Effect.fail(
+              wasAccepted
+                ? new PostHogSendAttemptFailure({
+                    kind: "accepted",
+                    code: "invalid_response",
+                  })
+                : failure
+            )
+          )
+        )
+      );
+    });
 
     const body = yield* attempt.pipe(
       policy.retryWhileHonoringDelay(isRetryableAttempt, {
@@ -437,6 +471,13 @@ const toEmailSendError = (
         message: "PostHog email request timed out",
         code,
         failureKind: "provider",
+      })
+    ),
+    Match.when({ kind: "accepted" }, ({ code }) =>
+      networkFailure({
+        message: "PostHog accepted the email without a readable message id",
+        code,
+        failureKind: "unknown-outcome",
       })
     ),
     Match.when({ kind: "answered" }, ({ status = 0, code }) => {

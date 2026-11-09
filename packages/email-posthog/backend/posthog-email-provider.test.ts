@@ -440,17 +440,22 @@ describe("PostHog email failure classification", () => {
     expect(requests.map((request) => request.at)).toEqual([0, 31_000]);
   });
 
-  test("an accepted answer whose body stalls is bounded by the attempt timeout", async () => {
-    const { exit, requests } = await sendOnce(message, () => ({
-      stallsBody: true,
-    }));
+  test("an accepted answer whose body stalls or breaks leaves the outcome unknown and is not retried", async () => {
+    const answers: readonly [FakeAnswer, number][] = [
+      // The stalled body is abandoned at the 5-second attempt timeout.
+      [{ stallsBody: true }, 0],
+      [{ breaksBody: true }, 0],
+    ];
+    for (const [answer, at] of answers) {
+      const { exit, requests } = await sendOnce(message, () => answer);
 
-    expect(requests.map((request) => request.at)).toEqual([0, 6000, 13_000]);
-    expect(failureOf(exit)).toMatchObject({
-      _tag: "NetworkError",
-      failureKind: "provider",
-      code: "timeout",
-    });
+      expect(requests.map((request) => request.at)).toEqual([at]);
+      expect(failureOf(exit)).toMatchObject({
+        _tag: "NetworkError",
+        failureKind: "unknown-outcome",
+        code: "invalid_response",
+      });
+    }
   });
 
   test("recovers when a retry is accepted", async () => {

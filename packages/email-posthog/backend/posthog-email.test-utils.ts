@@ -25,7 +25,9 @@ export type FakeAnswer =
   | { readonly fails: "network" }
   | { readonly hangs: true }
   /** Answers 202 at once, then never finishes the body. */
-  | { readonly stallsBody: true };
+  | { readonly stallsBody: true }
+  /** Answers 202 at once, then breaks off the body. */
+  | { readonly breaksBody: true };
 
 /** One request the fake PostHog received, at test-clock time `at`. */
 export interface RecordedRequest {
@@ -101,6 +103,17 @@ export const makeFakePostHog = (
         return new Response(new ReadableStream({ start() {} }), {
           status: 202,
         });
+      }
+      if ("breaksBody" in next) {
+        settling -= 1;
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new TypeError("connection reset"));
+            },
+          }),
+          { status: 202 }
+        );
       }
       if ("fails" in next) {
         settling -= 1;

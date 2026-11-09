@@ -42,7 +42,7 @@
  * | transport failure, timeout | yes | `NetworkError` provider |
  * | 429 `quota_limited`; 401, 403, 404; 400 `transactional_email_paused`, `sender_unavailable`; 422 `sending_paused`, `sending_suspended` | no | `EmailServiceError` provider |
  * | any other 4xx (`validation_error`, `invalid_recipient`, `invalid_idempotency_key`, `template_*`, `marketing_template`, `recipient_suppressed`, `recipient_unreachable`, `idempotency_key_reused`) | no | `EmailServiceError` message |
- * | 2xx without a readable message id | no | `NetworkError` unknown-outcome |
+ * | 2xx whose body fails, times out, or has no readable message id | no | `NetworkError` unknown-outcome |
  *
  * Before any request: attachments fail `EmailServiceError` message
  * (`attachments_unsupported`); more than one `to`, or more than ten `cc` or
