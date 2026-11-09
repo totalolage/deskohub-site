@@ -1,17 +1,25 @@
 import "@/shared/polyfills/temporal";
 
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { EmailDeliveryId } from "@deskohub/email";
-import { and, eq, inArray, lt, or, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, or, type SQL, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { invoiceEmailDeliveries } from "@/db/schema";
+import { invoiceEmailDeliveries, invoices } from "@/db/schema";
+import type { InvoiceNumber } from "@/features/accounting/invoice";
 import type {
   InvoiceDeliveryStatus,
   InvoiceEmailDeliveryAudience,
   InvoiceEmailDeliveryFailureCode,
+  InvoiceEmailDeliveryState,
 } from "@/features/accounting/invoice-email-delivery";
 import type { InvoiceId } from "@/features/accounting/manual-invoice";
+import {
+  type ReadLimitExceededError,
+  readLimitSentinel,
+  requireWithinReadLimit,
+} from "@/shared/backend/read-limit";
 
 export interface InvoiceEmailDeliveryClaim {
   readonly attemptNumber: number;
@@ -23,6 +31,18 @@ export interface InvoiceDeliverySummary
   > {
   /** An audience is missing or failed, or its delivery outlived its lease. */
   readonly needsAttention: boolean;
+}
+
+/**
+ * The state of one invoice email sent to the customer. The operator's
+ * internal copy, the attempt count, the failure code and the provider's
+ * delivery id are not part of it.
+ */
+export interface CustomerInvoiceDelivery {
+  readonly invoiceNumber: InvoiceNumber;
+  readonly state: InvoiceEmailDeliveryState;
+  readonly createdAt: Temporal.Instant;
+  readonly acceptedAt: Temporal.Instant | null;
 }
 
 export interface IInvoiceEmailDeliveryRepository {
@@ -52,6 +72,19 @@ export interface IInvoiceEmailDeliveryRepository {
     readonly attemptNumber: number;
     readonly failureCode: InvoiceEmailDeliveryFailureCode;
   }) => Effect.Effect<void, EffectDrizzleQueryError>;
+  /**
+   * The customer-audience deliveries of the Dotypos customer's invoices,
+   * oldest first, scoped by the invoice's own customer column. Fails with
+   * `ReadLimitExceededError`, returning no rows, when there are more than
+   * `limit`.
+   */
+  readonly listForCustomer: (input: {
+    readonly dotyposCustomerId: DotyposCustomerId;
+    readonly limit: number;
+  }) => Effect.Effect<
+    readonly CustomerInvoiceDelivery[],
+    EffectDrizzleQueryError | ReadLimitExceededError
+  >;
   /** Summarizes every requested invoice, including one with no delivery yet. */
   readonly status: (
     invoiceIds: readonly InvoiceId[]
@@ -185,6 +218,34 @@ export class InvoiceEmailDeliveryRepository extends Context.Service<
               );
           }
         ),
+        listForCustomer: Effect.fn(
+          "InvoiceEmailDeliveryRepository.listForCustomer"
+        )(function* ({ dotyposCustomerId, limit }) {
+          const rows: readonly CustomerInvoiceDelivery[] = yield* db
+            .select({
+              invoiceNumber: invoices.invoiceNumber,
+              state: invoiceEmailDeliveries.state,
+              createdAt: invoiceEmailDeliveries.createdAt,
+              acceptedAt: invoiceEmailDeliveries.acceptedAt,
+            })
+            .from(invoiceEmailDeliveries)
+            .innerJoin(
+              invoices,
+              eq(invoiceEmailDeliveries.invoiceId, invoices.id)
+            )
+            .where(
+              and(
+                eq(invoices.dotyposCustomerId, dotyposCustomerId),
+                eq(invoiceEmailDeliveries.audience, "customer")
+              )
+            )
+            .orderBy(
+              asc(invoiceEmailDeliveries.createdAt),
+              asc(invoiceEmailDeliveries.id)
+            )
+            .limit(readLimitSentinel(limit));
+          return yield* requireWithinReadLimit(rows, limit);
+        }),
         status: Effect.fn("InvoiceEmailDeliveryRepository.status")(
           function* (invoiceIds) {
             const rows =
