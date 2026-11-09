@@ -112,6 +112,33 @@ describe("CustomerAuthentication session adapter", () => {
     }
   });
 
+  test("keeps a non-blank saved name exactly as stored", async () => {
+    const outcome = await runDecode(sessionFor({ name: " Ada " }));
+
+    expect(outcome._tag).toBe("Success");
+    if (outcome._tag === "Success") {
+      expect(outcome.success!.displayName).toBe(" Ada ");
+    }
+  });
+
+  test("fails closed as unavailable when an account timestamp is not a valid date", async () => {
+    const malformed = [
+      { createdAt: new Date(Number.NaN) },
+      { updatedAt: new Date(Number.NaN) },
+      { createdAt: "2026-01-05T09:00:00Z" as unknown as Date },
+    ];
+    for (const timestamps of malformed) {
+      const outcome = await runDecode(sessionFor(timestamps));
+
+      expect(outcome._tag).toBe("Failure");
+      if (outcome._tag === "Failure") {
+        const error = outcome.failure as CustomerAccountAccessError;
+        expect(error.reason).toBe("unavailable");
+        expect(error.cause?.code).toBe("authentication.session");
+      }
+    }
+  });
+
   test("leaves the display name null when the saved name is blank", async () => {
     for (const name of ["", "   "]) {
       const outcome = await runDecode(sessionFor({ name }));

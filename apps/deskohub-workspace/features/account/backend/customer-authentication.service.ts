@@ -47,6 +47,16 @@ const decodeLocalePreference = Schema.decodeUnknownOption(
 const accessError = (reason: CustomerAccountAccessError["reason"]) =>
   new CustomerAccountAccessError({ reason });
 
+/**
+ * Better Auth's account timestamp as a domain instant. A value that is not a
+ * valid date fails closed as an unavailable session instead of a defect.
+ */
+const accountInstant = (value: Date) =>
+  Effect.try({
+    try: () => Temporal.Instant.fromEpochMilliseconds(value.getTime()),
+    catch: () => customerAccountUnavailable("authentication.session"),
+  });
+
 export const decodeCustomerAccountSession = (
   session: { readonly user: BetterAuthUser } | null
 ): Effect.Effect<CustomerAccountSession | null, CustomerAccountAccessError> =>
@@ -72,18 +82,16 @@ export const decodeCustomerAccountSession = (
     const localePreference = Option.getOrUndefined(
       decodeLocalePreference((session.user as { locale?: unknown }).locale)
     );
+    const accountCreatedAt = yield* accountInstant(session.user.createdAt);
+    const accountUpdatedAt = yield* accountInstant(session.user.updatedAt);
 
     return {
       accountId,
       email,
       deletionRequested: withDeletionMarker.deletionRequestedAt != null,
       displayName: session.user.name.trim() === "" ? null : session.user.name,
-      accountCreatedAt: Temporal.Instant.fromEpochMilliseconds(
-        session.user.createdAt.getTime()
-      ),
-      accountUpdatedAt: Temporal.Instant.fromEpochMilliseconds(
-        session.user.updatedAt.getTime()
-      ),
+      accountCreatedAt,
+      accountUpdatedAt,
       ...(localePreference && { localePreference }),
     } satisfies CustomerAccountSession;
   });
