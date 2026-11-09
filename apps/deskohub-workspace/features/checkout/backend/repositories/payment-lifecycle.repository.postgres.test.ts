@@ -308,7 +308,8 @@ const createHeldReservation = (
   );
 
 const createOrdinaryDiscountCode = async (
-  dotyposCustomerId: DotyposCustomerId
+  dotyposCustomerId: DotyposCustomerId,
+  basisPoints = 1_000
 ) => {
   const code = canonicalPromotionCodeSchema.make(
     `D${uniqueId().replaceAll("-", "").slice(0, 12).toUpperCase()}`
@@ -326,7 +327,7 @@ const createOrdinaryDiscountCode = async (
   const [storedDiscount] = await Effect.runPromise(
     testDatabase!.db
       .insert(discounts)
-      .values({ labels, percentageBasisPoints: 1_000 })
+      .values({ labels, percentageBasisPoints: basisPoints })
       .returning({ id: discounts.id })
   );
   await Effect.runPromise(
@@ -354,7 +355,7 @@ const createOrdinaryDiscountCode = async (
     discount: {
       id: storedDiscount!.id,
       label: labels["en-US"],
-      adjustment: { kind: "percentage", basisPoints: 1_000 },
+      adjustment: { kind: "percentage", basisPoints },
     },
     provenance: {
       providerNamespace: "database-discount-code",
@@ -3081,6 +3082,74 @@ describe.skipIf(!testDatabase)(
           },
         });
         expect(attempts.rows).toEqual([]);
+      } finally {
+        await promotion.cleanup();
+      }
+    });
+
+    test("refuses a fully discounting code whose service dates changed before an internal payment", async () => {
+      const repository = await makeRepository();
+      const dotyposCustomerId = customerId();
+      const promotion = await createOrdinaryDiscountCode(
+        dotyposCustomerId,
+        10_000
+      );
+      try {
+        const reservation = await createHeldReservation(dotyposCustomerId);
+        const admission = makeCodeAdmission({
+          reservation,
+          dotyposCustomerId,
+          candidate: promotion.candidate,
+          firstServiceDate: reservationStartDate,
+        });
+        expect(admission.admission.amount.value).toBe(0);
+        await setCodeServiceDates(
+          getCandidateCodeId(promotion.candidate),
+          "2098-12-01",
+          "2098-12-31"
+        );
+
+        const result = await Effect.runPromise(
+          Effect.result(
+            repository.completeInternalPayment({
+              workspaceReservationId: reservation.id,
+              amount: admission.admission.amount,
+              commitment: admission.admission.commitment,
+              locale: admission.locale,
+              accountingSnapshot: admission.snapshot,
+            })
+          )
+        );
+        const attempts = await testDatabase!.pool.query(
+          "select id from payment_attempts where workspace_reservation_id = $1",
+          [reservation.id]
+        );
+        const applications = await testDatabase!.pool.query(
+          "select id from discount_applications where workspace_reservation_id = $1",
+          [reservation.id]
+        );
+        const claims = await testDatabase!.pool.query(
+          "select id from discount_code_redemptions where code_id = $1",
+          [getCandidateCodeId(promotion.candidate)]
+        );
+        const [reservationRow] = await Effect.runPromise(
+          testDatabase!.db
+            .select({ paymentState: workspaceReservations.paymentState })
+            .from(workspaceReservations)
+            .where(eq(workspaceReservations.id, reservation.id))
+        );
+
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "DiscountClaimError",
+            reason: "service_date_ineligible",
+          },
+        });
+        expect(attempts.rows).toEqual([]);
+        expect(applications.rows).toEqual([]);
+        expect(claims.rows).toEqual([]);
+        expect(reservationRow?.paymentState).toBe(reservation.paymentState);
       } finally {
         await promotion.cleanup();
       }
