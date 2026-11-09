@@ -58,6 +58,7 @@ import type {
 } from "./discount-administration.service";
 import { PromotionAudienceSection } from "./promotion-audience";
 import { PromotionCustomerPicker } from "./promotion-customers";
+import { formatDiscountCodeServiceDates } from "./service-date-display";
 import { formatDiscountUsageLimit } from "./usage-limit";
 
 type Notice = {
@@ -759,6 +760,10 @@ function CodeSummary({
       <SummaryFact
         label={m.discountsValidUntilLabel({}, { locale })}
         value={formatOptionalInstant(code.validUntil, locale)}
+      />
+      <SummaryFact
+        label={m.discountsColumnServiceDates({}, { locale })}
+        value={formatDiscountCodeServiceDates(code, locale)}
       />
       <SummaryFact
         label={m.discountsColumnAudience({}, { locale })}

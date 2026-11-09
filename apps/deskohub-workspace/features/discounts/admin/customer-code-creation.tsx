@@ -56,6 +56,8 @@ const discountCodeCreationFormDefaults = (
   validUntil: "",
   maxUses: "",
   maxUsesPerCustomer: "",
+  serviceDateFrom: "",
+  serviceDateUntil: "",
 });
 
 export function DiscountCodeCreationForm({

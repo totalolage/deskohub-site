@@ -94,6 +94,8 @@ import {
   getDiscountProductTargetLabel,
 } from "./product-target-options";
 import { PromotionCustomersPanel } from "./promotion-customers";
+import { formatDiscountCodeServiceDates } from "./service-date-display";
+import { DiscountCodeServiceDateFields } from "./service-date-fields";
 import { formatDiscountUsageLimit } from "./usage-limit";
 
 export type DiscountTableItem = {
@@ -116,6 +118,8 @@ export type DiscountCodeTableItem = {
   readonly validUntil: string | null;
   readonly maxUses: number | null;
   readonly maxUsesPerCustomer: number | null;
+  readonly serviceDateFrom: string | null;
+  readonly serviceDateUntil: string | null;
   readonly audienceSize: number;
   readonly audienceCustomerIds: readonly DotyposCustomerId[];
   readonly reservedUses: number;
@@ -210,6 +214,12 @@ export function DiscountCodesAdminTable({
         accessorFn: (code) => discountProducts.get(code.discountId) ?? "",
         id: "products",
         header: m.discountsColumnProducts({}, { locale }),
+      },
+      {
+        accessorFn: (code) => code.serviceDateFrom ?? "",
+        id: "serviceDates",
+        header: m.discountsColumnServiceDates({}, { locale }),
+        cell: ({ row }) => formatDiscountCodeServiceDates(row.original, locale),
       },
       {
         accessorFn: (code) => getStatusLabel(code.enabled, locale),
@@ -466,7 +476,7 @@ export function VoucherEditor({
       >
         <div className="grid gap-5">
           <VoucherCreditFields credit={voucher.issuedCredit} />
-          <DiscountCodeConfigurationFields code={voucher} showMaxUses={false} />
+          <DiscountCodeConfigurationFields code={voucher} promotion="voucher" />
         </div>
       </MutationForm>
     </div>
@@ -779,7 +789,7 @@ export function CreateVoucherForm({
           </div>
         )}
         <VoucherCreditFields />
-        <DiscountCodeConfigurationFields showMaxUses={false} />
+        <DiscountCodeConfigurationFields promotion="voucher" />
       </div>
     </MutationForm>
   );
@@ -1407,13 +1417,18 @@ function DiscountCodeFields({
   );
 }
 
+/**
+ * The code value, switch, and redemption window every promotion has, plus a
+ * discount code's usage limits and reservation dates.
+ */
 export function DiscountCodeConfigurationFields({
   code,
-  showMaxUses = true,
+  promotion = "discount-code",
 }: {
   readonly code?: DiscountCodeTableItem | VoucherTableItem;
-  readonly showMaxUses?: boolean;
+  readonly promotion?: "discount-code" | "voucher";
 }) {
+  const showMaxUses = promotion === "discount-code";
   const locale = useRouteLocale();
   const { control, register, setValue } =
     useFormContext<DiscountCodeConfigurationFormValues>();
@@ -1564,6 +1579,12 @@ export function DiscountCodeConfigurationFields({
       <p className="text-xs leading-5 text-navy-blue/70">
         {m.discountsValidityHint({}, { locale })}
       </p>
+      {promotion === "discount-code" && (
+        <DiscountCodeServiceDateFields
+          fromId={fieldId("serviceDateFrom", code?.id)}
+          untilId={fieldId("serviceDateUntil", code?.id)}
+        />
+      )}
     </div>
   );
 }

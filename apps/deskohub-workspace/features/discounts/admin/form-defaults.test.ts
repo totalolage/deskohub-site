@@ -35,6 +35,8 @@ const code: DiscountCodeTableItem = {
   validUntil: "2026-12-01T08:00:00Z",
   maxUses: 0,
   maxUsesPerCustomer: 2,
+  serviceDateFrom: "2026-07-01",
+  serviceDateUntil: "2026-07-31",
   audienceSize: 0,
   reservedUses: 0,
   redeemedUses: 0,
@@ -107,6 +109,8 @@ describe("discountCodeFormDefaults", () => {
       validUntil: "",
       maxUses: "",
       maxUsesPerCustomer: "",
+      serviceDateFrom: "",
+      serviceDateUntil: "",
     });
   });
 
@@ -119,7 +123,19 @@ describe("discountCodeFormDefaults", () => {
       validUntil: "2026-12-01T09:00",
       maxUses: "0",
       maxUsesPerCustomer: "2",
+      serviceDateFrom: "2026-07-01",
+      serviceDateUntil: "2026-07-31",
     });
+  });
+
+  test("leaves a code without reservation dates with empty date fields", () => {
+    expect(
+      discountCodeFormDefaults({
+        ...code,
+        serviceDateFrom: null,
+        serviceDateUntil: null,
+      })
+    ).toMatchObject({ serviceDateFrom: "", serviceDateUntil: "" });
   });
 
   test("leaves unlimited usage empty", () => {

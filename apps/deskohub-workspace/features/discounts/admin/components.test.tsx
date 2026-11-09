@@ -180,6 +180,8 @@ const dashboard: DiscountAdminDashboard = {
       validUntil: Temporal.Instant.from("2026-09-01T08:00:00Z"),
       maxUses: 100,
       maxUsesPerCustomer: 2,
+      serviceDateFrom: "2026-07-01",
+      serviceDateUntil: "2026-07-31",
       audienceSize: 2,
       audienceCustomerIds: [
         "dotypos-customer",
@@ -1277,6 +1279,8 @@ describe("discount administration pages", () => {
           validUntil: null,
           maxUses: null,
           maxUsesPerCustomer: null,
+          serviceDateFrom: null,
+          serviceDateUntil: null,
         },
         discount: {
           kind: "existing",
@@ -1679,7 +1683,41 @@ describe("discount administration pages", () => {
           validUntil: "2026-09-01T08:00:00Z",
           maxUses: 100,
           maxUsesPerCustomer: 2,
+          serviceDateFrom: "2026-07-01",
+          serviceDateUntil: "2026-07-31",
         },
+      })
+    );
+  });
+
+  test("clears a code's reservation dates when both fields are emptied", async () => {
+    const captured = captureWorkspaceActions();
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
+    );
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+    const codeForm = view
+      .getByRole("button", { name: "Save code" })
+      .closest("form")!;
+    for (const field of ["serviceDateFrom", "serviceDateUntil"]) {
+      fireEvent.input(
+        codeForm.querySelector(
+          `#${field}-019c91dd-c560-7e55-b9d8-c95065efd52d`
+        )!,
+        { target: { value: "" } }
+      );
+    }
+    fireEvent.submit(codeForm);
+    const { execute } = captured("update-code");
+
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "update-code",
+        code: expect.objectContaining({
+          serviceDateFrom: null,
+          serviceDateUntil: null,
+        }),
       })
     );
   });
@@ -2113,6 +2151,8 @@ describe("discount administration pages", () => {
       validUntil: null,
       maxUses: null,
       maxUsesPerCustomer: null,
+      serviceDateFrom: null,
+      serviceDateUntil: null,
     };
 
     fireEvent.change(view.getByRole("textbox", { name: "Code" }), {
@@ -2270,6 +2310,8 @@ describe("discount administration pages", () => {
           validUntil: null,
           maxUses: null,
           maxUsesPerCustomer: null,
+          serviceDateFrom: null,
+          serviceDateUntil: null,
         },
         discount: {
           kind: "existing",

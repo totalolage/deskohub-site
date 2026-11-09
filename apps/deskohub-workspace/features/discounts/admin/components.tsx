@@ -226,6 +226,8 @@ const toDiscountCodeTableItems = ({
     id: code.id,
     maxUses: code.maxUses,
     maxUsesPerCustomer: code.maxUsesPerCustomer,
+    serviceDateFrom: code.serviceDateFrom,
+    serviceDateUntil: code.serviceDateUntil,
     audienceSize: code.audienceSize,
     audienceCustomerIds: code.audienceCustomerIds,
     reservedUses: code.reservedUses,

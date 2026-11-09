@@ -4,6 +4,7 @@ import type { Schema } from "effect";
 import type { FieldValues } from "react-hook-form";
 import {
   createDiscountCodeCreationFormSchema,
+  createDiscountCodeFormSchema,
   createDiscountDefinitionFormSchema,
   type DiscountCodeCreationFormValues,
   type DiscountDefinitionFormValues,
@@ -47,6 +48,8 @@ const codeConfiguration = {
   validUntil: "",
   maxUses: "",
   maxUsesPerCustomer: "",
+  serviceDateFrom: "",
+  serviceDateUntil: "",
 };
 
 const discountCodeCreation = (
@@ -192,5 +195,56 @@ describe("discount code creation form schema", () => {
         discountCodeCreation({ discountKind: "new", products })
       )
     ).toEqual(["products"]);
+  });
+
+  test("accepts no reservation dates, one day, or a longer range", async () => {
+    for (const dates of [
+      { serviceDateFrom: "", serviceDateUntil: "" },
+      { serviceDateFrom: "2026-07-15", serviceDateUntil: "2026-07-15" },
+      { serviceDateFrom: "2026-07-01", serviceDateUntil: "2026-07-31" },
+    ]) {
+      expect(
+        await failingFields(
+          discountCodeCreationFormSchema,
+          discountCodeCreation(dates)
+        )
+      ).toEqual([]);
+    }
+  });
+
+  test("marks the missing or inverted reservation date", async () => {
+    const editFormSchema = createDiscountCodeFormSchema("en-US");
+    const editedCode = {
+      discountId: "019c91dd-c560-7e55-b9d8-c95065efd51d",
+      ...codeConfiguration,
+    };
+    for (const [dates, field] of [
+      [
+        { serviceDateFrom: "2026-07-01", serviceDateUntil: "" },
+        "serviceDateUntil",
+      ],
+      [
+        { serviceDateFrom: "", serviceDateUntil: "2026-07-31" },
+        "serviceDateFrom",
+      ],
+      [
+        { serviceDateFrom: "2026-07-31", serviceDateUntil: "2026-07-01" },
+        "serviceDateUntil",
+      ],
+      [
+        { serviceDateFrom: "2026-02-30", serviceDateUntil: "2026-03-01" },
+        "serviceDateFrom",
+      ],
+    ] as const) {
+      expect(
+        await failingFields(
+          discountCodeCreationFormSchema,
+          discountCodeCreation(dates)
+        )
+      ).toEqual([field]);
+      expect(
+        await failingFields(editFormSchema, { ...editedCode, ...dates })
+      ).toEqual([field]);
+    }
   });
 });
