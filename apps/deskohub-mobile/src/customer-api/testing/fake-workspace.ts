@@ -316,6 +316,22 @@ const serverLayer = (workspace: FakeWorkspace) => {
             Effect.as({ status: "updated" as const })
           )
         )
+        // Any signed-in account saves its language, except while its
+        // deletion is pending.
+        .handle("updateLocale", ({ payload: { locale } }) =>
+          Effect.suspend(() =>
+            workspace.data.account.kind === "deletion-pending"
+              ? Effect.fail(
+                  new CustomerAccountLinkRequired({
+                    reason: "deletion-pending",
+                  })
+                )
+              : update((data) => ({
+                  ...data,
+                  account: { ...data.account, locale },
+                }))
+          ).pipe(Effect.as({ locale }))
+        )
         .handle("completeProfile", ({ payload }) =>
           Effect.flatMap(readProfileCompletion(payload), (save) =>
             Effect.suspend(
@@ -352,6 +368,7 @@ const serverLayer = (workspace: FakeWorkspace) => {
                     deletion: current.deletion,
                     passkeys: current.passkeys,
                     assistants: current.assistants,
+                    locale: current.locale,
                     profile: storedProfile(save),
                     avatar: { kind: "available", avatar: null },
                     referralsEnabled: current.referralsEnabled,
@@ -531,6 +548,7 @@ const serverLayer = (workspace: FakeWorkspace) => {
                   email: workspace.data.account.email,
                   emailVerified: true,
                   name: "",
+                  locale: workspace.data.account.locale,
                 },
               }
             : null

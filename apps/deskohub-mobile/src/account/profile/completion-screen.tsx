@@ -10,6 +10,7 @@ import { Atom } from "effect/unstable/reactivity";
 import { useRouter } from "expo-router";
 import { AsyncView } from "../../customer-api/async-view";
 import { accountAtom } from "../../customer-api/customer-data-runtime";
+import { useSettledResultReset } from "../../customer-api/settled-result-reset";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { BodyText, Button, LiveMessage } from "../../ui/controls";
@@ -30,7 +31,6 @@ import {
   invalidOf,
   UnsavedChangesGuard,
   useFocusFirstInvalid,
-  useSettledResultReset,
 } from "./profile-form";
 import {
   completeProfileAtom,

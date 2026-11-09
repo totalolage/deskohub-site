@@ -26,7 +26,7 @@ export const i18nSmokeCases: ReadonlyArray<SmokeCase> = [
     name: "resolveAppLocale",
     run: () =>
       [
-        expectValue(resolveAppLocale(["de-DE", "cs"]), "cs-CZ"),
+        expectValue(resolveAppLocale(["fr-FR", "cs"]), "cs-CZ"),
         expectValue(resolveAppLocale(["fr-FR"]), "en-US"),
       ].join(", "),
   },

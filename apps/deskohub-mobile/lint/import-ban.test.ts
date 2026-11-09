@@ -59,6 +59,12 @@ const cases: readonly (readonly [title: string, source: string, flagged: boolean
   ["permits @deskohub/reservation", 'import { reservationDraft } from "@deskohub/reservation";\nexport { reservationDraft };\n', false],
   ["permits @deskohub/standard-schema", 'import { parseWithSchema } from "@deskohub/standard-schema";\nexport { parseWithSchema };\n', false],
   ["permits react-native", 'import { View } from "react-native";\nexport { View };\n', false],
+  ["rejects React Native's Text", 'import { Text } from "react-native";\nexport { Text };\n', true],
+  ["rejects React Native's TextInput", 'import { TextInput, View } from "react-native";\nexport { TextInput, View };\n', true],
+  ["rejects a re-export of React Native's Text", 'export { Text } from "react-native";\n', true],
+  ["permits React Native's text types", 'import type { TextInputProps, TextStyle } from "react-native";\nexport type { TextInputProps, TextStyle };\n', false],
+  ["permits the @deskohub/i18n locale-registry entry", 'import { supportedLocales } from "@deskohub/i18n/locale-registry";\nexport { supportedLocales };\n', false],
+  ["permits React Native's Text outside the mobile app", 'import { Text } from "react-native";\nexport { Text };\n', false, "apps/deskohub-boardgame-bar/import-ban"],
   ["permits a package whose name only starts with next", 'import { ThemeProvider } from "next-themes";\nexport { ThemeProvider };\n', false],
   ["permits next/navigation outside the mobile app", 'import { useRouter } from "next/navigation";\nexport { useRouter };\n', false, "apps/deskohub-boardgame-bar/import-ban"],
 ];

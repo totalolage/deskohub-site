@@ -1,6 +1,6 @@
 import { useAtom, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/unstable/reactivity";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { AsyncView } from "../../customer-api/async-view";
 import type { CustomerViewError } from "../../customer-api/customer-view-error";
 import type { AppLocale } from "../../i18n/app-locale";
@@ -10,6 +10,7 @@ import { theme } from "../../theme";
 import { LiveMessage } from "../../ui/controls";
 import { ListGroup, ListRow, SectionHeader } from "../../ui/list";
 import { ScrollScreen } from "../../ui/scroll-screen";
+import { Text } from "../../ui/text";
 import {
   copyReferralCodeAtom,
   type ReferralsView,

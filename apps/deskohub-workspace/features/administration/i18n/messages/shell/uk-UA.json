@@ -12,6 +12,7 @@
   "shellMobileNavigationTitle": "Розділи адміністрування",
   "shellMobileNavigationDescription": "Оберіть сторінку адміністрування.",
   "shellLanguageSwitcherLabel": "Мова адміністрування",
+  "shellLanguageMenuTriggerLabel": "Мова адміністрації: {language}",
   "shellBreadcrumbLabel": "Навігаційний ланцюжок",
   "shellBreadcrumbOverview": "Огляд",
   "shellBreadcrumbAccessCodes": "Коди доступу",

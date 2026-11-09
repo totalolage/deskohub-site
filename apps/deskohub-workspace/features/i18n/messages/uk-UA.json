@@ -147,6 +147,7 @@
   "primaryNavigationLabel": "Основна навігація",
   "mobilePrimaryNavigationLabel": "Основна мобільна навігація",
   "languageSwitcherLabel": "Вибір мови",
+  "languageMenuTriggerLabel": "Мова: {language}",
   "openNavigationMenuLabel": "Відкрити меню навігації",
   "closeNavigationMenuLabel": "Закрити меню навігації",
   "closeDialogLabel": "Закрити",
