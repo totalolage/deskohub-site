@@ -115,7 +115,8 @@ function LanguageMenuTrigger({
   tone,
   ...props
 }: Omit<LanguageMenuProps, "localePreference"> &
-  Omit<ComponentProps<typeof Button>, "className">) {
+  // Radix's trigger forwards only state, ARIA, event and ref props.
+  Omit<ComponentProps<"button">, "className" | "type">) {
   return (
     <Button
       type="button"
