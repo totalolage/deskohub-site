@@ -558,7 +558,9 @@ const openOnFirstUse = Effect.fnUntraced(function* (
     )
   );
   const started = yield* Effect.cached(Effect.forkIn(opening, owner));
-  return Effect.flatMap(started, Fiber.join);
+  // Awaited, not joined: closing the Scope while a joined opening is in an
+  // uninterruptible region, such as creating the context, never settles.
+  return Effect.flatMap(started, (fiber) => Effect.flatten(Fiber.await(fiber)));
 });
 
 export const E2EBrowserSession = { open, openOnFirstUse };
