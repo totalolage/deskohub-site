@@ -69,6 +69,7 @@ export const customerRequestBudgetClasses = {
     uploadAvatar: "dotypos-mutation",
     removeAvatar: "dotypos-mutation",
     // Better Auth's own tables.
+    updateLocale: "workspace-only",
     listPasskeys: "workspace-only",
     listAssistantConnections: "workspace-only",
     // Consent belongs to the account's Dotypos customer.
