@@ -3,7 +3,7 @@ import type {
   CustomerProfile,
 } from "@deskohub/workspace-customer-api";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import { Redirect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { AsyncView } from "../../customer-api/async-view";
 import { accountAtom } from "../../customer-api/customer-data-runtime";
 import type { AppLocale } from "../../i18n/app-locale";
@@ -12,6 +12,7 @@ import { m } from "../../i18n/messages";
 import { Button } from "../../ui/controls";
 import { ListGroup, ListRow, SectionHeader } from "../../ui/list";
 import { ScrollScreen } from "../../ui/scroll-screen";
+import { ReturnToAccountRoot } from "../return-to-account-root";
 import { AvatarSection } from "./avatar/avatar-section";
 import { identityFields } from "./profile-draft";
 import { ProfileTextFields } from "./profile-fields";
@@ -52,7 +53,7 @@ function LinkedProfile({
   readonly account: CustomerAccountState;
 }) {
   // The Account tab explains why an account without a profile can't edit it.
-  if (account.kind !== "linked") return <Redirect href="/account" />;
+  if (account.kind !== "linked") return <ReturnToAccountRoot />;
   return <ProfileForm account={account} />;
 }
 

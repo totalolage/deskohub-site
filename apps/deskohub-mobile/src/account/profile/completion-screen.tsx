@@ -7,7 +7,7 @@ import {
 } from "@effect/atom-react";
 import { Match, Option } from "effect";
 import { Atom } from "effect/unstable/reactivity";
-import { Redirect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { AsyncView } from "../../customer-api/async-view";
 import { accountAtom } from "../../customer-api/customer-data-runtime";
 import { useAppLocale } from "../../i18n/locale-context";
@@ -15,6 +15,8 @@ import { m } from "../../i18n/messages";
 import { BodyText, Button, LiveMessage } from "../../ui/controls";
 import { ListGroup, ListRow, SectionHeader } from "../../ui/list";
 import { ScrollScreen } from "../../ui/scroll-screen";
+import { returnToAccountRoot } from "../account-root";
+import { ReturnToAccountRoot } from "../return-to-account-root";
 import {
   billingFieldsOf,
   type CompletionDraft,
@@ -76,7 +78,7 @@ export function CompletionScreen() {
             return <CompletionForm account={current} />;
           if (current.kind === "linked" && createdHere(completion))
             return <CompletionDone account={current} />;
-          return <Redirect href="/account" />;
+          return <ReturnToAccountRoot />;
         }}
       </AsyncView>
     </ScrollScreen>
@@ -99,7 +101,7 @@ function CompletionDone({
       <SignupReferralNotice account={account} />
       <Button
         label={m.profile_complete_continue({}, { locale })}
-        onPress={() => router.replace("/account")}
+        onPress={() => returnToAccountRoot(router)}
       />
     </>
   );

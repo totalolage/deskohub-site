@@ -3,7 +3,7 @@ import type { BottomTabNavigationOptions } from "expo-router/tabs";
 import { StyleSheet, View } from "react-native";
 import { theme } from "../theme";
 
-/** Headers of the app's stacks: brand navy with white titles. */
+/** Headers of the app's stacks: theme text on the theme background, without a shadow. */
 export const stackScreenOptions = {
   contentStyle: { backgroundColor: theme.colors.background },
   headerShadowVisible: false,
