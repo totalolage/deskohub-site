@@ -61,6 +61,7 @@ test("signs in every submitting case that does not own its identities", () => {
   for (const id of [
     "contact-form",
     "locale-switch",
+    "locale-smoke-de-DE",
     "reservation-url-state-cowork",
     "checkout-referral-someone-else",
     "checkout-signed-out-verification",
