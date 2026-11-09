@@ -63,6 +63,81 @@ const publishedDocuments: ReadonlyArray<{
     documentKey: "cookie-policy",
     version: "9e1622d98ffc2f8879400494842ee8e2ee3f096a5e023636388c65c220dc3801",
   },
+  {
+    locale: "de-DE",
+    documentKey: "terms-and-conditions",
+    version: "564032be01ea845e90a103867e89fd0e7d30186404d4fb0447d09c35c8aceef1",
+  },
+  {
+    locale: "de-DE",
+    documentKey: "operating-rules",
+    version: "c62cfb615edfabaa1b46c687d360da01b0f84642e5870b80a79bbef152ec5b3c",
+  },
+  {
+    locale: "de-DE",
+    documentKey: "privacy-policy",
+    version: "d219cb484f33adc57361b289f7f4c009420caef00b51894d73aff55af2c85c0f",
+  },
+  {
+    locale: "de-DE",
+    documentKey: "marketing-communications",
+    version: "7682c568e3afca420f22c7476bfe1d14eab76fdd668e40f39ef1906c02a1bc77",
+  },
+  {
+    locale: "de-DE",
+    documentKey: "cookie-policy",
+    version: "6812034325d23d8f848a4fb64f09d8aa014d62cc7d3addc45759c1fb075fc486",
+  },
+  {
+    locale: "uk-UA",
+    documentKey: "terms-and-conditions",
+    version: "7b407b9397a1950a4d3a270140a435e9d1563b97a06b4e89ecfe482317f27ac2",
+  },
+  {
+    locale: "uk-UA",
+    documentKey: "operating-rules",
+    version: "3b2c23e4556ddab5fb207e6ba78163c9d784def6d4c4cedf61362db353729687",
+  },
+  {
+    locale: "uk-UA",
+    documentKey: "privacy-policy",
+    version: "f4fa60c6d8dff580e3cd048c64badeeb1f390344fc2f48d1fb90e5440e910daa",
+  },
+  {
+    locale: "uk-UA",
+    documentKey: "marketing-communications",
+    version: "449dd97773156e2bcea5862a555c36aa61a1dd28965cf0c6ab567a148e8d82d4",
+  },
+  {
+    locale: "uk-UA",
+    documentKey: "cookie-policy",
+    version: "08480393eeeadb3cbc83b2cdd9be368d03eb1f96a2156c4d5cf064ee7c656d00",
+  },
+  {
+    locale: "sk-SK",
+    documentKey: "terms-and-conditions",
+    version: "1ae915a521a99a87d465a3c338880f31b13ec42ad2c0dae18259dcd411cc565a",
+  },
+  {
+    locale: "sk-SK",
+    documentKey: "operating-rules",
+    version: "4bff1537e7e6a7903fecf5584178b37f52c9ef2d66076b4f2e55b057ca651852",
+  },
+  {
+    locale: "sk-SK",
+    documentKey: "privacy-policy",
+    version: "7e12903683052ab508bbbb50228988cf06dacc872431f21506f8b6a4c8e5f3fb",
+  },
+  {
+    locale: "sk-SK",
+    documentKey: "marketing-communications",
+    version: "ec36404d497d59aa8eb93b6ae808ac7106098459aadee5450e8c92153696c1aa",
+  },
+  {
+    locale: "sk-SK",
+    documentKey: "cookie-policy",
+    version: "d9cc345892616de3c3b05e7e1f7e505a7947738423b2ee4276d0757f3d4dbfaf",
+  },
 ];
 
 describe("getLegalDocumentVersion", () => {
