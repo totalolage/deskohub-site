@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Option } from "effect";
-import { locales } from "@/features/i18n";
+import { type Locale, locales } from "@/features/i18n";
 import type { AudienceFilter } from "./audience-filter";
 import { campaignContentFixture } from "./backend/email-campaigns.test-utils";
 import type { CampaignLocalizedContent } from "./body/campaign-content";
@@ -154,26 +154,71 @@ describe("campaign content locales", () => {
 });
 
 describe("campaignContentForRecipient", () => {
-  const czech = campaignContentFixture("Ahoj")["cs-CZ"]!;
-  const english = campaignContentFixture("Hello")["cs-CZ"]!;
+  const variant = (text: string) => campaignContentFixture(text)["cs-CZ"]!;
+  const czech = variant("Ahoj");
+  const english = variant("Hello");
+  const german = variant("Hallo");
+  const ukrainian = variant("Pryvit");
+  const slovak = variant("Ahoj SK");
+  const everyLocale: CampaignLocalizedContent = {
+    "cs-CZ": czech,
+    "en-US": english,
+    "de-DE": german,
+    "uk-UA": ukrainian,
+    "sk-SK": slovak,
+  };
+  const chosenLocale = (
+    content: CampaignLocalizedContent,
+    recipientLocale: Locale
+  ) => campaignContentForRecipient(content, recipientLocale).locale;
 
-  test("gives recipients their own locale's content when it exists", () => {
-    expect(
-      campaignContentForRecipient({ "cs-CZ": czech, "en-US": english }, "en-US")
-    ).toEqual({ locale: "en-US", content: english });
+  test("gives every recipient their own locale's content when it exists", () => {
+    for (const locale of locales) {
+      expect(campaignContentForRecipient(everyLocale, locale)).toEqual({
+        locale,
+        content: everyLocale[locale]!,
+      });
+    }
   });
 
-  test("falls back to Czech for a locale without content", () => {
-    expect(campaignContentForRecipient({ "cs-CZ": czech }, "en-US")).toEqual({
-      locale: "cs-CZ",
-      content: czech,
-    });
+  test("German and Ukrainian recipients fall back to English, then Czech", () => {
+    for (const locale of ["de-DE", "uk-UA"] as const) {
+      expect(chosenLocale({ "cs-CZ": czech, "en-US": english }, locale)).toBe(
+        "en-US"
+      );
+      expect(chosenLocale({ "cs-CZ": czech, "sk-SK": slovak }, locale)).toBe(
+        "cs-CZ"
+      );
+    }
   });
 
-  test("falls back to the only locale when Czech is missing", () => {
-    expect(campaignContentForRecipient({ "en-US": english }, "cs-CZ")).toEqual({
-      locale: "en-US",
-      content: english,
-    });
+  test("Slovak recipients fall back to Czech, then English", () => {
+    expect(chosenLocale({ "cs-CZ": czech, "en-US": english }, "sk-SK")).toBe(
+      "cs-CZ"
+    );
+    expect(chosenLocale({ "en-US": english, "de-DE": german }, "sk-SK")).toBe(
+      "en-US"
+    );
+  });
+
+  test("Czech recipients fall back to English and English recipients to Czech", () => {
+    expect(chosenLocale({ "en-US": english, "de-DE": german }, "cs-CZ")).toBe(
+      "en-US"
+    );
+    expect(chosenLocale({ "cs-CZ": czech, "de-DE": german }, "en-US")).toBe(
+      "cs-CZ"
+    );
+  });
+
+  test("falls back to the first content locale when the chain has no content", () => {
+    expect(chosenLocale({ "de-DE": german, "sk-SK": slovak }, "en-US")).toBe(
+      "de-DE"
+    );
+  });
+
+  test("Czech content reaches every recipient, so it covers any audience", () => {
+    for (const locale of locales) {
+      expect(chosenLocale({ "cs-CZ": czech }, locale)).toBe("cs-CZ");
+    }
   });
 });

@@ -20,7 +20,7 @@
   "emailAutomationActivationFailureArchived": "Tato automatizace je archivovaná a už ji nelze měnit.",
   "emailAutomationActivationFailureAudienceArchived": "Publikum kampaně je archivované. Vyberte aktivní publikum a zkuste to znovu.",
   "emailAutomationActivationFailureDraftChanged": "Pracovní verze nebo publikum se po zkušebním běhu změnily. Spusťte zkušební běh znovu a poté aktivujte.",
-  "emailAutomationActivationFailureFallbackContentMissing": "Doplňte český e-mail. Zákazníci, pro jejichž jazyk e-mail není, dostanou český.",
+  "emailAutomationActivationFailureFallbackContentMissing": "Doplňte český e-mail. Zákazníci, pro jejichž jazyk e-mail není, dostanou e-mail v náhradním jazyce, nejpozději český.",
   "emailAutomationActivationFailureFlowInvalid": "Scénář ještě není hotový. Dokončete ho na kartě Scénář a zkuste to znovu.",
   "emailAutomationActivationFailurePreviewRequired": "Před aktivací spusťte zkušební běh aktuální pracovní verze.",
   "emailAutomationActivationFailureStatusConflict": "Stav automatizace se mezitím změnil. Načtěte stránku znovu a zkuste to ještě jednou.",

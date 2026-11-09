@@ -1,5 +1,6 @@
 "use client";
 
+import { useWatch } from "react-hook-form";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -9,10 +10,12 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/shared/components/ui/tabs";
+import { useEmailDraftForm } from "./email-draft-form";
 import { EmailEditorProvider, useEmailEditor } from "./email-editor-context";
 import {
   emailEditorLanguageName,
   emailEditorLanguageProblemCount,
+  emailEnglishFallbackMissing,
 } from "./email-editor-problems";
 import { EmailEditorSettings } from "./email-editor-settings";
 import { EmailLanguageFields } from "./email-language-fields";
@@ -80,6 +83,20 @@ export function EmailEditor({
   );
 }
 
+/** A note while German and Ukrainian recipients would fall back to Czech. */
+function EmailEnglishFallbackNote() {
+  const locale = useRouteLocale();
+  const { control } = useEmailDraftForm();
+  const translations = useWatch({ control, name: "translations" });
+  return (
+    emailEnglishFallbackMissing({ translations }) && (
+      <p className="mb-4 rounded-md bg-sunset-yellow/15 px-3 py-2 text-navy-blue/80 text-sm">
+        {m.emailsEditorEnglishFallbackMissing({}, { locale })}
+      </p>
+    )
+  );
+}
+
 /** A tab per language with its problem count; the active one shows its texts. */
 function EmailLanguageTabs() {
   const locale = useRouteLocale();
@@ -87,6 +104,7 @@ function EmailLanguageTabs() {
   return (
     <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
       <EmailRetiredTranslations />
+      <EmailEnglishFallbackNote />
       <Tabs
         onValueChange={(value) => setActiveLocale(value as Locale)}
         value={activeLocale}

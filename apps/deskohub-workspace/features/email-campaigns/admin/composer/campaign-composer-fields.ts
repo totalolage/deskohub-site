@@ -114,13 +114,23 @@ export const hasLocaleContent = (fields: CampaignComposerLocaleFields) =>
 
 /**
  * The locales the composer edits. An audience restricted to one locale needs
- * only that locale; otherwise every locale is editable and Czech, the
- * fallback for recipients without covered content, is required.
+ * only that locale; otherwise every locale is editable and Czech, which
+ * every recipient's fallback chain reaches, is required.
  */
 export const composerLocales = (singleLocale: Locale | undefined) =>
   singleLocale
     ? { editable: [singleLocale], required: singleLocale }
     : { editable: campaignLocales, required: campaignFallbackLocale };
+
+/**
+ * Whether recipients whose fallback chain tries English before Czech
+ * (German and Ukrainian ones) get Czech because English has no content. An
+ * audience restricted to one locale never reaches them through English.
+ */
+export const englishFallbackMissing = (
+  singleLocale: Locale | undefined,
+  localeFields: CampaignComposerFields["locales"]
+) => singleLocale === undefined && !hasLocaleContent(localeFields["en-US"]);
 
 /**
  * One locale's texts as the campaign port takes them: the body crosses as

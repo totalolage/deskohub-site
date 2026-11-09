@@ -1,3 +1,4 @@
+import { getLocaleDefinition } from "@deskohub/i18n/locale-registry";
 import { Option } from "effect";
 import { isLocale, type Locale, locales } from "@/features/i18n";
 import { type AudienceFilter, audienceSingleLocale } from "./audience-filter";
@@ -6,7 +7,10 @@ import type {
   CampaignLocalizedContent,
 } from "./body/campaign-content";
 
-/** Locale for recipients without a known or covered preference. */
+/**
+ * Locale for recipients without a known preference, and the content locale
+ * every fallback chain reaches.
+ */
 export const campaignFallbackLocale: Locale = "cs-CZ";
 
 /** Campaign locales in display order: the required fallback first. */
@@ -60,9 +64,10 @@ export const resolveRecipientLocale = (sources: {
   campaignFallbackLocale;
 
 /**
- * The content a recipient reads: their locale's, else Czech, else the
- * campaign's first content locale (an audience restricted to it). The
- * campaign must have content.
+ * The content a recipient reads: their locale's, else the first locale of
+ * their locale's fallback chain with content, else the campaign's first
+ * content locale (an audience restricted to it). The campaign must have
+ * content.
  */
 export const campaignContentForRecipient = (
   content: CampaignLocalizedContent,
@@ -70,7 +75,7 @@ export const campaignContentForRecipient = (
 ): { readonly locale: Locale; readonly content: CampaignLocaleContent } => {
   const candidates = [
     recipientLocale,
-    campaignFallbackLocale,
+    ...getLocaleDefinition(recipientLocale).fallbackChain,
     ...campaignContentLocales(content),
   ];
   const chosen = candidates.find((candidate) => content[candidate]);
@@ -79,9 +84,10 @@ export const campaignContentForRecipient = (
 
 /**
  * Whether every recipient the audience can reach gets content meant for
- * them. A recipient in a locale without content gets the Czech fallback, so
- * the campaign needs Czech content unless the audience is restricted to a
- * single locale it has content for. A campaign without an audience is
+ * them. A recipient in a locale without content gets its fallback chain's
+ * content, and every chain reaches Czech, so the campaign needs Czech
+ * content unless the audience is restricted to a single locale it has
+ * content for. A campaign without an audience is
  * unrestricted. The composer's rule for which locales an editor must fill
  * is stricter on purpose and lives with the composer.
  */
