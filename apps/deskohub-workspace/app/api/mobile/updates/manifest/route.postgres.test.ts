@@ -177,7 +177,10 @@ describe.skipIf(!testDatabase)("mobile update manifest route", () => {
     });
   });
 
-  test("answers noUpdateAvailable after a rollback to an app already on its embedded update", async () => {
+  // An app on its embedded update may hold the rolled-back update, downloaded
+  // but not launched yet; only the directive stops its next start from
+  // launching it. expo-updates ignores a directive it has already applied.
+  test("sends the rollback to an app that runs its embedded update too", async () => {
     const android = target();
     await publish({ type: "rollBackToEmbedded", id: randomUUID(), ...android });
     const embeddedUpdateId = randomUUID();
@@ -190,8 +193,10 @@ describe.skipIf(!testDatabase)("mobile update manifest route", () => {
     );
 
     const { directive } = await partsOf(response);
+    expect(directive && verifiesSignature(directive)).toBe(true);
     expect(JSON.parse(directive?.body ?? "")).toEqual({
-      type: "noUpdateAvailable",
+      type: "rollBackToEmbedded",
+      parameters: { commitTime: expect.any(String) },
     });
   });
 
