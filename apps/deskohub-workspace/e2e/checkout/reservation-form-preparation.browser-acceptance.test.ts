@@ -173,6 +173,11 @@ const meetingRoomHtml = ({
           });`
         : ""
     }
+    // The start keeps its date and takes the typed time, as the form does.
+    document.querySelector('input[aria-label="Meeting room start time"]').addEventListener("input", (event) => {
+      const start = document.querySelector('input[name="startDateTime"]');
+      if (start.value) start.value = start.value.slice(0, 11) + event.currentTarget.value;
+    });
     ${script}
   </script>
 `;
@@ -224,6 +229,7 @@ describe("meeting-room reservation preparation in Chromium", () => {
               '</div>';
             document.querySelector('#listed-start input').addEventListener("change", () => {
               time.value = "14:00";
+              document.querySelector('input[name="startDateTime"]').value = "2099-09-02T14:00";
             });
           }, 100);
         `,

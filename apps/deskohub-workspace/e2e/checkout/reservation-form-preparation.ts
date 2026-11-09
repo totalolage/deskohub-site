@@ -572,10 +572,12 @@ export const prepareReservationForm = ({
         }
         return (
           hiddenStart instanceof HTMLInputElement &&
-          hiddenStart.value.slice(0, 10) === expected.date &&
+          // A whole day keeps whatever time the start had; hours book the
+          // shown time.
           (expected.wholeDay
-            ? time === null
-            : time instanceof HTMLInputElement &&
+            ? hiddenStart.value.slice(0, 10) === expected.date && time === null
+            : hiddenStart.value === `${expected.date}T${expected.time}` &&
+              time instanceof HTMLInputElement &&
               time.value === expected.time) &&
           selectedDuration instanceof HTMLInputElement &&
           selectedDuration.checked &&

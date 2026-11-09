@@ -201,9 +201,13 @@ export const isPrefilledReservation = (
               expected.monitorOption;
       }
       case "meeting-room": {
-        // The field holds the whole local start; the date leads it.
+        // The field holds the whole local start. A whole day keeps whatever
+        // time it had.
+        const start = value('input[name="startDateTime"]');
         if (
-          value('input[name="startDateTime"]')?.slice(0, 10) !== expected.date
+          expected.wholeDay
+            ? start?.slice(0, 10) !== expected.date
+            : start !== `${expected.date}T${expected.time}`
         )
           return false;
         // The start-time control is matched by type, not by its localized
