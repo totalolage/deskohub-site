@@ -86,6 +86,13 @@ describe("reservationPeriodText", () => {
     expect(reservationPeriodText(meeting, "en-US")).toContain("11:00");
   });
 
+  test("shows a whole-day meeting room as its day, as the site's account page does", () => {
+    const wholeDay = { ...officeDay, kind: "meeting-room" } as const;
+    expect(reservationPeriodText(wholeDay, "en-US")).toBe(
+      "Monday, November 30, 2026"
+    );
+  });
+
   test("shows a missing or unreadable time as unavailable", () => {
     for (const locale of locales) {
       const unavailable = m.reservations_value_unavailable({}, { locale });

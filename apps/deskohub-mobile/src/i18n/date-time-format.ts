@@ -45,21 +45,19 @@ export interface FormattedInstantRange {
 }
 
 /**
- * The instant's Prague calendar day as YYYY-MM-DD. It reads only the date
- * fields, by name: Hermes ignores `hourCycle`, so hours and the positional
- * parts `DateTime.toParts` relies on are wrong for zoned times there.
+ * Prague calendar days, told apart by the date fields alone. Hours aren't read:
+ * the app showed whole days as midnight times on Android, which Effect's
+ * zoned `DateTime.toParts` gives when the engine ignores Intl's `hourCycle`.
  */
-const workspaceDay = (instant: DateTime.DateTime) => {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: workspaceTimeZone,
-  }).formatToParts(DateTime.toEpochMillis(instant));
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((p) => p.type === type)?.value;
-  return `${part("year")}-${part("month")}-${part("day")}`;
-};
+const workspaceDayFormat = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  timeZone: workspaceTimeZone,
+});
+
+const workspaceDay = (instant: DateTime.DateTime) =>
+  workspaceDayFormat.format(DateTime.toEpochMillis(instant));
 
 const isSameWorkspaceDay = (a: DateTime.DateTime, b: DateTime.DateTime) =>
   workspaceDay(a) === workspaceDay(b);

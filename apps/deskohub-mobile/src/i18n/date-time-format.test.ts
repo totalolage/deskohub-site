@@ -55,8 +55,8 @@ describe("formatInstant", () => {
 
 describe("formatInstantRange", () => {
   test("reads Prague days where Intl ignores the requested hour cycle", () => {
-    // Some engines (Hermes on Android) ignore `hourCycle`, so midnight comes
-    // back as hour 12 AM; whole days must still read as whole days there.
+    // An engine that ignores `hourCycle` gives midnight as hour 12, as the
+    // app's Android build showed; whole days must still read as whole days.
     const RealDateTimeFormat = Intl.DateTimeFormat;
     class IgnoringHourCycle extends RealDateTimeFormat {
       constructor(
