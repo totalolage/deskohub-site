@@ -348,7 +348,10 @@ test.skipIf(!chromiumAvailable)(
   "keeps focus order and calendar focus return in a narrow cell",
   async () => {
     if (!browser) throw new Error("The calendar browser has not launched.");
-    const page = await browser.newPage();
+    // A phone viewport, where narrow cells occur.
+    const page = await browser.newPage({
+      viewport: { height: 844, width: 390 },
+    });
     try {
       await page.setContent(
         `<!doctype html><html lang="cs"><head><meta charset="utf-8"></head><body><div id="date-picker-test-root"></div></body></html>`
@@ -382,7 +385,7 @@ test.skipIf(!chromiumAvailable)(
       await page.keyboard.press("Shift+Tab");
       expect(await isFocused(calendarButton)).toBe(true);
 
-      // The button opens the calendar beside the cell, inside the viewport.
+      // The button opens the calendar next to its row, inside the viewport.
       await page.keyboard.press("Enter");
       await calendar.waitFor();
       const calendarBox = await calendar.boundingBox();
@@ -391,7 +394,9 @@ test.skipIf(!chromiumAvailable)(
         calendarBox &&
           viewport &&
           calendarBox.x >= 0 &&
-          calendarBox.x + calendarBox.width <= viewport.width
+          calendarBox.x + calendarBox.width <= viewport.width &&
+          calendarBox.y >= 0 &&
+          calendarBox.y + calendarBox.height <= viewport.height
       ).toBe(true);
       await page.keyboard.press("Escape");
       await calendar.waitFor({ state: "detached" });

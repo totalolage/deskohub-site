@@ -155,16 +155,21 @@ test.skipIf(!chromiumAvailable).each(scenarios)(
  * The date fields whose text, the typed date or else the format placeholder,
  * is wider than the room beside the calendar button.
  */
-const findClippedDateText = async (fields: readonly Locator[]) => {
+const findClippedDateText = async (
+  fields: readonly Locator[],
+  shown: "placeholder" | "value"
+) => {
   const clipped: string[] = [];
   for (const field of fields) {
-    const result = await field.evaluate((element) => {
+    const result = await field.evaluate((element, shownText) => {
       const input = element as HTMLInputElement;
       const style = getComputedStyle(input);
       const context = document.createElement("canvas").getContext("2d");
       if (!context) throw new Error("No 2D canvas context.");
       context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-      const text = input.value || input.placeholder;
+      const text = shownText === "value" ? input.value : input.placeholder;
+      // An empty text would fit trivially.
+      if (text === "") return `no ${shownText}`;
       const needed = context.measureText(text).width;
       const room =
         input.clientWidth -
@@ -173,7 +178,7 @@ const findClippedDateText = async (fields: readonly Locator[]) => {
       return needed > room
         ? `${text}: ${Math.ceil(needed)} > ${Math.floor(room)}`
         : undefined;
-    });
+    }, shown);
     if (result) clipped.push(result);
   }
   return clipped;
@@ -194,9 +199,9 @@ test.skipIf(!chromiumAvailable).each(scenarios)(
       if (dialog === "code") {
         dateFields.push(empty.serviceDateFrom, empty.serviceDateUntil);
       }
-      const clipped = await findClippedDateText(dateFields);
+      const clipped = await findClippedDateText(dateFields, "placeholder");
       await fillDateFields(page, dialog, locale);
-      clipped.push(...(await findClippedDateText(dateFields)));
+      clipped.push(...(await findClippedDateText(dateFields, "value")));
       expect(clipped).toEqual([]);
     } finally {
       await page.close();
