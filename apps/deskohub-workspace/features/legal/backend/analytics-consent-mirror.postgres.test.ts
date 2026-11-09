@@ -5,6 +5,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Clock, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
 import { CurrentWorkspaceRequestHeaders } from "@/shared/backend/workspace-request-context";
@@ -81,6 +82,7 @@ const hydrate = (accountId: CustomerAccountId, cookieHeader: string) =>
           currentUser: Effect.succeed({
             accountId,
             deletionRequested: false,
+            ...testSessionProfile,
             email: testEmailAddress("mirror"),
           }),
         })
