@@ -188,25 +188,46 @@ const expectSwitchStates = async (
  * Turns the account preference to `granted` through a trusted click and
  * waits until the save settled: the switch holds the new value, is enabled
  * again, reports no error, and this device's analytics switch followed it,
- * which happens only after the server confirmed the save.
+ * which happens only after the server confirmed the save. The readiness
+ * check, the click and the settle wait are separate session uses, so a step
+ * deadline that interrupts the check starts no click.
  */
-const toggleAccountPreference = async (page: Page, granted: boolean) => {
-  const preferenceSwitch = accountPreferenceSwitch(page);
-  await expect(preferenceSwitch).toBeEnabled();
-  await expect(preferenceSwitch).toHaveAttribute(
-    "aria-checked",
-    checkedState(!granted)
-  );
-  await preferenceSwitch.click({ timeout: workspaceE2ETimeouts.browserAction });
-  await expectSwitchStates(page, { account: granted, device: granted });
-  await expect(preferenceSwitch).toBeEnabled({
-    timeout: workspaceE2ETimeouts.browserAction,
-  });
-  await expect(accountPreferenceRow(page).getByRole("alert")).toBeEmpty();
-  await page.waitForFunction(
-    hasReactClickHandler,
-    accountPreferenceSwitchSelector,
-    { timeout: workspaceE2ETimeouts.uiTransition }
+const toggleAccountPreference = (
+  device: E2EBrowserSession,
+  granted: boolean
+) => {
+  const operation = granted
+    ? "grant account analytics preference"
+    : "withdraw account analytics preference";
+  return driveDevice(device, operation, async (page) => {
+    const preferenceSwitch = accountPreferenceSwitch(page);
+    await expect(preferenceSwitch).toBeEnabled();
+    await expect(preferenceSwitch).toHaveAttribute(
+      "aria-checked",
+      checkedState(!granted)
+    );
+  }).pipe(
+    Effect.andThen(
+      driveDevice(device, operation, (page) =>
+        accountPreferenceSwitch(page)
+          .filter({ visible: true })
+          .click({ timeout: workspaceE2ETimeouts.browserAction })
+      )
+    ),
+    Effect.andThen(
+      driveDevice(device, operation, async (page) => {
+        await expectSwitchStates(page, { account: granted, device: granted });
+        await expect(accountPreferenceSwitch(page)).toBeEnabled({
+          timeout: workspaceE2ETimeouts.browserAction,
+        });
+        await expect(accountPreferenceRow(page).getByRole("alert")).toBeEmpty();
+        await page.waitForFunction(
+          hasReactClickHandler,
+          accountPreferenceSwitchSelector,
+          { timeout: workspaceE2ETimeouts.uiTransition }
+        );
+      })
+    )
   );
 };
 
@@ -347,13 +368,7 @@ const exercisePreferenceOnDevice = Effect.fn("exercisePreferenceOnDevice")(
       (yield* readAnalyticsDecisions(input.accountId)).map(({ id }) => id)
     );
     for (const granted of [true, false]) {
-      yield* driveDevice(
-        device,
-        granted
-          ? "grant account analytics preference"
-          : "withdraw account analytics preference",
-        (page) => toggleAccountPreference(page, granted)
-      );
+      yield* toggleAccountPreference(device, granted);
       const recording = yield* requireRecordedPreference(
         input.accountId,
         knownIds,
