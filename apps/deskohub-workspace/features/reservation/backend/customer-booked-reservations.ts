@@ -15,7 +15,8 @@ import { decodeBookedReservation } from "./booked-reservation";
 
 /**
  * Dotypos answered with something the customer's reservations can't be read
- * from: a reservation whose held span or seats Workspace can't read, or pages
+ * from: a reservation whose held span (both bounds, the end after the start)
+ * or seats Workspace can't read, or pages
  * that contradict each other (an empty page announcing another, or a
  * reservation listed twice because the list moved while it was paged).
  */
@@ -43,9 +44,10 @@ export type CustomerBookedReservation = {
 
 const toCustomerBookedReservation = (reservation: DotyposReservation) => {
   const booked = decodeBookedReservation(reservation);
+  // Without stored details the occupied interval is the span Dotypos holds;
+  // it is none unless both bounds decode and the end follows the start.
   return Option.all({
-    heldFrom: booked.start,
-    heldUntil: booked.end,
+    held: booked.occupiedInterval,
     seats: booked.seats,
   }).pipe(
     Option.match({
@@ -56,11 +58,13 @@ const toCustomerBookedReservation = (reservation: DotyposReservation) => {
             dotyposReservationId: reservation.id,
           })
         ),
-      onSome: (facts) =>
+      onSome: ({ held, seats }) =>
         Effect.succeed<CustomerBookedReservation>({
           dotyposReservationId: reservation.id,
           status: reservation.status,
-          ...facts,
+          heldFrom: held.startsAt,
+          heldUntil: held.endsAt,
+          seats,
         }),
     })
   );

@@ -132,19 +132,25 @@ describe("CustomerBookedReservations.listForCustomer", () => {
 
   test("fails on a reservation whose held span or seats can't be read", async () => {
     const [readable, unreadable] = reservationsOf(customer, 2);
-    const { result } = await listForCustomer(
-      [readable!, { ...unreadable!, seats: "many" }],
-      5
-    );
+    for (const malformed of [
+      { seats: "many" },
+      { endDate: unreadable!.startDate },
+      { endDate: firstStart.toString() },
+    ]) {
+      const { result } = await listForCustomer(
+        [readable!, { ...unreadable!, ...malformed }],
+        5
+      );
 
-    expect(result).toEqual(
-      Result.fail(
-        new CustomerBookedReservationsUnreadableError({
-          reason: "malformed-reservation",
-          dotyposReservationId: unreadable!.id,
-        })
-      )
-    );
+      expect(result).toEqual(
+        Result.fail(
+          new CustomerBookedReservationsUnreadableError({
+            reason: "malformed-reservation",
+            dotyposReservationId: unreadable!.id,
+          })
+        )
+      );
+    }
   });
 
   test("fails on pages that contradict each other", async () => {
