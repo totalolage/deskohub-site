@@ -1,3 +1,5 @@
+import { type SignInMethod, signInMethods } from "../analytics/events";
+
 /**
  * The sign-in callback the app receives, either as the `/app/auth/callback`
  * App Link (a magic link opened from a mail app) or as the
@@ -13,21 +15,18 @@ export type AuthCallback =
       readonly code: string;
       readonly state: string;
       /** How the web page signed in, for analytics; never trusted for auth. */
-      readonly method?: SignInCallbackMethod;
+      readonly method?: SignInMethod;
     }
   | { readonly kind: "error"; readonly code: string }
   | { readonly kind: "invalid" };
 
-/** The sign-in methods a handoff can report, as analytics names them. */
-export type SignInCallbackMethod = "link" | "code" | "passkey";
-
 /** The search param the web page adds to a minted handoff URL. */
 export const signInMethodParam = "method";
 
-const isSignInCallbackMethod = (
+const isSignInMethod = (
   value: string | null | undefined
-): value is SignInCallbackMethod =>
-  value === "link" || value === "code" || value === "passkey";
+): value is SignInMethod =>
+  signInMethods.some((method) => method === value);
 
 /** Where the web sign-in page sends a minted handoff code. */
 export const nativeReturnUri = "deskohub://auth/callback";
@@ -73,7 +72,7 @@ const fromParamValues = (read: (name: string) => ParamValues): AuthCallback => {
   }
   if (code !== undefined && state !== undefined) {
     const method = single(read(signInMethodParam));
-    return isSignInCallbackMethod(method)
+    return isSignInMethod(method)
       ? { kind: "handoff", code, state, method }
       : { kind: "handoff", code, state };
   }
@@ -115,7 +114,7 @@ export const parseAuthCallbackParams = (
 /** The minted handoff URL with the method the page signed in with. */
 export const withSignInMethod = (
   url: string,
-  method: SignInCallbackMethod
+  method: SignInMethod
 ): string => {
   const withMethod = new URL(url);
   withMethod.searchParams.set(signInMethodParam, method);

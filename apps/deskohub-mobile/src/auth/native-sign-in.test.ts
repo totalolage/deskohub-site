@@ -12,7 +12,11 @@ import {
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 import { analytics } from "../analytics/analytics";
-import { nativeReturnUri, parseAuthCallbackUrl } from "./auth-callback";
+import {
+  nativeReturnUri,
+  parseAuthCallbackUrl,
+  withSignInMethod,
+} from "./auth-callback";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
 import {
@@ -462,6 +466,46 @@ describe("native email sign-in through the auth session", () => {
         { name: "sign-in started", properties: { method: "link" } },
       ]);
       expect(started).toHaveLength(1);
+    } finally {
+      capture.mockRestore();
+    }
+  });
+
+  test("records a continued session as a completed sign-in with the continue method", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const signIns: Array<unknown> = [];
+    const capture = spyOn(analytics, "capture").mockImplementation((event) => {
+      if (event.name.startsWith("sign-in")) signIns.push(event);
+    });
+    try {
+      // The page continues its browser session: it mints without signing in
+      // and names the continue method on the handoff.
+      const app = launchApp(server, store, async (url) => {
+        const request = readNativeHandoffRequest(
+          new URL(url).searchParams,
+          origin
+        );
+        if (Option.isNone(request)) throw new Error("bad native sign-in URL");
+        return AuthSessionResult.Returned({
+          url: withSignInMethod(
+            server.mintHandoff(ada, request.value),
+            "continue"
+          ),
+        });
+      });
+
+      const user = await app.runtime.runPromise(signInWithEmail(Option.none()));
+
+      expect(user.id).toBe(ada.id);
+      expect(signIns).toEqual([
+        { name: "sign-in started", properties: { method: "link" } },
+        {
+          name: "sign-in completed",
+          properties: { method: "continue" },
+          awaitsAccount: true,
+        },
+      ]);
     } finally {
       capture.mockRestore();
     }

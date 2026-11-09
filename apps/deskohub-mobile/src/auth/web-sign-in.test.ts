@@ -1,7 +1,16 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { customerSignInLocaleHeader } from "@deskohub/workspace-customer-api/customer-locale";
 import { Effect, Exit, Option } from "effect";
+import { analytics } from "../analytics/analytics";
 
 type SessionRead = () => Promise<{
   readonly data: { readonly user: { readonly id: string } } | null;
@@ -25,8 +34,22 @@ const recordLocale = (fetchOptions: FetchOptions | undefined) => {
 /** What the server answers a sign-in email request with. */
 let emailSent: unknown = { status: true, signInCode: true };
 
+/** The return URIs the page asked the server to mint a handoff for. */
+let mintedFor: Array<string> = [];
+
 mock.module("./auth-client.web", () => ({
   authClient: {
+    $fetch: async (
+      path: string,
+      { body }: { readonly body: { readonly return_uri: string } }
+    ) => {
+      if (path !== "/native-handoff/mint") throw new Error(path);
+      mintedFor.push(body.return_uri);
+      return {
+        data: { url: `${body.return_uri}?code=handoff&state=attempt` },
+        error: null,
+      };
+    },
     getSession: () => readSession(),
     signIn: {
       magicLink: async () => ({ data: emailSent, error: null }),
@@ -78,6 +101,7 @@ mock.module("./auth-client.web", () => ({
 }));
 
 const {
+  finishSignIn,
   completeWebCodeSignIn,
   completeWebMagicLink,
   completeWebPasskeySignIn,
@@ -125,6 +149,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  mintedFor = [];
   namedLocales = [];
   signOuts = 0;
   linkAccount = "bob";
@@ -568,6 +593,51 @@ describe("prepareNativeHandoffEmail", () => {
         currentRequest: Option.none(),
       })
     ).toBe("native-request-expired");
+  });
+});
+
+describe("finishSignIn", () => {
+  const request = {
+    codeChallenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+    state: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+    returnUri: "deskohub://auth/callback",
+    reauthenticate: false,
+  };
+
+  test("tells the app a continued session signed in with the continue method", async () => {
+    const destination = await Effect.runPromise(
+      finishSignIn(Option.some(request), "continue")
+    );
+
+    expect(mintedFor).toEqual([request.returnUri]);
+    expect(destination.kind).toBe("app");
+    const url = new URL(destination.kind === "app" ? destination.url : "");
+    expect(url.searchParams.get("method")).toBe("continue");
+    expect(url.searchParams.get("code")).toBe("handoff");
+  });
+
+  test("records a sign-in the browser finished itself, without minting", async () => {
+    const captured: Array<unknown> = [];
+    const capture = spyOn(analytics, "capture").mockImplementation((event) => {
+      captured.push(event);
+    });
+    try {
+      const destination = await Effect.runPromise(
+        finishSignIn(Option.none(), "code")
+      );
+
+      expect(destination).toEqual({ kind: "web" });
+      expect(mintedFor).toEqual([]);
+      expect(captured).toEqual([
+        {
+          name: "sign-in completed",
+          properties: { method: "code" },
+          awaitsAccount: true,
+        },
+      ]);
+    } finally {
+      capture.mockRestore();
+    }
   });
 });
 

@@ -255,8 +255,9 @@ non-production traffic apart:
   analytics consent. Webhooks carry no browser session ID; their lifecycle
   events follow the author's ledger decision like every other capture.
 - Sign-in analytics live in `features/account/sign-in-analytics.ts`:
-  `sign-in completed` with `method: "link" | "code" | "passkey"`, `sign-in
-  code rejected` with `reason`, `passkey added` with `source: "prompt" |
+  `sign-in completed` with `method: "link" | "code" | "passkey"` (the app
+  also sends `continue`, see the `deskohub-mobile` skill's
+  `references/analytics.md`), `sign-in code rejected` with `reason`, `passkey added` with `source: "prompt" |
   "settings"`, `passkey removed`, and `passkey prompt dismissed`. The new account identity
   settles only on the next page, so a finished sign-in is recorded in the tab's
   sessionStorage (only with analytics consent) and captured from the PostHog
