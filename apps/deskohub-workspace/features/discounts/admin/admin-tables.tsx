@@ -1487,42 +1487,49 @@ export function DiscountCodeConfigurationFields({
         </ChoiceCard>
       </div>
       <div
-        className={`grid gap-4 ${showMaxUses ? "md:grid-cols-4" : "md:grid-cols-2"}`}
+        className={`grid gap-4 md:grid-cols-2 ${showMaxUses ? "lg:grid-cols-4" : ""}`}
       >
-        <FormField
-          control={control}
-          name="validFrom"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{m.discountsValidFromLabel({}, { locale })}</FormLabel>
-              <FormDateTimeInput
-                {...field}
-                dateLabel={m.discountsValidFromLabel({}, { locale })}
-                displayValue={false}
-                timeLabel={m.discountsValidFromTimeLabel({}, { locale })}
-              />
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={control}
-          name="validUntil"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>
-                {m.discountsValidUntilLabel({}, { locale })}
-              </FormLabel>
-              <FormDateTimeInput
-                {...field}
-                dateLabel={m.discountsValidUntilLabel({}, { locale })}
-                displayValue={false}
-                timeLabel={m.discountsValidUntilTimeLabel({}, { locale })}
-              />
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {/* The redemption window stays one pair side by side at every width;
+            each date-time stacks its date and time inside its half. The usage
+            limits join its row only where four columns leave the dates room. */}
+        <div className="grid min-w-0 grid-cols-2 items-start gap-4 md:col-span-2">
+          <FormField
+            control={control}
+            name="validFrom"
+            render={({ field }) => (
+              <FormItem className="min-w-0">
+                <FormLabel>
+                  {m.discountsValidFromLabel({}, { locale })}
+                </FormLabel>
+                <FormDateTimeInput
+                  {...field}
+                  dateLabel={m.discountsValidFromLabel({}, { locale })}
+                  displayValue={false}
+                  timeLabel={m.discountsValidFromTimeLabel({}, { locale })}
+                />
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={control}
+            name="validUntil"
+            render={({ field }) => (
+              <FormItem className="min-w-0">
+                <FormLabel>
+                  {m.discountsValidUntilLabel({}, { locale })}
+                </FormLabel>
+                <FormDateTimeInput
+                  {...field}
+                  dateLabel={m.discountsValidUntilLabel({}, { locale })}
+                  displayValue={false}
+                  timeLabel={m.discountsValidUntilTimeLabel({}, { locale })}
+                />
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
         {showMaxUses && (
           <>
             <FormField

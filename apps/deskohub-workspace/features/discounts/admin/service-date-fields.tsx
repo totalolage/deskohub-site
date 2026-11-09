@@ -18,7 +18,8 @@ type ServiceDateFormValues = {
 
 /**
  * The first and last reservation start date a discount code applies to. Both
- * stay empty for a code that applies to any date.
+ * stay empty for a code that applies to any date. The pair sits side by side
+ * at every width.
  */
 export function DiscountCodeServiceDateFields() {
   const locale = useRouteLocale();
@@ -26,12 +27,12 @@ export function DiscountCodeServiceDateFields() {
 
   return (
     <div className="grid gap-3">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-2 items-start gap-4">
         <FormField
           control={control}
           name="serviceDateFrom"
           render={({ field }) => (
-            <FormItem>
+            <FormItem className="min-w-0">
               <FormLabel>
                 {m.discountsServiceDateFromLabel({}, { locale })}
               </FormLabel>
@@ -47,7 +48,7 @@ export function DiscountCodeServiceDateFields() {
           control={control}
           name="serviceDateUntil"
           render={({ field }) => (
-            <FormItem>
+            <FormItem className="min-w-0">
               <FormLabel>
                 {m.discountsServiceDateUntilLabel({}, { locale })}
               </FormLabel>
