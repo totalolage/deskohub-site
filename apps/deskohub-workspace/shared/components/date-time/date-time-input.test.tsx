@@ -349,14 +349,12 @@ describe("DateTimeInput", () => {
     ["after the maximum", "21:00"],
   ] as const) {
     test(`keeps a time ${bound} on screen after blur and submits no value`, async () => {
-      const { form, onSubmit, submitted, timeField } = renderInForm(
-        {
-          defaultValue: "2099-06-10T16:00",
-          maximum: "2099-06-10T20:00",
-          minimum: "2099-06-10T16:00",
-          stepMinutes: 60,
-        }
-      );
+      const { form, onSubmit, submitted, timeField } = renderInForm({
+        defaultValue: "2099-06-10T16:00",
+        maximum: "2099-06-10T20:00",
+        minimum: "2099-06-10T16:00",
+        stepMinutes: 60,
+      });
 
       await typeTimeAsBrowsers(timeField, rejected);
       fireEvent.blur(timeField);

@@ -147,16 +147,17 @@ describe("TimeInput", () => {
       });
     }
     expect(onChange).not.toHaveBeenCalled();
-    // A rejected time stays on screen until the field loses focus.
+    // A rejected time stays on screen, even once the field loses focus.
     expect(editor.value).toBe("18:00");
     fireEvent.blur(editor);
-    expect(editor.value).toBe("12:00");
+    expect(editor.value).toBe("18:00");
+    expect(submitted()).toEqual([""]);
 
     typeTime("17:00");
     expect(onChange).toHaveBeenLastCalledWith("17:00");
   });
 
-  test("keeps an unfinished edit without a value, then drops it on blur", () => {
+  test("keeps an unfinished edit without a value until it is finished", () => {
     const onBlur = mock(() => undefined);
     const onChange = mock((_value: string) => undefined);
     const { editor, form, onSubmit, submitted, typeTime } = renderInForm({
@@ -178,11 +179,11 @@ describe("TimeInput", () => {
     expect(describedText(editor)).toContain(m.timeInputIncomplete({}, en));
 
     fireEvent.blur(editor);
-    markUnfinished(editor, false);
-    expect(editor.value).toBe("09:00");
     expect(onBlur).toHaveBeenCalledTimes(1);
-    expect(editor.getAttribute("aria-invalid")).toBe("false");
 
+    markUnfinished(editor, false);
+    typeTime("09:00");
+    expect(editor.getAttribute("aria-invalid")).toBe("false");
     fireEvent.submit(form);
     expect(onSubmit.mock.calls[0]?.[0].getAll("time")).toEqual(["09:00"]);
   });

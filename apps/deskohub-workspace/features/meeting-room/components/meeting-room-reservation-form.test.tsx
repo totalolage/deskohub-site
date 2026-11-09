@@ -651,9 +651,13 @@ describe("MeetingRoomReservationForm", () => {
       expect(submittedStart()).toEqual([""]);
       expect(executeAsync).not.toHaveBeenCalled();
 
-      // A time the room takes moves the form on.
+      // A time the room takes moves the form on once its availability loads.
       await typeTimeAsBrowsers(timeField, "15:00");
       fireEvent.blur(timeField);
+      await waitFor(
+        () => expect(continueButton.hasAttribute("disabled")).toBe(false),
+        { timeout: 5000 }
+      );
       fireEvent.click(continueButton);
       await waitFor(() => expect(continueButton.id).toBe("reservation-submit"));
       expect(submittedStart()).toEqual(["2099-07-30T15:00"]);

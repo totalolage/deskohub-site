@@ -302,12 +302,16 @@ function DateInputCalendar({
   calendar,
   isUnavailable,
   locale,
+  maximumDate,
+  minimumDate,
   onPick,
   selectedDate,
 }: {
   readonly calendar: CalendarModule | undefined;
   readonly isUnavailable: (date: Temporal.PlainDate) => boolean;
   readonly locale: string;
+  readonly maximumDate: Temporal.PlainDate | undefined;
+  readonly minimumDate: Temporal.PlainDate | undefined;
   readonly onPick: (date: Temporal.PlainDate) => void;
   readonly selectedDate: Temporal.PlainDate | undefined;
 }) {
@@ -317,6 +321,10 @@ function DateInputCalendar({
     <calendar.Calendar
       autoFocus
       defaultMonth={selectedDate ? toCalendarDate(selectedDate) : undefined}
+      // The calendar keeps to the bounds' months, so it opens on a month
+      // with days it offers, even when today is outside the bounds.
+      endMonth={maximumDate ? toCalendarDate(maximumDate) : undefined}
+      startMonth={minimumDate ? toCalendarDate(minimumDate) : undefined}
       locale={calendar.getCalendarLocale(locale)}
       disabled={(date) => isUnavailable(fromCalendarDate(date))}
       mode="single"
@@ -536,6 +544,8 @@ export function DateInput({
                 typed.getUnavailability(date) !== undefined
               }
               locale={locale}
+              maximumDate={parseCanonicalDate(resolveBound(maximum))}
+              minimumDate={parseCanonicalDate(resolveBound(minimum))}
               onPick={(date) => {
                 if (typed.getUnavailability(date)) return;
 
