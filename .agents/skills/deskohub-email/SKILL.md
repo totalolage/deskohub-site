@@ -7,7 +7,11 @@ description: Email sending, @deskohub/email, @deskohub/email-resend, @deskohub/e
 
 `@deskohub/email` is the service and the chain runner; it ships no provider
 and reads no provider settings. Each app composes its own provider chains.
-Providers live in their own packages.
+Providers live in their own packages. In `packages/email/backend/`: the
+chain in `email-provider-chain.ts`, `EmailProviders` and `EmailStream` in
+`email-providers.ts`, failure kinds in `capabilities.ts` and
+`network-error.ts`, the observer in `email-delivery-observer.ts`, and the
+services in `service.ts`.
 
 ## Packages
 
@@ -23,7 +27,11 @@ Providers live in their own packages.
 - `@deskohub/email-resend`: `makeResendEmailProvider({ apiKey, timeouts })`
   and `deploymentResendRequestTimeouts` (5 s, 10 s for a batch, in
   production; 30 s elsewhere, by `VERCEL_ENV`). It owns Resend's retries.
-  The app reads `EMAIL_API_KEY` and passes it in.
+  The app reads `EMAIL_API_KEY` and passes it in. Keys over 256 characters
+  go to Resend as `sha256-<hex>`, and once an attempt had an unknown outcome
+  the send stays unknown unless a later attempt succeeds. Its error
+  classification table is the `classifyResendError` docblock in
+  `packages/email-resend/backend/resend-provider.ts`.
 - `@deskohub/email-posthog`: `makePostHogEmailProvider(config)` (provider
   name `posthog`) sends one message per request to PostHog's transactional
   email API, and `fetchPostHogEmailStatus(config, messageId)` reads a
@@ -50,7 +58,7 @@ category) is in the app's `marketingCategories`, otherwise `transactional`.
 | App | Composition | Transactional | Marketing |
 | --- | --- | --- | --- |
 | Workspace | `apps/deskohub-workspace/shared/backend/config/email.config.ts` (`workspaceEmailProviders`, `WorkspaceEmailLayer`), recipient routed | Resend | PostHog, then Resend, for category `email-campaign` |
-| Boardgame Bar | `apps/deskohub-boardgame-bar/shared/backend/config/email.config.ts` | Resend or Console (`EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_TEST_MODE`, stage) | none |
+| Boardgame Bar | `apps/deskohub-boardgame-bar/shared/backend/config/email.config.ts` (`boardgameProviderChain`) | Resend or Console (`EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_TEST_MODE`, stage) | none |
 
 Without a Resend key, Workspace sends everything to Console. The marketing
 stream is the category, not the campaign purpose: operational-purpose
@@ -70,7 +78,7 @@ provider's own retries). It stops on `EmailServiceError` `"message"`
 (validation, suppressed or unreachable recipient, attachments) and on
 `NetworkError` `"unknown-outcome"` (a 409 for a key in flight or reused):
 the message may have been sent, so any replay reuses the same key. A call
-with `replay: true` keeps each message on its chain's first provider, so a
+with `replay: true` (`EmailBatchOptions.replay`) keeps each message on its chain's first provider, so a
 replay never sends the same message through a second provider (campaign
 replay rules: `deskohub-workspace-domain` skill,
 `references/email-campaigns.md`). The chain adds no retries.
