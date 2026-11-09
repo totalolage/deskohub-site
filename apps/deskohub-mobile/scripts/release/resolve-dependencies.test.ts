@@ -171,7 +171,9 @@ configurations {
         exitCode: result.exitCode,
         output: result.exitCode === 0 ? "" : result.output,
       }).toEqual({ exitCode: 0, output: "" });
-      expect(result.output).toContain("Skipped :probe:");
+      expect(result.output).toContain(
+        "Skipped unmatched dependencies in 1 configurations of :"
+      );
     }, 180_000);
   }
 );

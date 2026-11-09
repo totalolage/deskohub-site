@@ -4,7 +4,9 @@
 // with what an APK build downloads without running one.
 //
 // Some configurations can't resolve on their own: no variant or artifact of a
-// dependency matches the attributes they ask for. Those only log a warning.
+// dependency matches the attributes they ask for (Android's project
+// dependencies, mostly). Their other dependencies still download; the task
+// counts them in one line per project and lists them with --info.
 // Any other failure, a download that kept failing above all, fails the task,
 // so mobile-gradle-cache.yml never saves an incomplete cache entry.
 // resolve-dependencies.test.ts covers both.
@@ -32,7 +34,9 @@ allprojects {
         notCompatibleWithConfigurationCache("Resolves configurations while it runs.")
         doLast {
             def failures = []
+            def skipped = [] as Set
             projectConfigurations.toList().findAll { it.canBeResolved }.each { configuration ->
+                def label = projectPath == ":" ? ":${configuration.name}" : "${projectPath}:${configuration.name}"
                 def problems = []
                 try {
                     configuration.incoming.resolutionResult.allDependencies.each { dependency ->
@@ -47,13 +51,16 @@ allprojects {
                     problems << failure
                 }
                 problems.unique { it.message }.each { problem ->
-                    def message = "${projectPath}:${configuration.name}: ${problem.message}"
                     if (isSelectionFailure(problem)) {
-                        logger.warn("Skipped ${message}")
+                        skipped << label
+                        logger.info("Skipped ${label}: ${problem.message}")
                     } else {
-                        failures << message
+                        failures << "${label}: ${problem.message}"
                     }
                 }
+            }
+            if (!skipped.isEmpty()) {
+                logger.lifecycle("Skipped unmatched dependencies in ${skipped.size()} configurations of ${projectPath}")
             }
             if (!failures.isEmpty()) {
                 throw new GradleException("Dependencies failed to resolve:\n" + failures.join("\n"))
