@@ -113,6 +113,7 @@ export const admitPendingNexiPayment = (
       amount: snapshot.quote.payment.expectedPrice,
       commitment: makeDiscountCommitment({
         product,
+        firstServiceDate: "2099-01-01",
         applications: calculation?.applications ?? [],
       }),
       locale,

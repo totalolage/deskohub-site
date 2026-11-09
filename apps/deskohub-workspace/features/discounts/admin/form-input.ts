@@ -6,6 +6,7 @@ import {
   localDateTimeToTemporalInstantString,
   workspaceSiteConstants,
 } from "@/shared/utils";
+import type { DiscountCodeTableItem } from "./admin-tables";
 import type {
   CreateCustomerDiscountCodeAdminInput,
   CreateDiscountAdminInput,
@@ -56,9 +57,52 @@ export const toCreateDiscountCodeInput = (
   ...toDiscountCodeConfigurationInput(values),
 });
 
+/**
+ * A submitted code form as the code's full configuration. Its reservation
+ * dates are always sent as a pair: both empty fields clear them, so an edit
+ * that empties both removes the code's dates.
+ */
 export const toDiscountCodeConfigurationInput = (
   values: DiscountCodeConfigurationFormValues
 ): CreateCustomerDiscountCodeAdminInput["code"] => ({
+  ...toPromotionConfigurationInput(values),
+  maxUses: toOptionalCount(values.maxUses),
+  maxUsesPerCustomer: toOptionalCount(values.maxUsesPerCustomer),
+  serviceDateFrom: toOptionalValue(values.serviceDateFrom),
+  serviceDateUntil: toOptionalValue(values.serviceDateUntil),
+});
+
+/**
+ * An edited code's configuration. Reservation dates the editor still shows as
+ * loaded are left out, so the update keeps whatever dates the code has now
+ * instead of restoring the ones the editor opened with.
+ */
+export const toDiscountCodeUpdateInput = (
+  values: DiscountCodeFormValues,
+  loaded: Pick<DiscountCodeTableItem, "serviceDateFrom" | "serviceDateUntil">
+): CreateDiscountCodeAdminInput => {
+  const input = toCreateDiscountCodeInput(values);
+  if (
+    values.serviceDateFrom !== (loaded.serviceDateFrom ?? "") ||
+    values.serviceDateUntil !== (loaded.serviceDateUntil ?? "")
+  ) {
+    return input;
+  }
+  const {
+    serviceDateFrom: _serviceDateFrom,
+    serviceDateUntil: _serviceDateUntil,
+    ...unchangedDates
+  } = input;
+  return unchangedDates;
+};
+
+/** The code value, its switch, and its redemption window. */
+const toPromotionConfigurationInput = (
+  values: Pick<
+    DiscountCodeConfigurationFormValues,
+    "code" | "enabled" | "validFrom" | "validUntil"
+  >
+): Omit<CreateVoucherAdminInput, "credit"> => ({
   code: values.code
     .trim()
     .toUpperCase() as CreateCustomerDiscountCodeAdminInput["code"]["code"],
@@ -69,8 +113,6 @@ export const toDiscountCodeConfigurationInput = (
   validUntil: toOptionalLocalDateTimeInstant(
     values.validUntil
   ) as CreateCustomerDiscountCodeAdminInput["code"]["validUntil"],
-  maxUses: toOptionalCount(values.maxUses),
-  maxUsesPerCustomer: toOptionalCount(values.maxUsesPerCustomer),
 });
 
 /** None when the voucher currency is outside the catalog. */
@@ -81,18 +123,8 @@ export const toVoucherCreditInput = (
 
 export const toVoucherConfigurationInput = (
   values: VoucherFormValues
-): Omit<CreateVoucherAdminInput, "credit"> => {
-  const {
-    maxUses: _maxUses,
-    maxUsesPerCustomer: _maxUsesPerCustomer,
-    ...configuration
-  } = toDiscountCodeConfigurationInput({
-    ...values,
-    maxUses: "",
-    maxUsesPerCustomer: "",
-  });
-  return configuration;
-};
+): Omit<CreateVoucherAdminInput, "credit"> =>
+  toPromotionConfigurationInput(values);
 
 const toOptionalLocalDateTimeInstant = (value: string) =>
   value.length === 0
@@ -104,6 +136,8 @@ const toOptionalLocalDateTimeInstant = (value: string) =>
 
 const toOptionalCount = (value: string) =>
   value.length === 0 ? null : Number(value);
+
+const toOptionalValue = (value: string) => (value.length === 0 ? null : value);
 
 /** Entered minor units in the selected catalog currency. */
 const toCatalogMoney = (

@@ -14,6 +14,7 @@ import type { ComponentProps } from "react";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { discountIdSchema } from "@/features/discounts";
+import { m } from "@/features/i18n";
 import { mockReservationCheckoutStep } from "@/features/reservation/components/reservation-checkout-step.test-utils";
 import { mockCheckoutEmailVerification } from "@/features/reservation/components/use-checkout-email-verification.test-utils";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
@@ -644,8 +645,12 @@ describe("OfficeReservationForm", () => {
     expect(startDate.value).toBe("8/12/2026");
     expect(startDate.getAttribute("aria-invalid")).toBe("true");
     expect(
-      view.getByText("August 12, 2026 isn't available. Choose another date.")
-    ).not.toBeNull();
+      (startDate.getAttribute("aria-describedby") ?? "")
+        .split(" ")
+        .map((id) => document.getElementById(id)?.textContent)
+    ).toContain(
+      m.dateInputUnavailable({ date: "August 12, 2026" }, { locale: "en-US" })
+    );
 
     const form = startDate.closest("form");
     if (!form) throw new Error("the start date is outside the form");

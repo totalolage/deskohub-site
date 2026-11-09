@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.34.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.33.0...dhw-v1.34.0) (2026-11-09)
+
+
+### Features
+
+* **dhw:** set and show discount code service dates ([caedf3b](https://github.com/totalolage/deskohub-site/commit/caedf3b6b9ab20685d67d1bbb5d54c40f829c8ad))
+
 ## [1.33.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.32.0...dhw-v1.33.0) (2026-11-04)
 
 

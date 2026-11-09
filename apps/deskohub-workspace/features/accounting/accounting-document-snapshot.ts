@@ -10,6 +10,7 @@ import { coworkReservationQuoteSchema } from "@/features/checkout/reservation-qu
 import { meetingRoomReservationQuoteSchema } from "@/features/checkout/reservation-quote-meeting-room";
 import { officeReservationQuoteSchema } from "@/features/checkout/reservation-quote-office";
 import type { Locale } from "@/features/i18n";
+import { getMeetingRoomReservationDate } from "@/features/reservation/meeting-room-reservation-time";
 import { officeReservationDetailsSchema } from "@/features/reservation/office-reservation";
 import {
   type WorkspaceReservationId,
@@ -149,6 +150,22 @@ export const accountingDocumentSnapshotSchema = Schema.Union([
 
 export type AccountingDocumentSnapshot =
   typeof accountingDocumentSnapshotSchema.Type;
+
+/**
+ * Prague date the snapshot's reservation starts. Discount-code service dates
+ * are judged on it, so an overnight or multi-day reservation's later days
+ * never count.
+ */
+export const getAccountingDocumentSnapshotFirstServiceDate = (
+  snapshot: AccountingDocumentSnapshot
+): string =>
+  Match.value(snapshot.reservation).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: (reservation) => reservation.date,
+      "meeting-room": getMeetingRoomReservationDate,
+      office: (reservation) => reservation.startsOn,
+    })
+  );
 
 export const encodeStoredAccountingDocumentSnapshot = Schema.encodeSync(
   accountingDocumentSnapshotSchema

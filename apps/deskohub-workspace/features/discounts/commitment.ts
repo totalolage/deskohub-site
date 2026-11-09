@@ -14,6 +14,8 @@ interface DiscountCommitmentApplication {
 
 export interface DiscountCommitmentPayload {
   readonly product: WorkspaceProductIdentity;
+  /** Prague start date of the reservation the discounts were affirmed for. */
+  readonly firstServiceDate: string;
   readonly applications: readonly DiscountCommitmentApplication[];
 }
 
@@ -35,10 +37,12 @@ export type DiscountCommitment = DiscountCommitmentValue;
 
 export const makeDiscountCommitment = (input: {
   readonly product: WorkspaceProductIdentity;
+  readonly firstServiceDate: string;
   readonly applications: readonly CalculatedDiscountApplication[];
 }): DiscountCommitment => {
   return new DiscountCommitmentValue({
     product: getCanonicalWorkspaceProductIdentity(input.product),
+    firstServiceDate: input.firstServiceDate,
     applications: input.applications.map(({ application, candidate }) => ({
       application,
       provenance: candidate.provenance,
