@@ -258,18 +258,22 @@ describe("booking catalog queries", () => {
   });
 
   test("shares one quote between equal selections", () => {
-    const selection = coworkSelection("2026-12-01");
+    // The quote family is module-wide and the first selection of a key is the
+    // one its atom reads, which can't encode an explicit `undefined`. A past
+    // date keeps this key apart from the refresh tests' `dateIn` quotes, and
+    // asking for the plain selection first keeps the cached atom readable.
+    const date = "2020-01-06";
+    const selection = coworkSelection(date);
     const reordered: CustomerBookingSelection = {
       coffee: true,
-      date: "2026-12-01",
+      date,
       tier: "open-space",
       family: "cowork",
       monitorOption: undefined,
     };
+    const shared = bookingQuoteAtom(selection, "en-US");
 
-    expect(bookingQuoteAtom(reordered, "en-US")).toBe(
-      bookingQuoteAtom(selection, "en-US")
-    );
+    expect(bookingQuoteAtom(reordered, "en-US")).toBe(shared);
     expect(bookingQuoteAtom(selection, "cs-CZ")).not.toBe(
       bookingQuoteAtom(selection, "en-US")
     );
