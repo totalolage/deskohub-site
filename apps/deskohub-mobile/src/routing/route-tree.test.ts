@@ -10,6 +10,7 @@ import {
   bookCheckoutHref,
   bookFamilyHref,
   paymentStatusHref,
+  reservationsHref,
 } from "../booking/booking-routes";
 import { appLinkRoute } from "./app-link";
 
@@ -120,6 +121,7 @@ describe("app route tree", () => {
       bookFamilyHref("meeting-room"),
       bookFamilyHref("office", "quote_expired"),
       bookCheckoutHref,
+      reservationsHref,
       paymentStatusHref("synthetic-order"),
     ]) {
       expect({ href, resolves: resolves(href) }).toEqual({

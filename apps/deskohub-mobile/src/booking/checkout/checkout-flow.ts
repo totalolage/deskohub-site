@@ -18,6 +18,7 @@ import {
 } from "effect";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useEffect, useMemo, useRef } from "react";
+import { reservationHistoryAtom } from "../../account/reservations/reservations-list-state";
 import {
   type CustomerDataServices,
   customerDataRuntime,
@@ -177,12 +178,22 @@ export const checkoutFlowAtom = (
   customerDataRuntime.atom((get) => {
     // Mounted for the flow's lifetime, so its current value is the screen's.
     get.mount(focused);
-    return checkoutFlow(request, get(bookingServicesLayer), {
-      current: () => get.registry.get(focused) && isFocused(),
-      regained: get
-        .stream(focused, { withoutInitialValue: true })
-        .pipe(Stream.filter((inView) => inView)),
-    });
+    return checkoutFlow(
+      request,
+      get(bookingServicesLayer),
+      {
+        current: () => get.registry.get(focused) && isFocused(),
+        regained: get
+          .stream(focused, { withoutInitialValue: true })
+          .pipe(Stream.filter((inView) => inView)),
+      },
+      // Through the registry: the flow's end may run after its context's.
+      // A registry disposed with the account (sign-out) throws instead;
+      // nothing is left to refresh then.
+      Effect.sync(() => get.registry.refresh(reservationHistoryAtom)).pipe(
+        Effect.catchDefect(() => Effect.void)
+      )
+    );
   });
 
 /** The screen's controller over a flow atom's value. */
@@ -232,11 +243,15 @@ type FlowInput = CheckoutFlowInput | Refocused;
  * concurrently in the flow's own fiber set, so ending the stream
  * (unmounting) interrupts them and the clock with it. A payment page asked
  * for while the screen is out of view waits for it (see `leavesScreen`).
+ * Each submitted booking runs `refreshReservations` once, so the
+ * Reservations list shows it: on reaching `Done`, or as the flow ends if it
+ * was left at the payment page (see `awaitsPayment`).
  */
 const checkoutFlow = (
   request: CheckoutRequest,
   bookingLayer: BookingLayer,
-  focus: ScreenFocus
+  focus: ScreenFocus,
+  refreshReservations: Effect.Effect<void>
 ) =>
   Stream.unwrap(
     Effect.Do.pipe(
@@ -248,9 +263,16 @@ const checkoutFlow = (
       Effect.bind("held", () =>
         Ref.make<Option.Option<OpenPaymentCommand>>(Option.none())
       ),
+      // Whether a submitted booking is still missing from the list.
+      Effect.bind("owed", () => Ref.make(false)),
+      Effect.tap(({ owed }) =>
+        Effect.addFinalizer(() =>
+          refreshReservations.pipe(Effect.when(Ref.get(owed)))
+        )
+      ),
       Effect.tap(({ inputs }) => tickHoldClock(inputs)),
       Effect.tap(({ inputs }) => followRefocus(inputs, focus.regained)),
-      Effect.map(({ started, inputs, commands, held }) => {
+      Effect.map(({ started, inputs, commands, held, owed }) => {
         const send = (input: CheckoutFlowInput) =>
           void Queue.offerUnsafe(inputs, input);
         const run = (command: CheckoutCommand) =>
@@ -300,6 +322,15 @@ const checkoutFlow = (
                 )
               : Effect.void
           );
+        // Done reads the list now; once a submit awaits payment, the list is
+        // owed a read until then, which the flow's end pays if Done never
+        // comes.
+        const followBooking = (before: CheckoutState, after: CheckoutState) =>
+          finishesBooking(before, after)
+            ? Ref.set(owed, false).pipe(Effect.andThen(refreshReservations))
+            : Ref.set(owed, true).pipe(
+                Effect.when(Effect.succeed(awaitsPayment(after)))
+              );
         return Stream.fromQueue(inputs).pipe(
           Stream.mapAccumEffect(
             () => started,
@@ -315,6 +346,9 @@ const checkoutFlow = (
                       })
                     ),
                     Effect.tap(({ view: next }) => release(next)),
+                    Effect.tap(({ view: next }) =>
+                      followBooking(view.state, next.state)
+                    ),
                     Effect.map(({ view: next }) => [next, [next]] as const)
                   )
           ),
@@ -335,6 +369,20 @@ interface FlowView {
  * whatever the customer is looking at (on web it leaves the app for good).
  */
 const leavesScreen = CheckoutCommand.$is("OpenPayment");
+
+/**
+ * Whether a step reaches `Done`, which every finished booking reaches once
+ * (paid, returned from or dismissing the payment page, or a submit shown by
+ * its status): the order is now on the account's reservations.
+ */
+const finishesBooking = (before: CheckoutState, after: CheckoutState) =>
+  before._tag !== "Done" && after._tag === "Done";
+
+/**
+ * Whether `state` holds a submitted booking awaiting payment, which the
+ * customer may leave before `Done`.
+ */
+const awaitsPayment = (state: CheckoutState) => state._tag === "Paying";
 
 /** Whether `state` is still waiting for `opening`'s payment page. */
 const stillOpening = (state: CheckoutState, opening: OpenPaymentCommand) =>

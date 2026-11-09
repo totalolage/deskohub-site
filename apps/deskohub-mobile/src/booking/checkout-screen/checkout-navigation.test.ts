@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Option } from "effect";
-import type { Href } from "expo-router";
-import { bookFamilyHref, paymentStatusHref } from "../booking-routes";
+import type { Href, ImperativeRouter } from "expo-router";
+import {
+  bookFamilyHref,
+  paymentStatusHref,
+  reservationsHref,
+} from "../booking-routes";
 import type { CheckoutFlowView } from "../checkout/checkout-flow";
 import { startCheckout } from "../checkout/checkout-machine";
 import { CheckoutState } from "../checkout/checkout-state";
@@ -123,27 +127,36 @@ describe("navigationDecision", () => {
 
 describe("leaveCheckout", () => {
   const recordingRouter = () => {
-    const calls: Array<readonly [string, Href]> = [];
+    type Options = Parameters<ImperativeRouter["navigate"]>[1];
+    const calls: Array<readonly [string, Href, Options]> = [];
     return {
       calls,
       router: {
-        replace: (href: Href) => void calls.push(["replace", href]),
-        dismissTo: (href: Href) => void calls.push(["dismissTo", href]),
+        navigate: (href: Href, options?: Options) =>
+          void calls.push(["navigate", href, options]),
+        dismissTo: (href: Href, options?: Options) =>
+          void calls.push(["dismissTo", href, options]),
       },
     };
   };
 
-  test("the status replaces the checkout", () => {
+  test("the status opens right above the Reservations list", () => {
     const { calls, router } = recordingRouter();
     const href = paymentStatusHref("order-1");
     leaveCheckout(router, { _tag: "Status", href });
-    expect(calls).toEqual([["replace", href]]);
+    // Back to the list first, out of the book stack and past any status
+    // already open; then the status over it. The anchor puts the list below
+    // it when the first step only just created the reservations stack.
+    expect(calls).toEqual([
+      ["dismissTo", reservationsHref, undefined],
+      ["navigate", href, { withAnchor: true }],
+    ]);
   });
 
   test("a restart returns to the family screen below the checkout", () => {
     const { calls, router } = recordingRouter();
     const href = bookFamilyHref("cowork", "hold_expired");
     leaveCheckout(router, { _tag: "FamilyScreen", href });
-    expect(calls).toEqual([["dismissTo", href]]);
+    expect(calls).toEqual([["dismissTo", href, undefined]]);
   });
 });
