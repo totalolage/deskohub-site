@@ -19,7 +19,7 @@ import { preparePublicLegalBrowser } from "../instant-navigation/public-account-
 import { E2EDatabase } from "../integrations/database.service";
 import { runDatabaseOperation } from "../integrations/database-operation";
 import {
-  dismissLegalCookieConsent,
+  cookieBannerNecessaryOnlyButton,
   hasReactClickHandler,
 } from "../legal-cookie-consent";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -119,7 +119,9 @@ const prepareDevice = (device: E2EBrowserSession) =>
 
 /**
  * Declines the cookie banner while the device is signed out, so no banner
- * decision reaches the account.
+ * decision reaches the account. It waits for the banner itself: the page's
+ * own analytics switch hydrates before the banner opens, and a device left
+ * without a saved choice never sends the signed-in hydration mirror.
  */
 const declineBannerSignedOut = (
   device: E2EBrowserSession,
@@ -133,11 +135,18 @@ const declineBannerSignedOut = (
         device,
         "decline analytics preference device banner",
         async (page) => {
-          await dismissLegalCookieConsent(page, locale);
+          const necessaryOnly = cookieBannerNecessaryOnlyButton(page, locale);
+          await necessaryOnly.click({
+            timeout: workspaceE2ETimeouts.uiTransition,
+          });
+          await expect(necessaryOnly).toBeHidden({
+            timeout: workspaceE2ETimeouts.browserAction,
+          });
           await expect(accountPreferenceSwitch(page)).toHaveCount(0);
         }
       )
-    )
+    ),
+    Effect.andThen(requireDeviceDeclinedAnalytics(device))
   );
 
 /**
@@ -260,6 +269,21 @@ const ledgerDecisionFailure = (message: string) =>
     diagnosticCode: "postgres_account_fixture_assertion_failed",
     operation: "assert account analytics preference decision",
   });
+
+/** Fails unless the device saved a choice that declines analytics. */
+const requireDeviceDeclinedAnalytics = Effect.fn(
+  "requireDeviceDeclinedAnalytics"
+)(function* (device: E2EBrowserSession) {
+  const choice = yield* readDeviceChoice(device);
+  if (
+    Option.isNone(choice) ||
+    choice.value.acceptedCategories.includes("analytics")
+  ) {
+    return yield* deviceDecisionFailure(
+      "The device saved no choice declining analytics before signing in"
+    );
+  }
+});
 
 /**
  * The device's saved choice after the account preference save recorded as
