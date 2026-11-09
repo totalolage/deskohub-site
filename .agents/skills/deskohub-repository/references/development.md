@@ -73,7 +73,7 @@ The root `patchedDependencies` patch `effect`, `@effect/sql-pg`, `@effect/openap
 
 ## Generated assets
 
-- After changing an app's message JSON, run `bun turbo i18n:compile --filter=<package-name>` before trusting generated copy or copy-sensitive tests.
+- After changing an app's message JSON, run `bun turbo i18n:compile --filter=<package-name>` before trusting generated copy or copy-sensitive tests. Catalog format and translation: `$deskohub-i18n`.
 - Regenerate OpenAPI clients with the package's `generate` task from its checked-in contract. Don't edit `src/generated/`.
 - The Games and Igloohome clients are gitignored. Run their tests through `bun turbo test --filter=<package-name>`, or run `bun run generate` in the package once before a bare `bun test`.
 - Generate Workspace migrations and metadata with `bun turbo db:generate --filter=deskohub-workspace`. Never hand-write the Drizzle journal or snapshots.
