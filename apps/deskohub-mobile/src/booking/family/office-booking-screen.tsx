@@ -1,7 +1,8 @@
 import { useAtom, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { Atom } from "effect/unstable/reactivity";
-import { StyleSheet, Text } from "react-native";
+import { StyleSheet } from "react-native";
+import { Text } from "../../ui/text";
 import type { AppLocale } from "../../i18n/app-locale";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";

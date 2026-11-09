@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text } from "../../ui/text";
 import { theme } from "../../theme";
 import { stepperModel } from "./stepper-model";
 

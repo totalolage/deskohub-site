@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { Text } from "./text";
 import { theme } from "../theme";
 import { useLiveRegionAnnouncement } from "./live-announcement";
 import {

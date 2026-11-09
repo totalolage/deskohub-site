@@ -1,11 +1,6 @@
 import { Match } from "effect";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Text } from "../../ui/text";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";

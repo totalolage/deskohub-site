@@ -1,5 +1,6 @@
 import { type ComponentRef, useId, useRef } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text } from "./text";
 import { theme } from "../theme";
 import { choiceIndexForKey, tabStopIndex } from "./choice-group-keys";
 

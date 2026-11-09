@@ -1,12 +1,7 @@
 import { Redirect } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import {
-  AccessibilityInfo,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { AccessibilityInfo, ScrollView, StyleSheet, View } from "react-native";
+import { Text } from "../../src/ui/text";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { AppLocale } from "../../src/i18n/app-locale";
 import { useAppLocale } from "../../src/i18n/locale-context";

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { Text } from "./text";
 import { theme } from "../theme";
 import { Button } from "./controls";
 import { useLiveRegionAnnouncement } from "./live-announcement";

@@ -1,6 +1,7 @@
 import { Option } from "effect";
 import { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { Text } from "../../ui/text";
 import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";

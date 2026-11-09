@@ -1,5 +1,6 @@
 import { Children, Fragment, isValidElement, type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text } from "./text";
 import { theme } from "../theme";
 import {
   type ListRowKind,

@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text } from "../ui/text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAnalyticsConsent } from "../consent/use-analytics-consent";
 import { useAppLocale } from "../i18n/locale-context";

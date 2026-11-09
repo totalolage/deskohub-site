@@ -1,7 +1,8 @@
 import type { CustomerAvatarPresentation } from "@deskohub/workspace-customer-api";
 import { useAtom } from "@effect/atom-react";
 import { useState } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
+import { Text } from "../../../ui/text";
 import { useAppLocale } from "../../../i18n/locale-context";
 import { m } from "../../../i18n/messages";
 import { theme } from "../../../theme";

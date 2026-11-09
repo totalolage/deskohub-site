@@ -4,7 +4,8 @@ import type {
 } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
 import * as WebBrowser from "expo-web-browser";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text } from "../../ui/text";
 import { apiOrigin } from "../../auth/auth-client";
 import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
