@@ -1,4 +1,4 @@
-import { EmailDeliveryIdSchema } from "@deskohub/email";
+import { type EmailDeliveryId, EmailDeliveryIdSchema } from "@deskohub/email";
 import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Data, Effect, Option, Schema, SchemaGetter } from "effect";
 import { Resend } from "resend";
@@ -26,6 +26,17 @@ const ResendEmailIdSchema = EmailDeliveryIdSchema.pipe(
   description: "Opaque identifier assigned to an email delivery by Resend.",
 });
 export type ResendEmailId = typeof ResendEmailIdSchema.Type;
+
+/**
+ * The event ID of a report from a provider that assigns none, which must be
+ * stable for the same report.
+ */
+export const deliveryReportEventId = (value: string): ResendWebhookEventId =>
+  ResendWebhookEventIdSchema.make(value);
+
+/** The email ID of a report from a provider other than Resend. */
+export const deliveryReportEmailId = (id: EmailDeliveryId): ResendEmailId =>
+  ResendEmailIdSchema.make(id);
 
 const ResendWebhookCreatedAtSchema = instantStringSchema
   .pipe(
@@ -149,8 +160,8 @@ export class DeliveryReportError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-/** A verified report before its handler narrows it. */
-interface VerifiedReport {
+/** A verified provider report before its handler narrows it. */
+export interface ProviderDeliveryReport {
   readonly eventId: ResendWebhookEventId;
   readonly event: string;
   readonly emailId: ResendEmailId | undefined;
@@ -164,7 +175,7 @@ interface VerifiedReport {
 export interface DeliveryReportHandler<R> {
   readonly category: string;
   readonly receive: (
-    report: VerifiedReport
+    report: ProviderDeliveryReport
   ) => Effect.Effect<
     DeliveryReportOutcome,
     DeliveryRequestError | DeliveryReportError,
@@ -174,7 +185,7 @@ export interface DeliveryReportHandler<R> {
 
 /** The ignore of a report about another deployment's email, if it is one. */
 const otherDeploymentIgnore = (
-  report: VerifiedReport
+  report: ProviderDeliveryReport
 ): Option.Option<DeliveryReportOutcome> => {
   const tagged = report.tags.get(deploymentTag);
   if (tagged === report.deploymentEnvironment) return Option.none();
@@ -457,22 +468,17 @@ const processVerifiedEvent = Effect.fn("resendWebhook.processVerifiedEvent")(
       eventType: event.type,
     });
 
-    const tags = tagMap(event.data.tags);
-    const handler = handlers.find(
-      (candidate) => candidate.category === tags.get(categoryTag)
+    return yield* dispatchDeliveryReport(
+      {
+        eventId: input.eventId,
+        event: event.type,
+        emailId: event.data.email_id,
+        occurredAt: event.created_at,
+        tags: tagMap(event.data.tags),
+        deploymentEnvironment: input.deploymentEnvironment,
+      },
+      handlers
     );
-    if (!handler) {
-      return ignoredDeliveryReport("unhandled_email_kind");
-    }
-
-    return yield* handler.receive({
-      eventId: input.eventId,
-      event: event.type,
-      emailId: event.data.email_id,
-      occurredAt: event.created_at,
-      tags,
-      deploymentEnvironment: input.deploymentEnvironment,
-    });
   },
   (effect) =>
     effect.pipe(
@@ -480,3 +486,23 @@ const processVerifiedEvent = Effect.fn("resendWebhook.processVerifiedEvent")(
       Effect.annotateLogs({ operation: "resendWebhook" })
     )
 );
+
+/**
+ * Hands one verified provider report to the handler of the email's
+ * `category`. Kinds without a handler are ignored.
+ */
+export const dispatchDeliveryReport = <R>(
+  report: ProviderDeliveryReport,
+  handlers: readonly DeliveryReportHandler<R>[]
+): Effect.Effect<
+  DeliveryReportOutcome,
+  DeliveryRequestError | DeliveryReportError,
+  R
+> => {
+  const handler = handlers.find(
+    (candidate) => candidate.category === report.tags.get(categoryTag)
+  );
+  return handler
+    ? handler.receive(report)
+    : Effect.succeed(ignoredDeliveryReport("unhandled_email_kind"));
+};

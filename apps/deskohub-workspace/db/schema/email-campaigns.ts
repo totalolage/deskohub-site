@@ -224,6 +224,8 @@ export const emailCampaignRecipients = pgTable(
     /** The delivery attempt that last queued this recipient. */
     deliveryAttempt: integer("delivery_attempt").notNull().default(1),
     providerMessageId: text("provider_message_id"),
+    /** The provider's code for a failed delivery. */
+    failureCode: text("failure_code"),
     statusUpdatedAt: instant("status_updated_at").notNull().default(sql`now()`),
   },
   (t) => [

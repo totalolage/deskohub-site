@@ -108,6 +108,11 @@ export {
   paymentRefundStates,
 } from "./payment-attempts";
 export {
+  type PostHogEmailDeliveryStatus,
+  postHogEmailDeliveries,
+  postHogEmailDeliveryStatuses,
+} from "./posthog-email-deliveries";
+export {
   type ReferralInvitationClaimState,
   referralAttributions,
   referralCodes,
