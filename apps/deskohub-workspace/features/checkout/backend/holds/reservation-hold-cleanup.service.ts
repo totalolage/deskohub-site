@@ -3,6 +3,7 @@ import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import {
+  reservationLogFields,
   type WorkspaceReservation,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -251,7 +252,9 @@ function makeReservationHoldCleanupServiceLayer(
               )
             )
           );
-        yield* Effect.annotateLogsScoped({ claimedFromNew });
+        yield* Effect.annotateLogsScoped({
+          claimedFromNew: claimedFromNew !== null,
+        });
         yield* Effect.logDebug("Reservation hold cancellation claim completed");
 
         return claimedFromNew ?? (yield* loadOrder(orderId));
@@ -366,7 +369,7 @@ function makeReservationHoldCleanupServiceLayer(
           yield* Effect.logInfo("Reservation hold cancellation started");
 
           const active = yield* loadOrder(input.orderId);
-          yield* Effect.annotateLogsScoped({ activeReservation: active });
+          yield* Effect.annotateLogsScoped(reservationLogFields(active));
           yield* Effect.logDebug(
             "Reservation hold cancellation active reservation loaded"
           );
@@ -383,7 +386,11 @@ function makeReservationHoldCleanupServiceLayer(
           }
 
           const claimed = yield* claimOrderCancellation(input.orderId);
-          yield* Effect.annotateLogsScoped({ claimed });
+          // A missed claim keeps the active reservation's fields.
+          yield* Effect.annotateLogsScoped({
+            claimed: claimed !== null,
+            ...(claimed && reservationLogFields(claimed)),
+          });
 
           const cancellable = yield* admitHoldCancellation(claimed);
           if (!cancellable) {
@@ -421,7 +428,7 @@ function makeReservationHoldCleanupServiceLayer(
                 )
               )
             );
-            yield* Effect.annotateLogsScoped({ orders });
+            yield* Effect.annotateLogsScoped({ orderCount: orders.length });
             yield* Effect.logInfo(
               "Expired reservation hold sweep selection completed",
               {
@@ -443,8 +450,6 @@ function makeReservationHoldCleanupServiceLayer(
                 orderId: order.id,
                 checkedAt: input.now,
               }).pipe(Effect.result);
-              yield* Effect.annotateLogsScoped({ order, result });
-
               yield* Match.value(result).pipe(
                 Match.tag(
                   "Success",
