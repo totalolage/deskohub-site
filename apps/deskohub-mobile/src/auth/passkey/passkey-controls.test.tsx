@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import {
   act,
@@ -8,6 +16,7 @@ import {
   type ReactNode,
 } from "react";
 import { AccessibilityInfo, Platform } from "react-native";
+import { analytics } from "../../analytics/analytics";
 import { AppLocaleProvider } from "../../i18n/locale-context";
 import { clientRoot } from "../../testing/client-root";
 import { LiveMessage } from "../../ui/controls";
@@ -186,6 +195,34 @@ describe("AddPasskeyAction", () => {
 });
 
 describe("PasskeySignInOption", () => {
+  test("records the sign-in as started with the passkey method before its ceremony runs", async () => {
+    const steps: Array<string> = [];
+    const capture = spyOn(analytics, "capture").mockImplementation((event) => {
+      steps.push(`${event.name} ${JSON.stringify(event.properties)}`);
+    });
+    try {
+      ceremonies = {
+        ...ceremonies,
+        signIn: Effect.sync(() => {
+          steps.push("ceremony");
+        }),
+      };
+      const option = await draw(PasskeySignInOption, {
+        onSignedIn: () => steps.push("signed in"),
+      });
+
+      await option.press();
+
+      expect(steps).toEqual([
+        'sign-in started {"method":"passkey"}',
+        "ceremony",
+        "signed in",
+      ]);
+    } finally {
+      capture.mockRestore();
+    }
+  });
+
   test("announces a failure assertively on iOS", async () => {
     platform.OS = "ios";
     ceremonies = { ...ceremonies, signIn: notSupported() };
