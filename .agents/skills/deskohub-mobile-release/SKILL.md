@@ -56,6 +56,9 @@ list to the user when an agent can't:
   the release certificate).
 - The OTA "update ready, restart" banner after a published update, and the
   native-update prompt and Download link against a real `mobile-v` release.
+- An OTA rollback (`--rollback`) after a published update: the Restart banner
+  returns the app to its embedded update, and a dismissed one applies at the
+  next cold start.
 - The live Obtainium badge and import on `/android`.
 - Creating and signing in with a passkey through the device's credential
   provider.
