@@ -3,8 +3,13 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
+import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 
 mock.module("server-only", () => ({}));
+
+let rememberedReferralCode: string | undefined;
 
 const input = {
   locale: "en-US" as const,
@@ -17,7 +22,8 @@ const runSubmitReservation = async (options?: {
   readonly locale?: "cs-CZ" | "en-US";
   readonly verifyHuman?: ReturnType<typeof mock>;
   readonly createHostedPaymentCheckout?: ReturnType<typeof mock>;
-  readonly writeReservationAccessCookie?: ReturnType<typeof mock>;
+  readonly bookerCustomerId?: string;
+  readonly hasSettledReferral?: ReturnType<typeof mock>;
 }) => {
   const { CheckoutService } = await import(
     "@/features/checkout/backend/checkout"
@@ -28,9 +34,13 @@ const runSubmitReservation = async (options?: {
   const { BotProtectionServiceMock } = await import(
     "@/shared/backend/bot-protection/bot-protection.service.mock"
   );
-  const { ReservationAccessCookieWriter } = await import(
-    "@/features/reservation/backend/reservation-access-cookie.server"
+  const { CustomerAccountContactService } = await import("@/features/account");
+  const { ReferralServiceMock } = await import(
+    "@/features/referrals/referral.service.mock"
   );
+  const hasSettledReferral =
+    options?.hasSettledReferral ?? mock(() => Effect.succeed(false));
+  const cookie = { value: rememberedReferralCode };
 
   const verifyHuman = options?.verifyHuman ?? mock(() => Effect.void);
   const createHostedPaymentCheckout =
@@ -42,9 +52,21 @@ const runSubmitReservation = async (options?: {
         statusUrl: "/en-US/reservation/status/reservation-id",
       })
     );
-  const writeReservationAccessCookie =
-    options?.writeReservationAccessCookie ?? mock(() => Effect.void);
 
+  const contacts = Layer.mock(CustomerAccountContactService, {
+    currentAccount: Effect.succeed(
+      options?.bookerCustomerId === undefined
+        ? ({ status: "signed-out" } as const)
+        : ({
+            status: "linked",
+            accountId: "booker-account",
+            dotyposCustomerId: options.bookerCustomerId,
+          } as never)
+    ),
+  });
+  const referrals = ReferralServiceMock({
+    hasSettledReferral: hasSettledReferral as never,
+  });
   const effect = submitWorkspaceReservation({
     ...input,
     locale: options?.locale ?? input.locale,
@@ -55,64 +77,31 @@ const runSubmitReservation = async (options?: {
         Layer.succeed(CheckoutService, {
           createHostedPaymentCheckout,
         }),
-        Layer.succeed(ReservationAccessCookieWriter, {
-          write: writeReservationAccessCookie,
-        })
+        contacts,
+        referrals,
+        ReferralReleaseGate.fromDecision(true),
+        RememberedReferral.inMemory(cookie).pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              ReferralReleaseGate.fromDecision(true),
+              referrals,
+              contacts
+            )
+          )
+        )
       )
     )
   );
 
   return {
     effect,
+    cookie,
     verifyHuman,
     createHostedPaymentCheckout,
-    writeReservationAccessCookie,
   };
 };
 
 describe("submitWorkspaceReservation", () => {
-  test.each(["en-US", "cs-CZ"] as const)(
-    "maps cookie-store acquisition failure to the localized public error in %s",
-    async (locale) => {
-      const { CheckoutService } = await import(
-        "@/features/checkout/backend/checkout"
-      );
-      const { submitReservationEffect } = await import(
-        "./submit-reservation-composition"
-      );
-      const { BotProtectionServiceMock } = await import(
-        "@/shared/backend/bot-protection/bot-protection.service.mock"
-      );
-      const { ReservationAccessCookieWriter } = await import(
-        "@/features/reservation/backend/reservation-access-cookie.server"
-      );
-      const { m } = await import("@/features/i18n");
-      const verifyHuman = mock(() => Effect.void);
-      const createHostedPaymentCheckout = mock(() =>
-        Effect.succeed({
-          status: "redirect" as const,
-          redirectUrl: "https://payments.example.test/checkout",
-          statusUrl: "/en-US/reservation/status/reservation-id",
-        })
-      );
-
-      const effect = submitReservationEffect(
-        { ...input, locale },
-        Layer.mergeAll(
-          Layer.succeed(CheckoutService, { createHostedPaymentCheckout }),
-          ReservationAccessCookieWriter.Live
-        )
-      ).pipe(Effect.provide(BotProtectionServiceMock({ verifyHuman })));
-      const error = await Effect.runPromise(Effect.flip(effect));
-
-      expect(error).toMatchObject({
-        _tag: "PublicSafeActionError",
-        message: m.reservationErrorMessage({}, { locale }),
-      });
-      expect(createHostedPaymentCheckout).not.toHaveBeenCalled();
-    }
-  );
-
   test("verifies with the allow policy before creating checkout", async () => {
     const eventOrder: string[] = [];
     const verifyHuman = mock(() =>
@@ -139,6 +128,8 @@ describe("submitWorkspaceReservation", () => {
 
     expect(verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "allow",
+      verifiedBots: { allow: customerAgentNames },
+      callSite: "reservation.submit",
     });
     expect(eventOrder).toEqual(["bot-verification", "checkout"]);
     expect(createHostedPaymentCheckout).toHaveBeenCalledWith(
@@ -155,26 +146,63 @@ describe("submitWorkspaceReservation", () => {
       redirectUrl: "https://payments.example.test/checkout",
       statusUrl: "/en-US/reservation/status/reservation-id",
     });
-    expect(scenario.writeReservationAccessCookie).toHaveBeenCalledTimes(1);
-    expect(scenario.writeReservationAccessCookie).toHaveBeenCalledWith(
-      expect.objectContaining({ orderId: "reservation-id" })
-    );
   });
 
   test.each([
     [
-      "zero-total",
-      "reservation-zero-total",
-      "/en-US/reservation/status/reservation-zero-total?outcome=success",
+      "a hosted payment",
+      {
+        status: "redirect",
+        orderId: "reservation-id",
+        redirectUrl: "https://payments.example.test/checkout",
+        statusUrl: "/en-US/reservation/status/reservation-id",
+      },
+      ["message", "redirectUrl", "status", "statusUrl"],
     ],
     [
-      "already-paid",
-      "reservation-already-paid",
-      "/en-US/reservation/status/reservation-already-paid?outcome=success",
+      "a paid order",
+      {
+        status: "redirect",
+        orderId: "reservation-id",
+        redirectUrl: "/en-US/reservation/status/reservation-id",
+        paid: true,
+      },
+      ["message", "paid", "redirectUrl", "status"],
+    ],
+    [
+      "a changed price",
+      {
+        status: "pricing_changed",
+        changedKeys: { sectionKeys: [], itemKeys: [] },
+        freshSummary: { sections: [] },
+        freshPayUrl: "/en-US/checkout/pay?payState=fresh",
+        freshPayStateToken: "fresh-token",
+        expiresAt: "2099-07-01T10:13:00.000Z",
+      },
+      ["changedKeys", "freshPayUrl", "freshSummary", "message", "status"],
+    ],
+    ["a payment in progress", { status: "in_progress" }, ["message", "status"]],
+  ] as const)(
+    "answers the Pay page %s without the API's checkout fields",
+    async (_label, checkout, keys) => {
+      const scenario = await runSubmitReservation({
+        createHostedPaymentCheckout: mock(() => Effect.succeed(checkout)),
+      });
+
+      const result = await Effect.runPromise(scenario.effect);
+
+      expect(Object.keys(result).toSorted()).toEqual([...keys]);
+    }
+  );
+
+  test.each([
+    [
+      "zero-total",
+      "/en-US/reservation/status/reservation-zero-total?outcome=success",
     ],
   ] as const)(
-    "writes a cookie and preserves the %s internal redirect when only redirectUrl is returned",
-    async (_label, orderId, redirectUrl) => {
+    "preserves the %s internal redirect when only redirectUrl is returned",
+    async (_label, redirectUrl) => {
       const createHostedPaymentCheckout = mock(() =>
         Effect.succeed({
           status: "redirect" as const,
@@ -190,52 +218,98 @@ describe("submitWorkspaceReservation", () => {
         status: "redirect",
         redirectUrl,
       });
-      expect(scenario.writeReservationAccessCookie).toHaveBeenCalledTimes(1);
-      expect(scenario.writeReservationAccessCookie).toHaveBeenCalledWith(
-        expect.objectContaining({ orderId })
-      );
     }
   );
 
-  test("rejects a classified bot before creating checkout", async () => {
-    const { BotDetectedError } = await import(
-      "@/shared/backend/bot-protection/bot-protection.service"
-    );
-    const { m } = await import("@/features/i18n");
-    const verifyHuman = mock(() =>
-      Effect.fail(
-        new BotDetectedError({ message: "Automated request detected" })
-      )
-    );
-    const scenario = await runSubmitReservation({ verifyHuman });
+  test.each(["zero-total"] as const)(
+    "forgets the remembered referral code once the %s checkout is paid",
+    async (label) => {
+      rememberedReferralCode = "RFL12345";
+      const redirectUrl = `/en-US/reservation/status/reservation-${label}?outcome=success`;
+      const scenario = await runSubmitReservation({
+        createHostedPaymentCheckout: mock(() =>
+          Effect.succeed({
+            status: "redirect" as const,
+            redirectUrl,
+            paid: true,
+          })
+        ),
+      });
 
-    const error = await Effect.runPromise(Effect.flip(scenario.effect));
+      await expect(Effect.runPromise(scenario.effect)).resolves.toEqual({
+        message: "Checkout started successfully",
+        status: "redirect",
+        redirectUrl,
+        paid: true,
+      });
+      expect(scenario.cookie.value).toBeUndefined();
+    }
+  );
 
-    expect(error).toMatchObject({
-      _tag: "PublicSafeActionError",
-      message: m.reservationRateLimitMessage({}, { locale: "en-US" }),
-    });
-    expect(scenario.createHostedPaymentCheckout).not.toHaveBeenCalled();
+  test.each([
+    ["a settled friend keeps the booker's code", false, "RFL12345"],
+    ["a settled booker clears the booker's code", true, undefined],
+  ] as const)(
+    "checks the signed-in booker's own customer after a paid checkout: %s",
+    async (_label, bookerSettled, codeAfter) => {
+      rememberedReferralCode = "RFL12345";
+      const hasSettledReferral = mock(() => Effect.succeed(bookerSettled));
+      const scenario = await runSubmitReservation({
+        createHostedPaymentCheckout: mock(() =>
+          Effect.succeed({
+            status: "redirect" as const,
+            redirectUrl: "/en-US/reservation/status/reservation-friend",
+            paid: true,
+          })
+        ),
+        bookerCustomerId: "booker-customer",
+        hasSettledReferral,
+      });
+
+      await Effect.runPromise(scenario.effect);
+
+      expect(hasSettledReferral.mock.calls).toEqual([
+        [{ dotyposCustomerId: "booker-customer" }],
+      ]);
+      expect(scenario.cookie.value).toBe(codeAfter);
+    }
+  );
+
+  test("keeps the remembered referral code while a hosted payment is pending", async () => {
+    rememberedReferralCode = "RFL12345";
+    const scenario = await runSubmitReservation();
+
+    await Effect.runPromise(scenario.effect);
+
+    expect(scenario.cookie.value).toBe("RFL12345");
   });
 
-  test("continues checkout when allow-policy verification is unavailable", async () => {
-    const verificationCause = new Error("BotID unavailable");
-    const verifyHuman = mock(
-      ({ verificationFailurePolicy }: { verificationFailurePolicy: string }) =>
-        verificationFailurePolicy === "allow"
-          ? Effect.logWarning(
-              "Workspace BotID verification failed; allowing request",
-              { cause: verificationCause, verificationFailurePolicy }
-            )
-          : Effect.fail(verificationCause)
-    );
-    const scenario = await runSubmitReservation({ verifyHuman });
+  test.each(["en-US", "cs-CZ"] as const)(
+    "rejects a classified bot before creating checkout in %s",
+    async (locale) => {
+      const { BotDetectedError } = await import(
+        "@/shared/backend/bot-protection/bot-protection.service"
+      );
+      const { m } = await import("@/features/i18n");
+      const verifyHuman = mock(() =>
+        Effect.fail(
+          new BotDetectedError({
+            message: "Automated request detected",
+            reason: "unverified_bot",
+          })
+        )
+      );
+      const scenario = await runSubmitReservation({ verifyHuman, locale });
 
-    await expect(Effect.runPromise(scenario.effect)).resolves.toMatchObject({
-      status: "redirect",
-    });
-    expect(scenario.createHostedPaymentCheckout).toHaveBeenCalledTimes(1);
-  });
+      const error = await Effect.runPromise(Effect.flip(scenario.effect));
+
+      expect(error).toMatchObject({
+        _tag: "PublicSafeActionError",
+        message: m.automatedRequestRejected({}, { locale }),
+      });
+      expect(scenario.createHostedPaymentCheckout).not.toHaveBeenCalled();
+    }
+  );
 
   test("maps cowork availability failures from their typed cause", async () => {
     const { CheckoutError } = await import(
@@ -275,93 +349,47 @@ describe("submitWorkspaceReservation", () => {
     });
   });
 
-  test("maps meeting-room availability failures from their typed cause", async () => {
-    const { CheckoutError } = await import(
-      "@/features/checkout/backend/checkout"
-    );
-    const { m } = await import("@/features/i18n");
-    const { WorkspaceTableUnavailableError } = await import(
-      "@/features/reservation/backend/workspace-availability.service"
-    );
-    const createHostedPaymentCheckout = mock(() =>
-      Effect.fail(
+  test.each([
+    { code: "legal_consent_required", locale: "en-US" },
+    { code: "early_performance_consent_required", locale: "en-US" },
+    { code: "legal_consent_required", locale: "cs-CZ" },
+    { code: "early_performance_consent_required", locale: "cs-CZ" },
+  ] as const)(
+    "shows the generic checkout failure for $code in $locale",
+    async ({ code, locale }) => {
+      const { CheckoutError } = await import(
+        "@/features/checkout/backend/checkout"
+      );
+      const { m } = await import("@/features/i18n");
+      const failSubmission = async (
+        error: InstanceType<typeof CheckoutError>
+      ) =>
+        Effect.runPromise(
+          Effect.flip(
+            (
+              await runSubmitReservation({
+                locale,
+                createHostedPaymentCheckout: mock(() => Effect.fail(error)),
+              })
+            ).effect
+          )
+        );
+
+      const consentFailure = await failSubmission(
+        new CheckoutError({ code, message: "Consent is required." })
+      );
+      const genericFailure = await failSubmission(
         new CheckoutError({
           code: "checkout_failed",
-          message: "workspace_table_unavailable",
-          cause: new WorkspaceTableUnavailableError({
-            date: "2099-07-30",
-            reservation: { kind: "meeting-room" },
-          }),
+          message: "Checkout failed.",
         })
-      )
-    );
-    const scenario = await runSubmitReservation({
-      createHostedPaymentCheckout,
-    });
-
-    const error = await Effect.runPromise(Effect.flip(scenario.effect));
-
-    expect(error).toMatchObject({
-      _tag: "PublicSafeActionError",
-      message: m.reservationMeetingRoomUnavailable({}, { locale: "en-US" }),
-    });
-  });
-
-  test.each(["en-US", "cs-CZ"] as const)(
-    "localizes an ended meeting-room reservation in %s",
-    async (locale) => {
-      const { CheckoutError } = await import(
-        "@/features/checkout/backend/checkout"
       );
-      const { m } = await import("@/features/i18n");
-      const createHostedPaymentCheckout = mock(() =>
-        Effect.fail(
-          new CheckoutError({
-            code: "meeting_room_reservation_ended",
-            message: "internal diagnostic",
-          })
-        )
-      );
-      const scenario = await runSubmitReservation({
-        createHostedPaymentCheckout,
-        locale,
-      });
 
-      const error = await Effect.runPromise(Effect.flip(scenario.effect));
-
-      expect(error).toMatchObject({
+      expect(consentFailure).toMatchObject({
         _tag: "PublicSafeActionError",
-        message: m.reservationValidationMeetingRoomEnded({}, { locale }),
+        message: m.reservationErrorMessage({}, { locale }),
       });
-    }
-  );
-
-  test.each(["en-US", "cs-CZ"] as const)(
-    "localizes an ended office reservation in %s",
-    async (locale) => {
-      const { CheckoutError } = await import(
-        "@/features/checkout/backend/checkout"
-      );
-      const { m } = await import("@/features/i18n");
-      const createHostedPaymentCheckout = mock(() =>
-        Effect.fail(
-          new CheckoutError({
-            code: "office_reservation_ended",
-            message: "internal diagnostic",
-          })
-        )
-      );
-      const scenario = await runSubmitReservation({
-        createHostedPaymentCheckout,
-        locale,
-      });
-
-      const error = await Effect.runPromise(Effect.flip(scenario.effect));
-
-      expect(error).toMatchObject({
-        _tag: "PublicSafeActionError",
-        message: m.reservationValidationOfficeEnded({}, { locale }),
-      });
+      expect(consentFailure.message).toBe(genericFailure.message);
     }
   );
 });

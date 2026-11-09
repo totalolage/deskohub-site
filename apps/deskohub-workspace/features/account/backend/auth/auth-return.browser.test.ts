@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { statSync } from "node:fs";
-import { copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
   type Browser,
   type BrowserContext,
@@ -19,11 +20,23 @@ import {
 } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { magicLink } from "better-auth/plugins";
-import { withCallbackHandoffReview } from "../../../../e2e/account/callback-handoff";
+import {
+  encodeAuthCallbackReturn,
+  readAuthCallbackReturnTo,
+  signInCallbackReturnParam,
+} from "../../routes";
+
+const authReturnFirstAddress = testEmailAddress("auth-return-first");
+const authReturnNoAckAddress = testEmailAddress("auth-return-no-ack");
+const authReturnReplayPendingAddress = testEmailAddress(
+  "auth-return-replay-pending"
+);
+const authReturnSecondAddress = testEmailAddress("auth-return-second");
+const authReturnUnverifiedAddress = testEmailAddress("auth-return-unverified");
+const authReturnVerifiedAddress = testEmailAddress("auth-return-verified");
 
 const APP_ROOT = resolve(import.meta.dir, "../../../..");
 const AUTH_RETURN_SOURCE = resolve(import.meta.dir, "../../auth-return.ts");
-const AUTH_CLIENT_SOURCE = resolve(import.meta.dir, "../../auth.client.ts");
 const CALLBACK_REDIRECT_SOURCE = resolve(
   import.meta.dir,
   "../../components/auth-callback-redirect.tsx"
@@ -37,13 +50,6 @@ const FIXTURE_BUNDLE_NAME = "/auth-return-browser.fixture.js";
 const ACCOUNT_PATH = "/en-US/account";
 const CALLBACK_PATH = "/en-US/auth/callback";
 const SESSION_FRESHNESS_WINDOW_MS = 10 * 60 * 1000;
-const STUB_ATTEMPT_ID = "550e8400-e29b-41d4-a716-446655440000";
-const ACCOUNT_REVIEW_SCREENSHOT_PATH = resolve(
-  APP_ROOT,
-  "e2e-artifacts/account-review/callback-loading-desktop.png"
-);
-const ACCOUNT_REVIEW_SCREENSHOT_NAME = "callback-loading-desktop.png";
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 const VALID_ATTEMPT_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -65,7 +71,6 @@ type VerificationMode = "normal" | "stale" | "unverified";
 type ServerObservations = {
   readonly events: string[];
   readonly verificationCookieByAttempt: Map<string, boolean>;
-  readonly verificationLocationByAttempt: Map<string, string>;
   readonly errorCallbacks: string[];
   verificationRedirects: number;
   verificationResponsesWithSessionCookie: number;
@@ -96,6 +101,7 @@ type FixtureApi = {
   readonly start: (options: {
     readonly email: string;
     readonly requireFreshSession?: boolean;
+    readonly returnTo?: string;
   }) => Promise<boolean>;
 };
 
@@ -106,14 +112,12 @@ declare global {
 }
 
 const fixtureEmail = {
-  invalid: "auth-return-invalid@deskohub.test",
-  isolatedFirst: "auth-return-first@deskohub.test",
-  isolatedSecond: "auth-return-second@deskohub.test",
-  noAck: "auth-return-no-ack@deskohub.test",
-  replayPending: "auth-return-replay-pending@deskohub.test",
-  review: "auth-return-review@deskohub.test",
-  unverified: "auth-return-unverified@deskohub.test",
-  verified: "auth-return-verified@deskohub.test",
+  isolatedFirst: authReturnFirstAddress,
+  isolatedSecond: authReturnSecondAddress,
+  noAck: authReturnNoAckAddress,
+  replayPending: authReturnReplayPendingAddress,
+  unverified: authReturnUnverifiedAddress,
+  verified: authReturnVerifiedAddress,
 } as const;
 
 let fixtureDirectory: string | undefined;
@@ -162,7 +166,6 @@ const resolveFixtureFile = (basePath: string) => {
 const makeObservations = (): ServerObservations => ({
   events: [],
   verificationCookieByAttempt: new Map(),
-  verificationLocationByAttempt: new Map(),
   errorCallbacks: [],
   verificationRedirects: 0,
   verificationResponsesWithSessionCookie: 0,
@@ -209,7 +212,10 @@ const makeFixtureServer = async (
   const observations = makeObservations();
   const document = `<!doctype html>
 <html lang="en">
-  <head><meta charset="utf-8"><title>Deskohub auth return fixture</title></head>
+  <head>
+    <meta charset="utf-8">
+    <title>Deskohub auth return fixture</title>
+  </head>
   <body>
     <header data-fixture="banner">Deskohub Workspace</header>
     <main><div id="root"></div></main>
@@ -276,10 +282,6 @@ const makeFixtureServer = async (
           observations.verificationCookieByAttempt.set(
             callbackAttempt,
             sessionCookie
-          );
-          observations.verificationLocationByAttempt.set(
-            callbackAttempt,
-            location
           );
           observations.events.push(
             sessionCookie
@@ -381,35 +383,11 @@ const createFixtureBundle = async () => {
     join(tmpdir(), "deskohub-auth-return-browser-")
   );
   const entrypoint = join(fixtureDirectory, "auth-return-browser.fixture.tsx");
-  const missingHandoffStub =
-    Bun.env.AUTH_RETURN_BROWSER_REGRESSION_STUB === "missing-handoff";
-  const lifecycleSource = missingHandoffStub
-    ? join(fixtureDirectory, "auth-return.missing-handoff.ts")
-    : AUTH_RETURN_SOURCE;
-
-  if (missingHandoffStub) {
-    await writeFile(
-      lifecycleSource,
-      `import { authClient } from ${JSON.stringify(AUTH_CLIENT_SOURCE)};
-
-export const createAuthReturnLifecycle = ({ locale }) => ({
-  cancel() {},
-  sendMagicLink: (email) =>
-    authClient.signIn.magicLink({
-      email,
-      callbackURL: "/" + locale + "/auth/callback?attempt=${STUB_ATTEMPT_ID}",
-      metadata: { locale },
-    }),
-});
-`
-    );
-  }
-
   await writeFile(
     entrypoint,
     `import { createElement } from ${JSON.stringify(REACT_SOURCE)};
 import { createRoot } from ${JSON.stringify(REACT_DOM_CLIENT_SOURCE)};
-import { createAuthReturnLifecycle } from ${JSON.stringify(lifecycleSource)};
+import { createAuthReturnLifecycle } from ${JSON.stringify(AUTH_RETURN_SOURCE)};
 import { AuthCallbackRedirect } from ${JSON.stringify(CALLBACK_REDIRECT_SOURCE)};
 
 const state = { callbackURL: "", lifecycle: undefined };
@@ -420,15 +398,16 @@ const fixture = {
   setCallbackURL(url) {
     state.callbackURL = url;
   },
-  async start({ email, requireFreshSession = false }) {
+  async start({ email, requireFreshSession = false, returnTo }) {
     const lifecycle = createAuthReturnLifecycle({
       locale: "en-US",
       requireFreshSession,
+      returnTo,
     });
     state.lifecycle = lifecycle;
-    const result = await lifecycle.sendMagicLink(email);
-    document.documentElement.dataset.magicLinkState = result.error ? "error" : "sent";
-    return !result.error;
+    const result = await lifecycle.sendSignInEmail(email);
+    document.documentElement.dataset.magicLinkState = result.status === "sent" ? "sent" : "error";
+    return result.status === "sent";
   },
 };
 
@@ -438,7 +417,7 @@ if (window.location.pathname === ${JSON.stringify(CALLBACK_PATH)}) {
   const root = document.getElementById("root");
   if (!root) throw new Error("callback fixture root is missing");
   createRoot(root).render(
-    createElement(AuthCallbackRedirect, { locale: "en-US" })
+    createElement(AuthCallbackRedirect, { locale: "en-US", returning: true })
   );
 } else {
   const button = document.createElement("button");
@@ -527,18 +506,26 @@ const startMagicLink = async (
   page: Page,
   server: FixtureServer,
   email: string,
-  options: { readonly requireFreshSession?: boolean } = {}
+  options: {
+    readonly requireFreshSession?: boolean;
+    readonly returnTo?: string;
+  } = {}
 ) => {
   const linkIndex = server.links.length;
   const accepted = await page.evaluate(
-    async ({ email: currentEmail, requireFreshSession }) => {
+    async ({ email: currentEmail, requireFreshSession, returnTo }) => {
       const fixture = window.__deskohubAuthReturnFixture;
       return fixture.start({
         email: currentEmail,
         requireFreshSession,
+        returnTo,
       });
     },
-    { email, requireFreshSession: options.requireFreshSession }
+    {
+      email,
+      requireFreshSession: options.requireFreshSession,
+      returnTo: options.returnTo,
+    }
   );
   expect(accepted).toBe(true);
   await waitUntil("captured magic link", () => server.links.length > linkIndex);
@@ -606,430 +593,325 @@ const waitForPageCloseObservation = (
     observations.events.push("callback-tab-closed");
   });
 
-const isBrowserSuiteChildProcess =
-  process.env.AUTH_RETURN_BROWSER_CHILD_PROCESS === "1";
+describe("account auth return browser regression", () => {
+  beforeAll(async () => {
+    await createFixtureBundle();
+    browser = await chromium.launch({ headless: true });
+  });
 
-const spawnIsolatedBrowserSuite = async () => {
-  const child = Bun.spawn(
-    [
-      process.execPath,
-      "test",
-      "--preload",
-      "./shared/testing/workspace-test-env.ts",
-      "--parallel=1",
-      "--timeout",
-      "30000",
-      import.meta.path,
-    ],
-    {
-      cwd: APP_ROOT,
-      env: { ...process.env, AUTH_RETURN_BROWSER_CHILD_PROCESS: "1" },
-      stderr: "pipe",
-      stdout: "pipe",
+  afterAll(async () => {
+    await browser?.close();
+    browser = undefined;
+    if (fixtureDirectory) {
+      await rm(fixtureDirectory, { force: true, recursive: true });
+      fixtureDirectory = undefined;
     }
-  );
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ]);
-  if (exitCode !== 0) {
-    const outputTail = [stdout, stderr]
-      .join("\n")
-      .split("\n")
-      .filter((line) => line.trim().length > 0)
-      .slice(-30)
-      .join("\n");
-    throw new Error(
-      `Isolated auth return browser suite failed with exit ${exitCode}:\n${outputTail}`
-    );
-  }
-};
+  });
 
-/**
- * Pre-fix wrapper behavior: runCase ran with no qualifying document-request
- * hold, no callback-loading landmark checks, and no capture. Used only as the
- * isolated RED baseline for the handoff review regression.
- */
-const legacyCallbackHandoffReview = async (
-  _page: Page,
-  _baseUrl: string,
-  runCase: () => Promise<void>
-): Promise<void> => {
-  await runCase();
-};
+  test("hands a verified link to the initiator and closes the script-opened callback tab", async () => {
+    await runScenario("normal", async ({ context, server }) => {
+      const initiator = await openInitiator(context, server);
+      const link = await startMagicLink(
+        initiator,
+        server,
+        fixtureEmail.verified
+      );
+      const callbackURL = callbackURLFromLink(link);
+      const attempt = attemptFromCallbackURL(callbackURL);
+      const callback = await openScriptCallback(context, initiator, link);
 
-if (!isBrowserSuiteChildProcess) {
-  test("runs the real-browser auth return suite inside an isolated subprocess", async () => {
-    await spawnIsolatedBrowserSuite();
-  }, 180_000);
-} else {
-  describe("account auth return browser regression", () => {
-    beforeAll(async () => {
-      await createFixtureBundle();
-      browser = await chromium.launch({ headless: true });
-    });
+      await Promise.all([
+        waitForAccount(initiator, server),
+        waitForPageCloseObservation(callback, server.observations),
+      ]);
+      await waitUntil(
+        "verified session read",
+        () => server.observations.verifiedSessionResponses > 0
+      );
 
-    afterAll(async () => {
-      await browser?.close();
-      browser = undefined;
-      if (fixtureDirectory) {
-        await rm(fixtureDirectory, { force: true, recursive: true });
-        fixtureDirectory = undefined;
-      }
-    });
-
-    test("hands a verified link to the initiator and closes the script-opened callback tab", async () => {
-      await runScenario("normal", async ({ context, server }) => {
-        const initiator = await openInitiator(context, server);
-        const link = await startMagicLink(
-          initiator,
-          server,
-          fixtureEmail.verified
-        );
-        const callbackURL = callbackURLFromLink(link);
-        const attempt = attemptFromCallbackURL(callbackURL);
-        const callback = await openScriptCallback(context, initiator, link);
-
-        await Promise.all([
-          waitForAccount(initiator, server),
-          waitForPageCloseObservation(callback, server.observations),
-        ]);
-        await waitUntil(
-          "verified session read",
-          () => server.observations.verifiedSessionResponses > 0
-        );
-
-        const events = server.observations.events;
-        expect(
-          server.observations.verificationCookieByAttempt.get(attempt)
-        ).toBe(true);
-        expect(server.observations.verificationResponsesWithSessionCookie).toBe(
-          1
-        );
-        expect(server.observations.callbacksBeforeVerificationCookie).toBe(0);
-        expect(
-          server.observations.getSessionRequestsWithCookie
-        ).toBeGreaterThan(0);
-        expect(
-          events.indexOf("verification-response-with-cookie")
-        ).toBeLessThan(events.indexOf("callback-request"));
-        expect(events.indexOf("callback-request")).toBeLessThan(
-          events.indexOf("get-session-with-cookie")
-        );
-        expect(events.indexOf("get-session-verified")).toBeLessThan(
-          events.indexOf("callback-tab-closed")
-        );
-        expect(initiator.url()).toBe(`${server.origin}${ACCOUNT_PATH}`);
-        expect(callback.isClosed()).toBe(true);
-      });
-    });
-
-    test("navigates a manually created callback tab when the browser blocks close", async () => {
-      await runScenario("normal", async ({ context, server }) => {
-        const initiator = await openInitiator(context, server);
-        const link = await startMagicLink(
-          initiator,
-          server,
-          fixtureEmail.verified
-        );
-        const callback = await context.newPage();
-
-        await Promise.all([
-          callback.goto(link.url, { waitUntil: "domcontentloaded" }),
-          waitForAccount(initiator, server),
-        ]);
-        await waitForAccount(callback, server);
-
-        expect(callback.isClosed()).toBe(false);
-        expect(callback.url()).toBe(`${server.origin}${ACCOUNT_PATH}`);
-        expect(server.observations.verificationResponsesWithSessionCookie).toBe(
-          1
-        );
-        expect(server.observations.callbacksBeforeVerificationCookie).toBe(0);
-      });
-    });
-
-    test.each([
-      ["initiator absent", "normal", false, false, fixtureEmail.verified],
-      ["stale session no-ack", "stale", true, false, fixtureEmail.noAck],
-      [
-        "unverified session",
-        "unverified",
-        false,
-        false,
-        fixtureEmail.unverified,
-      ],
-      ["invalid link", "normal", false, true, fixtureEmail.invalid],
-    ] as const)(
-      "%s never closes the callback tab before a verified handoff",
-      async (_name, verificationMode, requireFreshSession, invalidLink, email) => {
-        await runScenario(verificationMode, async ({ context, server }) => {
-          const initiator = await openInitiator(context, server);
-          const link = await startMagicLink(initiator, server, email, {
-            requireFreshSession,
-          });
-
-          if (_name === "initiator absent") {
-            await initiator.evaluate(() => {
-              const fixture = window.__deskohubAuthReturnFixture;
-              fixture.cancel();
-            });
-          }
-
-          if (invalidLink) server.store.verification.length = 0;
-          const callback = await openScriptCallback(context, initiator, link);
-
-          await waitForAccount(callback, server);
-          expect(callback.isClosed()).toBe(false);
-          expect(callback.url()).toBe(`${server.origin}${ACCOUNT_PATH}`);
-
-          if (
-            _name === "initiator absent" ||
-            _name === "stale session no-ack"
-          ) {
-            expect(initiator.url()).toBe(`${server.origin}/en-US/sign-in`);
-          }
-          if (_name === "unverified session") {
-            await waitUntil(
-              "unverified authoritative session read",
-              () => server.observations.unverifiedSessionResponses > 0
-            );
-            expect(initiator.url()).toBe(`${server.origin}/en-US/sign-in`);
-          }
-          if (_name === "invalid link") {
-            expect(
-              server.observations.verificationResponsesWithSessionCookie
-            ).toBe(0);
-            expect(server.observations.getSessionRequestsWithCookie).toBe(0);
-            expect(server.observations.callbacksBeforeVerificationCookie).toBe(
-              1
-            );
-          }
-        });
-      }
-    );
-
-    test("replays a consumed link into an error callback without hijacking the pending attempt", async () => {
-      await runScenario("normal", async ({ context, server }) => {
-        const initiator = await openInitiator(context, server);
-        const consumedLink = await startMagicLink(
-          initiator,
-          server,
-          fixtureEmail.verified
-        );
-        const consumedAttempt = attemptFromCallbackURL(
-          callbackURLFromLink(consumedLink)
-        );
-        const verifiedCallback = await openScriptCallback(
-          context,
-          initiator,
-          consumedLink
-        );
-        await Promise.all([
-          waitForAccount(initiator, server),
-          waitForPageCloseObservation(verifiedCallback, server.observations),
-        ]);
-        const cookieSessionsAfterVerifiedHandoff =
-          server.observations.getSessionRequestsWithCookie;
-        expect(
-          server.observations.verificationCookieByAttempt.get(consumedAttempt)
-        ).toBe(true);
-
-        await initiator.goto(`${server.origin}/en-US/sign-in`, {
-          waitUntil: "domcontentloaded",
-        });
-        await initiator.getByRole("button", { name: "Open callback" }).waitFor({
-          state: "visible",
-        });
-        const pendingLink = await startMagicLink(
-          initiator,
-          server,
-          fixtureEmail.replayPending
-        );
-        const pendingAttempt = attemptFromCallbackURL(
-          callbackURLFromLink(pendingLink)
-        );
-        expect(pendingAttempt).not.toBe(consumedAttempt);
-
-        const replayCallback = await openScriptCallback(
-          context,
-          initiator,
-          consumedLink
-        );
-        await waitForAccount(replayCallback, server);
-
-        expect(server.observations.errorCallbacks).toEqual([consumedAttempt]);
-        expect(replayCallback.isClosed()).toBe(false);
-        expect(replayCallback.url()).toBe(`${server.origin}${ACCOUNT_PATH}`);
-        expect(initiator.url()).toBe(`${server.origin}/en-US/sign-in`);
-        expect(server.observations.getSessionRequestsWithCookie).toBe(
-          cookieSessionsAfterVerifiedHandoff
-        );
-        expect(server.observations.verificationResponsesWithSessionCookie).toBe(
-          1
-        );
-        expect(
-          server.observations.verificationCookieByAttempt.has(pendingAttempt)
-        ).toBe(false);
-        expect(server.observations.callbacksBeforeVerificationCookie).toBe(1);
-      });
-    });
-
-    const isLegacyHandoffStub =
-      process.env.AUTH_RETURN_BROWSER_REGRESSION_STUB === "legacy-handoff";
-
-    test("reviews the production callback handoff document without a live initiator", async () => {
-      await runScenario("normal", async ({ context, server }) => {
-        const initiator = await openInitiator(context, server);
-        const link = await startMagicLink(
-          initiator,
-          server,
-          fixtureEmail.review
-        );
-        expect(server.links).toHaveLength(1);
-
-        const verifiedPage = await context.newPage();
-        await verifiedPage.goto(new URL(link.url, server.origin).toString(), {
-          waitUntil: "domcontentloaded",
-        });
-        await waitForAccount(verifiedPage, server);
-        expect(server.observations.verificationLocationByAttempt.size).toBe(1);
-        const [attempt, callbackLocation] = [
-          ...server.observations.verificationLocationByAttempt,
-        ][0]!;
-        const callbackUrl = new URL(callbackLocation, server.origin);
-        expect(callbackUrl.pathname).toBe(CALLBACK_PATH);
-        expect(callbackUrl.searchParams.get("error")).toBeNull();
-        expect(VALID_ATTEMPT_ID_PATTERN.test(attempt)).toBe(true);
-        expect(
-          server.observations.verificationCookieByAttempt.get(attempt)
-        ).toBe(true);
-        await verifiedPage.close();
-        expect(initiator.url()).toBe(`${server.origin}${ACCOUNT_PATH}`);
-
-        await rm(ACCOUNT_REVIEW_SCREENSHOT_PATH, { force: true });
-        const getSessionRequestsBeforeReview =
-          server.observations.getSessionRequests;
-        try {
-          if (isLegacyHandoffStub) {
-            // RED baseline: the pre-fix wrapper ran the case with no hold,
-            // no loading checks, and no capture.
-            const page = await context.newPage();
-            await legacyCallbackHandoffReview(page, server.origin, async () => {
-              await page.goto(callbackUrl.toString(), {
-                waitUntil: "domcontentloaded",
-              });
-              await page.waitForURL(`${server.origin}${ACCOUNT_PATH}`, {
-                timeout: 25_000,
-              });
-            });
-          } else {
-            const page = await context.newPage();
-            await withCallbackHandoffReview(page, server.origin, async () => {
-              await page.goto(callbackUrl.toString(), {
-                waitUntil: "domcontentloaded",
-              });
-              await page.waitForURL(`${server.origin}${ACCOUNT_PATH}`, {
-                timeout: 25_000,
-              });
-            });
-          }
-
-          // The wrapper only persists the capture after the held qualifying
-          // account document request passed the real loading checks, so the
-          // PNG is the proof that navigation was held, reviewed, and forwarded.
-          const screenshot = await Bun.file(
-            ACCOUNT_REVIEW_SCREENSHOT_PATH
-          ).bytes();
-          expect(screenshot.byteLength).toBeGreaterThan(0);
-          expect(
-            Buffer.from(screenshot.slice(0, PNG_SIGNATURE.length)).equals(
-              PNG_SIGNATURE
-            )
-          ).toBe(true);
-          if (!fixtureDirectory) throw new Error("fixture dir is not ready");
-          // The artifact directory and the fixture temp directory can live on
-          // different filesystems, so copy instead of renaming across devices.
-          await copyFile(
-            ACCOUNT_REVIEW_SCREENSHOT_PATH,
-            join(fixtureDirectory, ACCOUNT_REVIEW_SCREENSHOT_NAME)
-          );
-
-          expect(server.links).toHaveLength(1);
-          expect(server.observations.getSessionRequests).toBe(
-            getSessionRequestsBeforeReview
-          );
-          expect(server.observations.callbacksBeforeVerificationCookie).toBe(0);
-        } finally {
-          await rm(ACCOUNT_REVIEW_SCREENSHOT_PATH, { force: true });
-          await rm(resolve(APP_ROOT, "e2e-artifacts/account-review"), {
-            force: true,
-          }).catch(() => undefined);
-          await rm(resolve(APP_ROOT, "e2e-artifacts"), { force: true }).catch(
-            () => undefined
-          );
-        }
-      });
-    });
-
-    test("keeps different UUID attempts isolated across two initiator tabs", async () => {
-      await runScenario("normal", async ({ context, server }) => {
-        const firstInitiator = await openInitiator(context, server);
-        const secondInitiator = await openInitiator(context, server);
-        const firstLink = await startMagicLink(
-          firstInitiator,
-          server,
-          fixtureEmail.isolatedFirst
-        );
-        const secondLink = await startMagicLink(
-          secondInitiator,
-          server,
-          fixtureEmail.isolatedSecond
-        );
-        const firstAttempt = attemptFromCallbackURL(
-          callbackURLFromLink(firstLink)
-        );
-        const secondAttempt = attemptFromCallbackURL(
-          callbackURLFromLink(secondLink)
-        );
-        expect(firstAttempt).not.toBe(secondAttempt);
-
-        const firstCallback = await openScriptCallback(
-          context,
-          firstInitiator,
-          firstLink
-        );
-        await Promise.all([
-          waitForAccount(firstInitiator, server),
-          waitForPageCloseObservation(firstCallback, server.observations),
-        ]);
-        expect(secondInitiator.url()).toBe(`${server.origin}/en-US/sign-in`);
-        expect(
-          server.observations.verificationCookieByAttempt.get(firstAttempt)
-        ).toBe(true);
-        expect(
-          server.observations.verificationCookieByAttempt.has(secondAttempt)
-        ).toBe(false);
-
-        const secondCallback = await openScriptCallback(
-          context,
-          secondInitiator,
-          secondLink
-        );
-        await Promise.all([
-          waitForAccount(secondInitiator, server),
-          waitForPageCloseObservation(secondCallback, server.observations),
-        ]);
-
-        expect(
-          server.observations.verificationCookieByAttempt.get(secondAttempt)
-        ).toBe(true);
-        expect(server.observations.callbacksBeforeVerificationCookie).toBe(0);
-        expect(
-          server.observations.getSessionRequestsWithCookie
-        ).toBeGreaterThanOrEqual(2);
-      });
+      const events = server.observations.events;
+      expect(server.observations.verificationCookieByAttempt.get(attempt)).toBe(
+        true
+      );
+      expect(server.observations.verificationResponsesWithSessionCookie).toBe(
+        1
+      );
+      expect(server.observations.callbacksBeforeVerificationCookie).toBe(0);
+      expect(server.observations.getSessionRequestsWithCookie).toBeGreaterThan(
+        0
+      );
+      expect(events.indexOf("verification-response-with-cookie")).toBeLessThan(
+        events.indexOf("callback-request")
+      );
+      expect(events.indexOf("callback-request")).toBeLessThan(
+        events.indexOf("get-session-with-cookie")
+      );
+      expect(events.indexOf("get-session-verified")).toBeLessThan(
+        events.indexOf("callback-tab-closed")
+      );
+      expect(initiator.url()).toBe(`${server.origin}${ACCOUNT_PATH}`);
+      expect(callback.isClosed()).toBe(true);
     });
   });
-}
+
+  test("navigates a manually created callback tab when the browser blocks close", async () => {
+    await runScenario("normal", async ({ context, server }) => {
+      const initiator = await openInitiator(context, server);
+      const link = await startMagicLink(
+        initiator,
+        server,
+        fixtureEmail.verified
+      );
+      const callback = await context.newPage();
+
+      await Promise.all([
+        callback.goto(link.url, { waitUntil: "domcontentloaded" }),
+        waitForAccount(initiator, server),
+      ]);
+      await waitForAccount(callback, server);
+
+      expect(callback.isClosed()).toBe(false);
+      expect(callback.url()).toBe(`${server.origin}${ACCOUNT_PATH}`);
+      expect(server.observations.verificationResponsesWithSessionCookie).toBe(
+        1
+      );
+      expect(server.observations.callbacksBeforeVerificationCookie).toBe(0);
+    });
+  });
+
+  test("lands the initiator and the link tab on the sign-in's return path", async () => {
+    const returnTo = "/en-US/reservation?date=2026-10-20&contact=a.b-c.d_e.f";
+    await runScenario("normal", async ({ context, server }) => {
+      const initiator = await openInitiator(context, server);
+      const link = await startMagicLink(
+        initiator,
+        server,
+        fixtureEmail.verified,
+        { returnTo }
+      );
+      const callback = await context.newPage();
+
+      await Promise.all([
+        callback.goto(link.url, { waitUntil: "domcontentloaded" }),
+        initiator.waitForURL(`${server.origin}${returnTo}`, {
+          timeout: 7000,
+        }),
+      ]);
+      await callback.waitForURL(`${server.origin}${returnTo}`, {
+        timeout: 7000,
+      });
+
+      expect(
+        readAuthCallbackReturnTo(
+          new URL(callbackURLFromLink(link), server.origin).searchParams.get(
+            signInCallbackReturnParam
+          )
+        )
+      ).toBe(returnTo);
+      expect(server.observations.verificationResponsesWithSessionCookie).toBe(
+        1
+      );
+    });
+  });
+
+  test("sends a link whose return path was rewritten to another origin to the account", async () => {
+    await runScenario("normal", async ({ context, server }) => {
+      const initiator = await openInitiator(context, server);
+      const link = await startMagicLink(
+        initiator,
+        server,
+        fixtureEmail.verified,
+        { returnTo: "/en-US/reservation" }
+      );
+      await initiator.evaluate(() => {
+        window.__deskohubAuthReturnFixture.cancel();
+      });
+      const linkURL = new URL(link.url);
+      const callbackURL = new URL(
+        callbackURLFromLink(link),
+        "http://deskohub-auth-return.test"
+      );
+      callbackURL.searchParams.set(
+        signInCallbackReturnParam,
+        encodeAuthCallbackReturn("//evil.example/en-US/account") ?? ""
+      );
+      linkURL.searchParams.set(
+        "callbackURL",
+        `${callbackURL.pathname}${callbackURL.search}`
+      );
+      const callback = await context.newPage();
+
+      await callback.goto(linkURL.toString(), {
+        waitUntil: "domcontentloaded",
+      });
+      await waitForAccount(callback, server);
+
+      expect(callback.url()).toBe(`${server.origin}${ACCOUNT_PATH}`);
+    });
+  });
+
+  test.each([
+    ["initiator absent", "normal", false, fixtureEmail.verified],
+    ["stale session no-ack", "stale", true, fixtureEmail.noAck],
+    ["unverified session", "unverified", false, fixtureEmail.unverified],
+  ] as const)(
+    "%s never closes the callback tab before a verified handoff",
+    async (_name, verificationMode, requireFreshSession, email) => {
+      await runScenario(verificationMode, async ({ context, server }) => {
+        const initiator = await openInitiator(context, server);
+        const link = await startMagicLink(initiator, server, email, {
+          requireFreshSession,
+        });
+
+        if (_name === "initiator absent") {
+          await initiator.evaluate(() => {
+            const fixture = window.__deskohubAuthReturnFixture;
+            fixture.cancel();
+          });
+        }
+
+        const callback = await openScriptCallback(context, initiator, link);
+
+        await waitForAccount(callback, server);
+        expect(callback.isClosed()).toBe(false);
+        expect(callback.url()).toBe(`${server.origin}${ACCOUNT_PATH}`);
+
+        if (_name === "initiator absent" || _name === "stale session no-ack") {
+          expect(initiator.url()).toBe(`${server.origin}/en-US/sign-in`);
+        }
+        if (_name === "unverified session") {
+          await waitUntil(
+            "unverified authoritative session read",
+            () => server.observations.unverifiedSessionResponses > 0
+          );
+          expect(initiator.url()).toBe(`${server.origin}/en-US/sign-in`);
+        }
+      });
+    }
+  );
+
+  test("replays a consumed link into an error callback without hijacking the pending attempt", async () => {
+    await runScenario("normal", async ({ context, server }) => {
+      const initiator = await openInitiator(context, server);
+      const consumedLink = await startMagicLink(
+        initiator,
+        server,
+        fixtureEmail.verified
+      );
+      const consumedAttempt = attemptFromCallbackURL(
+        callbackURLFromLink(consumedLink)
+      );
+      const verifiedCallback = await openScriptCallback(
+        context,
+        initiator,
+        consumedLink
+      );
+      await Promise.all([
+        waitForAccount(initiator, server),
+        waitForPageCloseObservation(verifiedCallback, server.observations),
+      ]);
+      const cookieSessionsAfterVerifiedHandoff =
+        server.observations.getSessionRequestsWithCookie;
+      expect(
+        server.observations.verificationCookieByAttempt.get(consumedAttempt)
+      ).toBe(true);
+
+      await initiator.goto(`${server.origin}/en-US/sign-in`, {
+        waitUntil: "domcontentloaded",
+      });
+      await initiator.getByRole("button", { name: "Open callback" }).waitFor({
+        state: "visible",
+      });
+      const pendingLink = await startMagicLink(
+        initiator,
+        server,
+        fixtureEmail.replayPending
+      );
+      const pendingAttempt = attemptFromCallbackURL(
+        callbackURLFromLink(pendingLink)
+      );
+      expect(pendingAttempt).not.toBe(consumedAttempt);
+
+      const replayCallback = await openScriptCallback(
+        context,
+        initiator,
+        consumedLink
+      );
+      await waitForAccount(replayCallback, server);
+
+      expect(server.observations.errorCallbacks).toEqual([consumedAttempt]);
+      expect(replayCallback.isClosed()).toBe(false);
+      expect(replayCallback.url()).toBe(`${server.origin}${ACCOUNT_PATH}`);
+      expect(initiator.url()).toBe(`${server.origin}/en-US/sign-in`);
+      expect(server.observations.getSessionRequestsWithCookie).toBe(
+        cookieSessionsAfterVerifiedHandoff
+      );
+      expect(server.observations.verificationResponsesWithSessionCookie).toBe(
+        1
+      );
+      expect(
+        server.observations.verificationCookieByAttempt.has(pendingAttempt)
+      ).toBe(false);
+      expect(server.observations.callbacksBeforeVerificationCookie).toBe(1);
+    });
+  });
+
+  test("keeps different UUID attempts isolated across two initiator tabs", async () => {
+    await runScenario("normal", async ({ context, server }) => {
+      const firstInitiator = await openInitiator(context, server);
+      const secondInitiator = await openInitiator(context, server);
+      const firstLink = await startMagicLink(
+        firstInitiator,
+        server,
+        fixtureEmail.isolatedFirst
+      );
+      const secondLink = await startMagicLink(
+        secondInitiator,
+        server,
+        fixtureEmail.isolatedSecond
+      );
+      const firstAttempt = attemptFromCallbackURL(
+        callbackURLFromLink(firstLink)
+      );
+      const secondAttempt = attemptFromCallbackURL(
+        callbackURLFromLink(secondLink)
+      );
+      expect(firstAttempt).not.toBe(secondAttempt);
+
+      const firstCallback = await openScriptCallback(
+        context,
+        firstInitiator,
+        firstLink
+      );
+      await Promise.all([
+        waitForAccount(firstInitiator, server),
+        waitForPageCloseObservation(firstCallback, server.observations),
+      ]);
+      expect(secondInitiator.url()).toBe(`${server.origin}/en-US/sign-in`);
+      expect(
+        server.observations.verificationCookieByAttempt.get(firstAttempt)
+      ).toBe(true);
+      expect(
+        server.observations.verificationCookieByAttempt.has(secondAttempt)
+      ).toBe(false);
+
+      const secondCallback = await openScriptCallback(
+        context,
+        secondInitiator,
+        secondLink
+      );
+      await Promise.all([
+        waitForAccount(secondInitiator, server),
+        waitForPageCloseObservation(secondCallback, server.observations),
+      ]);
+
+      expect(
+        server.observations.verificationCookieByAttempt.get(secondAttempt)
+      ).toBe(true);
+      expect(server.observations.callbacksBeforeVerificationCookie).toBe(0);
+      expect(
+        server.observations.getSessionRequestsWithCookie
+      ).toBeGreaterThanOrEqual(2);
+    });
+  });
+});

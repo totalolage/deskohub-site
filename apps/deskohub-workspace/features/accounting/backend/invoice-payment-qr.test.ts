@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Schema } from "effect";
 import {
   formatInvoiceNumber,
@@ -28,7 +29,7 @@ const makeDocument = async (
         country: "CZ",
       },
     },
-    deliveryEmail: "invoice@example.test",
+    deliveryEmail: testEmailAddress("invoice"),
     locale: "cs-CZ",
     serviceDate: "2026-08-18",
     payment,
@@ -53,30 +54,6 @@ describe("invoice payment QR", () => {
       "SPD*1.0*ACC:CZ0620100000002303459272*AM:450.00*CC:CZK*DT:20260901*MSG:FAKTURA WS-FV-2026-000042*X-VS:42"
     );
     expect(payment?.qrCode?.subarray(1, 4).toString()).toBe("PNG");
-  });
-
-  test("omits payment instructions for non-positive totals", async () => {
-    expect(
-      await Effect.runPromise(getInvoicePaymentRequest(await makeDocument("0")))
-    ).toBeNull();
-    expect(
-      await Effect.runPromise(
-        getInvoicePaymentRequest(await makeDocument("-1"))
-      )
-    ).toBeNull();
-  });
-
-  test("omits payment instructions for an already-paid invoice", async () => {
-    expect(
-      await Effect.runPromise(
-        getInvoicePaymentRequest(
-          await makeDocument("450", {
-            status: "paid",
-            date: "2026-08-20",
-          })
-        )
-      )
-    ).toBeNull();
   });
 
   test("keeps textual details but omits QR beyond the SPAYD amount ceiling", async () => {

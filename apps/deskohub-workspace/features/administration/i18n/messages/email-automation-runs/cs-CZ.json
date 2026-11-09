@@ -1,0 +1,303 @@
+{
+  "emailAutomationRunsStepLabel": "Krok {position} · {step}",
+  "emailAutomationRunsStepById": "Krok „{stepId}“",
+  "emailAutomationRunsStepCondition": "Podmínka",
+  "emailAutomationRunsStepSend": "Odeslat e-mail",
+  "emailAutomationRunsStepWaitUntil": "Počkat na {target}",
+  "emailAutomationRunsStepWaitMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Počkat {formattedCount} minutu",
+        "countPlural=few": "Počkat {formattedCount} minuty",
+        "countPlural=other": "Počkat {formattedCount} minut"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Počkat {formattedCount} hodinu",
+        "countPlural=few": "Počkat {formattedCount} hodiny",
+        "countPlural=other": "Počkat {formattedCount} hodin"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Počkat {formattedCount} den",
+        "countPlural=few": "Počkat {formattedCount} dny",
+        "countPlural=other": "Počkat {formattedCount} dní"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitWeeks": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Počkat {formattedCount} týden",
+        "countPlural=few": "Počkat {formattedCount} týdny",
+        "countPlural=other": "Počkat {formattedCount} týdnů"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitMonths": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Počkat {formattedCount} měsíc",
+        "countPlural=few": "Počkat {formattedCount} měsíce",
+        "countPlural=other": "Počkat {formattedCount} měsíců"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} minuta",
+        "countPlural=few": "{formattedCount} minuty",
+        "countPlural=other": "{formattedCount} minut"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} hodina",
+        "countPlural=few": "{formattedCount} hodiny",
+        "countPlural=other": "{formattedCount} hodin"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} den",
+        "countPlural=few": "{formattedCount} dny",
+        "countPlural=other": "{formattedCount} dní"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeJustNow": "před chvílí",
+  "emailAutomationRunsAgeMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "před {formattedCount} minutou",
+        "countPlural=few": "před {formattedCount} minutami",
+        "countPlural=other": "před {formattedCount} minutami"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "před {formattedCount} hodinou",
+        "countPlural=few": "před {formattedCount} hodinami",
+        "countPlural=other": "před {formattedCount} hodinami"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "před {formattedCount} dnem",
+        "countPlural=few": "před {formattedCount} dny",
+        "countPlural=other": "před {formattedCount} dny"
+      }
+    }
+  ],
+  "emailAutomationRunsHealthRunning": "Engine automatizací běží · poslední plánování {lastPlanned}",
+  "emailAutomationRunsHealthBehind": "Engine automatizací vyžaduje pozornost · poslední plánování {lastPlanned}",
+  "emailAutomationRunsHealthNotPlannedYet": "zatím žádné",
+  "emailAutomationRunsHealthUnavailable": "Stav enginu automatizací teď nelze načíst.",
+  "emailAutomationRunsHealthWarningTitle": "Engine automatizací nestíhá. Běhy všech automatizovaných kampaní mohou začít nebo odeslat později.",
+  "emailAutomationRunsHealthCampaignTitle": "Plán této kampaně je právě vytížený.",
+  "emailAutomationRunsHealthPlannerStale": "Plánovač naposledy běžel {age}.",
+  "emailAutomationRunsHealthPlannerNeverRan": "Plánovač zatím neběžel.",
+  "emailAutomationRunsHealthSweepLagging": "Začátky a konce rezervací se zjišťují se zpožděním {duration}.",
+  "emailAutomationRunsHealthSweepLaggingUnknown": "Začátky a konce rezervací se zjišťují se zpožděním.",
+  "emailAutomationRunsHealthReconcileStalled": "Hodinová kontrola začátků a konců rezervací má zpoždění {duration}.",
+  "emailAutomationRunsHealthReconcileStalledUnknown": "Hodinová kontrola začátků a konců rezervací neběží.",
+  "emailAutomationRunsHealthEventBacklog": "Události zákazníků čekají na zpracování; nejstarší je z {date}.",
+  "emailAutomationRunsHealthEventBacklogUnknown": "Události zákazníků čekají na zpracování.",
+  "emailAutomationRunsHealthUnitBacklog": "Naplánovaná práce čeká na spuštění; nejstarší čeká od {date}.",
+  "emailAutomationRunsHealthUnitBacklogUnknown": "Naplánovaná práce čeká na spuštění.",
+  "emailAutomationRunsHealthScheduleLagging": "Plánované kampaně se spouštějí pozdě.",
+  "emailAutomationRunsHealthFallingBehind": "Některá plánovaná kampaň zpracovává spuštění déle, než je čas do dalšího.",
+  "emailAutomationRunsHealthUnrecognized": "Engine automatizací hlásí varování, které tato stránka nezná: {code}.",
+  "emailAutomationRunsHealthCampaignScheduleLag": "Plán této kampaně má zpoždění {duration}.",
+  "emailAutomationRunsHealthCampaignEnteringFire": "Tato kampaň zakládá běhy pro spuštění {date}: hotovo {done} z {total} částí.",
+  "emailAutomationRunsHealthCampaignFallingBehind": "Poslední spuštění této kampaně trvalo {duration}, déle než {interval} do dalšího spuštění.",
+  "emailAutomationRunsHealthCampaignFallingBehindUnknown": "Poslední spuštění této kampaně trvalo {duration}, déle než čas do dalšího spuštění.",
+  "emailAutomationRunsCountsTitle": "Běhy podle stavu",
+  "emailAutomationRunsCountsScopeAll": "Všechny verze",
+  "emailAutomationRunsCountsScopeVersion": "Verze {versionNumber}",
+  "emailAutomationRunsCountsWaiting": "Čekají",
+  "emailAutomationRunsCountsSendingNow": "Právě se odesílají",
+  "emailAutomationRunsCountsSent": "Odesláno",
+  "emailAutomationRunsCountsFailed": "Selhalo",
+  "emailAutomationRunsCountsSkipped": "Přeskočeno",
+  "emailAutomationRunsCountsArchived": "Ukončeno archivací",
+  "emailAutomationRunsOutcomeSent": "Odesláno",
+  "emailAutomationRunsOutcomeUnconfirmed": "Možná odesláno",
+  "emailAutomationRunsOutcomeConditionFailed": "Skončilo na podmínce",
+  "emailAutomationRunsOutcomeSkipped": "Přeskočeno",
+  "emailAutomationRunsOutcomeSkippedBecause": "Přeskočeno · {reason}",
+  "emailAutomationRunsOutcomeFailed": "Selhalo",
+  "emailAutomationRunsOutcomeFailedBecause": "Selhalo · {reason}",
+  "emailAutomationRunsOutcomeWithdrawn": "Spouštěč zrušen",
+  "emailAutomationRunsOutcomeArchived": "Ukončeno archivací",
+  "emailAutomationRunsSkipOutsideTestDomain": "netestovací příjemce",
+  "emailAutomationRunsSkipConsentWithdrawn": "souhlas odvolán",
+  "emailAutomationRunsSkipMissingEmail": "chybí e-mailová adresa",
+  "emailAutomationRunsSkipInvalidEmail": "neplatná e-mailová adresa",
+  "emailAutomationRunsSkipDeletedCustomer": "zákazník smazán",
+  "emailAutomationRunsSkipMissingFromDotypos": "zákazník chybí v Dotypos",
+  "emailAutomationRunsFailureDeliveryRefused": "doručení odmítnuto",
+  "emailAutomationRunsFailureEvaluationUnavailable": "vyhodnocení nedostupné",
+  "emailAutomationRunsStatusWaitingUntil": "Čeká do {date}",
+  "emailAutomationRunsStatusInProgress": "Probíhá",
+  "emailAutomationRunsStatusSending": "Odesílá se",
+  "emailAutomationRunsStateActive": "Probíhá",
+  "emailAutomationRunsStateSending": "Odesílá se",
+  "emailAutomationRunsStateEnded": "Skončilo",
+  "emailAutomationRunsFilterState": "Stav",
+  "emailAutomationRunsFilterStateAny": "Jakýkoli stav",
+  "emailAutomationRunsFilterOutcome": "Výsledek",
+  "emailAutomationRunsFilterOutcomeAny": "Jakýkoli výsledek",
+  "emailAutomationRunsFilterSkipReason": "Důvod přeskočení",
+  "emailAutomationRunsFilterSkipReasonAny": "Jakýkoli důvod",
+  "emailAutomationRunsFilterStep": "Krok",
+  "emailAutomationRunsFilterStepAny": "Jakýkoli krok",
+  "emailAutomationRunsFilterVersion": "Verze",
+  "emailAutomationRunsFilterVersionAll": "Všechny verze",
+  "emailAutomationRunsFilterCustomer": "Zákazník",
+  "emailAutomationRunsFilterCustomerPlaceholder": "ID zákazníka v Dotypos",
+  "emailAutomationRunsFilterApply": "Zobrazit běhy",
+  "emailAutomationRunsFilterClear": "Zrušit filtry",
+  "emailAutomationRunsVersion": "Verze {versionNumber}",
+  "emailAutomationRunsVersionLive": "Verze {versionNumber} (aktivní)",
+  "emailAutomationRunsListControls": "Ovládání seznamu běhů",
+  "emailAutomationRunsListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} běh na této stránce",
+        "countPlural=few": "{formattedCount} běhy na této stránce",
+        "countPlural=other": "{formattedCount} běhů na této stránce"
+      }
+    }
+  ],
+  "emailAutomationRunsListEmpty": "Zatím žádné běhy. Běhy se tu objeví, jakmile bude automatizace aktivní a spustí se její spouštěč.",
+  "emailAutomationRunsListEmptyFiltered": "Těmto filtrům neodpovídá žádný běh.",
+  "emailAutomationRunsColumnStarted": "Začátek",
+  "emailAutomationRunsColumnCustomer": "Zákazník",
+  "emailAutomationRunsCustomerProfileNotFound": "V Dotypos nenalezen",
+  "emailAutomationRunsCustomerProfileUnavailable": "Profil nedostupný",
+  "emailAutomationRunsCustomerContactsUnavailable": "Jména zákazníků teď nelze z Dotypos načíst, proto běhy ukazují ID zákazníků.",
+  "emailAutomationRunsColumnTrigger": "Spouštěč",
+  "emailAutomationRunsColumnStep": "Krok",
+  "emailAutomationRunsColumnStatus": "Stav",
+  "emailAutomationRunsColumnEnded": "Konec",
+  "emailAutomationRunsColumnVersion": "Verze",
+  "emailAutomationRunsPagination": "Stránky seznamu běhů",
+  "emailAutomationRunsFirstPage": "První stránka",
+  "emailAutomationRunsNextPage": "Další stránka",
+  "emailAutomationRunsLoadFailed": "Protokol běhů se nepodařilo načíst. Zkuste to za chvíli znovu.",
+  "emailAutomationRunsCursorInvalid": "Tento odkaz na stránku už neplatí. Začněte znovu od první stránky.",
+  "emailAutomationRunsBackToList": "Všechny běhy",
+  "emailAutomationRunsRunTitle": "Běh",
+  "emailAutomationRunsTriggeredAt": "{trigger} · {date}",
+  "emailAutomationRunsCurrentStep": "Aktuální krok",
+  "emailAutomationRunsEndedAtStep": "Skončilo v kroku",
+  "emailAutomationRunsNotEnded": "Ještě neskončilo",
+  "emailAutomationRunsTimelineTitle": "Časová osa",
+  "emailAutomationRunsTimelineLabel": "Časová osa běhu",
+  "emailAutomationRunsEventStarted": "Běh začal",
+  "emailAutomationRunsEventConditionPassed": "Podmínka splněna",
+  "emailAutomationRunsEventConditionFailed": "Podmínka nesplněna; běh tu skončil",
+  "emailAutomationRunsEventConditionFailedClause": "Nesplněno: {clause}",
+  "emailAutomationRunsEventWaiting": "Čeká do {date}",
+  "emailAutomationRunsEventWoke": "Čekání skončilo",
+  "emailAutomationRunsEventDeferred": "Spouštěcí návštěva ještě nezačala; znovu se ověří {date}",
+  "emailAutomationRunsEventSendQueued": "E-mail zařazen k odeslání",
+  "emailAutomationRunsEventSent": "E-mail odeslán",
+  "emailAutomationRunsEventUnconfirmed": "E-mail možná odešel",
+  "emailAutomationRunsEventUnconfirmedDetail": "E-mailová služba nepotvrdila doručení, proto ho běh znovu neodešle.",
+  "emailAutomationRunsEventWithdrawnDetail": "Spouštěcí rezervace byla zrušena, zatímco běh čekal.",
+  "emailAutomationRunsEventArchivedDetail": "Kampaň byla archivována, zatímco běh probíhal.",
+  "emailAutomationRunsEventUnknown": "Zaznamenaná událost „{kind}“",
+  "emailAutomationRunsConditionClause": "Část {position} podmínky",
+  "emailAutomationRunsConditionInAudience": "Zákazníci v uloženém publiku „{audience}“",
+  "emailAutomationRunsConditionNotInAudience": "Zákazníci mimo uložené publikum „{audience}“",
+  "emailAutomationRunsConditionAudienceUnknown": "smazané publikum"
+}

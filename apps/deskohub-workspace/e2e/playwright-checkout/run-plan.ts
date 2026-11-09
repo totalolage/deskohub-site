@@ -1,10 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { WorkspaceE2EPreparation } from "../cases";
-import type { DiscountAvailabilityE2EPreparation } from "../cases/discounts";
-import type { MeetingRoomE2EPreparation } from "../cases/meeting-room";
-import type { OfficeE2EPreparation } from "../cases/office";
-import type { E2EDotyposDiscountGroup } from "../integrations/dotypos";
+import { writeReservationJournal } from "../reservation-journal";
 import { workspaceDir, writeJsonAtomically } from "../runtime";
 import type { E2ERunContext } from "../services/telemetry";
 import type { CheckoutData, CheckoutFlowState } from "../types";
@@ -38,75 +35,16 @@ type SerializedCheckoutFlowState = {
 export const writeWorkspaceE2ERunPlan = async (plan: WorkspaceE2ERunPlan) =>
   writeJsonAtomically(runPlanPath, plan);
 
-export const readWorkspaceE2ERunPlan = async (): Promise<WorkspaceE2ERunPlan> =>
-  parseRunPlan(await readFile(runPlanPath, "utf8"));
-
-const preparationPaths = {
-  customerDiscountGroup: resolve(
-    checkoutArtifactRoot,
-    "preparation",
-    "customer-discount-group.json"
-  ),
-  discounts: resolve(checkoutArtifactRoot, "preparation", "discounts.json"),
-  meetingRoom: resolve(
-    checkoutArtifactRoot,
-    "preparation",
-    "meeting-room.json"
-  ),
-  office: resolve(checkoutArtifactRoot, "preparation", "office.json"),
-} as const;
-
-type WorkspaceE2EPreparationParts = {
-  readonly customerDiscountGroup: E2EDotyposDiscountGroup;
-  readonly discounts: DiscountAvailabilityE2EPreparation;
-  readonly meetingRoom: MeetingRoomE2EPreparation;
-  readonly office: OfficeE2EPreparation | null;
-};
-
-export const writeWorkspaceE2EPreparationPart = async <
-  K extends keyof WorkspaceE2EPreparationParts,
->(
-  key: K,
-  value: WorkspaceE2EPreparationParts[K]
-) => writeJsonAtomically(preparationPaths[key], value);
-
-export const readWorkspaceE2EPreparation =
-  async (): Promise<WorkspaceE2EPreparation> => {
-    const [customerDiscountGroup, discounts, meetingRoom, office] =
-      await Promise.all([
-        readPreparationObject("customerDiscountGroup"),
-        readPreparationObject("discounts"),
-        readPreparationObject("meetingRoom"),
-        readOptionalPreparationObject("office"),
-      ]);
-
-    return {
-      customerDiscountGroup:
-        customerDiscountGroup as unknown as E2EDotyposDiscountGroup,
-      discounts: discounts as DiscountAvailabilityE2EPreparation,
-      meetingRoom: meetingRoom as MeetingRoomE2EPreparation,
-      office: office as OfficeE2EPreparation | undefined,
-    };
-  };
-
-const readPreparationObject = async (key: keyof typeof preparationPaths) =>
-  parseObject(await readFile(preparationPaths[key], "utf8"), key);
-
-const readOptionalPreparationObject = async (
-  key: keyof typeof preparationPaths
-) => {
-  const value: unknown = JSON.parse(
-    await readFile(preparationPaths[key], "utf8")
-  );
-  return value === null ? undefined : parseObject(JSON.stringify(value), key);
-};
+export const readWorkspaceE2ERunPlan = async (
+  path = runPlanPath
+): Promise<WorkspaceE2ERunPlan> => parseRunPlan(await readFile(path, "utf8"));
 
 export const writeWorkspaceE2ECaseJournal = async (
   caseId: WorkspaceE2ECaseId,
   flowStates: readonly CheckoutFlowState[],
   journalStartedAt = new Date()
 ) =>
-  writeJsonAtomically(resolve(journalRoot, `${caseId}.json`), {
+  writeReservationJournal(resolve(journalRoot, `${caseId}.json`), {
     caseId,
     checkoutStates: flowStates.map(
       ({ completedDotyposReservationId, data, orderId, startedAt }) => ({
@@ -173,14 +111,6 @@ const parseRunPlan = (serialized: string): WorkspaceE2ERunPlan => {
     throw new Error("Invalid workspace E2E run plan");
   }
   return value as WorkspaceE2ERunPlan;
-};
-
-const parseObject = (serialized: string, label: string) => {
-  const value: unknown = JSON.parse(serialized);
-  if (!isRecord(value)) {
-    throw new Error(`Invalid workspace E2E ${label} preparation`);
-  }
-  return value;
 };
 
 const parseCleanupJournal = (

@@ -58,6 +58,7 @@ describe("PostHog reservation history", () => {
       items: [
         {
           id: "posthog-event-uuid",
+          event: { source: "reservation", kind: "payment_started" },
           title: "Payment started",
           description: "An online payment attempt began.",
           occurredAt: "2026-08-04T12:30:00Z",
@@ -76,23 +77,67 @@ describe("PostHog reservation history", () => {
       },
       refresh: "blocking",
     });
+    // A consenting author's events carry the account's distinct ID, so the
+    // history finds every event of the reservation by its property alone.
+    const { query } = (capturedBody as { query: { query: string } }).query;
+    expect(query).toContain(
+      "WHERE properties.reservation_id = {reservationId}"
+    );
+    expect(query).not.toContain("distinct_id");
   });
 
-  test("is unavailable without the PostHog API key", async () => {
+  test("keeps offset timestamps and drops events with unreadable timestamps", async () => {
+    const fetchHistory: typeof globalThis.fetch = Object.assign(
+      async () =>
+        Response.json({
+          results: [
+            [
+              "payment started",
+              "2026-08-04T14:30:00+02:00",
+              "offset-uuid",
+              null,
+              null,
+            ],
+            [
+              "payment started",
+              "not a timestamp",
+              "unreadable-uuid",
+              null,
+              null,
+            ],
+          ],
+        }),
+      { preconnect: originalFetch.preconnect }
+    );
     const layer = PostHogReservationHistory.Default.pipe(
       Layer.provide(
         Layer.succeed(PostHogHistoryRuntimeConfig, {
-          environment: "development",
+          apiKey: "test-key",
+          environment: "preview",
+          host: "https://eu.posthog.test",
+          projectId: PostHogProjectId.make("42"),
           serviceName: "deskohub-workspace",
         })
       ),
       Layer.provide(FetchHttpClient.layer)
     );
+
     const result = await Effect.gen(function* () {
       const history = yield* PostHogReservationHistory;
       return yield* history.load(reservationId);
-    }).pipe(Effect.provide(layer), Effect.runPromise);
-    expect(result).toEqual({ kind: "unavailable" });
+    }).pipe(
+      Effect.provide(layer),
+      Effect.provideService(FetchHttpClient.Fetch, fetchHistory),
+      Effect.runPromise
+    );
+
+    expect(result).toMatchObject({
+      kind: "available",
+      items: [
+        { id: "posthog-offset-uuid", occurredAt: "2026-08-04T12:30:00Z" },
+      ],
+    });
+    expect(result.kind === "available" && result.items).toHaveLength(1);
   });
 
   test("deduplicates durable milestones while preserving additional observations", () => {

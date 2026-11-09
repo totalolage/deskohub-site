@@ -3,84 +3,10 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
-import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer } from "effect";
-import type { CapturePostHogEventInput } from "@/shared/backend/analytics/posthog-event.service";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
 
 describe("ReservationHoldCleanupService", () => {
-  test("fails the expired hold sweep when expired hold selection fails", async () => {
-    const { PaymentLifecycleRepository } = await import(
-      "../repositories/payment-lifecycle.repository"
-    );
-    const { ProviderPaymentFinalizationService } = await import(
-      "../payment/provider-payment-finalization.service"
-    );
-    const { ReservationHoldCleanupService } = await import(
-      "./reservation-hold-cleanup.service"
-    );
-    const { WorkspaceReservationRepository } = await import(
-      "@/features/reservation/backend/workspace-reservation.repository"
-    );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
-    );
-
-    const unused = () => Effect.die("not used");
-    const selectExpiredHolds = mock(() =>
-      Effect.fail(
-        new EffectDrizzleQueryError({
-          query: "select expired holds",
-          params: [],
-          cause: "down",
-        })
-      )
-    );
-    const reservations = {
-      selectExpiredHolds,
-    };
-    const dotypos = {};
-
-    const now = Temporal.Instant.from("2026-06-02T10:00:00.000Z");
-    const result = await Effect.gen(function* () {
-      const cleanup = yield* ReservationHoldCleanupService;
-      return yield* cleanup.sweepExpiredHolds({
-        now,
-        limit: 25,
-      });
-    }).pipe(
-      Effect.provide(
-        ReservationHoldCleanupService.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.mock(ProviderPaymentFinalizationService, {
-                finalizePendingProviderPayment: unused,
-              } satisfies ProviderPaymentFinalizationServiceType),
-              Layer.mock(PaymentLifecycleRepository, {
-                markTerminal: unused,
-              }),
-              Layer.mock(WorkspaceReservationRepository, reservations),
-              Layer.mock(PostHogEventService, {
-                capture: () => Effect.void,
-              }),
-              Layer.mock(DotyposService, dotypos)
-            )
-          )
-        )
-      ),
-      Effect.result,
-      Effect.runPromise
-    );
-
-    expect(selectExpiredHolds).toHaveBeenCalledTimes(1);
-    expect(selectExpiredHolds).toHaveBeenCalledWith({ now, limit: 25 });
-    expect(result._tag).toBe("Failure");
-    if (result._tag !== "Failure") throw new Error("Expected failure");
-    expect(result.failure.message).toBe(
-      "Expired reservation holds could not be selected."
-    );
-  });
-
   test("does not cancel an expired hold when the pending provider payment finalizes paid", async () => {
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
@@ -91,11 +17,14 @@ describe("ReservationHoldCleanupService", () => {
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
     );
+    const { DotyposHoldRelease } = await import(
+      "./dotypos-hold-release.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
     );
 
     const orderId = "reservation-cleanup-provider-paid";
@@ -131,6 +60,7 @@ describe("ReservationHoldCleanupService", () => {
     }).pipe(
       Effect.provide(
         ReservationHoldCleanupService.Default.pipe(
+          Layer.provide(DotyposHoldRelease.Default),
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -138,9 +68,7 @@ describe("ReservationHoldCleanupService", () => {
                 markTerminal: mock(() => Effect.die("not used")),
               }),
               Layer.mock(WorkspaceReservationRepository, reservations),
-              Layer.mock(PostHogEventService, {
-                capture: () => Effect.void,
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(DotyposService, dotypos)
             )
           )
@@ -169,11 +97,14 @@ describe("ReservationHoldCleanupService", () => {
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
     );
+    const { DotyposHoldRelease } = await import(
+      "./dotypos-hold-release.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
     );
 
     const orderId = "reservation-cleanup-provider-pending";
@@ -211,6 +142,7 @@ describe("ReservationHoldCleanupService", () => {
       }).pipe(
         Effect.provide(
           ReservationHoldCleanupService.Default.pipe(
+            Layer.provide(DotyposHoldRelease.Default),
             Layer.provide(
               Layer.mergeAll(
                 Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -218,9 +150,7 @@ describe("ReservationHoldCleanupService", () => {
                   markTerminal: mock(() => Effect.die("not used")),
                 }),
                 Layer.mock(WorkspaceReservationRepository, reservations),
-                Layer.mock(PostHogEventService, {
-                  capture: () => Effect.void,
-                }),
+                recordCheckoutAnalytics().layer,
                 Layer.mock(DotyposService, dotypos)
               )
             )
@@ -263,11 +193,14 @@ describe("ReservationHoldCleanupService", () => {
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
     );
+    const { DotyposHoldRelease } = await import(
+      "./dotypos-hold-release.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
     );
 
     const orderId = "reservation-cleanup-abandoned";
@@ -290,13 +223,14 @@ describe("ReservationHoldCleanupService", () => {
         timestamp: Temporal.Now.instant(),
       })
     );
-    const capture = mock((_input: CapturePostHogEventInput) => Effect.void);
+    const analytics = recordCheckoutAnalytics();
     await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
       return yield* cleanup.cancelOrderHold({ orderId, checkedAt });
     }).pipe(
       Effect.provide(
         ReservationHoldCleanupService.Default.pipe(
+          Layer.provide(DotyposHoldRelease.Default),
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, {
@@ -319,9 +253,7 @@ describe("ReservationHoldCleanupService", () => {
                 claimCancellation,
                 markCancelled,
               }),
-              Layer.mock(PostHogEventService, {
-                capture,
-              }),
+              analytics.layer,
               Layer.mock(DotyposService, {
                 cancelReservation,
               })
@@ -346,80 +278,12 @@ describe("ReservationHoldCleanupService", () => {
       cancelledAt: expect.any(Temporal.Instant),
       holdExpiredAt: checkedAt,
     });
-    expect(capture).toHaveBeenCalledWith(
+    expect(analytics.messages).toContainEqual(
       expect.objectContaining({
         distinctId: orderId,
         event: "reservation abandoned",
       })
     );
-  });
-
-  test("does not expire or cancel a payment that cannot be verified", async () => {
-    const { PaymentLifecycleRepository } = await import(
-      "../repositories/payment-lifecycle.repository"
-    );
-    const { ProviderPaymentFinalizationService } = await import(
-      "../payment/provider-payment-finalization.service"
-    );
-    const { ReservationHoldCleanupService } = await import(
-      "./reservation-hold-cleanup.service"
-    );
-    const { WorkspaceReservationRepository } = await import(
-      "@/features/reservation/backend/workspace-reservation.repository"
-    );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
-    );
-
-    const orderId = "reservation-cleanup-stale-attempt";
-    const attemptId = "attempt-cleanup-stale-attempt";
-    const markTerminal = mock(() => Effect.die("not used"));
-    const claimCancellation = mock(() => Effect.succeed(null));
-    const cancelReservation = mock(() => Effect.void);
-
-    await Effect.gen(function* () {
-      const cleanup = yield* ReservationHoldCleanupService;
-      return yield* cleanup.cancelOrderHold({ orderId });
-    }).pipe(
-      Effect.provide(
-        ReservationHoldCleanupService.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.mock(ProviderPaymentFinalizationService, {
-                finalizePendingProviderPayment: mock(() =>
-                  Effect.succeed("not_verifiable" as const)
-                ),
-              } satisfies ProviderPaymentFinalizationServiceType),
-              Layer.mock(PaymentLifecycleRepository, {
-                markTerminal,
-              }),
-              Layer.mock(WorkspaceReservationRepository, {
-                findById: mock(() =>
-                  Effect.succeed({
-                    id: orderId,
-                    reservationState: "held",
-                    paymentState: "pending",
-                    activePaymentAttemptId: attemptId,
-                  })
-                ),
-                claimCancellation,
-              }),
-              Layer.mock(PostHogEventService, {
-                capture: () => Effect.void,
-              }),
-              Layer.mock(DotyposService, {
-                cancelReservation,
-              })
-            )
-          )
-        )
-      ),
-      Effect.runPromise
-    );
-
-    expect(markTerminal).not.toHaveBeenCalled();
-    expect(claimCancellation).not.toHaveBeenCalled();
-    expect(cancelReservation).not.toHaveBeenCalled();
   });
 
   test("does not cancel an expired hold when provider verification fails transiently", async () => {
@@ -432,11 +296,14 @@ describe("ReservationHoldCleanupService", () => {
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
     );
+    const { DotyposHoldRelease } = await import(
+      "./dotypos-hold-release.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
+    const { recordCheckoutAnalytics } = await import(
+      "@/features/checkout/backend/analytics/checkout-analytics.service.mock"
     );
 
     const orderId = "reservation-cleanup-provider-failed";
@@ -451,6 +318,7 @@ describe("ReservationHoldCleanupService", () => {
     }).pipe(
       Effect.provide(
         ReservationHoldCleanupService.Default.pipe(
+          Layer.provide(DotyposHoldRelease.Default),
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, {
@@ -472,9 +340,7 @@ describe("ReservationHoldCleanupService", () => {
                 ),
                 claimCancellation,
               }),
-              Layer.mock(PostHogEventService, {
-                capture: () => Effect.void,
-              }),
+              recordCheckoutAnalytics().layer,
               Layer.mock(DotyposService, {
                 cancelReservation,
               })

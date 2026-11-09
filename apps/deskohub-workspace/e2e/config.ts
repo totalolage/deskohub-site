@@ -1,10 +1,7 @@
+import { dotyposApiTimeoutDefaultMilliseconds } from "@deskohub/dotypos/api-timeout";
 import type { E2EEnvironment } from "./e2e-env";
-import {
-  addDatabaseUrlRedactions,
-  addRedaction,
-  assert,
-  parseUrl,
-} from "./runtime";
+import { addDatabaseUrlRedactions, addRedaction } from "./redaction";
+import { assert, parseUrl } from "./runtime";
 import { workspaceE2ETimeouts } from "./timeouts";
 
 const immutableWorkspaceDeploymentHost =
@@ -21,6 +18,22 @@ export const getConfig = (environment: E2EEnvironment) => {
     bypassSecret,
     timeouts: workspaceE2ETimeouts,
   };
+};
+
+/**
+ * Whether `value` is an immutable Workspace deployment origin, the only
+ * target that may receive the Vercel protection bypass secret.
+ */
+export const isWorkspaceDeploymentOrigin = (value: string) => {
+  const url = parseUrl(value);
+  return (
+    url !== undefined &&
+    url.protocol === "https:" &&
+    immutableWorkspaceDeploymentHost.test(url.hostname) &&
+    !url.username &&
+    !url.password &&
+    !url.port
+  );
 };
 
 export const parseWorkspaceE2EBaseUrl = (value: string | undefined) => {
@@ -76,8 +89,14 @@ export const getDatasourceConfig = (environment: E2EEnvironment) => {
   return {
     databaseUrl,
     databaseUrlUnpooled,
+    fixtureCapacityTarget: {
+      baseUrl: environment.WORKSPACE_E2E_BASE_URL,
+      targetSha: environment.TARGET_SHA,
+      githubRunId: environment.GITHUB_RUN_ID,
+      githubRunAttempt: environment.GITHUB_RUN_ATTEMPT,
+    },
     dotypos: {
-      apiTimeout: 5_000,
+      apiTimeout: dotyposApiTimeoutDefaultMilliseconds,
       apiUrl: environment.DOTYPOS_API_URL,
       branchId: environment.DOTYPOS_BRANCH_ID,
       clientId: environment.DOTYPOS_CLIENT_ID,

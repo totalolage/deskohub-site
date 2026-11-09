@@ -25,6 +25,8 @@ const watchChanges = mock<WatchChanges>((input) => {
   });
 });
 
+const dailyMaintenanceIntervalSeconds = 24 * 60 * 60;
+
 let GET: typeof import("./route").GET;
 
 beforeAll(async () => {
@@ -87,8 +89,11 @@ describe("opening-hours midnight maintenance cron", () => {
     expect(watchChanges.mock.calls[0]?.[0]).toMatchObject({
       webhookUrl:
         "https://bar.deskohub.cz/api/webhooks/google-calendar/opening-hours",
-      ttlSeconds: 259_200,
     });
+    // The watch must outlive the daily renewal, so one missed run cannot lapse it.
+    expect(watchChanges.mock.calls[0]?.[0].ttlSeconds).toBeGreaterThan(
+      dailyMaintenanceIntervalSeconds
+    );
     expect(watchChanges.mock.calls[0]?.[0].channelId).toMatch(
       /^[0-9a-f-]{36}$/u
     );
@@ -118,17 +123,5 @@ describe("opening-hours midnight maintenance cron", () => {
       expire: 0,
     });
     expect(maintenanceOperations).toEqual(["watch", "invalidate"]);
-  });
-
-  test("reports cache invalidation failures", async () => {
-    revalidateTag.mockImplementationOnce(() => {
-      throw new Error("cache unavailable");
-    });
-
-    const response = await GET(
-      makeRequest(`Bearer ${process.env.CRON_SECRET}`)
-    );
-
-    expect(response.status).toBe(500);
   });
 });

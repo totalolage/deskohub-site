@@ -1,10 +1,16 @@
 "use client";
 
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import type { AdministrationWorkspaceReservationIdType } from "@deskohub/workspace-admin-api";
+import { Schema } from "effect";
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useState } from "react";
+import { type UseFormReturn, useForm, useWatch } from "react-hook-form";
+import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
+import { ChoiceCard } from "@/shared/components/ui/choice-card";
 import {
   Dialog,
   DialogClose,
@@ -15,9 +21,51 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/shared/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/shared/components/ui/form";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { cancelAdministrationReservation } from "./actions";
+import { m } from "./i18n";
 import { AdministrationAlert } from "./notice";
+
+const reservationCancellationFormSchema = Schema.Struct({
+  providerCredentialRemoved: Schema.Boolean,
+  sendCancellationEmail: Schema.Boolean,
+});
+
+const getConfirmedReservationCancellationFormSchema = (locale: Locale) =>
+  reservationCancellationFormSchema.check(
+    Schema.makeFilter<{
+      readonly providerCredentialRemoved: boolean;
+      readonly sendCancellationEmail: boolean;
+    }>(
+      (values) =>
+        values.providerCredentialRemoved || {
+          path: ["providerCredentialRemoved"],
+          issue: m.administrationReservationCancellationPinRemovedRequired(
+            {},
+            { locale }
+          ),
+        }
+    )
+  );
+
+type ReservationCancellationFormInput =
+  typeof reservationCancellationFormSchema.Encoded;
+
+type ReservationCancellationFormValues =
+  typeof reservationCancellationFormSchema.Type;
+
+const reservationCancellationFormDefaults = {
+  providerCredentialRemoved: false,
+  sendCancellationEmail: true,
+} satisfies ReservationCancellationFormInput;
 
 export function ReservationCancellation({
   canCancel,
@@ -30,40 +78,48 @@ export function ReservationCancellation({
   readonly requiresProviderCredentialRemoval: boolean;
   readonly reservationId: AdministrationWorkspaceReservationIdType;
 }) {
-  const accessCheckboxId = useId();
-  const checkboxId = useId();
   const router = useRouter();
+  const locale = useRouteLocale();
   const [open, setOpen] = useState(false);
-  const [providerCredentialRemoved, setProviderCredentialRemoved] =
-    useState(false);
-  const [sendCancellationEmail, setSendCancellationEmail] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const form = useForm<
+    ReservationCancellationFormInput,
+    unknown,
+    ReservationCancellationFormValues
+  >({
+    defaultValues: reservationCancellationFormDefaults,
+    mode: "onSubmit",
+    resolver: effectSchemaResolver(
+      requiresProviderCredentialRemoval
+        ? getConfirmedReservationCancellationFormSchema(locale)
+        : reservationCancellationFormSchema
+    ),
+  });
   const { execute, isExecuting } = useWorkspaceAction(
     cancelAdministrationReservation,
     {
-      actionName: "cancelAdministrationReservation",
       onSuccess: ({ data }) => {
         if (!data) return;
         setOpen(false);
         setMessage(
           {
-            failed:
-              "Reservation cancelled, but the cancellation email could not be sent.",
+            failed: m.administrationReservationCancellationEmailFailed,
             not_requested:
-              "Reservation cancelled without emailing the customer.",
-            sent: "Reservation cancelled and the customer was emailed.",
-          }[data.email]
+              m.administrationReservationCancellationEmailNotRequested,
+            sent: m.administrationReservationCancellationEmailSent,
+          }[data.email]({}, { locale })
         );
         router.refresh();
       },
       onError: ({ error: actionError }) =>
         setError(
-          actionError.serverError ?? "The reservation could not be cancelled."
+          actionError.serverError ??
+            m.administrationReservationCancellationFailed({}, { locale })
         ),
       onTransportError: () =>
         setError(
-          "The cancellation response was interrupted. Refresh before trying again."
+          m.administrationReservationCancellationInterrupted({}, { locale })
         ),
     }
   );
@@ -73,59 +129,148 @@ export function ReservationCancellation({
   return (
     <div className="space-y-2">
       {canCancel && (
-        <Dialog
+        <ReservationCancellationDialog
+          error={error}
+          form={form}
+          isExecuting={isExecuting}
+          locale={locale}
           onOpenChange={(nextOpen) => {
             setError(null);
             setOpen(nextOpen);
           }}
+          onSubmit={(values) => {
+            setError(null);
+            execute({
+              accessGrantUpdatedAt,
+              providerCredentialRemoved: values.providerCredentialRemoved,
+              reservationId,
+              sendCancellationEmail: values.sendCancellationEmail,
+            });
+          }}
           open={open}
-        >
-          <DialogTrigger asChild>
-            <Button type="button" variant="secondary">
-              Cancel reservation
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Cancel this reservation?</DialogTitle>
-              <DialogDescription>
-                This cancels the booking in Dotypos and cannot be undone. Any
-                paid online payment will be marked as needing a refund; no
-                refund is issued automatically.
-              </DialogDescription>
-            </DialogHeader>
-            {requiresProviderCredentialRemoval && (
-              <label
-                className="flex cursor-pointer items-start gap-3 rounded-xl border border-burned-orange/25 bg-burned-orange/5 p-4"
-                htmlFor={accessCheckboxId}
-              >
-                <Checkbox
-                  checked={providerCredentialRemoved}
-                  id={accessCheckboxId}
-                  onCheckedChange={(checked) =>
-                    setProviderCredentialRemoved(Boolean(checked))
-                  }
-                />
-                <span className="text-sm leading-6 text-navy-blue/70">
-                  I removed the active door PIN from the lock in Igloohome
-                </span>
-              </label>
+          requiresProviderCredentialRemoval={requiresProviderCredentialRemoval}
+        />
+      )}
+      {message && (
+        <AdministrationAlert role="status" status="success">
+          {message}
+        </AdministrationAlert>
+      )}
+    </div>
+  );
+}
+
+/** Asks the operator to confirm the cancellation, and the door PIN removal when it's needed. */
+function ReservationCancellationDialog({
+  error,
+  form,
+  isExecuting,
+  locale,
+  onOpenChange,
+  onSubmit,
+  open,
+  requiresProviderCredentialRemoval,
+}: {
+  readonly error: string | null;
+  readonly form: UseFormReturn<
+    ReservationCancellationFormInput,
+    unknown,
+    ReservationCancellationFormValues
+  >;
+  readonly isExecuting: boolean;
+  readonly locale: Locale;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onSubmit: (values: ReservationCancellationFormValues) => void;
+  readonly open: boolean;
+  readonly requiresProviderCredentialRemoval: boolean;
+}) {
+  const [providerCredentialRemoved] = useWatch({
+    control: form.control,
+    name: ["providerCredentialRemoved", "sendCancellationEmail"],
+  });
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="secondary">
+          {m.administrationReservationCancellationOpen({}, { locale })}
+        </Button>
+      </DialogTrigger>
+      <DialogContent locale={locale}>
+        <DialogHeader>
+          <DialogTitle>
+            {m.administrationReservationCancellationTitle({}, { locale })}
+          </DialogTitle>
+          <DialogDescription>
+            {m.administrationReservationCancellationDescription({}, { locale })}
+          </DialogDescription>
+        </DialogHeader>
+        <Form {...form}>
+          <form
+            aria-label={m.administrationReservationCancellationFormLabel(
+              {},
+              { locale }
             )}
-            <label
-              className="flex cursor-pointer items-start gap-3 rounded-xl border border-navy-blue/10 bg-navy-blue/2.5 p-4"
-              htmlFor={checkboxId}
-            >
-              <Checkbox
-                checked={sendCancellationEmail}
-                id={checkboxId}
-                onCheckedChange={(checked) =>
-                  setSendCancellationEmail(Boolean(checked))
-                }
+            noValidate
+            onSubmit={(event) => {
+              void form.handleSubmit(onSubmit)(event);
+            }}
+          >
+            {requiresProviderCredentialRemoval && (
+              <FormField
+                control={form.control}
+                name="providerCredentialRemoved"
+                render={({ field: { onChange, ...field } }) => (
+                  <FormItem>
+                    <FormLabel asChild>
+                      <ChoiceCard tone="warning">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={(checked) =>
+                              onChange(checked === true)
+                            }
+                          />
+                        </FormControl>
+                        <span className="leading-6">
+                          {m.administrationReservationCancellationPinRemoved(
+                            {},
+                            { locale }
+                          )}
+                        </span>
+                      </ChoiceCard>
+                    </FormLabel>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-              <span className="text-sm leading-6 text-navy-blue/70">
-                Send a cancellation email to the customer
-              </span>
-            </label>
+            )}
+            <FormField
+              control={form.control}
+              name="sendCancellationEmail"
+              render={({ field: { onChange, ...field } }) => (
+                <FormItem>
+                  <FormLabel asChild>
+                    <ChoiceCard>
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={(checked) =>
+                            onChange(checked === true)
+                          }
+                        />
+                      </FormControl>
+                      <span className="leading-6 text-navy-blue/70">
+                        {m.administrationReservationCancellationSendEmail(
+                          {},
+                          { locale }
+                        )}
+                      </span>
+                    </ChoiceCard>
+                  </FormLabel>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             {error && (
               <AdministrationAlert role="alert" status="error">
                 {error}
@@ -138,38 +283,32 @@ export function ReservationCancellation({
                   type="button"
                   variant="secondary"
                 >
-                  Keep reservation
+                  {m.administrationReservationCancellationKeep({}, { locale })}
                 </Button>
               </DialogClose>
               <Button
-                className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"
                 disabled={
                   isExecuting ||
                   (requiresProviderCredentialRemoval &&
                     !providerCredentialRemoved)
                 }
-                onClick={() => {
-                  setError(null);
-                  execute({
-                    accessGrantUpdatedAt,
-                    providerCredentialRemoved,
-                    reservationId,
-                    sendCancellationEmail,
-                  });
-                }}
-                type="button"
+                tone="burned-orange-ink"
+                type="submit"
               >
-                {isExecuting ? "Cancelling…" : "Cancel reservation"}
+                {isExecuting
+                  ? m.administrationReservationCancellationSubmitting(
+                      {},
+                      { locale }
+                    )
+                  : m.administrationReservationCancellationSubmit(
+                      {},
+                      { locale }
+                    )}
               </Button>
             </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-      {message && (
-        <AdministrationAlert role="status" status="success">
-          {message}
-        </AdministrationAlert>
-      )}
-    </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
   );
 }

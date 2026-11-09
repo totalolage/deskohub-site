@@ -1,41 +1,29 @@
 import {
+  customerLifecycle,
+  type DotyposConditionalWriteFailure,
   type DotyposCustomer,
   type DotyposCustomerId,
+  type DotyposCustomerProfile,
+  type DotyposCustomerWriteRecord,
   DotyposService,
-  ExternalAPIError,
   type FindCustomerResult,
-  type NetworkError,
-  normalizePhoneNumber,
-  type ValidationError,
 } from "@deskohub/dotypos";
-import type { UpdateCustomerRequest } from "@deskohub/dotypos/generated";
-import { Context, Effect, Layer, Result } from "effect";
+import { Context, Data, Effect, Layer, Option, Schedule } from "effect";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import type { CustomerProfileInput } from "../contracts";
+import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
+import type { CustomerProfile, CustomerProfileSave } from "../contracts";
+
+/** A profile update or reactivation addressed a Dotypos customer that does not exist. */
+class DotyposCustomerMissing extends Data.TaggedError(
+  "DotyposCustomerMissing"
+)<{
+  readonly customerId: DotyposCustomerId;
+}> {}
 
 export type DotyposCustomerError =
-  | ValidationError
-  | ExternalAPIError
-  | NetworkError;
-
-export type CustomerProfileBilling = {
-  readonly kind: "personal" | "business";
-  readonly addressLine1: string | null;
-  readonly addressLine2: string | null;
-  readonly city: string | null;
-  readonly zip: string | null;
-  readonly country: string | null;
-  readonly companyName: string | null;
-  readonly companyId: string | null;
-  readonly vatId: string | null;
-};
-
-export type CustomerProfile = {
-  readonly firstName: string;
-  readonly lastName: string | null;
-  readonly phone: string | null;
-  readonly billing: CustomerProfileBilling | null;
-};
+  | DotyposConditionalWriteFailure
+  | MissingDotyposId
+  | DotyposCustomerMissing;
 
 /**
  * Closed classification of the exact-email Dotypos candidates for a verified
@@ -71,192 +59,130 @@ type ExactEmailCustomerRowMatch =
  * The provider's create response, closed as the created link id plus the
  * app-level profile mapped from that same decoded response.
  */
-export type CreatedCustomerProfile = {
+type CreatedCustomerProfile = {
   readonly customerId: DotyposCustomerId;
   readonly profile: CustomerProfile;
 };
-
-export const isCustomerProfileExpired = (
-  customer: DotyposCustomer,
-  now: Date = new Date()
-): boolean =>
-  customer.expireDate != null && new Date(customer.expireDate) <= now;
-
-const isUncertainDotyposError = (error: DotyposCustomerError): boolean => {
-  if (error._tag === "NetworkError") return true;
-  if (error._tag === "ExternalAPIError") {
-    const status = error.statusCode;
-    return status != null && (status === 429 || status >= 500);
-  }
-  return false;
-};
-
-const isEtagConflictError = (error: DotyposCustomerError): boolean =>
-  error._tag === "ExternalAPIError" &&
-  (error.statusCode === 409 || error.statusCode === 412);
 
 const nonEmpty = (value: string | null | undefined): string | null => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 };
 
-const hasInputBillingData = (
-  billing: NonNullable<CustomerProfileInput["billing"]>
-): boolean =>
-  billing.kind === "business" ||
-  nonEmpty(billing.addressLine1) != null ||
-  nonEmpty(billing.addressLine2) != null ||
-  nonEmpty(billing.city) != null ||
-  nonEmpty(billing.zip) != null ||
-  nonEmpty(billing.country) != null;
+const billingAddressFields = [
+  "addressLine1",
+  "addressLine2",
+  "city",
+  "zip",
+  "country",
+] as const;
 
-export const toCustomerProfile = (
-  customer: DotyposCustomer
-): CustomerProfile => {
-  const companyName = nonEmpty(customer.companyName);
-  const companyId = nonEmpty(customer.companyId);
-  const vatId = nonEmpty(customer.vatId);
-  const addressLine1 = nonEmpty(customer.addressLine1);
-  const addressLine2 = nonEmpty(customer.addressLine2);
-  const city = nonEmpty(customer.city);
-  const zip = nonEmpty(customer.zip);
-  const country = nonEmpty(customer.country);
-  const hasBillingData =
-    addressLine1 !== null ||
-    addressLine2 !== null ||
-    city !== null ||
-    zip !== null ||
-    country !== null ||
-    companyName !== null ||
-    companyId !== null ||
-    vatId !== null;
+const businessBillingFields = ["companyName", "companyId", "vatId"] as const;
 
-  return {
-    firstName: customer.firstName?.trim() || "",
-    lastName: nonEmpty(customer.lastName),
-    phone: nonEmpty(customer.phone),
-    billing: hasBillingData
-      ? {
-          kind: companyName || companyId || vatId ? "business" : "personal",
-          addressLine1,
-          addressLine2,
-          city,
-          zip,
-          country,
-          companyName,
-          companyId,
-          vatId,
-        }
-      : null,
-  };
-};
+type BillingTextField =
+  | (typeof billingAddressFields)[number]
+  | (typeof businessBillingFields)[number];
+
+type BillingInput = CustomerProfileSave["billing"];
+
+type StoredBilling = NonNullable<CustomerProfile["billing"]>;
+
+const businessBillingOf = (billing: BillingInput) =>
+  billing?.kind === "business" ? billing : undefined;
 
 /**
- * Builds the provider PATCH payload so every editable field carries an
- * explicit value: optional fields the user cleared send the provider's
- * clearing value instead of being omitted, which would leave the previous
- * provider state in place.
+ * Dotypos clears an optional text field only when it receives an empty
+ * string, so every listed field carries an explicit value.
  */
-const toUpdateRequest = (
-  input: CustomerProfileInput
-): UpdateCustomerRequest => {
-  const billing = input.billing;
-  const business = billing?.kind === "business" ? billing : undefined;
-  const address = billing ?? null;
-
-  return {
-    firstName: input.firstName,
-    lastName: input.lastName ?? "",
-    phone: normalizePhoneNumber(input.phone) ?? "",
-    addressLine1: address?.addressLine1 ?? "",
-    addressLine2: address?.addressLine2 ?? "",
-    city: address?.city ?? "",
-    zip: address?.zip ?? "",
-    country: address?.country ?? "",
-    companyName: business?.companyName ?? "",
-    companyId: business?.companyId ?? "",
-    vatId: business?.vatId ?? "",
-  };
+const toProviderText = <Field extends BillingTextField>(
+  fields: readonly Field[],
+  source: Partial<Record<Field, string>> | undefined
+): Record<Field, string> => {
+  const values: Partial<Record<Field, string>> = {};
+  for (const field of fields) values[field] = source?.[field] ?? "";
+  return values as Record<Field, string>;
 };
 
-/**
- * Decides whether a provider profile reflects every requested editable
- * field, including optional-only changes. Used after uncertain provider
- * responses, where a partial comparison would report a dropped field as
- * applied. Clearing to no billing counts as applied once the stored profile
- * carries no billing data either.
- */
-export const customerProfileAppliesInput = (
-  customer: DotyposCustomer,
-  input: CustomerProfileInput
-): boolean => {
-  if (customer.deleted) return false;
-  const stored = toCustomerProfile(customer);
-
-  if (stored.firstName !== input.firstName) return false;
-  if ((stored.lastName ?? "") !== (input.lastName ?? "")) return false;
-  if ((stored.phone ?? "") !== (normalizePhoneNumber(input.phone) ?? "")) {
-    return false;
-  }
-
-  const storedBilling = stored.billing;
-  const billing = input.billing;
-
-  if (!billing || !hasInputBillingData(billing)) {
-    return storedBilling == null;
-  }
-  if (storedBilling == null) return false;
-  if (storedBilling.kind !== billing.kind) return false;
-
-  const addressMatches =
-    (storedBilling.addressLine1 ?? "") === (billing.addressLine1 ?? "") &&
-    (storedBilling.addressLine2 ?? "") === (billing.addressLine2 ?? "") &&
-    (storedBilling.city ?? "") === (billing.city ?? "") &&
-    (storedBilling.zip ?? "") === (billing.zip ?? "") &&
-    (storedBilling.country ?? "") === (billing.country ?? "");
-
-  if (billing.kind === "personal") return addressMatches;
-
-  return (
-    addressMatches &&
-    (storedBilling.companyName ?? "") === billing.companyName &&
-    (storedBilling.companyId ?? "") === (billing.companyId ?? "") &&
-    (storedBilling.vatId ?? "") === (billing.vatId ?? "")
+const toCustomerBilling = (
+  customer: DotyposCustomerWriteRecord
+): StoredBilling | null => {
+  const billing = {
+    addressLine1: nonEmpty(customer.addressLine1),
+    addressLine2: nonEmpty(customer.addressLine2),
+    city: nonEmpty(customer.city),
+    zip: nonEmpty(customer.zip),
+    country: nonEmpty(customer.country),
+    companyName: nonEmpty(customer.companyName),
+    companyId: nonEmpty(customer.companyId),
+    vatId: nonEmpty(customer.vatId),
+  };
+  const isBusiness = businessBillingFields.some(
+    (field) => billing[field] !== null
   );
+  const hasAddress = billingAddressFields.some(
+    (field) => billing[field] !== null
+  );
+  if (!(isBusiness || hasAddress)) return null;
+  return { kind: isBusiness ? "business" : "personal", ...billing };
 };
+
+const toCustomerProfile = (
+  customer: DotyposCustomerWriteRecord
+): CustomerProfile => ({
+  firstName: nonEmpty(customer.firstName) ?? "",
+  lastName: nonEmpty(customer.lastName),
+  phone: nonEmpty(customer.phone),
+  billing: toCustomerBilling(customer),
+});
+
+/**
+ * The provider profile write, with every editable field explicit: optional
+ * fields the user cleared send the provider's clearing value instead of being
+ * omitted, which would leave the previous provider state in place. The
+ * contract decodes any nonblank phone to a phone number, so a blank phone
+ * here is the customer's explicit clearing.
+ */
+const toProviderProfile = (
+  input: CustomerProfileSave
+): DotyposCustomerProfile => ({
+  firstName: input.firstName,
+  lastName: input.lastName ?? "",
+  phone: input.phone ?? "",
+  ...toProviderText(billingAddressFields, input.billing),
+  ...toProviderText(businessBillingFields, businessBillingOf(input.billing)),
+});
 
 const toCustomerDetails = (input: {
   readonly email: string;
-  readonly profile: CustomerProfileInput;
+  readonly profile: CustomerProfileSave;
 }) => ({
   firstName: input.profile.firstName,
   lastName: input.profile.lastName ?? "",
   email: input.email,
-  phone: input.profile.phone
-    ? normalizePhoneNumber(input.profile.phone) || undefined
-    : undefined,
-  addressLine1: input.profile.billing?.addressLine1 ?? "",
-  addressLine2: input.profile.billing?.addressLine2 ?? "",
-  city: input.profile.billing?.city ?? "",
-  zip: input.profile.billing?.zip ?? "",
-  country: input.profile.billing?.country ?? "",
-  companyName:
-    input.profile.billing?.kind === "business"
-      ? input.profile.billing.companyName
-      : "",
-  companyId:
-    input.profile.billing?.kind === "business"
-      ? (input.profile.billing.companyId ?? "")
-      : "",
-  vatId:
-    input.profile.billing?.kind === "business"
-      ? (input.profile.billing.vatId ?? "")
-      : "",
+  phone: input.profile.phone || undefined,
+  ...toProviderText(billingAddressFields, input.profile.billing),
+  ...toProviderText(
+    businessBillingFields,
+    businessBillingOf(input.profile.billing)
+  ),
 });
 
-const expirationPatch = (expired: boolean): UpdateCustomerRequest => ({
-  expireDate: expired ? new Date(Date.now() - 60_000).toISOString() : null,
-});
+/**
+ * Refreshes an account write once after a genuine version conflict: each
+ * attempt calls the package write afresh, which rereads the ETag and sends
+ * the write again. The customer's own profile and lifecycle writes win over a
+ * concurrent change, which is the account's policy, not the package default.
+ * An uncertain write is never retried, because it may already have landed.
+ */
+const refreshOnceOnVersionConflict = <A>(
+  write: () => Effect.Effect<A, DotyposConditionalWriteFailure>
+) =>
+  Effect.suspend(write).pipe(
+    Effect.retry({
+      schedule: Schedule.recurs(1),
+      while: (failure) => failure._tag === "DotyposVersionConflict",
+    })
+  );
 
 interface ICustomerDotyposAdapter {
   readonly classifyExactEmailCustomers: (
@@ -267,15 +193,16 @@ interface ICustomerDotyposAdapter {
   ) => Effect.Effect<CustomerProfile | null, DotyposCustomerError>;
   readonly createCustomerProfile: (input: {
     readonly email: string;
-    readonly profile: CustomerProfileInput;
+    readonly profile: CustomerProfileSave;
   }) => Effect.Effect<CreatedCustomerProfile, DotyposCustomerError>;
   readonly updateCustomerProfile: (
     customerId: DotyposCustomerId,
-    profile: CustomerProfileInput
+    profile: CustomerProfileSave
   ) => Effect.Effect<void, DotyposCustomerError>;
+  /** None means the Dotypos customer is already missing. */
   readonly expireCustomer: (
     customerId: DotyposCustomerId
-  ) => Effect.Effect<void, DotyposCustomerError>;
+  ) => Effect.Effect<Option.Option<DotyposCustomer>, DotyposCustomerError>;
   readonly reactivateCustomer: (
     customerId: DotyposCustomerId
   ) => Effect.Effect<void, DotyposCustomerError>;
@@ -291,15 +218,7 @@ export class CustomerDotyposAdapter extends Context.Service<
       const dotypos = yield* DotyposService;
 
       const readCustomer = (customerId: DotyposCustomerId) =>
-        dotypos
-          .getCustomer(customerId)
-          .pipe(
-            Effect.catchTag("ExternalAPIError", (error) =>
-              error.statusCode === 404
-                ? Effect.succeed(null)
-                : Effect.fail(error)
-            )
-          );
+        dotypos.getCustomer(customerId).pipe(Effect.map(Option.getOrNull));
 
       const classifyExactEmailCustomers = Effect.fn(
         "CustomerDotyposAdapter.classifyExactEmailCustomers"
@@ -331,7 +250,7 @@ export class CustomerDotyposAdapter extends Context.Service<
         "CustomerDotyposAdapter.createCustomerProfile"
       )(function* (input: {
         readonly email: string;
-        readonly profile: CustomerProfileInput;
+        readonly profile: CustomerProfileSave;
       }) {
         const customer = yield* dotypos.createCustomer(
           toCustomerDetails(input)
@@ -354,11 +273,9 @@ export class CustomerDotyposAdapter extends Context.Service<
           };
         }
 
-        return yield* new ExternalAPIError({
-          service: "Dotypos",
-          operation: "createCustomer",
+        return yield* new MissingDotyposId({
+          entity: "customer",
           message: "Dotypos returned a created customer without an id.",
-          statusCode: 502,
         });
       });
 
@@ -376,86 +293,45 @@ export class CustomerDotyposAdapter extends Context.Service<
         if (result._tag === "Deleted") return { kind: "unusable" };
 
         const customer = result.customer;
-        if (!customer.id) return { kind: "ambiguous" };
 
         return {
           kind: "matched",
-          state: isCustomerProfileExpired(customer) ? "expired" : "active",
+          state:
+            customerLifecycle(customer, new Date()) === "expired"
+              ? "expired"
+              : "active",
           customerId: customer.id,
           customer,
         };
       };
 
-      const patchWithReread = Effect.fn(
-        "CustomerDotyposAdapter.patchWithReread"
-      )(function* (input: {
-        readonly customerId: DotyposCustomerId;
-        readonly payload: UpdateCustomerRequest;
-        readonly isApplied: (customer: DotyposCustomer | null) => boolean;
-      }) {
-        let lastError: DotyposCustomerError | undefined;
-
-        for (let attempt = 0; attempt < 2; attempt += 1) {
-          const outcome = yield* dotypos
-            .patchCustomer(input.customerId, input.payload)
-            .pipe(Effect.asVoid, Effect.result);
-          if (Result.isSuccess(outcome)) return;
-
-          const error = outcome.failure as DotyposCustomerError;
-          lastError = error;
-
-          if (isEtagConflictError(error) && attempt === 0) continue;
-
-          if (isUncertainDotyposError(error)) {
-            const reread = yield* readCustomer(input.customerId);
-            if (input.isApplied(reread)) return;
-            continue;
-          }
-
-          return yield* error;
-        }
-
-        if (lastError && isUncertainDotyposError(lastError)) {
-          const finalReread = yield* readCustomer(input.customerId);
-          if (input.isApplied(finalReread)) return;
-        }
-
-        return yield* lastError!;
-      });
+      /** A customer that must exist; a missing one fails DotyposCustomerMissing. */
+      const requireExisting =
+        (customerId: DotyposCustomerId) =>
+        (customer: Option.Option<DotyposCustomer>) =>
+          Option.isSome(customer)
+            ? Effect.void
+            : Effect.fail(new DotyposCustomerMissing({ customerId }));
 
       const updateCustomerProfile = Effect.fn(
         "CustomerDotyposAdapter.updateCustomerProfile"
-      )((customerId: DotyposCustomerId, profile: CustomerProfileInput) =>
-        patchWithReread({
-          customerId,
-          payload: toUpdateRequest(profile),
-          isApplied: (customer) =>
-            customer != null && customerProfileAppliesInput(customer, profile),
-        })
+      )((customerId: DotyposCustomerId, profile: CustomerProfileSave) =>
+        refreshOnceOnVersionConflict(() =>
+          dotypos.updateCustomerProfile(customerId, toProviderProfile(profile))
+        ).pipe(Effect.flatMap(requireExisting(customerId)))
       );
 
       const expireCustomer = Effect.fn("CustomerDotyposAdapter.expireCustomer")(
         (customerId: DotyposCustomerId) =>
-          patchWithReread({
-            customerId,
-            payload: expirationPatch(true),
-            isApplied: (customer) =>
-              customer != null &&
-              (customer.deleted || isCustomerProfileExpired(customer)),
-          })
+          refreshOnceOnVersionConflict(() => dotypos.expireCustomer(customerId))
       );
 
       const reactivateCustomer = Effect.fn(
         "CustomerDotyposAdapter.reactivateCustomer"
       )((customerId: DotyposCustomerId) =>
-        patchWithReread({
-          customerId,
-          payload: expirationPatch(false),
-          isApplied: (customer) =>
-            customer != null &&
-            !customer.deleted &&
-            !isCustomerProfileExpired(customer),
-        })
+        refreshOnceOnVersionConflict(() =>
+          dotypos.reactivateCustomer(customerId)
+        ).pipe(Effect.flatMap(requireExisting(customerId)))
       );
 
       return {

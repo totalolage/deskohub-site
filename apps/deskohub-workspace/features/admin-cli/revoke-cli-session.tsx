@@ -1,7 +1,15 @@
 "use client";
 
-import type { CliSessionIdType } from "@deskohub/workspace-admin-api";
-import { useFormStatus } from "react-dom";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import {
+  CliSessionId,
+  type CliSessionIdType,
+} from "@deskohub/workspace-admin-api";
+import { Schema } from "effect";
+import { useRef, useTransition } from "react";
+import { useForm } from "react-hook-form";
+import { m } from "@/features/administration/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   Dialog,
@@ -15,6 +23,14 @@ import {
 } from "@/shared/components/ui/dialog";
 import { revokeCliSession } from "./actions";
 
+const revokeCliSessionFormSchema = Schema.Struct({
+  sessionId: CliSessionId,
+});
+
+type RevokeCliSessionFormInput = typeof revokeCliSessionFormSchema.Encoded;
+
+type RevokeCliSessionFormValues = typeof revokeCliSessionFormSchema.Type;
+
 export function RevokeCliSession({
   clientName,
   revoked,
@@ -24,43 +40,69 @@ export function RevokeCliSession({
   readonly revoked: boolean;
   readonly sessionId: CliSessionIdType;
 }) {
+  const locale = useRouteLocale();
+  const [isPending, startTransition] = useTransition();
+  const submissionStarted = useRef(false);
+  const form = useForm<
+    RevokeCliSessionFormInput,
+    unknown,
+    RevokeCliSessionFormValues
+  >({
+    defaultValues: { sessionId },
+    mode: "onSubmit",
+    reValidateMode: "onChange",
+    resolver: effectSchemaResolver(revokeCliSessionFormSchema, {
+      onExcessProperty: "error",
+    }),
+  });
+
   return (
     <Dialog>
       <DialogTrigger asChild>
         <Button disabled={revoked} size="sm" type="button" variant="secondary">
-          Revoke
+          {m.adminCliRevokeTrigger({}, { locale })}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent locale={locale}>
         <DialogHeader>
-          <DialogTitle>Revoke CLI session?</DialogTitle>
+          <DialogTitle>{m.adminCliRevokeTitle({}, { locale })}</DialogTitle>
           <DialogDescription>
-            “{clientName}” will immediately lose Workspace administration
-            access. Its CLI will remove the credential when it next contacts the
-            API. This cannot be undone.
+            {m.adminCliRevokeDescription({ clientName }, { locale })}
           </DialogDescription>
         </DialogHeader>
-        <form action={revokeCliSession}>
-          <input name="sessionId" type="hidden" value={sessionId} />
+        <form
+          onSubmit={(event) => {
+            void form.handleSubmit((values) => {
+              if (submissionStarted.current) return;
+              submissionStarted.current = true;
+
+              const formData = new FormData();
+              formData.set("sessionId", values.sessionId);
+              startTransition(async () => {
+                try {
+                  await revokeCliSession(formData);
+                } finally {
+                  submissionStarted.current = false;
+                }
+              });
+            })(event);
+          }}
+        >
+          <input type="hidden" {...form.register("sessionId")} />
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="secondary">
-                Cancel
+                {m.adminCliRevokeCancel({}, { locale })}
               </Button>
             </DialogClose>
-            <RevokeAccessButton />
+            <Button disabled={isPending} type="submit">
+              {isPending
+                ? m.adminCliRevokeSubmitting({}, { locale })
+                : m.adminCliRevokeSubmit({}, { locale })}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function RevokeAccessButton() {
-  const { pending } = useFormStatus();
-  return (
-    <Button disabled={pending} type="submit">
-      {pending ? "Revoking…" : "Revoke access"}
-    </Button>
   );
 }

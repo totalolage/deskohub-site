@@ -1,23 +1,16 @@
-import { Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
-import { cookies } from "next/headers";
+import { Effect, Option, Schema } from "effect";
 import { NextResponse } from "next/server";
 import type { Locale } from "@/features/i18n";
 import { getLocalizedParamsDecoder } from "@/features/i18n/server/route-params";
-import { readReservationAccessCookie } from "@/features/reservation/backend/reservation-access-cookie";
-import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import {
-  defineWorkspaceRoute,
-  WorkspaceRouteFailure,
-} from "@/shared/backend/workspace-route";
+import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
 import { getSearchParamsDecoder } from "@/shared/utils";
-import {
-  CheckoutStatusService,
-  type ICheckoutStatusService,
-} from "./checkout-status.service";
+import type { CheckoutStatusReturnOutcome } from "./checkout-status.service";
+import { getPaymentReturnDestination } from "./payment-return-destination";
 import { getReservationStatusPath } from "./reservation-status-url";
 
 type LocalizedCheckoutPaymentRouteContext = {
@@ -27,7 +20,7 @@ type LocalizedCheckoutPaymentRouteContext = {
 type CheckoutPaymentReturn = {
   readonly locale: Locale;
   readonly orderId: WorkspaceReservationId;
-  readonly outcome: CheckoutStatusRefreshInput["returnOutcome"];
+  readonly outcome: CheckoutStatusReturnOutcome;
 };
 
 const decodeCheckoutPaymentParams = getLocalizedParamsDecoder({
@@ -39,46 +32,6 @@ const decodeCheckoutPaymentSearchParams = getSearchParamsDecoder(
     outcome: Schema.Literals(["success", "cancelled"]),
   })
 );
-
-type CheckoutStatusRefreshInput = Parameters<
-  ICheckoutStatusService["refreshStatus"]
->[0];
-
-const refreshCheckoutStatusAttempt = Effect.fn("refreshCheckoutStatusAttempt")(
-  function* (input: CheckoutStatusRefreshInput, attempts: Ref.Ref<number>) {
-    const attempt = yield* Ref.updateAndGet(attempts, (value) => value + 1);
-    yield* Effect.logWarning("Retrying checkout payment return refresh", {
-      orderId: input.orderId,
-      attempt,
-    }).pipe(Effect.when(Effect.succeed(attempt > 1)));
-
-    const checkoutStatus = yield* CheckoutStatusService;
-    return yield* checkoutStatus.refreshStatus(input).pipe(
-      Effect.catch((cause) =>
-        Effect.logError("Checkout payment return refresh failed", {
-          orderId: input.orderId,
-          outcome: input.returnOutcome,
-          attempt,
-          cause,
-        })
-      )
-    );
-  }
-);
-
-const refreshCheckoutStatusWithBriefRetry = Effect.fn(
-  "refreshCheckoutStatusWithBriefRetry"
-)(function* (input: CheckoutStatusRefreshInput) {
-  const attempts = yield* Ref.make(0);
-  return yield* refreshCheckoutStatusAttempt(input, attempts).pipe(
-    Effect.repeat({
-      schedule: Schedule.spaced("1500 millis"),
-      times: 3,
-      while: (status) =>
-        !status || status.status === "created" || status.status === "pending",
-    })
-  );
-});
 
 const decodeCheckoutPaymentReturn = Effect.fn("decodeCheckoutPaymentReturn")(
   function* (
@@ -103,73 +56,82 @@ const decodeCheckoutPaymentReturn = Effect.fn("decodeCheckoutPaymentReturn")(
   }
 );
 
-const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
-  function* (request: Request, input: CheckoutPaymentReturn) {
-    const cookieStore = yield* Effect.promise(() => cookies());
-    const authorization = yield* ReservationAuthorizationService;
-    const authorized = yield* authorization.isAuthorized({
-      accessCookie: readReservationAccessCookie(cookieStore, input.orderId),
-      locale: input.locale,
-      orderId: input.orderId,
-    });
-    if (!authorized) {
-      const response = new NextResponse(null, { status: 404 });
-      response.headers.set("Cache-Control", "private, no-store");
-      response.headers.set("Referrer-Policy", "no-referrer");
-      return response;
-    }
-
-    yield* refreshCheckoutStatusWithBriefRetry({
-      orderId: input.orderId,
-      returnOutcome: input.outcome,
-    });
-
-    const response = NextResponse.redirect(
-      new URL(
-        getReservationStatusPath({
-          locale: input.locale,
-          orderId: input.orderId,
-          outcome: input.outcome,
-          setBypassCookie: true,
-        }),
-        request.url
+/**
+ * The app screen a checkout submitted from an app returns to, when its
+ * reservation stores one. A failed lookup returns to the site's status page,
+ * which works in any browser.
+ */
+const findAppDestination = Effect.fn("checkout.paymentReturn.appDestination")(
+  function* (orderId: WorkspaceReservationId) {
+    const reservations = yield* WorkspaceReservationRepository;
+    const target = yield* reservations.findPaymentReturnTarget(orderId);
+    if (!target) return Option.none<string>();
+    return Option.some(yield* getPaymentReturnDestination({ target, orderId }));
+  },
+  (effect, orderId) =>
+    effect.pipe(
+      Effect.catch((cause) =>
+        Effect.logWarning(
+          "Payment return target lookup failed; returning to the site status page",
+          { orderId, errorTag: cause._tag }
+        ).pipe(Effect.as(Option.none<string>()))
       )
-    );
-    response.headers.set("Cache-Control", "private, no-store");
-    response.headers.set("Referrer-Policy", "no-referrer");
-    return response;
-  }
+    )
 );
 
-export const makeCheckoutPaymentReturnGet = (
-  statusServiceLayer: Layer.Layer<CheckoutStatusService, unknown>,
-  authorizationLayer: Layer.Layer<ReservationAuthorizationService, unknown>
+const redirectCheckoutPaymentReturn = Effect.fn(
+  "checkout.redirectCheckoutPaymentReturn"
+)(function* (request: Request, input: CheckoutPaymentReturn) {
+  const appDestination = yield* findAppDestination(input.orderId);
+  // Provider returns may lack cookies; the status page owns authorization and reconciliation.
+  const response = NextResponse.redirect(
+    Option.getOrElse(
+      appDestination,
+      () =>
+        new URL(
+          getReservationStatusPath({
+            locale: input.locale,
+            orderId: input.orderId,
+            outcome: input.outcome,
+            setBypassCookie: true,
+          }),
+          request.url
+        )
+    )
+  );
+  response.headers.set("Cache-Control", "private, no-store");
+  response.headers.set("Referrer-Policy", "no-referrer");
+  return response;
+});
+
+/**
+ * Sends a hosted payment's return on to the app the checkout came from, or to
+ * the site's status page. The outcome is only a hint: the status page and the
+ * app's status request reconcile the payment.
+ */
+export const handleCheckoutPaymentReturn = (
+  request: Request,
+  context: LocalizedCheckoutPaymentRouteContext
 ) =>
-  defineWorkspaceRoute(
-    {
-      operation: "checkout.payment-return",
-      cancellation: "continue-after-disconnect",
-    },
-    (request, context: LocalizedCheckoutPaymentRouteContext) =>
-      decodeCheckoutPaymentReturn(request, context).pipe(
-        Effect.flatMap((decoded) =>
-          decoded.pipe(
-            Option.map((input) =>
-              handleCheckoutPaymentReturn(request, input).pipe(
-                Effect.provide(
-                  Layer.mergeAll(statusServiceLayer, authorizationLayer)
-                ),
-                Effect.mapError(
-                  WorkspaceRouteFailure.internal(
-                    "Checkout status could not be refreshed"
-                  )
-                )
-              )
-            ),
-            Option.getOrElse(() =>
-              Effect.succeed(new NextResponse(null, { status: 404 }))
-            )
-          )
+  decodeCheckoutPaymentReturn(request, context).pipe(
+    Effect.flatMap((decoded) =>
+      decoded.pipe(
+        Option.map((input) => redirectCheckoutPaymentReturn(request, input)),
+        Option.getOrElse(() =>
+          Effect.succeed(new NextResponse(null, { status: 404 }))
         )
       )
+    )
   );
+
+export const checkoutPaymentReturnGet = defineWorkspaceRoute(
+  {
+    operation: "checkout.payment-return",
+    cancellation: "continue-after-disconnect",
+    caller: "client",
+  },
+  (request, context: LocalizedCheckoutPaymentRouteContext) =>
+    handleCheckoutPaymentReturn(request, context).pipe(
+      Effect.provide(WorkspaceReservationRepository.Live)
+    )
+);

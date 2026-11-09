@@ -2,7 +2,7 @@ import { Match } from "effect";
 import type { ReservationQuote } from "@/features/checkout/reservation-quote";
 import type {
   CanonicalCoworkReservation,
-  CoworkReservationPricingInput,
+  CoworkReservationQuoteInput,
 } from "@/features/checkout/reservation-quote-cowork";
 import {
   type CanonicalMeetingRoomReservation,
@@ -13,7 +13,10 @@ import {
   getCanonicalOfficeReservation,
 } from "@/features/checkout/reservation-quote-office";
 import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
-import type { MeetingRoomReservationPricingInput } from "@/features/reservation/meeting-room-reservation";
+import type {
+  MeetingRoomReservationDetails,
+  MeetingRoomReservationPricingInput,
+} from "@/features/reservation/meeting-room-reservation";
 import type { OfficeReservationPricingInput } from "@/features/reservation/office-reservation";
 
 type AppliedDiscount = ReservationQuote["payment"]["discounts"][number];
@@ -35,7 +38,8 @@ type CanonicalReservation =
   | CanonicalOfficeReservation;
 type ReservationQuoteFingerprintReservation =
   | CoworkReservationDetails
-  | CoworkReservationPricingInput
+  | CoworkReservationQuoteInput
+  | MeetingRoomReservationDetails
   | MeetingRoomReservationPricingInput
   | OfficeReservationPricingInput;
 

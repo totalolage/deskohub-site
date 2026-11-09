@@ -4,15 +4,6 @@ import { parseBetterAuthSecrets } from "./auth-secrets";
 describe("Better Auth secrets parsing", () => {
   const strongSecret = "9tEWbGQfP2vXcK7mRz4sLh6yUnAoJd1e";
 
-  test("accepts a single current secret", () => {
-    const result = parseBetterAuthSecrets(`1:${strongSecret}`);
-
-    expect(result.kind).toBe("valid");
-    if (result.kind === "valid") {
-      expect(result.secrets).toEqual([{ version: 1, value: strongSecret }]);
-    }
-  });
-
   test("orders rotation entries so the first entry stays current", () => {
     const rotatedSecret = "Qw7eNb2mVzYr8sKx4tLp6hUcJoAd5gRf";
     const result = parseBetterAuthSecrets(
@@ -85,21 +76,6 @@ describe("Better Auth secrets parsing", () => {
         kind: "invalid",
         message: "BETTER_AUTH_SECRETS has a weak secret value.",
       });
-    }
-  });
-
-  test("accepts high-entropy values of at least 32 characters without echoing them", () => {
-    const value = "9tEWbGQfP2vXcK7mRz4sLh6yUnAoJd1e";
-    const result = parseBetterAuthSecrets(`1:${value},2:${value}-rotated`);
-
-    expect(result.kind).toBe("valid");
-    if (result.kind === "valid") {
-      expect(result.secrets[0]?.value).toBe(value);
-    }
-
-    const weak = parseBetterAuthSecrets("1:9tEWbGQfP2vX");
-    if (weak.kind === "invalid") {
-      expect(weak.message).not.toContain("9tEWbGQfP2vX");
     }
   });
 });

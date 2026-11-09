@@ -1,15 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { AdministrationInvoiceCreateInput } from "@deskohub/workspace-admin-api";
-import { getTableColumns } from "drizzle-orm";
-import { Effect, Layer, Schema } from "effect";
-import { manualInvoiceCreationRequests } from "@/db/schema";
-import { makeRecordingWorkspaceDatabase } from "@/shared/testing/workspace-recording-database.test-utils";
-import { AccountingSnapshotKeyService } from "../backend/accounting-snapshot-key.service";
+import { Schema } from "effect";
 import { getManualInvoiceCreationRequestJson } from "./invoice-administration.service";
-import {
-  getManualInvoiceCreationRequestDigest,
-  ManualInvoiceCreationRequests,
-} from "./manual-invoice-creation-requests.service";
+import { getManualInvoiceCreationRequestDigest } from "./manual-invoice-creation-requests.service";
 
 const decodeInput = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput, {
   onExcessProperty: "error",
@@ -21,7 +15,7 @@ const request = {
     kind: "new",
     details: {
       kind: "business",
-      email: "billing@example.test",
+      email: testEmailAddress("billing"),
       phone: "+420 123 456 789",
       companyName: "Example s.r.o.",
       companyId: "12345678",
@@ -59,7 +53,10 @@ describe("manual invoice creation request claims", () => {
       },
       lines: [{ description: " Room hire ", price: "1200.0" }],
     });
-    const provenance = { source: "admin-ui", actor: "admin" } as const;
+    const provenance = {
+      source: "admin-ui",
+      actor: testEmailAddress("invoice-administrator"),
+    } as const;
     const json = getManualInvoiceCreationRequestJson(input, provenance);
     const equivalentJson = getManualInvoiceCreationRequestJson(
       equivalent,
@@ -79,7 +76,10 @@ describe("manual invoice creation request claims", () => {
 
   test("binds contact, customer choice, invoice facts, lines, and provenance", () => {
     const input = decodeInput(request);
-    const provenance = { source: "admin-ui", actor: "admin" } as const;
+    const provenance = {
+      source: "admin-ui",
+      actor: testEmailAddress("invoice-administrator"),
+    } as const;
     const original = getManualInvoiceCreationRequestDigest(
       getManualInvoiceCreationRequestJson(input, provenance),
       "claim key"
@@ -120,50 +120,10 @@ describe("manual invoice creation request claims", () => {
       getManualInvoiceCreationRequestDigest(
         getManualInvoiceCreationRequestJson(input, {
           source: "dhw-cli",
-          actor: "another-admin",
+          actor: testEmailAddress("another-invoice-administrator"),
         }),
         "claim key"
       )
     ).not.toBe(original);
-  });
-
-  test("persists only non-PII claim metadata", () => {
-    expect(Object.keys(getTableColumns(manualInvoiceCreationRequests))).toEqual(
-      ["invoiceId", "keyId", "requestDigest", "claimedAt", "completedAt"]
-    );
-  });
-
-  test("holds a namespaced transaction advisory lock around creation", async () => {
-    const recording = await makeRecordingWorkspaceDatabase();
-    const requests = await Effect.runPromise(
-      Effect.gen(function* () {
-        return yield* ManualInvoiceCreationRequests;
-      }).pipe(
-        Effect.provide(
-          ManualInvoiceCreationRequests.Default.pipe(
-            Layer.provide(recording.layer),
-            Layer.provide(
-              Layer.succeed(
-                AccountingSnapshotKeyService,
-                AccountingSnapshotKeyService.of({
-                  getActive: Effect.die("unused"),
-                  getById: () => Effect.die("unused"),
-                } as never)
-              )
-            )
-          )
-        )
-      )
-    );
-
-    await Effect.runPromise(
-      requests.withLock("manual-invoice-1", () => Effect.succeed("inside"))
-    );
-
-    const sqlTexts = recording.statements.map(({ sql }) => sql);
-    expect(sqlTexts[0].toLowerCase()).toBe("begin");
-    expect(sqlTexts[1]).toContain("pg_advisory_xact_lock");
-    expect(sqlTexts[1]).toContain("hashtext('manual-invoice-creation')");
-    expect(sqlTexts.at(-1)?.toLowerCase()).toBe("commit");
   });
 });

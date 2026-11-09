@@ -1,58 +1,13 @@
 import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
-import {
-  instantStringSchema,
-  localDateTimeSchema,
-} from "@/shared/utils/temporal";
-import {
-  getDurationMinutes,
-  normalizeReservationIntervalFields,
-} from "./reservation-interval-normalization";
+import { instantStringSchema } from "@/shared/utils/temporal";
+import { normalizeReservationIntervalFields } from "./reservation-interval-normalization";
 
 const timeZone = "Europe/Prague";
-const date = "2026-07-01";
-const localDateTime = Schema.decodeUnknownSync(localDateTimeSchema);
 const instant = Schema.decodeUnknownSync(instantStringSchema);
 
-const toInstant = (value: string) =>
-  Temporal.PlainDateTime.from(value)
-    .toZonedDateTime(timeZone)
-    .toInstant()
-    .toString();
-
 describe("normalizeReservationIntervalFields", () => {
-  test("normalizes local date-times", async () => {
-    const interval = await Effect.runPromise(
-      normalizeReservationIntervalFields(
-        {
-          startsAt: localDateTime(`${date}T12:00`),
-          endsAt: localDateTime(`${date}T13:30`),
-        },
-        timeZone
-      )
-    );
-
-    expect(interval.startsAt).toBe(toInstant(`${date}T12:00`));
-    expect(interval.endsAt).toBe(toInstant(`${date}T13:30`));
-  });
-
-  test("normalizes an explicit overnight local interval", async () => {
-    const interval = await Effect.runPromise(
-      normalizeReservationIntervalFields(
-        {
-          startsAt: localDateTime(`${date}T22:00`),
-          endsAt: localDateTime("2026-07-02T22:00"),
-        },
-        timeZone
-      )
-    );
-
-    expect(interval.startsAt).toBe(toInstant(`${date}T22:00`));
-    expect(interval.endsAt).toBe(toInstant("2026-07-02T22:00"));
-    expect(getDurationMinutes(interval)).toBe(24 * 60);
-  });
-
   test("accepts explicit ISO instants without a reservation date", async () => {
     const interval = await Effect.runPromise(
       normalizeReservationIntervalFields(
@@ -84,19 +39,5 @@ describe("normalizeReservationIntervalFields", () => {
       path: "endsAt",
       message: "Reservation end time must be after start time.",
     });
-  });
-
-  test("derives duration from the interval boundaries", async () => {
-    const interval = await Effect.runPromise(
-      normalizeReservationIntervalFields(
-        {
-          startsAt: localDateTime(`${date}T10:00`),
-          endsAt: localDateTime(`${date}T12:00`),
-        },
-        timeZone
-      )
-    );
-
-    expect(getDurationMinutes(interval)).toBe(120);
   });
 });

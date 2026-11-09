@@ -4,12 +4,9 @@ import {
   DotyposService,
 } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
+import { parsePhoneNumber } from "@deskohub/phone-number";
 import { Temporal } from "@js-temporal/polyfill";
-import { Effect } from "effect";
-import {
-  workspaceMeetingRoomReservationTableTag,
-  workspaceOfficeReservationTableTag,
-} from "@/features/checkout/backend/reservation/workspace-table-selection";
+import { Effect, Option } from "effect";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -17,16 +14,21 @@ import {
   workspaceE2EError,
 } from "../errors";
 import {
+  admitSyntheticReservation,
+  recheckFixtureCapacityTime,
+  syntheticReservationDuration,
+  syntheticReservationFutureOffset,
+  syntheticReservationPastOffset,
+} from "../fixture-capacity";
+import {
   cancelDotyposReservation,
   getDotyposLayer,
 } from "../integrations/dotypos";
+import {
+  recordReservationIntent,
+  recordReservationResult,
+} from "../reservation-intents";
 import { assert, log } from "../runtime";
-
-export type SyntheticCustomerProfile = {
-  readonly customerId: DotyposCustomerId;
-  readonly email: string;
-  readonly firstName: string;
-};
 
 const syntheticBilling = {
   addressLine1: "E2E Synthetic Street 1",
@@ -48,6 +50,7 @@ export const createSyntheticCustomerProfile = (
   profile: {
     readonly email: string;
     readonly firstName: string;
+    readonly phone?: string;
   }
 ): Effect.Effect<DotyposCustomerId, WorkspaceE2EError> =>
   Effect.gen(function* () {
@@ -57,6 +60,7 @@ export const createSyntheticCustomerProfile = (
       email: profile.email,
       firstName: profile.firstName,
       lastName: "E2E",
+      phone: Option.getOrUndefined(parsePhoneNumber(profile.phone ?? "")),
     });
     assert(customer.id, "created synthetic Dotypos profile has no id");
     log("Synthetic Dotypos profile created");
@@ -70,12 +74,14 @@ export const createSyntheticCustomerProfile = (
 
 export const expireSyntheticCustomerProfile = (
   config: DatasourceConfig,
-  customerId: DotyposCustomerId
+  customerId: DotyposCustomerId,
+  options: { readonly clearTags?: boolean } = {}
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
     yield* dotypos.patchCustomer(customerId, {
       expireDate: new Date(Date.now() - 60_000).toISOString(),
+      ...(options.clearTags ? { tags: [] } : {}),
     });
     log("Synthetic Dotypos profile expired");
   }).pipe(
@@ -85,10 +91,27 @@ export const expireSyntheticCustomerProfile = (
     )
   );
 
+export const setSyntheticCustomerProfileTags = (
+  config: DatasourceConfig,
+  customerId: DotyposCustomerId,
+  tags: readonly string[]
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    yield* dotypos.patchCustomer(customerId, { tags });
+    log("Synthetic Dotypos profile tags set");
+  }).pipe(
+    Effect.provide(getDotyposLayer(config)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("set synthetic Dotypos profile tags", cause)
+    )
+  );
+
+/** The synthetic profile; none when Dotypos has no customer with the id. */
 export const readSyntheticCustomerProfile = (
   config: DatasourceConfig,
   customerId: DotyposCustomerId
-): Effect.Effect<Customer, WorkspaceE2EError> =>
+): Effect.Effect<Option.Option<Customer>, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
     return yield* dotypos.getCustomer(customerId);
@@ -99,7 +122,27 @@ export const readSyntheticCustomerProfile = (
     )
   );
 
-export const findSyntheticCustomerProfile = (
+/** The synthetic profile, failing when Dotypos has no customer with the id. */
+export const requireSyntheticCustomerProfile = (
+  config: DatasourceConfig,
+  customerId: DotyposCustomerId
+): Effect.Effect<Customer, WorkspaceE2EError> =>
+  readSyntheticCustomerProfile(config, customerId).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () =>
+          Effect.fail(
+            workspaceE2EError(
+              "read synthetic Dotypos profile failed: the customer does not exist",
+              { operation: "read synthetic Dotypos profile" }
+            )
+          ),
+        onSome: Effect.succeed,
+      })
+    )
+  );
+
+const findSyntheticCustomerProfile = (
   config: DatasourceConfig,
   email: string
 ): Effect.Effect<readonly Customer[], WorkspaceE2EError> =>
@@ -141,47 +184,49 @@ export const assertNoSyntheticCustomerProfile = (
     )
   );
 
-const futureReservationDays = 120;
-
 export type SyntheticReservation = {
   readonly endsAt: Temporal.Instant;
   readonly reservationId: DotyposReservationId | undefined;
   readonly startsAt: Temporal.Instant;
 };
 
-/**
- * Creates one far-future synthetic reservation outside the checkout
- * candidate range so account cases never contend with parallel checkout
- * availability. The reservation is journaled, cancelled, and converged by
- * finalizers.
- */
-export const createSyntheticReservation = (
+/** Creates one confirmed synthetic reservation at an exact timestamp. */
+const createSyntheticReservationAt = (
   config: DatasourceConfig,
-  input: { readonly customerId: DotyposCustomerId; readonly seats?: number }
+  input: {
+    readonly customerId: DotyposCustomerId;
+    readonly seats?: number;
+    readonly startsAtMillis: number;
+    readonly window: "past" | "future";
+  }
 ): Effect.Effect<SyntheticReservation, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
-    const tables = yield* dotypos.getTables();
-    const table = tables.find(
-      (candidate) =>
-        candidate.enabled === true &&
-        candidate.display === true &&
-        !candidate.tags?.includes(workspaceOfficeReservationTableTag) &&
-        !candidate.tags?.includes(workspaceMeetingRoomReservationTableTag)
-    );
-    if (!table?.id) {
-      return yield* workspaceE2EError(
-        "No enabled shared table is available for the synthetic account reservation",
-        {
+    const tables = yield* dotypos.getTables().pipe(
+      Effect.mapError(() =>
+        workspaceE2EError("Synthetic fixture table inventory is Unknown", {
           diagnosticCode: "dotypos_account_fixture_mutation_failed",
-          operation: "select synthetic reservation table",
-        }
-      );
-    }
-    const startsAtMillis =
-      Date.now() + futureReservationDays * 24 * 60 * 60 * 1000;
-    const startsAt = new Date(startsAtMillis);
-    const endsAt = new Date(startsAtMillis + 2 * 60 * 60 * 1000);
+          operation: "admit synthetic reservation",
+        })
+      )
+    );
+    const { table, observation } = yield* admitSyntheticReservation({
+      config,
+      tables,
+      startsAtMillis: input.startsAtMillis,
+      seats: input.seats ?? 1,
+      window: input.window,
+    });
+    const startsAt = new Date(input.startsAtMillis);
+    const endsAt = new Date(
+      input.startsAtMillis + syntheticReservationDuration
+    );
+    const intent = yield* recordReservationIntent({
+      owner: { customerId: input.customerId },
+      startDate: startsAt,
+      endDate: endsAt,
+    });
+    yield* recheckFixtureCapacityTime(observation);
     const reservation = yield* dotypos.createReservation({
       customerId: input.customerId,
       endDate: endsAt,
@@ -190,6 +235,7 @@ export const createSyntheticReservation = (
       status: "CONFIRMED",
       tableId: table.id,
     });
+    yield* recordReservationResult(intent, { reservationId: reservation.id });
     log("Synthetic Dotypos reservation created");
     return {
       endsAt: Temporal.Instant.fromEpochMilliseconds(endsAt.getTime()),
@@ -203,18 +249,36 @@ export const createSyntheticReservation = (
     )
   );
 
+/**
+ * Creates one far-future reservation outside the checkout candidate range.
+ * The account lane journals and cancels every returned provider reservation.
+ */
+export const createSyntheticReservation = (
+  config: DatasourceConfig,
+  input: { readonly customerId: DotyposCustomerId; readonly seats?: number }
+): Effect.Effect<SyntheticReservation, WorkspaceE2EError> =>
+  createSyntheticReservationAt(config, {
+    ...input,
+    window: "future",
+    startsAtMillis: Date.now() + syntheticReservationFutureOffset,
+  });
+
+/**
+ * Creates a recent past confirmed booking for the referral eligibility lane.
+ * This synthetic reservation is paired with an exact locally paid row.
+ */
+export const createSyntheticReferralHistoryReservation = (
+  config: DatasourceConfig,
+  input: { readonly customerId: DotyposCustomerId }
+): Effect.Effect<SyntheticReservation, WorkspaceE2EError> =>
+  createSyntheticReservationAt(config, {
+    ...input,
+    window: "past",
+    startsAtMillis: Date.now() + syntheticReservationPastOffset,
+  });
+
 export const cancelSyntheticReservation = (
   config: DatasourceConfig,
   reservationId: DotyposReservationId
 ): Effect.Effect<void, WorkspaceE2EError> =>
   cancelDotyposReservation(config, reservationId);
-
-export const decodeSyntheticCustomerId = (value: unknown) => {
-  assert(typeof value === "string" && value.trim() !== "", "customer id");
-  return value as DotyposCustomerId;
-};
-
-export const decodeSyntheticReservationId = (value: unknown) => {
-  assert(typeof value === "string" && value.trim() !== "", "reservation id");
-  return value as DotyposReservationId;
-};

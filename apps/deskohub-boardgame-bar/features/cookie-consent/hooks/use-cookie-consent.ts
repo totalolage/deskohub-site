@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import * as CookieConsent from "vanilla-cookieconsent";
 import type { ConsentCategory } from "../config/consent-config";
+import { acceptedConsentCategories } from "../utils/accepted-consent-categories";
+import { CONSENT_UPDATED_EVENT } from "../utils/consent-mode";
 
 interface UseCookieConsentReturn {
   acceptedCategories: ConsentCategory[];
@@ -25,10 +27,9 @@ export function useCookieConsent(): UseCookieConsentReturn {
   // Update accepted categories when consent changes
   useEffect(() => {
     const updateAcceptedCategories = () => {
-      const preferences = CookieConsent.getUserPreferences();
-      const categories = (preferences?.acceptedCategories ||
-        []) as ConsentCategory[];
-      setAcceptedCategories(categories);
+      setAcceptedCategories(
+        acceptedConsentCategories(CookieConsent.getUserPreferences())
+      );
     };
 
     // Initial update
@@ -39,10 +40,10 @@ export function useCookieConsent(): UseCookieConsentReturn {
       updateAcceptedCategories();
     };
 
-    window.addEventListener("consentUpdated", handleConsentUpdate);
+    window.addEventListener(CONSENT_UPDATED_EVENT, handleConsentUpdate);
 
     return () => {
-      window.removeEventListener("consentUpdated", handleConsentUpdate);
+      window.removeEventListener(CONSENT_UPDATED_EVENT, handleConsentUpdate);
     };
   }, []);
 
@@ -63,10 +64,9 @@ export function useCookieConsent(): UseCookieConsentReturn {
   }, []);
 
   const rejectCategory = useCallback((category: ConsentCategory) => {
-    // Get current accepted categories
-    const preferences = CookieConsent.getUserPreferences();
-    const current = (preferences?.acceptedCategories ||
-      []) as ConsentCategory[];
+    const current = acceptedConsentCategories(
+      CookieConsent.getUserPreferences()
+    );
     const filtered = current.filter((c) => c !== category);
     CookieConsent.acceptCategory(filtered);
   }, []);

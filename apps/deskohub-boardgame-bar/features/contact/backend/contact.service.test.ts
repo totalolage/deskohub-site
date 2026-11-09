@@ -38,8 +38,8 @@ const runSubmit = (
           Layer.provide(
             Layer.succeed(EmailServiceTag, {
               send,
-              sendTemplate: mock(() => Effect.succeed(sent("template"))),
-              verify: Effect.succeed(true),
+              sendBatch: () =>
+                Effect.die("Contact submissions do not send batches."),
             })
           )
         )
@@ -71,26 +71,22 @@ describe("ContactService", () => {
     expect(send).toHaveBeenCalledTimes(2);
   });
 
-  test("customer confirmation follows the typed locale; business email stays cs-CZ", async () => {
+  test("customer confirmation follows the typed locale; business email stays Czech", async () => {
     const messages: EmailMessage[] = [];
     const send = mock((message: EmailMessage) => {
       messages.push(message);
       return Effect.succeed(sent(`msg-${messages.length}`));
     });
 
-    const result = await runSubmit(send, "cs-CZ");
+    const result = await runSubmit(send, "en-US");
 
-    expect(result.locale).toBe("cs-CZ");
-    const business = messages[0];
-    const confirmation = messages[1];
-    expect(business?.subject).toBe(
+    expect(result.locale).toBe("en-US");
+    expect(messages.map((message) => message.subject)).toEqual([
       m["contact.email.businessSubject"](
         { name: input.name },
         { locale: "cs-CZ" }
-      )
-    );
-    expect(confirmation?.subject).toBe(
-      m["contact.email.confirmationSubject"](undefined, { locale: "cs-CZ" })
-    );
+      ),
+      m["contact.email.confirmationSubject"](undefined, { locale: "en-US" }),
+    ]);
   });
 });

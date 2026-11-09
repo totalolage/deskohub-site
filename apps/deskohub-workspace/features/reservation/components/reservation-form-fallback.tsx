@@ -4,18 +4,28 @@ import { cn } from "@/shared/utils";
 import { ReservationFormCard } from "./reservation-form-card";
 
 type ReservationFormFallbackProps = {
+  /** The loading skeleton, hidden from assistive technology. */
   readonly children: ReactNode;
   readonly label: string;
+  /**
+   * Static copy the form will show, above the skeleton and readable while
+   * the form loads, including without JavaScript.
+   */
+  readonly overview?: ReactNode;
 };
 
 export function ReservationFormFallback({
   children,
   label,
+  overview,
 }: ReservationFormFallbackProps) {
   return (
     <ReservationFormCard ariaLabel={label} busy>
-      <div aria-hidden="true" className="space-y-7">
-        {children}
+      <div className="space-y-7">
+        {overview}
+        <div aria-hidden="true" className="space-y-7">
+          {children}
+        </div>
       </div>
     </ReservationFormCard>
   );

@@ -1,30 +1,56 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { Effect } from "effect";
+import { MeetingRoomPageReleaseGate } from "@/features/meeting-room/backend/meeting-room-page-release-gate";
+import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 
 const isMeetingRoomPageEnabled = mock();
 const isOfficePageEnabled = mock();
-const areAccountsEnabled = mock();
+const isCustomerSignedIn = mock();
+const isCurrentAccountAdministrator = mock();
+const updateLocalePreference = mock();
 
-mock.module("@/features/account/server/account-feature-flag.server", () => ({
-  areAccountsEnabled,
+mock.module("@/features/account/actions", () => ({
+  updateLocalePreference,
+}));
+
+mock.module("@/features/account/server/customer-session.server", () => ({
+  isCustomerSignedIn,
 }));
 
 mock.module(
-  "@/features/meeting-room/backend/meeting-room-page-feature-flag",
-  () => ({ isMeetingRoomPageEnabled })
+  "@/features/administrators/server/current-account-administrator.server",
+  () => ({ isCurrentAccountAdministrator })
 );
+
 mock.module(
-  "@/features/office/backend/office-reservation-feature-flag.server",
+  "@/features/meeting-room/backend/meeting-room-page-release-gate.server",
   () => ({
-    isOfficePageEnabled,
+    isMeetingRoomPageEnabled,
+    MeetingRoomPageReleaseGateRequest:
+      MeetingRoomPageReleaseGate.fromEvaluation(
+        Effect.promise(() => isMeetingRoomPageEnabled())
+      ),
   })
 );
+const officeFeatureFlag = await import(
+  "@/features/office/backend/office-release-gate.server"
+);
+mock.module("@/features/office/backend/office-release-gate.server", () => ({
+  ...officeFeatureFlag,
+  isOfficePageEnabled,
+  OfficeReleaseGateRequest: OfficeReleaseGate.fromEvaluation(
+    Effect.promise(() => isOfficePageEnabled())
+  ),
+}));
 
 describe("getSiteHeaderConfig", () => {
   beforeEach(() => {
-    areAccountsEnabled.mockReset();
+    isCustomerSignedIn.mockReset();
+    isCurrentAccountAdministrator.mockReset();
     isMeetingRoomPageEnabled.mockReset();
     isOfficePageEnabled.mockReset();
-    areAccountsEnabled.mockResolvedValue(true);
+    isCustomerSignedIn.mockResolvedValue(false);
+    isCurrentAccountAdministrator.mockResolvedValue(false);
     isMeetingRoomPageEnabled.mockResolvedValue(false);
     isOfficePageEnabled.mockResolvedValue(false);
   });
@@ -43,46 +69,13 @@ describe("getSiteHeaderConfig", () => {
     expect(config).not.toHaveProperty("disabledMenuItems");
   });
 
-  test("includes the Meeting Room link when its release flag is enabled", async () => {
+  test("links the coworking page", async () => {
     const { getSiteHeaderConfig } = await import("./site-header-config");
-    isMeetingRoomPageEnabled.mockResolvedValue(true);
-    const config = await getSiteHeaderConfig("en-US");
-
-    expect(config.links).toContainEqual(
-      expect.objectContaining({
-        id: "meetingRoom",
-        href: "/en-US/meeting-room",
-      })
-    );
-    expect(config).not.toHaveProperty("disabledMenuItems");
-  });
-
-  test("uses compact English labels for the public navigation", async () => {
-    const { getSiteHeaderConfig } = await import("./site-header-config");
-    isMeetingRoomPageEnabled.mockResolvedValue(false);
-    const config = await getSiteHeaderConfig("en-US");
-
-    expect(config.links.map(({ label }) => label)).toEqual([
-      "Location",
-      "Photos",
-      "Team",
-      "FAQ",
-      "Contact",
-    ]);
-  });
-
-  test("uses compact Czech labels for the public navigation", async () => {
-    const { getSiteHeaderConfig } = await import("./site-header-config");
-    isMeetingRoomPageEnabled.mockResolvedValue(false);
     const config = await getSiteHeaderConfig("cs-CZ");
 
-    expect(config.links.map(({ label }) => label)).toEqual([
-      "Poloha",
-      "Fotky",
-      "Tým",
-      "FAQ",
-      "Kontakt",
-    ]);
+    expect(config.links).toContainEqual(
+      expect.objectContaining({ id: "coworking", href: "/cs-CZ/coworking" })
+    );
   });
 
   test("omits the Private Office link when its release flag is disabled", async () => {
@@ -94,35 +87,77 @@ describe("getSiteHeaderConfig", () => {
     );
   });
 
-  test("includes the Private Office link when its release flag is enabled", async () => {
+  test("points a signed-in customer's account entry at the localized account page", async () => {
     const { getSiteHeaderConfig } = await import("./site-header-config");
-    isOfficePageEnabled.mockResolvedValue(true);
-    const config = await getSiteHeaderConfig("en-US");
+    isCustomerSignedIn.mockResolvedValue(true);
 
-    expect(config.links).toContainEqual(
-      expect.objectContaining({ href: "/en-US/reservation/office" })
-    );
+    const en = await getSiteHeaderConfig("en-US");
+    expect(await en.account.href).toBe("/en-US/account");
+    expect(en.account.label).toBe("Account");
+
+    const cs = await getSiteHeaderConfig("cs-CZ");
+    expect(await cs.account.href).toBe("/cs-CZ/account");
+    expect(cs.account.label).toBe("Účet");
+    expect(isCustomerSignedIn).toHaveBeenCalledWith();
   });
 
-  test("points the account entry at the localized account page in both locales", async () => {
+  test("points an anonymous customer's account entry at the localized sign-in page", async () => {
     const { getSiteHeaderConfig } = await import("./site-header-config");
 
     const en = await getSiteHeaderConfig("en-US");
-    expect(en.accountHref).toBe("/en-US/account");
-    expect(en.accountLabel).toBe("Account");
+    expect(await en.account.href).toBe("/en-US/auth/sign-in");
+    expect(en.account.signInHref).toBe("/en-US/auth/sign-in");
 
     const cs = await getSiteHeaderConfig("cs-CZ");
-    expect(cs.accountHref).toBe("/cs-CZ/account");
-    expect(cs.accountLabel).toBe("Účet");
+    expect(await cs.account.href).toBe("/cs-CZ/auth/sign-in");
+    expect(cs.account.signInHref).toBe("/cs-CZ/auth/sign-in");
   });
 
-  test("omits the account entry when its release flag is disabled", async () => {
+  test("falls back to the sign-in page when the session check fails", async () => {
     const { getSiteHeaderConfig } = await import("./site-header-config");
-    areAccountsEnabled.mockResolvedValue(false);
+    isCustomerSignedIn.mockRejectedValue(new Error("session unavailable"));
 
     const config = await getSiteHeaderConfig("en-US");
 
-    expect(config).not.toHaveProperty("accountHref");
-    expect(config).not.toHaveProperty("accountLabel");
+    expect(await config.account.href).toBe("/en-US/auth/sign-in");
+  });
+
+  test("shows a signed-in administrator the localized admin entry", async () => {
+    const { getSiteHeaderConfig } = await import("./site-header-config");
+    isCurrentAccountAdministrator.mockResolvedValue(true);
+
+    const en = await getSiteHeaderConfig("en-US");
+    expect(await en.administrator.visible).toBe(true);
+    expect(en.administrator).toMatchObject({
+      href: "/en-US/admin",
+      label: "Admin",
+    });
+
+    const cs = await getSiteHeaderConfig("cs-CZ");
+    expect(await cs.administrator.visible).toBe(true);
+    expect(cs.administrator).toMatchObject({
+      href: "/cs-CZ/admin",
+      label: "Admin",
+    });
+  });
+
+  test("hides the admin entry from a customer who is not an administrator", async () => {
+    const { getSiteHeaderConfig } = await import("./site-header-config");
+    isCustomerSignedIn.mockResolvedValue(true);
+
+    const config = await getSiteHeaderConfig("en-US");
+
+    expect(await config.administrator.visible).toBe(false);
+  });
+
+  test("hides the admin entry when the administrator check fails", async () => {
+    const { getSiteHeaderConfig } = await import("./site-header-config");
+    isCurrentAccountAdministrator.mockRejectedValue(
+      new Error("synthetic failure")
+    );
+
+    const config = await getSiteHeaderConfig("en-US");
+
+    expect(await config.administrator.visible).toBe(false);
   });
 });

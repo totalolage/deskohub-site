@@ -1,4 +1,6 @@
+import { Option } from "effect";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { parsePlainDate } from "@/shared/utils/temporal";
 
 export const nexiOperationChannels = [
   "ECOMMERCE",
@@ -20,22 +22,14 @@ const getPaymentDateTimeBounds = (
   current: Temporal.PlainDate,
   maximumMonths?: number
 ) => {
-  const fromDate = (() => {
-    try {
-      return from
-        ? Temporal.PlainDate.from(from)
-        : current.subtract({ days: 7 });
-    } catch {
-      return current.subtract({ days: 7 });
-    }
-  })();
-  const toDate = (() => {
-    try {
-      return to ? Temporal.PlainDate.from(to) : current;
-    } catch {
-      return current;
-    }
-  })();
+  const fromDate = Option.fromNullishOr(from).pipe(
+    Option.flatMap(parsePlainDate),
+    Option.getOrElse(() => current.subtract({ days: 7 }))
+  );
+  const toDate = Option.fromNullishOr(to).pipe(
+    Option.flatMap(parsePlainDate),
+    Option.getOrElse(() => current)
+  );
   const [startDate, endDate] =
     Temporal.PlainDate.compare(fromDate, toDate) <= 0
       ? [fromDate, toDate]

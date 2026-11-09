@@ -9,23 +9,28 @@ import {
   DotyposRuntimeConfig,
   DotyposService,
   type DotyposTable,
+  type DotyposWriteFailure,
 } from "@deskohub/dotypos";
 import type {
   Customer,
   DiscountGroup,
   Reservation,
 } from "@deskohub/dotypos/generated";
-import { Effect, Layer, Option, Schema } from "effect";
+import { parsePhoneNumber } from "@deskohub/phone-number";
+import { Effect, Layer, Logger, Option, Schema } from "effect";
+import { HttpClient } from "effect/unstable/http";
 import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
 import {
   workspaceMeetingRoomReservationTableTag,
   workspaceOfficeReservationTableTag,
 } from "@/features/checkout/backend/reservation/workspace-table-selection";
+import { getOfficeReservationSeatCapacity } from "@/features/office/backend/office-reservation-capacity";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
+  workspaceE2EError,
 } from "../errors";
 import { pollUntil } from "../polling";
 import { assert, log } from "../runtime";
@@ -150,7 +155,9 @@ export const validateDotypos = (
     const result = yield* waitForConfirmedDotyposReservation(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* dotypos.getReservation(dotyposReservationId);
+        return yield* dotypos
+          .getReservation(dotyposReservationId)
+          .pipe(Effect.flatMap(Effect.fromOption));
       }).pipe(
         Effect.provide(getDotyposLayer(config)),
         Effect.mapError((cause) =>
@@ -272,7 +279,7 @@ export const validateDotypos = (
     );
   });
 
-export const waitForConfirmedDotyposReservation = <
+const waitForConfirmedDotyposReservation = <
   A extends {
     readonly reservation: {
       readonly status?: string | null;
@@ -347,30 +354,49 @@ export const waitForDotyposCancellationConvergence = <E, R>(
   }
 ): Effect.Effect<void, E | WorkspaceE2EError, R> => {
   const reservationIds = new Set(dotyposReservationIds);
+  let pendingStatuses: readonly Reservation["status"][] = [];
 
   return pollUntil(
     readReservations.pipe(
-      Effect.map((reservations) =>
-        reservations.some((reservation) => {
-          const reservationId = Option.getOrUndefined(
-            decodeDotyposReservationId(reservation.id)
-          );
-          return (
-            reservationId !== undefined &&
-            reservationIds.has(reservationId) &&
-            reservation.status !== "CANCELLED"
-          );
-        })
-          ? undefined
-          : true
-      )
+      Effect.map((reservations) => {
+        pendingStatuses = reservations
+          .filter((reservation) => {
+            const reservationId = Option.getOrUndefined(
+              decodeDotyposReservationId(reservation.id)
+            );
+            return (
+              reservationId !== undefined &&
+              reservationIds.has(reservationId) &&
+              reservation.status !== "CANCELLED"
+            );
+          })
+          .map((reservation) => reservation.status);
+        return pendingStatuses.length > 0 ? undefined : true;
+      })
     ),
     {
+      describePending: () =>
+        describePendingCancellations(pendingStatuses, reservationIds.size),
       intervalMs: options.intervalMs,
       label: "cancelled Dotypos reservations to leave active inventory",
       timeoutMs: options.timeoutMs,
     }
   ).pipe(Effect.asVoid);
+};
+
+const describePendingCancellations = (
+  statuses: readonly Reservation["status"][],
+  trackedCount: number
+) => {
+  const counts = new Map<Reservation["status"], number>();
+  for (const status of statuses) {
+    counts.set(status, (counts.get(status) ?? 0) + 1);
+  }
+  const byStatus = [...counts]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([status, count]) => `${status}: ${count}`)
+    .join(", ");
+  return `${statuses.length} of ${trackedCount} cancelled reservations still active (${byStatus})`;
 };
 
 export const reconcileStaleDotyposReservations = (
@@ -380,10 +406,26 @@ export const reconcileStaleDotyposReservations = (
 ): Effect.Effect<WorkspaceE2EStaleReservationReport, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
-    return yield* reconcileStaleWorkspaceE2EReservations(interval, apply, {
+    return yield* reconcileStaleWorkspaceE2EReservations<
+      DotyposWriteFailure | WorkspaceE2EError,
+      never
+    >(interval, apply, {
       cancelReservation: dotypos.cancelReservation,
       listActiveReservations: dotypos.listActiveReservationsOverlapping,
-      loadReservation: dotypos.getReservation,
+      loadReservation: (reservationId) =>
+        dotypos.getReservation(reservationId).pipe(
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  workspaceE2EError("Dotypos reservation does not exist", {
+                    operation: "load stale Dotypos reservation",
+                  })
+                ),
+              onSome: Effect.succeed,
+            })
+          )
+        ),
       waitForCancellationConvergence: (reservationIds) =>
         waitForDotyposCancellationConvergence(
           dotypos.listActiveReservationsOverlapping(interval),
@@ -405,14 +447,34 @@ export const readDotyposReservationStatus = (
   config: DatasourceConfig,
   dotyposReservationId: DotyposReservationId
 ) =>
-  Effect.gen(function* () {
-    const dotypos = yield* DotyposService;
-    return yield* dotypos.getReservationStatus(dotyposReservationId);
-  }).pipe(
+  Effect.flatMap(DotyposService, (dotypos) =>
+    dotypos.getReservationStatus(dotyposReservationId)
+  ).pipe(
     Effect.provide(getDotyposLayer(config)),
     Effect.mapError((cause) =>
       toWorkspaceE2EError("read Dotypos reservation status", cause)
     )
+  );
+
+export const waitForCancelledDotyposReservationStatuses = (
+  config: DatasourceConfig,
+  dotyposReservationIds: readonly DotyposReservationId[]
+) =>
+  pollUntil(
+    Effect.forEach(dotyposReservationIds, (reservationId) =>
+      readDotyposReservationStatus(config, reservationId)
+    ).pipe(
+      Effect.map((statuses) =>
+        statuses.every((status) => status === "CANCELLED")
+          ? statuses
+          : undefined
+      )
+    ),
+    {
+      intervalMs: workspaceE2EPollIntervalMs.datasource,
+      label: "exact Dotypos reservation statuses to be CANCELLED",
+      timeoutMs: config.timeouts.datasource,
+    }
   );
 
 export const prepareDotyposCustomerDiscount = (
@@ -427,7 +489,7 @@ export const prepareDotyposCustomerDiscount = (
       {
         ...customerName,
         email: data.email,
-        phone: data.phone,
+        phone: Option.getOrUndefined(parsePhoneNumber(data.phone)),
       },
       { lookupFields: ["email"] }
     );
@@ -440,7 +502,7 @@ export const prepareDotyposCustomerDiscount = (
     );
     yield* dotypos.setCustomerDiscountGroup(customerId, discountGroupId);
     yield* waitForDotyposCustomerDiscountGroup(
-      dotypos.getCustomer(customerId),
+      dotypos.getCustomer(customerId).pipe(Effect.flatMap(Effect.fromOption)),
       discountGroupId,
       {
         intervalMs: workspaceE2EPollIntervalMs.datasource,
@@ -464,7 +526,7 @@ export const changeDotyposCustomerDiscount = (
     const dotypos = yield* DotyposService;
     yield* dotypos.setCustomerDiscountGroup(customerId, discountGroupId);
     yield* waitForDotyposCustomerDiscountGroup(
-      dotypos.getCustomer(customerId),
+      dotypos.getCustomer(customerId).pipe(Effect.flatMap(Effect.fromOption)),
       discountGroupId,
       {
         intervalMs: workspaceE2EPollIntervalMs.datasource,
@@ -479,7 +541,7 @@ export const changeDotyposCustomerDiscount = (
     )
   );
 
-export const waitForDotyposCustomerDiscountGroup = <
+const waitForDotyposCustomerDiscountGroup = <
   A extends { readonly _discountGroupId?: string | null },
   E,
   R,
@@ -534,7 +596,38 @@ export const loadDotyposCapacityInventory = (
     )
   );
 
+/**
+ * The office seat capacity the reservation page offers: the seats of the one
+ * assignable office table, read the way the page's capacity loader reads them.
+ */
+export const loadDotyposOfficeSeatCapacity = (
+  config: DatasourceConfig
+): Effect.Effect<number, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    return yield* getOfficeReservationSeatCapacity(yield* dotypos.getTables());
+  }).pipe(
+    Effect.provide(getDotyposLayer(config)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("load Dotypos office seat capacity", cause)
+    )
+  );
+
+/**
+ * Provides the Dotypos service to an E2E operation without its Effect logs or
+ * HTTP client spans. The service annotates its logs with customer, table, and
+ * reservation IDs for production diagnostics, and its request URLs carry the
+ * same IDs, while E2E logs land in CI output and E2E spans in shared traces.
+ * The runner reports Dotypos work through its own redacted messages instead.
+ */
 export const getDotyposLayer = (config: DatasourceConfig) =>
+  Layer.mergeAll(
+    dotyposServiceLayer(config),
+    Logger.layer([]),
+    Layer.succeed(HttpClient.TracerDisabledWhen, () => true)
+  );
+
+const dotyposServiceLayer = (config: DatasourceConfig) =>
   DotyposService.Live.pipe(
     Layer.provide(
       Layer.succeed(DotyposRuntimeConfig, {
@@ -566,7 +659,7 @@ const dotyposDateCovers = (
 const parseDotyposTimestamp = (value: string) =>
   /^\d+$/.test(value) ? Number(value) : new Date(value).getTime();
 
-const parseDotyposInstant = (value: string) => {
+export const parseDotyposInstant = (value: string) => {
   const epochMilliseconds = parseDotyposTimestamp(value);
   assert(Number.isSafeInteger(epochMilliseconds), "invalid Dotypos timestamp");
   return Temporal.Instant.fromEpochMilliseconds(epochMilliseconds);

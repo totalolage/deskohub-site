@@ -5,11 +5,12 @@ import {
   beforeEach,
   expect,
   mock,
-  spyOn,
+  setSystemTime,
   test,
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
 import type { ComponentProps } from "react";
+import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -49,40 +50,65 @@ beforeEach(() => {
 afterEach(cleanup);
 afterAll(unregisterWorkspaceComponentTestEnv);
 
-test("formats the current Prague year with the request locale", async () => {
-  const formatter = spyOn(Intl, "DateTimeFormat");
+test("advances the copyright year at the Prague new year", async () => {
+  // 23:30 UTC on 31 December is already 00:30 on 1 January in Prague.
+  setSystemTime(new Date("2026-12-31T23:30:00Z"));
   const { PublicSiteFooter } = await import("./public-site-footer");
-  const year = new Intl.DateTimeFormat("cs-CZ", {
-    timeZone: workspaceSiteConstants.location.timeZone,
-    year: "numeric",
-  }).format();
+
+  try {
+    const view = render(await PublicSiteFooter());
+
+    expect(
+      view.getByText(
+        m.footerCopyright(
+          {
+            companyName: workspaceSiteConstants.brand.legalName,
+            year: "2027",
+          },
+          { locale: "cs-CZ" }
+        )
+      )
+    ).toBeTruthy();
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("routes every internal footer page link through a locale-prefixed guarded link", async () => {
+  const { PublicSiteFooter } = await import("./public-site-footer");
+  const view = render(await PublicSiteFooter());
+  const internalPageHrefs = Array.from(
+    view.container.querySelectorAll('a[href^="/"]:not([download])'),
+    (link) => link.getAttribute("href")
+  );
+
+  expect(internalPageHrefs.length).toBeGreaterThan(0);
+  expect<readonly (string | null)[]>(guardedLinkHrefs).toEqual(
+    internalPageHrefs
+  );
+  for (const href of guardedLinkHrefs) {
+    expect(href === "/cs-CZ" || href.startsWith("/cs-CZ/")).toBe(true);
+  }
+});
+
+test("links the prices and opening hours page", async () => {
+  const { PublicSiteFooter } = await import("./public-site-footer");
   const view = render(await PublicSiteFooter());
 
   expect(
-    view.getByText(
-      `© ${year} ${workspaceSiteConstants.brand.legalName}. Všechna práva vyhrazena.`
-    )
-  ).toBeTruthy();
-  expect(formatter).toHaveBeenCalledWith("cs-CZ", {
-    timeZone: workspaceSiteConstants.location.timeZone,
-    year: "numeric",
-  });
-  formatter.mockRestore();
+    view
+      .getByRole("link", {
+        name: m.footerPricingLink({}, { locale: "cs-CZ" }),
+      })
+      .getAttribute("href")
+  ).toBe("/cs-CZ/pricing");
 });
 
-test("uses guarded links for the localized internal footer destinations", async () => {
+test("links the Android app page for crawlers and visitors without scripts", async () => {
   const { PublicSiteFooter } = await import("./public-site-footer");
-  render(await PublicSiteFooter());
+  const view = render(await PublicSiteFooter());
 
-  expect(guardedLinkHrefs).toEqual([
-    "/cs-CZ/privacy-policy",
-    "/cs-CZ/marketing-communications",
-    "/cs-CZ/terms-and-conditions",
-    "/cs-CZ/operating-rules",
-    "/cs-CZ/cookie-policy",
-    "/cs-CZ/account/legal",
-    "/cs-CZ",
-    "/cs-CZ/contact",
-    "/cs-CZ/reservation/cowork",
-  ]);
+  expect(
+    view.getAllByRole("link").map((link) => link.getAttribute("href"))
+  ).toContain("/cs-CZ/android");
 });

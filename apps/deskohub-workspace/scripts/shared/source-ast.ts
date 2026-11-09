@@ -80,10 +80,6 @@ export const containsNode = (outer: AnyNode, inner: AnyNode): boolean =>
   outer.range[0] <= inner.range[0] &&
   inner.range[1] <= outer.range[1];
 
-/** Negative when `left` starts before `right`. */
-export const positionDelta = (left: AnyNode, right: AnyNode): number =>
-  (hasRange(left) ? left.range[0] : 0) - (hasRange(right) ? right.range[0] : 0);
-
 /** Call expressions whose callee resolves to the bare identifier `name`. */
 export const callsNamed = (
   root: AnyNode,
@@ -110,22 +106,6 @@ export const methodCallsNamed = (
     node.callee.property.name === property
       ? [node]
       : []
-  );
-
-/**
- * Call expressions invoked as `<objectName>.<property>()`, matching the
- * `<owner>.<operation>` call shape without touching any source text.
- */
-export const memberCallsNamed = (
-  root: AnyNode,
-  objectName: string,
-  property: string
-): readonly TSESTree.CallExpression[] =>
-  methodCallsNamed(root, property).filter(
-    (call) =>
-      call.callee.type === "MemberExpression" &&
-      call.callee.object.type === "Identifier" &&
-      call.callee.object.name === objectName
   );
 
 /** Every distinct identifier or member-property name referenced in the tree. */
@@ -155,56 +135,6 @@ export const stringLiterals = (
     if (node.type !== "Literal") return [];
     return isString(node.value) ? [{ node, value: node.value }] : [];
   });
-
-/** Module specifiers of every static import declaration. */
-export const importSpecifiers = (root: AnyNode): readonly string[] =>
-  nodesOf(root).flatMap((node) =>
-    node.type === "ImportDeclaration" ? [node.source.value as string] : []
-  );
-
-/** Names exported by `export { ... }` / `export const ...` declarations. */
-export const exportedNames = (root: TSESTree.Program): readonly string[] => {
-  const names: string[] = [];
-  for (const statement of root.body) {
-    if (statement.type === "ExportAllDeclaration") names.push("*");
-    if (statement.type !== "ExportNamedDeclaration") continue;
-    const declaration = statement.declaration;
-    if (declaration?.type === "VariableDeclaration") {
-      for (const declarator of declaration.declarations) {
-        if (declarator.id.type === "Identifier") names.push(declarator.id.name);
-      }
-    } else if (
-      declaration?.type === "FunctionDeclaration" ||
-      declaration?.type === "ClassDeclaration" ||
-      declaration?.type === "TSEnumDeclaration" ||
-      declaration?.type === "TSInterfaceDeclaration" ||
-      declaration?.type === "TSTypeAliasDeclaration"
-    ) {
-      if (declaration.id) names.push(declaration.id.name);
-    }
-    for (const specifier of statement.specifiers) {
-      if (specifier.local.type === "Identifier")
-        names.push(specifier.local.name);
-    }
-  }
-  return names;
-};
-
-/** Property assignments of an object literal, keyed by property name. */
-export const propertyAssignments = (
-  object: TSESTree.ObjectExpression
-): ReadonlyMap<string, TSESTree.Property> => {
-  const entries = new Map<string, TSESTree.Property>();
-  for (const property of object.properties) {
-    if (property.type !== "Property") continue;
-    if (property.key.type === "Identifier") {
-      entries.set(property.key.name, property);
-    } else if (property.key.type === "Literal") {
-      entries.set(String(property.key.value), property);
-    }
-  }
-  return entries;
-};
 
 /**
  * The initializer node of a top-level (possibly exported) `const <name> =
@@ -238,42 +168,3 @@ export const topLevelConstInitializer = (
   }
   return undefined;
 };
-
-/** The first call argument when it is a string literal. */
-export const firstStringArgument = (
-  call: TSESTree.CallExpression
-): string | undefined => {
-  const argument = call.arguments[0];
-  return argument !== undefined &&
-    argument.type === "Literal" &&
-    isString(argument.value)
-    ? argument.value
-    : undefined;
-};
-
-/** Every string literal found among a call's direct arguments. */
-export const stringArguments = (
-  call: TSESTree.CallExpression
-): readonly string[] =>
-  call.arguments.flatMap((argument) => {
-    if (argument.type !== "Literal") return [];
-    return isString(argument.value) ? [argument.value] : [];
-  });
-
-/**
- * Awaited `await name(...)` calls inside `scope`, ordered by source position.
- */
-export const awaitedCallsInOrder = (
-  scope: AnyNode,
-  name: string
-): readonly TSESTree.CallExpression[] =>
-  nodesOf(scope)
-    .flatMap((node) =>
-      node.type === "AwaitExpression" && node.argument.type === "CallExpression"
-        ? [node.argument]
-        : []
-    )
-    .filter(
-      (call) => call.callee.type === "Identifier" && call.callee.name === name
-    )
-    .sort(positionDelta);

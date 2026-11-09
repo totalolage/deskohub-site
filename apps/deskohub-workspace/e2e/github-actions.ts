@@ -1,8 +1,5 @@
 import { isWorkspaceE2EDiagnosticCode } from "./errors";
-import type {
-  WorkspaceE2EFailureDiagnostic,
-  WorkspaceE2EFailureReporter,
-} from "./suite";
+import type { WorkspaceE2EFailureDiagnostic } from "./services/telemetry";
 
 const safeDiagnosticIdentifier = (value: string) =>
   /^[a-z0-9-]+$/.test(value) ? value : "invalid";
@@ -22,8 +19,8 @@ export const formatWorkspaceE2EFailureAnnotation = (
     `failure_kind=${diagnostic.failureKind}`,
   ].join(",")}\n`;
 
-export const writeWorkspaceE2EFailureAnnotation: WorkspaceE2EFailureReporter = (
-  diagnostic
+export const writeWorkspaceE2EFailureAnnotation = (
+  diagnostic: WorkspaceE2EFailureDiagnostic
 ) => {
   process.stdout.write(formatWorkspaceE2EFailureAnnotation(diagnostic));
 };

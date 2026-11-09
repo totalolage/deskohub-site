@@ -1,76 +1,109 @@
+import "@/shared/polyfills/temporal";
+
 import { expect, test } from "bun:test";
-import { fileURLToPath } from "node:url";
+import { Effect } from "effect";
+import { makeRecordingWorkspaceDatabase } from "@/shared/testing/workspace-recording-database.test-utils";
+import { getWorkspaceProductByTier } from "../../features/checkout/product-catalog";
+import { calendarDiscountExpectation } from "../cases/discounts";
+import { E2EDatabase } from "./database.service";
 import {
-  callsNamed,
-  identifierNames,
-  methodCallsNamed,
-  nodesOf,
-  parseTrackedSource,
-  propertyAssignments,
-  stringLiterals,
-} from "../../scripts/shared/source-ast";
+  discountCodeFixtures,
+  seedDiscountE2EFixtures,
+} from "./discount-fixtures";
 
-const parseFixtureModule = () =>
-  parseTrackedSource(
-    fileURLToPath(new URL("./discount-fixtures.ts", import.meta.url))
+test("voucher credit covers two one-day Open Space checkouts after the Calendar sale", () => {
+  const openSpacePrice = getWorkspaceProductByTier("open-space").price.value;
+  const calendarSaleBasisPoints =
+    calendarDiscountExpectation.adjustment.basisPoints;
+
+  const perDateAfterSale =
+    openSpacePrice -
+    Math.floor((openSpacePrice * calendarSaleBasisPoints) / 10_000);
+  expect(perDateAfterSale).toBe(
+    Math.floor((openSpacePrice * (10_000 - calendarSaleBasisPoints)) / 10_000)
   );
 
-test("expires a code beyond cross-host clock skew", () => {
-  const { ast } = parseFixtureModule();
-
-  // The pinned expiry is one fixed instant, never a wall-clock subtraction.
-  const fixedInstants = methodCallsNamed(ast, "from").filter(
-    (call) =>
-      call.callee.type === "MemberExpression" &&
-      call.callee.object.type === "MemberExpression" &&
-      call.callee.object.object.type === "Identifier" &&
-      call.callee.object.object.name === "Temporal" &&
-      stringLiterals(call).some(
-        (literal) => literal.value === "2000-01-01T00:00:00Z"
-      )
+  const expectedTwoDateTotal = perDateAfterSale * 2;
+  expect(discountCodeFixtures.voucherReuse.creditPerRun.value).toBe(
+    expectedTwoDateTotal
   );
-  expect(fixedInstants).toHaveLength(1);
-  const nowSubtractions = callsNamed(ast, "subtract").filter((call) =>
-    identifierNames(call).has("instant")
-  );
-  expect(nowSubtractions).toHaveLength(0);
 });
 
-test("toggles only the transient Calendar target idempotently", () => {
-  const { ast } = parseFixtureModule();
+test("seeds every fixture table with one statement in one transaction", async () => {
+  const recording = await makeRecordingWorkspaceDatabase();
+  const voucherReuseUsedValue = 500;
+  recording.setRows([
+    [],
+    [],
+    [],
+    // An earlier run still holds two active capacity-one uses.
+    [[2]],
+    // Earlier runs still hold part of the reuse voucher's credit.
+    [[voucherReuseUsedValue, discountCodeFixtures.voucherReuse.id]],
+    [],
+  ]);
 
-  expect(methodCallsNamed(ast, "onConflictDoNothing").length).toBeGreaterThan(
-    0
-  );
-  expect(
-    callsNamed(ast, "eq").filter(
-      (call) =>
-        call.arguments[0]?.type === "MemberExpression" &&
-        !call.arguments[0].computed &&
-        call.arguments[0].object.type === "Identifier" &&
-        call.arguments[0].object.name === "discountProductTargets" &&
-        call.arguments[0].property.type === "Identifier" &&
-        call.arguments[0].property.name === "productTarget" &&
-        call.arguments[1]?.type === "Identifier" &&
-        call.arguments[1].name === "product"
-    ).length
-  ).toBeGreaterThan(0);
-  // The toggle must not run a CTE delete.
-  expect(
-    stringLiterals(ast).some((literal) =>
-      literal.value.includes("with removed as (")
+  await Effect.runPromise(
+    seedDiscountE2EFixtures.pipe(
+      Effect.provideService(E2EDatabase, E2EDatabase.of({ db: recording.db }))
     )
-  ).toBe(false);
+  );
+
+  expect(recording.statements.map(({ sql }) => statementShape(sql))).toEqual([
+    "begin",
+    "insert into discounts",
+    "delete from discount_targets",
+    "insert into discount_targets",
+    "select from discount_code_redemptions",
+    "select from voucher_redemptions",
+    "insert into promotion_codes",
+    "insert into discount_codes",
+    "delete from promotion_code_customers",
+    "insert into promotion_code_customers",
+    "insert into vouchers",
+    "commit",
+  ]);
+
+  const discountCodeParams = statementParams(recording, "discount_codes");
+  const capacityOneOffset = discountCodeParams.indexOf(
+    discountCodeFixtures.capacityOne.id
+  );
+  // id, code, enabled, valid_from, valid_until, promotion_code_id,
+  // discount_id, max_uses
+  expect(discountCodeParams[capacityOneOffset + 7]).toBe(3);
+
+  const voucherParams = statementParams(recording, "vouchers");
+  const issuedValue = (id: string) =>
+    // id, promotion_code_id, issued_amount_value
+    voucherParams[voucherParams.indexOf(id) + 2];
+  expect(issuedValue(discountCodeFixtures.voucherReuse.id)).toBe(
+    voucherReuseUsedValue + discountCodeFixtures.voucherReuse.creditPerRun.value
+  );
+  expect(issuedValue(discountCodeFixtures.voucherFull.id)).toBe(
+    discountCodeFixtures.voucherFull.creditPerRun.value
+  );
+  expect(issuedValue(discountCodeFixtures.accountReferralVoucher.id)).toBe(
+    discountCodeFixtures.accountReferralVoucher.creditPerRun.value
+  );
 });
 
-test("targets the zero-total fixture at the meeting-room family", () => {
-  const { ast } = parseFixtureModule();
+const statementShape = (sql: string) => {
+  const normalized = sql.replaceAll('"', "").toLowerCase();
+  const verb = normalized.split(" ")[0] ?? "";
+  if (verb === "begin" || verb === "commit") return verb;
+  const table = normalized.match(/(?:into|from) ([a-z_]+)/)?.[1];
+  return verb === "select"
+    ? `select from ${table}`
+    : `${verb} ${verb === "insert" ? "into" : "from"} ${table}`;
+};
 
-  const kindValues = nodesOf(ast).flatMap((node) => {
-    if (node.type !== "ObjectExpression") return [];
-    const kind = propertyAssignments(node).get("kind");
-    if (kind?.value.type !== "Literal") return [];
-    return [kind.value.value];
-  });
-  expect(kindValues).toContain("meeting-room");
-});
+const statementParams = (
+  recording: Awaited<ReturnType<typeof makeRecordingWorkspaceDatabase>>,
+  table: string
+) => {
+  const statement = recording.statements.find(
+    ({ sql }) => statementShape(sql) === `insert into ${table}`
+  );
+  if (!statement) throw new Error(`No insert into ${table}`);
+  return statement.params;
+};

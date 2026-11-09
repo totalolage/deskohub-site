@@ -1,12 +1,13 @@
 import { Plus } from "lucide-react";
+import type { ReactNode } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import type {
   AdministrationCustomerActivity,
   AdministrationCustomerMarketingConsent,
   AdministrationCustomerReservationActivity,
   AdministrationCustomerTransaction,
-  AdministrationMoney,
 } from "@/features/administration/administration.service";
+import { administrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationFact,
   AdministrationNoticeBanner,
@@ -15,25 +16,37 @@ import {
   CustomerReservationActivity,
   EmptyState,
   formatAdministrationDateTime,
-  formatAdministrationMoney,
   ReservationTable,
 } from "@/features/administration/components";
 import { groupCustomerReservations } from "@/features/administration/customer-activity";
+import { m } from "@/features/administration/i18n";
+import { getAdministrationReservationProductTitle } from "@/features/administration/reservation-product";
+import type { Locale } from "@/features/i18n";
+import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
+import { formatMoney, type Money } from "@/shared/money/money";
+import { formatCount } from "@/shared/utils/number";
 import { VoucherEditor } from "./admin-tables";
+import { toClaimHistoryItem } from "./claim-history-item";
 import {
   AddCodeCustomerForm,
   AddVoucherCustomerForm,
-  AdminMutationButton,
   CustomerDiscountGroupForm,
 } from "./customer-admin-client";
 import {
   ClaimHistoryTable,
-  CustomerCodeEligibilityTable,
+  CustomerPromotionCodeTable,
   CustomerTransactionHistoryTable,
-  CustomerVoucherEligibilityTable,
 } from "./customer-admin-tables";
+import { formatDiscountAdminCustomerName } from "./customer-display-name";
+import {
+  countCustomerAvailableCodes,
+  customerClaimHistory,
+  customerPromotionCodeValues,
+  customerVisiblePromotionCodes,
+  formatCustomerDiscountGroup,
+} from "./customer-profile-display";
 import type {
   AdminCustomerProfile,
   AdminDiscountCode,
@@ -43,6 +56,9 @@ import type {
   AdminVoucherClaim,
   AdminVoucherDetail,
 } from "./discount-administration.service";
+import { PromotionAudienceSection } from "./promotion-audience";
+import { PromotionCustomerPicker } from "./promotion-customers";
+import { formatDiscountUsageLimit } from "./usage-limit";
 
 type Notice = {
   readonly message: string;
@@ -51,9 +67,11 @@ type Notice = {
 
 export function CodeAdministrationDetailPage({
   detail,
+  locale,
   notice,
 }: {
   readonly detail: AdminDiscountCodeDetail;
+  readonly locale: Locale;
   readonly notice?: Notice;
 }) {
   const { code } = detail;
@@ -63,103 +81,85 @@ export function CodeAdministrationDetailPage({
       <AdministrationNoticeBanner notice={notice} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/admin/codes">← Back to codes</Link>
+          <Link href={administrationHref("/[locale]/admin/codes")}>
+            {m.discountsBackToCodes({}, { locale })}
+          </Link>
         </Button>
         <Button asChild size="sm" variant="secondary">
-          <Link href="/admin/codes">Edit or delete code</Link>
+          <Link href={administrationHref("/[locale]/admin/codes")}>
+            {m.discountsEditOrDeleteCode({}, { locale })}
+          </Link>
         </Button>
       </div>
 
-      <CodeSummary code={code} discountLabel={detail.discountLabel} />
+      <CodeSummary
+        code={code}
+        discountLabel={detail.discountLabels[locale]}
+        locale={locale}
+      />
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <section className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-navy-blue/10 px-5 py-4">
-            <div>
-              <h2 className="font-semibold">Audience</h2>
-              <p className="mt-1 text-sm text-navy-blue/65">
-                {detail.customers.length === 0
-                  ? "Any Dotypos customer can use this code."
-                  : `${detail.customers.length} customers can use this code.`}
-              </p>
-            </div>
-            {detail.customers.length > 0 && (
-              <AdminMutationButton
-                confirmation="Make this code unrestricted? Every Dotypos customer will be eligible."
-                mutation={{
-                  kind: "make-code-unrestricted",
-                  codeId: code.id,
-                }}
-              >
-                Make unrestricted
-              </AdminMutationButton>
-            )}
-          </div>
-          {detail.customers.length === 0 ? (
-            <EmptyState message="Unrestricted audience" />
-          ) : (
-            <ul className="divide-y divide-navy-blue/10">
-              {detail.customers.map(({ customer, customerId }) => (
-                <li
-                  className="flex flex-wrap items-center justify-between gap-4 px-5 py-4"
-                  key={customerId}
-                >
-                  <div>
-                    <Link
-                      className="font-semibold underline decoration-navy-blue/25 underline-offset-4"
-                      href={`/admin/customers/${customerId}`}
-                    >
-                      {customer?.displayName ?? "Details unavailable"}
-                    </Link>
-                    <p className="mt-1 text-sm text-navy-blue/65">
-                      {customer
-                        ? [customer.email, customer.phone]
-                            .filter(Boolean)
-                            .join(" · ") || "No contact details"
-                        : customerId}
-                    </p>
-                  </div>
-                  {detail.customers.length > 1 ? (
-                    <AdminMutationButton
-                      confirmation={`Remove ${customer?.displayName ?? customerId} from this code audience?`}
-                      mutation={{
-                        kind: "remove-code-customer",
-                        codeId: code.id,
-                        customerId,
-                      }}
-                    >
-                      Remove
-                    </AdminMutationButton>
-                  ) : (
-                    <span className="text-xs text-navy-blue/65">
-                      Use Make unrestricted
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <PromotionAudienceSection
+          customers={detail.customers}
+          locale={locale}
+          makeUnrestricted={{
+            confirmation: m.discountsCodeMakeUnrestrictedConfirmation(
+              {},
+              { locale }
+            ),
+            mutation: { kind: "make-code-unrestricted", codeId: code.id },
+          }}
+          removeCustomer={(customerId, customerName) => ({
+            confirmation: m.discountsCodeRemoveCustomerConfirmation(
+              { customerName },
+              { locale }
+            ),
+            mutation: {
+              kind: "remove-code-customer",
+              codeId: code.id,
+              customerId,
+            },
+          })}
+          summary={
+            detail.customers.length === 0
+              ? m.discountsCodeAudienceUnrestricted({}, { locale })
+              : m.discountsCodeAudienceCount(
+                  { count: detail.customers.length },
+                  { locale }
+                )
+          }
+        />
 
         <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-5">
-          <h2 className="font-semibold">Add customer</h2>
+          <h2 className="font-semibold">
+            {m.discountsAddCustomer({}, { locale })}
+          </h2>
           <p className="mb-4 mt-1 text-sm leading-5 text-navy-blue/65">
-            Adding the first customer changes an unrestricted code into a
-            restricted code.
+            {m.discountsCodeAddCustomerDescription({}, { locale })}
           </p>
-          <AddCodeCustomerForm codeId={code.id} />
-          <Link
-            className="mt-4 inline-block text-sm font-semibold underline underline-offset-4"
-            href="/admin/customers"
-          >
-            Find a Dotypos customer
-          </Link>
+          <PromotionCustomerPicker
+            audienceCustomerIds={code.audienceCustomerIds}
+            code={code.code}
+            deleteRedirect={administrationHref("/[locale]/admin/codes")}
+            promotion={{ kind: "discount-code", id: code.id }}
+          />
+          <AddCustomerByIdDisclosure locale={locale}>
+            <AddCodeCustomerForm codeId={code.id} />
+          </AddCustomerByIdDisclosure>
         </aside>
       </div>
 
       <section className="mt-5">
-        <h2 className="mb-3 font-semibold">Claim history</h2>
-        <ClaimHistory claims={detail.claims} resource="code-customer" />
+        <h2 className="mb-3 font-semibold">
+          {m.discountsClaimHistoryTitle({}, { locale })}
+        </h2>
+        <ClaimHistory
+          ariaLabel={m.discountsCodeClaimHistoryLabel({}, { locale })}
+          claims={detail.claims}
+          emptyMessage={m.discountsCodeClaimsEmpty({}, { locale })}
+          locale={locale}
+          subject="customer"
+        />
       </section>
     </AdministrationPage>
   );
@@ -167,9 +167,11 @@ export function CodeAdministrationDetailPage({
 
 export function VoucherAdministrationDetailPage({
   detail,
+  locale,
   notice,
 }: {
   readonly detail: AdminVoucherDetail;
+  readonly locale: Locale;
   readonly notice?: Notice;
 }) {
   const { voucher } = detail;
@@ -179,17 +181,21 @@ export function VoucherAdministrationDetailPage({
       <AdministrationNoticeBanner notice={notice} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/admin/vouchers">← Back to vouchers</Link>
+          <Link href={administrationHref("/[locale]/admin/vouchers")}>
+            {m.discountsBackToVouchers({}, { locale })}
+          </Link>
         </Button>
       </div>
 
-      <VoucherSummary voucher={voucher} />
+      <VoucherSummary locale={locale} voucher={voucher} />
 
       <section className="mt-5 rounded-xl border border-navy-blue/10 bg-white p-5">
-        <h2 className="mb-4 font-semibold">Configuration</h2>
+        <h2 className="mb-4 font-semibold">
+          {m.discountsConfigurationTitle({}, { locale })}
+        </h2>
         <VoucherEditor
           deletable
-          deleteRedirect="/admin/vouchers"
+          deleteRedirect={administrationHref("/[locale]/admin/vouchers")}
           voucher={{
             ...voucher,
             validFrom: voucher.validFrom?.toString() ?? null,
@@ -199,319 +205,240 @@ export function VoucherAdministrationDetailPage({
       </section>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <section className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-navy-blue/10 px-5 py-4">
-            <div>
-              <h2 className="font-semibold">Audience</h2>
-              <p className="mt-1 text-sm text-navy-blue/65">
-                {detail.customers.length === 0
-                  ? "Any Dotypos customer can use this voucher."
-                  : `${detail.customers.length} customers can use this voucher.`}
-              </p>
-            </div>
-            {detail.customers.length > 0 && (
-              <AdminMutationButton
-                confirmation="Make this voucher unrestricted? Every Dotypos customer will be eligible."
-                mutation={{
-                  kind: "make-voucher-unrestricted",
-                  voucherId: voucher.id,
-                }}
-              >
-                Make unrestricted
-              </AdminMutationButton>
-            )}
-          </div>
-          {detail.customers.length === 0 ? (
-            <EmptyState message="Unrestricted audience" />
-          ) : (
-            <ul className="divide-y divide-navy-blue/10">
-              {detail.customers.map(({ customer, customerId }) => (
-                <li
-                  className="flex flex-wrap items-center justify-between gap-4 px-5 py-4"
-                  key={customerId}
-                >
-                  <div>
-                    <Link
-                      className="font-semibold underline decoration-navy-blue/25 underline-offset-4"
-                      href={`/admin/customers/${customerId}`}
-                    >
-                      {customer?.displayName ?? "Details unavailable"}
-                    </Link>
-                    <p className="mt-1 text-sm text-navy-blue/65">
-                      {customer
-                        ? [customer.email, customer.phone]
-                            .filter(Boolean)
-                            .join(" · ") || "No contact details"
-                        : customerId}
-                    </p>
-                  </div>
-                  {detail.customers.length > 1 ? (
-                    <AdminMutationButton
-                      confirmation={`Remove ${customer?.displayName ?? customerId} from this voucher audience?`}
-                      mutation={{
-                        kind: "remove-voucher-customer",
-                        voucherId: voucher.id,
-                        customerId,
-                      }}
-                    >
-                      Remove
-                    </AdminMutationButton>
-                  ) : (
-                    <span className="text-xs text-navy-blue/65">
-                      Use Make unrestricted
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <PromotionAudienceSection
+          customers={detail.customers}
+          locale={locale}
+          makeUnrestricted={{
+            confirmation: m.discountsVoucherMakeUnrestrictedConfirmation(
+              {},
+              { locale }
+            ),
+            mutation: {
+              kind: "make-voucher-unrestricted",
+              voucherId: voucher.id,
+            },
+          }}
+          removeCustomer={(customerId, customerName) => ({
+            confirmation: m.discountsVoucherRemoveCustomerConfirmation(
+              { customerName },
+              { locale }
+            ),
+            mutation: {
+              kind: "remove-voucher-customer",
+              voucherId: voucher.id,
+              customerId,
+            },
+          })}
+          summary={
+            detail.customers.length === 0
+              ? m.discountsVoucherAudienceUnrestricted({}, { locale })
+              : m.discountsVoucherAudienceCount(
+                  { count: detail.customers.length },
+                  { locale }
+                )
+          }
+        />
 
         <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-5">
-          <h2 className="font-semibold">Add customer</h2>
+          <h2 className="font-semibold">
+            {m.discountsAddCustomer({}, { locale })}
+          </h2>
           <p className="mb-4 mt-1 text-sm leading-5 text-navy-blue/65">
-            Adding the first customer changes an unrestricted voucher into a
-            restricted voucher.
+            {m.discountsVoucherAddCustomerDescription({}, { locale })}
           </p>
-          <AddVoucherCustomerForm voucherId={voucher.id} />
+          <PromotionCustomerPicker
+            audienceCustomerIds={voucher.audienceCustomerIds}
+            code={voucher.code}
+            deleteRedirect={administrationHref("/[locale]/admin/vouchers")}
+            promotion={{ kind: "voucher", id: voucher.id }}
+          />
+          <AddCustomerByIdDisclosure locale={locale}>
+            <AddVoucherCustomerForm voucherId={voucher.id} />
+          </AddCustomerByIdDisclosure>
         </aside>
       </div>
 
       <section className="mt-5">
-        <h2 className="mb-3 font-semibold">Claim history</h2>
-        <ClaimHistory claims={detail.claims} resource="voucher-customer" />
+        <h2 className="mb-3 font-semibold">
+          {m.discountsClaimHistoryTitle({}, { locale })}
+        </h2>
+        <ClaimHistory
+          ariaLabel={m.discountsVoucherClaimHistoryLabel({}, { locale })}
+          claims={detail.claims}
+          emptyMessage={m.discountsVoucherClaimsEmpty({}, { locale })}
+          locale={locale}
+          subject="customer"
+        />
       </section>
     </AdministrationPage>
   );
 }
 
+/**
+ * Adding a customer by Dotypos ID, for a customer the name and email search
+ * cannot single out.
+ */
+function AddCustomerByIdDisclosure({
+  children,
+  locale,
+}: {
+  readonly children: ReactNode;
+  readonly locale: Locale;
+}) {
+  return (
+    <details className="mt-5 border-t border-navy-blue/10 pt-4">
+      <summary className="cursor-pointer text-sm font-semibold">
+        {m.discountsAddCustomerById({}, { locale })}
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
+  );
+}
+
 export function CustomerAdministrationDetailPage({
   activity,
+  locale,
   notice,
   profile,
   reservationActivity,
 }: {
   readonly activity: AdministrationCustomerActivity;
+  readonly locale: Locale;
   readonly notice?: Notice;
   readonly profile: AdminCustomerProfile;
   readonly reservationActivity: AdministrationCustomerReservationActivity;
 }) {
-  const currentGroup = profile.discountGroups.find(
-    ({ id }) => id === profile.customer.discountGroupId
+  const customerName = formatDiscountAdminCustomerName(
+    profile.customer,
+    locale
   );
-  let currentGroupLabel = "None";
-  if (currentGroup) {
-    currentGroupLabel = `${currentGroup.name} (${currentGroup.basisPoints / 100}%)`;
-  } else if (profile.customer.discountGroupId) {
-    currentGroupLabel = `Unavailable (${profile.customer.discountGroupId})`;
-  }
-  const visibleCodes = profile.codes
-    .filter((code) => code.eligible || code.audienceSize === 0)
-    .toSorted(
-      (left, right) =>
-        Number(right.enabled) - Number(left.enabled) ||
-        Number(right.eligible) - Number(left.eligible) ||
-        left.code.localeCompare(right.code)
-    );
-  const targetedCodeCount = profile.codes.filter(
-    (code) => code.enabled && code.eligible && code.audienceSize > 0
-  ).length;
-  const universalCodeCount = profile.codes.filter(
-    (code) => code.enabled && code.audienceSize === 0
-  ).length;
-  const visibleVouchers = profile.vouchers
-    .filter((voucher) => voucher.eligible || voucher.audienceSize === 0)
-    .toSorted((left, right) => left.code.localeCompare(right.code));
-  const reservationGroups = groupCustomerReservations(activity.reservations);
+  const visiblePromotionCodes = customerVisiblePromotionCodes(profile, locale);
+  const availableCodes = countCustomerAvailableCodes(profile.codes);
   return (
     <AdministrationPage>
-      <AdministrationPageHeader title={profile.customer.displayName} />
+      <AdministrationPageHeader title={customerName} />
       <AdministrationNoticeBanner notice={notice} />
 
-      <CustomerReservationActivity activity={reservationActivity} />
+      <CustomerReservationActivity
+        activity={reservationActivity}
+        locale={locale}
+      />
 
       <div className="mb-7 grid gap-5 lg:grid-cols-2">
         <CustomerStats
           activity={activity}
-          availableCodes={`${targetedCodeCount} (+ ${universalCodeCount})`}
+          availableCodes={`${formatCount(availableCodes.targeted, locale)} (+ ${formatCount(availableCodes.universal, locale)})`}
+          locale={locale}
         />
-        <CustomerConsents consent={activity.marketingConsent} />
+        <CustomerConsents consent={activity.marketingConsent} locale={locale} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-7">
-          <section>
-            <h2 className="mb-3 text-xl">Reservations</h2>
-            {activity.reservationHistoryTruncated && (
-              <p className="mb-3 text-sm text-navy-blue/65">
-                Showing the 24 most recently updated reservations.{" "}
-                <Link
-                  className="font-semibold underline underline-offset-4"
-                  href={`/admin/reservations?customerId=${encodeURIComponent(profile.customer.id)}`}
-                >
-                  View all reservations
-                </Link>
-              </p>
-            )}
-            <div className="space-y-4">
-              <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-                <summary className="cursor-pointer px-5 py-4 font-semibold">
-                  Past reservations ({reservationGroups.past.length})
-                </summary>
-                <div className="border-t border-navy-blue/10 p-3">
-                  <ReservationTable
-                    emptyMessage="This customer has no past reservations."
-                    reservations={reservationGroups.past}
-                    showCustomer={false}
-                  />
-                </div>
-              </details>
-
-              <section aria-labelledby="current-reservations-heading">
-                <h3
-                  className="mb-3 font-semibold"
-                  id="current-reservations-heading"
-                >
-                  Current and future reservations
-                </h3>
-                <ReservationTable
-                  emptyMessage={
-                    activity.reservationHistoryTruncated
-                      ? "No current or future reservations are present in this recent activity view."
-                      : "This customer has no current or future reservations."
-                  }
-                  reservations={reservationGroups.currentAndFuture}
-                  showCustomer={false}
-                />
-              </section>
-
-              {reservationGroups.unavailable.length > 0 && (
-                <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-                  <summary className="cursor-pointer px-5 py-4 font-semibold">
-                    Reservations with unavailable dates (
-                    {reservationGroups.unavailable.length})
-                  </summary>
-                  <div className="border-t border-navy-blue/10 p-3">
-                    <ReservationTable
-                      reservations={reservationGroups.unavailable}
-                      showCustomer={false}
-                    />
-                  </div>
-                </details>
-              )}
-            </div>
-          </section>
+          <CustomerReservations
+            activity={activity}
+            customerId={profile.customer.id}
+            locale={locale}
+          />
 
           <section>
-            <h2 className="mb-3 text-xl">Transactions</h2>
+            <h2 className="mb-3 text-xl">
+              {m.discountsCustomerTransactionsTitle({}, { locale })}
+            </h2>
             {activity.transactionHistoryTruncated && (
               <p className="mb-3 text-sm text-navy-blue/65">
-                Showing the 50 latest transactions.
+                {m.discountsCustomerTransactionsTruncated({}, { locale })}
               </p>
             )}
-            <CustomerTransactionHistory transactions={activity.transactions} />
+            <CustomerTransactionHistory
+              locale={locale}
+              transactions={activity.transactions}
+            />
           </section>
 
           <section>
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-              <h2 className="text-xl">Discount codes</h2>
-              <Button asChild size="sm">
-                <Link
-                  href={`/admin/customers/${profile.customer.id}/create-code`}
-                >
-                  <Plus aria-hidden className="size-4" />
-                  Create code
-                </Link>
-              </Button>
+              <h2 className="text-xl">
+                {m.discountsCustomerCodesTitle({}, { locale })}
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                <Button asChild size="sm">
+                  <Link
+                    href={administrationHref(
+                      "/[locale]/admin/customers/[customerId]/create-code",
+                      { customerId: profile.customer.id }
+                    )}
+                  >
+                    <Plus aria-hidden className="size-4" />
+                    {m.discountsCodeCreateSubmit({}, { locale })}
+                  </Link>
+                </Button>
+                <Button asChild size="sm">
+                  <Link
+                    href={administrationHref(
+                      "/[locale]/admin/customers/[customerId]/create-voucher",
+                      { customerId: profile.customer.id }
+                    )}
+                  >
+                    <Plus aria-hidden className="size-4" />
+                    {m.discountsVoucherCreateSubmit({}, { locale })}
+                  </Link>
+                </Button>
+              </div>
             </div>
-            {visibleCodes.length === 0 ? (
-              <EmptyState message="No discount codes are available to this customer." />
+            {visiblePromotionCodes.length === 0 ? (
+              <EmptyState
+                message={m.discountsCustomerCodesEmpty({}, { locale })}
+              />
             ) : (
-              <CustomerCodeEligibilityTable
-                codes={visibleCodes.map(
-                  ({
-                    audienceSize,
-                    code,
-                    discountAdjustment,
-                    discountLabel,
-                    eligible,
-                    enabled,
-                    id,
-                  }) => ({
-                    audienceSize,
-                    code,
-                    discountAdjustment,
-                    discountLabel,
-                    eligible,
-                    enabled,
-                    id,
-                  })
-                )}
+              <CustomerPromotionCodeTable
                 customerId={profile.customer.id}
-                customerName={profile.customer.displayName}
+                customerName={customerName}
+                items={visiblePromotionCodes}
               />
             )}
           </section>
 
           <section>
-            <h2 className="mb-3 text-xl">Discount code history</h2>
-            <ClaimHistory claims={profile.claims} resource="code" />
-          </section>
-
-          <section>
-            <h2 className="mb-3 text-xl">Vouchers</h2>
-            {visibleVouchers.length === 0 ? (
-              <EmptyState message="No vouchers are available to this customer." />
-            ) : (
-              <CustomerVoucherEligibilityTable
-                vouchers={visibleVouchers.map(
-                  ({
-                    audienceSize,
-                    code,
-                    eligible,
-                    id,
-                    issuedCredit,
-                    remainingCredit,
-                  }) => ({
-                    audienceSize,
-                    code,
-                    eligible,
-                    id,
-                    issuedCredit,
-                    remainingCredit,
-                  })
-                )}
-              />
-            )}
-          </section>
-
-          <section>
-            <h2 className="mb-3 text-xl">Voucher history</h2>
-            <ClaimHistory claims={profile.voucherClaims} resource="voucher" />
+            <h2 className="mb-3 text-xl">
+              {m.discountsClaimHistoryTitle({}, { locale })}
+            </h2>
+            <ClaimHistory
+              ariaLabel={m.discountsCustomerClaimHistoryLabel({}, { locale })}
+              claims={customerClaimHistory(profile)}
+              emptyMessage={m.discountsCustomerClaimsEmpty({}, { locale })}
+              locale={locale}
+              promotionCodes={customerPromotionCodeValues(profile)}
+              subject="promotion-code"
+            />
           </section>
         </div>
 
         <aside className="space-y-5 xl:sticky xl:top-24 xl:h-fit">
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
-            <h2 className="font-semibold">Contact</h2>
+            <h2 className="font-semibold">
+              {m.discountsCustomerContactTitle({}, { locale })}
+            </h2>
             <dl className="mt-4 grid gap-4 text-sm">
               <AdministrationFact
-                label="Email"
+                label={m.discountsCustomerEmailLabel({}, { locale })}
                 value={profile.customer.email ?? "—"}
               />
               <AdministrationFact
-                label="Phone"
+                label={m.discountsCustomerPhoneLabel({}, { locale })}
                 value={profile.customer.phone ?? "—"}
               />
               <AdministrationFact
-                label="Current group"
-                value={currentGroupLabel}
+                label={m.discountsCustomerCurrentGroupLabel({}, { locale })}
+                value={formatCustomerDiscountGroup(profile, locale)}
               />
             </dl>
           </section>
 
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
-            <h2 className="mb-4 font-semibold">Discount group</h2>
+            <h2 className="mb-4 font-semibold">
+              {m.discountsCustomerDiscountGroupTitle({}, { locale })}
+            </h2>
             <CustomerDiscountGroupForm
               currentGroupId={profile.customer.discountGroupId}
               customerId={profile.customer.id}
@@ -521,11 +448,11 @@ export function CustomerAdministrationDetailPage({
 
           <details className="rounded-xl border border-navy-blue/10 bg-white">
             <summary className="cursor-pointer px-5 py-4 text-sm font-semibold">
-              Reference
+              {m.discountsCustomerReferenceTitle({}, { locale })}
             </summary>
             <div className="border-t border-navy-blue/10 px-5 py-4">
               <AdministrationFact
-                label="Customer ID"
+                label={m.discountsCustomerIdLabel({}, { locale })}
                 value={profile.customer.id}
                 valueClassName="break-all font-mono text-xs"
               />
@@ -537,34 +464,142 @@ export function CustomerAdministrationDetailPage({
   );
 }
 
+function CustomerReservations({
+  activity,
+  customerId,
+  locale,
+}: {
+  readonly activity: AdministrationCustomerActivity;
+  readonly customerId: DotyposCustomerId;
+  readonly locale: Locale;
+}) {
+  const reservationGroups = groupCustomerReservations(activity.reservations);
+  return (
+    <section>
+      <h2 className="mb-3 text-xl">
+        {m.discountsCustomerReservationsTitle({}, { locale })}
+      </h2>
+      {activity.reservationHistoryTruncated && (
+        <p className="mb-3 text-sm text-navy-blue/65">
+          {m.discountsCustomerReservationsTruncated({}, { locale })}{" "}
+          <Link
+            className="font-semibold underline underline-offset-4"
+            href={`${administrationHref(
+              "/[locale]/admin/reservations"
+            )}?customerId=${encodeURIComponent(customerId)}`}
+          >
+            {m.discountsCustomerViewAllReservations({}, { locale })}
+          </Link>
+        </p>
+      )}
+      <div className="space-y-4">
+        <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
+          <summary className="cursor-pointer px-5 py-4 font-semibold">
+            {m.discountsCustomerPastReservations(
+              {
+                count: formatCount(reservationGroups.past.length, locale),
+              },
+              { locale }
+            )}
+          </summary>
+          <div className="border-t border-navy-blue/10 p-3">
+            <ReservationTable
+              emptyMessage={m.discountsCustomerPastReservationsEmpty(
+                {},
+                { locale }
+              )}
+              reservations={reservationGroups.past}
+              showCustomer={false}
+            />
+          </div>
+        </details>
+
+        <section aria-labelledby="current-reservations-heading">
+          <h3 className="mb-3 font-semibold" id="current-reservations-heading">
+            {m.discountsCustomerCurrentReservations({}, { locale })}
+          </h3>
+          <ReservationTable
+            emptyMessage={
+              activity.reservationHistoryTruncated
+                ? m.discountsCustomerCurrentReservationsTruncatedEmpty(
+                    {},
+                    { locale }
+                  )
+                : m.discountsCustomerCurrentReservationsEmpty({}, { locale })
+            }
+            reservations={reservationGroups.currentAndFuture}
+            showCustomer={false}
+          />
+        </section>
+
+        {reservationGroups.unavailable.length > 0 && (
+          <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
+            <summary className="cursor-pointer px-5 py-4 font-semibold">
+              {m.discountsCustomerUnavailableDateReservations(
+                {
+                  count: formatCount(
+                    reservationGroups.unavailable.length,
+                    locale
+                  ),
+                },
+                { locale }
+              )}
+            </summary>
+            <div className="border-t border-navy-blue/10 p-3">
+              <ReservationTable
+                reservations={reservationGroups.unavailable}
+                showCustomer={false}
+              />
+            </div>
+          </details>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function CustomerStats({
   activity,
   availableCodes,
+  locale,
 }: {
   readonly activity: AdministrationCustomerActivity;
   readonly availableCodes: string;
+  readonly locale: Locale;
 }) {
   return (
     <section>
-      <h2 className="mb-3 text-xl">Stats</h2>
+      <h2 className="mb-3 text-xl">
+        {m.discountsCustomerStatsTitle({}, { locale })}
+      </h2>
       <dl className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
         <CustomerStat
-          label="Reservations"
-          value={activity.stats.reservationCount}
+          label={m.discountsCustomerStatReservations({}, { locale })}
+          value={formatCount(activity.stats.reservationCount, locale)}
         />
         <CustomerStat
-          label="Total revenue"
-          value={formatMoneyTotals(activity.stats.revenue)}
+          label={m.discountsCustomerStatRevenue({}, { locale })}
+          value={formatMoneyTotals(activity.stats.revenue, locale)}
         />
         <CustomerStat
-          label="Favourite product"
-          value={activity.stats.favoriteProduct ?? "—"}
+          label={m.discountsCustomerStatFavoriteProduct({}, { locale })}
+          value={
+            activity.stats.favoriteReservationProduct
+              ? getAdministrationReservationProductTitle(
+                  activity.stats.favoriteReservationProduct,
+                  locale
+                )
+              : "—"
+          }
         />
         <CustomerStat
-          label="Discount savings"
-          value={formatMoneyTotals(activity.stats.discountSavings)}
+          label={m.discountsCustomerStatDiscountSavings({}, { locale })}
+          value={formatMoneyTotals(activity.stats.discountSavings, locale)}
         />
-        <CustomerStat label="Available codes" value={availableCodes} />
+        <CustomerStat
+          label={m.discountsCustomerStatAvailableCodes({}, { locale })}
+          value={availableCodes}
+        />
       </dl>
     </section>
   );
@@ -587,14 +622,18 @@ function CustomerStat({
 
 function CustomerConsents({
   consent,
+  locale,
 }: {
   readonly consent: AdministrationCustomerMarketingConsent | null;
+  readonly locale: Locale;
 }) {
   return (
     <section>
-      <h2 className="mb-3 text-xl">Consents</h2>
+      <h2 className="mb-3 text-xl">
+        {m.discountsCustomerConsentsTitle({}, { locale })}
+      </h2>
       <dl className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-        <CustomerConsent consent={consent} />
+        <CustomerConsent consent={consent} locale={locale} />
       </dl>
     </section>
   );
@@ -602,31 +641,50 @@ function CustomerConsents({
 
 function CustomerConsent({
   consent,
+  locale,
 }: {
   readonly consent: AdministrationCustomerMarketingConsent | null;
+  readonly locale: Locale;
 }) {
   const withdrawnAt = consent?.withdrawnAt;
   return (
     <div className="grid gap-1 border-b border-navy-blue/8 px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-      <dt className="font-medium">Marketing communications</dt>
+      <dt className="font-medium">
+        {m.discountsCustomerConsentMarketing({}, { locale })}
+      </dt>
       <dd className="text-sm text-navy-blue/65 sm:text-right">
         {consent ? (
           <>
             <StatusBadge tone={withdrawnAt ? "attention" : "positive"}>
-              {withdrawnAt ? "Withdrawn" : "Granted"}
+              {withdrawnAt
+                ? m.discountsCustomerConsentWithdrawn({}, { locale })
+                : m.discountsCustomerConsentGranted({}, { locale })}
             </StatusBadge>{" "}
-            · {formatAdministrationDateTime(withdrawnAt ?? consent.grantedAt)}
+            ·{" "}
+            {formatAdministrationDateTime(
+              withdrawnAt ?? consent.grantedAt,
+              locale
+            )}
             <span className="mt-0.5 block break-all text-xs">
               {withdrawnAt && (
                 <>
-                  Granted {formatAdministrationDateTime(consent.grantedAt)} ·{" "}
+                  {m.discountsCustomerConsentGrantedAt(
+                    {
+                      date: formatAdministrationDateTime(
+                        consent.grantedAt,
+                        locale
+                      ),
+                    },
+                    { locale }
+                  )}{" "}
+                  ·{" "}
                 </>
               )}
               {consent.locale} · {consent.documentHash}
             </span>
           </>
         ) : (
-          "Not granted"
+          m.discountsCustomerConsentNotGranted({}, { locale })
         )}
       </dd>
     </div>
@@ -634,91 +692,139 @@ function CustomerConsent({
 }
 
 function CustomerTransactionHistory({
+  locale,
   transactions,
 }: {
+  readonly locale: Locale;
   readonly transactions: readonly AdministrationCustomerTransaction[];
 }) {
   if (transactions.length === 0) {
-    return <EmptyState message="This customer has no payments." />;
+    return (
+      <EmptyState
+        message={m.discountsCustomerTransactionsEmpty({}, { locale })}
+      />
+    );
   }
-  return <CustomerTransactionHistoryTable transactions={transactions} />;
+  return (
+    <CustomerTransactionHistoryTable
+      transactions={transactions.map((transaction) => ({
+        ...transaction,
+        updatedAtLabel: formatAdministrationDateTime(
+          transaction.attempt.updatedAt,
+          locale
+        ),
+      }))}
+    />
+  );
 }
 
-const formatMoneyTotals = (totals: readonly AdministrationMoney[]) =>
-  totals.length > 0 ? totals.map(formatAdministrationMoney).join(" + ") : "—";
+const formatMoneyTotals = (totals: readonly Money[], locale: Locale) =>
+  totals.length > 0
+    ? totals.map((total) => formatMoney(total, locale)).join(" + ")
+    : "—";
+
+const getSummaryStatus = (enabled: boolean, locale: Locale) =>
+  enabled
+    ? m.discountsStatusEnabled({}, { locale })
+    : m.discountsStatusDisabled({}, { locale });
+
+const getSummaryAudience = (audienceSize: number, locale: Locale) =>
+  audienceSize === 0
+    ? m.discountsAudienceUnrestricted({}, { locale })
+    : m.discountsAudienceCustomerCount({ count: audienceSize }, { locale });
 
 function CodeSummary({
   code,
   discountLabel,
+  locale,
 }: {
   readonly code: AdminDiscountCode;
   readonly discountLabel: string;
+  readonly locale: Locale;
 }) {
-  const benefit = discountLabel;
   return (
     <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-2 xl:grid-cols-4">
-      <SummaryFact label="Benefit" value={benefit} />
       <SummaryFact
-        label="Status"
-        value={code.enabled ? "Enabled" : "Disabled"}
-      />
-      <SummaryFact label="Valid from" value={formatInstant(code.validFrom)} />
-      <SummaryFact label="Valid until" value={formatInstant(code.validUntil)} />
-      <SummaryFact
-        label="Audience"
-        value={
-          code.audienceSize === 0
-            ? "Unrestricted"
-            : `${code.audienceSize} customers`
-        }
-      />
-      <SummaryFact label="Reserved" value={code.reservedUses} />
-      <SummaryFact label="Redeemed" value={code.redeemedUses} />
-      <SummaryFact
-        label="Remaining globally"
-        value={code.remainingUses ?? "Unlimited"}
+        label={m.discountsColumnBenefit({}, { locale })}
+        value={discountLabel}
       />
       <SummaryFact
-        label="Uses per customer"
-        value={code.maxUsesPerCustomer ?? "Unlimited"}
+        label={m.discountsColumnStatus({}, { locale })}
+        value={getSummaryStatus(code.enabled, locale)}
+      />
+      <SummaryFact
+        label={m.discountsValidFromLabel({}, { locale })}
+        value={formatOptionalInstant(code.validFrom, locale)}
+      />
+      <SummaryFact
+        label={m.discountsValidUntilLabel({}, { locale })}
+        value={formatOptionalInstant(code.validUntil, locale)}
+      />
+      <SummaryFact
+        label={m.discountsColumnAudience({}, { locale })}
+        value={getSummaryAudience(code.audienceSize, locale)}
+      />
+      <SummaryFact
+        label={m.discountsColumnReserved({}, { locale })}
+        value={formatCount(code.reservedUses, locale)}
+      />
+      <SummaryFact
+        label={m.discountsColumnRedeemed({}, { locale })}
+        value={formatCount(code.redeemedUses, locale)}
+      />
+      <SummaryFact
+        label={m.discountsColumnRemainingGlobally({}, { locale })}
+        value={formatDiscountUsageLimit(code.remainingUses, locale)}
+      />
+      <SummaryFact
+        label={m.discountsColumnUsesPerCustomer({}, { locale })}
+        value={formatDiscountUsageLimit(code.maxUsesPerCustomer, locale)}
       />
     </dl>
   );
 }
 
-function VoucherSummary({ voucher }: { readonly voucher: AdminVoucher }) {
+function VoucherSummary({
+  locale,
+  voucher,
+}: {
+  readonly locale: Locale;
+  readonly voucher: AdminVoucher;
+}) {
   return (
     <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-2 xl:grid-cols-4">
       <SummaryFact
-        label="Issued"
-        value={formatAdministrationMoney(voucher.issuedCredit)}
+        label={m.discountsColumnIssued({}, { locale })}
+        value={formatMoney(voucher.issuedCredit, locale)}
       />
       <SummaryFact
-        label="Remaining"
-        value={formatAdministrationMoney(voucher.remainingCredit)}
+        label={m.discountsColumnRemaining({}, { locale })}
+        value={formatMoney(voucher.remainingCredit, locale)}
       />
       <SummaryFact
-        label="Status"
-        value={voucher.enabled ? "Enabled" : "Disabled"}
+        label={m.discountsColumnStatus({}, { locale })}
+        value={getSummaryStatus(voucher.enabled, locale)}
       />
       <SummaryFact
-        label="Audience"
-        value={
-          voucher.audienceSize === 0
-            ? "Unrestricted"
-            : `${voucher.audienceSize} customers`
-        }
+        label={m.discountsColumnAudience({}, { locale })}
+        value={getSummaryAudience(voucher.audienceSize, locale)}
       />
       <SummaryFact
-        label="Valid from"
-        value={formatInstant(voucher.validFrom)}
+        label={m.discountsValidFromLabel({}, { locale })}
+        value={formatOptionalInstant(voucher.validFrom, locale)}
       />
       <SummaryFact
-        label="Valid until"
-        value={formatInstant(voucher.validUntil)}
+        label={m.discountsValidUntilLabel({}, { locale })}
+        value={formatOptionalInstant(voucher.validUntil, locale)}
       />
-      <SummaryFact label="Reserved" value={voucher.reservedUses} />
-      <SummaryFact label="Redeemed" value={voucher.redeemedUses} />
+      <SummaryFact
+        label={m.discountsColumnReserved({}, { locale })}
+        value={formatCount(voucher.reservedUses, locale)}
+      />
+      <SummaryFact
+        label={m.discountsColumnRedeemed({}, { locale })}
+        value={formatCount(voucher.redeemedUses, locale)}
+      />
     </dl>
   );
 }
@@ -741,45 +847,37 @@ function SummaryFact({
 }
 
 function ClaimHistory({
+  ariaLabel,
   claims,
-  resource,
+  emptyMessage,
+  locale,
+  promotionCodes,
+  subject,
 }: {
+  readonly ariaLabel: string;
   readonly claims: readonly (AdminDiscountCodeClaim | AdminVoucherClaim)[];
-  readonly resource: "code" | "code-customer" | "voucher" | "voucher-customer";
+  readonly emptyMessage: string;
+  readonly locale: Locale;
+  /** Code values keyed by `discount-code:<id>` or `voucher:<id>`. */
+  readonly promotionCodes?: ReadonlyMap<string, string>;
+  readonly subject: "customer" | "promotion-code";
 }) {
-  const isVoucher = resource.startsWith("voucher");
-  const subjectLabel = isVoucher ? "Voucher" : "Discount code";
   if (claims.length === 0) {
-    return (
-      <EmptyState message={`No ${subjectLabel.toLowerCase()} claims yet.`} />
-    );
+    return <EmptyState message={emptyMessage} />;
   }
 
   return (
     <ClaimHistoryTable
-      claims={claims.map((claim) => ({
-        id: claim.id,
-        appliedAmount: claim.appliedAmount,
-        ...("codeId" in claim
-          ? { codeId: claim.codeId }
-          : { voucherId: claim.voucherId }),
-        dotyposCustomerId: claim.dotyposCustomerId,
-        redeemedAt: claim.redeemedAt?.toString() ?? null,
-        releasedAt: claim.releasedAt?.toString() ?? null,
-        releaseReason: claim.releaseReason,
-        reservedAt: claim.reservedAt.toString(),
-        state: claim.state,
-        workspaceReservationId: claim.workspaceReservationId,
-      }))}
-      resource={resource}
+      ariaLabel={ariaLabel}
+      claims={claims.map((claim) =>
+        toClaimHistoryItem(claim, locale, promotionCodes)
+      )}
+      subject={subject}
     />
   );
 }
 
-const formatInstant = (instant: Temporal.Instant | null) =>
-  instant
-    ? instant.toZonedDateTimeISO("Europe/Prague").toLocaleString("en-GB", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : "—";
+const formatOptionalInstant = (
+  instant: Temporal.Instant | null,
+  locale: Locale
+) => (instant ? formatAdministrationDateTime(instant.toString(), locale) : "—");

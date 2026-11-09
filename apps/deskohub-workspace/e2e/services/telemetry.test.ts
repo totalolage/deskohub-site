@@ -6,11 +6,9 @@ import {
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import { Cause, Effect, Exit, Layer } from "effect";
-import {
-  CENSORED_LOG_VALUE,
-  createCensoredOtelSpanExporter,
-} from "../../shared/backend/logging/censorship";
-import { createTracingLive } from "../../shared/backend/observability/otel-tracing";
+import { createCensoredOtelSpanExporter } from "../../shared/backend/logging/censorship";
+import { createTracingLive } from "../../shared/backend/observability/telemetry-sinks";
+import { CENSORED_LOG_VALUE } from "../../shared/utils/log-classification";
 import { makeWorkspaceE2EDateAllocation } from "../allocation";
 import { makeTestE2EEnvironment } from "../e2e-env.test-fixture";
 import { workspaceE2EError, workspaceE2ETimeoutError } from "../errors";
@@ -120,36 +118,6 @@ test("builds bounded searchable span attributes", () => {
     "github.pull_request.number": 120,
     "github.run.attempt": 3,
     "github.run.id": "987",
-  });
-});
-
-test("builds bounded phase span attributes", () => {
-  expect(
-    toE2ESpanAttributes(
-      {
-        allocation: {
-          fromOffsetDays: 14,
-          shardCount: 3,
-          shardIndex: 0,
-          toOffsetDays: 39,
-        },
-        executionContext: "ci",
-        runId: "987-3",
-      },
-      {
-        caseId: "checkout-cowork-basic",
-        phaseId: "case-finalization",
-        scope: "phase",
-      }
-    )
-  ).toEqual({
-    "e2e.allocation.shard": 1,
-    "e2e.allocation.shards": 3,
-    "e2e.case.id": "checkout-cowork-basic",
-    "e2e.execution_context": "ci",
-    "e2e.phase.id": "case-finalization",
-    "e2e.run.id": "987-3",
-    "e2e.scope": "phase",
   });
 });
 

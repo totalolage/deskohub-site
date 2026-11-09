@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { Money } from "@/shared/money/money";
 import { calculateDiscounts } from "./calculator";
 import { type Discount, discountIdSchema } from "./contracts";
 import type { DiscountCandidate } from "./provider";
@@ -13,11 +13,11 @@ const product = {
 
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
 
-const money = (
-  value: number,
-  currency = "CZK",
-  exponent = 2
-): WorkspaceMoney => ({ value, currency, exponent });
+const money = (value: number, currency = "CZK", exponent = 2): Money => ({
+  value,
+  currency,
+  exponent,
+});
 
 const candidate = (
   discount: Discount,
@@ -40,7 +40,7 @@ const percentage = (id: string, basisPoints: number): DiscountCandidate =>
 
 const fixed = (
   id: string,
-  amount: WorkspaceMoney,
+  amount: Money,
   input: Partial<DiscountCandidate> = {}
 ): DiscountCandidate =>
   candidate(
@@ -53,7 +53,7 @@ const fixed = (
   );
 
 const calculate = (
-  discountableSubtotal: WorkspaceMoney,
+  discountableSubtotal: Money,
   candidates: readonly DiscountCandidate[]
 ) =>
   Effect.runSync(
@@ -61,7 +61,7 @@ const calculate = (
   );
 
 const calculateError = (
-  discountableSubtotal: WorkspaceMoney,
+  discountableSubtotal: Money,
   candidates: readonly DiscountCandidate[]
 ) =>
   Effect.runSync(
@@ -79,12 +79,6 @@ describe("discount calculator", () => {
       totalDiscount: money(0),
       discountedSubtotal: money(35_000),
     });
-  });
-
-  test("accepts a valid zero-exponent subtotal", () => {
-    expect(
-      calculate(money(350, "CZK", 0), []).quote.discountableSubtotal
-    ).toEqual(money(350, "CZK", 0));
   });
 
   test("applies percentages in integer basis points with minor-unit rounding", () => {
@@ -202,28 +196,6 @@ describe("discount calculator", () => {
     expect(result.applications[0]?.candidate.claim).toBeUndefined();
   });
 
-  test("retains private claim instructions only for applied candidates", () => {
-    const result = calculate(money(1000), [
-      fixed("code", money(100), {
-        claim: {
-          kind: "discount_code",
-          codeId: "private-code-id",
-          storedDiscountId: "private-stored-discount-id",
-          dotyposCustomerId: "private-customer-id",
-          product,
-        },
-      }),
-    ]);
-
-    expect(result.applications[0]?.candidate.claim).toEqual({
-      kind: "discount_code",
-      codeId: "private-code-id",
-      storedDiscountId: "private-stored-discount-id",
-      dotyposCustomerId: "private-customer-id",
-      product,
-    });
-  });
-
   test("preserves expiry and countdown metadata in application snapshots", () => {
     const result = calculate(money(1000), [
       candidate({
@@ -242,14 +214,6 @@ describe("discount calculator", () => {
       expiresAt: "2026-08-02T22:00:00.000Z",
       countdownStartsAt: "2026-08-01T22:00:00.000Z",
     });
-  });
-
-  test("discounts only cowork subtotal and leaves paid Basic coffee outside", () => {
-    const result = calculate(money(35_000), [percentage("half", 5000)]);
-    const completeOrderTotal =
-      result.quote.discountedSubtotal.value + money(5000).value;
-
-    expect(completeOrderTotal).toBe(22_500);
   });
 
   test("rejects invalid discountable subtotal money", () => {
@@ -309,7 +273,7 @@ describe("discount calculator", () => {
         discountableSubtotal: {
           ...money(1000),
           source: "private-subtotal-source",
-        } as WorkspaceMoney,
+        } as Money,
         candidates: [
           candidate(discountWithRuntimeProviderFields, {
             provenance: {

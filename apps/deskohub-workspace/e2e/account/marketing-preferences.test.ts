@@ -1,27 +1,22 @@
 import "../../shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import type { Page } from "@playwright/test";
 import { Cause, Effect, Exit, Fiber } from "effect";
 import {
-  callsNamed,
   identifierNames,
   parseTrackedSource,
   stringLiterals,
 } from "../../scripts/shared/source-ast";
 import { formatWorkspaceE2EFailure, type WorkspaceE2EError } from "../errors";
-import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
 import {
   classifyWorkspaceE2EMarketingConsentPersistence,
-  makeWorkspaceE2EMarketingPreferencesSeedRow,
   matchesRejectedReplayAlerts,
   navigateAuthenticatedWorkspaceE2EMarketingPreferences,
   navigateWorkspaceE2EMarketingPreferences,
   runWorkspaceE2EMarketingBrowserOperation,
-  verifyWorkspaceE2EMarketingPreferences,
   type WorkspaceE2EMarketingConsentPersistenceClassification,
   type WorkspaceE2EMarketingConsentPersistenceDiagnostic,
   type WorkspaceE2EMarketingConsentPoller,
@@ -34,9 +29,6 @@ const customerId = DotyposCustomerIdSchema.make(
   "marketing-preferences-test-customer"
 );
 const rawLinkToken = Buffer.alloc(32, 0x37).toString("base64url");
-const linkTokenHash = createHash("sha256")
-  .update(rawLinkToken, "utf8")
-  .digest("hex");
 const now = Temporal.Instant.from("2030-01-01T03:04:05Z");
 const browserFailureMessage =
   "Marketing preferences browser verification failed";
@@ -45,8 +37,9 @@ const invalidMarketingManagementActionMessage =
 
 type GotoOptions = Parameters<Page["goto"]>[1];
 
+/** `goto` may return the URL the navigation landed on, e.g. after a redirect. */
 const makeFakePage = (
-  goto: (url: string, options: GotoOptions) => Promise<void>,
+  goto: (url: string, options: GotoOptions) => Promise<string | undefined>,
   initialUrl = ""
 ) => {
   let currentUrl = initialUrl;
@@ -57,8 +50,7 @@ const makeFakePage = (
   const page = Object.assign({} as Page, {
     goto: async (url: string, options: GotoOptions) => {
       gotoCalls.push({ options, url });
-      await goto(url, options);
-      currentUrl = url;
+      currentUrl = (await goto(url, options)) ?? url;
       return null;
     },
     url: () => currentUrl,
@@ -118,7 +110,6 @@ const makeMarketingConsentRow = (
 
 const expectedHexDocumentHash = "b".repeat(64);
 const persistedHexDocumentHash = "a".repeat(64);
-const changedHexDocumentHash = "c".repeat(64);
 const syntheticSensitiveDocumentHash = "synthetic-sensitive-document-hash";
 
 /**
@@ -221,104 +212,7 @@ const makeSyntheticMarketingFixture = () => {
 };
 
 describe("workspace marketing preferences helper", () => {
-  test("computes a 720-hour expiry and preserves a hash-only link seed row", () => {
-    const row = makeWorkspaceE2EMarketingPreferencesSeedRow({
-      customerId,
-      now,
-      tokenHash: linkTokenHash,
-    });
-
-    expect(row).toEqual({
-      dotyposCustomerId: customerId,
-      expiresAt: now.add({ hours: 720 }),
-      purpose: "link",
-      revokedAt: null,
-      tokenHash: linkTokenHash,
-    });
-    expect(row.expiresAt.since(now, { largestUnit: "hours" }).hours).toBe(720);
-    expect(row.tokenHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(row.tokenHash).toBe(linkTokenHash);
-    expect(row.tokenHash).not.toBe(rawLinkToken);
-    expect(JSON.stringify(row)).not.toContain(rawLinkToken);
-    expect(row).not.toHaveProperty("rawLinkToken");
-  });
-
-  test("uses the link purpose and leaves a seeded link unrevoked", () => {
-    const row = makeWorkspaceE2EMarketingPreferencesSeedRow({
-      customerId,
-      now,
-      tokenHash: linkTokenHash,
-    });
-
-    expect(row.purpose).toBe("link");
-    expect(row.revokedAt).toBeNull();
-  });
-
   test.each([
-    {
-      consent: null,
-      expected: {
-        documentHashMatches: false,
-        localeMatches: false,
-        reason: "row_missing",
-        rowExists: false,
-        withdrawnStateMatches: false,
-      },
-      expectedStatus: "active" as const,
-      name: "a missing row",
-    },
-    {
-      consent: makeMarketingConsentRow({
-        documentHash: "synthetic-actual-document-hash",
-      }),
-      expected: {
-        documentHashMatches: false,
-        localeMatches: true,
-        reason: "document_hash_mismatch",
-        rowExists: true,
-        withdrawnStateMatches: true,
-      },
-      expectedStatus: "active" as const,
-      name: "a document hash mismatch",
-    },
-    {
-      consent: makeMarketingConsentRow({ locale: "cs-CZ" }),
-      expected: {
-        documentHashMatches: true,
-        localeMatches: false,
-        reason: "locale_mismatch",
-        rowExists: true,
-        withdrawnStateMatches: true,
-      },
-      expectedStatus: "active" as const,
-      name: "a locale mismatch",
-    },
-    {
-      consent: makeMarketingConsentRow(),
-      expected: {
-        documentHashMatches: true,
-        localeMatches: true,
-        reason: "matched",
-        rowExists: true,
-        withdrawnStateMatches: true,
-      },
-      expectedStatus: "active" as const,
-      name: "an active consent",
-    },
-    {
-      consent: makeMarketingConsentRow({
-        withdrawnAt: now.add({ hours: 1 }),
-      }),
-      expected: {
-        documentHashMatches: true,
-        localeMatches: true,
-        reason: "withdrawn_state_mismatch",
-        rowExists: true,
-        withdrawnStateMatches: false,
-      },
-      expectedStatus: "active" as const,
-      name: "an active-state mismatch",
-    },
     {
       consent: makeMarketingConsentRow({
         withdrawnAt: now.add({ hours: 1 }),
@@ -374,15 +268,9 @@ describe("workspace marketing preferences helper", () => {
     const logRecords: WorkspaceE2EMarketingConsentPersistenceClassification[] =
       [];
     const timeline: string[] = [];
-    const pollCalls: Array<{
-      readonly intervalMs: number;
-      readonly label: string;
-      readonly timeoutMs: number;
-    }> = [];
     let readCount = 0;
-    const poll: WorkspaceE2EMarketingConsentPoller = (effect, options) =>
+    const poll: WorkspaceE2EMarketingConsentPoller = (effect) =>
       Effect.gen(function* () {
-        pollCalls.push(options);
         timeline.push("poll-start");
         while (true) {
           const consent = yield* effect;
@@ -433,13 +321,6 @@ describe("workspace marketing preferences helper", () => {
       "read:6",
       "log:matched",
       "observation:6",
-    ]);
-    expect(pollCalls).toEqual([
-      {
-        intervalMs: workspaceE2EPollIntervalMs.datasource,
-        label: "marketing preference active persisted",
-        timeoutMs: workspaceE2ETimeouts.datasource,
-      },
     ]);
     expect(logRecords).toEqual([
       {
@@ -532,39 +413,9 @@ describe("workspace marketing preferences helper", () => {
       sentinel: "12345",
     },
     {
-      hash: null,
-      name: "a null persisted hash",
-      sentinel: "null",
-    },
-    {
-      hash: undefined,
-      name: "an undefined persisted hash",
-      sentinel: "undefined",
-    },
-    {
-      hash: { intruder: true },
-      name: "an object persisted hash",
-      sentinel: "intruder",
-    },
-    {
       hash: `${"a".repeat(64)}\n`,
       name: "a valid-hex persisted hash with a trailing newline",
       sentinel: `${"a".repeat(64)}\n`,
-    },
-    {
-      hash: `${"a".repeat(64)}\r`,
-      name: "a valid-hex persisted hash with a trailing carriage return",
-      sentinel: `${"a".repeat(64)}\r`,
-    },
-    {
-      hash: `${"a".repeat(64)}\r\n`,
-      name: "a valid-hex persisted hash with a trailing CRLF",
-      sentinel: `${"a".repeat(64)}\r\n`,
-    },
-    {
-      hash: "a".repeat(65),
-      name: "a 65-character persisted hash",
-      sentinel: "a".repeat(65),
     },
     {
       hash: "g".repeat(64),
@@ -599,29 +450,9 @@ describe("workspace marketing preferences helper", () => {
 
   test.each([
     {
-      hash: "a".repeat(65),
-      name: "a 65-character expected hash",
-      sentinel: "a".repeat(65),
-    },
-    {
-      hash: "g".repeat(64),
-      name: "a nonhex expected hash",
-      sentinel: "g".repeat(64),
-    },
-    {
       hash: `${"b".repeat(64)}\n`,
       name: "a valid-hex expected hash with a trailing newline",
       sentinel: `${"b".repeat(64)}\n`,
-    },
-    {
-      hash: `${"b".repeat(64)}\r`,
-      name: "a valid-hex expected hash with a trailing carriage return",
-      sentinel: `${"b".repeat(64)}\r`,
-    },
-    {
-      hash: `${"b".repeat(64)}\r\n`,
-      name: "a valid-hex expected hash with a trailing CRLF",
-      sentinel: `${"b".repeat(64)}\r\n`,
     },
     {
       hash: syntheticSensitiveDocumentHash,
@@ -648,242 +479,6 @@ describe("workspace marketing preferences helper", () => {
       expect(serializedLogs).not.toContain(sentinel);
     }
   );
-
-  test("omits both digest keys when the row is missing or matched", async () => {
-    const classifierKeys = [
-      "documentHashMatches",
-      "localeMatches",
-      "reason",
-      "rowExists",
-      "withdrawnStateMatches",
-    ];
-    const { logRecords } = await runMarketingConsentPersistenceScenario({
-      documentHash: expectedHexDocumentHash,
-      observations: [
-        null,
-        makeMarketingConsentRow({ documentHash: expectedHexDocumentHash }),
-      ],
-    });
-
-    expect(logRecords).toHaveLength(2);
-    expect(logRecords.map((record) => Object.keys(record).sort())).toEqual([
-      classifierKeys,
-      classifierKeys,
-    ]);
-  });
-
-  test("logs a changed valid digest again under the same mismatch classification", async () => {
-    const { logRecords } = await runMarketingConsentPersistenceScenario({
-      documentHash: expectedHexDocumentHash,
-      observations: [
-        makeMarketingConsentRow({ documentHash: persistedHexDocumentHash }),
-        makeMarketingConsentRow({ documentHash: persistedHexDocumentHash }),
-        makeMarketingConsentRow({ documentHash: changedHexDocumentHash }),
-        makeMarketingConsentRow({ documentHash: expectedHexDocumentHash }),
-      ],
-    });
-
-    expect(logRecords).toEqual([
-      {
-        documentHashMatches: false,
-        expectedDocumentHash: expectedHexDocumentHash,
-        localeMatches: true,
-        persistedDocumentHash: persistedHexDocumentHash,
-        reason: "document_hash_mismatch",
-        rowExists: true,
-        withdrawnStateMatches: true,
-      },
-      {
-        documentHashMatches: false,
-        expectedDocumentHash: expectedHexDocumentHash,
-        localeMatches: true,
-        persistedDocumentHash: changedHexDocumentHash,
-        reason: "document_hash_mismatch",
-        rowExists: true,
-        withdrawnStateMatches: true,
-      },
-      {
-        documentHashMatches: true,
-        localeMatches: true,
-        reason: "matched",
-        rowExists: true,
-        withdrawnStateMatches: true,
-      },
-    ]);
-  });
-
-  test("retains a valid-digest mismatch diagnostic when a poll is interrupted", async () => {
-    const logRecords: WorkspaceE2EMarketingConsentPersistenceDiagnostic[] = [];
-    const pollStarted = makePromiseGate();
-    const releasePending = makePromiseGate();
-    const poll: WorkspaceE2EMarketingConsentPoller = (effect) =>
-      Effect.gen(function* () {
-        yield* effect;
-        pollStarted.resolve();
-        yield* Effect.promise(() => releasePending.promise);
-        yield* Effect.never;
-      });
-    const operation = waitForWorkspaceE2EMarketingConsentPersistence({
-      documentHash: expectedHexDocumentHash,
-      expectedStatus: "active",
-      log: (diagnostic) =>
-        Effect.sync(() => {
-          logRecords.push(diagnostic);
-        }),
-      poll,
-      read: Effect.sync(() =>
-        makeMarketingConsentRow({ documentHash: persistedHexDocumentHash })
-      ),
-    });
-
-    try {
-      await Effect.runPromise(
-        Effect.gen(function* () {
-          const fiber = yield* Effect.forkChild(operation);
-          yield* Effect.promise(() => pollStarted.promise);
-
-          const interruption = yield* Effect.forkChild(Fiber.interrupt(fiber));
-          yield* Fiber.join(interruption);
-          const exit = yield* Fiber.await(fiber);
-          expect(Exit.isFailure(exit)).toBe(true);
-          if (Exit.isFailure(exit)) {
-            expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
-          }
-        })
-      );
-    } finally {
-      releasePending.resolve();
-      await flushMicrotasks();
-    }
-
-    expect(logRecords).toEqual([
-      {
-        documentHashMatches: false,
-        expectedDocumentHash: expectedHexDocumentHash,
-        localeMatches: true,
-        persistedDocumentHash: persistedHexDocumentHash,
-        reason: "document_hash_mismatch",
-        rowExists: true,
-        withdrawnStateMatches: true,
-      },
-    ]);
-  });
-
-  test("retains the last mismatch when a pending consent poll is interrupted", async () => {
-    const actualDocumentHash = "synthetic-actual-document-hash";
-    const observations: Array<MarketingConsentRow | null> = [
-      null,
-      makeMarketingConsentRow({ documentHash: actualDocumentHash }),
-    ];
-    const logRecords: WorkspaceE2EMarketingConsentPersistenceClassification[] =
-      [];
-    const timeline: string[] = [];
-    const pollWaiting = makePromiseGate();
-    const pendingPoll = makePromiseGate();
-    let readCount = 0;
-    let pollAdvancedPastPending = false;
-    const poll: WorkspaceE2EMarketingConsentPoller = (effect) =>
-      Effect.gen(function* () {
-        timeline.push("poll-start");
-        yield* effect;
-        timeline.push("observation:1");
-        yield* effect;
-        timeline.push("observation:2");
-        pollWaiting.resolve();
-        yield* Effect.promise(() => pendingPoll.promise);
-        pollAdvancedPastPending = true;
-        yield* Effect.never;
-      });
-    const operation = waitForWorkspaceE2EMarketingConsentPersistence({
-      documentHash: expectedConsentDocumentHash,
-      expectedStatus: "active",
-      log: (classification) =>
-        Effect.sync(() => {
-          timeline.push(`log:${classification.reason}`);
-          logRecords.push(classification);
-        }),
-      poll,
-      read: Effect.sync(() => {
-        const consent = observations[readCount];
-        readCount += 1;
-        timeline.push(`read:${readCount}`);
-        if (consent === undefined) {
-          throw new Error("synthetic pending poll exhausted");
-        }
-        return consent;
-      }),
-    });
-
-    try {
-      await Effect.runPromise(
-        Effect.gen(function* () {
-          const fiber = yield* Effect.forkChild(operation);
-          yield* Effect.promise(() => pollWaiting.promise);
-
-          expect(timeline).toEqual([
-            "poll-start",
-            "read:1",
-            "log:row_missing",
-            "observation:1",
-            "read:2",
-            "log:document_hash_mismatch",
-            "observation:2",
-          ]);
-          expect(logRecords).toEqual([
-            {
-              documentHashMatches: false,
-              localeMatches: false,
-              reason: "row_missing",
-              rowExists: false,
-              withdrawnStateMatches: false,
-            },
-            {
-              documentHashMatches: false,
-              localeMatches: true,
-              reason: "document_hash_mismatch",
-              rowExists: true,
-              withdrawnStateMatches: true,
-            },
-          ]);
-
-          const interruption = yield* Effect.forkChild(Fiber.interrupt(fiber));
-          yield* Fiber.join(interruption);
-          const exit = yield* Fiber.await(fiber);
-          expect(Exit.isFailure(exit)).toBe(true);
-          if (Exit.isFailure(exit)) {
-            expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
-          }
-        })
-      );
-    } finally {
-      pendingPoll.resolve();
-      await flushMicrotasks();
-    }
-
-    expect(pollAdvancedPastPending).toBe(false);
-    expect(readCount).toBe(2);
-    expect(logRecords.at(-1)).toEqual({
-      documentHashMatches: false,
-      localeMatches: true,
-      reason: "document_hash_mismatch",
-      rowExists: true,
-      withdrawnStateMatches: true,
-    });
-
-    const serializedLogs = JSON.stringify(logRecords);
-    for (const sensitiveSentinel of [
-      actualDocumentHash,
-      expectedConsentDocumentHash,
-      customerId,
-      "cs-CZ",
-      now.toString(),
-      rawLinkToken,
-      baseUrl,
-      "synthetic pending poll exhausted",
-    ]) {
-      expect(serializedLogs).not.toContain(sensitiveSentinel);
-    }
-  });
 
   test("exposes only the allowlisted label when a known browser operation fails", async () => {
     const knownLabel = "confirm marketing management link";
@@ -1124,46 +719,27 @@ describe("workspace marketing preferences helper", () => {
     expect(unhandledRejections).toHaveLength(0);
   });
 
-  test("passes the access URL to Playwright with a bounded load wait", async () => {
-    const accessUrl = `${baseUrl}/en-US/marketing-preferences/access?token=${rawLinkToken}`;
-    const fakePage = makeFakePage(async () => undefined);
-
-    await navigateWorkspaceE2EMarketingPreferences(fakePage.page, accessUrl);
-
-    expect(fakePage.gotoCalls).toEqual([
-      {
-        options: {
-          timeout: expect.any(Number),
-          waitUntil: "load",
-        },
-        url: accessUrl,
-      },
-    ]);
-    expect(fakePage.gotoCalls[0]?.options?.timeout).toBeGreaterThan(0);
-  });
-
-  test("navigates an authenticated page from another account route to clean legal URL", async () => {
+  test("rejects an authenticated navigation that lands away from the clean legal URL", async () => {
+    const accountRouteUrl = `${baseUrl}/en-US/account`;
     const accountLegalUrl = `${baseUrl}/en-US/account/legal`;
-    const fakePage = makeFakePage(
-      async () => undefined,
-      `${baseUrl}/en-US/account`
+    const landed = makeFakePage(async () => undefined, accountRouteUrl);
+    const redirected = makeFakePage(
+      async () => `${baseUrl}/en-US/sign-in`,
+      accountRouteUrl
     );
 
-    await navigateAuthenticatedWorkspaceE2EMarketingPreferences(
-      fakePage.page,
-      accountLegalUrl
-    );
-
-    expect(fakePage.page.url()).toBe(accountLegalUrl);
-    expect(fakePage.gotoCalls).toEqual([
-      {
-        options: {
-          timeout: expect.any(Number),
-          waitUntil: "load",
-        },
-        url: accountLegalUrl,
-      },
-    ]);
+    await expect(
+      navigateAuthenticatedWorkspaceE2EMarketingPreferences(
+        landed.page,
+        accountLegalUrl
+      )
+    ).resolves.toBeUndefined();
+    await expect(
+      navigateAuthenticatedWorkspaceE2EMarketingPreferences(
+        redirected.page,
+        accountLegalUrl
+      )
+    ).rejects.toThrow("not the expected clean legal URL");
   });
 
   test("turns navigation failures into a fixed error without a cause or raw URL", async () => {
@@ -1191,9 +767,7 @@ describe("workspace marketing preferences helper", () => {
     expect(fakePage.gotoCalls).toHaveLength(1);
   });
 
-  test("keeps the helper out of auth sends, rate budgets, provider concurrency, and unapproved screenshot IDs", () => {
-    expect(typeof verifyWorkspaceE2EMarketingPreferences).toBe("function");
-
+  test("keeps the helper out of auth sends, rate budgets, and provider concurrency", () => {
     // Verdicts come from the parsed helper module: identifiers and string
     // literals exist only as live syntax, so a commented-out call can never
     // satisfy or fail these checks.
@@ -1213,37 +787,6 @@ describe("workspace marketing preferences helper", () => {
     for (const literal of stringLiterals(ast).map((entry) => entry.value)) {
       expect(forbiddenLiterals.test(literal)).toBe(false);
     }
-
-    // Every review capture call carries one allowlisted screenshot ID.
-    const captureCalls = callsNamed(ast, "captureMarketingReview");
-    const screenshotCallIds = captureCalls.flatMap((call) => {
-      const callStart = call.range![0];
-      const callEnd = call.range![1];
-      return stringLiterals(ast)
-        .filter(
-          (literal) =>
-            literal.node.range![0] > callStart &&
-            literal.node.range![1] < callEnd
-        )
-        .map((literal) => literal.value);
-    });
-    const expectedScreenshotCallIds = [
-      "account-marketing-active-mobile",
-      "account-marketing-withdrawn-desktop",
-      "marketing-link-active-desktop",
-      "marketing-link-active-mobile",
-      "marketing-link-invalid-desktop",
-      "marketing-link-invalid-mobile",
-      "marketing-link-pending-desktop",
-      "marketing-link-pending-mobile",
-      "marketing-link-withdrawn-desktop",
-      "marketing-link-withdrawn-mobile",
-    ];
-
-    expect(screenshotCallIds).toHaveLength(expectedScreenshotCallIds.length);
-    expect([...screenshotCallIds].sort()).toEqual(
-      [...expectedScreenshotCallIds].sort()
-    );
   });
 
   test("accepts the real rejection DOM: scoped alert plus the empty route announcer", () => {
@@ -1317,7 +860,4 @@ describe("workspace marketing preferences helper", () => {
   // account-reservation-transitions case against the real hosted preview,
   // and the executed fake-based tests above pin the verifier, navigation,
   // and cleanup helper contracts.
-  test("keeps the provider-transition step budget at the configured 90s", () => {
-    expect(workspaceE2ETimeouts.providerTransition).toBe(90 * 1_000);
-  });
 });

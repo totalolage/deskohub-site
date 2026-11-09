@@ -41,11 +41,17 @@ export type PreparedOfficePayState = PayStateSubmittedCodeMetadata & {
   readonly reservation: NormalizedOfficeReservationOrder;
   readonly quote: OfficeReservationQuote;
   readonly requestedDiscountCode?: CanonicalPromotionCode;
+  readonly referralCode?: CanonicalPromotionCode;
 };
 
 export const prepareOfficeAdvertisement = Effect.fn(
   "prepareOfficePayState.prepareAdvertisement"
-)(function* (input: PrepareOfficePayStateInput) {
+)(function* (
+  input: PrepareOfficePayStateInput & {
+    /** Moment the reservation is submitted and its price is locked. */
+    readonly bookedAt: Temporal.Instant;
+  }
+) {
   const state = yield* openSubmittedAdvertisedPriceState(
     input.advertisedPriceToken
   );
@@ -80,6 +86,7 @@ export const prepareOfficeAdvertisement = Effect.fn(
     reservation: expectedReservation,
     locale: input.locale,
     advertisedQuote: state.quote,
+    bookedAt: input.bookedAt,
     ...getSubmittedCodeMetadata(state),
   });
   const changed = state.quote.fingerprint !== affirmed.quote.fingerprint;
@@ -90,7 +97,7 @@ export const prepareOfficeAdvertisement = Effect.fn(
     advertisedQuote: state.quote,
     discountQuote: affirmed.discountQuote,
     ...getSubmittedCodeMetadata(affirmed),
-    requestedDiscountCode: state.requestedDiscountCode ?? state.submittedCode,
+    requestedDiscountCode: state.requestedDiscountCode,
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
         getOfficeCheckoutSummary(state.quote),

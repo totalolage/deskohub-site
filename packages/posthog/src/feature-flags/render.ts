@@ -144,24 +144,28 @@ const renderPayloadTypeUnion = (types: readonly PayloadType[]) => {
 const renderPayloadType = (type: PayloadType): string => {
   switch (type.kind) {
     case "array":
-      return `readonly (${renderPayloadTypeUnion(type.items.length > 0 ? type.items : [{ kind: "unknown" }])})[]`;
-    case "boolean":
-    case "null":
-    case "number":
-    case "string":
-    case "undefined":
-    case "unknown":
-      return type.kind;
+      return renderArrayPayloadType(type.items);
     case "object":
-      return type.properties.length === 0
-        ? "Readonly<Record<string, never>>"
-        : [
-            "{",
-            ...type.properties.map(
-              (property) =>
-                `readonly ${JSON.stringify(property.key)}: ${renderPayloadType(property.value)};`
-            ),
-            "}",
-          ].join(" ");
+      return renderObjectPayloadType(type.properties);
+    default:
+      // Every other kind is the TypeScript type of the same name.
+      return type.kind;
   }
 };
+
+const renderArrayPayloadType = (items: readonly PayloadType[]) =>
+  `readonly (${renderPayloadTypeUnion(items.length > 0 ? items : [{ kind: "unknown" }])})[]`;
+
+const renderObjectPayloadType = (
+  properties: Extract<PayloadType, { readonly kind: "object" }>["properties"]
+) =>
+  properties.length === 0
+    ? "Readonly<Record<string, never>>"
+    : [
+        "{",
+        ...properties.map(
+          (property) =>
+            `readonly ${JSON.stringify(property.key)}: ${renderPayloadType(property.value)};`
+        ),
+        "}",
+      ].join(" ");

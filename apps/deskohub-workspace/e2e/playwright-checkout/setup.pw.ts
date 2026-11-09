@@ -1,27 +1,43 @@
 import "../../shared/polyfills/temporal";
 
-import { test } from "@playwright/test";
-import { Effect, Layer, ManagedRuntime } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { expect, test } from "@playwright/test";
+import { Effect } from "effect";
+import { makeWorkspaceE2ECases } from "../cases";
+import { prepareDiscountAvailabilityE2E } from "../cases/discounts";
+import { prepareMeetingRoomE2E } from "../cases/meeting-room";
+import { prepareOfficeE2E } from "../cases/office";
 import { assertNexiSandbox, getConfig, getDatasourceConfig } from "../config";
-import { makeWorkspaceE2EEnvironment } from "../e2e-env";
-import { assertPreviewEndpointsReady } from "../preview-readiness";
-import { addDatabaseUrlRedactions, assertSafeDatabaseUrl } from "../runtime";
 import {
-  type E2ERunContext,
-  E2ERunContextService,
-  E2ETelemetryService,
-  makeE2ERunContext,
-} from "../services/telemetry";
-import { makeE2ETelemetryRuntime, runE2EEffect } from "../telemetry-runtime";
-import { writeWorkspaceE2ERunContext } from "./run-context";
-import { readExternalParentSpan } from "./trace-parent";
+  prepareWorkspaceE2EHostedPaymentPermitQueue,
+  workspaceE2EHostedPaymentPermitDirectory,
+} from "../coordination/hosted-payment-permit.service";
+import { makeWorkspaceE2EEnvironment } from "../e2e-env";
+import { assertE2ECalendarSaleCoverage } from "../integrations/calendar-sale-coverage";
+import { seedDiscountE2EFixtures } from "../integrations/discount-fixtures";
+import { resolveE2EDotyposDiscountGroup } from "../integrations/dotypos";
+import { assertPreviewEndpointsReady } from "../preview-readiness";
+import { addDatabaseUrlRedactions } from "../redaction";
+import { assertSafeDatabaseUrl } from "../runtime";
+import { E2ETelemetryService } from "../services/telemetry";
+import {
+  isWorkspaceE2EOfficeCaseId,
+  workspaceE2ECaseIds,
+} from "./case-catalog";
+import {
+  resolveWorkspaceE2ERunContext,
+  writeWorkspaceE2ERunContext,
+} from "./run-context";
+import { writeWorkspaceE2ERunPlan } from "./run-plan";
+import { withWorkspaceE2ERuntime } from "./runtime-fixtures";
 
-test("validate workspace preview readiness", async () => {
+// Readiness, seeding, availability preparation, and plan construction share
+// one test so the case phase waits for a single Playwright phase barrier and
+// worker start instead of one per preparation stage.
+test("prepare the workspace checkout run", async ({ browser }) => {
   const environment = makeWorkspaceE2EEnvironment();
   const config = getConfig(environment);
   const datasourceConfig = getDatasourceConfig(environment);
-  const runContext = readRunContext(environment);
+  const runContext = resolveWorkspaceE2ERunContext(environment);
   assertSafeDatabaseUrl(
     datasourceConfig.databaseUrl,
     "DATABASE_URL",
@@ -36,51 +52,102 @@ test("validate workspace preview readiness", async () => {
   addDatabaseUrlRedactions(
     environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
   );
+  // Cleanup recovery runs only when this file exists, so every lease, seed,
+  // and provider effect below must follow it.
   await writeWorkspaceE2ERunContext(runContext);
-
-  const telemetry = makeE2ETelemetryRuntime(environment);
-  const layer = Layer.mergeAll(
-    FetchHttpClient.layer,
-    E2ETelemetryService.Default.pipe(
-      Layer.provideMerge(E2ERunContextService.layerValue(runContext))
-    )
-  ).pipe(Layer.provideMerge(telemetry.tracingLayer));
-  const runtime = ManagedRuntime.make(layer);
-  const parentSpan = readExternalParentSpan(
-    environment.WORKSPACE_E2E_TRACE_PARENT
+  await prepareWorkspaceE2EHostedPaymentPermitQueue(
+    workspaceE2EHostedPaymentPermitDirectory(runContext.runId)
   );
 
-  try {
-    await runtime.runPromise(
-      Effect.gen(function* () {
-        const e2eTelemetry = yield* E2ETelemetryService;
-        yield* e2eTelemetry.tracePhase({
-          effect: assertPreviewEndpointsReady(config),
-          phaseId: "preview-readiness",
-        });
-      }).pipe((effect) =>
-        parentSpan ? Effect.withParentSpan(effect, parentSpan) : effect
+  const { actualCaseIds, preparation } = await withWorkspaceE2ERuntime(
+    environment,
+    runContext,
+    (runEffect) =>
+      runEffect(
+        Effect.gen(function* () {
+          const telemetry = yield* E2ETelemetryService;
+          // Availability preparation reads the preview and the seeded
+          // discount rows, so it waits for both; provider preparation reads
+          // only Dotypos and overlaps them.
+          const availability = Effect.all(
+            [
+              telemetry.tracePhase({
+                effect: assertPreviewEndpointsReady(config),
+                phaseId: "preview-readiness",
+              }),
+              telemetry.tracePhase({
+                effect: seedDiscountE2EFixtures,
+                phaseId: "fixture-seeding",
+              }),
+            ],
+            { concurrency: "unbounded" }
+          ).pipe(
+            Effect.andThen(
+              Effect.all(
+                {
+                  discounts: telemetry.tracePhase({
+                    effect: prepareDiscountAvailabilityE2E(
+                      config,
+                      runContext.allocation
+                    ),
+                    phaseId: "cowork-availability-preparation",
+                  }),
+                  meetingRoom: telemetry.tracePhase({
+                    effect: prepareMeetingRoomE2E(
+                      config,
+                      runContext.allocation
+                    ),
+                    phaseId: "meeting-room-availability-preparation",
+                  }),
+                  office: telemetry.tracePhase({
+                    effect: prepareOfficeE2E(config, runContext.allocation),
+                    phaseId: "office-availability-preparation",
+                  }),
+                },
+                { concurrency: "unbounded" }
+              )
+            )
+          );
+          const { availability: prepared, customerDiscountGroup } =
+            yield* Effect.all(
+              {
+                availability,
+                customerDiscountGroup: telemetry.tracePhase({
+                  effect: resolveE2EDotyposDiscountGroup(datasourceConfig),
+                  phaseId: "provider-preparation",
+                }),
+              },
+              { concurrency: "unbounded" }
+            );
+          const preparation = { ...prepared, customerDiscountGroup };
+          yield* assertE2ECalendarSaleCoverage({
+            browser,
+            candidateDates: [
+              ...prepared.discounts.availableBasicDates,
+              ...prepared.discounts.availablePlusDates,
+              ...prepared.discounts.availableReservedDeskDates,
+            ],
+            config,
+          });
+          const cases = yield* makeWorkspaceE2ECases({
+            allocation: runContext.allocation,
+            config,
+            datasourceConfig,
+            flowStates: [],
+            preparation,
+          });
+          return {
+            actualCaseIds: cases.map(({ id }) => id).toSorted(),
+            preparation,
+          };
+        })
       )
-    );
-  } finally {
-    await runtime.dispose();
-    await runE2EEffect(Effect.void, telemetry);
-  }
-});
+  );
 
-const readRunContext = (
-  environment: ReturnType<typeof makeWorkspaceE2EEnvironment>
-): E2ERunContext => {
-  const serialized = environment.WORKSPACE_E2E_RUN_CONTEXT;
-  if (!serialized) return makeE2ERunContext(environment);
-  const value: unknown = JSON.parse(serialized);
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("runId" in value) ||
-    !("allocation" in value)
-  ) {
-    throw new Error("Invalid workspace E2E run context");
-  }
-  return value as E2ERunContext;
-};
+  const expectedCaseIds = workspaceE2ECaseIds.filter(
+    (caseId) =>
+      preparation.office !== undefined || !isWorkspaceE2EOfficeCaseId(caseId)
+  );
+  expect(actualCaseIds).toEqual([...expectedCaseIds].toSorted());
+  await writeWorkspaceE2ERunPlan({ preparation, runContext, version: 2 });
+});

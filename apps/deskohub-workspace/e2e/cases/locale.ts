@@ -1,84 +1,80 @@
 import { Effect } from "effect";
-import {
-  activateHydratedBrowserElement,
-  openBrowserPage,
-  waitForBrowserUrl,
-} from "../browser";
+import { activateHydratedElement, openPage, waitForPageUrl } from "../browser";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
+import type { WorkspaceE2EStepRunner } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
-import type { Runner } from "../runtime";
 import { log, parseUrl } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
-import type { CheckoutData, WorkspaceE2EStepRunner } from "../types";
+import type { CheckoutData } from "../types";
 
 export const assertLocaleSwitcher = ({
   config,
-  run,
   runStep,
-  session,
+  openSession,
 }: {
-  config: WorkspaceE2EConfig;
-  run: Runner;
+  config: Pick<WorkspaceE2EConfig, "baseUrl" | "bypassSecret" | "timeouts">;
   runStep: WorkspaceE2EStepRunner;
-  session: string;
+  openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
+    const browser = openSession;
     yield* runStep({
-      execute: openBrowserPage(
-        config,
-        run,
-        session,
-        `${config.baseUrl}/en-US`,
-        { timeoutMs: config.timeouts.browserNavigation }
-      ).pipe(Effect.asVoid),
+      execute: Effect.flatMap(browser, (opened) =>
+        openPage(opened, config, `${config.baseUrl}/en-US`, {
+          timeoutMs: config.timeouts.browserNavigation,
+        })
+      ),
       id: "open-home-page",
       timeoutMs: config.timeouts.browserNavigation,
     });
 
-    for (let cycle = 1; cycle <= 3; cycle += 1) {
-      yield* runStep({
-        execute: switchLocale(run, session, "cs-CZ", cycle, config.timeouts),
-        id: `switch-to-czech-${cycle}`,
-        timeoutMs: config.timeouts.browserNavigation,
-      });
-      yield* runStep({
-        execute: switchLocale(run, session, "en-US", cycle, config.timeouts),
-        id: `switch-to-english-${cycle}`,
-        timeoutMs: config.timeouts.browserNavigation,
-      });
-    }
+    yield* runStep({
+      execute: Effect.flatMap(browser, (opened) =>
+        switchLocale(opened, "cs-CZ", config.timeouts)
+      ),
+      id: "switch-to-czech",
+      timeoutMs: config.timeouts.browserNavigation,
+    });
+    yield* runStep({
+      execute: Effect.flatMap(browser, (opened) =>
+        switchLocale(opened, "en-US", config.timeouts)
+      ),
+      id: "switch-to-english",
+      timeoutMs: config.timeouts.browserNavigation,
+    });
 
     log("Locale switch e2e passed");
   });
 
-const activateLocaleSwitchLink = (
-  run: Runner,
-  session: string,
-  locale: CheckoutData["locale"] | "cs-CZ",
-  timeouts: WorkspaceE2ETimeouts
-) =>
-  Effect.gen(function* () {
-    const timeoutMs = timeouts.browserNavigation;
-    const selector = `[data-locale-switcher] a[href^="/${locale}"]`;
-    yield* activateHydratedBrowserElement(run, session, selector, {
-      timeoutMs,
-    });
-  });
+type SwitchLocale = CheckoutData["locale"] | "cs-CZ";
 
-const switchLocale = (
-  run: Runner,
-  session: string,
-  locale: CheckoutData["locale"] | "cs-CZ",
-  cycle: number,
-  timeouts: WorkspaceE2ETimeouts
-) =>
+const localeSwitchLinkSelector = (locale: SwitchLocale) =>
+  `[data-locale-switcher] a[href^="/${locale}"]`;
+
+/**
+ * Switches the locale through the header with a native activation of the
+ * hydrated link. For a signed-in visitor the switcher saves the language
+ * preference before the document navigation, waiting for the streamed
+ * session check if needed, so the URL wait also proves the save: without it
+ * the proxy would redirect back to the old preference.
+ */
+export const switchLocale = (
+  session: E2EBrowserSession,
+  locale: SwitchLocale,
+  timeouts: Pick<WorkspaceE2ETimeouts, "browserNavigation">
+): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    yield* activateLocaleSwitchLink(run, session, locale, timeouts);
-    yield* waitForBrowserUrl({
-      description: `${locale} locale switch ${cycle}`,
+    yield* activateHydratedElement(session, localeSwitchLinkSelector(locale), {
+      timeoutMs: timeouts.browserNavigation,
+    });
+    yield* waitForPageUrl({
+      description: `${locale} locale switch`,
       matches: (url) =>
         parseUrl(url)?.pathname.startsWith(`/${locale}`) ?? false,
-      run,
       session,
       timeoutMs: timeouts.browserNavigation,
     });

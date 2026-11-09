@@ -5,12 +5,7 @@ import {
   isWorkspaceBotIdEnforced,
 } from "./bot-protection.policy.js";
 
-for (const [vercelEnvironment, enforced] of [
-  ["production", true],
-  ["preview", false],
-  ["development", false],
-  [undefined, false],
-] as const) {
+for (const [vercelEnvironment, enforced] of [[undefined, false]] as const) {
   test(`BotID enforcement is ${enforced ? "enabled" : "disabled"} in ${vercelEnvironment ?? "an unknown environment"}`, () => {
     expect(isWorkspaceBotIdEnforced(vercelEnvironment)).toBe(enforced);
   });

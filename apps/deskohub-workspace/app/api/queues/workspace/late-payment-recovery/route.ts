@@ -1,11 +1,12 @@
-import { handleCallback } from "@vercel/queue";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { AccountingDocumentSnapshotRepository } from "@/features/accounting/backend/accounting-document-snapshot.repository";
 import { AccountingSnapshotKeyService } from "@/features/accounting/backend/accounting-snapshot-key.service";
-import { WorkspacePaidFulfillmentService } from "@/features/checkout/backend/fulfillment";
+import { ReservationFulfillment } from "@/features/checkout/backend/fulfillment";
+import { DotyposHoldRelease } from "@/features/checkout/backend/holds";
 import {
   LatePaymentRecoveryService,
+  latePaymentRecoveryTopic,
   processLatePaymentRecoveryMessage,
 } from "@/features/checkout/backend/payment";
 import { LatePaymentRecoveryRepository } from "@/features/checkout/backend/repositories";
@@ -13,7 +14,6 @@ import { WorkspaceTableAssignmentService } from "@/features/checkout/backend/res
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { defineWorkspaceTask } from "@/shared/backend/workspace-effect";
 
 export const maxDuration = 300;
 
@@ -31,6 +31,7 @@ const databaseRepositories = Layer.mergeAll(
 );
 
 const ConsumerLive = LatePaymentRecoveryService.Default.pipe(
+  Layer.provide(DotyposHoldRelease.Default),
   Layer.provide(databaseRepositories),
   Layer.provide(WorkspaceAvailabilityService.Live),
   Layer.provide(
@@ -39,19 +40,14 @@ const ConsumerLive = LatePaymentRecoveryService.Default.pipe(
       Layer.provide(WorkspaceDotyposLayer)
     )
   ),
-  Layer.provide(WorkspacePaidFulfillmentService.Live),
+  Layer.provide(ReservationFulfillment.Live),
   Layer.provide(WorkspaceDotyposLayer)
 );
 
-const processMessage = defineWorkspaceTask(
+export const POST = latePaymentRecoveryTopic.consume(
   "latePaymentRecoveryQueue",
-  (message: Parameters<typeof processLatePaymentRecoveryMessage>[0]) =>
+  (message) =>
     processLatePaymentRecoveryMessage(message).pipe(
-      Effect.asVoid,
       Effect.provide(ConsumerLive)
     )
-);
-
-export const POST = handleCallback((message, _metadata) =>
-  processMessage(message)
 );

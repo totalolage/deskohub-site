@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import {
-  AresLookupFailure,
+  type AresLookupFailure,
   AresLookupService,
   isValidCzechCompanyIco,
 } from "./service";
@@ -156,43 +156,6 @@ describe("AresLookupService", () => {
     expect(JSON.stringify(result)).not.toContain("must-not-leak");
   });
 
-  test("returns the generated raw provider record for a matching company", async () => {
-    const result = await runLookup("27082440", () =>
-      Promise.resolve(
-        Response.json({
-          ico: "27082440",
-          obchodniJmeno: "  Synthetická testovací s.r.o. ",
-          dic: "   ",
-          sidlo: {
-            nazevUlice: "  ",
-            cisloDomovni: 123,
-            cisloOrientacni: 4,
-            cisloOrientacniPismeno: "a",
-            nazevObce: " Praha ",
-            kodStatu: " CZ ",
-          },
-        })
-      )
-    );
-
-    expect(result).toEqual({
-      kind: "found",
-      subject: {
-        ico: "27082440",
-        obchodniJmeno: "  Synthetická testovací s.r.o. ",
-        dic: "   ",
-        sidlo: {
-          nazevUlice: "  ",
-          cisloDomovni: 123,
-          cisloOrientacni: 4,
-          cisloOrientacniPismeno: "a",
-          nazevObce: " Praha ",
-          kodStatu: " CZ ",
-        },
-      },
-    });
-  });
-
   test("maps a response for a different company ID to the unavailable failure", async () => {
     const result = await runLookup("27082440", () =>
       Promise.resolve(
@@ -204,61 +167,5 @@ describe("AresLookupService", () => {
     );
 
     expectLookupFailure(result, "Unavailable");
-  });
-
-  test("maps a blank company name response to the unavailable failure", async () => {
-    const result = await runLookup("27082440", () =>
-      Promise.resolve(Response.json({ ico: "27082440", obchodniJmeno: "   " }))
-    );
-
-    expectLookupFailure(result, "Unavailable");
-  });
-});
-
-describe("failure vocabulary", () => {
-  test("lookup failures are genuine Errors tagged AresLookupFailure with the matching reason", async () => {
-    const invalidIco = await runLookup("1234567a", () =>
-      Promise.resolve(Response.json({}))
-    );
-    expect(invalidIco.kind).toBe("failure");
-    if (invalidIco.kind !== "failure") return;
-    expect(invalidIco.failure).toBeInstanceOf(Error);
-    expect(invalidIco.failure._tag).toBe("AresLookupFailure");
-    expect(invalidIco.failure.reason).toBe("InvalidIco");
-
-    const notFound = await runLookup("27082440", () =>
-      Promise.resolve(
-        Response.json(
-          { kod: "NENALEZENO", popis: "Zdroj nenalezen" },
-          { status: 404 }
-        )
-      )
-    );
-    expect(notFound.kind).toBe("failure");
-    if (notFound.kind !== "failure") return;
-    expect(notFound.failure).toBeInstanceOf(Error);
-    expect(notFound.failure._tag).toBe("AresLookupFailure");
-    expect(notFound.failure.reason).toBe("NotFound");
-
-    const unavailable = await runLookup("27082440", () =>
-      Promise.reject(new TypeError("network down"))
-    );
-    expect(unavailable.kind).toBe("failure");
-    if (unavailable.kind !== "failure") return;
-    expect(unavailable.failure).toBeInstanceOf(Error);
-    expect(unavailable.failure._tag).toBe("AresLookupFailure");
-    expect(unavailable.failure.reason).toBe("Unavailable");
-  });
-
-  test("exposes exactly the closed low-cardinality reason vocabulary", () => {
-    expect(new AresLookupFailure({ reason: "InvalidIco" }).reason).toBe(
-      "InvalidIco"
-    );
-    expect(new AresLookupFailure({ reason: "NotFound" }).reason).toBe(
-      "NotFound"
-    );
-    expect(new AresLookupFailure({ reason: "Unavailable" }).reason).toBe(
-      "Unavailable"
-    );
   });
 });

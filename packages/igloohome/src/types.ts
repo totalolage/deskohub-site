@@ -17,8 +17,13 @@ export const IgloohomePinIdSchema = Schema.NonEmptyString.pipe(
 });
 export type IgloohomePinId = typeof IgloohomePinIdSchema.Type;
 
+/** How many digits an igloohome AlgoPIN has. */
+export const algoPinLength = { minimum: 7, maximum: 9 } as const;
+
 export const AlgoPinSchema = Schema.String.check(
-  Schema.isPattern(/^[0-9]{7,9}$/)
+  Schema.isPattern(
+    new RegExp(`^[0-9]{${algoPinLength.minimum},${algoPinLength.maximum}}$`)
+  )
 )
   .pipe(Schema.brand("AlgoPin"))
   .annotate({

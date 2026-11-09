@@ -1,0 +1,77 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// A run ends only through `AutomationRunTransitions.end`
+// (automation-run-transitions.ts), which writes the outcome and its timeline
+// entry together, and an automated campaign's status changes only in
+// `AutomationLifecycle` (automation-lifecycle.service.ts), under the
+// lifecycle lock (design §1.2.5, §5.4). Elsewhere this rejects:
+// - `.update(emailCampaignAutomationRuns).set(...)` or
+//   `.insert(emailCampaignAutomationRuns).values(...)` with a literal
+//   `status: "ended"`, and calls of `appendAutomationRunEndings`;
+// - `.update(emailCampaigns).set(...)` or `.insert(emailCampaigns).values(...)`
+//   with a literal `status: "active" | "paused" | "archived"`;
+// - SQL text, in a string or template, that sets `status = 'ended'` in an
+//   update of `email_campaign_automation_runs` (or the
+//   `${emailCampaignAutomationRuns}` interpolation) before any `where`, or
+//   inserts into it with `'ended'`; likewise for `email_campaigns` and those
+//   three statuses. Rust regexes have no lookahead, so the update pattern
+//   spells "no `where` before the status" character by character.
+// It sees literals only: a status passed in a variable isn't checked, and the
+// run status CHECK and the transition tests remain the semantic guard.
+// Test modules (`*.test.ts`, `*.test-utils.ts`) are exempt: Postgres tests seed
+// ended runs and campaigns in every status as fixtures, and constraint tests
+// write invalid states on purpose.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+  $body <: contains bubble or {
+    or {
+      `$receiver.update(emailCampaignAutomationRuns).set($values)`,
+      `$receiver.insert(emailCampaignAutomationRuns).values($values)`
+    } as $span where {
+      not $filename <: r".*/automation-run-transitions\.ts$",
+      $values <: contains JsPropertyObjectMember() as $member where {
+        $member <: r"(?s)^['\"]?status['\"]?\s*:\s*['\"]ended['\"]$"
+      }
+    },
+    `appendAutomationRunEndings($...)` as $span where {
+      not $filename <: r".*/automation-run-transitions\.ts$"
+    },
+    or {
+      JsStringLiteralExpression(),
+      JsTemplateExpression()
+    } as $span where {
+      not $filename <: r".*/automation-run-transitions\.ts$",
+      or {
+        $span <: r"(?is).*\bupdate\s+(?:\"?email_campaign_automation_runs\"?|\$\{emailCampaignAutomationRuns\})\s+set\s(?:[^w;]|w(?:[^h]|h(?:[^e]|e(?:[^r]|r(?:[^e]|e\w)))))*(?:\"?\bstatus\"?|\$\{emailCampaignAutomationRuns\.status\})\s*=\s*'ended'.*",
+        $span <: r"(?is).*\binsert\s+into\s+(?:\"?email_campaign_automation_runs\"?|\$\{emailCampaignAutomationRuns\})[\s(].*'ended'.*"
+      }
+    },
+    or {
+      `$receiver.update(emailCampaigns).set($values)`,
+      `$receiver.insert(emailCampaigns).values($values)`
+    } as $span where {
+      not $filename <: r".*/automation-lifecycle\.service\.ts$",
+      $values <: contains JsPropertyObjectMember() as $member where {
+        $member <: r"(?s)^['\"]?status['\"]?\s*:\s*['\"](?:active|paused|archived)['\"]$"
+      }
+    },
+    or {
+      JsStringLiteralExpression(),
+      JsTemplateExpression()
+    } as $span where {
+      not $filename <: r".*/automation-lifecycle\.service\.ts$",
+      or {
+        $span <: r"(?is).*\bupdate\s+(?:\"?email_campaigns\"?|\$\{emailCampaigns\})\s+set\s(?:[^w;]|w(?:[^h]|h(?:[^e]|e(?:[^r]|r(?:[^e]|e\w)))))*(?:\"?\bstatus\"?|\$\{emailCampaigns\.status\})\s*=\s*'(?:active|paused|archived)'.*",
+        $span <: r"(?is).*\binsert\s+into\s+(?:\"?email_campaigns\"?|\$\{emailCampaigns\})[\s(].*'(?:active|paused|archived)'.*"
+      }
+    }
+  } where {
+    register_diagnostic(
+      span = $span,
+      message = "Automation states have one writer each: end runs with `AutomationRunTransitions.end` and change an automated campaign's status only in `AutomationLifecycle` under the lifecycle lock.",
+      severity = "error"
+    )
+  }
+}

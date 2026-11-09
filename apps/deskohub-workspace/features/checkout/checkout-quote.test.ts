@@ -2,7 +2,8 @@ import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
-import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
+import type { WorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
+import { workspaceProductMonitorOptions } from "@/features/checkout/product-catalog";
 import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
@@ -32,8 +33,8 @@ const discountId = Schema.decodeUnknownSync(discountIdSchema);
 const discountQuote = (
   applications: readonly AppliedDiscount[]
 ): DiscountQuote => ({
-  product: { kind: "cowork", tier: "basic" },
-  discountableSubtotal: money(35_000),
+  product: { kind: "cowork", tier: "open-space" },
+  discountableSubtotal: money(29_000),
   discounts: applications,
   totalDiscount: money(
     applications.reduce(
@@ -41,7 +42,7 @@ const discountQuote = (
       0
     )
   ),
-  discountedSubtotal: applications.at(-1)?.subtotalAfter ?? money(35_000),
+  discountedSubtotal: applications.at(-1)?.subtotalAfter ?? money(29_000),
 });
 
 const percentageApplication = (
@@ -54,36 +55,21 @@ const percentageApplication = (
     expiresAt: "2026-08-01T22:00:00.000Z",
     countdownStartsAt: "2026-07-31T22:00:00.000Z",
   },
-  subtotalBefore: money(35_000),
-  amount: money(17_500),
-  subtotalAfter: money(17_500),
+  subtotalBefore: money(29_000),
+  amount: money(14_500),
+  subtotalAfter: money(14_500),
   ...overrides,
 });
 
 describe("cowork reservation quotes", () => {
-  test.each(["basic", "plus", "profi"] as const)(
-    "uses the canonical full product identity for the %s summary key",
-    (entryTier) => {
-      const quote = buildCoworkReservationQuote({
-        entryTier,
-        coffee: false,
-        ...(entryTier === "profi" && { monitorOption: "2x27-qhd" as const }),
-      });
-
-      expect(quote.summary.sections[0]?.items[0]?.key).toBe(
-        `product:${getWorkspaceProductKey({ kind: "cowork", tier: entryTier })}`
-      );
-    }
-  );
-
   test("builds an access-only quote without a discount section", () => {
     const quote = buildCoworkReservationQuote({
-      entryTier: "basic",
+      entryTier: "open-space",
       coffee: false,
     });
 
     expect(quote.summary.total).toEqual({
-      value: 35_000,
+      value: 29_000,
       exponent: 2,
       currency: "CZK",
     });
@@ -92,104 +78,89 @@ describe("cowork reservation quotes", () => {
       "total",
     ]);
     expect(quote.summary.sections[0]?.items.map((item) => item.key)).toEqual([
-      "product:cowork:basic",
+      "product:cowork:open-space",
     ]);
-    expect(quote).not.toHaveProperty("schema");
-    expect(quote.summary).not.toHaveProperty("schema");
   });
 
   test("charges paid coffee for the Basic non-courtesy tier", () => {
     const quote = buildCoworkReservationQuote({
-      entryTier: "basic",
+      entryTier: "open-space",
       coffee: true,
     });
 
     expect(quote.summary.sections[0]?.items).toEqual([
       {
-        key: "product:cowork:basic",
-        product: { kind: "cowork", tier: "basic" },
-        amount: { value: 35_000, exponent: 2, currency: "CZK" },
+        key: "product:cowork:open-space",
+        product: { kind: "cowork", tier: "open-space" },
+        amount: { value: 29_000, exponent: 2, currency: "CZK" },
       },
       {
         key: "addon:coffee",
         amount: { value: 5000, exponent: 2, currency: "CZK" },
       },
     ]);
-    expect(quote.payment.expectedPrice.value).toBe(40_000);
   });
 
-  test("shows courtesy coffee as a zero CZK line item for included tiers", () => {
+  test("keeps included coffee out of the reserved-desk summary", () => {
     const quote = buildCoworkReservationQuote({
-      entryTier: "plus",
-      coffee: false,
+      entryTier: "reserved-desk",
+      coffee: true,
     });
 
-    expect(quote.summary.sections[0]?.items).toEqual([
-      {
-        key: "product:cowork:plus",
-        product: { kind: "cowork", tier: "plus" },
-        amount: { value: 49_000, exponent: 2, currency: "CZK" },
-      },
-      {
-        key: "addon:coffee",
-        amount: { value: 0, exponent: 2, currency: "CZK" },
-      },
+    expect(quote.summary.sections[0]?.items.map((item) => item.key)).toEqual([
+      "product:cowork:reserved-desk",
     ]);
-    expect(quote.payment.expectedPrice.value).toBe(49_000);
   });
 
-  test("rejects unreachable monitor combinations consistently", () => {
-    expect(() =>
-      buildCoworkReservationQuote({
-        entryTier: "basic",
-        coffee: false,
-        monitorOption: "2x27-qhd",
-      })
-    ).toThrow("monitorOption");
-
-    expect(() =>
-      buildCoworkReservationQuote({
-        entryTier: "profi",
-        coffee: true,
-      })
-    ).toThrow("monitorOption");
-  });
-
-  test("calculates Profi advertised pricing without a monitor selection", () => {
-    const quote = Effect.runSync(
-      buildCoworkReservationQuoteEffect({
-        kind: "cowork",
-        entryTier: "profi",
-        coffee: true,
-      })
-    );
-
-    expect(quote).not.toHaveProperty("summary");
-    expect(quote).not.toHaveProperty("order");
-    expect(quote.payment.expectedPrice.value).toBe(55_000);
-  });
-
-  test("keeps monitor composition in the summary but not the price quote", () => {
-    const firstMonitor = buildCoworkReservationQuote({
-      entryTier: "profi",
+  test("lists the reserved-desk workstation and monitor in the summary", () => {
+    const withWorkstation = buildCoworkReservationQuote({
+      entryTier: "reserved-desk",
       coffee: true,
       monitorOption: "2x27-qhd",
     });
-    const secondMonitor = buildCoworkReservationQuote({
-      entryTier: "profi",
-      coffee: true,
-      monitorOption: "2x32-4k",
-    });
 
-    expect(firstMonitor.fingerprint).toBe(secondMonitor.fingerprint);
-    expect(firstMonitor.summary).not.toEqual(secondMonitor.summary);
+    expect(
+      withWorkstation.summary.sections[0]?.items.map((item) => item.key)
+    ).toEqual([
+      "product:cowork:reserved-desk",
+      "addon:workstation",
+      "monitor:2x27-qhd",
+    ]);
+  });
+
+  test("keeps the fingerprint stable across every catalog configuration and split by workstation presence", () => {
+    const quoteWith = (monitorOption?: WorkspaceProductMonitorOption | "") =>
+      Effect.runSync(
+        buildCoworkReservationQuoteEffect({
+          kind: "cowork",
+          entryTier: "reserved-desk",
+          coffee: true,
+          ...(monitorOption !== undefined && { monitorOption }),
+        })
+      );
+
+    const configured = workspaceProductMonitorOptions.map(
+      (monitorOption) => quoteWith(monitorOption).fingerprint
+    );
+
+    // Every catalog monitor configuration is the same priced workstation.
+    for (const fingerprint of configured) {
+      expect(fingerprint).toBe(configured[0]);
+    }
+
+    const absent = quoteWith().fingerprint;
+    const empty = quoteWith("").fingerprint;
+
+    // Absent and empty selections are no-workstation quotes.
+    expect(absent).toBe(empty);
+    expect(configured[0]).not.toBe(absent);
   });
 
   test("applies generic cowork discounts without discounting paid coffee", () => {
     const application = percentageApplication();
     const quote = buildCoworkReservationQuote(
       {
-        entryTier: "basic",
+        entryTier: "open-space",
         coffee: true,
       },
       {
@@ -205,10 +176,10 @@ describe("cowork reservation quotes", () => {
       key: "order",
       items: [
         {
-          key: "product:cowork:basic",
-          product: { kind: "cowork", tier: "basic" },
-          amount: { value: 17_500, exponent: 2, currency: "CZK" },
-          originalAmount: { value: 35_000, exponent: 2, currency: "CZK" },
+          key: "product:cowork:open-space",
+          product: { kind: "cowork", tier: "open-space" },
+          amount: { value: 14_500, exponent: 2, currency: "CZK" },
+          originalAmount: { value: 29_000, exponent: 2, currency: "CZK" },
           discounts: [
             {
               discount: application.discount,
@@ -221,51 +192,14 @@ describe("cowork reservation quotes", () => {
           amount: { value: 5000, exponent: 2, currency: "CZK" },
         },
       ],
-      total: { value: 22_500, exponent: 2, currency: "CZK" },
+      total: { value: 19_500, exponent: 2, currency: "CZK" },
     });
-    expect(quote.payment.expectedPrice.value).toBe(22_500);
-    expect(quote.payment.undiscountedPrice.value).toBe(40_000);
-    expect(quote.payment.discounts).toEqual([application]);
-  });
-
-  test("fingerprint changes for different composition with the same total", () => {
-    const accessOnly = buildCoworkReservationQuote({
-      entryTier: "basic",
-      coffee: false,
-    });
-    const coffeeDiscountedToSameTotal = buildCoworkReservationQuote(
-      {
-        entryTier: "basic",
-        coffee: true,
-      },
-      {
-        discountQuote: discountQuote([
-          {
-            discount: {
-              id: discountId("coffee-offset"),
-              label: "Coffee offset",
-              adjustment: { kind: "fixed", amount: money(5000) },
-            },
-            subtotalBefore: money(35_000),
-            amount: money(5000),
-            subtotalAfter: money(30_000),
-          },
-        ]),
-      }
-    );
-
-    expect(accessOnly.summary.total.value).toBe(
-      coffeeDiscountedToSameTotal.summary.total.value
-    );
-    expect(accessOnly.fingerprint).not.toBe(
-      coffeeDiscountedToSameTotal.fingerprint
-    );
   });
 
   test("fingerprint includes the complete generic discount snapshot", () => {
     const application = percentageApplication();
     const fingerprint = buildCoworkReservationQuote(
-      { entryTier: "basic", coffee: false },
+      { entryTier: "open-space", coffee: false },
       { discountQuote: discountQuote([application]) }
     ).fingerprint;
     const variants: readonly AppliedDiscount[] = [
@@ -309,7 +243,7 @@ describe("cowork reservation quotes", () => {
     for (const variant of variants) {
       expect(
         buildCoworkReservationQuote(
-          { entryTier: "basic", coffee: false },
+          { entryTier: "open-space", coffee: false },
           { discountQuote: discountQuote([variant]) }
         ).fingerprint
       ).not.toBe(fingerprint);
@@ -324,75 +258,30 @@ describe("cowork reservation quotes", () => {
         label: "Member bonus",
         adjustment: { kind: "fixed", amount: money(2500) },
       },
-      subtotalBefore: money(17_500),
+      subtotalBefore: money(14_500),
       amount: money(2500),
       subtotalAfter: money(15_000),
     };
 
     const ordered = buildCoworkReservationQuote(
-      { entryTier: "basic", coffee: false },
+      { entryTier: "open-space", coffee: false },
       { discountQuote: discountQuote([first, second]) }
     );
     const reversed = buildCoworkReservationQuote(
-      { entryTier: "basic", coffee: false },
+      { entryTier: "open-space", coffee: false },
       { discountQuote: discountQuote([second, first]) }
     );
 
     expect(ordered.fingerprint).not.toBe(reversed.fingerprint);
   });
 
-  test("sanitizes runtime contact and consent fields from quote output", () => {
-    const orderWithRuntimeExtras = {
-      entryTier: "basic",
-      date: "2026-06-01",
-      coffee: false,
-      marketingConsent: true,
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420 777 777 777",
-      message: "Please keep this private.",
-    } as const;
-
-    const quote = buildCoworkReservationQuote(orderWithRuntimeExtras);
-
-    expect(quote).not.toHaveProperty("order");
-    expect(quote).not.toHaveProperty("date");
-    expect(quote).not.toHaveProperty("marketingConsent");
-    expect(quote).not.toHaveProperty("name");
-    expect(quote).not.toHaveProperty("email");
-    expect(quote).not.toHaveProperty("phone");
-    expect(quote).not.toHaveProperty("message");
-  });
-
-  test("ignores runtime contact and consent fields when fingerprinting", () => {
-    const cleanQuote = buildCoworkReservationQuote({
-      entryTier: "plus",
-      coffee: false,
-    });
-    const orderWithRuntimeExtras = {
-      entryTier: "plus",
-      date: "2026-06-01",
-      coffee: false,
-      marketingConsent: true,
-      name: "Grace Hopper",
-      email: "grace@example.com",
-      phone: "+420 111 111 111",
-      message: "Do not fingerprint this.",
-    } as const;
-    const quoteWithRuntimeExtras = buildCoworkReservationQuote(
-      orderWithRuntimeExtras
-    );
-
-    expect(quoteWithRuntimeExtras.fingerprint).toBe(cleanQuote.fingerprint);
-  });
-
   test("detects changed summary section and item keys", () => {
     const accessOnly = buildCoworkReservationQuote({
-      entryTier: "basic",
+      entryTier: "open-space",
       coffee: false,
     });
     const withCoffee = buildCoworkReservationQuote({
-      entryTier: "basic",
+      entryTier: "open-space",
       coffee: true,
     });
 
@@ -404,40 +293,6 @@ describe("cowork reservation quotes", () => {
     });
   });
 
-  test("detects a changed public item label when its amount is unchanged", () => {
-    const quote = buildCoworkReservationQuote(
-      { entryTier: "basic", coffee: false },
-      { discountQuote: discountQuote([percentageApplication()]) }
-    );
-    const renamedSummary = {
-      ...quote.summary,
-      sections: quote.summary.sections.map((section) => ({
-        ...section,
-        items: section.items.map((item) =>
-          "discounts" in item && item.discounts
-            ? {
-                ...item,
-                discounts: item.discounts.map((summaryDiscount) => ({
-                  ...summaryDiscount,
-                  discount: {
-                    ...summaryDiscount.discount,
-                    label: "Renamed sale",
-                  },
-                })) as typeof item.discounts,
-              }
-            : item
-        ),
-      })),
-    };
-
-    expect(
-      getCheckoutSummaryChangedKeys(quote.summary, renamedSummary)
-    ).toEqual({
-      sectionKeys: [],
-      itemKeys: ["product:cowork:basic"],
-    });
-  });
-
   test("detects every inline discount composition change at an equal final price", () => {
     const first = percentageApplication();
     const second: AppliedDiscount = {
@@ -446,12 +301,12 @@ describe("cowork reservation quotes", () => {
         label: "Member bonus",
         adjustment: { kind: "fixed", amount: money(2500) },
       },
-      subtotalBefore: money(17_500),
+      subtotalBefore: money(14_500),
       amount: money(2500),
       subtotalAfter: money(15_000),
     };
     const quote = buildCoworkReservationQuote(
-      { entryTier: "basic", coffee: false },
+      { entryTier: "open-space", coffee: false },
       { discountQuote: discountQuote([first, second]) }
     );
     const productItem = quote.summary.sections[0]?.items[0];
@@ -538,13 +393,13 @@ describe("cowork reservation quotes", () => {
 
       expect(
         getCheckoutSummaryChangedKeys(quote.summary, changedSummary).itemKeys
-      ).toContain("product:cowork:basic");
+      ).toContain("product:cowork:open-space");
     }
   });
 
   test("detects changed summary currency and exponent", () => {
     const quote = buildCoworkReservationQuote({
-      entryTier: "basic",
+      entryTier: "open-space",
       coffee: false,
     });
     const changedCurrency = {
@@ -574,7 +429,7 @@ describe("cowork reservation quotes", () => {
 
     expect(
       getCheckoutSummaryChangedKeys(quote.summary, changedCurrency).itemKeys
-    ).toContain("product:cowork:basic");
+    ).toContain("product:cowork:open-space");
     expect(
       getCheckoutSummaryChangedKeys(quote.summary, changedExponent).sectionKeys
     ).toContain("total");

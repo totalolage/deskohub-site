@@ -1,0 +1,9 @@
+- main:
+  - list "Reservation steps"
+  - status: "Payment status: Payment link expired."
+  - heading "Payment link expired." [level=1]
+  - heading "Reservation summary" [level=2]
+  - term: Order reference
+  - definition: /.+/
+  - link "Back home":
+    - /url: /en-US

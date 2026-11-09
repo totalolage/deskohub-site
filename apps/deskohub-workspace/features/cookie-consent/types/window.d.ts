@@ -1,4 +1,4 @@
-import type { ConsentState } from "../utils/consent-mode";
+import type { GoogleConsentState } from "../utils/google-consent-mode";
 
 declare global {
   type GtagConsentCommand = "default" | "update";
@@ -8,7 +8,7 @@ declare global {
     gtag?: (
       command: "consent",
       action: GtagConsentCommand,
-      params: Partial<ConsentState>
+      params: Partial<GoogleConsentState>
     ) => void;
   }
 }

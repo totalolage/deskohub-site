@@ -1,20 +1,30 @@
+import "@/shared/testing/workspace-test-env";
+
 import { describe, expect, test } from "bun:test";
-import { DELETE, GET, PATCH, POST } from "./route";
+import { WorkspaceAdminApi } from "@deskohub/workspace-admin-api";
+import { HttpApi } from "effect/unstable/httpapi";
 
-describe("Workspace Admin API route", () => {
-  test("adapts the Effect API and disables caching", async () => {
-    const response = await GET(
-      new Request("https://workspace.deskohub.test/api/v1/cli/info")
-    );
+const contractMethods = () => {
+  const methods = new Set<string>();
+  HttpApi.reflect(WorkspaceAdminApi, {
+    onGroup: () => undefined,
+    onEndpoint: ({ endpoint }) => {
+      methods.add(endpoint.method);
+    },
+  });
+  return [...methods];
+};
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(await response.json()).toEqual({
-      apiVersion: "v1",
-      service: "deskohub-workspace",
-    });
-    expect(DELETE).toBe(POST);
-    expect(PATCH).toBe(POST);
-    expect(POST).not.toBe(GET);
+describe("admin CLI API route", () => {
+  // Next.js answers a method the route module doesn't export with 405 before
+  // the API handler runs, so every method the contract uses needs an export.
+  test("exports a handler for every method the admin API contract uses", async () => {
+    const exported = new Set(Object.keys(await import("./route")));
+    const methods = contractMethods();
+
+    expect(methods).not.toHaveLength(0);
+    const missing = methods.filter((method) => !exported.has(method));
+
+    expect(missing).toEqual([]);
   });
 });

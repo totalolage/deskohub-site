@@ -1,0 +1,20 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Playwright children decode the same E2E environment, so the launcher hands
+// them toPlaywrightEnvironment(...) and never the raw process environment.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/scripts/workspace-e2e\.ts$",
+  $body <: contains bubble {
+    or {
+      `process.env`,
+      `Bun.env`
+    } as $access where {
+      register_diagnostic(
+        span = $access,
+        message = "The E2E launcher forwards only toPlaywrightEnvironment(makeWorkspaceE2EEnvironment()); never pass or read the raw process environment.",
+        severity = "error"
+      )
+    }
+  }
+}

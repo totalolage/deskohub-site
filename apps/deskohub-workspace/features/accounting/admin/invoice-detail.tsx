@@ -3,7 +3,10 @@
 import { Download, RotateCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { AdministrationAlert } from "@/features/administration/components";
+import { m } from "@/features/administration/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
@@ -15,6 +18,7 @@ export function InvoicePaymentStatusBadge({
 }: {
   readonly status: InvoiceAdministrationDetail["paymentStatus"];
 }) {
+  const locale = useRouteLocale();
   return (
     <StatusBadge
       tone={
@@ -26,11 +30,12 @@ export function InvoicePaymentStatusBadge({
         }[status] as "positive" | "neutral" | "attention"
       }
     >
-      {
-        { paid: "Paid", issued: "Issued", due: "Due", overdue: "Overdue" }[
-          status
-        ]
-      }
+      {{
+        paid: m.accountingInvoicePaymentPaid,
+        issued: m.accountingInvoicePaymentIssued,
+        due: m.accountingInvoicePaymentDue,
+        overdue: m.accountingInvoicePaymentOverdue,
+      }[status]({}, { locale })}
     </StatusBadge>
   );
 }
@@ -41,29 +46,31 @@ export function InvoiceDetailActions({
   readonly invoice: InvoiceAdministrationDetail;
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
   const [error, setError] = useState<string | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(
     retryAdministrationInvoice,
     {
-      actionName: "retryAdministrationInvoice",
       onSuccess: () => {
         setError(null);
         router.refresh();
       },
       onError: ({ error: actionError }) =>
         setError(
-          actionError.serverError ?? "Invoice delivery could not be retried."
+          actionError.serverError ??
+            m.accountingInvoiceRetryDeliveryError({}, { locale })
         ),
       onTransportError: () =>
-        setError("Invoice delivery could not be retried."),
+        setError(m.accountingInvoiceRetryDeliveryError({}, { locale })),
     }
   );
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         <Button asChild variant="secondary">
-          <a download href={invoice.pdfUrl}>
-            <Download aria-hidden className="size-4" /> Download PDF
+          <a download href={localizeAdministrationHref(invoice.pdfUrl, locale)}>
+            <Download aria-hidden className="size-4" />{" "}
+            {m.accountingInvoiceDownloadPdf({}, { locale })}
           </a>
         </Button>
         {invoice.needsAttention && (
@@ -76,7 +83,9 @@ export function InvoiceDetailActions({
             type="button"
           >
             <RotateCw aria-hidden className="size-4" />{" "}
-            {isExecuting ? "Retrying…" : "Retry delivery"}
+            {isExecuting
+              ? m.accountingInvoiceRetryingDelivery({}, { locale })
+              : m.accountingInvoiceRetryDelivery({}, { locale })}
           </Button>
         )}
       </div>
@@ -94,6 +103,7 @@ export function InvoiceDeliverySummary({
 }: {
   readonly delivery: InvoiceAdministrationDetail["delivery"];
 }) {
+  const locale = useRouteLocale();
   return (
     <dl className="grid gap-4 sm:grid-cols-2">
       {(["customer", "internal"] as const).map((audience) => (
@@ -101,7 +111,12 @@ export function InvoiceDeliverySummary({
           className="rounded-xl border border-navy-blue/10 p-4"
           key={audience}
         >
-          <dt className="text-sm capitalize text-navy-blue/60">{audience}</dt>
+          <dt className="text-sm text-navy-blue/60">
+            {{
+              customer: m.accountingInvoiceDeliveryAudienceCustomer,
+              internal: m.accountingInvoiceDeliveryAudienceInternal,
+            }[audience]({}, { locale })}
+          </dt>
           <dd className="mt-2">
             <StatusBadge
               tone={
@@ -113,7 +128,12 @@ export function InvoiceDeliverySummary({
                 }[delivery[audience]] as "positive" | "attention" | "neutral"
               }
             >
-              {delivery[audience]}
+              {{
+                accepted: m.accountingInvoiceDeliveryStatusAccepted,
+                failed: m.accountingInvoiceDeliveryStatusFailed,
+                missing: m.accountingInvoiceDeliveryStatusMissing,
+                processing: m.accountingInvoiceDeliveryStatusProcessing,
+              }[delivery[audience]]({}, { locale })}
             </StatusBadge>
           </dd>
         </div>

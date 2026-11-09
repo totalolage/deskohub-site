@@ -23,7 +23,7 @@ export function StatusBadge({
           positive:
             "border-aquamarine-green/35 bg-aquamarine-green/12 text-aquamarine-ink",
           progress:
-            "border-sunset-yellow/35 bg-sunset-yellow/15 text-navy-blue",
+            "border-sunset-yellow/35 bg-sunset-yellow/15 text-sunset-yellow-ink",
         }[tone],
         className
       )}

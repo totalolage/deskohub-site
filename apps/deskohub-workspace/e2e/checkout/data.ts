@@ -1,25 +1,29 @@
 import { randomUUID } from "node:crypto";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import type {
-  WorkspaceCoworkProductTier,
+  WorkspaceCoworkCurrentTier,
   WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
   getMeetingRoomReservationDurationKey,
   isMeetingRoomWholeDayReservationDuration,
   type MeetingRoomReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
-  getMeetingRoomAvailabilityToDate,
+  getMeetingRoomLastServiceDate,
   getMeetingRoomReservationDate,
   getMeetingRoomReservationInterval,
 } from "@/features/reservation/meeting-room-reservation-time";
 import {
+  getOfficeReservationDayCount,
   getOfficeReservationIntervalInput,
   getOfficeReservationMaximumEndsOn,
   officeReservationDetailsSchema,
 } from "@/features/reservation/office-reservation";
+import { reservationCustomerQueryParam } from "@/features/reservation/reservation-checkout-query";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import {
@@ -30,7 +34,6 @@ import {
   workspaceE2EConcurrentRunTarget,
   workspaceE2EFullDateAllocation,
 } from "../allocation";
-import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -44,6 +47,7 @@ import {
 } from "../office";
 import { assert, log } from "../runtime";
 import type { CheckoutData, CheckoutFlow } from "../types";
+import { toReservationStep } from "./reservation-form-preparation";
 
 export type MeetingRoomCheckoutSlot = {
   readonly date: string;
@@ -73,9 +77,17 @@ export type OfficeAvailability = {
 
 export type CoworkAvailabilitySelection = {
   readonly allocation?: WorkspaceE2EDateAllocation;
-  readonly entryTier?: WorkspaceCoworkProductTier;
+  readonly entryTier?: WorkspaceCoworkCurrentTier;
   readonly monitorOption?: WorkspaceProductMonitorOption;
 };
+
+// A planned checkout books for its own contact. A signed-in account with a
+// profile otherwise books as itself, so the meeting-room and office links,
+// whose contact is typed on the contact step, ask for the contact mode;
+// cowork links carry the contact, which asks for it.
+const someoneElseCustomerQuery = new URLSearchParams({
+  [reservationCustomerQueryParam]: "contact",
+}).toString();
 
 let checkoutContactSequence = 0;
 const emailLocalPartLimit = 64;
@@ -89,7 +101,7 @@ export const checkoutFlows: readonly CheckoutFlow[] = [
     id: "cowork-basic",
     makeData: (config, _datasourceConfig, date) =>
       Effect.succeed(makeCoworkCheckoutData(config.baseUrl, date)),
-    submitReservationScript: getSubmitCoworkReservationScript,
+    toReservationPreparation: toReservationStep,
   },
 ];
 
@@ -111,10 +123,9 @@ const makeCheckoutContact = (flowId: string) => {
   const emailKey = `${normalizedFlowId.slice(0, maxEmailFlowIdLength)}-${uniqueEmailKey}`;
   const name = `Workspace E2E ${flowId} ${runId} ${sequence}`;
   const phone = `+4207${runId.slice(2, 8)}${sequence}`;
-  const email = `${deliveredEmailPrefix}${emailKey}@resend.dev`;
-  const message = `Automated checkout e2e ${flowId} ${runId} ${sequence}`;
+  const email = testEmailAddress(`${deliveredEmailPrefix}${emailKey}`);
 
-  return { email, message, name, phone };
+  return { email, name, phone };
 };
 
 export const makeCoworkCheckoutData = (
@@ -123,7 +134,7 @@ export const makeCoworkCheckoutData = (
   flowId = "cowork-basic",
   product: {
     readonly coffee?: boolean;
-    readonly entryTier?: WorkspaceCoworkProductTier;
+    readonly entryTier?: WorkspaceCoworkCurrentTier;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   } = {}
 ): CheckoutData => {
@@ -142,7 +153,7 @@ export const reuseCoworkCheckoutContact = (
   source: CheckoutData,
   product: {
     readonly coffee?: boolean;
-    readonly entryTier?: WorkspaceCoworkProductTier;
+    readonly entryTier?: WorkspaceCoworkCurrentTier;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   } = {}
 ): CheckoutData =>
@@ -151,12 +162,24 @@ export const reuseCoworkCheckoutContact = (
     date,
     {
       email: source.email,
-      message: source.message,
       name: source.name,
       phone: source.phone,
     },
     product
   );
+
+/**
+ * The planned checkout booked for `email` instead of its generated one, with
+ * the reservation link carrying it as the contact to prefill.
+ */
+export const withCheckoutContactEmail = (
+  data: CheckoutData,
+  email: string
+): CheckoutData => {
+  const url = new URL(data.checkoutUrl);
+  url.searchParams.set("email", email);
+  return { ...data, checkoutUrl: url.toString(), email };
+};
 
 export const makeMeetingRoomCheckoutData = (
   checkoutBaseUrl: string,
@@ -178,12 +201,15 @@ export const makeOfficeCheckoutData = (
   const locale: CheckoutData["locale"] = "en-US";
 
   return {
-    checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/office`,
+    checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/office?${someoneElseCustomerQuery}`,
     date: slot.startsOn,
     email: contact.email,
-    expectedReservationDetails: { kind: "office" },
+    expectedReservationDetails: {
+      kind: "office",
+      seats: slot.seats,
+      dayCount: getOfficeReservationDayCount(slot),
+    },
     locale,
-    message: contact.message,
     name: contact.name,
     office: slot,
     orderIdHint: "",
@@ -198,7 +224,6 @@ export const reuseMeetingRoomCheckoutContact = (
 ): CheckoutData => {
   return makeMeetingRoomCheckoutDataWithContact(checkoutBaseUrl, slot, {
     email: source.email,
-    message: source.message,
     name: source.name,
     phone: source.phone,
   });
@@ -211,10 +236,13 @@ const makeMeetingRoomCheckoutDataWithContact = (
 ): CheckoutData => {
   const locale: CheckoutData["locale"] = "en-US";
   return {
-    checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/meeting-room`,
+    checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/meeting-room?${someoneElseCustomerQuery}`,
     date: slot.date,
     email: contact.email,
-    expectedReservationDetails: { kind: "meeting-room" },
+    expectedReservationDetails: {
+      kind: "meeting-room",
+      duration: slot.duration,
+    },
     locale,
     meetingRoom: {
       duration: slot.duration,
@@ -222,7 +250,6 @@ const makeMeetingRoomCheckoutDataWithContact = (
       startDateTime: slot.startDateTime,
       startsAt: slot.startsAt,
     },
-    message: contact.message,
     name: contact.name,
     orderIdHint: "",
     phone: contact.phone,
@@ -235,23 +262,22 @@ const makeCoworkCheckoutDataWithContact = (
   contact: ReturnType<typeof makeCheckoutContact>,
   product: {
     readonly coffee?: boolean;
-    readonly entryTier?: WorkspaceCoworkProductTier;
+    readonly entryTier?: WorkspaceCoworkCurrentTier;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   }
 ): CheckoutData => {
   const locale: CheckoutData["locale"] = "en-US";
-  const entryTier = product.entryTier ?? "basic";
+  const entryTier = product.entryTier ?? "open-space";
   const normalizedProduct = makeExpectedCoworkProduct(entryTier, product);
   const params = new URLSearchParams({
     coffee: String(normalizedProduct.coffee),
     date,
     email: contact.email,
     entryTier: normalizedProduct.entryTier,
-    message: contact.message,
     name: contact.name,
     phone: contact.phone,
   });
-  if (normalizedProduct.monitorOption) {
+  if ("monitorOption" in normalizedProduct && normalizedProduct.monitorOption) {
     params.set("monitorOption", normalizedProduct.monitorOption);
   }
 
@@ -264,7 +290,6 @@ const makeCoworkCheckoutDataWithContact = (
       ...normalizedProduct,
     },
     locale,
-    message: contact.message,
     name: contact.name,
     orderIdHint: "",
     phone: contact.phone,
@@ -272,29 +297,28 @@ const makeCoworkCheckoutDataWithContact = (
 };
 
 const makeExpectedCoworkProduct = (
-  entryTier: WorkspaceCoworkProductTier,
+  entryTier: WorkspaceCoworkCurrentTier,
   product: {
     readonly coffee?: boolean;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   }
 ) => {
   switch (entryTier) {
-    case "basic":
+    case "open-space":
       return {
         coffee: product.coffee ?? false,
         entryTier,
       } as const;
-    case "plus":
+    case "reserved-desk":
       return {
         coffee: true,
         entryTier,
+        ...(product.monitorOption && { monitorOption: product.monitorOption }),
       } as const;
-    case "profi":
-      return {
-        coffee: true,
-        entryTier,
-        monitorOption: product.monitorOption ?? "2x27-qhd",
-      } as const;
+    default:
+      throw new Error(
+        `Unsupported cowork entry tier ${String(entryTier)}; saleable tiers are open-space and reserved-desk`
+      );
   }
 };
 
@@ -313,12 +337,12 @@ export const selectAvailableCoworkDates = (
   count: number,
   {
     allocation,
-    entryTier = "basic",
+    entryTier = "open-space",
     excludedDates = new Set<string>(),
     maximumReservationsPerDate,
     monitorOption,
   }: {
-    readonly entryTier?: WorkspaceCoworkProductTier;
+    readonly entryTier?: WorkspaceCoworkCurrentTier;
     readonly excludedDates?: ReadonlySet<string>;
     readonly monitorOption?: WorkspaceProductMonitorOption;
     readonly allocation?: WorkspaceE2EDateAllocation;
@@ -344,7 +368,7 @@ export const loadAvailableCoworkDates = (
   config: WorkspaceE2EConfig,
   {
     allocation = workspaceE2EFullDateAllocation,
-    entryTier = "basic",
+    entryTier = "open-space",
     monitorOption,
   }: CoworkAvailabilitySelection = {}
 ): Effect.Effect<readonly string[], WorkspaceE2EError, HttpClient.HttpClient> =>
@@ -556,15 +580,21 @@ export const selectAvailableMeetingRoomSlots = (
     );
   });
 
-export const selectAvailableOfficeSlot = (
+/**
+ * Selects `count` available, non-overlapping office ranges from the
+ * allocation's own blocks, earliest first, within the office booking horizon.
+ */
+export const selectAvailableOfficeSlots = (
   config: WorkspaceE2EConfig,
+  count: number,
   allocation: WorkspaceE2EDateAllocation = workspaceE2EFullDateAllocation
 ): Effect.Effect<
-  OfficeCheckoutSlot,
+  readonly OfficeCheckoutSlot[],
   WorkspaceE2EError,
   HttpClient.HttpClient
 > =>
   Effect.gen(function* () {
+    const slots: OfficeCheckoutSlot[] = [];
     const allocationLastCandidateDate = getWorkspaceE2ECandidateDate(
       allocation.toOffsetDays
     );
@@ -606,12 +636,13 @@ export const selectAvailableOfficeSlot = (
       log(
         `Selected available office range ${slot.startsOn} through ${slot.endsOn}`
       );
-      return slot;
+      slots.push(slot);
+      if (slots.length === count) return slots;
     }
 
     return yield* workspaceE2EError(
-      `No available reservation:office ${workspaceE2EOfficeReservationDayCount}-day range with ${workspaceE2EOfficeReservationSeats} seats found in ${formatWorkspaceE2EAllocation(allocation)} for supported concurrency ${workspaceE2EConcurrentRunTarget}`,
-      { operation: "select available office checkout range" }
+      `Only found ${slots.length} available reservation:office ${workspaceE2EOfficeReservationDayCount}-day ranges with ${workspaceE2EOfficeReservationSeats} seats in ${formatWorkspaceE2EAllocation(allocation)} for supported concurrency ${workspaceE2EConcurrentRunTarget}, need ${count}`,
+      { operation: "select available office checkout ranges" }
     );
   });
 
@@ -736,7 +767,7 @@ export const loadMeetingRoomAvailability = (
     const params = new URLSearchParams({
       kind: "meeting-room",
       from: slot.date,
-      to: getMeetingRoomAvailabilityToDate(slot),
+      to: getMeetingRoomLastServiceDate(slot),
       startsAt: slot.startsAt,
       endsAt: slot.endsAt,
     });
@@ -791,16 +822,16 @@ export const loadMeetingRoomAvailability = (
   });
 
 const makeCoworkSelectionLabel = (
-  entryTier: WorkspaceCoworkProductTier,
+  entryTier: WorkspaceCoworkCurrentTier,
   monitorOption: WorkspaceProductMonitorOption | undefined
 ) =>
   monitorOption
-    ? `tier:${entryTier} with monitor:${monitorOption}`
-    : `tier:${entryTier}`;
+    ? `${getWorkspaceProductByTier(entryTier).label} with monitor:${monitorOption}`
+    : getWorkspaceProductByTier(entryTier).label;
 
 const getTouchedDates = (slot: MeetingRoomCheckoutSlot) => {
   const dates = [slot.date];
-  const endDate = getMeetingRoomAvailabilityToDate(slot);
+  const endDate = getMeetingRoomLastServiceDate(slot);
   if (endDate !== slot.date) dates.push(endDate);
   return dates;
 };

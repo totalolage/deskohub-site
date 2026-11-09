@@ -2,6 +2,7 @@
 
 import { cva, type VariantProps } from "class-variance-authority";
 import { motion, type Transition } from "motion/react";
+import { UnstyledButton } from "@/shared/components/ui/unstyled-button";
 import { cn } from "@/shared/utils";
 
 const indicatorDotVariants = cva("h-2.5 rounded-full", {
@@ -55,20 +56,17 @@ export function CarouselPositionIndicator({
   if (count <= 1) return null;
 
   return (
-    <div className={cn("flex", className)}>
+    <div className={cn("flex flex-wrap justify-center", className)}>
       {Array.from({ length: count }, (_, index) => (
-        <button
+        <UnstyledButton
           aria-current={index === activeIndex ? "true" : undefined}
           aria-label={getLabel(index)}
           className={cn(
-            "grid size-8 shrink-0 place-items-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
-            variant === "light"
-              ? "focus-visible:outline-white"
-              : "focus-visible:outline-burned-orange"
+            "grid size-8 shrink-0 place-items-center rounded-full",
+            variant === "light" && "focus-visible:outline-white"
           )}
           key={getKey?.(index) ?? index}
           onClick={() => onSelect(index)}
-          type="button"
         >
           <motion.span
             animate={{ width: index === activeIndex ? 24 : 10 }}
@@ -78,7 +76,7 @@ export function CarouselPositionIndicator({
             })}
             transition={transition}
           />
-        </button>
+        </UnstyledButton>
       ))}
     </div>
   );

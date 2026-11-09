@@ -3,23 +3,35 @@ import type {
   PostHogFeatureFlagEvaluationOptions,
   TypedPostHogFeatureFlagEvaluationSnapshot,
 } from "@deskohub/posthog/feature-flags/node";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 import type {
   PostHogFeatureFlagDefinitions,
   PostHogFeatureFlagKey,
 } from "../generated/contract";
 import { postHogFeatureFlags } from "../generated/contract";
 
+type WorkspaceFeatureFlagSnapshot = Pick<
+  TypedPostHogFeatureFlagEvaluationSnapshot<PostHogFeatureFlagDefinitions>,
+  "getFlag"
+>;
+
 export interface IWorkspaceFeatureFlagService {
   readonly evaluateFlags: (
     options?: PostHogFeatureFlagEvaluationOptions<PostHogFeatureFlagDefinitions>
   ) => Effect.Effect<
-    TypedPostHogFeatureFlagEvaluationSnapshot<PostHogFeatureFlagDefinitions>,
+    WorkspaceFeatureFlagSnapshot,
     PostHogFeatureFlagEvaluationError
   >;
   readonly isEnabled: <Key extends PostHogFeatureFlagKey>(
     key: Key
   ) => Effect.Effect<boolean, PostHogFeatureFlagEvaluationError>;
+  /**
+   * The flag's value when it is the same for every visitor, read without the
+   * request; none when the flag is decided per visitor.
+   */
+  readonly constantValue: <Key extends PostHogFeatureFlagKey>(
+    key: Key
+  ) => Effect.Effect<Option.Option<boolean>>;
 }
 
 export class WorkspaceFeatureFlagService extends Context.Service<
@@ -33,29 +45,37 @@ export class WorkspaceFeatureFlagService extends Context.Service<
   static Default = Layer.unwrap(
     Effect.promise(async () => {
       const [
-        { areWorkspaceFeatureFlagsGlobal, getGlobalWorkspaceFeatureFlagValue },
+        {
+          getGlobalWorkspaceFeatureFlagValue,
+          getGlobalWorkspaceFeatureFlagValues,
+        },
         { nodeFeatureFlags },
-        { getCurrentPostHogFeatureFlagSubject, workspaceReleaseSubject },
+        { getCurrentPostHogFeatureFlagSubject },
       ] = await Promise.all([
         import("./feature-flag-evaluation-mode.server"),
         import("./node"),
         import("./subject"),
       ]);
-      const getSubject = (keys: readonly PostHogFeatureFlagKey[]) =>
-        Effect.promise(() => areWorkspaceFeatureFlagsGlobal(keys)).pipe(
-          Effect.flatMap((global) =>
-            global
-              ? Effect.succeed(workspaceReleaseSubject)
-              : getCurrentPostHogFeatureFlagSubject()
-          )
-        );
 
       return WorkspaceFeatureFlagService.from({
         evaluateFlags: Effect.fn("WorkspaceFeatureFlagService.evaluateFlags")(
           (options) =>
-            getSubject(options?.flagKeys ?? postHogFeatureFlags.keys).pipe(
-              Effect.flatMap((subject) =>
-                nodeFeatureFlags.evaluateFlags({ options, subject })
+            Effect.promise(() =>
+              getGlobalWorkspaceFeatureFlagValues(
+                options?.flagKeys ?? postHogFeatureFlags.keys
+              )
+            ).pipe(
+              Effect.flatMap(
+                (
+                  globalValues
+                ): ReturnType<IWorkspaceFeatureFlagService["evaluateFlags"]> =>
+                  globalValues === undefined
+                    ? getCurrentPostHogFeatureFlagSubject().pipe(
+                        Effect.flatMap((subject) =>
+                          nodeFeatureFlags.evaluateFlags({ options, subject })
+                        )
+                      )
+                    : Effect.succeed({ getFlag: (key) => globalValues[key] })
               )
             )
         ),
@@ -71,6 +91,12 @@ export class WorkspaceFeatureFlagService extends Context.Service<
                 : Effect.succeed(globalValue)
             )
           )
+        ),
+        constantValue: Effect.fn("WorkspaceFeatureFlagService.constantValue")(
+          (key) =>
+            Effect.promise(() => getGlobalWorkspaceFeatureFlagValue(key)).pipe(
+              Effect.map(Option.fromUndefinedOr)
+            )
         ),
       });
     })

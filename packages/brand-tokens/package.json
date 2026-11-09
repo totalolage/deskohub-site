@@ -1,0 +1,18 @@
+{
+  "name": "@deskohub/brand-tokens",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./brand-theme.css": "./src/brand-theme.css"
+  },
+  "scripts": {
+    "lint": "biome check src --config-path ../../biome.json --vcs-root ../..",
+    "test": "bun test",
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "npm:@typescript/typescript6@6.0.2"
+  }
+}

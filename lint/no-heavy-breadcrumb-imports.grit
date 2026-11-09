@@ -1,0 +1,48 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Detail breadcrumbs load narrow entity labels. The breadcrumb loaders and the
+// authorization gate they share must not import page data, invoice documents,
+// snapshots, email delivery, or Dotypos.
+file($name, $body) where {
+  or {
+    and {
+      $name <: r".*apps/deskohub-workspace/(?:features/accounting/admin/(?:invoice-breadcrumb\.server|invoice-breadcrumb\.service|invoice-administration-identifier)|features/administrators/server/administrator-authorization\.server)\.ts$",
+      $body <: contains bubble {
+        JsModuleSource() as $source where {
+          $source <: r"(?i).*(?:page-data\.server|invoice-administration\.service|invoice\.repository|snapshot|invoice-pdf|invoice-email-delivery|dotypos).*",
+          register_diagnostic(
+            span = $source,
+            message = "Breadcrumb loaders read narrow entity labels; do not import page data, invoice documents, snapshots, email delivery, or Dotypos here.",
+            severity = "error"
+          )
+        }
+      }
+    },
+    and {
+      $name <: r".*apps/deskohub-workspace/features/administration/breadcrumb\.server\.tsx$",
+      $body <: contains bubble {
+        or {
+          JsModuleSource() as $use where {
+            $use <: r".*accounting/admin/page-data\.server.*"
+          },
+          JsReferenceIdentifier() as $use where {
+            $use <: r"^(?:loadAdministrationBooking|loadAdministrationReservation|loadInvoiceAdministrationDetail|InvoiceAdministrationService)$"
+          },
+          JsIdentifierBinding() as $use where {
+            $use <: r"^(?:loadAdministrationBooking|loadAdministrationReservation|loadInvoiceAdministrationDetail|InvoiceAdministrationService)$"
+          },
+          JsLiteralExportName() as $use where {
+            $use <: r"^(?:loadAdministrationBooking|loadAdministrationReservation|loadInvoiceAdministrationDetail|InvoiceAdministrationService)$"
+          }
+        } where {
+          register_diagnostic(
+            span = $use,
+            message = "Breadcrumb loaders read narrow entity labels; use the *BreadcrumbLabel loaders instead of detail page data.",
+            severity = "error"
+          )
+        }
+      }
+    }
+  }
+}

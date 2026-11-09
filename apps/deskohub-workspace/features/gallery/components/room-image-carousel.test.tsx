@@ -9,13 +9,16 @@ import {
 } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { StaticImageData } from "next/image";
+import type { VenuePhoto } from "@/features/gallery/types/venue-photo";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
 mock.module("@deskohub/cloudinary-image", () => ({
-  CloudinaryImage: () => null,
+  CloudinaryImage: ({ alt }: { alt: string }) => (
+    <span aria-label={alt} role="img" />
+  ),
 }));
 
 mock.module("next/image", () => ({
@@ -23,8 +26,18 @@ mock.module("next/image", () => ({
 }));
 
 mock.module("yet-another-react-lightbox", () => ({
-  default: ({ index, open }: { index: number; open: boolean }) => (
-    <output data-index={index} data-open={open} data-testid="lightbox" />
+  default: ({
+    index,
+    open,
+    slides,
+  }: {
+    index: number;
+    open: boolean;
+    slides: readonly { alt?: string }[];
+  }) => (
+    <output data-index={index} data-open={open} data-testid="lightbox">
+      {slides.map((slide) => slide.alt).join("|")}
+    </output>
   ),
 }));
 
@@ -37,6 +50,40 @@ const testImages: readonly StaticImageData[] = [
   {
     height: 600,
     src: "/meeting-room-second.jpg",
+    width: 800,
+  },
+];
+
+const venuePhotos: readonly VenuePhoto[] = [
+  {
+    alt: "Localized alt",
+    caption: "Localized caption",
+    height: 600,
+    id: "room-one",
+    lightbox: {
+      alt: "Localized alt",
+      description: "Localized caption",
+      height: 600,
+      src: "https://example.test/room-one-lightbox.jpg",
+      title: "Localized caption",
+      width: 800,
+    },
+    publicId: "room-one",
+    src: "https://example.test/room-one.jpg",
+    width: 800,
+  },
+  {
+    alt: "Room fallback alt",
+    height: 600,
+    id: "room-two",
+    lightbox: {
+      alt: "Room fallback alt",
+      height: 600,
+      src: "https://example.test/room-two-lightbox.jpg",
+      width: 800,
+    },
+    publicId: "room-two",
+    src: "https://example.test/room-two.jpg",
     width: 800,
   },
 ];
@@ -81,8 +128,71 @@ describe("RoomImageCarousel", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
+  });
+
+  test("renders projected alt and caption and uses the projected lightbox", async () => {
+    const { RoomImageCarousel } = await import("./room-image-carousel");
+    const view = render(
+      <RoomImageCarousel
+        emptyText="No photos"
+        images={venuePhotos}
+        openLabel="Open room gallery"
+      />
+    );
+    const imageAlts = view
+      .getAllByRole("img", { hidden: true })
+      .map((image) => image.getAttribute("aria-label"));
+
+    expect(new Set(imageAlts)).toEqual(
+      new Set(["Localized alt", "Room fallback alt"])
+    );
+    expect(view.getByTestId("lightbox").textContent).toBe(
+      "Localized alt|Room fallback alt"
+    );
+    expect(view.getByText("Localized caption")).toBeTruthy();
+    expect(
+      view.getAllByRole("button", { name: "Localized caption" })
+    ).not.toHaveLength(0);
+    expect(
+      view.getAllByRole("button", { name: "Room fallback alt" })
+    ).not.toHaveLength(0);
+    expect(
+      view.queryAllByRole("button", { hidden: true, name: /room-(one|two)/ })
+    ).toHaveLength(0);
+  });
+
+  test("shows the empty text without any photo", async () => {
+    const { RoomImageCarousel } = await import("./room-image-carousel");
+    const view = render(
+      <RoomImageCarousel
+        emptyText="No photos"
+        images={[]}
+        openLabel="Open room gallery"
+      />
+    );
+
+    expect(view.getByText("No photos")).toBeTruthy();
+    expect(view.queryByRole("region")).toBeNull();
+    expect(view.queryAllByRole("button", { hidden: true })).toHaveLength(0);
+  });
+
+  test("shows a single photo as the only slide", async () => {
+    const { RoomImageCarousel } = await import("./room-image-carousel");
+    const view = render(
+      <RoomImageCarousel
+        emptyText="No photos"
+        images={venuePhotos.slice(0, 1)}
+        openLabel="Open room gallery"
+      />
+    );
+
+    expect(
+      view
+        .getAllByRole("img", { hidden: true })
+        .map((image) => image.getAttribute("aria-label"))
+    ).toEqual(["Localized alt"]);
   });
 
   test("opens the current fallback photo with the shared lightbox", async () => {
@@ -98,10 +208,11 @@ describe("RoomImageCarousel", () => {
         openLabel="Open meeting room gallery"
       />
     );
-    const currentPhoto = view.getByRole("button", {
-      name: "Open meeting room gallery",
+    const [currentPhoto] = view.getAllByRole("button", {
+      name: "Meeting room 1",
     });
 
+    if (!currentPhoto) throw new Error("Expected current photo");
     expect(view.getByRole("button", { name: "Meeting room 2" })).toBeTruthy();
 
     fireEvent.click(currentPhoto);
@@ -123,10 +234,10 @@ describe("RoomImageCarousel", () => {
         openLabel="Open meeting room gallery"
       />
     );
-    const activePhoto = view.getByRole("button", {
-      name: "Open meeting room gallery",
+    const [activePhoto] = view.getAllByRole("button", {
+      name: "Meeting room 1",
     });
-    const stage = activePhoto.parentElement;
+    const stage = activePhoto?.parentElement;
 
     if (!stage) throw new Error("Expected gallery stage");
 

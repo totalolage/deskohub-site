@@ -1,36 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import {
-  czkCurrency,
-  defaultWorkspaceCurrency,
-  findWorkspaceCurrencyDefinition,
-  workspaceCurrencyDefinitions,
-} from "./currencies";
+import { Option } from "effect";
+import { unitOf, workspaceCurrencyDefinitions } from "./currencies";
 
-describe("Workspace currency definitions", () => {
-  test("use unique ISO-style codes and valid exponents", () => {
-    expect(
-      new Set(workspaceCurrencyDefinitions.map(({ code }) => code)).size
-    ).toBe(workspaceCurrencyDefinitions.length);
-
-    for (const currency of workspaceCurrencyDefinitions) {
-      expect(currency.code).toMatch(/^[A-Z]{3}$/);
-      expect(Number.isInteger(currency.exponent)).toBe(true);
-      expect(currency.exponent).toBeGreaterThanOrEqual(0);
+describe("workspace currency catalog", () => {
+  test("gives each catalog currency its code and exponent as the unit", () => {
+    for (const { code, exponent } of workspaceCurrencyDefinitions) {
+      expect(unitOf(code)).toEqual(Option.some({ currency: code, exponent }));
     }
   });
 
-  test("exposes the default and finds only catalog currencies", () => {
-    expect(czkCurrency).toEqual({
-      code: "CZK",
-      exponent: 2,
-      name: "Czech koruna",
-    });
-    expect(defaultWorkspaceCurrency.code).toBe("CZK");
-    expect(findWorkspaceCurrencyDefinition("EUR")).toEqual({
-      code: "EUR",
-      exponent: 2,
-      name: "Euro",
-    });
-    expect(findWorkspaceCurrencyDefinition("USD")).toBeUndefined();
+  test("gives no unit for a code outside the catalog", () => {
+    expect(Option.isNone(unitOf("ZZZ"))).toBe(true);
+    expect(Option.isNone(unitOf("czk"))).toBe(true);
+    expect(Option.isNone(unitOf(""))).toBe(true);
   });
 });

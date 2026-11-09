@@ -4,6 +4,7 @@ language js(typescript)
 file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/features/(?:.*/backend/.*\.ts|.*(?:service|adapter|repository|runtime|catalog)\.ts)$",
   not $name <: r".*\.(?:test|test-utils)\.ts$",
+  $body <: r"(?s).*\bthrow\b.*",
   $body <: contains bubble {
     `throw $value` as $statement where {
       register_diagnostic(

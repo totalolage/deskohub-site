@@ -1,4 +1,4 @@
-import { Predicate } from "effect";
+import { Option, Predicate } from "effect";
 import type { Properties } from "posthog-js";
 import { sanitizeAnalyticsUrl } from "@/shared/utils/analytics-url";
 
@@ -68,6 +68,13 @@ export function createPostHogPageUrl(href: string) {
   ).toString();
 }
 
+/** The sanitized page URL of `href`, or none when `href` is not a URL. */
+export const parsePostHogPageUrl = Option.liftThrowable(createPostHogPageUrl);
+
+const parseSyntheticPathUrl = Option.liftThrowable(
+  (path: string) => new URL(path, SYNTHETIC_PATH_ORIGIN)
+);
+
 function sanitizePostHogUrl(
   value: string,
   property: PostHogUrlProperty
@@ -81,26 +88,18 @@ function sanitizePostHogUrl(
     return value;
   }
 
-  try {
-    return createPostHogPageUrl(value);
-  } catch {
-    return undefined;
-  }
+  return Option.getOrUndefined(parsePostHogPageUrl(value));
 }
 
 function sanitizePostHogPath(value: string): string | undefined {
   if (!value.startsWith("/") || value.startsWith("//")) return undefined;
 
-  try {
-    const url = new URL(value, SYNTHETIC_PATH_ORIGIN);
-    if (url.origin !== SYNTHETIC_PATH_ORIGIN) return undefined;
-
-    return sanitizePostHogUrlObject(
-      new URL(sanitizeAnalyticsUrl(url.toString()))
-    ).pathname;
-  } catch {
-    return undefined;
-  }
+  return parseSyntheticPathUrl(value).pipe(
+    Option.filter((url) => url.origin === SYNTHETIC_PATH_ORIGIN),
+    Option.flatMap((url) => parsePostHogPageUrl(url.toString())),
+    Option.map((pageUrl) => new URL(pageUrl).pathname),
+    Option.getOrUndefined
+  );
 }
 
 export function sanitizePostHogUrlProperties(

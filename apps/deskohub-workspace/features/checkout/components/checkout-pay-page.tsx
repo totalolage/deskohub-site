@@ -1,37 +1,25 @@
 "use client";
 
-import Interpolate from "@doist/react-interpolate";
-import { AlertTriangle, CreditCard, RotateCcw } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
 } from "@/features/checkout/checkout-summary";
 import { CheckoutDiscountCountdownBanner } from "@/features/checkout/components/checkout-discount-countdown-banner";
-import { markCheckoutStatusWindowOwner } from "@/features/checkout/components/checkout-payment-window";
-import {
-  CheckoutSummary,
-  CheckoutSummarySection,
-  CheckoutSummarySections,
-} from "@/features/checkout/components/checkout-summary";
+import { CheckoutSummary } from "@/features/checkout/components/checkout-summary";
 import { type Locale, m } from "@/features/i18n";
-import { submitReservation } from "@/features/reservation/actions/submit-reservation";
 import { getCoworkReservationPath } from "@/features/reservation/routes";
 import { Button } from "@/shared/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  type CardProps,
-  CardTitle,
-} from "@/shared/components/ui/card";
-import { Checkbox } from "@/shared/components/ui/checkbox";
-import { Skeleton } from "@/shared/components/ui/skeleton";
 import { cn } from "@/shared/utils";
-import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import {
+  CheckoutPayCard,
+  CheckoutPayConsent,
+  CheckoutPayProviderHandoff,
+  CheckoutPaySubmitButton,
+} from "./checkout-pay-page-card";
+import { useCheckoutPaySubmission } from "./use-checkout-pay-submission";
 
 type CheckoutPayPageProps = {
   readonly changedKeys?: CheckoutSummaryChangedKeys;
@@ -45,8 +33,6 @@ type CheckoutPayPageProps = {
   readonly retryOutcome?: "cancelled" | "failed";
 };
 
-type CheckoutPayActionVariant = "pay" | "retry";
-
 export function CheckoutPayPage({
   changedKeys,
   discountCodeForm,
@@ -58,55 +44,17 @@ export function CheckoutPayPage({
   summary,
   variant,
 }: CheckoutPayPageProps) {
-  const router = useRouter();
-  const [legalConsent, setLegalConsent] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const {
-    execute,
-    isExecuting,
-    result: submitReservationResult,
-  } = useWorkspaceAction(submitReservation, {
-    actionName: "submitReservation",
-    onSuccess: ({ data }) => {
-      if (data?.status === "pricing_changed") {
-        router.push(data.freshPayUrl);
-        return;
-      }
-
-      if (data?.status === "in_progress") {
-        setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
-        return;
-      }
-
-      if (!data?.redirectUrl) {
-        setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
-        return;
-      }
-
-      if (data.statusUrl) {
-        const paymentWindow = window.open(data.redirectUrl, "_blank");
-        if (paymentWindow) {
-          paymentWindow.opener = null;
-          markCheckoutStatusWindowOwner(data.statusUrl);
-          router.push(data.statusUrl);
-          return;
-        }
-      }
-
-      router.push(data.redirectUrl);
-    },
-    onError: ({ error }) => {
-      setErrorMessage(
-        error.serverError || m.checkoutPaySubmitError({}, { locale })
-      );
-    },
-    onTransportError: () => {
-      setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
-    },
+    errorMessage,
+    isSubmitPending,
+    legalConsent,
+    setLegalConsent,
+    submit,
+  } = useCheckoutPaySubmission({
+    earlyPerformanceRequestRequired,
+    locale,
+    payStateToken,
   });
-  const hasCheckoutRedirect =
-    submitReservationResult.data?.status === "pricing_changed" ||
-    submitReservationResult.data?.status === "redirect";
   const isPricingChanged = variant === "pricingChanged";
   const title = {
     pay: m.checkoutPayTitle({}, { locale }),
@@ -125,10 +73,73 @@ export function CheckoutPayPage({
       pricingChanged: "pay",
     } as const
   )[variant];
-  const isSubmitPending = isExecuting || hasCheckoutRedirect;
+  // A free order completes without the payment provider.
+  const providerTotal = summary.total.value > 0 ? summary.total : undefined;
 
   return (
     <CheckoutPayCard lead={lead} title={title}>
+      <CheckoutPayNotices
+        isPricingChanged={isPricingChanged}
+        locale={locale}
+        retryOutcome={retryOutcome}
+      />
+
+      <CheckoutDiscountCountdownBanner locale={locale} summary={summary} />
+
+      <CheckoutSummary
+        changedKeys={changedKeys}
+        locale={locale}
+        summary={summary}
+      />
+
+      {variant === "pay" && discountCodeForm}
+
+      {isPricingChanged ? (
+        <CheckoutPayUpdatedPriceLink
+          freshPayUrl={freshPayUrl}
+          locale={locale}
+        />
+      ) : (
+        <>
+          {!!providerTotal && <CheckoutPayProviderHandoff locale={locale} />}
+
+          <CheckoutPayConsent
+            checked={legalConsent}
+            id="checkout-pay-legal-consent"
+            locale={locale}
+            onCheckedChange={setLegalConsent}
+            showEarlyPerformanceRequest={earlyPerformanceRequestRequired}
+            variant={actionVariant}
+          />
+
+          <CheckoutPaySubmitButton
+            disabled={!legalConsent || isSubmitPending}
+            locale={locale}
+            onClick={submit}
+            pending={isSubmitPending}
+            total={providerTotal}
+            variant={actionVariant}
+          />
+        </>
+      )}
+
+      {!!errorMessage && <Banner role="alert">{errorMessage}</Banner>}
+    </CheckoutPayCard>
+  );
+}
+
+/** Why the customer is back on the Pay page, when they are. */
+function CheckoutPayNotices({
+  isPricingChanged,
+  locale,
+  retryOutcome,
+}: {
+  readonly isPricingChanged: boolean;
+  readonly locale: Locale;
+  readonly retryOutcome: CheckoutPayPageProps["retryOutcome"];
+}) {
+  return (
+    <>
       {!!retryOutcome && (
         <Banner>
           {
@@ -143,280 +154,51 @@ export function CheckoutPayPage({
       {isPricingChanged && (
         <Banner>{m.checkoutPayPricingChangedBanner({}, { locale })}</Banner>
       )}
-
-      <CheckoutDiscountCountdownBanner locale={locale} summary={summary} />
-
-      <CheckoutSummary
-        changedKeys={changedKeys}
-        locale={locale}
-        summary={summary}
-      />
-
-      {variant === "pay" && discountCodeForm}
-
-      {isPricingChanged ? (
-        <Button
-          asChild
-          className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
-        >
-          <Link
-            href={freshPayUrl ?? getCoworkReservationPath(locale)}
-            prefetch={false}
-          >
-            {m.checkoutPayReviewUpdatedPriceButton({}, { locale })}
-          </Link>
-        </Button>
-      ) : (
-        <>
-          <CheckoutPayConsent
-            checked={legalConsent}
-            id="checkout-pay-legal-consent"
-            locale={locale}
-            onCheckedChange={setLegalConsent}
-            showEarlyPerformanceRequest={earlyPerformanceRequestRequired}
-            variant={actionVariant}
-          />
-
-          <CheckoutPaySubmitButton
-            disabled={!legalConsent || isSubmitPending}
-            locale={locale}
-            onClick={() => {
-              if (isSubmitPending) return;
-
-              setErrorMessage(null);
-              if (!payStateToken) {
-                setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
-                return;
-              }
-
-              const input = {
-                locale,
-                payStateToken,
-                legalConsent,
-              };
-              execute(
-                earlyPerformanceRequestRequired
-                  ? { ...input, earlyPerformanceConsent: legalConsent }
-                  : input
-              );
-            }}
-            pending={isSubmitPending}
-            variant={actionVariant}
-          />
-        </>
-      )}
-
-      {!!errorMessage && <Banner>{errorMessage}</Banner>}
-    </CheckoutPayCard>
+    </>
   );
 }
 
-export function CheckoutPayPageSkeleton({
+function CheckoutPayUpdatedPriceLink({
+  freshPayUrl,
   locale,
 }: {
+  readonly freshPayUrl: string | undefined;
   readonly locale: Locale;
 }) {
   return (
-    <CheckoutPayCard
-      aria-busy="true"
-      aria-label={m.checkoutPaymentRetryPending({}, { locale })}
-      aria-live="polite"
-      role="status"
-      title={m.checkoutPayTitle({}, { locale })}
-    >
-      <CheckoutPaySummarySkeleton locale={locale} />
-      <CheckoutPayConsent
-        disabled
-        id="checkout-pay-skeleton-legal-consent"
-        locale={locale}
-        variant="pay"
-      />
-      <CheckoutPaySubmitButton disabled locale={locale} variant="pay" />
-    </CheckoutPayCard>
-  );
-}
-
-function CheckoutPayCard({
-  children,
-  lead,
-  title,
-  ...props
-}: Omit<CardProps, "className"> & {
-  readonly lead?: string | null;
-  readonly title: string;
-}) {
-  return (
-    <Card
-      {...props}
-      className="relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm"
-    >
-      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
-      <CardHeader className="space-y-3 pb-6">
-        <CardTitle as="h1" className="text-3xl sm:text-[2.35rem]">
-          {title}
-        </CardTitle>
-        {!!lead && (
-          <CardDescription className="max-w-2xl text-base leading-7 text-navy-blue/72">
-            {lead}
-          </CardDescription>
-        )}
-      </CardHeader>
-
-      <CardContent className="space-y-6">{children}</CardContent>
-    </Card>
-  );
-}
-
-function CheckoutPaySummarySkeleton({ locale }: { readonly locale: Locale }) {
-  return (
-    <CheckoutSummarySections>
-      <CheckoutSummarySection locale={locale} sectionKey="order">
-        <Skeleton aria-hidden="true" className="h-4 w-full rounded-full" />
-        <Skeleton aria-hidden="true" className="h-4 w-11/12 rounded-full" />
-        <Skeleton aria-hidden="true" className="h-4 w-4/5 rounded-full" />
-      </CheckoutSummarySection>
-
-      <CheckoutSummarySection locale={locale} sectionKey="total">
-        <div className="flex items-start justify-between gap-4">
-          <Skeleton aria-hidden="true" className="h-4 w-32 rounded-full" />
-          <Skeleton aria-hidden="true" className="h-4 w-24 rounded-full" />
-        </div>
-      </CheckoutSummarySection>
-    </CheckoutSummarySections>
-  );
-}
-
-function CheckoutPayConsent({
-  checked,
-  disabled,
-  id,
-  locale,
-  onCheckedChange,
-  showEarlyPerformanceRequest = false,
-  variant,
-}: {
-  readonly checked?: boolean;
-  readonly disabled?: boolean;
-  readonly id: string;
-  readonly locale: Locale;
-  readonly onCheckedChange?: (checked: boolean) => void;
-  readonly showEarlyPerformanceRequest?: boolean;
-  readonly variant: CheckoutPayActionVariant;
-}) {
-  return (
-    <label
-      htmlFor={id}
-      className={cn(
-        "flex items-start gap-3 rounded-[1.35rem] border border-navy-blue/10 bg-navy-blue/2.5 p-4",
-        disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"
-      )}
-    >
-      <Checkbox
-        id={id}
-        className="mt-1"
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={
-          onCheckedChange
-            ? (nextChecked) => onCheckedChange(Boolean(nextChecked))
-            : undefined
-        }
-      />
-      <span className="text-sm leading-6 text-navy-blue/66">
-        <Interpolate
-          string={
-            {
-              pay: m.checkoutPayConsent({}, { locale }),
-              retry: m.checkoutPaymentRetryConsent({}, { locale }),
-            }[variant]
-          }
-          mapping={{
-            terms: (label) => (
-              <LegalLink
-                href={`/${locale}/terms-and-conditions`}
-                label={label}
-              />
-            ),
-            operatingRules: (label) => (
-              <LegalLink href={`/${locale}/operating-rules`} label={label} />
-            ),
-            earlyPerformance: (text) =>
-              showEarlyPerformanceRequest ? text : null,
-          }}
-        />
-      </span>
-    </label>
-  );
-}
-
-function CheckoutPaySubmitButton({
-  disabled,
-  locale,
-  onClick,
-  pending,
-  variant,
-}: {
-  readonly disabled?: boolean;
-  readonly locale: Locale;
-  readonly onClick?: () => void;
-  readonly pending?: boolean;
-  readonly variant: CheckoutPayActionVariant;
-}) {
-  return (
-    <Button
-      type="button"
-      className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
-      disabled={disabled}
-      onClick={onClick}
-    >
-      {pending ? (
-        m.checkoutPaymentRetryPending({}, { locale })
-      ) : (
-        <>
-          {
-            {
-              pay: <CreditCard className="h-4 w-4" />,
-              retry: <RotateCcw className="h-4 w-4" />,
-            }[variant]
-          }
-          {m.checkoutPayOrderAndPayButton({}, { locale })}
-        </>
-      )}
+    <Button asChild size="xl" caps fullWidth>
+      <Link
+        href={freshPayUrl ?? getCoworkReservationPath(locale)}
+        prefetch={false}
+      >
+        {m.checkoutPayReviewUpdatedPriceButton({}, { locale })}
+      </Link>
     </Button>
   );
 }
 
-function Banner({ children }: { readonly children: string }) {
+function Banner({
+  children,
+  role,
+}: {
+  readonly children: string;
+  readonly role?: "alert";
+}) {
   return (
     <p
-      aria-live="polite"
+      // A banner inserted after a failed action must use an alert role:
+      // assistive technology may ignore a live region mounted with content.
+      {...(role ? { role } : { "aria-live": "polite" as const })}
       className={cn(
         "flex items-start gap-2 rounded-2xl border px-4 py-3 text-sm leading-6",
         "border-burned-orange/20 bg-burned-orange/8 text-burned-orange-ink"
       )}
     >
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />
+      <AlertTriangle
+        aria-hidden="true"
+        className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange"
+      />
       <span>{children}</span>
     </p>
-  );
-}
-
-function LegalLink({
-  href,
-  label,
-}: {
-  readonly href: string;
-  readonly label: ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      prefetch={false}
-      target="_blank"
-      rel="noreferrer"
-      className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
-    >
-      {label}
-    </Link>
   );
 }

@@ -1,7 +1,7 @@
 import type * as React from "react";
 import { cn } from "@/shared/utils";
 
-export interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
+interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
   ref?: React.Ref<HTMLTableElement>;
 }
 

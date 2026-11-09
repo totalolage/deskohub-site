@@ -4,18 +4,36 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import type { WorkspaceReservation } from "@/db/schema";
+import type { WorkspaceReservationRow } from "@/db/schema";
+import {
+  type CheckoutSessionKey,
+  checkoutSessionIdSchema,
+} from "@/features/checkout/checkout-identifiers";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { deriveCheckoutSessionKey } from "./checkout-session-key.server";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
+import { deriveCheckoutSessionKeys } from "./checkout-lookup-keys.server";
+import { findKeyIdPrefixedLookupKey } from "./checkout-lookup-keys.test-utils";
 import {
   PayableReservationService,
   PayableReservationUnavailableError,
 } from "./payable-reservation.service";
 
-const checkoutSessionId = "checkout-session-id";
-const checkoutSessionKey = deriveCheckoutSessionKey(checkoutSessionId);
+const checkoutSessionId = checkoutSessionIdSchema.make("checkout-session-id");
+const keyRing = `original:${Buffer.alloc(32, 1).toString("base64url")}`;
 
-const reservation = (overrides: Partial<WorkspaceReservation> = {}) =>
+const keyRingLayer = SealedStateKeys.fromConfiguration(keyRing);
+const withKeyRing = Effect.provide(keyRingLayer);
+
+// New rows store the active key's prefixed derivation.
+const checkoutSessionKey: CheckoutSessionKey = findKeyIdPrefixedLookupKey(
+  deriveCheckoutSessionKeys(checkoutSessionId).pipe(
+    withKeyRing,
+    Effect.runSync
+  ),
+  "original"
+);
+
+const reservation = (overrides: Partial<WorkspaceReservationRow> = {}) =>
   ({
     id: "reservation-id",
     checkoutSessionKey,
@@ -26,13 +44,13 @@ const reservation = (overrides: Partial<WorkspaceReservation> = {}) =>
     dotyposReservationId: "dotypos-reservation-id",
     reservationHoldExpiresAt: Temporal.Instant.from("2030-07-22T12:00:00Z"),
     ...overrides,
-  }) as WorkspaceReservation;
+  }) as WorkspaceReservationRow;
 
 const runRequireCurrent = (input: {
-  readonly candidate?: WorkspaceReservation | null;
-  readonly current?: WorkspaceReservation | null;
+  readonly candidate?: WorkspaceReservationRow | null;
+  readonly current?: WorkspaceReservationRow | null;
   readonly dotyposStatus?: "NEW" | "CANCELLED" | "CONFIRMED";
-  readonly checkoutSessionId?: string;
+  readonly checkoutSessionId?: string | null;
 }) => {
   const candidate =
     input.candidate === undefined ? reservation() : input.candidate;
@@ -46,11 +64,12 @@ const runRequireCurrent = (input: {
   };
   const layer = PayableReservationService.Default.pipe(
     Layer.provide(
-      Layer.merge(
+      Layer.mergeAll(
         Layer.mock(WorkspaceReservationRepository, repository),
         Layer.mock(DotyposService, {
           getReservationStatus,
-        })
+        }),
+        keyRingLayer
       )
     )
   );
@@ -61,7 +80,11 @@ const runRequireCurrent = (input: {
       const payable = yield* PayableReservationService;
       return yield* payable.requireCurrent({
         orderId: "reservation-id",
-        checkoutSessionId: input.checkoutSessionId ?? checkoutSessionId,
+        ...(input.checkoutSessionId !== null && {
+          checkoutSessionId: checkoutSessionIdSchema.make(
+            input.checkoutSessionId ?? checkoutSessionId
+          ),
+        }),
       });
     }).pipe(Effect.provide(layer), Effect.runPromise),
   };
@@ -101,5 +124,80 @@ describe("PayableReservationService", () => {
       })
     );
     expect(getReservationStatus).not.toHaveBeenCalled();
+  });
+
+  test("rejects a reservation from another checkout session", async () => {
+    const { getReservationStatus, result } = runRequireCurrent({
+      checkoutSessionId: "other-checkout-session-id",
+    });
+
+    await expect(result).rejects.toEqual(
+      new PayableReservationUnavailableError({
+        orderId: "reservation-id",
+        reason: "not_current",
+      })
+    );
+    expect(getReservationStatus).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    {
+      name: "a pay state without a checkout session",
+      run: { checkoutSessionId: null },
+      reason: "missing_checkout_session",
+    },
+    {
+      name: "a missing order",
+      run: { candidate: null },
+      reason: "missing_reservation",
+    },
+    {
+      name: "a session with no current reservation",
+      run: { current: null },
+      reason: "not_current",
+    },
+    {
+      name: "a reservation that is no longer held",
+      run: { candidate: reservation({ reservationState: "confirming" }) },
+      reason: "not_held",
+    },
+    {
+      name: "a hold that has expired",
+      run: {
+        candidate: reservation({
+          reservationHoldExpiresAt: Temporal.Now.instant().subtract({
+            seconds: 1,
+          }),
+        }),
+      },
+      reason: "expired",
+    },
+    {
+      name: "a hold without its Dotypos reservation",
+      run: { candidate: reservation({ dotyposReservationId: null }) },
+      reason: "missing_dotypos_reservation",
+    },
+  ] as const)(
+    "rejects $name without calling Dotypos",
+    async ({ run, reason }) => {
+      const { getReservationStatus, result } = runRequireCurrent(run);
+
+      await expect(result).rejects.toEqual(
+        new PayableReservationUnavailableError({
+          orderId: "reservation-id",
+          reason,
+        })
+      );
+      expect(getReservationStatus).not.toHaveBeenCalled();
+    }
+  );
+
+  test("accepts a held reservation without a recorded hold expiry", async () => {
+    const { getReservationStatus, result } = runRequireCurrent({
+      candidate: reservation({ reservationHoldExpiresAt: null }),
+    });
+
+    await expect(result).resolves.toMatchObject({ id: "reservation-id" });
+    expect(getReservationStatus).toHaveBeenCalledWith("dotypos-reservation-id");
   });
 });

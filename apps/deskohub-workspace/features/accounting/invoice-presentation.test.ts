@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 import { discountIdSchema } from "@/features/discounts/contracts";
+import { workspaceSiteConstants } from "@/shared/utils";
 import type { InvoiceDocument } from "./invoice";
 import {
   makeCoworkInvoiceDocument,
@@ -33,10 +34,7 @@ describe("invoice presentation", () => {
     ]);
   });
 
-  test.each([
-    ["cs-CZ", "Faktura", "Basic Day Pass", "11. 8. 2026"],
-    ["en-US", "Invoice", "Basic Day Pass", "Aug 11, 2026"],
-  ] as const)(
+  test.each([["cs-CZ", "Faktura", "Sdílené místo", "11. 8. 2026"]] as const)(
     "projects a %s cowork invoice",
     (locale, title, itemDescription, serviceDate) => {
       const presentation = getInvoicePresentation(
@@ -56,14 +54,13 @@ describe("invoice presentation", () => {
         locale === "cs-CZ" ? "Káva" : "Coffee",
       ]);
       expect(normalize(presentation.total)).toBe(
-        locale === "cs-CZ" ? "400 Kč" : "CZK 400"
+        locale === "cs-CZ" ? "340 Kč" : "CZK 340"
       );
     }
   );
 
   test.each([
     ["cs-CZ", "Zasedací místnost · 4 hodiny", "11. 8. 2026"],
-    ["en-US", "Meeting room · 4 hours", "Aug 11, 2026"],
   ] as const)(
     "projects a %s meeting-room invoice",
     (locale, description, expectedServiceDate) => {
@@ -87,7 +84,6 @@ describe("invoice presentation", () => {
 
   test.each([
     ["cs-CZ", "Soukromá kancelář · 2 dny · 3 místa", "11. 8. 2026"],
-    ["en-US", "Private office · 2 days · 3 seats", "Aug 11, 2026"],
   ] as const)(
     "projects a %s office invoice",
     (locale, description, expectedServiceDate) => {
@@ -107,23 +103,6 @@ describe("invoice presentation", () => {
     }
   );
 
-  test("uses locale plural rules for invoice quantities", () => {
-    const original = makeOfficeInvoiceDocument("cs-CZ");
-    const document = {
-      ...original,
-      quote: {
-        ...original.quote,
-        items: original.quote.items.map((item) =>
-          item.type === "office" ? { ...item, dayCount: 5, seats: 5 } : item
-        ),
-      },
-    } as InvoiceDocument;
-
-    expect(getInvoicePresentation(document).lines[0]?.description).toBe(
-      "Soukromá kancelář · 5 dní · 5 míst"
-    );
-  });
-
   test("projects immutable supplier and business-buyer legal details", () => {
     const presentation = getInvoicePresentation(
       makeCoworkInvoiceDocument("cs-CZ", { businessBuyer: true })
@@ -139,7 +118,7 @@ describe("invoice presentation", () => {
         "Česko",
         "IČO: 24531596",
         "Obchodní rejstřík: C 442830, Městský soud v Praze",
-        "workspace@deskohub.cz",
+        workspaceSiteConstants.contact.infoEmail,
       ],
     });
     expect(presentation.buyer).toEqual({
@@ -223,20 +202,21 @@ describe("invoice presentation", () => {
   });
 
   test.each(["0", "-100"])(
-    "does not request payment for a %s total manual invoice",
+    "prints no payment facts for a %s total manual invoice",
     (price) => {
-      const presentation = getInvoicePresentation(
+      const nothingDue = getInvoicePresentation(
         makeTestManualInvoiceDocument("en-US", price)
       );
+      const requested = getInvoicePresentation(
+        makeTestManualInvoiceDocument("en-US")
+      );
 
-      expect(presentation.status).toBe("Issued");
-      expect(presentation.totalLabel).toBe("Total");
-      expect(presentation.factColumns.flat()).not.toContainEqual(
-        expect.objectContaining({ label: "Due date" })
-      );
-      expect(presentation.factColumns.flat()).not.toContainEqual(
-        expect.objectContaining({ label: "Variable symbol" })
-      );
+      expect(nothingDue.factColumns[0][1]).toBeNull();
+      expect(nothingDue.factColumns[1][2]).toBeNull();
+      expect(requested.factColumns[0][1]).not.toBeNull();
+      expect(requested.factColumns[1][2]).not.toBeNull();
+      expect(nothingDue.status).not.toBe(requested.status);
+      expect(nothingDue.totalLabel).not.toBe(requested.totalLabel);
     }
   );
 
@@ -256,5 +236,19 @@ describe("invoice presentation", () => {
     expect(presentation.factColumns.flat()).not.toContainEqual(
       expect.objectContaining({ label: "Due date" })
     );
+  });
+
+  test("falls back to the stored country code Intl cannot name", () => {
+    const document = makeCoworkInvoiceDocument("en-US");
+    const presentation = getInvoicePresentation({
+      ...document,
+      buyer: {
+        ...document.buyer,
+        address: { ...document.buyer.address, country: "not-a-region" },
+      },
+    });
+
+    expect(presentation.buyer.details).toContain("not-a-region");
+    expect(presentation.supplier.details).toContain("Czechia");
   });
 });

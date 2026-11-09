@@ -1,31 +1,28 @@
 import { Cause, Effect, Exit } from "effect";
 import { unstable_rethrow } from "next/navigation";
 
-export type ExecuteRun = <A>(
-  effect: Effect.Effect<A, unknown, never>
-) => Promise<A>;
-
 export interface ExecuteOptions<E> {
   readonly mapError?: (error: E) => unknown;
-  readonly run?: ExecuteRun;
   readonly signal?: AbortSignal;
 }
 
-export async function execute<A, E>(
+/**
+ * Runs `effect` to its `Exit`, failures and defects included, after
+ * `mapError`. Never rejects.
+ */
+export const executeExit = <A, E>(
   effect: Effect.Effect<A, E, never>,
   options: ExecuteOptions<E> = {}
-): Promise<A> {
-  const program = options.mapError
-    ? Effect.mapError(effect, options.mapError)
-    : effect;
+): Promise<Exit.Exit<A, unknown>> =>
+  runPromiseExit(
+    options.mapError ? Effect.mapError(effect, options.mapError) : effect,
+    options.signal
+  );
 
-  if (options.run) {
-    return options.run(program);
-  }
-
-  const exit = await runPromiseExit(program, options.signal);
-  return interpretExit(exit);
-}
+export const execute = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  options: ExecuteOptions<E> = {}
+): Promise<A> => executeExit(effect, options).then(settle);
 
 const runPromiseExit = async <A, E>(
   effect: Effect.Effect<A, E, never>,
@@ -38,7 +35,12 @@ const runPromiseExit = async <A, E>(
   }
 };
 
-export function interpretExit<A, E>(exit: Exit.Exit<A, E>): A {
+/**
+ * The value of a successful `exit`. A failed one throws: Next.js control flow
+ * it carries (a redirect, `notFound`, a prerender bailout) unchanged, and
+ * otherwise its squashed cause.
+ */
+export function settle<A, E>(exit: Exit.Exit<A, E>): A {
   if (Exit.isSuccess(exit)) return exit.value;
 
   for (const reason of exit.cause.reasons) {

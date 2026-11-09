@@ -3,21 +3,21 @@
 import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
 import { Analytics } from "@vercel/analytics/react";
 import type { PostHogFeatureFlagDefinitions } from "@/features/feature-flags/generated/contract";
-import { useCookieConsent } from "../hooks/use-cookie-consent";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 import { sanitizeVercelAnalyticsEvent } from "../utils/vercel-analytics";
+import { useVisitorConsent } from "../visitor-consent";
 import { PostHogAnalytics } from "./posthog-analytics";
 
 type ConsentAwareAnalyticsProps = {
   featureFlagOverrides?: PostHogFeatureFlagOverrides<PostHogFeatureFlagDefinitions>;
-  posthogEnvironment: string;
+  posthogEnvironment: DeploymentEnvironment;
 };
 
 export function ConsentAwareAnalytics({
   featureFlagOverrides,
   posthogEnvironment,
 }: ConsentAwareAnalyticsProps) {
-  const { isAccepted } = useCookieConsent();
-  const analyticsAccepted = isAccepted("analytics");
+  const analyticsAccepted = useVisitorConsent("analytics");
 
   return (
     <PostHogAnalytics

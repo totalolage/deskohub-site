@@ -1,7 +1,7 @@
 import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   EmailDeliveryIdSchema,
   type EmailMessage,
@@ -14,7 +14,9 @@ import {
   EmailServiceError,
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Schema } from "effect";
+import type { InvoiceDeliveryEmailProps } from "@/emails/invoice-delivery";
 import {
   type AccountingDocumentSnapshot,
   accountingDocumentSnapshotSchema,
@@ -25,6 +27,9 @@ import {
   makeTestManualInvoiceDocument,
 } from "@/features/accounting/invoice.test-utils";
 import type { InvoiceEmailDeliveryAudience } from "@/features/accounting/invoice-email-delivery";
+import { invoiceIdSchema } from "@/features/accounting/manual-invoice";
+import { workspaceDefaultFromAddress } from "@/shared/backend/config/email.config";
+import * as emailRendering from "@/shared/backend/email/render-react-email";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
 import {
   type IInvoiceRepository,
@@ -37,12 +42,53 @@ import {
   InvoiceEmailDeliveryRepository,
 } from "./invoice-email-delivery.repository";
 import { InvoiceEmailDeliveryService } from "./invoice-email-delivery.service";
+import * as invoicePdf from "./invoice-pdf";
+
+const frozenRecipientEmail = testEmailAddress("frozen-recipient");
 
 mock.module("server-only", () => ({}));
 
+// Orchestration tests stub both renders; the immutable-PDF test opts into the
+// real PDF render. The spies record executed renders; constructing a lazy
+// render Effect does no work.
+const renderRealInvoicePdf = invoicePdf.renderInvoicePdf;
+const stubInvoicePdf = Buffer.from("stub invoice pdf");
+const renderStubInvoicePdf = (
+  ..._args: Parameters<typeof invoicePdf.renderInvoicePdf>
+): ReturnType<typeof invoicePdf.renderInvoicePdf> =>
+  Effect.succeed(stubInvoicePdf);
+const renderStubEmail = (
+  ..._args: Parameters<typeof emailRendering.renderWorkspaceEmail>
+): ReturnType<typeof emailRendering.renderWorkspaceEmail> =>
+  Effect.succeed({ html: "stub email", text: "stub email" });
+const renderedInvoiceEmails = () =>
+  renderWorkspaceEmail.mock.calls.map(
+    ([email]) => email.props as InvoiceDeliveryEmailProps
+  );
+const renderInvoicePdf = mock(renderStubInvoicePdf);
+const renderWorkspaceEmail = mock(renderStubEmail);
+mock.module("./invoice-pdf", () => ({
+  ...invoicePdf,
+  renderInvoicePdf: (...args: Parameters<typeof invoicePdf.renderInvoicePdf>) =>
+    Effect.suspend(() => renderInvoicePdf(...args)),
+}));
+mock.module("@/shared/backend/email/render-react-email", () => ({
+  ...emailRendering,
+  renderWorkspaceEmail: (
+    ...args: Parameters<typeof emailRendering.renderWorkspaceEmail>
+  ) => Effect.suspend(() => renderWorkspaceEmail(...args)),
+}));
+
+beforeEach(() => {
+  renderInvoicePdf.mockReset();
+  renderInvoicePdf.mockImplementation(renderStubInvoicePdf);
+  renderWorkspaceEmail.mockReset();
+  renderWorkspaceEmail.mockImplementation(renderStubEmail);
+});
+
 const document = makeCoworkInvoiceDocument("en-US");
 const invoice = {
-  id: "invoice-id",
+  id: invoiceIdSchema.make("01980000-0000-7000-8000-00000000000a"),
   workspaceReservationId: document.workspaceReservationId,
   paymentAttemptId: document.paymentAttemptId,
   dotyposCustomerId: document.dotyposCustomerId,
@@ -50,12 +96,12 @@ const invoice = {
   issuedAt: Temporal.Instant.from(document.issuedAt),
   document,
 };
-const source = makeSourceSnapshot("frozen-recipient@example.test");
+const source = makeSourceSnapshot(frozenRecipientEmail);
 
 const emailConfig: EmailProviderConfig = {
   provider: "console",
   defaultFrom: {
-    email: "reservations@workspace.deskohub.cz",
+    email: workspaceDefaultFromAddress,
     name: "Deskohub Workspace",
   },
 };
@@ -82,13 +128,14 @@ describe("invoice email delivery", () => {
   test("sends the same immutable PDF to the frozen recipient and internal copy", async () => {
     const sentMessages: EmailMessage[] = [];
     const harness = makeHarness({ sentMessages });
+    renderInvoicePdf.mockImplementation(renderRealInvoicePdf);
 
     const result = await runDelivery(harness);
 
     expect(result).toEqual({ status: "delivered", changed: true });
     expect(sentMessages).toHaveLength(2);
     expect(sentMessages[0]).toMatchObject({
-      to: { email: "frozen-recipient@example.test" },
+      to: { email: frozenRecipientEmail },
       subject: `Invoice ${document.invoiceNumber}`,
       tags: ["workspace-invoice-customer"],
       idempotencyKey: `workspace-invoice-customer-${invoice.id}`,
@@ -100,7 +147,7 @@ describe("invoice email delivery", () => {
       ],
     });
     expect(sentMessages[1]).toMatchObject({
-      to: { email: "delivered+workspace-internal@resend.dev" },
+      to: { email: testEmailAddress("workspace-internal") },
       subject: `[TESTING] Faktura ${document.invoiceNumber}`,
       tags: ["workspace-invoice-internal"],
       idempotencyKey: `workspace-invoice-internal-${invoice.id}`,
@@ -118,6 +165,75 @@ describe("invoice email delivery", () => {
     expect((customerPdf as Buffer).subarray(0, 4).toString()).toBe("%PDF");
     expect(harness.markAccepted).toHaveBeenCalledTimes(2);
     expect(harness.markFailed).not.toHaveBeenCalled();
+    expect(renderInvoicePdf).toHaveBeenCalledTimes(1);
+  });
+
+  test("renders nothing when every audience was already delivered", async () => {
+    const sentMessages: EmailMessage[] = [];
+    const harness = makeHarness({ sentMessages });
+    await runDelivery(harness);
+    renderInvoicePdf.mockClear();
+    renderWorkspaceEmail.mockClear();
+
+    const repeated = await runDelivery(harness);
+
+    expect(repeated).toEqual({ status: "delivered", changed: false });
+    expect(harness.claim).toHaveBeenCalledTimes(4);
+    expect(sentMessages).toHaveLength(2);
+    expect(renderInvoicePdf).not.toHaveBeenCalled();
+    expect(renderWorkspaceEmail).not.toHaveBeenCalled();
+  });
+
+  test("releases claimed deliveries when the invoice PDF cannot be rendered", async () => {
+    const sentMessages: EmailMessage[] = [];
+    const harness = makeHarness({ sentMessages });
+    renderInvoicePdf.mockImplementationOnce(() =>
+      Effect.fail(
+        new invoicePdf.InvoicePdfRenderingError({
+          message: "synthetic PDF failure",
+        })
+      )
+    );
+
+    await expect(runDelivery(harness)).rejects.toMatchObject({
+      code: "pdf_render_failed",
+      paymentAttemptId: document.paymentAttemptId,
+    });
+    expect(sentMessages).toEqual([]);
+    expect(renderInvoicePdf).toHaveBeenCalledTimes(1);
+    expect(renderWorkspaceEmail).not.toHaveBeenCalled();
+    expect(harness.markFailed).toHaveBeenCalledTimes(2);
+    for (const audience of ["customer", "internal"] as const) {
+      expect(harness.markFailed).toHaveBeenCalledWith({
+        invoiceId: invoice.id,
+        audience,
+        attemptNumber: 1,
+        failureCode: "pdf_render_failed",
+      });
+    }
+  });
+
+  test("releases a claimed delivery when its email cannot be rendered", async () => {
+    const sentMessages: EmailMessage[] = [];
+    const harness = makeHarness({ sentMessages });
+    renderWorkspaceEmail.mockImplementationOnce(() =>
+      Effect.fail(new EmailServiceError("synthetic render failure"))
+    );
+
+    await expect(runDelivery(harness)).rejects.toMatchObject({
+      code: "email_delivery_failed",
+      message: "Invoice delivery email could not be rendered.",
+      paymentAttemptId: document.paymentAttemptId,
+    });
+    expect(sentMessages).toHaveLength(1);
+    expect(sentMessages[0]?.tags).toEqual(["workspace-invoice-internal"]);
+    expect(harness.markFailed).toHaveBeenCalledTimes(1);
+    expect(harness.markFailed).toHaveBeenCalledWith({
+      invoiceId: invoice.id,
+      audience: "customer",
+      attemptNumber: 1,
+      failureCode: "email_send_failed",
+    });
   });
 
   test("retries only the failed audience without replacing the invoice", async () => {
@@ -174,9 +290,10 @@ describe("invoice email delivery", () => {
     expect(result).toEqual({ status: "delivered", changed: true });
     expect(sentMessages).toHaveLength(3);
     expect(sentMessages[2]).toMatchObject({
-      to: { email: "frozen-recipient@example.test" },
+      to: { email: frozenRecipientEmail },
       tags: ["workspace-invoice-customer"],
-      idempotencyKey: "workspace-invoice-customer-resend-invoice-id-2",
+      idempotencyKey:
+        "workspace-invoice-customer-resend-01980000-0000-7000-8000-00000000000a-2",
     });
     expect(harness.claimResend).toHaveBeenCalledTimes(1);
   });
@@ -189,6 +306,8 @@ describe("invoice email delivery", () => {
       code: "delivery_in_progress",
     });
     expect(sentMessages).toEqual([]);
+    expect(renderInvoicePdf).not.toHaveBeenCalled();
+    expect(renderWorkspaceEmail).not.toHaveBeenCalled();
   });
 
   test("rejects legacy snapshots without a frozen recipient", async () => {
@@ -226,11 +345,23 @@ describe("invoice email delivery", () => {
 
     expect(result).toEqual({ status: "delivered", changed: true });
     expect(sentMessages[0]?.to).toEqual({
-      email: "manual-invoice@example.test",
+      email: testEmailAddress("manual-invoice"),
     });
     expect(sentMessages[0]?.idempotencyKey).toBe(
       `${sentMessages[0]?.tags?.[0]}-${manualInvoice.id}`
     );
+    expect(renderedInvoiceEmails()).toEqual([
+      {
+        invoiceNumber: manualInvoice.invoiceNumber,
+        invoice: { source: "manual", requestsPayment: true },
+        recipient: { audience: "customer", locale: "en-US" },
+      },
+      {
+        invoiceNumber: manualInvoice.invoiceNumber,
+        invoice: { source: "manual", requestsPayment: true },
+        recipient: { audience: "internal" },
+      },
+    ]);
     expect(
       harness.accountingSnapshots.findByPaymentAttemptId
     ).not.toHaveBeenCalled();
@@ -257,10 +388,10 @@ describe("invoice email delivery", () => {
       manualInvoice.id
     );
 
-    expect(sentMessages[0]?.html).toContain(
-      `Invoice ${manualInvoice.invoiceNumber} is attached.`
-    );
-    expect(sentMessages[0]?.html).not.toContain("with payment details");
+    expect(renderedInvoiceEmails()[0]).toMatchObject({
+      invoice: { source: "manual", requestsPayment: false },
+      recipient: { audience: "customer", locale: "en-US" },
+    });
   });
 
   test("does not request payment in the email for a non-positive manual invoice", async () => {
@@ -281,10 +412,10 @@ describe("invoice email delivery", () => {
       manualInvoice.id
     );
 
-    expect(sentMessages[0]?.html).toContain(
-      `Invoice ${manualInvoice.invoiceNumber} is attached.`
-    );
-    expect(sentMessages[0]?.html).not.toContain("with payment details");
+    expect(renderedInvoiceEmails()[0]).toMatchObject({
+      invoice: { source: "manual", requestsPayment: false },
+      recipient: { audience: "customer", locale: "en-US" },
+    });
   });
 });
 
@@ -407,6 +538,7 @@ const makeHarness = (options: {
     claimResend,
     markAccepted,
     markFailed,
+    status: () => Effect.die("status is not part of delivery"),
   };
   const selectedInvoice =
     options.invoice === undefined ? invoice : options.invoice;
@@ -438,8 +570,7 @@ const makeHarness = (options: {
           sentResult(`email-${options.sentMessages.length}`)
         );
       }),
-    sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-    verify: Effect.succeed(true),
+    sendBatch: () => Effect.die("Invoice delivery tests do not send batches."),
   };
 
   return {

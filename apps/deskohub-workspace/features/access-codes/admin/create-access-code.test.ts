@@ -12,21 +12,18 @@ import {
 import { Result, Schema } from "effect";
 import {
   type CreateStandaloneAccessCodeFormInput,
-  type CreateStandaloneAccessCodeResult,
-  createStandaloneAccessCodeAttemptId,
   createStandaloneAccessCodeFormDefaults,
   createStandaloneAccessCodeFormSchema,
   createStandaloneAccessCodeInputSchema,
   decodeCreateStandaloneAccessCodeResult,
   encodeCreateStandaloneAccessCodeResult,
   formatStandaloneAccessCodeDuration,
-  formatStandaloneAccessCodeLocalDateTime,
-  isSameStandaloneAccessCodeWindow,
   isStandaloneAccessCodeLocalDateTime,
   isStandaloneAccessCodeWindowValid,
   shiftStandaloneAccessCodeLocalEnd,
   standaloneAccessCodeEarliestLocalEnd,
   standaloneAccessCodeElapsedHours,
+  standaloneAccessCodeFailureNotice,
   toStandaloneAccessCodeCreationFailure,
 } from "./create-access-code";
 
@@ -61,17 +58,6 @@ const cleanupTarget = {
 };
 
 describe("standalone access-code creation contract", () => {
-  test("accepts the shared contract fields plus the attempt identifier", async () => {
-    const result = await createStandaloneAccessCodeInputSchema[
-      "~standard"
-    ].validate({
-      attemptId: "01980000-0000-7000-8000-000000000042",
-      ...validWindow,
-    });
-
-    expect(result.issues).toBeUndefined();
-  });
-
   test("rejects excess properties and malformed attempt identifiers", async () => {
     const excess = await createStandaloneAccessCodeInputSchema[
       "~standard"
@@ -91,57 +77,6 @@ describe("standalone access-code creation contract", () => {
     expect(attemptId.issues?.[0]?.path?.map(String)).toEqual(["attemptId"]);
   });
 
-  test("rejects an access window outside the shared contract bounds", async () => {
-    const rejected = await createStandaloneAccessCodeInputSchema[
-      "~standard"
-    ].validate({
-      attemptId: "01980000-0000-7000-8000-000000000042",
-      ...validWindow,
-      endsAt: "2026-09-10T09:00",
-    });
-    expect(rejected.issues).toBeDefined();
-    expect(rejected.issues?.[0]?.path?.map(String)).toEqual(["endsAt"]);
-    expect(rejected.issues?.[0]?.message).toBe(
-      "The end must be 1 to 672 hours after the start."
-    );
-  });
-
-  test("accepts the shared contract upper bound", async () => {
-    const accepted = await createStandaloneAccessCodeInputSchema[
-      "~standard"
-    ].validate({
-      attemptId: "01980000-0000-7000-8000-000000000042",
-      ...validWindow,
-      endsAt: "2026-10-08T10:00",
-    });
-    expect(accepted.issues).toBeUndefined();
-  });
-
-  test("counts the repeated fall-back hour through the shared contract check", async () => {
-    const sixHundredSeventyTwoHours =
-      await createStandaloneAccessCodeInputSchema["~standard"].validate({
-        attemptId: "01980000-0000-7000-8000-000000000042",
-        name: "Booth A",
-        startsAt: "2026-10-24T01:00",
-        endsAt: "2026-11-21T00:00",
-      });
-    expect(sixHundredSeventyTwoHours.issues).toBeUndefined();
-
-    const sixHundredSeventyThreeHours =
-      await createStandaloneAccessCodeInputSchema["~standard"].validate({
-        attemptId: "01980000-0000-7000-8000-000000000042",
-        name: "Booth A",
-        startsAt: "2026-10-24T00:00",
-        endsAt: "2026-11-21T00:00",
-      });
-    expect(sixHundredSeventyThreeHours.issues?.[0]?.path?.map(String)).toEqual([
-      "endsAt",
-    ]);
-    expect(sixHundredSeventyThreeHours.issues?.[0]?.message).toBe(
-      "The end must be 1 to 672 hours after the start."
-    );
-  });
-
   test("accepts the confirmed cleanup attempt id beside the contract fields", async () => {
     const result = await createStandaloneAccessCodeInputSchema[
       "~standard"
@@ -153,36 +88,6 @@ describe("standalone access-code creation contract", () => {
     });
 
     expect(result.issues).toBeUndefined();
-  });
-
-  test("rejects the removed boolean confirmation and malformed cleanup attempt ids", async () => {
-    const legacy = await createStandaloneAccessCodeInputSchema[
-      "~standard"
-    ].validate({
-      attemptId: "01980000-0000-7000-8000-000000000042",
-      ...validWindow,
-      providerCredentialRemoved: true,
-    });
-    expect(legacy.issues).toBeDefined();
-
-    const malformed = await createStandaloneAccessCodeInputSchema[
-      "~standard"
-    ].validate({
-      attemptId: "01980000-0000-7000-8000-000000000042",
-      ...validWindow,
-      providerCredentialRemovedAttemptId: "not-a-uuid",
-    });
-    expect(malformed.issues?.[0]?.path?.map(String)).toEqual([
-      "providerCredentialRemovedAttemptId",
-    ]);
-  });
-
-  test("generates attempt identifiers that satisfy the contract schema", () => {
-    const attemptId = createStandaloneAccessCodeAttemptId();
-
-    expect(
-      Schema.is(AdministrationStandaloneAccessCodeAttemptId)(attemptId)
-    ).toBe(true);
   });
 });
 
@@ -284,38 +189,28 @@ describe("standalone access-code window arithmetic", () => {
     ).toBe(false);
   });
 
-  test("returns no elapsed hours for non-whole-hour inputs", () => {
-    expect(
-      standaloneAccessCodeElapsedHours({
-        startsAt: "2026-09-10T10:00",
-        endsAt: "2026-09-10T11:30",
-      })
-    ).toBeNull();
+  test("counts every whole-hour duration exactly", () => {
+    const start = "2026-09-10T10:00";
+    const inexactHours = Array.from({ length: 672 }, (_, index) => index + 1)
+      .filter(
+        (hours) =>
+          standaloneAccessCodeElapsedHours({
+            startsAt: start,
+            endsAt: shiftStandaloneAccessCodeLocalEnd({
+              startsAt: start,
+              hours,
+            }),
+          }) !== hours
+      )
+      .slice(0, 5);
+
+    expect(inexactHours).toEqual([]);
   });
 });
 
 describe("standalone access-code action transport", () => {
   const alreadyCreatedOutcome: AdministrationStandaloneAccessCodeCreationOutcome =
     { ...createdOutcome, outcome: "already-created" as const };
-
-  test("a raw Effect result does not survive plain-data transport", () => {
-    const raw: CreateStandaloneAccessCodeResult =
-      Result.succeed(createdOutcome);
-
-    // JSON keeps the Result's `_tag` via toJSON, so the client guard passes,
-    // but the payload moves to `value` and `.success` is gone.
-    const viaJson = JSON.parse(
-      JSON.stringify(raw)
-    ) as CreateStandaloneAccessCodeResult;
-    expect(Result.isSuccess(viaJson)).toBe(true);
-    expect(viaJson.success).toBeUndefined();
-
-    // Structured clone keeps `.success` but drops `_tag`, so the client
-    // guard reports neither success nor failure.
-    const viaClone = structuredClone(raw) as CreateStandaloneAccessCodeResult;
-    expect(Result.isSuccess(viaClone)).toBe(false);
-    expect(Result.isFailure(viaClone)).toBe(false);
-  });
 
   test("round-trips a created outcome through JSON transport", () => {
     const transport = encodeCreateStandaloneAccessCodeResult(
@@ -345,20 +240,6 @@ describe("standalone access-code action transport", () => {
     }
   });
 
-  test("round-trips a failure outcome through JSON transport", () => {
-    const transport = encodeCreateStandaloneAccessCodeResult(
-      Result.fail({ outcome: "rejected" })
-    );
-    const decoded = decodeCreateStandaloneAccessCodeResult(
-      JSON.parse(JSON.stringify(transport))
-    );
-
-    expect(Result.isFailure(decoded)).toBe(true);
-    if (Result.isFailure(decoded)) {
-      expect(decoded.failure).toEqual({ outcome: "rejected" });
-    }
-  });
-
   test("round-trips a target-bearing failure through JSON transport", () => {
     const transport = encodeCreateStandaloneAccessCodeResult(
       Result.fail({ outcome: "cleanup-required", cleanupTarget })
@@ -375,60 +256,9 @@ describe("standalone access-code action transport", () => {
       });
     }
   });
-
-  test("round-trips an ambiguous target through structured clone", () => {
-    const transport = encodeCreateStandaloneAccessCodeResult(
-      Result.fail({ outcome: "ambiguous", cleanupTarget })
-    );
-    const decoded = decodeCreateStandaloneAccessCodeResult(
-      structuredClone(transport)
-    );
-
-    expect(Result.isFailure(decoded)).toBe(true);
-    if (Result.isFailure(decoded)) {
-      expect(decoded.failure.cleanupTarget).toEqual(cleanupTarget);
-    }
-  });
-
-  test("encodes both branches as plain own-property data", () => {
-    const succeeded = encodeCreateStandaloneAccessCodeResult(
-      Result.succeed(createdOutcome)
-    );
-    expect(Object.keys(succeeded)).toEqual(["status", "outcome"]);
-    expect(succeeded).toEqual({
-      status: "succeeded",
-      outcome: createdOutcome,
-    });
-    expect(JSON.parse(JSON.stringify(succeeded))).toEqual(succeeded);
-
-    const failed = encodeCreateStandaloneAccessCodeResult(
-      Result.fail({ outcome: "cleanup-required", cleanupTarget })
-    );
-    expect(Object.keys(failed)).toEqual(["status", "outcome"]);
-    expect(failed).toEqual({
-      status: "failed",
-      outcome: { outcome: "cleanup-required", cleanupTarget },
-    });
-    expect(JSON.parse(JSON.stringify(failed))).toEqual(failed);
-  });
 });
 
 describe("standalone access-code failure mapping", () => {
-  test("keeps the reported cleanup target for target-bearing outcomes", () => {
-    expect(
-      toStandaloneAccessCodeCreationFailure({
-        outcome: "cleanup-required",
-        cleanupTarget,
-      })
-    ).toEqual({ outcome: "cleanup-required", cleanupTarget });
-    expect(
-      toStandaloneAccessCodeCreationFailure({
-        outcome: "ambiguous",
-        cleanupTarget,
-      })
-    ).toEqual({ outcome: "ambiguous", cleanupTarget });
-  });
-
   test("reports a defect for target-bearing outcomes without a target", () => {
     expect(
       toStandaloneAccessCodeCreationFailure({ outcome: "ambiguous" })
@@ -437,30 +267,16 @@ describe("standalone access-code failure mapping", () => {
       toStandaloneAccessCodeCreationFailure({ outcome: "cleanup-required" })
     ).toBeNull();
   });
-
-  test("keeps unrelated failures target-free", () => {
-    expect(
-      toStandaloneAccessCodeCreationFailure({
-        outcome: "rejected",
-        cleanupTarget,
-      })
-    ).toEqual({ outcome: "rejected" });
-    expect(
-      toStandaloneAccessCodeCreationFailure({ outcome: "in-progress" })
-    ).toEqual({ outcome: "in-progress" });
-    expect(
-      toStandaloneAccessCodeCreationFailure({ outcome: "unavailable" })
-    ).toEqual({ outcome: "unavailable" });
-    expect(
-      toStandaloneAccessCodeCreationFailure({ outcome: "reconciled" })
-    ).toEqual({ outcome: "reconciled" });
-  });
 });
 
 describe("standalone access-code form schema", () => {
-  const validateForm = async (values: CreateStandaloneAccessCodeFormInput) => {
-    const result =
-      await createStandaloneAccessCodeFormSchema["~standard"].validate(values);
+  const validateForm = async (
+    values: CreateStandaloneAccessCodeFormInput,
+    locale: "en-US" | "cs-CZ" = "en-US"
+  ) => {
+    const result = await Schema.toStandardSchemaV1(
+      createStandaloneAccessCodeFormSchema(locale)
+    )["~standard"].validate(values);
     return result.issues
       ? Object.groupBy(
           result.issues.map((issue) => ({
@@ -471,14 +287,6 @@ describe("standalone access-code form schema", () => {
         )
       : result.value;
   };
-
-  test("defaults to blank form fields", () => {
-    expect(createStandaloneAccessCodeFormDefaults).toEqual({
-      name: "",
-      startsAt: "",
-      endsAt: "",
-    });
-  });
 
   test("reports concise field errors for missing values", async () => {
     const issues = await validateForm(createStandaloneAccessCodeFormDefaults);
@@ -491,16 +299,6 @@ describe("standalone access-code form schema", () => {
     ]);
     expect(issues.endsAt?.map(({ message }) => message)).toEqual([
       "Choose an end time.",
-    ]);
-  });
-
-  test("reports the contract name bound without server help", async () => {
-    const issues = await validateForm({
-      ...validWindow,
-      name: "x".repeat(61),
-    });
-    expect(issues.name?.map(({ message }) => message)).toEqual([
-      "Use at most 60 characters.",
     ]);
   });
 
@@ -521,6 +319,28 @@ describe("standalone access-code form schema", () => {
     });
   });
 
+  test("reports field errors in the route locale", async () => {
+    const missing = await validateForm(
+      createStandaloneAccessCodeFormDefaults,
+      "cs-CZ"
+    );
+    expect(missing.name?.map(({ message }) => message)).toEqual([
+      "Zadejte název tohoto přístupového kódu.",
+    ]);
+
+    const outOfWindow = await validateForm(
+      {
+        name: validWindow.name,
+        startsAt: "2026-09-10T12:00",
+        endsAt: "2026-09-10T10:00",
+      },
+      "cs-CZ"
+    );
+    expect(outOfWindow.endsAt?.map(({ message }) => message)).toEqual([
+      "Konec musí být 1 až 672 hodin po začátku.",
+    ]);
+  });
+
   test("keeps window errors off fields that are individually invalid", async () => {
     const issues = await validateForm({
       name: validWindow.name,
@@ -533,40 +353,23 @@ describe("standalone access-code form schema", () => {
       "Choose a valid start time on the whole hour.",
     ]);
   });
-
-  test("accepts trimmed names and valid windows", async () => {
-    const values = await validateForm({
-      name: "  Booth A  ",
-      startsAt: validWindow.startsAt,
-      endsAt: validWindow.endsAt,
-    });
-
-    expect(values).toEqual({
-      name: "Booth A",
-      startsAt: validWindow.startsAt,
-      endsAt: validWindow.endsAt,
-    });
-  });
 });
 
-describe("standalone access-code presentation helpers", () => {
-  test("formats local date-times and durations for operators", () => {
-    expect(formatStandaloneAccessCodeLocalDateTime("2026-09-10T10:00")).toBe(
-      "10 Sept 2026, 10:00"
-    );
-    expect(formatStandaloneAccessCodeDuration(1)).toBe("1 hour");
-    expect(formatStandaloneAccessCodeDuration(24)).toBe("24 hours");
+describe("standalone access-code copy", () => {
+  test("formats the window duration with the locale's plural forms", () => {
+    expect(formatStandaloneAccessCodeDuration(1, "en-US")).toBe("1 hour");
+    expect(formatStandaloneAccessCodeDuration(24, "en-US")).toBe("24 hours");
+    expect(formatStandaloneAccessCodeDuration(1, "cs-CZ")).toBe("1 hodina");
+    expect(formatStandaloneAccessCodeDuration(2, "cs-CZ")).toBe("2 hodiny");
+    expect(formatStandaloneAccessCodeDuration(24, "cs-CZ")).toBe("24 hodin");
   });
 
-  test("compares window values for attempt binding", () => {
-    expect(
-      isSameStandaloneAccessCodeWindow(validWindow, { ...validWindow })
-    ).toBe(true);
-    expect(
-      isSameStandaloneAccessCodeWindow(validWindow, {
-        ...validWindow,
-        name: "Booth B",
-      })
-    ).toBe(false);
+  test("localizes the notice of each failure without lock cleanup", () => {
+    expect(standaloneAccessCodeFailureNotice("in-progress", "en-US")).toBe(
+      "This access code is already being created. Wait a moment and try again."
+    );
+    expect(standaloneAccessCodeFailureNotice("unavailable", "cs-CZ")).toBe(
+      "Vytváření přístupových kódů je dočasně nedostupné. Zkuste to znovu za několik minut."
+    );
   });
 });

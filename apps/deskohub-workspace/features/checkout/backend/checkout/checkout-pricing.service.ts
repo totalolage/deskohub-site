@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Match } from "effect";
 import { DiscountService } from "@/features/discounts/discount.service";
+import type { DiscountReleaseGates } from "@/features/discounts/discount-release-gate.service";
 import {
   type CoworkAdvertisementAffirmation,
   type CoworkAdvertisementAffirmationInput,
@@ -43,22 +44,22 @@ import {
   officeCheckoutPricing,
 } from "./office-checkout-pricing";
 
-export type CheckoutPricingError =
+type CheckoutPricingError =
   | CoworkCheckoutPricingError
   | MeetingRoomCheckoutPricingError
   | OfficeCheckoutPricingError;
 
-export type AdvertisementQuoteInput =
+type AdvertisementQuoteInput =
   | CoworkAdvertisementQuoteInput
   | MeetingRoomAdvertisementQuoteInput
   | OfficeAdvertisementQuoteInput;
 
-export type AdvertisementQuote =
+type AdvertisementQuote =
   | CoworkAdvertisementQuote
   | MeetingRoomAdvertisementQuote
   | OfficeAdvertisementQuote;
 
-export type CustomerQuoteInput =
+type CustomerQuoteInput =
   | CoworkCustomerQuoteInput
   | MeetingRoomCustomerQuoteInput
   | OfficeCustomerQuoteInput;
@@ -68,7 +69,7 @@ export type PreparedCustomerQuote =
   | MeetingRoomCustomerQuote
   | OfficeCustomerQuote;
 
-export type PaymentPriceAffirmationInput =
+type PaymentPriceAffirmationInput =
   | CoworkPaymentPriceAffirmationInput
   | MeetingRoomPaymentPriceAffirmationInput
   | OfficePaymentPriceAffirmationInput;
@@ -78,12 +79,12 @@ export type PaymentPriceAffirmation =
   | MeetingRoomPaymentPriceAffirmation
   | OfficePaymentPriceAffirmation;
 
-export type DiscountCodePriceInput =
+type DiscountCodePriceInput =
   | CoworkDiscountCodePriceInput
   | MeetingRoomDiscountCodePriceInput
   | OfficeDiscountCodePriceInput;
 
-export type DiscountCodePriceResult =
+type DiscountCodePriceResult =
   | CoworkDiscountCodePriceResult
   | MeetingRoomDiscountCodePriceResult
   | OfficeDiscountCodePriceResult;
@@ -219,4 +220,11 @@ export class CheckoutPricingService extends Context.Service<
   );
 
   static Live = this.Default.pipe(Layer.provide(DiscountService.Live));
+
+  /**
+   * Live pricing under discount release gates the caller already decided,
+   * for work that must not read the request, such as a cached render.
+   */
+  static withDiscountReleaseGates = (gates: DiscountReleaseGates) =>
+    this.Default.pipe(Layer.provide(DiscountService.withReleaseGates(gates)));
 }

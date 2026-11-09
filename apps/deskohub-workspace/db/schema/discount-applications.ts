@@ -73,6 +73,10 @@ export const discountApplications = pgTable(
       t.paymentAttemptId,
       t.sequence
     ),
+    uniqueIndex("discount_applications_id_attempt_unique_idx").on(
+      t.id,
+      t.paymentAttemptId
+    ),
     index("discount_applications_reservation_idx").on(t.workspaceReservationId),
     check("discount_applications_sequence_check", sql`${t.sequence} >= 0`),
     check(
@@ -261,11 +265,6 @@ export const voucherRedemptions = pgTable(
   ]
 );
 
-export type DiscountApplication = typeof discountApplications.$inferSelect;
-export type NewDiscountApplication = typeof discountApplications.$inferInsert;
 export type DiscountCodeRedemption =
   typeof discountCodeRedemptions.$inferSelect;
-export type NewDiscountCodeRedemption =
-  typeof discountCodeRedemptions.$inferInsert;
 export type VoucherRedemption = typeof voucherRedemptions.$inferSelect;
-export type NewVoucherRedemption = typeof voucherRedemptions.$inferInsert;

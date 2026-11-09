@@ -1,4 +1,4 @@
-import { PriceInfo } from "@/shared/components";
+import { PriceInfo } from "@/shared/components/price-info";
 
 export function MenuFooterNote() {
   return (

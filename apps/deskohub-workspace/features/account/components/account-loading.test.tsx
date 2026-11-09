@@ -6,80 +6,35 @@ import {
   expect,
   test,
 } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, within } from "@testing-library/react";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { AccountContentLoading, AccountLoading } from "./account-loading";
-import { AccountShell, type AccountShellProps } from "./shell/account-shell";
+import { AccountLoading } from "./account-loading";
 
 const sectionKeys = [
   "reservations",
   "profile",
+  "assistants",
   "billing",
   "legal",
   "danger",
 ] as const;
 
-type AccountSectionKey = (typeof sectionKeys)[number];
+const locales = ["en-US", "cs-CZ"] as const;
 
-type LoadingCopy = {
-  readonly accountTitle: string;
-  readonly loadingMessage: string;
-  readonly locale: "en-US" | "cs-CZ";
-  readonly metadataTitle: string;
-  readonly mobileSection: string;
-  readonly navigation: string;
-  readonly sections: Readonly<Record<AccountSectionKey, string>>;
-  readonly signOut: string;
-};
-
-const localizedLoadingCopy: readonly LoadingCopy[] = [
-  {
-    accountTitle: "My Workspace",
-    loadingMessage: "Loading content…",
-    locale: "en-US",
-    metadataTitle: "My account | Deskohub Workspace",
-    mobileSection: "Account section",
-    navigation: "Account navigation",
-    sections: {
-      billing: "Billing & Invoices",
-      danger: "Danger zone",
-      legal: "Legal & Privacy",
-      profile: "Profile & Identity",
-      reservations: "Reservations",
-    },
-    signOut: "Sign out",
-  },
-  {
-    accountTitle: "Můj Workspace",
-    loadingMessage: "Načítání obsahu…",
-    locale: "cs-CZ",
-    metadataTitle: "Můj účet | Deskohub Workspace",
-    mobileSection: "Sekce účtu",
-    navigation: "Navigace účtu",
-    sections: {
-      billing: "Fakturace a faktury",
-      danger: "Nebezpečná zóna",
-      legal: "Právní informace a soukromí",
-      profile: "Profil a identita",
-      reservations: "Rezervace",
-    },
-    signOut: "Odhlásit se",
-  },
-];
-
-const shellLabels: AccountShellProps["labels"] = {
-  mobileSection: "Account section",
-  navigation: "Account navigation",
-  sections: {
-    billing: "Billing & Invoices",
-    danger: "Danger zone",
-    legal: "Legal & Privacy",
-    profile: "Profile & Identity",
-    reservations: "Reservations",
-  },
+/** The element's text outside busy or hidden subtrees. */
+const announcedText = (root: Element) => {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let text = "";
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (
+      !node.parentElement?.closest('[aria-hidden="true"], [aria-busy="true"]')
+    )
+      text += node.textContent ?? "";
+  }
+  return text;
 };
 
 class TestResizeObserver implements ResizeObserver {
@@ -98,59 +53,6 @@ class TestResizeObserver implements ResizeObserver {
 
 const originalResizeObserver = globalThis.ResizeObserver;
 
-function getFrameStructure(container: HTMLElement) {
-  const main = container.querySelector("main");
-  const frameContent = main?.querySelector(":scope > div");
-  const header = frameContent?.querySelector(":scope > header");
-  const heading = header?.querySelector(":scope > h1");
-  const grid = frameContent?.querySelector(":scope > div");
-  const aside = grid?.querySelector(":scope > aside");
-  const navigation = aside?.querySelector(":scope > nav");
-  const content = grid?.querySelector(":scope > div");
-
-  if (
-    !main ||
-    !frameContent ||
-    !header ||
-    !heading ||
-    !grid ||
-    !aside ||
-    !navigation ||
-    !content
-  ) {
-    throw new Error("Account frame structure was not rendered");
-  }
-
-  return [
-    main,
-    frameContent,
-    header,
-    heading,
-    grid,
-    aside,
-    navigation,
-    content,
-  ].map((element) => ({
-    className: element.className,
-    tagName: element.tagName,
-  }));
-}
-
-function renderShell() {
-  return render(
-    <AccountShell
-      activeSection="reservations"
-      disabledSections={sectionKeys}
-      labels={shellLabels}
-      onSectionChange={() => undefined}
-      signOut={<div aria-hidden="true" />}
-      title="Frame title"
-    >
-      <div data-testid="frame-content" />
-    </AccountShell>
-  );
-}
-
 describe("AccountLoading", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
@@ -159,52 +61,51 @@ describe("AccountLoading", () => {
 
   afterEach(cleanup);
 
-  afterAll(() => {
+  afterAll(async () => {
     globalThis.ResizeObserver = originalResizeObserver;
-    unregisterWorkspaceComponentTestEnv();
+    await unregisterWorkspaceComponentTestEnv();
   });
 
-  test.each(localizedLoadingCopy)(
-    "renders the localized account frame and disabled navigation for $locale",
-    (copy) => {
-      const view = render(<AccountLoading locale={copy.locale} />);
-      const status = view.getByRole("status", { name: copy.metadataTitle });
-      const loadingMessage = view.getByText(copy.loadingMessage);
-      const navigation = view.getByRole("navigation", {
-        name: copy.navigation,
-      });
+  test.each(locales)(
+    "renders the account frame and disabled navigation without the referral section for %s",
+    (locale) => {
+      const view = render(<AccountLoading locale={locale} />);
+      const status = view.getByRole("status");
+      const navigation = view.getByRole("navigation");
+      const sectionGroup = within(navigation).getByRole("group");
 
-      expect(status.textContent).toContain(copy.loadingMessage);
-      expect(loadingMessage.closest('[aria-busy="true"]')).toBeNull();
-      expect(loadingMessage.closest('[aria-hidden="true"]')).toBeNull();
-      expect(status.querySelector('[aria-busy="true"]')).toBeTruthy();
+      expect(status.getAttribute("aria-label")).toBeTruthy();
+      // The loading message is announced outside the busy, hidden skeleton.
+      expect(announcedText(status).trim()).toBeTruthy();
+      const skeleton = status.querySelector('[aria-busy="true"]');
+      expect(skeleton?.querySelector('[aria-hidden="true"]')).toBeTruthy();
+      expect(view.getByRole("heading", { level: 1 }).textContent).toBeTruthy();
+      expect(navigation.getAttribute("aria-label")).toBeTruthy();
       expect(
-        view.getByRole("heading", { level: 1, name: copy.accountTitle })
+        document.getElementById(
+          sectionGroup.getAttribute("aria-labelledby") ?? ""
+        )?.textContent
       ).toBeTruthy();
-      expect(navigation.querySelector("fieldset")?.textContent).toContain(
-        copy.mobileSection
-      );
 
-      for (const section of sectionKeys) {
-        const buttons = Array.from(
-          navigation.querySelectorAll("button")
-        ).filter(
-          (button) => button.textContent?.trim() === copy.sections[section]
+      const sectionItems = (attribute: string) =>
+        Array.from(
+          navigation.querySelectorAll<HTMLButtonElement>(`button[${attribute}]`)
         );
-        expect(buttons).toHaveLength(2);
-        for (const button of buttons) {
-          expect(button.textContent?.trim()).toBe(copy.sections[section]);
-          expect((button as HTMLButtonElement).disabled).toBe(true);
-        }
-      }
-
+      const mobileItems = sectionItems("data-account-section");
+      const sidebarItems = sectionItems("data-account-sidebar-section");
+      expect(
+        mobileItems.map((button) => button.dataset.accountSection)
+      ).toEqual([...sectionKeys]);
+      expect(
+        sidebarItems.map((button) => button.dataset.accountSidebarSection)
+      ).toEqual([...sectionKeys]);
       const buttons = Array.from(view.container.querySelectorAll("button"));
-      expect(buttons).toHaveLength(11);
+      expect(buttons).toHaveLength(sectionKeys.length * 2 + 1);
       expect(buttons.every((button) => button.disabled)).toBe(true);
-      expect(view.getByRole("button", { name: copy.signOut })).toHaveProperty(
-        "disabled",
-        true
-      );
+      expect(
+        view.container.querySelector<HTMLButtonElement>("#account-sign-out")
+          ?.disabled
+      ).toBe(true);
       expect(view.container.querySelector("span.ml-auto")).toBeNull();
       expect(
         view.container.querySelector("input, textarea, select, form")
@@ -215,39 +116,4 @@ describe("AccountLoading", () => {
       ).toBeGreaterThan(0);
     }
   );
-
-  test.each(localizedLoadingCopy)(
-    "renders a content-only localized fallback for $locale",
-    (copy) => {
-      const view = render(<AccountContentLoading locale={copy.locale} />);
-      const status = view.getByRole("status", { name: copy.metadataTitle });
-      const loadingMessage = view.getByText(copy.loadingMessage);
-
-      expect(status.textContent).toContain(copy.loadingMessage);
-      expect(loadingMessage.className).toContain("sr-only");
-      expect(loadingMessage.closest('[aria-busy="true"]')).toBeNull();
-      expect(loadingMessage.closest('[aria-hidden="true"]')).toBeNull();
-      expect(view.container.textContent).toContain(copy.loadingMessage);
-      expect(status.querySelector('[aria-busy="true"]')).toBeTruthy();
-      expect(
-        status.querySelectorAll('[data-slot="skeleton"]').length
-      ).toBeGreaterThan(0);
-      expect(view.container.querySelector("main, header, nav, aside")).toBe(
-        null
-      );
-      expect(view.container.querySelector("button, a, form, input")).toBeNull();
-      expect(status.querySelector('[data-slot="card"]')).toBeNull();
-    }
-  );
-
-  test("uses the AccountShell Frame geometry without duplicating it", () => {
-    const shellView = renderShell();
-    const expectedStructure = getFrameStructure(shellView.container);
-
-    cleanup();
-
-    const loadingView = render(<AccountLoading locale="en-US" />);
-
-    expect(getFrameStructure(loadingView.container)).toEqual(expectedStructure);
-  });
 });

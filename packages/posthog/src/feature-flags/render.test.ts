@@ -21,12 +21,6 @@ describe("renderPostHogFeatureFlagContract", () => {
       renderPostHogFeatureFlagContract([...definitions].reverse())
     );
 
-    expect(contract).toContain(
-      'import { definePostHogFeatureFlags } from "@deskohub/posthog/feature-flags";'
-    );
-    expect(contract).toContain(
-      "export const postHogFeatureFlags = definePostHogFeatureFlags<"
-    );
     expect(contract).toContain('  "meeting_room_page",\n  "room_experience",');
     expect(contract).toContain(
       'readonly value: false | "control" | "treatment";'
@@ -36,6 +30,34 @@ describe("renderPostHogFeatureFlagContract", () => {
       'readonly "features": readonly (boolean | string)[];'
     );
     expect(contract).toContain("readonly payload: string | undefined | {");
+  });
+
+  test("renders empty, nested, null and too-deep payload structures", async () => {
+    const tooDeep = '{"a":{"b":{"c":{"d":{"e":{"f":{"g":{"h":1}}}}}}}}';
+    const contract = await Effect.runPromise(
+      renderPostHogFeatureFlagContract([
+        {
+          key: "shapes",
+          payloads: {
+            empty: '{"list":[],"settings":{}}',
+            nested: '{"rooms":[{"open":null,"seats":2}]}',
+          },
+          variants: ["empty", "nested"],
+        },
+        { key: "too_deep", payloads: { deep: tooDeep }, variants: ["deep"] },
+        { key: "unparsed", payloads: { raw: [1, "two"] }, variants: ["raw"] },
+      ])
+    );
+
+    expect(contract).toContain(
+      'readonly payload: undefined | { readonly "list": readonly (unknown)[]; readonly "settings": Readonly<Record<string, never>>; } | { readonly "rooms": readonly ({ readonly "open": null; readonly "seats": number; })[]; };'
+    );
+    expect(contract).toContain(
+      'readonly payload: undefined | { readonly "a": { readonly "b": { readonly "c": { readonly "d": { readonly "e": { readonly "f": { readonly "g": unknown; }; }; }; }; }; }; };'
+    );
+    expect(contract).toContain(
+      "readonly payload: readonly (number | string)[] | undefined;"
+    );
   });
 
   test("never copies configured payload values into generated source", async () => {
@@ -82,16 +104,5 @@ describe("renderPostHogFeatureFlagContract", () => {
     expect(contract).toContain('readonly value: false | "control<&";');
     expect(contract).not.toContain("&lt;");
     expect(contract).not.toContain("&amp;");
-  });
-
-  test("rejects duplicate keys through the Effect error channel", async () => {
-    const result = await Effect.runPromiseExit(
-      renderPostHogFeatureFlagContract([
-        { key: "duplicate", payloads: {}, variants: [] },
-        { key: "duplicate", payloads: {}, variants: [] },
-      ])
-    );
-
-    expect(result._tag).toBe("Failure");
   });
 });

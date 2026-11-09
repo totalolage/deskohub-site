@@ -1,5 +1,5 @@
 import { Effect, Option, Schema } from "effect";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -11,6 +11,7 @@ import { readReservationAccessCookie } from "@/features/reservation/backend/rese
 import { ReservationAccessPage } from "@/features/reservation/components/reservation-access-page";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { withWorkspaceRequestContext } from "@/shared/backend/workspace-request-context";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 
 type ReservationAccessPresentation = "page" | "modal";
@@ -55,11 +56,15 @@ async function ReservationAccessContent({
   return runWithRequestLocale(async (locale) => {
     await connection();
     const cookieStore = await cookies();
+    const requestHeaders = await headers();
     const accessCookie = readReservationAccessCookie(cookieStore, orderId);
     const access = await Effect.flatMap(ReservationAccessService, (service) =>
       service.getAccess({ orderId, locale, accessCookie })
     ).pipe(
       Effect.provide(ReservationAccessService.Live),
+      // Authorization reads the session from these headers, never from
+      // Next's `headers()` behind the request context.
+      withWorkspaceRequestContext(requestHeaders),
       runWorkspaceEffect("reservation.access.load")
     );
 

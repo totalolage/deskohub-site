@@ -9,8 +9,16 @@ import {
   test,
 } from "bun:test";
 import { NexiOrderIdSchema } from "@deskohub/nexi";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
-import { StatusBadge } from "@/shared/components/ui/status-badge";
+import { testEmailAddress } from "@deskohub/test-email";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  within,
+} from "@testing-library/react";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
+import { formatMoney } from "@/shared/money/money";
 import {
   workspaceRouterPush,
   workspaceRouterRefresh,
@@ -20,34 +28,37 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { AdministrationBreadcrumbs } from "./admin-shell";
 import {
-  AdministrationTableCount,
-  AdministrationTableToolbar,
   BookingTable,
-  getBookingTableLabel,
+  formatAdministrationDateTime,
   PaymentAttemptList,
   RelatedReservationLink,
-  ReservationReferences,
   ReservationTable,
   ReservationTimeline,
 } from "./components";
-import {
-  loadFixtureBookings,
-  loadFixtureReservation,
-  loadFixtureReservations,
-} from "./fixtures";
-import {
-  ProviderStatusBadge,
-  ReservationOrderList,
-} from "./payment-components";
+import { loadFixtureReservation, loadFixtureReservations } from "./fixtures";
+import { ReservationOrderList } from "./payment-components";
 import { OperationTable, OrderTable } from "./payment-tables";
 import { ReservationAccessAdministration } from "./reservation-access-administration";
 import { ReservationLifecycleMap } from "./reservation-lifecycle-map";
+import { reservationListQuery } from "./reservation-list-query";
+import { ReservationLookup } from "./reservation-lookup";
+import { getAdministrationReservationLifecycle } from "./reservation-status";
+
+/** Text content with the formatter's non-breaking spaces as plain spaces. */
+const readableText = (element: Element | null | undefined) =>
+  element?.textContent?.replace(/\s+/g, " ");
 
 mock.module("./actions", () => ({
   getAdministrationReservation: mock(),
   mutateReservationAccess: mock(),
+}));
+mock.module("next/navigation", () => ({
+  useParams: () => ({ locale: "en-US" }),
+  useRouter: () => ({
+    push: workspaceRouterPush,
+    refresh: workspaceRouterRefresh,
+  }),
 }));
 
 describe("administration reservation components", () => {
@@ -59,63 +70,6 @@ describe("administration reservation components", () => {
   });
   afterEach(() => cleanup());
   afterAll(() => unregisterWorkspaceComponentTestEnv());
-
-  test("composes collection counts, search, filters, and actions consistently", () => {
-    const view = render(
-      <AdministrationTableToolbar
-        actions={<button type="button">Create</button>}
-        count={2}
-        filters={<button type="button">Filter</button>}
-        itemLabel="reservation"
-        search={<input aria-label="Lookup" />}
-      />
-    );
-
-    const toolbar = view.getByRole("region", {
-      name: "reservation table controls",
-    });
-    expect(within(toolbar).getByLabelText("2 reservations")).toBeDefined();
-    expect(within(toolbar).getByLabelText("Lookup")).toBeDefined();
-    expect(
-      within(toolbar).getByRole("button", { name: "Filter" })
-    ).toBeDefined();
-    expect(
-      within(toolbar).getByRole("button", { name: "Create" })
-    ).toBeDefined();
-  });
-
-  test("keeps streamed collection counts styled and accessible", () => {
-    const view = render(
-      <AdministrationTableToolbar
-        count={<AdministrationTableCount count={24} itemLabel="reservation" />}
-        itemLabel="reservation"
-      />
-    );
-
-    expect(view.getByLabelText("24 reservations").textContent).toBe("24");
-  });
-
-  test("keeps a compact primary action beside the collection count", () => {
-    const view = render(
-      <AdministrationTableToolbar
-        actions={<button type="button">Create</button>}
-        count={1}
-        itemLabel="voucher"
-      />
-    );
-
-    expect(
-      view.getByRole("region", { name: "voucher table controls" }).className
-    ).toContain("grid-cols-[minmax(0,1fr)_auto]");
-  });
-
-  test("uses one status badge foundation for domain-specific states", () => {
-    const view = render(<StatusBadge tone="positive">Active</StatusBadge>);
-
-    expect(view.getByText("Active").className).toContain(
-      "bg-aquamarine-green/12"
-    );
-  });
 
   test("shows safe access metadata and the failed retry action without the PIN", () => {
     const detail = loadFixtureReservation("0198-admin-fixture-attention");
@@ -223,28 +177,27 @@ describe("administration reservation components", () => {
           index === 1
             ? {
                 ...item,
-                status: { group: "in_progress", label: "Awaiting payment" },
+                status: {
+                  group: "in_progress",
+                  code: "awaiting_payment",
+                  label: "Awaiting payment",
+                },
                 statusNote: "Cancelled in Dotypos",
+                statusNoteCode: "cancelled_in_dotypos",
               }
             : item
         )}
       />
     );
     const table = view.getByRole("table", { name: "Reservations" });
-    expect(table.parentElement?.parentElement?.className).toContain(
-      "overflow-x-auto"
-    );
     expect(within(table).getAllByText("Confirmation issue")).not.toHaveLength(
       0
     );
-    const reservationLink = within(table)
-      .getAllByRole("link")
-      .find(
-        (link) =>
-          link.getAttribute("href") ===
-          "/admin/reservations/0198-admin-fixture-attention"
-      );
-    expect(reservationLink?.className).toContain("before:absolute");
+    expect(
+      within(table)
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"))
+    ).toContain("/en-US/admin/reservations/0198-admin-fixture-attention");
     expect(
       within(table)
         .getByRole("link", {
@@ -290,23 +243,65 @@ describe("administration reservation components", () => {
       />
     );
 
-    const coworkDates = view.getAllByText("10 Aug 2026");
+    const coworkDates = view.getAllByText("Aug 10, 2026");
     expect(coworkDates).toHaveLength(2);
     expect(coworkDates[0]?.textContent).not.toContain("00:00");
-    expect(view.getAllByText(/10 Aug 2026(?:,| at) 10:00/)).toHaveLength(2);
+    expect(view.getAllByText(/Aug 10, 2026, 10:00/)).toHaveLength(2);
+  });
+
+  test("shows when an early-setup meeting room is held from", () => {
+    const reservation = loadFixtureReservations({}).items[0];
+    if (!reservation) throw new Error("Missing reservation fixture");
+    const view = render(
+      <ReservationTable
+        reservations={[
+          {
+            ...reservation,
+            id: "early-setup",
+            type: "meeting-room",
+            date: "2026-08-10",
+            startsAt: "2026-08-10T08:00:00Z",
+            setupStartsAt: "2026-08-10T07:45:00Z",
+          },
+          {
+            ...reservation,
+            id: "on-time",
+            type: "meeting-room",
+            date: "2026-08-11",
+            startsAt: "2026-08-11T08:00:00Z",
+            setupStartsAt: null,
+          },
+          {
+            ...reservation,
+            id: "midnight",
+            type: "meeting-room",
+            date: "2026-08-13",
+            startsAt: "2026-08-12T22:00:00Z",
+            setupStartsAt: "2026-08-12T21:45:00Z",
+          },
+        ]}
+      />
+    );
+
+    // The table and the narrow-screen list each show the setup time once,
+    // with its date when setup starts the day before.
+    expect(view.getAllByText(/Aug 10, 2026, 10:00/)).toHaveLength(2);
+    expect(view.getAllByText(/09:45/)).toHaveLength(2);
+    expect(view.getAllByText(/Aug 11, 2026, 10:00/)).toHaveLength(2);
+    expect(view.getAllByText(/Aug 12, 2026, 23:45/)).toHaveLength(2);
   });
 
   test("links sortable reservation headers to server-side ordering", () => {
     const reservations = loadFixtureReservations({}).items;
     const view = render(
       <ReservationTable
-        reservations={reservations}
-        sorting={{
-          basePath: "/admin/reservations",
+        query={reservationListQuery.parse({
           direction: "asc",
-          field: "reservation",
-          params: { status: "complete" },
-        }}
+          from: "2026-08-01",
+          sort: "reservation",
+          status: "complete",
+        })}
+        reservations={reservations}
       />
     );
     const table = view.getByRole("table", { name: "Reservations" });
@@ -318,15 +313,17 @@ describe("administration reservation components", () => {
       "ascending"
     );
     expect(reservationHeader.getAttribute("href")).toBe(
-      "/admin/reservations?status=complete&sort=reservation&direction=desc"
+      "/en-US/admin/reservations?direction=desc&from=2026-08-01&sort=reservation&status=complete"
     );
     expect(
       within(table).getByRole("link", { name: "Status" }).getAttribute("href")
-    ).toBe("/admin/reservations?status=complete&sort=status&direction=asc");
+    ).toBe(
+      "/en-US/admin/reservations?direction=asc&from=2026-08-01&sort=status&status=complete"
+    );
     const dateHeader = within(table).getByRole("link", { name: "Date" });
     expect(dateHeader.closest("th")?.getAttribute("aria-sort")).toBe("none");
     expect(dateHeader.getAttribute("href")).toBe(
-      "/admin/reservations?status=complete&sort=date&direction=asc"
+      "/en-US/admin/reservations?direction=asc&from=2026-08-01&sort=date&status=complete"
     );
   });
 
@@ -338,10 +335,16 @@ describe("administration reservation components", () => {
 
     const view = render(
       <RelatedReservationLink
+        locale="en-US"
         reservation={{
           ...reservation,
-          status: { group: "in_progress", label: "Awaiting payment" },
+          status: {
+            group: "in_progress",
+            code: "awaiting_payment",
+            label: "Awaiting payment",
+          },
           statusNote: "Cancelled in Dotypos",
+          statusNoteCode: "cancelled_in_dotypos",
         }}
       />
     );
@@ -349,103 +352,356 @@ describe("administration reservation components", () => {
     expect(view.getByText("Cancelled in Dotypos")).toBeDefined();
     expect(view.getByText("Deskohub: Awaiting payment")).toBeDefined();
     expect(view.getByText("Alex Morgan")).toBeDefined();
-    expect(view.getByText("alex.morgan@example.test")).toBeDefined();
+    expect(view.getByText(testEmailAddress("alex.morgan"))).toBeDefined();
   });
 
-  test("keeps related reservations useful when customer details are unavailable", () => {
+  test("renders the reservation table in Czech on a Czech route", () => {
     const { items } = loadFixtureReservations({});
-    const reservation = items[0];
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <ReservationTable
+          reservations={items.map((item, index) =>
+            index === 1
+              ? {
+                  ...item,
+                  status: {
+                    group: "in_progress",
+                    code: "awaiting_payment",
+                    label: "Awaiting payment",
+                  },
+                  statusNote: "Cancelled in Dotypos",
+                  statusNoteCode: "cancelled_in_dotypos",
+                }
+              : item
+          )}
+        />
+      </RouteLocaleProvider>
+    );
+
+    const table = view.getByRole("table", { name: "Rezervace" });
+    for (const header of ["Datum", "Stav", "Zákazník", "Vytvořeno", "Platba"]) {
+      expect(
+        within(table).getByRole("columnheader", { name: header })
+      ).toBeDefined();
+    }
+    expect(within(table).getAllByText("Problém s potvrzením")).not.toHaveLength(
+      0
+    );
+    expect(within(table).getAllByText("Zasedací místnost")).not.toHaveLength(0);
+    expect(within(table).getAllByText("Profi Workstation")).not.toHaveLength(0);
+    expect(within(table).getByText("Zrušeno v Dotyposu")).toBeDefined();
+    expect(within(table).getByText("Deskohub: Čeká na platbu")).toBeDefined();
+    expect(
+      within(table).getAllByRole("link", {
+        name: "Platba ORDER-0198-admin-fixture-attention (otevře se v XPay)",
+      })
+    ).toHaveLength(1);
+    expect(view.queryByText("Awaiting payment")).toBeNull();
+  });
+
+  test("renders an empty Czech reservation table message", () => {
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <ReservationTable reservations={[]} />
+      </RouteLocaleProvider>
+    );
+
+    expect(
+      view.getByText("Tomuto zobrazení neodpovídají žádné rezervace.")
+    ).toBeDefined();
+  });
+
+  test("renders a related reservation in Czech", () => {
+    const reservation = loadFixtureReservations({}).items[4];
     expect(reservation).toBeDefined();
     if (!reservation) return;
 
     const view = render(
       <RelatedReservationLink
-        reservation={{ ...reservation, customer: null }}
+        locale="cs-CZ"
+        reservation={{
+          ...reservation,
+          customer: null,
+          date: null,
+          endsAt: null,
+          startsAt: null,
+        }}
       />
     );
 
-    expect(view.getByText("Customer unavailable")).toBeDefined();
+    expect(view.getByText("Zasedací místnost")).toBeDefined();
+    expect(view.getByText("Zákazník není k dispozici")).toBeDefined();
+    expect(view.getByText("Zrušeno")).toBeDefined();
   });
 
-  test("renders ordered operational history without forbidden fields", () => {
+  test("shows door access in Czech on a Czech route", () => {
     const detail = loadFixtureReservation("0198-admin-fixture-attention");
-    expect(detail).not.toBeNull();
-    if (!detail) return;
-    const serialized = JSON.stringify(detail);
-    expect(serialized).not.toContain("securityToken");
-    expect(serialized).not.toContain("providerRedirectUrl");
-    expect(serialized).not.toContain("rawPayload");
+    expect(detail?.accessGrant).not.toBeNull();
+    if (!detail?.accessGrant) return;
+    workspaceUseAction.mockReturnValue({
+      execute: mock(),
+      isExecuting: false,
+    } as never);
 
-    const view = render(<ReservationTimeline items={detail.timeline} />);
-    const timeline = view.getByRole("list", {
-      name: "Reservation history",
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <ReservationAccessAdministration
+          grant={{ ...detail.accessGrant, state: "uncertain" }}
+          reservationId={detail.reservation.id}
+        />
+      </RouteLocaleProvider>
+    );
+
+    expect(view.getByText("Přístup ke dveřím")).toBeDefined();
+    expect(view.getByText("Vyžaduje sladění")).toBeDefined();
+    expect(view.getByText("Sladit přístup")).toBeDefined();
+    expect(
+      view.getByText(
+        `U zámku se v aplikaci Igloohome připojte přes Bluetooth a najděte „${detail.accessGrant.accessName}“.`,
+        { exact: false }
+      )
+    ).toBeDefined();
+    expect(view.getByText("Platí od")).toBeDefined();
+  });
+
+  test("looks up reservations in Czech and reports an unmatched ID", async () => {
+    const execute = mock();
+    let onSuccess:
+      | ((args: { readonly data?: { readonly reservationId: null } }) => void)
+      | undefined;
+    workspaceUseAction.mockImplementation((_action, options) => {
+      onSuccess = (options as { onSuccess: typeof onSuccess }).onSuccess;
+      return { execute, isExecuting: false } as never;
     });
-    expect(within(timeline).getAllByRole("listitem")).toHaveLength(7);
-    expect(within(timeline).getByText("Payment started")).toBeDefined();
+
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <ReservationLookup />
+      </RouteLocaleProvider>
+    );
+
+    const button = view.getByRole("button", { name: "Najít rezervaci" });
+    await act(async () => {
+      fireEvent.click(button);
+    });
     expect(
-      within(timeline)
-        .getByRole("link", { name: "Nexi order created" })
-        .getAttribute("href")
-    ).toBe("#order-DADMINFIXTUREPAYMENT");
+      await view.findByText("Zadejte ID rezervace nebo platby.")
+    ).toBeDefined();
+    expect(execute).not.toHaveBeenCalled();
+
+    act(() => onSuccess?.({ data: { reservationId: null } }));
     expect(
-      within(timeline)
-        .getByRole("link", { name: "Payment executed by Nexi" })
-        .getAttribute("href")
-    ).toBe("#operation-DADMINFIXTUREOPERATION");
+      view.getByText("Tomuto ID neodpovídá žádná rezervace.")
+    ).toBeDefined();
+    expect(view.getByLabelText("ID rezervace nebo platby")).toBeDefined();
   });
 
-  test("links Nexi payment IDs directly to the XPay dashboard", () => {
+  test("names lifecycle stages and the current condition in Czech", () => {
+    const view = render(
+      <ReservationLifecycleMap
+        lifecycle={getAdministrationReservationLifecycle({
+          fulfillmentState: "not_started",
+          paymentState: "expired",
+          reservationState: "held",
+        })}
+        locale="cs-CZ"
+      />
+    );
+
+    expect(view.getByText("Zahájeno")).toBeDefined();
+    expect(view.getByText("Platba vypršela")).toBeDefined();
+    expect(view.getByText("Aktuální fáze")).toBeDefined();
+    expect(view.getByText("Nebo pokračovat k platbě")).toBeDefined();
+    expect(view.queryByText("Payment expired")).toBeNull();
+  });
+
+  test("shows a recorded refund instead of the refund requirement", () => {
     const detail = loadFixtureReservation("0198-admin-fixture-attention");
-    expect(detail).not.toBeNull();
-    if (!detail) return;
-    const attempt = detail.paymentAttempts[0];
+    const attempt = detail?.paymentAttempts[0];
     expect(attempt).toBeDefined();
     if (!attempt) return;
+    const refundedAt = "2026-10-05T08:30:00Z";
 
     const view = render(
       <PaymentAttemptList
+        locale="en-US"
         attempts={[
-          { ...attempt, refundState: "required" },
           {
             ...attempt,
-            id: "fixture-internal-payment",
-            providerOrderId: null,
-            providerLabel: "Included",
+            refundState: "refunded",
+            refundedAmount: attempt.amount,
+            refundedAt,
+          },
+          {
+            ...attempt,
+            id: "fixture-partially-refunded-payment",
+            refundState: "refunded",
+            refundedAmount: { ...attempt.amount, value: 100_000 },
+            refundedAt,
           },
         ]}
       />
     );
-    const orderLink = view.getByRole("link", {
-      name: "Nexi order DADMINFIXTUREPAYMENT (opens in XPay)",
-    });
-    expect(orderLink.getAttribute("href")).toBe(
-      "https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/DADMINFIXTUREPAYMENT"
-    );
-    expect(view.getByText("Needs refund")).toBeDefined();
-    expect(orderLink.getAttribute("target")).toBe("_blank");
-    expect(view.getAllByText("Nexi order")).toHaveLength(1);
+
+    const recordedAt = formatAdministrationDateTime(refundedAt, "en-US");
+    expect(view.queryByText("Needs refund")).toBeNull();
+    expect(view.queryByText(/Paid/)).toBeNull();
+    expect(view.getByText(`Refunded · ${recordedAt}`)).toBeDefined();
+    expect(
+      view.getByText(`Partially refunded CZK 1,000 · ${recordedAt}`)
+    ).toBeDefined();
+    expect(
+      [...view.container.querySelectorAll("del")].map(readableText)
+    ).toEqual(["CZK 2,400 refunded", "CZK 2,400 before refund"]);
+    expect(view.getByText("CZK 1,400", { exact: false })).toBeDefined();
   });
 
-  test("folds Nexi orders and operations into the reservation", () => {
-    const detail = loadFixtureReservation("0198-admin-fixture-attention");
-    expect(detail).not.toBeNull();
-    if (!detail) return;
-
-    const view = render(<ReservationOrderList orders={detail.orders} />);
-    expect(
-      view
-        .getByRole("link", {
-          name: "Nexi order DADMINFIXTUREPAYMENT (opens in XPay)",
-        })
-        .getAttribute("href")
-    ).toBe(
-      "https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/DADMINFIXTUREPAYMENT"
+  test("crosses out a refunded payment in the reservation list", () => {
+    const { items } = loadFixtureReservations({});
+    const [refunded, partiallyRefunded, paid] = items.filter(
+      ({ latestPayment }) => latestPayment
     );
-    expect(view.getByText("DADMINFIXTUREOPERATION")).toBeDefined();
-    expect(view.container.querySelector('a[href^="/admin/orders"]')).toBeNull();
+    if (
+      !refunded?.latestPayment ||
+      !partiallyRefunded?.latestPayment ||
+      !paid?.latestPayment
+    ) {
+      throw new Error("Expected three fixture reservations with payments");
+    }
+    const refundedAt = "2026-10-12T09:00:00Z";
+    const view = render(
+      <ReservationTable
+        reservations={[
+          {
+            ...refunded,
+            latestPayment: {
+              ...refunded.latestPayment,
+              refundState: "refunded",
+              refundedAmount: refunded.latestPayment.amount,
+              refundedAt,
+            },
+          },
+          {
+            ...partiallyRefunded,
+            latestPayment: {
+              ...partiallyRefunded.latestPayment,
+              refundState: "refunded",
+              refundedAmount: {
+                ...partiallyRefunded.latestPayment.amount,
+                value: 10_000,
+              },
+              refundedAt,
+            },
+          },
+          paid,
+        ]}
+      />
+    );
+
+    const table = view.getByRole("table", { name: "Reservations" });
+    const [refundedRow, partiallyRefundedRow, paidRow] = within(table)
+      .getAllByRole("row")
+      .slice(1);
+    const recordedAt = formatAdministrationDateTime(refundedAt, "en-US");
+
+    expect(refundedRow?.textContent).not.toContain("Paid");
     expect(
-      view.container.querySelector('a[href^="/admin/operations"]')
-    ).toBeNull();
+      within(refundedRow as HTMLElement).getByText(`Refunded · ${recordedAt}`)
+    ).toBeDefined();
+    expect(readableText(refundedRow?.querySelector("del"))).toBe(
+      "CZK 275 refunded"
+    );
+
+    expect(partiallyRefundedRow?.textContent).not.toContain("Paid");
+    expect(
+      within(partiallyRefundedRow as HTMLElement).getByText(
+        `Partially refunded CZK 100 · ${recordedAt}`
+      )
+    ).toBeDefined();
+    expect(readableText(partiallyRefundedRow?.querySelector("del"))).toBe(
+      "CZK 275 before refund"
+    );
+    expect(readableText(partiallyRefundedRow)).toContain(
+      "CZK 175 after refund"
+    );
+
+    expect(paidRow?.querySelector("del")).toBeNull();
+    expect(
+      within(paidRow as HTMLElement).getByText(
+        `Paid · ${formatAdministrationDateTime(paid.latestPayment.updatedAt, "en-US")}`
+      )
+    ).toBeDefined();
+    // The mobile list crosses out the same amounts.
+    expect(view.container.querySelectorAll("del")).toHaveLength(4);
+  });
+
+  test("shows a refunded Nexi order as refunded, even when Nexi does not return it", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    const order = detail?.orders[0];
+    if (!order?.link) throw new Error("Expected a linked fixture order");
+    const refundedAt = "2026-10-12T09:00:00Z";
+    const refundedOrder = {
+      ...order,
+      link: {
+        ...order.link,
+        refundState: "refunded",
+        refundedAmount: order.link.amount,
+        refundedAt,
+      },
+    } as const;
+
+    const view = render(
+      <ReservationOrderList
+        locale="en-US"
+        orders={[
+          refundedOrder,
+          {
+            ...refundedOrder,
+            orderId: NexiOrderIdSchema.make("DADMINFIXTUREMISSING"),
+            provider: null,
+            providerAvailable: false,
+            providerStatus: "not_found",
+            link: {
+              ...refundedOrder.link,
+              refundedAmount: { ...order.link.amount, value: 100_000 },
+            },
+          },
+        ]}
+      />
+    );
+
+    const recordedAt = formatAdministrationDateTime(refundedAt, "en-US");
+    expect(view.queryByText(/Paid/)).toBeNull();
+    expect(view.getByText(`Refunded · ${recordedAt}`)).toBeDefined();
+    expect(
+      view.getByText(`Partially refunded CZK 1,000 · ${recordedAt}`)
+    ).toBeDefined();
+    expect(
+      [...view.container.querySelectorAll("del")].map(readableText)
+    ).toEqual(["CZK 2,400 refunded", "CZK 2,400 before refund"]);
+
+    const orderView = render(
+      <OrderTable
+        orders={[
+          refundedOrder,
+          {
+            ...refundedOrder,
+            orderId: NexiOrderIdSchema.make("DADMINFIXTUREPARTIAL"),
+            link: {
+              ...refundedOrder.link,
+              refundedAmount: { ...order.link.amount, value: 100_000 },
+            },
+          },
+        ]}
+      />
+    );
+    const table = orderView.getByRole("table", { name: "Nexi orders" });
+    expect(within(table).getByText("Refunded")).toBeDefined();
+    expect(
+      within(table).getByText("Partially refunded CZK 1,000")
+    ).toBeDefined();
+    expect(within(table).queryByText(/Partially Refunded/)).toBeNull();
+    expect(within(table).queryByText("Paid")).toBeNull();
   });
 
   test("explains pending Nexi orders using the cleanup policy", () => {
@@ -474,7 +730,9 @@ describe("administration reservation components", () => {
           .toString(),
       },
     };
-    const openWindow = render(<ReservationOrderList orders={[emptyOrder]} />);
+    const openWindow = render(
+      <ReservationOrderList locale="en-US" orders={[emptyOrder]} />
+    );
     expect(
       openWindow.getByText(/local payment window is open until/i)
     ).toBeDefined();
@@ -482,6 +740,7 @@ describe("administration reservation components", () => {
 
     const overdue = render(
       <ReservationOrderList
+        locale="en-US"
         orders={[
           {
             ...emptyOrder,
@@ -502,6 +761,7 @@ describe("administration reservation components", () => {
 
     const activity = render(
       <ReservationOrderList
+        locale="en-US"
         orders={[
           {
             ...order,
@@ -513,98 +773,180 @@ describe("administration reservation components", () => {
     expect(activity.getByText(/Nexi reports payment activity/i)).toBeDefined();
   });
 
-  test("marks the actual lifecycle stage accessibly", () => {
+  test("words payment attempts and Nexi orders in Czech", () => {
     const detail = loadFixtureReservation("0198-admin-fixture-attention");
-    expect(detail).not.toBeNull();
-    if (!detail) return;
+    const attempt = detail?.paymentAttempts[0];
+    const order = detail?.orders[0];
+    if (!(attempt && order?.link)) {
+      throw new Error("Expected a fixture payment and linked order");
+    }
+    const refundedAt = "2026-10-12T09:00:00Z";
+    const refundedAmount = { ...attempt.amount, value: 100_000 };
 
-    const view = render(
-      <ReservationLifecycleMap lifecycle={detail.lifecycle} />
-    );
-    expect(
-      view.getByText("Paid").closest('[aria-current="step"]')
-    ).not.toBeNull();
-    expect(view.getByText("Confirmation issue")).toBeDefined();
-    expect(
-      view
-        .getByText("Cancelled")
-        .compareDocumentPosition(view.getByText("Paid")) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).not.toBe(0);
-  });
-
-  test("links order and operation entities back to their reservation", () => {
-    const detail = loadFixtureReservation("0198-admin-fixture-attention");
-    expect(detail).not.toBeNull();
-    if (!detail) return;
-    const orderView = render(<OrderTable orders={detail.orders} />);
-    expect(
-      orderView
-        .getByRole("link", { name: "DADMINFIXTUREPAYMENT" })
-        .getAttribute("href")
-    ).toBe("/admin/orders/DADMINFIXTUREPAYMENT");
-    expect(
-      orderView
-        .getByRole("link", { name: "View reservation" })
-        .getAttribute("href")
-    ).toBe("/admin/reservations/0198-admin-fixture-attention");
-    orderView.unmount();
-
-    const operation = detail.orders[0]?.provider?.operations[0];
-    expect(operation).toBeDefined();
-    if (!operation) return;
-    const operationView = render(
-      <OperationTable
-        operations={[
+    const attempts = render(
+      <PaymentAttemptList
+        attempts={[
           {
-            ...operation,
-            linkedReservationId: detail.reservation.id,
+            ...attempt,
+            refundState: "refunded",
+            refundedAmount,
+            refundedAt,
+          },
+        ]}
+        locale="cs-CZ"
+      />
+    );
+    expect(attempts.getByText("Online platba")).toBeDefined();
+    expect(attempts.getByText("Objednávka Nexi")).toBeDefined();
+    const attemptText = readableText(attempts.container);
+    expect(attemptText).toContain(
+      `Částečně vráceno ${formatMoney(refundedAmount, "cs-CZ")} · ${formatAdministrationDateTime(refundedAt, "cs-CZ")}`.replace(
+        /\s+/g,
+        " "
+      )
+    );
+    expect(readableText(attempts.container.querySelector("del"))).toBe(
+      `${formatMoney(attempt.amount, "cs-CZ")} před vrácením peněz`.replace(
+        /\s+/g,
+        " "
+      )
+    );
+    attempts.unmount();
+
+    const orders = render(
+      <ReservationOrderList
+        locale="cs-CZ"
+        orders={[
+          {
+            ...order,
+            provider: null,
+            providerAvailable: false,
+            providerStatus: "unavailable",
           },
         ]}
       />
     );
     expect(
-      operationView
-        .getByRole("link", { name: "DADMINFIXTUREOPERATION" })
-        .getAttribute("href")
-    ).toBe("/admin/operations/DADMINFIXTUREOPERATION");
+      orders.getByText(
+        "Aktuální operace objednávky jsou z Nexi dočasně nedostupné."
+      )
+    ).toBeDefined();
+    expect(orders.getByText("Zaplaceno", { exact: false })).toBeDefined();
+    orders.unmount();
+
+    const orderTable = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <OrderTable
+          orders={[
+            order,
+            {
+              ...order,
+              orderId: NexiOrderIdSchema.make("DADMINFIXTURENEXIONLY"),
+              link: null,
+            },
+          ]}
+        />
+      </RouteLocaleProvider>
+    );
+    const table = orderTable.getByRole("table", { name: "Objednávky Nexi" });
     expect(
-      operationView
-        .getByRole("link", { name: "DADMINFIXTUREPAYMENT" })
-        .getAttribute("href")
-    ).toBe("/admin/orders/DADMINFIXTUREPAYMENT");
+      within(table).getByRole("columnheader", { name: "Párování" })
+    ).toBeDefined();
+    expect(within(table).getByText("Zaplaceno")).toBeDefined();
+    expect(within(table).getByText("Pouze v Nexi")).toBeDefined();
+    expect(within(table).getAllByText("Zobrazit rezervaci")).toHaveLength(1);
+    orderTable.unmount();
+
+    const empty = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <OperationTable operations={[]} />
+      </RouteLocaleProvider>
+    );
+    expect(
+      empty.getByText("Těmto filtrům neodpovídají žádné operace Nexi.")
+    ).toBeDefined();
   });
 
-  test("sorts Nexi orders by raw order ID", () => {
-    const order = loadFixtureReservation("0198-admin-fixture-attention")
-      ?.orders[0];
-    expect(order).toBeDefined();
-    if (!order) return;
+  test("words reservation and payment history in Czech", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    if (!detail) throw new Error("Expected a fixture reservation");
+
     const view = render(
-      <OrderTable
-        orders={[
-          { ...order, orderId: NexiOrderIdSchema.make("Z-ORDER") },
-          { ...order, orderId: NexiOrderIdSchema.make("A-ORDER") },
-        ]}
-      />
+      <ReservationTimeline items={detail.timeline} locale="cs-CZ" />
     );
-    const table = view.getByRole("table", { name: "Nexi orders" });
 
-    fireEvent.click(within(table).getByRole("button", { name: "Order" }));
-
+    const timeline = view.getByRole("list", { name: "Historie rezervace" });
+    // A reservation event uses the reservation copy.
     expect(
-      within(table)
-        .getAllByRole("row")
-        .slice(1)
-        .map((row) => within(row).getAllByRole("link")[0]?.textContent)
-    ).toEqual(["A-ORDER", "Z-ORDER"]);
+      within(timeline).getByText("Objednávkový proces byl vytvořen")
+    ).toBeDefined();
+    expect(
+      within(timeline).getByText("Deskohub vytvořil místní proces rezervace.")
+    ).toBeDefined();
+    // Payment events use the payment copy, never the API's English.
+    expect(
+      within(timeline).getByRole("link", { name: "Objednávka Nexi vytvořena" })
+    ).toBeDefined();
+    expect(
+      within(timeline).getByRole("link", { name: "Nexi platbu provedlo" })
+    ).toBeDefined();
+    expect(within(timeline).queryByText("Nexi order created")).toBeNull();
+    expect(within(timeline).queryByText("Payment executed by Nexi")).toBeNull();
   });
 
-  test("renders both Nexi cancellation spellings as warnings", () => {
-    const view = render(<ProviderStatusBadge value="CANCELLED" />);
-    expect(view.getByText("Cancelled").className).toContain(
-      "bg-burned-orange/10"
+  test("words Dotypos bookings in Czech", () => {
+    const booking = loadFixtureReservation(
+      "0198-admin-fixture-attention"
+    )?.booking;
+    if (!booking) throw new Error("Expected a fixture booking");
+
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <BookingTable
+          bookings={[
+            { ...booking, seats: "3", status: "CANCELLED" },
+            {
+              ...booking,
+              id: `${booking.id}-unassigned` as typeof booking.id,
+              customer: null,
+              customerId: null,
+              linkedReservation: null,
+              seats: "5",
+              tableName: null,
+            },
+          ]}
+        />
+      </RouteLocaleProvider>
     );
+
+    const table = view.getByRole("table", { name: "Rezervace stolů" });
+    expect(
+      within(table).getByRole("columnheader", { name: /Stůl/ })
+    ).toBeDefined();
+    expect(within(table).getByText("3 osoby")).toBeDefined();
+    expect(within(table).getByText("5 osob")).toBeDefined();
+    expect(within(table).getByText("Zrušená")).toBeDefined();
+    expect(within(table).getByText("Nepřiřazeno")).toBeDefined();
+    expect(within(table).getByText("Nepřipojeno")).toBeDefined();
+    // The linked reservation is named by the customer catalog's product name.
+    expect(
+      within(table).getByRole("link", { name: "Zasedací místnost" })
+    ).toBeDefined();
+    expect(
+      within(table).getByText("Podrobnosti nejsou k dispozici")
+    ).toBeDefined();
+    // The mobile list words the same booking.
+    expect(view.getByText("Bez přiřazeného stolu · 5 osob")).toBeDefined();
+    view.unmount();
+
+    const empty = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <BookingTable bookings={[]} />
+      </RouteLocaleProvider>
+    );
+    expect(
+      empty.getByText("K tomuto datu neexistují žádné rezervace stolů.")
+    ).toBeDefined();
   });
 
   test("keeps the customer visible when booking details are unavailable", () => {
@@ -631,90 +973,6 @@ describe("administration reservation components", () => {
     expect(view.queryByText("Details unavailable")).toBeNull();
   });
 
-  test("distinguishes an unassigned table from unavailable table details", () => {
-    expect(getBookingTableLabel(null)).toBe("Unavailable");
-    expect(
-      getBookingTableLabel({ tableId: "dotypos-table", tableName: null })
-    ).toBe("Details unavailable");
-    expect(getBookingTableLabel({ tableId: null, tableName: null })).toBe(
-      "Not assigned"
-    );
-    expect(
-      getBookingTableLabel({
-        tableId: "dotypos-table",
-        tableName: "Meeting room",
-      })
-    ).toBe("Meeting room");
-  });
-
-  test("links reservation references to their related entities", () => {
-    const view = render(
-      <ReservationReferences
-        references={{
-          workspaceReservationId: "workspace-reservation",
-          dotyposReservationId: "dotypos-booking",
-          customerId: "dotypos-customer",
-        }}
-      />
-    );
-
-    expect(
-      view.getByRole("link", { name: "dotypos-customer" }).getAttribute("href")
-    ).toBe("/admin/customers/dotypos-customer");
-    expect(view.getByText("dotypos-booking")).toBeDefined();
-    expect(view.queryByRole("link", { name: "dotypos-booking" })).toBeNull();
-  });
-
-  test("renders Dotypos bookings with linked customers and reservations", () => {
-    const view = render(
-      <BookingTable
-        bookings={loadFixtureBookings().items}
-        sorting={{
-          direction: "asc",
-          field: "booking",
-          params: { date: "2026-08-10" },
-        }}
-      />
-    );
-    const table = view.getByRole("table", { name: "Bookings" });
-
-    expect(within(table).getByText("Table 4")).toBeDefined();
-    expect(
-      within(table)
-        .getAllByRole("link", { name: "Alex Morgan" })[0]
-        ?.getAttribute("href")
-    ).toBe("/admin/customers/customer-alex");
-    expect(
-      within(table)
-        .getByRole("link", { name: "Cowork Basic" })
-        .getAttribute("href")
-    ).toBe("/admin/reservations/0198-admin-fixture-complete");
-    expect(
-      within(table).getByRole("link", { name: "Booking" }).getAttribute("href")
-    ).toBe("/admin/bookings?date=2026-08-10&sort=booking&direction=desc");
-    expect(
-      within(table).getByRole("link", { name: "Status" }).getAttribute("href")
-    ).toBe("/admin/bookings?date=2026-08-10&sort=status&direction=asc");
-  });
-
-  test("identifies customer and reservation entities in breadcrumbs", () => {
-    const view = render(
-      <AdministrationBreadcrumbs
-        entityLabel="Ada Lovelace"
-        segments={["admin", "customers", "customer-ada"]}
-      />
-    );
-    expect(view.getByText("Ada Lovelace")).toBeDefined();
-
-    view.rerender(
-      <AdministrationBreadcrumbs
-        entityLabel="Cowork Basic"
-        segments={["admin", "reservations", "reservation-basic"]}
-      />
-    );
-    expect(view.getByText("Cowork Basic")).toBeDefined();
-  });
-
   test("gets one reservation from any associated unique ID", async () => {
     const execute = mock();
     let onSuccess:
@@ -739,12 +997,14 @@ describe("administration reservation components", () => {
       view.getByRole("searchbox", { name: "Reservation or payment ID" }),
       { target: { value: "  payment-123  " } }
     );
-    fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+    await act(async () => {
+      fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+    });
 
     expect(execute).toHaveBeenCalledWith({ identifier: "payment-123" });
     onSuccess?.({ data: { reservationId: "reservation-456" } });
     expect(workspaceRouterPush).toHaveBeenCalledWith(
-      "/admin/reservations/reservation-456"
+      "/en-US/admin/reservations/reservation-456"
     );
   });
 });

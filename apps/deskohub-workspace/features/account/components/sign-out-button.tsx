@@ -2,13 +2,9 @@
 
 import { LogOut } from "lucide-react";
 import { useState } from "react";
-import {
-  beginAnalyticsAccountTransition,
-  completeAnalyticsAccountSignOut,
-  refreshAnalyticsAccountIdentity,
-} from "@/features/account/analytics-identity";
-import { authClient } from "@/features/account/auth.client";
+import { signOutOfAccount } from "@/features/account/account-exit";
 import { type Locale, m } from "@/features/i18n";
+import { leaveDocument } from "@/shared/browser/document-navigation";
 import { Button } from "@/shared/components/ui/button";
 import {
   useAllowNextUnload,
@@ -31,28 +27,14 @@ export function SignOutButton({ locale }: SignOutButtonProps) {
 
     setSigningOut(true);
     setSignOutFailed(false);
-    beginAnalyticsAccountTransition();
 
-    try {
-      const result = await authClient.signOut();
-      if (result.error) {
-        void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
-          () => undefined
-        );
-        setSigningOut(false);
-        setSignOutFailed(true);
-        return;
-      }
-      completeAnalyticsAccountSignOut();
-      allowNextUnload();
-      window.location.assign(target);
-    } catch {
-      void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
-        () => undefined
-      );
+    if ((await signOutOfAccount()) === "failed") {
       setSigningOut(false);
       setSignOutFailed(true);
+      return;
     }
+    allowNextUnload();
+    leaveDocument(target);
   };
 
   return (
@@ -61,14 +43,15 @@ export function SignOutButton({ locale }: SignOutButtonProps) {
         id="account-sign-out"
         type="button"
         disabled={signingOut}
-        className="max-w-full whitespace-normal bg-red-800 hover:bg-red-900"
+        tone="danger"
+        wrap
         onClick={signOut}
       >
         <LogOut aria-hidden className="size-4" />
         {m.accountSignOut({}, { locale })}
       </Button>
       {signOutFailed && (
-        <div role="alert" aria-live="polite" className="text-sm text-red-700">
+        <div role="alert" className="text-sm text-red-700">
           {m.accountSignOutFailed({}, { locale })}
         </div>
       )}

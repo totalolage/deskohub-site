@@ -1,6 +1,6 @@
 "use client";
 
-import type { FocusEvent, ReactNode } from "react";
+import type { FocusEvent, ReactNode, Ref } from "react";
 
 export interface AccountFrameProps {
   readonly title: ReactNode;
@@ -8,10 +8,50 @@ export interface AccountFrameProps {
   readonly navigation: ReactNode;
   readonly sidebarFooter?: ReactNode;
   readonly children: ReactNode;
+  /** The content slot, for {@link revealAccountContentStart}. */
+  readonly contentRef?: Ref<HTMLDivElement>;
+}
+
+/** The viewport offset a sticky element pins at; `undefined` when not sticky. */
+function readStickyTop(element: Element, ownerWindow: Window) {
+  const style = ownerWindow.getComputedStyle(element);
+  const top = Number.parseFloat(style.top);
+  return style.position === "sticky" && Number.isFinite(top) ? top : undefined;
+}
+
+/**
+ * Scrolls the window so a content slot scrolled above the sticky navigation
+ * starts right below it again: level with the desktop sidebar, or one grid gap
+ * under the stacked mobile navigation. A visible slot start stays put.
+ */
+export function revealAccountContentStart(content: HTMLElement) {
+  const ownerWindow = content.ownerDocument.defaultView;
+  const aside = content.previousElementSibling;
+  const grid = content.parentElement;
+  if (!ownerWindow || !(aside instanceof ownerWindow.HTMLElement) || !grid)
+    return;
+
+  const stickyTop = readStickyTop(aside, ownerWindow) ?? 0;
+  const asideRect = aside.getBoundingClientRect();
+  const contentRect = content.getBoundingClientRect();
+  const navigationStacked = asideRect.right > contentRect.left;
+  const contentStart = navigationStacked
+    ? stickyTop +
+      asideRect.height +
+      (Number.parseFloat(ownerWindow.getComputedStyle(grid).rowGap) || 0)
+    : stickyTop;
+
+  if (contentRect.top < contentStart) {
+    ownerWindow.scrollBy({
+      behavior: "instant",
+      top: contentRect.top - contentStart,
+    });
+  }
 }
 
 export function AccountFrame({
   children,
+  contentRef,
   navigation,
   sidebarFooter,
   signOut,
@@ -22,11 +62,8 @@ export function AccountFrame({
     const ownerWindow = aside.ownerDocument.defaultView;
     if (!ownerWindow) return;
 
-    const asideStyle = ownerWindow.getComputedStyle(aside);
-    if (asideStyle.position !== "sticky") return;
-
-    const stickyTop = Number.parseFloat(asideStyle.top);
-    if (!Number.isFinite(stickyTop)) return;
+    const stickyTop = readStickyTop(aside, ownerWindow);
+    if (stickyTop === undefined) return;
 
     const target = event.target;
     if (!(target instanceof ownerWindow.Element)) return;
@@ -68,7 +105,9 @@ export function AccountFrame({
             )}
           </aside>
 
-          <div className="min-w-0">{children}</div>
+          <div className="@container min-w-0" ref={contentRef}>
+            {children}
+          </div>
 
           {sidebarFooter && (
             <div className="min-w-0 md:hidden">{sidebarFooter}</div>

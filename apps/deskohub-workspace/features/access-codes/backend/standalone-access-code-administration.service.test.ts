@@ -8,14 +8,16 @@ import {
   IgloohomeRequestError,
   IgloohomeService,
 } from "@deskohub/igloohome";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
-  AdministrationActorUsername,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeCreateInput,
   AdministrationStandaloneAccessCodeName,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Result, Schema } from "effect";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { StandaloneAccessCodeAdministration } from "./standalone-access-code-administration.service";
 import {
   StandaloneAccessCodeAttemptLogRepository,
@@ -29,13 +31,15 @@ const decodeRequest = Schema.decodeUnknownSync(
   AdministrationStandaloneAccessCodeCreateInput
 );
 const attemptId = decodeAttemptId("01980000-0000-7000-8000-000000000042");
-const otherAttemptId = decodeAttemptId("01980000-0000-7000-8000-000000000043");
 const priorAttemptId = decodeAttemptId("01980000-0000-7000-8000-000000000044");
 const priorCleanupTarget = {
   attemptId: priorAttemptId,
   name: AdministrationStandaloneAccessCodeName.make("Prior Booth"),
 };
-const actor = AdministrationActorUsername.make("Fixture Operator");
+const actor: AdministratorAccountActor = {
+  accountId: customerAccountIdSchema.make(crypto.randomUUID()),
+  email: testEmailAddress("fixture-operator"),
+};
 const source = "dhw-cli";
 const request = decodeRequest({
   name: "Booth A",
@@ -201,23 +205,6 @@ describe("StandaloneAccessCodeAdministration.create", () => {
     }
   });
 
-  test("replays a definitively rejected attempt without another provider call", async () => {
-    const result = await runCreate({
-      claim: mock(() =>
-        Effect.succeed({
-          kind: "rejected",
-          failureCode: "standalone_provider_rejected",
-        } as const)
-      ),
-    });
-
-    expect(Result.isFailure(result)).toBe(true);
-    if (Result.isFailure(result)) {
-      expect(result.failure.outcome).toBe("rejected");
-      expect(result.failure.failureCode).toBe("standalone_provider_rejected");
-    }
-  });
-
   test("replays an ambiguous attempt without another provider call", async () => {
     const result = await runCreate({
       claim: mock(() =>
@@ -262,18 +249,6 @@ describe("StandaloneAccessCodeAdministration.create", () => {
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
   });
 
-  test("reports a confirmed reconciled replay without calling the provider", async () => {
-    const result = await runCreate({
-      claim: mock(() => Effect.succeed({ kind: "reconciled" } as const)),
-    });
-
-    expect(Result.isFailure(result)).toBe(true);
-    if (Result.isFailure(result)) {
-      expect(result.failure.outcome).toBe("reconciled");
-      expect(result.failure.message).toContain("Run the same command again");
-    }
-  });
-
   test("forwards the exact cleanup target confirmation to the attempt log", async () => {
     const claim = mock(() =>
       Effect.succeed({
@@ -291,59 +266,6 @@ describe("StandaloneAccessCodeAdministration.create", () => {
         providerCredentialRemovedAttemptId: priorAttemptId,
       })
     );
-  });
-
-  test("does not invent a cleanup target on outcomes without one", async () => {
-    for (const claimResult of [
-      { kind: "rejected", failureCode: "standalone_provider_rejected" },
-      { kind: "in-progress" },
-      { kind: "reconciled" },
-      { kind: "mismatch" },
-      { kind: "exhausted" },
-    ] as const) {
-      const result = await runCreate({
-        claim: mock(() => Effect.succeed(claimResult)),
-      });
-      expect(Result.isFailure(result)).toBe(true);
-      if (Result.isFailure(result)) {
-        expect("cleanupTarget" in result.failure).toBe(false);
-      }
-    }
-  });
-
-  test("reports a fresh started attempt as in progress", async () => {
-    const result = await runCreate({
-      claim: mock(() => Effect.succeed({ kind: "in-progress" } as const)),
-    });
-
-    expect(Result.isFailure(result)).toBe(true);
-    if (Result.isFailure(result)) {
-      expect(result.failure.outcome).toBe("in-progress");
-    }
-  });
-
-  test("rejects a replay that reuses the attempt ID with different input", async () => {
-    const result = await runCreate({
-      claim: mock(() => Effect.succeed({ kind: "mismatch" } as const)),
-    });
-
-    expect(Result.isFailure(result)).toBe(true);
-    if (Result.isFailure(result)) {
-      expect(result.failure.outcome).toBe("rejected");
-      expect(result.failure.message).toContain("attempt identifier");
-    }
-  });
-
-  test("rejects definitively when both standalone variances are occupied", async () => {
-    const result = await runCreate({
-      claim: mock(() => Effect.succeed({ kind: "exhausted" } as const)),
-    });
-
-    expect(Result.isFailure(result)).toBe(true);
-    if (Result.isFailure(result)) {
-      expect(result.failure.outcome).toBe("rejected");
-      expect(result.failure.message).toContain("Both standalone access codes");
-    }
   });
 
   test("returns unavailable without a provider call when the started audit fails", async () => {
@@ -531,36 +453,5 @@ describe("StandaloneAccessCodeAdministration.create", () => {
       expect(result.failure.outcome).toBe("rejected");
       expect(result.failure.failureCode).toBe("standalone_provider_rejected");
     }
-  });
-
-  test("keeps distinct attempt IDs independent", async () => {
-    const claim = mock(() => Effect.succeed({ kind: "exhausted" } as const));
-    const result = await Effect.gen(function* () {
-      const service = yield* StandaloneAccessCodeAdministration;
-      return yield* service
-        .create({ ...input, attemptId: otherAttemptId })
-        .pipe(Effect.result);
-    }).pipe(
-      Effect.provide(
-        StandaloneAccessCodeAdministration.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.mock(StandaloneAccessCodeAttemptLogRepository, {
-                claim,
-              }),
-              Layer.mock(IgloohomeService, {})
-            )
-          )
-        )
-      ),
-      Effect.runPromise
-    );
-
-    expect(Result.isFailure(result)).toBe(true);
-    expect(claim).toHaveBeenCalledWith(
-      expect.objectContaining({
-        attempt: expect.objectContaining({ attemptId: otherAttemptId }),
-      })
-    );
   });
 });

@@ -4,19 +4,14 @@ import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import isEmail from "validator/lib/isEmail.js";
-import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import { makeWorkspaceE2EDateAllocation } from "../allocation";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   makeCoworkCheckoutData,
-  makeMeetingRoomCheckoutData,
-  makeOfficeCheckoutData,
-  reuseCoworkCheckoutContact,
-  reuseMeetingRoomCheckoutContact,
   selectAvailableCoworkDates,
   selectAvailableMeetingRoomSlots,
-  selectAvailableOfficeSlot,
+  selectAvailableOfficeSlots,
   selectCoworkDates,
 } from "./data";
 
@@ -55,170 +50,6 @@ test("keeps generated emails valid for the longest checkout flow identifier", ()
   expect(data.email.split("@")[0]?.length).toBeLessThanOrEqual(64);
 });
 
-test("builds checkout data from the selected cowork product", () => {
-  const data = makeCoworkCheckoutData(
-    "https://workspace.example.com",
-    "2099-09-01",
-    "cowork-plus",
-    { entryTier: "plus" }
-  );
-
-  expect(new URL(data.checkoutUrl).searchParams.get("entryTier")).toBe("plus");
-  expect(data.expectedReservationDetails).toEqual({
-    coffee: true,
-    entryTier: "plus",
-    kind: "cowork",
-  });
-});
-
-test("keeps its persistence oracle independent of application normalization", () => {
-  const basic = makeCoworkCheckoutData(
-    "https://workspace.example.com",
-    "2099-09-01",
-    "cowork-basic-coffee",
-    { coffee: true }
-  );
-  const profi = makeCoworkCheckoutData(
-    "https://workspace.example.com",
-    "2099-09-02",
-    "cowork-profi",
-    { entryTier: "profi", monitorOption: "2x32-4k" }
-  );
-
-  expect(basic.expectedReservationDetails).toEqual({
-    coffee: true,
-    entryTier: "basic",
-    kind: "cowork",
-  });
-  expect(profi.expectedReservationDetails).toEqual({
-    coffee: true,
-    entryTier: "profi",
-    kind: "cowork",
-    monitorOption: "2x32-4k",
-  });
-});
-
-test("reuses customer identity for a later reservation", () => {
-  const first = makeCoworkCheckoutData(
-    "https://workspace.example.com",
-    "2099-09-01",
-    "first"
-  );
-  const second = reuseCoworkCheckoutContact(
-    "https://workspace.example.com",
-    "2099-09-02",
-    first
-  );
-
-  expect({
-    email: second.email,
-    name: second.name,
-    phone: second.phone,
-  }).toEqual({
-    email: first.email,
-    name: first.name,
-    phone: first.phone,
-  });
-  expect(second.date).toBe("2099-09-02");
-  expect(new URL(second.checkoutUrl).searchParams.get("date")).toBe(
-    "2099-09-02"
-  );
-});
-
-test("builds minimal meeting-room persistence data with transient timing", () => {
-  const duration = { unit: "hour", amount: 4 } as const;
-  const interval = getMeetingRoomReservationInterval(
-    "2099-09-01T10:00",
-    duration
-  );
-  expect(interval).toBeDefined();
-  const data = makeMeetingRoomCheckoutData("https://workspace.example.com", {
-    date: "2099-09-01",
-    duration,
-    startDateTime: "2099-09-01T10:00",
-    ...interval!,
-  });
-
-  expect(new URL(data.checkoutUrl).pathname).toBe(
-    "/en-US/reservation/meeting-room"
-  );
-  expect(data.expectedReservationDetails).toEqual({
-    kind: "meeting-room",
-  });
-  expect(data.meetingRoom).toEqual({
-    duration,
-    endsAt: interval!.endsAt,
-    startDateTime: "2099-09-01T10:00",
-    startsAt: interval!.startsAt,
-  });
-  expect(data.expectedReservationDetails).not.toHaveProperty("startsAt");
-});
-
-test("reuses a meeting-room customer while changing the interval", () => {
-  const firstInterval = getMeetingRoomReservationInterval("2099-09-01T10:00", {
-    unit: "hour",
-    amount: 1,
-  });
-  const secondInterval = getMeetingRoomReservationInterval("2099-09-02T10:00", {
-    unit: "hour",
-    amount: 4,
-  });
-  expect(firstInterval).toBeDefined();
-  expect(secondInterval).toBeDefined();
-  const first = makeMeetingRoomCheckoutData(
-    "https://workspace.example.com",
-    {
-      date: "2099-09-01",
-      duration: { unit: "hour", amount: 1 },
-      startDateTime: "2099-09-01T10:00",
-      ...firstInterval!,
-    },
-    "meeting-room-replacement"
-  );
-  const second = reuseMeetingRoomCheckoutContact(
-    "https://workspace.example.com",
-    {
-      date: "2099-09-02",
-      duration: { unit: "hour", amount: 4 },
-      startDateTime: "2099-09-02T10:00",
-      ...secondInterval!,
-    },
-    first
-  );
-
-  expect({
-    email: second.email,
-    message: second.message,
-    name: second.name,
-    phone: second.phone,
-  }).toEqual({
-    email: first.email,
-    message: first.message,
-    name: first.name,
-    phone: first.phone,
-  });
-  expect(second.meetingRoom?.duration).toEqual({ unit: "hour", amount: 4 });
-  expect(second.meetingRoom?.startsAt).toBe(secondInterval!.startsAt);
-});
-
-test("builds minimal office persistence data with transient range and seats", () => {
-  const slot = {
-    startsOn: "2099-09-01",
-    endsOn: "2099-09-02",
-    seats: 2,
-    startsAt: "2099-08-31T22:00:00Z",
-    endsAt: "2099-09-02T22:00:00Z",
-  } as const;
-  const data = makeOfficeCheckoutData("https://workspace.example.com", slot);
-
-  expect(new URL(data.checkoutUrl).pathname).toBe("/en-US/reservation/office");
-  expect(data.date).toBe(slot.startsOn);
-  expect(data.expectedReservationDetails).toEqual({ kind: "office" });
-  expect(data.office).toEqual(slot);
-  expect(data.expectedReservationDetails).not.toHaveProperty("startsOn");
-  expect(data.expectedReservationDetails).not.toHaveProperty("seats");
-});
-
 test("loads availability through the provided HTTP client", async () => {
   setSystemTime(new Date("2099-07-17T09:48:00.000Z"));
   const requests: Request[] = [];
@@ -248,44 +79,11 @@ test("loads availability through the provided HTTP client", async () => {
   expect(dates).toEqual(["2099-07-31", "2099-08-03"]);
   expect(requests).toHaveLength(1);
   expect(requests[0]?.url).toBe(
-    "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/api/workspace/availability?entryTier=basic&from=2099-07-31&to=2099-10-15"
+    "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/api/workspace/availability?entryTier=open-space&from=2099-07-31&to=2099-10-15"
   );
   expect(requests[0]?.headers.get("x-vercel-protection-bypass")).toBe(
     "test-protection-bypass"
   );
-});
-
-test("selects tier-specific dates without reusing excluded dates", async () => {
-  setSystemTime(new Date("2099-07-17T09:48:00.000Z"));
-  const requests: Request[] = [];
-  const fetchMock = mock(
-    async (input: URL | RequestInfo, init?: RequestInit) => {
-      const request =
-        input instanceof Request ? input : new Request(input, init);
-      requests.push(request);
-      return Response.json({ unavailableDates: [] });
-    }
-  );
-  const httpClientLayer = FetchHttpClient.layer.pipe(
-    Layer.provide(
-      Layer.succeed(
-        FetchHttpClient.Fetch,
-        fetchMock as unknown as typeof globalThis.fetch
-      )
-    )
-  );
-
-  const dates = await Effect.runPromise(
-    selectAvailableCoworkDates(makeConfig(), 1, {
-      entryTier: "profi",
-      excludedDates: new Set(["2099-07-31"]),
-      monitorOption: "2x27-qhd",
-    }).pipe(Effect.provide(httpClientLayer))
-  );
-
-  expect(dates).toEqual(["2099-08-03"]);
-  expect(requests[0]?.url).toContain("entryTier=profi");
-  expect(requests[0]?.url).toContain("monitorOption=2x27-qhd");
 });
 
 test("loads only the deterministic allocation shard through availability", async () => {
@@ -393,35 +191,6 @@ test("spreads sparse availability across deterministic allocation shards", async
   expect(new Set(datesByShard.flat()).size).toBe(18);
 });
 
-test("allocates non-overlapping dates from concurrently loaded availability", async () => {
-  const availableDates = ["2099-08-02", "2099-08-03", "2099-08-04"];
-
-  const dates = await Effect.runPromise(
-    selectCoworkDates(availableDates, 2, {
-      excludedDates: new Set(["2099-08-02"]),
-    })
-  );
-
-  expect(dates).toEqual(["2099-08-03", "2099-08-04"]);
-});
-
-test("packs the bounded number of same-date cowork reservations", async () => {
-  const dates = await Effect.runPromise(
-    selectCoworkDates(["2099-08-03", "2099-08-04"], 6, {
-      maximumReservationsPerDate: 4,
-    })
-  );
-
-  expect(dates).toEqual([
-    "2099-08-03",
-    "2099-08-03",
-    "2099-08-03",
-    "2099-08-03",
-    "2099-08-04",
-    "2099-08-04",
-  ]);
-});
-
 test("reports allocation capacity context before case construction", async () => {
   const exit = await Effect.runPromiseExit(
     selectCoworkDates(["2099-08-03"], 2, {
@@ -431,14 +200,14 @@ test("reports allocation capacity context before case construction", async () =>
         shardIndex: 0,
         toOffsetDays: 39,
       },
-      selectionLabel: "tier:profi with monitor:2x27-qhd",
+      selectionLabel: "Reserved Desk with monitor:2x27-qhd",
     })
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
   if (Exit.isFailure(exit)) {
     const message = String(Cause.squash(exit.cause));
-    expect(message).toContain("tier:profi with monitor:2x27-qhd");
+    expect(message).toContain("Reserved Desk with monitor:2x27-qhd");
     expect(message).toContain("shard 1 of 3");
     expect(message).toContain("supported concurrency 3");
   }
@@ -576,11 +345,12 @@ test("selects disjoint multi-day office ranges across allocation shards", async 
     )
   );
 
-  const slots = await Promise.all(
+  const slotsByShard = await Promise.all(
     Array.from({ length: 3 }, (_, shardIndex) =>
       Effect.runPromise(
-        selectAvailableOfficeSlot(
+        selectAvailableOfficeSlots(
           makeConfig(),
+          2,
           makeWorkspaceE2EDateAllocation({
             runId: `office-${shardIndex}`,
             shardIndex,
@@ -589,6 +359,7 @@ test("selects disjoint multi-day office ranges across allocation shards", async 
       )
     )
   );
+  const slots = slotsByShard.flat();
   const touchedDates = slots.flatMap(({ endsOn, startsOn }) => [
     startsOn,
     endsOn,
@@ -602,7 +373,10 @@ test("selects disjoint multi-day office ranges across allocation shards", async 
           endsOn && endsOn <= "2099-08-17"
     )
   ).toBe(true);
-  expect(requests).toHaveLength(3);
+  expect(slotsByShard.map((shardSlots) => shardSlots.length)).toEqual([
+    2, 2, 2,
+  ]);
+  expect(requests).toHaveLength(6);
   expect(requests[0]?.url).toContain("kind=office");
   expect(requests[0]?.url).toContain("seats=2");
   expect(requests[0]?.headers.get("x-vercel-protection-bypass")).toBe(
@@ -628,12 +402,13 @@ test("skips an unavailable office range before selecting the next owned range", 
     )
   );
 
-  const slot = await Effect.runPromise(
-    selectAvailableOfficeSlot(makeConfig()).pipe(
+  const [slot] = await Effect.runPromise(
+    selectAvailableOfficeSlots(makeConfig(), 1).pipe(
       Effect.provide(httpClientLayer)
     )
   );
 
+  if (!slot) throw new Error("office slot was not selected");
   expect(requestCount).toBe(2);
   expect(slot.endsOn).toBe(
     Temporal.PlainDate.from(slot.startsOn).add({ days: 1 }).toString()

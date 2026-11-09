@@ -14,6 +14,7 @@ const authRelationsGraph = defineRelations(drizzleAuthTables, () => ({
   user: authRelations.user.relations,
   session: authRelations.session.relations,
   account: authRelations.account.relations,
+  passkey: authRelations.passkey.relations,
 }));
 
 /** Conventional node-postgres Drizzle facade for Better Auth persistence. */

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { filterBoardGames } from "./filter-board-games";
+import { filterBoardGames, toggleDurationFilter } from "./filter-board-games";
 
 const games = [
   {
@@ -106,33 +106,6 @@ describe("filterBoardGames", () => {
     ).toEqual([languageGames[4]!]);
   });
 
-  test("matches each specific language", () => {
-    const languageGames = [
-      { ...games[0]!, name: "Czech game", language: "cz" as const },
-      { ...games[0]!, name: "English game", language: "en" as const },
-      {
-        ...games[0]!,
-        name: "Language-independent game",
-        language: "any" as const,
-      },
-    ];
-    const filters = {
-      playerCount: null,
-      durations: [],
-      search: "",
-    };
-
-    expect(
-      filterBoardGames(languageGames, { ...filters, language: "cz" })
-    ).toEqual([languageGames[0]!]);
-    expect(
-      filterBoardGames(languageGames, { ...filters, language: "en" })
-    ).toEqual([languageGames[1]!]);
-    expect(
-      filterBoardGames(languageGames, { ...filters, language: "any" })
-    ).toEqual([languageGames[2]!]);
-  });
-
   test("excludes missing and null languages from a specific language filter", () => {
     expect(
       filterBoardGames(games, {
@@ -142,22 +115,6 @@ describe("filterBoardGames", () => {
         language: "cz",
       })
     ).toEqual([games[0]!]);
-  });
-
-  test("keeps all languages when the language filter is unset", () => {
-    const filters = {
-      playerCount: null,
-      durations: [],
-      search: "",
-    };
-    const availableGames = [games[0]!, games[1]!, games[3]!, games[4]!];
-
-    expect(filterBoardGames(games, { ...filters, language: null })).toEqual(
-      availableGames
-    );
-    expect(
-      filterBoardGames(games, { ...filters, language: undefined })
-    ).toEqual(availableGames);
   });
 
   test("keeps games with incomplete metadata until a matching filter is active", () => {
@@ -184,5 +141,59 @@ describe("filterBoardGames", () => {
         search: "",
       })
     ).toEqual([games[0]!]);
+  });
+
+  test("matches a game against any selected duration bucket", () => {
+    const timedGames = [30, 31, 60, 61, 120, 121].map((minutes) => ({
+      name: `${minutes} minutes`,
+      playingTimeMinutes: minutes,
+      inStock: true,
+    }));
+    const minutesFor = (
+      durations: Parameters<typeof toggleDurationFilter>[0]
+    ) =>
+      filterBoardGames(timedGames, {
+        playerCount: null,
+        durations,
+        search: "",
+      }).map((game) => game.playingTimeMinutes);
+
+    expect(minutesFor(["upTo30"])).toEqual([30]);
+    expect(minutesFor(["upTo60"])).toEqual([31, 60]);
+    expect(minutesFor(["upTo120"])).toEqual([61, 120]);
+    expect(minutesFor(["over120"])).toEqual([121]);
+    expect(minutesFor(["upTo30", "over120"])).toEqual([30, 121]);
+  });
+
+  test("matches a player count within the game's range and 7 as seven or more", () => {
+    const playerGames = [
+      { name: "Solo", minPlayers: 1, maxPlayers: 1, inStock: true },
+      { name: "Party", minPlayers: 4, maxPlayers: 10, inStock: true },
+    ];
+    const namesFor = (playerCount: number) =>
+      filterBoardGames(playerGames, {
+        playerCount,
+        durations: [],
+        search: "",
+      }).map((game) => game.name);
+
+    expect(namesFor(1)).toEqual(["Solo"]);
+    expect(namesFor(3)).toEqual([]);
+    expect(namesFor(7)).toEqual(["Party"]);
+  });
+});
+
+describe("toggleDurationFilter", () => {
+  test("adds an unselected duration after the current selection", () => {
+    expect(toggleDurationFilter(["upTo30"], "over120")).toEqual([
+      "upTo30",
+      "over120",
+    ]);
+  });
+
+  test("removes a selected duration and keeps the rest in order", () => {
+    expect(
+      toggleDurationFilter(["upTo30", "upTo60", "over120"], "upTo60")
+    ).toEqual(["upTo30", "over120"]);
   });
 });

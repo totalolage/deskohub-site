@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Schedule } from "effect";
 import {
   FetchHttpClient,
   HttpClient,
@@ -9,6 +9,8 @@ import { GamesRequestError } from "../errors";
 import { type Game, make } from "../generated/effect.gen";
 
 const GAMES_API_ORIGIN = "https://deskohub-games.vercel.app";
+const catalogRequestTimeout = "10 seconds";
+const catalogRetryTimes = 2;
 
 const makeGamesService = Effect.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
@@ -18,7 +20,11 @@ const makeGamesService = Effect.gen(function* () {
         generatedClient.pipe(
           HttpClient.mapRequestInput((request) =>
             request.pipe(HttpClientRequest.prependUrl(GAMES_API_ORIGIN))
-          )
+          ),
+          HttpClient.retryTransient({
+            schedule: Schedule.exponential("200 millis"),
+            times: catalogRetryTimes,
+          })
         )
       ),
   });
@@ -31,7 +37,16 @@ const makeGamesService = Effect.gen(function* () {
             message: "The board-game catalog request failed.",
             cause,
           })
-      )
+      ),
+      Effect.timeoutOrElse({
+        duration: catalogRequestTimeout,
+        orElse: () =>
+          Effect.fail(
+            new GamesRequestError({
+              message: "The board-game catalog request timed out.",
+            })
+          ),
+      })
     );
 
     return response.games.map((game) => ({

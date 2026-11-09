@@ -1,30 +1,41 @@
 import "../../shared/polyfills/temporal";
 
 import { test as base } from "@playwright/test";
-import { Effect, Layer, ManagedRuntime } from "effect";
 import type { HttpClient } from "effect/unstable/http";
+import type { WorkspaceE2EHostedPaymentPermitService } from "../coordination/hosted-payment-permit.service";
+import type { WorkspaceE2EProviderVerificationPermitService } from "../coordination/provider-verification-permit.service";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
 import type { E2EDatabase } from "../integrations/database.service";
-import type { WorkspaceE2ECaseService } from "../services/cases";
+import { type E2EEffectRunner, withE2ERuntime } from "../runtime-fixture";
+import type { WorkspaceE2ECleanupService } from "../services/cleanup";
 import { makeWorkspaceE2ECaseRuntimeLive } from "../services/runner";
-import type { E2ETelemetryService } from "../services/telemetry";
-import { makeE2ETelemetryRuntime, runE2EEffect } from "../telemetry-runtime";
+import type { E2ERunContext, E2ETelemetryService } from "../services/telemetry";
 import { readWorkspaceE2ERunContext } from "./run-context";
-import { readExternalParentSpan } from "./trace-parent";
 
 type WorkspaceE2ERuntimeServices =
   | E2EDatabase
   | E2ETelemetryService
   | HttpClient.HttpClient
-  | WorkspaceE2ECaseService;
+  | WorkspaceE2ECleanupService
+  | WorkspaceE2EHostedPaymentPermitService
+  | WorkspaceE2EProviderVerificationPermitService;
 
-export type WorkspaceE2EEffectRunner = <
-  A,
-  E,
-  R extends WorkspaceE2ERuntimeServices,
->(
-  effect: Effect.Effect<A, E, R>
-) => Promise<A>;
+type WorkspaceE2EEffectRunner = E2EEffectRunner<WorkspaceE2ERuntimeServices>;
+
+// Runs `use` against one traced case runtime, then disposes it and flushes
+// its traces.
+export const withWorkspaceE2ERuntime = <A>(
+  environment: ReturnType<typeof makeWorkspaceE2EEnvironment>,
+  runContext: E2ERunContext,
+  use: (runEffect: WorkspaceE2EEffectRunner) => Promise<A>
+): Promise<A> =>
+  withE2ERuntime(
+    {
+      layer: makeWorkspaceE2ECaseRuntimeLive(environment, runContext),
+      tracing: environment,
+    },
+    use
+  );
 
 type WorkspaceE2ERuntimeFixtures = {
   readonly environment: ReturnType<typeof makeWorkspaceE2EEnvironment>;
@@ -47,28 +58,8 @@ export const runtimeTest = base.extend<
     { scope: "worker" },
   ],
   runEffect: [
-    async ({ environment, runContext }, use) => {
-      const telemetry = makeE2ETelemetryRuntime(environment);
-      const layer = makeWorkspaceE2ECaseRuntimeLive(
-        environment,
-        runContext
-      ).pipe(Layer.provideMerge(telemetry.tracingLayer));
-      const runtime = ManagedRuntime.make(layer);
-      const parentSpan = readExternalParentSpan(
-        environment.WORKSPACE_E2E_TRACE_PARENT
-      );
-      const runEffect: WorkspaceE2EEffectRunner = (effect) =>
-        runtime.runPromise(
-          parentSpan ? effect.pipe(Effect.withParentSpan(parentSpan)) : effect
-        );
-
-      try {
-        await use(runEffect);
-      } finally {
-        await runtime.dispose();
-        await runE2EEffect(Effect.void, telemetry);
-      }
-    },
+    async ({ environment, runContext }, use) =>
+      withWorkspaceE2ERuntime(environment, runContext, use),
     { scope: "worker" },
   ],
 });

@@ -1,0 +1,41 @@
+import "server-only";
+
+import {
+  type CloudinaryAsset,
+  CloudinaryPublicIdSchema,
+} from "@deskohub/cloudinary";
+import { CloudinaryService } from "@deskohub/cloudinary/server";
+import { Effect, Schema } from "effect";
+import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
+import { GalleryCloudinaryLayer } from "./cloudinary.service";
+
+export async function getCloudinaryImageByPublicId(
+  publicId: string
+): Promise<CloudinaryAsset | undefined> {
+  "use cache";
+
+  const imageLookup = Effect.provide(
+    Effect.gen(function* () {
+      const decodedPublicId = yield* Schema.decodeEffect(
+        CloudinaryPublicIdSchema
+      )(publicId);
+
+      applyCacheTags(
+        cloudinaryTags.all(),
+        cloudinaryTags.image(decodedPublicId)
+      );
+
+      const service = yield* CloudinaryService;
+      return yield* service.getByPublicId(decodedPublicId);
+    }),
+    GalleryCloudinaryLayer
+  ).pipe(
+    Effect.catch(() =>
+      Effect.logError("Cloudinary public ID lookup failed").pipe(
+        Effect.as(undefined)
+      )
+    )
+  );
+
+  return Effect.runPromise(imageLookup);
+}

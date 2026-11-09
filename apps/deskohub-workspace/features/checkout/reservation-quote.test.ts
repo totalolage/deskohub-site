@@ -4,6 +4,10 @@ import type {
   WorkspaceCoworkProductTier,
   WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
+import {
+  buildCoworkReservationQuote,
+  type CoworkReservationQuoteInput,
+} from "@/features/checkout/reservation-quote-cowork";
 import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
@@ -11,6 +15,7 @@ import {
   reservationOrderSchema,
 } from "@/features/reservation/reservation-order";
 import "@/shared/polyfills/temporal";
+import { testEmailAddress } from "@deskohub/test-email";
 import { buildReservationQuote } from "./reservation-quote";
 
 const buildQuote = (...args: Parameters<typeof buildReservationQuote>) =>
@@ -20,7 +25,7 @@ const decodeReservation = Schema.decodeUnknownSync(reservationOrderSchema);
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
 const defaultCustomer = {
   name: "Ada Lovelace",
-  email: "ada@example.com",
+  email: testEmailAddress("ada"),
   phone: "+420777777777",
 } as const;
 
@@ -66,8 +71,8 @@ const money = (value: number) => ({
 const discountQuote = (
   applications: readonly AppliedDiscount[]
 ): DiscountQuote => ({
-  product: { kind: "cowork", tier: "basic" },
-  discountableSubtotal: money(35_000),
+  product: { kind: "cowork", tier: "open-space" },
+  discountableSubtotal: money(29_000),
   discounts: applications,
   totalDiscount: money(
     applications.reduce(
@@ -75,7 +80,7 @@ const discountQuote = (
       0
     )
   ),
-  discountedSubtotal: applications.at(-1)?.subtotalAfter ?? money(35_000),
+  discountedSubtotal: applications.at(-1)?.subtotalAfter ?? money(29_000),
 });
 
 const discountApplication = (
@@ -87,103 +92,86 @@ const discountApplication = (
     label: "Member discount",
     adjustment: { kind: "fixed", amount: money(amount) },
   },
-  subtotalBefore: money(35_000),
+  subtotalBefore: money(29_000),
   amount: money(amount),
-  subtotalAfter: money(35_000 - amount),
+  subtotalAfter: money(29_000 - amount),
   ...overrides,
 });
 
 describe("reservation quotes", () => {
   test("builds an access-only quote without a discount section", () => {
     const quote = buildQuote(
-      coworkReservation({ entryTier: "basic", coffee: false })
+      coworkReservation({ entryTier: "open-space", coffee: false })
     );
 
     expect(quote.payment.expectedPrice).toEqual({
-      value: 35_000,
+      value: 29_000,
       exponent: 2,
       currency: "CZK",
     });
     expect(quote.items).toEqual([
       {
         type: "cowork",
-        tier: "basic",
-        amount: { value: 35_000, exponent: 2, currency: "CZK" },
+        tier: "open-space",
+        amount: { value: 29_000, exponent: 2, currency: "CZK" },
       },
     ]);
   });
 
   test("charges paid coffee for the Basic non-courtesy tier", () => {
     const quote = buildQuote(
-      coworkReservation({ entryTier: "basic", coffee: true })
+      coworkReservation({ entryTier: "open-space", coffee: true })
     );
 
     expect(quote.items).toEqual([
       {
         type: "cowork",
-        tier: "basic",
-        amount: { value: 35_000, exponent: 2, currency: "CZK" },
+        tier: "open-space",
+        amount: { value: 29_000, exponent: 2, currency: "CZK" },
       },
       {
         type: "coffee",
         amount: { value: 5000, exponent: 2, currency: "CZK" },
       },
     ]);
-    expect(quote.payment.expectedPrice.value).toBe(40_000);
+    expect(quote.payment.expectedPrice.value).toBe(34_000);
   });
 
   test("shows courtesy coffee as a zero CZK line item for included tiers", () => {
     const quote = buildQuote(
-      coworkReservation({ entryTier: "plus", coffee: true })
+      coworkReservation({ entryTier: "reserved-desk", coffee: true })
     );
 
     expect(quote.items).toEqual([
       {
         type: "cowork",
-        tier: "plus",
-        amount: { value: 49_000, exponent: 2, currency: "CZK" },
-      },
-      {
-        type: "coffee",
-        amount: { value: 0, exponent: 2, currency: "CZK" },
+        tier: "reserved-desk",
+        amount: { value: 41_000, exponent: 2, currency: "CZK" },
       },
     ]);
-    expect(quote.payment.expectedPrice.value).toBe(49_000);
+    expect(quote.payment.expectedPrice.value).toBe(41_000);
   });
 
   test("applies generic cowork discounts without discounting paid coffee", () => {
     const application = discountApplication(2000);
     const quote = buildQuote(
-      coworkReservation({ entryTier: "basic", coffee: true }),
+      coworkReservation({ entryTier: "open-space", coffee: true }),
       {
         discountQuote: discountQuote([application]),
       }
     );
 
     expect(quote.payment.discounts).toEqual([application]);
-    expect(quote.payment.expectedPrice.value).toBe(38_000);
-    expect(quote.payment.undiscountedPrice.value).toBe(40_000);
-  });
-
-  test("preserves authoritative minor-unit discount amounts", () => {
-    const application = discountApplication(4375);
-    const quote = buildQuote(
-      coworkReservation({ entryTier: "basic", coffee: false }),
-      {
-        discountQuote: discountQuote([application]),
-      }
-    );
-
-    expect(quote.payment.expectedPrice.value).toBe(30_625);
-    expect(quote.payment.discounts[0]?.amount.value).toBe(4375);
+    expect(quote.payment.expectedPrice.value).toBe(32_000);
+    expect(quote.payment.undiscountedPrice.value).toBe(34_000);
   });
 
   test("fingerprint changes for different composition with the same total", () => {
     const accessOnly = buildQuote(
-      coworkReservation({ entryTier: "basic", coffee: false })
+      coworkReservation({ entryTier: "open-space", coffee: false })
     );
     const coffeeDiscountedToSameTotal = buildQuote(
-      coworkReservation({ entryTier: "basic", coffee: true }),
+      coworkReservation({ entryTier: "open-space", coffee: true }),
       {
         discountQuote: discountQuote([discountApplication(5000)]),
       }
@@ -197,30 +185,17 @@ describe("reservation quotes", () => {
     );
   });
 
-  test("does not duplicate reservation data in quote output", () => {
-    const quote = buildQuote(
-      coworkReservation({ entryTier: "basic", coffee: false })
-    );
-
-    expect(quote).not.toHaveProperty("order");
-    expect(quote).not.toHaveProperty("reservation");
-    expect(quote).not.toHaveProperty("summary");
-    expect(quote).not.toHaveProperty("name");
-    expect(quote).not.toHaveProperty("email");
-    expect(quote).not.toHaveProperty("phone");
-  });
-
   test("monitor composition does not alter the cowork price quote", () => {
     const firstMonitor = buildQuote(
       coworkReservation({
-        entryTier: "profi",
+        entryTier: "reserved-desk",
         coffee: true,
         monitorOption: "2x32-qhd",
       })
     );
     const secondMonitor = buildQuote(
       coworkReservation({
-        entryTier: "profi",
+        entryTier: "reserved-desk",
         coffee: true,
         monitorOption: "2x27-qhd",
       })
@@ -234,14 +209,14 @@ describe("reservation quotes", () => {
 
   test("ignores customer fields when fingerprinting", () => {
     const firstQuote = buildQuote(
-      coworkReservation({ entryTier: "plus", coffee: true })
+      coworkReservation({ entryTier: "reserved-desk", coffee: true })
     );
     const secondQuote = buildQuote(
       coworkReservation(
-        { entryTier: "plus", coffee: true },
+        { entryTier: "reserved-desk", coffee: true },
         {
           name: "Grace Hopper",
-          email: "grace@example.com",
+          email: testEmailAddress("grace"),
           phone: "+420606111111",
         }
       )
@@ -253,14 +228,14 @@ describe("reservation quotes", () => {
   test("fingerprints meeting-room price inputs rather than hourly clocks", () => {
     const firstCoworkDate = buildQuote(
       coworkReservation({
-        entryTier: "basic",
+        entryTier: "open-space",
         coffee: false,
         date: "2099-06-10",
       })
     );
     const secondCoworkDate = buildQuote(
       coworkReservation({
-        entryTier: "basic",
+        entryTier: "open-space",
         coffee: false,
         date: "2099-06-11",
       })
@@ -364,4 +339,70 @@ describe("reservation quotes", () => {
       },
     ]);
   });
+});
+
+describe("cowork quote input truthfulness", () => {
+  const buildCoworkQuote = (input: CoworkReservationQuoteInput) =>
+    Effect.runSync(buildCoworkReservationQuote(input));
+
+  test("does not price the workstation add-on for an empty monitor option", () => {
+    const emptyOption = buildCoworkQuote({
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+      monitorOption: "",
+    });
+    const absentOption = buildCoworkQuote({
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+    });
+
+    for (const quote of [emptyOption, absentOption]) {
+      expect(quote.payment.expectedPrice.value).toBe(41_000);
+      expect(quote.items).not.toContainEqual(
+        expect.objectContaining({ type: "workstation" })
+      );
+    }
+  });
+
+  test("prices the workstation add-on only for a real monitor selection", () => {
+    const quote = buildCoworkQuote({
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    });
+
+    expect(quote.items).toContainEqual({
+      type: "workstation",
+      amount: { value: 12_000, exponent: 2, currency: "CZK" },
+    });
+    expect(quote.payment.expectedPrice.value).toBe(53_000);
+  });
+});
+
+describe("historical cowork tier add-ons", () => {
+  const quoteItemTypes = (input: CoworkReservationQuoteInput) =>
+    Effect.runSync(buildCoworkReservationQuote(input)).items.map(
+      (item) => item.type
+    );
+
+  test("prices Basic coffee only when selected", () => {
+    expect(
+      quoteItemTypes({ kind: "cowork", entryTier: "basic", coffee: true })
+    ).toEqual(["cowork", "coffee"]);
+    expect(
+      quoteItemTypes({ kind: "cowork", entryTier: "basic", coffee: false })
+    ).toEqual(["cowork"]);
+  });
+
+  test.each(["plus", "profi"] as const)(
+    "keeps the included coffee line for %s",
+    (entryTier) => {
+      expect(
+        quoteItemTypes({ kind: "cowork", entryTier, coffee: false })
+      ).toEqual(["cowork", "coffee"]);
+    }
+  );
 });

@@ -1,19 +1,32 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Effect, Layer } from "effect";
-import type { SqlError } from "effect/unstable/sql/SqlError";
+import { Context, Effect, Layer, Option } from "effect";
+import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
-import {
-  type PostgresAdvisoryLockKey,
-  WorkspaceDatabaseAdvisoryLock,
-} from "@/db/postgres-advisory-lock";
-import { customerAccountLinks } from "@/db/schema";
+import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
+import { customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
+import { findViolatedConstraint } from "@/db/sql-constraint";
+import { WorkspaceLockSections } from "@/db/workspace-locks";
+import {
+  insertReferralSignupIntent,
+  type ReferralSignupIntent,
+} from "@/features/referrals/signup-intent.repository";
+import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import type { CustomerAccountId } from "../customer-account";
 
+/**
+ * `created` is true only for the claim that recorded the link; a claim that
+ * found this account already linked reports false with the account's own
+ * customer. `claimed` means another live account holds the customer.
+ */
 export type CustomerAccountLinkClaim =
-  | { readonly kind: "linked"; readonly customerId: DotyposCustomerId }
+  | {
+      readonly kind: "linked";
+      readonly customerId: DotyposCustomerId;
+      readonly created: boolean;
+    }
   | { readonly kind: "claimed" };
 
 /**
@@ -25,19 +38,22 @@ export type CustomerAccountActivityState =
   | { readonly kind: "missing" }
   | { readonly kind: "active"; readonly deletionRequestedAt: Date | null };
 
-export type CustomerAccountLinkError = EffectDrizzleQueryError | SqlError;
-
-const accountLockKey = (
-  accountId: CustomerAccountId
-): PostgresAdvisoryLockKey => ["customer-account", accountId];
+export type CustomerAccountLinkError =
+  | EffectDrizzleQueryError
+  | SqlError.SqlError;
 
 interface ICustomerAccountLinkRepository {
   readonly find: (
     accountId: CustomerAccountId
   ) => Effect.Effect<DotyposCustomerId | null, CustomerAccountLinkError>;
+  /**
+   * A signup referral is written in the link's transaction and only when this
+   * claim creates the link, so it belongs to exactly one completion.
+   */
   readonly claim: (
     accountId: CustomerAccountId,
-    customerId: DotyposCustomerId
+    customerId: DotyposCustomerId,
+    signupReferral?: ReferralSignupIntent
   ) => Effect.Effect<CustomerAccountLinkClaim, CustomerAccountLinkError>;
   readonly findActivityState: (
     accountId: CustomerAccountId
@@ -49,7 +65,7 @@ interface ICustomerAccountLinkRepository {
   readonly withAccountLock: <A, E, R>(
     accountId: CustomerAccountId,
     effect: Effect.Effect<A, E, R>
-  ) => Effect.Effect<A, E | SqlError, R>;
+  ) => Effect.Effect<A, E | SqlError.SqlError, R>;
 }
 
 export class CustomerAccountLinkRepository extends Context.Service<
@@ -59,52 +75,92 @@ export class CustomerAccountLinkRepository extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const { db } = yield* WorkspaceDatabase;
+      const { db, transaction } = yield* WorkspaceDatabase;
       const advisoryLock = yield* WorkspaceDatabaseAdvisoryLock;
 
       const find = Effect.fn("CustomerAccountLinkRepository.find")(function* (
         accountId: CustomerAccountId
       ) {
-        const [link] = yield* db
-          .select({ customerId: customerAccountLinks.dotyposCustomerId })
-          .from(customerAccountLinks)
-          .where(eq(customerAccountLinks.customerAccountId, accountId))
+        const [account] = yield* db
+          .select({ customerId: customerAccounts.dotyposCustomerId })
+          .from(customerAccounts)
+          .where(eq(customerAccounts.id, accountId))
           .limit(1);
-        return link?.customerId ?? null;
+        return account?.customerId ?? null;
       });
 
       const performClaim = Effect.fn("CustomerAccountLinkRepository.claim")(
         function* (
           accountId: CustomerAccountId,
-          customerId: DotyposCustomerId
+          customerId: DotyposCustomerId,
+          signupReferral: ReferralSignupIntent | undefined
         ) {
-          const [inserted] = yield* db
-            .insert(customerAccountLinks)
-            .values({
-              customerAccountId: accountId,
-              dotyposCustomerId: customerId,
+          const settled = yield* transaction(
+            Effect.gen(function* () {
+              // Only a live account without a customer takes one; the
+              // unique customer index rejects a customer another account
+              // holds, and a concurrent claim of the same account waits on
+              // the row and then finds it linked.
+              const [link] = yield* db
+                .update(customerAccounts)
+                .set({ dotyposCustomerId: customerId })
+                .where(
+                  and(
+                    eq(customerAccounts.id, accountId),
+                    isNull(customerAccounts.dotyposCustomerId),
+                    isNull(customerAccounts.deletedAt)
+                  )
+                )
+                .returning({
+                  createdAt: customerAccounts.createdAt,
+                  legacy: customerAccounts.legacy,
+                });
+              if (!link) return undefined;
+              if (signupReferral) {
+                yield* insertReferralSignupIntent(accountId, signupReferral);
+              }
+              // The first link gives the account a mailable Dotypos
+              // customer, so the account counts as created at its creation
+              // instant. An existing customer's account was never created
+              // here (D37), so its first link records nothing.
+              if (!link.legacy) {
+                yield* recordCustomerEvent({
+                  kind: "account-created",
+                  occurredAt: link.createdAt,
+                  dotyposCustomerId: customerId,
+                  customerAccountId: accountId,
+                });
+              }
+              return {
+                kind: "linked",
+                customerId,
+                created: true,
+              } as const;
             })
-            .onConflictDoNothing()
-            .returning({ customerId: customerAccountLinks.dotyposCustomerId });
-          if (inserted) {
-            return {
-              kind: "linked",
-              customerId: inserted.customerId,
-            } as const;
-          }
+          ).pipe(
+            Effect.catchIf(isCustomerHeldElsewhere, () =>
+              Effect.succeed(undefined)
+            )
+          );
+          if (settled) return settled;
 
           const racedLink = yield* find(accountId);
           return racedLink
-            ? ({ kind: "linked", customerId: racedLink } as const)
+            ? ({
+                kind: "linked",
+                customerId: racedLink,
+                created: false,
+              } as const)
             : ({ kind: "claimed" } as const);
         }
       );
 
       const claim: ICustomerAccountLinkRepository["claim"] = (
         accountId,
-        customerId
+        customerId,
+        signupReferral
       ) =>
-        performClaim(accountId, customerId).pipe(
+        performClaim(accountId, customerId, signupReferral).pipe(
           Effect.tap(() => Effect.logDebug("Account link claim completed"))
         );
 
@@ -135,7 +191,9 @@ export class CustomerAccountLinkRepository extends Context.Service<
 
       const withAccountLock: ICustomerAccountLinkRepository["withAccountLock"] =
         (accountId, effect) =>
-          advisoryLock.withLock(accountLockKey(accountId), effect);
+          WorkspaceLockSections.customerAccount(accountId)(effect).pipe(
+            Effect.provideService(WorkspaceDatabaseAdvisoryLock, advisoryLock)
+          );
 
       return {
         claim,
@@ -156,3 +214,12 @@ export class CustomerAccountLinkRepository extends Context.Service<
     )
   );
 }
+
+/** The claimed customer is already another account's. */
+const isCustomerHeldElsewhere = (error: CustomerAccountLinkError) =>
+  findViolatedConstraint(error).pipe(
+    Option.exists(
+      (constraint) =>
+        constraint === "customer_accounts_dotypos_customer_unique_idx"
+    )
+  );

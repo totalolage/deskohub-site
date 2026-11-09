@@ -140,12 +140,28 @@ class FakeMarker extends FakeLayer {
   }
 }
 
+const tileLayers: FakeTileLayer[] = [];
+
 class FakeTileLayer extends FakeLayer {
+  private readonly listeners = new globalThis.Map<string, Set<MapListener>>();
+
   constructor(
     readonly url: string,
     readonly options: FakeOptions
   ) {
     super();
+    tileLayers.push(this);
+  }
+
+  emit(type: string) {
+    for (const listener of this.listeners.get(type) ?? []) listener();
+  }
+
+  on(type: string, listener: MapListener) {
+    const listeners = this.listeners.get(type) ?? new Set<MapListener>();
+    listeners.add(listener);
+    this.listeners.set(type, listeners);
+    return this;
   }
 }
 
@@ -218,13 +234,68 @@ afterEach(() => {
   document.body.innerHTML = "";
   mapInstances.length = 0;
   mediaQueries.length = 0;
+  tileLayers.length = 0;
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 describe("LandingPageInteractiveMap", () => {
+  test("reports its container on mount and tile loads only when no tile failed", async () => {
+    const { LandingPageInteractiveMap } = await import(
+      "./landing-page-interactive-map"
+    );
+    window.matchMedia = (() => makeMediaQuery()) as typeof window.matchMedia;
+    const mounts: HTMLElement[] = [];
+    let tileLoads = 0;
+
+    render(
+      <LandingPageInteractiveMap
+        onMount={(container) => mounts.push(container)}
+        onTilesLoad={() => {
+          tileLoads += 1;
+        }}
+      />
+    );
+    const [tiles] = tileLayers;
+
+    expect(mounts).toEqual([mapInstances[0]!.container]);
+    act(() => {
+      tiles!.emit("loading");
+      tiles!.emit("tileerror");
+      tiles!.emit("load");
+    });
+    expect(tileLoads).toBe(0);
+    act(() => {
+      tiles!.emit("loading");
+      tiles!.emit("load");
+    });
+    expect(tileLoads).toBe(1);
+  });
+
+  test("reports when the view starts to move after its initial framing", async () => {
+    const { LandingPageInteractiveMap } = await import(
+      "./landing-page-interactive-map"
+    );
+    window.matchMedia = (() => makeMediaQuery()) as typeof window.matchMedia;
+    let moves = 0;
+
+    render(
+      <LandingPageInteractiveMap
+        onMoveStart={() => {
+          moves += 1;
+        }}
+      />
+    );
+
+    expect(moves).toBe(0);
+    act(() => {
+      mapInstances[0]!.emit("movestart");
+    });
+    expect(moves).toBe(1);
+  });
+
   test("recreates a live map when Activity reconnects the same DOM node", async () => {
     const { LandingPageInteractiveMap } = await import(
       "./landing-page-interactive-map"
@@ -304,7 +375,6 @@ describe("LandingPageInteractiveMap", () => {
     expect(mapInstances).toHaveLength(4);
     expect(new Set(mapInstances).size).toBe(mapInstances.length);
     expect(new Set(mapInstances.map((map) => map.container)).size).toBe(1);
-    expect(mapInstances[0]?.container.className).toBe("h-full w-full");
     expect(
       mapInstances.every(
         (map) => map.removeCallCount === 1 && map.offCallCount === 1

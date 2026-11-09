@@ -1,20 +1,16 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Option, Schema } from "effect";
+import { Schema } from "effect";
 import {
   type WorkspaceProductIdentity,
   workspaceProductIdentitySchema,
 } from "@/features/checkout/product-identity";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
-import {
-  nonNegativeWorkspaceMoneyCodec,
-  positiveWorkspaceMoneyCodec,
-} from "@/features/checkout/workspace-money";
-import {
-  type WorkspaceProductTarget,
-  workspaceProductTargetSchema,
-} from "@/features/discounts/product-target";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import {
+  type Money,
+  nonNegativeMoneyCodec,
+  positiveMoneyCodec,
+} from "@/shared/money/money";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
 export const discountIdSchema = Schema.NonEmptyString.pipe(
@@ -47,15 +43,6 @@ export const discountBasisPointsSchema = Schema.Int.check(
   description: "An exact percentage discount measured in basis points.",
 });
 
-export const discountProductTargetSchema: StandardSchemaV1<
-  unknown,
-  WorkspaceProductTarget
-> = Schema.toStandardSchemaV1(workspaceProductTargetSchema, {
-  parseOptions: {
-    onExcessProperty: "error",
-  },
-});
-
 export type DiscountAdjustment =
   | {
       readonly kind: "percentage";
@@ -63,7 +50,7 @@ export type DiscountAdjustment =
     }
   | {
       readonly kind: "fixed";
-      readonly amount: WorkspaceMoney;
+      readonly amount: Money;
     };
 
 export const discountAdjustmentSchema = Schema.Union([
@@ -73,7 +60,7 @@ export const discountAdjustmentSchema = Schema.Union([
   }),
   Schema.Struct({
     kind: Schema.Literal("fixed"),
-    amount: positiveWorkspaceMoneyCodec,
+    amount: positiveMoneyCodec,
   }),
 ]).annotate({
   identifier: "DiscountAdjustment",
@@ -95,7 +82,6 @@ export type ActiveSale = {
 
 export type ActiveSaleDiscoveryInput = {
   readonly locale: Locale;
-  readonly currentDate: Temporal.PlainDate;
 };
 
 export const discountCodec = Schema.Struct({
@@ -111,43 +97,36 @@ export const discountCodec = Schema.Struct({
 
 export type AppliedDiscount = {
   readonly discount: Discount;
-  readonly subtotalBefore: WorkspaceMoney;
-  readonly amount: WorkspaceMoney;
-  readonly subtotalAfter: WorkspaceMoney;
+  readonly subtotalBefore: Money;
+  readonly amount: Money;
+  readonly subtotalAfter: Money;
 };
 
 export const appliedDiscountCodec = Schema.Struct({
   discount: discountCodec,
-  subtotalBefore: nonNegativeWorkspaceMoneyCodec,
-  amount: positiveWorkspaceMoneyCodec,
-  subtotalAfter: nonNegativeWorkspaceMoneyCodec,
+  subtotalBefore: nonNegativeMoneyCodec,
+  amount: positiveMoneyCodec,
+  subtotalAfter: nonNegativeMoneyCodec,
 }).annotate({
   identifier: "AppliedDiscount",
   description:
     "An immutable discount application and its before, applied, and after amounts.",
 });
 
-export const isAppliedDiscount = <T>(value: T): value is T & AppliedDiscount =>
-  Option.isSome(
-    Schema.decodeUnknownOption(appliedDiscountCodec, {
-      onExcessProperty: "error",
-    })(value)
-  );
-
 export type DiscountQuote = {
   readonly product: WorkspaceProductIdentity;
-  readonly discountableSubtotal: WorkspaceMoney;
+  readonly discountableSubtotal: Money;
   readonly discounts: readonly AppliedDiscount[];
-  readonly totalDiscount: WorkspaceMoney;
-  readonly discountedSubtotal: WorkspaceMoney;
+  readonly totalDiscount: Money;
+  readonly discountedSubtotal: Money;
 };
 
 export const discountQuoteCodec = Schema.Struct({
   product: workspaceProductIdentitySchema,
-  discountableSubtotal: nonNegativeWorkspaceMoneyCodec,
+  discountableSubtotal: nonNegativeMoneyCodec,
   discounts: Schema.Array(appliedDiscountCodec),
-  totalDiscount: nonNegativeWorkspaceMoneyCodec,
-  discountedSubtotal: nonNegativeWorkspaceMoneyCodec,
+  totalDiscount: nonNegativeMoneyCodec,
+  discountedSubtotal: nonNegativeMoneyCodec,
 }).annotate({
   identifier: "DiscountQuote",
   description: "A source-neutral discount calculation for one product.",
@@ -178,16 +157,30 @@ export type AffirmedDiscountAdvertisementQuote =
 
 export type DiscountAdvertisementInput = {
   readonly product: WorkspaceProductIdentity;
-  readonly discountableSubtotal: WorkspaceMoney;
-  readonly reservationDate: string;
+  readonly discountableSubtotal: Money;
+  /**
+   * Last date the reservation uses the workspace. Calendar sales apply only
+   * when it is on or before the sale's last day.
+   */
+  readonly lastServiceDate: string;
+  /** Moment the booking is made; calendar sales are evaluated at it. */
+  readonly bookedAt: Temporal.Instant;
   readonly locale: Locale;
 };
 
 export type DiscountQuoteInput = {
   readonly product: WorkspaceProductIdentity;
-  readonly discountableSubtotal: WorkspaceMoney;
-  readonly reservationDate: string;
+  readonly discountableSubtotal: Money;
+  /**
+   * Last date the reservation uses the workspace. Calendar sales apply only
+   * when it is on or before the sale's last day.
+   */
+  readonly lastServiceDate: string;
+  /** Moment the booking is made; calendar sales are evaluated at it. */
+  readonly bookedAt: Temporal.Instant;
   readonly locale: Locale;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly submittedCode?: CanonicalPromotionCode;
+  /** Referral code the checkout carries for an unattributed customer. */
+  readonly referralCode?: CanonicalPromotionCode;
 };

@@ -1,38 +1,20 @@
 import {
-  AdministrationCustomerDiscountCodeCreateInput,
+  type AdministrationCustomerDiscountCodeCreateInput,
   AdministrationCustomerSearchQuery,
-  AdministrationCustomerVoucherCreateInput,
-  AdministrationDiscountCodeCreateInput,
-  AdministrationDiscountCodeUpdateInput,
-  AdministrationDiscountDefinitionInput,
-  AdministrationDiscountLabels,
+  type AdministrationCustomerVoucherCreateInput,
+  type AdministrationDiscountCodeCreateInput,
+  type AdministrationDiscountCodeUpdateInput,
+  type AdministrationDiscountDefinitionInput,
   AdministrationDiscountMutation,
-  AdministrationDiscountUpdateInput,
-  AdministrationExistingDiscountCodeCreateInput,
-  AdministrationVoucherCreateInput,
-  AdministrationVoucherUpdateInput,
+  type AdministrationDiscountUpdateInput,
+  type AdministrationExistingDiscountCodeCreateInput,
+  type AdministrationVoucherCreateInput,
+  type AdministrationVoucherUpdateInput,
 } from "@deskohub/workspace-admin-api";
 import { Schema } from "effect";
-export const discountAdminLabelsSchema = AdministrationDiscountLabels;
-export const createDiscountAdminInputSchema =
-  AdministrationDiscountDefinitionInput;
-export const updateDiscountAdminInputSchema = AdministrationDiscountUpdateInput;
-export const createDiscountCodeAdminInputSchema =
-  AdministrationExistingDiscountCodeCreateInput;
-export const createManagedDiscountCodeAdminInputSchema =
-  AdministrationDiscountCodeCreateInput;
-export const updateDiscountCodeAdminInputSchema =
-  AdministrationDiscountCodeUpdateInput;
-export const createCustomerDiscountCodeAdminInputSchema =
-  AdministrationCustomerDiscountCodeCreateInput;
-export const createVoucherAdminInputSchema = AdministrationVoucherCreateInput;
-export const createCustomerVoucherAdminInputSchema =
-  AdministrationCustomerVoucherCreateInput;
-export const updateVoucherAdminInputSchema = AdministrationVoucherUpdateInput;
-export const discountAdminMutationSchema = AdministrationDiscountMutation;
 
 export const discountAdminMutationStandardSchema = Schema.toStandardSchemaV1(
-  discountAdminMutationSchema,
+  AdministrationDiscountMutation,
   {
     parseOptions: {
       errors: "all",
@@ -41,11 +23,8 @@ export const discountAdminMutationStandardSchema = Schema.toStandardSchemaV1(
   }
 );
 
-export const discountAdminCustomerSearchSchema =
-  AdministrationCustomerSearchQuery;
-
 export const discountAdminCustomerSearchStandardSchema =
-  Schema.toStandardSchemaV1(discountAdminCustomerSearchSchema, {
+  Schema.toStandardSchemaV1(AdministrationCustomerSearchQuery, {
     parseOptions: {
       errors: "all",
       onExcessProperty: "error",
@@ -53,21 +32,23 @@ export const discountAdminCustomerSearchStandardSchema =
   });
 
 export type CreateDiscountAdminInput =
-  typeof createDiscountAdminInputSchema.Type;
+  typeof AdministrationDiscountDefinitionInput.Type;
 export type UpdateDiscountAdminInput =
-  typeof updateDiscountAdminInputSchema.Type;
+  typeof AdministrationDiscountUpdateInput.Type;
 export type CreateDiscountCodeAdminInput =
-  typeof createDiscountCodeAdminInputSchema.Type;
+  typeof AdministrationExistingDiscountCodeCreateInput.Type;
 export type CreateManagedDiscountCodeAdminInput =
-  typeof createManagedDiscountCodeAdminInputSchema.Type;
+  typeof AdministrationDiscountCodeCreateInput.Type;
 export type CreateCustomerDiscountCodeAdminInput =
-  typeof createCustomerDiscountCodeAdminInputSchema.Type;
+  typeof AdministrationCustomerDiscountCodeCreateInput.Type;
 export type UpdateDiscountCodeAdminInput =
-  typeof updateDiscountCodeAdminInputSchema.Type;
-export type CreateVoucherAdminInput = typeof createVoucherAdminInputSchema.Type;
+  typeof AdministrationDiscountCodeUpdateInput.Type;
+export type CreateVoucherAdminInput =
+  typeof AdministrationVoucherCreateInput.Type;
 export type CreateCustomerVoucherAdminInput =
-  typeof createCustomerVoucherAdminInputSchema.Type;
-export type UpdateVoucherAdminInput = typeof updateVoucherAdminInputSchema.Type;
-export type DiscountAdminMutation = typeof discountAdminMutationSchema.Type;
+  typeof AdministrationCustomerVoucherCreateInput.Type;
+export type UpdateVoucherAdminInput =
+  typeof AdministrationVoucherUpdateInput.Type;
+export type DiscountAdminMutation = typeof AdministrationDiscountMutation.Type;
 export type DiscountAdminCustomerSearch =
-  typeof discountAdminCustomerSearchSchema.Type;
+  typeof AdministrationCustomerSearchQuery.Type;

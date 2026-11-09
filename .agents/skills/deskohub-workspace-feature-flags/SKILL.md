@@ -1,52 +1,36 @@
 ---
 name: deskohub-workspace-feature-flags
-description: Workspace PostHog feature flags, generated contracts, release subjects, and preview overrides.
+description: Workspace PostHog feature flags, release gates, generated flag contract, feature-flag sync, flag overrides, POSTHOG_FEATURE_FLAG_OVERRIDES, rollout status, @deskohub/posthog package.
 ---
 
 # Deskohub Workspace feature flags
 
-Use the Workspace app-owned generated PostHog contract and typed server client. Do not reuse the Boardgame Bar static flag constants.
+Read the reference for the task:
 
-Server consumers resolve `WorkspaceFeatureFlagService` from Effect Context. The default service classifies the current PostHog definition: boolean lookups return a provably constant value directly, while partial rollouts and conditions use the consented request subject. Whole-snapshot evaluation uses the fixed non-recording Workspace release subject only when every requested flag is constant. Classification must fail closed to request-aware evaluation when management configuration or definition loading is unavailable. Never infer this from an evaluated value. Keep public pages on one adaptive rendering path and cache their request-independent provider data separately; do not introduce parallel global and request layers or page implementations. The capability owns the process-scoped typed Node client; feature-specific services own fail-closed logging and fallback behavior. Do not import the Node client or release subject directly from feature code, and do not redeclare generated flag-key or package snapshot types.
+- Evaluation, constant-flag classification, deployment-scoped overrides, contract sync, or rollout inspection: [references/architecture.md](references/architecture.md).
+- Changes to `@deskohub/posthog`, its generated API client, or its typed feature-flag adapters: [references/posthog-package.md](references/posthog-package.md).
 
-Compose a feature-specific fail-closed lookup as `Effect.tapError` followed by
-`Effect.orElseSucceed(() => false)`. Keep logging and fallback as peer
-operators; do not nest a logging pipe inside `catch`. When a release gate
-applies to only one reservation family, dispatch exhaustively by `kind` so
-unrelated families do not even evaluate the gated lookup.
+## Always apply
 
-For boolean release gates, only `true` is enabled. Treat explicit `false` as
-the ordinary off state without error logging. An omitted value means PostHog
-did not evaluate the requested flag, such as when the flag is inactive; fail
-that gate closed and log the missing flag as unavailable.
+- Use the Workspace generated contract in `apps/deskohub-workspace/features/feature-flags/generated/contract.ts`, not the Boardgame Bar static flag constants. Don't redeclare flag-key or snapshot types.
+- Server consumers resolve `WorkspaceFeatureFlagService` from Effect Context. Feature code doesn't import the Node client (`backend/node.ts`) or the request subject (`backend/subject.ts`) directly.
+- Give each boolean release gate a feature-named class from the `ReleaseGate` factory (`backend/release-gate.ts`), such as `OfficeReleaseGate` or `PasskeyReleaseGate`, and read it as `Gate.isOpen` from Context. The factory owns the fail-closed policy, its one `Release gate unavailable` warning with the flag keys and no provider cause, and the once-per-layer-build decision. Tests provide `Gate.fromDecision(bool)` or `Gate.fromEvaluation(effect)`, or build `Gate.Default` over a `WorkspaceFeatureFlagService` mock.
+- A gate over several flags keeps its own interface and composes the same policy from `releaseFromValue` and `closeUnavailableRelease`, as `DiscountReleaseGateService` does. It still decides once per layer build, and shares that decision across every run and layer of the render with `shareWithinRequest` (`apps/deskohub-workspace/shared/backend/share-within-request.ts`), so its operations never re-evaluate. Test the render sharing in a real React server render, never a stand-in `cache`: a `*.rsc-fixture.ts` renders sibling server components with `renderServerComponents` (`shared/testing/react-server-render.test-utils.ts`), and its unit test runs it under the `react-server` condition with `runReactServerFixture` (`shared/testing/react-server-fixture.test-utils.ts`), as `features/discounts/discount-release-gate.service.rsc-fixture.ts` does.
+- For a boolean release gate, only `true` is enabled. Explicit `false` is the ordinary off state; don't log it as an error. An omitted value means PostHog didn't evaluate the flag, for example because it's inactive: fail the gate closed and log the flag as unavailable.
+- When a release gate applies to one reservation family, dispatch exhaustively by `kind` so other families never evaluate the lookup.
+- Keep the one PostHog React provider in `app/[locale]/layout.tsx`. Don't add page- or feature-local providers. Consent-aware initialization and analytics rendering may suspend inside it so consent state doesn't gate cacheable navigation shells.
+- Keep PostHog origins role-specific: `POSTHOG_API_HOST` is the server-only management and query origin, `POSTHOG_INGEST_HOST` is the direct server SDK and OTLP origin, and `NEXT_PUBLIC_POSTHOG_HOST` is the browser ingest proxy. Server clients never go through the public proxy.
 
-Keep the package Node service as a thin typed wrapper around one lazily created SDK client. A key/value lookup does not need its own nested Context service, Layer, or ManagedRuntime.
+## Page release gates
 
-Keep PostHog origins role-specific: `POSTHOG_API_HOST` is the server-only
-management/query origin, `POSTHOG_INGEST_HOST` is the direct server SDK and
-OTLP origin, and `NEXT_PUBLIC_POSTHOG_HOST` is the browser-facing ingest proxy.
-Do not route server clients through the public proxy.
+Give a page gate one decision per request with `releaseGateForRequest` (`backend/release-gate.server.ts`): its React-cached `isOpen` serves Server Components, and its `layer` hands the same decision to Effect consumers, so metadata, page content, and nested loaders such as advertised prices agree. `features/office/backend/office-release-gate.server.ts` is the pattern. `whenRunFails` decides what a run failure outside the gate's policy, such as a runtime that can't start, means: `close` serves a closed gate, `reject` rejects as `runWorkspaceEffect` does. Office, meeting-room, passkey, and sign-in-code gates reject; changing that changes their outage behaviour and needs the developer's decision.
 
-Read [the feature-flag architecture](references/architecture.md) for generation, runtime evaluation, subjects, and deployment-scoped overrides. Read [the PostHog package reference](references/posthog-package.md) when changing the shared generated client or typed feature-flag adapters. Keep flag evaluation fail-closed where the feature requires it, and update this skill when developer feedback changes a durable feature-flag convention.
+React `cache` doesn't memoize inside a Server Action or route handler. There, provide the gate's request `layer` or `Gate.Live`, each decided once per build, and have helpers read the provided gate, never re-evaluate. `WorkspaceFeatureFlagService` can't run in `proxy.ts`: its classification is a `"use cache"` function, which the proxy doesn't support.
 
-Deployment-scoped overrides use the optional server-only `POSTHOG_FEATURE_FLAG_OVERRIDES` value, decoded against the generated Workspace contract. Only preview and development deployments may configure a non-empty map; production configuration must fail validation. Apply the map once to the process-scoped Node client and pass that identical typed map from the server layout to the consent-aware browser boundary. Never derive overrides from a request, cookie, header, URL, or visitor identity. After browser initialization, replace the complete override set and explicitly clear persisted overrides when the map is absent. Do not initialize PostHog before analytics consent merely to apply an override.
+An HttpApi handler, such as the customer HTTP API, runs outside Next.js request scope: provide the gate's `releaseGateForRun(gate, policy)` layer (the `…ForRun` exports beside each gate, such as `ReferralReleaseGateForRun`), built once per request inside the handler with the gate's own run-failure policy. Its `Live` still reads flag definitions through Next.js's data cache, so the handler must run in the Next.js server.
 
-Keep feature-flag-specific environment schemas and their focused tests in the feature-flag module; the root environment schema should import and compose them. T3 Env's field dictionary drops cross-field Effect Struct checks, so apply deployment validation through a named final-schema composer and cover that integration path with a regression test. Type browser override clients directly against `PostHogFeatureFlagOverrides<Definitions>` instead of casting the typed map to an arbitrary record.
+A gate may read the request subject. On a Cache Components page, evaluate it inside the Suspense boundary after `connection()`, never in the component that builds the static shell; a shell-level read makes the route dynamic and breaks `instant = true`. Also check the gate in `generateMetadata`, so crawlers and a constant-off flag get a real 404 while browsers get the streamed not-found boundary.
 
-Keep the PostHog React provider at the localized application root so one context
-wraps every client feature-flag consumer. Do not add page- or feature-local
-providers. Consent-aware initialization and analytics rendering may suspend
-independently inside that global provider so dynamic consent state does not gate
-the application's cacheable navigation shells.
+Content that must be visible in the static HTML, such as the price list that fetch-only agents read, can't sit in a Suspense boundary: React puts resolved boundary content in a hidden container. Read its gates with `WorkspaceFeatureFlagService.constantValue` inside a `"use cache"` loader, which never reads the request. Keep a gate decided per visitor closed there, and stream the visitor's version in place of the shared one only while some gate varies. `features/pricing/backend/price-list.server.ts` is the pattern. Static output that describes a gate maps that value with `globalRelease` (`features/feature-flags/backend/global-release.ts`) to `on`, `undecided` or `off`; `Gate.release` does this for one gate, as `llms.txt` does for the site tools. `loadGlobalRelease` (`features/feature-flags/backend/global-release.server.ts`, cached with `minutes` so it stays in the App Shell) reads any flag this way; the site description names the office only while it's `on`.
 
-Use overrides only for isolated development or protected-preview validation, never for rollout management or mutation of PostHog's stored flag definitions. Safe example:
-
-```env
-POSTHOG_FEATURE_FLAG_OVERRIDES={"discount_codes":true}
-```
-
-When auditing rollout state, read PostHog's explicit flag status independently
-from its release conditions. A disabled flag may still display a configured
-condition such as `100% of all users`; that percentage describes the rollout
-that would apply if the flag were enabled and is not evidence that the flag is
-active.
+A layout-level gate that mounts a component on every page wraps it in `GlobalReleaseGate` (`features/feature-flags/components/global-release-gate.tsx`). A constant flag is decided in the static shell, so cached pages need no function invocation; only an `undecided` flag falls back to the per-request gate after `connection()`.

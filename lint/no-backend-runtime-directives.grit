@@ -1,0 +1,20 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Backend modules run only on the server behind actions and route handlers;
+// a `"use client"` or `"use server"` directive there exposes them to the client
+// bundle or turns their exports into public server actions.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:.*/)?backend/.*\.(?:ts|tsx)$",
+  $body <: r"(?s).*use (?:client|server).*",
+  $body <: contains bubble {
+    JsDirective() as $directive where {
+      $directive <: r"(?s)^['\"]use (?:client|server)['\"];?$",
+      register_diagnostic(
+        span = $directive,
+        message = "Backend modules must not declare `\"use client\"` or `\"use server\"`; expose them through an action or route boundary instead.",
+        severity = "error"
+      )
+    }
+  }
+}

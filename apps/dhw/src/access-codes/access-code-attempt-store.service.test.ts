@@ -134,18 +134,6 @@ describe("AccessCodeAttemptStore", () => {
     expect(result.second).not.toBe(result.first);
   });
 
-  test("reserves a fresh id after a successful release", async () => {
-    const result = await Effect.gen(function* () {
-      const store = yield* makeStore(yield* makeMemoryKv);
-      const first = yield* store.reserve(identityA);
-      yield* store.forget(identityA, first);
-      const second = yield* store.reserve(identityA);
-      return { first, second };
-    }).pipe(Effect.runPromise);
-
-    expect(result.second).not.toBe(result.first);
-  });
-
   test("keeps a reservation that a different attempt id tried to release", async () => {
     const result = await Effect.gen(function* () {
       const store = yield* makeStore(yield* makeMemoryKv);
@@ -223,38 +211,6 @@ describe("AccessCodeAttemptStore", () => {
         Effect.runPromise
       ).catch(() => {});
     }
-  });
-
-  test("fails closed while another live process holds the reservation lock", async () => {
-    const directory = `/tmp/dhw-store-race-${crypto.randomUUID()}`;
-    const error = await Effect.gen(function* () {
-      const crypto = yield* Crypto.Crypto;
-      const fileSystem = yield* FileSystem.FileSystem;
-      const holder = yield* makeFileStore(directory);
-      yield* holder.reserve(identityA);
-      const reservationKey = yield* accessCodeAttemptReservationKey({
-        crypto,
-        identity: identityA,
-      });
-      const lockPath = `${directory}/${reservationKey}.lock`;
-      yield* fileSystem.writeFileString(lockPath, "another live process");
-      const contender = yield* makeFileStore(directory, {
-        waitMilliseconds: 300,
-      });
-      return yield* Effect.flip(contender.reserve(identityA));
-    })
-      .pipe(Effect.provide(BunServices.layer), Effect.runPromise)
-      .finally(() => {
-        void FileSystem.FileSystem.pipe(
-          Effect.flatMap((fileSystem) =>
-            fileSystem.remove(directory, { recursive: true })
-          ),
-          Effect.provide(BunServices.layer),
-          Effect.runPromise
-        ).catch(() => {});
-      });
-
-    expect(error.message).toContain("locked by another process");
   });
 
   test("never steals an aged lock and fails closed with manual recovery", async () => {

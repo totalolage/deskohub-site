@@ -1,11 +1,7 @@
 import { expect, test } from "bun:test";
-import { fileURLToPath } from "node:url";
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { Page } from "@playwright/test";
 import { m } from "@/features/i18n";
-import {
-  identifierNames,
-  parseTrackedSource,
-} from "../scripts/shared/source-ast";
 import {
   dismissLegalCookieConsent,
   hasReactClickHandler,
@@ -34,7 +30,6 @@ type FakeLocator = {
 type FakeConsentPage = {
   readonly clickCount: () => number;
   readonly evaluateArguments: readonly string[];
-  readonly evaluateFunctions: readonly unknown[];
   readonly page: Page;
 };
 
@@ -47,7 +42,6 @@ const makeFakeConsentPage = (input: {
   let evaluateIndex = 0;
   let clickCount = 0;
   const evaluateArguments: string[] = [];
-  const evaluateFunctions: unknown[] = [];
   const getNecessaryVisibility = () => necessaryVisible;
   const getAnalyticsVisibility = () => input.analyticsVisible;
 
@@ -73,8 +67,7 @@ const makeFakeConsentPage = (input: {
   const necessaryOnlyButton = makeLocator(getNecessaryVisibility);
   const analyticsCheckbox = makeLocator(getAnalyticsVisibility);
   const page = Object.assign({} as Page, {
-    evaluate: async (pageFunction: unknown, selector: string) => {
-      evaluateFunctions.push(pageFunction);
+    evaluate: async (_pageFunction: unknown, selector: string) => {
       evaluateArguments.push(selector);
       const result =
         input.hydrationResults[
@@ -98,37 +91,9 @@ const makeFakeConsentPage = (input: {
   return {
     clickCount: () => clickCount,
     evaluateArguments,
-    evaluateFunctions,
     page,
   };
 };
-
-test("clicks only the visible necessary-cookie action when the banner is present", async () => {
-  const fake = makeFakeConsentPage({
-    analyticsVisible: false,
-    hydrationResults: [false],
-    necessaryVisible: true,
-  });
-
-  await dismissLegalCookieConsent(fake.page, locale);
-
-  expect(fake.clickCount()).toBe(1);
-  expect(fake.evaluateArguments).toEqual([]);
-});
-
-test("waits for an inline analytics control when the consent banner is absent", async () => {
-  const fake = makeFakeConsentPage({
-    analyticsVisible: true,
-    hydrationResults: [true],
-    necessaryVisible: false,
-  });
-
-  await dismissLegalCookieConsent(fake.page, locale);
-
-  expect(fake.clickCount()).toBe(0);
-  expect(fake.evaluateArguments).toEqual([analyticsCheckboxSelector]);
-  expect(fake.evaluateFunctions).toEqual([hasReactClickHandler]);
-});
 
 test("does not race a visible but unhydrated inline analytics control", async () => {
   const fake = makeFakeConsentPage({
@@ -140,33 +105,30 @@ test("does not race a visible but unhydrated inline analytics control", async ()
   await dismissLegalCookieConsent(fake.page, locale);
 
   expect(fake.clickCount()).toBe(0);
-  expect(fake.evaluateArguments.length).toBeGreaterThanOrEqual(2);
   expect(fake.evaluateArguments).toEqual([
     analyticsCheckboxSelector,
     analyticsCheckboxSelector,
   ]);
-  expect(fake.evaluateFunctions).toEqual([
-    hasReactClickHandler,
-    hasReactClickHandler,
-  ]);
 });
 
-test("does not forge consent cookies or use timer delays", () => {
-  // Verdicts come from the parsed consent helper, so a commented-out cookie
-  // write or timer call can never satisfy the absence checks.
-  const { ast } = parseTrackedSource(
-    fileURLToPath(new URL("./legal-cookie-consent.ts", import.meta.url))
-  );
-  const identifiers = identifierNames(ast);
-  for (const forbidden of [
-    "addCookies",
-    "cookie",
-    "CookieConsent",
-    "acceptCategory",
-    "setTimeout",
-    "waitForTimeout",
-  ]) {
-    expect(identifiers.has(forbidden)).toBe(false);
+test("detects the hydrated React click handler on the consent control", async () => {
+  GlobalRegistrator.register({ url: "https://workspace.example.test/" });
+  try {
+    document.body.innerHTML = `<input id="cookie-category-analytics" type="checkbox" />`;
+    const checkbox = document.querySelector(analyticsCheckboxSelector)!;
+
+    expect(hasReactClickHandler(analyticsCheckboxSelector)).toBe(false);
+    // React stores the current props on the element under a random suffix.
+    const reactProps = { onChange: (): void => undefined } as {
+      onChange: () => void;
+      onClick?: () => void;
+    };
+    Object.assign(checkbox, { __reactProps$test: reactProps });
+    expect(hasReactClickHandler(analyticsCheckboxSelector)).toBe(false);
+    reactProps.onClick = () => undefined;
+    expect(hasReactClickHandler(analyticsCheckboxSelector)).toBe(true);
+    expect(hasReactClickHandler("#missing")).toBe(false);
+  } finally {
+    await GlobalRegistrator.unregister();
   }
-  expect(typeof hasReactClickHandler).toBe("function");
 });

@@ -1,15 +1,20 @@
 /// <reference path="./auth-callback-rsc-fixture.d.ts" />
 
+import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import {
   registerClientReference,
   renderToReadableStream,
 } from "next/dist/compiled/react-server-dom-webpack/server.edge";
 import React, { Suspense } from "react";
 import type { CustomerAccountId } from "@/features/account/customer-account";
+import {
+  encodeAuthCallbackReturn,
+  signInCallbackReturnParam,
+} from "@/features/account/routes";
 
 type Locale = "en-US" | "cs-CZ";
 type CustomerSession = {
@@ -78,9 +83,6 @@ mock.module("next/navigation", () => ({
   notFound: () => {
     throw new Error("unexpected notFound in auth callback RSC fixture");
   },
-}));
-mock.module("@/features/account/server/account-feature-flag.server", () => ({
-  areAccountsEnabled: () => Promise.resolve(true),
 }));
 mock.module("next/link", () => ({
   default: ({
@@ -172,7 +174,7 @@ const configurePendingSession = (nextLocale: Locale) => {
 const activeSession = {
   accountId: "auth-account-callback" as CustomerAccountId,
   deletionRequested: false,
-  email: "ada@example.test",
+  email: testEmailAddress("ada"),
 } satisfies CustomerSession;
 
 const FixtureShell = ({ children }: { readonly children: React.ReactNode }) =>
@@ -184,15 +186,19 @@ const FixtureShell = ({ children }: { readonly children: React.ReactNode }) =>
     React.createElement("footer", { "data-fixture-shell": "footer" })
   );
 
-const importCallbackModel = async () => {
+const importCallbackModel = async (
+  searchParams: Record<string, string> = {}
+) => {
   const { default: CustomerAuthCallbackPage } = await import(
-    "@/app/[locale]/(minimal-header)/auth/callback/page"
+    "@/app/[locale]/(site)/(minimal-header)/auth/callback/page"
   );
 
   return React.createElement(
     Suspense,
     { fallback: null },
-    React.createElement(CustomerAuthCallbackPage)
+    React.createElement(CustomerAuthCallbackPage, {
+      searchParams: Promise.resolve(searchParams),
+    })
   );
 };
 
@@ -202,7 +208,8 @@ const renderModel = (model: React.ReactNode) =>
     clientManifest
   );
 
-const renderCallback = async () => renderModel(await importCallbackModel());
+const renderCallback = async (searchParams?: Record<string, string>) =>
+  renderModel(await importCallbackModel(searchParams));
 
 class ReadDeadlineExceeded extends Error {
   constructor() {
@@ -332,14 +339,15 @@ const observeWhileSessionIsBlocked = async (nextLocale: Locale) => {
 
 const settledOutput = async (
   nextLocale: Locale,
-  nextCurrentUser: Effect.Effect<CustomerSession | null, unknown>
+  nextCurrentUser: Effect.Effect<CustomerSession | null, unknown>,
+  searchParams?: Record<string, string>
 ) => {
   configure({
     connection: "resolved",
     currentUser: nextCurrentUser,
     locale: nextLocale,
   });
-  return readAll(await renderCallback());
+  return readAll(await renderCallback(searchParams));
 };
 
 const loadingModel = (output: string, nextLocale: Locale) => ({
@@ -357,15 +365,40 @@ const callbackLoadingModel = (output: string, nextLocale: Locale) => ({
     output.includes(accountLabel[nextLocale]),
 });
 
-const signInLoadingOutput = async (nextLocale: Locale) => {
-  const { SignInLoading } = await import(
-    "@/features/account/components/sign-in-loading"
-  );
-  return readAll(
-    await renderModel(
-      React.createElement(SignInLoading, { locale: nextLocale })
+// The flight server bundled with Next 16.4 outlines a client reference's module
+// id and export name into string rows that the import row references, e.g.
+// `40:"auth-callback-redirect"` `41:"AuthCallbackRedirect"`
+// `42:I["$40",[],"$41"]`. Row ids depend on stream position, so resolve the
+// references instead of matching ids.
+const flightRowPattern = /^([0-9a-f]+):(.*)$/gm;
+const decodeFlightString = Schema.decodeUnknownSync(
+  Schema.fromJsonString(Schema.String)
+);
+const decodeFlightImport = Schema.decodeUnknownSync(
+  Schema.fromJsonString(
+    Schema.Tuple([Schema.String, Schema.Array(Schema.String), Schema.String])
+  )
+);
+
+const clientReferenceImports = (output: string) => {
+  const rows = new Map(
+    [...output.matchAll(flightRowPattern)].map(
+      ([, id = "", body = ""]) => [id, body] as const
     )
   );
+  const resolveFlightString = (value: string) => {
+    if (!value.startsWith("$")) return value;
+    if (value.startsWith("$$")) return value.slice(1);
+    const row = rows.get(value.slice(1));
+    return row === undefined ? undefined : decodeFlightString(row);
+  };
+
+  return [...rows.values()]
+    .filter((body) => body.startsWith("I["))
+    .map((body) => {
+      const [id, , name] = decodeFlightImport(body.slice(1));
+      return { id: resolveFlightString(id), name: resolveFlightString(name) };
+    });
 };
 
 afterEach(() => {
@@ -374,19 +407,6 @@ afterEach(() => {
 });
 
 describe("auth callback RSC regression", () => {
-  test.each(["en-US", "cs-CZ"] as const)(
-    "recognizes the actual localized SignInLoading RSC model for %s",
-    async (nextLocale) => {
-      const output = await signInLoadingOutput(nextLocale);
-
-      expect(loadingModel(output, nextLocale)).toEqual({
-        hasLoadingLabel: true,
-        hasMain: true,
-        hasStatus: true,
-      });
-    }
-  );
-
   test.each(["en-US", "cs-CZ"] as const)(
     "streams the localized loading main while %s connection is pending",
     async (nextLocale) => {
@@ -428,6 +448,23 @@ describe("auth callback RSC regression", () => {
     }
   );
 
+  test("keeps only a same-origin return target on the failure link", async () => {
+    const kept = await settledOutput("en-US", Effect.succeed(null), {
+      [signInCallbackReturnParam]:
+        encodeAuthCallbackReturn("/en-US/admin/invoices?page=2") ?? "",
+    });
+    expect(kept).toContain(
+      "/en-US/auth/sign-in?returnTo=%2Fen-US%2Fadmin%2Finvoices%3Fpage%3D2"
+    );
+
+    const dropped = await settledOutput("en-US", Effect.succeed(null), {
+      [signInCallbackReturnParam]:
+        encodeAuthCallbackReturn("//evil.example/admin") ?? "",
+    });
+    expect(dropped).toContain('"href":"/en-US/auth/sign-in"');
+    expect(dropped).not.toContain("/en-US/auth/sign-in?");
+  });
+
   test.each(["en-US", "cs-CZ"] as const)(
     "renders the existing failure link for a %s service failure",
     async (nextLocale) => {
@@ -452,10 +489,9 @@ describe("auth callback RSC regression", () => {
         Effect.succeed(activeSession)
       );
 
-      expect(output).toContain(
-        'I["auth-callback-redirect",[],"AuthCallbackRedirect"]'
-      );
-      expect(output).toContain("AuthCallbackRedirect");
+      expect(clientReferenceImports(output)).toEqual([
+        { id: "auth-callback-redirect", name: "AuthCallbackRedirect" },
+      ]);
       expect(output).toContain(`"locale":"${nextLocale}"`);
       expect(output).not.toContain("NEXT_REDIRECT");
       expect(output).not.toContain(failureCopy[nextLocale].title);

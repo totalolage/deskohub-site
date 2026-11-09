@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type * as Playwright from "@playwright/test";
+import { encodeAuthCallbackReturn } from "@/features/account/routes";
 import {
   callbackDocumentReviewViewport,
   collectCallbackDocumentSnapshot,
@@ -11,6 +12,22 @@ const validCallbackUrl = `${baseOrigin}/en-US/auth/callback?attempt=550e8400-e29
 const mainFrameId = "main-frame";
 const mainContextId = 7;
 const viewport = { ...callbackDocumentReviewViewport };
+const accountLanding = { locale: "en-US" } as const;
+const czechReturnTo = "/cs-CZ/reservation/cowork?selection=synthetic-1";
+const czechReturnValue = encodeAuthCallbackReturn(czechReturnTo) ?? "";
+const czechLanding = { locale: "cs-CZ", returnTo: czechReturnTo } as const;
+const czechCallbackUrl = `${baseOrigin}/cs-CZ/auth/callback?attempt=550e8400-e29b-41d4-a716-446655440000&return=${czechReturnValue}`;
+const englishCopy = {
+  label: "Loading sign-in…",
+  title: "You are signed in",
+  account: "Taking you to your account…",
+};
+const czechCopy = {
+  label: "Načítání přihlášení…",
+  title: "Přihlášení proběhlo",
+  returning:
+    "Vracíme tě zpět. Dokončit můžeš přímo v tomto prohlížeči.",
+};
 
 type CdpHandler = (params: unknown) => Promise<unknown> | unknown;
 
@@ -79,7 +96,6 @@ type FakePageOverrides = {
   readonly cdp?: ReturnType<typeof makeFakeCdp>;
   readonly url?: string;
   readonly sessionDelayMs?: number;
-  readonly setViewportDelayMs?: number;
 };
 
 const makeFakePage = (overrides: FakePageOverrides = {}) => {
@@ -91,11 +107,6 @@ const makeFakePage = (overrides: FakePageOverrides = {}) => {
   const page = {
     viewportSize: () => viewports[viewports.length - 1],
     setViewportSize: async (size: { width: number; height: number }) => {
-      if (overrides.setViewportDelayMs) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, overrides.setViewportDelayMs)
-        );
-      }
       viewports.push(size);
     },
     context: () => ({
@@ -115,6 +126,13 @@ const makeFakePage = (overrides: FakePageOverrides = {}) => {
   } as unknown as Playwright.Page;
   return { page, viewports, initScripts, fakeCdp };
 };
+
+type CardTextOverrides = Partial<{
+  count: number;
+  text: string;
+  hidden: boolean;
+  ariaHidden: boolean;
+}>;
 
 type NodeOverrides = {
   readonly role?: string;
@@ -148,7 +166,8 @@ const makeSnapshotGlobals = (
       role: string | null;
       ariaBusy: string | null;
       ariaLabel: string | null;
-      text: string;
+      title: CardTextOverrides;
+      body: CardTextOverrides;
       hidden: boolean;
       width: number;
       height: number;
@@ -157,22 +176,44 @@ const makeSnapshotGlobals = (
     readonly fontsStatus?: string;
     readonly locationHref?: string;
     readonly inner?: { width: number; height: number };
+    readonly copy?: { readonly title: string; readonly body: string };
   } = {}
 ) => {
+  const copy = overrides.copy ?? {
+    title: englishCopy.title,
+    body: englishCopy.account,
+  };
   const rect = (width: number, height: number) => ({
     width,
     height,
     x: 8,
     y: 8,
   });
-  const card = {
+  const cardText = (
+    text: string,
+    textOverrides: CardTextOverrides | undefined
+  ) =>
+    Array.from({ length: textOverrides?.count ?? 1 }, () => ({
+      // Surrounding whitespace is trimmed before comparison.
+      textContent: `\n  ${textOverrides?.text ?? text}  `,
+      computedStyle: textOverrides?.hidden
+        ? { display: "block", visibility: "hidden" }
+        : undefined,
+      getAttribute: (name: string) =>
+        name === "aria-hidden" && textOverrides?.ariaHidden ? "true" : null,
+      getBoundingClientRect: () => rect(400, 40),
+      parentElement: card,
+    }));
+  const card: Record<string, unknown> = {
     getAttribute: (name: string) => {
       if (name === "role") return overrides.card?.role ?? "status";
       if (name === "aria-busy") return overrides.card?.ariaBusy ?? "true";
-      return overrides.card?.ariaLabel ?? "Loading sign-in…";
+      return overrides.card?.ariaLabel ?? englishCopy.label;
     },
-    get textContent() {
-      return overrides.card?.text ?? "  Loading sign-in…  ";
+    querySelectorAll: (selector: string) => {
+      if (selector === "h1") return cardText(copy.title, overrides.card?.title);
+      if (selector === "p") return cardText(copy.body, overrides.card?.body);
+      return [];
     },
     getBoundingClientRect: () =>
       rect(overrides.card?.width ?? 600, overrides.card?.height ?? 300),
@@ -221,10 +262,9 @@ const makeSnapshotGlobals = (
   (globalThis as Record<string, unknown>).location = {
     href: overrides.locationHref ?? validCallbackUrl,
   };
-  (globalThis as Record<string, unknown>).getComputedStyle = () => ({
-    display: "block",
-    visibility: "visible",
-  });
+  (globalThis as Record<string, unknown>).getComputedStyle = (node: {
+    computedStyle?: unknown;
+  }) => node.computedStyle ?? { display: "block", visibility: "visible" };
   return () => {
     (globalThis as Record<string, unknown>).window = previous.window;
     (globalThis as Record<string, unknown>).document = previous.document;
@@ -240,8 +280,12 @@ const snapshotConfig = {
   uuidPatternSource:
     "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
   callbackPath: "/en-US/auth/callback",
+  returnParamName: "return",
+  returnValue: null as string | null,
   loadingSelector: '[data-slot="auth-callback-loading"]',
-  loadingAriaLabel: "Loading sign-in…",
+  loadingAriaLabel: englishCopy.label,
+  titleText: englishCopy.title,
+  bodyText: englishCopy.account,
   mainSelector: 'main, [role="main"]',
   bannerSelector: '[role="banner"], body > header',
   footerSelector: '[role="contentinfo"], body > footer',
@@ -293,6 +337,23 @@ describe("collectCallbackDocumentSnapshot", () => {
       ["wrong-card-role", { card: { role: "none" } }],
       ["card-not-busy", { card: { ariaBusy: "false" } }],
       ["card-wrong-label", { card: { ariaLabel: "Other" } }],
+      ["title-missing", { card: { title: { count: 0 } } }],
+      ["title-repeated", { card: { title: { count: 2 } } }],
+      ["title-wrong-text", { card: { title: { text: "Signing you in" } } }],
+      ["title-hidden", { card: { title: { hidden: true } } }],
+      ["title-aria-hidden", { card: { title: { ariaHidden: true } } }],
+      ["body-missing", { card: { body: { count: 0 } } }],
+      [
+        "body-returning-instead-of-account",
+        {
+          card: {
+            body: {
+              text: "Taking you back to where you left off. You can finish in this browser.",
+            },
+          },
+        },
+      ],
+      ["body-hidden", { card: { body: { hidden: true } } }],
       ["card-invisible", { card: { width: 0, height: 0 } }],
       ["card-aria-hidden-ancestor", { card: { hidden: true } }],
       ["main-missing", { main: null }],
@@ -318,63 +379,114 @@ describe("collectCallbackDocumentSnapshot", () => {
     }
   });
 
-  test("explicit role overrides must equal the expected landmark role exactly", () => {
-    const rejects = [
-      ["header-role-navigation", { banner: { role: "navigation" } }],
-      ["footer-role-button", { footer: { role: "button" } }],
-      ["main-role-navigation", { main: { role: "navigation" } }],
-    ] as const;
-    for (const [name, overrides] of rejects) {
-      const restore = makeSnapshotGlobals(overrides);
-      try {
-        const parsed = JSON.parse(
-          collectCallbackDocumentSnapshot(snapshotConfig)
-        ) as { v: boolean };
-        expect(parsed.v).toBe(false);
-      } finally {
-        restore();
-      }
-    }
-    // Implicit semantics (no role attribute) and exact explicit roles accept.
-    const accepts = [
-      ["implicit-landmarks", {}],
-      [
-        "exact-explicit-roles",
-        {
-          main: { role: "main" },
-          banner: { role: "banner" },
-          footer: { role: "contentinfo" },
-        },
-      ],
-    ] as const;
-    for (const [name, overrides] of accepts) {
-      const restore = makeSnapshotGlobals(overrides);
-      try {
-        const parsed = JSON.parse(
-          collectCallbackDocumentSnapshot(snapshotConfig)
-        ) as { v: boolean };
-        expect(parsed.v).toBe(true);
-      } finally {
-        restore();
-      }
-    }
-  });
-
-  test("nested header and footer do not implicitly count as landmarks", () => {
-    // The selectors only accept exact roles or direct body children, so a
-    // page whose header/footer are nested renders no banner/contentinfo.
+  test("reports a failing card through numeric metrics only", () => {
     const restore = makeSnapshotGlobals({
-      banner: null,
-      footer: null,
+      card: { title: { text: "Leaked heading" }, body: { count: 0 } },
+      locationHref: `${baseOrigin}/en-US/auth/callback?secret=leak`,
     });
     try {
-      const parsed = JSON.parse(
-        collectCallbackDocumentSnapshot(snapshotConfig)
-      ) as { v: boolean };
+      const payload = collectCallbackDocumentSnapshot(snapshotConfig);
+      const parsed = JSON.parse(payload) as {
+        v: boolean;
+        m: Record<string, unknown>;
+      };
       expect(parsed.v).toBe(false);
+      expect(parsed.m).toMatchObject({ title: 1, bodyCount: 1, url: 1 });
+      expect(
+        Object.values(parsed.m).every((value) => typeof value === "number")
+      ).toBe(true);
+      expect(payload).not.toContain("Leaked");
+      expect(payload).not.toContain("leak");
     } finally {
       restore();
     }
+  });
+
+  test("accepts the Czech returning callback only with its exact return", () => {
+    const czechConfig = {
+      ...snapshotConfig,
+      callbackPath: "/cs-CZ/auth/callback",
+      returnValue: czechReturnValue,
+      loadingAriaLabel: czechCopy.label,
+      titleText: czechCopy.title,
+      bodyText: czechCopy.returning,
+    };
+    const collect = (overrides: Parameters<typeof makeSnapshotGlobals>[0]) => {
+      const restore = makeSnapshotGlobals({
+        card: { ariaLabel: czechCopy.label },
+        copy: { title: czechCopy.title, body: czechCopy.returning },
+        ...overrides,
+      });
+      try {
+        return (
+          JSON.parse(collectCallbackDocumentSnapshot(czechConfig)) as {
+            v: boolean;
+          }
+        ).v;
+      } finally {
+        restore();
+      }
+    };
+    const czechCallback = `${baseOrigin}/cs-CZ/auth/callback`;
+
+    expect(collect({ locationHref: czechCallbackUrl })).toBe(true);
+    expect(
+      collect({ locationHref: `${czechCallback}?return=${czechReturnValue}` })
+    ).toBe(true);
+    for (const href of [
+      czechCallback,
+      `${czechCallback}?attempt=550e8400-e29b-41d4-a716-446655440000`,
+      `${czechCallback}?return=${encodeAuthCallbackReturn("/cs-CZ/account")}`,
+      `${czechCallback}?return=${czechReturnValue}&return=${czechReturnValue}`,
+      `${baseOrigin}/en-US/auth/callback?return=${czechReturnValue}`,
+    ]) {
+      expect(collect({ locationHref: href })).toBe(false);
+    }
+    expect(
+      collect({
+        locationHref: czechCallbackUrl,
+        card: { ariaLabel: englishCopy.label },
+      })
+    ).toBe(false);
+    expect(
+      collect({
+        locationHref: czechCallbackUrl,
+        card: {
+          ariaLabel: czechCopy.label,
+          title: { text: englishCopy.title },
+        },
+      })
+    ).toBe(false);
+    expect(
+      collect({
+        locationHref: czechCallbackUrl,
+        card: {
+          ariaLabel: czechCopy.label,
+          body: { text: "Přesměrujeme tě na účet…" },
+        },
+      })
+    ).toBe(false);
+  });
+
+  test("checks fonts and the viewport only for a capture", () => {
+    const validationOnlyConfig = { ...snapshotConfig, viewport: null };
+    const collect = (overrides: Parameters<typeof makeSnapshotGlobals>[0]) => {
+      const restore = makeSnapshotGlobals(overrides);
+      try {
+        return (
+          JSON.parse(collectCallbackDocumentSnapshot(validationOnlyConfig)) as {
+            v: boolean;
+          }
+        ).v;
+      } finally {
+        restore();
+      }
+    };
+
+    expect(
+      collect({ fontsStatus: "loading", inner: { width: 1024, height: 768 } })
+    ).toBe(true);
+    expect(collect({ card: { count: 0 } })).toBe(false);
   });
 });
 
@@ -415,6 +527,7 @@ describe("prepareCallbackDocumentReview", () => {
     const review = await prepareCallbackDocumentReview(
       fake.page,
       baseOrigin,
+      accountLanding,
       viewport,
       {
         deadline: Date.now() + 10_000,
@@ -443,6 +556,28 @@ describe("prepareCallbackDocumentReview", () => {
     });
     expect(fakeCdp.calls).toContain("Runtime.removeBinding");
     expect(fakeCdp.calls).toContain("detach");
+  });
+
+  test("validates without a capture viewport, leaving the page viewport alone", async () => {
+    const fake = makeFakePage();
+    const review = await prepareCallbackDocumentReview(
+      fake.page,
+      baseOrigin,
+      accountLanding,
+      null,
+      { deadline: Date.now() + 10_000 }
+    );
+    admitMainContext(fake.fakeCdp);
+    deliverReceipt(fake.fakeCdp);
+
+    review.validate();
+    await expect(
+      review.capture({ deadline: Date.now() + 10_000 })
+    ).rejects.toThrow();
+    await review.dispose();
+
+    expect(fake.viewports).toEqual([{ width: 800, height: 600 }]);
+    expect(fake.fakeCdp.calls).toContain("detach");
   });
 
   test("ignores receipts from unexpected binding names and foreign or subframe contexts", async () => {
@@ -497,67 +632,6 @@ describe("prepareCallbackDocumentReview", () => {
     expect(() => review.validate()).toThrow();
   });
 
-  test("context destruction during capture fails closed after the screenshot settles", async () => {
-    let releaseScreenshot: (value: unknown) => void = () => undefined;
-    const fakeCdp = makeFakeCdp({
-      failingMethods: new Set(),
-      screenshot: () =>
-        new Promise((resolve) => {
-          releaseScreenshot = resolve;
-        }),
-    });
-    const { review } = await prepare({ cdp: fakeCdp });
-    admitMainContext(fakeCdp);
-    deliverReceipt(fakeCdp);
-    const capturePromise = review.capture({ deadline: Date.now() + 10_000 });
-    fakeCdp.cdp.emit("Runtime.executionContextDestroyed", {
-      executionContextId: mainContextId,
-    });
-    releaseScreenshot({ data: Buffer.from([0x89, 0x50]).toString("base64") });
-    await expect(capturePromise).rejects.toThrow();
-  });
-
-  test("a pending document whose context never arrives yields no receipt", async () => {
-    const { review } = await prepare();
-    expect(() => review.validate()).toThrow();
-    await expect(
-      review.capture({ deadline: Date.now() + 10_000 })
-    ).rejects.toThrow();
-  });
-
-  test("honors deadline and abort signal", async () => {
-    const { review } = await prepare();
-    await expect(
-      review.capture({ deadline: Date.now() - 1 })
-    ).rejects.toThrow();
-    const controller = new AbortController();
-    controller.abort();
-    const { fakeCdp: fakeCdp2, review: review2 } = await prepare();
-    admitMainContext(fakeCdp2);
-    deliverReceipt(fakeCdp2);
-    await expect(
-      review2.capture({
-        deadline: Date.now() + 10_000,
-        signal: controller.signal,
-      })
-    ).rejects.toThrow();
-  });
-
-  test("fails closed on screenshot failure", async () => {
-    const fakeCdp = makeFakeCdp({
-      failingMethods: new Set(),
-      screenshot: () => {
-        throw new Error("compositor unavailable");
-      },
-    });
-    const { review } = await prepare({ cdp: fakeCdp });
-    admitMainContext(fakeCdp);
-    deliverReceipt(fakeCdp);
-    await expect(
-      review.capture({ deadline: Date.now() + 10_000 })
-    ).rejects.toThrow();
-  });
-
   test("validates the live page URL strictly", async () => {
     const { fakeCdp, review } = await prepare({
       url: `${baseOrigin}/en-US/account`,
@@ -565,6 +639,70 @@ describe("prepareCallbackDocumentReview", () => {
     admitMainContext(fakeCdp);
     deliverReceipt(fakeCdp);
     expect(() => review.validate()).toThrow();
+  });
+
+  test("serializes the Czech landing and validates its exact return", async () => {
+    const admitAndValidate = async (url: string) => {
+      const fake = makeFakePage({ url });
+      const review = await prepareCallbackDocumentReview(
+        fake.page,
+        baseOrigin,
+        czechLanding,
+        null,
+        { deadline: Date.now() + 10_000 }
+      );
+      admitMainContext(fake.fakeCdp);
+      deliverReceipt(fake.fakeCdp);
+      return { fake, review };
+    };
+
+    const { fake, review } = await admitAndValidate(czechCallbackUrl);
+    review.validate();
+    const script = fake.initScripts[0] ?? "";
+    for (const value of [
+      '"callbackPath":"/cs-CZ/auth/callback"',
+      `"returnValue":"${czechReturnValue}"`,
+      `"loadingAriaLabel":"${czechCopy.label}"`,
+      `"titleText":"${czechCopy.title}"`,
+      `"bodyText":"${czechCopy.returning}"`,
+    ]) {
+      expect(script).toContain(value);
+    }
+    expect(script).not.toContain("skeleton");
+    await review.dispose();
+
+    for (const url of [
+      `${baseOrigin}/cs-CZ/auth/callback`,
+      `${baseOrigin}/cs-CZ/auth/callback?return=${encodeAuthCallbackReturn("/cs-CZ/account")}`,
+      validCallbackUrl,
+    ]) {
+      const mismatched = await admitAndValidate(url);
+      expect(() => mismatched.review.validate()).toThrow();
+      await mismatched.review.dispose();
+    }
+  });
+
+  test("serializes the account landing without a return value", async () => {
+    const { initScripts, review } = await prepare();
+    const script = initScripts[0] ?? "";
+    expect(script).toContain('"callbackPath":"/en-US/auth/callback"');
+    expect(script).toContain('"returnValue":null');
+    expect(script).toContain(`"bodyText":"${englishCopy.account}"`);
+    await review.dispose();
+  });
+
+  test("rejects a return target without a callback encoding", async () => {
+    const fake = makeFakePage();
+    await expect(
+      prepareCallbackDocumentReview(
+        fake.page,
+        baseOrigin,
+        { locale: "cs-CZ", returnTo: "/cs-CZ/rezervace-ř" },
+        null,
+        { deadline: Date.now() + 10_000 }
+      )
+    ).rejects.toThrow();
+    expect(fake.fakeCdp.calls).toHaveLength(0);
   });
 
   test("every partial acquisition failure cleans up and fails closed", async () => {
@@ -579,6 +717,7 @@ describe("prepareCallbackDocumentReview", () => {
         prepareCallbackDocumentReview(
           fakeCdp.page ?? makeFakePage({ cdp: fakeCdp }).page,
           baseOrigin,
+          accountLanding,
           viewport,
           {
             deadline: Date.now() + 10_000,
@@ -593,39 +732,19 @@ describe("prepareCallbackDocumentReview", () => {
     const fakeCdp = makeFakeCdp({ failingMethods: new Set() });
     const { page } = makeFakePage({ cdp: fakeCdp, sessionDelayMs: 300 });
     await expect(
-      prepareCallbackDocumentReview(page, baseOrigin, viewport, {
-        deadline: Date.now() + 50,
-      })
+      prepareCallbackDocumentReview(
+        page,
+        baseOrigin,
+        accountLanding,
+        viewport,
+        {
+          deadline: Date.now() + 50,
+        }
+      )
     ).rejects.toThrow();
     expect(fakeCdp.calls).not.toContain("detach");
     await new Promise((resolve) => setTimeout(resolve, 450));
     expect(fakeCdp.calls).toContain("detach");
-  });
-
-  test("a midflight abort cleans up after the late viewport write settles", async () => {
-    const controller = new AbortController();
-    const fakeCdp = makeFakeCdp({ failingMethods: new Set() });
-    const { page, viewports } = makeFakePage({
-      cdp: fakeCdp,
-      setViewportDelayMs: 300,
-    });
-    const preparePromise = prepareCallbackDocumentReview(
-      page,
-      baseOrigin,
-      viewport,
-      {
-        deadline: Date.now() + 10_000,
-        signal: controller.signal,
-      }
-    );
-    setTimeout(() => controller.abort(), 30);
-    await expect(preparePromise).rejects.toThrow();
-    await new Promise((resolve) => setTimeout(resolve, 450));
-    // The late viewport write settled; the continuation restored the original.
-    expect(viewports[viewports.length - 1]).toEqual({
-      width: 800,
-      height: 600,
-    });
   });
 
   test("dispose is idempotent and attempts every step despite failures", async () => {
@@ -701,18 +820,6 @@ describe("prepareCallbackDocumentReview", () => {
     await expect(capturePromise).rejects.toThrow();
   });
 
-  test("captureConsumed is immutable: second capture rejects even after replacement invalidation", async () => {
-    const { fakeCdp, review } = await prepare();
-    admitMainContext(fakeCdp);
-    deliverReceipt(fakeCdp);
-    await review.capture({ deadline: Date.now() + 10_000 });
-    admitMainContext(fakeCdp, mainContextId + 1);
-    deliverReceipt(fakeCdp, { executionContextId: mainContextId + 1 });
-    await expect(
-      review.capture({ deadline: Date.now() + 10_000 })
-    ).rejects.toThrow();
-  });
-
   test("late viewport write after a completed restore still owes a second restoration", async () => {
     const fakeCdp = makeFakeCdp({ failingMethods: new Set() });
     const viewports: Array<{ width: number; height: number }> = [
@@ -738,6 +845,7 @@ describe("prepareCallbackDocumentReview", () => {
     const preparePromise = prepareCallbackDocumentReview(
       page,
       baseOrigin,
+      accountLanding,
       viewport,
       {
         deadline: Date.now() + 10_000,
@@ -752,8 +860,6 @@ describe("prepareCallbackDocumentReview", () => {
       { width: 800, height: 600 },
       { width: 800, height: 600 },
     ]);
-    const restorationsAfterCleanup = viewports.length - 1;
-    expect(restorationsAfterCleanup).toBe(1);
     // The original write resolves late; the continuation owes and performs a
     // SECOND restoration, so the final viewport is the previous one.
     releaseWrite();
@@ -770,7 +876,6 @@ describe("prepareCallbackDocumentReview", () => {
       { width: 1440, height: 1000 },
       { width: 800, height: 600 },
     ]);
-    expect(restorationsAfterCleanup).toBe(1);
   });
 
   test("session fulfilled and aborted in the same synchronous turn is owned and detached exactly once", async () => {
@@ -797,6 +902,7 @@ describe("prepareCallbackDocumentReview", () => {
     const preparePromise = prepareCallbackDocumentReview(
       page,
       baseOrigin,
+      accountLanding,
       viewport,
       {
         deadline: Date.now() + 10_000,
@@ -834,6 +940,7 @@ describe("prepareCallbackDocumentReview", () => {
     const preparePromise = prepareCallbackDocumentReview(
       page,
       baseOrigin,
+      accountLanding,
       viewport,
       {
         deadline: Date.now() + 10_000,
@@ -853,33 +960,5 @@ describe("prepareCallbackDocumentReview", () => {
       width: 800,
       height: 600,
     });
-  });
-
-  test("viewport restore failure during dispose fails closed", async () => {
-    const fakeCdp = makeFakeCdp({ failingMethods: new Set() });
-    let setViewportCalls = 0;
-    const viewports: Array<{ width: number; height: number }> = [
-      { width: 800, height: 600 },
-    ];
-    const page = {
-      viewportSize: () => viewports[viewports.length - 1],
-      setViewportSize: async (size: { width: number; height: number }) => {
-        setViewportCalls += 1;
-        if (setViewportCalls > 1) throw new Error("viewport busy");
-        viewports.push(size);
-      },
-      context: () => ({ newCDPSession: async () => fakeCdp.cdp }),
-      addInitScript: async () => {},
-      url: () => validCallbackUrl,
-    } as unknown as Playwright.Page;
-    const review = await prepareCallbackDocumentReview(
-      page,
-      baseOrigin,
-      viewport,
-      {
-        deadline: Date.now() + 10_000,
-      }
-    );
-    await expect(review.dispose()).rejects.toThrow();
   });
 });

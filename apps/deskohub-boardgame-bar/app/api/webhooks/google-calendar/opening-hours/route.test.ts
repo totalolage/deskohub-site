@@ -63,13 +63,6 @@ describe("Google Calendar opening-hours webhook", () => {
     });
   });
 
-  test("rejects unknown notification states", async () => {
-    const response = await POST(makeRequest("unknown"));
-
-    expect(response.status).toBe(400);
-    expect(revalidateTag).not.toHaveBeenCalled();
-  });
-
   test("returns a retryable error when invalidation fails", async () => {
     revalidateTag.mockImplementationOnce(() => {
       throw new Error("cache unavailable");

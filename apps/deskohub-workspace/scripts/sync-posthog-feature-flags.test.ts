@@ -17,7 +17,7 @@ const workspaceProject = { id: 204184, name: "Deskohub Workspace" };
 const accountsSummary = { id: 274447, key: "accounts" };
 const accountsDefinition = {
   ...accountsSummary,
-  active: false,
+  active: true,
   filters: {},
 };
 const existingContract = "// contract from before this sync\n";
@@ -113,7 +113,7 @@ const runFailure = async (
 };
 
 describe("Workspace PostHog feature flag CLI synchronization", () => {
-  test("writes the boolean contract through the CLI without a management API key", async () => {
+  test("writes the boolean contract through the CLI without a management API key while accounts is active", async () => {
     const previousApiKey = process.env.POSTHOG_API_KEY;
     delete process.env.POSTHOG_API_KEY;
 
@@ -214,6 +214,28 @@ describe("Workspace PostHog feature flag CLI synchronization", () => {
     });
   });
 
+  test("syncs without requiring any flag to be present or in a rollout state", async () => {
+    await withTempOutput(async (outputFile) => {
+      const summary = { id: 12, key: "calendar_sales" };
+      const reader = makeQueuedReader({
+        pages: [{ count: 1, results: [summary] }],
+        definitions: [{ ...summary, active: false, filters: {} }],
+      });
+
+      await Effect.runPromise(
+        syncPostHogFeatureFlagsFromCli({
+          outputFile,
+          projectId,
+          readCliJson: reader.readCliJson,
+        })
+      );
+
+      const contract = await Bun.file(outputFile).text();
+      expect(contract).toContain('  "calendar_sales",');
+      expect(contract).not.toContain('"accounts"');
+    });
+  });
+
   const invalidCliFixtures: readonly {
     readonly name: string;
     readonly project: CliFixtureResponse;
@@ -227,44 +249,10 @@ describe("Workspace PostHog feature flag CLI synchronization", () => {
       definitions: [],
     },
     {
-      name: "a missing accounts flag",
-      project: workspaceProject,
-      pages: [{ count: 0, results: [] }],
+      name: "a different project with the Workspace project ID",
+      project: { id: 204184, name: "Another Project" },
+      pages: [],
       definitions: [],
-    },
-    {
-      name: "a flag with the wrong identity",
-      project: workspaceProject,
-      pages: [{ count: 1, results: [{ id: 274448, key: "not_accounts" }] }],
-      definitions: [
-        { id: 274448, key: "not_accounts", active: false, filters: {} },
-      ],
-    },
-    {
-      name: "the accounts ID with the wrong key",
-      project: workspaceProject,
-      pages: [{ count: 1, results: [{ id: 274447, key: "not_accounts" }] }],
-      definitions: [
-        { id: 274447, key: "not_accounts", active: false, filters: {} },
-      ],
-    },
-    {
-      name: "an active accounts flag",
-      project: workspaceProject,
-      pages: [{ count: 1, results: [accountsSummary] }],
-      definitions: [{ ...accountsDefinition, active: true }],
-    },
-    {
-      name: "an archived accounts flag",
-      project: workspaceProject,
-      pages: [{ count: 1, results: [accountsSummary] }],
-      definitions: [{ ...accountsDefinition, archived: true }],
-    },
-    {
-      name: "a deleted accounts flag",
-      project: workspaceProject,
-      pages: [{ count: 1, results: [accountsSummary] }],
-      definitions: [{ ...accountsDefinition, deleted: true }],
     },
   ];
 

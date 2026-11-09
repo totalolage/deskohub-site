@@ -5,6 +5,7 @@ import type {
   StoredDiscount,
 } from "@/db/schema";
 import {
+  findWorkspaceProductTargetsIssue,
   type WorkspaceProductTarget,
   workspaceProductTargetSchema,
 } from "@/features/discounts/product-target";
@@ -83,14 +84,12 @@ const discountTargetsSchema = (discountId: StoredDiscountId) =>
           issue: "product targets must belong to the discount definition",
         }
     ),
-    Schema.makeFilter(
-      (targets) =>
-        new Set(targets.map(({ productTarget }) => productTarget.kind)).size ===
-          targets.length || {
-          path: [],
-          issue: "product targets must be unique",
-        }
-    )
+    Schema.makeFilter((targets) => {
+      const issue = findWorkspaceProductTargetsIssue(
+        targets.map(({ productTarget }) => productTarget)
+      );
+      return issue === undefined || { path: [], issue };
+    })
   );
 
 const decodeDefinitionLabels = (input: {

@@ -1,13 +1,6 @@
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  test,
-} from "bun:test";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { useForm, useWatch } from "react-hook-form";
+import { m } from "@/features/i18n";
 import {
   defaultReservationBillingSelection,
   type ReservationBillingSelectionInput,
@@ -17,7 +10,15 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { ReservationBillingFields } from "./reservation-billing-fields";
+
+// React DOM detects input events when it loads, so the DOM must exist first.
+registerWorkspaceComponentTestEnv();
+const { cleanup, fireEvent, render } = await import("@testing-library/react");
+const { ReservationBillingFields } = await import(
+  "./reservation-billing-fields"
+);
+
+const locale = "en-US";
 
 const Harness = () => {
   const form = useForm<{ billing: ReservationBillingSelectionInput }>({
@@ -27,14 +28,13 @@ const Harness = () => {
 
   return (
     <Form {...form}>
-      <ReservationBillingFields locale="en-US" />
+      <ReservationBillingFields locale={locale} />
       <output data-testid="billing-value">{JSON.stringify(billing)}</output>
     </Form>
   );
 };
 
 describe("ReservationBillingFields", () => {
-  beforeAll(registerWorkspaceComponentTestEnv);
   afterEach(cleanup);
   afterAll(unregisterWorkspaceComponentTestEnv);
 
@@ -78,5 +78,35 @@ describe("ReservationBillingFields", () => {
     expect(view.getByTestId("billing-value").textContent).not.toContain(
       "Private street 1"
     );
+  });
+
+  test("leaves a blank optional field out and keeps a required one as typed", () => {
+    const view = render(<Harness />);
+    const billing = () =>
+      JSON.parse(view.getByTestId("billing-value").textContent ?? "{}");
+    const type = (label: string, value: string) =>
+      fireEvent.change(view.getByLabelText(label, { exact: false }), {
+        target: { value },
+      });
+
+    const vatIdLabel = m.reservationBillingVatIdLabel({}, { locale });
+    fireEvent.click(
+      view.getByRole("switch", {
+        name: m.reservationPurposeBusinessLabel({}, { locale }),
+      })
+    );
+    type(vatIdLabel, "CZ12345678");
+    type(m.reservationBillingCompanyNameLabel({}, { locale }), "  ");
+    expect(billing().buyer).toMatchObject({
+      legalName: "  ",
+      vatId: "CZ12345678",
+    });
+
+    type(vatIdLabel, "   ");
+    expect(billing().buyer).not.toHaveProperty("vatId");
+    expect(
+      (view.getByLabelText(vatIdLabel, { exact: false }) as HTMLInputElement)
+        .required
+    ).toBe(false);
   });
 });

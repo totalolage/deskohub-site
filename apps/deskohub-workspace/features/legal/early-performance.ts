@@ -2,14 +2,14 @@ import { Match } from "effect";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
-export const consumerWithdrawalPeriodDays = 14;
+const consumerWithdrawalPeriodDays = 14;
 
 const getWorkspaceDateStart = (date: string) =>
   Temporal.PlainDate.from(date)
     .toZonedDateTime(workspaceSiteConstants.location.timeZone)
     .toInstant();
 
-export const getReservationServiceStart = (
+const getReservationServiceStart = (
   reservation: ReservationOrderData
 ): Temporal.Instant =>
   Match.value(reservation).pipe(

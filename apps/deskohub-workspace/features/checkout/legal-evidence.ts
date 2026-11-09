@@ -2,14 +2,12 @@ import { Schema } from "effect";
 import { locales } from "@/features/i18n";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
-export const legalDocumentKeys = [
+const legalDocumentKeys = [
   "termsAndConditions",
   "operatingRules",
   "privacyPolicy",
   "marketingCommunications",
 ] as const;
-
-export type LegalDocumentKey = (typeof legalDocumentKeys)[number];
 
 export const legalEvidenceEventIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("LegalEvidenceEventId")
@@ -22,13 +20,29 @@ export type LegalEvidenceEventId = typeof legalEvidenceEventIdSchema.Type;
 
 export const paymentSubmitLegalEvidenceSource = "payment_submit" as const;
 
-export const legalDocumentHashSchema = Schema.Struct({
+/**
+ * Customer acknowledgements captured with an accepted document. One
+ * early-performance consent fact covers the combined early-performance request
+ * and withdrawal-right acknowledgement behind the single checkout choice.
+ * Checkout rejects payment when that consent is required but not given, so
+ * the fact is only ever recorded as granted.
+ */
+const legalEvidenceAcknowledgementsSchema = Schema.Struct({
+  earlyPerformanceConsent: Schema.optionalKey(Schema.Literal(true)),
+}).annotate({
+  identifier: "LegalEvidenceAcknowledgements",
+  description:
+    "Acknowledgements the customer gave together with an accepted legal document.",
+});
+
+export type LegalEvidenceAcknowledgements =
+  typeof legalEvidenceAcknowledgementsSchema.Type;
+
+const legalDocumentHashSchema = Schema.Struct({
   path: Schema.NonEmptyString,
   hash: Schema.NonEmptyString,
   hashAlgorithm: Schema.Literal("sha256"),
 });
-
-export type LegalDocumentHash = typeof legalDocumentHashSchema.Type;
 
 export const legalEvidenceSchema = Schema.Struct({
   documentKey: Schema.Literals(legalDocumentKeys),
@@ -38,9 +52,7 @@ export const legalEvidenceSchema = Schema.Struct({
   locale: Schema.Literals(locales),
   source: Schema.NonEmptyString,
   document: legalDocumentHashSchema,
-  acknowledgements: Schema.optional(
-    Schema.Record(Schema.NonEmptyString, Schema.Boolean)
-  ),
+  acknowledgements: Schema.optional(legalEvidenceAcknowledgementsSchema),
 }).check(
   Schema.makeFilter(
     (evidence) => evidence.document.hash === evidence.documentHash,
@@ -50,8 +62,6 @@ export const legalEvidenceSchema = Schema.Struct({
     }
   )
 );
-
-export type LegalEvidence = typeof legalEvidenceSchema.Type;
 
 export const legalEvidenceMapSchema = Schema.Record(
   Schema.NonEmptyString,

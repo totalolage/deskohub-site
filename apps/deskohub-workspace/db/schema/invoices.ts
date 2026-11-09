@@ -63,5 +63,3 @@ export const invoices = pgTable(
     index("invoices_dotypos_customer_idx").on(t.dotyposCustomerId),
   ]
 );
-
-export type InvoiceRow = typeof invoices.$inferSelect;

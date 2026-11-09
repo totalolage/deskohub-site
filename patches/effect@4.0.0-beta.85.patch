@@ -1,0 +1,46 @@
+diff --git a/dist/internal/effect.js b/dist/internal/effect.js
+index eb1cd7d128916a04abbcdfb3b613fc53dbe88620..3fc88f6d60475821a1db8ac3e7550d3c46ec9234 100644
+--- a/dist/internal/effect.js
++++ b/dist/internal/effect.js
+@@ -721,6 +721,15 @@ export const withFiberId = f => withFiber(fiber => f(fiber.id));
+ export const fiber = /*#__PURE__*/withFiber(succeed);
+ /** @internal */
+ export const fiberId = /*#__PURE__*/withFiberId(succeed);
++// A callback resumes its fiber wherever the callback fires, such as a pooled
++// connection's socket handler, another fiber's semaphore release or a shared
++// layer build, and AsyncLocalStorage stores (for example a Next.js request
++// store) would follow that foreign async context. Capture the context a fiber
++// suspends in and resume it there, as an awaited promise does.
++const captureAsyncContext = /*#__PURE__*/(() => {
++  const AsyncLocalStorage = globalThis.process?.getBuiltinModule?.("node:async_hooks")?.AsyncLocalStorage ?? globalThis.AsyncLocalStorage;
++  return typeof AsyncLocalStorage?.snapshot === "function" ? () => AsyncLocalStorage.snapshot() : undefined;
++})();
+ const callbackOptions = /*#__PURE__*/makePrimitive({
+   op: "Async",
+   single: false,
+@@ -728,18 +737,24 @@ const callbackOptions = /*#__PURE__*/makePrimitive({
+     const register = internalCall(() => this[args][0].bind(fiber.currentScheduler));
+     let resumed = false;
+     let yielded = false;
++    let suspendedContext = undefined;
+     const controller = this[args][1] ? new AbortController() : undefined;
+     const onCancel = register(effect => {
+       if (resumed) return;
+       resumed = true;
+       if (yielded) {
+-        fiber.evaluate(effect);
++        if (suspendedContext === undefined) {
++          fiber.evaluate(effect);
++        } else {
++          suspendedContext(() => fiber.evaluate(effect));
++        }
+       } else {
+         yielded = effect;
+       }
+     }, controller?.signal);
+     if (yielded !== false) return yielded;
+     yielded = true;
++    suspendedContext = captureAsyncContext?.();
+     fiber._yielded = () => {
+       resumed = true;
+     };

@@ -6,26 +6,11 @@ import { z } from "zod";
 
 const appDir = resolve(import.meta.dir, "../..");
 const artifactDirectory = resolve(appDir, "e2e-artifacts", "scheduling");
-const childTimeoutMs = 20_000;
-const checkoutProjects = [
-  "checkout-non-payment",
-  "checkout-payment-1",
-  "checkout-payment-2",
-  "checkout-payment-3",
-] as const;
-const preparationProjects = [
-  "checkout-availability",
-  "checkout-provider-preparation",
-  "checkout-invoice-persistence",
-  "checkout-plan",
-] as const;
-const scenarios = [
-  "baseline",
-  "baseline-failure",
-  "candidate",
-  "candidate-account-failure",
-  "candidate-checkout-failure",
-] as const;
+const childTimeoutMs = 30_000;
+const checkoutProjects = ["checkout-cases"] as const;
+const preparationProjects = ["checkout-setup"] as const;
+const accessCodeProject = "access-code-creation";
+const scenarios = ["candidate", "candidate-checkout-failure"] as const;
 type Scenario = (typeof scenarios)[number];
 
 const projectSchema = z
@@ -57,8 +42,6 @@ type Event = {
   workerIndex: number;
   testName?: string;
   outcome?: string;
-  step?: number;
-  sharedStep?: number;
 };
 type Interval = { start: Event; end: Event };
 type Range = { start: number; end: number };
@@ -72,7 +55,6 @@ type Run = {
 type FailFast = readonly [
   failedTests: number,
   failedTestsAdmitted: number,
-  sharedFixtureAdmitted: boolean,
   cleanupAdmitted: boolean,
   lateAdmissions: number,
 ];
@@ -162,20 +144,6 @@ function projectName(project: Project) {
   return name;
 }
 
-function graphFor(graph: Graph, scenario: Scenario) {
-  if (!scenario.startsWith("baseline")) {
-    return graph;
-  }
-  return {
-    ...graph,
-    projects: graph.projects.map((project) =>
-      projectName(project) === "account-auth"
-        ? { ...project, dependencies: ["checkout-setup"] }
-        : project
-    ),
-  };
-}
-
 function fakeSource(playwrightImport: string, projectName: string) {
   return `import { access, appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -184,14 +152,19 @@ import { test as base } from ${JSON.stringify(playwrightImport)};
 const syntheticProject = ${JSON.stringify(projectName)};
 const eventDirectory = process.env.WORKSPACE_E2E_SCHEDULING_EVENT_DIR;
 const scenario = process.env.WORKSPACE_E2E_SCHEDULING_SCENARIO;
-const failureMode = process.env.WORKSPACE_E2E_SCHEDULING_FAILURE_MODE;
-const rendezvousTimeoutMs = 18_000;
-const checkoutFirstSignals = [
-  "checkout-non-payment-first-started",
-  "checkout-payment-1-first-started",
-  "checkout-payment-2-first-started",
-  "checkout-payment-3-first-started",
+// Stays below the Playwright test timeout so a stuck rendezvous reports itself.
+const rendezvousTimeoutMs = 8_000;
+const checkoutFirstSignals = ["checkout-cases-first-started"];
+// Failures wait until every capped case worker is busy, so the whole first
+// case batch is admitted before maxFailures stops the run.
+const firstBatchSignals = [
+  ...checkoutFirstSignals,
+  "checkout-cases-2-started",
+  "checkout-cases-3-started",
+  "checkout-cases-4-started",
+  "checkout-cases-5-started",
 ];
+const checkoutFailure = scenario === "candidate-checkout-failure";
 
 if (!eventDirectory || !scenario) {
   throw new Error("Synthetic scheduler setup is missing");
@@ -201,7 +174,6 @@ await mkdir(eventDirectory, { recursive: true });
 const signalDirectory = join(eventDirectory, "signals");
 await mkdir(signalDirectory, { recursive: true });
 let sequence = 0;
-let sharedStep = 0;
 
 const sleep = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -209,7 +181,7 @@ const signalPath = (name) => join(signalDirectory, name + ".signal");
 const signal = async (name) => {
   await appendFile(signalPath(name), "ready\\n");
 };
-const waitForSignals = async (names) => {
+const waitForSignals = async (info, testName, names) => {
   const deadline = Date.now() + rendezvousTimeoutMs;
   while (Date.now() < deadline) {
     const present = await Promise.all(
@@ -225,6 +197,7 @@ const waitForSignals = async (names) => {
     if (present.every(Boolean)) return;
     await sleep(10);
   }
+  await emit(info, "rendezvous-timeout", { testName });
   throw new Error("Synthetic scheduler rendezvous timed out");
 };
 const emit = async (info, event, details = {}) => {
@@ -275,86 +248,64 @@ const runSyntheticTest = async (info, testName, body) => {
   }
 };
 const durationFor = (project) =>
-  project === "checkout-non-payment" || project.startsWith("checkout-payment-")
-    ? 1000
+  project === "checkout-cases"
+    ? 250
     : project.startsWith("checkout-")
       ? 180
       : 40;
+// Cases are independent and outnumber the workers, like the deployed suite,
+// so they would queue the account lane without a worker cap.
+const parallelCases = syntheticProject === "checkout-cases";
 const testCount =
-  syntheticProject === "account-auth"
-    ? 9
-    : syntheticProject.startsWith("checkout-payment-")
-      ? 2
-      : 1;
+  syntheticProject === "account-auth" ? 9 : parallelCases ? 8 : 1;
 
-test.describe.configure({ mode: "serial" });
+test.describe.configure({ mode: parallelCases ? "parallel" : "serial" });
 for (let step = 1; step <= testCount; step += 1) {
   test("synthetic-" + step, async ({}, info) => {
-    await runSyntheticTest(info, "synthetic-" + step, async () => {
+    const testName = "synthetic-" + step;
+    await runSyntheticTest(info, testName, async () => {
       if (syntheticProject !== "account-auth") {
         if (step === 1) {
           await signal(syntheticProject + "-first-started");
-          if (
-            failureMode === "candidate-account" &&
-            syntheticProject.startsWith("checkout-") &&
-            checkoutFirstSignals.includes(syntheticProject + "-first-started")
-          ) {
-            await waitForPlaywrightInterruption(info, "synthetic-1");
-            return;
-          }
-          if (
-            failureMode === "candidate-checkout" &&
-            syntheticProject.startsWith("checkout-") &&
-            syntheticProject !== "checkout-payment-1" &&
-            checkoutFirstSignals.includes(syntheticProject + "-first-started")
-          ) {
-            await waitForPlaywrightInterruption(info, "synthetic-1");
-            return;
-          }
-          if (
-            failureMode === "candidate-checkout" &&
-            syntheticProject === "checkout-payment-1"
-          ) {
-            await waitForSignals([
+        }
+        if (parallelCases && step > 1) {
+          await signal(syntheticProject + "-" + step + "-started");
+        }
+        const caseProject = checkoutFirstSignals.includes(
+          syntheticProject + "-first-started"
+        );
+        if (caseProject && (step === 1 || parallelCases)) {
+          if (checkoutFailure && step === 1) {
+            await waitForSignals(info, testName, [
               "account-auth-first-started",
-              ...checkoutFirstSignals,
+              ...firstBatchSignals,
             ]);
-            await emit(info, "checkout-failure", { testName: "synthetic-1" });
+            await emit(info, "checkout-failure", { testName });
             throw new Error("Synthetic checkout failure");
           }
+          if (checkoutFailure) {
+            await waitForPlaywrightInterruption(info, testName);
+            return;
+          }
+          // The first case batch cannot finish until the account lane starts,
+          // so queueing the account lane behind the cases times out instead
+          // of depending on worker start-up timing.
+          await waitForSignals(info, testName, ["account-auth-first-started"]);
         }
         await sleep(durationFor(syntheticProject));
         return;
       }
 
-      sharedStep += 1;
-      if (sharedStep !== step) {
-        throw new Error("Account worker state was not serial");
-      }
-      await emit(info, "account-step-start", {
-        sharedStep,
-        step,
-        testName: "synthetic-" + step,
-      });
       if (step === 1) {
         await signal("account-auth-first-started");
-        if (failureMode === "candidate-checkout") {
-          await waitForPlaywrightInterruption(info, "synthetic-1");
+        if (checkoutFailure) {
+          await waitForPlaywrightInterruption(info, testName);
           return;
         }
-        if (failureMode === "candidate-account") {
-          await waitForSignals(checkoutFirstSignals);
-          await emit(info, "account-failure", { testName: "synthetic-1" });
-          throw new Error("Synthetic account failure");
-        }
         await sleep(120);
-        await emit(info, "account-quiet-start", { testName: "synthetic-1" });
-        await sleep(3000);
-        await emit(info, "account-quiet-end", { testName: "synthetic-1" });
-        if (failureMode === "baseline") {
-          await emit(info, "account-failure", { testName: "synthetic-1" });
-          throw new Error("Synthetic account failure");
-        }
+        await emit(info, "account-quiet-start", { testName });
+        await sleep(750);
+        await emit(info, "account-quiet-end", { testName });
       } else {
         await sleep(40);
       }
@@ -455,68 +406,21 @@ function peakOverlap(
   return maximum;
 }
 
-function unionDuration(spans: readonly Range[]) {
-  const sorted = spans
-    .filter((span) => span.end > span.start)
-    .sort((left, right) => left.start - right.start);
-  let total = 0;
-  let currentEnd = 0;
-  for (const span of sorted) {
-    if (span.start >= currentEnd) {
-      total += span.end - span.start;
-    } else if (span.end > currentEnd) {
-      total += span.end - currentEnd;
-    }
-    currentEnd = Math.max(currentEnd, span.end);
-  }
-  return total;
-}
-
 function summarize(
   events: readonly Event[],
   items: readonly Interval[],
   wallSpanMs: number
 ) {
-  const quietStart = events.find(
-    (event) => event.event === "account-quiet-start"
-  )?.at;
-  const quietEnd = events.find(
-    (event) => event.event === "account-quiet-end"
-  )?.at;
-  const checkoutSpans =
-    quietStart !== undefined && quietEnd !== undefined
-      ? items
-          .filter((item) =>
-            checkoutProjects.some((project) => project === item.start.project)
-          )
-          .map((item) => ({
-            start: Math.max(item.start.at, quietStart),
-            end: Math.min(item.end.at, quietEnd),
-          }))
-      : [];
   const startedTests = events
     .filter((event) => event.event === "test-start")
     .map(testKey)
     .sort();
   const failureAt = events.find(
-    (event) =>
-      event.event === "account-failure" || event.event === "checkout-failure"
+    (event) => event.event === "checkout-failure"
   )?.at;
-  const allTimes = items.flatMap((item) => [item.start.at, item.end.at]);
   return {
     wallSpanMs,
-    criticalPathMs: allTimes.length
-      ? Math.max(...allTimes) - Math.min(...allTimes)
-      : 0,
-    accountQuietMs:
-      quietStart !== undefined && quietEnd !== undefined
-        ? quietEnd - quietStart
-        : 0,
-    checkoutOverlapMs: unionDuration(checkoutSpans),
     maxActiveTests: peakOverlap(items),
-    maxPaymentTests: peakOverlap(items, (item) =>
-      item.start.project.startsWith("checkout-payment-")
-    ),
     fixtureFinalizedOwnershipCount: events.filter(
       (event) => event.event === "fixture-finalizer-complete"
     ).length,
@@ -526,7 +430,6 @@ function summarize(
         (event) => event.event === "test-end" && event.outcome === "failed"
       )
       .map(testKey),
-    sharedFixtureAdmitted: Boolean(range(items, "checkout-shared-fixture")),
     cleanupAdmitted: Boolean(range(items, "checkout-cleanup")),
     lateAdmissions:
       failureAt === undefined
@@ -535,13 +438,6 @@ function summarize(
             (event) => event.event === "test-start" && event.at > failureAt
           ).length,
   };
-}
-
-function failureModeFor(scenario: Scenario) {
-  if (scenario === "baseline-failure") return "baseline";
-  if (scenario === "candidate-account-failure") return "candidate-account";
-  if (scenario === "candidate-checkout-failure") return "candidate-checkout";
-  return "none";
 }
 
 async function runScenario(
@@ -566,6 +462,7 @@ async function runScenario(
         teardown: project.teardown,
         testDir: testsDirectory,
         testMatch: [`${name}.mjs`],
+        workers: project.workers,
       };
     }),
     retries: graph.retries,
@@ -592,7 +489,6 @@ async function runScenario(
         NODE_ENV: "test",
         PATH: process.env.PATH ?? "",
         WORKSPACE_E2E_SCHEDULING_EVENT_DIR: eventsDirectory,
-        WORKSPACE_E2E_SCHEDULING_FAILURE_MODE: failureModeFor(scenario),
         WORKSPACE_E2E_SCHEDULING_SCENARIO: scenario,
       },
       stderr: "ignore",
@@ -662,109 +558,42 @@ function assertRunCompletion(run: Run) {
     `${run.scenario} did not interrupt a pending test body`
   );
   must(
-    run.summary.maxActiveTests <= 6 && run.summary.maxPaymentTests <= 3,
-    `${run.scenario} exceeded worker or payment limits`
+    run.summary.maxActiveTests <= 6,
+    `${run.scenario} exceeded the worker limit`
   );
 }
 
-function assertAccountLane(run: Run) {
-  const steps = run.events
-    .filter((event) => event.event === "account-step-start")
-    .sort(
-      (left, right) => left.at - right.at || left.sequence - right.sequence
+function assertOnlyFirstBatch(run: Run, graph: Graph) {
+  for (const project of ["account-auth", ...checkoutProjects]) {
+    const workers =
+      graph.projects.find((candidate) => candidate.name === project)?.workers ??
+      1;
+    const started = run.summary.startedTests.filter((key) =>
+      key.startsWith(`${project}/synthetic-`)
     );
-  must(steps.length === 9, `${run.scenario} did not run nine account tests`);
-  must(
-    new Set(steps.map((event) => event.workerIndex)).size === 1,
-    `${run.scenario} account tests used multiple workers`
-  );
-  must(
-    steps.every(
-      (event, index) =>
-        event.step === index + 1 && event.sharedStep === index + 1
-    ),
-    `${run.scenario} account tests were not serial`
-  );
-}
-
-function assertPaymentLanes(run: Run) {
-  for (const name of checkoutProjects.slice(1)) {
-    const lane = run.intervals
-      .filter((item) => item.start.project === name)
-      .sort((left, right) => left.start.at - right.start.at);
-    must(lane.length === 2, `${run.scenario} payment lane ${name} count`);
-    const first = lane[0];
-    const second = lane[1];
-    must(first, `${run.scenario} payment lane ${name} first test`);
-    must(second, `${run.scenario} payment lane ${name} second test`);
     must(
-      second.start.at >= first.end.at,
-      `${run.scenario} payment lane ${name} was not serial`
-    );
-  }
-}
-
-function assertSharedFixtureTail(run: Run) {
-  const sharedFixture = requiredRange(
-    run.intervals,
-    "checkout-shared-fixture",
-    run.scenario
-  );
-  for (const name of checkoutProjects) {
-    must(
-      requiredRange(run.intervals, name, run.scenario).end <
-        sharedFixture.start,
-      `${run.scenario} shared fixture started before ${name}`
-    );
-  }
-}
-
-function assertCleanupTail(run: Run, graph: Graph) {
-  const cleanup = requiredRange(
-    run.intervals,
-    "checkout-cleanup",
-    run.scenario
-  );
-  for (const project of graph.projects) {
-    const name = projectName(project);
-    if (name === "checkout-cleanup") continue;
-    must(
-      requiredRange(run.intervals, name, run.scenario).end < cleanup.start,
-      `${run.scenario} cleanup started before ${name}`
-    );
-  }
-}
-
-function assertOnlyFirstTests(run: Run) {
-  const projects = ["account-auth", ...checkoutProjects];
-  for (const project of projects) {
-    const later = run.summary.startedTests.filter((key) => {
-      if (!key.startsWith(`${project}/synthetic-`)) return false;
-      return key !== `${project}/synthetic-1`;
-    });
-    must(
-      later.length === 0,
+      started.includes(`${project}/synthetic-1`) && started.length <= workers,
       `${run.scenario} admitted a later ${project} test`
     );
   }
 }
 
-function assertInterruptedFailure(run: Run) {
+function assertInterruptedFailure(run: Run, graph: Graph) {
   const failureAt = requiredEventAt(
     run.events,
-    ["account-failure", "checkout-failure"],
+    ["checkout-failure"],
     run.scenario
   );
   must(
     run.summary.lateAdmissions === 0,
     `${run.scenario} admitted a later test`
   );
-  must(
-    !run.summary.sharedFixtureAdmitted,
-    `${run.scenario} admitted shared fixture`
-  );
   must(!run.summary.cleanupAdmitted, `${run.scenario} admitted cleanup`);
-  assertOnlyFirstTests(run);
+  must(
+    !range(run.intervals, accessCodeProject),
+    `${run.scenario} admitted the access-code case`
+  );
+  assertOnlyFirstBatch(run, graph);
   for (const project of ["account-auth", ...checkoutProjects]) {
     const interval = requiredRange(run.intervals, project, run.scenario);
     must(
@@ -780,50 +609,24 @@ function failFast(run: Run): FailFast {
     failedTests.length,
     failedTests.filter((test) => run.summary.startedTests.includes(test))
       .length,
-    run.summary.sharedFixtureAdmitted,
     run.summary.cleanupAdmitted,
     run.summary.lateAdmissions,
   ];
 }
 
 function verify(graph: Graph, runs: readonly Run[]) {
-  const baseline = runFor(runs, "baseline");
-  const baselineFailure = runFor(runs, "baseline-failure");
   const candidate = runFor(runs, "candidate");
-  const candidateAccountFailure = runFor(runs, "candidate-account-failure");
-  const candidateCheckoutFailure = runFor(runs, "candidate-checkout-failure");
+  const checkoutFailure = runFor(runs, "candidate-checkout-failure");
   must(
-    baseline.exitCode === 0 && candidate.exitCode === 0,
-    "successful synthetic runs failed"
+    !candidate.events.some((event) => event.event === "rendezvous-timeout"),
+    "candidate account-auth did not start in the first case batch"
   );
-  for (const run of [
-    baselineFailure,
-    candidateAccountFailure,
-    candidateCheckoutFailure,
-  ]) {
-    must(run.exitCode !== 0, `${run.scenario} unexpectedly passed`);
-  }
+  must(candidate.exitCode === 0, "successful synthetic run failed");
+  must(
+    checkoutFailure.exitCode !== 0,
+    `${checkoutFailure.scenario} unexpectedly passed`
+  );
   for (const run of runs) assertRunCompletion(run);
-  assertAccountLane(baseline);
-  assertAccountLane(candidate);
-  assertPaymentLanes(baseline);
-  assertPaymentLanes(candidate);
-  must(
-    JSON.stringify(baseline.summary.startedTests) ===
-      JSON.stringify(candidate.summary.startedTests),
-    "baseline/candidate successful started test sets differ"
-  );
-  must(
-    baseline.summary.checkoutOverlapMs === 0 &&
-      candidate.summary.checkoutOverlapMs > 0,
-    "before/after checkout overlap was not observed"
-  );
-  must(
-    requiredRange(baseline.intervals, "account-auth", "baseline").end <
-      requiredRange(baseline.intervals, "checkout-availability", "baseline")
-        .start,
-    "baseline account ordering changed"
-  );
   const candidateAccount = requiredRange(
     candidate.intervals,
     "account-auth",
@@ -836,6 +639,24 @@ function verify(graph: Graph, runs: readonly Run[]) {
       `candidate ${name} started after account`
     );
   }
+  // The access-code case shares the case phase but is queued last, so it
+  // only takes a worker that frees up after the first case batch started.
+  must(
+    requiredRange(candidate.intervals, accessCodeProject, "candidate").start >
+      candidateAccount.start,
+    "candidate access-code case took a first case-batch worker"
+  );
+  const firstCaseEnd = Math.min(
+    ...candidate.intervals
+      .filter((item) =>
+        checkoutProjects.some((project) => project === item.start.project)
+      )
+      .map((item) => item.end.at)
+  );
+  must(
+    candidateAccount.start < firstCaseEnd,
+    "candidate account-auth did not start in the first case batch"
+  );
   const quietStart = requiredEventAt(
     candidate.events,
     ["account-quiet-start"],
@@ -857,56 +678,22 @@ function verify(graph: Graph, runs: readonly Run[]) {
       `candidate ${name} missed account quiet overlap`
     );
   }
-  assertSharedFixtureTail(baseline);
-  assertSharedFixtureTail(candidate);
-  assertCleanupTail(baseline, graph);
-  assertCleanupTail(candidate, graph);
-  assertInterruptedFailure(candidateAccountFailure);
-  assertInterruptedFailure(candidateCheckoutFailure);
-  const expectedFailFast: FailFast = [1, 1, false, false, 0];
-  for (const run of [
-    baselineFailure,
-    candidateAccountFailure,
-    candidateCheckoutFailure,
-  ]) {
-    must(
-      JSON.stringify(failFast(run)) === JSON.stringify(expectedFailFast),
-      `${run.scenario} fail-fast tuple changed`
-    );
-  }
+  assertInterruptedFailure(checkoutFailure, graph);
+  const expectedFailFast: FailFast = [1, 1, false, 0];
+  must(
+    JSON.stringify(failFast(checkoutFailure)) ===
+      JSON.stringify(expectedFailFast),
+    `${checkoutFailure.scenario} fail-fast tuple changed`
+  );
 }
 
 export async function runWorkspaceE2ESchedulingRegression() {
   const graph = await loadGraph();
-  must(
-    graph.workers === 6 &&
-      graph.maxFailures === 1 &&
-      graph.retries === 0 &&
-      graph.fullyParallel === true &&
-      graph.forbidOnly === true,
-    "actual Playwright controls drifted"
-  );
-  const account = graph.projects.find(
-    (project) => project.name === "account-auth"
-  );
-  must(account, "actual config is missing account-auth");
-  must(
-    account.dependencies?.includes("checkout-plan"),
-    "candidate account dependency is not checkout-plan"
-  );
-  const projectNames = graph.projects.map(projectName);
-  for (const name of [
-    ...checkoutProjects,
-    ...preparationProjects,
-    "checkout-shared-fixture",
-    "checkout-cleanup",
-  ]) {
-    must(projectNames.includes(name), `actual config is missing ${name}`);
-  }
   await mkdir(artifactDirectory, { recursive: true });
   const root = await mkdtemp(join(artifactDirectory, "run-"));
   const testsDirectory = join(root, "tests");
   await mkdir(testsDirectory, { recursive: true });
+  const projectNames = graph.projects.map(projectName);
   const playwrightImport = pathToFileURL(
     Bun.resolveSync("@playwright/test", import.meta.dir)
   ).href;
@@ -918,21 +705,12 @@ export async function runWorkspaceE2ESchedulingRegression() {
   }
   const runs: Run[] = [];
   for (const scenario of scenarios) {
-    runs.push(
-      await runScenario(
-        root,
-        graphFor(graph, scenario),
-        scenario,
-        testsDirectory
-      )
-    );
+    runs.push(await runScenario(root, graph, scenario, testsDirectory));
   }
   const packageInfo = await Bun.file(
     Bun.resolveSync("@playwright/test/package.json", import.meta.dir)
   ).json();
   const version = String(packageInfo.version);
-  const before = runFor(runs, "baseline").summary;
-  const after = runFor(runs, "candidate").summary;
   const artifactPath = join(root, "scheduling-diagnostic.json");
   const report = {
     artifactPath,
@@ -954,19 +732,12 @@ export async function runWorkspaceE2ESchedulingRegression() {
       fullyParallel: graph.fullyParallel,
       forbidOnly: graph.forbidOnly,
       projectCount: graph.projects.length,
-      candidateAccountDependencies: account.dependencies,
-    },
-    comparison: {
-      before,
-      after,
-      delta: {
-        wallSpanMs: after.wallSpanMs - before.wallSpanMs,
-        criticalPathMs: after.criticalPathMs - before.criticalPathMs,
-        checkoutOverlapMs: after.checkoutOverlapMs - before.checkoutOverlapMs,
-      },
+      accountDependencies: graph.projects.find(
+        (project) => project.name === "account-auth"
+      )?.dependencies,
     },
     knownLimitations: [
-      "Playwright 1.61.0 does not admit checkout-cleanup after maxFailures stops a failing run; failed baseline/candidate cleanup is intentionally not required.",
+      "Playwright 1.61.0 does not admit checkout-cleanup after maxFailures stops a failing run; cleanup after the failing run is intentionally not required.",
     ],
     scenarios: runs.map(({ intervals: _intervals, ...run }) => run),
   };

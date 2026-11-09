@@ -1,21 +1,33 @@
+"use client";
+
 import type { ComponentProps, ReactNode } from "react";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { cn } from "@/shared/utils";
+import {
+  type AdministrationHref,
+  localizeAdministrationHref,
+} from "./administration-href";
 
 const controlClassName =
   "h-10 w-full rounded-lg border border-navy-blue/15 bg-white px-3 text-sm text-navy-blue outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/15 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function AdministrationFilterField({
   children,
+  className,
   htmlFor,
   label,
 }: {
   readonly children: ReactNode;
+  readonly className?: string;
   readonly htmlFor: string;
   readonly label: string;
 }) {
   return (
     <label
-      className="grid gap-1.5 text-xs font-semibold text-navy-blue/65"
+      className={cn(
+        "grid gap-1.5 text-xs font-semibold text-navy-blue/65",
+        className
+      )}
       htmlFor={htmlFor}
     >
       {label}
@@ -44,13 +56,22 @@ export function AdministrationFilterSelect({
 }
 
 export function AdministrationFilterForm({
+  action,
   children,
   className,
+  method = "get",
   variant = "toolbar",
   ...props
-}: ComponentProps<"form"> & {
+}: Omit<ComponentProps<"form">, "action"> & {
+  readonly action?: AdministrationHref;
   readonly variant?: "standalone" | "toolbar";
 }) {
+  const locale = useRouteLocale();
+  const localizedAction =
+    action === undefined
+      ? undefined
+      : localizeAdministrationHref(action, locale);
+
   return (
     <form
       className={cn(
@@ -60,6 +81,8 @@ export function AdministrationFilterForm({
         }[variant],
         className
       )}
+      action={localizedAction}
+      method={method}
       {...props}
     >
       {children}

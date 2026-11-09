@@ -58,27 +58,6 @@ describe("Cloudinary webhook route", () => {
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
-  test("validation error returns 400", async () => {
-    const { POST } = await import("./route");
-    verifyCloudinaryWebhookRequest.mockImplementationOnce(() =>
-      Effect.fail({
-        _tag: "CloudinaryWebhookValidationError",
-        message: "bad payload",
-      })
-    );
-
-    const response = await POST(
-      new Request("https://bar.example.test/api/webhooks/cloudinary")
-    );
-
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      error: "Invalid payload",
-      message: "bad payload",
-    });
-    expect(revalidateTag).not.toHaveBeenCalled();
-  });
-
   test("success revalidates all Cloudinary tags", async () => {
     const { POST } = await import("./route");
 

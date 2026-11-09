@@ -11,6 +11,7 @@ export class AllocationError extends Data.TaggedError("AllocationError")<{
 interface AcquireInput {
   readonly owner: AllocationOwner;
   readonly preferredShard: number;
+  readonly previewBranch: string;
   readonly waitSeconds: number;
 }
 
@@ -72,6 +73,7 @@ export class AllocationService extends Context.Service<
               repository.acquire({
                 owner: input.owner,
                 preferredShard: input.preferredShard,
+                previewBranch: input.previewBranch,
                 terminalOwners: completed,
               })
             ),
@@ -88,7 +90,7 @@ export class AllocationService extends Context.Service<
                 Effect.fail(
                   new AllocationError({
                     message:
-                      "Workspace E2E allocation exhausted: all 3 shards remained leased for supported concurrency 3.",
+                      "Workspace E2E allocation timed out: all 3 shards remained leased for supported concurrency 3, or another run kept this branch's preview database.",
                   })
                 ),
             })
