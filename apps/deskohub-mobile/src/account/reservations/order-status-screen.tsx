@@ -286,6 +286,7 @@ function OrderStatusContent({
         <ListRow
           label={m.reservations_order_when({}, { locale })}
           value={reservationPeriodText(order, locale)}
+          wrapValue
         />
         {Option.isSome(setupStartsAt) && (
           <ListRow

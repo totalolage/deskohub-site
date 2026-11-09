@@ -45,9 +45,10 @@ export interface FormattedInstantRange {
 }
 
 /**
- * Prague calendar days, told apart by the date fields alone. Hours aren't read:
- * the app showed whole days as midnight times on Android, which Effect's
- * zoned `DateTime.toParts` gives when the engine ignores Intl's `hourCycle`.
+ * Prague calendar days, told apart by one date-only format. Effect's zoned
+ * `DateTime.toParts` reads `formatToParts` by position with options (such as
+ * `hourCycle`) an engine may not honour; on Android it misread Prague midnight
+ * and even the day, so whole days showed as midnight times.
  */
 const workspaceDayFormat = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
