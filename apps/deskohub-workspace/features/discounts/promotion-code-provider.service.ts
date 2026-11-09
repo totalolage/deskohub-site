@@ -32,11 +32,13 @@ import {
 } from "./promotion-code";
 import { PromotionCodeRepository } from "./promotion-code.repository";
 import type { DiscountCandidate } from "./provider";
+import { isFirstServiceDateEligible } from "./service-date-eligibility";
 
 export type PromotionCodeProviderInput = Pick<
   DiscountQuoteInput,
   | "discountableSubtotal"
   | "dotyposCustomerId"
+  | "firstServiceDate"
   | "locale"
   | "product"
   | "submittedCode"
@@ -116,6 +118,7 @@ export class PromotionCodeProvider extends Context.Service<
                     Effect.tap(validateCustomerAllowed),
                     Effect.tap(validateUsageAvailable),
                     Effect.tap(validateCustomerUsageAvailable),
+                    Effect.tap(validateDiscountCodeServiceDate),
                     Effect.bind("definition", loadDiscountDefinition),
                     Effect.tap(validateDiscountCodeProduct),
                     Effect.tap(validateFixedAdjustmentCompatibility),
@@ -167,6 +170,7 @@ export class PromotionCodeProvider extends Context.Service<
                       configuration,
                     })),
                     Effect.tap(validateUsageAvailable),
+                    Effect.tap(validateDiscountCodeServiceDate),
                     Effect.bind("definition", loadDiscountDefinition),
                     Effect.tap(validateDiscountCodeProduct),
                     Effect.tap(validateFixedAdjustmentCompatibility),
@@ -333,6 +337,14 @@ const validateCustomerAllowed = (input: {
   input.availability.allowlistSize > 0 && !input.availability.customerAllowed
     ? unavailable(input.configuration, "customer_ineligible")
     : Effect.void;
+
+const validateDiscountCodeServiceDate = (input: {
+  readonly configuration: DiscountCodeConfiguration;
+  readonly firstServiceDate: PromotionCodeProviderInput["firstServiceDate"];
+}) =>
+  isFirstServiceDateEligible(input.configuration, input.firstServiceDate)
+    ? Effect.void
+    : unavailable(input.configuration, "service_date_ineligible");
 
 const validateDiscountCodeProduct = (input: {
   readonly configuration: DiscountCodeConfiguration;

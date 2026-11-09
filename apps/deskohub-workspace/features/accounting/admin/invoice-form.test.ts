@@ -52,7 +52,7 @@ registerWorkspaceComponentTestEnv();
 // React DOM, which @testing-library/react and the form load, must load after
 // the happy-dom registration to handle input events; the Radix dialog portal
 // also needs the registered document.
-const { act, cleanup, fireEvent, render, within } = await import(
+const { act, cleanup, fireEvent, render, waitFor, within } = await import(
   "@testing-library/react"
 );
 const {
@@ -262,6 +262,14 @@ const fillInput = (
   ) as HTMLInputElement;
   fireEvent.input(input, { target: { value } });
   return input;
+};
+
+// A date field takes typed text when focus leaves it.
+const typeDate = (view: InvoiceFormView, label: string, text: string) => {
+  const field = view.getByRole("combobox", { name: label });
+  fireEvent.change(field, { target: { value: text } });
+  fireEvent.focusOut(field);
+  return field;
 };
 
 const fillPersonRequiredFields = (view: InvoiceFormView) => {
@@ -721,7 +729,7 @@ test("ignores a blank hidden due date once already paid is selected", async () =
   const preview = mockPreviewAction();
   const view = renderInvoiceCreationForm();
   fillValidPersonInvoice(view);
-  fillInput(view, "Due date", "");
+  typeDate(view, "Due date", "");
 
   submitInvoiceForm(view);
   await view.findByText("This field is required.");
@@ -736,6 +744,83 @@ test("ignores a blank hidden due date once already paid is selected", async () =
       payment: { status: "paid", date: "2026-08-18" },
     })
   );
+});
+
+test("submits the typed invoice dates as calendar dates", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+  typeDate(view, "Service date", "2026-08-20");
+  typeDate(view, "Due date", "2026-09-15");
+
+  const form = view.container.querySelector("form")!;
+  const data = new FormData(form);
+  expect([data.get("serviceDate"), data.get("dueDate")]).toEqual([
+    "2026-08-20",
+    "2026-09-15",
+  ]);
+  submitInvoiceForm(view);
+  await waitFor(() =>
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        serviceDate: "2026-08-20",
+        payment: { status: "due", date: "2026-09-15" },
+      })
+    )
+  );
+});
+
+test("submits the typed paid-on date once already paid is selected", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+  fireEvent.click(view.getByRole("checkbox", { name: "Already paid" }));
+  typeDate(view, "Paid on", "2026-08-25");
+
+  const form = view.container.querySelector("form")!;
+  expect(new FormData(form).get("paidOn")).toBe("2026-08-25");
+  submitInvoiceForm(view);
+  await waitFor(() =>
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment: { status: "paid", date: "2026-08-25" },
+      })
+    )
+  );
+});
+
+test("drops a hidden due date's unfinished text once already paid is selected", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+  fireEvent.change(view.getByRole("combobox", { name: "Due date" }), {
+    target: { value: "2026-13-45" },
+  });
+
+  fireEvent.click(view.getByRole("checkbox", { name: "Already paid" }));
+  submitInvoiceForm(view);
+  await waitFor(() =>
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment: { status: "paid", date: "2026-08-18" },
+      })
+    )
+  );
+});
+
+test("keeps typed text that is no date out of the review", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+  const serviceDate = view.getByRole("combobox", { name: "Service date" });
+  fireEvent.change(serviceDate, { target: { value: "2026-02-30" } });
+
+  submitInvoiceForm(view);
+  await flush();
+
+  expect(preview).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(serviceDate);
+  expect(serviceDate.getAttribute("aria-invalid")).toBe("true");
 });
 
 const priceInputOf = (view: InvoiceFormView) =>

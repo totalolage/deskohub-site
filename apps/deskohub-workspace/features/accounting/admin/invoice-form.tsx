@@ -22,6 +22,7 @@ import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { getLocalizedPagePath } from "@/features/i18n/routing";
+import { FormDateInput } from "@/shared/components/date-time/form-fields";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
@@ -1048,20 +1049,16 @@ function InvoiceDetailsSection({
         <FormField
           control={control}
           name="serviceDate"
-          render={({ field: { onChange, ...field }, fieldState }) => (
+          render={({ field }) => (
             <FormItem>
               <FormLabel>
                 {m.accountingInvoiceFormServiceDate({}, { locale })}
               </FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  onInput={onChange}
-                  required
-                  type="date"
-                  variant={fieldState.error ? "error" : "default"}
-                />
-              </FormControl>
+              <FormDateInput
+                {...field}
+                label={m.accountingInvoiceFormServiceDate({}, { locale })}
+                required
+              />
               <FormMessage />
             </FormItem>
           )}
@@ -1071,20 +1068,16 @@ function InvoiceDetailsSection({
             control={control}
             key="paid"
             name="paidOn"
-            render={({ field: { onChange, ...field }, fieldState }) => (
+            render={({ field }) => (
               <FormItem>
                 <FormLabel>
                   {m.accountingInvoiceFormPaidOn({}, { locale })}
                 </FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    onInput={onChange}
-                    required
-                    type="date"
-                    variant={fieldState.error ? "error" : "default"}
-                  />
-                </FormControl>
+                <FormDateInput
+                  {...field}
+                  label={m.accountingInvoiceFormPaidOn({}, { locale })}
+                  required
+                />
                 <FormMessage />
               </FormItem>
             )}
@@ -1094,20 +1087,16 @@ function InvoiceDetailsSection({
             control={control}
             key="due"
             name="dueDate"
-            render={({ field: { onChange, ...field }, fieldState }) => (
+            render={({ field }) => (
               <FormItem>
                 <FormLabel>
                   {m.accountingInvoiceFormDueDate({}, { locale })}
                 </FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    onInput={onChange}
-                    required
-                    type="date"
-                    variant={fieldState.error ? "error" : "default"}
-                  />
-                </FormControl>
+                <FormDateInput
+                  {...field}
+                  label={m.accountingInvoiceFormDueDate({}, { locale })}
+                  required
+                />
                 <FormMessage />
               </FormItem>
             )}

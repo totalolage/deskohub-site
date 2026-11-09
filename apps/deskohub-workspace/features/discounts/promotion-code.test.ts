@@ -40,6 +40,8 @@ const discountRow = (
   discountId,
   maxUses: null,
   maxUsesPerCustomer: null,
+  serviceDateFrom: null,
+  serviceDateUntil: null,
   voucherId: null,
   issuedAmountValue: null,
   issuedAmountExponent: null,
@@ -109,7 +111,70 @@ describe("stored promotion configuration", () => {
       validUntil: null,
       maxUses: null,
       maxUsesPerCustomer: null,
+      serviceDateFrom: null,
+      serviceDateUntil: null,
     });
+  });
+
+  test("decodes a discount code's service dates", async () => {
+    await expect(
+      Effect.runPromise(
+        decodePromotionConfiguration({
+          row: discountRow({
+            serviceDateFrom: "2026-07-15",
+            serviceDateUntil: "2026-07-15",
+          }),
+        })
+      )
+    ).resolves.toMatchObject({
+      kind: "discount",
+      serviceDateFrom: "2026-07-15",
+      serviceDateUntil: "2026-07-15",
+    });
+  });
+
+  test.each([
+    ["only a first date", { serviceDateFrom: "2026-07-01" }],
+    ["only a last date", { serviceDateUntil: "2026-07-31" }],
+    [
+      "an inverted window",
+      { serviceDateFrom: "2026-07-31", serviceDateUntil: "2026-07-01" },
+    ],
+    [
+      "a non-canonical date",
+      { serviceDateFrom: "2026-7-1", serviceDateUntil: "2026-07-31" },
+    ],
+  ] as const)("rejects stored service dates with %s", async (_, window) => {
+    const result = await Effect.runPromise(
+      decodePromotionConfiguration({ row: discountRow(window) }).pipe(
+        Effect.result
+      )
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "PromotionCodeConfigurationError" },
+    });
+  });
+
+  test("rejects service dates on a voucher", async () => {
+    const result = await Effect.runPromise(
+      decodePromotionConfiguration({
+        row: discountRow({
+          kind: "voucher",
+          discountCodeId: null,
+          discountId: null,
+          voucherId,
+          issuedAmountValue: 10_000,
+          issuedAmountExponent: 2,
+          issuedAmountCurrency: "CZK",
+          serviceDateFrom: "2026-07-01",
+          serviceDateUntil: "2026-07-31",
+        }),
+      }).pipe(Effect.result)
+    );
+
+    expect(result).toMatchObject({ _tag: "Failure" });
   });
 
   test("decodes a voucher child without a discount", async () => {

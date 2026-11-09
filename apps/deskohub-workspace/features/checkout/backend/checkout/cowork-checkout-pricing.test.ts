@@ -41,6 +41,7 @@ const submittedCode = Schema.decodeUnknownSync(canonicalPromotionCodeSchema)(
 const emptyCommitment = () =>
   makeDiscountCommitment({
     product: { kind: "cowork", tier: "basic" },
+    firstServiceDate: "2099-07-30",
     applications: [],
   });
 
@@ -118,6 +119,7 @@ describe("cowork checkout pricing", () => {
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "basic" },
       discountableSubtotal: money(35_000),
+      firstServiceDate: reservation.date,
       lastServiceDate: reservation.date,
       locale: "en-US",
       bookedAt: expect.any(Temporal.Instant),
@@ -178,6 +180,7 @@ describe("cowork checkout pricing", () => {
 
     expect(previewDiscountCode).toHaveBeenCalledWith({
       baseQuote,
+      firstServiceDate: "2099-07-30",
       locale: "en-US",
       submittedCode,
     });
@@ -214,6 +217,7 @@ describe("cowork checkout pricing", () => {
     expect(affirmAdvertisement).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "basic" },
       discountableSubtotal: money(35_000),
+      firstServiceDate: reservation.date,
       lastServiceDate: reservation.date,
       locale: "en-US",
       bookedAt,
@@ -400,6 +404,7 @@ describe("cowork checkout pricing", () => {
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "basic" },
       discountableSubtotal: money(35_000),
+      firstServiceDate: reservation.date,
       lastServiceDate: reservation.date,
       dotyposCustomerId,
       locale: "en-US",
@@ -410,6 +415,7 @@ describe("cowork checkout pricing", () => {
     expect(applyDiscountCode).toHaveBeenCalledWith({
       baseQuote: affirmedAdvertisement,
       dotyposCustomerId,
+      firstServiceDate: "2099-07-30",
       locale: "en-US",
       submittedCode,
     });
@@ -491,6 +497,7 @@ describe("cowork checkout pricing", () => {
       affirmedDiscountAdvertisementQuoteCodec.make(profiQuote);
     const commitment = makeDiscountCommitment({
       product: { kind: "cowork", tier: "profi" },
+      firstServiceDate: "2099-07-30",
       applications: [],
     });
     const applyCustomerDiscount = mock(() => Effect.succeed(profiQuote));
@@ -517,6 +524,7 @@ describe("cowork checkout pricing", () => {
     expect(applyCustomerDiscount).toHaveBeenCalledWith({
       affirmedAdvertisement: profiAffirmedAdvertisement,
       dotyposCustomerId,
+      firstServiceDate: profiOrder.date,
       locale: "en-US",
     });
     expect(customerQuote.reservation).toBe(profiOrder);
@@ -544,6 +552,7 @@ describe("cowork checkout pricing", () => {
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "profi" },
       discountableSubtotal: money(55_000),
+      firstServiceDate: profiOrder.date,
       lastServiceDate: profiOrder.date,
       dotyposCustomerId,
       locale: "en-US",
@@ -608,6 +617,7 @@ describe("cowork checkout pricing", () => {
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "reserved-desk" },
       discountableSubtotal: money(41_000),
+      firstServiceDate: "2099-07-30",
       lastServiceDate: "2099-07-30",
       locale: "en-US",
       bookedAt: expect.any(Temporal.Instant),

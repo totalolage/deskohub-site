@@ -20,9 +20,11 @@
   ],
   "accessCodesWindowLegend": "Access window ({timeZone})",
   "accessCodesStartsLabel": "Starts",
+  "accessCodesStartsTimeLabel": "Start time",
   "accessCodesStartRequired": "Choose a start time.",
   "accessCodesStartInvalid": "Choose a valid start time on the whole hour.",
   "accessCodesEndsLabel": "Ends",
+  "accessCodesEndsTimeLabel": "End time",
   "accessCodesEndRequired": "Choose an end time.",
   "accessCodesEndInvalid": "Choose a valid end time on the whole hour.",
   "accessCodesWindowDurationInvalid": [

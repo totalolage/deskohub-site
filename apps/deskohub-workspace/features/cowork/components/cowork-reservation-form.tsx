@@ -31,7 +31,7 @@ import type { CanonicalPromotionCode } from "@/features/discounts";
 import { defaultPhoneRegion, type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
-import { ReservationFormDatePicker } from "@/features/reservation/components/reservation-date-picker";
+import { ReservationFormDateInput } from "@/features/reservation/components/reservation-date-input";
 import {
   ReservationCustomerFieldsFallback,
   ReservationSkeletonBlock,
@@ -681,16 +681,13 @@ function CoworkReservationDateField({
           <ReservationFormLabel required>
             {m.reservationDateLabel({}, { locale })}
           </ReservationFormLabel>
-          <ReservationFormDatePicker
-            ariaLabel={m.reservationDateLabel({}, { locale })}
+          <ReservationFormDateInput
+            {...field}
             displayValue={formatDisplayDate(field.value, locale)}
-            isDateDisabled={(date) => unavailableDates.has(date.toString())}
+            label={m.reservationDateLabel({}, { locale })}
             locale={locale}
             minimum={() => getCurrentWorkspaceDate().toString()}
-            name={field.name}
-            onBlur={field.onBlur}
-            onChange={field.onChange}
-            value={field.value}
+            unavailableDates={unavailableDates}
           />
           <FormMessage />
         </FormItem>

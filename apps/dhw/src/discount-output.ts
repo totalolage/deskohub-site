@@ -29,7 +29,31 @@ const formatCodeRemaining = (
   unlimitedLabel: string | number = "Unlimited"
 ) => code.remainingUses ?? unlimitedLabel;
 
-/** One code with the label of the discount it grants, its state, and its limits. */
+type ServiceDates = Pick<
+  AdministrationDiscountCodeType,
+  "serviceDateFrom" | "serviceDateUntil"
+>;
+
+/** The reservation start dates a code applies to, or none for any date. */
+const serviceDateRange = ({
+  serviceDateFrom,
+  serviceDateUntil,
+}: ServiceDates) =>
+  serviceDateFrom === null || serviceDateUntil === null
+    ? undefined
+    : { from: serviceDateFrom, until: serviceDateUntil };
+
+const formatServiceDates = (code: ServiceDates) => {
+  const range = serviceDateRange(code);
+  return range === undefined
+    ? "Any service date"
+    : `Service dates ${range.from} to ${range.until}`;
+};
+
+/**
+ * One code with the label of the discount it grants, its state, its limits,
+ * and the reservation start dates it applies to.
+ */
 export const formatCodeRow = (
   code: AdministrationDiscountCodeType,
   discountLabel: string
@@ -41,7 +65,16 @@ export const formatCodeRow = (
     code.enabled ? "Enabled" : "Disabled",
     `${formatCodeRemaining(code)} globally`,
     `${code.maxUsesPerCustomer ?? "Unlimited"} per customer`,
+    formatServiceDates(code),
   ].join("\t");
+
+/** A code detail's line naming the first and last reservation start date. */
+export const formatServiceDatesLine = (code: ServiceDates) => {
+  const range = serviceDateRange(code);
+  return range === undefined
+    ? "Service dates\tAny"
+    : `Service dates\t${range.from}\t${range.until}`;
+};
 
 type PromotionClaim = Pick<
   AdministrationDiscountCodeClaimType,
