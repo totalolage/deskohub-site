@@ -190,6 +190,8 @@
   "discountsEnabledLabel": "Enabled",
   "discountsValidFromLabel": "Valid from",
   "discountsValidUntilLabel": "Valid until",
+  "discountsValidFromTimeLabel": "Valid from time",
+  "discountsValidUntilTimeLabel": "Valid until time",
   "discountsMaxUsesLabel": "Maximum uses",
   "discountsMaxUsesPerCustomerLabel": "Maximum uses per customer",
   "discountsValidityHint": "Times use the Workspace’s Prague time zone. Both bounds are optional; “valid until” is exclusive.",

@@ -36,6 +36,7 @@ import { generatePromotionCode } from "@/features/discounts/promotion-code";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import { FormDateTimeInput } from "@/shared/components/date-time/form-fields";
 import { Button } from "@/shared/components/ui/button";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
 import { DisclosureButton } from "@/shared/components/ui/disclosure-button";
@@ -1491,19 +1492,15 @@ export function DiscountCodeConfigurationFields({
         <FormField
           control={control}
           name="validFrom"
-          render={({ field, fieldState }) => (
+          render={({ field }) => (
             <FormItem>
-              <FormLabel htmlFor={fieldId("validFrom", code?.id)}>
-                {m.discountsValidFromLabel({}, { locale })}
-              </FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  id={fieldId("validFrom", code?.id)}
-                  type="datetime-local"
-                  variant={fieldState.error ? "error" : "default"}
-                />
-              </FormControl>
+              <FormLabel>{m.discountsValidFromLabel({}, { locale })}</FormLabel>
+              <FormDateTimeInput
+                {...field}
+                dateLabel={m.discountsValidFromLabel({}, { locale })}
+                displayValue={false}
+                timeLabel={m.discountsValidFromTimeLabel({}, { locale })}
+              />
               <FormMessage />
             </FormItem>
           )}
@@ -1511,19 +1508,17 @@ export function DiscountCodeConfigurationFields({
         <FormField
           control={control}
           name="validUntil"
-          render={({ field, fieldState }) => (
+          render={({ field }) => (
             <FormItem>
-              <FormLabel htmlFor={fieldId("validUntil", code?.id)}>
+              <FormLabel>
                 {m.discountsValidUntilLabel({}, { locale })}
               </FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  id={fieldId("validUntil", code?.id)}
-                  type="datetime-local"
-                  variant={fieldState.error ? "error" : "default"}
-                />
-              </FormControl>
+              <FormDateTimeInput
+                {...field}
+                dateLabel={m.discountsValidUntilLabel({}, { locale })}
+                displayValue={false}
+                timeLabel={m.discountsValidUntilTimeLabel({}, { locale })}
+              />
               <FormMessage />
             </FormItem>
           )}
@@ -1580,12 +1575,7 @@ export function DiscountCodeConfigurationFields({
       <p className="text-xs leading-5 text-navy-blue/70">
         {m.discountsValidityHint({}, { locale })}
       </p>
-      {promotion === "discount-code" && (
-        <DiscountCodeServiceDateFields
-          fromId={fieldId("serviceDateFrom", code?.id)}
-          untilId={fieldId("serviceDateUntil", code?.id)}
-        />
-      )}
+      {promotion === "discount-code" && <DiscountCodeServiceDateFields />}
     </div>
   );
 }

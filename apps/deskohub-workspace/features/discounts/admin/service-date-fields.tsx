@@ -3,14 +3,13 @@
 import { useFormContext } from "react-hook-form";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { FormDateInput } from "@/shared/components/date-time/form-fields";
 import {
-  FormControl,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from "@/shared/components/ui/form";
-import { Input } from "@/shared/components/ui/input";
 
 type ServiceDateFormValues = {
   readonly serviceDateFrom: string;
@@ -21,13 +20,7 @@ type ServiceDateFormValues = {
  * The first and last reservation start date a discount code applies to. Both
  * stay empty for a code that applies to any date.
  */
-export function DiscountCodeServiceDateFields({
-  fromId,
-  untilId,
-}: {
-  readonly fromId: string;
-  readonly untilId: string;
-}) {
+export function DiscountCodeServiceDateFields() {
   const locale = useRouteLocale();
   const { control } = useFormContext<ServiceDateFormValues>();
 
@@ -37,19 +30,15 @@ export function DiscountCodeServiceDateFields({
         <FormField
           control={control}
           name="serviceDateFrom"
-          render={({ field, fieldState }) => (
+          render={({ field }) => (
             <FormItem>
-              <FormLabel htmlFor={fromId}>
+              <FormLabel>
                 {m.discountsServiceDateFromLabel({}, { locale })}
               </FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  id={fromId}
-                  type="date"
-                  variant={fieldState.error ? "error" : "default"}
-                />
-              </FormControl>
+              <FormDateInput
+                {...field}
+                label={m.discountsServiceDateFromLabel({}, { locale })}
+              />
               <FormMessage />
             </FormItem>
           )}
@@ -57,19 +46,15 @@ export function DiscountCodeServiceDateFields({
         <FormField
           control={control}
           name="serviceDateUntil"
-          render={({ field, fieldState }) => (
+          render={({ field }) => (
             <FormItem>
-              <FormLabel htmlFor={untilId}>
+              <FormLabel>
                 {m.discountsServiceDateUntilLabel({}, { locale })}
               </FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  id={untilId}
-                  type="date"
-                  variant={fieldState.error ? "error" : "default"}
-                />
-              </FormControl>
+              <FormDateInput
+                {...field}
+                label={m.discountsServiceDateUntilLabel({}, { locale })}
+              />
               <FormMessage />
             </FormItem>
           )}

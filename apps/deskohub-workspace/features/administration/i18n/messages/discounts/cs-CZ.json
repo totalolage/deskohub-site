@@ -194,6 +194,8 @@
   "discountsEnabledLabel": "Aktivní",
   "discountsValidFromLabel": "Platí od",
   "discountsValidUntilLabel": "Platí do",
+  "discountsValidFromTimeLabel": "Čas platnosti od",
+  "discountsValidUntilTimeLabel": "Čas platnosti do",
   "discountsMaxUsesLabel": "Max. použití celkem",
   "discountsMaxUsesPerCustomerLabel": "Max. použití na zákazníka",
   "discountsValidityHint": "Časy se řídí pražským časovým pásmem Workspace. Obě meze jsou nepovinné; okamžik „Platí do“ už do platnosti nespadá.",
