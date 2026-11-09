@@ -38,6 +38,14 @@ counts as no consent.
   update applied). Add an event there with closed property types; never send
   free text, emails or reservation details (the event and property limits in
   the PostHog reference apply).
+- Each event has a production caller, and `analytics/events.test.ts` fails
+  for one without. Native email sign-in records "sign-in started" (`link`)
+  when the auth session opens, since the web page sends the email; the
+  passkey option records `passkey` when its ceremony starts. "access PIN
+  viewed" fires per focus of the access screen. "update applied"
+  (`updates/applied-update.ts`) fires on the first launch of a downloaded
+  update, compared with the update id the previous launch stored; embedded
+  launches (rollback, emergency launch, new APK) never record it.
 - Identity is `workspace-account:<accountId>`, the site's identifier, so app
   and site events join one person. It stays pending until the stored session
   is restored, resets on sign-out or account switch before the new identity
