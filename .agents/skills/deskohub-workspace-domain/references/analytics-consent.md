@@ -25,6 +25,24 @@ stays the place where the choice is made; the account copies it.
   the current privacy notice of the decision's locale: the cookie accepts
   analytics and declines every other optional category, and no banner shows. A device holding a
   cookie from an earlier banner revision gets the banner instead.
+- **Analytics preference**: the account's analytics switch on
+  `/account/legal`, on when the current decision is a grant under any
+  notice. Changing it records a decision now with source `preference` and
+  applies it to the device it was changed on, dated at the decision.
+- **Opt-out**: turning the analytics preference off: a `withdraw` decision
+  with source `preference`, followed by anonymisation.
+- **Anonymisation**: deleting the account's PostHog person profile (and its
+  person properties) while keeping its events, which stay keyed by the
+  account's distinct ID and the reservation ID. It follows an opt-out, unless
+  the account grants again before it runs, and an account deletion. A later
+  grant makes no PostHog call; a profile forms again at the next identified
+  event.
+- **Cross-device withdrawal**: applying the account's withdrawal to another
+  signed-in device whose saved choice still accepts analytics, at that
+  device's next signed-in page load, when the ledger didn't take the
+  device's choice over the withdrawal (a tie goes to the withdrawal, and an
+  undated or future-dated choice never outranks it). Until then that device keeps
+  capturing. A grant is never applied to a device that holds a choice.
 - **Person-linked**: a reservation or payment lifecycle event captured under
   the author's account person (`workspace-account:<accountId>`) because the
   author's current decision was a grant when it was captured.
@@ -63,7 +81,10 @@ stays the place where the choice is made; the account copies it.
 - A device without a well-formed consent cookie records nothing; an
   unreadable cookie is never read as a withdrawal.
 - Recording never changes what the visitor sees and never blocks sign-in or
-  checkout: failures are logged and dropped.
+  checkout: failures are logged and dropped. The analytics preference and a
+  cross-device withdrawal change the device's cookie through
+  `visitorConsent.applyAccountDecision`, announced as `preference` or
+  `account`, never as a `local` save, so neither adds a `banner` decision.
 - A grant keeps linking lifecycle events even under an older notice hash,
   until the account answers again; only a current-notice grant gives a silent
   grant. A decision records no cookie policy version, so a grant given before
@@ -75,5 +96,8 @@ Code: `features/legal/backend/analytics-consent-ledger.ts` (ledger),
 `features/legal/backend/analytics-consent-mirror.ts` (cookie to decision),
 mirror points in `features/account/backend/auth/auth-server.ts` (session
 create hook), `features/legal/components/account-analytics-consent-mirror.tsx`
-with the `recordDeviceAnalyticsConsent` action (hydration and banner saves),
-and `features/reservation/actions/prepare-pay-state.ts` (bookings).
+with the `recordDeviceAnalyticsConsent` action (hydration and banner saves,
+and the cross-device withdrawal), `features/reservation/actions/prepare-pay-state.ts`
+(bookings), and `features/legal/backend/analytics-consent-preference.ts`
+with `features/legal/components/analytics-preference-row.tsx` (the
+analytics preference).

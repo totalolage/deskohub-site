@@ -5,7 +5,7 @@ const abortReason = (signal: AbortSignal) =>
 
 /**
  * The shared E2E Effect edge for code that runs outside a case runtime, such
- * as the argv Runner and `runE2EEffect`. It provides no tracer;
+ * as Playwright fixtures and `runE2EEffect`. It provides no tracer;
  * `runE2EEffect` adds the trace export for a whole run. It settles exactly
  * like `Effect.runPromise`, except that a run whose `signal` aborts before it
  * settles rejects as soon as the signal aborts, with the signal's reason or

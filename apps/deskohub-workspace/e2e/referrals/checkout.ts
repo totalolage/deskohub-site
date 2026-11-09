@@ -25,7 +25,8 @@ import {
   waitForCheckoutRow,
 } from "../integrations/database";
 import { pollUntil } from "../polling";
-import { addRedaction, assert, parseUrl } from "../runtime";
+import { addRedaction } from "../redaction";
+import { assert, parseUrl } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
   CheckoutData,
@@ -522,8 +523,8 @@ export const assertReferrerDiscountMatchesRemainingSubtotal = Effect.fn(
   readonly requireVoucherAfterReferrer?: boolean;
   readonly session: E2EBrowserSession;
 }) {
-  // Every caller's step deadline is shorter than the argv evaluation's own
-  // two-minute bound, so the step alone bounds this read, as it did before.
+  // Every caller's step deadline is shorter than two minutes, so the step
+  // alone bounds this read.
   const snapshot = yield* session.evaluate(
     "read visible checkout discount amounts",
     () => {

@@ -6,7 +6,6 @@ import {
   DotyposService,
 } from "@deskohub/dotypos";
 import { type EmailMessage, EmailServiceTag } from "@deskohub/email";
-import { isTestEmailRecipient } from "@deskohub/email/backend/test-recipients";
 import {
   and,
   asc,
@@ -38,7 +37,6 @@ import {
   type WorkspaceTransaction,
 } from "@/db/database.service";
 import {
-  customerMarketingConsents,
   emailCampaignAutomationVersions,
   emailCampaignDeliveryBatches,
   emailCampaignRecipients,
@@ -47,7 +45,6 @@ import {
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { Locale } from "@/features/i18n";
-import { marketingConsentState } from "@/features/legal/backend/marketing-consent-ledger";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
 import { currentInstant } from "@/shared/utils/temporal";
@@ -70,13 +67,21 @@ import {
   campaignEmailMessage,
 } from "../campaign-email";
 import type { CampaignId, CampaignSendId } from "../campaign-identifiers";
-import type { CampaignRecipientSkipReason } from "../campaign-states";
+import {
+  type CampaignRecipientSkipReason,
+  undeliveredRecipientStatuses,
+} from "../campaign-states";
 import { campaignContentForRecipient } from "../recipient-locale";
 import { CampaignEmailConfig } from "./campaign-email.config";
-import { reachableCampaignEmail } from "./campaign-recipient.service";
+import {
+  CampaignEligibilityStage,
+  campaignEligibility,
+  consentingCampaignCustomers,
+} from "./campaign-reachability";
 import type { CampaignDeliveryAttempt } from "./campaign-send-queue.service";
 import { sendAutomationVersion } from "./campaign-send-selection";
 import { CampaignUnsubscribeService } from "./campaign-unsubscribe.service";
+import { OnceCampaignLifecycle } from "./once-campaign-lifecycle";
 
 /**
  * A new batch starts only this long into a run. Every batch is persisted
@@ -530,40 +535,15 @@ export class CampaignDeliveryService extends Context.Service<
             })
           );
 
-      const loadActiveConsents = (customerIds: readonly DotyposCustomerId[]) =>
-        db
-          .select({
-            dotyposCustomerId: customerMarketingConsents.dotyposCustomerId,
-          })
-          .from(customerMarketingConsents)
-          .where(
-            and(
-              inArray(customerMarketingConsents.dotyposCustomerId, [
-                ...customerIds,
-              ]),
-              eq(
-                marketingConsentState(
-                  customerMarketingConsents.dotyposCustomerId
-                ),
-                "active"
-              )
-            )
-          )
-          .pipe(
-            Effect.map(
-              (rows) => new Set(rows.map((row) => row.dotyposCustomerId))
-            )
-          );
-
-      /** The recipients who may receive the campaign's purpose of email. */
       const loadConsenting = (input: {
         readonly campaign: DeliveredCampaign;
         readonly customerIds: readonly DotyposCustomerId[];
       }) =>
-        Match.value(input.campaign.purpose).pipe(
-          Match.when("marketing", () => loadActiveConsents(input.customerIds)),
-          Match.orElse(() => Effect.succeed(new Set(input.customerIds)))
-        );
+        consentingCampaignCustomers({
+          db,
+          purpose: input.campaign.purpose,
+          customerIds: input.customerIds,
+        });
 
       const loadProfiles = (customerIds: readonly DotyposCustomerId[]) =>
         dotypos.getCustomersByIds(customerIds);
@@ -579,18 +559,16 @@ export class CampaignDeliveryService extends Context.Service<
           dotyposCustomerId: recipient.dotyposCustomerId,
           reason,
         });
-        if (!input.consenting.has(recipient.dotyposCustomerId)) {
-          return Result.fail(skip("consent-withdrawn"));
-        }
-        return reachableCampaignEmail(
-          Option.fromNullishOr(input.profiles.get(recipient.dotyposCustomerId))
-        ).pipe(
-          Result.flatMap((to) =>
-            config.deploymentEnvironment === "production" ||
-            isTestEmailRecipient(to)
-              ? Result.succeed({ ...recipient, to })
-              : Result.fail("outside-test-domain" as const)
+        return campaignEligibility({
+          profile: Option.fromNullishOr(
+            input.profiles.get(recipient.dotyposCustomerId)
           ),
+          stage: CampaignEligibilityStage.Delivery({
+            consenting: input.consenting.has(recipient.dotyposCustomerId),
+            deploymentEnvironment: config.deploymentEnvironment,
+          }),
+        }).pipe(
+          Result.map((to) => ({ ...recipient, to })),
           Result.mapError(skip)
         );
       };
@@ -754,7 +732,7 @@ export class CampaignDeliveryService extends Context.Service<
               .update(emailCampaignRecipients)
               .set({
                 providerMessageId: input.ids[index]!,
-                status: sql`case when ${emailCampaignRecipients.status} in ('pending', 'failed', 'unconfirmed') then 'sent' else ${emailCampaignRecipients.status} end`,
+                status: sql`case when ${inArray(emailCampaignRecipients.status, undeliveredRecipientStatuses)} then 'sent' else ${emailCampaignRecipients.status} end`,
                 statusUpdatedAt: input.now,
               })
               .where(
@@ -1263,41 +1241,13 @@ export class CampaignDeliveryService extends Context.Service<
           .where(
             and(
               eq(emailCampaignRecipients.sendId, context.sendId),
-              inArray(emailCampaignRecipients.status, [
-                "pending",
-                "failed",
-                "unconfirmed",
-              ])
+              inArray(
+                emailCampaignRecipients.status,
+                undeliveredRecipientStatuses
+              )
             )
           )
           .pipe(Effect.map(([row]) => row?.count ?? 0));
-
-      type SendSettlement = {
-        readonly context: AttemptContext;
-        readonly status: "sent" | "failed";
-        readonly now: Temporal.Instant;
-      };
-
-      const recordCampaignStatus = (input: SendSettlement) =>
-        db
-          .update(emailCampaigns)
-          .set({ status: input.status, updatedAt: input.now })
-          .where(
-            and(
-              eq(emailCampaigns.id, input.context.campaign.id),
-              eq(emailCampaigns.status, "sending")
-            )
-          )
-          .pipe(
-            Effect.andThen(
-              db
-                .update(emailCampaignSends)
-                .set({
-                  completedAt: input.status === "sent" ? input.now : null,
-                })
-                .where(eq(emailCampaignSends.id, input.context.sendId))
-            )
-          );
 
       /**
        * An automated send is never retried, so it completes however its
@@ -1318,14 +1268,6 @@ export class CampaignDeliveryService extends Context.Service<
             )
           );
 
-      const recordSendOutcome = (input: SendSettlement) =>
-        input.context.campaign.automationVersionId === null
-          ? recordCampaignStatus(input)
-          : completeAutomatedSend({
-              sendId: input.context.sendId,
-              now: input.now,
-            });
-
       /**
        * Settles the send: a one-off campaign becomes Sent, or Failed when
        * anyone wasn't delivered; an automated send completes.
@@ -1335,14 +1277,21 @@ export class CampaignDeliveryService extends Context.Service<
           Effect.flatMap((now) =>
             leasedTransaction(
               context,
-              countUndelivered(context).pipe(
-                Effect.map((undelivered) =>
-                  undelivered > 0 ? ("failed" as const) : ("sent" as const)
-                ),
-                Effect.tap((status) =>
-                  recordSendOutcome({ context, status, now })
-                )
-              )
+              context.campaign.automationVersionId === null
+                ? OnceCampaignLifecycle.settle({
+                    campaignId: context.campaign.id,
+                    sendId: context.sendId,
+                    deliveryAttempt: context.deliveryAttempt,
+                    now,
+                  })
+                : countUndelivered(context).pipe(
+                    Effect.map((undelivered) =>
+                      undelivered > 0 ? ("failed" as const) : ("sent" as const)
+                    ),
+                    Effect.tap(() =>
+                      completeAutomatedSend({ sendId: context.sendId, now })
+                    )
+                  )
             )
           ),
           Effect.withSpan("CampaignDeliveryService.settle")

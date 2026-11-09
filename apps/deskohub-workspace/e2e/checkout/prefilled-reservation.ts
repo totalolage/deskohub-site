@@ -126,8 +126,7 @@ export const toPrefilledReservation = (
  * Runs in the browser: whether the reservation form shows the restored
  * selection and, when carried in, the contact, with marketing consent reset.
  * It must not close over anything. Pass it to `waitForPageCondition` with
- * `toPrefilledReservation(data)`; argv callers run it through
- * `getPrefilledReservationConditionScript`.
+ * `toPrefilledReservation(data)`.
  */
 export const isPrefilledReservation = (
   expected: PrefilledReservation

@@ -68,34 +68,24 @@ type Contact = {
 } | null;
 let contact: Contact;
 
-const { CustomerAccountContactService } = await import("@/features/account");
-const callerModule = await import("./customer-agent-caller");
-mock.module("./customer-agent-caller", () => ({
-  ...callerModule,
-  customerAgentCallServices: ({ grant }: { grant: CustomerAgentGrant }) =>
-    Layer.merge(
-      Layer.succeed(callerModule.CurrentCustomerAgentGrant, grant),
-      Layer.mock(CustomerAccountContactService, {
-        current: Effect.sync(() =>
-          contact
-            ? ({
-                accountId: grant.accountId,
-                dotyposCustomerId: "customer-1",
-                ...contact,
-              } as never)
-            : null
-        ),
-      })
-    ),
-}));
-
 const {
   atInstant,
+  inMemoryCustomerAgentCallServices,
   makeAgentToolTestServices,
   workspaceDateFromToday,
   workspaceInstantToday,
 } = await import("./agent-tools.test-utils");
 const { startReservationTool } = await import("./start-reservation.tool");
+
+const callerServices = inMemoryCustomerAgentCallServices(({ accountId }) => ({
+  contact: {
+    current: Effect.sync(() =>
+      contact
+        ? ({ accountId, dotyposCustomerId: "customer-1", ...contact } as never)
+        : null
+    ),
+  },
+}));
 
 const grantFor = (clientId: string): CustomerAgentGrant => ({
   accountId: "account-1" as CustomerAccountId,
@@ -115,7 +105,9 @@ const start = (
   startReservationTool
     .call(args, Option.some({ grant: grantFor(clientId), accessToken: "t" }))
     .pipe(
-      Effect.provide(makeAgentToolTestServices().layer),
+      Effect.provide(
+        Layer.merge(makeAgentToolTestServices().layer, callerServices)
+      ),
       atInstant(now),
       Effect.result,
       Effect.runPromise

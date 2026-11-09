@@ -23,7 +23,7 @@ import { E2EDatabase } from "../integrations/database.service";
 import { runtimeTest as test } from "../playwright-checkout/runtime-fixtures";
 import { pollUntil, withinWorkspaceE2EDeadline } from "../polling";
 import { waitForReactSubmitHandler } from "../react-handlers";
-import { addRedaction } from "../runtime";
+import { addRedaction } from "../redaction";
 import {
   workspaceE2EAccessCodeCleanupTimeout,
   workspaceE2EPollInitialIntervalMs,

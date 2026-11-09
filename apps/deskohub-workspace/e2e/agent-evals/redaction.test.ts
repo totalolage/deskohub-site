@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { addRedaction } from "../runtime";
+import { addRedaction } from "../redaction";
 import { judgeAgentEvalFacts } from "./judges";
 import { redactAgentEvalOutput, redactAgentEvalValue } from "./redaction";
 

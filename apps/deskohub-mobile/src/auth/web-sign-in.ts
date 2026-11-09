@@ -1,10 +1,13 @@
 import { Effect, Match, Option } from "effect";
+import { type SignInMethod, trackSignInCompleted } from "../analytics/events";
 import type { AppLocale } from "../i18n/app-locale";
-import { webCallbackPath } from "./auth-callback";
+import { webCallbackPath, withSignInMethod } from "./auth-callback";
 import { authClient } from "./auth-client.web";
 import type { AuthUser } from "./auth-session-state";
 import type { NativeHandoffRequest } from "./native-handoff-request";
+import { withSessionWriteLock } from "./session-write-lock";
 import { signInLocaleHeaders } from "./sign-in-locale";
+import { signOutOf } from "./sign-out-request";
 import {
   clearReauthenticatingUser,
   saveReauthenticatingUser,
@@ -81,31 +84,37 @@ export const sendSignInEmail = (email: string, locale: AppLocale) =>
 
 /**
  * Signs in with the email's code. The request names the app's locale, which
- * an account it creates takes as its language.
+ * an account it creates takes as its language. It waits for a sign-out in
+ * flight, whose answer would otherwise expire the new session's cookie.
  */
 export const verifySignInCode = (
   email: string,
   code: string,
   locale: AppLocale
 ) =>
-  call("verify-code", (signal) =>
-    authClient.signIn.emailOtp({
-      email,
-      otp: code,
-      fetchOptions: { signal, headers: signInLocaleHeaders(locale) },
-    })
+  withSessionWriteLock(
+    call("verify-code", (signal) =>
+      authClient.signIn.emailOtp({
+        email,
+        otp: code,
+        fetchOptions: { signal, headers: signInLocaleHeaders(locale) },
+      })
+    )
   ).pipe(Effect.asVoid, Effect.withSpan("WebSignIn.verifySignInCode"));
 
 /**
  * Claims a magic-link token without a callback, for a JSON answer. The
- * request names the app's locale, as the sign-in code does.
+ * request names the app's locale, and waits for a sign-out in flight, as
+ * the sign-in code does.
  */
 export const verifyMagicLinkToken = (token: string, locale: AppLocale) =>
-  call("verify-link", (signal) =>
-    authClient.magicLink.verify({
-      query: { token },
-      fetchOptions: { signal, headers: signInLocaleHeaders(locale) },
-    })
+  withSessionWriteLock(
+    call("verify-link", (signal) =>
+      authClient.magicLink.verify({
+        query: { token },
+        fetchOptions: { signal, headers: signInLocaleHeaders(locale) },
+      })
+    )
   ).pipe(Effect.asVoid, Effect.withSpan("WebSignIn.verifyMagicLinkToken"));
 
 /**
@@ -139,6 +148,38 @@ export const mintNativeHandoff = (request: NativeHandoffRequest) =>
     ),
     Effect.withSpan("WebSignIn.mintNativeHandoff")
   );
+
+/** Where a finished sign-in goes: back into the app, or a web route. */
+export type SignInDestination =
+  | { readonly kind: "app"; readonly url: string }
+  | { readonly kind: "web" };
+
+/**
+ * Finishes a sign-in on this page. For a native request it mints the handoff
+ * and names `method` on it, so the app records the completion; `continue`
+ * means the page continued its existing session. Without a native request
+ * the browser itself completed the sign-in and records it here.
+ */
+export const finishSignIn = (
+  request: Option.Option<NativeHandoffRequest>,
+  method: SignInMethod
+) =>
+  Option.match(request, {
+    onNone: () =>
+      Effect.sync((): SignInDestination => {
+        trackSignInCompleted(method);
+        return { kind: "web" };
+      }),
+    onSome: (found) =>
+      mintNativeHandoff(found).pipe(
+        Effect.map(
+          (url): SignInDestination => ({
+            kind: "app",
+            url: withSignInMethod(url, method),
+          })
+        )
+      ),
+  });
 
 /**
  * Which account a sign-in on this page must come back as. An ordinary
@@ -197,7 +238,7 @@ export const signInEmailField = ({
 const refuseAccount = (
   reason: "account-switch" | "reauthentication-unconfirmed"
 ) =>
-  Effect.tryPromise(() => authClient.signOut()).pipe(
+  signOutOf(authClient).pipe(
     Effect.ignore,
     Effect.andThen(
       Effect.fail(

@@ -23,7 +23,6 @@ import { runE2ECase, type WorkspaceE2EStepRunner } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";
 import { makeTestE2EEnvironment } from "../e2e-env.test-fixture";
 import { isWorkspaceE2ETimeout, type WorkspaceE2EError } from "../errors";
-import { browserSessionFor, makePlaywrightBrowserRunner } from "../runtime";
 import {
   E2ERunContextService,
   E2ETelemetryService,
@@ -666,8 +665,8 @@ test.skipIf(!chromiumAvailable)(
 test.skipIf(!chromiumAvailable)(
   "leaves a stalled discount read to the step deadline, which times it out",
   async () => {
-    // The read has no deadline of its own: every caller's step is shorter
-    // than the argv evaluation's former bound, so the step times it out.
+    // The read has no deadline of its own: the caller's step is shorter than
+    // the stall, so the step times it out.
     const stalledRead = `<script>
       const querySelector = document.querySelector.bind(document);
       document.querySelector = (candidate) => {
@@ -750,31 +749,18 @@ const rejectionMessage = m.checkoutReferralCodeAlreadyAttributed(
   { locale }
 );
 
-/**
- * The argv runner on the checkout `pages` serve, with the session it bridges,
- * as the referral cases drive it.
- */
-const openRunnerCheckout = (pages: CheckoutPages) =>
-  Effect.gen(function* () {
-    if (!browser) return yield* Effect.die("Chromium is not running");
-    const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
-    yield* Effect.addFinalizer(() =>
-      Effect.promise(() => run.close?.() ?? Promise.resolve())
-    );
-    const session = `referral-reject-test-${randomUUID()}`;
-    const browserSession = yield* browserSessionFor(run, session);
-    yield* showCheckout(browserSession, pages);
-    return { browserSession, run, session };
-  });
+/** The checkout `pages` serve, in the session the referral cases drive. */
+const openCaseCheckout = (pages: CheckoutPages) =>
+  Effect.map(openCheckout(pages), (browserSession) => ({ browserSession }));
 
-/** Rejects the code through the runner; the bridged session waits for the alert. */
-const rejectThroughRunner = (
+/** Rejects the code on the checkout; the session waits for the alert. */
+const rejectOnCheckout = (
   invalid: boolean,
   onRejected: (url: string) => void = () => undefined,
   redirectTo?: string | null
 ) =>
   runCheckoutStep(
-    openRunnerCheckout(
+    openCaseCheckout(
       rejectionCheckout(rejectionMessage, { invalid, redirectTo })
     ),
     (checkout) =>
@@ -794,7 +780,7 @@ test.skipIf(!chromiumAvailable)(
   "returns the re-signed pay state that keeps a rejected code with its alert",
   async () => {
     let rejectedUrl: string | undefined;
-    const result = await rejectThroughRunner(true, (url) => {
+    const result = await rejectOnCheckout(true, (url) => {
       rejectedUrl = url;
     });
 
@@ -806,7 +792,7 @@ test.skipIf(!chromiumAvailable)(
 test.skipIf(!chromiumAvailable)(
   "times out when the rejected code's field is not marked invalid",
   async () => {
-    const result = await rejectThroughRunner(false);
+    const result = await rejectOnCheckout(false);
 
     expect(classify(result)).toEqual(
       timedOut(
@@ -828,7 +814,7 @@ test.skipIf(!chromiumAvailable)(
     );
     for (const redirectTo of [null, otherOrderUrl]) {
       expect(
-        classify(await rejectThroughRunner(true, undefined, redirectTo))
+        classify(await rejectOnCheckout(true, undefined, redirectTo))
       ).toEqual(timedOut("rejected referral code on a re-signed pay state"));
     }
   },
@@ -856,7 +842,7 @@ const applyingCheckout = (redirectTo: string) => (url: URL) =>
       </script>`
     : `<p>${Bun.escapeHTML(appliedMessage)}</p>`;
 
-const applyThroughRunner = (
+const applyOnCheckout = (
   redirectTo: string,
   {
     onApplied = () => undefined,
@@ -868,7 +854,7 @@ const applyThroughRunner = (
   } = {}
 ) =>
   runCheckoutStep(
-    openRunnerCheckout(applyingCheckout(redirectTo)),
+    openCaseCheckout(applyingCheckout(redirectTo)),
     (checkout, runStep) =>
       applyCodeAndReadFreshPayUrl({
         ...checkout,
@@ -888,7 +874,7 @@ test.skipIf(!chromiumAvailable)(
   "returns the fresh pay state an applied code re-signs",
   async () => {
     let appliedUrl: string | undefined;
-    const result = await applyThroughRunner(freshPayUrl, {
+    const result = await applyOnCheckout(freshPayUrl, {
       onApplied: (url) => {
         appliedUrl = url;
       },
@@ -905,14 +891,12 @@ test.skipIf(!chromiumAvailable)(
   "times out an applied code that keeps the pay state",
   async () => {
     // The fresh pay state poll runs out on its own...
-    expect(classify(await applyThroughRunner(`${payUrl}&applied=1`))).toEqual(
+    expect(classify(await applyOnCheckout(`${payUrl}&applied=1`))).toEqual(
       timedOut("fresh signed checkout pay state")
     );
     // ...and inside its own step, whose deadline ends the poll first.
     expect(
-      classify(
-        await applyThroughRunner(`${payUrl}&applied=1`, { ownStep: true })
-      )
+      classify(await applyOnCheckout(`${payUrl}&applied=1`, { ownStep: true }))
     ).toEqual(timedOut(`${caseId}/${stepId}`));
   },
   60_000

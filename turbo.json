@@ -1,5 +1,6 @@
 {
   "$schema": "https://v2-9-14.turborepo.dev/schema.json",
+  "futureFlags": { "affectedUsingTaskInputs": true },
   "globalDependencies": [".env", ".env.local"],
   "globalEnv": ["NODE_ENV", "VERCEL_ENV"],
   "globalPassThroughEnv": [
@@ -54,6 +55,7 @@
     "POSTHOG_API_KEY",
     "POSTHOG_FEATURE_FLAG_OVERRIDES",
     "POSTHOG_INGEST_HOST",
+    "POSTHOG_PERSON_PRIVACY_API_KEY",
     "POSTHOG_PROJECT_ID",
     "POSTHOG_SERVICE_NAME",
     "POSTHOG_SERVICE_NAMESPACE",

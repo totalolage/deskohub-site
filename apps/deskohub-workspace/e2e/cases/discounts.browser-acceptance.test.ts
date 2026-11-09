@@ -6,7 +6,6 @@ import { Effect } from "effect";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import {
-  type BrowserStepDriver,
   failedStepAnnotation,
   runBrowserStep,
 } from "../case-runner.browser.test-utils";
@@ -128,17 +127,8 @@ const config = {
   timeouts: { ...workspaceE2ETimeouts, browserAction: 2000 },
 } as WorkspaceE2EConfig;
 
-/**
- * How a caller hands over the browser: argv callers pass the runner and the
- * session id, session callers (the referral cases) the session itself.
- */
-const browserInputs = {
-  session: ({ session }: BrowserStepDriver) => ({ session }),
-} as const;
-
 const assertCalendarDiscountOn = (
   html: string,
-  input: (typeof browserInputs)[keyof typeof browserInputs],
   {
     discounts = [calendarDiscountExpectation],
     stepTimeoutMs,
@@ -151,12 +141,12 @@ const assertCalendarDiscountOn = (
   const output = spyOn(process.stdout, "write").mockImplementation(() => true);
   return runBrowserStep({
     browser,
-    drive: (driver) =>
+    drive: ({ session }) =>
       assertDisplayedDiscounts({
         config,
         discounts,
+        session,
         timeoutMs: 2000,
-        ...input(driver),
       }),
     prepare: (session) =>
       session.use("show the pay page", (payPage) => payPage.setContent(html)),
@@ -169,80 +159,74 @@ const assertCalendarDiscountOn = (
     .finally(() => output.mockRestore());
 };
 
-for (const [caller, input] of Object.entries(browserInputs)) {
-  test.skipIf(!chromiumAvailable)(
-    `asserts a displayed discount through its tooltip (${caller})`,
-    async () => {
-      const result = await assertCalendarDiscountOn(discountDetails(), input);
-      expect(result.succeeded).toBe(true);
-      expect(result.annotations).toEqual([]);
-      expect(
-        result.logs.filter((line) => line.startsWith("DISCOUNT_"))
-      ).toEqual([]);
-    },
-    60_000
-  );
+test.skipIf(!chromiumAvailable)(
+  "asserts a displayed discount through its tooltip",
+  async () => {
+    const result = await assertCalendarDiscountOn(discountDetails());
+    expect(result.succeeded).toBe(true);
+    expect(result.annotations).toEqual([]);
+    expect(result.logs.filter((line) => line.startsWith("DISCOUNT_"))).toEqual(
+      []
+    );
+  },
+  60_000
+);
 
-  // The Calendar sale advertisement retries only these timeouts.
-  test.skipIf(!chromiumAvailable)(
-    `times out a discount the tooltip never shows and a trigger never hydrated (${caller})`,
-    async () => {
-      for (const { html, stage, detailIndex } of [
-        {
-          html: discountDetails({ detail: "No discounts" }),
-          stage: "detail",
-          detailIndex: 1,
-        },
-        {
-          html: discountDetails({
-            detail: `${calendarDiscountExpectation.label} wrong adjustment`,
-          }),
-          stage: "detail",
-          detailIndex: 1,
-        },
-        {
-          html: discountDetails({ handlers: [] }),
-          stage: "react-handler",
-          detailIndex: 0,
-        },
-        // A hidden trigger scrolls but never takes focus.
-        {
-          html: discountDetails({ hidden: true }),
-          stage: "blur-trigger",
-          detailIndex: 0,
-        },
-      ]) {
-        const result = await assertCalendarDiscountOn(html, input);
-        expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
-        expect(result.failures.map(({ timeout }) => timeout)).toEqual([true]);
-        expect(
-          result.logs.filter((line) => line.startsWith("DISCOUNT_WAIT"))
-        ).toEqual([
-          `DISCOUNT_WAIT stage=${stage} detail_index=${detailIndex} detail_count=1\n`,
-        ]);
-      }
-    },
-    90_000
-  );
-}
+// The Calendar sale advertisement retries only these timeouts.
+test.skipIf(!chromiumAvailable)(
+  "times out a discount the tooltip never shows and a trigger never hydrated",
+  async () => {
+    for (const { html, stage, detailIndex } of [
+      {
+        html: discountDetails({ detail: "No discounts" }),
+        stage: "detail",
+        detailIndex: 1,
+      },
+      {
+        html: discountDetails({
+          detail: `${calendarDiscountExpectation.label} wrong adjustment`,
+        }),
+        stage: "detail",
+        detailIndex: 1,
+      },
+      {
+        html: discountDetails({ handlers: [] }),
+        stage: "react-handler",
+        detailIndex: 0,
+      },
+      // A hidden trigger scrolls but never takes focus.
+      {
+        html: discountDetails({ hidden: true }),
+        stage: "blur-trigger",
+        detailIndex: 0,
+      },
+    ]) {
+      const result = await assertCalendarDiscountOn(html);
+      expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
+      expect(result.failures.map(({ timeout }) => timeout)).toEqual([true]);
+      expect(
+        result.logs.filter((line) => line.startsWith("DISCOUNT_WAIT"))
+      ).toEqual([
+        `DISCOUNT_WAIT stage=${stage} detail_index=${detailIndex} detail_count=1\n`,
+      ]);
+    }
+  },
+  90_000
+);
 
 test.skipIf(!chromiumAvailable)(
   "logs the pending detail before an outer step deadline interrupts the assertion",
   async () => {
-    const result = await assertCalendarDiscountOn(
-      discountDetails(),
-      browserInputs.session,
-      {
-        discounts: [
-          calendarDiscountExpectation,
-          {
-            adjustment: { kind: "percentage", basisPoints: 1000 },
-            label: "Synthetic second discount",
-          },
-        ],
-        stepTimeoutMs: 1000,
-      }
-    );
+    const result = await assertCalendarDiscountOn(discountDetails(), {
+      discounts: [
+        calendarDiscountExpectation,
+        {
+          adjustment: { kind: "percentage", basisPoints: 1000 },
+          label: "Synthetic second discount",
+        },
+      ],
+      stepTimeoutMs: 1000,
+    });
 
     expect(result.succeeded).toBe(false);
     expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
@@ -274,13 +258,9 @@ test.skipIf(!chromiumAvailable)(
           "triggers=2 visible_triggers=1 first_visible=false first_linked=false first_label=false first_adjustment=false visible_linked=true visible_label=true visible_adjustment=true body_label=true",
       },
     ]) {
-      const result = await assertCalendarDiscountOn(
-        html,
-        browserInputs.session,
-        {
-          stepTimeoutMs: 1000,
-        }
-      );
+      const result = await assertCalendarDiscountOn(html, {
+        stepTimeoutMs: 1000,
+      });
       expect(result.succeeded).toBe(false);
       expect(result.annotations).toEqual(failedStepAnnotation("timeout"));
       expect(
@@ -416,7 +396,7 @@ const advertiseCalendarSale = () => {
   formLoads = 0;
   return runBrowserStep({
     browser,
-    drive: ({ id, run }) =>
+    drive: ({ openSession }) =>
       waitForAdvertisedCalendarSale({
         config: {
           timeouts: {
@@ -431,8 +411,7 @@ const advertiseCalendarSale = () => {
           "2099-09-01",
           "calendar-sale-advertisement"
         ),
-        run,
-        session: id,
+        openSession,
       }),
     prepare: () => Effect.void,
     stepTimeoutMs: 30_000,

@@ -6,7 +6,7 @@ import { Cause, Effect, Exit, Option } from "effect";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { verifyReferralScreenIgnoresShareLink } from "../account/referral-review";
-import type { E2EBrowserSession } from "../browser-session";
+import { E2EBrowserSession } from "../browser-session";
 import { runE2ECase } from "../case-runner";
 import {
   type BrowserStepDriver,
@@ -18,11 +18,7 @@ import {
   workspaceE2EError,
   workspaceE2ETimeoutError,
 } from "../errors";
-import {
-  assert,
-  browserSessionFor,
-  makePlaywrightBrowserRunner,
-} from "../runtime";
+import { assert } from "../runtime";
 import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
@@ -249,47 +245,52 @@ const runCaptureStep = async ({
   ) => Effect.Effect<void, WorkspaceE2EError>;
   readonly screenshots: boolean;
 }) => {
-  assert(browser, "Chromium is not running");
-  const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
-  const id = `referral-capture-${randomUUID()}`;
+  const opened = browser;
+  assert(opened, "Chromium is not running");
   const observations: E2ETelemetryObservation[] = [];
-  try {
-    const exit = await Effect.runPromiseExit(
-      runE2ECase({
-        body: (step) =>
-          Effect.gen(function* () {
-            const session = yield* browserSessionFor(run, id);
-            yield* prepare(session);
-            yield* captureReviewStep({
-              captureReview: captureReferralCheckoutOnCasePage(session, {
-                baseUrl: origin,
-                screenshots,
+  const exit = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const session = yield* E2EBrowserSession.open({
+          browser: opened,
+          id: `referral-capture-${randomUUID()}`,
+          recordHar: false,
+        });
+        return yield* Effect.exit(
+          runE2ECase({
+            body: (step) =>
+              Effect.gen(function* () {
+                yield* prepare(session);
+                yield* captureReviewStep({
+                  captureReview: captureReferralCheckoutOnCasePage(session, {
+                    baseUrl: origin,
+                    screenshots,
+                  }),
+                  expectedPayUrl: payUrl,
+                  orderId,
+                  runStep: step,
+                  target: "account-referral-invitation-applied",
+                });
               }),
-              expectedPayUrl: payUrl,
-              orderId,
-              runStep: step,
-              target: "account-referral-invitation-applied",
-            });
-          }),
-        caseId: captureCaseId,
-        watchdogMs: 60_000,
-      }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
-    );
-    const failure = Exit.isFailure(exit)
-      ? Cause.findErrorOption(exit.cause).pipe(Option.getOrUndefined)
-      : undefined;
-    return {
-      annotations: observations
-        .filter(({ scope }) => scope === "annotation")
-        .map(({ scope: _scope, ...annotation }) => annotation),
-      failure: failure && {
-        message: failure.message,
-        operation: failure.operation,
-      },
-    };
-  } finally {
-    await run.close?.();
-  }
+            caseId: captureCaseId,
+            watchdogMs: 60_000,
+          }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
+        );
+      })
+    )
+  );
+  const failure = Exit.isFailure(exit)
+    ? Cause.findErrorOption(exit.cause).pipe(Option.getOrUndefined)
+    : undefined;
+  return {
+    annotations: observations
+      .filter(({ scope }) => scope === "annotation")
+      .map(({ scope: _scope, ...annotation }) => annotation),
+    failure: failure && {
+      message: failure.message,
+      operation: failure.operation,
+    },
+  };
 };
 
 const failedCapture = {

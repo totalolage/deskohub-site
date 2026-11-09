@@ -9,7 +9,10 @@ import {
   waitForPageText,
   waitForPageUrl,
 } from "../browser";
-import type { E2EBrowserSession } from "../browser-session";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
   prepareCheckoutPaymentAttempt,
@@ -30,8 +33,7 @@ import {
   requireProviderSessionRowAfterRedirect,
 } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
-import type { Runner } from "../runtime";
-import { assert, browserSessionFor, log, parseUrl } from "../runtime";
+import { assert, log, parseUrl } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
 import type {
   CheckoutData,
@@ -65,20 +67,18 @@ export const assertPaymentTerminalPath = ({
   config,
   data,
   reservationPath,
-  run,
   runStep,
   scenario,
-  session,
+  openSession,
   state,
   preparation,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   reservationPath: string;
-  run: Runner;
   runStep: WorkspaceE2EStepRunner;
   scenario: PaymentTerminalScenario;
-  session: string;
+  openSession: OpenE2EBrowserSession;
   state: CheckoutFlowState;
   preparation: ReservationFormPreparation;
 }): Effect.Effect<
@@ -90,7 +90,7 @@ export const assertPaymentTerminalPath = ({
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         return yield* prepareCheckoutPaymentAttempt({
           config,
           data,
@@ -112,14 +112,13 @@ export const assertPaymentTerminalPath = ({
         config,
         data,
         orderId,
-        run,
         runStep,
-        session,
+        openSession,
         state,
       });
       // The status page reconciles the order with Nexi; no webhook replay.
       yield* runStep({
-        execute: Effect.flatMap(browserSessionFor(run, session), (browser) =>
+        execute: Effect.flatMap(openSession, (browser) =>
           assertReturnedTerminalStatusPage({
             orderId,
             scenario,
@@ -139,14 +138,13 @@ export const assertPaymentTerminalPath = ({
       yield* injectPaymentTerminalState({
         config,
         orderId,
-        run,
         runStep,
         scenario,
-        session,
+        openSession,
         state,
       });
       yield* runStep({
-        execute: Effect.flatMap(browserSessionFor(run, session), (browser) =>
+        execute: Effect.flatMap(openSession, (browser) =>
           assertTerminalStatusPage({
             config,
             orderId,
@@ -159,7 +157,7 @@ export const assertPaymentTerminalPath = ({
       });
     }
     yield* runStep({
-      execute: Effect.flatMap(browserSessionFor(run, session), (browser) =>
+      execute: Effect.flatMap(openSession, (browser) =>
         retryReservation({
           data,
           reservationPath,
@@ -178,18 +176,16 @@ export const assertPaymentTerminalPath = ({
 const injectPaymentTerminalState = ({
   config,
   orderId,
-  run,
   runStep,
   scenario,
-  session,
+  openSession,
   state,
 }: {
   config: WorkspaceE2EConfig;
   orderId: WorkspaceReservationId;
-  run: Runner;
   runStep: WorkspaceE2EStepRunner;
   scenario: PaymentTerminalScenario;
-  session: string;
+  openSession: OpenE2EBrowserSession;
   state: CheckoutFlowState;
 }): Effect.Effect<
   void,
@@ -200,11 +196,11 @@ const injectPaymentTerminalState = ({
     const hostedPaymentPermit = yield* WorkspaceE2EHostedPaymentPermitService;
     // The hosted session ends once the attempt reaches its terminal state.
     yield* hostedPaymentPermit.withPermit(
-      session,
+      "hosted payment terminal state",
       Effect.gen(function* () {
         yield* runStep({
           execute: Effect.gen(function* () {
-            const browser = yield* browserSessionFor(run, session);
+            const browser = yield* openSession;
             const { checkoutPage } = yield* submitPaymentAndWaitForHostedPage({
               session: browser,
               timeouts: config.timeouts,

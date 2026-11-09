@@ -216,7 +216,7 @@ describe("magic-link App Link", () => {
       const sentLinks: CapturedMagicLink[] = [];
       const { auth } = makeMemoryTestAuth({
         sentLinks,
-        isSignInCodeEnabled: async () => signInCodes,
+        signInCodeFlag: Effect.succeed(signInCodes),
       });
       const sendLink = async (email: string) => {
         const sent = await callHandler(auth, "/sign-in/magic-link", {
@@ -790,7 +790,7 @@ describe.skipIf(!testDatabase)("app sign-in locale", () => {
     const sentLinks: CapturedMagicLink[] = [];
     const auth = makeTestAuth({
       sentLinks,
-      isSignInCodeEnabled: async () => signInCodes,
+      signInCodeFlag: Effect.succeed(signInCodes),
     });
     const send = async (email: string, callbackURL = "/app/auth/callback") => {
       const sent = await callHandler(auth, "/sign-in/magic-link", {

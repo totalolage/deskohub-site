@@ -9,8 +9,7 @@ import {
   runBrowserStep,
 } from "../case-runner.browser.test-utils";
 import type { WorkspaceE2EConfig } from "../config";
-import { redact } from "../redaction";
-import { addRedaction } from "../runtime";
+import { addRedaction, redact } from "../redaction";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { makeCoworkCheckoutData } from "./data";
 import {

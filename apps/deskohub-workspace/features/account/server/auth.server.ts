@@ -1,11 +1,12 @@
 import "server-only";
 
-import { Effect } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import { Layer } from "effect";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
-import { WorkspaceLockSections } from "@/db/workspace-locks";
 import { env } from "@/env";
-import { revokeUnconsentedAdministrationTokens } from "@/features/account/backend/auth/administration-agent-access";
+import {
+  PasskeyReleaseGateForRun,
+  SignInCodeReleaseGateForRun,
+} from "@/features/account/backend/account-release-gates-run";
 import {
   type BetterAuthHostEnvironment,
   resolveBetterAuthAllowedHosts,
@@ -16,22 +17,16 @@ import { parseBetterAuthSecrets } from "@/features/account/backend/auth/auth-sec
 import {
   makeWorkspaceAuth,
   makeWorkspaceAuthDatabase,
-  workspaceBeforeDeleteUser,
   workspaceSendMagicLink,
 } from "@/features/account/backend/auth/auth-server";
-import { ensureCustomerAccount } from "@/features/account/backend/customer-account.repository";
-import { captureAccountLocalePreference } from "@/features/account/backend/customer-locale-preference";
+import { LoginLifecycleRecords } from "@/features/account/backend/auth/login-lifecycle-records.service";
+import { CustomerAccountDeletionService } from "@/features/account/backend/customer-account-deletion";
 import { customerMcpServerPath } from "@/features/account/customer-agent-routes";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
-import { mirrorDeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import {
-  arePasskeysEnabled,
-  isSignInCodeEnabled,
-} from "./account-release-gates.server";
 
 const secrets = parseBetterAuthSecrets(env.BETTER_AUTH_SECRETS);
 if (secrets.kind === "invalid") {
@@ -86,45 +81,24 @@ export const auth = makeWorkspaceAuth({
   passkeyRelyingParty: passkeyRelyingParty.relyingParty,
   customerMcpResource,
   httpsOnly: env.VERCEL_ENV !== "development",
-  isSignInCodeEnabled,
-  arePasskeysEnabled,
-  verifyHuman: (input) =>
-    Effect.flatMap(BotProtectionService, (botProtection) =>
-      botProtection.verifyHuman(input)
-    ).pipe(Effect.provide(BotProtectionService.Default)),
-  withSignInEmailLock: (address, effect) =>
-    WorkspaceLockSections.signInEmail(address)(effect).pipe(
-      Effect.provide(WorkspaceDatabaseAdvisoryLock.Default)
-    ),
-  sendMagicLink: workspaceSendMagicLink,
-  beforeDeleteUser: workspaceBeforeDeleteUser,
-  createCustomerAccount: (accountId) =>
-    ensureCustomerAccount(accountId).pipe(
-      Effect.provide(WorkspaceDatabase.Default)
-    ),
-  hasAdministratorGrant: (accountId) =>
-    Effect.flatMap(AccountRoleGrants, (grants) =>
-      grants.has({ accountId, role: "administrator" })
-    ).pipe(Effect.provide(AccountRoleGrants.Live)),
-  revokeUnconsentedAdministrationTokens: (owner) =>
-    revokeUnconsentedAdministrationTokens(owner).pipe(
-      Effect.provide(WorkspaceDatabase.Default)
-    ),
-  captureAccountLocalePreference: (accountId, locale) =>
-    captureAccountLocalePreference(accountId, locale).pipe(
-      Effect.provide(WorkspaceDatabase.Default)
-    ),
-  mirrorSignInAnalyticsConsent: (device) =>
-    mirrorDeviceAnalyticsConsent({ ...device, source: "sign_in_mirror" }).pipe(
-      Effect.provide(AnalyticsConsentLedger.Live)
-    ),
   reviewAccountCredentials: env.REVIEW_ACCOUNT_CREDENTIALS ?? [],
-  isReviewAccount: (accountId) =>
-    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
-      reviewAccounts.isReviewAccount(accountId)
-    ).pipe(Effect.provide(ReviewAccounts.Live)),
-  registerReviewAccount: (accountId) =>
-    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
-      reviewAccounts.register(accountId)
-    ).pipe(Effect.provide(ReviewAccounts.Live)),
+  sendMagicLink: workspaceSendMagicLink,
+  // Each hook run builds these once, against the run's request. A release
+  // gate builds its flag provider only when the run reads it and decides its
+  // flag at most once per run, so a provider that can't be built closes only
+  // that gate and fails no hook that doesn't read it.
+  services: Layer.mergeAll(
+    AccountRoleGrants.Live,
+    AnalyticsConsentLedger.Live,
+    BotProtectionService.Default,
+    LoginLifecycleRecords.Live,
+    PasskeyReleaseGateForRun,
+    ReviewAccounts.Live,
+    SignInCodeReleaseGateForRun,
+    WorkspaceDatabaseAdvisoryLock.Default
+  ),
+  // A deletion service that cannot be built is a configuration defect, not a
+  // deletion failure; either way the hook rejects and Better Auth keeps the
+  // account.
+  accountDeletion: CustomerAccountDeletionService.Live.pipe(Layer.orDie),
 });

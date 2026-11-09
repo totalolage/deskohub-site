@@ -11,15 +11,17 @@ import {
   runBrowserStep,
 } from "../case-runner.browser.test-utils";
 import type { WorkspaceE2EError } from "../errors";
-import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
-import { makeWorkspaceE2EAccountLaneBrowser } from "./lane-browser";
+import {
+  makeWorkspaceE2EAccountLaneBrowser,
+  type WorkspaceE2EAccountLaneBrowser,
+} from "./lane-browser";
 
 const laneEmail = testEmailAddress("lane-controls");
 const otherEmail = testEmailAddress("lane-controls-other");
 
 // The account cases drive these controls on the lane's page, so each runs
-// through the real argv runner's session, as in the lane.
+// on a real browser session, as in the lane.
 const chromiumAvailable = await playwrightChromiumAvailable();
 let browser: Browser | undefined;
 
@@ -181,12 +183,27 @@ const config = {
   },
 };
 
-const laneBrowserFor = (run: Runner, session: string) =>
-  makeWorkspaceE2EAccountLaneBrowser({ config, run, session });
+type LaneBrowser = WorkspaceE2EAccountLaneBrowser;
 
-type LaneBrowser = ReturnType<typeof laneBrowserFor>;
+/**
+ * The lane browser over the step's session and one assistant session of its
+ * own, opened on its first use and shared by every later one, as in the lane.
+ */
+const laneBrowserFor = ({
+  openSeparateSession,
+  openSession,
+}: BrowserStepDriver) =>
+  Effect.map(
+    Effect.cached(openSeparateSession("assistant")),
+    (openAssistantSession) =>
+      makeWorkspaceE2EAccountLaneBrowser({
+        config,
+        openAssistantSession,
+        openSession,
+      })
+  );
 
-/** Runs `drive` on the lane browser of a fresh runner as one C03 step. */
+/** Runs `drive` on the lane browser over a fresh session as one C03 step. */
 const runLaneStep = <A>(
   drive: (laneBrowser: LaneBrowser) => Effect.Effect<A, WorkspaceE2EError>,
   options: {
@@ -200,7 +217,7 @@ const runLaneStep = <A>(
   return runBrowserStep({
     ...(options.afterStep ? { afterStep: options.afterStep } : {}),
     browser,
-    drive: ({ id, run }: BrowserStepDriver) => drive(laneBrowserFor(run, id)),
+    drive: (driver) => Effect.flatMap(laneBrowserFor(driver), drive),
     prepare: () => Effect.void,
     stepTimeoutMs: options.stepTimeoutMs ?? 15_000,
   });

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ReadyUpdate } from "./ota-update";
 import {
   dismissUpdatePrompt,
   noUpdatePromptDismissals,
@@ -8,12 +9,20 @@ import {
 
 const nativeUpdate = { versionName: "1.3.0", versionCode: 1_003_000 };
 
+const downloaded = (updateId: string): ReadyUpdate => ({
+  kind: "update",
+  updateId,
+});
+
+const embedded: ReadyUpdate = { kind: "embedded" };
+
 describe("selectUpdatePrompt", () => {
   test("shows nothing when neither update applies", () => {
     expect(
       selectUpdatePrompt({
         nativeUpdate: undefined,
-        readyUpdateId: undefined,
+        readyUpdate: undefined,
+        runsEmbeddedUpdate: false,
         dismissals: noUpdatePromptDismissals,
       })
     ).toBeUndefined();
@@ -23,7 +32,8 @@ describe("selectUpdatePrompt", () => {
     expect(
       selectUpdatePrompt({
         nativeUpdate: undefined,
-        readyUpdateId: "update-a",
+        readyUpdate: downloaded("update-a"),
+        runsEmbeddedUpdate: false,
         dismissals: noUpdatePromptDismissals,
       })
     ).toEqual({ kind: "ota-update", updateId: "update-a" });
@@ -33,7 +43,8 @@ describe("selectUpdatePrompt", () => {
     expect(
       selectUpdatePrompt({
         nativeUpdate,
-        readyUpdateId: undefined,
+        readyUpdate: undefined,
+        runsEmbeddedUpdate: false,
         dismissals: noUpdatePromptDismissals,
       })
     ).toEqual({ kind: "native-release", ...nativeUpdate });
@@ -43,7 +54,8 @@ describe("selectUpdatePrompt", () => {
     expect(
       selectUpdatePrompt({
         nativeUpdate,
-        readyUpdateId: "update-a",
+        readyUpdate: downloaded("update-a"),
+        runsEmbeddedUpdate: false,
         dismissals: noUpdatePromptDismissals,
       })?.kind
     ).toBe("native-release");
@@ -57,7 +69,8 @@ describe("selectUpdatePrompt", () => {
     expect(
       selectUpdatePrompt({
         nativeUpdate,
-        readyUpdateId: "update-a",
+        readyUpdate: downloaded("update-a"),
+        runsEmbeddedUpdate: false,
         dismissals,
       })
     ).toEqual({ kind: "ota-update", updateId: "update-a" });
@@ -72,7 +85,8 @@ describe("selectUpdatePrompt", () => {
     expect(
       selectUpdatePrompt({
         nativeUpdate: later,
-        readyUpdateId: undefined,
+        readyUpdate: undefined,
+        runsEmbeddedUpdate: false,
         dismissals,
       })
     ).toEqual({ kind: "native-release", ...later });
@@ -86,14 +100,16 @@ describe("selectUpdatePrompt", () => {
     expect(
       selectUpdatePrompt({
         nativeUpdate: undefined,
-        readyUpdateId: "update-a",
+        readyUpdate: downloaded("update-a"),
+        runsEmbeddedUpdate: false,
         dismissals,
       })
     ).toBeUndefined();
     expect(
       selectUpdatePrompt({
         nativeUpdate: undefined,
-        readyUpdateId: "update-b",
+        readyUpdate: downloaded("update-b"),
+        runsEmbeddedUpdate: false,
         dismissals,
       })
     ).toEqual({ kind: "ota-update", updateId: "update-b" });
@@ -110,12 +126,85 @@ describe("selectUpdatePrompt", () => {
     expect(
       selectUpdatePrompt({
         nativeUpdate,
-        readyUpdateId: "update-a",
+        readyUpdate: downloaded("update-a"),
+        runsEmbeddedUpdate: false,
         dismissals,
       })
     ).toBeUndefined();
     expect(noUpdatePromptDismissals.updateIds.size).toBe(0);
     expect(noUpdatePromptDismissals.versionCodes.size).toBe(0);
+  });
+});
+
+describe("selectUpdatePrompt after a rollback", () => {
+  test("offers a restart into the embedded update while an update runs", () => {
+    expect(
+      selectUpdatePrompt({
+        nativeUpdate: undefined,
+        readyUpdate: embedded,
+        runsEmbeddedUpdate: false,
+        dismissals: noUpdatePromptDismissals,
+      })
+    ).toEqual({ kind: "roll-back" });
+  });
+
+  test("offers nothing when the app already runs its embedded update", () => {
+    expect(
+      selectUpdatePrompt({
+        nativeUpdate: undefined,
+        readyUpdate: embedded,
+        runsEmbeddedUpdate: true,
+        dismissals: noUpdatePromptDismissals,
+      })
+    ).toBeUndefined();
+  });
+
+  test("still prefers the native version", () => {
+    expect(
+      selectUpdatePrompt({
+        nativeUpdate,
+        readyUpdate: embedded,
+        runsEmbeddedUpdate: false,
+        dismissals: noUpdatePromptDismissals,
+      })?.kind
+    ).toBe("native-release");
+  });
+
+  test("hides a dismissed rollback but offers a later downloaded update", () => {
+    const dismissals = dismissUpdatePrompt(noUpdatePromptDismissals, {
+      kind: "roll-back",
+    });
+    expect(
+      selectUpdatePrompt({
+        nativeUpdate: undefined,
+        readyUpdate: embedded,
+        runsEmbeddedUpdate: false,
+        dismissals,
+      })
+    ).toBeUndefined();
+    expect(
+      selectUpdatePrompt({
+        nativeUpdate: undefined,
+        readyUpdate: downloaded("update-b"),
+        runsEmbeddedUpdate: false,
+        dismissals,
+      })
+    ).toEqual({ kind: "ota-update", updateId: "update-b" });
+  });
+
+  test("a dismissed downloaded update doesn't hide the rollback that replaced it", () => {
+    const dismissals = dismissUpdatePrompt(noUpdatePromptDismissals, {
+      kind: "ota-update",
+      updateId: "update-a",
+    });
+    expect(
+      selectUpdatePrompt({
+        nativeUpdate: undefined,
+        readyUpdate: embedded,
+        runsEmbeddedUpdate: false,
+        dismissals,
+      })
+    ).toEqual({ kind: "roll-back" });
   });
 });
 

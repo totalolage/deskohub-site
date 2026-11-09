@@ -3,9 +3,8 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { makeAuthDatabase } from "@/db/auth-database-client";
-import { WorkspaceDatabase } from "@/db/database.service";
 import {
   authAccount,
   authRateLimit,
@@ -14,21 +13,13 @@ import {
   authVerification,
 } from "@/db/schema/auth";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { ensureCustomerAccount } from "../customer-account.repository";
-import { captureAccountLocalePreference } from "../customer-locale-preference";
+import {
+  postgresAuthHookServices,
+  testAccountDeletion,
+} from "./auth-hook-services.test-utils";
 import { type MagicLinkSendFunction, makeWorkspaceAuth } from "./auth-server";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
-
-const captureLocalePreference = (
-  accountId: Parameters<typeof captureAccountLocalePreference>[0],
-  locale: Parameters<typeof captureAccountLocalePreference>[1]
-) =>
-  captureAccountLocalePreference(accountId, locale).pipe(
-    Effect.provide(
-      Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(testDatabase!.db))
-    )
-  );
 
 type RecordedCookieSet = {
   readonly name: string;
@@ -77,20 +68,13 @@ const makeTestAuth = (sentMagicLinks: { url: string }[] = []) => {
     nativeAppLinkOrigin: `https://${HOST}`,
     passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
     customerMcpResource: `https://${HOST}/api/mcp`,
-    arePasskeysEnabled: async () => false,
     httpsOnly: true,
     sendMagicLink,
-    verifyHuman: () => Effect.void,
-    beforeDeleteUser: () => Effect.void,
-    createCustomerAccount: (accountId) =>
-      ensureCustomerAccount(accountId).pipe(
-        Effect.provide(testDatabase!.layer)
-      ),
-    captureAccountLocalePreference: captureLocalePreference,
-    mirrorSignInAnalyticsConsent: () => Effect.void,
     reviewAccountCredentials: [],
-    isReviewAccount: () => Effect.succeed(false),
-    registerReviewAccount: () => Effect.void,
+    services: postgresAuthHookServices(testDatabase!, {
+      passkeyFlag: Effect.succeed(false),
+    }),
+    accountDeletion: testAccountDeletion(),
   });
 };
 

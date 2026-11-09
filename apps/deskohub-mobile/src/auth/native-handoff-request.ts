@@ -1,4 +1,5 @@
 import { Option, Schema } from "effect";
+import { type AppLocale, appLocales, isAppLocale } from "../i18n/app-locale";
 import { nativeReturnUri, webCallbackPath } from "./auth-callback";
 
 /**
@@ -16,6 +17,12 @@ export interface NativeHandoffRequest {
   readonly returnUri: string;
   /** Re-proves presence: the page signs in again instead of continuing. */
   readonly reauthenticate: boolean;
+  /**
+   * The language the app shows. The page shows it too and names it on its
+   * sign-in email and code, so a new account saves it. An app built before
+   * the page read it names none, and the page keeps the browser's.
+   */
+  readonly locale?: AppLocale;
 }
 
 /** The web page that runs the email sign-in for the native app. */
@@ -31,6 +38,7 @@ const params = {
   state: "state",
   returnUri: "return_uri",
   prompt: "prompt",
+  locale: "locale",
 } as const;
 
 // base64url SHA-256: exactly 43 characters.
@@ -50,6 +58,7 @@ export const nativeSignInUrl = (
     [params.returnUri]: request.returnUri,
   });
   if (request.reauthenticate) search.set(params.prompt, "login");
+  if (request.locale !== undefined) search.set(params.locale, request.locale);
   return `${origin}${webSignInPath}?${search.toString()}`;
 };
 
@@ -71,6 +80,9 @@ export const readNativeHandoffRequest = (
   const state = only(search, params.state);
   const returnUri = only(search, params.returnUri);
   const prompt = search.getAll(params.prompt);
+  // The language only picks the page's copy, so a value the page doesn't
+  // support leaves the browser's instead of refusing the sign-in.
+  const locale = only(search, params.locale);
   if (
     codeChallenge === undefined ||
     !challengePattern.test(codeChallenge) ||
@@ -88,6 +100,7 @@ export const readNativeHandoffRequest = (
     state,
     returnUri,
     reauthenticate: prompt[0] === "login",
+    ...(isAppLocale(locale) ? { locale } : {}),
   });
 };
 
@@ -117,6 +130,7 @@ const storedRequestSchema = Schema.fromJsonString(
       state: Schema.String.check(Schema.isPattern(statePattern)),
       returnUri: Schema.String,
       reauthenticate: Schema.Boolean,
+      locale: Schema.optionalKey(Schema.Literals(appLocales)),
     }),
     expiresAt: Schema.Finite,
   })

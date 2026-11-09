@@ -5,7 +5,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Browser, type BrowserContext, chromium } from "@playwright/test";
-import { Effect, Fiber } from "effect";
+import { Effect, Exit, Fiber, Scheduler, Scope } from "effect";
 import { TestClock } from "effect/testing";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { E2EBrowserSession } from "./browser-session";
@@ -674,6 +674,235 @@ test.skipIf(!chromiumAvailable)(
     await probe.close();
 
     expect(browser.contexts().length).toBe(before);
+  }
+);
+
+/**
+ * A browser that counts the contexts sessions request from it. `hold` keeps
+ * the selected requests, by their 1-based order, waiting after their context
+ * exists until `release`; `fail` rejects every request instead.
+ */
+const openerBrowser = (
+  options: {
+    readonly fail?: boolean;
+    readonly hold?: (request: number) => boolean;
+  } = {}
+) => {
+  if (!browser) throw new Error("Chromium is not running");
+  const realBrowser = browser;
+  const contexts: BrowserContext[] = [];
+  const held = Promise.withResolvers<BrowserContext>();
+  const released = Promise.withResolvers<void>();
+  let requests = 0;
+  const counting = {
+    newContext: async (
+      contextOptions?: Parameters<Browser["newContext"]>[0]
+    ) => {
+      requests += 1;
+      const request = requests;
+      if (options.fail) throw new Error("synthetic context failure");
+      const context = await realBrowser.newContext(contextOptions);
+      contexts.push(context);
+      if (options.hold?.(request)) {
+        held.resolve(context);
+        await released.promise;
+      }
+      return context;
+    },
+  } as unknown as Browser;
+  return {
+    browser: counting,
+    contexts,
+    held: held.promise,
+    isClosed: (context: BrowserContext | undefined) =>
+      context !== undefined && !realBrowser.contexts().includes(context),
+    release: () => released.resolve(),
+    requests: () => requests,
+  };
+};
+
+const openOnFirstUse = (opener: ReturnType<typeof openerBrowser>) =>
+  E2EBrowserSession.openOnFirstUse({
+    browser: opener.browser,
+    id: `session-opener-${randomUUID()}`,
+    recordHar: false,
+  });
+
+test.skipIf(!chromiumAvailable)(
+  "opens a session on its first use and shares it with every later use",
+  async () => {
+    const opener = openerBrowser();
+    const observed = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const openShared = yield* openOnFirstUse(opener);
+          const requestsBeforeUse = opener.requests();
+          const [first, concurrent] = yield* Effect.all(
+            [openShared, openShared],
+            { concurrency: "unbounded" }
+          );
+          yield* goto(first, "/");
+          const later = yield* openShared;
+          return {
+            laterTitle: yield* later.use("read title", (page) => page.title()),
+            requestsBeforeUse,
+            shared: first === concurrent && first === later,
+          };
+        })
+      )
+    );
+
+    expect(observed).toEqual({
+      laterTitle: "Session",
+      requestsBeforeUse: 0,
+      shared: true,
+    });
+    expect(opener.requests()).toBe(1);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "fails every use with the one failure of an opening that failed",
+  async () => {
+    const opener = openerBrowser({ fail: true });
+    const failures = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const openShared = yield* openOnFirstUse(opener);
+          const [first, concurrent] = yield* Effect.all(
+            [Effect.flip(openShared), Effect.flip(openShared)],
+            { concurrency: "unbounded" }
+          );
+          const later = yield* Effect.flip(openShared);
+          return { concurrent, first, later };
+        })
+      )
+    );
+
+    expect(failures.concurrent).toBe(failures.first);
+    expect(failures.later).toBe(failures.first);
+    expect(isWorkspaceE2ETimeout(failures.first)).toBe(false);
+    expect(opener.requests()).toBe(1);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "shares the opening with later uses when the first use is interrupted as it starts it",
+  async () => {
+    const outcomes = await Effect.runPromise(
+      Effect.forEach([2, 3], (yieldsBeforeInterrupt) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const opener = openerBrowser();
+            const openShared = yield* openOnFirstUse(opener);
+            // A three-operation budget makes the first use yield inside the
+            // opener's cache while it starts the opening, so the interrupt
+            // lands there.
+            const first = yield* Effect.forkChild(
+              openShared.pipe(
+                Effect.provideService(Scheduler.MaxOpsBeforeYield, 3)
+              ),
+              { startImmediately: true }
+            );
+            for (let index = 0; index < yieldsBeforeInterrupt; index += 1)
+              yield* Effect.yieldNow;
+            yield* Fiber.interrupt(first);
+            const later = yield* Effect.exit(
+              Effect.timeoutOption(openShared, "10 seconds")
+            );
+            return {
+              opened: Exit.isSuccess(later) && later.value._tag === "Some",
+              requests: opener.requests(),
+            };
+          })
+        )
+      )
+    );
+
+    expect(outcomes).toEqual([
+      { opened: true, requests: 1 },
+      { opened: true, requests: 1 },
+    ]);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "keeps opening when a use stops waiting, so a later use gets the session",
+  async () => {
+    const opener = openerBrowser({ hold: () => true });
+    const observed = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const openShared = yield* openOnFirstUse(opener);
+          const interrupted = yield* Effect.forkChild(openShared, {
+            startImmediately: true,
+          });
+          yield* Effect.promise(() => opener.held);
+          yield* Fiber.interrupt(interrupted);
+          const timedOut = yield* Effect.timeoutOption(openShared, "50 millis");
+          opener.release();
+          const session = yield* openShared;
+          yield* goto(session, "/");
+          return {
+            interrupted: (yield* Fiber.await(interrupted))._tag,
+            timedOut: timedOut._tag,
+            title: yield* session.use("read title", (page) => page.title()),
+          };
+        })
+      )
+    );
+
+    expect(observed).toEqual({
+      interrupted: "Failure",
+      timedOut: "None",
+      title: "Session",
+    });
+    expect(opener.requests()).toBe(1);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "closes every session with its owning Scope, one first used late and one still opening included",
+  async () => {
+    // The third context request, the session still opening, holds once its
+    // context exists until the Scope starts closing.
+    const opener = openerBrowser({ hold: (request) => request === 3 });
+    const scope = Scope.makeUnsafe("parallel");
+    const opening = await Effect.runPromise(
+      Effect.gen(function* () {
+        const [openFirst, openLate, openStillOpening] = yield* Effect.all([
+          openOnFirstUse(opener),
+          openOnFirstUse(opener),
+          openOnFirstUse(opener),
+        ]).pipe(Scope.provide(scope));
+        yield* goto(yield* openFirst, "/");
+        // First used only after the other session's work.
+        yield* goto(yield* openLate, "/");
+        return yield* Effect.forkDetach(openStillOpening);
+      })
+    );
+    const stillOpening = await opener.held;
+
+    // Closing the Scope interrupts the opening, which waits for its context
+    // to exist before releasing it, so the close settles after the release.
+    // Detached and raced, so a Scope stuck in its finalizers fails this test
+    // rather than holding it past its timeout.
+    const closing = Effect.runSync(
+      Effect.forkDetach(Scope.close(scope, Exit.void))
+    );
+    opener.release();
+    const settled = await Effect.runPromise(
+      Effect.raceFirst(
+        Fiber.await(closing).pipe(Effect.as("closed")),
+        Effect.sleep("10 seconds").pipe(Effect.as("stalled"))
+      )
+    );
+    const openingExit = await Effect.runPromise(Fiber.await(opening));
+
+    expect(settled).toBe("closed");
+    expect(opener.contexts.map(opener.isClosed)).toEqual([true, true, true]);
+    expect(opener.contexts[2]).toBe(stillOpening);
+    expect(Exit.isSuccess(openingExit)).toBe(false);
   }
 );
 

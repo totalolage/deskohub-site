@@ -164,8 +164,7 @@ export type ReservationPreparationState =
  * rides on one evaluation. Without it the returned promise settles with the
  * preparation.
  *
- * It runs in the browser, so it must not close over anything; every family's
- * body is the template the argv runner ran, verbatim.
+ * It runs in the browser, so it must not close over anything.
  */
 export const prepareReservationForm = ({
   detachInto,

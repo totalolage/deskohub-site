@@ -16,7 +16,8 @@ import { assertE2ECalendarSaleCoverage } from "../integrations/calendar-sale-cov
 import { seedDiscountE2EFixtures } from "../integrations/discount-fixtures";
 import { resolveE2EDotyposDiscountGroup } from "../integrations/dotypos";
 import { assertPreviewEndpointsReady } from "../preview-readiness";
-import { addDatabaseUrlRedactions, assertSafeDatabaseUrl } from "../runtime";
+import { addDatabaseUrlRedactions } from "../redaction";
+import { assertSafeDatabaseUrl } from "../runtime";
 import { E2ETelemetryService } from "../services/telemetry";
 import {
   isWorkspaceE2EOfficeCaseId,

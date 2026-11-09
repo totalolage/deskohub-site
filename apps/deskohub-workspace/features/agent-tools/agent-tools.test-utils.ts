@@ -7,6 +7,13 @@ import {
 } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
+import {
+  CustomerAccountContactService,
+  CustomerAccountReservationOwnership,
+  type CustomerAgentGrant,
+  OptionalAccountActivityGuard,
+} from "@/features/account";
+import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import {
   type DiscountAdvertisementInput,
@@ -24,6 +31,10 @@ import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date
 import { moneyWithValue } from "@/shared/money/money";
 import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import {
+  CurrentCustomerAgentGrant,
+  CustomerAgentCallServices,
+} from "./customer-agent-caller";
 
 const decodeTable = Schema.decodeSync(DotyposTableSchema);
 
@@ -227,3 +238,42 @@ export const makeAgentToolTestServices = ({
 
   return { layer, dotyposRequests, snapshotReads };
 };
+
+/** Fakes of the account services a signed-in tool reads the customer through. */
+type CustomerAgentAccountFakes = {
+  readonly authentication?: Layer.PartialEffectful<
+    CustomerAuthentication["Service"]
+  >;
+  readonly activity?: Layer.PartialEffectful<
+    OptionalAccountActivityGuard["Service"]
+  >;
+  readonly contact?: Layer.PartialEffectful<
+    CustomerAccountContactService["Service"]
+  >;
+  readonly ownership?: Layer.PartialEffectful<
+    CustomerAccountReservationOwnership["Service"]
+  >;
+};
+
+/**
+ * Signed-in tool calls that read a fixed customer instead of verifying the
+ * caller's access token: the caller's grant, and the account services
+ * `fakes` builds for it. A read of anything not faked dies, so no call
+ * reaches the authorization server or the database.
+ */
+export const inMemoryCustomerAgentCallServices = (
+  fakes: (grant: CustomerAgentGrant) => CustomerAgentAccountFakes = () => ({})
+) =>
+  Layer.succeed(CustomerAgentCallServices, {
+    forCaller: ({ grant }) => {
+      const { authentication, activity, contact, ownership } = fakes(grant);
+
+      return Layer.mergeAll(
+        Layer.succeed(CurrentCustomerAgentGrant, grant),
+        Layer.mock(CustomerAuthentication, authentication ?? {}),
+        Layer.mock(OptionalAccountActivityGuard, activity ?? {}),
+        Layer.mock(CustomerAccountContactService, contact ?? {}),
+        Layer.mock(CustomerAccountReservationOwnership, ownership ?? {})
+      );
+    },
+  });

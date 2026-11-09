@@ -3,9 +3,8 @@ import { randomUUID } from "node:crypto";
 import { type Browser, chromium } from "@playwright/test";
 import { Cause, Effect, Exit, Option } from "effect";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
-import { waitForBrowserReactFormSubmit, waitForReactFormSubmit } from "./browser";
+import { waitForReactFormSubmit } from "./browser";
 import { E2EBrowserSession } from "./browser-session";
-import { browserSessionFor, makePlaywrightBrowserRunner } from "./runtime";
 
 // happy-dom reports client rects for display:none elements and an empty
 // computed visibility, so the readiness check runs in real Chromium.
@@ -65,28 +64,13 @@ const showForm = (session: E2EBrowserSession, { handlers, html }: Readiness) =>
   });
 
 /**
- * Whether each driver finds the form ready: the session helper, and the argv
- * wrapper the unmigrated callers still use, over the same in-page check.
- * A form that never becomes ready ends the wait with a timeout.
+ * Whether the session helper finds the form ready. A form that never becomes
+ * ready ends the wait with a timeout.
  */
-const readinessThroughBothDrivers = async (readiness: Readiness) => {
+const formReadiness = async (readiness: Readiness) => {
   if (!browser) throw new Error("The readiness browser has not been launched.");
   const opened = browser;
-  const options = {
-    requiredReadyAttribute: readiness.requiredReadyAttribute,
-    timeoutMs: notReadyAfterMs,
-  };
-  const classify = <E extends { readonly reason?: string }>(
-    exit: Exit.Exit<void, E>
-  ) => {
-    if (Exit.isSuccess(exit)) return "ready";
-    const failure = Cause.findErrorOption(exit.cause);
-    return Option.isSome(failure) && failure.value.reason === "timeout"
-      ? "not ready"
-      : "failed";
-  };
-
-  const session = await Effect.runPromise(
+  const exit = await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
         const session = yield* E2EBrowserSession.open({
@@ -94,50 +78,31 @@ const readinessThroughBothDrivers = async (readiness: Readiness) => {
           id: `react-form-${randomUUID()}`,
         });
         yield* showForm(session, readiness);
-        return classify(
-          yield* Effect.exit(
-            waitForReactFormSubmit(
-              session,
-              formSelector,
-              readiness.fieldSelectors,
-              options
-            )
+        return yield* Effect.exit(
+          waitForReactFormSubmit(
+            session,
+            formSelector,
+            readiness.fieldSelectors,
+            {
+              requiredReadyAttribute: readiness.requiredReadyAttribute,
+              timeoutMs: notReadyAfterMs,
+            }
           )
         );
       })
     )
   );
-
-  const run = makePlaywrightBrowserRunner(opened, { recordHar: false });
-  const id = `react-form-argv-${randomUUID()}`;
-  const argv = await Effect.runPromise(
-    Effect.gen(function* () {
-      yield* showForm(yield* browserSessionFor(run, id), readiness);
-      return classify(
-        yield* Effect.exit(
-          waitForBrowserReactFormSubmit(
-            run,
-            id,
-            formSelector,
-            readiness.fieldSelectors,
-            options
-          )
-        )
-      );
-    })
-  ).finally(() => run.close?.());
-
-  return { argv, session };
+  if (Exit.isSuccess(exit)) return "ready";
+  const failure = Cause.findErrorOption(exit.cause);
+  return Option.isSome(failure) && failure.value.reason === "timeout"
+    ? "not ready"
+    : "failed";
 };
 
 const expectReadiness = async (
   readiness: Readiness,
   expected: "not ready" | "ready"
-) =>
-  expect(await readinessThroughBothDrivers(readiness)).toEqual({
-    argv: expected,
-    session: expected,
-  });
+) => expect(await formReadiness(readiness)).toBe(expected);
 
 const wiredHandlers: ReactHandlers = {
   [formSelector]: ["onSubmit"],

@@ -4,6 +4,7 @@ import { getWorkspaceOfficePrice } from "@/features/checkout/product-catalog";
 import { formatMoney } from "@/shared/money/money";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { waitForPageText } from "../browser";
+import type { OpenE2EBrowserSession } from "../browser-session";
 import {
   loadOfficeAvailability,
   makeOfficeCheckoutData,
@@ -19,8 +20,7 @@ import {
 } from "../errors";
 import { pollUntil } from "../polling";
 import { isPreviewPageAvailable } from "../preview-readiness";
-import type { Runner } from "../runtime";
-import { assert, browserSessionFor, log } from "../runtime";
+import { assert, log } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
   CheckoutData,
@@ -96,8 +96,9 @@ export const makeOfficeE2ECases = ({
     return [
       {
         checkoutStates: [state],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSeparateSession, openSession, runStep }) =>
           executeCheckoutFlow({
+            openSeparateSession,
             config,
             data,
             datasourceConfig,
@@ -107,7 +108,7 @@ export const makeOfficeE2ECases = ({
             },
             payPageSteps: () => [
               {
-                execute: assertOfficePayPage(config, data, run, session),
+                execute: assertOfficePayPage(config, data, openSession),
                 id: "assert-office-pay-summary",
                 timeoutMs: config.timeouts.uiTransition,
               },
@@ -119,9 +120,8 @@ export const makeOfficeE2ECases = ({
                 timeoutMs: config.timeouts.datasource,
               },
             ],
-            run,
             runStep,
-            session,
+            openSession,
             state,
           }).pipe(
             Effect.provideService(HttpClient.HttpClient, httpClient),
@@ -141,8 +141,7 @@ export const makeOfficeE2ECases = ({
 const assertOfficePayPage = (
   config: WorkspaceE2EConfig,
   data: CheckoutData,
-  run: Runner,
-  session: string
+  openSession: OpenE2EBrowserSession
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const office = yield* getOfficeSlot(data);
@@ -173,7 +172,7 @@ const assertOfficePayPage = (
           normalized.includes(price)
         );
       },
-      session: yield* browserSessionFor(run, session),
+      session: yield* openSession,
       timeoutMs: config.timeouts.uiTransition,
     });
     log("Office pay summary validated");

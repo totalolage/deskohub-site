@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { openPage, waitForPageUrl } from "../browser";
+import type { OpenE2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import { applyDiscountCode } from "../checkout/discount-code";
 import {
@@ -15,8 +16,7 @@ import {
 } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import { validateDotypos } from "../integrations/dotypos";
-import type { Runner } from "../runtime";
-import { browserSessionFor, log } from "../runtime";
+import { log } from "../runtime";
 import type { CheckoutData, CheckoutFlowState } from "../types";
 import { isExpectedCheckoutStatusUrl } from "../urls";
 import { assertFulfilledStatusPage } from "./checkout";
@@ -25,9 +25,8 @@ export const executeZeroTotalCheckout = ({
   config,
   data,
   datasourceConfig,
-  run,
   runStep,
-  session,
+  openSession,
   state,
   preparation,
   discountCode,
@@ -38,9 +37,8 @@ export const executeZeroTotalCheckout = ({
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
   readonly datasourceConfig: DatasourceConfig;
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
   readonly state: CheckoutFlowState;
   readonly preparation: ReservationFormPreparation;
   readonly discountCode: string;
@@ -51,7 +49,7 @@ export const executeZeroTotalCheckout = ({
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* openPage(browser, config, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
         });
@@ -71,7 +69,7 @@ export const executeZeroTotalCheckout = ({
     state.orderId = orderId;
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* applyDiscountCode({
           appliedMessage,
           code: discountCode,
@@ -84,7 +82,7 @@ export const executeZeroTotalCheckout = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         const checkoutPage = yield* submitCheckoutPayment(
           browser,
           config.timeouts
@@ -131,8 +129,7 @@ export const executeZeroTotalCheckout = ({
         data,
         dotyposReservation,
         orderId,
-        run,
-        session,
+        openSession,
       }),
       id: stepId("assert-zero-total-fulfilled-status"),
       timeoutMs: config.timeouts.uiTransition,
