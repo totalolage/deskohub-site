@@ -9,10 +9,7 @@ import { AccountingDocumentSnapshotRepository } from "@/features/accounting/back
 import { AccountingSnapshotKeyService } from "@/features/accounting/backend/accounting-snapshot-key.service";
 import { InvoiceRepository } from "@/features/accounting/backend/invoice.repository";
 import { getCustomerInvoiceStatusLabel } from "@/features/accounting/customer-invoice";
-import {
-  type ManualInvoicePayment,
-  manualInvoiceInputSchema,
-} from "@/features/accounting/manual-invoice";
+import { manualInvoiceInputSchema } from "@/features/accounting/manual-invoice";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { currentRequestHeaders } from "@/shared/backend/workspace-request-context";
 import { parseCsv } from "@/shared/testing/csv.test-utils";
@@ -125,7 +122,11 @@ const signInLinked = async (
 const issueInvoice = async (
   dotyposCustomerId: string,
   options: {
-    readonly payment: ManualInvoicePayment;
+    /** The input as the admin form sends it, decoded with the rest. */
+    readonly payment: {
+      readonly status: "due" | "paid";
+      readonly date: string;
+    };
     readonly lines: readonly { description: string; price: string }[];
   }
 ) => {
@@ -216,11 +217,17 @@ const exactAmount = (amount: string) =>
   BigDecimal.format(BigDecimal.normalize(BigDecimal.fromStringUnsafe(amount)));
 
 /** An export row with its total amount (the fourth cell) made canonical. */
-const withExactTotal = ([number, issued, due, total, ...rest]: string[]) => [
+const withExactTotal = ([
   number,
   issued,
   due,
-  exactAmount(total!),
+  total,
+  ...rest
+]: string[]): string[] => [
+  number ?? "",
+  issued ?? "",
+  due ?? "",
+  exactAmount(total ?? ""),
   ...rest,
 ];
 
