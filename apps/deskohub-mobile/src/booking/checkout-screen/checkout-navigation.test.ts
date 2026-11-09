@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Option } from "effect";
-import type { Href } from "expo-router";
+import type { Href, ImperativeRouter } from "expo-router";
 import { bookFamilyHref, paymentStatusHref } from "../booking-routes";
 import type { CheckoutFlowView } from "../checkout/checkout-flow";
 import { startCheckout } from "../checkout/checkout-machine";
@@ -123,27 +123,34 @@ describe("navigationDecision", () => {
 
 describe("leaveCheckout", () => {
   const recordingRouter = () => {
-    const calls: Array<readonly [string, Href]> = [];
+    const calls: Array<
+      readonly [string, Href, Parameters<ImperativeRouter["dismissTo"]>[1]?]
+    > = [];
     return {
       calls,
       router: {
         replace: (href: Href) => void calls.push(["replace", href]),
-        dismissTo: (href: Href) => void calls.push(["dismissTo", href]),
+        dismissTo: (
+          href: Href,
+          options?: Parameters<ImperativeRouter["dismissTo"]>[1]
+        ) => void calls.push(["dismissTo", href, options]),
       },
     };
   };
 
-  test("the status replaces the checkout", () => {
+  test("the status leaves the book stack, above the Reservations list", () => {
     const { calls, router } = recordingRouter();
     const href = paymentStatusHref("order-1");
     leaveCheckout(router, { _tag: "Status", href });
-    expect(calls).toEqual([["replace", href]]);
+    // The anchor puts the reservations stack's `index` below the status
+    // screen when that stack is created, as the deep link's does.
+    expect(calls).toEqual([["dismissTo", href, { withAnchor: true }]]);
   });
 
   test("a restart returns to the family screen below the checkout", () => {
     const { calls, router } = recordingRouter();
     const href = bookFamilyHref("cowork", "hold_expired");
     leaveCheckout(router, { _tag: "FamilyScreen", href });
-    expect(calls).toEqual([["dismissTo", href]]);
+    expect(calls).toEqual([["dismissTo", href, undefined]]);
   });
 });

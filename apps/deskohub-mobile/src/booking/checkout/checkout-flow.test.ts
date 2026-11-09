@@ -2,9 +2,11 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { CustomerCheckoutDetailsInvalid } from "@deskohub/workspace-customer-api";
 import { Clock, Deferred, Effect, Option } from "effect";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { reservationHistoryAtom } from "../../account/reservations/reservations-list-state";
 import { analytics } from "../../analytics/analytics";
 import { accountStorageKey } from "../../customer-api/account-scoped-storage";
 import { fakeWorkspaceOrigin } from "../../customer-api/testing/fake-workspace";
+import { PaymentBrowserUnavailable } from "../payment-browser.service";
 import {
   RememberedReferralCode,
   rememberedReferralStorageName,
@@ -96,6 +98,24 @@ const pay = async (flow: Flow) => {
 };
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Mounts the Reservations list's read, as the Reservations tab does, once
+ * it has loaded; returns how many times it has read the history so far.
+ */
+const showReservations = async (checkout: FakeCheckout) => {
+  cleanups.push(checkout.registry.mount(reservationHistoryAtom));
+  await waitForValue(checkout.registry, reservationHistoryAtom, () => true);
+  return () =>
+    checkout.workspace.calls.filter((call) => call === "listReservations")
+      .length;
+};
+
+/** Resolves once `reads` reaches `count`, or fails after a few hundred turns. */
+const untilReads = async (reads: () => number, count: number) => {
+  for (let turn = 0; turn < 500 && reads() < count; turn += 1) await settle();
+  expect(reads()).toBe(count);
+};
 
 const rememberReferral = (checkout: FakeCheckout) =>
   checkout.inRuntime(
@@ -489,5 +509,128 @@ describe("useCheckoutFlow's flow", () => {
     await settle();
 
     expect(flow.checkout.browser.opened).toEqual([]);
+  });
+});
+
+describe("a finished booking", () => {
+  /** Ends the hold-and-pay path one way; the flow then reaches `Done`. */
+  const finishes: ReadonlyArray<
+    readonly [string, (flow: Flow) => Promise<void>]
+  > = [
+    ["the payment page returns", (flow) => pay(flow)],
+    [
+      "the payment page is dismissed",
+      async (flow) => {
+        flow.checkout.browser.answerWith(Effect.succeed("dismissed"));
+        await pay(flow);
+      },
+    ],
+    [
+      "nothing is left to pay",
+      async (flow) => {
+        flow
+          .controller()
+          .send(CheckoutEvent.CodeChanged({ input: fakeBookingCodes.free }));
+        flow.controller().send(CheckoutEvent.ApplyCode());
+        await flow.until(
+          ({ state }) =>
+            state._tag === "Review" && state.code.status._tag === "Applied"
+        );
+        await pay(flow);
+      },
+    ],
+    [
+      "an unsettled submit is retried",
+      async (flow) => {
+        flow.checkout.booking.fail("submitCheckout", "transport-failure");
+        await pay(flow);
+        await flow.until(
+          ({ state }) => state._tag === "Uncertain" && !state.retrying
+        );
+        flow.controller().send(CheckoutEvent.Retry());
+      },
+    ],
+    [
+      "the hold expires on an unsettled submit",
+      async (flow) => {
+        flow.checkout.booking.fail("submitCheckout", "transport-failure");
+        await pay(flow);
+        await flow.until(
+          ({ state }) => state._tag === "Uncertain" && !state.retrying
+        );
+        await flow.checkout.adjust(fakeHoldDuration);
+      },
+    ],
+  ];
+
+  test.each(finishes)(
+    "reads the Reservations list again once: %s",
+    async (_, finish) => {
+      const flow = await startFlow();
+      const reads = await showReservations(flow.checkout);
+      expect(reads()).toBe(1);
+
+      await toReview(flow);
+      expect(reads()).toBe(1);
+      await finish(flow);
+      await flow.untilState("Done");
+      await untilReads(reads, 2);
+      // The clock keeps ticking on the finished flow; nothing reads again.
+      await flow.checkout.adjust(holdClockInterval);
+      await flow.checkout.adjust(holdClockInterval);
+      flow.unmount();
+      await settle();
+
+      expect(reads()).toBe(2);
+    }
+  );
+
+  test.each([
+    ["the payment page stays open", Effect.never],
+    [
+      "the payment page can't open",
+      Effect.fail(new PaymentBrowserUnavailable({ cause: "busy" })),
+    ],
+  ] as const)(
+    "left at the payment page, reads the list again once as the screen goes: %s",
+    async (_, page) => {
+      const flow = await startFlow();
+      const reads = await showReservations(flow.checkout);
+      flow.checkout.browser.answerWith(page);
+
+      await toReview(flow);
+      await pay(flow);
+      await flow.untilState("Paying");
+      await settle();
+      expect(reads()).toBe(1);
+      flow.unmount();
+      await untilReads(reads, 2);
+      await settle();
+
+      expect(reads()).toBe(2);
+    }
+  );
+
+  test("with the Reservations list not shown, reads nothing", async () => {
+    const flow = await startFlow();
+
+    await toReview(flow);
+    await pay(flow);
+    await flow.untilState("Done");
+    await settle();
+
+    expect(flow.checkout.workspace.calls).not.toContain("listReservations");
+  });
+
+  test("a checkout that restarts reads nothing", async () => {
+    const flow = await startFlow();
+    const reads = await showReservations(flow.checkout);
+
+    await toReview(flow);
+    await flow.checkout.adjust(fakeHoldDuration);
+    await flow.untilState("Restart");
+    await settle();
+
+    expect(reads()).toBe(1);
   });
 });
