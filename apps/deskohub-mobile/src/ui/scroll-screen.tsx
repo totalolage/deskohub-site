@@ -1,4 +1,5 @@
 import {
+  type ComponentRef,
   createContext,
   type ReactNode,
   useCallback,
@@ -37,7 +38,7 @@ export function ScrollScreen({
   readonly refreshing?: boolean;
   readonly onRefresh?: () => void;
 }) {
-  const scrollView = useRef<ScrollView>(null);
+  const scrollView = useRef<ComponentRef<typeof ScrollView>>(null);
   // Instantly: a screen coming back into view shows its top right away.
   const scrollToTop = useCallback(
     () => scrollView.current?.scrollTo({ y: 0, animated: false }),

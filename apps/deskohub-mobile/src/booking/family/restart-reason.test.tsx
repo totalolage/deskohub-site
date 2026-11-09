@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { Option } from "effect";
 import { createElement } from "react";
 import { clientRoot } from "../../testing/client-root";
+import { ScrollScreenContext } from "../../ui/scroll-screen";
+import { useRestartReasonInView } from "./restart-reason";
 
 /**
  * A stand-in for the family screen's place in the book stack: its search
@@ -11,14 +13,6 @@ const screen = {
   params: {} as { restart?: string },
   focused: true,
 };
-
-mock.module("expo-router", () => ({
-  useLocalSearchParams: () => screen.params,
-  useIsFocused: () => screen.focused,
-}));
-
-const { useRestartReason } = await import("./booking-family-hooks");
-const { ScrollScreenContext } = await import("../../ui/scroll-screen");
 
 const { render } = clientRoot();
 
@@ -37,9 +31,13 @@ const familyScreen = () => {
     seen.scrollsToTop += 1;
   };
   function Selection() {
-    seen.reason = useRestartReason(() => {
-      seen.rereads += 1;
-    });
+    seen.reason = useRestartReasonInView(
+      screen.params.restart,
+      screen.focused,
+      () => {
+        seen.rereads += 1;
+      }
+    );
     return null;
   }
   const show = (state: Partial<typeof screen> = {}) => {
@@ -57,7 +55,7 @@ const familyScreen = () => {
 
 const expired = { restart: "hold_expired" };
 
-describe("useRestartReason", () => {
+describe("useRestartReasonInView", () => {
   beforeEach(async () => {
     await render(null);
     screen.params = {};
