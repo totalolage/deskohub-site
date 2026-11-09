@@ -50,6 +50,7 @@ type MarketingActionInput = { readonly context: string };
 type MarketingActionResult = { readonly data?: unknown };
 
 mock.module("next/navigation", () => ({
+  unstable_rethrow: () => undefined,
   useRouter: () => ({ refresh: routerRefresh }),
 }));
 
@@ -276,12 +277,57 @@ test.each(["en-US", "cs-CZ"] as const)(
     expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
     expect((marketingSwitch as HTMLButtonElement).disabled).toBe(false);
 
-    // The archive block stays outside the preference group at its own level.
-    const archiveHeading = view.getByRole("heading", {
-      level: 3,
-      name: m.legalScreenArchiveTitle({}, { locale }),
-    });
-    expect(group.contains(archiveHeading)).toBe(false);
+    // The signed-in account's data export follows the preference group as
+    // its own region, never inside it.
+    const exportControl = view.container.querySelector(
+      '[data-slot="account-data-export"]'
+    );
+    expect(exportControl).toBeTruthy();
+    expect(group.contains(exportControl)).toBe(false);
+    expect(
+      group.compareDocumentPosition(exportControl) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    const exportRegion = exportControl.closest("section");
+    expect(exportRegion?.getAttribute("aria-labelledby")).toBe(
+      exportRegion?.querySelector("h3")?.id
+    );
+  }
+);
+
+test("offers the account data export to a visitor read as signed in", () => {
+  const view = render(
+    <LegalScreen
+      analyticsPreference={{ status: "available", granted: false }}
+      locale="en-US"
+    />
+  );
+
+  const exportControl = view.container.querySelector(
+    '[data-slot="account-data-export"]'
+  );
+  expect(exportControl?.getAttribute("data-state")).toBe("idle");
+  expect(
+    exportControl?.querySelector('[data-slot="account-data-export-action"]')
+  ).toBeTruthy();
+});
+
+test.each([
+  { name: "signed out", state: { status: "signed-out" } },
+  { name: "unavailable", state: { status: "unavailable" } },
+] as const)(
+  "offers no account data export when the analytics preference is $name",
+  ({ state }) => {
+    const view = render(
+      <LegalScreen analyticsPreference={state} locale="en-US" />
+    );
+
+    expect(
+      view.container.querySelector('[data-slot="account-data-export"]')
+    ).toBeNull();
+    expect(
+      view.container.querySelector('[data-slot="account-data-export-action"]')
+    ).toBeNull();
   }
 );
 
@@ -386,5 +432,8 @@ test("defaults the optional analytics preference to signed out", () => {
 
   expect(
     view.container.querySelector("[data-analytics-preference]")
+  ).toBeNull();
+  expect(
+    view.container.querySelector('[data-slot="account-data-export"]')
   ).toBeNull();
 });

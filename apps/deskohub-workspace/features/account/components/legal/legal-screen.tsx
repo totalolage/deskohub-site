@@ -1,12 +1,11 @@
-import { Download } from "lucide-react";
-import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
+import { AccountDataExport } from "@/features/account/components/legal/account-data-export";
 import { LegalPreferenceSettings } from "@/features/account/components/legal/legal-preference-settings";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
+import { getAccountDataExportPath } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
 import type { AnalyticsPreferenceState } from "@/features/legal/analytics-preference";
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 import { GuardedLink } from "@/shared/components/guarded-link";
-import { Button } from "@/shared/components/ui/button";
 
 export interface LegalScreenProps {
   readonly analyticsPreference?: AnalyticsPreferenceState;
@@ -15,6 +14,7 @@ export interface LegalScreenProps {
 }
 
 const legalScreenTitleId = "account-legal-title";
+const accountDataExportTitleId = "account-data-export-title";
 
 export function LegalScreen({
   analyticsPreference,
@@ -58,24 +58,38 @@ export function LegalScreen({
         marketingPreferences={marketingPreferences}
       />
 
-      <div className="mt-8 border-t border-[#e5e9ef] pt-6">
-        <div className="flex min-w-0 flex-col gap-4 @3xl:flex-row @3xl:items-center @3xl:justify-between">
-          <div className="min-w-0">
-            <h3 className="break-words text-[18px] font-semibold leading-6 text-[#1f2d43]">
-              {m.legalScreenArchiveTitle({}, { locale })}
-            </h3>
-            <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
-              {m.legalScreenArchiveDescription({}, { locale })}
-            </p>
-          </div>
-          <FutureFeatureTooltip locale={locale}>
-            <Button disabled type="button" variant="secondary" wrap>
-              <Download aria-hidden="true" className="size-4 shrink-0" />
-              {m.legalScreenArchiveAction({}, { locale })}
-            </Button>
-          </FutureFeatureTooltip>
-        </div>
-      </div>
+      {/* Only a visitor the page read as signed in gets the download: an
+          unavailable preference may mean the session itself couldn't be
+          read. The export route still authorizes every request itself. */}
+      {analyticsPreference?.status === "available" && (
+        <section
+          aria-labelledby={accountDataExportTitleId}
+          className="mt-8 min-w-0 border-t border-[#e5e9ef] pt-6"
+        >
+          <h3
+            className="break-words text-[18px] font-semibold leading-6 text-[#1f2d43]"
+            id={accountDataExportTitleId}
+          >
+            {m.legalScreenExportTitle({}, { locale })}
+          </h3>
+          <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
+            {m.legalScreenExportDescription({}, { locale })}
+          </p>
+          <AccountDataExport
+            href={getAccountDataExportPath(locale)}
+            locale={locale}
+          />
+          <p className="mt-4 break-words text-sm leading-5 text-[#586c88]">
+            {m.legalScreenExportOmissions({}, { locale })}
+          </p>
+          <p className="mt-2 text-sm leading-5">
+            <PolicyLink
+              href={`${localePath}/privacy-policy`}
+              label={m.legalScreenExportFullRequestLink({}, { locale })}
+            />
+          </p>
+        </section>
+      )}
     </AccountSectionPanel>
   );
 }
