@@ -568,6 +568,7 @@ const makeReferralAdmission = (input: {
       amount: snapshot.quote.payment.expectedPrice,
       commitment: makeDiscountCommitment({
         product,
+        firstServiceDate: "2099-01-01",
         applications: [
           ...calculation.applications,
           ...(creditCalculation?.applications ?? []),
@@ -587,7 +588,11 @@ const makeOrdinaryAdmission = (
     snapshot,
     admission: {
       amount: snapshot.quote.payment.expectedPrice,
-      commitment: makeDiscountCommitment({ product, applications: [] }),
+      commitment: makeDiscountCommitment({
+        product,
+        firstServiceDate: "2099-01-01",
+        applications: [],
+      }),
     } satisfies Admission,
   };
 };
@@ -2662,6 +2667,7 @@ describe.skipIf(!testDatabase)(
         snapshot,
         commitment: makeDiscountCommitment({
           product: input.product,
+          firstServiceDate: "2099-01-01",
           applications: [
             {
               application: {
@@ -2727,6 +2733,7 @@ describe.skipIf(!testDatabase)(
         snapshot: makeSnapshot(reservation),
         commitment: makeDiscountCommitment({
           product: { kind: "cowork", tier: "basic" },
+          firstServiceDate: "2099-01-01",
           applications: [],
         }),
       });
@@ -2758,6 +2765,7 @@ describe.skipIf(!testDatabase)(
         snapshot,
         commitment: makeDiscountCommitment({
           product,
+          firstServiceDate: "2099-01-01",
           applications: [
             {
               application: {
@@ -2883,6 +2891,7 @@ describe.skipIf(!testDatabase)(
           snapshot,
           commitment: makeDiscountCommitment({
             product: { kind: "cowork", tier: "basic" },
+            firstServiceDate: "2099-01-01",
             applications: [
               {
                 application: {
@@ -2933,6 +2942,179 @@ describe.skipIf(!testDatabase)(
       expect(rows.applications).toEqual([]);
       expect(rows.reservation?.activePaymentAttemptId).toBeNull();
       expect(rows.reservation?.paymentState).toBe("not_started");
+    });
+  }
+);
+
+const makeCodeAdmission = (input: {
+  readonly reservation: Reservation;
+  readonly dotyposCustomerId: DotyposCustomerId;
+  readonly candidate: DiscountCandidate;
+  readonly firstServiceDate: string;
+}) => {
+  const baseQuote = Effect.runSync(
+    buildCoworkReservationQuote({
+      kind: "cowork",
+      entryTier: "basic",
+      coffee: false,
+    })
+  );
+  const calculation = Effect.runSync(
+    calculateDiscounts({
+      product,
+      discountableSubtotal: baseQuote.payment.expectedPrice,
+      candidates: [input.candidate],
+    })
+  );
+  const snapshot = makeSnapshot(
+    input.reservation,
+    input.dotyposCustomerId,
+    calculation.quote
+  );
+
+  return {
+    locale: "en-US" as const,
+    snapshot,
+    admission: {
+      amount: snapshot.quote.payment.expectedPrice,
+      commitment: makeDiscountCommitment({
+        product,
+        firstServiceDate: input.firstServiceDate,
+        applications: calculation.applications,
+      }),
+    } satisfies Admission,
+  };
+};
+
+const setCodeServiceDates = (
+  codeId: string,
+  serviceDateFrom: string | null,
+  serviceDateUntil: string | null
+) =>
+  testDatabase!.pool.query(
+    "update discount_codes set service_date_from = $2, service_date_until = $3 where id = $1",
+    [codeId, serviceDateFrom, serviceDateUntil]
+  );
+
+const getCandidateCodeId = (candidate: DiscountCandidate) => {
+  if (candidate.claim?.kind !== "discount_code") {
+    throw new Error("Expected a discount-code candidate.");
+  }
+  return candidate.claim.codeId;
+};
+
+describe.skipIf(!testDatabase)(
+  "PaymentLifecycleRepository discount-code service dates on disposable Postgres",
+  () => {
+    // makeSnapshot books the cowork reservation for 2099-01-01.
+    const reservationStartDate = "2099-01-01";
+
+    test("admits a code whose current service dates cover the reservation start date", async () => {
+      const repository = await makeRepository();
+      const dotyposCustomerId = customerId();
+      const promotion = await createOrdinaryDiscountCode(dotyposCustomerId);
+      try {
+        await setCodeServiceDates(
+          getCandidateCodeId(promotion.candidate),
+          reservationStartDate,
+          reservationStartDate
+        );
+        const reservation = await createHeldReservation(dotyposCustomerId);
+        const attempt = await Effect.runPromise(
+          admit(
+            repository,
+            reservation,
+            makeCodeAdmission({
+              reservation,
+              dotyposCustomerId,
+              candidate: promotion.candidate,
+              firstServiceDate: reservationStartDate,
+            })
+          )
+        );
+        const redemptions = await testDatabase!.pool.query(
+          "select state from discount_code_redemptions where payment_attempt_id = $1",
+          [attempt.id]
+        );
+
+        expect(redemptions.rows).toEqual([{ state: "reserved" }]);
+      } finally {
+        await testDatabase!.pool.query(
+          "delete from discount_code_redemptions where code_id = $1",
+          [getCandidateCodeId(promotion.candidate)]
+        );
+        await promotion.cleanup();
+      }
+    });
+
+    test("refuses a code whose service dates changed after it was affirmed", async () => {
+      const repository = await makeRepository();
+      const dotyposCustomerId = customerId();
+      const promotion = await createOrdinaryDiscountCode(dotyposCustomerId);
+      try {
+        const reservation = await createHeldReservation(dotyposCustomerId);
+        const admission = makeCodeAdmission({
+          reservation,
+          dotyposCustomerId,
+          candidate: promotion.candidate,
+          firstServiceDate: reservationStartDate,
+        });
+        await setCodeServiceDates(
+          getCandidateCodeId(promotion.candidate),
+          "2099-01-02",
+          "2099-01-31"
+        );
+
+        const result = await Effect.runPromise(
+          Effect.result(admit(repository, reservation, admission))
+        );
+        const attempts = await testDatabase!.pool.query(
+          "select id from payment_attempts where workspace_reservation_id = $1",
+          [reservation.id]
+        );
+
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "DiscountClaimError",
+            reason: "service_date_ineligible",
+          },
+        });
+        expect(attempts.rows).toEqual([]);
+      } finally {
+        await promotion.cleanup();
+      }
+    });
+
+    test("refuses a commitment affirmed for another reservation start date", async () => {
+      const repository = await makeRepository();
+      const dotyposCustomerId = customerId();
+      const promotion = await createOrdinaryDiscountCode(dotyposCustomerId);
+      try {
+        const reservation = await createHeldReservation(dotyposCustomerId);
+
+        const result = await Effect.runPromise(
+          Effect.result(
+            admit(
+              repository,
+              reservation,
+              makeCodeAdmission({
+                reservation,
+                dotyposCustomerId,
+                candidate: promotion.candidate,
+                firstServiceDate: "2099-01-02",
+              })
+            )
+          )
+        );
+
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "DiscountClaimError", reason: "claim_conflict" },
+        });
+      } finally {
+        await promotion.cleanup();
+      }
     });
   }
 );
