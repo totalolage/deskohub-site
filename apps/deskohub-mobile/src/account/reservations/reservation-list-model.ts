@@ -1,17 +1,14 @@
 import type { CustomerReservationOrderId } from "@deskohub/workspace-customer-api";
 import { Array as Arr, DateTime, Option } from "effect";
 import type { AppLocale } from "../../i18n/app-locale";
-import {
-  formatInstant,
-  formatInstantRange,
-  parseInstant,
-} from "../../i18n/date-time-format";
+import { formatInstant, parseInstant } from "../../i18n/date-time-format";
 import { m } from "../../i18n/messages";
 import { opensReservationStatus } from "../account-gating";
 import {
   reservationProductTitle,
   reservationStatusLabel,
 } from "./reservation-labels";
+import { reservationPeriodText } from "./reservation-period";
 import type {
   SavedReservation,
   SavedReservationHistory,
@@ -73,7 +70,7 @@ export const reservationGroups = (
 /** One reservation's text, formatted for the locale. */
 export interface ReservationRowText {
   readonly title: string;
-  /** Start and end, or "unavailable" when either can't be read. */
+  /** Its days or times, or "unavailable" when either end can't be read. */
   readonly period: string;
   /** When early setup starts, for a meeting room booked with it. */
   readonly setup: Option.Option<string>;
@@ -84,31 +81,24 @@ export interface ReservationRowText {
 export const reservationRowText = (
   row: ReservationListRow,
   locale: AppLocale
-): ReservationRowText => {
-  const start = instantOf(row.startsAt);
-  const end = instantOf(row.endsAt);
-  return {
-    title: reservationProductTitle(row.product, locale),
-    period: Option.match(Option.all([start, end]), {
-      onNone: () => m.reservations_value_unavailable({}, { locale }),
-      onSome: ([from, to]) =>
-        m.reservations_time_range(formatInstantRange(from, to, locale), {
-          locale,
-        }),
-    }),
-    setup: Option.map(instantOf(row.setupStartsAt), (setup) =>
-      m.reservations_setup_from(
-        { time: formatInstant(setup, locale, "time") },
-        { locale }
-      )
-    ),
-    seats:
-      row.seats === null
-        ? m.reservations_seats_unavailable({}, { locale })
-        : m.reservations_seats({ count: row.seats }, { locale }),
-    status: reservationStatusLabel(row.status, locale),
-  };
-};
+): ReservationRowText => ({
+  title: reservationProductTitle(row.product, locale),
+  period: reservationPeriodText(
+    { kind: row.product.kind, startsAt: row.startsAt, endsAt: row.endsAt },
+    locale
+  ),
+  setup: Option.map(instantOf(row.setupStartsAt), (setup) =>
+    m.reservations_setup_from(
+      { time: formatInstant(setup, locale, "time") },
+      { locale }
+    )
+  ),
+  seats:
+    row.seats === null
+      ? m.reservations_seats_unavailable({}, { locale })
+      : m.reservations_seats({ count: row.seats }, { locale }),
+  status: reservationStatusLabel(row.status, locale),
+});
 
 /** The order a row opens the status screen of; none when it isn't navigable. */
 export const reservationStatusTarget = (

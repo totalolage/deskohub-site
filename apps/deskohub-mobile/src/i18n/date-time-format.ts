@@ -1,4 +1,4 @@
-import { DateTime, type Option } from "effect";
+import { DateTime, Option } from "effect";
 import type { AppLocale } from "./app-locale";
 
 /**
@@ -7,9 +7,11 @@ import type { AppLocale } from "./app-locale";
  */
 export const workspaceTimeZone = "Europe/Prague";
 
-export type InstantStyle = "date" | "time" | "date-time";
+export type InstantStyle = "day" | "date" | "time" | "date-time";
 
 const styleOptions = {
+  /** A whole day, written out as the site's account page shows day bookings. */
+  day: { dateStyle: "full" },
   date: { dateStyle: "medium" },
   time: { timeStyle: "short" },
   "date-time": { dateStyle: "medium", timeStyle: "short" },
@@ -33,30 +35,58 @@ export const formatInstant = (
     })
   );
 
-/** A time range's two ends, each formatted only as far as it needs. */
+/**
+ * A range's ends, each formatted only as far as it needs; no end when the
+ * range is a single whole day.
+ */
 export interface FormattedInstantRange {
   readonly start: string;
-  readonly end: string;
+  readonly end: Option.Option<string>;
 }
 
-const workspaceWallClock = (instant: DateTime.DateTime) =>
-  DateTime.toParts(
-    DateTime.makeZonedUnsafe(instant, { timeZone: workspaceTimeZone })
-  );
-
-const isWorkspaceMidnight = (instant: DateTime.DateTime) => {
-  const { hour, minute, second, millisecond } = workspaceWallClock(instant);
-  return hour === 0 && minute === 0 && second === 0 && millisecond === 0;
+/**
+ * The instant's Prague calendar day as YYYY-MM-DD. It reads only the date
+ * fields, by name: Hermes ignores `hourCycle`, so hours and the positional
+ * parts `DateTime.toParts` relies on are wrong for zoned times there.
+ */
+const workspaceDay = (instant: DateTime.DateTime) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: workspaceTimeZone,
+  }).formatToParts(DateTime.toEpochMillis(instant));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
 };
 
-const isSameWorkspaceDay = (a: DateTime.DateTime, b: DateTime.DateTime) => {
-  const first = workspaceWallClock(a);
-  const second = workspaceWallClock(b);
-  return (
-    first.year === second.year &&
-    first.month === second.month &&
-    first.day === second.day
-  );
+const isSameWorkspaceDay = (a: DateTime.DateTime, b: DateTime.DateTime) =>
+  workspaceDay(a) === workspaceDay(b);
+
+/** Whether the instant starts a Prague day: a millisecond earlier is the day before. */
+const isWorkspaceMidnight = (instant: DateTime.DateTime) =>
+  !isSameWorkspaceDay(instant, DateTime.subtract(instant, { milliseconds: 1 }));
+
+/**
+ * Formats the Prague days from `start` to the exclusive `end` as whole days:
+ * the first day, and the last one when it is another day. An end that doesn't
+ * move forward leaves the first day alone.
+ */
+export const formatWorkspaceDays = (
+  start: DateTime.DateTime,
+  end: DateTime.DateTime,
+  locale: AppLocale
+): FormattedInstantRange => {
+  const last = DateTime.isGreaterThan(end, start)
+    ? DateTime.subtract(end, { milliseconds: 1 })
+    : start;
+  return {
+    start: formatInstant(start, locale, "day"),
+    end: isSameWorkspaceDay(start, last)
+      ? Option.none()
+      : Option.some(formatInstant(last, locale, "day")),
+  };
 };
 
 /**
@@ -75,21 +105,16 @@ export const formatInstantRange = (
     isWorkspaceMidnight(start) &&
     isWorkspaceMidnight(end)
   ) {
-    return {
-      start: formatInstant(start, locale, "date"),
-      end: formatInstant(
-        DateTime.subtract(end, { milliseconds: 1 }),
-        locale,
-        "date"
-      ),
-    };
+    return formatWorkspaceDays(start, end, locale);
   }
   return {
     start: formatInstant(start, locale, "date-time"),
-    end: formatInstant(
-      end,
-      locale,
-      isSameWorkspaceDay(start, end) ? "time" : "date-time"
+    end: Option.some(
+      formatInstant(
+        end,
+        locale,
+        isSameWorkspaceDay(start, end) ? "time" : "date-time"
+      )
     ),
   };
 };

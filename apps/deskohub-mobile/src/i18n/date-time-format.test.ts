@@ -3,6 +3,7 @@ import { DateTime, Option } from "effect";
 import {
   formatInstant,
   formatInstantRange,
+  formatWorkspaceDays,
   parseInstant,
 } from "./date-time-format";
 
@@ -53,13 +54,43 @@ describe("formatInstant", () => {
 });
 
 describe("formatInstantRange", () => {
+  test("reads Prague days where Intl ignores the requested hour cycle", () => {
+    // Some engines (Hermes on Android) ignore `hourCycle`, so midnight comes
+    // back as hour 12 AM; whole days must still read as whole days there.
+    const RealDateTimeFormat = Intl.DateTimeFormat;
+    class IgnoringHourCycle extends RealDateTimeFormat {
+      constructor(
+        locales?: string | string[],
+        options?: Intl.DateTimeFormatOptions
+      ) {
+        const { hourCycle: _ignored, ...supported } = options ?? {};
+        super(locales, supported);
+      }
+    }
+    Intl.DateTimeFormat = IgnoringHourCycle as typeof Intl.DateTimeFormat;
+    try {
+      // 30 November 00:00 to 1 December 00:00 Prague time.
+      const range = formatInstantRange(
+        instant("2026-11-29T23:00:00Z"),
+        instant("2026-11-30T23:00:00Z"),
+        "en-US"
+      );
+      expect(range).toEqual({
+        start: "Monday, November 30, 2026",
+        end: Option.none(),
+      });
+    } finally {
+      Intl.DateTimeFormat = RealDateTimeFormat;
+    }
+  });
+
   test("shows the end of a range within one Prague day as a time only", () => {
     const start = instant("2026-01-05T09:00:00Z");
     const end = instant("2026-01-05T17:00:00Z");
     for (const locale of ["en-US", "cs-CZ"] as const) {
       expect(formatInstantRange(start, end, locale)).toEqual({
         start: formatInstant(start, locale, "date-time"),
-        end: formatInstant(end, locale, "time"),
+        end: Option.some(formatInstant(end, locale, "time")),
       });
     }
   });
@@ -70,27 +101,64 @@ describe("formatInstantRange", () => {
     const end = instant("2026-01-05T23:30:00Z");
     expect(formatInstantRange(start, end, "en-US")).toEqual({
       start: formatInstant(start, "en-US", "date-time"),
-      end: formatInstant(end, "en-US", "date-time"),
+      end: Option.some(formatInstant(end, "en-US", "date-time")),
     });
   });
 
   test("reads Prague midnight to midnight as whole days, the end exclusive", () => {
     // 5 January 00:00 to 12 January 00:00 Prague time (UTC+1).
-    const start = instant("2026-01-04T23:00:00Z");
-    const end = instant("2026-01-11T23:00:00Z");
-    const range = formatInstantRange(start, end, "en-US");
-    expect(range.start).toBe(formatInstant(start, "en-US", "date"));
-    expect(range.end).toBe(
-      formatInstant(instant("2026-01-11T12:00:00Z"), "en-US", "date")
+    const range = formatInstantRange(
+      instant("2026-01-04T23:00:00Z"),
+      instant("2026-01-11T23:00:00Z"),
+      "en-US"
     );
-    expect(range.end).not.toContain(":");
+    expect(range).toEqual({
+      start: "Monday, January 5, 2026",
+      end: Option.some("Sunday, January 11, 2026"),
+    });
+  });
+
+  test("reads one whole Prague day as that day alone", () => {
+    const range = formatInstantRange(
+      instant("2026-01-04T23:00:00Z"),
+      instant("2026-01-05T23:00:00Z"),
+      "cs-CZ"
+    );
+    expect(range).toEqual({
+      start: "pondělí 5. ledna 2026",
+      end: Option.none(),
+    });
   });
 
   test("keeps the time on a midnight range that doesn't move forward", () => {
     const midnight = instant("2026-01-04T23:00:00Z");
     expect(formatInstantRange(midnight, midnight, "en-US")).toEqual({
       start: formatInstant(midnight, "en-US", "date-time"),
-      end: formatInstant(midnight, "en-US", "time"),
+      end: Option.some(formatInstant(midnight, "en-US", "time")),
+    });
+  });
+});
+
+describe("formatWorkspaceDays", () => {
+  test("shows the first and last Prague day, the end exclusive", () => {
+    // 30 November 00:00 to 17:00 is one day; to 3 December 00:00 is three.
+    const start = instant("2026-11-29T23:00:00Z");
+    expect(
+      formatWorkspaceDays(start, instant("2026-11-30T16:00:00Z"), "en-US")
+    ).toEqual({ start: "Monday, November 30, 2026", end: Option.none() });
+    expect(
+      formatWorkspaceDays(start, instant("2026-12-02T23:00:00Z"), "en-US")
+    ).toEqual({
+      start: "Monday, November 30, 2026",
+      end: Option.some("Wednesday, December 2, 2026"),
+    });
+  });
+
+  test("shows the start day alone when the end doesn't move forward", () => {
+    const start = instant("2026-11-29T23:00:00Z");
+    expect(formatWorkspaceDays(start, start, "en-US")).toEqual({
+      start: "Monday, November 30, 2026",
+      end: Option.none(),
     });
   });
 });

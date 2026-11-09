@@ -1,7 +1,6 @@
 import type {
   CustomerOrderFulfillmentStatus,
   CustomerOrderPaymentStatus,
-  CustomerOrderState,
   CustomerOrderStatus,
   CustomerReservationOrderId,
 } from "@deskohub/workspace-customer-api";
@@ -15,11 +14,7 @@ import { AsyncView } from "../../customer-api/async-view";
 import { CustomerViewError } from "../../customer-api/customer-view-error";
 import { sharedViewErrorMessage } from "../../customer-api/customer-view-error-message";
 import type { AppLocale } from "../../i18n/app-locale";
-import {
-  formatInstant,
-  formatInstantRange,
-  parseInstant,
-} from "../../i18n/date-time-format";
+import { formatInstant, parseInstant } from "../../i18n/date-time-format";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { formatMoney } from "../../i18n/money-format";
@@ -42,6 +37,7 @@ import {
 } from "./order-status-kind";
 import { focusGained, focusLost, orderStatusAtoms } from "./order-status-state";
 import { reservationKindTitle } from "./reservation-labels";
+import { reservationPeriodText } from "./reservation-period";
 import { canRefreshManually, type StatusRefreshState } from "./status-refresh";
 import { AutomaticRefresh, type StatusVisit } from "./status-refresh-rules";
 
@@ -147,25 +143,6 @@ const statusErrorMessage =
     CustomerViewError.$is("NotFound")(error)
       ? m.reservations_order_not_found({}, { locale })
       : undefined;
-
-/** The order's time as "start – end", or unavailable when unreadable. */
-const timeRangeText = (order: CustomerOrderState, locale: AppLocale) =>
-  Option.match(
-    Option.all({
-      start: Option.flatMap(
-        Option.fromUndefinedOr(order.startsAt),
-        parseInstant
-      ),
-      end: Option.flatMap(Option.fromUndefinedOr(order.endsAt), parseInstant),
-    }),
-    {
-      onNone: () => m.reservations_value_unavailable({}, { locale }),
-      onSome: ({ start, end }) =>
-        m.reservations_time_range(formatInstantRange(start, end, locale), {
-          locale,
-        }),
-    }
-  );
 
 /** What the screen says about refreshing, besides a failed read. */
 const refreshNote = (state: StatusRefreshState, locale: AppLocale) =>
@@ -308,7 +285,7 @@ function OrderStatusContent({
         />
         <ListRow
           label={m.reservations_order_when({}, { locale })}
-          value={timeRangeText(order, locale)}
+          value={reservationPeriodText(order, locale)}
         />
         {Option.isSome(setupStartsAt) && (
           <ListRow
