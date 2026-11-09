@@ -75,11 +75,14 @@ describe("nativeInputsHash", () => {
     { content: '{"expo":{}}', path: "app.json" },
     { content: "{}", path: "eas.json" },
   ];
+  const wrapperProperties =
+    "distributionUrl=https\\://services.gradle.org/distributions/gradle-9.4.1-bin.zip\n";
   const base = nativeInputsHash({
     files,
     packageVersions: nativePackageVersions(
       lockfile({ effect: "effect@1.0.0", expo: "expo@58.0.23" })
     ),
+    wrapperProperties,
   });
 
   test("ignores packages outside Expo and React Native and the file order", () => {
@@ -89,17 +92,19 @@ describe("nativeInputsHash", () => {
         packageVersions: nativePackageVersions(
           lockfile({ effect: "effect@2.0.0", expo: "expo@58.0.23" })
         ),
+        wrapperProperties,
       })
     ).toBe(base);
   });
 
-  test("changes with an Expo version or a native input file", () => {
+  test("changes with an Expo version, a native input file or the wrapper properties", () => {
     expect(
       nativeInputsHash({
         files,
         packageVersions: nativePackageVersions(
           lockfile({ effect: "effect@1.0.0", expo: "expo@58.0.24" })
         ),
+        wrapperProperties,
       })
     ).not.toBe(base);
     expect(
@@ -110,6 +115,16 @@ describe("nativeInputsHash", () => {
         packageVersions: nativePackageVersions(
           lockfile({ effect: "effect@1.0.0", expo: "expo@58.0.23" })
         ),
+        wrapperProperties,
+      })
+    ).not.toBe(base);
+    expect(
+      nativeInputsHash({
+        files,
+        packageVersions: nativePackageVersions(
+          lockfile({ effect: "effect@1.0.0", expo: "expo@58.0.23" })
+        ),
+        wrapperProperties: `${wrapperProperties}distributionSha256Sum=abc\n`,
       })
     ).not.toBe(base);
   });

@@ -4,8 +4,8 @@
 // dependency again.
 //
 // The key names the Gradle distribution the Expo prebuild's wrapper uses and a
-// hash of the inputs that decide which native dependencies Gradle resolves:
-// the app config, eas.json, the local config plugins and native modules, and
+// hash of the inputs that decide what Gradle downloads: the whole wrapper
+// properties, the app config, eas.json, the local config plugins and native modules, and
 // the bun.lock versions of the Expo and React Native packages, which carry the
 // autolinked native code. Other bun.lock changes leave the key alone.
 
@@ -15,7 +15,9 @@ const projectDirectory = resolve(import.meta.dir, "../..");
 const repositoryDirectory = resolve(projectDirectory, "../..");
 
 // The prebuild copies its android/ project from the template in the installed
-// `expo` package (or the npm template of the same SDK when that is missing).
+// `expo` package. Expo falls back to the npm template of the same SDK when the
+// package has none; the key refuses that case instead of guessing, and
+// gradle-cache.test.ts fails on an Expo upgrade that drops the template.
 const templateWrapperProperties =
   "package/android/gradle/wrapper/gradle-wrapper.properties";
 
@@ -72,6 +74,7 @@ export const nativePackageVersions = (lockfile: string): string[] => {
 export const nativeInputsHash = (inputs: {
   readonly files: readonly NativeInputFile[];
   readonly packageVersions: readonly string[];
+  readonly wrapperProperties: string;
 }): string => {
   const hasher = new Bun.CryptoHasher("sha256");
   const sha256 = (content: Uint8Array | string) =>
@@ -83,6 +86,7 @@ export const nativeInputsHash = (inputs: {
     JSON.stringify({
       files: files.map((file) => [file.path, sha256(file.content)]),
       packages: inputs.packageVersions,
+      wrapper: inputs.wrapperProperties,
     })
   );
   return hasher.digest("hex");
@@ -126,12 +130,16 @@ const readTemplateWrapperProperties = (): string => {
 export const gradleCacheKey = async (): Promise<{
   readonly gradle: string;
   readonly nativeInputs: string;
-}> => ({
-  gradle: gradleDistributionName(readTemplateWrapperProperties()),
-  nativeInputs: nativeInputsHash({
-    files: await readNativeInputFiles(),
-    packageVersions: nativePackageVersions(
-      await Bun.file(join(repositoryDirectory, "bun.lock")).text()
-    ),
-  }),
-});
+}> => {
+  const wrapperProperties = readTemplateWrapperProperties();
+  return {
+    gradle: gradleDistributionName(wrapperProperties),
+    nativeInputs: nativeInputsHash({
+      files: await readNativeInputFiles(),
+      packageVersions: nativePackageVersions(
+        await Bun.file(join(repositoryDirectory, "bun.lock")).text()
+      ),
+      wrapperProperties,
+    }),
+  };
+};
