@@ -129,8 +129,12 @@ test("lets a customer download the invoice an administrator issued them as a PDF
           timeoutMs: workspaceE2ETimeouts.uiTransition,
         });
         // Creation is the one state-creating submission: it is sent once and
-        // never retried. Issued invoices are immutable records, so cleanup
-        // has no row of it to wait for or delete.
+        // never retried. The invoice is issued only for the profile journaled
+        // above, and `read-issued-invoice` proves it belongs to that profile,
+        // so the journal accounts for it through the profile. Its disposition
+        // is retention: the database rejects every update or delete of an
+        // issued invoice, so cleanup expires the profile and keeps the
+        // invoice, and has no submission to wait for.
         const invoiceId = yield* step({
           execute: Effect.gen(function* () {
             yield* session.use("issue the manual invoice", async (page) => {
