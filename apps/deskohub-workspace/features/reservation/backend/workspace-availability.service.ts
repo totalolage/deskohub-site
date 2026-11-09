@@ -189,18 +189,23 @@ const implementation = Effect.gen(function* () {
           ? [replacementReservationId]
           : []),
       ]);
-      yield* Effect.annotateLogsScoped({
-        tables,
-        reservations,
-        limitations,
-      });
-      yield* Effect.logInfo("Workspace availability inventory load completed");
+      // Counts, not the records: whole inventories made each row tens of KB.
+      yield* Effect.logInfo(
+        "Workspace availability inventory load completed"
+      ).pipe(
+        Effect.annotateLogs({
+          activeReservationCount: activeReservations.length,
+          dateCount: input.dates.length,
+          limitationCount: limitations.length,
+          reservationCount: reservations.length,
+          tableCount: tables.length,
+        })
+      );
 
       return { tables, reservations: activeReservations, limitations };
     },
     (effect) =>
       effect.pipe(
-        Effect.scoped,
         Effect.tapError((cause) =>
           Effect.logError("Workspace availability inventory load failed", {
             cause,

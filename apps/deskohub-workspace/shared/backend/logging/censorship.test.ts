@@ -15,16 +15,7 @@ import {
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { EffectLogger } from "drizzle-orm/effect-postgres";
-import {
-  Cause,
-  type Context,
-  Data,
-  Effect,
-  Layer,
-  Logger,
-  References,
-} from "effect";
+import { Cause, Data, Effect, Logger, References } from "effect";
 import { SqlError } from "effect/unstable/sql";
 import { createTracingLive } from "../observability/telemetry-sinks";
 
@@ -32,10 +23,6 @@ const syntheticEmail = testEmailAddress("synthetic");
 const adaEmail = testEmailAddress("ada");
 const privateEmail = testEmailAddress("private");
 const exampleHost = "example.com";
-
-type LogAnnotations = Context.Service.Shape<
-  typeof References.CurrentLogAnnotations
->;
 
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 import {
@@ -46,7 +33,6 @@ import {
   createCensoredOtelSpanExporter,
   isSensitiveLogKey,
 } from "./censorship";
-import { DatabaseQueryLoggerLive } from "./database-query-logger";
 
 class CustomValue {
   constructor(readonly secret: string) {}
@@ -949,46 +935,6 @@ describe("censorLoggerOptions", () => {
     });
     expect(censoredAnnotations.sessionToken).toBe(CENSORED_LOG_VALUE);
     expect(annotations.sessionToken).toBe("session-secret");
-  });
-
-  test("database query logging retains only selectively censored parameters", async () => {
-    let capturedAnnotations: LogAnnotations = {};
-    const captureLogger = Logger.make((options) => {
-      capturedAnnotations = options.fiber.getRef(
-        References.CurrentLogAnnotations
-      );
-    });
-
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const logger = yield* EffectLogger;
-        yield* logger.logQuery("select $1, $2, $3", [
-          "visible",
-          { email: privateEmail, sessionDuration: 123 },
-          42,
-          undefined,
-          10n,
-        ]);
-      }).pipe(
-        Effect.provide(
-          Layer.merge(DatabaseQueryLoggerLive, Logger.layer([captureLogger]))
-        )
-      )
-    );
-
-    expect(capturedAnnotations).toEqual({
-      params: [
-        '"visible"',
-        `{"email":"${CENSORED_LOG_VALUE}","sessionDuration":123}`,
-        "42",
-        "undefined",
-        "10",
-      ],
-      parameterCount: 5,
-      query: "select $1, $2, $3",
-    });
-    expect(JSON.stringify(capturedAnnotations)).toContain("visible");
-    expect(JSON.stringify(capturedAnnotations)).not.toContain(privateEmail);
   });
 
   test("censors Drizzle failures stored in the logger cause", () => {

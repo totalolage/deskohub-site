@@ -6,7 +6,6 @@ import {
   Effect,
   Predicate,
   Ref,
-  References,
   Result,
 } from "effect";
 import type {
@@ -320,7 +319,6 @@ const prepareWorkspaceAction = <
       })
     );
   }).pipe(
-    Effect.provideService(References.MinimumLogLevel, "All"),
     withActionDeadline(options.deadline ?? workspaceActionDeadline),
     Effect.mapError((error) =>
       error instanceof WorkspaceActionTimeout
