@@ -1,5 +1,5 @@
 import { Clock, Effect, Exit, Match, Option } from "effect";
-import { trackSignInCompleted } from "../analytics/events";
+import { trackSignInCompleted, trackSignInStarted } from "../analytics/events";
 import {
   type AuthCallback,
   nativeReturnUri,
@@ -349,6 +349,9 @@ export const signInWithEmail = Effect.fn("NativeSignIn.signInWithEmail")(
     const browser = yield* AuthSessionBrowser;
     const completions = yield* AuthCallbackCompletions;
     const request = yield* startPendingSignIn(expectedUserId);
+    // The email and its code or link are handled by the web page, so the
+    // app records the start as the page would: an email sign-in, by link.
+    yield* Effect.sync(() => trackSignInStarted("link"));
     const result = yield* browser
       .open(nativeSignInUrl(auth.origin, request), nativeReturnUri)
       .pipe(Effect.mapError(unavailable));
