@@ -126,6 +126,11 @@ export const WorkspaceLocks = {
  * Session-held sections on a dedicated connection, for a lock held across
  * non-transactional work. They never provide `WorkspaceTransaction`; enter
  * them outside every Workspace transaction.
+ *
+ * Sections are declared in nesting order: a section may be entered inside one
+ * declared before it, never inside one declared after it. Their ranks share
+ * `WorkspaceLocks`' scale and ascend in declaration order, which is what the
+ * check compares; the same section nests in ascending key order.
  */
 export const WorkspaceLockSections = {
   signInEmail: (addressDigest: string) =>
