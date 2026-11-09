@@ -749,16 +749,15 @@ describe("Workspace actions", () => {
     const loggedInput = testEmailAddress("action-input");
     /** The minimum log level the runtime root provides to this test's runs. */
     let runtimeMinimumLogLevel: LogLevel.LogLevel | undefined;
+    let runSpy: { mockRestore: () => void } | undefined;
 
     beforeAll(async () => {
       const workspaceEffect = await import("./workspace-effect");
       const { runWorkspaceEffect } = workspaceEffect;
       // The runtime is built once per process, so each run gets the level
       // this test sets in place of the runtime root's.
-      mock.module("./workspace-effect", () => ({
-        ...workspaceEffect,
-        runWorkspaceEffect:
-          (...runArgs: Parameters<typeof runWorkspaceEffect>) =>
+      runSpy = spyOn(workspaceEffect, "runWorkspaceEffect").mockImplementation(
+        (...runArgs) =>
           <A, E>(effect: Effect.Effect<A, E>) =>
             runWorkspaceEffect(...runArgs)(
               runtimeMinimumLogLevel === undefined
@@ -768,8 +767,11 @@ describe("Workspace actions", () => {
                     References.MinimumLogLevel,
                     runtimeMinimumLogLevel
                   )
-            ),
-      }));
+            )
+      );
+    });
+    afterAll(() => {
+      runSpy?.mockRestore();
     });
     beforeEach(() => {
       workspaceLogs.reset();
@@ -846,6 +848,14 @@ describe("Workspace actions", () => {
 
       await expect(action(loggedInput)).resolves.toEqual({ data: "Info" });
       expect(debugLogs("test.info-lifecycle")).toHaveLength(0);
+      const operationLogs = workspaceLogs
+        .records()
+        .filter(
+          ({ attributes }) => attributes?.operation === "test.info-lifecycle"
+        );
+      expect(
+        JSON.stringify(operationLogs.map(({ attributes }) => attributes))
+      ).not.toContain(loggedInput);
     });
   });
 

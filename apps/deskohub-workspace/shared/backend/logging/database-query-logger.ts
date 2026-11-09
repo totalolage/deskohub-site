@@ -16,7 +16,7 @@ const stringifyDatabaseQueryParameter = <T>(value: T): string =>
 export const DatabaseQueryLoggerLive = Layer.succeed(EffectLogger, {
   logQuery: (query, params) =>
     Effect.flatMap(LogLevel.isEnabled("Debug"), (detailed) =>
-      Effect.log("Database query").pipe(
+      Effect.logInfo("Database query").pipe(
         Effect.annotateLogs(
           detailed
             ? {
