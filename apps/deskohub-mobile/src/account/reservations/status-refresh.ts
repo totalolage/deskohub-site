@@ -1,4 +1,7 @@
-import type { CustomerOrderState } from "@deskohub/workspace-customer-api";
+import type {
+  CustomerOrderState,
+  CustomerOrderStatus,
+} from "@deskohub/workspace-customer-api";
 import { type Cause, Effect, Option, Queue, Ref, Result, Stream } from "effect";
 import { allowsAutomaticRefresh } from "../../customer-api/account-read-budget";
 import {
@@ -10,6 +13,7 @@ import {
   AutomaticRefresh,
   type AutomaticRefreshStop,
   nextAutomaticRefresh,
+  readSettlesOrder,
   type StatusVisit,
 } from "./status-refresh-rules";
 
@@ -45,6 +49,18 @@ export interface StatusRefreshInput<R> {
    * automatic reads already made, and stays stopped if it had stopped.
    */
   readonly resume: Option.Option<StatusRefreshState>;
+  /**
+   * The order's status as an earlier visit session showed it (the screen
+   * lost focus and came back), if one did; a fresh run's first read compares
+   * with it.
+   */
+  readonly previousStatus: Option.Option<CustomerOrderStatus>;
+  /**
+   * Runs after each read that settles the order (`readSettlesOrder`), before
+   * the screen shows it: what other screens read of the order while it was
+   * settling, such as the reservations list, is out of date.
+   */
+  readonly onSettled: Effect.Effect<void, never, R>;
 }
 
 const stopReasonOf = (failure: CustomerViewError): AutomaticRefreshStop =>
@@ -78,7 +94,13 @@ export const statusRefreshes = <R>(
 ): Stream.Stream<StatusRefreshState, CustomerRequestFailure, R> =>
   Stream.unwrap(
     Option.match(input.resume, {
-      onNone: () => Effect.map(input.read, firstState),
+      onNone: () =>
+        input.read.pipe(
+          Effect.tap((order) =>
+            settledBy(input, input.previousStatus, order.status)
+          ),
+          Effect.map(firstState)
+        ),
       onSome: (state) => Effect.succeed(resumedState(state)),
     }).pipe(
       Effect.map((start) =>
@@ -90,6 +112,16 @@ export const statusRefreshes = <R>(
       )
     )
   );
+
+// Runs `onSettled` when a read that found `status` settled the order.
+const settledBy = <R>(
+  input: StatusRefreshInput<R>,
+  previous: Option.Option<CustomerOrderStatus>,
+  status: CustomerOrderStatus
+): Effect.Effect<void, never, R> =>
+  readSettlesOrder({ visit: input.visit, previous, status })
+    ? input.onSettled
+    : Effect.void;
 
 const refreshLoop = <R>(
   input: StatusRefreshInput<R>,
@@ -111,6 +143,15 @@ const refreshLoop = <R>(
   // failure so the caller can stop.
   const readOnce = publish((state) => ({ ...state, reading: true })).pipe(
     Effect.andThen(Effect.result(input.read)),
+    Effect.tap(
+      Result.match({
+        onSuccess: (order) =>
+          Effect.flatMap(Ref.get(current), (shown) =>
+            settledBy(input, Option.some(shown.order.status), order.status)
+          ),
+        onFailure: () => Effect.void,
+      })
+    ),
     Effect.map(
       Result.match({
         onSuccess: (order) => ({

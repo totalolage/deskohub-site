@@ -6,6 +6,7 @@ import { CustomerApi } from "../../customer-api/customer-api.service";
 import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
 import { customerRead } from "../../customer-api/customer-request";
 import { appForegroundAtom } from "../../platform/app-foreground";
+import { reservationHistoryAtom } from "./reservations-list-state";
 import { type StatusRefreshState, statusRefreshes } from "./status-refresh";
 import { AutomaticRefresh, type StatusVisit } from "./status-refresh-rules";
 
@@ -149,13 +150,13 @@ export const makeOrderStatusAtoms = (foreground: Atom.Atom<boolean>) => {
   const progress = Atom.family((orderId: CustomerReservationOrderId) =>
     customerDataRuntime.atom((get) => {
       const { session, focused, visit } = get(focus(orderId));
-      const resume = get
+      const previous = get
         .self<AsyncResult.AsyncResult<StatusProgress, unknown>>()
-        .pipe(
-          Option.flatMap(AsyncResult.value),
-          Option.filter((previous) => previous.session === session),
-          Option.map((previous) => previous.state)
-        );
+        .pipe(Option.flatMap(AsyncResult.value));
+      const resume = previous.pipe(
+        Option.filter((previous) => previous.session === session),
+        Option.map((previous) => previous.state)
+      );
       return focused && get(foreground)
         ? statusRefreshes({
             read: readOrderStatus(orderId),
@@ -163,6 +164,12 @@ export const makeOrderStatusAtoms = (foreground: Atom.Atom<boolean>) => {
             visit,
             manualRequests: refreshTaps(get.registry, refreshRequests(orderId)),
             resume,
+            previousStatus: Option.map(
+              previous,
+              (previous) => previous.state.order.status
+            ),
+            // The list read the order while it was settling.
+            onSettled: Effect.sync(() => get.refresh(reservationHistoryAtom)),
           }).pipe(Stream.map((state) => ({ session, state })))
         : Stream.never;
     })
