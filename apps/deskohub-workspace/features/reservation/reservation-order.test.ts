@@ -2,12 +2,15 @@ import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { Result, Schema } from "effect";
 import "@/shared/polyfills/temporal";
 import { testEmailAddress } from "@deskohub/test-email";
-import { reservationOrderSchema } from "./reservation-order";
+import {
+  reservationOrderIssuanceSchema,
+  reservationOrderSchema,
+} from "./reservation-order";
 
 const testEmailAddressForAda = testEmailAddress("ada");
 
 const safeParseReservationOrder = Schema.decodeUnknownResult(
-  reservationOrderSchema
+  reservationOrderSchema("CZ")
 );
 
 const validMeetingRoomReservation = {
@@ -20,6 +23,56 @@ const validMeetingRoomReservation = {
   email: testEmailAddressForAda,
   phone: "+420777777777",
 } as const;
+
+describe("reservation order phone region", () => {
+  const officeOrderWithPhone = (phone: string) => ({
+    kind: "office",
+    startsOn: Temporal.Now.plainDateISO().add({ days: 1 }).toString(),
+    endsOn: Temporal.Now.plainDateISO().add({ days: 2 }).toString(),
+    seats: 2,
+    name: "Ada Lovelace",
+    email: testEmailAddressForAda,
+    phone,
+  });
+  const coworkOrderWithPhone = (phone: string) => ({
+    kind: "cowork",
+    entryTier: "open-space",
+    date: "2099-06-10",
+    coffee: false,
+    name: "Ada Lovelace",
+    email: testEmailAddressForAda,
+    phone,
+  });
+
+  test.each([
+    ["DE", "0151 23456789", true],
+    ["CZ", "0151 23456789", false],
+    ["UA", "050 123 4567", true],
+    ["CZ", "050 123 4567", false],
+    ["CZ", "777 123 456", true],
+    ["DE", "+420 777 123 456", true],
+    ["UA", "+420 777 123 456", true],
+  ] as const)("in region %s reads %s as valid: %s", (region, phone, valid) => {
+    for (const order of [
+      coworkOrderWithPhone(phone),
+      { ...validMeetingRoomReservation, phone },
+      officeOrderWithPhone(phone),
+    ]) {
+      const issued = Schema.decodeUnknownResult(
+        reservationOrderIssuanceSchema(region)
+      )(order);
+      const any = Schema.decodeUnknownResult(reservationOrderSchema(region))(
+        order
+      );
+
+      expect([order.kind, Result.isSuccess(issued)]).toEqual([
+        order.kind,
+        valid,
+      ]);
+      expect([order.kind, Result.isSuccess(any)]).toEqual([order.kind, valid]);
+    }
+  });
+});
 
 describe("reservation schema", () => {
   test("discriminates cowork orders before refining their tier", () => {

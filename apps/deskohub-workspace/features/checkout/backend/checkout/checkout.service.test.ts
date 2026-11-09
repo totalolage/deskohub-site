@@ -89,7 +89,7 @@ const reservationData = Schema.decodeUnknownSync(
 });
 
 const meetingRoomReservationData = Schema.decodeUnknownSync(
-  reservationOrderSchema
+  reservationOrderSchema("CZ")
 )({
   kind: "meeting-room",
   duration: { unit: "hour", amount: 4 },
@@ -334,7 +334,7 @@ const buildStartedWholeDayReservation = () => {
   const today = Temporal.Now.zonedDateTimeISO(
     workspaceSiteConstants.location.timeZone
   ).toPlainDate();
-  const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
+  const reservation = Schema.decodeUnknownSync(reservationOrderSchema("CZ"))({
     kind: "meeting-room",
     duration: { unit: "day", amount: 1 },
     reservationDate: today.toString(),
@@ -918,6 +918,41 @@ describe("CheckoutService", () => {
     const [[recorded]] = harness.recordLegalEvidence.mock.calls;
     expect(recorded?.[1]).not.toHaveProperty("evidence.acknowledgements");
     expect(harness.createHostedPaymentPage).toHaveBeenCalled();
+  });
+
+  test("prefills Nexi with a de-DE Pay state's phone read in Germany", async () => {
+    const germanReservation = normalizedCoworkReservationOrderSchema.make({
+      ...reservationData,
+      phone: "0151 23456789",
+      date: Temporal.Now.zonedDateTimeISO(
+        workspaceSiteConstants.location.timeZone
+      )
+        .toPlainDate()
+        .add({ days: 1 })
+        .toString(),
+    });
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-german-phone",
+      locale: "de-DE",
+      payStateToken: buildPayStateToken({
+        orderId: "reservation-german-phone",
+        locale: "de-DE",
+        reservation: germanReservation,
+      }),
+    });
+
+    await Effect.runPromise(harness.effect);
+
+    expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: expect.objectContaining({
+          mobilePhone: {
+            countryCallingCode: "49",
+            nationalNumber: "15123456789",
+          },
+        }),
+      })
+    );
   });
 
   test("creates the attempt before attaching the hosted payment page", async () => {

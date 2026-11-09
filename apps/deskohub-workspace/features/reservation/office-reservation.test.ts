@@ -27,8 +27,10 @@ import { getCurrentWorkspaceDate } from "./reservation-date";
 
 const testEmailAddressForAda = testEmailAddress("ada");
 
-const safeParseForm = Schema.decodeUnknownResult(officeReservationSchema);
-const safeParseOrder = Schema.decodeUnknownResult(officeReservationOrderSchema);
+const safeParseForm = Schema.decodeUnknownResult(officeReservationSchema("CZ"));
+const safeParseOrder = Schema.decodeUnknownResult(
+  officeReservationOrderSchema("CZ")
+);
 const safeParseDetails = Schema.decodeUnknownResult(
   officeReservationDetailsSchema
 );

@@ -50,7 +50,8 @@ export const coworkReservationPage = createReservationPage({
           values: withWorkspaceDate(
             coworkSelectionLink.restore(
               getCoworkReservationDefaultValues(reservation),
-              searchParams
+              searchParams,
+              { locale }
             ),
             today
           ),
@@ -62,16 +63,16 @@ export const coworkReservationPage = createReservationPage({
    */
   read: Effect.fn("coworkReservationPage.read")(function* (
     searchParams,
-    { lastReservation, today }
+    { lastReservation, locale, today }
   ) {
     const queryValues = withWorkspaceDate(
-      coworkSelectionLink.read(searchParams),
+      coworkSelectionLink.read(searchParams, { locale }),
       today
     );
     if (!lastReservation) return queryValues;
 
     const rememberedValues = withWorkspaceDate(
-      coworkSelectionLink.read(searchParams, { lastReservation }),
+      coworkSelectionLink.read(searchParams, { locale, lastReservation }),
       today
     );
     if (

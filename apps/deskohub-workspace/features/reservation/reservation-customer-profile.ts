@@ -3,7 +3,6 @@ import { Match, Option } from "effect";
 import type { CustomerProfileSave } from "@/features/account/contracts";
 import type { InvoiceBuyerAddressInput } from "@/features/accounting/billing-identity";
 import { splitCustomerName } from "@/features/checkout/backend/reservation";
-import { baseLocale, defaultPhoneRegion } from "@/features/i18n";
 import type { ReservationBillingSelection } from "./reservation-billing";
 
 const toProfileAddress = (address: InvoiceBuyerAddressInput) => ({
@@ -17,13 +16,17 @@ const toProfileAddress = (address: InvoiceBuyerAddressInput) => ({
 /**
  * The first profile a checkout saves for an account that has none: the
  * contact typed at the contact-details step, with the billing details the
- * reservation asks an invoice for.
+ * reservation asks an invoice for. The phone is read in `defaultPhoneRegion`,
+ * the region of the locale the contact was validated in.
  */
-export const getReservationCustomerProfile = (reservation: {
-  readonly name: string;
-  readonly phone: string;
-  readonly billing?: ReservationBillingSelection;
-}): CustomerProfileSave => {
+export const getReservationCustomerProfile = (
+  reservation: {
+    readonly name: string;
+    readonly phone: string;
+    readonly billing?: ReservationBillingSelection;
+  },
+  defaultPhoneRegion: string
+): CustomerProfileSave => {
   const billing = reservation.billing
     ? Match.value(reservation.billing).pipe(
         Match.when({ invoice: "none" }, () => undefined),
@@ -45,7 +48,7 @@ export const getReservationCustomerProfile = (reservation: {
   return {
     ...splitCustomerName(reservation.name),
     phone: Option.getOrUndefined(
-      parsePhoneNumber(reservation.phone, defaultPhoneRegion(baseLocale))
+      parsePhoneNumber(reservation.phone, defaultPhoneRegion)
     ),
     ...(billing && { billing }),
   };

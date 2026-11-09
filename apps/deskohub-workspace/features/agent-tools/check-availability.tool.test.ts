@@ -185,7 +185,7 @@ describe("check_availability", () => {
     expect(
       meetingRoomSelectionLink.read(
         new URL(result.reservation_url).searchParams,
-        { now }
+        { locale: "cs-CZ", now }
       )
     ).toMatchObject({ duration: "day:1", startDateTime: `${today}T00:00` });
   });
