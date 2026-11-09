@@ -69,13 +69,17 @@ run it from the affected release's commit with that release's env. The
 manifest route then answers the directive until a normal publish for that
 runtime version supersedes it.
 
-The app doesn't act on the directive yet: `findReadyUpdate`
-(`apps/deskohub-mobile/src/updates/ota-update.ts`) stops when
-`checkForUpdateAsync` reports no update available, which is how `expo-updates`
-reports a rollback, and `checkAutomatically` is `ON_ERROR_RECOVERY`. A rollback
-therefore only stops further downloads of the bad update; apps that already
-applied it keep it. Fix a bad update by publishing a corrected one (a new patch
-release).
+The route sends the signed directive to every app on that runtime version,
+including one already on its embedded update, which may hold the rolled-back
+update downloaded for its next start. `expo-updates` reports the directive as
+no update available with `isRollBackToEmbedded` while its commit time is later
+than that of the update the app runs, so it keeps reporting it until the app
+restarts, and ignores it after the restart or on an APK built after the
+rollback. `findReadyUpdate` (`apps/deskohub-mobile/src/updates/ota-update.ts`)
+fetches it, which gives the embedded update the directive's commit time so the
+next start launches it over any downloaded update, and the app offers the
+usual Restart banner unless it already runs its embedded update. A dismissed
+rollback stays hidden for the session and applies at the next cold start.
 
 ## Client
 
@@ -84,9 +88,11 @@ launch and on returning to the foreground, at most every 15 minutes. On
 Android it also reads `GET /api/mobile/releases/latest` and compares its
 `versionCode` with the installed build: a newer APK takes precedence and opens
 the `/android` page, an OTA update restarts the app on accept, and dismissing
-lasts for the session. iOS checks OTA only. `app.config.ts` sets
-`checkAutomatically: "ON_ERROR_RECOVERY"`, so updates install only through
-this prompt.
+lasts for the session. A rollback offers the same restart into the embedded
+update. iOS checks OTA only. `app.config.ts` sets
+`checkAutomatically: "ON_ERROR_RECOVERY"`, so only this check downloads
+updates; the restart applies one at once, and a downloaded update or fetched
+rollback otherwise takes effect at the next cold start.
 
 Development clients load from Metro and never take OTA updates. Before a tag,
 the one OTA check is a release-shaped build (`--signing debug`) against

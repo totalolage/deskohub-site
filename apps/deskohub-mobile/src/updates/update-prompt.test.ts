@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import type { ReadyUpdate } from "./ota-update";
 import {
   dismissUpdatePrompt,
   noUpdatePromptDismissals,
   selectUpdatePrompt,
   updatePromptWaitsForConsent,
 } from "./update-prompt";
-import type { ReadyUpdate } from "./ota-update";
 
 const nativeUpdate = { versionName: "1.3.0", versionCode: 1_003_000 };
 

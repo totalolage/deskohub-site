@@ -95,6 +95,29 @@ describe("findReadyUpdate", () => {
     expect(calls).toEqual({ check: 1, fetch: 1 });
   });
 
+  // The server may publish between the check and the fetch, so the fetch
+  // result decides what is ready.
+  test("reports the rollback a download brought after the check found an update", async () => {
+    const { updates } = source(
+      async () => available,
+      async () => fetchedRollBack
+    );
+    expect(await Effect.runPromise(findReadyUpdate(updates))).toEqual({
+      kind: "embedded",
+    });
+  });
+
+  test("reports the update a download brought after the check found a rollback", async () => {
+    const { updates } = source(
+      async () => rollBack,
+      async () => fetchedNew
+    );
+    expect(await Effect.runPromise(findReadyUpdate(updates))).toEqual({
+      kind: "update",
+      updateId: "update-a",
+    });
+  });
+
   test("swallows a failed rollback fetch", async () => {
     const { updates } = source(
       async () => rollBack,
