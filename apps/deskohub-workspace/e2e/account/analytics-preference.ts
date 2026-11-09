@@ -59,8 +59,9 @@ export type WorkspaceE2EAnalyticsPreferenceInput = {
 const driveDevice = <A>(
   device: E2EBrowserSession,
   operation: AnalyticsPreferenceOperation,
-  drive: (page: Page) => Promise<A>
-) => device.use(operation, drive);
+  drive: (page: Page) => Promise<A>,
+  deadline?: Parameters<E2EBrowserSession["use"]>[2]
+) => device.use(operation, drive, deadline);
 
 const readAnalyticsDecisions = Effect.fn("readAnalyticsDecisions")(function* (
   accountId: CustomerAccountId
@@ -183,7 +184,9 @@ const retryAfterOf = (response: Response) => {
  * the account; the switch reads that account when a save is sent, and
  * waiting also keeps the mirror's own write out of the toggles. Returns the
  * retry delay instead when the page's session read was rate limited and no
- * other read let the mirror send its request.
+ * other read let the mirror send its request. The wait for an already sent
+ * mirror request has no Playwright timeout of its own, so the caller bounds
+ * the whole callback through the session deadline.
  */
 const reloadUntilMirrored = async (page: Page) => {
   const timeout = workspaceE2ETimeouts.browserNavigation;
@@ -230,8 +233,11 @@ const waitForAccountPreference = async (page: Page) => {
  * Better Auth asks for.
  */
 const reloadSignedIn = (device: E2EBrowserSession) =>
-  driveDevice(device, "sign in analytics preference device", (page) =>
-    reloadUntilMirrored(page)
+  driveDevice(
+    device,
+    "sign in analytics preference device",
+    (page) => reloadUntilMirrored(page),
+    { timeoutMs: workspaceE2ETimeouts.browserNavigation }
   ).pipe(
     Effect.flatMap(
       Option.match({
