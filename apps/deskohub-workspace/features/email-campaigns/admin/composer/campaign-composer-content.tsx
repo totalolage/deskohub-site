@@ -31,6 +31,7 @@ import {
   type CampaignComposerFields,
   type CampaignComposerLocaleFields,
   composerLocales,
+  englishFallbackMissing,
   hasLocaleContent,
   localeContentIssueMessage,
   localeContentIssues,
@@ -56,7 +57,8 @@ const hiddenContentMessages = {
 /**
  * The content locales the audience allows: which are editable, which one is
  * required, the one shown (the chosen one while editable, else the first),
- * and the locales the audience hides that still hold content.
+ * the locales the audience hides that still hold content, and whether
+ * missing English content sends some recipients Czech instead.
  */
 export const contentLocaleView = (
   audience: AudienceOption | undefined,
@@ -71,7 +73,16 @@ export const contentLocaleView = (
     (option) =>
       !editable.includes(option) && hasLocaleContent(localeFields[option])
   );
-  return { editable, required, shown, hiddenWithContent };
+  return {
+    editable,
+    required,
+    shown,
+    hiddenWithContent,
+    englishMissing: englishFallbackMissing(
+      audience?.singleLocale,
+      localeFields
+    ),
+  };
 };
 
 /**
@@ -95,7 +106,7 @@ export function CampaignContentTabs({
   readonly routeLocale: Locale;
   readonly view: ReturnType<typeof contentLocaleView>;
 }) {
-  const { editable, required, shown, hiddenWithContent } = view;
+  const { editable, required, shown, hiddenWithContent, englishMissing } = view;
   return (
     <Tabs
       onValueChange={(value) => onLocaleChange(value as Locale)}
@@ -136,6 +147,14 @@ export function CampaignContentTabs({
               )}
         </p>
       </div>
+      {englishMissing && (
+        <p className="mb-4 rounded-md bg-sunset-yellow/15 px-3 py-2 text-navy-blue/80 text-sm">
+          {m.emailCampaignsComposerEnglishFallbackMissing(
+            {},
+            { locale: routeLocale }
+          )}
+        </p>
+      )}
       {hiddenWithContent.length > 0 && (
         <p className="mb-4 rounded-md bg-sunset-yellow/15 px-3 py-2 text-navy-blue/80 text-sm">
           {hiddenWithContent

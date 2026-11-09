@@ -14,6 +14,7 @@ import {
   emailEditorLanguageName,
   emailEditorLanguageProblemCount,
   emailEditorProblems,
+  emailEnglishFallbackMissing,
   retiredEmailTranslationLocales,
 } from "./email-editor-problems";
 
@@ -71,6 +72,33 @@ describe("emailEditorProblems", () => {
     ]);
     expect(emailEditorLanguageProblemCount(problems, "cs-CZ")).toBe(3);
     expect(emailEditorLanguageProblemCount(problems, "en-US")).toBe(1);
+  });
+
+  test("only a missing Czech translation blocks; other languages are optional", () => {
+    const languageMissing = m.emailsEditorProblemLanguageMissing(
+      {},
+      { locale }
+    );
+    // The fixture has no Ukrainian or Slovak translation.
+    expect(
+      problemsOf(fixtureDraft).some(
+        (problem) => problem.message === languageMissing
+      )
+    ).toBe(false);
+    const { "cs-CZ": _czech, ...withoutCzech } =
+      fixtureDraft.translations ?? {};
+    expect(
+      problemsOf({ ...fixtureDraft, translations: withoutCzech }).filter(
+        (problem) => problem.message === languageMissing
+      )
+    ).toEqual([
+      {
+        fieldId: emailEditorFieldIds.translation("cs-CZ", "subject"),
+        locale: "cs-CZ",
+        message: languageMissing,
+        place: expect.any(String),
+      },
+    ]);
   });
 
   test("never reports the unused definition", () => {
@@ -194,5 +222,20 @@ describe("emailEditorProblems", () => {
     expect(problemsOf(draft, new Set([foreign]))).not.toContainEqual(
       imageProblem
     );
+  });
+});
+
+describe("emailEnglishFallbackMissing", () => {
+  test("holds while the draft has no English translation", () => {
+    const { "en-US": _english, ...withoutEnglish } =
+      fixtureDraft.translations ?? {};
+    expect(emailEnglishFallbackMissing(fixtureDraft)).toBe(false);
+    expect(
+      emailEnglishFallbackMissing({
+        ...fixtureDraft,
+        translations: withoutEnglish,
+      })
+    ).toBe(true);
+    expect(emailEnglishFallbackMissing({})).toBe(true);
   });
 });

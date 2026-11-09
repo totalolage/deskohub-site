@@ -104,8 +104,8 @@ type Placed = Pick<EmailEditorProblem, "fieldId" | "locale" | "place">;
 
 /**
  * Words every problem in `draft` for the administrator in `locale` and
- * places it on its field: the publication problems for `currentLocales`,
- * then images publication would refuse.
+ * places it on its field: the publication problems, then images
+ * publication would refuse. `currentLocales` are the languages with a tab.
  */
 export const emailEditorProblems = ({
   draft,
@@ -377,7 +377,7 @@ export const emailEditorProblems = ({
   });
 
   return [
-    ...emailDraftProblems(decoded, currentLocales).map(placed),
+    ...emailDraftProblems(decoded).map(placed),
     ...disallowedEmailImages(
       decoded,
       Option.fromNullishOr(imageCloudName),
@@ -385,6 +385,16 @@ export const emailEditorProblems = ({
     ).map(image),
   ];
 };
+
+/**
+ * Whether the draft has no English translation, so recipients whose
+ * fallback chain tries English before Czech (German and Ukrainian ones)
+ * without a translation of their own get the Czech one. It never blocks
+ * publication.
+ */
+export const emailEnglishFallbackMissing = (
+  draft: EmailDraftFormValues
+): boolean => !Object.hasOwn(draft.translations ?? {}, "en-US");
 
 /**
  * Languages the draft has a translation in that the Workspace no longer
