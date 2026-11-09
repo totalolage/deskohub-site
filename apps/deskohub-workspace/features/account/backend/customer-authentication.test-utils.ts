@@ -1,3 +1,4 @@
+import "@/shared/polyfills/temporal";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import type { CustomerAccountId } from "../customer-account";
