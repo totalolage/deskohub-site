@@ -122,6 +122,7 @@ describe("get_quote", () => {
     const restored = coworkSelectionLink.read(
       new URL(result.reservation_url).searchParams,
       {
+        locale: "cs-CZ",
         lastReservation: {
           kind: "cowork",
           entryTier: "reserved-desk",
@@ -195,7 +196,10 @@ describe("get_quote", () => {
     expect(
       meetingRoomSelectionLink.read(
         new URL(meetingRoom.reservation_url).searchParams,
-        { lastReservation: { kind: "meeting-room", duration: "day:1" } }
+        {
+          locale: "cs-CZ",
+          lastReservation: { kind: "meeting-room", duration: "day:1" },
+        }
       )
     ).toMatchObject({ duration: "hour:4", startDateTime: `${date}T14:00` });
     expect(
@@ -253,7 +257,7 @@ describe("get_quote", () => {
     expect(
       meetingRoomSelectionLink.read(
         new URL(result.reservation_url).searchParams,
-        { now }
+        { locale: "cs-CZ", now }
       )
     ).toMatchObject({ duration: "day:1", startDateTime: `${today}T00:00` });
   });

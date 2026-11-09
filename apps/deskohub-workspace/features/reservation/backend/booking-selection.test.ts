@@ -307,7 +307,10 @@ const openReservationLink = (
       startDateTime: selection.startDateTime,
     })
   ).then((url) =>
-    meetingRoomSelectionLink.read(new URL(url).searchParams, { now: at })
+    meetingRoomSelectionLink.read(new URL(url).searchParams, {
+      locale: "cs-CZ",
+      now: at,
+    })
   );
 
 describe("resolveMeetingRoomSelection", () => {

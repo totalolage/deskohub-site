@@ -3,9 +3,34 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
+  decodeReservationCheckoutCustomer,
   getReservationCustomerQueryMode,
   setReservationSelectionSearchParams,
 } from "./reservation-checkout-query";
+
+describe("decodeReservationCheckoutCustomer", () => {
+  test.each([
+    ["DE", "0151 23456789"],
+    ["UA", "050 123 4567"],
+    ["CZ", "777 123 456"],
+    ["CZ", "+420 777 123 456"],
+    ["DE", "+420 777 123 456"],
+    ["UA", "+420 777 123 456"],
+  ] as const)("prefills a phone valid in region %s: %s", (region, phone) => {
+    expect(decodeReservationCheckoutCustomer({ phone }, region)).toEqual({
+      phone,
+    });
+  });
+
+  test.each([
+    ["CZ", "0151 23456789"],
+    ["CZ", "050 123 4567"],
+  ] as const)("drops a phone invalid in region %s: %s", (region, phone) => {
+    expect(
+      decodeReservationCheckoutCustomer({ name: "Ada Lovelace", phone }, region)
+    ).toEqual({ name: "Ada Lovelace" });
+  });
+});
 
 describe("getReservationCustomerQueryMode", () => {
   test("honours an explicit customer parameter over contact fields", () => {
