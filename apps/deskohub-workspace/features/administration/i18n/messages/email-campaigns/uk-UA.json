@@ -19,13 +19,8 @@
   "emailCampaignsAudienceCampaignEmailCountNone": "отримали менше ніж один {single}{period}",
   "emailCampaignsAudienceCampaignEmailCountNounAny": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "лист із кампанії",
         "countPlural=few": "листи з кампаній",
@@ -36,13 +31,8 @@
   ],
   "emailCampaignsAudienceCampaignEmailCountNounDeleted": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "лист із видаленої кампанії",
         "countPlural=few": "листи з видаленої кампанії",
@@ -53,13 +43,8 @@
   ],
   "emailCampaignsAudienceCampaignEmailCountNounMarketing": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "маркетинговий лист із кампанії",
         "countPlural=few": "маркетингові листи з кампаній",
@@ -70,13 +55,8 @@
   ],
   "emailCampaignsAudienceCampaignEmailCountNounOperational": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "сервісний лист із кампанії",
         "countPlural=few": "сервісні листи з кампаній",
@@ -92,9 +72,7 @@
         "input campaign",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "лист із кампанії {campaign}",
         "countPlural=few": "листи з кампанії {campaign}",
@@ -105,13 +83,8 @@
   ],
   "emailCampaignsAudienceCampaignEmailCountNounThis": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "лист із цієї кампанії",
         "countPlural=few": "листи з цієї кампанії",
@@ -139,12 +112,8 @@
   "emailCampaignsAudienceCountNumberOf": "Кількість",
   "emailCampaignsAudienceCountOperator": [
     {
-      "declarations": [
-        "input operator"
-      ],
-      "selectors": [
-        "operator"
-      ],
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
       "match": {
         "operator=eq": "дорівнює",
         "operator=ne": "не дорівнює",
@@ -199,6 +168,9 @@
   "emailCampaignsAudienceEditorSaving": "Збереження…",
   "emailCampaignsAudienceEditorSingleLocaleCzech": "Усі одержувачі розмовляють чеською, тому кампаніям для цієї аудиторії потрібен лише чеський вміст.",
   "emailCampaignsAudienceEditorSingleLocaleEnglish": "Усі одержувачі розмовляють англійською, тому кампаніям для цієї аудиторії потрібен лише англійський вміст.",
+  "emailCampaignsAudienceEditorSingleLocaleGerman": "Усі одержувачі розмовляють німецькою, тому кампаніям для цієї аудиторії потрібен лише німецький вміст.",
+  "emailCampaignsAudienceEditorSingleLocaleSlovak": "Усі одержувачі розмовляють словацькою, тому кампаніям для цієї аудиторії потрібен лише словацький вміст.",
+  "emailCampaignsAudienceEditorSingleLocaleUkrainian": "Усі одержувачі розмовляють українською, тому кампаніям для цієї аудиторії потрібен лише український вміст.",
   "emailCampaignsAudienceEditorSummary": "{summary}.",
   "emailCampaignsAudienceEditorSummaryHeading": "Простими словами",
   "emailCampaignsAudienceEditorTitleLabel": "Назва",
@@ -244,9 +216,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} аудиторія",
         "countPlural=few": "{formattedCount} аудиторії",
@@ -266,6 +236,9 @@
   "emailCampaignsAudienceLocaleLabel": "Мова",
   "emailCampaignsAudienceLocaleNameCzech": "чеською",
   "emailCampaignsAudienceLocaleNameEnglish": "англійською",
+  "emailCampaignsAudienceLocaleNameGerman": "німецькою",
+  "emailCampaignsAudienceLocaleNameSlovak": "словацькою",
+  "emailCampaignsAudienceLocaleNameUkrainian": "українською",
   "emailCampaignsAudienceLocaleOptionCzech": "Чеська (cs-CZ)",
   "emailCampaignsAudienceLocaleOptionEnglish": "Англійська (en-US)",
   "emailCampaignsAudienceLocaleSummaryAnyOf": "розмовляють {values}",
@@ -278,12 +251,8 @@
   "emailCampaignsAudiencePeriodEndLabel": "{subject}: дата завершення",
   "emailCampaignsAudiencePeriodKind": [
     {
-      "declarations": [
-        "input kind"
-      ],
-      "selectors": [
-        "kind"
-      ],
+      "declarations": ["input kind"],
+      "selectors": ["kind"],
       "match": {
         "kind=AnyTime": "будь-коли",
         "kind=Past": "будь-коли досі",
@@ -298,13 +267,8 @@
   "emailCampaignsAudiencePeriodLabel": "{subject}: період",
   "emailCampaignsAudiencePeriodLast": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "за останній",
         "countPlural=few": "за останні",
@@ -319,13 +283,8 @@
   "emailCampaignsAudiencePeriodTo": "до",
   "emailCampaignsAudiencePeriodUnitDay": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "день",
         "countPlural=few": "дні",
@@ -337,13 +296,8 @@
   "emailCampaignsAudiencePeriodUnitLabel": "{subject}: одиниця періоду",
   "emailCampaignsAudiencePeriodUnitMonth": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "місяць",
         "countPlural=few": "місяці",
@@ -354,13 +308,8 @@
   ],
   "emailCampaignsAudiencePeriodUnitWeek": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "тиждень",
         "countPlural=few": "тижні",
@@ -371,13 +320,8 @@
   ],
   "emailCampaignsAudiencePeriodUnitYear": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "рік",
         "countPlural=few": "роки",
@@ -406,13 +350,8 @@
   "emailCampaignsAudienceProductSelectLabel": "Продукт бронювання",
   "emailCampaignsAudienceProductUnitDays": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "день",
         "countPlural=few": "дні",
@@ -423,13 +362,8 @@
   ],
   "emailCampaignsAudienceProductUnitSeats": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "місце",
         "countPlural=few": "місця",
@@ -457,9 +391,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "підтверджене бронювання{product}",
         "countPlural=few": "підтверджені бронювання{product}",
@@ -475,9 +407,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "скасоване бронювання{product}",
         "countPlural=few": "скасовані бронювання{product}",
@@ -493,9 +423,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "завершене бронювання{product}",
         "countPlural=few": "завершені бронювання{product}",
@@ -511,9 +439,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "поточне бронювання{product}",
         "countPlural=few": "поточні бронювання{product}",
@@ -529,9 +455,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "бронювання{product}, що очікує повернення коштів",
         "countPlural=few": "бронювання{product}, що очікують повернення коштів",
@@ -560,12 +484,8 @@
   "emailCampaignsAudienceSetMatchLabel": "{subject}: збіг",
   "emailCampaignsAudienceSetOperator": [
     {
-      "declarations": [
-        "input operator"
-      ],
-      "selectors": [
-        "operator"
-      ],
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
       "match": {
         "operator=allOf": "усе з",
         "operator=noneOf": "нічого з",
@@ -584,9 +504,7 @@
         "input noun",
         "input none"
       ],
-      "selectors": [
-        "operator"
-      ],
+      "selectors": ["operator"],
       "match": {
         "operator=eq": "рівно {formattedCount} {noun}",
         "operator=ne": "іншу кількість {none}, ніж {formattedCount}",
@@ -615,9 +533,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "за останній {formattedCount} день",
         "countPlural=few": "за останні {formattedCount} дні",
@@ -633,9 +549,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "за останній {formattedCount} місяць",
         "countPlural=few": "за останні {formattedCount} місяці",
@@ -651,9 +565,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "за останній {formattedCount} тиждень",
         "countPlural=few": "за останні {formattedCount} тижні",
@@ -669,9 +581,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "за останній {formattedCount} рік",
         "countPlural=few": "за останні {formattedCount} роки",
@@ -692,10 +602,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "side",
-        "countPlural"
-      ],
+      "selectors": ["side", "countPlural"],
       "match": {
         "side=before, countPlural=one": "протягом {formattedCount} дня до події запуску",
         "side=before, countPlural=few": "протягом {formattedCount} днів до події запуску",
@@ -716,10 +623,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "side",
-        "countPlural"
-      ],
+      "selectors": ["side", "countPlural"],
       "match": {
         "side=before, countPlural=one": "протягом {formattedCount} місяця до події запуску",
         "side=before, countPlural=few": "протягом {formattedCount} місяців до події запуску",
@@ -740,10 +644,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "side",
-        "countPlural"
-      ],
+      "selectors": ["side", "countPlural"],
       "match": {
         "side=before, countPlural=one": "протягом {formattedCount} тижня до події запуску",
         "side=before, countPlural=few": "протягом {formattedCount} тижнів до події запуску",
@@ -764,10 +665,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "side",
-        "countPlural"
-      ],
+      "selectors": ["side", "countPlural"],
       "match": {
         "side=before, countPlural=one": "протягом {formattedCount} року до події запуску",
         "side=before, countPlural=few": "протягом {formattedCount} років до події запуску",
@@ -808,9 +706,7 @@
         "input weeks",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "протягом {weeks} календарного тижня",
         "countPlural=few": "протягом {weeks} календарних тижнів",
@@ -868,12 +764,8 @@
   "emailCampaignsCalendarMinute": "xx:{minute}",
   "emailCampaignsCalendarMonthInName": [
     {
-      "declarations": [
-        "input month"
-      ],
-      "selectors": [
-        "month"
-      ],
+      "declarations": ["input month"],
+      "selectors": ["month"],
       "match": {
         "month=1": "січні",
         "month=2": "лютому",
@@ -892,12 +784,8 @@
   ],
   "emailCampaignsCalendarMonthName": [
     {
-      "declarations": [
-        "input month"
-      ],
-      "selectors": [
-        "month"
-      ],
+      "declarations": ["input month"],
+      "selectors": ["month"],
       "match": {
         "month=1": "січня",
         "month=2": "лютого",
@@ -916,12 +804,8 @@
   ],
   "emailCampaignsCalendarMonthOfName": [
     {
-      "declarations": [
-        "input month"
-      ],
-      "selectors": [
-        "month"
-      ],
+      "declarations": ["input month"],
+      "selectors": ["month"],
       "match": {
         "month=1": "січня",
         "month=2": "лютого",
@@ -953,9 +837,7 @@
         "input months",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "щороку в перший день {weeks} календарного тижня, якщо цей день у межах {months}",
         "countPlural=few": "щороку в перший день {weeks} календарних тижнів, якщо цей день у межах {months}",
@@ -971,9 +853,7 @@
         "input weeks",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "щороку на початку {weeks} календарного тижня (у понеділок)",
         "countPlural=few": "щороку на початку {weeks} календарних тижнів (у понеділок)",
@@ -1000,12 +880,8 @@
   "emailCampaignsCalendarWeekNumber": "{week}-го",
   "emailCampaignsCalendarWeekdayEveryName": [
     {
-      "declarations": [
-        "input weekday"
-      ],
-      "selectors": [
-        "weekday"
-      ],
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
       "match": {
         "weekday=monday": "щопонеділка",
         "weekday=tuesday": "щовівторка",
@@ -1019,12 +895,8 @@
   ],
   "emailCampaignsCalendarWeekdayName": [
     {
-      "declarations": [
-        "input weekday"
-      ],
-      "selectors": [
-        "weekday"
-      ],
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
       "match": {
         "weekday=monday": "у понеділок",
         "weekday=tuesday": "у вівторок",
@@ -1053,12 +925,8 @@
   ],
   "emailCampaignsCalendarWeekdayWaitName": [
     {
-      "declarations": [
-        "input weekday"
-      ],
-      "selectors": [
-        "weekday"
-      ],
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
       "match": {
         "weekday=monday": "понеділка",
         "weekday=tuesday": "вівторка",
@@ -1072,13 +940,8 @@
   ],
   "emailCampaignsCalendarWeekdaysEvery": [
     {
-      "declarations": [
-        "input set",
-        "input weekdays"
-      ],
-      "selectors": [
-        "set"
-      ],
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
       "match": {
         "set=workdays": "кожного робочого дня",
         "set=weekend": "кожного вихідного дня",
@@ -1088,13 +951,8 @@
   ],
   "emailCampaignsCalendarWeekdaysWait": [
     {
-      "declarations": [
-        "input set",
-        "input weekdays"
-      ],
-      "selectors": [
-        "set"
-      ],
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
       "match": {
         "set=workdays": "робочого дня",
         "set=weekend": "вихідного дня",
@@ -1104,13 +962,8 @@
   ],
   "emailCampaignsCalendarWeekdaysWaitQualified": [
     {
-      "declarations": [
-        "input set",
-        "input weekdays"
-      ],
-      "selectors": [
-        "set"
-      ],
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
       "match": {
         "set=workdays": "робочого дня",
         "set=weekend": "вихідного дня",
@@ -1155,9 +1008,12 @@
   "emailCampaignsComposerCreateDraft": "Створити чернетку",
   "emailCampaignsComposerDraftDescription": "Чернетка. Збережіть зміни, а потім надішліть тестовий лист — у ньому буде код підтвердження для справжнього надсилання.",
   "emailCampaignsComposerEyebrow": "Email-кампанія",
-  "emailCampaignsComposerFallbackLocaleHint": "Чеська обовʼязкова: її отримають одержувачі, для мови яких немає вмісту.",
+  "emailCampaignsComposerFallbackLocaleHint": "Чеська обовʼязкова як останній резервний варіант. Німецькомовні та україномовні одержувачі без вмісту своєю мовою спершу отримають англійську версію, якщо вона є.",
   "emailCampaignsComposerHiddenContentCzech": "Чеський вміст для цієї аудиторії приховано, і його не буде збережено.",
   "emailCampaignsComposerHiddenContentEnglish": "Англійський вміст для цієї аудиторії приховано, і його не буде збережено.",
+  "emailCampaignsComposerHiddenContentGerman": "Німецький вміст для цієї аудиторії приховано, і його не буде збережено.",
+  "emailCampaignsComposerHiddenContentSlovak": "Словацький вміст для цієї аудиторії приховано, і його не буде збережено.",
+  "emailCampaignsComposerHiddenContentUkrainian": "Український вміст для цієї аудиторії приховано, і його не буде збережено.",
   "emailCampaignsComposerLocaleIssues": "Виправити: {count}",
   "emailCampaignsComposerLocaleOptional": "Необовʼязково",
   "emailCampaignsComposerLocaleReady": "Готово",
@@ -1184,6 +1040,9 @@
   "emailCampaignsComposerSaving": "Збереження…",
   "emailCampaignsComposerSingleLocaleAudienceCzech": "Аудиторія охоплює лише клієнтів, які розмовляють чеською.",
   "emailCampaignsComposerSingleLocaleAudienceEnglish": "Аудиторія охоплює лише клієнтів, які розмовляють англійською.",
+  "emailCampaignsComposerSingleLocaleAudienceGerman": "Аудиторія охоплює лише клієнтів, які розмовляють німецькою.",
+  "emailCampaignsComposerSingleLocaleAudienceSlovak": "Аудиторія охоплює лише клієнтів, які розмовляють словацькою.",
+  "emailCampaignsComposerSingleLocaleAudienceUkrainian": "Аудиторія охоплює лише клієнтів, які розмовляють українською.",
   "emailCampaignsComposerSubjectLabel": "Тема",
   "emailCampaignsComposerSubjectMissing": "Додайте тему.",
   "emailCampaignsComposerTemplateLabel": "Шаблон",
@@ -1235,6 +1094,9 @@
   "emailCampaignsEmailPreviewLanguage": "Мова попереднього перегляду",
   "emailCampaignsEmailPreviewMissingContentCzech": "Лист зʼявиться, щойно ви додасте чеський вміст.",
   "emailCampaignsEmailPreviewMissingContentEnglish": "Лист зʼявиться, щойно ви додасте англійський вміст.",
+  "emailCampaignsEmailPreviewMissingContentGerman": "Лист зʼявиться, щойно ви додасте німецький вміст.",
+  "emailCampaignsEmailPreviewMissingContentSlovak": "Лист зʼявиться, щойно ви додасте словацький вміст.",
+  "emailCampaignsEmailPreviewMissingContentUkrainian": "Лист зʼявиться, щойно ви додасте український вміст.",
   "emailCampaignsEmailPreviewNoPreheader": "Без тексту попереднього перегляду",
   "emailCampaignsEmailPreviewNoSubject": "Без теми",
   "emailCampaignsEmailPreviewRenderFailed": "Не вдалося показати попередній перегляд.",
@@ -1266,9 +1128,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} кампанія",
         "countPlural=few": "{formattedCount} кампанії",
@@ -1343,7 +1203,7 @@
   "emailCampaignsSendingFailureContentMissing": "Спершу додайте тему й текст принаймні однією мовою.",
   "emailCampaignsSendingFailureDeliveryQueueFailed": "Не вдалося поставити доставку в чергу, тому кампанію позначено як «Збій». Трохи згодом надішліть її повторно одержувачам, яким її не доставлено.",
   "emailCampaignsSendingFailureEmailDeliveryFailed": "Поштовий сервіс не прийняв тестовий лист. Спробуйте ще раз трохи згодом.",
-  "emailCampaignsSendingFailureFallbackContentMissing": "Клієнти, для мови яких немає вмісту, отримають чеську версію, тому додайте чеський вміст або обмежте аудиторію однією з мов, які має кампанія. Нічого не надіслано.",
+  "emailCampaignsSendingFailureFallbackContentMissing": "Чеський вміст — останній резервний варіант для клієнтів без вмісту своєю мовою, тому додайте чеський вміст або обмежте аудиторію однією з мов, які має кампанія. Нічого не надіслано.",
   "emailCampaignsSendingFailureNoRecipients": "Зараз аудиторія не має досяжних одержувачів, тому нічого не надіслано.",
   "emailCampaignsSendingFailureNotRetryable": "Повторно надіслати лист одержувачам, яким його не доставлено, можна лише для кампанії зі статусом «Збій».",
   "emailCampaignsSendingFailureSigningKeyInvalid": "Не вдається видати коди підтвердження, бо ключ підпису налаштовано неправильно. Зверніться до команди розробки, щоб перевірити BETTER_AUTH_SECRETS.",
@@ -1366,9 +1226,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} одержувач",
         "countPlural=few": "{formattedCount} одержувачі",
@@ -1408,9 +1266,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Повторно надсилаємо лист {formattedCount} одержувачу, якому його не вдалося доставити.",
         "countPlural=few": "Повторно надсилаємо лист {formattedCount} одержувачам, яким його не вдалося доставити.",
@@ -1454,9 +1310,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Надіслано {formattedCount} тестовий лист ({languages}).",
         "countPlural=few": "Надіслано {formattedCount} тестові листи ({languages}).",
@@ -1473,6 +1327,7 @@
   "emailCampaignsDeliveryMismatch": "Ця дія працює лише для одноразових кампаній, а ця кампанія надсилається автоматично.",
   "emailCampaignsActionFailedUnexpectedly": "На сервері сталася помилка. Спробуйте ще раз.",
   "emailCampaignsAudienceInUseByDrafts": "Цю аудиторію використовують чернетки кампаній, тому її можна лише архівувати. Перш ніж видалити аудиторію, перенесіть чернетки на іншу аудиторію.",
+  "emailCampaignsComposerEnglishFallbackMissing": "Без англійського вмісту німецькомовні та україномовні одержувачі без вмісту своєю мовою отримають чеську версію.",
   "emailCampaignsSendingFailureTestRecipientsInvalid": "Одна з адрес не є дійсною електронною адресою. Перевірте адреси та спробуйте ще раз.",
   "emailCampaignsSendingFailureRecipientsOutsideTestDomain": "Поза робочим середовищем листи кампаній можна надсилати лише на адреси @{domain}, а деякі одержувачі до них не належать. Нічого не надіслано.",
   "emailCampaignsSendingFailureRecipientsUnavailable": "Не вдалося визначити одержувачів, бо Dotypos або база даних недоступні. Нічого не надіслано, і код досі дійсний; спробуйте ще раз трохи згодом.",

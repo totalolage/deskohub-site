@@ -13,9 +13,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} рахунок-фактура",
         "countPlural=few": "{formattedCount} рахунки-фактури",
@@ -81,9 +79,7 @@
         "local maximumLengthPlural = maximumLength: plural",
         "local formattedMaximumLength = maximumLength: number"
       ],
-      "selectors": [
-        "maximumLengthPlural"
-      ],
+      "selectors": ["maximumLengthPlural"],
       "match": {
         "maximumLengthPlural=one": "Використайте щонайбільше {formattedMaximumLength} символ.",
         "maximumLengthPlural=few": "Використайте щонайбільше {formattedMaximumLength} символи.",
@@ -147,9 +143,7 @@
         "local decimalPlacesPlural = decimalPlaces: plural",
         "local formattedDecimalPlaces = decimalPlaces: number"
       ],
-      "selectors": [
-        "decimalPlacesPlural"
-      ],
+      "selectors": ["decimalPlacesPlural"],
       "match": {
         "decimalPlacesPlural=one": "Введіть ціни зі знаком; після коми — щонайбільше {formattedDecimalPlaces} цифра.",
         "decimalPlacesPlural=few": "Введіть ціни зі знаком; після коми — щонайбільше {formattedDecimalPlaces} цифри.",

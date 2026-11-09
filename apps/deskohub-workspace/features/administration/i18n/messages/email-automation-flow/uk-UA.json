@@ -4,12 +4,8 @@
   "emailAutomationFlowPeriodTriggerWindowCountLabel": "{subject}: скільки одиниць від події запуску",
   "emailAutomationFlowPeriodTriggerWindowSide": [
     {
-      "declarations": [
-        "input side"
-      ],
-      "selectors": [
-        "side"
-      ],
+      "declarations": ["input side"],
+      "selectors": ["side"],
       "match": {
         "side=before": "до події запуску",
         "side=*": "після події запуску"
@@ -24,12 +20,8 @@
   "emailAutomationFlowSavedAudienceMenuSection": "Збережені аудиторії",
   "emailAutomationFlowSavedAudienceOperator": [
     {
-      "declarations": [
-        "input operator"
-      ],
-      "selectors": [
-        "operator"
-      ],
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
       "match": {
         "operator=in": "є у збереженій аудиторії",
         "operator=*": "немає у збереженій аудиторії"
@@ -51,12 +43,8 @@
   "emailAutomationFlowCalendarNextFires": "Найближчі запуски (празький час)",
   "emailAutomationFlowCalendarOccurrence": [
     {
-      "declarations": [
-        "input occurrence"
-      ],
-      "selectors": [
-        "occurrence"
-      ],
+      "declarations": ["input occurrence"],
+      "selectors": ["occurrence"],
       "match": {
         "occurrence=1": "1-й",
         "occurrence=2": "2-й",
@@ -73,12 +61,8 @@
   "emailAutomationFlowCalendarOccurrenceWeekdayLabel": "День тижня",
   "emailAutomationFlowCalendarPart": [
     {
-      "declarations": [
-        "input part"
-      ],
-      "selectors": [
-        "part"
-      ],
+      "declarations": ["input part"],
+      "selectors": ["part"],
       "match": {
         "part=minutes": "Хвилина години",
         "part=hours": "Година доби",
@@ -130,13 +114,8 @@
   "emailAutomationFlowStepDelete": "Видалити крок",
   "emailAutomationFlowStepEyebrow": [
     {
-      "declarations": [
-        "input number",
-        "input kind"
-      ],
-      "selectors": [
-        "kind"
-      ],
+      "declarations": ["input number", "input kind"],
+      "selectors": ["kind"],
       "match": {
         "kind=condition": "Крок {number} · Умова",
         "kind=wait": "Крок {number} · Очікування",
@@ -165,13 +144,8 @@
   "emailAutomationFlowWaitTitle": "Очікування",
   "emailAutomationFlowWaitUnitDay": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "день",
         "countPlural=few": "дні",
@@ -182,13 +156,8 @@
   ],
   "emailAutomationFlowWaitUnitHour": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "годину",
         "countPlural=few": "години",
@@ -200,13 +169,8 @@
   "emailAutomationFlowWaitUnitLabel": "Одиниця часу",
   "emailAutomationFlowWaitUnitMinute": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "хвилину",
         "countPlural=few": "хвилини",
@@ -217,13 +181,8 @@
   ],
   "emailAutomationFlowWaitUnitMonth": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "місяць",
         "countPlural=few": "місяці",
@@ -234,13 +193,8 @@
   ],
   "emailAutomationFlowWaitUnitWeek": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "тиждень",
         "countPlural=few": "тижні",

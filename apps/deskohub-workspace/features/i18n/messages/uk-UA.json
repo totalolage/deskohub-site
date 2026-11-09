@@ -348,7 +348,7 @@
   "landingOfferingOffices": "Приватних офісів ми поки не пропонуємо.",
   "landingAmenitiesTitle": "Що тут є",
   "landingAmenityInternetTitle": "Інтернет",
-  "landingAmenityInternetText": "Оптоволоконний інтернет і Wi-Fi 6G.",
+  "landingAmenityInternetText": "Оптоволоконний інтернет і Wi-Fi 6.",
   "landingAmenityWorkstationTitle": "Робочі станції",
   "landingAmenityWorkstationText": "До закріпленого місця можна додати два монітори 27″ або 32″ з роздільною здатністю QHD або 4K.",
   "landingAmenityCoffeeTitle": "Кава",
@@ -373,7 +373,7 @@
   "faqQuestionHowItWorks": "Як це працює?",
   "faqAnswerHowItWorks": "Місце бронюєте й оплачуєте онлайн у <reservation>формі бронювання</reservation>. У листі з підтвердженням ви отримаєте посилання на сторінку з PIN-кодом від дверей. PIN вводите на кодовій панелі біля вхідних дверей, а протягом заброньованого часу можете приходити й виходити.",
   "faqQuestionInternet": "Чи є тут якісний інтернет?",
-  "faqAnswerInternet": "У нас є оптоволоконний інтернет і Wi-Fi 6G.",
+  "faqAnswerInternet": "У нас є оптоволоконний інтернет і Wi-Fi 6.",
   "faqQuestionFood": "Чи можна принести свою їжу?",
   "faqAnswerFood": "Так, їжу можна принести з собою, а напої — купити з нашого холодильника. У нас навіть є тарілки, столове приладдя й невелика духовка, щоб розігріти їжу!",
   "faqQuestionCalls": "Чи є тут місце для телефонних розмов?",
@@ -434,7 +434,7 @@
   "contactPrivacyNoteAfter": "і погоджуєтеся, що ми використаємо ваші дані, щоб відповісти на запит.",
   "reservationNavCta": "Отримати доступ",
   "coworkReservationLink": "Забронювати коворкінг",
-  "meetingRoomReservationLink": "Забронювати переговорну кімнату",
+  "meetingRoomReservationLink": "Забронювати кімнату для переговорів",
   "reservationCoworkMetadataTitle": "Бронювання коворкінгу на Пальмовці",
   "reservationCoworkMetadataDescription": "Оберіть день. Місце у спільному просторі — до 17:00, закріплене місце — увесь день із цілодобовим доступом і кавою в ціні. Оплата онлайн, PIN — у листі.",
   "reservationHeroEyebrow": "Бронювання робочого простору",
@@ -936,6 +936,12 @@
   "cookieSettingsNecessaryDescription": "Потрібні для базової роботи сайту, вибору мови, безпеки та збереження рішення щодо згоди.",
   "cookieSettingsAnalyticsTitle": "Аналітичні файли cookie",
   "cookieSettingsAnalyticsDescription": "Допомагають нам оцінювати використання сайту, надійність форми бронювання та ефективність рекламних кампаній, не надсилаючи значень із форми бронювання чи персональних даних.",
+  "analyticsPreferenceTitle": "Аналітика у вашому обліковому записі",
+  "analyticsPreferenceDescription": "Діє на всіх пристроях, на яких ви входите в обліковий запис. Докладніше — у <privacy>Політиці конфіденційності</privacy>.",
+  "analyticsPreferenceSaving": "Зберігаємо ваше налаштування аналітики…",
+  "analyticsPreferenceSaved": "Ваше налаштування аналітики збережено.",
+  "analyticsPreferenceSaveError": "Не вдалося зберегти налаштування аналітики. Спробуйте ще раз.",
+  "analyticsPreferenceUnavailable": "Зараз не вдається завантажити налаштування аналітики. Спробуйте пізніше.",
   "cookieSettingsMarketingTitle": "Маркетингові файли cookie",
   "cookieSettingsMarketingDescription": "У майбутньому підтримуватимуть рекламні інструменти або вимірювання ефективності кампаній, якщо їх буде впроваджено.",
   "cookieSettingsPreferencesTitle": "Файли cookie налаштувань",
@@ -976,19 +982,85 @@
   "reservationValidationCoffeeRequired": "У цьому тарифі кава входить у ціну і має залишатися вибраною.",
   "automatedRequestRejected": "Цей запит схожий на автоматизований, тому ми не змогли його прийняти. Продовжте у своєму браузері.",
   "reservationSecurityInvalidOrigin": "Не вдалося перевірити запит на бронювання. Перезавантажте сторінку й спробуйте ще раз.",
-  "contactValidationNameMinimum": "Імʼя має містити щонайменше {min} символи.",
-  "contactValidationNameMaximum": "Імʼя може містити не більше ніж {max} символів.",
+  "contactValidationNameMinimum": [
+    {
+      "declarations": ["input min", "local minPlural = min: plural"],
+      "selectors": ["minPlural"],
+      "match": {
+        "minPlural=one": "Імʼя має містити щонайменше {min} символ.",
+        "minPlural=few": "Імʼя має містити щонайменше {min} символи.",
+        "minPlural=many": "Імʼя має містити щонайменше {min} символів.",
+        "minPlural=other": "Імʼя має містити щонайменше {min} символу."
+      }
+    }
+  ],
+  "contactValidationNameMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Імʼя може містити не більше ніж {max} символ.",
+        "maxPlural=few": "Імʼя може містити не більше ніж {max} символи.",
+        "maxPlural=many": "Імʼя може містити не більше ніж {max} символів.",
+        "maxPlural=other": "Імʼя може містити не більше ніж {max} символу."
+      }
+    }
+  ],
   "contactValidationEmailRequired": "Електронна адреса обовʼязкова.",
   "contactValidationEmailInvalid": "Введіть правильну електронну адресу.",
-  "contactValidationEmailMaximum": "Електронна адреса може містити не більше ніж {max} символів.",
+  "contactValidationEmailMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Електронна адреса може містити не більше ніж {max} символ.",
+        "maxPlural=few": "Електронна адреса може містити не більше ніж {max} символи.",
+        "maxPlural=many": "Електронна адреса може містити не більше ніж {max} символів.",
+        "maxPlural=other": "Електронна адреса може містити не більше ніж {max} символу."
+      }
+    }
+  ],
   "contactEmailConfirmationLabel": "Повторіть електронну адресу",
   "contactValidationEmailConfirmationMismatch": "Електронні адреси не збігаються. Перевірте, чи немає в них помилки.",
   "contactValidationEmailUndeliverable": "На цю електронну адресу не можна доставити лист. Перевірте, чи немає в ній помилки: саме туди ми надсилаємо підтвердження й посилання для доступу.",
-  "contactValidationPhoneInvalid": "Введіть дійсний чеський номер телефону.",
-  "contactValidationPhoneMaximum": "Номер телефону може містити не більше ніж {max} символів.",
+  "contactValidationPhoneInvalid": "Введіть дійсний номер телефону. Номер у міжнародному форматі, що починається з +, підійде завжди.",
+  "contactValidationPhoneMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Номер телефону може містити не більше ніж {max} символ.",
+        "maxPlural=few": "Номер телефону може містити не більше ніж {max} символи.",
+        "maxPlural=many": "Номер телефону може містити не більше ніж {max} символів.",
+        "maxPlural=other": "Номер телефону може містити не більше ніж {max} символу."
+      }
+    }
+  ],
   "contactValidationPhoneRequired": "Номер телефону обовʼязковий.",
-  "contactValidationMessageMinimum": "Повідомлення має містити щонайменше {min} символів.",
-  "contactValidationMessageMaximum": "Повідомлення може містити не більше ніж {max} символів.",
+  "contactValidationMessageMinimum": [
+    {
+      "declarations": ["input min", "local minPlural = min: plural"],
+      "selectors": ["minPlural"],
+      "match": {
+        "minPlural=one": "Повідомлення має містити щонайменше {min} символ.",
+        "minPlural=few": "Повідомлення має містити щонайменше {min} символи.",
+        "minPlural=many": "Повідомлення має містити щонайменше {min} символів.",
+        "minPlural=other": "Повідомлення має містити щонайменше {min} символу."
+      }
+    }
+  ],
+  "contactValidationMessageMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Повідомлення може містити не більше ніж {max} символ.",
+        "maxPlural=few": "Повідомлення може містити не більше ніж {max} символи.",
+        "maxPlural=many": "Повідомлення може містити не більше ніж {max} символів.",
+        "maxPlural=other": "Повідомлення може містити не більше ніж {max} символу."
+      }
+    }
+  ],
   "galleryMetadataTitle": "Фото коворкінгу на Пальмовці",
   "galleryMetadataDescription": "Фото з Deskohub Workspace на Пальмовці, Прага 8. Подивіться, який вигляд має простір, перш ніж бронювати місце або переговорну кімнату.",
   "gallerySrTitle": "Галерея Workspace",
@@ -1325,7 +1397,7 @@
   "publicOfferingReservedDeskAlwaysOpenAccess": "Вхід за кодом працює цілодобово.",
   "publicOfferingMeetingRoomUsage": "Погодинне бронювання починається на початку обраної вами години. Бронювання на весь день триває від опівночі до опівночі.",
   "publicOfferingOfficeDescription": "Приватний офіс лише для вас на цілі дні, з такою кількістю місць, яка вам потрібна.",
-  "publicOfferingOfficeUsage": "Бронюйте цілі дні з початком не пізніше ніж за місяць наперед. Одне бронювання може тривати щонайбільше {hours} години, зазвичай 28 днів.",
+  "publicOfferingOfficeUsage": "Бронюйте цілі дні з початком упродовж найближчого місяця. Одне бронювання може тривати щонайбільше {hours} год, зазвичай 28 днів.",
   "publicOfferingOfficeSeatPrice": "Кожне заброньоване місце, за день",
   "pricingPageTitle": "Ціни й години роботи",
   "pricingMetadataTitle": "Ціни коворкінгу й переговорної, Прага 8",
@@ -1452,7 +1524,7 @@
   "coworkingReservedDeskHours": "увесь день, цілодобово",
   "coworkingOpenSpaceText": "Сідаєте на будь-яке вільне місце за спільним столом. Підходить для звичайного робочого дня поза домом.",
   "coworkingOpenSpacePointHours": "Від опівночі до {until} в день бронювання",
-  "coworkingOpenSpacePointInternet": "Оптоволоконний інтернет і Wi-Fi 6G",
+  "coworkingOpenSpacePointInternet": "Оптоволоконний інтернет і Wi-Fi 6",
   "coworkingOpenSpacePointCoffee": "Каву можна докупити",
   "coworkingOpenSpaceCta": "Забронювати місце",
   "coworkingReservedDeskText": "Стіл увесь день лише ваш. Не треба шукати вільне місце, а приходити й іти можна будь-коли вдень і вночі.",
@@ -1463,7 +1535,7 @@
   "coworkingPricesNote": "Ціни додаткових послуг і поточні акції дивіться на сторінці «<pricing>Ціни</pricing>».",
   "coworkingAmenitiesTitle": "Що тут є",
   "coworkingAmenityInternetTitle": "Інтернет",
-  "coworkingAmenityInternetText": "Оптоволоконний інтернет і Wi-Fi 6G впораються і з відеодзвінками, і з великими файлами.",
+  "coworkingAmenityInternetText": "Оптоволоконний інтернет і Wi-Fi 6 впораються і з відеодзвінками, і з великими файлами.",
   "coworkingAmenityWorkstationTitle": "Робочі станції",
   "coworkingAmenityWorkstationText": "До закріпленого місця можна додати два монітори 27″ або 32″ з роздільною здатністю QHD або 4K.",
   "coworkingAmenityKitchenTitle": "Кухня",
