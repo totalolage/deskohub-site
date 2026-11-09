@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
+import { PostHogFeatureFlagEvaluationError } from "@deskohub/analytics-posthog/feature-flags/node";
 import { Effect, Layer, Logger } from "effect";
 import type { IWorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";

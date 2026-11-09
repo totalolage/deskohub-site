@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { PostHogProjectId } from "@deskohub/posthog/identifiers";
+import { PostHogProjectId } from "@deskohub/analytics-posthog/identifiers";
 import { Duration, Option, Redacted } from "effect";
 import {
   getPostHogPersonDeletionAttemptTimeout,

@@ -1,6 +1,6 @@
 import { dotyposApiTimeoutDefaultMilliseconds } from "@deskohub/dotypos/api-timeout";
 import { igloohomeApiTimeoutMaximumMilliseconds } from "@deskohub/igloohome/config";
-import { PostHogProjectId } from "@deskohub/posthog/identifiers";
+import { PostHogProjectId } from "@deskohub/analytics-posthog/identifiers";
 import { Effect, Schema } from "effect";
 import {
   optionalStringSchema,

@@ -10,7 +10,7 @@ export interface PostHogFeatureFlagConfigInput {
 export class PostHogFeatureFlagConfig extends Context.Service<
   PostHogFeatureFlagConfig,
   PostHogFeatureFlagConfigInput
->()("@deskohub/posthog/PostHogFeatureFlagConfig") {
+>()("@deskohub/analytics-posthog/PostHogFeatureFlagConfig") {
   static from = (config: PostHogFeatureFlagConfigInput) =>
     Layer.succeed(this, config);
 }

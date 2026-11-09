@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { EmailRecipientDomainServiceMock } from "@deskohub/email/backend/recipient-domain.service.mock";
-import { PostHogDistinctId } from "@deskohub/posthog/identifiers";
+import { PostHogDistinctId } from "@deskohub/analytics-posthog/identifiers";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option, Schema } from "effect";
 import { ReservationAuthorDirectory } from "@/features/account";

@@ -1,4 +1,4 @@
-import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
+import type { PostHogFeatureFlagOverrides } from "@deskohub/analytics-posthog/feature-flags";
 import { Context, Layer } from "effect";
 import { env } from "@/env";
 import { resolveFeatureFlagOverrides } from "@/features/feature-flags/feature-flag-overrides";

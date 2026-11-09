@@ -31,7 +31,7 @@ export interface PostHogPersonsConfigInput {
 export class PostHogPersonsConfig extends Context.Service<
   PostHogPersonsConfig,
   PostHogPersonsConfigInput
->()("@deskohub/posthog/PostHogPersonsConfig") {
+>()("@deskohub/analytics-posthog/PostHogPersonsConfig") {
   static from = (config: PostHogPersonsConfigInput) =>
     Layer.succeed(this, config);
 }
@@ -63,7 +63,7 @@ const bulkDelete = {
 export class PostHogPersonsService extends Context.Service<
   PostHogPersonsService,
   IPostHogPersonsService
->()("@deskohub/posthog/PostHogPersonsService") {
+>()("@deskohub/analytics-posthog/PostHogPersonsService") {
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {

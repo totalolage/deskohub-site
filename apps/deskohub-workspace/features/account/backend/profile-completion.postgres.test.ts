@@ -7,7 +7,7 @@ import {
   DotyposService,
   DotyposUnavailable,
 } from "@deskohub/dotypos";
-import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
+import { PostHogFeatureFlagEvaluationError } from "@deskohub/analytics-posthog/feature-flags/node";
 import { Deferred, Effect, Fiber, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";

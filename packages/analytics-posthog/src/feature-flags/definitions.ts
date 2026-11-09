@@ -80,7 +80,7 @@ interface IPostHogFeatureFlagService {
 export class PostHogFeatureFlagService extends Context.Service<
   PostHogFeatureFlagService,
   IPostHogFeatureFlagService
->()("@deskohub/posthog/PostHogFeatureFlagService") {
+>()("@deskohub/analytics-posthog/PostHogFeatureFlagService") {
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {

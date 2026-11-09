@@ -22,7 +22,7 @@ export interface IPostHogFeatureFlagContractFile {
 export class PostHogFeatureFlagContractFile extends Context.Service<
   PostHogFeatureFlagContractFile,
   IPostHogFeatureFlagContractFile
->()("@deskohub/posthog/PostHogFeatureFlagContractFile") {
+>()("@deskohub/analytics-posthog/PostHogFeatureFlagContractFile") {
   static from = (outputFile: string | URL) => {
     const path =
       typeof outputFile === "string"
@@ -47,7 +47,7 @@ interface IPostHogFeatureFlagSync {
 export class PostHogFeatureFlagSync extends Context.Service<
   PostHogFeatureFlagSync,
   IPostHogFeatureFlagSync
->()("@deskohub/posthog/PostHogFeatureFlagSync") {
+>()("@deskohub/analytics-posthog/PostHogFeatureFlagSync") {
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {

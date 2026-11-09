@@ -8,7 +8,7 @@ import {
   DotyposService,
 } from "@deskohub/dotypos";
 import { NexiOrderIdSchema } from "@deskohub/nexi";
-import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
+import { PostHogFeatureFlagEvaluationError } from "@deskohub/analytics-posthog/feature-flags/node";
 import { testEmailAddress } from "@deskohub/test-email";
 import { eq, sql } from "drizzle-orm";
 import { Cause, Effect, Exit, Layer, Predicate, Schema } from "effect";

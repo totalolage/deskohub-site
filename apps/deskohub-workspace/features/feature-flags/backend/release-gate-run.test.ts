@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
+import { PostHogFeatureFlagEvaluationError } from "@deskohub/analytics-posthog/feature-flags/node";
 import { type Context, Effect, Exit, Logger, References } from "effect";
 import {
   TestReleaseGate,

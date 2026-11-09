@@ -1,7 +1,7 @@
 import "server-only";
 
-import type { PostHogFeatureFlagSubject } from "@deskohub/posthog/feature-flags/node";
-import { PostHogDistinctId } from "@deskohub/posthog/identifiers";
+import type { PostHogFeatureFlagSubject } from "@deskohub/analytics-posthog/feature-flags/node";
+import { PostHogDistinctId } from "@deskohub/analytics-posthog/identifiers";
 import { Effect } from "effect";
 import { currentVisitorIdentity } from "@/shared/backend/workspace-request-context";
 

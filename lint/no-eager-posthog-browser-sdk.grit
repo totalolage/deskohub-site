@@ -7,7 +7,7 @@ language js(typescript, jsx)
 // bundle; `@posthog/react` imports it at module load. Type-only imports are
 // erased, and test fixtures and scripts never ship to the browser.
 file($name, $body) where {
-  $name <: r".*(?:apps/deskohub-workspace|packages/posthog/src)/.*\.(?:ts|tsx)$",
+  $name <: r".*(?:apps/deskohub-workspace|packages/analytics-posthog/src)/.*\.(?:ts|tsx)$",
   not $name <: r".*\.test\.(?:ts|tsx)$",
   not $name <: r".*apps/deskohub-workspace/(?:scripts|shared/testing)/.*",
   $body <: r"(?s).*(?:posthog-js|@posthog/react).*",

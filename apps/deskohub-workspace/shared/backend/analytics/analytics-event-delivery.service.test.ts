@@ -2,7 +2,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import type {
   PostHogDistinctId,
   PostHogEventId,
-} from "@deskohub/posthog/identifiers";
+} from "@deskohub/analytics-posthog/identifiers";
 import { Effect } from "effect";
 import type { PostHog } from "posthog-node";
 import type { PostHogRuntimeConfigObj } from "@/shared/backend/config/posthog.config";

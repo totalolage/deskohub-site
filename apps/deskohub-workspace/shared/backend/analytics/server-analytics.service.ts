@@ -3,7 +3,7 @@ import "server-only";
 import {
   PostHogDistinctId,
   PostHogEventId,
-} from "@deskohub/posthog/identifiers";
+} from "@deskohub/analytics-posthog/identifiers";
 import { Context, Effect, Layer, Option, Predicate } from "effect";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { getPostHogAccountDistinctId } from "@/features/account/posthog-account-distinct-id";

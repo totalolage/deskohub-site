@@ -4,7 +4,7 @@ import {
   PostHogPersonsService,
   type PostHogPersonsWriteFailure,
   postHogPersonsFailureLogFields,
-} from "@deskohub/posthog/persons";
+} from "@deskohub/analytics-posthog/persons";
 import { Context, Effect, Layer, Match, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";

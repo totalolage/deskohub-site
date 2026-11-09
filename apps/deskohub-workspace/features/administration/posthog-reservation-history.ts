@@ -1,7 +1,7 @@
 import {
   PostHogEventId,
   type PostHogProjectId,
-} from "@deskohub/posthog/identifiers";
+} from "@deskohub/analytics-posthog/identifiers";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import {
   FetchHttpClient,

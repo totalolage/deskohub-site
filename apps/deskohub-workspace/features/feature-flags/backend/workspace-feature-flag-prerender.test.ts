@@ -1,8 +1,8 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
-import type { PostHogFeatureFlagDefinition } from "@deskohub/posthog/feature-flags/management";
+import type { PostHogFeatureFlagOverrides } from "@deskohub/analytics-posthog/feature-flags";
+import type { PostHogFeatureFlagDefinition } from "@deskohub/analytics-posthog/feature-flags/management";
 import { Data, Effect } from "effect";
 import type { PostHogFeatureFlagDefinitions } from "@/features/feature-flags/generated/contract";
 import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
@@ -44,7 +44,7 @@ const getCurrentPostHogFeatureFlagSubject = mock(() =>
   Effect.fail(new Error("Unexpected request subject lookup"))
 );
 
-mock.module("@deskohub/posthog/feature-flags/management", () => ({
+mock.module("@deskohub/analytics-posthog/feature-flags/management", () => ({
   loadPostHogFeatureFlagDefinitions,
 }));
 mock.module("@/env", () => ({ env }));

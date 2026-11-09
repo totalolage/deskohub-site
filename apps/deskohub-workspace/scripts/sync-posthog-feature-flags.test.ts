@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PostHogFeatureFlagError } from "@deskohub/posthog/feature-flags/codegen";
-import { PostHogProjectId } from "@deskohub/posthog/identifiers";
+import { PostHogFeatureFlagError } from "@deskohub/analytics-posthog/feature-flags/codegen";
+import { PostHogProjectId } from "@deskohub/analytics-posthog/identifiers";
 import { Cause, Effect, Exit, Option } from "effect";
 import type {
   PostHogCliInput,

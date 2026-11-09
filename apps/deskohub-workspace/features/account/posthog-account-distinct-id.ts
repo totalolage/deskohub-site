@@ -1,4 +1,4 @@
-import { PostHogDistinctId } from "@deskohub/posthog/identifiers";
+import { PostHogDistinctId } from "@deskohub/analytics-posthog/identifiers";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 
 /**

@@ -124,7 +124,7 @@
         "@deskohub/nexi#test",
         "@deskohub/next-effect#test",
         "@deskohub/phone-number#test",
-        "@deskohub/posthog#test",
+        "@deskohub/analytics-posthog#test",
         "@deskohub/qr-code#test",
         "@deskohub/secret-comparison#test",
         "@deskohub/standard-schema#test",

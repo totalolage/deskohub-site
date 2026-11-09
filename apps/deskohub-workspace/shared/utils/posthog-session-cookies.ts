@@ -1,7 +1,7 @@
 import {
   PostHogDistinctId,
   PostHogSessionId,
-} from "@deskohub/posthog/identifiers";
+} from "@deskohub/analytics-posthog/identifiers";
 import { Schema } from "effect";
 
 export const POSTHOG_DISTINCT_ID_COOKIE = "dh_ph_distinct_id";

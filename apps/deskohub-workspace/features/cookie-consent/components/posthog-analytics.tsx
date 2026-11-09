@@ -1,7 +1,7 @@
 "use client";
 
-import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
-import { PostHogClientProvider } from "@deskohub/posthog/feature-flags/react";
+import type { PostHogFeatureFlagOverrides } from "@deskohub/analytics-posthog/feature-flags";
+import { PostHogClientProvider } from "@deskohub/analytics-posthog/feature-flags/react";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
 import { getClientEnv } from "@/client-env";

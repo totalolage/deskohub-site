@@ -1,10 +1,10 @@
 import "server-only";
 
-import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
+import type { PostHogFeatureFlagOverrides } from "@deskohub/analytics-posthog/feature-flags";
 import {
   loadPostHogFeatureFlagDefinitions,
   type PostHogFeatureFlagDefinition,
-} from "@deskohub/posthog/feature-flags/management";
+} from "@deskohub/analytics-posthog/feature-flags/management";
 import { Effect } from "effect";
 import { cacheLife } from "next/cache";
 import { env } from "@/env";

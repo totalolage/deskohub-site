@@ -1,0 +1,17 @@
+{
+  "name": "@deskohub/email-posthog",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "biome check backend types index.ts --config-path ../../biome.json --vcs-root ../..",
+    "test": "bun test"
+  },
+  "exports": {
+    ".": "./index.ts"
+  },
+  "dependencies": {
+    "effect": "4.0.0-beta.85",
+    "@deskohub/email": "workspace:*",
+    "posthog-node": "^5.63.1"
+  }
+}

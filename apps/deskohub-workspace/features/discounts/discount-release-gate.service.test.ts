@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   PostHogFeatureFlagEvaluationError,
   type TypedPostHogFeatureFlagEvaluationSnapshot,
-} from "@deskohub/posthog/feature-flags/node";
+} from "@deskohub/analytics-posthog/feature-flags/node";
 import { type Context, Effect, Logger, References } from "effect";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type {

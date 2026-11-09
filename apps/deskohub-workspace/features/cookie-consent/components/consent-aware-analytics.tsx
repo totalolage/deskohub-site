@@ -1,6 +1,6 @@
 "use client";
 
-import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
+import type { PostHogFeatureFlagOverrides } from "@deskohub/analytics-posthog/feature-flags";
 import { Analytics } from "@vercel/analytics/react";
 import type { PostHogFeatureFlagDefinitions } from "@/features/feature-flags/generated/contract";
 import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
