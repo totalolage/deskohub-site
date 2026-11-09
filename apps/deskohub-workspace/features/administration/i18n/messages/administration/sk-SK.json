@@ -6,13 +6,8 @@
   "administrationBookingColumnTable": "Stôl",
   "administrationBookingCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} rezervácia stola",
         "countPlural=few": "{count} rezervácie stolov",
@@ -45,9 +40,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} osoba",
         "countPlural=few": "{formattedCount} osoby",
@@ -89,9 +82,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{date}: {formattedCount} rezervácia",
         "countPlural=few": "{date}: {formattedCount} rezervácie",
@@ -112,9 +103,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} rezervácia za posledných 365 dní",
         "countPlural=few": "{formattedCount} rezervácie za posledných 365 dní",
@@ -126,13 +115,8 @@
   "administrationCustomerContactUnavailable": "Údaje o zákazníkovi nie sú k dispozícii",
   "administrationCustomerCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} zákazník",
         "countPlural=few": "{count} zákazníci",
@@ -168,9 +152,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} rezervácia · Aktualizované {date}",
         "countPlural=few": "{formattedCount} rezervácie · Aktualizované {date}",
@@ -197,9 +179,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "<count>{formattedCount}</count> rezervácia",
         "countPlural=few": "<count>{formattedCount}</count> rezervácie",
@@ -263,13 +243,8 @@
   "administrationOperationColumnType": "Typ",
   "administrationOperationCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} operácia",
         "countPlural=few": "{count} operácie",
@@ -311,13 +286,8 @@
   "administrationOrderColumnReservation": "Rezervácia",
   "administrationOrderCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} objednávka",
         "countPlural=few": "{count} objednávky",
@@ -375,9 +345,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "… a {formattedCount} ďalší",
         "countPlural=few": "… a {formattedCount} ďalší",
@@ -399,9 +367,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Dokončené: {formattedCompleted} z {formattedCount} rezervácie",
         "countPlural=few": "Dokončené: {formattedCompleted} z {formattedCount} rezervácií",
@@ -503,9 +469,7 @@
         "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} rezervácia čaká na vrátenie peňazí.",
         "countPlural=few": "{formattedCount} rezervácie čakajú na vrátenie peňazí.",
@@ -660,13 +624,8 @@
   "administrationReservationLifecycleWaitingForCleanup": "Čaká na uvoľnenie blokácie",
   "administrationReservationListCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} rezervácia",
         "countPlural=few": "{count} rezervácie",

@@ -4,12 +4,8 @@
   "emailAutomationFlowPeriodTriggerWindowCountLabel": "{subject}: koľko jednotiek od spúšťacej udalosti",
   "emailAutomationFlowPeriodTriggerWindowSide": [
     {
-      "declarations": [
-        "input side"
-      ],
-      "selectors": [
-        "side"
-      ],
+      "declarations": ["input side"],
+      "selectors": ["side"],
       "match": {
         "side=before": "pred spúšťacou udalosťou",
         "side=*": "po spúšťacej udalosti"
@@ -24,12 +20,8 @@
   "emailAutomationFlowSavedAudienceMenuSection": "Uložené publiká",
   "emailAutomationFlowSavedAudienceOperator": [
     {
-      "declarations": [
-        "input operator"
-      ],
-      "selectors": [
-        "operator"
-      ],
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
       "match": {
         "operator=in": "je v uloženom publiku",
         "operator=*": "nie je v uloženom publiku"
@@ -51,12 +43,8 @@
   "emailAutomationFlowCalendarNextFires": "Najbližšie spustenia (pražský čas)",
   "emailAutomationFlowCalendarOccurrence": [
     {
-      "declarations": [
-        "input occurrence"
-      ],
-      "selectors": [
-        "occurrence"
-      ],
+      "declarations": ["input occurrence"],
+      "selectors": ["occurrence"],
       "match": {
         "occurrence=1": "1.",
         "occurrence=2": "2.",
@@ -73,12 +61,8 @@
   "emailAutomationFlowCalendarOccurrenceWeekdayLabel": "Deň v týždni",
   "emailAutomationFlowCalendarPart": [
     {
-      "declarations": [
-        "input part"
-      ],
-      "selectors": [
-        "part"
-      ],
+      "declarations": ["input part"],
+      "selectors": ["part"],
       "match": {
         "part=minutes": "Minúta v hodine",
         "part=hours": "Hodina dňa",
@@ -130,13 +114,8 @@
   "emailAutomationFlowStepDelete": "Odstrániť krok",
   "emailAutomationFlowStepEyebrow": [
     {
-      "declarations": [
-        "input number",
-        "input kind"
-      ],
-      "selectors": [
-        "kind"
-      ],
+      "declarations": ["input number", "input kind"],
+      "selectors": ["kind"],
       "match": {
         "kind=condition": "Krok {number} · Podmienka",
         "kind=wait": "Krok {number} · Čakanie",
@@ -165,13 +144,8 @@
   "emailAutomationFlowWaitTitle": "Čakanie",
   "emailAutomationFlowWaitUnitDay": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "deň",
         "countPlural=few": "dni",
@@ -182,13 +156,8 @@
   ],
   "emailAutomationFlowWaitUnitHour": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "hodinu",
         "countPlural=few": "hodiny",
@@ -200,13 +169,8 @@
   "emailAutomationFlowWaitUnitLabel": "Jednotka času",
   "emailAutomationFlowWaitUnitMinute": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "minútu",
         "countPlural=few": "minúty",
@@ -217,13 +181,8 @@
   ],
   "emailAutomationFlowWaitUnitMonth": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "mesiac",
         "countPlural=few": "mesiace",
@@ -234,13 +193,8 @@
   ],
   "emailAutomationFlowWaitUnitWeek": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "týždeň",
         "countPlural=few": "týždne",

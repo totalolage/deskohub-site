@@ -11,9 +11,7 @@
         "local maximumPlural = maximum: plural",
         "local formattedMaximum = maximum: number"
       ],
-      "selectors": [
-        "maximumPlural"
-      ],
+      "selectors": ["maximumPlural"],
       "match": {
         "maximumPlural=one": "Použite najviac {formattedMaximum} znak.",
         "maximumPlural=few": "Použite najviac {formattedMaximum} znaky.",
@@ -38,9 +36,7 @@
         "local formattedMinimum = minimum: number",
         "local formattedMaximum = maximum: number"
       ],
-      "selectors": [
-        "maximumPlural"
-      ],
+      "selectors": ["maximumPlural"],
       "match": {
         "maximumPlural=one": "Koniec musí byť {formattedMinimum} až {formattedMaximum} hodinu po začiatku.",
         "maximumPlural=few": "Koniec musí byť {formattedMinimum} až {formattedMaximum} hodiny po začiatku.",

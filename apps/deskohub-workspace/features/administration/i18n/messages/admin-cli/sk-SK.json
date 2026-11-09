@@ -54,9 +54,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} relácia CLI",
         "countPlural=few": "{formattedCount} relácie CLI",

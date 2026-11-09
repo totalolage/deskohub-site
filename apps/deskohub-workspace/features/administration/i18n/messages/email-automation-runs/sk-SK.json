@@ -11,9 +11,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Počkať {formattedCount} minútu",
         "countPlural=few": "Počkať {formattedCount} minúty",
@@ -29,9 +27,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Počkať {formattedCount} hodinu",
         "countPlural=few": "Počkať {formattedCount} hodiny",
@@ -47,9 +43,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Počkať {formattedCount} deň",
         "countPlural=few": "Počkať {formattedCount} dni",
@@ -65,9 +59,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Počkať {formattedCount} týždeň",
         "countPlural=few": "Počkať {formattedCount} týždne",
@@ -83,9 +75,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Počkať {formattedCount} mesiac",
         "countPlural=few": "Počkať {formattedCount} mesiace",
@@ -101,9 +91,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} minúta",
         "countPlural=few": "{formattedCount} minúty",
@@ -119,9 +107,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} hodina",
         "countPlural=few": "{formattedCount} hodiny",
@@ -137,9 +123,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} deň",
         "countPlural=few": "{formattedCount} dni",
@@ -156,9 +140,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "pred {formattedCount} minútou",
         "countPlural=few": "pred {formattedCount} minútami",
@@ -174,9 +156,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "pred {formattedCount} hodinou",
         "countPlural=few": "pred {formattedCount} hodinami",
@@ -192,9 +172,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "pred {formattedCount} dňom",
         "countPlural=few": "pred {formattedCount} dňami",
@@ -282,9 +260,7 @@
         "local countPlural = count: plural",
         "local formattedCount = count: number"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{formattedCount} beh na tejto stránke",
         "countPlural=few": "{formattedCount} behy na tejto stránke",
