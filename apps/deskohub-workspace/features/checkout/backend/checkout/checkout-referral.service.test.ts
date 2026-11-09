@@ -359,7 +359,13 @@ const makeServiceLayer = (input: {
   /** The code-kind lookup fails, as when the referral registry is down. */
   readonly codeKindFailure?: DatabaseQueryError;
   readonly payableReservationFailure?: PayableReservationUnavailableError;
+  /** The payment attempt every live payable-reservation read reports. */
+  readonly activePaymentAttemptId?: string;
+  /** The payment attempt reads after the first report, once pricing ran. */
+  readonly activePaymentAttemptIdAfterPricing?: string;
+  readonly onPayableReservationRead?: () => void;
 }) => {
+  let payableReservationReadCount = 0;
   const dependencies = Layer.mergeAll(
     Layer.mock(ReferralService, {
       lookupCodeKind: () =>
@@ -379,12 +385,23 @@ const makeServiceLayer = (input: {
     }),
     Layer.mock(PayableReservationService, {
       requireCurrent: () =>
-        input.payableReservationFailure === undefined
-          ? Effect.succeed({
-              dotyposCustomerId:
-                input.payableReservationCustomerId ?? dotyposCustomerId,
-            } as WorkspaceReservation)
-          : Effect.fail(input.payableReservationFailure),
+        Effect.suspend(() => {
+          payableReservationReadCount += 1;
+          input.onPayableReservationRead?.();
+          if (input.payableReservationFailure !== undefined) {
+            return Effect.fail(input.payableReservationFailure);
+          }
+          const activePaymentAttemptId =
+            payableReservationReadCount > 1
+              ? (input.activePaymentAttemptIdAfterPricing ??
+                input.activePaymentAttemptId)
+              : input.activePaymentAttemptId;
+          return Effect.succeed({
+            dotyposCustomerId:
+              input.payableReservationCustomerId ?? dotyposCustomerId,
+            activePaymentAttemptId: activePaymentAttemptId ?? null,
+          } as WorkspaceReservation);
+        }),
     })
   );
   return CheckoutReferralService.Default.pipe(
@@ -1158,6 +1175,81 @@ describe("CheckoutReferralService", () => {
       });
     }
   );
+
+  test("neither evaluates nor reprices a referral once a payment attempt is active", async () => {
+    const quote = Effect.runSync(buildCoworkReservationQuote(reservation));
+    let evaluationCount = 0;
+    let pricingAffirmationCount = 0;
+    const layer = makeServiceLayer({
+      affirmation: {
+        kind: "cowork",
+        reservation,
+        quote,
+        commitment: makeCommitment(coworkProduct, []),
+      },
+      activePaymentAttemptId: "attempt-id",
+      evaluateCheckoutReferral: () =>
+        Effect.sync(() => {
+          evaluationCount += 1;
+          return eligible;
+        }),
+      onPricingAffirmation: () => {
+        pricingAffirmationCount += 1;
+      },
+    });
+
+    const result = await Effect.runPromise(
+      runAcceptCode(
+        layer,
+        tokenFor({ reservation, quote, bookedAt: payStateBookedAt })
+      )
+    );
+
+    expect(result).toEqual({
+      status: "unavailable",
+      reason: "checkout",
+      checkoutReason: "payment_in_progress",
+    });
+    expect(evaluationCount).toBe(0);
+    expect(pricingAffirmationCount).toBe(0);
+  });
+
+  test("discards a referral repricing when a payment attempt starts meanwhile", async () => {
+    const quote = Effect.runSync(buildCoworkReservationQuote(reservation));
+    let pricingAffirmationCount = 0;
+    let payableReservationReadCount = 0;
+    const layer = makeServiceLayer({
+      affirmation: {
+        kind: "cowork",
+        reservation,
+        quote,
+        commitment: makeCommitment(coworkProduct, []),
+      },
+      activePaymentAttemptIdAfterPricing: "attempt-id",
+      evaluateCheckoutReferral: () => Effect.succeed(eligible),
+      onPricingAffirmation: () => {
+        pricingAffirmationCount += 1;
+      },
+      onPayableReservationRead: () => {
+        payableReservationReadCount += 1;
+      },
+    });
+
+    const result = await Effect.runPromise(
+      runAcceptCode(
+        layer,
+        tokenFor({ reservation, quote, bookedAt: payStateBookedAt })
+      )
+    );
+
+    expect(result).toEqual({
+      status: "unavailable",
+      reason: "checkout",
+      checkoutReason: "payment_in_progress",
+    });
+    expect(pricingAffirmationCount).toBe(1);
+    expect(payableReservationReadCount).toBe(2);
+  });
 
   test.each(["accepted", "pricing_changed"] as const)(
     "returns the %s replacement's sealed token and expiry from the same seal as its URL",

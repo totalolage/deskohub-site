@@ -168,6 +168,15 @@ const acceptReferralCode = Effect.fnUntraced(function* (
   if (result.status === "pricing_changed" && result.freshPayUrl !== undefined) {
     return result;
   }
+  // A started payment blocks the checkout, not the code: like an ordinary
+  // code, it signs no replacement.
+  if (
+    result.status === "unavailable" &&
+    result.reason === "checkout" &&
+    result.checkoutReason === "payment_in_progress"
+  ) {
+    return paymentInProgress;
+  }
   return yield* rejectReferralCode(entry, result);
 });
 
