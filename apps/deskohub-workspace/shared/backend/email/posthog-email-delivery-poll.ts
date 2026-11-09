@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { EmailDeliveryId } from "@deskohub/email";
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Data, Effect, Exit, Match, Option, Ref } from "effect";
 import { currentInstant } from "@/shared/utils/temporal";
 import type {
@@ -71,16 +72,13 @@ export const pollPostHogEmailDeliveries = Effect.fn(
     readonly report: PostHogFinalStatusReport;
   }) =>
     Option.match(read, {
-      onNone: () =>
-        Effect.succeed<PostHogEmailDeliveryPollSummary>({
-          outcome: "not-configured",
-        }),
-      onSome: (configuredRead) =>
+      onNone: (): PollRun => Effect.succeed({ outcome: "not-configured" }),
+      onSome: (configuredRead): PollRun =>
         pollDueDeliveries({ trigger, read: configuredRead, report }),
     }).pipe(
-      Effect.onExit(
-        Exit.match({
-          onSuccess: (summary) => logPollSummary({ ...summary }),
+      Effect.onExit((exit) =>
+        Exit.match(exit, {
+          onSuccess: logPollSummary,
           // The cause stays out: a query error carries its parameters.
           onFailure: () => logPollSummary({ outcome: "failed", trigger }),
         })
@@ -88,11 +86,23 @@ export const pollPostHogEmailDeliveries = Effect.fn(
     )
 );
 
-const logPollSummary = (summary: {
-  readonly outcome: PostHogEmailDeliveryPollSummary["outcome"] | "failed";
-}) =>
+/** A poll's summary, from the deliveries it may claim. */
+type PollRun = Effect.Effect<
+  PostHogEmailDeliveryPollSummary,
+  EffectDrizzleQueryError,
+  PostHogEmailDeliveryRepository
+>;
+
+const logPollSummary = (
+  summary:
+    | PostHogEmailDeliveryPollSummary
+    | {
+        readonly outcome: "failed";
+        readonly trigger: PostHogEmailDeliveryPollTrigger;
+      }
+) =>
   Effect.logInfo("PostHog email delivery poll").pipe(
-    Effect.annotateLogs(summary)
+    Effect.annotateLogs({ ...summary })
   );
 
 /** What one poll did with a delivery it claimed. */
