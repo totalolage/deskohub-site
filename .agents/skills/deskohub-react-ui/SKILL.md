@@ -27,7 +27,8 @@ For Workspace forms, also read [references/workspace-forms.md](references/worksp
 
 ## Copy and locale
 
-- Keep customer-facing copy in the owning app's Inlang message catalogs as full sentences in both locale files, consumed with `m.*` in components and email-rendering TSX alike. Long-form legal and GDPR prose stays in its source modules: `features/legal/content.tsx` (Workspace) and `features/gdpr/texts/` (Boardgame Bar).
+- Keep customer-facing copy in the owning app's Inlang message catalogs as full sentences in every locale file, consumed with `m.*` in components and email-rendering TSX alike. Long-form legal and GDPR prose stays in its source modules: `features/legal/content.tsx` (Workspace) and `features/gdpr/texts/` (Boardgame Bar).
+- Before editing a catalog or adding a locale, load `$deskohub-i18n` for the catalog format, compiling, and translation.
 - Admin interface copy (`/[locale]/admin`, `features/administration`, `features/*/admin`) comes from the administration Inlang project: `m` from `@/features/administration/i18n`, never a customer catalog entry. Customer code must never import it. Customer-facing content shown inside admin screens, such as email previews or catalog product names, keeps the customer `m.*`. Read [administration localization](../deskohub-workspace-administration/references/localization.md) before adding admin copy. Screens not yet migrated still hard-code English.
 - Call `m.someMessage({}, { locale })` at each use site. Don't build per-locale copy maps or copy props for injection, and assert real catalog or rendered text in tests.
 - When a localized sentence contains links or other components, use `@doist/react-interpolate` and keep the whole sentence in one message.
