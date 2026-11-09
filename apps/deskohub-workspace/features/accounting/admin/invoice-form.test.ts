@@ -260,6 +260,14 @@ const fillInput = (
   return input;
 };
 
+// A date field takes typed text when focus leaves it.
+const typeDate = (view: InvoiceFormView, label: string, text: string) => {
+  const field = view.getByRole("combobox", { name: label });
+  fireEvent.change(field, { target: { value: text } });
+  fireEvent.focusOut(field);
+  return field;
+};
+
 const fillPersonRequiredFields = (view: InvoiceFormView) => {
   fillInput(view, "Invoice email", billingEmail);
   fillInput(view, "First name", "Synthetic");
@@ -694,7 +702,7 @@ test("ignores a blank hidden due date once already paid is selected", async () =
   const preview = mockPreviewAction();
   const view = renderInvoiceCreationForm();
   fillValidPersonInvoice(view);
-  fillInput(view, "Due date", "");
+  typeDate(view, "Due date", "");
 
   submitInvoiceForm(view);
   await view.findByText("This field is required.");
@@ -709,6 +717,44 @@ test("ignores a blank hidden due date once already paid is selected", async () =
       payment: { status: "paid", date: "2026-08-18" },
     })
   );
+});
+
+test("submits the typed invoice dates as calendar dates", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+  typeDate(view, "Service date", "2026-08-20");
+  typeDate(view, "Due date", "2026-09-15");
+
+  const form = view.container.querySelector("form")!;
+  const data = new FormData(form);
+  expect([data.get("serviceDate"), data.get("dueDate")]).toEqual([
+    "2026-08-20",
+    "2026-09-15",
+  ]);
+  submitInvoiceForm(view);
+  await view.findByText("This action creates and sends the invoice");
+  expect(preview).toHaveBeenCalledWith(
+    expect.objectContaining({
+      serviceDate: "2026-08-20",
+      payment: { status: "due", date: "2026-09-15" },
+    })
+  );
+});
+
+test("keeps typed text that is no date out of the review", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+  const serviceDate = view.getByRole("combobox", { name: "Service date" });
+  fireEvent.change(serviceDate, { target: { value: "2026-02-30" } });
+
+  submitInvoiceForm(view);
+  await flush();
+
+  expect(preview).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(serviceDate);
+  expect(serviceDate.getAttribute("aria-invalid")).toBe("true");
 });
 
 const priceInputOf = (view: InvoiceFormView) =>
