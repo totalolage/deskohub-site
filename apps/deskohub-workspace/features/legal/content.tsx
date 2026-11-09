@@ -607,7 +607,7 @@ const operatingRulesSectionsEn: LegalSection[] = [
 const legalDocuments = {
   "en-US": {
     "privacy-policy": {
-      updatedAt: "8 November 2026",
+      updatedAt: "9 November 2026",
       sections: [
         {
           heading: "1. Controller",
@@ -858,6 +858,11 @@ const legalDocuments = {
               long as necessary for the stated measurement purposes.
             </>,
             <>
+              PostHog keeps the delivery status of each campaign email for about
+              30 days. The campaign email records described in section 6 are
+              kept like other analytics data.
+            </>,
+            <>
               We keep the record of your marketing consent, including any
               withdrawal, with your customer record so that we can show what you
               chose.
@@ -890,9 +895,18 @@ const legalDocuments = {
               asked for it.
             </>,
             <>
-              If we send marketing communications in the future, our email
-              delivery provider may process the contact and delivery information
-              needed to send them on our behalf.
+              We send the emails in our email campaigns, including marketing
+              emails, through our analytics provider, PostHog Inc., using its EU
+              Cloud with data hosted in Frankfurt, Germany. If PostHog cannot
+              send an email, our email delivery provider, Resend, sends it
+              instead. For each campaign email, PostHog receives your email
+              address and the email's subject and content. It also records when
+              the email is sent, delivered, bounced, failed, or blocked, and
+              when you unsubscribe, open it, or click a link in it. These
+              records include your email address and the subject and, with your
+              analytics consent, are linked to your analytics profile. We send
+              all other emails, such as sign-in links and reservation emails,
+              only through Resend.
             </>,
           ],
         },
@@ -1155,7 +1169,7 @@ const legalDocuments = {
   },
   "cs-CZ": {
     "privacy-policy": {
-      updatedAt: "8. listopadu 2026",
+      updatedAt: "9. listopadu 2026",
       sections: [
         {
           heading: "1. Správce",
@@ -1411,6 +1425,11 @@ const legalDocuments = {
               pouze po dobu potřebnou pro uvedené účely měření.
             </>,
             <>
+              PostHog uchovává stav doručení každého e-mailu z kampaně přibližně
+              30 dní. Záznamy o e-mailech z kampaní popsané v bodě 6 uchováváme
+              stejně jako ostatní analytické údaje.
+            </>,
+            <>
               Záznam o vašem marketingovém souhlasu, včetně jeho odvolání,
               uchováváme u vašeho zákaznického záznamu, abychom mohli doložit,
               jak jste se rozhodli.
@@ -1444,9 +1463,20 @@ const legalDocuments = {
               to požádali.
             </>,
             <>
-              Pokud budeme v budoucnu zasílat marketingová sdělení, může náš
-              poskytovatel e-mailových služeb naším jménem zpracovávat kontaktní
-              a doručovací údaje potřebné k jejich odeslání.
+              E-maily z našich e-mailových kampaní, včetně marketingových
+              e-mailů, rozesíláme prostřednictvím našeho analytického
+              poskytovatele, společnosti PostHog Inc., přes její službu EU Cloud
+              s daty uloženými ve Frankfurtu nad Mohanem v Německu. Pokud
+              PostHog e-mail odeslat nemůže, odešle jej místo něj náš
+              poskytovatel e-mailových služeb Resend. U každého e-mailu z
+              kampaně PostHog obdrží vaši e-mailovou adresu, předmět a obsah
+              e-mailu. Zaznamenává také, kdy byl e-mail odeslán, doručen nebo
+              vrácen, kdy se jeho doručení nezdařilo nebo bylo zablokováno a kdy
+              se odhlásíte, e-mail otevřete nebo kliknete na odkaz v něm. Tyto
+              záznamy obsahují vaši e-mailovou adresu a předmět e-mailu a s
+              vaším analytickým souhlasem jsou propojeny s vaším analytickým
+              profilem. Všechny ostatní e-maily, například odkazy pro přihlášení
+              a e-maily k rezervacím, odesíláme pouze přes Resend.
             </>,
           ],
         },
