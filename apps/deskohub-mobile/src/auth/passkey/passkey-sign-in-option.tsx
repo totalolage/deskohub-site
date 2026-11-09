@@ -6,6 +6,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { trackSignInStarted } from "../../analytics/events";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
@@ -33,7 +34,11 @@ export function PasskeySignInOption({
   const { state, start, clearFailure } = usePasskeyCeremony({
     ceremony: (ceremonies) => ceremonies.signIn,
     onSucceeded: onSignedIn,
-    onPendingChange,
+    // A ceremony goes pending as it starts, so this records each attempt once.
+    onPendingChange: (pending) => {
+      if (pending) trackSignInStarted("passkey");
+      onPendingChange?.(pending);
+    },
   });
   const pending = state.status === "pending";
   // Another sign-in method starting holds this option; its earlier failure

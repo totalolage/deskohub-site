@@ -2,6 +2,7 @@ import type {
   CustomerCheckoutSummary,
   CustomerCheckoutSummaryItem,
   CustomerLegalDocument,
+  Money,
 } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
 import { canPay } from "../checkout/checkout-machine";
@@ -52,7 +53,11 @@ const lineView = (
     Option.map((counts) => ({
       ...counts,
       accessAmount: Option.fromUndefinedOr(item.accessAmount),
-      seatAmount: Option.fromUndefinedOr(item.seatAmount),
+      // `seatAmount` is one seat's price for the days booked.
+      seatTotal: Option.map(
+        Option.fromUndefinedOr(item.seatAmount),
+        (seat): Money => ({ ...seat, value: seat.value * counts.seats })
+      ),
     }))
   ),
   changed: changed(item.key),

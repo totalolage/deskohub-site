@@ -5,6 +5,9 @@ import * as Linking from "expo-linking";
 import * as Updates from "expo-updates";
 import { useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
+import { trackUpdateApplied } from "../analytics/events";
+import { deviceCapabilitiesLayer } from "../customer-api/device-capabilities-layer";
+import { recordAppliedUpdate } from "./applied-update";
 import { type NativeUpdateOffer, nextNativeUpdate } from "./native-release";
 import type { ReadyUpdate } from "./ota-update";
 import {
@@ -42,11 +45,11 @@ const openNativeDownload = Effect.tryPromise(() =>
 const restartIntoUpdate = Effect.tryPromise(() => Updates.reloadAsync());
 
 /**
- * Checks for a downloaded JS update, a rollback and a newer APK on launch and
- * on each return to the foreground, and returns the one prompt to show.
- * Accepting restarts into the downloaded or embedded update, or opens the
- * `/android` download page; dismissing hides that offer for the rest of the
- * session.
+ * Records an update this launch applied, then checks for a downloaded JS
+ * update, a rollback and a newer APK on launch and on each return to the
+ * foreground, and returns the one prompt to show. Accepting restarts into
+ * the downloaded or embedded update, or opens the `/android` download page;
+ * dismissing hides that offer for the rest of the session.
  */
 export function useUpdatePrompt(): {
   readonly prompt: UpdatePrompt | undefined;
@@ -67,6 +70,13 @@ export function useUpdatePrompt(): {
     });
     if (!(plan.otaUpdate || plan.nativeRelease)) {
       return;
+    }
+    if (plan.otaUpdate) {
+      runInBackground(
+        recordAppliedUpdate(Updates, trackUpdateApplied).pipe(
+          Effect.provide(deviceCapabilitiesLayer)
+        )
+      );
     }
     const checkIfDue = () => {
       const now = Date.now();
