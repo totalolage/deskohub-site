@@ -14,7 +14,11 @@ import {
 } from "../browser-session";
 import type { WorkspaceE2EStep } from "../case-runner";
 import { runUntracedE2EEffect } from "../effect-edge";
-import { WorkspaceE2EError, workspaceE2EError } from "../errors";
+import {
+  tryWorkspaceE2ESync,
+  WorkspaceE2EError,
+  workspaceE2EError,
+} from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
 import { readWorkspaceE2ERunPlan } from "../playwright-checkout/run-plan";
 import { runtimeTest } from "../playwright-checkout/runtime-fixtures";
@@ -74,6 +78,7 @@ import {
   type SignInHandoffReviewStage,
   signInHandoffReviewTargetByStage,
 } from "./review-targets";
+import { resolveWorkspaceE2ESessionSigningSecret } from "./seeded-session";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "./types";
 import {
   resolveWorkspaceE2EPreviewLogs,
@@ -144,6 +149,11 @@ type WorkspaceE2EAccountLane = {
   /** The sign-in assistant's own browser session, in its own context. */
   readonly openAssistantSession: OpenE2EBrowserSession;
   /**
+   * Opens another browser session named `name`, in its own context, on first
+   * use; the lane's Scope closes it at worker teardown when its step did not.
+   */
+  readonly openSeparateSession: (name: string) => OpenE2EBrowserSession;
+  /**
    * The selections the lane's sign-ins return to, built once per worker so
    * the case that requests a link and the case that consumes it agree.
    */
@@ -179,6 +189,12 @@ const accountTest = runtimeTest.extend<
           openLaneSession(`${laneSessionId}-assistant`),
         ]).pipe(Scope.provide(laneScope))
       );
+      const openSeparateSession = (name: string): OpenE2EBrowserSession =>
+        Effect.flatten(
+          openLaneSession(`${laneSessionId}-${name}`).pipe(
+            Scope.provide(laneScope)
+          )
+        );
       const lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff = {};
       const { makeWorkspaceE2ESignInReturns } = await import("./cases");
       const signInReturns = makeWorkspaceE2ESignInReturns();
@@ -237,6 +253,7 @@ const accountTest = runtimeTest.extend<
                   previewLogs,
                   rateBudget: makeMagicLinkRateBudget(),
                   openAssistantSession,
+                  openSeparateSession,
                   openSession,
                   runPlan,
                   signInReturns,
@@ -496,11 +513,18 @@ for (const caseId of workspaceE2EAccountCaseIds) {
           },
           {
             execute: Effect.gen(function* () {
+              const sessionSecret = yield* tryWorkspaceE2ESync(
+                "configure workspace e2e session seeding",
+                () => resolveWorkspaceE2ESessionSigningSecret(environment)
+              );
               yield* verifyWorkspaceE2EAnalyticsPreference({
                 accountId: yield* readAccountReservationUserId(),
                 baseUrl: accountLane.config.baseUrl,
-                browser,
-                page: getOwnedPage(),
+                bypassSecret: accountLane.config.bypassSecret,
+                openDevice: accountLane.openSeparateSession(
+                  "analytics-preference-device"
+                ),
+                sessionSecret,
               });
             }),
             id: "verify-account-analytics-preference",
