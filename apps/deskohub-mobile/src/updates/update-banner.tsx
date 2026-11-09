@@ -46,7 +46,7 @@ export function UpdateBanner() {
           onDismiss={dismiss}
         />
       )}
-      {prompt?.kind === "ota-update" && (
+      {(prompt?.kind === "ota-update" || prompt?.kind === "roll-back") && (
         <UpdateBannerCard
           acceptLabel={m.update_ready_restart({}, { locale })}
           dismissLabel={m.update_prompt_dismiss({}, { locale })}
