@@ -20,7 +20,7 @@
   "emailAutomationActivationFailureArchived": "Diese Automatisierung ist archiviert und kann nicht mehr geändert werden.",
   "emailAutomationActivationFailureAudienceArchived": "Die Zielgruppe der Kampagne ist archiviert. Wählen Sie eine aktive Zielgruppe aus und versuchen Sie es erneut.",
   "emailAutomationActivationFailureDraftChanged": "Die Arbeitsversion oder die Zielgruppe hat sich nach dem Testlauf geändert. Starten Sie den Testlauf erneut und aktivieren Sie dann.",
-  "emailAutomationActivationFailureFallbackContentMissing": "Ergänzen Sie die tschechische E-Mail. Kunden, für deren Sprache es keine E-Mail gibt, erhalten die tschechische.",
+  "emailAutomationActivationFailureFallbackContentMissing": "Ergänzen Sie die tschechische E-Mail. Sie dient als letzter Ersatz für Kunden, für deren Sprache es keine eigene E-Mail gibt.",
   "emailAutomationActivationFailureFlowInvalid": "Der Ablauf ist noch nicht fertig. Vervollständigen Sie ihn im Tab „Ablauf“ und versuchen Sie es erneut.",
   "emailAutomationActivationFailurePreviewRequired": "Starten Sie vor dem Aktivieren einen Testlauf der aktuellen Arbeitsversion.",
   "emailAutomationActivationFailureStatusConflict": "Der Status der Automatisierung hat sich inzwischen geändert. Laden Sie die Seite neu und versuchen Sie es noch einmal.",
