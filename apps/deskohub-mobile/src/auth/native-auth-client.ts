@@ -62,19 +62,19 @@ const storingCurrentSessionReads = (
     ...plugin,
     fetchPlugins: plugin.fetchPlugins.map((fetchPlugin) => {
       const storeAnswer = fetchPlugin.hooks.onSuccess;
+      const storeIfCurrent = (context: Parameters<StoreAnswer>[0]) =>
+        Effect.promise(async () => {
+          const sent = context.request.headers.get("cookie") ?? "";
+          const stored = getCookie(
+            await cookies.getItemAsync(sessionCookieKey)
+          );
+          if (stored === sent) await storeAnswer(context);
+        });
       const storeCurrentAnswer: StoreAnswer = (context) =>
         new URL(context.request.url).pathname.endsWith("/get-session")
           ? Effect.runPromise(
               lock
-                .withPermitsIfAvailable(1)(
-                  Effect.promise(async () => {
-                    const sent = context.request.headers.get("cookie") ?? "";
-                    const stored = getCookie(
-                      await cookies.getItemAsync(sessionCookieKey)
-                    );
-                    if (stored === sent) await storeAnswer(context);
-                  })
-                )
+                .withPermitsIfAvailable(1)(storeIfCurrent(context))
                 .pipe(Effect.asVoid)
             )
           : storeAnswer(context);
