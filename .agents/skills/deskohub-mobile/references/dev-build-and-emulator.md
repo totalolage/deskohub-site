@@ -11,8 +11,8 @@ dependency, `app.json` or `app.config.ts`. Paths are relative to
 Android SDK with `ANDROID_HOME` (and `ANDROID_SDK_ROOT`) set, JDK 17, NDK
 27.1.12297006, Node 22 or later, and dependencies installed with `bun install`
 at the repository root. A clean Gradle build of the app takes about four
-minutes and several GB of memory; on a shared machine keep the worker cap
-below.
+minutes and peaked near 13 GB of memory with the four-worker cap below; lower
+`--max-workers` on a machine with less to spare.
 
 ## Choose the backend
 
@@ -60,7 +60,7 @@ The APK is `android/app/build/outputs/apk/debug/app-debug.apk` (about
 125 MB). `x86_64` matches the emulator; drop the flag for an ARM device.
 `--no-daemon` matters on a shared machine: a Gradle daemon killed mid-build
 fails it with "Gradle build daemon disappeared". `android/` is generated and
-git-ignored; `--clean` regenerates it from the config.
+git-ignored; `--clean` regenerates it from the config. The local modules' Gradle output (`modules/*/android/build/`) is git-ignored too.
 
 `bunx eas-cli@27.5.0 build --platform android --profile development --local`
 builds the same kind of APK through EAS. It needs an Expo login
