@@ -493,3 +493,114 @@ describe("CheckoutPayPage provider handoff", () => {
     ).toBeNull();
   });
 });
+
+describe("CheckoutPayPage total beside an amount-free pay button", () => {
+  beforeAll(() => {
+    registerWorkspaceComponentTestEnv();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
+  });
+
+  const payButtonIn = (view: ReturnType<typeof render>) =>
+    view.getByRole("button", {
+      name: m.checkoutPayOrderAndPayButton({}, { locale: "de-DE" }),
+    });
+
+  const describedTotalOf = (button: HTMLElement) => {
+    const describedBy = button.getAttribute("aria-describedby");
+    return describedBy ? document.getElementById(describedBy) : null;
+  };
+
+  test("shows the total directly above the de-DE legal order button and describes the button with it", async () => {
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutPayPage
+        locale="de-DE"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+
+    const payButton = payButtonIn(view);
+    const total = describedTotalOf(payButton);
+    expect(total?.textContent).toContain(
+      formatMoney(quote.summary.total, "de-DE")
+    );
+    expect(total?.nextElementSibling).toBe(payButton);
+  });
+
+  test("updates the total beside the de-DE legal order button when a discount changes it", async () => {
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const fullPrice = buildCoworkCheckoutSummary({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const discounted = buildDiscountedCoworkCheckoutSummary({
+      basisPoints: 5000,
+    });
+    const view = render(
+      <CheckoutPayPage
+        locale="de-DE"
+        payStateToken="signed-summary"
+        summary={fullPrice}
+        variant="pay"
+      />
+    );
+
+    view.rerender(
+      <CheckoutPayPage
+        locale="de-DE"
+        payStateToken="signed-summary"
+        summary={discounted}
+        variant="pay"
+      />
+    );
+
+    const total = describedTotalOf(payButtonIn(view));
+    expect(total?.textContent).toContain(
+      formatMoney(discounted.total, "de-DE")
+    );
+    expect(total?.textContent).not.toContain(
+      formatMoney(fullPrice.total, "de-DE")
+    );
+  });
+
+  test.each(["cs-CZ", "en-US", "uk-UA", "sk-SK"] as const)(
+    "keeps the total on the pay button alone in %s",
+    async (locale) => {
+      const { CheckoutPayPage } = await import("./checkout-pay-page");
+      const quote = buildCoworkReservationQuote({
+        entryTier: "basic",
+        coffee: false,
+      });
+      const view = render(
+        <CheckoutPayPage
+          locale={locale}
+          payStateToken="signed-summary"
+          summary={quote.summary}
+          variant="pay"
+        />
+      );
+
+      const payButton = view.getByRole("button", {
+        name: m.checkoutPayOrderAndPayAmountButton(
+          { amount: formatMoney(quote.summary.total, locale) },
+          { locale }
+        ),
+      });
+      expect(payButton.hasAttribute("aria-describedby")).toBe(false);
+      expect(payButton.parentElement?.textContent).toBe(payButton.textContent);
+    }
+  );
+});
