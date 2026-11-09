@@ -38,7 +38,7 @@ Each locale's catalog carries its own CLDR plural categories, not the Czech ones
 | --- | --- |
 | `cs-CZ` | `one`, `few`, `other` |
 | `sk-SK` | `one`, `few`, `many`, `other` (`many` is for fractional counts) |
-| `uk-UA` | `one`, `few`, `many`, `other` |
+| `uk-UA` | `one`, `few`, `many`, `other` (`other` is for fractional counts) |
 | `de-DE`, `en-US` | `one`, `other` |
 
 A catch-all `*` key (`countPlural=*`) appears where the source uses one; keep it. Group a count's digits with Inlang's `number` function (`local formattedCount = count: number`) rather than formatting in code. No test checks plural categories: the parity check in [translation-workflow.md](translation-workflow.md#parity-check) does.
