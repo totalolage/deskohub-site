@@ -25,8 +25,9 @@
   the claim is written in the link's transaction (referrals skill).
 - Never create a Dotypos customer from auth data alone; it needs the profile
   completion input.
-- Profile creation (`CustomerProfileService.createUnderHeldLock`) reruns the
-  locked steps (`resolveCustomerAccountLinkUnderHeldLock`) and creates only on
+- Profile creation (`CustomerProfileService.create`, in its own `active`
+  account section, reused when an enclosing section holds the account) reruns
+  the held resolution steps (`resolveHeldCustomerAccountLink`) and creates only on
   `not-found`. Because the created customer carries the verified email, a retry
   after a failed link write links that customer instead of creating another.
 
@@ -63,7 +64,7 @@ glossary defines the customer account, reservation author, and tombstone.
   with `ON DELETE RESTRICT`. Never delete a customer account row; deletion
   tombstones it through `CustomerAccountRepository.tombstone`, which also
   clears its Dotypos customer so another account can claim it.
-- `OptionalAccountActivityGuard.guardStateCreation` hands the state-creating
+- `CustomerAccountSections.withOptionalAccount` hands the state-creating
   section the account it verified under the account lock. Checkout requires a
   verified session, so the submission section always gets one; it records it
   as the author of new drafts and never reuses a draft another account
@@ -88,7 +89,7 @@ glossary defines the customer account, reservation author, and tombstone.
 
 ## Review accounts
 
-- `customer_accounts.review` marks an app-directory review account; its check forbids a Dotypos customer. `resolveCustomerAccountLinkUnderHeldLock` refuses one (`account.review`) before any Dotypos lookup, so neither resolution nor profile completion links or creates a profile.
+- `customer_accounts.review` marks an app-directory review account; its check forbids a Dotypos customer. `resolveHeldCustomerAccountLink` refuses one (`account.review`) before any Dotypos lookup, so neither resolution nor profile completion links or creates a profile.
 - The account page loads the `review-account` state before resolution: `ReviewAccountCard` replaces profile completion, and the Reservations section shows its sandbox history. The reservation form's `review-account` checkout state books on the account card with `getReviewAccountContact` (synthetic, never stored) and offers no contact entry or consent.
 - `CustomerAccountContactService.current` returns that synthetic contact, which is why it returns booking-contact fields without a Dotypos customer.
 
@@ -351,8 +352,9 @@ Better Auth's public delete endpoint is the only identity-deletion path:
 
 1. The UI requires explicit destructive confirmation.
 2. The endpoint's `beforeDelete` hook calls
-   `CustomerAccountDeletionService.requestDeletion`, which takes the account
-   lock and then:
+   `CustomerAccountDeletionService.requestDeletion`, which runs in an account
+   section with the `present` recheck (the account must exist; a marker from
+   an earlier attempt is tolerated) and then:
    1. persists the `deletionRequestedAt` marker in its own transaction;
    2. expires the linked Dotypos profile with a fresh ETag, refreshing once
       on a genuine version conflict; a missing profile counts as done, and an
@@ -367,5 +369,5 @@ Better Auth's public delete endpoint is the only identity-deletion path:
 
 The marker blocks profile, reservation, checkout, and resolver activity but
 still allows reauthentication, logout, and delete retry. Resolution, profile
-edits, and deletion each re-read authority inside the lock. Never delete
+edits, and deletion each re-read authority inside their account section. Never delete
 retained Dotypos reservations, payments, invoices, or legal evidence.
