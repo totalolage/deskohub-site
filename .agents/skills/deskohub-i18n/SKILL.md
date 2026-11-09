@@ -12,7 +12,7 @@ Read the reference that matches the work:
 - The registry, what reads it, the drift tests, and content that falls back through a locale's chain: [references/architecture.md](references/architecture.md).
 - The Inlang projects, catalog JSON format (placeholders, plurals, selects), compiling, and the message tests: [references/catalogs.md](references/catalogs.md).
 - Adding a locale, end to end: [references/add-a-locale.md](references/add-a-locale.md).
-- Translating or reviewing a catalog: the register, parity check, and reviewer checklist in [references/translation-workflow.md](references/translation-workflow.md). Terms and style are in [references/glossary/](references/glossary/): `style-guide.md` first, then the target locale's file.
+- Translating or reviewing a catalog: the register, parity check, and reviewer checklist in [references/translation-workflow.md](references/translation-workflow.md). Terms and style are in [references/glossary/](references/glossary/): [style-guide.md](references/glossary/style-guide.md) first, then the target locale's file (`de-DE.md`, `uk-UA.md`, `sk-SK.md`). [terms.md](references/glossary/terms.md) lists each term's Czech and English source.
 
 Rules for every change:
 
