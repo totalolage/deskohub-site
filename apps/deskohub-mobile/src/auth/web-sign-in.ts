@@ -1,6 +1,7 @@
 import { Effect, Match, Option } from "effect";
+import { type SignInMethod, trackSignInCompleted } from "../analytics/events";
 import type { AppLocale } from "../i18n/app-locale";
-import { webCallbackPath } from "./auth-callback";
+import { webCallbackPath, withSignInMethod } from "./auth-callback";
 import { authClient } from "./auth-client.web";
 import type { AuthUser } from "./auth-session-state";
 import type { NativeHandoffRequest } from "./native-handoff-request";
@@ -147,6 +148,38 @@ export const mintNativeHandoff = (request: NativeHandoffRequest) =>
     ),
     Effect.withSpan("WebSignIn.mintNativeHandoff")
   );
+
+/** Where a finished sign-in goes: back into the app, or a web route. */
+export type SignInDestination =
+  | { readonly kind: "app"; readonly url: string }
+  | { readonly kind: "web" };
+
+/**
+ * Finishes a sign-in on this page. For a native request it mints the handoff
+ * and names `method` on it, so the app records the completion; `continue`
+ * means the page continued its existing session. Without a native request
+ * the browser itself completed the sign-in and records it here.
+ */
+export const finishSignIn = (
+  request: Option.Option<NativeHandoffRequest>,
+  method: SignInMethod
+) =>
+  Option.match(request, {
+    onNone: () =>
+      Effect.sync((): SignInDestination => {
+        trackSignInCompleted(method);
+        return { kind: "web" };
+      }),
+    onSome: (found) =>
+      mintNativeHandoff(found).pipe(
+        Effect.map(
+          (url): SignInDestination => ({
+            kind: "app",
+            url: withSignInMethod(url, method),
+          })
+        )
+      ),
+  });
 
 /**
  * Which account a sign-in on this page must come back as. An ordinary

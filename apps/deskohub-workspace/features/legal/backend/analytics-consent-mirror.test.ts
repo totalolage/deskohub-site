@@ -30,10 +30,21 @@ type CurrentDecision = Effect.Success<
 let mirrored: AnalyticsConsentMirrorRecord[] = [];
 let recorded: AnalyticsConsentDecisionRecord[] = [];
 let currentDecision: CurrentDecision = Option.none();
+/** Whether the ledger takes a mirrored choice, as its ordering rule decides. */
+let mirrorTakes = true;
+const recordedAt = Temporal.Instant.from("2026-11-08T10:00:00.123456Z");
 
 const ledger = Layer.succeed(AnalyticsConsentLedger, {
-  record: (input) => Effect.sync(() => void recorded.push(input)),
-  mirror: (input) => Effect.sync(() => mirrored.push(input) > 0),
+  record: (input) =>
+    Effect.sync(() => {
+      recorded.push(input);
+      return recordedAt;
+    }),
+  mirror: (input) =>
+    Effect.sync(() => {
+      mirrored.push(input);
+      return mirrorTakes;
+    }),
   currentDecision: () => Effect.sync(() => currentDecision),
 });
 
@@ -41,6 +52,7 @@ beforeEach(() => {
   mirrored = [];
   recorded = [];
   currentDecision = Option.none();
+  mirrorTakes = true;
 });
 
 /** A consent cookie as the banner saves it, under the current revision by default. */
@@ -201,13 +213,16 @@ describe("recordSignedInDeviceAnalyticsConsent", () => {
     session: {
       readonly accountId: CustomerAccountId;
       readonly deletionRequested: boolean;
-    } | null
+    } | null,
+    cookieHeader = savedChoice
   ) =>
     run(
       recordSignedInDeviceAnalyticsConsent({ occasion, locale: "cs-CZ" }).pipe(
+        Effect.map(Option.map(String)),
+        Effect.map(Option.getOrUndefined),
         Effect.provideService(
           CurrentWorkspaceRequestHeaders,
-          new Headers({ cookie: savedChoice })
+          new Headers({ cookie: cookieHeader })
         ),
         Effect.provide(
           Layer.succeed(CustomerAuthentication, {
@@ -219,8 +234,23 @@ describe("recordSignedInDeviceAnalyticsConsent", () => {
       )
     );
 
+  const signedIn = { accountId, deletionRequested: false };
+
+  /** The account's current decision, made at the instant. */
+  const decidedAt = (
+    decision: "grant" | "withdraw",
+    at: string
+  ): CurrentDecision =>
+    Option.some({
+      decision,
+      documentHash: getLegalDocumentVersion("cs-CZ", "privacy-policy"),
+      locale: "cs-CZ",
+      decidedAt: Temporal.Instant.from(at),
+      source: "preference",
+    });
+
   test("mirrors the request's saved choice for the session's account on hydration", async () => {
-    await runSignedIn("hydration", { accountId, deletionRequested: false });
+    await runSignedIn("hydration", signedIn);
 
     expect(mirroredRecords()).toEqual([
       {
@@ -235,7 +265,7 @@ describe("recordSignedInDeviceAnalyticsConsent", () => {
   });
 
   test("records a banner save as a decision made now", async () => {
-    await runSignedIn("banner_save", { accountId, deletionRequested: false });
+    await runSignedIn("banner_save", signedIn);
 
     expect(recorded).toEqual([
       { accountId, decision: "grant", locale: "cs-CZ", source: "banner" },
@@ -244,14 +274,103 @@ describe("recordSignedInDeviceAnalyticsConsent", () => {
   });
 
   test("records nothing when signed out or while the account is being deleted", async () => {
+    currentDecision = decidedAt("withdraw", "2026-11-05T10:00:00.123456Z");
+    mirrorTakes = false;
+
     for (const occasion of ["hydration", "banner_save"] as const) {
-      expect(await runSignedIn(occasion, null)).toBe(false);
+      expect(await runSignedIn(occasion, null)).toBeUndefined();
       expect(
         await runSignedIn(occasion, { accountId, deletionRequested: true })
-      ).toBe(false);
+      ).toBeUndefined();
     }
     expect(mirrored).toEqual([]);
     expect(recorded).toEqual([]);
+  });
+
+  describe("propagating the account's withdrawal on hydration", () => {
+    const withdrawnAt = "2026-11-05T10:00:00.123456Z";
+
+    test("an accepting device takes the account's newer withdrawal, at its instant", async () => {
+      currentDecision = decidedAt("withdraw", withdrawnAt);
+      mirrorTakes = false;
+
+      expect(await runSignedIn("hydration", signedIn)).toBe(withdrawnAt);
+      expect(mirrored.map(({ decision }) => decision)).toEqual(["grant"]);
+    });
+
+    test("an accepting device whose choice is dated at the withdrawal's instant takes the withdrawal", async () => {
+      // The ledger never takes a same-instant copy over a recorded decision.
+      currentDecision = decidedAt("withdraw", "2026-11-02T09:30:00Z");
+      mirrorTakes = false;
+
+      expect(await runSignedIn("hydration", signedIn)).toBe(
+        "2026-11-02T09:30:00Z"
+      );
+    });
+
+    test("an accepting device whose choice is undated takes the account's withdrawal", async () => {
+      currentDecision = decidedAt("withdraw", withdrawnAt);
+      mirrorTakes = false;
+
+      expect(
+        await runSignedIn(
+          "hydration",
+          signedIn,
+          consentCookie({ categories: ["necessary", "analytics"] })
+        )
+      ).toBe(withdrawnAt);
+    });
+
+    test("a device choice newer than the withdrawal is mirrored as a grant and takes nothing", async () => {
+      currentDecision = decidedAt("withdraw", "2026-11-01T10:00:00Z");
+      mirrorTakes = true;
+
+      expect(await runSignedIn("hydration", signedIn)).toBeUndefined();
+      expect(mirroredRecords()).toEqual([
+        {
+          accountId,
+          decision: "grant",
+          locale: "cs-CZ",
+          source: "hydration_mirror",
+          decidedAt: "2026-11-02T09:30:00Z",
+        },
+      ]);
+    });
+
+    test("a device takes nothing when the account never decided or its current decision is a grant", async () => {
+      mirrorTakes = false;
+
+      for (const current of [Option.none(), decidedAt("grant", withdrawnAt)]) {
+        currentDecision = current;
+        expect(await runSignedIn("hydration", signedIn)).toBeUndefined();
+      }
+    });
+
+    test("a device that declines analytics, or holds no saved choice, takes nothing", async () => {
+      currentDecision = decidedAt("withdraw", withdrawnAt);
+      mirrorTakes = false;
+
+      for (const cookieHeader of [
+        consentCookie({
+          categories: ["necessary"],
+          lastConsentTimestamp: "2026-11-02T09:30:00.000Z",
+        }),
+        preBindingCookie,
+        "theme=dark",
+      ]) {
+        expect(
+          await runSignedIn("hydration", signedIn, cookieHeader)
+        ).toBeUndefined();
+      }
+    });
+
+    test("a banner save takes nothing", async () => {
+      currentDecision = decidedAt("withdraw", withdrawnAt);
+      mirrorTakes = false;
+
+      expect(await runSignedIn("banner_save", signedIn)).toBeUndefined();
+      expect(recorded.map(({ source }) => source)).toEqual(["banner"]);
+    });
   });
 });
 

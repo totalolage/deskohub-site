@@ -19,6 +19,7 @@ import {
   readAuthCallbackReturnTo,
   signInCallbackReturnParam,
 } from "../../routes";
+import { AnalyticsPersonAnonymisation } from "../analytics-person-anonymisation";
 import { CustomerAccountRepository } from "../customer-account.repository";
 import { CustomerAccountDeletionService } from "../customer-account-deletion";
 import { CustomerAccountLinkRepository } from "../customer-account-link.repository";
@@ -109,7 +110,10 @@ const makeTestDeletionLayers = (
           )
         ),
         Layer.mock(CustomerDotyposAdapter, { expireCustomer }),
-        Layer.mock(CustomerAvatarService, { destroy: destroyAvatar })
+        Layer.mock(CustomerAvatarService, { destroy: destroyAvatar }),
+        Layer.mock(AnalyticsPersonAnonymisation, {
+          anonymiseDeletedAccount: () => Effect.void,
+        })
       )
     )
   );

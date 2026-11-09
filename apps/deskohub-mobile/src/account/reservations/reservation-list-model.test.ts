@@ -100,6 +100,18 @@ describe("reservationRowText", () => {
     );
   });
 
+  test("shows an office booking's days without times", () => {
+    const office = reservationRowText(
+      row("o", {
+        product: { kind: "office" },
+        startsAt: "2026-11-29T23:00:00Z",
+        endsAt: "2026-11-30T23:00:00Z",
+      }),
+      "en-US"
+    );
+    expect(office.period).toBe("Monday, November 30, 2026");
+  });
+
   test("shows the period, and the setup start only when booked with setup", () => {
     const plain = reservationRowText(row("x"), "en-US");
     expect(plain.period).not.toBe(

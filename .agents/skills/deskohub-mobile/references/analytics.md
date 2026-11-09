@@ -38,6 +38,21 @@ counts as no consent.
   update applied). Add an event there with closed property types; never send
   free text, emails or reservation details (the event and property limits in
   the PostHog reference apply).
+- Each event has a production caller, and `analytics/events.test.ts` fails
+  for one without. Native email sign-in records "sign-in started" (`link`)
+  when the auth session opens, since the web page sends the email; the
+  passkey option records `passkey` when its ceremony starts. "sign-in
+  completed" takes the method the web page names on the handoff
+  (`auth/auth-callback.ts`): `link`, `code` or `passkey`, or `continue` when
+  the customer taps "Continue as <account>" and the page hands over its
+  existing session, so a re-sign-in without a new email still completes.
+  A handoff with no method, from an older web bundle, records nothing.
+  The start's method is the entry point and the completion's is the method
+  used, so compare methods on completions, not across the two steps.
+  "access PIN viewed" fires per focus of the access screen. "update applied"
+  (`updates/applied-update.ts`) fires on the first launch of a downloaded
+  update, compared with the update id the previous launch stored; embedded
+  launches (rollback, emergency launch, new APK) never record it.
 - Identity is `workspace-account:<accountId>`, the site's identifier, so app
   and site events join one person. It stays pending until the stored session
   is restored, resets on sign-out or account switch before the new identity

@@ -7,7 +7,12 @@ type TestMarketingPreferences = {
   readonly status: "active" | "unavailable";
 };
 
+type TestAnalyticsPreference = {
+  readonly status: "unavailable";
+};
+
 type PublicAccountLegalProps = {
+  readonly analyticsPreference: TestAnalyticsPreference;
   readonly locale: "en-US";
   readonly marketingPreferences: TestMarketingPreferences;
 };
@@ -28,6 +33,10 @@ const getMarketingPreferences = mock((_locale: "en-US") => {
   callOrder.push("marketing-preferences");
   return Promise.resolve(marketingPreferences.value);
 });
+const getAnalyticsPreference = mock((_locale: "en-US") => {
+  callOrder.push("analytics-preference");
+  return Promise.resolve<TestAnalyticsPreference>({ status: "unavailable" });
+});
 const runWithRequestLocale = mock(
   (callback: (locale: "en-US") => unknown): unknown => callback("en-US")
 );
@@ -42,6 +51,9 @@ mock.module("@/features/account/components/public-account-legal", () => ({
 mock.module("@/features/legal/marketing-preferences.server", () => ({
   getMarketingPreferences,
 }));
+mock.module("@/features/legal/analytics-preference.server", () => ({
+  getAnalyticsPreference,
+}));
 mock.module("@/features/i18n/server/request-locale", () => ({
   runWithRequestLocale,
 }));
@@ -51,6 +63,7 @@ describe("public account legal route boundary", () => {
     AccountContentLoading.mockClear();
     connection.mockClear();
     getMarketingPreferences.mockClear();
+    getAnalyticsPreference.mockClear();
     runWithRequestLocale.mockClear();
     callOrder.length = 0;
     marketingPreferences.value = { status: "unavailable" };
@@ -73,8 +86,13 @@ describe("public account legal route boundary", () => {
     }) => Promise<ReactElement<PublicAccountLegalProps>>;
     await Content(content.props);
 
-    expect(callOrder).toEqual(["connection", "marketing-preferences"]);
+    expect(callOrder).toEqual([
+      "connection",
+      "marketing-preferences",
+      "analytics-preference",
+    ]);
     expect(connection).toHaveBeenCalledTimes(1);
     expect(getMarketingPreferences).toHaveBeenCalledWith("en-US");
+    expect(getAnalyticsPreference).toHaveBeenCalledWith("en-US");
   });
 });

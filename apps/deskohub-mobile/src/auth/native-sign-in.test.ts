@@ -11,7 +11,12 @@ import {
 } from "effect";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
-import { nativeReturnUri, parseAuthCallbackUrl } from "./auth-callback";
+import { analytics } from "../analytics/analytics";
+import {
+  nativeReturnUri,
+  parseAuthCallbackUrl,
+  withSignInMethod,
+} from "./auth-callback";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
 import {
@@ -440,6 +445,72 @@ describe("native email sign-in through the auth session", () => {
     expect(signInUrl.searchParams.getAll("locale")).toEqual(["cs-CZ"]);
   });
 
+  test("records the sign-in as started with the email's link method before the page opens", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const started: Array<unknown> = [];
+    const capture = spyOn(analytics, "capture").mockImplementation((event) => {
+      if (event.name === "sign-in started") started.push(event);
+    });
+    try {
+      const signInPage = webSignInAs(server, ada);
+      let startedWhenOpened: ReadonlyArray<unknown> = [];
+      const app = launchApp(server, store, (url) => {
+        startedWhenOpened = [...started];
+        return signInPage(url);
+      });
+
+      await app.runtime.runPromise(signInWithEmail(Option.none()));
+
+      expect(startedWhenOpened).toEqual([
+        { name: "sign-in started", properties: { method: "link" } },
+      ]);
+      expect(started).toHaveLength(1);
+    } finally {
+      capture.mockRestore();
+    }
+  });
+
+  test("records a continued session as a completed sign-in with the continue method", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const signIns: Array<unknown> = [];
+    const capture = spyOn(analytics, "capture").mockImplementation((event) => {
+      if (event.name.startsWith("sign-in")) signIns.push(event);
+    });
+    try {
+      // The page continues its browser session: it mints without signing in
+      // and names the continue method on the handoff.
+      const app = launchApp(server, store, async (url) => {
+        const request = readNativeHandoffRequest(
+          new URL(url).searchParams,
+          origin
+        );
+        if (Option.isNone(request)) throw new Error("bad native sign-in URL");
+        return AuthSessionResult.Returned({
+          url: withSignInMethod(
+            server.mintHandoff(ada, request.value),
+            "continue"
+          ),
+        });
+      });
+
+      const user = await app.runtime.runPromise(signInWithEmail(Option.none()));
+
+      expect(user.id).toBe(ada.id);
+      expect(signIns).toEqual([
+        { name: "sign-in started", properties: { method: "link" } },
+        {
+          name: "sign-in completed",
+          properties: { method: "continue" },
+          awaitsAccount: true,
+        },
+      ]);
+    } finally {
+      capture.mockRestore();
+    }
+  });
+
   test("refuses a handoff with the wrong state without calling the server", async () => {
     const server = makeFakeAuthServer(origin);
     const store = makeMemorySecureStore();
@@ -751,6 +822,28 @@ describe("reauthentication", () => {
     expect(storedCookie(store)).not.toBe(before);
     expect(signals()).toBeGreaterThan(0);
     expect((await app.client.getSession()).data?.user.id).toBe(ada.id);
+  });
+
+  test("records the reauthentication as a started sign-in, as the web page does", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    await signedInAs(server, store, ada);
+    const capture = spyOn(analytics, "capture").mockImplementation(
+      () => undefined
+    );
+    try {
+      const app = launchApp(server, store, webSignInAs(server, ada));
+
+      await app.runtime.runPromise(reauthenticate);
+
+      expect(
+        capture.mock.calls.filter(([event]) => event.name === "sign-in started")
+      ).toEqual([
+        [{ name: "sign-in started", properties: { method: "link" } }],
+      ]);
+    } finally {
+      capture.mockRestore();
+    }
   });
 
   test("refuses to switch to another account and stays signed in", async () => {

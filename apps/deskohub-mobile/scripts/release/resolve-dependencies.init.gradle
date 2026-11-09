@@ -1,0 +1,70 @@
+// Gradle init script for `mobile-release.ts resolve-gradle-dependencies`.
+// Every project gets a resolveDependencies task that downloads the artifacts
+// of each of its resolvable configurations, so the Gradle user home ends up
+// with what an APK build downloads without running one.
+//
+// Some configurations can't resolve on their own: no variant or artifact of a
+// dependency matches the attributes they ask for (Android's project
+// dependencies, mostly). Their other dependencies still download; the task
+// counts them in one line per project and lists them with --info.
+// Any other failure, a download that kept failing above all, fails the task,
+// so mobile-gradle-cache.yml never saves an incomplete cache entry.
+// resolve-dependencies.test.ts covers both.
+import org.gradle.api.artifacts.result.UnresolvedDependencyResult
+
+def selectionFailures = [
+    "org.gradle.internal.component.resolution.failure.exception.ArtifactSelectionException",
+    "org.gradle.internal.component.resolution.failure.exception.VariantSelectionByAttributesException",
+    "org.gradle.internal.component.resolution.failure.exception.VariantSelectionByNameException",
+] as Set
+
+def isSelectionFailure = { Throwable failure ->
+    def causes = []
+    for (Throwable cause = failure; cause != null && !causes.contains(cause); cause = cause.cause) {
+        causes << cause
+    }
+    causes.any { selectionFailures.contains(it.getClass().name) } &&
+        !causes.any { it instanceof IOException || it.getClass().name.startsWith("org.gradle.internal.resource.transport") }
+}
+
+allprojects {
+    def projectPath = path
+    def projectConfigurations = configurations
+    tasks.register("resolveDependencies") {
+        notCompatibleWithConfigurationCache("Resolves configurations while it runs.")
+        doLast {
+            def failures = []
+            def skipped = [] as Set
+            projectConfigurations.toList().findAll { it.canBeResolved }.each { configuration ->
+                def label = projectPath == ":" ? ":${configuration.name}" : "${projectPath}:${configuration.name}"
+                def problems = []
+                try {
+                    configuration.incoming.resolutionResult.allDependencies.each { dependency ->
+                        if (dependency instanceof UnresolvedDependencyResult) {
+                            problems << dependency.failure
+                        }
+                    }
+                    def artifacts = configuration.incoming.artifactView { lenient(true) }.artifacts
+                    artifacts.artifactFiles.files
+                    problems.addAll(artifacts.failures)
+                } catch (Exception failure) {
+                    problems << failure
+                }
+                problems.unique { it.message }.each { problem ->
+                    if (isSelectionFailure(problem)) {
+                        skipped << label
+                        logger.info("Skipped ${label}: ${problem.message}")
+                    } else {
+                        failures << "${label}: ${problem.message}"
+                    }
+                }
+            }
+            if (!skipped.isEmpty()) {
+                logger.lifecycle("Skipped unmatched dependencies in ${skipped.size()} configurations of ${projectPath}")
+            }
+            if (!failures.isEmpty()) {
+                throw new GradleException("Dependencies failed to resolve:\n" + failures.join("\n"))
+            }
+        }
+    }
+}

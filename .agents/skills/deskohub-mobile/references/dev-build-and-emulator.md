@@ -67,8 +67,8 @@ The APK is `android/app/build/outputs/apk/debug/app-debug.apk` (about
 `--no-daemon` matters on a shared machine: a Gradle daemon killed mid-build
 fails it with "Gradle build daemon disappeared". `android/` is generated and
 git-ignored; `--clean` regenerates it from the config. The build also writes
-`modules/trusted-web-activity/android/build/`, which isn't ignored yet (#1130):
-leave it out of commits.
+`modules/trusted-web-activity/android/build/`, which the app's `.gitignore`
+covers (`/modules/*/android/build/`).
 
 `bunx eas-cli@27.5.0 build --platform android --profile development --local`
 builds the same kind of APK through EAS. It needs an Expo login
@@ -93,11 +93,9 @@ using.
    (`adb uninstall cz.deskohub.workspace`), which drops its sign-in.
 2. Start Metro from the repository root, with the same
    `EXPO_PUBLIC_API_ORIGIN` as the build:
-   `bun turbo dev --filter=deskohub-mobile`. The Turbo task compiles Paraglide
-   first, then runs `expo start` on port 8081 and recompiles messages on change.
-   From the app directory, run `bun run i18n:compile` before `bun run dev`:
-   until #1130 lands, `bun run dev` compiles messages only on a change, and
-   Metro answers `UnableToResolveError ./paraglide/messages.js` without them.
+   `bun turbo dev --filter=deskohub-mobile`, or `bun run dev` from the app
+   directory. The `dev` script compiles Paraglide once, then runs `expo start`
+   on port 8081 and recompiles messages on change.
 3. Forward Metro into the emulator: `adb reverse tcp:8081 tcp:8081`, plus the
    backend port when it is local. Reverse rules end when the emulator
    restarts.

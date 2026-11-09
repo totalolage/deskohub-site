@@ -1,10 +1,13 @@
 import { Clock, Effect, Exit, Match, Option } from "effect";
-import { trackSignInCompleted } from "../analytics/events";
+import {
+  type SignInMethod,
+  trackSignInCompleted,
+  trackSignInStarted,
+} from "../analytics/events";
 import {
   type AuthCallback,
   nativeReturnUri,
   parseAuthCallbackUrl,
-  type SignInCallbackMethod,
 } from "./auth-callback";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
@@ -334,7 +337,7 @@ export const completeAuthCallback = Effect.fn(
  * Records the completed sign-in once per completion. A handoff carries the
  * method the web page signed in with; without one nothing is recorded.
  */
-const recordCompletion = (method: SignInCallbackMethod | undefined) => () =>
+const recordCompletion = (method: SignInMethod | undefined) => () =>
   Effect.sync(() => {
     if (method !== undefined) trackSignInCompleted(method);
   });
@@ -351,6 +354,9 @@ export const signInWithEmail = Effect.fn("NativeSignIn.signInWithEmail")(
     const browser = yield* AuthSessionBrowser;
     const completions = yield* AuthCallbackCompletions;
     const request = yield* startPendingSignIn(expectedUserId);
+    // The email and its code or link are handled by the web page, so the
+    // app records the start as the page would: an email sign-in, by link.
+    yield* Effect.sync(() => trackSignInStarted("link"));
     const result = yield* browser
       .open(nativeSignInUrl(auth.origin, request), nativeReturnUri)
       .pipe(Effect.mapError(unavailable));

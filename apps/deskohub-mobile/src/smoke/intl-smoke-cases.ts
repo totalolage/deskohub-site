@@ -6,6 +6,11 @@ import {
   formatCurrencyName,
 } from "@deskohub/i18n/currency";
 import { getLocalTimeInTimezone } from "@deskohub/reservation";
+import { DateTime, Option } from "effect";
+import {
+  formatInstantRange,
+  formatWorkspaceDays,
+} from "../i18n/date-time-format";
 import type { SmokeCase } from "./smoke-case";
 import { assertSmoke } from "./smoke-case";
 
@@ -45,6 +50,33 @@ export const intlSmokeCases: ReadonlyArray<SmokeCase> = [
         localTime
       );
       return localTime;
+    },
+  },
+  {
+    group: "intl",
+    name: "reservation-days-europe-prague",
+    run: () => {
+      // 30 November 00:00 Prague to 1 December 00:00, and to 17:00 that day.
+      const start = DateTime.makeUnsafe("2026-11-29T23:00:00Z");
+      const days = [
+        formatInstantRange(
+          start,
+          DateTime.makeUnsafe("2026-11-30T23:00:00Z"),
+          "en-US"
+        ),
+        formatWorkspaceDays(
+          start,
+          DateTime.makeUnsafe("2026-11-30T16:00:00Z"),
+          "cs-CZ"
+        ),
+      ]
+        .map((range) => [range.start, ...Option.toArray(range.end)].join(" – "))
+        .join(" | ");
+      assertSmoke(
+        days === "Monday, November 30, 2026 | pondělí 30. listopadu 2026",
+        `got ${JSON.stringify(days)}`
+      );
+      return days;
     },
   },
   {
