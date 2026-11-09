@@ -18,6 +18,9 @@ export const testCustomerSession: CustomerAccountSession = {
   accountId: customerAccountIdSchema.make("operations-test-account"),
   email: reservationCustomerEmailSchema.make(testEmailAddress("ada")),
   deletionRequested: false,
+  displayName: null,
+  accountCreatedAt: Temporal.Instant.from("2026-01-05T09:00:00Z"),
+  accountUpdatedAt: Temporal.Instant.from("2026-01-05T09:00:00Z"),
 };
 
 /** The session account, linked to its Dotypos customer. */

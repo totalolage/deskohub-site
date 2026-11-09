@@ -14,10 +14,13 @@ const customerEmail = testEmailAddress("ada");
 
 type TestUserFields = {
   readonly id?: string;
+  readonly name?: string;
   readonly email?: string;
   readonly emailVerified?: boolean;
   readonly deletionRequestedAt?: Date | null;
   readonly locale?: string | null;
+  readonly createdAt?: Date;
+  readonly updatedAt?: Date;
 };
 
 const sessionFor = (user: TestUserFields) => ({
@@ -75,10 +78,48 @@ describe("CustomerAuthentication session adapter", () => {
     if (outcome._tag === "Success") {
       expect(outcome.success!.deletionRequested).toBe(true);
       expect(Object.keys(outcome.success!).sort()).toEqual([
+        "accountCreatedAt",
         "accountId",
+        "accountUpdatedAt",
         "deletionRequested",
+        "displayName",
         "email",
       ]);
+    }
+  });
+
+  test("carries the saved name and account timestamps as domain values", async () => {
+    const outcome = await runDecode(
+      sessionFor({
+        name: "Ada Lovelace",
+        createdAt: new Date("2026-01-05T09:00:00.000Z"),
+        updatedAt: new Date("2026-03-07T10:30:00.250Z"),
+      })
+    );
+
+    expect(outcome._tag).toBe("Success");
+    if (outcome._tag === "Success") {
+      expect(outcome.success!.displayName).toBe("Ada Lovelace");
+      expect(outcome.success!.accountCreatedAt).toBeInstanceOf(
+        Temporal.Instant
+      );
+      expect(outcome.success!.accountCreatedAt.toString()).toBe(
+        "2026-01-05T09:00:00Z"
+      );
+      expect(outcome.success!.accountUpdatedAt.toString()).toBe(
+        "2026-03-07T10:30:00.25Z"
+      );
+    }
+  });
+
+  test("leaves the display name null when the saved name is blank", async () => {
+    for (const name of ["", "   "]) {
+      const outcome = await runDecode(sessionFor({ name }));
+
+      expect(outcome._tag).toBe("Success");
+      if (outcome._tag === "Success") {
+        expect(outcome.success!.displayName).toBeNull();
+      }
     }
   });
 

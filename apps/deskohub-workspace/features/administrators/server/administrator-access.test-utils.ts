@@ -67,7 +67,17 @@ export const mockAdministratorAccess = (
             return Effect.succeed(
               access === "signed-out"
                 ? null
-                : { ...actor, deletionRequested: false }
+                : {
+                    ...actor,
+                    deletionRequested: false,
+                    displayName: null,
+                    accountCreatedAt: Temporal.Instant.from(
+                      "2026-01-05T09:00:00Z"
+                    ),
+                    accountUpdatedAt: Temporal.Instant.from(
+                      "2026-01-05T09:00:00Z"
+                    ),
+                  }
             );
           }),
         }),

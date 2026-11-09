@@ -14,6 +14,9 @@ const signedInSession = (
   accountId,
   email: testEmailAddress("signed-in-account"),
   deletionRequested: session.deletionRequested ?? false,
+  displayName: null,
+  accountCreatedAt: Temporal.Instant.from("2026-01-05T09:00:00Z"),
+  accountUpdatedAt: Temporal.Instant.from("2026-01-05T09:00:00Z"),
 });
 
 /**

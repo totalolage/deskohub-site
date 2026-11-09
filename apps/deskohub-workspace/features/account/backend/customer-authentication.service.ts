@@ -27,6 +27,12 @@ export type CustomerAccountSession = {
   readonly accountId: CustomerAccountId;
   readonly email: typeof reservationCustomerEmailSchema.Type;
   readonly deletionRequested: boolean;
+  /** The account's saved name; `null` when it is blank. */
+  readonly displayName: string | null;
+  /** When the account was created, as Better Auth recorded it. */
+  readonly accountCreatedAt: Temporal.Instant;
+  /** When the account was last updated, as Better Auth recorded it. */
+  readonly accountUpdatedAt: Temporal.Instant;
   /**
    * The saved locale preference on the account. Absent for an account that
    * has none yet; never defaulted.
@@ -71,6 +77,13 @@ export const decodeCustomerAccountSession = (
       accountId,
       email,
       deletionRequested: withDeletionMarker.deletionRequestedAt != null,
+      displayName: session.user.name.trim() === "" ? null : session.user.name,
+      accountCreatedAt: Temporal.Instant.fromEpochMilliseconds(
+        session.user.createdAt.getTime()
+      ),
+      accountUpdatedAt: Temporal.Instant.fromEpochMilliseconds(
+        session.user.updatedAt.getTime()
+      ),
       ...(localePreference && { localePreference }),
     } satisfies CustomerAccountSession;
   });
