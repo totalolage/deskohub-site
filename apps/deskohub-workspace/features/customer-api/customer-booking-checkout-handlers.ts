@@ -235,7 +235,7 @@ const toPreparationInput = (
   payload: CreateCustomerCheckout,
   reservation: QuoteSelection["reservation"]
 ) =>
-  Schema.decodeEffect(preparePayStateInputSchema(payload.locale))({
+  Schema.decodeEffect(preparePayStateInputSchema)({
     locale: payload.locale,
     checkoutSessionId: payload.checkoutSessionId,
     checkoutAttemptId: payload.checkoutAttemptId,

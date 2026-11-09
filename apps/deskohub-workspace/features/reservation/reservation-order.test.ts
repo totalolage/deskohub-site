@@ -72,6 +72,32 @@ describe("reservation order phone region", () => {
       expect([order.kind, Result.isSuccess(any)]).toEqual([order.kind, valid]);
     }
   });
+
+  test.each([
+    ["DE", "0151 23456789"],
+    ["UA", "050 123 4567"],
+  ] as const)(
+    "encodes an order read in region %s back to the entered phone %s",
+    (region, phone) => {
+      for (const order of [
+        coworkOrderWithPhone(phone),
+        { ...validMeetingRoomReservation, phone },
+        officeOrderWithPhone(phone),
+      ]) {
+        for (const schema of [
+          reservationOrderIssuanceSchema(region),
+          reservationOrderSchema(region),
+        ]) {
+          const decoded = Schema.decodeUnknownSync(schema)(order);
+
+          expect(Schema.encodeUnknownSync(schema)(decoded)).toMatchObject({
+            kind: order.kind,
+            phone,
+          });
+        }
+      }
+    }
+  );
 });
 
 describe("reservation schema", () => {

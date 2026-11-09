@@ -1661,6 +1661,7 @@ describe("prepareWorkspacePayState", () => {
     test.each([
       ["de-DE", "0151 23456789"],
       ["uk-UA", "050 123 4567"],
+      ["sk-SK", "0905 123 456"],
       ["cs-CZ", "777 123 456"],
       ["en-US", "777 123 456"],
       ["cs-CZ", "+420 777 123 456"],
@@ -1673,7 +1674,7 @@ describe("prepareWorkspacePayState", () => {
         "./prepare-pay-state.schema"
       );
 
-      const result = await preparePayStateSchema(locale)["~standard"].validate(
+      const result = await preparePayStateSchema["~standard"].validate(
         submissionIn(locale, phone)
       );
 
@@ -1683,13 +1684,14 @@ describe("prepareWorkspacePayState", () => {
     test.each([
       ["cs-CZ", "0151 23456789"],
       ["cs-CZ", "050 123 4567"],
+      ["cs-CZ", "0905 123 456"],
       ["en-US", "0151 23456789"],
     ] as const)("rejects a %s submission's phone %s", async (locale, phone) => {
       const { preparePayStateSchema } = await import(
         "./prepare-pay-state.schema"
       );
 
-      const result = await preparePayStateSchema(locale)["~standard"].validate(
+      const result = await preparePayStateSchema["~standard"].validate(
         submissionIn(locale, phone)
       );
 
@@ -1698,18 +1700,34 @@ describe("prepareWorkspacePayState", () => {
       ]);
     });
 
-    test("rejects a submission naming a locale other than the action's", async () => {
+    test("reads the same phone in the region of each submission's own locale", async () => {
       const { preparePayStateSchema } = await import(
         "./prepare-pay-state.schema"
       );
 
-      const result = await preparePayStateSchema("cs-CZ")["~standard"].validate(
+      const german = await preparePayStateSchema["~standard"].validate(
         submissionIn("de-DE", "0151 23456789")
       );
-
-      expect(result.issues).toContainEqual(
-        expect.objectContaining({ path: ["locale"] })
+      const czech = await preparePayStateSchema["~standard"].validate(
+        submissionIn("cs-CZ", "0151 23456789")
       );
+
+      expect(german.issues).toBeUndefined();
+      expect(czech.issues).toEqual([
+        expect.objectContaining({ path: ["reservation", "phone"] }),
+      ]);
+    });
+
+    test("rejects a locale the site doesn't serve", async () => {
+      const { preparePayStateSchema } = await import(
+        "./prepare-pay-state.schema"
+      );
+
+      const result = await preparePayStateSchema["~standard"].validate(
+        submissionIn("fr-FR" as Locale, "+420 777 123 456")
+      );
+
+      expect(result.issues).toBeDefined();
     });
 
     test.each([
@@ -1741,7 +1759,7 @@ describe("prepareWorkspacePayState", () => {
       "./prepare-pay-state.schema"
     );
 
-    const result = await preparePayStateSchema("en-US")["~standard"].validate({
+    const result = await preparePayStateSchema["~standard"].validate({
       locale: "en-US",
       checkoutSessionId: "session-id",
       checkoutAttemptId: "attempt-id",
@@ -1792,16 +1810,12 @@ describe("prepareWorkspacePayState", () => {
         reservation: { ...reservation, date: "2099-07-01" },
       };
 
-      const accepted = await preparePayStateSchema("en-US")[
-        "~standard"
-      ].validate({
+      const accepted = await preparePayStateSchema["~standard"].validate({
         ...validInput,
         marketingConsent: true,
         marketingConsentSource: "site_tool",
       });
-      const rejected = await preparePayStateSchema("en-US")[
-        "~standard"
-      ].validate({
+      const rejected = await preparePayStateSchema["~standard"].validate({
         ...validInput,
         ...marketingConsent,
         marketingConsentSource: "site_tool",
@@ -1819,7 +1833,7 @@ describe("prepareWorkspacePayState", () => {
       "./prepare-pay-state.schema"
     );
 
-    const result = await preparePayStateSchema("en-US")["~standard"].validate({
+    const result = await preparePayStateSchema["~standard"].validate({
       locale: "en-US",
       checkoutSessionId: "session-id",
       checkoutAttemptId: "attempt-id",

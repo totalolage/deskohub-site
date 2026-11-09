@@ -161,7 +161,7 @@ const toSubmission = ({
   readonly contact: Effect.Success<typeof readBookingContact>;
   readonly advertised: Effect.Success<ReturnType<typeof buildAdvertisedPrice>>;
 }): Effect.Effect<PreparePayStateInput, AgentToolError> =>
-  Schema.decodeUnknownEffect(preparePayStateInputSchema(locale))({
+  Schema.decodeUnknownEffect(preparePayStateInputSchema)({
     locale,
     checkoutSessionId: identifiers.checkoutSessionId,
     checkoutAttemptId: identifiers.checkoutAttemptId,
