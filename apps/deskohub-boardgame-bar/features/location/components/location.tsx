@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ContactMap } from "@/features/contact";
+import { ContactMap } from "@/features/contact/components/contact-map";
 import { getLocale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 

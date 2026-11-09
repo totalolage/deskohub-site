@@ -3,21 +3,29 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "biome check backend types index.ts --config-path ../../biome.json --vcs-root ../.."
+    "lint": "biome check backend types index.ts --config-path ../../biome.json --vcs-root ../..",
+    "test": "bun test"
   },
   "exports": {
     ".": "./index.ts",
+    "./testing": "./backend/email-provider.test-utils.ts",
+    "./backend/email-config": "./backend/email-config.ts",
+    "./backend/email-routing": "./backend/email-routing.ts",
     "./backend/escaping": "./backend/escaping.ts",
     "./backend/network-error": "./backend/network-error.ts",
     "./backend/provider-factory": "./backend/provider-factory.ts",
     "./backend/providers/console-provider": "./backend/providers/console-provider.ts",
     "./backend/providers/resend-provider": "./backend/providers/resend-provider.ts",
+    "./backend/recipient-domain.service": "./backend/recipient-domain.service.ts",
+    "./backend/recipient-domain.service.mock": "./backend/recipient-domain.service.mock.ts",
     "./backend/service": "./backend/service.ts",
-    "./backend/standalone-email-service": "./backend/standalone-email-service.ts",
+    "./backend/test-recipients": "./backend/test-recipients.ts",
     "./types/email.types": "./types/email.types.ts"
   },
   "dependencies": {
+    "@deskohub/provider-request": "workspace:*",
+    "@deskohub/test-email": "workspace:*",
     "effect": "4.0.0-beta.85",
-    "resend": "^6.0.1"
+    "resend": "^6.32.1"
   }
 }

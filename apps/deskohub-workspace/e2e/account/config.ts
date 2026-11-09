@@ -1,26 +1,19 @@
+import { testEmailAddress } from "@deskohub/test-email";
 import type { WorkspaceE2EConfig } from "../config";
 import { parseWorkspaceE2EBaseUrl } from "../config";
-import type { WorkspaceE2EEnvironment } from "../e2e-env";
+import {
+  reviewScreenshotsEnabled,
+  type WorkspaceE2EEnvironment,
+} from "../e2e-env";
 import { workspaceE2EError } from "../errors";
+import { addRedaction } from "../redaction";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
-import { addRedaction } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
-
-/**
- * Fixed correlation tags shared with the deployed magic-link sender. The
- * retrieval path requires them on the retrieved synthetic message as one
- * additional equality check; they are non-secret and carry no per-run data.
- */
-export const workspaceE2EAuthCorrelationTags = [
-  { name: "category", value: "account-magic-link" },
-  { name: "surface", value: "workspace" },
-] as const;
-
-/** Resend synthetic test recipients ignore local parts; this host stays fixed. */
-const resendSyntheticRecipientHost = "resend.dev";
+import type { AccountReviewDestination } from "./review-screenshots";
 
 /** The lane's primary synthetic identity, shared with the failure diagnostic. */
 export const workspaceE2EAccountMainRecipientLabel = "main";
+export const workspaceE2EReferralOwnerRecipientLabel = "referral-owner";
 
 export type WorkspaceE2EAccountConfig = {
   readonly baseUrl: string;
@@ -28,30 +21,36 @@ export type WorkspaceE2EAccountConfig = {
   readonly bypassSecret: string | undefined;
   readonly expectedHost: string;
   readonly locale: "en-US";
-  readonly resendApiKey: string;
+  /** Where review screenshots come from and whether this run captures them. */
+  readonly review: AccountReviewDestination;
   /** Validated run-context run id; every synthetic recipient derives from it. */
   readonly runId: WorkspaceE2ERunId;
   readonly timeouts: WorkspaceE2EConfig["timeouts"];
+  /** GitHub-only Vercel token for Workspace history reads; never enters Vercel or app config. */
+  readonly vercelToken: string;
+  readonly vercelProjectId: string;
 };
 
-/**
- * Builds the account E2E configuration from the validated run context. The
- * GitHub-only Resend retrieval key never enters Vercel or application
- * configuration, so account cases fail closed when it is absent: they block
- * before executing and never skip.
- */
 export const getAccountE2EConfig = (
   environment: WorkspaceE2EEnvironment,
   runId: WorkspaceE2ERunId
 ): WorkspaceE2EAccountConfig => {
-  const resendApiKey = environment.WORKSPACE_E2E_RESEND_API_KEY;
-  if (!resendApiKey) {
+  const vercelToken = environment.WORKSPACE_E2E_VERCEL_TOKEN;
+  if (!vercelToken) {
     throw workspaceE2EError(
-      "WORKSPACE_E2E_RESEND_API_KEY is required for account e2e cases; account coverage fails closed instead of skipping",
+      "WORKSPACE_E2E_VERCEL_TOKEN is required for account e2e cases; provide the protected workspace-checkout-e2e GitHub environment token with verified Workspace team history access. Account coverage fails closed instead of skipping",
       { operation: "configure workspace account e2e" }
     );
   }
-  addRedaction(resendApiKey);
+  const vercelProjectId = environment.WORKSPACE_E2E_VERCEL_PROJECT;
+  if (!vercelProjectId) {
+    throw workspaceE2EError(
+      "WORKSPACE_E2E_VERCEL_PROJECT is required for account e2e cases; provision the Workspace Vercel project id as a runner-owned variable. Account coverage fails closed instead of skipping",
+      { operation: "configure workspace account e2e" }
+    );
+  }
+
+  addRedaction(vercelToken);
   const bypassSecret = environment.VERCEL_AUTOMATION_BYPASS_SECRET;
   addRedaction(bypassSecret);
   const { baseUrl, expectedHost } = parseWorkspaceE2EBaseUrl(
@@ -63,9 +62,11 @@ export const getAccountE2EConfig = (
     bypassSecret,
     expectedHost,
     locale: "en-US",
-    resendApiKey,
+    review: { baseUrl, screenshots: reviewScreenshotsEnabled(environment) },
     runId,
     timeouts: workspaceE2ETimeouts,
+    vercelProjectId,
+    vercelToken,
   };
 };
 
@@ -82,7 +83,7 @@ export const makeWorkspaceE2EAccountRecipientForRunId = (
 ) => {
   const localPart = `${runId}-${label}`;
   assertSyntheticRecipientLabel(localPart);
-  const recipient = `delivered+${localPart}@${resendSyntheticRecipientHost}`;
+  const recipient = testEmailAddress(`delivered+${localPart}`);
   addRedaction(recipient);
   return recipient;
 };

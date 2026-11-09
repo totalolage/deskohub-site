@@ -27,43 +27,64 @@ export function filterBoardGames<T extends FilterableGame>(
 ): ReadonlyArray<T> {
   const query = filters.search.trim().toLocaleLowerCase();
 
-  return games.filter((game) => {
-    if (!game.inStock) return false;
+  return games.filter(
+    (game) =>
+      game.inStock &&
+      matchesLanguage(game, filters.language) &&
+      matchesPlayerCount(game, filters.playerCount) &&
+      matchesDurations(game, filters.durations) &&
+      matchesSearch(game, query)
+  );
+}
 
-    if (filters.language != null && game.language !== filters.language) {
-      return false;
-    }
+/** Adds the duration to the selection, or removes it when already selected. */
+export function toggleDurationFilter(
+  selected: ReadonlyArray<DurationFilter>,
+  duration: DurationFilter
+): ReadonlyArray<DurationFilter> {
+  return selected.includes(duration)
+    ? selected.filter((value) => value !== duration)
+    : [...selected, duration];
+}
 
-    if (filters.playerCount !== null) {
-      if (
-        typeof game.minPlayers !== "number" ||
-        typeof game.maxPlayers !== "number"
-      ) {
-        return false;
-      }
+function matchesLanguage(
+  game: FilterableGame,
+  language: GameLanguage | null | undefined
+): boolean {
+  return language == null || game.language === language;
+}
 
-      const matchesPlayers =
-        filters.playerCount === 7
-          ? game.maxPlayers >= 7
-          : game.minPlayers <= filters.playerCount &&
-            game.maxPlayers >= filters.playerCount;
-      if (!matchesPlayers) return false;
-    }
+function matchesPlayerCount(
+  game: FilterableGame,
+  playerCount: number | null
+): boolean {
+  if (playerCount === null) return true;
 
-    if (filters.durations.length > 0) {
-      const minutes = game.playingTimeMinutes;
-      if (
-        typeof minutes !== "number" ||
-        !filters.durations.some((duration) =>
-          matchesDuration(minutes, duration)
-        )
-      ) {
-        return false;
-      }
-    }
+  const { minPlayers, maxPlayers } = game;
+  if (typeof minPlayers !== "number" || typeof maxPlayers !== "number") {
+    return false;
+  }
 
-    return !query || game.name.toLocaleLowerCase().includes(query);
-  });
+  return playerCount === 7
+    ? maxPlayers >= 7
+    : minPlayers <= playerCount && maxPlayers >= playerCount;
+}
+
+function matchesDurations(
+  game: FilterableGame,
+  durations: ReadonlyArray<DurationFilter>
+): boolean {
+  if (durations.length === 0) return true;
+
+  const minutes = game.playingTimeMinutes;
+  return (
+    typeof minutes === "number" &&
+    durations.some((duration) => matchesDuration(minutes, duration))
+  );
+}
+
+function matchesSearch(game: FilterableGame, query: string): boolean {
+  return !query || game.name.toLocaleLowerCase().includes(query);
 }
 
 function matchesDuration(minutes: number, duration: DurationFilter): boolean {

@@ -1,13 +1,26 @@
+import Interpolate from "@doist/react-interpolate";
 import { ArrowRight, DollarSign, Percent } from "lucide-react";
-import Link from "next/link";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
+import type { LandingPageSaleBannerClick } from "../landing-page-sale-banner-analytics";
+import { LandingPageSaleBannerLink } from "./landing-page-sale-banner-link";
+
+/**
+ * Keeps the translated template separate from the admin-entered title so the
+ * title always renders as literal text instead of interpolation markup.
+ */
+export type LandingPageSaleBannerLabel = {
+  template: string;
+  title: string;
+  adjustment: string;
+};
 
 export type LandingPageSaleBannerContent = {
-  label: string;
+  label: LandingPageSaleBannerLabel;
   adjustmentKind: DiscountAdjustment["kind"];
   statusLabel: string;
   ctaLabel: string;
   href: string;
+  click: LandingPageSaleBannerClick;
 };
 
 export function LandingPageSaleBanner({
@@ -55,21 +68,35 @@ export function LandingPageSaleBanner({
           }
           <div>
             <p className="text-sm font-semibold leading-6 sm:text-base">
-              {content.label}
+              <Interpolate
+                string={content.label.template}
+                mapping={{
+                  title: content.label.title,
+                  adjustment: content.label.adjustment,
+                  discount: (value) => (
+                    <span
+                      className="whitespace-nowrap font-bold text-sunset-yellow-ink"
+                      data-landing-sale-discount-value
+                    >
+                      {value}
+                    </span>
+                  ),
+                }}
+              />
             </p>
             <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-burned-orange">
               {content.statusLabel}
             </p>
           </div>
         </div>
-        <Link
-          aria-label={content.ctaLabel}
+        <LandingPageSaleBannerLink
+          click={content.click}
           href={content.href}
-          className="inline-flex h-11 w-fit items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-burned-orange/16 bg-burned-orange px-4 text-xs font-semibold uppercase tracking-[0.08em] text-white transition-colors hover:bg-burned-orange/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sunset-yellow focus-visible:ring-offset-2 focus-visible:ring-offset-navy-blue active:translate-y-px"
+          label={content.ctaLabel}
         >
           <span className="hidden sm:inline">{content.ctaLabel}</span>
           <ArrowRight aria-hidden="true" className="size-4" />
-        </Link>
+        </LandingPageSaleBannerLink>
       </div>
     </aside>
   );

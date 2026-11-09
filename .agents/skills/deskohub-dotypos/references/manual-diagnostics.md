@@ -1,26 +1,36 @@
-# Dotypos Manual API Usage
+# Dotypos manual API inspection
 
-Use this when you need to inspect Dotypos data from the repo without throwaway scripts.
+Inspect Dotypos data through `DotyposService` with `bun --eval`, not throwaway scripts in the repository. The service handles token exchange, bearer auth, timeouts, retries, and error mapping.
 
-## Run From Workspace
+- Use production Dotypos access only when the developer explicitly asks for it.
+- Never print env values. `DOTYPOS_REFRESH_TOKEN` and `DOTYPOS_CLIENT_SECRET` are secrets, and Vercel Preview env pulls don't provide the refresh token.
+- Bun loads `.env*` files from the working directory even without `--env-file`, so any run from `apps/deskohub-workspace` reaches the configured Dotypos account.
+- Print only the fields you need. Customer records hold personal data.
 
-Run manual checks from `apps/deskohub-workspace` so the workspace env files are loaded together:
+Run from `apps/deskohub-workspace`. This example lists tables. Config decode errors, transport errors, and provider errors can carry secrets, request URLs, and provider-supplied text, and the service logs those errors before it fails. Keep both safeguards when you adapt the snippet:
 
-```bash
-bun --env-file=.env.development --env-file=.env.local --env-file=.env.development.local --eval '<script>'
-```
-
-Do not print env values. `DOTYPOS_REFRESH_TOKEN` is a secret and is not expected to come from Vercel preview env pulls.
-
-For most checks, use `DotyposService.Default`; it handles token fetching, bearer auth, timeouts, retries, and provider error mapping.
-
-## Query Tables
+- The outermost `Effect.provide(Logger.layer([]))` removes every Effect logger, including during Dotypos layer construction, so the service's own logs never reach the terminal.
+- `Effect.matchCause` reduces every failure to its `_tag` and hides defects and interruptions.
 
 ```bash
-bun --env-file=.env.development --env-file=.env.local --env-file=.env.development.local --eval 'import { Effect, Layer } from "effect"; import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos"; const required = ["DOTYPOS_REFRESH_TOKEN", "DOTYPOS_CLOUD_ID", "DOTYPOS_API_URL", "DOTYPOS_BRANCH_ID", "DOTYPOS_EMPLOYEE_ID"]; const missing = required.filter((key) => !process.env[key]); if (missing.length) throw new Error(`Missing Dotypos env: ${missing.join(", ")}`); const config = Layer.succeed(DotyposRuntimeConfig, { refreshToken: process.env.DOTYPOS_REFRESH_TOKEN, cloudId: process.env.DOTYPOS_CLOUD_ID, apiUrl: process.env.DOTYPOS_API_URL, branchId: process.env.DOTYPOS_BRANCH_ID, employeeId: process.env.DOTYPOS_EMPLOYEE_ID, apiTimeout: 10000 }); const rows = await Effect.runPromise(Effect.gen(function* () { const dotypos = yield* DotyposService; return yield* dotypos.getTables(); }).pipe(Effect.provide(DotyposService.Default.pipe(Layer.provide(config))))); console.log(JSON.stringify(rows.map((table) => ({ id: table.id, name: table.name, seats: table.seats, display: table.display, enabled: table.enabled })), null, 2));'
+bun --env-file=.env.development --env-file=.env.local --env-file=.env.development.local --eval '
+import { Cause, Effect, Layer, Logger, Option, Schema } from "effect";
+import { DotyposRuntimeConfig, DotyposRuntimeConfigSchema, DotyposService, dotyposApiTimeoutDefaultMilliseconds } from "@deskohub/dotypos";
+const config = Layer.effect(DotyposRuntimeConfig, Schema.decodeUnknownEffect(DotyposRuntimeConfigSchema)({
+  clientId: process.env.DOTYPOS_CLIENT_ID, clientSecret: process.env.DOTYPOS_CLIENT_SECRET,
+  refreshToken: process.env.DOTYPOS_REFRESH_TOKEN, cloudId: process.env.DOTYPOS_CLOUD_ID,
+  branchId: process.env.DOTYPOS_BRANCH_ID, employeeId: process.env.DOTYPOS_EMPLOYEE_ID,
+  apiUrl: process.env.DOTYPOS_API_URL, apiTimeout: dotyposApiTimeoutDefaultMilliseconds, reservationTableIds: [],
+}));
+const result = await Effect.runPromise(DotyposService.use((dotypos) => dotypos.getTables()).pipe(
+  Effect.provide(DotyposService.Live.pipe(Layer.provide(config))),
+  Effect.matchCause({
+    onFailure: (cause) => ({ failed: Option.match(Cause.findErrorOption(cause), { onNone: () => "defect or interruption", onSome: (error) => error._tag }) }),
+    onSuccess: (tables) => tables.map(({ id, name, seats, enabled }) => ({ id, name, seats, enabled })),
+  }),
+  Effect.provide(Logger.layer([]))));
+console.log(result);
+'
 ```
 
-## Notes
-
-- Use production Dotypos API access only when explicitly requested.
-- Fix the OpenAPI schema and regenerate with `bun run generate` from `packages/dotypos` if a real response fails generated decoding.
+A `SchemaError` means a `DOTYPOS_*` variable is missing or malformed. Check which variables are set by name only; don't print their values.

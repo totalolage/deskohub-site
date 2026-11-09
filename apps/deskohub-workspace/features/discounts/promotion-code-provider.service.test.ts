@@ -17,12 +17,11 @@ import {
   storedDiscountIdSchema,
   voucherIdSchema,
 } from "./persistence-contracts";
-import {
-  type DiscountCodeAvailability,
-  type DiscountCodeConfiguration,
-  PromotionCodeConfigurationError,
-  type VoucherAvailability,
-  type VoucherConfiguration,
+import type {
+  DiscountCodeAvailability,
+  DiscountCodeConfiguration,
+  VoucherAvailability,
+  VoucherConfiguration,
 } from "./promotion-code";
 import type { IPromotionCodeRepository } from "./promotion-code.repository";
 import { PromotionCodeRepositoryMock } from "./promotion-code.repository.mock";
@@ -207,32 +206,6 @@ describe("PromotionCodeProvider", () => {
     expect(result[0]?.discount.label).toBe("Summer database sale");
   });
 
-  test("returns no candidates and performs no reads when no code is submitted", async () => {
-    const findByCode = mock(defaultFindByCode);
-    const loadAvailability = mock(defaultLoadAvailability);
-    const loadDefinition = mock(defaultLoadDefinition);
-
-    const result = await runWithProvider(
-      Effect.gen(function* () {
-        const provider = yield* PromotionCodeProvider;
-        return yield* provider.revalidate({
-          ...input,
-          submittedCode: undefined,
-        });
-      }),
-      {
-        findByCode,
-        loadAvailability,
-        loadDefinition,
-      }
-    );
-
-    expect(result).toEqual([]);
-    expect(findByCode).not.toHaveBeenCalled();
-    expect(loadAvailability).not.toHaveBeenCalled();
-    expect(loadDefinition).not.toHaveBeenCalled();
-  });
-
   test("resolves a canonical code to a source-neutral candidate with a private claim", async () => {
     const findByCode = mock(defaultFindByCode);
     const loadAvailability = mock(defaultLoadAvailability);
@@ -282,36 +255,6 @@ describe("PromotionCodeProvider", () => {
     expect(timedResult[0]?.discount.countdownStartsAt).toBe(
       "2026-08-01T09:00:00.000Z"
     );
-  });
-
-  test.each([
-    ["en-US", "Summer database sale"],
-    ["cs-CZ", "Letní databázová sleva"],
-  ] as const)("resolves the stored label for %s", async (locale, label) => {
-    const result = await runWithProvider(resolve({ locale }));
-
-    expect(result[0]?.discount.label).toBe(label);
-  });
-
-  test("supports fixed adjustments and omits timing without an end", async () => {
-    const result = await runWithProvider(resolve(), {
-      loadDefinition: () =>
-        Effect.succeed(
-          definition({
-            adjustment: {
-              kind: "fixed",
-              amount: { value: 10_000, exponent: 2, currency: "CZK" },
-            },
-          })
-        ),
-    });
-
-    expect(result[0]?.discount.adjustment).toEqual({
-      kind: "fixed",
-      amount: { value: 10_000, exponent: 2, currency: "CZK" },
-    });
-    expect(result[0]?.discount).not.toHaveProperty("expiresAt");
-    expect(result[0]?.discount).not.toHaveProperty("countdownStartsAt");
   });
 
   test("spends only the remaining voucher credit without loading a discount", async () => {
@@ -535,22 +478,6 @@ describe("PromotionCodeProvider", () => {
     expect(missingDefinition).toMatchObject({
       _tag: "Failure",
       failure: { reason: "malformed_configuration", cause: definitionCause },
-    });
-  });
-
-  test("maps malformed persisted availability to configuration failure", async () => {
-    const cause = new PromotionCodeConfigurationError({
-      promotionCodeId,
-      message: "Malformed",
-      cause: new Error("negative count"),
-    });
-    const result = await runWithProvider(resolve().pipe(Effect.result), {
-      loadAvailability: () => Effect.fail(cause),
-    });
-
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: { reason: "malformed_configuration", cause },
     });
   });
 

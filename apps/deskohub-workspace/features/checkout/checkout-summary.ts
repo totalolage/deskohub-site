@@ -11,22 +11,20 @@ import {
   officeCheckoutSummaryDiscountedProductItemSchema,
   officeCheckoutSummaryProductItemSchema,
 } from "@/features/checkout/checkout-summary-office-item";
-import {
-  nonNegativeWorkspaceMoneyCodec,
-  workspaceMoneyEquals,
-} from "@/features/checkout/workspace-money";
+import { moneyEquals, nonNegativeMoneyCodec } from "@/shared/money/money";
 
 export {
   type CheckoutSummaryDiscount,
   checkoutSummaryDiscountSchema,
 } from "@/features/checkout/checkout-summary-product-item";
 
-export const checkoutSummaryAddOnItemSchema = Schema.Struct({
+const checkoutSummaryAddOnItemSchema = Schema.Struct({
   key: Schema.Union([
     Schema.Literal("addon:coffee"),
+    Schema.Literal("addon:workstation"),
     Schema.TemplateLiteral(["monitor:", Schema.String]),
   ]),
-  amount: nonNegativeWorkspaceMoneyCodec,
+  amount: nonNegativeMoneyCodec,
 });
 
 export const checkoutSummaryOrderItemSchema = Schema.Union([
@@ -39,12 +37,12 @@ export const checkoutSummaryOrderItemSchema = Schema.Union([
   checkoutSummaryAddOnItemSchema,
 ]);
 
-export const checkoutSummaryTotalItemSchema = Schema.Struct({
+const checkoutSummaryTotalItemSchema = Schema.Struct({
   key: Schema.Literal("total:final"),
-  amount: nonNegativeWorkspaceMoneyCodec,
+  amount: nonNegativeMoneyCodec,
 });
 
-export const checkoutSummaryItemSchema = Schema.Union([
+const checkoutSummaryItemSchema = Schema.Union([
   checkoutSummaryOrderItemSchema,
   checkoutSummaryTotalItemSchema,
 ]);
@@ -52,23 +50,23 @@ export const checkoutSummaryItemSchema = Schema.Union([
 export const checkoutSummaryOrderSectionSchema = Schema.Struct({
   key: Schema.Literal("order"),
   items: Schema.Array(checkoutSummaryOrderItemSchema),
-  total: nonNegativeWorkspaceMoneyCodec,
+  total: nonNegativeMoneyCodec,
 });
 
 export const checkoutSummaryTotalSectionSchema = Schema.Struct({
   key: Schema.Literal("total"),
   items: Schema.Array(checkoutSummaryTotalItemSchema),
-  total: nonNegativeWorkspaceMoneyCodec,
+  total: nonNegativeMoneyCodec,
 });
 
-export const checkoutSummarySectionSchema = Schema.Union([
+const checkoutSummarySectionSchema = Schema.Union([
   checkoutSummaryOrderSectionSchema,
   checkoutSummaryTotalSectionSchema,
 ]);
 
 export const checkoutSummarySchema = Schema.Struct({
   sections: Schema.Array(checkoutSummarySectionSchema),
-  total: nonNegativeWorkspaceMoneyCodec,
+  total: nonNegativeMoneyCodec,
 }).annotate({
   identifier: "CheckoutSummary",
   description: "Public itemized Workspace checkout summary.",
@@ -79,10 +77,9 @@ export const checkoutSummaryChangedKeysSchema = Schema.Struct({
   itemKeys: Schema.Array(Schema.String),
 });
 
-export type CheckoutSummaryItem = typeof checkoutSummaryItemSchema.Type;
+type CheckoutSummaryItem = typeof checkoutSummaryItemSchema.Type;
 export type CheckoutSummaryOrderItem =
   typeof checkoutSummaryOrderItemSchema.Type;
-export type CheckoutSummarySection = typeof checkoutSummarySectionSchema.Type;
 export type CheckoutSummary = typeof checkoutSummarySchema.Type;
 export type CheckoutSummaryChangedKeys =
   typeof checkoutSummaryChangedKeysSchema.Type;
@@ -130,7 +127,7 @@ export const getCheckoutSummaryChangedKeys = (
     .filter((key) => {
       const previousSection = previousSections.get(key);
       const nextSection = nextSections.get(key);
-      return !workspaceMoneyEquals(previousSection?.total, nextSection?.total);
+      return !moneyEquals(previousSection?.total, nextSection?.total);
     })
     .sort();
   const previousItems = getSummaryItemMap(previous);

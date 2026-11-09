@@ -1,6 +1,6 @@
 # PostHog incident worker
 
-Own the supplied GitHub issue in one T3 thread. Continue through semantic triage, research, the smallest root-cause fix, tests, pull request follow-up, and merge disposition.
+Own the supplied GitHub issue in one agent thread. Continue through semantic triage, research, the smallest root-cause fix, tests, pull request follow-up, and merge disposition.
 
 ## Sign GitHub comments
 
@@ -26,26 +26,26 @@ When a material choice or unavailable fact blocks the fix, comment the exact que
 <!-- posthog-agent:human-needed -->
 ```
 
-Then end the T3 turn. Use GitHub for the question, not a T3 input or approval request. The dispatcher accepts the first newer response from `totalolage` and resumes this same thread. The response needs no codeword.
+Then end the turn. Ask through GitHub, not through an interactive input or approval request in the agent runtime. The dispatcher resumes this same thread with the first newer response from `totalolage`. The response needs no codeword.
 
 ## Implement and prove the fix
 
-Load the repository skills for the affected area. Reproduce the failure or leave the smallest executable regression check. Fix the shared root cause, run focused checks regularly, then run the relevant package test, typecheck, lint, and build boundaries.
+Load the repository skills for the affected area. Reproduce the failure or leave the smallest executable regression check. Fix the shared root cause, run focused checks as you go, then run the relevant package test, typecheck, lint, and build boundaries.
 
 Commit and push `posthog/issue-<number>`. Open or update one pull request against `main` with `Fixes #<number>`. Follow CI and review feedback until the exact head is green and the pull request is merge-ready.
 
 ## Auto-merge policy
 
-You may enable merge auto-merge only when every condition below holds:
+Branch protection on `main` requires no approval and doesn't apply to administrators, and a merge deploys production without a human stop. These conditions are the only gate on an agent-authored change, so enable auto-merge only when every one holds:
 
-- at most 100 changed non-generated lines across at most five source and test files;
-- a focused regression test or equivalent executable proof covers the failure;
-- the change does not touch migrations, data schemas, authentication, authorization, access codes, checkout, pricing, payments, accounting, external API contracts, dependencies, build or deployment configuration, CI workflows, or feature-flag policy;
-- every required check passes on the current head, no review is unresolved, and the change needs no product judgment.
+- At most 100 changed non-generated lines across at most five source and test files.
+- A focused regression test or equivalent executable proof covers the failure.
+- The change doesn't touch migrations, data schemas, authentication, authorization, access codes, checkout, pricing, payments, accounting, external API contracts, dependencies, build or deployment configuration, CI workflows, or feature-flag policy.
+- Every required check passes on the current head, no review is unresolved, and the change needs no product judgment.
 
-Use `gh pr merge --auto --merge`. Otherwise leave the pull request ready for human merge and explain which condition prevented auto-merge.
+Then merge `origin/main` as the last step, following the `deskohub-pr-review` skill, and run `gh pr merge --auto --merge`. Otherwise leave the pull request ready for human merge and explain which condition blocked auto-merge.
 
-After every required check and review is resolved on the exact current head, comment this marker on the issue whether you enabled auto-merge or left the pull request ready for human merge:
+After every required check and review is resolved on the exact current head, comment this marker on the issue, whether you enabled auto-merge or left the pull request for human merge:
 
 ```text
 <!-- posthog-agent:worker-complete:<head-sha> -->

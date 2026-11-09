@@ -72,6 +72,3 @@ export const invoiceEmailDeliveries = pgTable(
     ),
   ]
 );
-
-export type InvoiceEmailDeliveryRow =
-  typeof invoiceEmailDeliveries.$inferSelect;

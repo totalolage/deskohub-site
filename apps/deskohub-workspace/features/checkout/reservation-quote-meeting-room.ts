@@ -2,18 +2,18 @@ import { Effect, Schema } from "effect";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
 import type { ReservationQuoteError } from "@/features/checkout/reservation-quote-error";
 import { makeReservationQuoteSchema } from "@/features/checkout/reservation-quote-schema";
-import { workspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import type { DiscountQuote } from "@/features/discounts/contracts";
 import type { MeetingRoomReservationPricingInput } from "@/features/reservation/meeting-room-reservation";
 import { meetingRoomReservationDurationSchema } from "@/features/reservation/meeting-room-reservation-duration";
+import { moneyCodec } from "@/shared/money/money";
 
 export const meetingRoomReservationQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("meeting-room"),
   duration: meetingRoomReservationDurationSchema,
-  amount: workspaceMoneyCodec,
+  amount: moneyCodec,
 });
 
-export type MeetingRoomReservationQuoteItem =
+type MeetingRoomReservationQuoteItem =
   typeof meetingRoomReservationQuoteItemSchema.Type;
 
 export const meetingRoomReservationQuoteSchema = makeReservationQuoteSchema(
@@ -30,7 +30,7 @@ export type CanonicalMeetingRoomReservation = {
 };
 
 export const getMeetingRoomReservationQuote = (
-  reservation: MeetingRoomReservationPricingInput,
+  reservation: Pick<MeetingRoomReservationPricingInput, "duration">,
   options: {
     readonly discountQuote?: DiscountQuote;
   } = {}
@@ -66,7 +66,10 @@ export const getMeetingRoomReservationQuote = (
 };
 
 export const getCanonicalMeetingRoomReservation = (
-  reservation: MeetingRoomReservationPricingInput
+  reservation: Pick<
+    MeetingRoomReservationPricingInput,
+    "duration" | "reservationDate"
+  >
 ): CanonicalMeetingRoomReservation => ({
   kind: "meeting-room" as const,
   duration: reservation.duration,

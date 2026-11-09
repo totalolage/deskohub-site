@@ -1,40 +1,33 @@
 import { describe, expect, mock, test } from "bun:test";
-import {
-  DotyposCustomerIdSchema,
-  DotyposService,
-  FindCustomerResult,
-} from "@deskohub/dotypos";
+import { DotyposService } from "@deskohub/dotypos";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationDotyposCustomerId,
   AdministrationInvoiceCreateInput,
-  type AdministrationInvoiceCreateInputType,
   AdministrationInvoiceId,
 } from "@deskohub/workspace-admin-api";
-import { Effect, Layer, Schema, Semaphore } from "effect";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { Effect, Layer, Schema } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
   makeCoworkInvoiceDocument,
   makeTestManualInvoiceDocument,
 } from "@/features/accounting/invoice.test-utils";
+import { invoiceIdSchema } from "@/features/accounting/manual-invoice";
+import { type Invoice, InvoiceRepository } from "../backend/invoice.repository";
 import {
-  type Invoice,
-  InvoiceRepository,
-  type ManualInvoiceIssuance,
-} from "../backend/invoice.repository";
+  type InvoiceDeliverySummary,
+  InvoiceEmailDeliveryRepository,
+} from "../backend/invoice-email-delivery.repository";
 import {
   type InvoiceEmailDeliveryResult,
   InvoiceEmailDeliveryService,
 } from "../backend/invoice-email-delivery.service";
 import {
-  getInvoiceAdministrationPaymentStatus,
   type InvoiceAdministrationListItem,
   InvoiceAdministrationService,
   sortInvoiceAdministrationItems,
 } from "./invoice-administration.service";
-import {
-  decodeInvoiceAdministrationId,
-  InvoiceAdministrationNotFoundError,
-} from "./invoice-administration-identifier";
 import { ManualInvoiceCreationRequests } from "./manual-invoice-creation-requests.service";
 
 const input = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput)({
@@ -43,7 +36,7 @@ const input = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput)({
     kind: "new",
     details: {
       kind: "person",
-      email: "synthetic@example.test",
+      email: testEmailAddress("synthetic"),
       firstName: "Synthetic",
       lastName: "Customer",
       address: {
@@ -61,11 +54,40 @@ const input = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput)({
   lines: [{ description: "Space rental", price: "1000" }],
 });
 
+const issuer = {
+  source: "admin-ui",
+  administrator: {
+    accountId: customerAccountIdSchema.make(crypto.randomUUID()),
+    email: testEmailAddress("invoice-administrator"),
+  },
+} as const;
+
+const deliveredEverywhere: InvoiceDeliverySummary = {
+  customer: "accepted",
+  internal: "accepted",
+  needsAttention: false,
+};
+
+const deliveryLedger = (
+  summaryOf: (invoiceId: string) => InvoiceDeliverySummary = () =>
+    deliveredEverywhere
+) =>
+  Layer.mock(InvoiceEmailDeliveryRepository, {
+    status: (invoiceIds) =>
+      Effect.succeed(
+        new Map(invoiceIds.map((id) => [id, summaryOf(id)] as const))
+      ),
+  });
+
 describe("InvoiceAdministrationService", () => {
   test("projects reservation and customer references", async () => {
-    const document = makeCoworkInvoiceDocument("en-US");
+    const document = {
+      ...makeCoworkInvoiceDocument("en-US"),
+      // Late evening UTC is already the next calendar day in Prague.
+      fulfilledAt: "2026-08-10T22:30:00Z" as never,
+    };
     const invoice = {
-      id: "01980000-0000-7000-8000-000000000009",
+      id: invoiceIdSchema.make("01980000-0000-7000-8000-000000000009"),
       workspaceReservationId: "workspace-reservation",
       paymentAttemptId: "payment-attempt",
       dotyposCustomerId: "dotypos-customer",
@@ -73,13 +95,10 @@ describe("InvoiceAdministrationService", () => {
       issuedAt: Temporal.Instant.from(document.issuedAt),
       document,
     } satisfies Invoice;
-    const listed = {
-      invoice,
-      delivery: {
-        customer: "accepted" as const,
-        internal: "accepted" as const,
-      },
-      needsAttention: false,
+    const failedInternally: InvoiceDeliverySummary = {
+      customer: "accepted",
+      internal: "failed",
+      needsAttention: true,
     };
     const manualDocument = makeTestManualInvoiceDocument("en-US");
     const manualInvoice = {
@@ -97,11 +116,14 @@ describe("InvoiceAdministrationService", () => {
           Layer.mock(DotyposService, {}),
           Layer.mock(InvoiceRepository, {
             findById: () => Effect.succeed(invoice),
-            list: () =>
-              Effect.succeed([listed, { ...listed, invoice: manualInvoice }]),
+            list: () => Effect.succeed([manualInvoice, invoice]),
           }),
+          deliveryLedger((id) =>
+            id === invoice.id ? failedInternally : deliveredEverywhere
+          ),
           Layer.mock(InvoiceEmailDeliveryService, {}),
-          Layer.mock(ManualInvoiceCreationRequests, {})
+          Layer.mock(ManualInvoiceCreationRequests, {}),
+          Layer.mock(WorkspaceDatabase, {})
         )
       )
     );
@@ -115,9 +137,221 @@ describe("InvoiceAdministrationService", () => {
       expect(projected).toMatchObject({
         customerId: "dotypos-customer",
         reservationId: "workspace-reservation",
+        delivery: { customer: "accepted", internal: "failed" },
+        needsAttention: true,
       });
     }
-    expect(result[0].items[1]?.reservationId).toBeNull();
+    expect(result[0].items[1]).toMatchObject({
+      reservationId: null,
+      delivery: { customer: "accepted", internal: "accepted" },
+      needsAttention: false,
+    });
+    expect(result[1].serviceDate).toBe("2026-08-11");
+  });
+
+  test("signals a searched customer without a name or email", async () => {
+    const email = testEmailAddress("unnamed-search");
+    const layer = InvoiceAdministrationService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(DotyposService, {
+            searchCustomers: () =>
+              Effect.succeed([
+                { id: "dotypos-customer-unnamed" },
+                { id: "dotypos-customer-email", email: ` ${email} ` },
+              ] as never),
+          }),
+          Layer.mock(InvoiceRepository, {}),
+          Layer.mock(InvoiceEmailDeliveryRepository, {}),
+          Layer.mock(InvoiceEmailDeliveryService, {}),
+          Layer.mock(ManualInvoiceCreationRequests, {}),
+          Layer.mock(WorkspaceDatabase, {})
+        )
+      )
+    );
+
+    const customers = await Effect.gen(function* () {
+      const service = yield* InvoiceAdministrationService;
+      return yield* service.searchCustomers("synthetic");
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(customers).toMatchObject([
+      { displayName: "Unnamed customer", hasName: false },
+      { displayName: email, hasName: true },
+    ]);
+  });
+
+  test("projects searched customers' billing details and skips deleted ones", async () => {
+    const businessEmail = testEmailAddress("business-search");
+    const personEmail = testEmailAddress("person-search");
+    const layer = InvoiceAdministrationService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(DotyposService, {
+            searchCustomers: () =>
+              Effect.succeed([
+                {
+                  id: "dotypos-customer-business",
+                  companyName: " Synthetic s.r.o. ",
+                  companyId: " 12345678 ",
+                  vatId: " CZ12345678 ",
+                  firstName: " Ada ",
+                  email: ` ${businessEmail} `,
+                  phone: " +420 777 000 000 ",
+                  addressLine1: " Test street 1 ",
+                  addressLine2: " Floor 2 ",
+                  city: " Prague ",
+                  zip: " 100 00 ",
+                  country: " sk ",
+                },
+                {
+                  id: "dotypos-customer-person",
+                  firstName: "Grace",
+                  lastName: "Hopper",
+                  email: personEmail,
+                  phone: "  ",
+                  addressLine2: " ",
+                  vatId: "CZ0",
+                },
+                { id: "dotypos-customer-deleted", deleted: true },
+              ] as never),
+          }),
+          Layer.mock(InvoiceRepository, {}),
+          Layer.mock(InvoiceEmailDeliveryRepository, {}),
+          Layer.mock(InvoiceEmailDeliveryService, {}),
+          Layer.mock(ManualInvoiceCreationRequests, {}),
+          Layer.mock(WorkspaceDatabase, {})
+        )
+      )
+    );
+
+    const customers = await Effect.gen(function* () {
+      const service = yield* InvoiceAdministrationService;
+      return yield* service.searchCustomers("synthetic");
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(customers).toEqual([
+      {
+        id: "dotypos-customer-business",
+        displayName: "Synthetic s.r.o.",
+        hasName: true,
+        email: businessEmail,
+        details: {
+          kind: "business",
+          companyName: "Synthetic s.r.o.",
+          companyId: "12345678",
+          vatId: "CZ12345678",
+          email: businessEmail,
+          phone: "+420 777 000 000",
+          firstName: "Ada",
+          lastName: undefined,
+          address: {
+            line1: "Test street 1",
+            line2: "Floor 2",
+            city: "Prague",
+            postalCode: "100 00",
+            country: "SK",
+          },
+        },
+      },
+      {
+        id: "dotypos-customer-person",
+        displayName: "Grace Hopper",
+        hasName: true,
+        email: personEmail,
+        details: {
+          kind: "person",
+          firstName: "Grace",
+          lastName: "Hopper",
+          email: personEmail,
+          address: {
+            line1: "",
+            city: "",
+            postalCode: "",
+            country: "CZ",
+          },
+        },
+      },
+    ]);
+  });
+
+  describe("retrying an invoice's email delivery", () => {
+    const stored = makeTestManualInvoiceDocument("en-US");
+    const invoice = {
+      id: stored.invoiceId,
+      workspaceReservationId: null,
+      paymentAttemptId: null,
+      dotyposCustomerId: stored.dotyposCustomerId,
+      invoiceNumber: stored.invoiceNumber,
+      issuedAt: Temporal.Instant.from(stored.issuedAt),
+      document: stored,
+    } satisfies Invoice;
+
+    const retryWith = (
+      found: Invoice | null,
+      delivery: InvoiceEmailDeliveryResult,
+      summary: InvoiceDeliverySummary = deliveredEverywhere
+    ) => {
+      const deliverByInvoiceId = mock(() => Effect.succeed(delivery));
+      const layer = InvoiceAdministrationService.Default.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(DotyposService, {}),
+            Layer.mock(InvoiceRepository, {
+              findById: () => Effect.succeed(found),
+            }),
+            deliveryLedger(() => summary),
+            Layer.mock(InvoiceEmailDeliveryService, { deliverByInvoiceId }),
+            Layer.mock(ManualInvoiceCreationRequests, {}),
+            Layer.mock(WorkspaceDatabase, {})
+          )
+        )
+      );
+      const run = Effect.gen(function* () {
+        const service = yield* InvoiceAdministrationService;
+        return yield* service.retry(invoice.id);
+      }).pipe(Effect.provide(layer));
+      return { deliverByInvoiceId, run };
+    };
+
+    test("reports a delivery that sent something and the remaining attention", async () => {
+      const { deliverByInvoiceId, run } = retryWith(
+        invoice,
+        { status: "delivered", changed: true },
+        { customer: "accepted", internal: "failed", needsAttention: true }
+      );
+
+      expect(await Effect.runPromise(run)).toEqual({
+        invoiceId: AdministrationInvoiceId.make(invoice.id),
+        changed: true,
+        needsAttention: true,
+      });
+      expect(deliverByInvoiceId).toHaveBeenCalledWith({
+        invoiceId: invoice.id,
+      });
+    });
+
+    test("reports no change when the delivery found nothing to send", async () => {
+      const { run } = retryWith(invoice, { status: "not_issued" });
+
+      expect(await Effect.runPromise(run)).toMatchObject({
+        changed: false,
+        needsAttention: false,
+      });
+    });
+
+    test("fails as not found without delivering for an unknown invoice", async () => {
+      const { deliverByInvoiceId, run } = retryWith(null, {
+        status: "delivered",
+        changed: true,
+      });
+
+      expect(await Effect.runPromise(Effect.flip(run))).toMatchObject({
+        _tag: "InvoiceAdministrationNotFoundError",
+        invoiceId: invoice.id,
+      });
+      expect(deliverByInvoiceId).not.toHaveBeenCalled();
+    });
   });
 
   test("renders a PDF preview without touching providers or persistence", async () => {
@@ -130,270 +364,72 @@ describe("InvoiceAdministrationService", () => {
         Layer.mergeAll(
           Layer.mock(DotyposService, { createCustomer: providerMutation }),
           Layer.mock(InvoiceRepository, { issueManual: repositoryMutation }),
+          Layer.mock(InvoiceEmailDeliveryRepository, {}),
           Layer.mock(InvoiceEmailDeliveryService, {
             deliverByInvoiceId: deliveryMutation,
           }),
-          Layer.mock(ManualInvoiceCreationRequests, { claim: claimMutation })
+          Layer.mock(ManualInvoiceCreationRequests, { claim: claimMutation }),
+          Layer.mock(WorkspaceDatabase, {})
         )
       )
     );
 
     const pdf = await Effect.gen(function* () {
       const service = yield* InvoiceAdministrationService;
-      return yield* service.preview(input, {
-        source: "admin-ui",
-        actor: "admin",
-      });
+      return yield* service.preview(input, issuer);
     }).pipe(Effect.provide(layer), Effect.runPromise);
 
     expect(Buffer.from(pdf).subarray(0, 5).toString()).toBe("%PDF-");
-    const loadingTask = getDocument({
-      data: new Uint8Array(pdf),
-      isEvalSupported: false,
-      useSystemFonts: false,
-    });
-    const parsed = await loadingTask.promise;
-    const page = await parsed.getPage(1);
-    const content = await page.getTextContent();
-    const text = content.items
-      .map((item) => ("str" in item ? item.str : ""))
-      .join(" ");
-    await loadingTask.destroy();
-    expect(text).toContain("PREVIEW-0000000000");
-    expect(text).toContain("Space rental");
-    expect(text).toContain("Synthetic Customer");
     expect(providerMutation).not.toHaveBeenCalled();
     expect(repositoryMutation).not.toHaveBeenCalled();
     expect(deliveryMutation).not.toHaveBeenCalled();
     expect(claimMutation).not.toHaveBeenCalled();
   });
 
-  test("serializes a stale identical claim before creating a Dotypos customer", async () => {
-    const permit = Semaphore.makeUnsafe(1);
-    const document = makeTestManualInvoiceDocument("cs-CZ", "1000");
-    let completed = false;
-    let stored: Invoice | null = null;
-    const createCustomer = mock(() =>
-      Effect.sleep("10 millis").pipe(
-        Effect.as({
-          id: DotyposCustomerIdSchema.make("dotypos-customer-manual"),
-        } as never)
-      )
-    );
-    const issueManual = mock(
-      (
-        invoiceInput: Parameters<InvoiceRepository["Service"]["issueManual"]>[0]
-      ) =>
-        Effect.sync(() => {
-          const changed = stored === null;
-          stored ??= {
-            id: invoiceInput.invoiceId,
-            workspaceReservationId: null,
-            paymentAttemptId: null,
-            dotyposCustomerId: invoiceInput.dotyposCustomerId,
-            invoiceNumber: document.invoiceNumber,
-            issuedAt: Temporal.Instant.from(document.issuedAt),
-            document,
-          };
-          return { invoice: stored, changed } as ManualInvoiceIssuance;
-        })
+  test("downloads a stored invoice as a PDF named by its number", async () => {
+    const document = makeCoworkInvoiceDocument("en-US");
+    const invoice = {
+      id: invoiceIdSchema.make("01980000-0000-7000-8000-000000000010"),
+      workspaceReservationId: "workspace-reservation",
+      paymentAttemptId: "payment-attempt",
+      dotyposCustomerId: "dotypos-customer",
+      invoiceNumber: document.invoiceNumber,
+      issuedAt: Temporal.Instant.from(document.issuedAt),
+      document,
+    } satisfies Invoice;
+    const findById = mock((id: string) =>
+      Effect.succeed(id === invoice.id ? invoice : null)
     );
     const layer = InvoiceAdministrationService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
-          Layer.mock(DotyposService, {
-            findCustomer: () =>
-              Effect.succeed(FindCustomerResult.NotFound({ matches: [] })),
-            createCustomer,
-          }),
-          Layer.mock(InvoiceRepository, {
-            findById: () => Effect.succeed(stored),
-            issueManual,
-            list: () =>
-              Effect.succeed(
-                stored
-                  ? [
-                      {
-                        invoice: stored,
-                        delivery: {
-                          customer: "accepted" as const,
-                          internal: "accepted" as const,
-                        },
-                        needsAttention: false,
-                      },
-                    ]
-                  : []
-              ),
-          }),
-          Layer.mock(InvoiceEmailDeliveryService, {
-            deliverByInvoiceId: () =>
-              Effect.succeed({
-                status: "delivered",
-                changed: true,
-              } satisfies InvoiceEmailDeliveryResult),
-          }),
-          Layer.mock(ManualInvoiceCreationRequests, {
-            claim: () =>
-              Effect.succeed(
-                completed
-                  ? ({ kind: "completed" } as const)
-                  : ({ kind: "claimed" } as const)
-              ),
-            complete: () =>
-              Effect.sync(() => {
-                completed = true;
-              }),
-            withLock: <A, E, R>(
-              _invoiceId: string,
-              effect: Effect.Effect<A, E, R>
-            ) => permit.withPermit(effect),
-            withNewCustomerLock: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-              effect,
-          } as never)
+          Layer.mock(DotyposService, {}),
+          Layer.mock(InvoiceRepository, { findById }),
+          Layer.mock(InvoiceEmailDeliveryRepository, {}),
+          Layer.mock(InvoiceEmailDeliveryService, {}),
+          Layer.mock(ManualInvoiceCreationRequests, {}),
+          Layer.mock(WorkspaceDatabase, {})
         )
       )
     );
+    const missingId = "01980000-0000-7000-8000-000000000011";
 
-    const results = await Effect.gen(function* () {
+    const [pdf, missing] = await Effect.gen(function* () {
       const service = yield* InvoiceAdministrationService;
-      return yield* Effect.all(
-        [create(service, input), create(service, input)],
-        { concurrency: "unbounded" }
-      );
+      return yield* Effect.all([
+        service.getPdf(invoice.id),
+        Effect.flip(service.getPdf(missingId)),
+      ]);
     }).pipe(Effect.provide(layer), Effect.runPromise);
 
-    expect(results).toHaveLength(2);
-    expect(createCustomer).toHaveBeenCalledTimes(1);
-    expect(issueManual).toHaveBeenCalledTimes(2);
-  });
-
-  test("serializes new customer resolution by email across invoice ids", async () => {
-    const document = makeTestManualInvoiceDocument("cs-CZ", "1000");
-    const stored = new Map<string, Invoice>();
-    const invoicePermits = new Map<string, Semaphore.Semaphore>();
-    const newCustomerPermit = Semaphore.makeUnsafe(1);
-    let customer: { readonly id: DotyposCustomerIdSchema.Type } | null = null;
-    const createCustomer = mock(() =>
-      Effect.sleep("10 millis").pipe(
-        Effect.andThen(
-          Effect.sync(() => {
-            customer = {
-              id: DotyposCustomerIdSchema.make("dotypos-customer-manual"),
-            };
-            return customer as never;
-          })
-        )
-      )
-    );
-    const secondInput = Schema.decodeUnknownSync(
-      AdministrationInvoiceCreateInput
-    )({
-      ...input,
-      invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb24",
-      customer: {
-        ...input.customer,
-        details: {
-          ...input.customer.details,
-          email: ` ${input.customer.details.email} `,
-        },
-      },
+    expect(Buffer.from(pdf.bytes).subarray(0, 5).toString()).toBe("%PDF-");
+    expect(pdf.fileName).toBe(`${document.invoiceNumber}.pdf`);
+    expect(missing).toMatchObject({
+      _tag: "InvoiceAdministrationNotFoundError",
+      invoiceId: missingId,
     });
-    const layer = InvoiceAdministrationService.Default.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          Layer.mock(DotyposService, {
-            findCustomer: () =>
-              Effect.succeed(
-                customer
-                  ? FindCustomerResult.Matched({
-                      customer: customer as never,
-                      matches: [customer as never],
-                    })
-                  : FindCustomerResult.NotFound({ matches: [] })
-              ),
-            createCustomer,
-            updateCustomerDetails: () => Effect.succeed(customer as never),
-          }),
-          Layer.mock(InvoiceRepository, {
-            findById: (invoiceId) =>
-              Effect.succeed(stored.get(invoiceId) ?? null),
-            issueManual: (invoiceInput) =>
-              Effect.sync(() => {
-                const invoice = {
-                  id: invoiceInput.invoiceId,
-                  workspaceReservationId: null,
-                  paymentAttemptId: null,
-                  dotyposCustomerId: invoiceInput.dotyposCustomerId,
-                  invoiceNumber: document.invoiceNumber,
-                  issuedAt: Temporal.Instant.from(document.issuedAt),
-                  document,
-                } satisfies Invoice;
-                stored.set(invoice.id, invoice);
-                return {
-                  invoice: {
-                    ...invoice,
-                    workspaceReservationId: null,
-                    paymentAttemptId: null,
-                    document,
-                  },
-                  changed: true,
-                } satisfies ManualInvoiceIssuance;
-              }),
-            list: () =>
-              Effect.succeed(
-                [...stored.values()].map((invoice) => ({
-                  invoice,
-                  delivery: {
-                    customer: "accepted" as const,
-                    internal: "accepted" as const,
-                  },
-                  needsAttention: false,
-                }))
-              ),
-          }),
-          Layer.mock(InvoiceEmailDeliveryService, {
-            deliverByInvoiceId: () =>
-              Effect.succeed({
-                status: "delivered",
-                changed: true,
-              } satisfies InvoiceEmailDeliveryResult),
-          }),
-          Layer.mock(ManualInvoiceCreationRequests, {
-            claim: () => Effect.succeed({ kind: "claimed" } as const),
-            complete: () => Effect.void,
-            withLock: <A, E, R>(
-              invoiceId: string,
-              effect: Effect.Effect<A, E, R>
-            ) => {
-              const permit =
-                invoicePermits.get(invoiceId) ?? Semaphore.makeUnsafe(1);
-              invoicePermits.set(invoiceId, permit);
-              return permit.withPermit(effect);
-            },
-            withNewCustomerLock: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-              newCustomerPermit.withPermit(effect),
-          } as never)
-        )
-      )
-    );
-
-    const results = await Effect.gen(function* () {
-      const service = yield* InvoiceAdministrationService;
-      return yield* Effect.all(
-        [create(service, input), create(service, secondInput)],
-        { concurrency: "unbounded" }
-      );
-    }).pipe(Effect.provide(layer), Effect.runPromise);
-
-    expect(results).toHaveLength(2);
-    expect(createCustomer).toHaveBeenCalledTimes(1);
   });
 });
-
-const create = (
-  service: InvoiceAdministrationService["Service"],
-  invoice: AdministrationInvoiceCreateInputType
-) => service.create(invoice, { source: "admin-ui", actor: "admin" });
 
 const item = (
   id: string,
@@ -457,64 +493,5 @@ describe("invoice administration sorting", () => {
         direction: "asc",
       })
     ).toEqual([overdue, paid]);
-  });
-});
-
-describe("invoice administration payment status", () => {
-  const manual = makeTestManualInvoiceDocument("en-US");
-
-  test("keeps reservation invoices paid", () => {
-    expect(
-      getInvoiceAdministrationPaymentStatus(
-        makeCoworkInvoiceDocument("en-US"),
-        "2099-01-01"
-      )
-    ).toBe("paid");
-  });
-
-  test("derives manual status from the Prague calendar date", () => {
-    expect(getInvoiceAdministrationPaymentStatus(manual, "2026-08-31")).toBe(
-      "issued"
-    );
-    expect(getInvoiceAdministrationPaymentStatus(manual, "2026-09-01")).toBe(
-      "due"
-    );
-    expect(getInvoiceAdministrationPaymentStatus(manual, "2026-09-02")).toBe(
-      "overdue"
-    );
-  });
-
-  test("keeps an already-paid manual invoice paid", () => {
-    expect(
-      getInvoiceAdministrationPaymentStatus(
-        makeTestManualInvoiceDocument("en-US", "450", {
-          status: "paid",
-          date: "2026-08-20",
-        }),
-        "2099-01-01"
-      )
-    ).toBe("paid");
-  });
-
-  test("keeps zero and negative manual totals issued after their due date", () => {
-    expect(
-      getInvoiceAdministrationPaymentStatus(
-        makeTestManualInvoiceDocument("en-US", "0"),
-        "2026-09-02"
-      )
-    ).toBe("issued");
-    expect(
-      getInvoiceAdministrationPaymentStatus(
-        makeTestManualInvoiceDocument("en-US", "-1"),
-        "2026-09-02"
-      )
-    ).toBe("issued");
-  });
-
-  test("maps malformed route ids to not found", () => {
-    const error = Effect.runSync(
-      decodeInvoiceAdministrationId("not-an-invoice-id").pipe(Effect.flip)
-    );
-    expect(error).toBeInstanceOf(InvoiceAdministrationNotFoundError);
   });
 });

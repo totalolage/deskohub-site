@@ -1,72 +1,44 @@
+import { describe, expect, test } from "bun:test";
+import type { Page, Route } from "@playwright/test";
+import { getAccountSectionPath } from "@/features/account/routes";
 import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  test,
-} from "bun:test";
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
-import { join, resolve } from "node:path";
-import {
-  type BrowserContext,
-  type BrowserContextOptions,
-  chromium,
-  expect as expectLocator,
-  type Locator,
-  type Page,
-  type Route,
-} from "@playwright/test";
-import postcss from "postcss";
-import loadPostCssConfig from "postcss-load-config";
+  type AccountSection,
+  accountSectionLabel,
+} from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
 import {
-  type CookieCategory,
-  expectNoAuthSessionCookie,
-  expectPublicAccountLegal,
-  preparePublicLegalBrowser,
-  waitForCookieSwitchHandler,
-} from "./instant-navigation/public-account-legal-assertions";
-import { dismissLegalCookieConsent } from "./legal-cookie-consent";
+  type AccountLegalFixture,
+  accountFixtureAuthHeader,
+  accountFixtureCaseTimeout,
+  closeFixtureContext,
+  openFixtureContext,
+  registerAccountLegalFixture,
+  type Viewport,
+} from "./account-legal-fixture";
+import { isNotFoundPage } from "./not-found-page";
+import { waitForReactClickHandler } from "./react-handlers";
 
-const accountLegalPort = 3168;
-const fixtureParent = "/tmp/opencode";
-const appRoot = resolve(import.meta.dir, "..");
-const globalsCssPath = resolve(appRoot, "app/globals.css");
 const siteHeaderSelector = "body > header";
 const accountHeaderSelector = "main > div > header";
 const accountNavigationSelector = "main aside > nav";
 const accountContentLoadingSelector = '[data-slot="account-content-loading"]';
-const accountFixtureAuthHeader = "x-deskohub-account-fixture";
-const accountFixtureRolloutHeader = "x-deskohub-account-rollout";
-const accountFixtureMarketingLinkHeader = "x-deskohub-marketing-link";
-const accountFixtureRolloutOffValue = "off";
-const accountFixtureMarketingLinkValue = "pending";
-const supportedLocales = [
-  "en-US",
-  "cs-CZ",
-] as const satisfies readonly Locale[];
-const viewports = [
-  { height: 900, name: "mobile 320", width: 320 },
-  { height: 900, name: "mobile 375", width: 375 },
-  { height: 900, name: "mobile 480", width: 480 },
-  { height: 900, name: "desktop", width: 1440 },
-] as const;
+// Locale only changes copy, so each locale covers one breakpoint: the
+// narrowest mobile width with the longer Czech labels, and desktop.
+const continuityCases = [
+  {
+    locale: "cs-CZ",
+    viewport: { height: 900, name: "mobile 320", width: 320 },
+  },
+  {
+    locale: "en-US",
+    viewport: { height: 900, name: "desktop", width: 1440 },
+  },
+] as const satisfies readonly {
+  readonly locale: Locale;
+  readonly viewport: Viewport & { readonly name: string };
+}[];
 
 const accountDesktopBreakpoint = 768;
-
-type Viewport = {
-  readonly width: number;
-  readonly height: number;
-};
 
 type Geometry = {
   readonly bottom: number;
@@ -113,14 +85,6 @@ type HeldRscNavigation = {
   readonly waitForIntercept: () => Promise<void>;
 };
 
-type AccountLegalBrowser = Awaited<ReturnType<typeof chromium.launch>>;
-type AccountLegalFixture = {
-  readonly browser: AccountLegalBrowser;
-  readonly contexts: Set<BrowserContext>;
-  readonly serverUrl: string;
-  readonly close: () => Promise<void>;
-};
-
 const makeDeferred = <T>(): Deferred<T> => {
   let resolvePromise!: (value: T | PromiseLike<T>) => void;
   let rejectPromise!: (reason?: unknown) => void;
@@ -134,511 +98,6 @@ const makeDeferred = <T>(): Deferred<T> => {
     reject: rejectPromise,
     resolve: resolvePromise,
   };
-};
-
-const packageJson = JSON.stringify(
-  {
-    private: true,
-    scripts: { dev: "next dev" },
-    type: "module",
-  },
-  null,
-  2
-);
-
-const nextConfig = `
-const nextConfig = {
-  cacheComponents: true,
-  cacheLife: {
-    publicContent: { stale: 30, revalidate: 60, expire: 300 },
-  },
-  experimental: {
-    instantInsights: {
-      validationLevel: "manual-warning",
-    },
-  },
-  partialPrefetching: true,
-};
-
-export default nextConfig;
-`;
-
-const localeLayout = (realCookieConsent: boolean) => `
-import type { ReactNode } from "react";
-import { FixtureHydration } from "@/fixture/hydration";
-${
-  realCookieConsent
-    ? 'import { CookieConsentProvider } from "@/features/cookie-consent/components/cookie-consent-provider";\n'
-    : ""
-}import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guard";
-import "../globals.css";
-
-export const instant = false;
-
-export function generateStaticParams() {
-  return [{ locale: "en-US" }, { locale: "cs-CZ" }];
-}
-
-type LocaleLayoutProps = {
-  readonly children: ReactNode;
-  readonly params: Promise<{ locale: string }>;
-};
-
-export default async function LocaleLayout({
-  children,
-  params,
-}: LocaleLayoutProps) {
-  const { locale } = await params;
-
-  return (
-    <html lang={locale} data-scroll-behavior="smooth">
-      <body>
-${
-  realCookieConsent ? "        <CookieConsentProvider locale={locale} />\n" : ""
-}        <UnsavedChangesProvider>
-          <FixtureHydration>{children}</FixtureHydration>
-        </UnsavedChangesProvider>
-      </body>
-    </html>
-  );
-}
-`;
-
-const syntheticConsentWaypointPage = `
-import Link from "next/link";
-
-export default function ConsentWaypointPage() {
-  return (
-    <main className="flex flex-col gap-4 px-6 pb-16 pt-40">
-      <h1>Synthetic consent waypoint</h1>
-      <p>Synthetic public navigation waypoint with no duplicated account UI.</p>
-      <Link href="/en-US/account/legal">Back to public legal</Link>
-    </main>
-  );
-}
-`;
-
-const fixtureSiteHeaderConfig = (contactHrefExpression: string) => `
-import type { Locale } from "@/features/i18n";
-
-export type SiteHeaderMenuItemId =
-  | "locationMap"
-  | "meetingRoom"
-  | "office"
-  | "gallery"
-  | "founders"
-  | "faqContact"
-  | "contact";
-
-export type SiteHeaderMenuItem = {
-  readonly id: SiteHeaderMenuItemId;
-  readonly label: string;
-  readonly href: string;
-};
-
-export async function getSiteHeaderConfig(locale: Locale) {
-  const localePath = "/" + locale;
-  const links: SiteHeaderMenuItem[] = [
-    {
-      id: "locationMap",
-      label: "Location",
-      href: localePath + "#location-map",
-    },
-    {
-      id: "meetingRoom",
-      label: "Meeting room",
-      href: localePath + "/meeting-room",
-    },
-    {
-      id: "gallery",
-      label: "Gallery",
-      href: localePath + "/gallery",
-    },
-  ];
-
-  return {
-    accountHref: localePath + "/account",
-    accountLabel: "Account",
-    closeNavigationMenuLabel: "Close navigation menu",
-    contactHref: ${contactHrefExpression},
-    contactLabel: "Contact",
-    languageLabels: {
-      "cs-CZ": "Čeština",
-      "en-US": "English",
-    } satisfies Record<Locale, string>,
-    languageSwitcherLabel: "Language",
-    links,
-    mobilePrimaryNavigationLabel: "Mobile primary navigation",
-    openNavigationMenuLabel: "Open navigation menu",
-    primaryNavigationLabel: "Primary navigation",
-  };
-}
-`;
-
-const fixtureAuthentication = `
-import { Context, Effect, Layer } from "effect";
-import { headers } from "next/headers";
-
-type FixtureUser = {
-  readonly fixture: true;
-};
-
-interface FixtureAuthentication {
-  readonly currentUser: Effect.Effect<FixtureUser | null>;
-}
-
-export class CustomerAuthentication extends Context.Service<
-  CustomerAuthentication,
-  FixtureAuthentication
->()("@deskohub-workspace/account/CustomerAuthentication") {
-  static Default = Layer.succeed(this, {
-    currentUser: Effect.promise(async () => {
-      const requestHeaders = await headers();
-      return requestHeaders.get("x-deskohub-account-fixture") === "private"
-        ? { fixture: true }
-        : null;
-    }),
-  });
-}
-`;
-
-const fixtureAccountFeatureFlag = `
-import { headers } from "next/headers";
-
-export async function areAccountsEnabled(): Promise<boolean> {
-  const requestHeaders = await headers();
-  return requestHeaders.get("${accountFixtureRolloutHeader}") !== "${accountFixtureRolloutOffValue}";
-}
-`;
-
-const fixtureMarketingPreferences = `
-import { headers } from "next/headers";
-import type { Locale } from "@/features/i18n";
-import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
-
-export async function getMarketingPreferences(
-  _locale: Locale
-): Promise<MarketingPreferencesState> {
-  const requestHeaders = await headers();
-  if (
-    requestHeaders.get("${accountFixtureMarketingLinkHeader}") !==
-    "${accountFixtureMarketingLinkValue}"
-  ) {
-    return { status: "unavailable" };
-  }
-
-  return {
-    context: "synthetic-marketing-management-context",
-    dismissalContext: "synthetic-marketing-management-dismissal-context",
-    status: "pending-link",
-  };
-}
-`;
-
-const fixtureMarketingActionError =
-  "Unavailable in account continuity fixture: backend action was not executed.";
-
-const fixtureMarketingActions = `
-"use server";
-
-type UnavailableActionResult = {
-  readonly serverError: string;
-};
-
-const unavailableMessage = "${fixtureMarketingActionError}";
-
-export async function saveMarketingPreferencesAction(
-  _input: unknown
-): Promise<UnavailableActionResult> {
-  return { serverError: unavailableMessage };
-}
-
-export async function confirmMarketingManagementAction(
-  _input: unknown
-): Promise<UnavailableActionResult> {
-  return { serverError: unavailableMessage };
-}
-
-export async function clearMarketingManagementAction(
-  _input: unknown
-): Promise<UnavailableActionResult> {
-  return { serverError: unavailableMessage };
-}
-`;
-
-const fixtureMarketingActionExports = [
-  "saveMarketingPreferencesAction",
-  "confirmMarketingManagementAction",
-  "clearMarketingManagementAction",
-] as const;
-
-test("keeps fixture marketing actions synthetic and fail closed", () => {
-  expect(fixtureMarketingActions).toContain('"use server";');
-  expect(fixtureMarketingActions).toContain(fixtureMarketingActionError);
-  expect(fixtureMarketingActions).not.toMatch(/^\s*import\s/m);
-
-  for (const actionName of fixtureMarketingActionExports) {
-    expect(fixtureMarketingActions).toContain(
-      `export async function ${actionName}`
-    );
-  }
-});
-
-const fixtureWorkspaceEffect = `
-import { Effect } from "effect";
-
-export const runWorkspaceEffect =
-  (_name: string, _options?: unknown) =>
-  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    Effect.runPromise(effect as Effect.Effect<A, never, never>);
-`;
-
-const fixtureEnv = `
-export const env = {
-  NEXT_PUBLIC_POSTHOG_HOST: undefined,
-  NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: undefined,
-} as const;
-`;
-
-const fixtureCookieConsent = `
-export type ConsentCategory = "necessary" | "analytics" | "marketing" | "preferences";
-
-export function useCookieConsent() {
-  return {
-    acceptAll: () => undefined,
-    acceptCategory: (_category: ConsentCategory) => undefined,
-    isAccepted: (_category: ConsentCategory) => false,
-    rejectAll: () => undefined,
-    rejectCategory: (_category: ConsentCategory) => undefined,
-  };
-}
-`;
-
-const fixtureHydration = `
-"use client";
-
-import { type ReactNode, useEffect } from "react";
-
-export function FixtureHydration({ children }: { readonly children: ReactNode }) {
-  useEffect(() => {
-    document.documentElement.dataset.fixtureHydrated = "true";
-  }, []);
-
-  return children;
-}
-`;
-
-const privatePage = `
-import { headers } from "next/headers";
-import { connection } from "next/server";
-import { Suspense } from "react";
-import { AccountContentLoading } from "@/features/account/components/account-loading";
-import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-
-export default function SyntheticPrivateAccountPage() {
-  return runWithRequestLocale((locale) => (
-    <Suspense fallback={<AccountContentLoading locale={locale} />}>
-      <SyntheticPrivateContent />
-    </Suspense>
-  ));
-}
-
-async function SyntheticPrivateContent() {
-  await connection();
-  await headers();
-
-  return (
-    <section data-testid="synthetic-private-content" aria-labelledby="synthetic-private-title">
-      <h2 id="synthetic-private-title">Synthetic private profile</h2>
-      <p>Private page data is synthetic and provider-independent.</p>
-    </section>
-  );
-}
-`;
-
-const nullModalPage = `
-export default function AccountModal() {
-  return null;
-}
-`;
-
-type AccountLegalFixtureOptions = {
-  readonly realCookieConsent?: boolean;
-};
-
-const writeFixture = async (
-  fixtureRoot: string,
-  { realCookieConsent = false }: AccountLegalFixtureOptions = {}
-) => {
-  const fixtureFiles: Readonly<Record<string, string>> = {
-    "app/[locale]/(full-header)/account/@modal/default.tsx": nullModalPage,
-    "app/[locale]/(full-header)/account/@modal/page.tsx": nullModalPage,
-    "app/[locale]/(full-header)/account/@modal/[...not-found]/page.tsx":
-      nullModalPage,
-    "app/[locale]/(full-header)/account/page.tsx": privatePage,
-    ...(realCookieConsent
-      ? {
-          "app/[locale]/(full-header)/consent-waypoint/page.tsx":
-            syntheticConsentWaypointPage,
-        }
-      : {}),
-    "app/[locale]/layout.tsx": localeLayout(realCookieConsent),
-    "fixture/account-feature-flag.server.ts": fixtureAccountFeatureFlag,
-    "fixture/customer-authentication.service.ts": fixtureAuthentication,
-    ...(realCookieConsent
-      ? {}
-      : { "fixture/cookie-consent.ts": fixtureCookieConsent }),
-    "fixture/env.ts": fixtureEnv,
-    "fixture/hydration.tsx": fixtureHydration,
-    "fixture/marketing-actions.ts": fixtureMarketingActions,
-    "fixture/marketing-preferences.server.ts": fixtureMarketingPreferences,
-    "fixture/site-header-config.ts": fixtureSiteHeaderConfig(
-      realCookieConsent
-        ? 'localePath + "/consent-waypoint"'
-        : 'localePath + "/contact"'
-    ),
-    "fixture/workspace-effect.ts": fixtureWorkspaceEffect,
-    "instrumentation.ts": "export function register() {}",
-    "next.config.mjs": nextConfig,
-    "package.json": packageJson,
-  };
-
-  for (const [relativePath, contents] of Object.entries(fixtureFiles)) {
-    const filePath = join(fixtureRoot, relativePath);
-    await mkdir(resolve(filePath, ".."), { recursive: true });
-    if (contents) await writeFile(filePath, contents);
-  }
-
-  const tsconfig = {
-    compilerOptions: {
-      allowJs: true,
-      baseUrl: ".",
-      esModuleInterop: true,
-      isolatedModules: true,
-      jsx: "preserve",
-      lib: ["dom", "dom.iterable", "esnext"],
-      module: "esnext",
-      moduleResolution: "bundler",
-      noEmit: true,
-      paths: {
-        "@/features/account/server/account-feature-flag.server": [
-          "./fixture/account-feature-flag.server.ts",
-        ],
-        "@/features/account/backend/customer-authentication.service": [
-          "./fixture/customer-authentication.service.ts",
-        ],
-        "@/env": ["./fixture/env.ts"],
-        ...(realCookieConsent
-          ? {}
-          : { "@/features/cookie-consent": ["./fixture/cookie-consent.ts"] }),
-        "@/features/legal/marketing-preferences.server": [
-          "./fixture/marketing-preferences.server.ts",
-        ],
-        "@/features/legal/actions": ["./fixture/marketing-actions.ts"],
-        "@/shared/backend/workspace-effect": ["./fixture/workspace-effect.ts"],
-        "@/shared/components/site-header-config": [
-          "./fixture/site-header-config.ts",
-        ],
-        "@/*": ["./*"],
-      },
-      plugins: [{ name: "next" }],
-      resolveJsonModule: true,
-      skipLibCheck: true,
-      strict: true,
-      target: "ES2017",
-    },
-  };
-  await writeFile(join(fixtureRoot, "tsconfig.json"), JSON.stringify(tsconfig));
-
-  for (const relativePath of [
-    "app/[locale]/(full-header)/account/layout.tsx",
-    "app/[locale]/(full-header)/account/loading.tsx",
-    "app/[locale]/(full-header)/account/legal/page.tsx",
-    "app/[locale]/(full-header)/layout.tsx",
-  ]) {
-    const destination = join(fixtureRoot, relativePath);
-    await mkdir(resolve(destination, ".."), { recursive: true });
-    await copyFile(join(appRoot, relativePath), destination);
-  }
-
-  const postCssConfig = await loadPostCssConfig({}, appRoot);
-  const globalsCss = await readFile(globalsCssPath, "utf8");
-  const compiledGlobalsCss = await postcss(postCssConfig.plugins).process(
-    globalsCss,
-    { from: globalsCssPath }
-  );
-  const compiledGlobalsDestination = join(fixtureRoot, "app/globals.css");
-  await mkdir(resolve(compiledGlobalsDestination, ".."), { recursive: true });
-  await writeFile(compiledGlobalsDestination, compiledGlobalsCss.css);
-
-  await symlink(join(appRoot, "assets"), join(fixtureRoot, "assets"), "dir");
-  await symlink(
-    join(appRoot, "features"),
-    join(fixtureRoot, "features"),
-    "dir"
-  );
-  await symlink(
-    join(appRoot, "node_modules"),
-    join(fixtureRoot, "node_modules"),
-    "dir"
-  );
-  await symlink(join(appRoot, "shared"), join(fixtureRoot, "shared"), "dir");
-};
-
-const waitForServer = async (
-  url: string,
-  exited: { value: boolean },
-  timeoutMs = 20_000
-) => {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (exited.value)
-      throw new Error("account legal fixture server exited early");
-    try {
-      const response = await fetch(url, {
-        headers: { [accountFixtureAuthHeader]: "private" },
-      });
-      if (response.status < 500) return;
-    } catch {
-      // The Next development server is still compiling or binding its port.
-    }
-    await Bun.sleep(100);
-  }
-  throw new Error("account legal fixture server did not become ready");
-};
-
-const waitForServerToStop = async (url: string) => {
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      await fetch(url);
-    } catch {
-      return;
-    }
-    await Bun.sleep(100);
-  }
-  throw new Error("account legal fixture server did not release its port");
-};
-
-const warmFixtureRoutes = async (
-  serverUrl: string,
-  extraRoutes: readonly string[] = []
-) => {
-  for (const locale of supportedLocales) {
-    for (const route of [
-      `/${locale}/account?section=profile`,
-      `/${locale}/account/legal`,
-      ...extraRoutes,
-    ]) {
-      const response = await fetch(`${serverUrl}${route}`, {
-        headers: { [accountFixtureAuthHeader]: "private" },
-      });
-      if (!response.ok) {
-        throw new Error("account legal fixture route failed during warmup");
-      }
-      await response.arrayBuffer();
-    }
-  }
 };
 
 const readGeometry = async (page: Page): Promise<ShellGeometry> =>
@@ -766,11 +225,7 @@ const assertShellContinuity = (
   expect(observation.navigation).toEqual(expectedGeometry.navigation);
 };
 
-const isTargetRscRequest = (
-  route: Route,
-  expectedPathname: string,
-  expectedSection: string | undefined
-) => {
+const isTargetRscRequest = (route: Route, expectedPathname: string) => {
   const request = route.request();
   const requestHeaders = request.headers();
   if (requestHeaders.rsc !== "1") return false;
@@ -783,16 +238,34 @@ const isTargetRscRequest = (
   }
 
   const url = new URL(request.url());
-  if (url.pathname !== expectedPathname) return false;
-  return expectedSection === undefined
-    ? url.searchParams.get("section") === null
-    : url.searchParams.get("section") === expectedSection;
+  return url.pathname === expectedPathname;
+};
+
+const heldRscFetchAttempts = 3;
+
+// The harness forwards the held navigation through Playwright's own HTTP
+// client. A transport failure there (for example a reset keep-alive socket
+// to the dev server) aborts the browser request, and Next falls back to a
+// document navigation that discards the captured shell references. Retry
+// this idempotent RSC GET, and surface the transport error if it persists.
+const fetchHeldRscResponse = async (route: Route) => {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= heldRscFetchAttempts; attempt += 1) {
+    try {
+      return await route.fetch();
+    } catch (error) {
+      lastError = error;
+      await Bun.sleep(100 * attempt);
+    }
+  }
+  throw new Error("held RSC navigation could not be forwarded", {
+    cause: lastError,
+  });
 };
 
 const holdRscNavigation = async (
   page: Page,
-  expectedPathname: string,
-  expectedSection: string | undefined
+  expectedPathname: string
 ): Promise<HeldRscNavigation> => {
   const intercepted = makeDeferred<void>();
   const release = makeDeferred<void>();
@@ -800,15 +273,15 @@ const holdRscNavigation = async (
   const routePattern = "**/*";
 
   const handler = async (route: Route) => {
-    if (!isTargetRscRequest(route, expectedPathname, expectedSection)) {
+    if (!isTargetRscRequest(route, expectedPathname)) {
       await route.continue();
       return;
     }
 
     const responseWork = (async () => {
       try {
+        const response = await fetchHeldRscResponse(route);
         intercepted.resolve();
-        const response = await route.fetch();
         await release.promise;
         await route.fulfill({ response });
       } catch (error) {
@@ -852,51 +325,15 @@ const holdRscNavigation = async (
   };
 };
 
-const waitForAccountSectionButtonHandler = async (
-  page: Page,
-  button: Locator
-) => {
-  const element = await button.elementHandle();
-  if (element === null)
-    throw new Error("account section button was not rendered");
+const continuitySections = [
+  "billing",
+  "danger",
+  "legal",
+  "profile",
+  "reservations",
+] as const satisfies readonly AccountSection[];
 
-  try {
-    await page.waitForFunction(hasReactClickHandler, element, {
-      timeout: 15_000,
-    });
-  } finally {
-    await element.dispose();
-  }
-};
-
-function hasReactClickHandler(element: Element | null): boolean {
-  if (element === null) return false;
-  const reactPropsKey = Object.keys(element).find((key) =>
-    key.startsWith("__reactProps$")
-  );
-  if (reactPropsKey === undefined) return false;
-
-  const reactProps = Object.getOwnPropertyDescriptor(
-    element,
-    reactPropsKey
-  )?.value;
-  if (typeof reactProps !== "object" || reactProps === null) return false;
-
-  return (
-    "onClick" in reactProps &&
-    typeof (reactProps as { readonly onClick?: unknown }).onClick === "function"
-  );
-}
-
-const accountSectionLabels = (locale: Locale) => ({
-  billing: m.accountSectionBilling({}, { locale }),
-  danger: m.accountSectionDanger({}, { locale }),
-  legal: m.accountSectionLegal({}, { locale }),
-  profile: m.accountSectionProfile({}, { locale }),
-  reservations: m.accountSectionReservations({}, { locale }),
-});
-
-type AccountSection = keyof ReturnType<typeof accountSectionLabels>;
+type ContinuitySection = (typeof continuitySections)[number];
 type ViewportMode = "desktop" | "mobile";
 type ContinuityDirection = "account-to-legal" | "legal-to-account";
 
@@ -906,20 +343,21 @@ const accountNavigation = (page: Page, locale: Locale) =>
     name: m.accountNavigationLabel({}, { locale }),
   });
 
-const accountSectionButton = (
+const accountSectionLink = (
   page: Page,
   locale: Locale,
-  section: AccountSection
+  section: ContinuitySection
 ) =>
-  accountNavigation(page, locale).getByRole("button", {
+  accountNavigation(page, locale).getByRole("link", {
     exact: true,
-    name: accountSectionLabels(locale)[section],
+    name: accountSectionLabel(section, locale),
   });
 
 const assertAccountNavigationControls = async (
   page: Page,
   locale: Locale,
-  mode: ViewportMode
+  mode: ViewportMode,
+  privateNavigationEnabled: boolean
 ) => {
   const navigation = accountNavigation(page, locale);
   const navigationBox = await navigation.boundingBox();
@@ -934,31 +372,58 @@ const assertAccountNavigationControls = async (
   });
   expect(await mobileGroup.isVisible()).toBe(mode === "mobile");
 
-  for (const label of Object.values(accountSectionLabels(locale))) {
+  for (const section of continuitySections) {
+    const label = accountSectionLabel(section, locale);
+    const privateSection = section !== "legal";
+    const enabled = !privateSection || privateNavigationEnabled;
+    const links = navigation.getByRole("link", {
+      exact: true,
+      includeHidden: true,
+      name: label,
+    });
     const buttons = navigation.getByRole("button", {
       exact: true,
       includeHidden: true,
       name: label,
     });
-    expect(await buttons.count()).toBe(2);
+    expect(await links.count()).toBe(enabled ? 2 : 0);
+    expect(await buttons.count()).toBe(enabled ? 0 : 2);
 
-    const buttonStates = await buttons.evaluateAll((elements) =>
-      elements.map((element) => {
-        const rect = element.getBoundingClientRect();
-        return {
-          height: rect.height,
-          visible:
-            rect.width > 0 &&
-            rect.height > 0 &&
-            getComputedStyle(element).visibility !== "hidden",
-          width: rect.width,
-        };
-      })
+    if (enabled) {
+      const expectedHref = getAccountSectionPath(locale, section);
+      expect(
+        await links.evaluateAll(
+          (elements, href) =>
+            elements.every((element) => element.getAttribute("href") === href),
+          expectedHref
+        )
+      ).toBe(true);
+    } else {
+      expect(
+        await buttons.evaluateAll((elements) =>
+          elements.every((element) => (element as HTMLButtonElement).disabled)
+        )
+      ).toBe(true);
+    }
+
+    const controlStates = await (enabled ? links : buttons).evaluateAll(
+      (elements) =>
+        elements.map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            height: rect.height,
+            visible:
+              rect.width > 0 &&
+              rect.height > 0 &&
+              getComputedStyle(element).visibility !== "hidden",
+            width: rect.width,
+          };
+        })
     );
-    const visibleButtons = buttonStates.filter(({ visible }) => visible);
-    expect(visibleButtons).toHaveLength(1);
-    expect(visibleButtons[0]?.width).toBeGreaterThan(0);
-    expect(visibleButtons[0]?.height).toBeGreaterThan(0);
+    const visibleControls = controlStates.filter(({ visible }) => visible);
+    expect(visibleControls).toHaveLength(1);
+    expect(visibleControls[0]?.width).toBeGreaterThan(0);
+    expect(visibleControls[0]?.height).toBeGreaterThan(0);
   }
 };
 
@@ -967,25 +432,25 @@ const assertMobileLegalScroll = async (page: Page) => {
     const mobileNavigation = document.querySelector(
       "[data-account-mobile-navigation]"
     );
-    const activeMobileButton = mobileNavigation?.querySelector(
-      "button[aria-current='page']"
+    const activeMobileLink = mobileNavigation?.querySelector(
+      "a[aria-current='page']"
     );
     if (
       !(mobileNavigation instanceof HTMLElement) ||
-      !(activeMobileButton instanceof HTMLButtonElement)
+      !(activeMobileLink instanceof HTMLAnchorElement)
     ) {
       return false;
     }
 
     const navigationRect = mobileNavigation.getBoundingClientRect();
-    const buttonRect = activeMobileButton.getBoundingClientRect();
+    const linkRect = activeMobileLink.getBoundingClientRect();
     return (
       navigationRect.width > 0 &&
       navigationRect.height > 0 &&
-      buttonRect.width > 0 &&
-      buttonRect.height > 0 &&
-      buttonRect.left >= navigationRect.left - 1 &&
-      buttonRect.right <= navigationRect.right + 1
+      linkRect.width > 0 &&
+      linkRect.height > 0 &&
+      linkRect.left >= navigationRect.left - 1 &&
+      linkRect.right <= navigationRect.right + 1
     );
   });
 
@@ -1028,8 +493,8 @@ const assertMobileLegalScroll = async (page: Page) => {
     const mobileNavigation = navigation?.querySelector(
       "[data-account-mobile-navigation]"
     );
-    const activeMobileButton = mobileNavigation?.querySelector(
-      "button[aria-current='page']"
+    const activeMobileLink = mobileNavigation?.querySelector(
+      "a[aria-current='page']"
     );
     if (
       !(header instanceof HTMLElement) ||
@@ -1039,7 +504,7 @@ const assertMobileLegalScroll = async (page: Page) => {
       !(content instanceof HTMLElement) ||
       !(mobileFooter instanceof HTMLElement) ||
       !(mobileNavigation instanceof HTMLElement) ||
-      !(activeMobileButton instanceof HTMLButtonElement)
+      !(activeMobileLink instanceof HTMLAnchorElement)
     ) {
       throw new Error("mobile legal scroll geometry elements are missing");
     }
@@ -1048,16 +513,16 @@ const assertMobileLegalScroll = async (page: Page) => {
     const contentRect = content.getBoundingClientRect();
     const mobileFooterRect = mobileFooter.getBoundingClientRect();
     const mobileNavigationRect = mobileNavigation.getBoundingClientRect();
-    const activeMobileButtonRect = activeMobileButton.getBoundingClientRect();
+    const activeMobileLinkRect = activeMobileLink.getBoundingClientRect();
     const mobileNavigationStyle = getComputedStyle(mobileNavigation);
     const asideStyle = getComputedStyle(aside);
     const navigationRect = navigation.getBoundingClientRect();
     return {
-      activeMobileButtonBottom: activeMobileButtonRect.bottom,
-      activeMobileButtonHeight: activeMobileButtonRect.height,
-      activeMobileButtonLeft: activeMobileButtonRect.left,
-      activeMobileButtonRight: activeMobileButtonRect.right,
-      activeMobileButtonSection: activeMobileButton.dataset.accountSection,
+      activeMobileLinkBottom: activeMobileLinkRect.bottom,
+      activeMobileLinkHeight: activeMobileLinkRect.height,
+      activeMobileLinkLeft: activeMobileLinkRect.left,
+      activeMobileLinkRight: activeMobileLinkRect.right,
+      activeMobileLinkSection: activeMobileLink.dataset.accountSection,
       asidePosition: asideStyle.position,
       asideTop: Number.parseFloat(asideStyle.top),
       bodyWidth: document.body.scrollWidth,
@@ -1100,12 +565,12 @@ const assertMobileLegalScroll = async (page: Page) => {
   expect(["x", "x proximity"]).toContain(
     observation.mobileNavigationScrollSnapType
   );
-  expect(observation.activeMobileButtonSection).toBe("legal");
-  expect(observation.activeMobileButtonHeight).toBe(44);
-  expect(observation.activeMobileButtonLeft).toBeGreaterThanOrEqual(
+  expect(observation.activeMobileLinkSection).toBe("legal");
+  expect(observation.activeMobileLinkHeight).toBe(44);
+  expect(observation.activeMobileLinkLeft).toBeGreaterThanOrEqual(
     observation.mobileNavigationLeft - 1
   );
-  expect(observation.activeMobileButtonRight).toBeLessThanOrEqual(
+  expect(observation.activeMobileLinkRight).toBeLessThanOrEqual(
     observation.mobileNavigationRight + 1
   );
   expect(observation.helpDisplay).not.toBe("none");
@@ -1159,7 +624,7 @@ const waitForPublicLegalContent = async (page: Page, locale: Locale) => {
   });
   const legalNavigation = accountMain.getByRole("navigation", {
     exact: true,
-    name: m.footerLegalLabel({}, { locale }),
+    name: m.legalScreenTitle({}, { locale }),
   });
 
   await legalTitle.waitFor({ state: "visible" });
@@ -1171,27 +636,99 @@ const waitForPublicLegalContent = async (page: Page, locale: Locale) => {
   expect(await legalNavigation.count()).toBe(1);
 };
 
-const openFixtureContext = async (
+const assertBareReservationsClickIsNoop = async (
   fixture: AccountLegalFixture,
-  options: BrowserContextOptions
+  locale: Locale
 ) => {
-  const context = await fixture.browser.newContext(options);
-  fixture.contexts.add(context);
-  return context;
+  const context = await openFixtureContext(fixture, {
+    extraHTTPHeaders: {
+      [accountFixtureAuthHeader]: "private",
+    },
+    viewport: { height: 900, width: 1440 },
+  });
+  const page = await context.newPage();
+  const accountUrl = `${fixture.serverUrl}/${locale}/account`;
+
+  try {
+    await page.goto(accountUrl, { waitUntil: "domcontentloaded" });
+    await page
+      .locator('[data-fixture-hydrated="true"]')
+      .waitFor({ state: "attached" });
+    await page
+      .locator('[data-testid="synthetic-private-content"]')
+      .waitFor({ state: "visible" });
+
+    const reservationsLink = accountSectionLink(page, locale, "reservations");
+    await reservationsLink.waitFor({ state: "visible" });
+    await waitForReactClickHandler(page, reservationsLink);
+    expect(await reservationsLink.getAttribute("href")).toBe(
+      getAccountSectionPath(locale, "reservations")
+    );
+    expect(await reservationsLink.getAttribute("aria-current")).toBe("page");
+
+    await reservationsLink.click();
+    expect(page.url()).toBe(accountUrl);
+  } finally {
+    await closeFixtureContext(fixture, context);
+  }
 };
 
-const closeFixtureContext = async (
+// The navigation switches sections by replacing the URL, so a revalidating
+// Server Action then renders the switched path's route over the one the page
+// loaded at. Neither a remount nor a full reload may drop open client state.
+const assertDraftSurvivesRevalidationAfterSwitch = async (
   fixture: AccountLegalFixture,
-  context: BrowserContext
+  entryPath: string
 ) => {
-  fixture.contexts.delete(context);
-  await context.close();
-};
+  const locale = "en-US";
+  const context = await openFixtureContext(fixture, {
+    extraHTTPHeaders: { [accountFixtureAuthHeader]: "private" },
+    viewport: { height: 900, width: 1440 },
+  });
+  const page = await context.newPage();
+  const documentLoads: string[] = [];
+  page.on("request", (request) => {
+    if (request.resourceType() === "document")
+      documentLoads.push(request.url());
+  });
 
-const closeRemainingFixtureContexts = async (contexts: Set<BrowserContext>) => {
-  const remainingContexts = [...contexts];
-  contexts.clear();
-  await Promise.allSettled(remainingContexts.map((context) => context.close()));
+  try {
+    await page.goto(`${fixture.serverUrl}${entryPath}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page
+      .locator('[data-fixture-hydrated="true"]')
+      .waitFor({ state: "attached" });
+    const openDraft = page.getByTestId("fixture-draft-open");
+    await waitForReactClickHandler(page, openDraft);
+    await openDraft.click();
+    const draft = page.getByTestId("fixture-draft");
+    await draft.waitFor({ state: "visible" });
+    await draft.evaluate((element) => {
+      element.setAttribute("data-draft-marker", "original");
+    });
+    const documentLoadsBefore = documentLoads.length;
+
+    const dangerLink = accountSectionLink(page, locale, "danger");
+    await waitForReactClickHandler(page, dangerLink);
+    await dangerLink.click();
+    await page.waitForURL(
+      `${fixture.serverUrl}${getAccountSectionPath(locale, "danger")}`
+    );
+
+    await page.getByTestId("fixture-draft-revalidate").click();
+    await page
+      .locator('[data-testid="fixture-draft-revalidations"]', { hasText: "1" })
+      .waitFor({ state: "visible" });
+
+    expect(documentLoads.slice(documentLoadsBefore)).toEqual([]);
+    expect(await draft.getAttribute("data-draft-marker")).toBe("original");
+    expect(new URL(page.url()).pathname).toBe(
+      getAccountSectionPath(locale, "danger")
+    );
+  } finally {
+    await closeFixtureContext(fixture, context);
+  }
 };
 
 const runPrivateContinuity = async (
@@ -1214,7 +751,8 @@ const runPrivateContinuity = async (
   try {
     await page.goto(
       accountToLegal
-        ? `${fixture.serverUrl}/${locale}/account?section=profile`
+        ? new URL(getAccountSectionPath(locale, "profile"), fixture.serverUrl)
+            .href
         : `${fixture.serverUrl}/${locale}/account/legal`,
       {
         waitUntil: "domcontentloaded",
@@ -1237,14 +775,14 @@ const runPrivateContinuity = async (
     expect(await page.locator(accountHeaderSelector).count()).toBe(1);
     expect(await page.locator(accountNavigationSelector).count()).toBe(1);
 
-    await assertAccountNavigationControls(page, locale, mode);
+    await assertAccountNavigationControls(page, locale, mode, true);
     const sourceSection = accountToLegal ? "profile" : "legal";
     const targetSection = accountToLegal ? "legal" : "profile";
-    const sourceButton = accountSectionButton(page, locale, sourceSection);
-    await sourceButton.waitFor({ state: "visible" });
-    await waitForAccountSectionButtonHandler(page, sourceButton);
-    expect(await sourceButton.count()).toBe(1);
-    expect(await sourceButton.getAttribute("aria-current")).toBe("page");
+    const sourceLink = accountSectionLink(page, locale, sourceSection);
+    await sourceLink.waitFor({ state: "visible" });
+    await waitForReactClickHandler(page, sourceLink);
+    expect(await sourceLink.count()).toBe(1);
+    expect(await sourceLink.getAttribute("aria-current")).toBe("page");
 
     await captureShellReferences(page);
     const initialGeometry = await readGeometry(page);
@@ -1252,15 +790,14 @@ const runPrivateContinuity = async (
 
     const forward = await holdRscNavigation(
       page,
-      accountToLegal ? `/${locale}/account/legal` : `/${locale}/account`,
-      accountToLegal ? undefined : "profile"
+      getAccountSectionPath(locale, targetSection)
     );
     try {
-      const targetButton = accountSectionButton(page, locale, targetSection);
-      await targetButton.waitFor({ state: "visible" });
-      await waitForAccountSectionButtonHandler(page, targetButton);
-      expect(await targetButton.count()).toBe(1);
-      await targetButton.click();
+      const targetLink = accountSectionLink(page, locale, targetSection);
+      await targetLink.waitFor({ state: "visible" });
+      await waitForReactClickHandler(page, targetLink);
+      expect(await targetLink.count()).toBe(1);
+      await targetLink.click();
       await forward.waitForIntercept();
       assertShellContinuity(
         await inspectShellContinuity(page),
@@ -1271,21 +808,20 @@ const runPrivateContinuity = async (
       if (accountToLegal) {
         await page.waitForURL(`${fixture.serverUrl}/${locale}/account/legal`);
         await waitForPublicLegalContent(page, locale);
-        await assertAccountNavigationControls(page, locale, mode);
+        await assertAccountNavigationControls(page, locale, mode, true);
         if (mode === "mobile") {
           await assertMobileLegalScroll(page);
           await restoreTopScroll(page);
         }
       } else {
         await page.waitForURL(
-          (url) =>
-            url.pathname === `/${locale}/account` &&
-            url.searchParams.get("section") === "profile"
+          new URL(getAccountSectionPath(locale, "profile"), fixture.serverUrl)
+            .href
         );
         await page
           .locator('[data-testid="synthetic-private-content"]')
           .waitFor({ state: "visible" });
-        await assertAccountNavigationControls(page, locale, mode);
+        await assertAccountNavigationControls(page, locale, mode, true);
       }
       await page
         .locator(accountContentLoadingSelector)
@@ -1323,25 +859,34 @@ const assertAnonymousLegalRoute = async (
     expect(await page.locator(accountHeaderSelector).count()).toBe(1);
     expect(await page.locator(accountNavigationSelector).count()).toBe(1);
     await assertGlobalHeaderGeometry(page);
-    await assertAccountNavigationControls(page, locale, "mobile");
+    await assertAccountNavigationControls(page, locale, "mobile", false);
     await assertMobileLegalScroll(page);
     await restoreTopScroll(page);
 
     const navigation = accountNavigation(page, locale);
-    for (const [section, label] of Object.entries(
-      accountSectionLabels(locale)
-    )) {
+    for (const section of continuitySections) {
+      const label = accountSectionLabel(section, locale);
+      const links = navigation.getByRole("link", {
+        exact: true,
+        includeHidden: true,
+        name: label,
+      });
       const buttons = navigation.getByRole("button", {
         exact: true,
         includeHidden: true,
         name: label,
       });
-      expect(await buttons.count()).toBe(2);
-      const disabledStates = await buttons.evaluateAll((elements) =>
-        elements.map((element) => (element as HTMLButtonElement).disabled)
-      );
-      for (const disabled of disabledStates) {
-        expect(disabled).toBe(section !== "legal");
+      if (section === "legal") {
+        expect(await links.count()).toBe(2);
+        expect(await buttons.count()).toBe(0);
+      } else {
+        expect(await links.count()).toBe(0);
+        expect(await buttons.count()).toBe(2);
+        expect(
+          await buttons.evaluateAll((elements) =>
+            elements.every((element) => (element as HTMLButtonElement).disabled)
+          )
+        ).toBe(true);
       }
     }
   } finally {
@@ -1349,506 +894,146 @@ const assertAnonymousLegalRoute = async (
   }
 };
 
-const assertSignedInRolloutOffLegalRoute = async (
+const isSignInPathname = (url: string) =>
+  /\/auth\/sign-in\/?$/.test(new URL(url).pathname);
+
+/** Opens an account path, recording every request on the way to sign-in. */
+const openAccountPath = async (
   fixture: AccountLegalFixture,
-  locale: Locale
+  path: string,
+  { signedIn }: { readonly signedIn: boolean }
 ) => {
   const context = await openFixtureContext(fixture, {
-    extraHTTPHeaders: {
-      [accountFixtureAuthHeader]: "private",
-      [accountFixtureMarketingLinkHeader]: accountFixtureMarketingLinkValue,
-      [accountFixtureRolloutHeader]: accountFixtureRolloutOffValue,
-    },
-    viewport: { height: 900, width: 375 },
+    viewport: { height: 900, width: 1440 },
+    ...(signedIn
+      ? { extraHTTPHeaders: { [accountFixtureAuthHeader]: "private" } }
+      : {}),
   });
   const page = await context.newPage();
+  const signInRequests: string[] = [];
+  page.on("request", (request) => {
+    if (isSignInPathname(request.url())) signInRequests.push(request.url());
+  });
+  const url = `${fixture.serverUrl}${path}`;
+  const response = await page.goto(url, { waitUntil: "load" });
+  return { context, page, response, signInRequests, url };
+};
+
+// The sections' layout renders the account page beside the path's own page,
+// so a signed-out account page's redirect to sign-in must never start for a
+// path the page finds missing. The fixture withholds Referrals and Sign-in &
+// security.
+const assertSectionPathNotFound = async (
+  fixture: AccountLegalFixture,
+  path: string,
+  { signedIn }: { readonly signedIn: boolean }
+) => {
+  const { context, page, response, signInRequests, url } =
+    await openAccountPath(fixture, path, { signedIn });
 
   try {
-    await page.goto(`${fixture.serverUrl}/${locale}/account/legal`, {
-      waitUntil: "domcontentloaded",
-    });
-    await waitForPublicLegalContent(page, locale);
-    await page.locator(accountHeaderSelector).waitFor({ state: "visible" });
-    await page.locator(accountNavigationSelector).waitFor({ state: "visible" });
-    await page.locator(siteHeaderSelector).waitFor({ state: "visible" });
-
-    const signOutButton = page.getByRole("button", {
-      exact: true,
-      name: m.accountSignOut({}, { locale }),
-    });
-    await signOutButton.waitFor({ state: "visible" });
-    expect(await signOutButton.count()).toBe(1);
-
-    const navigation = accountNavigation(page, locale);
-    for (const section of [
-      "reservations",
-      "profile",
-      "billing",
-      "danger",
-    ] as const) {
-      const buttons = navigation.getByRole("button", {
-        exact: true,
-        includeHidden: true,
-        name: accountSectionLabels(locale)[section],
-      });
-      expect(await buttons.count()).toBe(2);
-      expect(
-        await buttons.evaluateAll((elements) =>
-          elements.every((element) => (element as HTMLButtonElement).disabled)
-        )
-      ).toBe(true);
-    }
-
-    const legalButtons = navigation.getByRole("button", {
-      exact: true,
-      includeHidden: true,
-      name: accountSectionLabels(locale).legal,
-    });
-    expect(await legalButtons.count()).toBe(2);
-    expect(
-      await legalButtons.evaluateAll((elements) =>
-        elements.every((element) => !(element as HTMLButtonElement).disabled)
-      )
-    ).toBe(true);
-
-    const dedicatedLinkContent = page.locator(
-      '[data-marketing-preferences="pending-link"]'
+    const body = (await response?.text()) ?? "";
+    expect(isNotFoundPage(body)).toBe(true);
+    // Neither the account page nor its redirect to sign-in renders at all.
+    expect(body).not.toContain("synthetic-private-content");
+    expect(body).not.toContain("sign-in-loading");
+    await page.waitForFunction(
+      () => document.documentElement.dataset.fixtureHydrated === "true"
     );
-    await dedicatedLinkContent.waitFor({ state: "visible" });
-    expect(await dedicatedLinkContent.count()).toBe(1);
+    // A signed-out account page starts its redirect once it hydrates, which
+    // the dev server can take seconds to reach.
+    await expect(
+      page.waitForURL(isSignInPathname, { timeout: signInRedirectWindow })
+    ).rejects.toThrow();
+    expect(page.url()).toBe(url);
+    expect(signInRequests).toEqual([]);
     expect(
-      await page
-        .getByText(m.marketingPreferencesFormPendingDescription({}, { locale }), {
-          exact: true,
-        })
-        .count()
-    ).toBe(1);
-    await assertGlobalHeaderGeometry(page);
-    await assertAccountNavigationControls(page, locale, "mobile");
-    await assertMobileLegalScroll(page);
-    await restoreTopScroll(page);
+      await page.locator('[data-testid="synthetic-private-content"]').count()
+    ).toBe(0);
+    expect(await page.locator('[data-slot="sign-in-loading"]').count()).toBe(0);
   } finally {
     await closeFixtureContext(fixture, context);
   }
 };
 
-const accountFixtureStartupTimeout = 180_000;
-const accountFixtureCaseTimeout = 90_000;
-
-const startAccountLegalFixture = async ({
-  realCookieConsent = false,
-}: AccountLegalFixtureOptions = {}): Promise<AccountLegalFixture> => {
-  await mkdir(fixtureParent, { recursive: true });
-  const fixtureRoot = await mkdtemp(
-    join(fixtureParent, "deskohub-account-legal-")
-  );
-  const serverUrl = `http://localhost:${accountLegalPort}`;
-  const exited = { value: false };
-  const contexts = new Set<BrowserContext>();
-  let server: ReturnType<typeof Bun.spawn> | undefined;
-  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
-  let serverReady = false;
-  let closePromise: Promise<void> | undefined;
-
-  const close = async () => {
-    if (closePromise !== undefined) return closePromise;
-
-    closePromise = (async () => {
-      await closeRemainingFixtureContexts(contexts);
-      try {
-        await browser?.close();
-      } catch {
-        // Cleanup must continue if a failed test already closed the browser.
-      }
-
-      try {
-        if (server) {
-          if (!exited.value) server.kill();
-          await server.exited;
-          if (serverReady)
-            await waitForServerToStop(`${serverUrl}/en-US/account`);
-        }
-      } finally {
-        await rm(fixtureRoot, { force: true, recursive: true });
-      }
-    })();
-
-    return closePromise;
-  };
+const assertAnonymousSectionPathSignsIn = async (
+  fixture: AccountLegalFixture,
+  path: string
+) => {
+  const { context, page } = await openAccountPath(fixture, path, {
+    signedIn: false,
+  });
 
   try {
-    await writeFixture(fixtureRoot, { realCookieConsent });
-    const nextCli = resolve(appRoot, "node_modules/next/dist/bin/next");
-    server = Bun.spawn(
-      ["node", nextCli, "dev", "--webpack", "--port", String(accountLegalPort)],
-      {
-        cwd: fixtureRoot,
-        env: {
-          HOME: process.env.HOME ?? "/tmp",
-          NEXT_TELEMETRY_DISABLED: "1",
-          PATH: process.env.PATH ?? "",
-        },
-        stderr: "inherit",
-        stdout: "inherit",
-      }
-    );
-    void server.exited.then(() => {
-      exited.value = true;
-    });
-
-    await waitForServer(
-      `${serverUrl}/en-US/account?section=profile`,
-      exited,
-      accountFixtureStartupTimeout
-    );
-    serverReady = true;
-    await warmFixtureRoutes(
-      serverUrl,
-      realCookieConsent
-        ? supportedLocales.map((locale) => `/${locale}/consent-waypoint`)
-        : []
-    );
-    const launchedBrowser = await chromium.launch({ headless: true });
-    browser = launchedBrowser;
-
-    return {
-      browser: launchedBrowser,
-      close,
-      contexts,
-      serverUrl,
-    };
-  } catch (error) {
-    await close();
-    throw error;
+    await page.waitForURL(isSignInPathname);
+    expect(new URL(page.url()).pathname).toBe("/en-US/auth/sign-in");
+  } finally {
+    await closeFixtureContext(fixture, context);
   }
 };
 
-const requireFixture = (fixture: AccountLegalFixture | undefined) => {
-  if (fixture === undefined) {
-    throw new Error("account legal fixture did not start");
-  }
-  return fixture;
-};
+const signInRedirectWindow = 5_000;
+
+const missingSectionPaths = [
+  "/en-US/account/unknown",
+  "/en-US/account/security",
+  "/en-US/account/referrals",
+] as const;
 
 describe("account legal continuity browser fixture", () => {
-  let fixture: AccountLegalFixture | undefined;
+  const requireFixture = registerAccountLegalFixture();
 
-  beforeAll(async () => {
-    fixture = await startAccountLegalFixture();
-  }, accountFixtureStartupTimeout);
-
-  afterEach(async () => {
-    if (fixture) await closeRemainingFixtureContexts(fixture.contexts);
-  });
-
-  afterAll(async () => {
-    const currentFixture = fixture;
-    fixture = undefined;
-    await currentFixture?.close();
-  });
-
-  for (const locale of supportedLocales) {
-    for (const { height, name, width } of viewports) {
-      for (const direction of [
-        "account-to-legal",
-        "legal-to-account",
-      ] as const) {
-        test(`keeps ${locale} ${name} account chrome continuous for ${direction} held RSC navigation`, {
-          timeout: accountFixtureCaseTimeout,
-        }, async () => {
-          await runPrivateContinuity(
-            requireFixture(fixture),
-            { height, width },
-            locale,
-            direction
-          );
-        });
-      }
-    }
-
-    test(`keeps anonymous ${locale} legal route usable`, {
-      timeout: accountFixtureCaseTimeout,
-    }, async () => {
-      await assertAnonymousLegalRoute(requireFixture(fixture), locale);
-    });
-
-    test(`keeps signed-in ${locale} public legal usable when the account rollout is off`, {
-      timeout: accountFixtureCaseTimeout,
-    }, async () => {
-      await assertSignedInRolloutOffLegalRoute(requireFixture(fixture), locale);
-    });
-  }
-});
-
-const realCookieConsentLocale = "en-US" as const;
-const realCookieConsentViewports = [
-  { height: 900, name: "desktop 1440", width: 1440 },
-  { height: 900, name: "mobile 375", width: 375 },
-] as const;
-const realCookieConsentCategoryTitles = {
-  necessary: m.cookieSettingsNecessaryTitle(
-    {},
-    { locale: realCookieConsentLocale }
-  ),
-  analytics: m.cookieSettingsAnalyticsTitle(
-    {},
-    { locale: realCookieConsentLocale }
-  ),
-  marketing: m.cookieSettingsMarketingTitle(
-    {},
-    { locale: realCookieConsentLocale }
-  ),
-  preferences: m.cookieSettingsPreferencesTitle(
-    {},
-    { locale: realCookieConsentLocale }
-  ),
-} as const;
-const realCookieBrowserActionTimeout = 15_000;
-
-const realCookieSwitch = (page: Page, category: CookieCategory) =>
-  page.getByRole("switch", {
-    exact: true,
-    name: realCookieConsentCategoryTitles[category],
-  });
-
-const expectRealCookieSwitchState = async (
-  page: Page,
-  category: CookieCategory,
-  checked: boolean
-) => {
-  await expectLocator(realCookieSwitch(page, category)).toHaveAttribute(
-    "aria-checked",
-    checked ? "true" : "false"
-  );
-};
-
-const toggleRealCookieCategory = async (
-  page: Page,
-  category: Exclude<CookieCategory, "necessary">,
-  checked: boolean
-) => {
-  const categorySwitch = realCookieSwitch(page, category);
-  const expectedChecked = checked ? "true" : "false";
-
-  // A click can be lost when it lands while the previous consent update is
-  // still re-rendering the category cards; retry against the fresh node.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await waitForCookieSwitchHandler(page, category);
-    await expectLocator(categorySwitch).toBeEnabled();
-    // Playwright's locator activation sends a trusted browser interaction;
-    // no evaluated DOM click or consent-cookie value is written here.
-    await categorySwitch.click({
-      timeout: realCookieBrowserActionTimeout,
-    });
-    try {
-      await expectLocator(categorySwitch).toHaveAttribute(
-        "aria-checked",
-        expectedChecked,
-        { timeout: 5_000 }
-      );
-      break;
-    } catch (error) {
-      if (attempt === 2) throw error;
-    }
-  }
-
-  // Settle: the card's pending state has cleared and the handler is reattached
-  // before the next trusted click.
-  await waitForCookieSwitchHandler(page, category);
-  await expectLocator(categorySwitch).toBeEnabled();
-};
-
-const navigateToConsentWaypointAndBack = async (
-  page: Page,
-  serverUrl: string
-) => {
-  const localePath = `/${realCookieConsentLocale}`;
-  const mobileMenuButton = page.getByRole("button", {
-    exact: true,
-    name: m.openNavigationMenuLabel({}, { locale: realCookieConsentLocale }),
-  });
-  if (await mobileMenuButton.isVisible()) {
-    await mobileMenuButton.click({
-      timeout: realCookieBrowserActionTimeout,
-    });
-  }
-
-  const contactLink = page.getByRole("banner").getByRole("link", {
-    exact: true,
-    name: "Contact",
-  });
-  await contactLink.click({ timeout: realCookieBrowserActionTimeout });
-  await page.waitForURL(`${serverUrl}${localePath}/consent-waypoint`);
-  await page
-    .getByRole("heading", { name: "Synthetic consent waypoint" })
-    .waitFor({ state: "visible" });
-
-  const backLink = page.getByRole("link", {
-    exact: true,
-    name: "Back to public legal",
-  });
-  await backLink.click({ timeout: realCookieBrowserActionTimeout });
-  await page.waitForURL(`${serverUrl}${localePath}/account/legal`);
-};
-
-// Local red assertion isolated from the shared helper source: the retired
-// expectation required visible accept-all/reject-all bulk buttons on the
-// public legal screen. Production public legal markup keeps those bulk
-// buttons out of the account legal main content, so this must fail.
-const assertLegacyBulkButtonsVisible = async (page: Page) => {
-  const accountMain = page.getByRole("main");
-  await expectLocator(
-    accountMain.getByRole("button", {
-      exact: true,
-      name: m.cookieSettingsAcceptAll({}, { locale: realCookieConsentLocale }),
-    })
-  ).toBeVisible();
-  await expectLocator(
-    accountMain.getByRole("button", {
-      exact: true,
-      name: m.cookieSettingsRejectAll({}, { locale: realCookieConsentLocale }),
-    })
-  ).toBeVisible();
-};
-
-const expectAssertionFailure = async (
-  assert: () => Promise<void>
-): Promise<string> => {
-  try {
-    await assert();
-  } catch (error) {
-    return error instanceof Error ? error.message : String(error);
-  }
-  throw new Error("expected legacy assertion to fail against public legal");
-};
-
-const runRealCookieConsentContinuity = async (
-  fixture: AccountLegalFixture,
-  viewport: Viewport
-) => {
-  const context = await openFixtureContext(fixture, { viewport });
-  // Emulate an ordinary browser so the real vendor hydration runs exactly as
-  // it does for human visitors (the vendor skips cookie hydration under
-  // navigator.webdriver); no cookies are injected and no auth is bypassed.
-  await preparePublicLegalBrowser(context);
-  const page = await context.newPage();
-
-  try {
-    await expectNoAuthSessionCookie(context);
-    await page.goto(
-      `${fixture.serverUrl}/${realCookieConsentLocale}/account/legal`,
-      { waitUntil: "domcontentloaded" }
-    );
-    await page
-      .locator('[data-fixture-hydrated="true"]')
-      .waitFor({ state: "attached" });
-    await dismissLegalCookieConsent(page, realCookieConsentLocale);
-    await expectPublicAccountLegal(page);
-
-    await toggleRealCookieCategory(page, "preferences", true);
-    await toggleRealCookieCategory(page, "analytics", true);
-    await toggleRealCookieCategory(page, "marketing", true);
-    await expectRealCookieSwitchState(page, "necessary", true);
-    await expectLocator(realCookieSwitch(page, "necessary")).toBeDisabled();
-
-    await navigateToConsentWaypointAndBack(page, fixture.serverUrl);
-    await page
-      .getByRole("heading", {
-        exact: true,
-        level: 2,
-        name: m.accountLegalTitle({}, { locale: realCookieConsentLocale }),
-      })
-      .waitFor({ state: "visible" });
-    for (const category of ["analytics", "marketing", "preferences"] as const) {
-      await expectRealCookieSwitchState(page, category, true);
-    }
-
-    await page.reload({ waitUntil: "load" });
-    await dismissLegalCookieConsent(page, realCookieConsentLocale);
-    for (const category of ["analytics", "marketing", "preferences"] as const) {
-      await expectRealCookieSwitchState(page, category, true);
-    }
-    await expectRealCookieSwitchState(page, "necessary", true);
-    await expectLocator(realCookieSwitch(page, "necessary")).toBeDisabled();
-
-    await toggleRealCookieCategory(page, "analytics", false);
-    await expectRealCookieSwitchState(page, "marketing", true);
-    await expectRealCookieSwitchState(page, "preferences", true);
-
-    await toggleRealCookieCategory(page, "marketing", false);
-    await expectRealCookieSwitchState(page, "preferences", true);
-
-    await toggleRealCookieCategory(page, "preferences", false);
-    await expectRealCookieSwitchState(page, "necessary", true);
-    await expectLocator(realCookieSwitch(page, "necessary")).toBeDisabled();
-    await expectNoAuthSessionCookie(context);
-  } finally {
-    await closeFixtureContext(fixture, context);
-  }
-};
-
-describe("account legal continuity real cookie consent fixture", () => {
-  let fixture: AccountLegalFixture | undefined;
-
-  beforeAll(async () => {
-    fixture = await startAccountLegalFixture({ realCookieConsent: true });
-  }, accountFixtureStartupTimeout);
-
-  afterEach(async () => {
-    if (fixture) await closeRemainingFixtureContexts(fixture.contexts);
-  });
-
-  afterAll(async () => {
-    const currentFixture = fixture;
-    fixture = undefined;
-    await currentFixture?.close();
-  });
-
-  test("fails the retired bulk-button assertion and passes the migrated helper on real public legal", {
+  test("keeps the bare account URL when active Reservations is clicked", {
     timeout: accountFixtureCaseTimeout,
   }, async () => {
-    const currentFixture = requireFixture(fixture);
-    const context = await openFixtureContext(currentFixture, {
-      viewport: { height: 900, width: 1440 },
-    });
-    // Same ordinary-browser emulation as the migrated preview test so the
-    // real vendor hydrates; no cookies are injected and no auth is bypassed.
-    await preparePublicLegalBrowser(context);
-    const page = await context.newPage();
-
-    try {
-      await page.goto(
-        `${currentFixture.serverUrl}/${realCookieConsentLocale}/account/legal`,
-        { waitUntil: "domcontentloaded" }
-      );
-      await page
-        .locator('[data-fixture-hydrated="true"]')
-        .waitFor({ state: "attached" });
-      await dismissLegalCookieConsent(page, realCookieConsentLocale);
-
-      const legacyFailure = await expectAssertionFailure(() =>
-        assertLegacyBulkButtonsVisible(page)
-      );
-      expectLocator(legacyFailure).toContain(
-        m.cookieSettingsAcceptAll({}, { locale: realCookieConsentLocale })
-      );
-
-      // The migrated shared helper must pass against the same production
-      // public legal markup with the real consent provider mounted.
-      await expectPublicAccountLegal(page);
-    } finally {
-      await closeFixtureContext(currentFixture, context);
-    }
+    await assertBareReservationsClickIsNoop(requireFixture(), "en-US");
   });
 
-  for (const { height, name, width } of realCookieConsentViewports) {
-    test(`keeps ${name} real cookie switches persistent across navigation and reload`, {
+  for (const { locale, viewport } of continuityCases) {
+    const { height, name, width } = viewport;
+    for (const direction of ["account-to-legal", "legal-to-account"] as const) {
+      test(`keeps ${locale} ${name} account chrome continuous for ${direction} held RSC navigation`, {
+        timeout: accountFixtureCaseTimeout,
+      }, async () => {
+        await runPrivateContinuity(
+          requireFixture(),
+          { height, width },
+          locale,
+          direction
+        );
+      });
+    }
+  }
+
+  for (const path of missingSectionPaths) {
+    for (const signedIn of [false, true]) {
+      test(`shows ${signedIn ? "a signed-in" : "an anonymous"} visitor not found at ${path}`, {
+        timeout: accountFixtureCaseTimeout,
+      }, async () => {
+        await assertSectionPathNotFound(requireFixture(), path, { signedIn });
+      });
+    }
+  }
+
+  for (const path of ["/en-US/account", "/en-US/account/profile"]) {
+    test(`keeps client state through a revalidating action after switching from ${path}`, {
       timeout: accountFixtureCaseTimeout,
     }, async () => {
-      await runRealCookieConsentContinuity(requireFixture(fixture), {
-        height,
-        width,
-      });
+      await assertDraftSurvivesRevalidationAfterSwitch(requireFixture(), path);
     });
   }
+
+  for (const path of ["/en-US/account", "/en-US/account/profile"]) {
+    test(`sends an anonymous visitor at ${path} to sign-in`, {
+      timeout: accountFixtureCaseTimeout,
+    }, async () => {
+      await assertAnonymousSectionPathSignsIn(requireFixture(), path);
+    });
+  }
+
+  test("keeps anonymous cs-CZ legal route usable", {
+    timeout: accountFixtureCaseTimeout,
+  }, async () => {
+    await assertAnonymousLegalRoute(requireFixture(), "cs-CZ");
+  });
 });

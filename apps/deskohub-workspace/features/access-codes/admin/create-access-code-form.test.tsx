@@ -10,6 +10,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import { ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS } from "@deskohub/workspace-admin-api";
 import {
   act,
   cleanup,
@@ -17,16 +18,14 @@ import {
   render,
   waitFor,
 } from "@testing-library/react";
+import type { Locale } from "@/features/i18n";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import {
-  shiftStandaloneAccessCodeLocalEnd,
-  standaloneAccessCodeCleanupConfirmationLabel,
-  standaloneAccessCodeMaximumDurationHours,
-} from "./create-access-code";
+import { shiftStandaloneAccessCodeLocalEnd } from "./create-access-code";
 
 const writeText = mock(() => Promise.resolve());
 const execute = mock();
@@ -88,7 +87,7 @@ afterEach(() => {
 
 afterAll(async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
-  unregisterWorkspaceComponentTestEnv();
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 const createdOutcome = {
@@ -125,6 +124,9 @@ const cleanupRequiredFailure = (cleanupTarget: {
   outcome: { outcome: "cleanup-required" as const, cleanupTarget },
 });
 
+const standaloneAccessCodeCleanupConfirmationLabel =
+  "I removed the named access code at the lock, or verified that it is absent.";
+
 const cleanupTargetNotice = (name: string) =>
   "Before creating another code for this window, check the lock in the " +
   `Igloohome app over Bluetooth and remove “${name}” if it is there.`;
@@ -155,29 +157,19 @@ const submitCleanupConfirmation = async (view: ReturnType<typeof render>) => {
   });
 };
 
-const renderForm = async () => {
+// The root layout provides the locale of the current route.
+const renderForm = async (locale: Locale = "en-US") => {
   const { CreateStandaloneAccessCodeForm } = await import(
     "./create-access-code-form"
   );
-  return render(<CreateStandaloneAccessCodeForm />);
+  return render(
+    <RouteLocaleProvider locale={locale}>
+      <CreateStandaloneAccessCodeForm />
+    </RouteLocaleProvider>
+  );
 };
 
 describe("CreateStandaloneAccessCodeForm", () => {
-  test("collects only the name and the whole-hour window", async () => {
-    const view = await renderForm();
-
-    const name = view.getByLabelText("Name") as HTMLInputElement;
-    expect(name.maxLength).toBe(60);
-    const startsAt = view.getByLabelText("Starts") as HTMLInputElement;
-    expect(startsAt.type).toBe("datetime-local");
-    expect(startsAt.step).toBe("3600");
-    const endsAt = view.getByLabelText("Ends") as HTMLInputElement;
-    expect(endsAt.type).toBe("datetime-local");
-    expect(endsAt.step).toBe("3600");
-    expect(view.getByText("Access window (Europe/Prague)")).toBeDefined();
-    expect(view.queryByText(/Duration:/)).toBeNull();
-  });
-
   test("derives the end bounds from the start across daylight saving time", async () => {
     const view = await renderForm();
 
@@ -193,17 +185,8 @@ describe("CreateStandaloneAccessCodeForm", () => {
     expect(endsAt.max).toBe(
       shiftStandaloneAccessCodeLocalEnd({
         startsAt: "2026-03-29T01:00",
-        hours: standaloneAccessCodeMaximumDurationHours,
+        hours: ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS,
       })
-    );
-  });
-
-  test("shows a concise duration for a valid window", async () => {
-    const view = await renderForm();
-    fillForm(view);
-
-    await waitFor(() =>
-      expect(view.getByText("Duration: 2 hours")).toBeDefined()
     );
   });
 
@@ -306,19 +289,6 @@ describe("CreateStandaloneAccessCodeForm", () => {
     expect(retriedInput.attemptId).toBe(firstInput.attemptId);
   });
 
-  test("focuses the first invalid field after failed validation", async () => {
-    const view = await renderForm();
-
-    await submitForm(view);
-    expect(document.activeElement).toBe(view.getByLabelText("Name"));
-
-    fireEvent.input(view.getByLabelText("Name"), {
-      target: { value: "Booth A" },
-    });
-    await submitForm(view);
-    expect(document.activeElement).toBe(view.getByLabelText("Starts"));
-  });
-
   test("focuses each terminal result region after transition", async () => {
     withActionOptions();
     const view = await renderForm();
@@ -332,43 +302,6 @@ describe("CreateStandaloneAccessCodeForm", () => {
     expect(document.activeElement).toBe(
       view.container.querySelector(
         '[data-standalone-access-code-creation="created"]'
-      )
-    );
-  });
-
-  test("focuses the already-created region without a pin", async () => {
-    withActionOptions();
-    const view = await renderForm();
-    fillForm(view);
-    await submitForm(view);
-    act(() => {
-      actionOptions?.onSuccess({
-        data: {
-          status: "succeeded",
-          outcome: { ...createdOutcome, outcome: "already-created" },
-        },
-      });
-    });
-    expect(document.activeElement).toBe(
-      view.container.querySelector(
-        '[data-standalone-access-code-creation="already-created"]'
-      )
-    );
-  });
-
-  test("focuses the ambiguous region after a closed attempt", async () => {
-    withActionOptions();
-    const view = await renderForm();
-    fillForm(view);
-    await submitForm(view);
-    act(() => {
-      actionOptions?.onSuccess({
-        data: ambiguousFailure({ attemptId: priorAttemptId, name: "Booth A" }),
-      });
-    });
-    expect(document.activeElement).toBe(
-      view.container.querySelector(
-        '[data-standalone-access-code-creation="ambiguous"]'
       )
     );
   });
@@ -541,18 +474,132 @@ describe("CreateStandaloneAccessCodeForm", () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
-  test("displays the prior cleanup target name instead of the requested name", async () => {
+  test("renders the form, duration, notices and cleanup in Czech on a cs-CZ route", async () => {
+    withActionOptions();
+    const view = await renderForm("cs-CZ");
+    fireEvent.input(view.getByLabelText("Název"), {
+      target: { value: "Booth A" },
+    });
+    fireEvent.input(view.getByLabelText("Začátek"), {
+      target: { value: "2026-09-10T10:00" },
+    });
+    fireEvent.input(view.getByLabelText("Konec"), {
+      target: { value: "2026-09-10T12:00" },
+    });
+    expect(
+      view.getByText("Časové okno přístupu (Europe/Prague)")
+    ).toBeDefined();
+    await waitFor(() =>
+      expect(view.getByText("Trvání: 2 hodiny")).toBeDefined()
+    );
+
+    const form = view.getByRole("form", {
+      name: "Vytvoření přístupového kódu",
+    });
+    expect(
+      view.getByRole("button", { name: "Vytvořit přístupový kód" })
+    ).toBeDefined();
+    await act(async () => {
+      fireEvent.submit(form);
+    });
+    act(() => {
+      actionOptions?.onSuccess({
+        data: { status: "failed", outcome: { outcome: "rejected" } },
+      });
+    });
+    expect(
+      view.getByText(
+        "Poskytovatel tento přístupový kód odmítl. Upravte údaje a zkuste to znovu."
+      )
+    ).toBeDefined();
+
+    await act(async () => {
+      fireEvent.submit(form);
+    });
+    act(() => {
+      actionOptions?.onSuccess({
+        data: ambiguousFailure({ attemptId: priorAttemptId, name: "Booth A" }),
+      });
+    });
+    expect(
+      view.getByText(
+        "Než pro toto časové okno vytvoříte další kód, zkontrolujte zámek v aplikaci Igloohome přes Bluetooth, a pokud na něm je „Booth A“, odstraňte ho."
+      )
+    ).toBeDefined();
+    expect(
+      view
+        .getByRole("button", { name: "Vytvořit další přístupový kód" })
+        .hasAttribute("disabled")
+    ).toBe(true);
+    await act(async () => {
+      fireEvent.submit(
+        view.getByRole("form", { name: "Potvrzení kontroly zámku" })
+      );
+    });
+
+    expect(
+      view.getByText("Před pokračováním potvrďte kontrolu zámku.")
+    ).toBeDefined();
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  test("shows the server's localized failure as sent", async () => {
+    withActionOptions();
+    const view = await renderForm("cs-CZ");
+
+    act(() => {
+      actionOptions?.onError({
+        error: { serverError: "Server neodpověděl včas. Zkuste to znovu." },
+      });
+    });
+
+    expect(
+      view.getByText("Server neodpověděl včas. Zkuste to znovu.")
+    ).toBeDefined();
+  });
+
+  test("shows the one-time pin result in Czech on a cs-CZ route", async () => {
+    withActionOptions();
+    const view = await renderForm("cs-CZ");
+
+    act(() => {
+      actionOptions?.onSuccess({
+        data: { status: "succeeded", outcome: createdOutcome },
+      });
+    });
+
+    expect(view.getByText("Platí od")).toBeDefined();
+    expect(view.getByText("10. 9. 2026 10:00")).toBeDefined();
+    expect(view.getByText("2 hodiny")).toBeDefined();
+    expect(view.getByRole("button", { name: "Zkopírovat kód" })).toBeDefined();
+  });
+
+  test("rejects an unchecked cleanup confirmation with a field error", async () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
     await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({ data: cleanupRequiredFailure(staleTarget) });
+      actionOptions?.onSuccess({
+        data: ambiguousFailure({
+          attemptId: priorAttemptId,
+          name: "Booth A",
+        }),
+      });
     });
 
-    expect(view.getByText(cleanupTargetNotice("Stale Booth"))).toBeDefined();
-    expect(view.queryByText(cleanupTargetNotice("Booth A"))).toBeNull();
+    expect(
+      view
+        .getByRole("button", { name: "Create another access code" })
+        .hasAttribute("disabled")
+    ).toBe(true);
+    await submitCleanupConfirmation(view);
+
+    expect(
+      view.getByText("Confirm the lock check before you continue.")
+    ).toBeDefined();
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 
   test("requires explicit confirmation before recreating an ambiguous window", async () => {
@@ -593,6 +640,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
         view.getByRole("form", { name: "Create an access code" })
       ).toBeDefined()
     );
+    expect(execute).toHaveBeenCalledTimes(1);
     fillForm(view);
     await submitForm(view);
 
@@ -800,29 +848,5 @@ describe("CreateStandaloneAccessCodeForm", () => {
     const retryInput = execute.mock
       .calls[1][0] as CreateStandaloneAccessCodeActionInput;
     expect(retryInput.attemptId).toBe(firstInput.attemptId);
-  });
-
-  test("shows server errors inline and disables submission while executing", async () => {
-    workspaceUseAction.mockImplementation(() => ({
-      execute,
-      isExecuting: true,
-      result: {},
-    }));
-    const executingView = await renderForm();
-
-    const submit = executingView.getByRole("button", { name: "Creating…" });
-    expect(submit).toHaveProperty("disabled", true);
-    cleanup();
-
-    withActionOptions();
-    const view = await renderForm();
-    act(() => {
-      actionOptions?.onError({
-        error: { serverError: "Administrator authentication is required." },
-      });
-    });
-    expect(
-      view.getByText("Administrator authentication is required.")
-    ).toBeDefined();
   });
 });

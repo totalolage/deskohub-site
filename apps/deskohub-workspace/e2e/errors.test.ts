@@ -1,65 +1,57 @@
 import { expect, test } from "bun:test";
-import { Cause, Effect, Exit, Fiber } from "effect";
+import { Effect } from "effect";
 import {
+  describeBrowserFailure,
   isWorkspaceE2ETimeout,
-  tryWorkspaceE2EPromise,
-  withWorkspaceE2EDiagnosticCode,
+  withoutWorkspaceE2ETimeout,
   workspaceE2EError,
   workspaceE2ETimeoutError,
 } from "./errors";
 
-test("aborts an in-flight promise when its fiber is interrupted", async () => {
-  let signal: AbortSignal | undefined;
-
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const fiber = yield* Effect.forkChild(
-        tryWorkspaceE2EPromise("wait forever", (abortSignal) => {
-          signal = abortSignal;
-          return new Promise<never>(() => undefined);
-        })
-      );
-      yield* Effect.yieldNow;
-      yield* Fiber.interrupt(fiber);
-    })
+test("describes a browser failure by its first line without its URLs", () => {
+  expect(
+    describeBrowserFailure(
+      new Error(
+        "page.waitForFunction: Target page, context or browser has been closed at https://preview.example.test/en-US/account?token=secret\nCall log:\n  - waiting"
+      )
+    )
+  ).toBe(
+    "Error: page.waitForFunction: Target page, context or browser has been closed at [url]"
   );
-
-  expect(signal?.aborted).toBe(true);
+  expect(describeBrowserFailure(new TypeError("x".repeat(40)))).toBe(
+    "TypeError: [token]"
+  );
+  expect(describeBrowserFailure("a thrown string")).toBe(
+    "failure: a thrown string"
+  );
 });
 
-test("adds a fixed diagnostic code without changing timeout classification", async () => {
-  const original = workspaceE2ETimeoutError("checkout state unavailable", {
-    operation: "wait for Postgres checkout state",
-  });
-  const exit = await Effect.runPromiseExit(
-    Effect.fail(original).pipe(
-      withWorkspaceE2EDiagnosticCode("postgres_checkout_row_convergence_failed")
+test("reports a timeout as an ordinary failure of the operation", async () => {
+  const [timedOut, failed] = await Effect.runPromise(
+    Effect.all(
+      [
+        workspaceE2ETimeoutError("read the viewport timed out", {
+          operation: "read the viewport",
+        }),
+        workspaceE2EError("read the viewport failed", {
+          diagnosticCode: "provider_session_row_read_failed_after_redirect",
+          operation: "read the viewport",
+        }),
+      ].map((error) =>
+        Effect.flip(
+          Effect.fail(error).pipe(
+            withoutWorkspaceE2ETimeout("read the viewport")
+          )
+        )
+      )
     )
   );
 
-  expect(Exit.isFailure(exit)).toBe(true);
-  if (Exit.isSuccess(exit)) return;
-  const error = Cause.squash(exit.cause);
-  expect(error).toMatchObject({
-    diagnosticCode: "postgres_checkout_row_convergence_failed",
-    message: original.message,
-    operation: original.operation,
-    reason: "timeout",
-  });
-  expect(isWorkspaceE2ETimeout(error)).toBe(true);
-});
-
-test("keeps a more specific existing diagnostic code", async () => {
-  const original = workspaceE2EError("webhook failed", {
-    diagnosticCode: "nexi_webhook_verification_failed",
-  });
-  const exit = await Effect.runPromiseExit(
-    Effect.fail(original).pipe(
-      withWorkspaceE2EDiagnosticCode("postgres_checkout_row_convergence_failed")
-    )
+  expect(isWorkspaceE2ETimeout(timedOut)).toBe(false);
+  expect(timedOut?.operation).toBe("read the viewport");
+  expect(timedOut?.diagnosticCode).toBeUndefined();
+  // Other failures pass through untouched.
+  expect(failed?.diagnosticCode).toBe(
+    "provider_session_row_read_failed_after_redirect"
   );
-
-  expect(Exit.isFailure(exit)).toBe(true);
-  if (Exit.isSuccess(exit)) return;
-  expect(Cause.squash(exit.cause)).toBe(original);
 });

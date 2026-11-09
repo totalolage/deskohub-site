@@ -6,10 +6,6 @@ import {
 } from "@/features/checkout/product-catalog";
 import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
 import { makeReservationQuoteSchema } from "@/features/checkout/reservation-quote-schema";
-import {
-  positiveWorkspaceMoneyCodec,
-  workspaceMoneyCodec,
-} from "@/features/checkout/workspace-money";
 import type { DiscountQuote } from "@/features/discounts/contracts";
 import {
   getOfficeReservationDayCount,
@@ -17,18 +13,16 @@ import {
   officeReservationDayCountSchema,
   officeSeatsSchema,
 } from "@/features/reservation/office-reservation";
+import { moneyCodec, positiveMoneyCodec } from "@/shared/money/money";
 
 export const officeReservationQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("office"),
   dayCount: officeReservationDayCountSchema,
   seats: officeSeatsSchema,
-  accessAmount: positiveWorkspaceMoneyCodec,
-  seatAmount: positiveWorkspaceMoneyCodec,
-  amount: workspaceMoneyCodec,
+  accessAmount: positiveMoneyCodec,
+  seatAmount: positiveMoneyCodec,
+  amount: moneyCodec,
 });
-
-export type OfficeReservationQuoteItem =
-  typeof officeReservationQuoteItemSchema.Type;
 
 export const officeReservationQuoteSchema = makeReservationQuoteSchema(
   Schema.Tuple([officeReservationQuoteItemSchema])

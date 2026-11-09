@@ -1,0 +1,201 @@
+{
+  "emailAutomationFlowCampaignSourceThis": "tato kampaň",
+  "emailAutomationFlowPeriodTriggerWindow": "do … od spouštěcí události",
+  "emailAutomationFlowPeriodTriggerWindowCountLabel": "{subject}: kolik jednotek od spouštěcí události",
+  "emailAutomationFlowPeriodTriggerWindowSide": [
+    {
+      "declarations": ["input side"],
+      "selectors": ["side"],
+      "match": {
+        "side=before": "před spouštěcí událostí",
+        "side=*": "po spouštěcí události"
+      }
+    }
+  ],
+  "emailAutomationFlowPeriodTriggerWindowSideLabel": "{subject}: před spouštěcí událostí, nebo po ní",
+  "emailAutomationFlowPeriodWithin": "během",
+  "emailAutomationFlowSavedAudienceEmpty": "Žádné publikum neodpovídá.",
+  "emailAutomationFlowSavedAudienceLiveNote": "Použije publikum takové, jaké je ve chvíli, kdy běh dojde k tomuto kroku, takže úpravy publika platí pro probíhající běhy okamžitě.",
+  "emailAutomationFlowSavedAudienceMenuLabel": "Uložené publikum",
+  "emailAutomationFlowSavedAudienceMenuSection": "Uložená publika",
+  "emailAutomationFlowSavedAudienceOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=in": "je v uloženém publiku",
+        "operator=*": "není v uloženém publiku"
+      }
+    }
+  ],
+  "emailAutomationFlowSavedAudienceOperatorLabel": "Členství v uloženém publiku",
+  "emailAutomationFlowSavedAudiencePickerLabel": "Uložené publikum",
+  "emailAutomationFlowSavedAudiencePickerPlaceholder": "Vyberte publikum",
+  "emailAutomationFlowSavedAudienceRequired": "Vyberte uložené publikum.",
+  "emailAutomationFlowSavedAudienceSearch": "Hledat publika",
+  "emailAutomationFlowSavedAudienceUnknown": "Smazané publikum",
+  "emailAutomationFlowArchived": "Tato automatizace je archivovaná, takže její scénář nejde změnit.",
+  "emailAutomationFlowCalendarAddPart": "Přidat část",
+  "emailAutomationFlowCalendarLastDay": "Poslední den",
+  "emailAutomationFlowCalendarMinuteAdd": "Přidat minutu",
+  "emailAutomationFlowCalendarMinuteOther": "Jiná minuta",
+  "emailAutomationFlowCalendarNeverOccurs": "Tato kombinace v příštích osmi letech nenastane. Změňte některou z jejích částí.",
+  "emailAutomationFlowCalendarNextFires": "Nejbližší spuštění (pražský čas)",
+  "emailAutomationFlowCalendarOccurrence": [
+    {
+      "declarations": ["input occurrence"],
+      "selectors": ["occurrence"],
+      "match": {
+        "occurrence=1": "1.",
+        "occurrence=2": "2.",
+        "occurrence=3": "3.",
+        "occurrence=4": "4.",
+        "occurrence=5": "5.",
+        "occurrence=*": "poslední"
+      }
+    }
+  ],
+  "emailAutomationFlowCalendarOccurrenceAdd": "Přidat den v týdnu",
+  "emailAutomationFlowCalendarOccurrenceLabel": "Kolikátý v měsíci",
+  "emailAutomationFlowCalendarOccurrenceRemove": "Odebrat tento den v týdnu",
+  "emailAutomationFlowCalendarOccurrenceWeekdayLabel": "Den v týdnu",
+  "emailAutomationFlowCalendarPart": [
+    {
+      "declarations": ["input part"],
+      "selectors": ["part"],
+      "match": {
+        "part=minutes": "Minuta v hodině",
+        "part=hours": "Hodina dne",
+        "part=weekdays": "Den v týdnu",
+        "part=daysOfMonth": "Den v měsíci",
+        "part=weekdayOccurrences": "Den v týdnu v měsíci",
+        "part=weeksOfYear": "Týden v roce",
+        "part=*": "Měsíc v roce"
+      }
+    }
+  ],
+  "emailAutomationFlowCalendarPartLabel": "Část kalendáře",
+  "emailAutomationFlowCalendarPreviewUnavailable": "Popis teď není k dispozici. Zkuste to za chvíli znovu.",
+  "emailAutomationFlowCalendarRemovePart": "Odebrat: {part}",
+  "emailAutomationFlowCalendarRemoveValue": "Odebrat {value}",
+  "emailAutomationFlowCalendarWeekAdd": "Přidat týden",
+  "emailAutomationFlowCalendarWeekOther": "Číslo týdne",
+  "emailAutomationFlowCalendarWeekValue": "{week}. týden",
+  "emailAutomationFlowConditionDescription": "Běh pokračuje jen pro zákazníky, kteří v tu chvíli odpovídají. Pro ostatní tady skončí.",
+  "emailAutomationFlowConditionTitle": "Kontrola zákazníka",
+  "emailAutomationFlowDiscard": "Zahodit",
+  "emailAutomationFlowEventAccountCreatedDescription": "Nový zákazník si založí účet ve Workspace.",
+  "emailAutomationFlowEventBookedDescription": "Rezervace zákazníka je ve Workspace potvrzená.",
+  "emailAutomationFlowEventCancelledDescription": "Zákazník zruší rezervaci ve Workspace.",
+  "emailAutomationFlowEventFinishedDescription": "Uplynul konec rezervace zákazníka.",
+  "emailAutomationFlowEventKindLabel": "Která událost spouští běh",
+  "emailAutomationFlowEventProductHint": "Když ponecháte libovolný produkt, běh začne u každé rezervace.",
+  "emailAutomationFlowEventStartedDescription": "Uplynul začátek rezervace zákazníka.",
+  "emailAutomationFlowInsertCondition": "Podmínka",
+  "emailAutomationFlowInsertConditionDescription": "Zkontroluje zákazníka v tu chvíli.",
+  "emailAutomationFlowInsertLabel": "Přidat krok jako krok {position}",
+  "emailAutomationFlowInsertWait": "Čekání",
+  "emailAutomationFlowInsertWaitDescription": "Po určitou dobu nebo do určitého času.",
+  "emailAutomationFlowSave": "Uložit scénář",
+  "emailAutomationFlowSaveFailed": "Scénář se nepodařilo uložit. Zkuste to za chvíli znovu.",
+  "emailAutomationFlowSaveInvalid": "Takto scénář uložit nejde. Zkontrolujte zvýrazněné kroky.",
+  "emailAutomationFlowScheduleMinutesNotAllowed": "Plán může začínat jen v {minutes} každé hodiny. Vyberte jednu z těchto minut.",
+  "emailAutomationFlowSaving": "Ukládání…",
+  "emailAutomationFlowSendDescription": "Odešle e-mail této kampaně a ukončí běh.",
+  "emailAutomationFlowSendEditEmail": "Upravit e-mail",
+  "emailAutomationFlowSendSubjectLabel": "Předmět – {language}",
+  "emailAutomationFlowSendSubjectMissing": "V tomto jazyce zatím není obsah",
+  "emailAutomationFlowSendTitle": "Odeslání e-mailu",
+  "emailAutomationFlowStatusArchived": "Tato automatizace je archivovaná, takže její scénář jde jen zobrazit.",
+  "emailAutomationFlowStatusEmpty": "Tato automatizace zatím nemá scénář. Vyberte spouštěč a uložte.",
+  "emailAutomationFlowStatusPending": "Uloženo. <link>Udělejte náhled a aktivujte</link>, aby změny platily pro nové běhy.",
+  "emailAutomationFlowStatusPublished": "Odpovídá živé verzi.",
+  "emailAutomationFlowStatusUnsaved": "Neuložené změny",
+  "emailAutomationFlowStepDelete": "Smazat krok",
+  "emailAutomationFlowStepEyebrow": [
+    {
+      "declarations": ["input number", "input kind"],
+      "selectors": ["kind"],
+      "match": {
+        "kind=condition": "Krok {number} · Podmínka",
+        "kind=wait": "Krok {number} · Čekání",
+        "kind=*": "Krok {number} · Odeslání"
+      }
+    }
+  ],
+  "emailAutomationFlowStepMenuLabel": "Akce pro {step}",
+  "emailAutomationFlowStepMoveDown": "Posunout níž",
+  "emailAutomationFlowStepMoveUp": "Posunout výš",
+  "emailAutomationFlowTriggerChooseDescription": "Běh začne pro zákazníka při každém spuštění plánu nebo pokaždé, když vyvolá událost.",
+  "emailAutomationFlowTriggerChooseTitle": "Vyberte, co tuto automatizaci spouští",
+  "emailAutomationFlowTriggerEyebrow": "Spouštěč",
+  "emailAutomationFlowTriggerFamilyEvent": "Událost",
+  "emailAutomationFlowTriggerFamilyEventDescription": "Když zákazník zarezervuje, zruší, začne nebo dokončí rezervaci, nebo si založí účet.",
+  "emailAutomationFlowTriggerFamilyLabel": "Co spouští běh",
+  "emailAutomationFlowTriggerFamilySchedule": "Plán",
+  "emailAutomationFlowTriggerFamilyScheduleDescription": "V nastavených časech, pro všechny v publiku kampaně.",
+  "emailAutomationFlowTriggerRequired": "Vyberte, co tuto automatizaci spouští.",
+  "emailAutomationFlowWaitCountError": "Zadejte celé číslo od 1 do 9 999.",
+  "emailAutomationFlowWaitCountLabel": "Jak dlouho čekat",
+  "emailAutomationFlowWaitFor": "Čekat",
+  "emailAutomationFlowWaitModeCalendar": "Do určitého času",
+  "emailAutomationFlowWaitModeDuration": "Po určitou dobu",
+  "emailAutomationFlowWaitModeLabel": "Jak krok čeká",
+  "emailAutomationFlowWaitTitle": "Čekání",
+  "emailAutomationFlowWaitUnitDay": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "den",
+        "countPlural=few": "dny",
+        "countPlural=other": "dní"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitHour": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "hodinu",
+        "countPlural=few": "hodiny",
+        "countPlural=other": "hodin"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitLabel": "Jednotka času",
+  "emailAutomationFlowWaitUnitMinute": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "minutu",
+        "countPlural=few": "minuty",
+        "countPlural=other": "minut"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitMonth": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "měsíc",
+        "countPlural=few": "měsíce",
+        "countPlural=other": "měsíců"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitWeek": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "týden",
+        "countPlural=few": "týdny",
+        "countPlural=other": "týdnů"
+      }
+    }
+  ]
+}

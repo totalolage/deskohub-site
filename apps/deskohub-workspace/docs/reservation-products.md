@@ -2,11 +2,50 @@
 
 Workspace offers three reservation families: cowork, meeting room, and office. Each family owns its selection rules, availability, customer summary, and product identity; checkout must not treat one family as the default for another.
 
+## Opening hours
+
+The space is open 24/7, every day. Open Space is usable only from Prague-local
+midnight until 17:00 on the reserved date. Reserved Desk and office
+reservations have 24/7 code access for their reserved dates.
+
+The public price page lists every bookable product at its catalog price, with
+the price of any public sale running that day, together with these opening
+hours. The contact page also shows the opening hours.
+
 ## Cowork
 
-Cowork reservations select one of the offered entry tiers for a Workspace date. Optional equipment such as a monitor affects availability and the final reservation composition even when it has no price of its own.
+Cowork offers are exactly two, both for a single Prague calendar date:
 
-The complete selected tier determines the cowork product. A discount that targets cowork applies across its eligible cowork tiers rather than depending on a hidden shorthand from another family.
+- **Open Space** (CZK 290/day): a shared desk available Prague-local 00:00
+  until 17:00 exclusive on the reserved date. An optional coffee addon costs
+  CZK 50. Open Space is never marketed as 24/7 access.
+- **Reserved Desk** (CZK 410/day, coffee included): a reserved desk for the
+  whole Prague calendar day (midnight to next midnight, DST-correct) with
+  24/7 code access. An optional workstation addon costs CZK 120/day and is
+  selectable only as one of the four existing monitor configurations; the
+  chosen configuration changes availability and the reserved product
+  composition, never the price. When no bare Reserved Desk is available for a
+  date but at least one valid workstation configuration is available, the
+  customer must reserve a workstation and choose from the available monitor
+  configurations. The advertised and accepted price includes an additional
+  CZK 120/day for the workstation. The customer cannot select an unavailable
+  exact configuration. Reserved Desk cannot be selected when neither a bare
+  desk nor any workstation configuration is available for the full calendar
+  date.
+
+Historical entry tiers (basic, plus, profi) remain decodable for stored
+reservations and reporting but are no longer saleable. A whole-cowork discount
+applies to the base price of both current offers, and a discount may instead
+target only Open Space or only Reserved Desk; coffee and workstation addons
+stay outside the discountable subtotal.
+
+When assigning Reserved Desk, Workspace ranks tables as though every enabled,
+visible, assignable Open Space table were occupied up to its configured seat
+capacity. Ranking uses the greater of actual occupancy and that capacity;
+actual occupancy is not added to capacity. Actual occupancy alone determines
+whether the selected table has room and what public availability reports. A
+table configured for both offers remains eligible for Reserved Desk whenever
+its actual capacity permits.
 
 ## Meeting room
 
@@ -22,6 +61,14 @@ Hourly products begin at the selected local time. The selected duration remains 
 
 A meeting-room reservation remains eligible for submission and payment after its start while its exclusive end is still in the future. It is no longer eligible after that end.
 
+### Early setup
+
+A customer booking a meeting room may choose to come 15 minutes before the booked start to set up. The choice is off by default and free. It holds the room, and lets the customer in, from 15 minutes before the booked start until the booked end. Price, discounts, cancellation, and every other time rule still apply to the booked interval alone.
+
+The choice is offered only when a meeting room is free for the booked interval extended 15 minutes earlier. The workspace is open around the clock, so a booking that starts at midnight sets up from 23:45 on the previous day. When the room is booked just before the start, the choice stays visible but can't be selected, with a short reason, and changing to such a time or duration turns it off. Availability is checked again when the booking is submitted.
+
+Reservations made without the choice keep their booked interval as they always have.
+
 ## Office
 
 An office reservation spans an inclusive range of Prague calendar dates. The customer selects a start date, a positive number of days, and a positive number of seats supported by the office capacity.
@@ -36,8 +83,19 @@ The office is exclusive for the complete selected date range. Any existing occup
 
 ## Cross-family rules
 
-- The customer confirmation email contains a protected link to the dedicated reservation access page, never the door PIN itself. The access page resolves the current PIN on each authorized request and displays it only from 30 minutes before the reservation starts until 30 minutes after it ends. This display grace period does not extend the reserved use of the space. Payment redirects and fulfillment recovery remain on the separate reservation status page.
+- The customer confirmation email contains a protected link to the dedicated reservation access page, never the door PIN itself. Once an authorized paid, locally and live-confirmed reservation has an issued PIN, the access page displays it together with the exact reservation access span, including any selected early setup. Igloohome's programmed AlgoPIN bounds alone determine when the lock accepts the code; there is no local display time gate, and display never extends the reserved use of the space. Payment redirects and fulfillment recovery remain on the separate reservation status page.
 - Product identity includes the reservation family and every choice that changes the purchased product.
-- Discount configuration may target a whole reservation family, while quotes and completed purchases preserve the exact selected product.
+- Discount configuration may target a whole reservation family or a single current cowork offer, while quotes and completed purchases preserve the exact selected product.
 - Availability, pricing, summaries, persistence, confirmation, email, and status views dispatch each family explicitly.
 - Adding a reservation family requires complete support at every issuing and consuming boundary before it becomes publicly selectable.
+
+## Cross-family email policy
+
+The current Open Space customer confirmation, preview, and retry emails list
+all eligible named Open Space tables instead of the assigned table. Numeric
+names are sorted and compacted only for consecutive runs of at least three;
+pairs remain separate. Nonnumeric names follow in provider order. For example,
+`9-12, 15, 16, wallee, gromice`. If no eligible named tables exist, the email
+omits the table block and never falls back to an assigned table ID. Reserved
+Desk, other reservation families, and historical cowork tiers retain assigned-
+table email behavior.

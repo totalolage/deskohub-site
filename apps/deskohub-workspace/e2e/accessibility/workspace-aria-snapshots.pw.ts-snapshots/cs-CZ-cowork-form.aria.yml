@@ -1,0 +1,19 @@
+- radiogroup "Nabídka *":
+  - radio /^Sdílené místo / [checked]
+  - radio /^Vyhrazené místo /
+- combobox "Datum rezervace *": /\d{1,2}\. \d{1,2}\. \d{4}/
+- 'button "Datum rezervace: vybrat v kalendáři"'
+- switch "Káva"
+- textbox "Email *"
+- textbox "Telefon *"
+- textbox "Jméno *"
+- group "Účel rezervace":
+  - switch "Firemní využití"
+  - button
+  - checkbox "Vytvořit fakturu"
+- link "zásadách ochrany osobních údajů":
+  - /url: /cs-CZ/privacy-policy
+- checkbox /^Souhlasím, aby Desktechub s\.r\.o\. použila můj e-mail/
+- link "Souhlas s marketingovou komunikací":
+  - /url: /cs-CZ/marketing-communications
+- button "Pokračovat"

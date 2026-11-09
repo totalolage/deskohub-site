@@ -1,15 +1,14 @@
 ---
 name: deskohub-repository
-description: Deskohub monorepo setup, development, build, validation, and architecture.
+description: Deskohub monorepo commands, Bun, Turbo tasks, TypeScript toolchain, Next.js upgrades, patched dependencies, generated clients, branch integration, merge conflicts, lockfile reconciliation, env files, portal deployment skipping, Vercel unaffected-project skipping, agent-skills workspace package, test placement, test coverage, Istanbul, coverage-final.json, visual-crap, CRAP score, lint rules, Grit plugins, CI shards, GitHub Actions, app and package boundaries, Cloudinary gallery, Admin API quota.
 ---
 
 # Deskohub repository
 
-Read only the reference relevant to the change:
+Read the reference that matches the change:
 
-- For installation, root commands, environment files, generated assets, checks, and CI boundaries, read [references/development.md](references/development.md).
-- For application, package, feature, shared-module, and import boundaries, read [references/architecture.md](references/architecture.md).
-
-Use root Turborepo tasks when their dependency graph matters. Inspect the target package scripts before inventing a command or assuming every application exposes the same task.
-
-Put business rules in the owning application's business specification. Put durable implementation guidance in the narrowest matching repository skill rather than adding technical Markdown beside the code.
+- Commands, Turbo tasks, Workspace and portal Vercel builds, toolchain, Next.js upgrades, patched dependencies, generated assets, branch integration and merge conflicts, and env files: [references/development.md](references/development.md).
+- Test placement, test helpers, test coverage, lint guards and Grit plugins, subprocesses, CI, and GitHub Actions: [references/testing-and-ci.md](references/testing-and-ci.md).
+- App, package, feature, shared-module, and import boundaries: [references/architecture.md](references/architecture.md).
+- The Expo mobile app (`apps/deskohub-mobile`): layout, dev builds, emulator runs and the `/app/` web export in the `deskohub-mobile` skill; tags, APK releases and OTA updates in the `deskohub-mobile-release` skill.
+- Gallery lists from `@deskohub/cloudinary`, URL signing and span redaction, and the Admin API quota: [references/cloudinary-gallery-source.md](references/cloudinary-gallery-source.md).

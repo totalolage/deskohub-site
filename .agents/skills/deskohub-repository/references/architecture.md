@@ -2,36 +2,23 @@
 
 ## Top-level boundaries
 
-- `apps/` contains deployable customer and operator products.
-- `packages/` contains shared capabilities and generated integration clients.
-- `.agents/skills/` contains implementation, architecture, testing, diagnostic, and operational guidance for agents.
-- Business-oriented product and policy specifications live beside the owning application.
+- `apps/` holds deployable products: Workspace and Boardgame Bar (Next.js), the portal (Astro), and the `dhw` CLI.
+- `packages/` holds shared capabilities and generated integration clients.
+- Business product and policy specifications live in each app's `docs/` folder (and `apps/deskohub-workspace/PRODUCT.md`). Implementation guidance lives in `.agents/skills/`.
 
-Do not use the root as if it were one Next.js application. Resolve file placement from the owning app or package first.
+Resolve file placement from the owning app or package; the root isn't a Next.js app.
 
-## Application modules
-
-Within a Next.js application:
+## Next.js app modules
 
 - `app/` owns route composition and independently addressable HTTP boundaries.
-- `features/` owns business capabilities and their UI, actions, schemas, and backend services.
-- `shared/` owns genuinely cross-feature primitives and infrastructure within that application.
+- `features/` owns business capabilities with their UI, actions, schemas, and backend services. Keep feature internals private and import a feature through its public API when one exists.
+- `shared/` owns cross-feature primitives and infrastructure. Keep it independent of feature internals.
 
-Keep feature internals private. Expose stable cross-feature APIs through explicit named exports. Do not put reusable code in whichever feature happened to need it first.
+Render on the server by default. Add a client boundary only for browser state or interaction, and keep provider integrations and secrets on the server. Browser modules must not import server-only capabilities.
 
-Prefer server rendering by default and introduce a client boundary only for browser state or interaction. Keep provider integrations and secrets on server-owned boundaries.
+Use the app's path aliases, such as `@/` in Workspace. Keep public index modules to explicit named exports, never `export *`.
 
 ## Shared packages
 
-Use a package when a capability is shared across applications or is independently generated and versioned. Do not move an app-owned business policy into a package merely because its implementation is generic.
-
-Generated clients are contract boundaries. Wrap them with domain-named application or package services instead of duplicating their response schemas in each consumer.
-
-## Naming and imports
-
-- Name code for the concept callers use, not its hidden implementation.
-- Use an application's configured path aliases within that application.
-- Import a feature through its public API when one exists.
-- Keep public index modules explicit: use named exports, never `export *`.
-- Keep shared utilities independent of feature internals.
-- Preserve the server/client boundary in imports; browser modules must not pull in server-only capabilities.
+- Create a package when a capability is shared across apps or is generated and versioned on its own. Keep app-owned business policy in the app even when its implementation is generic.
+- Treat generated clients as contract boundaries. Wrap them in domain-named services instead of duplicating their response schemas in each consumer.

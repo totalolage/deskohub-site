@@ -1,109 +1,141 @@
-# Workspace administration dashboard
+# Administration dashboard
 
-The Workspace administration dashboard is an operational view for reservations, customers, codes, discounts, calendar sales, and their related payment records. Loading reservation and customer pages does not mutate checkout state, refresh payment state, retry fulfillment, or repair provider records; reservation cancellation and access recovery are explicit operator actions.
+The dashboard lives in `apps/deskohub-workspace/app/[locale]/admin` and `features/administration`. The [administration specification](../../../../apps/deskohub-workspace/docs/administration-dashboard.md) defines navigation, operator-visible statuses, metric definitions, and invoice presentation. This reference covers how to implement them.
 
-The visible navigation includes Overview, Reservations, Customers, Invoices, Codes, Access codes, Vouchers, Sales, and CLI sessions. Codes manages discount codes; Access codes creates standalone door access codes. Bookings, Nexi orders, and Nexi operations are shown in the reservation that owns them instead of competing as separate operator workflows. The old provider-oriented routes remain available as diagnostic fallbacks for records that cannot be linked to a Workspace reservation, but they are not part of the primary navigation.
+## Rendering
 
-Invoice administration composes the encrypted accounting-document repository, delivery status, and Dotypos customers. Keep customer resolution and invoice issuance in the shared invoice administration service so the UI and administration API enforce the same exact-email reuse, billing update, currency, idempotency, provenance, and delivery rules. The default list ordering groups delivery attention first and then uses issuance time descending; an explicit operator sort must not retain the attention grouping.
-
-Claim an ad-hoc invoice's client UUID before any Dotypos mutation. Bind the complete normalized request and server-derived provenance with a keyed digest, persist no plaintext customer data in the claim, reject a different request for the same UUID, and allow the identical request to reclaim an incomplete claim after one minute.
-
-Project reservation invoices and manual invoices explicitly marked as paid as paid. A paid manual invoice records its payment date and omits payment instructions. Project positive-total unpaid manual invoices as issued, due, or overdue by comparing their due date with the current Prague calendar date. Keep zero-total and negative-total unpaid manual documents issued because they do not request payment. Keep payment and email delivery as separate statuses; fresh processing delivery is sending, not sent.
-
-Discount definitions are managed through the code or Calendar sale that uses them instead of through a standalone definitions table. Code creation can create its discount atomically, and associated Calendar-sale rows expose their discount editor. `/admin/discounts` redirects to Codes for compatibility with existing links.
-
-## Rendering and navigation
-
-Keep the administration layout, brand, navigation, and page frame in the instant static shell. Do not call `connection()` or await request or provider data in the administration layout. Client hooks that depend on the current route, such as `usePathname()`, belong behind their own narrow Suspense boundary so they do not make the rest of the shell dynamic.
-
-Administration pages should start data promises without awaiting them, render stable page controls immediately, and pass each promise to the smallest async Server Component that needs it. Put a meaningful, layout-matched fallback directly around each delayed count, filter set, collection, detail panel, or modal. Route-level `loading.tsx` files remain the navigation safety net; they do not replace the smaller component boundaries.
-
-Authorize every protected data loader, and wrap the authorization operation in React `cache()` so independently streamed leaves deduplicate it within a request. Parallelize independent database and provider reads, but do not persistently cache live operator data. A page must load only the projection it displays: for example, Codes must not wait for Calendar sales, Sales must not load discount codes, and breadcrumbs must use static labels or narrow label projections rather than full entity-detail loaders.
-
-Keep the global administration shell and layout request-independent: do not add identity controls such as logout or an avatar there. Request-derived identity stays inside each page's existing authorization and Suspense boundaries. The CLI session views are owner-scoped: the pending approval page names the approving administrator, the sessions page names the current administrator beside the session count, and the table renders each row's own `approvedBy` value with a safe fallback so a future owner-scoped projection that returns other administrators' sessions still displays distinct approvers.
+- Keep the layout, brand, navigation, and page frame in the static shell. The admin layout doesn't call `connection()` or await request or provider data. Put route-dependent client hooks, such as `usePathname()`, behind their own narrow Suspense boundary.
+- Keep identity controls, such as logout or an avatar, out of the shell. Request-derived identity stays inside each page's authorization and Suspense boundaries.
+- Start data promises without awaiting them, render stable page controls immediately, and pass each promise to the smallest async Server Component that needs it. Wrap each delayed count, filter set, collection, detail panel, or modal in a layout-matched fallback. Route-level `loading.tsx` files are only the navigation safety net.
+- Run every Admin UI page query through `runAdministrationPage(operation, query, capabilities)` and define every operator Server Action with `defineAdministrationAction`, both in `features/administrators/server/administration-request.server.ts`. Don't call the guards in `administrator-authorization.server.ts` from a feature; only the edge and the list export route use them.
+  - Both read the Better Auth session and the `administrator` grant from the database on every request; never cache the result past the request. The page gate is wrapped in React `cache()`, so a page's streamed loaders share one check per request. It sends a signed-out visitor to sign-in with `returnTo` (the path the proxy forwards in `x-deskohub-administration-path`) and answers a signed-in account without the grant with `notFound()`.
+  - The page runner provides the query's capabilities over `CurrentAdministrator` and runs at the `route` boundary. A query fails with `AdministrationRecordNotFound` to answer 404; route identifiers decode inside the query (`route-identifiers.server.ts`) so a signed-out visitor still reaches sign-in first. Pass `Layer.empty` when a guarded loader needs no capability.
+  - The action edge fails closed before the handler or its capabilities start, with `AdministratorUnauthorizedError` and never a redirect, so a Server Action can't loop through sign-in. The handler reads the actor from `CurrentAdministrator`; take provenance from it, never from input. `publicFailure` words failures, including the refusal; `unauthorizedResult` answers a client that reads refusals as data, as campaign operations do. List the changed pages in `revalidates` with `administrationHref`: the edge revalidates them after the action settles, outside its fiber, because a fiber resumed by a database callback can run under another request's Next.js work store, where `revalidatePath` throws.
+  - Use `refreshes(input, result)` for best-effort cache maintenance beyond the page list, such as calendar discount tag invalidation and `after()` priming. It runs synchronously only after a successful action settles and outside the action fiber; a throw is logged without failing the action, so callers must never invalidate tags or schedule `after()` inside the handler.
+  - In tests, substitute the session and grant with `mockAdministratorAccess` (`administrator-access.test-utils.ts`) instead of mocking the guards, so loaders and actions run through the real edge. Server Action tests use `mockAdministrationActionRequest` (`shared/testing/workspace-action-request.test-utils.ts`), which adds the Next.js request APIs. Switch the account with `access.actAs`; `reset()` returns to the default administrator.
+- Parallelize independent reads, and never persistently cache live operator data. Load only the projection a page displays. For example, Codes doesn't wait for Calendar sales, and breadcrumbs use static labels or narrow label loaders, not full detail loaders.
+- Declare each admin area once in `features/administration/administration-areas.ts`: its collection label and `administrationHref`, its record label, and the pages under both, such as `new`. The breadcrumb trail and the shell navigation read it. Give each new page an `@breadcrumb` slot page (`administration-areas.test.ts` fails on an undeclared slot); a record whose crumb shows its own name gets a narrow label loader, run through `runAdministrationPage`, in `recordLabelLoaders` (`breadcrumb.server.tsx`, which the `no-heavy-breadcrumb-imports` lint guards).
+- `/admin/administrators` lists, grants, and revokes the administrator role through `AdministratorRoster` (`features/administrators/backend/administrator-roster.service.ts`). A grant needs an existing verified account without pending deletion (`findActiveCustomerAccountByEmail`); there are no pending grants. The service refuses to revoke the acting administrator's own grant.
+- `/admin/discounts` redirects to `/admin/codes`. Bookings, orders, and operations routes remain diagnostic fallbacks for records not linked to a reservation. Keep them out of primary navigation.
 
 ## Data ownership
 
-The dashboard composes three sources without creating a second customer or reservation store:
+The dashboard composes these sources without creating a second customer or reservation store:
 
-- Workspace Postgres defines which reservations belong to Workspace and supplies current workflow state, durable milestone timestamps, payment attempts, and applied-discount snapshots.
-- Dotypos supplies current booking dates and customer contact details. A missing or unavailable Dotypos record does not hide an existing Workspace reservation.
-- Nexi supplies live order and operation details when an order ID is linked to a local payment attempt. Provider IDs remain visible and link directly to XPay even when Nexi is unavailable.
-- PostHog can add selected historical lifecycle observations to an individual reservation timeline. It never determines the current status and is not queried for reservation or customer lists.
+- Workspace Postgres decides which reservations belong to Workspace and owns workflow state, milestone timestamps, payment attempts, and applied-discount snapshots.
+- Dotypos supplies current booking dates and customer contact details. A missing or unavailable Dotypos record never hides a Workspace reservation.
+- Nexi supplies live order and operation details for linked payment attempts. Provider IDs stay visible and link to XPay when Nexi is unavailable.
+- PostHog adds optional lifecycle observations to one reservation's timeline. It never decides current status, and lists never query it.
 
-Fuzzy customer search by name or email remains a protected server action. Customer contact data is not placed in URLs or persisted by the dashboard. The selected Dotypos customer ID, status groups, reservation types, dates, and page numbers may be represented in URLs.
+Review accounts' bookings never appear: the review sandbox stores them in `review_account_holds`, which no administration projection, export, or metric reads (checkout skill's lifecycle reference).
 
-The administration projection deliberately excludes secret Workspace access codes, payment security tokens, provider redirect URLs, Dotypos notes, raw provider responses, and raw PostHog property bags. A reservation detail may expose only the safe access-grant projection: state, deterministic access name, interval, device, provider credential identifier, issuance and failure timestamps, and failure code.
+When a provider is unavailable, show the affected value as unavailable. Don't substitute a local value that answers a different question, and don't return partial counts.
 
-Retry access automatically only from `failed`, which represents a definitive provider rejection. For `uncertain`, tell the operator to use the Igloohome app over Bluetooth at the lock, find `Deskohub <reservation-id>`, and remove it or verify it is absent. Require explicit confirmation before conditionally changing `uncertain` to `failed` and retrying. If the operator cannot confirm provider cleanup, do not retry; wait for the possible credential to expire. Igloohome does not provide an AlgoPIN lookup or revocation operation for this integration.
+Keep customer search by name or email in a protected server action. Never put contact data in URLs or persist it. URLs may carry the Dotypos customer ID, status groups, reservation types, dates, and page numbers.
 
-Treat a `provisioning` claim older than one minute as ambiguous and expose the same confirmed provider-cleanup workflow. Do not offer recovery for a fresh provisioning claim.
+Projections exclude Workspace access codes, payment security tokens, provider redirect URLs, Dotypos notes, raw provider responses, and raw PostHog property bags. A reservation exposes only the safe access-grant fields: state, access name, interval, device, provider credential ID, issuance and failure timestamps, and failure code.
+
+## List queries
+
+Each list's URL query has one module built with `defineAdministrationListQuery` (`features/administration/list-query.ts`): `reservationListQuery`, `customerListQuery`, `bookingListQuery`, `orderListQuery` and `operationListQuery` beside their lists in `features/administration` (`*-list-query.ts`), and `invoiceListQuery` in `features/accounting/admin`. Orders and operations normalize through `payment-administration-filters.ts`, which the CLI handlers share. It owns the param names, the literal sets (taken from the `@deskohub/workspace-admin-api` schemas where the contract has them), the defaults, page parsing and the list's normalization, and decodes through `getSearchParamsDecoder`. Every param decodes on its own, so an invalid value falls back like an absent one. A repeated param reads as its first value, except on the invoice list (`repeatedParams: "absent"`), which reads it as absent. `dhw` validates the same literals strictly through the contract.
+
+- `parse` reads the page's or export route's search params, and the page loader passes the result to the service as the list input.
+- `href(query, { page })` builds the list URL for sort links, filter shortcuts, "clear" links and `Pagination` (`href={(page) => listQuery.href(query, { page })}`). Params come in the order the list declares them, with `page` last and only past the first page. Reservations and customers declare theirs alphabetically, bookings `date, direction, sort`, invoices `sort, direction`; keep a list's existing order when adding a param, so its links don't change.
+- `exportHref` and `parseExport` give the CSV export the list's filters and order without the page.
+- `tableSorting(query)` spreads into `AdministrationDataTable` as `sorting` and `getSortHref`; client tables take the query and call it themselves. Header links name `sort` and `direction` in their declared place; the booking list (`sortLinkOrder: "afterFilters"`) names them after its other params.
+- `formSchema` (Standard Schema V1, for `standardSchemaResolver`) and `formValues(query)` back the list's filter form.
+
+Add a new filter to the list's query module, not to a link or form. Test it at the module: `parse(href(query))` round-trips plus default and normalization cases, in the colocated `*-list-query.test.ts`.
+
+## Reservation list
+
+`reservationListQuery` applies the default date range with `getAdministrationReservationListDateRange`: from January 1 of the current Prague year, with no upper bound. The parsed query carries the effective range, so date controls, sort links, and pagination carry it. A `customerId` list and the `needs_refund` queue get no default range, and the legacy `date` param still reads as a one-day range. Keep the default in the UI query. `AdministrationService.listReservations` and `dhw reservations list` treat an absent range as unbounded.
+
+A meeting room booked with early setup is held in Dotypos from its setup start. `toReservationSummary` decodes the booking with the row's stored details (`decodeBookedReservation`), so `startsAt` and `date` are the booked start and `setupStartsAt` is the held start; every other reservation keeps Dotypos's values and a null `setupStartsAt`. Booking summaries and the booking breadcrumb show the booked start too (`getBookedStartsAt`, `reservation-booked-date.ts`). The contract declares `setupStartsAt` with a null decoding default; the table, related reservation cards, detail, CSV export, and `dhw reservations get` show it only when set. Date filters (`loadReservationRangeMap`, behind the reservation and customer lists, exports, and the detail's same-date list) match the booked date: they read Dotypos from the setup lead time before the range (`getAdministrationReservationHeldRangeBounds`) and read stored details only for bookings that early setup would hold from the previous date (`reservation-booked-date.ts`), such as a midnight start. The date sort orders by booked start: it re-sorts Dotypos's start order (`orderByBookedStart`), reading stored details only for neighbouring bookings that start within the setup lead of each other (`getEarlySetupOrderCandidates`). The Bookings list reads its date the same way, loads the early-setup details of the day's bookings in one query, and sorts by booked start. Overview counts, Overview customers, and both activity charts count on the booked date too: `listLinkedBookings` reads with the held bounds and loads the early-setup details of the bookings it lists in one query (`loadEarlySetupDetails`, `features/reservation/backend/early-setup-details.ts`); the customer chart uses the details its linked rows already carry.
+
+## List export
+
+A list's CSV export is a GET route beside its page, `app/[locale]/admin/<list>/export/route.ts`, built with `defineAdministrationListExportRoute` (`features/administration/list-export.server.ts`). The factory checks `requireAdministratorAuthorization` itself, because a route answers through `WorkspaceRouteFailure`, and answers 404 to anyone else, reads the request's search params with `getSearchParamsRecord` so the export and the page share one pure parser (the list query's `parseExport`, which drops the page), and writes the file with `createCsvDownloadResponse` (`shared/utils/csv.ts`: RFC 4180, a formula guard on text cells, a UTF-8 byte order mark, `private, no-store`). Column definitions (`CsvColumn`) live beside the list, such as `reservation-export.ts` and `customer-export.ts`, and take headers from the area's catalog in the route locale. Format date-times with `formatAdministrationExportDateTime` and amounts with `moneyMajorAmount` (`shared/money/money.ts`).
+
+- An export never degrades. Its service read (`AdministrationService.exportReservations`, `AdministrationService.exportCustomers`) reuses the list's filter and order building without a limit and passes `failOnProviderFailure` through every Dotypos helper (`loadReservationRangeMap`, `loadReservationDateOrder`, `loadLiveReservations`, `loadCustomers`). A failed Dotypos read fails with `AdministrationListSourceUnavailableError`, which the route answers with 503 and code `administration_list_source_unavailable`, never a partial file. Page reads keep the default `degradeOnProviderFailure`.
+- `loadCustomers` reads every customer its batches didn't return through `getCustomer`, under both policies, because a batch can leave out a customer a single read returns. A 404 leaves the customer empty (the row stays, with blank details); any other single-read failure goes through the policy, so an export fails. Under an export a failed batch already failed the read, so only customers that successful batches left out are read singly.
+- `exportCustomers` composes the list's `getCustomerListFilter`, `selectCustomerSummaryRows` without paging, and `toCustomerSummaries`, all with `failOnProviderFailure`. A range Dotypos can't answer fails the export (`source: "booking-dates"`) instead of the list's `dateFilterUnavailable`, so the file is never empty or unfiltered by mistake. Its columns are the Dotypos customer ID, name, email, phone, the successful reservation count, last activity, and the localized marketing consent label (`getAdministrationCustomerMarketingConsentLabel`).
+- Read bookings and customers by id through `getReservationsByIds` and `getCustomersByIds`, since an export can carry far more ids than one Dotypos filter. In SQL, match an unbounded id list with `equalsAny` (`db/equals-any.ts`), which binds one array parameter; Drizzle's `inArray` binds one parameter per id and fails past Postgres's 65,535-parameter limit.
+- The route sets `maxDuration = 300`, because its sequential Dotypos reads can each wait out the 30-second request timeout.
+- `AdministrationTableToolbar` takes `exportHref`, a promise of the unprefixed export path, and renders `AdministrationTableExport`. Build it with the list query's `exportHref`, so it keeps the filters and order the list's sort links and `Pagination` carry. The control downloads through `runWorkspaceBrowserEffect` and accepts only a `text/csv` attachment, because a signed-out request is redirected to the sign-in page, which answers 200 with HTML.
+
+## Reservation author
+
+`AdministrationService.loadReservation` reads `author_account_id` with the reservation and describes it through `ReservationAuthorDirectory` from `@/features/account` (see the domain skill's [reservation parties](../../deskohub-workspace-domain/references/reservation-parties.md)). The detail's `author` is null when `isCustomerOwnAuthor` holds. Otherwise it's `deleted`, `unavailable` (the directory read failed; the page still loads), or an `account` named by the author's own linked Dotypos customer through `loadCustomers`, with the login email. An author without a linked or readable customer gets the unnamed-customer name and `hasName: false`. The API contract declares `author` with a null decoding default, and `dhw reservations get` prints it as a `Booked by:` line.
+
+## Status and lifecycle projection
+
+- `features/administration/reservation-status.ts` projects the local reservation state, payment-attempt state, and fulfillment outcome into Started, Held, Paid, Complete, or the exact cancellation substate.
+- A live Dotypos `CANCELLED` booking overlays an attention-state cancellation on a stale local row. List filters and primary badges stay on the local workflow and show the discrepancy as a separate warning. The overlay never writes a transition or authorizes repair.
+- Payment failure or expiry alone doesn't mark a held reservation cancelled. An in-progress or failed release never shows as complete.
+- Show provider cleanup reasons explicitly: `payment_outcome_unconfirmed_before_cleanup` keeps the hold active for payment review, and `payment_abandoned_after_provider_cutoff` shows a released, abandoned reservation. A failed webhook with `nexi_webhook_late_payment` takes priority over both and shows a refund-required warning without implying fulfillment.
+- For a live pending Nexi order, reuse `getProviderOrderAbandonmentState` from `features/checkout/provider-order-abandonment.ts` to distinguish an open window, an overdue empty order, and provider activity that blocks release.
+- The schema defines `hold_expired` and `confirming`, but no current writer sets them. Handle both exhaustively and never invent or repair transitions.
+- The timeline is an operational reconstruction, not an audit record. Show durable local milestones plus available Nexi and PostHog observations, and never present it as audit-quality history.
+
+## Cancellation and refunds
+
+Operator cancellation is its own guarded workflow, separate from unpaid-hold cleanup. The [checkout skill](../../deskohub-workspace-checkout/SKILL.md) owns the underlying reservation, payment, and late-payment lifecycle.
+
+- It cancels held, confirmed, or retryable `cancellation_failed` reservations. It refuses while fulfillment is `processing` or `awaiting_delivery`, and while payment is pending unless the CLI passes `--force`. A forced cancel atomically cancels the local attempt and releases its discount or voucher claim, and a later provider settlement goes to refund-required recovery without recreating the booking.
+- It preserves payment and fulfillment history, marks paid Nexi attempts as refund `required` without issuing a refund, and leaves zero-total internal payments refund-free.
+- Igloohome can't revoke AlgoPINs remotely. With a live or ambiguous credential, the operator removes it at the lock and confirms removal (`--confirm-access-credential-removed` in `dhw`). The cancellation claim then retires the local credential atomically.
+- Send the customer email only after provider and local cancellation succeed, and report its outcome separately.
+
+The payment-attempt refund state is the single refund work queue, shared with late-payment recovery. Surface it through `RefundAttention` (backed by `countReservationsNeedingRefund`, in its own Suspense boundary on Overview and Reservations) and the `needs_refund` status filter that the API and `dhw` share. Check every attempt, not only the latest. When Nexi reports a refund, the attempt becomes `refunded` and leaves the queue.
+
+Derive every payment summary's status from `getAdministrationPaymentStatus` and render amounts through `PaymentAmount`. Add the "Refund recorded" timeline item from the stored refund only when live Nexi details are unavailable, so a refund never appears twice. Customer revenue sums paid attempts minus recorded refunds.
+
+## Reservation access recovery
+
+- Retry automatically only from `failed`, a definitive provider rejection.
+- For `uncertain`, direct the operator to the Igloohome app over Bluetooth at the lock to find the access name the detail view shows and remove it or verify it's absent. Require explicit confirmation before changing `uncertain` to `failed` and retrying. Without confirmation, don't retry; let the possible credential expire.
+- Treat a `provisioning` claim older than one minute as ambiguous, with the same workflow. Offer no recovery for a fresh claim.
 
 ## Standalone access codes
 
-`/admin/access-codes` is creation-only: the page renders the creation form and its result. Reuse `StandaloneAccessCodeAdministration` for every surface so the UI, administration API, and CLI share one creation path with the same validation.
+`/admin/access-codes` is creation-only. Route every surface through `StandaloneAccessCodeAdministration` (`features/access-codes/backend/standalone-access-code-administration.service.ts`).
 
-Give each creation intent one client-generated attempt identity. The form keeps that identity across retries of an unchanged window and generates a new one when the operator changes any field. The server claims the attempt in the append-only attempt log before calling the provider, so one intent can never reach the provider twice.
+- Each creation intent has one client-generated attempt ID. The form keeps it across retries of an unchanged window and generates a new one when any field changes.
+- The server claims the attempt in an append-only attempt log before calling the provider, so one intent never reaches the provider twice.
+- A claim older than `standaloneAccessCodeAttemptStaleAfterMilliseconds` (60 seconds) becomes ambiguous with `standalone_attempt_stale`. A fresh claim reports `in-progress`. The same ID with different input, actor, or source is a mismatch.
+- Capacity is per exact device and window: provider variances 2 and 3 allow two live codes. A `rejected` event frees its variance and a `reconciled` event frees its attempt. `created` and `ambiguous` don't.
+- Events store safe metadata and outcomes only, never the PIN.
+- An `ambiguous` attempt never calls the provider again. End it in the UI and direct the operator to the Igloohome app over Bluetooth.
+- While a window has an unreconciled `ambiguous` or stale attempt, refuse new attempts with `cleanup-required` under the device-and-window lock, before any provider call, even with spare capacity. The outcome names the cleanup target.
+- With the operator's `providerCredentialRemovedAttemptId` confirmation, append one `reconciled` event for that target (idempotent under concurrency) and claim the new attempt in the same transaction. Another unresolved target produces another `cleanup-required` outcome.
+- Replaying a reconciled attempt's own ID without confirmation still reports `ambiguous`. With confirmation it records the reconciliation and returns `reconciled`, so the client can issue a fresh attempt.
 
-The claim resolution is the durable contract:
+## Customer list
 
-- A claim older than 60 seconds (`standaloneAccessCodeAttemptStaleAfterMilliseconds`) is recovered as ambiguous with `standalone_attempt_stale`. A fresh claim reports `in-progress`.
-- The same attempt identity with different input, actor, or source is rejected as a mismatch.
-- Capacity is per exact device and window: provider variances 2 and 3 allow two live codes. A terminal `rejected` event frees its variance, and a `reconciled` event frees the confirmed attempt; `created` and `ambiguous` do not.
-- The terminal `created`, `rejected`, and `ambiguous` events store safe metadata and outcomes only, never the PIN.
-- An `ambiguous` attempt never calls the provider again. End the attempt in the UI and direct the operator to the Igloohome app over Bluetooth, matching the at-lock reconciliation used for reservation access recovery.
-- While a window has an unreconciled `ambiguous` or stale attempt, a new attempt for that window is refused with `cleanup-required` under the device-and-window lock before any provider call, even when capacity remains. The outcome supplies the exact cleanup target. With the operator's explicit `providerCredentialRemovedAttemptId` confirmation, the claim appends a `reconciled` event for that target (at most one per attempt, idempotent under concurrency), then claims the new attempt in the same transaction. Another unresolved target produces another `cleanup-required` outcome. Replaying a reconciled attempt's own identifier without confirmation still reports its ambiguous outcome; with confirmation, the replay records the reconciliation and reports a `reconciled` outcome so the client can safely issue a fresh attempt.
+- `customerListQuery` (`customer-list-query.ts`) is the `/admin/customers` URL query; the page loader authorizes first, and the export route reuses it. It reads `from`, `to`, `marketingConsent`, `sort`, `direction`, and `page`, normalizes dates through `getAdministrationReservationDateRange`, and applies no default range. It owns the consent filter's order and URL decoding; the states themselves are legal's `MarketingConsentStatus`.
+- `AdministrationService.listCustomers` applies one filter (`getCustomerListFilter`) to the count and the grouped rows (`selectCustomerSummaryRows`). The date filter loads the Dotypos range with `loadReservationRangeMap` and keeps customers with a `successfulReservationCondition` row among those bookings that Dotypos hasn't `CANCELLED`, by stored `dotyposCustomerId`; the range read already carries each booking's status, so no extra read is needed. It filters customers, not rows, so the aggregates stay full-history. An unavailable range selects nothing and sets `dateFilterUnavailable`.
+- `customerMarketingConsentState` is legal's `marketingConsentState` over the reservation's customer: `active`, `withdrawn`, or `absent` (`MarketingConsentStatus`); the filter and the list item's `marketingConsent` share it. The `marketingConsent` URL param also decodes the earlier `granted` and `never` to `active` and `absent`, so old links filter the same customers; links write the current values. Consent is kind-specific: another consent kind gets its own param and select.
 
-## Reservation lifecycle
+## Customer and overview metrics
 
-Operator cancellation uses its own guarded workflow rather than the unpaid-hold cleanup path. It may cancel held or confirmed reservations, preserves payment and fulfillment history, atomically marks paid Nexi attempts as requiring a refund without issuing one, leaves zero-total internal payments refund-free, refuses while payment is pending or fulfillment is `processing` or `awaiting_delivery`, and records provider failures for retry. Igloohome cannot remotely revoke AlgoPINs: when a live or ambiguous credential exists, the operator must remove it at the lock and explicitly confirm removal; the cancellation claim then atomically retires the local credential. Customer email is attempted only after provider and local cancellation complete; its outcome is reported separately. The payment-attempt refund state is the single operator-work flag shared with unrecoverable late-payment recovery; source-specific rows retain context but do not define a second refund queue.
+- Customer detail bounds provider enrichment and visible history to the 24 most recently updated reservations, and the transaction table to the latest 50 payment attempts. Link to the filtered reservation index when more exist. Count, revenue, savings, and favourite product stay database aggregates over the full local history.
+- The 365-day customer chart, Overview completed counts, and Overview customers share one qualifying rule: `getAdministrationReservationStatus(row).group === "complete"` and live Dotypos status `CONFIRMED`, counted on the booked date, which is the Dotypos start date except for early-setup meeting rooms. Never add an elapsed-time or end-date condition, because fulfillment can precede the booking.
+- The Overview total (`value` in `getAdministrationReservationOverview`) is a separate count of every linked reservation, including new and cancelled ones. Don't apply the completed rule to it.
+- The Overview reservation activity chart (`AdministrationService.loadReservationActivity`) counts like the Overview total: every live booking in the 365-day range whose ID a Workspace row links. It reads the linked IDs from the database first, then only those bookings from Dotypos through `getReservationsByIds` with the range filter. Never list the whole range from Dotypos: the shared preview cloud holds hundreds of pages per year, and that scan kept the Overview stream open past the E2E navigation timeout. It shares `ReservationActivityCalendar` (`features/administration/reservation-activity-calendar.tsx`) with the customer chart; the customer chart picks a color per category, the Overview chart shades by count with `getReservationActivityIntensity`.
+- Overview counts each customer once by the live booking's `_customerId`, falling back to the stored Workspace customer ID. New customers are the subset whose Dotypos `created` timestamp falls in the range.
 
-The lifecycle diagram is a projection of the selected reservation, not a generic explanation. It combines the local reservation state, payment-attempt state, and fulfillment outcome into Started, Held, Paid, Complete, or the exact cancellation substate (Hold expired, Cancelling, Cancellation issue, or Cancelled). A live Dotypos `CANCELLED` status is overlaid as an attention-state cancellation when the local row is stale, because Dotypos owns the current booking fact. List filters and primary status badges remain projections of the durable local workflow, with the Dotypos discrepancy shown as a separate warning. This read-only overlay never writes a local transition or authorizes repair. A failed or expired payment does not by itself mark a still-held reservation as cancelled, and an in-progress or failed release is never presented as complete. The chronological history below the diagram shows the durable local milestones plus any available Nexi and PostHog observations.
+## Invoices
 
-Project the provider cleanup reasons instead of collapsing them into generic payment states. `payment_outcome_unconfirmed_before_cleanup` means the hold remains active and needs payment review. `payment_abandoned_after_provider_cutoff` means the empty order passed the local cutoff and the released reservation is shown as abandoned. A failed webhook with `nexi_webhook_late_payment` takes display priority over both: show a prominent refund-required warning, retain the released lifecycle, and never imply that the reservation was fulfilled. For a live pending Nexi order, reuse the checkout abandonment classifier so the order card distinguishes an open local window, an overdue empty order, and provider activity that blocks automatic release.
+Keep customer resolution and issuance in the shared invoice administration service so the UI and API enforce the same exact-email reuse, billing update, currency, idempotency, provenance, and delivery rules.
 
-Customer detail pages bound provider enrichment and visible reservation history to the 24 most recently updated reservations. The transaction table independently queries the customer's latest 50 payment attempts across their complete local reservation history. The page links to the filtered reservation index when more reservation history exists. Reservation count, paid revenue, discount savings, and favourite product remain database aggregates over the customer's complete local history.
+- Claim an ad-hoc invoice's client UUID before any Dotypos mutation. Bind the normalized request and server-derived provenance with a keyed digest, and store no plaintext customer data in the claim.
+- Reject a different request for the same UUID. Let the identical request reclaim an incomplete claim after one minute.
+- An explicit list sort drops the delivery-attention grouping.
+- Keep payment status and email delivery status separate. Fresh `processing` delivery displays as sending, not sent.
 
-The customer reservation-activity chart is a separate bounded projection over the 365 Prague calendar dates ending today. Dotypos supplies each booking's start date, Workspace linkage decides which bookings belong in the chart, and only completed reservations contribute: the local row must be fulfilled and not in the three cancellation states (the `group === "complete"` definition shared with the Overview metric), and the live Dotypos booking status must be `CONFIRMED`. A completed booking counts once on its start date even when scheduled for today; no elapsed interval is required, and Dotypos `CANCELLED` or `NEW` bookings never count even when the local row is stale-fulfilled. Cowork colors use the highest tier on a shared date; meeting-room and office colors override cowork tiers. Show provider failure as unavailable instead of as an empty year.
+## PostHog history
 
-The Overview activity counts use live Dotypos booking start dates intersected with the reservations known to Workspace. If Dotypos is unavailable, the affected count is shown as unavailable rather than replaced with a locally derived value that answers a different question. The Overview customer activity and the 365-day customer chart use the same qualifying-completed rule: Workspace status group `complete` and live Dotypos status `CONFIRMED`, without an elapsed booking interval.
+History enrichment runs only when `POSTHOG_API_HOST`, `POSTHOG_PROJECT_ID`, and `POSTHOG_API_KEY` are all set. The personal API key needs `feature_flag:read`, `error_tracking:write`, and `query:read`. Never use the public ingest token.
 
-The Overview customer activity uses the same seven-day Prague calendar range. A customer counts once only when at least one linked live booking starting in the range is a qualifying completed reservation: the Workspace row's status group is complete — the same group the Overview reservation metrics count as completed — and the live Dotypos booking status is CONFIRMED. Held, cancelled (locally or in Dotypos), unconfirmed, and unfulfilled bookings never qualify; do not add an elapsed-time or end-date condition because fulfillment may precede the booking time. Unique customers are the distinct current Dotypos customer IDs of qualifying bookings, resolving the live booking `_customerId` before the stored Workspace customer ID, so a customer with both qualifying and non-qualifying bookings counts once. New customers are the subset of those unique customers whose Dotypos `created` timestamp falls in the range. If live bookings or required customer creation timestamps are unavailable, mark the affected metric unavailable instead of returning a partial count.
-
-## PostHog history configuration
-
-Historical analytics enrichment is optional. Configure all three server-only variables to enable it:
-
-- `POSTHOG_API_HOST`
-- `POSTHOG_PROJECT_ID`
-- `POSTHOG_API_KEY`
-
-The application uses one personal API key for PostHog management reads, source-map uploads, and history queries. It requires `feature_flag:read`, `error_tracking:write`, and `query:read`. Do not use the public ingest token as this credential.
-
-Queries are limited to the app-owned reservation lifecycle event names, the local Workspace reservation ID, the current deployment environment, and the Workspace service name. Only normalized event name, time, event identifier, payment-attempt identifier, and provider are decoded; React never receives the raw event object.
-
-If the configuration is absent, PostHog is slow, or the response cannot be decoded, the reservation page continues to show durable Workspace milestones without interrupting the operator view.
-
-## Visibility, not auditability
-
-The timeline is an operational reconstruction, not an audit record. This limitation is documented here instead of repeated in the operator interface. Auditability would require an immutable event ledger with explicit retention, integrity, and access guarantees.
-
-The current history can be incomplete because:
-
-- lifecycle analytics capture is best-effort and capture failures are swallowed;
-- only selected milestones emit analytics events;
-- cancelled and expired payments share the same analytics observation;
-- analytics retention or deletion can remove older observations;
-- analytics events do not provide complete actor, source, reason, previous-state, or new-state attribution;
-- current Workspace rows store current state and selected milestone timestamps, not every transition;
-- the non-production direct-fulfillment path does not emit the same fulfillment event as the production delivery path.
-
-Workspace lifecycle state remains the canonical, filterable status. The operator presentation may overlay a live Dotypos cancellation to expose a stale local hold, but that display does not persist a transition, authorize customer access, trigger recovery, or prove that Deskohub completed cancellation. PostHog observations never determine current status.
-
-Bringing reservation lifecycle history up to auditability requires a durable append-only domain transition stream written transactionally with the state change. Each transition should include a stable event ID, reservation ID, previous and new states, occurrence time, normalized reason, actor or source, correlation and causation IDs, and schema version. Delivery to PostHog should happen through an outbox with retry and delivery status. A complete audit design must also define retention, tamper evidence, access logging, redaction, repair, and backfill policy while preserving the no-PII boundary.
-
-## Known adjacent lifecycle debt
-
-The checkout lifecycle documentation says Workspace access codes must not be stored locally, while the current `workspace_reservations` schema still contains a `customer_access_code` column. The administration projection excludes that column entirely. Removing the existing storage is a separate checkout migration and should be handled under the checkout lifecycle invariants.
-
-The schema and lifecycle documentation also define `hold_expired` and `confirming`, while current transition writers appear to skip those intermediate reservation states. The dashboard handles both states exhaustively but does not invent or repair transitions.
+`features/administration/posthog-reservation-history.ts` limits queries to the app's reservation lifecycle event names, the reservation ID, the current environment, and the Workspace service name. It decodes only event name, time, event ID, payment-attempt ID, and provider. React never receives the raw event. If PostHog is unconfigured, slow, or undecodable, the page shows durable milestones only.

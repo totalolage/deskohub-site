@@ -26,108 +26,115 @@ describe("ReservationTypeInput", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
-  test("keeps semantic values controlled and forwards radio field behavior", () => {
-    const inputRef = mock(() => undefined);
-    const onBlur = mock(() => undefined);
+  test("keeps native radio behavior when illustrated presentation is enabled", () => {
     const onChange = mock(() => undefined);
     const view = render(
       <ReservationTypeInput
-        idPrefix="duration"
-        inputRef={inputRef}
-        name="duration"
-        onBlur={onBlur}
+        aria-required="true"
+        idPrefix="cowork-tier"
+        name="entryTier"
         onChange={onChange}
-        value="hour:1"
+        presentation="illustrated"
+        value="open-space"
       >
         <ReservationTypeOption
-          price="CZK 300"
-          title="One hour"
-          value="hour:1"
+          price="CZK 290 / day"
+          title="Open Space"
+          value="open-space"
         />
         <ReservationTypeOption
-          price="CZK 600"
-          title="Four hours"
-          value="hour:4"
+          price="CZK 410 / day"
+          title="Reserved Desk"
+          value="reserved-desk"
         />
         <ReservationTypeOption
           disabled
-          price="CZK 1,000"
-          title="Whole day"
-          value="day:1"
+          price="CZK 410 / day"
+          title="Workstation"
+          value="workstation"
         />
       </ReservationTypeInput>
     );
-    const oneHour = view.container.querySelector(
-      "#duration-hour\\:1"
+    const openSpace = view.container.querySelector(
+      "#cowork-tier-open-space"
     ) as HTMLInputElement;
-    const fourHours = view.container.querySelector(
-      "#duration-hour\\:4"
+    const reservedDesk = view.container.querySelector(
+      "#cowork-tier-reserved-desk"
     ) as HTMLInputElement;
-    const oneDay = view.container.querySelector(
-      "#duration-day\\:1"
+    const workstation = view.container.querySelector(
+      "#cowork-tier-workstation"
     ) as HTMLInputElement;
 
-    expect(oneHour.checked).toBe(true);
-    expect(fourHours.checked).toBe(false);
-    expect(oneHour.name).toBe("duration");
-    expect(inputRef).toHaveBeenCalled();
-
-    fireEvent.click(
-      view.container.querySelector(
-        '[data-reservation-type-title="hour:4"]'
-      ) as HTMLElement
+    const radioGroup = view.getByRole("radiogroup");
+    expect(radioGroup.getAttribute("data-reservation-type-presentation")).toBe(
+      "illustrated"
     );
-    expect(onChange).toHaveBeenCalledWith("hour:4");
+    expect(radioGroup.getAttribute("aria-required")).toBe("true");
+    expect(openSpace.name).toBe("entryTier");
+    expect(openSpace.checked).toBe(true);
+    expect(reservedDesk.disabled).toBe(false);
+    expect(workstation.disabled).toBe(true);
 
-    fireEvent.click(
-      view.container.querySelector(
-        '[data-reservation-type-price="hour:4"]'
-      ) as HTMLElement
-    );
-    expect(onChange).toHaveBeenCalledTimes(2);
-    expect(onChange).toHaveBeenLastCalledWith("hour:4");
-
-    fireEvent.blur(fourHours);
-    expect(onBlur).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(
-      view.container.querySelector(
-        '[data-reservation-type-title="day:1"]'
-      ) as HTMLElement
-    );
-    expect(onChange).toHaveBeenCalledTimes(2);
-    expect(oneDay.disabled).toBe(true);
-    expect(
-      view.container.querySelector('[data-reservation-type-option="day:1"]')
-        ?.className
-    ).toContain("cursor-not-allowed");
+    fireEvent.click(workstation);
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(reservedDesk);
+    expect(onChange).toHaveBeenCalledWith("reserved-desk");
   });
 
-  test("renders caller-owned content without pricing campaign state", () => {
-    const view = render(
-      <ReservationTypeInput onChange={() => undefined} value="basic">
+  test("shows an option's illustration only in the illustrated presentation", () => {
+    const options = (presentation?: "illustrated") => (
+      <ReservationTypeInput
+        onChange={() => undefined}
+        presentation={presentation}
+        value="open-space"
+      >
         <ReservationTypeOption
-          price="CZK 175 / day"
-          title="Basic"
-          value="basic"
-        >
-          <div data-domain-description="">Open-space desk</div>
-        </ReservationTypeOption>
+          illustration={<svg data-testid="desk" />}
+          price="CZK 290 / day"
+          priceReady={false}
+          title="Open Space"
+          value="open-space"
+        />
       </ReservationTypeInput>
     );
-    const option = view.container.querySelector(
-      '[data-reservation-type-option="basic"]'
-    );
+    const view = render(options("illustrated"));
+    const illustration = () =>
+      view.container.querySelector("[data-reservation-type-illustration]");
 
-    expect(option?.className).toContain("outline-burned-orange");
-    expect(option?.className).toContain("lg:row-span-4");
-    expect(option?.className).not.toContain("glow-border");
+    expect(illustration()?.getAttribute("aria-hidden")).toBe("true");
     expect(
-      option?.querySelector("[data-domain-description]")?.textContent
-    ).toBe("Open-space desk");
+      illustration()?.querySelector('[data-testid="desk"]')
+    ).not.toBeNull();
+    expect(
+      view.container
+        .querySelector("[data-reservation-type-price]")
+        ?.getAttribute("data-reservation-type-price-ready")
+    ).toBe("false");
+
+    view.rerender(options());
+    expect(illustration()).toBeNull();
+    expect(view.getByRole("radio").getAttribute("aria-labelledby")).toBe(
+      "reservation-type-open-space-title reservation-type-open-space-price"
+    );
+  });
+
+  test("requires the option group around an option", () => {
+    const consoleError = console.error;
+    console.error = () => undefined;
+    try {
+      expect(() =>
+        render(
+          <ReservationTypeOption price="CZK 290" title="Open" value="open" />
+        )
+      ).toThrow(
+        "ReservationTypeOption must be used within ReservationTypeInput"
+      );
+    } finally {
+      console.error = consoleError;
+    }
   });
 });

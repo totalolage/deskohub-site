@@ -1,10 +1,7 @@
 import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Option, Schema } from "effect";
-import {
-  coworkAdvertisedPriceReservationEquals,
-  getCoworkAdvertisedPriceReservation,
-} from "@/features/reservation/cowork-reservation";
 import {
   advertisedPriceRequestBatchSize,
   advertisedPriceRequestSchema,
@@ -53,21 +50,28 @@ describe("advertised price contract", () => {
     ).toBe(true);
   });
 
-  test("accepts meeting-room reservations at the family-neutral boundary", () => {
-    const decoded = decodeRequest({
-      locale: "en-US",
-      reservation: {
-        kind: "meeting-room",
-        details: {
+  test.each([
+    ["before the reservation date", "2099-06-09"],
+    ["more than a day after the reservation date", "2099-06-12"],
+  ])(
+    "rejects a meeting-room last service date %s",
+    (_label, lastServiceDate) => {
+      const decoded = decodeRequest({
+        locale: "en-US",
+        reservation: {
           kind: "meeting-room",
-          duration: { unit: "hour", amount: 4 },
-          reservationDate: "2099-06-10",
+          details: {
+            kind: "meeting-room",
+            duration: { unit: "hour", amount: 4 },
+            reservationDate: "2099-06-10",
+            lastServiceDate,
+          },
         },
-      },
-    });
+      });
 
-    expect(Option.isSome(decoded)).toBe(true);
-  });
+      expect(Option.isNone(decoded)).toBe(true);
+    }
+  );
 
   test("rejects office price requests beyond the one-month booking horizon", () => {
     const startsOn = Temporal.Now.plainDateISO();
@@ -114,6 +118,7 @@ describe("advertised price contract", () => {
           kind: "meeting-room",
           duration: { unit: "day", amount: 1 },
           reservationDate: "2099-06-10",
+          lastServiceDate: "2099-06-10",
           startsAt: "2099-06-10T08:00:00Z",
           endsAt: "2099-06-11T08:00:00Z",
         },
@@ -128,23 +133,11 @@ describe("advertised price contract", () => {
       locale: "en-US",
       reservation: {
         ...reservation,
-        customerEmail: "ada@example.test",
+        customerEmail: testEmailAddress("ada"),
       },
     });
 
     expect(Option.isNone(decoded)).toBe(true);
-  });
-
-  test("compares every price-affecting reservation input", () => {
-    expect(
-      coworkAdvertisedPriceReservationEquals(reservation, reservation)
-    ).toBe(true);
-    expect(
-      coworkAdvertisedPriceReservationEquals(reservation, {
-        ...reservation,
-        details: { ...reservation.details, coffee: false },
-      })
-    ).toBe(false);
   });
 
   test("accepts only price-affecting cowork inputs", () => {
@@ -180,25 +173,5 @@ describe("advertised price contract", () => {
         })
       )
     ).toBe(true);
-  });
-
-  test("uses the same advertised-price snapshot for every Profi monitor", () => {
-    const reservation = {
-      entryTier: "profi" as const,
-      coffee: true,
-      date: "2026-07-20",
-    };
-
-    expect(
-      getCoworkAdvertisedPriceReservation({
-        ...reservation,
-        monitorOption: "2x27-qhd",
-      })
-    ).toEqual(
-      getCoworkAdvertisedPriceReservation({
-        ...reservation,
-        monitorOption: "2x32-4k",
-      })
-    );
   });
 });

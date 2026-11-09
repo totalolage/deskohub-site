@@ -7,6 +7,9 @@
     },
     "typecheck": {
       "dependsOn": ["generate"]
+    },
+    "test": {
+      "dependsOn": ["$TURBO_EXTENDS$", "generate"]
     }
   }
 }

@@ -1,0 +1,22 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Administration empty states and sort indicators come from the shared
+// foundations (`features/administration/empty-state.tsx`, `sort-head.tsx`);
+// route pages and feature tables must not redeclare them.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:app/\[locale\]/admin|features/administration|features/discounts/admin)/.*\.tsx$",
+  not $name <: r".*apps/deskohub-workspace/features/administration/empty-state\.tsx$",
+  $body <: r"(?s).*\b(?:EmptyState|SortIcon)\b.*",
+  $body <: contains bubble {
+    JsIdentifierBinding() as $binding where {
+      $binding <: r"^(?:EmptyState|SortIcon)$",
+      not $binding <: within JsImport(),
+      register_diagnostic(
+        span = $binding,
+        message = "Use the shared administration EmptyState and AdministrationSortHead foundations instead of declaring local empty-state or sort-icon chrome.",
+        severity = "error"
+      )
+    }
+  }
+}

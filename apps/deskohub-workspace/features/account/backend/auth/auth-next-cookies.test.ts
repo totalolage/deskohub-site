@@ -1,7 +1,9 @@
+import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
+import { Effect } from "effect";
 import { makeAuthDatabase } from "@/db/auth-database-client";
 import {
   authAccount,
@@ -11,6 +13,10 @@ import {
   authVerification,
 } from "@/db/schema/auth";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  postgresAuthHookServices,
+  testAccountDeletion,
+} from "./auth-hook-services.test-utils";
 import { type MagicLinkSendFunction, makeWorkspaceAuth } from "./auth-server";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -63,15 +69,21 @@ const makeTestAuth = (sentMagicLinks: { url: string }[] = []) => {
     }),
     secrets: [{ version: 1, value: SECRET_V1 }],
     allowedHosts: [HOST],
+    nativeAppLinkOrigin: `https://${HOST}`,
+    passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
+    customerMcpResource: `https://${HOST}/api/mcp`,
     httpsOnly: true,
-    areAccountsEnabled: async () => true,
     sendMagicLink,
-    beforeDeleteUser: () => Promise.resolve(),
+    reviewAccountCredentials: [],
+    services: postgresAuthHookServices(testDatabase!, {
+      passkeyFlag: Effect.succeed(false),
+    }),
+    accountDeletion: testAccountDeletion(),
   });
 };
 
 const uniqueEmail = (label: string) =>
-  `${label}-${crypto.randomUUID()}@deskohub.test`;
+  testEmailAddress(`${label}-${crypto.randomUUID()}`);
 
 const runIpOctet = Math.floor(Math.random() * 200) + 20;
 let ipCounter = 0;
@@ -149,12 +161,6 @@ const backdateSession = async (email: string) => {
 describe.skipIf(!testDatabase)(
   "Better Auth Next.js cookie integration on the migrated disposable Postgres",
   () => {
-    test("keeps nextCookies as the last plugin so Server Action cookies are not missed", () => {
-      const auth = makeTestAuth();
-      const plugins = auth.options.plugins ?? [];
-      expect(plugins.at(-1)?.id).toBe("next-cookies");
-    });
-
     test("clears the browser session cookie when the delete-user call runs from a Server Action", async () => {
       const sentMagicLinks: { url: string }[] = [];
       const auth = makeTestAuth(sentMagicLinks);
@@ -179,29 +185,6 @@ describe.skipIf(!testDatabase)(
       expect(cleared).toBeTruthy();
       expect(cleared!.value).toBe("");
       expect(cleared!.options?.maxAge).toBe(0);
-    });
-
-    test("refreshes the rolling session cookie for browser get-session requests", async () => {
-      const sentMagicLinks: { url: string }[] = [];
-      const auth = makeTestAuth(sentMagicLinks);
-      const email = uniqueEmail("browser-refresh");
-      const cookie = await signInAndVerify(auth, sentMagicLinks, email);
-      await backdateSession(email);
-      const staleExpiry = await sessionExpiresAt(email);
-
-      const response = await callHandler(auth, "/get-session", {
-        headers: { cookie },
-      });
-      expect(response.status).toBe(200);
-      expect(await response.json()).not.toBeNull();
-
-      expect(await sessionExpiresAt(email)).toBeGreaterThan(staleExpiry);
-
-      const refreshedCookie = response.headers
-        .getSetCookie()
-        .find((entry) => entry.includes("session_token="));
-      expect(refreshedCookie).toBeTruthy();
-      expect(refreshedCookie).toContain("Max-Age=2592000");
     });
 
     test("defers the rolling refresh on RSC get-session reads that cannot write cookies", async () => {

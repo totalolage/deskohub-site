@@ -1,65 +1,152 @@
+import type { Locale } from "@/features/i18n";
+import { formatCount } from "@/shared/utils/number";
 import { AdministrationLink as Link } from "./admin-link";
-import type { AdministrationOverviewMetric } from "./administration.service";
+import type {
+  AdministrationOverviewMetric,
+  AdministrationReservationActivity,
+} from "./administration.service";
+import {
+  type AdministrationHref,
+  administrationHref,
+} from "./administration-href";
+import { getAdministrationCustomerName } from "./customer-presentation";
+import { m } from "./i18n";
 import type {
   loadAdministrationOverview,
   loadAdministrationReservationOverview,
 } from "./page-data.server";
+import {
+  getReservationActivityCountAppearance,
+  ReservationActivityCalendar,
+  ReservationActivitySwatch,
+  ReservationActivityTotal,
+} from "./reservation-activity-calendar";
 
 type OverviewData = Awaited<ReturnType<typeof loadAdministrationOverview>>;
 type ReservationOverviewData = Awaited<
   ReturnType<typeof loadAdministrationReservationOverview>
 >;
 
-export async function ReservationActivity({
+/** Sample counts for the legend, from an empty day to a busy one. */
+const reservationActivityLegendCounts = [0, 2, 6, 12, 24];
+
+export async function OverviewReservationActivityTotal({
+  activity,
+  locale,
+}: {
+  readonly activity: Promise<AdministrationReservationActivity>;
+  readonly locale: Locale;
+}) {
+  return <ReservationActivityTotal activity={await activity} locale={locale} />;
+}
+
+export async function OverviewReservationActivityCalendar({
+  activity,
+  locale,
+}: {
+  readonly activity: Promise<AdministrationReservationActivity>;
+  readonly locale: Locale;
+}) {
+  return (
+    <ReservationActivityCalendar
+      activity={await activity}
+      getDayAppearance={({ count }) =>
+        getReservationActivityCountAppearance(count)
+      }
+      legend={
+        <>
+          <span>
+            {m.administrationReservationActivityLegendFewer({}, { locale })}
+          </span>
+          {reservationActivityLegendCounts.map((count) => (
+            <ReservationActivitySwatch
+              key={count}
+              {...getReservationActivityCountAppearance(count)}
+            />
+          ))}
+          <span>
+            {m.administrationReservationActivityLegendMore({}, { locale })}
+          </span>
+        </>
+      }
+      locale={locale}
+    />
+  );
+}
+
+export async function ReservationCounts({
+  locale,
   overview,
 }: {
+  readonly locale: Locale;
   readonly overview: Promise<ReservationOverviewData>;
 }) {
   const data = await overview;
   const { ranges } = data;
 
   return (
-    <dl className="grid gap-3 lg:grid-cols-3">
+    <dl className="grid gap-3 @xl:grid-cols-3">
       <OverviewMetric
         href={getReservationRangeHref(ranges.today)}
-        label="Today"
+        label={m.administrationOverviewTodayLabel({}, { locale })}
+        locale={locale}
         metric={data.today}
-        note="Reservations starting today"
+        note={m.administrationOverviewTodayNote({}, { locale })}
       />
       <OverviewMetric
         href={getReservationRangeHref(ranges.upcoming)}
-        label="Upcoming"
+        label={m.administrationOverviewUpcomingLabel({}, { locale })}
+        locale={locale}
         metric={data.upcoming}
-        note="Starting in the next 30 days"
+        note={m.administrationOverviewUpcomingNote({}, { locale })}
       />
       <OverviewMetric
         href={getReservationRangeHref(ranges.lastSevenDays)}
-        label="Last 7 days"
+        label={m.administrationOverviewLastSevenDaysLabel({}, { locale })}
+        locale={locale}
         metric={data.lastSevenDays}
-        note="Started during this period"
+        note={m.administrationOverviewLastSevenDaysNote({}, { locale })}
       />
     </dl>
   );
 }
 
 export async function CustomerActivity({
+  locale,
   overview,
 }: {
+  readonly locale: Locale;
   readonly overview: Promise<OverviewData>;
 }) {
   const { newCustomers, uniqueCustomers } = await overview;
 
   return (
-    <dl className="grid gap-3 lg:grid-cols-2">
+    <dl className="grid gap-3 @xl:grid-cols-2">
       <CustomerActivityMetric
-        label="Unique customers"
+        label={m.administrationOverviewUniqueCustomersLabel({}, { locale })}
+        locale={locale}
         metric={uniqueCustomers}
-        unavailableNote="Live booking dates unavailable"
+        unavailableLabel={m.administrationOverviewUniqueCustomerCountUnavailable(
+          {},
+          { locale }
+        )}
+        unavailableNote={m.administrationOverviewLiveBookingDatesUnavailable(
+          {},
+          { locale }
+        )}
       />
       <CustomerActivityMetric
-        label="New customers"
+        label={m.administrationOverviewNewCustomersLabel({}, { locale })}
+        locale={locale}
         metric={newCustomers}
-        unavailableNote="Customer creation dates unavailable"
+        unavailableLabel={m.administrationOverviewNewCustomerCountUnavailable(
+          {},
+          { locale }
+        )}
+        unavailableNote={m.administrationOverviewCustomerCreationDatesUnavailable(
+          {},
+          { locale }
+        )}
       />
     </dl>
   );
@@ -67,11 +154,15 @@ export async function CustomerActivity({
 
 function CustomerActivityMetric({
   label,
+  locale,
   metric,
+  unavailableLabel,
   unavailableNote,
 }: {
   readonly label: string;
+  readonly locale: Locale;
   readonly metric: OverviewData["uniqueCustomers"];
+  readonly unavailableLabel: string;
   readonly unavailableNote: string;
 }) {
   const displayedCustomers = metric.customers.slice(
@@ -85,37 +176,50 @@ function CustomerActivityMetric({
       <dd className="mt-4 text-4xl leading-none tracking-[-0.03em] text-aquamarine-ink">
         {metric.unavailable ? (
           <>
-            <span className="sr-only">
-              {label.slice(0, -1)} count unavailable
-            </span>
+            <span className="sr-only">{unavailableLabel}</span>
             <span aria-hidden="true">—</span>
           </>
         ) : (
-          metric.value
+          formatCount(metric.value, locale)
         )}
       </dd>
       <dd className="mt-3 text-xs leading-5 text-navy-blue/58">
-        {metric.unavailable ? unavailableNote : "Last 7 days"}
+        {metric.unavailable
+          ? unavailableNote
+          : m.administrationOverviewLastSevenDaysLabel({}, { locale })}
       </dd>
       {!metric.unavailable && (
         <dd className="mt-4 border-t border-navy-blue/10 pt-3 text-xs">
           {metric.value === 0 ? (
-            <p className="text-navy-blue/58">No customers in this period</p>
+            <p className="text-navy-blue/58">
+              {m.administrationOverviewNoCustomers({}, { locale })}
+            </p>
           ) : (
             <ul>
               {displayedCustomers.map(({ customer, customerId }) => (
                 <li key={customerId}>
                   <Link
                     className="block break-words font-semibold transition-colors hover:text-aquamarine-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-blue/40"
-                    href={`/admin/customers/${customerId}`}
+                    href={administrationHref(
+                      "/[locale]/admin/customers/[customerId]",
+                      { customerId }
+                    )}
                   >
-                    {customer?.displayName ?? "Details unavailable"}
+                    {customer
+                      ? getAdministrationCustomerName(customer, locale)
+                      : m.administrationCustomerDetailsUnavailable(
+                          {},
+                          { locale }
+                        )}
                   </Link>
                 </li>
               ))}
               {metric.value > 3 && (
                 <li className="text-navy-blue/58">
-                  … and {metric.value - 2} more
+                  {m.administrationOverviewMoreCustomers(
+                    { count: metric.value - 2 },
+                    { locale }
+                  )}
                 </li>
               )}
             </ul>
@@ -129,11 +233,13 @@ function CustomerActivityMetric({
 function OverviewMetric({
   href,
   label,
+  locale,
   metric,
   note,
 }: {
-  readonly href: string;
+  readonly href: AdministrationHref;
   readonly label: string;
+  readonly locale: Locale;
   readonly metric: AdministrationOverviewMetric;
   readonly note: string;
 }) {
@@ -150,26 +256,35 @@ function OverviewMetric({
       <dd className="mt-4 flex items-baseline gap-2 text-4xl leading-none tracking-[-0.03em]">
         {metric.unavailable ? (
           <>
-            <span className="sr-only">Reservation count unavailable</span>
+            <span className="sr-only">
+              {m.administrationOverviewReservationCountUnavailable(
+                {},
+                { locale }
+              )}
+            </span>
             <span aria-hidden="true">—</span>
           </>
         ) : (
           <>
             <span className="sr-only">
-              {metric.completed} completed out of {metric.value} total
-              reservations
+              {m.administrationOverviewReservationCompletion(
+                { completed: metric.completed, count: metric.value },
+                { locale }
+              )}
             </span>
             <span aria-hidden="true" className="text-aquamarine-ink">
-              {metric.completed}
+              {formatCount(metric.completed, locale)}
             </span>
             <span aria-hidden="true" className="text-lg text-navy-blue/58">
-              / {metric.value}
+              / {formatCount(metric.value, locale)}
             </span>
           </>
         )}
       </dd>
       <dd className="mt-3 text-xs leading-5 text-navy-blue/58">
-        {metric.unavailable ? "Live booking dates unavailable" : note}
+        {metric.unavailable
+          ? m.administrationOverviewLiveBookingDatesUnavailable({}, { locale })
+          : note}
       </dd>
     </div>
   );
@@ -181,4 +296,5 @@ const getReservationRangeHref = ({
 }: {
   readonly from: string;
   readonly to: string;
-}) => `/admin/reservations?from=${from}&to=${to}`;
+}): AdministrationHref =>
+  `${administrationHref("/[locale]/admin/reservations")}?from=${from}&to=${to}`;

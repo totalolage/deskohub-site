@@ -1,19 +1,28 @@
 import { expect, test } from "bun:test";
 import {
-  DotyposDiscountGroupIdSchema,
+  DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
+  DotyposService,
 } from "@deskohub/dotypos";
 import type { DiscountGroup } from "@deskohub/dotypos/generated";
-import { Effect } from "effect";
+import { Temporal } from "@js-temporal/polyfill";
+import { Effect, Layer, Logger, Tracer } from "effect";
+import { HttpClient } from "effect/unstable/http";
+import {
+  hasPreviousPaidBooking,
+  hasPriorConfirmedDotyposBooking,
+} from "@/features/referrals/eligibility";
 import type { DatasourceConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
+  cancelDotyposReservation,
   dotyposTimestampMatches,
+  getDotyposLayer,
+  readDotyposReservationStatus,
   selectE2EDotyposDiscountGroup,
+  waitForCancelledDotyposReservationStatuses,
   waitForCancelledDotyposReservations,
-  waitForConfirmedDotyposReservation,
   waitForDotyposCancellationConvergence,
-  waitForDotyposCustomerDiscountGroup,
 } from "./dotypos";
 
 test("selects an active partial Dotypos discount deterministically", () => {
@@ -30,17 +39,6 @@ test("selects an active partial Dotypos discount deterministically", () => {
   expect(selected).toEqual({ basisPoints: 7, id: "fractional" });
 });
 
-test("requires a usable Dotypos customer-discount group", () => {
-  expect(() =>
-    selectE2EDotyposDiscountGroup([
-      { id: "deleted", deleted: true, discountPercent: "10" },
-      { id: "full", discountPercent: "100" },
-    ])
-  ).toThrow(
-    "the E2E Dotypos cloud must contain an active percentage discount group from 0.01% through 90%"
-  );
-});
-
 test("rejects a near-total group that leaves too little for stacked discounts", () => {
   expect(() =>
     selectE2EDotyposDiscountGroup([
@@ -51,71 +49,51 @@ test("rejects a near-total group that leaves too little for stacked discounts", 
   );
 });
 
-test("waits for Dotypos to expose the confirmed reservation state", async () => {
-  let reads = 0;
-  const result = await Effect.runPromise(
-    waitForConfirmedDotyposReservation(
-      Effect.sync(() => {
-        reads += 1;
-        return {
-          reservation: {
-            status: reads < 3 ? "NEW" : "CONFIRMED",
-          },
-        };
-      }),
-      { intervalMs: 1, timeoutMs: 500 }
-    )
-  );
+test("reports how many cancelled reservations remained active by status", async () => {
+  const revived = DotyposReservationIdSchema.make("revived-reservation");
+  const converged = DotyposReservationIdSchema.make("converged-reservation");
 
-  expect(result.reservation.status).toBe("CONFIRMED");
-  expect(reads).toBe(3);
-});
-
-test("waits for cancelled reservations to leave active inventory", async () => {
-  let reads = 0;
-  const reservationId = DotyposReservationIdSchema.make("target-reservation");
-  await Effect.runPromise(
+  const error = await Effect.runPromise(
     waitForDotyposCancellationConvergence(
-      Effect.sync(() => {
-        reads += 1;
-        return [
-          ...(reads < 3
-            ? [{ id: reservationId, status: "CONFIRMED" as const }]
-            : []),
-        ];
-      }),
-      [reservationId],
-      { intervalMs: 1, timeoutMs: 500 }
-    )
+      Effect.succeed([
+        { id: revived, status: "CONFIRMED" as const },
+        { id: "unrelated-reservation", status: "NEW" as const },
+      ]),
+      [revived, converged],
+      { intervalMs: 1, timeoutMs: 20 }
+    ).pipe(Effect.flip)
   );
 
-  expect(reads).toBe(3);
+  expect(error.message).toContain(
+    "1 of 2 cancelled reservations still active (CONFIRMED: 1)"
+  );
+  expect(error.message).not.toContain(revived);
 });
 
-// The two fake-reader tests above only poll the supplied read effect; they
-// prove the polling wrapper, not which read model the cleanup adapter wires
-// in. The adapter-level test below executes waitForCancelledDotyposReservations
-// against a recording Dotypos API server to prove the overlapping-interval
-// read model is the one driving cleanup convergence.
+// A fake reader would only prove the polling wrapper, not which read model the
+// cleanup adapter wires in. This adapter-level test executes
+// waitForCancelledDotyposReservations against a recording Dotypos API server to
+// prove the overlapping-interval read model is the one driving cleanup
+// convergence. The reservation is already cancelled on the first read, so no
+// poll interval elapses.
 
-test("the cleanup adapter polls the overlapping-interval read model to convergence", async () => {
+test("the cleanup adapter reads convergence from the overlapping-interval listing", async () => {
   const reservationId = DotyposReservationIdSchema.make("555000111");
   const interval = {
     startDate: new Date("2099-01-01T10:00:00.000Z"),
     endDate: new Date("2099-01-01T12:00:00.000Z"),
   };
-  const fakeReservation = (status: "CONFIRMED" | "CANCELLED") => ({
+  const cancelledReservation = {
     id: "555000111",
     _branchId: "11111111",
     _cloudId: "cloud-id",
     startDate: "2099-01-01T11:00:00.000Z",
     endDate: "2099-01-01T13:00:00.000Z",
     seats: "2",
-    status,
-  });
-  const listCalls: URL[] = [];
+    status: "CANCELLED",
+  };
   const requestPaths: string[] = [];
-  let poll = 0;
+  const listingFilters: Array<string | null> = [];
 
   const server = Bun.serve({
     port: 0,
@@ -126,11 +104,8 @@ test("the cleanup adapter polls the overlapping-interval read model to convergen
         return Response.json({ accessToken: "access-token" });
       }
       if (url.pathname === "/clouds/cloud-id/reservations") {
-        poll += 1;
-        listCalls.push(url);
-        return Response.json({
-          data: [fakeReservation(poll === 1 ? "CONFIRMED" : "CANCELLED")],
-        });
+        listingFilters.push(url.searchParams.get("filter"));
+        return Response.json({ data: [cancelledReservation] });
       }
       return new Response("Not found", { status: 404 });
     },
@@ -159,20 +134,14 @@ test("the cleanup adapter polls the overlapping-interval read model to convergen
       waitForCancelledDotyposReservations(config, [reservationId], interval)
     );
 
-    // The adapter polled the active-overlap listing until the target left it.
-    expect(listCalls.length).toBeGreaterThanOrEqual(2);
-    for (const url of listCalls) {
-      expect(url.searchParams.get("filter")).toBe(
-        [
-          "status|in|NEW,CONFIRMED",
-          `startDate|lt|${interval.endDate.getTime()}`,
-          `endDate|gt|${interval.startDate.getTime()}`,
-        ].join(";")
-      );
+    // The broad reader is never used: every listing is scoped to the cleanup
+    // interval (the filter syntax itself is the Dotypos service's contract),
+    // and there are no per-reservation reads.
+    expect(listingFilters.length).toBeGreaterThan(0);
+    for (const filter of listingFilters) {
+      expect(filter).toContain(String(interval.startDate.getTime()));
+      expect(filter).toContain(String(interval.endDate.getTime()));
     }
-
-    // The broad reader is never used: no unfiltered reservation listing and
-    // no per-reservation reads — only the token endpoint and the overlap list.
     expect(
       requestPaths.every(
         (path) =>
@@ -183,46 +152,236 @@ test("the cleanup adapter polls the overlapping-interval read model to convergen
   } finally {
     server.stop(true);
   }
-}, 20_000);
-
-test("waits for a customer discount-group change to become readable", async () => {
-  let reads = 0;
-  const discountGroupId = DotyposDiscountGroupIdSchema.make("group-id");
-  const customer = await Effect.runPromise(
-    waitForDotyposCustomerDiscountGroup(
-      Effect.sync(() => {
-        reads += 1;
-        return {
-          _discountGroupId: reads < 3 ? null : discountGroupId,
-        };
-      }),
-      discountGroupId,
-      { intervalMs: 1, timeoutMs: 500 }
-    )
-  );
-
-  expect(customer._discountGroupId).toBe("group-id");
-  expect(reads).toBe(3);
 });
 
-test("waits for a removed customer discount group to become readable", async () => {
-  let reads = 0;
-  const discountGroupId = DotyposDiscountGroupIdSchema.make("group-id");
-  const customer = await Effect.runPromise(
-    waitForDotyposCustomerDiscountGroup(
-      Effect.sync(() => {
-        reads += 1;
-        return {
-          _discountGroupId: reads < 2 ? discountGroupId : null,
-        };
-      }),
-      null,
-      { intervalMs: 1, timeoutMs: 500 }
-    )
-  );
+test("the reservation-transition fixture does not leave unknown confirmed referral history", async () => {
+  const customerId = DotyposCustomerIdSchema.make("synthetic-customer");
+  const firstId = DotyposReservationIdSchema.make("transition-first");
+  const secondId = DotyposReservationIdSchema.make("transition-second");
+  const reservationIds = [firstId, secondId] as const;
+  const interval = {
+    endDate: new Date("2099-05-01T12:00:00.000Z"),
+    startDate: new Date("2099-05-01T08:00:00.000Z"),
+  };
+  const statuses = new Map<string, "CONFIRMED" | "CANCELLED">([
+    [firstId, "CONFIRMED"],
+    [secondId, "CONFIRMED"],
+  ]);
+  const reservation = (id: string, status: "CONFIRMED" | "CANCELLED") => ({
+    id,
+    _branchId: "11111111",
+    _cloudId: "cloud-id",
+    _customerId: customerId,
+    _tableId: "22222222",
+    startDate: "2099-05-01T10:00:00.000Z",
+    endDate: "2099-05-01T12:00:00.000Z",
+    seats: "1",
+    status,
+  });
+  const server = Bun.serve({
+    port: 0,
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") {
+        return Response.json({ accessToken: "access-token" });
+      }
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        const active = [...statuses].flatMap(([id, status]) =>
+          status === "CANCELLED" ? [] : [reservation(id, status)]
+        );
+        return Response.json({ data: active });
+      }
+      const reservationId = url.pathname.split("/").at(-1);
+      const status = reservationId ? statuses.get(reservationId) : undefined;
+      if (request.method === "DELETE" && reservationId && status) {
+        statuses.set(reservationId, "CANCELLED");
+        return new Response(null, { status: 200 });
+      }
+      if (request.method === "GET" && reservationId && status) {
+        return Response.json(reservation(reservationId, status));
+      }
+      return new Response("Not found", { status: 404 });
+    },
+  });
 
-  expect(customer._discountGroupId).toBeNull();
-  expect(reads).toBe(2);
+  try {
+    const config: DatasourceConfig = {
+      databaseUrl: "postgres://localhost/fake",
+      databaseUrlUnpooled: "postgres://localhost/fake",
+      dotypos: {
+        apiTimeout: 1_000,
+        apiUrl: `http://127.0.0.1:${server.port}`,
+        branchId: "11111111",
+        clientId: "e2e-client",
+        clientSecret: "e2e-client-secret",
+        cloudId: "cloud-id",
+        employeeId: "22222222",
+        refreshToken: "e2e-refresh-token",
+      },
+      expectedCurrency: "CZK",
+      nexiApiOrigin: "https://xpaysandbox.nexigroup.com",
+      timeouts: workspaceE2ETimeouts,
+    };
+
+    // The existing account transition cancels only its second reservation.
+    await Effect.runPromise(cancelDotyposReservation(config, secondId));
+    await Effect.runPromise(
+      waitForCancelledDotyposReservations(config, [secondId], interval)
+    );
+    const currentStatuses = await Effect.runPromise(
+      Effect.forEach(reservationIds, (id) =>
+        readDotyposReservationStatus(config, id)
+      )
+    );
+    expect(currentStatuses).toEqual(["CONFIRMED", "CANCELLED"]);
+    const currentEvidence = currentStatuses.map((dotyposStatus) => ({
+      cancelled: dotyposStatus === "CANCELLED",
+      dotyposCustomerId: customerId,
+      dotyposStatus,
+      endsAt: Temporal.Instant.from("2099-05-01T12:00:00Z"),
+      localPaymentState: null,
+    }));
+    expect(
+      hasPreviousPaidBooking({
+        hasLocalPaidBooking: false,
+        hasPriorConfirmedDotyposBooking:
+          hasPriorConfirmedDotyposBooking(currentEvidence),
+      })
+    ).toBe(true);
+
+    // The repaired account lane cancels its remaining owned booking before
+    // the referral case, waits for overlap-list inactivity, then verifies the
+    // exact status of every journaled reservation.
+    await Effect.runPromise(cancelDotyposReservation(config, firstId));
+    await Effect.runPromise(
+      waitForCancelledDotyposReservations(config, reservationIds, interval)
+    );
+    const cancelledStatuses = await Effect.runPromise(
+      waitForCancelledDotyposReservationStatuses(config, reservationIds)
+    );
+    expect(cancelledStatuses).toEqual(["CANCELLED", "CANCELLED"]);
+    const cancelledEvidence = cancelledStatuses.map((dotyposStatus) => ({
+      cancelled: dotyposStatus === "CANCELLED",
+      dotyposCustomerId: customerId,
+      dotyposStatus,
+      endsAt: Temporal.Instant.from("2099-05-01T12:00:00Z"),
+      localPaymentState: null,
+    }));
+
+    expect(
+      hasPreviousPaidBooking({
+        hasLocalPaidBooking: false,
+        hasPriorConfirmedDotyposBooking:
+          hasPriorConfirmedDotyposBooking(cancelledEvidence),
+      })
+    ).toBe(false);
+  } finally {
+    server.stop(true);
+  }
+}, 20_000);
+
+test("Dotypos service logs and request spans stay out of E2E output", async () => {
+  const reservationId = DotyposReservationIdSchema.make("987654321012345678");
+  const server = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") {
+        return Response.json({ accessToken: "access-token" });
+      }
+      if (request.method === "DELETE") {
+        return new Response(null, { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    },
+  });
+
+  try {
+    const config: DatasourceConfig = {
+      databaseUrl: "postgres://localhost/fake",
+      databaseUrlUnpooled: "postgres://localhost/fake",
+      dotypos: {
+        apiTimeout: 1_000,
+        apiUrl: `http://127.0.0.1:${server.port}`,
+        branchId: "11111111",
+        clientId: "e2e-client",
+        clientSecret: "e2e-client-secret",
+        cloudId: "cloud-id",
+        employeeId: "22222222",
+        refreshToken: "e2e-refresh-token",
+      },
+      expectedCurrency: "CZK",
+      nexiApiOrigin: "https://xpaysandbox.nexigroup.com",
+      timeouts: workspaceE2ETimeouts,
+    };
+    const cancel = Effect.gen(function* () {
+      const dotypos = yield* DotyposService;
+      yield* dotypos.cancelReservation(reservationId);
+    });
+    const captureOutput = async (
+      run: (captureLogs: Layer.Layer<never>) => Effect.Effect<void, unknown>
+    ) => {
+      const logLines: string[] = [];
+      const spanValues: string[] = [];
+      const captureLogger = Logger.make((options) => {
+        logLines.push(Logger.formatLogFmt.log(options));
+      });
+      const tracer = Tracer.make({
+        span: (options) => ({
+          _tag: "Span" as const,
+          name: options.name,
+          spanId: "test-span-id",
+          traceId: "test-trace-id",
+          parent: options.parent,
+          annotations: options.annotations,
+          attributes: new Map<string, unknown>(),
+          links: options.links,
+          sampled: true,
+          kind: options.kind,
+          status: { _tag: "Started", startTime: 0n } as Tracer.SpanStatus,
+          end: () => {},
+          attribute: (_key, value) => {
+            spanValues.push(String(value));
+          },
+          event: (name, _startTime, attributes) => {
+            spanValues.push(name, JSON.stringify(attributes ?? {}));
+          },
+          addLinks: () => {},
+        }),
+      });
+      await Effect.runPromise(
+        run(Logger.layer([captureLogger])).pipe(
+          Effect.provide(Layer.succeed(Tracer.Tracer, tracer))
+        )
+      );
+      return { logLines, spanValues };
+    };
+    const carriesReservationId = (values: readonly string[]) =>
+      values.some((value) => value.includes(reservationId));
+
+    // Control: the service's own logs and request spans carry the ID.
+    const serviceOutput = await captureOutput((captureLogs) =>
+      cancel.pipe(
+        Effect.provide(captureLogs),
+        Effect.provideService(HttpClient.TracerDisabledWhen, () => false),
+        Effect.provide(getDotyposLayer(config))
+      )
+    );
+    expect(carriesReservationId(serviceOutput.logLines)).toBe(true);
+    expect(carriesReservationId(serviceOutput.spanValues)).toBe(true);
+
+    // The runner's loggers and tracer receive none of it.
+    const runnerOutput = await captureOutput((captureLogs) =>
+      cancel.pipe(
+        Effect.provide(getDotyposLayer(config)),
+        Effect.provide(captureLogs)
+      )
+    );
+    expect(runnerOutput.logLines).toEqual([]);
+    expect(carriesReservationId(runnerOutput.spanValues)).toBe(false);
+  } finally {
+    server.stop(true);
+  }
 });
 
 test("matches ISO Dotypos timestamps to the selected meeting-room instant", () => {

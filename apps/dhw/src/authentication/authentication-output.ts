@@ -27,5 +27,10 @@ export const reportAuthenticationGranted = ({
   Console.log(
     json
       ? JSON.stringify({ authStatus: "granted", session })
-      : `Authenticated as ${session.clientName}.`
+      : `Authenticated as ${session.clientName}. ${describeSessionExpiry(session)}`
   );
+
+export const describeSessionExpiry = (session: CliSessionType) =>
+  session.expiresAt
+    ? `This session expires at ${session.expiresAt}.`
+    : "This session does not expire.";

@@ -4,10 +4,8 @@ import {
   type DotyposReservationStatus,
   DotyposService,
   type DotyposTableId,
-  type ExternalAPIError,
-  type NetworkError,
+  type DotyposWriteFailure,
   type Reservation,
-  ValidationError,
 } from "@deskohub/dotypos";
 import { Effect, Match } from "effect";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
@@ -17,20 +15,22 @@ import {
   getWorkspaceOfficeProductTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
-import {
-  formatWorkspaceMoney,
-  workspaceMoneyWithValue,
-} from "@/features/checkout/workspace-money";
+import { getMeetingRoomSetupStart } from "@/features/reservation/meeting-room-early-setup";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { getReservationDate } from "@/features/reservation/reservation-interval";
+import type { ReservationIntervalValidationError } from "@/features/reservation/reservation-interval-domain";
+import { formatMoney, moneyWithValue } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 import {
   getWorkspaceReservationInterval,
+  type TableAssignmentUnavailableError,
+  type TableAssignmentUnconfigured,
   type WorkspaceTableAssignmentReservation,
   WorkspaceTableAssignmentService,
 } from "./workspace-table-assignment.service";
 import { workspaceBookingSeatCount } from "./workspace-table-occupancy";
+import type { InvalidDotyposTableSeats } from "./workspace-table-selection";
 
 export interface CreateWorkspaceDotyposReservationInput {
   readonly paymentOrderId: WorkspaceReservationId;
@@ -44,7 +44,11 @@ export const createWorkspaceDotyposReservation: (
   input: CreateWorkspaceDotyposReservationInput
 ) => Effect.Effect<
   Reservation,
-  ExternalAPIError | NetworkError | ValidationError,
+  | DotyposWriteFailure
+  | InvalidDotyposTableSeats
+  | ReservationIntervalValidationError
+  | TableAssignmentUnavailableError
+  | TableAssignmentUnconfigured,
   DotyposService | WorkspaceTableAssignmentService
 > = Effect.fn("createWorkspaceDotyposReservation")(
   function* (input) {
@@ -57,10 +61,6 @@ export const createWorkspaceDotyposReservation: (
     const tableAssignments = yield* WorkspaceTableAssignmentService;
     const { startsAt, endsAt } = yield* getWorkspaceReservationInterval(
       input.reservation
-    ).pipe(
-      Effect.mapError(
-        (cause) => new ValidationError({ message: cause.message, cause })
-      )
     );
     const tableId: DotyposTableId = yield* tableAssignments.assignTableId(
       input.reservation
@@ -144,6 +144,14 @@ export const formatWorkspaceReservationNote = (
             meetingRoomReservation.duration,
             checkoutDetails.locale
           )}`,
+          meetingRoomReservation.earlySetup === true
+            ? `Setup from: ${getMeetingRoomSetupStart(
+                Temporal.Instant.from(meetingRoomReservation.startsAt)
+              )
+                .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+                .toPlainTime()
+                .toString({ smallestUnit: "minute" })}`
+            : null,
         ],
       }),
       office: (officeReservation) => ({
@@ -160,14 +168,14 @@ export const formatWorkspaceReservationNote = (
     `Payment order: ${input.paymentOrderId}`,
     `Product: ${productLabel}`,
     ...reservationRows,
-    `Price: ${formatWorkspaceMoney(
+    `Price: ${formatMoney(
       checkoutDetails.payment.expectedPrice,
       checkoutDetails.locale
     )}`,
     ...checkoutDetails.payment.discounts.map(
       ({ amount, discount }) =>
-        `Discount: ${discount.label} (${formatWorkspaceMoney(
-          workspaceMoneyWithValue(-amount.value, amount),
+        `Discount: ${discount.label} (${formatMoney(
+          moneyWithValue(-amount.value, amount),
           checkoutDetails.locale
         )})`
     ),

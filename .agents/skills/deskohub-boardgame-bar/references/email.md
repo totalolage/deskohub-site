@@ -1,45 +1,18 @@
-# Resend Email Service Setup
+# Email
 
-## Overview
+`BoardgameEmailLayer` (`shared/backend/config/email.config.ts`) builds `EmailServiceTag.Live` from `@deskohub/email`. It sends every message through the single provider the config selects, unlike Workspace's per-recipient routing.
 
-Email delivery is selected by provider factory logic in `@deskohub/email`.
+## Provider selection
 
-Default behavior:
+- `EMAIL_PROVIDER=resend` or `console` picks the provider. Without it, the app uses Resend when `EMAIL_API_KEY` is set and Console otherwise.
+- Console is allowed outside production, in Vercel Preview, or with `EMAIL_TEST_MODE=true`. Otherwise production falls back to Resend when `EMAIL_API_KEY` is set and fails without it (`ConfiguredEmailProviderLayer` in `packages/email/backend/provider-factory.ts`).
+- The sending domain must be verified in Resend.
 
-- `EMAIL_PROVIDER=resend` forces Resend.
-- `EMAIL_PROVIDER=console` forces console logging provider.
-- If `EMAIL_PROVIDER` is omitted, the app uses Resend when `EMAIL_API_KEY` is
-  present and console otherwise.
-- In production, `console` is disabled unless `EMAIL_TEST_MODE=true`; with an `EMAIL_API_KEY`, production falls back to Resend.
+## Addresses
 
-## Required Configuration
+- Sender: `EMAIL_FROM_ADDRESS` and `EMAIL_FROM_NAME`, defaulting to `siteConstants.contact.fromEmail` (`noreply@mail.deskohub.cz`) and the brand name.
+- Business mailboxes: `siteConstants.contact.reservationEmail` for training-room requests and `siteConstants.contact.contactEmail` for the contact form.
 
-Add to `.env.local` for the Boardgame Bar app, or to the app's deployment env:
+## Verify
 
-```bash
-EMAIL_API_KEY=re_...
-EMAIL_PROVIDER=resend
-```
-
-`EMAIL_PROVIDER` can be omitted for local development; without `EMAIL_API_KEY`
-it defaults to `console`.
-
-## Sender Addresses
-
-Sender/recipient defaults come from `shared/utils/constants.ts`:
-
-- From address: `siteConstants.contact.fromEmail` (default `noreply@mail.deskohub.cz`)
-- Reservation mailbox: `siteConstants.contact.reservationEmail`
-
-These are not locale-specific sender addresses in the current implementation.
-
-## Verification
-
-1. Exercise the current contact or training-room request flow with synthetic data.
-2. Confirm provider logs indicate Console or Resend initialization.
-3. If using Resend, verify deliveries in the Resend dashboard.
-
-## Production Notes
-
-- Verify your sending domain in Resend.
-- Set `EMAIL_PROVIDER=resend` if you want explicit provider selection in production.
+Submit the contact or training-room form with synthetic data. The log line `Using Console email provider` or `Using Resend email provider` shows which provider ran.

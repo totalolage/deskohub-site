@@ -1,8 +1,14 @@
+import { cached } from "@deskohub/next-effect/cached";
 import { Context, Effect, Layer } from "effect";
+import {
+  closeUnavailableRelease,
+  releaseFromValue,
+} from "@/features/feature-flags/backend/release-gate";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend/workspace-feature-flag.service";
 import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
+import { shareWithinRequest } from "@/shared/backend/share-within-request";
 
-export type DiscountReleaseGateOperation =
+type DiscountReleaseGateOperation =
   | "quote"
   | "discover_active_sales"
   | "discover_advertised_discounts"
@@ -18,82 +24,20 @@ export type DiscountReleaseGates = {
 };
 
 export interface IDiscountReleaseGateService {
+  /**
+   * The discount gates' one decision. Every operation reads the same
+   * decision; the first one to ask annotates the decision's logs.
+   */
   readonly evaluate: (input: {
     readonly operation: DiscountReleaseGateOperation;
   }) => Effect.Effect<DiscountReleaseGates>;
 }
 
-export class DiscountReleaseGateService extends Context.Service<
-  DiscountReleaseGateService,
-  IDiscountReleaseGateService
->()("@deskohub-workspace/discounts/DiscountReleaseGateService") {
-  static Default = Layer.effect(
-    this,
-    Effect.gen(function* () {
-      const featureFlags = yield* WorkspaceFeatureFlagService;
-
-      return {
-        evaluate: Effect.fn("DiscountReleaseGateService.evaluate")((input) =>
-          Effect.Do.pipe(
-            Effect.bind("snapshot", () =>
-              featureFlags.evaluateFlags({
-                flagKeys: [
-                  "calendar_sales",
-                  "customer_discounts",
-                  "discount_codes",
-                ],
-              })
-            ),
-            Effect.bind("calendarSales", ({ snapshot }) =>
-              resolveReleaseGate({
-                flag: "calendar_sales",
-                operation: input.operation,
-                value: snapshot.getFlag("calendar_sales"),
-              })
-            ),
-            Effect.bind("customerDiscounts", ({ snapshot }) =>
-              resolveReleaseGate({
-                flag: "customer_discounts",
-                operation: input.operation,
-                value: snapshot.getFlag("customer_discounts"),
-              })
-            ),
-            Effect.bind("discountCodes", ({ snapshot }) =>
-              resolveReleaseGate({
-                flag: "discount_codes",
-                operation: input.operation,
-                value: snapshot.getFlag("discount_codes"),
-              })
-            ),
-            Effect.map(
-              ({ calendarSales, customerDiscounts, discountCodes }) =>
-                ({
-                  calendarSales,
-                  customerDiscounts,
-                  discountCodes,
-                }) satisfies DiscountReleaseGates
-            ),
-            Effect.tapError((error) =>
-              Effect.logError("Discount release gate evaluation failed").pipe(
-                Effect.annotateLogs({
-                  discountBoundary: "release_gate",
-                  discountOperation: input.operation,
-                  discountErrorTag: error._tag,
-                  discountErrorReason: "evaluation_failure",
-                })
-              )
-            ),
-            Effect.orElseSucceed(() => discountReleaseGatesDisabled)
-          )
-        ),
-      } satisfies IDiscountReleaseGateService;
-    })
-  );
-
-  static Live = this.Default.pipe(
-    Layer.provide(WorkspaceFeatureFlagService.Default)
-  );
-}
+const discountFlags = [
+  "calendar_sales",
+  "customer_discounts",
+  "discount_codes",
+] as const satisfies ReadonlyArray<PostHogFeatureFlagKey>;
 
 const discountReleaseGatesDisabled: DiscountReleaseGates = {
   calendarSales: false,
@@ -101,24 +45,80 @@ const discountReleaseGatesDisabled: DiscountReleaseGates = {
   discountCodes: false,
 };
 
-const resolveReleaseGate = Effect.fn(
-  "DiscountReleaseGateService.resolveReleaseGate"
-)(
-  (input: {
-    readonly flag: PostHogFeatureFlagKey;
-    readonly operation: DiscountReleaseGateOperation;
-    readonly value: boolean | undefined;
-  }) =>
-    input.value === undefined
-      ? Effect.logError("Discount release gate is unavailable").pipe(
-          Effect.annotateLogs({
-            discountBoundary: "release_gate",
-            discountOperation: input.operation,
-            discountFeatureFlag: input.flag,
-            discountErrorTag: "MissingFeatureFlag",
-            discountErrorReason: "missing_flag",
-          }),
-          Effect.as(false)
-        )
-      : Effect.succeed(input.value === true)
+const decideDiscountReleaseGates = WorkspaceFeatureFlagService.pipe(
+  Effect.flatMap((featureFlags) =>
+    featureFlags.evaluateFlags({ flagKeys: discountFlags })
+  ),
+  Effect.flatMap((snapshot) =>
+    Effect.all({
+      calendarSales: releaseFromValue(
+        "calendar_sales",
+        snapshot.getFlag("calendar_sales")
+      ),
+      customerDiscounts: releaseFromValue(
+        "customer_discounts",
+        snapshot.getFlag("customer_discounts")
+      ),
+      discountCodes: releaseFromValue(
+        "discount_codes",
+        snapshot.getFlag("discount_codes")
+      ),
+    })
+  ),
+  closeUnavailableRelease(discountFlags, discountReleaseGatesDisabled)
 );
+
+// One decision per server render, whichever run or layer asks first.
+const requestDiscountReleaseGates = shareWithinRequest(
+  decideDiscountReleaseGates
+);
+
+const gatesFromDecision = (
+  decision: Effect.Effect<DiscountReleaseGates>
+): IDiscountReleaseGateService => ({
+  evaluate: Effect.fn("DiscountReleaseGateService.evaluate")((input) =>
+    decision.pipe(
+      Effect.annotateLogs({
+        discountBoundary: "release_gate",
+        discountOperation: input.operation,
+      })
+    )
+  ),
+});
+
+export class DiscountReleaseGateService extends Context.Service<
+  DiscountReleaseGateService,
+  IDiscountReleaseGateService
+>()("@deskohub-workspace/discounts/DiscountReleaseGateService") {
+  /**
+   * Decides the gates at most once per build of the layer, so one run sees
+   * one decision, and shares it with every run and layer of the same server
+   * render, so a page and its loaders agree. React `cache` doesn't memoize
+   * in a Server Action or route handler, where each build decides once.
+   * Never put it in a process-wide runtime layer.
+   */
+  static Default = Layer.effect(
+    this,
+    WorkspaceFeatureFlagService.pipe(
+      Effect.flatMap((featureFlags) =>
+        cached(
+          requestDiscountReleaseGates.pipe(
+            Effect.provideService(WorkspaceFeatureFlagService, featureFlags)
+          )
+        )
+      ),
+      Effect.map(gatesFromDecision)
+    )
+  );
+
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspaceFeatureFlagService.Default)
+  );
+
+  /**
+   * Gates the caller already decided for this request, for work that must
+   * not read the request itself, such as a cached render.
+   */
+  static fromDecisions = (gates: DiscountReleaseGates) =>
+    Layer.succeed(this, gatesFromDecision(Effect.succeed(gates)));
+}

@@ -1,4 +1,5 @@
 import { CircleAlert, CircleCheck } from "lucide-react";
+import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
   Tooltip,
@@ -7,42 +8,39 @@ import {
   TooltipTrigger,
 } from "@/shared/components/ui/tooltip";
 
-export interface EmailVerificationStatusCopy {
-  readonly verified: string;
-  readonly unverified: string;
-}
-
 export function EmailVerificationStatus({
-  copy,
   emailVerified,
+  locale,
 }: {
-  readonly copy: EmailVerificationStatusCopy;
   readonly emailVerified: boolean;
+  readonly locale: Locale;
 }) {
-  const status = {
-    verified: {
-      className:
-        "size-8 shrink-0 rounded-full p-0 text-emerald-800 hover:bg-emerald-50",
-      copy: copy.verified,
-      Icon: CircleCheck,
-    },
-    unverified: {
-      className:
-        "size-8 shrink-0 rounded-full p-0 text-amber-800 hover:bg-amber-50",
-      copy: copy.unverified,
-      Icon: CircleAlert,
-    },
-  }[emailVerified ? "verified" : "unverified"];
+  const status = (
+    {
+      verified: {
+        tone: "success",
+        label: m.accountProfileEmailVerificationVerified,
+        Icon: CircleCheck,
+      },
+      unverified: {
+        tone: "warning",
+        label: m.accountProfileEmailVerificationUnverified,
+        Icon: CircleAlert,
+      },
+    } as const
+  )[emailVerified ? "verified" : "unverified"];
   const Icon = status.Icon;
+  const label = status.label({}, { locale });
 
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            aria-label={status.copy}
-            className={status.className}
-            size="icon"
+            aria-label={label}
+            className="shrink-0"
+            size="icon-sm"
+            tone={status.tone}
             type="button"
             variant="ghost"
           >
@@ -53,7 +51,7 @@ export function EmailVerificationStatus({
           collisionPadding={16}
           className="w-[min(22rem,calc(100vw-2rem))] break-words whitespace-normal"
         >
-          {status.copy}
+          {label}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

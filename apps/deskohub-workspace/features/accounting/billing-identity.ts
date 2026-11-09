@@ -15,7 +15,6 @@ export const companyRegistrationIdSchema = billingTextSchema(255)
     identifier: "CompanyRegistrationId",
     description: "Company registration identifier used on accounting records.",
   });
-export type CompanyRegistrationId = typeof companyRegistrationIdSchema.Type;
 
 export const vatRegistrationIdSchema = billingTextSchema(255)
   .pipe(Schema.brand("VatRegistrationId"))
@@ -23,7 +22,6 @@ export const vatRegistrationIdSchema = billingTextSchema(255)
     identifier: "VatRegistrationId",
     description: "VAT registration identifier used on accounting records.",
   });
-export type VatRegistrationId = typeof vatRegistrationIdSchema.Type;
 
 export const invoiceCountryCodes = getCodes().sort();
 const invoiceCountryCodeSet = new Set(invoiceCountryCodes);
@@ -58,12 +56,11 @@ export const invoiceBuyerAddressSchema = Schema.Struct({
 export type InvoiceBuyerAddress = typeof invoiceBuyerAddressSchema.Type;
 export type InvoiceBuyerAddressInput = typeof invoiceBuyerAddressSchema.Encoded;
 
-export const personalInvoiceBuyerSchema = Schema.Struct({
+const personalInvoiceBuyerSchema = Schema.Struct({
   kind: Schema.Literal("person"),
   legalName: billingTextSchema(180),
   address: invoiceBuyerAddressSchema,
 });
-export type PersonalInvoiceBuyer = typeof personalInvoiceBuyerSchema.Type;
 
 export const businessInvoiceBuyerSchema = Schema.Struct({
   kind: Schema.Literal("business"),

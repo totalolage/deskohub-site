@@ -1,21 +1,21 @@
 import {
   Context,
   DateTime,
-  Duration,
   Effect,
   Layer,
   Match,
   Option,
-  Schedule,
   Schema,
 } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import { ExternalAPIError, type NetworkError } from "../errors";
+import { ExternalAPIError, NetworkError } from "../errors";
 import type {
   CreateHostedPaymentPageRequest,
   Operation,
+  OrderResponse,
   OrderStatus,
 } from "../generated/effect.gen";
+import { isNexiRefundOperation } from "../refunds";
 import type {
   CreateHostedPaymentPageInput,
   GetNexiOperationInput,
@@ -25,12 +25,14 @@ import type {
   Locale,
   NexiOperation,
   NexiOrder,
+  NexiOrderId,
   PaymentOutcomeStatus,
   PaymentVerificationResult,
   VerifyPaymentOutcomeInput,
 } from "../types";
 import { NexiOperationIdSchema, NexiOrderIdSchema } from "../types";
 import { NexiGeneratedClient } from "./api";
+import { nexiRetryPolicy } from "./request-policy";
 
 const DEFAULT_PAYMENT_SERVICE = "CARDS";
 const DEFAULT_CAPTURE_TYPE = "IMPLICIT";
@@ -91,22 +93,8 @@ const isRetryableNexiError = (error: ExternalAPIError | NetworkError) =>
     Match.orElse(() => false)
   );
 
-const retryPolicy = {
-  schedule: Schedule.exponential("100 millis").pipe(
-    Schedule.jittered,
-    Schedule.while<ExternalAPIError | NetworkError, Duration.Duration>(
-      ({ input }) => isRetryableNexiError(input)
-    ),
-    Schedule.both(Schedule.recurs(3)),
-    Schedule.tapOutput(([delay, attempt]) =>
-      Effect.logWarning(`Nexi retry attempt #${attempt + 1}`, {
-        attemptNumber: attempt + 1,
-        delayMs: Duration.toMillis(delay),
-        maxRetries: 3,
-      })
-    )
-  ),
-};
+const retryTransientNexiFailure =
+  nexiRetryPolicy.retryWhile(isRetryableNexiError);
 
 const getPaymentOutcomeLogAnnotations = (input: VerifyPaymentOutcomeInput) => ({
   orderId: input.orderId,
@@ -169,13 +157,15 @@ const makeNexiService = Effect.gen(function* () {
 
       yield* Effect.logInfo("Nexi hosted payment page request started");
 
+      // Never retried: Nexi documents no idempotency key for POST
+      // /orders/hpp, and a timeout or 5xx can follow a committed creation.
+      // The caller keeps such an attempt unresolved until reconciliation.
       const response = yield* nexiClient
         .createHostedPaymentPage({
           correlationId: input.correlationId,
           payload: request,
         })
         .pipe(
-          Effect.retry(retryPolicy),
           Effect.tapError((error) =>
             Effect.logError("Nexi hosted payment page request failed", {
               error,
@@ -207,105 +197,83 @@ const makeNexiService = Effect.gen(function* () {
       )
   );
 
+  /** The order lookup, retried, and bounded by the input's deadline if any. */
+  const lookupPaymentOrder = (input: VerifyPaymentOutcomeInput) => {
+    const lookup = nexiClient
+      .getOrder({
+        correlationId: input.correlationId,
+        orderId: input.orderId,
+      })
+      .pipe(retryTransientNexiFailure);
+    if (input.deadline === undefined) return lookup;
+
+    return lookup.pipe(
+      Effect.timeoutOrElse({
+        duration: input.deadline,
+        orElse: () =>
+          Effect.fail(
+            new NetworkError({
+              message: "Nexi order lookup exceeded its deadline",
+            })
+          ),
+      })
+    );
+  };
+
   const verifyPaymentOutcome = Effect.fn("verifyPaymentOutcome")(
     function* (input: VerifyPaymentOutcomeInput) {
       yield* Effect.logInfo("Nexi order lookup started");
 
-      const order = yield* nexiClient
-        .getOrder({
-          correlationId: input.correlationId,
-          orderId: input.orderId,
-        })
-        .pipe(
-          Effect.retry(retryPolicy),
-          Effect.tapError((error) =>
-            Effect.logError("Nexi order lookup failed", { error })
-          )
-        );
+      const order = yield* lookupPaymentOrder(input).pipe(
+        Effect.tapError((error) =>
+          Effect.logError("Nexi order lookup failed", { error })
+        )
+      );
 
-      yield* Effect.logDebug("Nexi order lookup result", {
-        operationCount: order.operations?.length ?? 0,
-        orderId: order.orderStatus?.order.orderId ?? order.orderId,
-      });
+      yield* Effect.logDebug(
+        "Nexi order lookup result",
+        describeOrderLookup(order)
+      );
 
-      const providerOrder = order.orderStatus?.order;
       const operations = order.operations ?? [];
-      const executedPaymentOperation = operations.find(
-        (operation) =>
-          isPaymentOperationType(operation.operationType) &&
-          operation.operationResult === EXECUTED_OPERATION_RESULT
+      const paymentOperations = selectPaymentOperations(operations);
+      const evidence = getProviderPaymentEvidence(order, paymentOperations);
+      const resolvedProviderOrderId = yield* decodeOptionalOrderId(
+        evidence.orderId,
+        input.orderId
       );
-      const failedOperation = operations.find((operation) =>
-        isFailureStatus(operation.operationResult)
+      const resolvedProviderOperationId = yield* decodeOptionalOperationId(
+        evidence.operationId
       );
-      const providerAmount =
-        getOperationAmount(executedPaymentOperation) ?? providerOrder;
-      const providerSecurityToken =
-        executedPaymentOperation?.securityToken ?? order.securityToken;
-      const providerOrderId = providerOrder?.orderId ?? order.orderId;
-      const providerOperationId =
-        executedPaymentOperation?.operationId ?? failedOperation?.operationId;
-      const resolvedProviderOrderId = providerOrderId
-        ? yield* decodeNexiOrderId(providerOrderId)
-        : input.orderId;
-      const resolvedProviderOperationId = providerOperationId
-        ? yield* decodeNexiOperationId(providerOperationId)
-        : undefined;
 
-      yield* Effect.logDebug("Nexi selected payment operations", {
-        executedOperationId: executedPaymentOperation?.operationId,
-        executedOperationResult: executedPaymentOperation?.operationResult,
-        executedOperationType: executedPaymentOperation?.operationType,
-        failedOperationId: failedOperation?.operationId,
-        failedOperationResult: failedOperation?.operationResult,
-        failedOperationType: failedOperation?.operationType,
+      yield* Effect.logDebug(
+        "Nexi selected payment operations",
+        describePaymentOperations(paymentOperations)
+      );
+
+      const mismatches = getPaymentMismatches(input, evidence);
+      const status = resolvePaymentOutcomeStatus({
+        mismatches,
+        paymentOperations,
+        providerStatus: evidence.status,
       });
-
-      const mismatches: Array<PaymentVerificationResult["mismatches"][number]> =
-        [];
-      if (providerOrderId !== input.orderId) mismatches.push("orderId");
-      if (providerAmount?.amount !== input.amount) mismatches.push("amount");
-      if (providerAmount?.currency !== input.currency)
-        mismatches.push("currency");
-      if (
-        providerSecurityToken &&
-        providerSecurityToken !== input.securityToken
-      )
-        mismatches.push("securityToken");
-
-      const providerStatus =
-        executedPaymentOperation?.operationResult ??
-        failedOperation?.operationResult ??
-        order.orderStatus?.lastOperationType;
-
-      const status: PaymentOutcomeStatus = (() => {
-        if (mismatches.length > 0) return "failure";
-        if (executedPaymentOperation) return "success";
-        if (failedOperation || isFailureStatus(providerStatus)) {
-          return "failure";
-        }
-        return "pending";
-      })();
 
       yield* Effect.logDebug("Nexi payment outcome status resolved", {
         mismatches,
-        providerStatus,
+        providerStatus: evidence.status,
         status,
       });
 
       const result = {
         status,
-        provider: {
+        provider: toProviderPaymentFacts({
+          order,
+          operations,
+          paymentOperations,
+          evidence,
           orderId: resolvedProviderOrderId,
           operationId: resolvedProviderOperationId,
-          operationCount: operations.length,
-          amount: providerAmount?.amount,
-          currency: providerAmount?.currency,
-          authorizedAmount: order.orderStatus?.authorizedAmount,
-          capturedAmount: order.orderStatus?.capturedAmount,
-          orderStatus: providerStatus,
-          captureExecuted: Boolean(executedPaymentOperation),
-        },
+        }),
         mismatches,
       };
 
@@ -328,35 +296,19 @@ const makeNexiService = Effect.gen(function* () {
       });
       const response = yield* nexiClient
         .getOrder(input)
-        .pipe(Effect.retry(retryPolicy));
-      const providerOrder = response.orderStatus?.order;
-      const rawOrderId = providerOrder?.orderId ?? response.orderId;
-      const orderId = rawOrderId
-        ? yield* decodeNexiOrderId(rawOrderId)
-        : input.orderId;
+        .pipe(retryTransientNexiFailure);
+      const orderId = yield* decodeOptionalOrderId(
+        getProviderOrderId(response),
+        input.orderId
+      );
       const operations = yield* Effect.forEach(
         response.operations ?? [],
         (operation) => toNexiOperation(operation, orderId)
       );
-      const amount = response.amount ?? providerOrder;
       const result: NexiOrder = {
         orderId,
-        ...(amount?.amount && { amount: amount.amount }),
-        ...(amount?.currency && { currency: amount.currency }),
-        ...(response.orderStatus?.authorizedAmount && {
-          authorizedAmount: response.orderStatus.authorizedAmount,
-        }),
-        ...(response.orderStatus?.capturedAmount && {
-          capturedAmount: response.orderStatus.capturedAmount,
-        }),
-        ...(response.orderStatus?.lastOperationTime && {
-          lastOperationTime: normalizeNexiTimestamp(
-            response.orderStatus.lastOperationTime
-          ),
-        }),
-        ...(response.orderStatus?.lastOperationType && {
-          lastOperationType: response.orderStatus.lastOperationType,
-        }),
+        ...toNexiAmountFields(response.amount ?? response.orderStatus?.order),
+        ...toNexiOrderProgress(response.orderStatus ?? {}),
         operations,
       };
       yield* Effect.logInfo("Nexi order details lookup completed", {
@@ -378,7 +330,7 @@ const makeNexiService = Effect.gen(function* () {
     function* (input: ListNexiOrdersInput) {
       const response = yield* nexiClient
         .listOrders(input)
-        .pipe(Effect.retry(retryPolicy));
+        .pipe(retryTransientNexiFailure);
       return yield* Effect.forEach(response.orders ?? [], toNexiOrderStatus);
     },
     (effect, input) =>
@@ -389,7 +341,7 @@ const makeNexiService = Effect.gen(function* () {
     function* (input: GetNexiOperationInput) {
       const response = yield* nexiClient
         .getOperation(input)
-        .pipe(Effect.retry(retryPolicy));
+        .pipe(retryTransientNexiFailure);
       return yield* toNexiOperation(response);
     },
     (effect, input) =>
@@ -405,7 +357,7 @@ const makeNexiService = Effect.gen(function* () {
     function* (input: ListNexiOperationsInput) {
       const response = yield* nexiClient
         .listOperations(input)
-        .pipe(Effect.retry(retryPolicy));
+        .pipe(retryTransientNexiFailure);
       return yield* Effect.forEach(response.operations ?? [], (operation) =>
         toNexiOperation(operation)
       );
@@ -465,39 +417,224 @@ const getOperationAmount = (
   };
 };
 
+/** The order ID Nexi reports, from its order status or the response. */
+const getProviderOrderId = (order: OrderResponse) =>
+  order.orderStatus?.order.orderId ?? order.orderId;
+
+const decodeOptionalOrderId = <Fallback extends NexiOrderId | undefined>(
+  orderId: string | undefined,
+  fallbackOrderId: Fallback
+) => (orderId ? decodeNexiOrderId(orderId) : Effect.succeed(fallbackOrderId));
+
+const decodeOptionalOperationId = (operationId: string | undefined) =>
+  operationId ? decodeNexiOperationId(operationId) : Effect.succeed(undefined);
+
+const describeOrderLookup = (order: OrderResponse) => ({
+  operationCount: order.operations?.length ?? 0,
+  orderId: getProviderOrderId(order),
+});
+
+const isExecutedPaymentOperation = (operation: Operation) =>
+  isPaymentOperationType(operation.operationType) &&
+  operation.operationResult === EXECUTED_OPERATION_RESULT;
+
+// A refund's result describes money going back, not the payment outcome: a
+// back-office refund before settlement reports `VOIDED`, which must never
+// read as a failed payment.
+const isFailedPaymentOperation = (operation: Operation) =>
+  !isNexiRefundOperation(operation) &&
+  isFailureStatus(operation.operationResult);
+
+/** The first executed payment operation and the first failed one. */
+const selectPaymentOperations = (operations: readonly Operation[]) => ({
+  executedPaymentOperation: operations.find(isExecutedPaymentOperation),
+  failedOperation: operations.find(isFailedPaymentOperation),
+});
+
+type PaymentOperations = ReturnType<typeof selectPaymentOperations>;
+
+const describePaymentOperations = ({
+  executedPaymentOperation,
+  failedOperation,
+}: PaymentOperations) => ({
+  executedOperationId: executedPaymentOperation?.operationId,
+  executedOperationResult: executedPaymentOperation?.operationResult,
+  executedOperationType: executedPaymentOperation?.operationType,
+  failedOperationId: failedOperation?.operationId,
+  failedOperationResult: failedOperation?.operationResult,
+  failedOperationType: failedOperation?.operationType,
+});
+
+/** The executed payment's amount, else the order's. */
+const getProviderPaymentAmount = (
+  order: OrderResponse,
+  { executedPaymentOperation }: PaymentOperations
+) => getOperationAmount(executedPaymentOperation) ?? order.orderStatus?.order;
+
+const getProviderSecurityToken = (
+  order: OrderResponse,
+  { executedPaymentOperation }: PaymentOperations
+) => executedPaymentOperation?.securityToken ?? order.securityToken;
+
+const getDecidingOperationId = ({
+  executedPaymentOperation,
+  failedOperation,
+}: PaymentOperations) =>
+  executedPaymentOperation?.operationId ?? failedOperation?.operationId;
+
+/** The executed or failed operation's result, else the last operation type. */
+const getProviderPaymentStatus = (
+  order: OrderResponse,
+  { executedPaymentOperation, failedOperation }: PaymentOperations
+) =>
+  executedPaymentOperation?.operationResult ??
+  failedOperation?.operationResult ??
+  order.orderStatus?.lastOperationType;
+
+/** What Nexi reports about the payment, before identifier decoding. */
+const getProviderPaymentEvidence = (
+  order: OrderResponse,
+  paymentOperations: PaymentOperations
+) => ({
+  amount: getProviderPaymentAmount(order, paymentOperations),
+  securityToken: getProviderSecurityToken(order, paymentOperations),
+  orderId: getProviderOrderId(order),
+  operationId: getDecidingOperationId(paymentOperations),
+  status: getProviderPaymentStatus(order, paymentOperations),
+});
+
+type ProviderPaymentEvidence = ReturnType<typeof getProviderPaymentEvidence>;
+
+/** The submitted payment facts Nexi's evidence contradicts, in check order. */
+const getPaymentMismatches = (
+  input: VerifyPaymentOutcomeInput,
+  evidence: ProviderPaymentEvidence
+) => {
+  const mismatches: Array<PaymentVerificationResult["mismatches"][number]> = [];
+  if (evidence.orderId !== input.orderId) mismatches.push("orderId");
+  if (evidence.amount?.amount !== input.amount) mismatches.push("amount");
+  if (evidence.amount?.currency !== input.currency) mismatches.push("currency");
+  if (evidence.securityToken && evidence.securityToken !== input.securityToken)
+    mismatches.push("securityToken");
+  return mismatches;
+};
+
+/**
+ * Any mismatch fails the payment; otherwise an executed payment succeeds, a
+ * failed operation or failure status fails it, and anything else is pending.
+ */
+const resolvePaymentOutcomeStatus = ({
+  mismatches,
+  paymentOperations: { executedPaymentOperation, failedOperation },
+  providerStatus,
+}: {
+  readonly mismatches: PaymentVerificationResult["mismatches"];
+  readonly paymentOperations: PaymentOperations;
+  readonly providerStatus: string | undefined;
+}): PaymentOutcomeStatus => {
+  if (mismatches.length > 0) return "failure";
+  if (executedPaymentOperation) return "success";
+  if (failedOperation || isFailureStatus(providerStatus)) return "failure";
+  return "pending";
+};
+
+const toProviderPaymentFacts = ({
+  order,
+  operations,
+  paymentOperations,
+  evidence,
+  orderId,
+  operationId,
+}: {
+  readonly order: OrderResponse;
+  readonly operations: readonly Operation[];
+  readonly paymentOperations: PaymentOperations;
+  readonly evidence: ProviderPaymentEvidence;
+  readonly orderId: NexiOrderId;
+  readonly operationId: NexiOperation["operationId"];
+}) => ({
+  orderId,
+  operationId,
+  operationCount: operations.length,
+  amount: evidence.amount?.amount,
+  currency: evidence.amount?.currency,
+  authorizedAmount: order.orderStatus?.authorizedAmount,
+  capturedAmount: order.orderStatus?.capturedAmount,
+  orderStatus: evidence.status,
+  captureExecuted: Boolean(paymentOperations.executedPaymentOperation),
+});
+
+/** The amount and currency Nexi reported, omitting the absent ones. */
+const toNexiAmountFields = (
+  amount:
+    | { readonly amount?: string; readonly currency?: string | undefined }
+    | undefined
+) => ({
+  ...(amount?.amount && { amount: amount.amount }),
+  ...(amount?.currency && { currency: amount.currency }),
+});
+
+/** The order's authorized and captured amounts and its last operation. */
+const toNexiOrderProgress = (status: Omit<OrderStatus, "order">) => ({
+  ...(status.authorizedAmount && {
+    authorizedAmount: status.authorizedAmount,
+  }),
+  ...(status.capturedAmount && {
+    capturedAmount: status.capturedAmount,
+  }),
+  ...(status.lastOperationTime && {
+    lastOperationTime: normalizeNexiTimestamp(status.lastOperationTime),
+  }),
+  ...(status.lastOperationType && {
+    lastOperationType: status.lastOperationType,
+  }),
+});
+
+/** The operation's channel, type, result, and normalized time. */
+const toNexiOperationDetails = (operation: Operation) => ({
+  ...(operation.channel && { channel: operation.channel }),
+  ...(operation.operationType && {
+    operationType: operation.operationType,
+  }),
+  ...(operation.operationResult && {
+    operationResult: operation.operationResult,
+  }),
+  ...(operation.operationTime && {
+    operationTime: normalizeNexiTimestamp(operation.operationTime),
+  }),
+});
+
+const decodeOperationReferences = Effect.fnUntraced(function* (
+  operation: Operation,
+  fallbackOrderId: NexiOrderId | undefined
+) {
+  const orderId = yield* decodeOptionalOrderId(
+    operation.orderId,
+    fallbackOrderId
+  );
+  const operationId = yield* decodeOptionalOperationId(operation.operationId);
+  const cancelledOperationId = yield* decodeOptionalOperationId(
+    operation.cancelledOperationId
+  );
+  return { orderId, operationId, cancelledOperationId };
+});
+
 const toNexiOperation = (
   operation: Operation,
   fallbackOrderId?: NexiOrder["orderId"]
 ) =>
-  Effect.gen(function* () {
-    const amount = getOperationAmount(operation);
-    const orderId = operation.orderId
-      ? yield* decodeNexiOrderId(operation.orderId)
-      : fallbackOrderId;
-    const operationId = operation.operationId
-      ? yield* decodeNexiOperationId(operation.operationId)
-      : undefined;
-    const cancelledOperationId = operation.cancelledOperationId
-      ? yield* decodeNexiOperationId(operation.cancelledOperationId)
-      : undefined;
-    return {
-      ...(orderId && { orderId }),
-      ...(operationId && { operationId }),
-      ...(operation.channel && { channel: operation.channel }),
-      ...(operation.operationType && {
-        operationType: operation.operationType,
-      }),
-      ...(operation.operationResult && {
-        operationResult: operation.operationResult,
-      }),
-      ...(operation.operationTime && {
-        operationTime: normalizeNexiTimestamp(operation.operationTime),
-      }),
-      ...(amount?.amount && { amount: amount.amount }),
-      ...(amount?.currency && { currency: amount.currency }),
-      ...(cancelledOperationId && { cancelledOperationId }),
-    } satisfies NexiOperation;
-  });
+  decodeOperationReferences(operation, fallbackOrderId).pipe(
+    Effect.map(
+      ({ orderId, operationId, cancelledOperationId }) =>
+        ({
+          ...(orderId && { orderId }),
+          ...(operationId && { operationId }),
+          ...toNexiOperationDetails(operation),
+          ...toNexiAmountFields(getOperationAmount(operation)),
+          ...(cancelledOperationId && { cancelledOperationId }),
+        }) satisfies NexiOperation
+    )
+  );
 
 const toNexiOrderStatus = (status: OrderStatus) =>
   decodeNexiOrderId(status.order.orderId).pipe(
@@ -506,18 +643,7 @@ const toNexiOrderStatus = (status: OrderStatus) =>
         orderId,
         amount: status.order.amount,
         currency: status.order.currency,
-        ...(status.authorizedAmount && {
-          authorizedAmount: status.authorizedAmount,
-        }),
-        ...(status.capturedAmount && {
-          capturedAmount: status.capturedAmount,
-        }),
-        ...(status.lastOperationTime && {
-          lastOperationTime: normalizeNexiTimestamp(status.lastOperationTime),
-        }),
-        ...(status.lastOperationType && {
-          lastOperationType: status.lastOperationType,
-        }),
+        ...toNexiOrderProgress(status),
         operations: [],
       })
     )

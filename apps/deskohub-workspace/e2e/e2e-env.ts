@@ -45,20 +45,14 @@ const optionalDirectPostgresUrl = toEnvironmentSchema(
   )
 );
 const nonEmptyString = toEnvironmentSchema(Schema.NonEmptyString);
-const optionalAdminBasicAuthPair = toEnvironmentSchema(
-  Schema.optional(
-    Schema.String.check(
-      Schema.makeFilter(isAdminBasicAuthCredentialPair, {
-        expected: "a Basic auth username:password credential",
-      })
-    )
-  )
-);
 const optionalUrl = toEnvironmentSchema(Schema.optional(urlStringSchema));
 const url = toEnvironmentSchema(urlStringSchema);
+const optionalOptIn = toEnvironmentSchema(
+  Schema.optional(Schema.Literals(["true"]))
+);
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
-export const e2eEnvironmentSchema = Schema.Struct({
+const e2eEnvironmentSchema = Schema.Struct({
   CI: optionalNonEmptyString,
   DATABASE_URL: nonEmptyString,
   DOTYPOS_API_URL: url,
@@ -77,7 +71,6 @@ export const e2eEnvironmentSchema = Schema.Struct({
     Schema.optional(Schema.String.check(Schema.isPattern(/^[1-9][0-9]*$/)))
   ),
   GITHUB_STEP_SUMMARY: optionalNonEmptyString,
-  HOME: optionalNonEmptyString,
   LANG: optionalNonEmptyString,
   NEXI_API_ORIGIN: url,
   PATH: optionalNonEmptyString,
@@ -88,8 +81,10 @@ export const e2eEnvironmentSchema = Schema.Struct({
   TMPDIR: optionalNonEmptyString,
   USER: optionalNonEmptyString,
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalNonEmptyString,
-  WORKSPACE_E2E_ADMIN_BASIC_AUTH: optionalAdminBasicAuthPair,
-  WORKSPACE_E2E_RESEND_API_KEY: optionalNonEmptyString,
+  WORKSPACE_E2E_BETTER_AUTH_SECRETS: optionalNonEmptyString,
+  WORKSPACE_E2E_CRON_SECRET: optionalNonEmptyString,
+  WORKSPACE_E2E_VERCEL_TOKEN: optionalNonEmptyString,
+  WORKSPACE_E2E_VERCEL_PROJECT: optionalNonEmptyString,
   WORKSPACE_E2E_EXECUTION_CONTEXT: toEnvironmentSchema(
     Schema.optional(Schema.Literals(["ci", "manual"]))
   ),
@@ -103,7 +98,10 @@ export const e2eEnvironmentSchema = Schema.Struct({
   WORKSPACE_E2E_DATABASE_URL_UNPOOLED: nonEmptyString,
   WORKSPACE_E2E_POSTHOG_HOST: optionalUrl,
   WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: optionalNonEmptyString,
+  WORKSPACE_E2E_NIGHTLY_CASES: optionalOptIn,
   WORKSPACE_E2E_PR_NUMBER: optionalPositiveInteger,
+  WORKSPACE_E2E_REVIEW_SCREENSHOTS: optionalOptIn,
+  WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS: optionalOptIn,
   WORKSPACE_E2E_RUN_CONTEXT: optionalNonEmptyString,
   WORKSPACE_E2E_TRACE_PARENT: optionalNonEmptyString,
 });
@@ -131,7 +129,6 @@ export const makeE2EEnvironment = (
       GITHUB_RUN_ATTEMPT: runtimeEnvironment.GITHUB_RUN_ATTEMPT,
       GITHUB_RUN_ID: runtimeEnvironment.GITHUB_RUN_ID,
       GITHUB_STEP_SUMMARY: runtimeEnvironment.GITHUB_STEP_SUMMARY,
-      HOME: runtimeEnvironment.HOME,
       LANG: runtimeEnvironment.LANG,
       NEXI_API_ORIGIN: runtimeEnvironment.NEXI_API_ORIGIN,
       PATH: runtimeEnvironment.PATH,
@@ -142,10 +139,12 @@ export const makeE2EEnvironment = (
       USER: runtimeEnvironment.USER,
       VERCEL_AUTOMATION_BYPASS_SECRET:
         runtimeEnvironment.VERCEL_AUTOMATION_BYPASS_SECRET,
-      WORKSPACE_E2E_ADMIN_BASIC_AUTH:
-        runtimeEnvironment.WORKSPACE_E2E_ADMIN_BASIC_AUTH,
-      WORKSPACE_E2E_RESEND_API_KEY:
-        runtimeEnvironment.WORKSPACE_E2E_RESEND_API_KEY,
+      WORKSPACE_E2E_BETTER_AUTH_SECRETS:
+        runtimeEnvironment.WORKSPACE_E2E_BETTER_AUTH_SECRETS,
+      WORKSPACE_E2E_CRON_SECRET: runtimeEnvironment.WORKSPACE_E2E_CRON_SECRET,
+      WORKSPACE_E2E_VERCEL_TOKEN: runtimeEnvironment.WORKSPACE_E2E_VERCEL_TOKEN,
+      WORKSPACE_E2E_VERCEL_PROJECT:
+        runtimeEnvironment.WORKSPACE_E2E_VERCEL_PROJECT,
       WORKSPACE_E2E_BASE_URL: runtimeEnvironment.WORKSPACE_E2E_BASE_URL,
       WORKSPACE_E2E_ALLOCATION_SHARD:
         runtimeEnvironment.WORKSPACE_E2E_ALLOCATION_SHARD,
@@ -162,7 +161,13 @@ export const makeE2EEnvironment = (
       WORKSPACE_E2E_POSTHOG_HOST: runtimeEnvironment.WORKSPACE_E2E_POSTHOG_HOST,
       WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN:
         runtimeEnvironment.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN,
+      WORKSPACE_E2E_NIGHTLY_CASES:
+        runtimeEnvironment.WORKSPACE_E2E_NIGHTLY_CASES,
       WORKSPACE_E2E_PR_NUMBER: runtimeEnvironment.WORKSPACE_E2E_PR_NUMBER,
+      WORKSPACE_E2E_REVIEW_SCREENSHOTS:
+        runtimeEnvironment.WORKSPACE_E2E_REVIEW_SCREENSHOTS,
+      WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS:
+        runtimeEnvironment.WORKSPACE_E2E_CAMPAIGN_REVIEW_SCREENSHOTS,
       WORKSPACE_E2E_RUN_CONTEXT: runtimeEnvironment.WORKSPACE_E2E_RUN_CONTEXT,
       WORKSPACE_E2E_TRACE_PARENT: runtimeEnvironment.WORKSPACE_E2E_TRACE_PARENT,
     },
@@ -184,3 +189,85 @@ export const makeWorkspaceE2EEnvironment = (
   }
   return environment as WorkspaceE2EEnvironment;
 };
+
+/**
+ * Playwright processes decode the same E2E environment, so the launcher
+ * forwards only the decoded variables as strings, never its raw process env.
+ */
+export const toPlaywrightEnvironment = (
+  environment: E2EEnvironment
+): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(environment).flatMap(([key, value]) =>
+      value === undefined ? [] : [[key, String(value)]]
+    )
+  );
+
+/**
+ * Instant-navigation suites run without the checkout environment, so they
+ * decode only the review screenshot opt-in through this boundary.
+ */
+export const makeReviewScreenshotEnvironment = (
+  runtimeEnvironment: RuntimeEnvironment = process.env
+) =>
+  createEnv({
+    emptyStringAsUndefined: true,
+    onValidationError: () => {
+      throw new Error("Invalid workspace E2E environment variables.");
+    },
+    runtimeEnv: {
+      WORKSPACE_E2E_REVIEW_SCREENSHOTS:
+        runtimeEnvironment.WORKSPACE_E2E_REVIEW_SCREENSHOTS,
+    },
+    server: { WORKSPACE_E2E_REVIEW_SCREENSHOTS: optionalOptIn },
+  });
+
+/**
+ * Review screenshots are PR-review artifacts, not test evidence, so a run
+ * captures them only when it sets WORKSPACE_E2E_REVIEW_SCREENSHOTS=true.
+ */
+export const reviewScreenshotsEnabled = (
+  environment: Pick<E2EEnvironment, "WORKSPACE_E2E_REVIEW_SCREENSHOTS">
+): boolean => environment.WORKSPACE_E2E_REVIEW_SCREENSHOTS === "true";
+
+/**
+ * Nightly cases are too slow for the per-PR gate, so a run includes them
+ * only when it sets WORKSPACE_E2E_NIGHTLY_CASES=true.
+ */
+export const nightlyCasesEnabled = (
+  environment: Pick<E2EEnvironment, "WORKSPACE_E2E_NIGHTLY_CASES">
+): boolean => environment.WORKSPACE_E2E_NIGHTLY_CASES === "true";
+
+/**
+ * Agent evals run on the devbox only. Their harness list is local wiring
+ * (agent runtimes, models, paths), so the repository reads only its path.
+ * The preview guard needs Vercel deployment read access and the exact commit
+ * the preview must be built from.
+ */
+export const makeAgentEvalEnvironment = (
+  runtimeEnvironment: RuntimeEnvironment = process.env
+) =>
+  createEnv({
+    emptyStringAsUndefined: true,
+    onValidationError: () => {
+      throw new Error(
+        "Agent evals need WORKSPACE_AGENT_EVAL_HARNESSES, WORKSPACE_E2E_VERCEL_TOKEN, WORKSPACE_E2E_VERCEL_PROJECT, and TARGET_SHA (the preview's full commit SHA)."
+      );
+    },
+    runtimeEnv: {
+      TARGET_SHA: runtimeEnvironment.TARGET_SHA,
+      WORKSPACE_AGENT_EVAL_HARNESSES:
+        runtimeEnvironment.WORKSPACE_AGENT_EVAL_HARNESSES,
+      WORKSPACE_E2E_VERCEL_PROJECT:
+        runtimeEnvironment.WORKSPACE_E2E_VERCEL_PROJECT,
+      WORKSPACE_E2E_VERCEL_TOKEN: runtimeEnvironment.WORKSPACE_E2E_VERCEL_TOKEN,
+    },
+    server: {
+      TARGET_SHA: toEnvironmentSchema(
+        Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/))
+      ),
+      WORKSPACE_AGENT_EVAL_HARNESSES: nonEmptyString,
+      WORKSPACE_E2E_VERCEL_PROJECT: nonEmptyString,
+      WORKSPACE_E2E_VERCEL_TOKEN: nonEmptyString,
+    },
+  });

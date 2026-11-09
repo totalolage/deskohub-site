@@ -1,0 +1,5 @@
+- main:
+  - heading "Přihlášení nebo vytvoření účtu" [level=1]
+  - textbox "E-mail"
+  - button "Zaslat"
+  - button "Přihlásit se přístupovým klíčem"

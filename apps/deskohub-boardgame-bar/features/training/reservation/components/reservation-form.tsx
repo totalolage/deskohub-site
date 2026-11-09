@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { toast } from "sonner";
 import { m } from "@/features/i18n";
 import { PhoneInput } from "@/shared/components/phone-input";
 import { Button } from "@/shared/components/ui/button";
@@ -41,6 +40,8 @@ import {
   reservationSchema,
   workspaceConstants,
 } from "../schemas/reservation";
+import { reservationSubmissionFeedback } from "./reservation-submission-feedback";
+import { trainingRoomTimeSlots } from "./reservation-time-slots";
 
 export function ReservationForm() {
   const router = useRouter();
@@ -52,49 +53,14 @@ export function ReservationForm() {
     reValidateMode: "onChange", // Re-validate on every change after first submission
   });
 
-  const { execute, isExecuting } = useAction(submitTrainingRoomReservation, {
-    onSuccess: (result) => {
-      // Check if result has the expected structure
-      if (result?.data?.success) {
-        toast.success(m["trainingReservation.success.title"](), {
-          description: m["trainingReservation.success.description"](),
-        });
-
-        // Handle redirect on client side with query parameters
-        if (result?.data?.redirectUrl) {
-          router.push(result.data.redirectUrl);
-        }
-      }
-    },
-    onError: (error) => {
-      // Display validation errors if available
-      if (error?.error?.validationErrors) {
-        const validationErrors = error.error.validationErrors;
-        // Handle field-specific validation errors
-        if (validationErrors.fieldErrors) {
-          Object.entries(validationErrors.fieldErrors).forEach(
-            ([field, errors]) => {
-              if (Array.isArray(errors) && errors.length > 0) {
-                // Type the field properly for form.setError
-                const fieldName = field as keyof ReservationFormData;
-                form.setError(fieldName, {
-                  type: "manual",
-                  message: errors[0],
-                });
-              }
-            }
-          );
-        }
-      } else {
-        // Show general error toast if no specific validation errors
-        toast.error(m["trainingReservation.error.title"](), {
-          description:
-            error?.error?.serverError ||
-            m["trainingReservation.error.description"](),
-        });
-      }
-    },
-  });
+  const { execute, isExecuting } = useAction(
+    submitTrainingRoomReservation,
+    reservationSubmissionFeedback({
+      navigate: (url) => router.push(url),
+      setFieldError: (field, message) =>
+        form.setError(field, { type: "manual", message }),
+    })
+  );
 
   async function onSubmit(values: ReservationFormData) {
     execute(values);
@@ -399,19 +365,11 @@ export function ReservationForm() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {/* Generate time slots from 8:00 AM to 6:00 PM */}
-                        {Array.from({ length: 11 }, (_, i) => {
-                          const hour = i + 8;
-                          const time = `${hour.toString().padStart(2, "0")}:00`;
-                          const displayTime = `${
-                            hour > 12 ? hour - 12 : hour
-                          }:00 ${hour >= 12 ? "PM" : "AM"}`;
-                          return (
-                            <SelectItem key={time} value={time}>
-                              {displayTime}
-                            </SelectItem>
-                          );
-                        })}
+                        {trainingRoomTimeSlots.map(({ value, label }) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage id="time-error" />

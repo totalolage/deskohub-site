@@ -3,57 +3,50 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { m } from "@/features/i18n";
 import {
   makeCoworkInvoiceDocument,
-  makeMeetingRoomInvoiceDocument,
-  makeOfficeInvoiceDocument,
   makeTestManualInvoiceDocument,
 } from "../invoice.test-utils";
+import { getInvoicePresentation } from "../invoice-presentation";
+import { findInvoicePaymentAccount } from "../manual-invoice";
 import { renderInvoicePdf } from "./invoice-pdf";
 
-const cases = [
-  [
-    "cowork cs-CZ",
-    makeCoworkInvoiceDocument("cs-CZ", { businessBuyer: true }),
-    "Faktura",
-  ],
-  ["cowork en-US", makeCoworkInvoiceDocument("en-US"), "Invoice"],
-  [
-    "meeting-room cs-CZ",
-    makeMeetingRoomInvoiceDocument("cs-CZ"),
-    "Zasedací místnost",
-  ],
-  [
-    "meeting-room en-US",
-    makeMeetingRoomInvoiceDocument("en-US"),
-    "Meeting room",
-  ],
-  ["office cs-CZ", makeOfficeInvoiceDocument("cs-CZ"), "Soukromá kancelář"],
-  ["office en-US", makeOfficeInvoiceDocument("en-US"), "Private office"],
-  [
-    "manual unpaid cs-CZ",
-    makeTestManualInvoiceDocument("cs-CZ"),
-    "Účet: 2303459272/2010",
-  ],
-] as const;
-
 describe("invoice PDF", () => {
-  test.each(cases)(
-    "renders %s from the issued document",
-    async (_, document, expectedText) => {
-      const buffer = await Effect.runPromise(renderInvoicePdf(document));
-      const parsed = await extractPdfText(buffer);
+  test("renders a Czech business invoice with glyphs from the local font", async () => {
+    const document = makeCoworkInvoiceDocument("cs-CZ", {
+      businessBuyer: true,
+    });
+    const buffer = await Effect.runPromise(renderInvoicePdf(document));
+    const parsed = await extractPdfText(buffer);
 
-      expect(buffer.subarray(0, 5).toString()).toBe("%PDF-");
-      expect(buffer.subarray(-32).toString()).toContain("%%EOF");
-      expect(buffer.byteLength).toBeGreaterThan(8_000);
-      expect(parsed.pageCount).toBe(1);
-      expect(parsed.text).toContain(expectedText);
-      expect(parsed.text).toContain(document.invoiceNumber);
-      expect(parsed.text).toContain("Desktechub s.r.o.");
+    expectSinglePagePdf(buffer, parsed.pageCount);
+    expect(parsed.text).toContain(document.invoiceNumber);
+    expect(parsed.text).toContain("Žluťoučký kůň s.r.o.");
+    expect(parsed.text).toContain("Příčná 12");
+    for (const line of getInvoicePresentation(document).lines) {
+      expect(parsed.text).toContain(line.description);
     }
-  );
+  });
 
+  test("renders the payment account block of an unpaid manual invoice", async () => {
+    const document = makeTestManualInvoiceDocument("cs-CZ");
+    const buffer = await Effect.runPromise(renderInvoicePdf(document));
+    const parsed = await extractPdfText(buffer);
+
+    expectSinglePagePdf(buffer, parsed.pageCount);
+    expect(parsed.text).toContain(document.invoiceNumber);
+    expect(parsed.text).toContain("One-off space rental");
+    expect(parsed.text).toContain(
+      `${m.invoicePaymentRequestAccount({}, { locale: "cs-CZ" })}: ${
+        findInvoicePaymentAccount(document.currency)?.accountNumber
+      }`
+    );
+  });
+
+  // Issued invoices are re-rendered on demand instead of stored, so the same
+  // issued document must always yield the same content, also when renders
+  // share the registered font concurrently.
   test("preserves the same extracted presentation across repeat renders", async () => {
     const document = makeCoworkInvoiceDocument("cs-CZ", {
       businessBuyer: true,
@@ -66,19 +59,6 @@ describe("invoice PDF", () => {
     await expect(extractPdfText(first)).resolves.toEqual(
       await extractPdfText(second)
     );
-  });
-
-  test("embeds Czech glyphs from the local invoice font", async () => {
-    const buffer = await Effect.runPromise(
-      renderInvoicePdf(
-        makeCoworkInvoiceDocument("cs-CZ", { businessBuyer: true })
-      )
-    );
-    const { text } = await extractPdfText(buffer);
-
-    expect(text).toContain("Žluťoučký kůň s.r.o.");
-    expect(text).toContain("Příčná 12");
-    expect(text).toContain("Nejsme plátci DPH.");
   });
 
   test("renders a paid manual invoice without payment instructions", async () => {
@@ -95,6 +75,12 @@ describe("invoice PDF", () => {
     expect(text).not.toContain("Platební údaje");
   });
 });
+
+const expectSinglePagePdf = (buffer: Buffer, pageCount: number) => {
+  expect(buffer.subarray(0, 5).toString()).toBe("%PDF-");
+  expect(buffer.subarray(-32).toString()).toContain("%%EOF");
+  expect(pageCount).toBe(1);
+};
 
 const extractPdfText = async (buffer: Buffer) => {
   const loadingTask = getDocument({

@@ -1,36 +1,47 @@
 import "@/shared/testing/workspace-test-env";
 
-import { expect, mock, test } from "bun:test";
-import { GET } from "./route";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { Effect } from "effect";
 
-test("interrupts image generation when the request disconnects", async () => {
-  const originalFetch = globalThis.fetch;
-  const fetch: typeof globalThis.fetch = mock(
-    async () => new Promise<Response>(() => undefined)
-  );
-  globalThis.fetch = fetch;
-  const controller = new AbortController();
+// The map's own tests cover rendering; here each render is counted.
+const jpegBytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+let renders = 0;
+mock.module("@/shared/backend/workspace-location-map", () => ({
+  generateWorkspaceLocationMapImage: () =>
+    Effect.sync(() => {
+      renders += 1;
+      return jpegBytes;
+    }),
+}));
 
-  try {
-    const response = GET(
-      new Request(
-        "https://workspace.deskohub.test/workspace-location-map.jpeg",
-        { signal: controller.signal }
-      )
-    );
+const { GET } = await import("./route");
 
-    await waitFor(() => fetch.mock.calls.length > 0);
-    expect(fetch).toHaveBeenCalled();
-    controller.abort();
-
-    await expect(response).rejects.toBeDefined();
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+beforeEach(() => {
+  renders = 0;
 });
 
-const waitFor = async (condition: () => boolean) => {
-  for (let attempt = 0; attempt < 100 && !condition(); attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  }
-};
+const mapUrl = "https://workspace.example/workspace-location-map.jpeg";
+
+describe("GET /workspace-location-map.jpeg", () => {
+  test("renders the map at its canonical URL", async () => {
+    const response = await GET(new Request(mapUrl));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/jpeg");
+    expect(response.headers.get("Cache-Control")).toContain("public");
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(jpegBytes);
+    expect(renders).toBe(1);
+  });
+
+  test.each(["?v=1", "?cache-bust=1760000000000&width=10", "?"])(
+    "redirects %p to the canonical URL without rendering",
+    async (query) => {
+      const response = await GET(new Request(`${mapUrl}${query}`));
+
+      expect(response.status).toBe(308);
+      expect(response.headers.get("Location")).toBe(mapUrl);
+      expect(response.headers.get("Cache-Control")).toContain("public");
+      expect(renders).toBe(0);
+    }
+  );
+});

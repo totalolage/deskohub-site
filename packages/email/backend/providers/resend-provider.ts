@@ -1,4 +1,5 @@
-import { Effect, Layer, Schema } from "effect";
+import type { ProviderRequestPolicy } from "@deskohub/provider-request";
+import { Config, Duration, Effect, Layer, Option, Schema } from "effect";
 import { Resend } from "resend";
 import {
   EmailDeliveryIdSchema,
@@ -13,24 +14,58 @@ import {
   isRetryableEmailError,
 } from "../capabilities";
 import { NetworkError } from "../network-error";
+import { emailRetryPolicy } from "../request-policy";
 
 const resendTagPattern = /^[A-Za-z0-9_-]{1,256}$/;
-const resendSendTimeout = "5 seconds";
 
-const toResendTags = (message: EmailMessage) => {
-  const tags: { name: string; value: string }[] = [];
+type ResendRequestTimeouts = {
+  readonly send: Duration.Duration;
+  readonly batch: Duration.Duration;
+};
 
-  for (const tag of message.tags ?? []) {
-    if (resendTagPattern.test(tag)) {
-      tags.push({ name: "category", value: tag });
-    }
-  }
+/**
+ * Production fails a slow Resend request fast; a batch carries up to 100
+ * rendered emails, so its upload gets a little longer. Preview, development,
+ * CI, and E2E deployments share Resend capacity with parallel runs, so they
+ * wait much longer before giving up.
+ */
+const resendRequestTimeouts = {
+  production: { send: Duration.seconds(5), batch: Duration.seconds(10) },
+  nonProduction: { send: Duration.seconds(30), batch: Duration.seconds(30) },
+} as const satisfies Record<string, ResendRequestTimeouts>;
 
-  for (const [name, value] of Object.entries(message.metadata ?? {})) {
+/** The Resend request timeouts of the deployment `VERCEL_ENV` names. */
+export const deploymentResendRequestTimeouts = Effect.gen(function* () {
+  const environment = yield* Config.option(Config.string("VERCEL_ENV"));
+  return Option.contains(environment, "production")
+    ? resendRequestTimeouts.production
+    : resendRequestTimeouts.nonProduction;
+}).pipe(Effect.orDie);
+
+type ResendTag = { name: string; value: string };
+
+/** The message's categories Resend can carry, each as a `category` tag. */
+const toResendCategoryTags = (categories: EmailMessage["tags"]) =>
+  (categories ?? [])
+    .filter((category) => resendTagPattern.test(category))
+    .map((category): ResendTag => ({ name: "category", value: category }));
+
+/** The message's string metadata whose name and value Resend can carry. */
+const toResendMetadataTags = (metadata: EmailMessage["metadata"]) => {
+  const tags: ResendTag[] = [];
+  for (const [name, value] of Object.entries(metadata ?? {})) {
     if (typeof value !== "string") continue;
     if (!resendTagPattern.test(name) || !resendTagPattern.test(value)) continue;
     tags.push({ name, value });
   }
+  return tags;
+};
+
+const toResendTags = (message: EmailMessage) => {
+  const tags = [
+    ...toResendCategoryTags(message.tags),
+    ...toResendMetadataTags(message.metadata),
+  ];
 
   return tags.length > 0 ? tags : undefined;
 };
@@ -53,155 +88,170 @@ const getResendErrorStatusCode = (error: unknown) => {
   return typeof error.statusCode === "number" ? error.statusCode : undefined;
 };
 
-const createResendProvider = (apiKey: string): EmailProvider => {
+type ResendResponse<A> = {
+  readonly data: A | null;
+  readonly error: unknown;
+};
+
+/**
+ * Resend refused a request with this status and sent nothing. A 409 means
+ * the idempotency key was already used, so an earlier request under it may
+ * have been delivered.
+ */
+const isResendRefusal = (statusCode: number) =>
+  statusCode >= 400 && statusCode < 500 && statusCode !== 409;
+
+/**
+ * Runs one Resend request and classifies its failure. `EmailServiceError`
+ * means Resend refused the request and sent nothing. `NetworkError` means
+ * the outcome is unknown (a timeout, a transport or server failure, a reused
+ * key, or an unreadable response to an accepted request), so the caller may
+ * retry under the same idempotency key. The raw provider failure is
+ * discarded so spans and logs never carry its message. The request gets
+ * Effect's abort signal, so a timeout or interrupt cancels it in flight
+ * instead of leaving it to overlap a later attempt.
+ */
+const requestResend = <A>(
+  request: (signal: AbortSignal) => Promise<ResendResponse<A>>,
+  policy: ProviderRequestPolicy
+) =>
+  Effect.tryPromise({
+    try: async (signal) => {
+      const response = await request(signal);
+      const resendError = response.error;
+      if (resendError) {
+        const errorMessage = getResendErrorMessage(resendError);
+        const statusCode = getResendErrorStatusCode(resendError);
+        const normalizedErrorMessage = errorMessage.toLowerCase();
+
+        if (
+          statusCode === undefined
+            ? normalizedErrorMessage.includes("invalid") ||
+              normalizedErrorMessage.includes("bad request") ||
+              normalizedErrorMessage.includes("unauthorized") ||
+              normalizedErrorMessage.includes("forbidden") ||
+              normalizedErrorMessage.includes("not verified")
+            : isResendRefusal(statusCode)
+        ) {
+          throw new Error(`CLIENT_ERROR: ${errorMessage}`);
+        }
+
+        throw new Error(`API_ERROR: ${errorMessage}`);
+      }
+
+      return response.data;
+    },
+    catch: (error) => {
+      // Classify internally, then discard the raw provider failure.
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      if (errorMessage.includes("CLIENT_ERROR:")) {
+        return new EmailServiceError(
+          "Resend rejected the email request",
+          undefined,
+          "resend"
+        );
+      }
+
+      return new NetworkError({
+        message: errorMessage.includes("API_ERROR:")
+          ? "Resend network error"
+          : "Resend request failed",
+      });
+    },
+  }).pipe(
+    policy.attempt(
+      () =>
+        new NetworkError({
+          message: "Resend send timed out",
+        })
+    ),
+    Effect.tapError((error) =>
+      Effect.logWarning(
+        "Resend tryPromise failed - will retry if NetworkError",
+        {
+          errorTag: error._tag,
+          willRetry: isRetryableEmailError(error),
+        }
+      )
+    )
+  );
+
+const toResendEmail = (message: EmailMessage) => ({
+  from: `${message.from.name || ""} <${message.from.email}>`.trim(),
+  to: Array.isArray(message.to)
+    ? message.to.map((r) => r.email)
+    : [message.to.email],
+  subject: message.subject,
+  html: message.html,
+  text: message.text || "",
+  replyTo: message.replyTo?.email,
+  headers: message.headers,
+  tags: toResendTags(message),
+});
+
+/**
+ * Resend accepted the request but its response is unreadable, so whether it
+ * delivered is unknown.
+ */
+const decodeDeliveryId = (id: unknown) =>
+  Schema.decodeUnknownEffect(EmailDeliveryIdSchema)(id).pipe(
+    Effect.mapError(
+      () =>
+        new NetworkError({
+          message: "Resend response did not contain a valid email delivery ID",
+        })
+    )
+  );
+
+export const createResendProvider = (
+  apiKey: string,
+  timeouts: ResendRequestTimeouts
+): EmailProvider => {
   const resend = new Resend(apiKey);
+  const sendPolicy = emailRetryPolicy.withAttemptTimeout(timeouts.send);
+  const batchPolicy = emailRetryPolicy.withAttemptTimeout(timeouts.batch);
 
   return {
     name: "resend",
 
     send: Effect.fn("resend.send")(
       function* (message: EmailMessage) {
-        yield* Effect.annotateLogsScoped({ message });
         yield* Effect.logInfo("Sending email via Resend", {
-          to: message.to,
-          subject: message.subject,
-          from: message.from,
+          category: message.tags?.[0],
+          hasHtml: !!message.html,
+          hasText: !!message.text,
         });
 
-        const result = yield* Effect.tryPromise({
-          try: async () => {
-            const fromAddress =
-              `${message.from.name || ""} <${message.from.email}>`.trim();
-
-            const toAddresses = Array.isArray(message.to)
-              ? message.to.map((r) => r.email)
-              : [message.to.email];
-
-            const response = await resend.emails.send(
+        const data = yield* requestResend(
+          (signal) =>
+            resend.emails.send(
               {
-                from: fromAddress,
-                to: toAddresses,
-                subject: message.subject,
-                html: message.html,
-                text: message.text || "",
+                ...toResendEmail(message),
                 attachments: message.attachments?.map((attachment) => ({
                   content: attachment.content,
                   contentId: attachment.contentId,
                   contentType: attachment.contentType,
                   filename: attachment.filename,
                 })),
-                replyTo: message.replyTo?.email,
-                headers: message.headers,
-                tags: toResendTags(message),
               },
               {
-                idempotencyKey: getResendIdempotencyKey(message),
+                idempotencyKey: getResendIdempotencyKey(message.idempotencyKey),
+                signal,
               }
-            );
-
-            const resendError = response.error;
-            if (resendError) {
-              const errorMessage = getResendErrorMessage(resendError);
-              const statusCode = getResendErrorStatusCode(resendError);
-              const normalizedErrorMessage = errorMessage.toLowerCase();
-
-              if (
-                (statusCode !== undefined &&
-                  statusCode >= 400 &&
-                  statusCode < 500) ||
-                normalizedErrorMessage.includes("invalid") ||
-                normalizedErrorMessage.includes("bad request") ||
-                normalizedErrorMessage.includes("unauthorized") ||
-                normalizedErrorMessage.includes("forbidden") ||
-                normalizedErrorMessage.includes("not verified")
-              ) {
-                throw new Error(`CLIENT_ERROR: ${errorMessage}`);
-              }
-
-              throw new Error(`API_ERROR: ${errorMessage}`);
-            }
-
-            return response;
-          },
-          catch: (error) => {
-            const errorMessage =
-              error instanceof Error ? error.message : String(error);
-            const normalizedErrorMessage = errorMessage.toLowerCase();
-
-            if (errorMessage.includes("CLIENT_ERROR:")) {
-              return new EmailServiceError(
-                errorMessage.replace("CLIENT_ERROR: ", ""),
-                error,
-                "resend"
-              );
-            }
-
-            if (
-              errorMessage.includes("API_ERROR:") ||
-              normalizedErrorMessage.includes("econnrefused") ||
-              normalizedErrorMessage.includes("etimedout") ||
-              normalizedErrorMessage.includes("enotfound") ||
-              normalizedErrorMessage.includes("network")
-            ) {
-              return new NetworkError({
-                message: "Resend network error",
-                cause: error,
-              });
-            }
-
-            return new EmailServiceError(
-              `Resend error: ${errorMessage}`,
-              error,
-              "resend"
-            );
-          },
-        }).pipe(
-          Effect.timeoutOrElse({
-            duration: resendSendTimeout,
-            orElse: () =>
-              Effect.fail(
-                new NetworkError({
-                  cause: `Resend request timed out after ${resendSendTimeout}`,
-                  message: "Resend send timed out",
-                })
-              ),
-          }),
+            ),
+          sendPolicy
+        ).pipe(
           Effect.tap((response) =>
-            Effect.gen(function* () {
-              yield* Effect.annotateLogsScoped({ response });
-              yield* Effect.logDebug("Resend provider response received", {
-                response,
-              });
-              yield* Effect.logInfo("Resend tryPromise succeeded", {
-                hasData: !!response.data,
-                id: response.data?.id,
-              });
+            Effect.logInfo("Resend tryPromise succeeded", {
+              hasData: !!response,
+              id: response?.id,
             })
-          ),
-          Effect.tapError((error) =>
-            Effect.logWarning(
-              "Resend tryPromise failed - will retry if NetworkError",
-              {
-                errorTag: error._tag,
-                errorMessage: error.message,
-                willRetry: isRetryableEmailError(error),
-              }
-            )
           )
         );
 
-        const deliveryId = yield* Schema.decodeUnknownEffect(
-          EmailDeliveryIdSchema
-        )(result.data?.id).pipe(
-          Effect.mapError(
-            (cause) =>
-              new EmailServiceError(
-                "Resend response did not contain a valid email delivery ID",
-                cause,
-                "resend"
-              )
-          )
-        );
+        const deliveryId = yield* decodeDeliveryId(data?.id);
 
         const sendResult: EmailSendResult = {
           id: deliveryId,
@@ -211,12 +261,8 @@ const createResendProvider = (apiKey: string): EmailProvider => {
         };
 
         yield* Effect.annotateLogsScoped({ result: sendResult });
-        yield* Effect.logDebug("Resend email send result created", {
-          result: sendResult,
-        });
         yield* Effect.logInfo("Email sent successfully via Resend", {
-          id: result.data?.id,
-          response: result,
+          id: data?.id,
         });
 
         return sendResult;
@@ -224,80 +270,76 @@ const createResendProvider = (apiKey: string): EmailProvider => {
       (effect, message) =>
         effect.pipe(
           Effect.scoped,
-          Effect.annotateLogs({ provider: "resend", message })
+          Effect.annotateLogs({
+            provider: "resend",
+            category: message.tags?.[0],
+            hasHtml: !!message.html,
+            hasText: !!message.text,
+          })
         )
     ),
 
-    verify: Effect.gen(function* () {
-      yield* Effect.logInfo("Resend API key verification started");
-
-      return yield* Effect.tryPromise({
-        try: async () => {
-          return await resend.domains.list();
-        },
-        catch: (error) => {
-          return new EmailServiceError(
-            "Failed to verify Resend API key",
-            error
+    sendBatch: Effect.fn("resend.sendBatch")(
+      function* (messages, options) {
+        if (messages.some((message) => message.attachments?.length)) {
+          return yield* new EmailServiceError(
+            "Resend batch emails cannot carry attachments",
+            undefined,
+            "resend"
           );
-        },
-      }).pipe(
-        Effect.tap((response) =>
-          Effect.gen(function* () {
-            yield* Effect.annotateLogsScoped({ response });
-            yield* Effect.logDebug("Resend verify provider response received", {
-              response,
-            });
-          })
-        ),
-        Effect.flatMap((response) => {
-          const resendError = response.error;
-          if (!resendError) return Effect.succeed(true);
+        }
+        yield* Effect.logInfo("Sending email batch via Resend", {
+          category: messages[0]?.tags?.[0],
+          size: messages.length,
+        });
 
-          return Effect.fail(
-            new EmailServiceError(
-              `Failed to verify Resend API key: ${getResendErrorMessage(resendError)}`,
-              resendError,
-              "resend"
+        const data = yield* requestResend(
+          (signal) =>
+            resend.batch.send(messages.map(toResendEmail), {
+              idempotencyKey: getResendIdempotencyKey(options.idempotencyKey),
+              signal,
+            }),
+          batchPolicy
+        );
+
+        const ids = data?.data ?? [];
+        if (ids.length !== messages.length) {
+          return yield* new NetworkError({
+            message: "Resend batch response did not match the batch size",
+          });
+        }
+
+        const timestamp = new Date();
+        return yield* Effect.forEach(ids, ({ id }) =>
+          decodeDeliveryId(id).pipe(
+            Effect.map(
+              (deliveryId): EmailSendResult => ({
+                id: deliveryId,
+                status: "sent",
+                provider: "resend",
+                timestamp,
+              })
             )
-          );
-        }),
-        Effect.tap((success) =>
-          Effect.gen(function* () {
-            yield* Effect.annotateLogsScoped({ result: success });
-            yield* Effect.logInfo("Resend API key verified successfully");
-          })
-        ),
-        Effect.tapError((error) =>
-          Effect.logError("Resend API key verification failed", {
-            errorType: error._tag,
-            errorMessage: error.message,
+          )
+        );
+      },
+      (effect, messages) =>
+        effect.pipe(
+          Effect.scoped,
+          Effect.annotateLogs({
+            provider: "resend",
+            category: messages[0]?.tags?.[0],
+            size: messages.length,
           })
         )
-      );
-    }).pipe(
-      Effect.scoped,
-      Effect.annotateLogs({ provider: "resend" }),
-      Effect.withSpan("resend.verify")
     ),
   };
 };
 
-const getResendIdempotencyKey = (message: EmailMessage) => {
-  if (message.idempotencyKey) return message.idempotencyKey.slice(0, 256);
+const resendIdempotencyKeyMaxLength = 256;
 
-  const workspaceReservationId = message.metadata?.workspaceReservationId;
-  const category = message.tags?.[0];
-
-  if (
-    typeof workspaceReservationId !== "string" ||
-    typeof category !== "string"
-  ) {
-    return undefined;
-  }
-
-  return `${category}-${workspaceReservationId}`.slice(0, 256);
-};
+const getResendIdempotencyKey = (idempotencyKey: string | undefined) =>
+  idempotencyKey?.slice(0, resendIdempotencyKeyMaxLength);
 
 export const ResendEmailProviderLive = Layer.effect(
   EmailProviderTag,
@@ -306,15 +348,13 @@ export const ResendEmailProviderLive = Layer.effect(
     const apiKey = config.apiKey?.trim() ?? "";
 
     if (!apiKey) {
-      return yield* Effect.fail(
-        new EmailServiceError(
-          "EMAIL_API_KEY is required for Resend email provider",
-          undefined,
-          "resend"
-        )
+      return yield* new EmailServiceError(
+        "EMAIL_API_KEY is required for Resend email provider",
+        undefined,
+        "resend"
       );
     }
 
-    return createResendProvider(apiKey);
+    return createResendProvider(apiKey, yield* deploymentResendRequestTimeouts);
   })
 );

@@ -8,6 +8,7 @@ import {
   setSystemTime,
   test,
 } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Schema } from "effect";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import {
@@ -28,7 +29,7 @@ const coworkReservation = (date: string) =>
     date,
     coffee: false,
     name: "Synthetic Customer",
-    email: "customer@example.com",
+    email: testEmailAddress("customer"),
     phone: "+420 700 000 000",
   });
 

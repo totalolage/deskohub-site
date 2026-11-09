@@ -3,7 +3,8 @@ language js(typescript, jsx)
 
 file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
-  not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+  not $name <: r".*\.(?:test|test-utils|rsc-fixture)\.(?:ts|tsx)$",
+  $body <: r"(?s).*run[A-Z].*",
   $body <: contains bubble {
     `Effect.$method($...)` as $call where {
       $method <: r"run[A-Z].*",

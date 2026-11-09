@@ -4,20 +4,24 @@ import { definePostHogFeatureFlags } from "@deskohub/posthog/feature-flags";
 export const postHogFeatureFlags = definePostHogFeatureFlags<
   PostHogFeatureFlagDefinitions
 >([
-  "accounts",
+  "account_avatars",
   "calendar_sales",
   "customer_discounts",
   "discount_codes",
+  "login_email_code",
+  "login_passkeys",
   "meeting_room_page",
   "office_page",
+  "referrals",
   "seating_map",
+  "webmcp_site_tools",
 ] as const);
 
 export type PostHogFeatureFlagKey =
   (typeof postHogFeatureFlags.keys)[number];
 
 export interface PostHogFeatureFlagDefinitions {
-  readonly "accounts": {
+  readonly "account_avatars": {
     readonly value: boolean;
     readonly payload: undefined;
   };
@@ -33,6 +37,14 @@ export interface PostHogFeatureFlagDefinitions {
     readonly value: boolean;
     readonly payload: undefined;
   };
+  readonly "login_email_code": {
+    readonly value: boolean;
+    readonly payload: undefined;
+  };
+  readonly "login_passkeys": {
+    readonly value: boolean;
+    readonly payload: undefined;
+  };
   readonly "meeting_room_page": {
     readonly value: boolean;
     readonly payload: undefined;
@@ -41,7 +53,15 @@ export interface PostHogFeatureFlagDefinitions {
     readonly value: boolean;
     readonly payload: undefined;
   };
+  readonly "referrals": {
+    readonly value: boolean;
+    readonly payload: undefined;
+  };
   readonly "seating_map": {
+    readonly value: boolean;
+    readonly payload: undefined;
+  };
+  readonly "webmcp_site_tools": {
     readonly value: boolean;
     readonly payload: undefined;
   };

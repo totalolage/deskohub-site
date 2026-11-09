@@ -1,4 +1,4 @@
-import { Data, Effect } from "effect";
+import { Data, Effect, Result } from "effect";
 import { env } from "@/env";
 
 export class WorkspaceUrlConfigError extends Data.TaggedError(
@@ -14,38 +14,61 @@ interface WorkspaceCallbackEnvironment {
   readonly productionUrl: string | undefined;
 }
 
-export const getWorkspaceCallbackOrigin = ({
+export const getWorkspaceCallbackOrigin = (
+  environment: WorkspaceCallbackEnvironment
+): Effect.Effect<URL, WorkspaceUrlConfigError> =>
+  Effect.suspend(() =>
+    Effect.fromResult(resolveWorkspaceCallbackOrigin(environment))
+  );
+
+export const getWorkspaceRuntimeCallbackOrigin: Effect.Effect<
+  URL,
+  WorkspaceUrlConfigError
+> = Effect.suspend(() =>
+  Effect.fromResult(resolveWorkspaceRuntimeCallbackOrigin())
+);
+
+/**
+ * Resolves the callback origin of the running deployment synchronously, for
+ * callers such as the proxy that must not start an Effect runtime.
+ */
+export const resolveWorkspaceRuntimeCallbackOrigin = () =>
+  resolveWorkspaceCallbackOrigin({
+    deploymentEnvironment: env.VERCEL_ENV,
+    deploymentUrl: env.VERCEL_URL,
+    productionUrl: env.VERCEL_PROJECT_PRODUCTION_URL,
+  });
+
+const resolveWorkspaceCallbackOrigin = ({
   deploymentEnvironment,
   deploymentUrl,
   productionUrl,
-}: WorkspaceCallbackEnvironment): Effect.Effect<URL, WorkspaceUrlConfigError> =>
-  Effect.gen(function* () {
-    const url =
-      deploymentEnvironment === "production" ? productionUrl : deploymentUrl;
+}: WorkspaceCallbackEnvironment): Result.Result<
+  URL,
+  WorkspaceUrlConfigError
+> => {
+  const url =
+    deploymentEnvironment === "production" ? productionUrl : deploymentUrl;
 
-    if (!url) {
-      return yield* new WorkspaceUrlConfigError({
+  if (!url) {
+    return Result.fail(
+      new WorkspaceUrlConfigError({
         message: "Payment checkout callback URL is not configured.",
-      });
-    }
+      })
+    );
+  }
 
-    return yield* Effect.try({
-      try: () =>
-        new URL(
-          url.includes("://")
-            ? url
-            : `${deploymentEnvironment === "development" ? "http" : "https"}://${url}`
-        ),
-      catch: (cause) =>
-        new WorkspaceUrlConfigError({
-          message: "Payment checkout callback URL is not configured.",
-          cause,
-        }),
-    });
+  return Result.try({
+    try: () =>
+      new URL(
+        url.includes("://")
+          ? url
+          : `${deploymentEnvironment === "development" ? "http" : "https"}://${url}`
+      ),
+    catch: (cause) =>
+      new WorkspaceUrlConfigError({
+        message: "Payment checkout callback URL is not configured.",
+        cause,
+      }),
   });
-
-export const getWorkspaceRuntimeCallbackOrigin = getWorkspaceCallbackOrigin({
-  deploymentEnvironment: env.VERCEL_ENV,
-  deploymentUrl: env.VERCEL_URL,
-  productionUrl: env.VERCEL_PROJECT_PRODUCTION_URL,
-});
+};

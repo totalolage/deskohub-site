@@ -15,6 +15,7 @@ import {
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { instant } from "../instant";
+import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
 import { workspaceReservations } from "./workspace-reservations";
@@ -30,7 +31,16 @@ export const paymentAttemptStates = [
 
 export type PaymentAttemptState = (typeof paymentAttemptStates)[number];
 
-export const paymentRefundStates = ["not_required", "required"] as const;
+/**
+ * `required` marks a paid Nexi attempt whose money must go back to the
+ * customer. `refunded` records that Nexi reported a successful refund of the
+ * attempt's order, whether full or partial.
+ */
+export const paymentRefundStates = [
+  "not_required",
+  "required",
+  "refunded",
+] as const;
 
 export type PaymentRefundState = (typeof paymentRefundStates)[number];
 
@@ -57,16 +67,26 @@ export const paymentAttempts = pgTable(
       .references(() => workspaceReservations.id, { onDelete: "cascade" }),
     provider: text("provider").notNull().$type<PaymentProvider>(),
     providerOrderId: text("provider_order_id").$type<NexiOrderId>(),
-    securityToken: text("security_token"),
+    securityToken: sensitiveText("security_token"),
     state: text("state").notNull().$type<PaymentAttemptState>(),
     refundState: text("refund_state")
       .notNull()
       .default("not_required")
       .$type<PaymentRefundState>(),
+    /** Sum of successful Nexi refunds, in the attempt's minor units. */
+    refundedAmountValue: integer("refunded_amount_value"),
+    /** Time of the latest successful Nexi refund. */
+    refundedAt: instant("refunded_at"),
+    /**
+     * When scheduled refund reconciliation last claimed this attempt to check
+     * Nexi, whatever the outcome. Batches take least recently checked attempts
+     * first, so no paid attempt starves the others.
+     */
+    refundCheckedAt: instant("refund_checked_at"),
     amountValue: integer("amount_value").notNull(),
     amountExponent: integer("amount_exponent").notNull(),
     currency: text("currency").notNull(),
-    providerRedirectUrl: text("provider_redirect_url"),
+    providerRedirectUrl: sensitiveText("provider_redirect_url"),
     lastWebhookEventId: text(
       "last_webhook_event_id"
     ).$type<NexiWebhookEventId>(),
@@ -90,7 +110,11 @@ export const paymentAttempts = pgTable(
     ),
     check(
       "payment_attempts_refund_state_check",
-      sql`${t.refundState} in (${quotedSqlList(paymentRefundStates)}) and (${t.refundState} <> 'required' or (${t.provider} = 'nexi' and ${t.state} = 'paid'))`
+      sql`${t.refundState} in (${quotedSqlList(paymentRefundStates)}) and (${t.refundState} = 'not_required' or (${t.provider} = 'nexi' and ${t.state} = 'paid'))`
+    ),
+    check(
+      "payment_attempts_refund_record_check",
+      sql`(${t.refundState} = 'refunded' and ${t.refundedAmountValue} > 0 and ${t.refundedAt} is not null) or (${t.refundState} <> 'refunded' and ${t.refundedAmountValue} is null and ${t.refundedAt} is null)`
     ),
     check("payment_attempts_currency_check", sql`${t.currency} ~ '^[A-Z]{3}$'`),
     check(
@@ -116,8 +140,10 @@ export const paymentAttempts = pgTable(
       t.workspaceReservationId
     ),
     index("payment_attempts_state_created_idx").on(t.state, t.createdAt),
+    index("payment_attempts_refund_required_idx")
+      .on(t.workspaceReservationId)
+      .where(sql`${t.refundState} = 'required'`),
   ]
 );
 
 export type PaymentAttemptRow = typeof paymentAttempts.$inferSelect;
-export type NewPaymentAttemptRow = typeof paymentAttempts.$inferInsert;

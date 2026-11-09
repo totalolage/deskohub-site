@@ -1,6 +1,7 @@
 import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
 import { Context, Layer } from "effect";
 import { env } from "@/env";
+import { resolveFeatureFlagOverrides } from "@/features/feature-flags/feature-flag-overrides";
 import type { PostHogFeatureFlagDefinitions } from "@/features/feature-flags/generated/contract";
 
 export interface PostHogRuntimeConfigObj {
@@ -14,7 +15,9 @@ export interface PostHogRuntimeConfigObj {
 
 export const postHogRuntimeConfig: PostHogRuntimeConfigObj = {
   environment: env.VERCEL_ENV,
-  featureFlagOverrides: env.POSTHOG_FEATURE_FLAG_OVERRIDES,
+  featureFlagOverrides: resolveFeatureFlagOverrides(
+    env.POSTHOG_FEATURE_FLAG_OVERRIDES
+  ),
   ingestHost: env.POSTHOG_INGEST_HOST,
   projectToken: env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
   serviceName: env.POSTHOG_SERVICE_NAME,

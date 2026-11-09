@@ -1,10 +1,15 @@
-import { Context, Effect } from "effect";
+import { Context, type Duration, Effect } from "effect";
 import { GoogleCalendarConfigError } from "./errors";
 
 export interface IGoogleCalendarRuntimeConfig {
   readonly serviceAccountEmail: string;
   readonly privateKey: string;
   readonly timeZone: string;
+  /**
+   * How long one Google Calendar request attempt may take before it is
+   * aborted. Defaults to 10 seconds.
+   */
+  readonly requestTimeout?: Duration.Input;
 }
 
 export class GoogleCalendarRuntimeConfig extends Context.Service<

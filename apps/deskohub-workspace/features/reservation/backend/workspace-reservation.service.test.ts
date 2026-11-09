@@ -4,8 +4,9 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import type { Customer, Reservation, Table } from "@deskohub/dotypos/generated";
-import { Effect, Layer } from "effect";
-import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
+import { testEmailAddress } from "@deskohub/test-email";
+import { Effect, Layer, Option } from "effect";
+import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
@@ -17,7 +18,7 @@ import {
 
 const customer: Customer = {
   _cloudId: "cloud",
-  email: "customer@example.com",
+  email: testEmailAddress("customer"),
   firstName: "Ada",
   lastName: "Lovelace",
 };
@@ -54,10 +55,11 @@ const makeWorkspaceReservation = (
 const makeDotyposReservation = (
   overrides: Partial<Reservation> = {}
 ): Reservation => ({
+  id: "dotypos-reservation-id",
   _branchId: "branch",
   _cloudId: "cloud",
   _customerId: "customer-id",
-  _tableId: " table-id ",
+  _tableId: "table-id",
   startDate: "2026-06-15T22:00:00.000Z",
   endDate: "2026-06-16T22:00:00.000Z",
   seats: "1",
@@ -82,6 +84,7 @@ const detailsEffect = (input: {
   readonly workspaceReservation?: TestWorkspaceReservation | null;
   readonly dotyposReservation?: Reservation;
   readonly tables?: readonly Table[];
+  readonly onProviderRead?: (provider: "getReservation" | "getTables") => void;
 }) => {
   const repository = {
     findById: mock(() =>
@@ -93,13 +96,19 @@ const detailsEffect = (input: {
     ),
   };
   const dotypos = {
-    getReservation: mock(() =>
-      Effect.succeed({
-        reservation: input.dotyposReservation ?? makeDotyposReservation(),
-        customer,
-      })
-    ),
-    getTables: mock(() => Effect.succeed(input.tables ?? [makeTable()])),
+    getReservation: mock(() => {
+      input.onProviderRead?.("getReservation");
+      return Effect.succeed(
+        Option.some({
+          reservation: input.dotyposReservation ?? makeDotyposReservation(),
+          customer,
+        })
+      );
+    }),
+    getTables: mock(() => {
+      input.onProviderRead?.("getTables");
+      return Effect.succeed(input.tables ?? [makeTable()]);
+    }),
   };
 
   return Effect.gen(function* () {
@@ -112,9 +121,7 @@ const detailsEffect = (input: {
           Layer.mergeAll(
             Layer.mock(WorkspaceReservationRepository, repository),
             Layer.mock(DotyposService, dotypos),
-            SeatingMapFeatureFlagServiceMock({
-              isEnabled: Effect.succeed(input.seatingMapEnabled ?? true),
-            })
+            SeatingMapReleaseGate.fromDecision(input.seatingMapEnabled ?? true)
           )
         )
       )
@@ -144,17 +151,17 @@ const accessTargetEffect = (input: {
             }),
             Layer.mock(DotyposService, {
               getReservation: mock(() =>
-                Effect.succeed({
-                  reservation:
-                    input.dotyposReservation ?? makeDotyposReservation(),
-                  customer,
-                })
+                Effect.succeed(
+                  Option.some({
+                    reservation:
+                      input.dotyposReservation ?? makeDotyposReservation(),
+                    customer,
+                  })
+                )
               ),
               getTables: mock(() => Effect.succeed([])),
             }),
-            SeatingMapFeatureFlagServiceMock({
-              isEnabled: Effect.succeed(false),
-            })
+            SeatingMapReleaseGate.fromDecision(false)
           )
         )
       )
@@ -188,16 +195,17 @@ describe("WorkspaceReservationService", () => {
         monitorOption: "2x27-qhd",
       },
       customer,
-      tableName: "12",
-      tableMap: {
-        assignedTableId: "table-id",
-        roomName: "Main room",
+      placement: {
+        table: { mode: "assigned", name: "12" },
+        tableMap: {
+          assignedTableId: "table-id",
+          roomName: "Main room",
+        },
       },
     });
-    expect(details.tableMap?.tables.map((table) => table.id)).toEqual([
-      "table-id",
-      "neighbor-table",
-    ]);
+    expect(details.placement.tableMap?.tables.map((table) => table.id)).toEqual(
+      ["table-id", "neighbor-table"]
+    );
     expect(
       details.reservedFrom.equals(
         Temporal.Instant.from("2026-06-15T22:00:00.000Z")
@@ -210,29 +218,44 @@ describe("WorkspaceReservationService", () => {
     ).toBe(true);
   });
 
-  test("fails when Dotypos reservation date is invalid", async () => {
-    const error = await Effect.runPromise(
-      Effect.flip(
-        detailsEffect({
-          dotyposReservation: makeDotyposReservation({ startDate: "nope" }),
-        })
-      )
+  test("places Open Space on its shared tables, not the assigned one", async () => {
+    const providerReads: Array<"getReservation" | "getTables"> = [];
+    const details = await Effect.runPromise(
+      detailsEffect({
+        workspaceReservation: makeWorkspaceReservation({
+          reservationDetails: {
+            kind: "cowork",
+            entryTier: "open-space",
+            coffee: false,
+          },
+        }),
+        tables: [
+          makeTable({ name: "Assigned desk", tags: ["cowork:open-space"] }),
+          makeTable({
+            id: "free-table",
+            name: "Free desk",
+            tags: ["cowork:open-space"],
+          }),
+        ],
+        onProviderRead: (provider) => providerReads.push(provider),
+      })
     );
 
-    expect(error).toBeInstanceOf(WorkspaceReservationDetailsError);
-    expect(error).toMatchObject({
-      reservationId: "reservation-id",
-      errorCode: "dotypos_reservation_date_invalid",
+    expect(details.placement.table).toEqual({
+      mode: "shared",
+      name: "Assigned desk, Free desk",
     });
+    expect(providerReads.sort()).toEqual(["getReservation", "getTables"]);
   });
 
-  test("keeps the table number but omits the seating map while disabled", async () => {
+  test("leaves the seating map out until it is released", async () => {
     const details = await Effect.runPromise(
       detailsEffect({ seatingMapEnabled: false })
     );
 
-    expect(details.tableName).toBe("12");
-    expect(details.tableMap).toBeUndefined();
+    expect(details.placement).toEqual({
+      table: { mode: "assigned", name: "12" },
+    });
   });
 
   test("rejects a Dotypos reservation whose end precedes its start", async () => {
@@ -252,6 +275,48 @@ describe("WorkspaceReservationService", () => {
       reservationId: "reservation-id",
       errorCode: "dotypos_reservation_date_invalid",
     });
+  });
+
+  test("rejects a Dotypos reservation with unreadable seats", async () => {
+    const error = await Effect.runPromise(
+      Effect.flip(
+        detailsEffect({
+          dotyposReservation: makeDotyposReservation({ seats: "abc" }),
+        })
+      )
+    );
+
+    expect(error).toMatchObject({
+      errorCode: "dotypos_reservation_seats_invalid",
+    });
+  });
+
+  test("reports the booked time of an early-setup meeting room, and its door code covers the setup", async () => {
+    const workspaceReservation = makeWorkspaceReservation({
+      reservationDetails: { kind: "meeting-room", earlySetup: true },
+    });
+    // Dotypos holds the room from the setup start, 15 minutes early.
+    const dotyposReservation = makeDotyposReservation({
+      startDate: "2026-06-20T06:45:00.000Z",
+      endDate: "2026-06-20T11:00:00.000Z",
+    });
+
+    const details = await Effect.runPromise(
+      detailsEffect({
+        seatingMapEnabled: false,
+        workspaceReservation,
+        dotyposReservation,
+      })
+    );
+    const access = await Effect.runPromise(
+      accessTargetEffect({ workspaceReservation, dotyposReservation })
+    );
+
+    expect(details.reservedFrom.toString()).toBe("2026-06-20T07:00:00Z");
+    expect(details.reservedUntil.toString()).toBe("2026-06-20T11:00:00Z");
+    expect(details.setupFrom?.toString()).toBe("2026-06-20T06:45:00Z");
+    expect(access.reservedFrom.toString()).toBe("2026-06-20T06:45:00Z");
+    expect(access.reservedUntil.toString()).toBe("2026-06-20T11:00:00Z");
   });
 
   test("rejects access recovery unless both local and provider reservations are eligible", async () => {

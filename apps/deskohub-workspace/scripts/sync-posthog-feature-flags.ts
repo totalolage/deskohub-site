@@ -14,7 +14,6 @@ const outputFile = new URL(
   import.meta.url
 );
 const workspacePostHogProjectId = PostHogProjectId.make("204184");
-const workspaceAccountsFeatureFlagId = 274447;
 
 const PostHogFeatureFlagGenerationEnv = Schema.Struct({
   POSTHOG_API_KEY: Schema.NonEmptyString,
@@ -257,20 +256,6 @@ const loadPostHogFeatureFlagDefinitionsFromCli = Effect.fn(function* (options: {
       });
     }
     definitions.push(definition);
-  }
-
-  const accountsDefinition = definitions.find(
-    ({ id, key }) => id === workspaceAccountsFeatureFlagId && key === "accounts"
-  );
-  if (
-    accountsDefinition?.active !== false ||
-    accountsDefinition.archived === true ||
-    accountsDefinition.deleted === true
-  ) {
-    return yield* new PostHogFeatureFlagError({
-      message:
-        "The existing Workspace accounts feature flag must remain present and inactive.",
-    });
   }
 
   return yield* listPostHogFeatureFlagDefinitions(projectId, () =>

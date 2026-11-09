@@ -1,5 +1,5 @@
 name: Workspace E2E allocation
-description: Atomically acquire or release one Workspace E2E provider shard
+description: Atomically acquire or release one Workspace E2E provider shard and its preview branch
 
 inputs:
   mode:
@@ -9,6 +9,10 @@ inputs:
     description: One-based preferred allocation shard
     required: false
     default: "1"
+  preview-branch:
+    description: Git branch whose preview database the run uses; acquire holds it exclusively
+    required: false
+    default: ""
   token:
     description: GitHub token with actions read permission
     required: true
@@ -33,6 +37,7 @@ runs:
       env:
         WORKSPACE_E2E_ALLOCATION_MODE: ${{ inputs.mode }}
         WORKSPACE_E2E_ALLOCATION_PREFERRED_SHARD: ${{ inputs.preferred-shard }}
+        WORKSPACE_E2E_ALLOCATION_PREVIEW_BRANCH: ${{ inputs.preview-branch }}
         WORKSPACE_E2E_ALLOCATION_TOKEN: ${{ inputs.token }}
         WORKSPACE_E2E_ALLOCATION_WAIT_SECONDS: ${{ inputs.wait-seconds }}
         WORKSPACE_E2E_COORDINATOR_DATABASE_URL: ${{ inputs.database-url }}

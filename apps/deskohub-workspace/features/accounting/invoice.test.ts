@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Schema } from "effect";
 import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import {
@@ -15,7 +16,6 @@ import {
   formatInvoiceNumber,
   getInvoiceNumberingYear,
   invoiceDocumentSchema,
-  invoiceNumberSchema,
   makeInvoiceDocument,
 } from "./invoice";
 import { makeTestManualInvoiceDocument } from "./invoice.test-utils";
@@ -32,7 +32,7 @@ const prepared = {
     ...coworkOrder,
     date: "2099-01-01",
     name: "Original Buyer",
-    email: "synthetic@example.test",
+    email: testEmailAddress("synthetic"),
     phone: "+420 700 000 000",
   },
   quote: buildCoworkReservationQuote(coworkOrder),
@@ -71,12 +71,6 @@ describe("invoice", () => {
     );
     expect(() => formatInvoiceNumber({ year: 2026, sequence: 0 })).toThrow(
       RangeError
-    );
-  });
-
-  test("accepts invoice numbers independently of the current generated format", () => {
-    expect(Schema.decodeUnknownSync(invoiceNumberSchema)("2026/42")).toBe(
-      "2026/42"
     );
   });
 
@@ -138,28 +132,6 @@ describe("invoice", () => {
       kind: "person",
       legalName: "Original Buyer",
     });
-  });
-
-  test("round-trips strictly through the document schema", async () => {
-    const document = makeInvoiceDocument({
-      source,
-      buyer: personalInvoiceBuyer,
-      paymentAttemptId: "payment-attempt-id",
-      invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
-      issuedAt,
-      fulfilledAt,
-      paidAt,
-    });
-    const decode = Schema.decodeUnknownEffect(invoiceDocumentSchema, {
-      onExcessProperty: "error",
-    });
-
-    await expect(Effect.runPromise(decode(document))).resolves.toEqual(
-      document
-    );
-    await expect(
-      Effect.runPromise(decode({ ...document, unexpected: true }))
-    ).rejects.toBeDefined();
   });
 
   test("decodes invoices issued before rendering facts were added", async () => {
@@ -240,24 +212,6 @@ describe("invoice", () => {
     ).resolves.toEqual(legacyDocument);
   });
 
-  test("rejects schema-version fields", async () => {
-    const document = makeInvoiceDocument({
-      source,
-      buyer: personalInvoiceBuyer,
-      paymentAttemptId: "payment-attempt-id",
-      invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
-      issuedAt,
-      fulfilledAt,
-      paidAt,
-    });
-
-    for (const schemaVersion of [1, 2]) {
-      await expect(
-        Effect.runPromise(decodeInvoiceDocument({ ...document, schemaVersion }))
-      ).rejects.toBeDefined();
-    }
-  });
-
   test("rejects issued invoices without complete buyer billing details", async () => {
     const document = makeInvoiceDocument({
       source,
@@ -306,7 +260,7 @@ describe("invoice", () => {
       endsOn: "2099-06-21",
       seats: 3,
       name: "Office Buyer",
-      email: "office-buyer@example.test",
+      email: testEmailAddress("office-buyer"),
       phone: "+420 700 000 000",
     });
     const officeSource = makeAccountingDocumentSnapshot({

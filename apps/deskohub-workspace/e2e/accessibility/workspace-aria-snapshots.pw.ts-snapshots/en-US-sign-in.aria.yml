@@ -1,0 +1,5 @@
+- main:
+  - heading "Sign in or create an account" [level=1]
+  - textbox "Email"
+  - button "Send"
+  - button "Sign in with a passkey"

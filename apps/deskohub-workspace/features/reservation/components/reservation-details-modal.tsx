@@ -29,6 +29,7 @@ export function ReservationDetailsModal({
     >
       <DialogContent
         aria-describedby="reservation-details-modal-description"
+        locale={locale}
         className="max-h-[calc(100dvh-2rem)] max-w-5xl overflow-y-auto p-0 [&>button]:bg-white [&>button]:text-navy-blue [&>button]:shadow-md [&>button]:hover:bg-white/90 [&>button]:hover:text-navy-blue [&>button]:focus-visible:outline-none [&>button]:focus-visible:ring-2 [&>button]:focus-visible:ring-offset-2 [&>button]:focus-visible:ring-offset-navy-blue [&>button]:focus-visible:ring-sunset-yellow"
       >
         <DialogHeader className="sr-only">

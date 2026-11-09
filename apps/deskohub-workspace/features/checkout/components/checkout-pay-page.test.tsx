@@ -11,13 +11,13 @@ import {
   test,
 } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { Schema } from "effect";
 import {
   buildCoworkCheckoutSummary,
   buildCoworkReservationQuote as buildCoworkPriceQuote,
+  buildDiscountedCoworkCheckoutSummary,
 } from "@/features/checkout/checkout-quote.test-utils";
-import { discountIdSchema } from "@/features/discounts/contracts";
 import { m } from "@/features/i18n";
+import { formatMoney } from "@/shared/money/money";
 import {
   workspaceRouterPush,
   workspaceUseAction,
@@ -61,36 +61,6 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-describe("CheckoutPayPageSkeleton", () => {
-  beforeAll(() => {
-    registerWorkspaceComponentTestEnv();
-  });
-
-  afterEach(() => {
-    cleanup();
-  });
-
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
-  });
-
-  test("renders skeleton order details with a disabled submit button", async () => {
-    const { CheckoutPayPageSkeleton } = await import("./checkout-pay-page");
-    const view = render(<CheckoutPayPageSkeleton locale="en-US" />);
-    const submitButton = view.getByRole("button") as HTMLButtonElement;
-
-    expect(submitButton.disabled).toBe(true);
-    expect(
-      view.getByText(m.checkoutSummarySectionOrder({}, { locale: "en-US" }))
-    ).toBeDefined();
-    expect(
-      view.container.querySelectorAll(
-        "[data-slot='skeleton'][aria-hidden='true']"
-      ).length
-    ).toBeGreaterThan(0);
-  });
-});
-
 describe("CheckoutPayPage pricing change", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
@@ -100,8 +70,8 @@ describe("CheckoutPayPage pricing change", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("requires review before exposing payment controls", async () => {
@@ -133,7 +103,10 @@ describe("CheckoutPayPage pricing change", () => {
     expect(reviewLink.getAttribute("href")).toBe(freshPayUrl);
     expect(
       view.queryByRole("button", {
-        name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),
+        name: m.checkoutPayOrderAndPayAmountButton(
+          { amount: formatMoney(quote.summary.total, "en-US") },
+          { locale: "en-US" }
+        ),
       })
     ).toBeNull();
     expect(view.queryByRole("checkbox")).toBeNull();
@@ -156,8 +129,8 @@ describe("CheckoutPayPage payment navigation", () => {
     );
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("opens the payment gateway in a new tab and sends the original tab to status", async () => {
@@ -201,7 +174,10 @@ describe("CheckoutPayPage payment navigation", () => {
     fireEvent.click(view.getByRole("checkbox"));
     fireEvent.click(
       view.getByRole("button", {
-        name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),
+        name: m.checkoutPayOrderAndPayAmountButton(
+          { amount: formatMoney(quote.summary.total, "en-US") },
+          { locale: "en-US" }
+        ),
       })
     );
 
@@ -253,6 +229,36 @@ describe("CheckoutPayPage payment navigation", () => {
     ).toBe("true");
   });
 
+  test("announces a payment start failure as an alert", async () => {
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutPayPage
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+    expect(view.queryByRole("alert")).toBeNull();
+
+    const actionOptions = workspaceUseAction.mock.calls.at(-1)?.[1] as
+      | { readonly onTransportError: () => void }
+      | undefined;
+    if (!actionOptions) throw new Error("Checkout action options missing");
+
+    act(() => {
+      actionOptions.onTransportError();
+    });
+
+    expect(view.getByRole("alert").textContent).toBe(
+      m.checkoutPaySubmitError({}, { locale: "en-US" })
+    );
+  });
+
   test("omits the early-performance request when the withdrawal period has elapsed", async () => {
     const { CheckoutPayPage } = await import("./checkout-pay-page");
     const quote = buildCoworkReservationQuote({
@@ -292,16 +298,11 @@ describe("CheckoutPayPage payment navigation", () => {
     });
 
     const { CheckoutPayPage } = await import("./checkout-pay-page");
-    const quote = buildDiscountedQuote({
-      basisPoints: 10_000,
-      countdownStartsAt: "2099-01-01T09:00:00.000Z",
-      expiresAt: "2099-01-01T10:00:00.000Z",
-    });
     const view = render(
       <CheckoutPayPage
         locale="en-US"
         payStateToken="signed-summary"
-        summary={quote.summary}
+        summary={buildDiscountedCoworkCheckoutSummary({ basisPoints: 10_000 })}
         variant="pay"
       />
     );
@@ -340,10 +341,13 @@ describe("CheckoutPayPage payment navigation", () => {
     expect(workspaceRouterPush).toHaveBeenCalledWith(
       "/en-US/reservation/status/reservation-id?outcome=success"
     );
+    expect(
+      view.queryByText(m.checkoutPayProviderHandoff({}, { locale: "en-US" }))
+    ).toBeNull();
   });
 });
 
-describe("CheckoutPayPage discount urgency", () => {
+describe("CheckoutPayPage provider handoff", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
   });
@@ -352,182 +356,140 @@ describe("CheckoutPayPage discount urgency", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
-  test("shows and updates an applied discount inside its final hour", async () => {
-    jest.useFakeTimers({
-      now: new Date("2026-08-02T09:18:00.000Z"),
-    });
-    const { CheckoutPayPage } = await import("./checkout-pay-page");
-    const quote = buildDiscountedQuote({
-      countdownStartsAt: "2026-08-02T09:00:00.000Z",
-      expiresAt: "2026-08-02T10:00:00.000Z",
-    });
-    const view = render(
-      <CheckoutPayPage
-        locale="en-US"
-        payStateToken="signed-summary"
-        summary={quote.summary}
-        variant="pay"
-      />
-    );
+  test.each(["en-US", "cs-CZ"] as const)(
+    "explains the Nexi handoff and names the total on the pay button in %s",
+    async (locale) => {
+      const { CheckoutPayPage } = await import("./checkout-pay-page");
+      const quote = buildCoworkReservationQuote({
+        entryTier: "basic",
+        coffee: false,
+      });
+      const view = render(
+        <CheckoutPayPage
+          locale={locale}
+          payStateToken="signed-summary"
+          summary={quote.summary}
+          variant="pay"
+        />
+      );
 
-    const banner = view.getByText(
-      "Hurry — Summer sale ends in 42 minutes"
-    ).parentElement;
-    expect(banner?.className).toContain("text-aquamarine-ink");
-
-    act(() => jest.advanceTimersByTime(1000));
-
-    expect(
-      view.getByText("Hurry — Summer sale ends in 41 minutes and 59 seconds")
-    ).toBeDefined();
-  });
-
-  test("keeps the urgency banner hidden until less than one hour remains", async () => {
-    jest.useFakeTimers({
-      now: new Date("2026-08-02T09:00:00.000Z"),
-    });
-    const { CheckoutPayPage } = await import("./checkout-pay-page");
-    const quote = buildDiscountedQuote({
-      countdownStartsAt: "2026-08-02T09:00:00.000Z",
-      expiresAt: "2026-08-02T10:00:00.000Z",
-    });
-    const view = render(
-      <CheckoutPayPage
-        locale="en-US"
-        payStateToken="signed-summary"
-        summary={quote.summary}
-        variant="pay"
-      />
-    );
-
-    expect(view.queryByText(/Hurry/)).toBeNull();
-
-    act(() => jest.advanceTimersByTime(1));
-
-    expect(
-      view.getByText("Hurry — Summer sale ends in 60 minutes")
-    ).toBeDefined();
-  });
-
-  test("shows a discount only once when it applies to multiple product rows", async () => {
-    jest.useFakeTimers({
-      now: new Date("2026-08-02T09:18:00.000Z"),
-    });
-    const { CheckoutPayPage } = await import("./checkout-pay-page");
-    const quote = buildDiscountedQuote({
-      countdownStartsAt: "2026-08-02T09:00:00.000Z",
-      expiresAt: "2026-08-02T10:00:00.000Z",
-    });
-    const discountedItem = quote.summary.sections
-      .find(({ key }) => key === "order")
-      ?.items.find((item) => "discounts" in item && item.discounts);
-    if (!discountedItem) {
-      throw new Error("Expected a discounted product summary item");
-    }
-    const secondDiscountedItem = {
-      ...discountedItem,
-      key: "product:cowork:plus" as const,
-      product: { kind: "cowork", tier: "plus" } as const,
-    };
-    const summary = {
-      ...quote.summary,
-      sections: quote.summary.sections.map((section) =>
-        section.key === "order"
-          ? { ...section, items: [...section.items, secondDiscountedItem] }
-          : section
-      ),
-    };
-    const view = render(
-      <CheckoutPayPage
-        locale="en-US"
-        payStateToken="signed-summary"
-        summary={summary}
-        variant="pay"
-      />
-    );
-
-    expect(
-      view.getAllByText("Hurry — Summer sale ends in 42 minutes")
-    ).toHaveLength(1);
-  });
-
-  test("explains when a displayed discount expires", async () => {
-    jest.useFakeTimers({
-      now: new Date("2026-08-02T09:59:59.000Z"),
-    });
-    const { CheckoutPayPage } = await import("./checkout-pay-page");
-    const quote = buildDiscountedQuote({
-      countdownStartsAt: "2026-08-02T09:00:00.000Z",
-      expiresAt: "2026-08-02T10:00:00.000Z",
-    });
-    const view = render(
-      <CheckoutPayPage
-        locale="en-US"
-        payStateToken="signed-summary"
-        summary={quote.summary}
-        variant="pay"
-      />
-    );
-
-    expect(
-      view.getByText("Hurry — Summer sale ends in 1 second")
-    ).toBeDefined();
-
-    act(() => jest.advanceTimersByTime(1000));
-
-    const expiredBanner = view.getByText(
-      "Summer sale has ended. We’ll recheck your total before starting payment."
-    );
-    expect(expiredBanner).toBeDefined();
-    expect(expiredBanner.closest("output")?.className).toContain(
-      "text-burned-orange-ink"
-    );
-  });
-});
-
-function buildDiscountedQuote({
-  basisPoints = 5000,
-  countdownStartsAt,
-  expiresAt,
-}: {
-  readonly basisPoints?: number;
-  readonly countdownStartsAt: string;
-  readonly expiresAt: string;
-}) {
-  const money = (value: number) => ({
-    value,
-    exponent: 2,
-    currency: "CZK",
-  });
-  const discountAmount = 35_000 * (basisPoints / 10_000);
-
-  return buildCoworkReservationQuote(
-    { entryTier: "basic", coffee: false },
-    {
-      discountQuote: {
-        product: { kind: "cowork", tier: "basic" },
-        discountableSubtotal: money(35_000),
-        discounts: [
-          {
-            discount: {
-              id: Schema.decodeUnknownSync(discountIdSchema)("summer-sale"),
-              label: "Summer sale",
-              adjustment: { kind: "percentage", basisPoints },
-              countdownStartsAt,
-              expiresAt,
-            },
-            subtotalBefore: money(35_000),
-            amount: money(discountAmount),
-            subtotalAfter: money(35_000 - discountAmount),
-          },
-        ],
-        totalDiscount: money(discountAmount),
-        discountedSubtotal: money(35_000 - discountAmount),
-      },
+      expect(
+        view.getByText(m.checkoutPayProviderHandoff({}, { locale }))
+      ).toBeDefined();
+      const amount = formatMoney(quote.summary.total, locale);
+      expect(amount).toMatch(locale === "cs-CZ" ? /Kč/ : /CZK/);
+      const payButton = view.getByRole("button", {
+        name: m.checkoutPayOrderAndPayAmountButton({ amount }, { locale }),
+      });
+      expect(payButton).toHaveProperty("disabled", true);
     }
   );
-}
+
+  test("renders the terms and early-performance consents unticked, for the customer to give", async () => {
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const amount = formatMoney(quote.summary.total, "en-US");
+    const payButtonName = m.checkoutPayOrderAndPayAmountButton(
+      { amount },
+      { locale: "en-US" }
+    );
+    const earlyPerformanceView = render(
+      <CheckoutPayPage
+        earlyPerformanceRequestRequired
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+    const earlyPerformanceCheckbox = earlyPerformanceView.getByRole(
+      "checkbox",
+      { name: /general terms and conditions/i }
+    );
+
+    expect(
+      earlyPerformanceView.getByRole("checkbox", {
+        name: /statutory withdrawal period/i,
+      })
+    ).toBe(earlyPerformanceCheckbox);
+    expect(earlyPerformanceCheckbox.getAttribute("aria-checked")).toBe("false");
+    expect(
+      earlyPerformanceView.getByRole("button", { name: payButtonName })
+    ).toHaveProperty("disabled", true);
+    earlyPerformanceView.unmount();
+
+    const legalOnlyView = render(
+      <CheckoutPayPage
+        earlyPerformanceRequestRequired={false}
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+    const legalConsentCheckbox = legalOnlyView.getByRole("checkbox", {
+      name: /general terms and conditions/i,
+    });
+
+    expect(legalConsentCheckbox.getAttribute("aria-checked")).toBe("false");
+    expect(
+      legalOnlyView.queryByRole("checkbox", {
+        name: /statutory withdrawal period/i,
+      })
+    ).toBeNull();
+    expect(
+      legalOnlyView.getByRole("button", { name: payButtonName })
+    ).toHaveProperty("disabled", true);
+  });
+
+  test("updates the pay button total when a discount changes it", async () => {
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const fullPrice = buildCoworkCheckoutSummary({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const discounted = buildDiscountedCoworkCheckoutSummary({
+      basisPoints: 5000,
+    });
+    const payButtonName = (summary: typeof fullPrice) =>
+      m.checkoutPayOrderAndPayAmountButton(
+        { amount: formatMoney(summary.total, "en-US") },
+        { locale: "en-US" }
+      );
+    expect(payButtonName(discounted)).not.toBe(payButtonName(fullPrice));
+
+    const view = render(
+      <CheckoutPayPage
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={fullPrice}
+        variant="pay"
+      />
+    );
+    expect(
+      view.getByRole("button", { name: payButtonName(fullPrice) })
+    ).toBeDefined();
+
+    view.rerender(
+      <CheckoutPayPage
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={discounted}
+        variant="pay"
+      />
+    );
+    expect(
+      view.getByRole("button", { name: payButtonName(discounted) })
+    ).toBeDefined();
+    expect(
+      view.queryByRole("button", { name: payButtonName(fullPrice) })
+    ).toBeNull();
+  });
+});

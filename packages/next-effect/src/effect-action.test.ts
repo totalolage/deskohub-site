@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Exit, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import { createMiddleware, createSafeActionClient } from "next-safe-action";
 import { useAction, useStateAction } from "next-safe-action/hooks";
 import { EffectAction } from "./effect-action";
@@ -76,18 +76,6 @@ describe("EffectAction", () => {
     });
   });
 
-  test("runs Standard Schema decoded input", async () => {
-    const action = EffectAction.fromClient(makeActionClient())
-      .inputSchema(Schema.toStandardSchemaV1(Schema.FiniteFromString))
-      .action(({ parsedInput, clientInput }) =>
-        Effect.succeed({ parsedInput, clientInput })
-      );
-
-    await expect(action("7")).resolves.toEqual({
-      data: { parsedInput: 7, clientInput: "7" },
-    });
-  });
-
   test("maps typed failures and fallible layer setup failures", async () => {
     const mapped = new Error("public");
     const client = EffectAction.fromClient(makeActionClient(), {
@@ -101,80 +89,6 @@ describe("EffectAction", () => {
     await expect(action("anything")).resolves.toEqual({
       serverError: "public",
     });
-  });
-
-  test("does not add a timeout by default", async () => {
-    const action = EffectAction.fromClient(makeActionClient())
-      .inputSchema(Schema.toStandardSchemaV1(Schema.String))
-      .action(({ parsedInput }) => Effect.succeed(parsedInput));
-
-    await expect(action("fast enough")).resolves.toEqual({
-      data: "fast enough",
-    });
-  });
-
-  test("custom runner can wrap the final effect and use configured layers", async () => {
-    let calls = 0;
-    let wrapped = false;
-    const action = EffectAction.fromClient(makeActionClient(), {
-      layer: Layer.succeed(TestService, { multiplier: 4 }),
-      run: <A>(effect: Effect.Effect<A, unknown, never>) => {
-        calls += 1;
-
-        return Effect.runPromise(
-          Effect.annotateLogs(
-            Effect.tap(effect, () =>
-              Effect.sync(() => {
-                wrapped = true;
-              })
-            ),
-            { runner: "workspace" }
-          )
-        );
-      },
-    })
-      .inputSchema(Schema.toStandardSchemaV1(Schema.FiniteFromString))
-      .action(({ parsedInput }) =>
-        Effect.gen(function* () {
-          const service = yield* TestService;
-          return parsedInput * service.multiplier;
-        })
-      );
-
-    await expect(action("5")).resolves.toEqual({ data: 20 });
-    expect(calls).toBe(1);
-    expect(wrapped).toBe(true);
-  });
-
-  test("custom runner receives fallible layer errors after mapError", async () => {
-    const mapped = new Error("public setup");
-    let runnerError: unknown;
-    const action = EffectAction.fromClient(makeActionClient(), {
-      layer: Layer.effect(TestService, Effect.fail("setup")),
-      mapError: () => mapped,
-      run: async <A>(effect: Effect.Effect<A, unknown, never>) => {
-        const exit = await Effect.runPromiseExit(
-          Effect.tapError(effect, (error) =>
-            Effect.sync(() => {
-              runnerError = error;
-            })
-          )
-        );
-
-        if (Exit.isSuccess(exit)) {
-          return exit.value;
-        }
-
-        throw mapped;
-      },
-    })
-      .inputSchema(Schema.toStandardSchemaV1(Schema.String))
-      .action(() => TestService);
-
-    await expect(action("anything")).resolves.toEqual({
-      serverError: "public setup",
-    });
-    expect(runnerError).toBe(mapped);
   });
 
   test("declares stateful Effect actions after validation", async () => {

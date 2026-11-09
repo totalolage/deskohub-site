@@ -12,5 +12,4 @@ const handleAuthRequest = async (request: Request): Promise<Response> => {
   return response;
 };
 
-export const GET = handleAuthRequest;
-export const POST = handleAuthRequest;
+export { handleAuthRequest as GET, handleAuthRequest as POST };

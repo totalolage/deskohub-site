@@ -1,17 +1,11 @@
 import { expect, mock, test } from "bun:test";
-import type { TSESTree } from "@typescript-eslint/types";
+import { sql } from "drizzle-orm";
 import { Cause, Effect, Exit, Fiber, Layer } from "effect";
-import { isString } from "effect/Predicate";
 import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
-import {
-  callsNamed,
-  identifierNames,
-  methodCallsNamed,
-  nodesOf,
-  parseTrackedSource,
-} from "../../scripts/shared/source-ast";
-import type { WorkspaceE2EConfig } from "../config";
+import { makeDatabaseClient, makeDatabasePool } from "@/db/database-client";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutRow } from "../types";
 import {
@@ -19,10 +13,13 @@ import {
   assertInternalDiscountApplications,
   assertLatePaymentRecoveryOutcome,
   assertLegalEvidenceRows,
+  getPreviewFulfillmentMarkerDiagnosticCode,
   getProviderSessionRowDiagnosticCode,
+  releaseRejectedAttemptClaims,
   replayNexiWebhook,
   waitForProviderSessionRowAfterRedirect,
 } from "./database";
+import { E2EDatabase } from "./database.service";
 
 test("accepts a recreated late-payment recovery", async () => {
   await Effect.runPromise(
@@ -84,6 +81,7 @@ test("accepts a refund-required late-payment recovery", async () => {
 test("accepts reservation terms evidence from payment submission", () => {
   const row = (document_key: string, source: string, accepted = true) => ({
     accepted,
+    acknowledgements: {},
     document_key,
     hash_algorithm: "sha256",
     locale: "en-US",
@@ -101,120 +99,68 @@ test("accepts reservation terms evidence from payment submission", () => {
   ).not.toThrow();
 });
 
-test("reads persisted reservation details without legacy product columns", () => {
-  const { ast } = parseTrackedSource(
-    new URL("./database.ts", import.meta.url).pathname
-  );
-
-  // The persisted read projects reservation_details from the real column.
-  const detailProjections = nodesOf(ast).filter(
-    (node): node is TSESTree.Property => {
-      if (node.type !== "Property") return false;
-      const value = node.value;
-      return (
-        node.key.type === "Identifier" &&
-        node.key.name === "reservation_details" &&
-        value.type === "MemberExpression" &&
-        !value.computed &&
-        value.object.type === "Identifier" &&
-        value.object.name === "workspaceReservations" &&
-        value.property.type === "Identifier" &&
-        value.property.name === "reservationDetails"
-      );
-    }
-  );
-  expect(detailProjections).toHaveLength(1);
-
-  // No retired product column is read anywhere.
-  const memberProperties = new Set(
-    nodesOf(ast).flatMap((node) =>
-      node.type === "MemberExpression" &&
-      !node.computed &&
-      node.object.type === "Identifier" &&
-      node.object.name === "workspaceReservations" &&
-      node.property.type === "Identifier"
-        ? [node.property.name]
-        : []
+test("rejects reservation terms evidence without recorded acknowledgements", () => {
+  expect(() =>
+    assertLegalEvidenceRows(
+      [
+        {
+          accepted: true,
+          acknowledgements: null,
+          document_key: "termsAndConditions",
+          hash_algorithm: "sha256",
+          locale: "en-US",
+          source: "payment_submit",
+        },
+      ],
+      "en-US"
     )
+  ).toThrow(
+    "legal evidence termsAndConditions acknowledgements were not recorded"
   );
-  expect(memberProperties.has("productTier")).toBe(false);
-  expect(memberProperties.has("productCoffee")).toBe(false);
-  expect(memberProperties.has("productMonitorOption")).toBe(false);
 });
 
-test("uses one worker-scoped Drizzle client for the exact preview datasource", () => {
-  const databaseService = parseTrackedSource(
-    new URL("./database.service.ts", import.meta.url).pathname
-  );
-  const runner = parseTrackedSource(
-    new URL("../services/runner.ts", import.meta.url).pathname
-  );
+test("connects the E2E database to the unpooled preview datasource URL", async () => {
+  const connections = { pooled: 0, unpooled: 0 };
+  const listen = (target: keyof typeof connections) =>
+    Bun.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      socket: {
+        data: () => undefined,
+        open: (socket) => {
+          connections[target] += 1;
+          socket.end();
+        },
+      },
+    });
+  const pooled = listen("pooled");
+  const unpooled = listen("unpooled");
 
-  // The Drizzle client is constructed from the unpooled datasource URL only.
-  const connectionStringValues = nodesOf(databaseService.ast).flatMap((node) =>
-    node.type === "Property" &&
-    node.key.type === "Identifier" &&
-    node.key.name === "connectionString" &&
-    node.value.type === "MemberExpression" &&
-    !node.value.computed &&
-    node.value.object.type === "Identifier" &&
-    node.value.object.name === "config" &&
-    node.value.property.type === "Identifier"
-      ? [node.value.property.name]
-      : []
-  );
-  expect(connectionStringValues).toEqual(["databaseUrlUnpooled"]);
+  try {
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const { db } = yield* E2EDatabase;
+        return yield* db.execute(sql`select 1`);
+      }).pipe(
+        Effect.provide(
+          E2EDatabase.layer(
+            makeDatasourceConfig({
+              databaseUrl: `postgres://e2e:e2e@127.0.0.1:${pooled.port}/workspace`,
+              databaseUrlUnpooled: `postgres://e2e:e2e@127.0.0.1:${unpooled.port}/workspace`,
+            })
+          )
+        )
+      )
+    );
 
-  // The runner builds the E2E database layer from the datasource config and
-  // merges the support layer into the case service.
-  expect(
-    methodCallsNamed(runner.ast, "layer").some(
-      (call) =>
-        call.callee.type === "MemberExpression" &&
-        call.callee.object.type === "Identifier" &&
-        call.callee.object.name === "E2EDatabase" &&
-        call.arguments[0]?.type === "Identifier" &&
-        call.arguments[0].name === "datasourceConfig"
-    )
-  ).toBe(true);
-  const runnerIdentifiers = identifierNames(runner.ast);
-  expect(runnerIdentifiers.has("WorkspaceE2ECaseService")).toBe(true);
-  expect(
-    methodCallsNamed(runner.ast, "provideMerge").some(
-      (call) =>
-        call.arguments[0]?.type === "Identifier" &&
-        call.arguments[0].name === "support"
-    )
-  ).toBe(true);
-});
-
-test("polls for checkout rows before asserting reservation replacement state", () => {
-  const database = parseTrackedSource(
-    new URL("./database.ts", import.meta.url).pathname
-  );
-  const reservationReplacement = parseTrackedSource(
-    new URL("../cases/reservation-reuse.ts", import.meta.url).pathname
-  );
-
-  // The database read runs under the bounded poll, waiting on the checkout
-  // row for the exact order.
-  expect(
-    callsNamed(database.ast, "pollUntil").filter(
-      (call) =>
-        call.arguments[0]?.type === "CallExpression" &&
-        call.arguments[0].callee.type === "Identifier" &&
-        call.arguments[0].callee.name === "readCheckoutRowFromDatabase"
-    )
-  ).toHaveLength(1);
-  expect(
-    callsNamed(reservationReplacement.ast, "waitForCheckoutRow").filter(
-      (call) =>
-        call.arguments[0]?.type === "Identifier" &&
-        call.arguments[0].name === "datasourceConfig" &&
-        call.arguments[1]?.type === "Identifier" &&
-        call.arguments[1].name === "orderId"
-    )
-  ).toHaveLength(1);
+    // Neither listener speaks Postgres, so the query fails after connecting.
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(connections.pooled).toBe(0);
+    expect(connections.unpooled).toBeGreaterThan(0);
+  } finally {
+    pooled.stop(true);
+    unpooled.stop(true);
+  }
 });
 
 test("classifies provider session rows after the hosted redirect barrier", () => {
@@ -257,6 +203,33 @@ test("classifies provider session rows after the hosted redirect barrier", () =>
       security_token: "security-token",
     } as CheckoutRow)
   ).toBeUndefined();
+});
+
+test("stops waiting for the preview fulfillment marker once the order cannot fulfill", () => {
+  const row = (overrides: Partial<CheckoutRow>) =>
+    ({
+      fulfillment_state: "not_started",
+      payment_state: "pending",
+      ...overrides,
+    }) as CheckoutRow;
+
+  expect(getPreviewFulfillmentMarkerDiagnosticCode(undefined)).toBeUndefined();
+  expect(getPreviewFulfillmentMarkerDiagnosticCode(row({}))).toBeUndefined();
+  expect(
+    getPreviewFulfillmentMarkerDiagnosticCode(
+      row({ fulfillment_state: "processing", payment_state: "paid" })
+    )
+  ).toBeUndefined();
+  for (const payment_state of ["failed", "cancelled", "expired"]) {
+    expect(
+      getPreviewFulfillmentMarkerDiagnosticCode(row({ payment_state }))
+    ).toBe("checkout_payment_terminal_before_fulfillment");
+  }
+  expect(
+    getPreviewFulfillmentMarkerDiagnosticCode(
+      row({ fulfillment_state: "failed", payment_state: "paid" })
+    )
+  ).toBe("checkout_fulfillment_failed_before_marker");
 });
 
 test("waits briefly for the provider session row to converge after redirect", async () => {
@@ -322,34 +295,6 @@ test("retains the last provider session diagnostic after convergence times out",
     diagnosticCode: "provider_session_active_attempt_missing_after_redirect",
     reason: "timeout",
   });
-});
-
-test("assigns fixed diagnostics to the Postgres validation boundaries", () => {
-  const { ast } = parseTrackedSource(
-    new URL("./database.ts", import.meta.url).pathname
-  );
-
-  // The diagnostic wrapper always carries its fixed code as the first
-  // string-literal argument; the parsed calls are the authority.
-  const assignedCodes = new Set(
-    callsNamed(ast, "withWorkspaceE2EDiagnosticCode").flatMap((call) => {
-      const argument = call.arguments[0];
-      return argument !== undefined &&
-        argument.type === "Literal" &&
-        isString(argument.value)
-        ? [argument.value]
-        : [];
-    })
-  );
-
-  for (const diagnosticCode of [
-    "postgres_checkout_row_convergence_failed",
-    "postgres_checkout_row_assertion_failed",
-    "postgres_legal_evidence_validation_failed",
-    "postgres_local_pii_validation_failed",
-  ]) {
-    expect(assignedCodes.has(diagnosticCode)).toBe(true);
-  }
 });
 
 test("replays Nexi notification against the exact protected preview", async () => {
@@ -553,6 +498,25 @@ const makeConfig = (): WorkspaceE2EConfig => ({
   timeouts: workspaceE2ETimeouts,
 });
 
+const makeDatasourceConfig = (
+  urls: Pick<DatasourceConfig, "databaseUrl" | "databaseUrlUnpooled">
+): DatasourceConfig => ({
+  ...urls,
+  dotypos: {
+    apiTimeout: 1_000,
+    apiUrl: "http://127.0.0.1:1",
+    branchId: "11111111",
+    clientId: "e2e-client",
+    clientSecret: "e2e-client-secret",
+    cloudId: "cloud-id",
+    employeeId: "22222222",
+    refreshToken: "e2e-refresh-token",
+  },
+  expectedCurrency: "CZK",
+  nexiApiOrigin: "https://xpaysandbox.nexigroup.com",
+  timeouts: { ...workspaceE2ETimeouts, datasource: 2_000 },
+});
+
 const makeCheckoutRow = () =>
   ({
     amount_value: 100,
@@ -562,3 +526,40 @@ const makeCheckoutRow = () =>
     reservation_id: "reservation-1",
     security_token: "test-security-token",
   }) as CheckoutRow;
+
+test("releases the rejected attempt's reserved referral invitation claim", async () => {
+  const pool = makeDatabasePool({
+    connectionString: "postgres://e2e:e2e@127.0.0.1:1/workspace",
+  });
+  try {
+    const db = await Effect.runPromise(makeDatabaseClient(pool));
+    const releasedAt = Temporal.Instant.from("2026-10-12T12:00:00Z");
+    const statements = releaseRejectedAttemptClaims(
+      db,
+      "attempt-1" as PaymentAttemptId,
+      "nexi_sandbox_rejected",
+      releasedAt
+    ).map((release) => release.toSQL());
+
+    const referral = statements.find(({ sql: text }) =>
+      text.startsWith('update "referral_invitation_claims"')
+    );
+    expect(statements).toHaveLength(3);
+    expect(referral?.sql).toContain(
+      '"state" = $1, "released_at" = $2, "release_reason" = $3, "updated_at" = $4'
+    );
+    expect(referral?.sql).toContain(
+      'where (("referral_invitation_claims"."payment_attempt_id" = $5) and ("referral_invitation_claims"."state" = $6))'
+    );
+    expect(referral?.params).toEqual([
+      "released",
+      "2026-10-12T12:00:00.000000Z",
+      "nexi_sandbox_rejected",
+      "2026-10-12T12:00:00.000000Z",
+      "attempt-1",
+      "reserved",
+    ]);
+  } finally {
+    await pool.end();
+  }
+});

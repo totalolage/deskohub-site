@@ -6,11 +6,11 @@ import {
   type GoogleCalendarICalUid,
   GoogleCalendarService,
 } from "@deskohub/google-calendar";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Option } from "effect";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { isMidnight } from "@/shared/utils/temporal";
+import { isMidnight, parseInstant } from "@/shared/utils/temporal";
 
 const fullMarker = "[workspace:full]";
 const partialMarker = "[workspace:partial]";
@@ -110,29 +110,60 @@ const toWorkspaceCalendarLimitations = (
     return [];
   }
 
-  const summary = event.summary?.trim();
-  const normalizedDescription =
-    event.description?.trim().toLocaleLowerCase("en-US") ?? "";
-  const sourceEventId = event.id ?? event.iCalUID;
+  const source = getLimitationSource(event);
 
-  if (!sourceEventId) {
+  if (!source) {
     return [];
   }
 
-  if (normalizedDescription.includes(fullMarker)) {
+  const marker = getLimitationMarker(event);
+
+  if (marker === fullMarker) {
     return getEventDates(event).map((date) =>
-      WorkspaceCalendarLimitation.FullyOccupied({
-        date,
-        sourceEventId,
-        ...(summary && { summary }),
-      })
+      WorkspaceCalendarLimitation.FullyOccupied({ date, ...source })
     );
   }
 
-  if (!normalizedDescription.includes(partialMarker)) {
-    return [];
+  if (marker === partialMarker) {
+    return toPartiallyOccupiedLimitations(event, source);
   }
 
+  return [];
+};
+
+type LimitationSource = Pick<
+  WorkspaceCalendarLimitation,
+  "sourceEventId" | "summary"
+>;
+
+/** The event a limitation came from, or nothing when it has no id. */
+const getLimitationSource = (
+  event: GoogleCalendarEvent
+): LimitationSource | undefined => {
+  const summary = event.summary?.trim();
+  const sourceEventId = event.id ?? event.iCalUID;
+
+  if (!sourceEventId) {
+    return undefined;
+  }
+
+  return { sourceEventId, ...(summary && { summary }) };
+};
+
+/** The limitation marker in the event description; full wins over partial. */
+const getLimitationMarker = (event: GoogleCalendarEvent) => {
+  const normalizedDescription =
+    event.description?.trim().toLocaleLowerCase("en-US") ?? "";
+
+  return [fullMarker, partialMarker].find((marker) =>
+    normalizedDescription.includes(marker)
+  );
+};
+
+const toPartiallyOccupiedLimitations = (
+  event: GoogleCalendarEvent,
+  source: LimitationSource
+): readonly WorkspaceCalendarLimitation[] => {
   const date = getEventStartDate(event);
   const startsAt = getEventStartTime(event);
   const endsAt = getEventEndTime(event);
@@ -146,8 +177,7 @@ const toWorkspaceCalendarLimitations = (
       date,
       startsAt,
       endsAt,
-      sourceEventId,
-      ...(summary && { summary }),
+      ...source,
     }),
   ];
 };
@@ -201,17 +231,17 @@ const getExclusiveMidnightEndDate = (event: GoogleCalendarEvent) => {
   return end.toPlainDate().subtract({ days: 1 }).toString();
 };
 
-const toWorkspaceZonedDateTime = (dateTime: string, timeZone?: string) => {
-  try {
-    return Temporal.Instant.from(dateTime).toZonedDateTimeISO(
-      workspaceSiteConstants.location.timeZone
-    );
-  } catch {
-    return Temporal.PlainDateTime.from(dateTime)
-      .toZonedDateTime(timeZone ?? workspaceSiteConstants.location.timeZone)
-      .withTimeZone(workspaceSiteConstants.location.timeZone);
-  }
-};
+const toWorkspaceZonedDateTime = (dateTime: string, timeZone?: string) =>
+  parseInstant(dateTime).pipe(
+    Option.map((instant) =>
+      instant.toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    ),
+    Option.getOrElse(() =>
+      Temporal.PlainDateTime.from(dateTime)
+        .toZonedDateTime(timeZone ?? workspaceSiteConstants.location.timeZone)
+        .withTimeZone(workspaceSiteConstants.location.timeZone)
+    )
+  );
 
 const getDateRange = (from: string, to: string) => {
   const dates: string[] = [];

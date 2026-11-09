@@ -1,6 +1,6 @@
 import "@/shared/polyfills/temporal";
 
-import { createHash } from "node:crypto";
+import { testEmailAddress } from "@deskohub/test-email";
 
 const checkoutKey = Buffer.alloc(32, 7).toString("base64url");
 const accountingSnapshotKey = "synthetic accounting snapshot secret!";
@@ -8,26 +8,6 @@ const accountingSnapshotKey = "synthetic accounting snapshot secret!";
 // variety, satisfying the fail-closed BETTER_AUTH_SECRETS strength gate.
 const betterAuthSecret =
   "bGF2ZW5kZXItc3ludGhldGljLXRlc3Qta2V5LTk3MzctY2FmZS0wMzQ5";
-export const workspaceTestAdminCredentials = {
-  password: "test-password",
-  username: "admin",
-} as const;
-
-export const workspaceTestAdministrators = [
-  workspaceTestAdminCredentials,
-  {
-    password: "operator-test-password",
-    username: "operator",
-  },
-] as const;
-
-const toAdministratorCredential = ({
-  username,
-  password,
-}: (typeof workspaceTestAdministrators)[number]) =>
-  `${username}:${createHash("sha256")
-    .update(`${username}:${password}`)
-    .digest("hex")}`;
 
 process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID ??= "K202608";
 process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_K202608 ??= accountingSnapshotKey;
@@ -42,9 +22,6 @@ if (process.env.WORKSPACE_TEST_DATABASE_URL) {
 } else {
   process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test";
 }
-process.env.ADMIN_BASIC_AUTH_CREDENTIALS ??= workspaceTestAdministrators
-  .map(toAdministratorCredential)
-  .join("\n");
 process.env.DOTYPOS_API_URL ??= "https://dotypos.example";
 process.env.DOTYPOS_BRANCH_ID ??= "branch";
 process.env.DOTYPOS_CLIENT_ID ??= "client";
@@ -52,11 +29,11 @@ process.env.DOTYPOS_CLIENT_SECRET ??= "secret";
 process.env.DOTYPOS_CLOUD_ID ??= "cloud";
 process.env.DOTYPOS_EMPLOYEE_ID ??= "employee";
 process.env.DOTYPOS_REFRESH_TOKEN ??= "refresh";
-process.env.EMAIL_API_KEY ??= "re_test";
 process.env.CRON_SECRET ??= "synthetic-cron-secret";
 process.env.GOOGLE_CALENDAR_PRIVATE_KEY ??= "test-private-key";
 process.env.GOOGLE_CALENDAR_SALES_ID ??= "sales-calendar";
-process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL ??= "calendar@example.test";
+process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL ??=
+  testEmailAddress("calendar");
 process.env.GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID ??=
   "workspace-limitations-calendar";
 process.env.IGLOOHOME_CLIENT_ID ??= "synthetic-client";

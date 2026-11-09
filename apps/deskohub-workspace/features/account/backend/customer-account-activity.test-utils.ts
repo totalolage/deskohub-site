@@ -1,3 +1,4 @@
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import {
@@ -5,6 +6,7 @@ import {
   customerAccountIdSchema,
 } from "../customer-account";
 import {
+  type GuardedStateCreation,
   guardOptionalAccountStateCreation,
   OptionalAccountActivityGuard,
 } from "./customer-account-activity";
@@ -17,6 +19,8 @@ export type OptionalAccountActivityFixture = {
   readonly activityState?: "active" | "deletion-requested" | "missing";
   /** Fails the session authority with the fail-closed `unavailable` reason. */
   readonly sessionUnavailable?: boolean;
+  /** Fails the session authority as Better Auth not being configured. */
+  readonly authenticationNotConfigured?: boolean;
   /** Mutated by the fake advisory lock so tests can sample lock state mid-section. */
   readonly lockProbe?: { held: boolean };
 };
@@ -44,7 +48,7 @@ export const makeOptionalAccountActivityGuard = (
           accountId: customerAccountIdSchema.make(
             "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01"
           ),
-          email: reservationCustomerEmailSchema.make("ada@example.test"),
+          email: reservationCustomerEmailSchema.make(testEmailAddress("ada")),
           deletionRequested: fixture.session.deletionRequested ?? false,
         } as const);
   const deletionRequestedAt = new Date("2026-09-01T10:00:00.000Z");
@@ -62,6 +66,11 @@ export const makeOptionalAccountActivityGuard = (
     if (fixture.sessionUnavailable === true) {
       return Effect.fail(
         new CustomerAccountAccessError({ reason: "unavailable" })
+      );
+    }
+    if (fixture.authenticationNotConfigured === true) {
+      return Effect.fail(
+        new CustomerAccountAccessError({ reason: "not-configured" })
       );
     }
     if (session === null) return Effect.succeed(null);
@@ -102,8 +111,9 @@ export const makeOptionalAccountActivityGuard = (
       ),
   };
 
-  const guardStateCreation = <A, E, R>(stateCreation: Effect.Effect<A, E, R>) =>
-    guardOptionalAccountStateCreation(guardDependencies, stateCreation);
+  const guardStateCreation = <A, E, R>(
+    stateCreation: GuardedStateCreation<A, E, R>
+  ) => guardOptionalAccountStateCreation(guardDependencies, stateCreation);
 
   return {
     events,

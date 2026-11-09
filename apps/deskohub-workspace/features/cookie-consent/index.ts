@@ -1,4 +1,2 @@
-export { ConsentAwareAnalytics } from "./components/consent-aware-analytics";
-export { CookieConsentProvider } from "./components/cookie-consent-provider";
-export type { ConsentCategory } from "./config/consent-config";
-export { useCookieConsent } from "./hooks/use-cookie-consent";
+export type { ConsentCategory } from "./visitor-consent";
+export { useVisitorConsent, visitorConsent } from "./visitor-consent";

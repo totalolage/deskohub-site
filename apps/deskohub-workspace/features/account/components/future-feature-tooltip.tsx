@@ -42,7 +42,7 @@ export function FutureFeatureTooltip({
       : child;
 
   return (
-    <TooltipProvider delayDuration={0}>
+    <TooltipProvider>
       <Tooltip>
         {/* biome-ignore-start lint/a11y/noNoninteractiveTabindex: The non-button group must be keyboard-focusable to expose a tooltip for a disabled child. */}
         {/* biome-ignore-start lint/a11y/useSemanticElements: A span preserves inline placement around disabled account controls. */}

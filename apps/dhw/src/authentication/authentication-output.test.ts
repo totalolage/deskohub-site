@@ -16,11 +16,13 @@ test("keeps auth --json stdout to one final JSON document", async () => {
       "01980000-0000-7000-8000-000000000000"
     ),
     approvedBy: null,
+    approvedByEmail: null,
     clientName: "dhw on test-machine",
     cliVersion: "1.0.0+development",
     buildTarget: "development",
     createdAt: "2026-08-10T10:00:00.000Z",
     lastUsedAt: "2026-08-10T10:00:00.000Z",
+    expiresAt: null,
   } as const;
 
   await Effect.gen(function* () {

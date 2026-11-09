@@ -1,4 +1,4 @@
-export type CheckoutStatusSummaryRow = {
+type CheckoutStatusSummaryRow = {
   readonly label: string;
   readonly value: string;
 };

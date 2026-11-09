@@ -1,98 +1,38 @@
-import { normalizePhoneNumber } from "@deskohub/dotypos";
-import { Schema } from "effect";
-import type { CustomerInvoiceSummary } from "@/features/accounting/customer-invoice";
+import {
+  CustomerProfileCompletionSave,
+  CustomerProfileSave,
+  customerInputParseOptions,
+} from "@deskohub/workspace-customer-api";
+import { Option, Schema } from "effect";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 
-const trimmedRequiredText = (maximumLength: number) =>
-  Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(maximumLength));
-
-const trimmedOptionalText = (maximumLength: number) =>
-  Schema.optional(Schema.Trim.check(Schema.isMaxLength(maximumLength)));
-
-export const customerProfileNameFieldSchema = trimmedRequiredText(100);
-
-/**
- * Dotypos owns the stored phone, so a blank value only means "clear the
- * field". A nonblank value the provider normalizer cannot parse is rejected
- * at this boundary: accepting it would let a profile save silently clear the
- * phone, including a legacy stored value that the user was merely rendering
- * back. The form therefore forces an explicit correction or an explicit
- * clearing.
+/*
+ * The profile schemas are the customer API's, so the account forms and the
+ * mobile app validate a profile identically. The forms keep the phone as
+ * entered text; the profile actions decode it to its phone number.
  */
-const customerProfilePhoneFieldSchema = Schema.Trim.check(
-  Schema.isMaxLength(32),
-  Schema.makeFilter((value: string): boolean | string =>
-    value === "" || normalizePhoneNumber(value) != null
-      ? true
-      : "Invalid phone number"
-  )
-);
-
-const customerProfileAddressFields = {
-  addressLine1: trimmedOptionalText(200),
-  addressLine2: trimmedOptionalText(200),
-  city: trimmedOptionalText(100),
-  zip: trimmedOptionalText(20),
-  country: trimmedOptionalText(2),
-} as const;
-
-/**
- * The single source of the business billing field schemas: the profile
- * contract validates saved billing input against them, and the ARES mapper
- * decodes registry values through the same schemas so both paths share one
- * definition of trimming and maximum length.
- */
-const customerProfileBusinessBillingSchema = Schema.Struct({
-  ...customerProfileAddressFields,
-  companyName: trimmedRequiredText(200),
-  companyId: trimmedOptionalText(32),
-  vatId: trimmedOptionalText(32),
-});
-
-export const customerProfileBusinessBillingFields =
-  customerProfileBusinessBillingSchema.fields;
-
-export type CustomerProfileAddressInput = {
-  readonly addressLine1?: string;
-  readonly addressLine2?: string;
-  readonly city?: string;
-  readonly zip?: string;
-  readonly country?: string;
-};
-
-export const customerProfileBillingSchema = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("personal"),
-    ...customerProfileAddressFields,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("business"),
-    ...customerProfileBusinessBillingFields,
-  }),
-]);
-
-export type CustomerProfileBillingInput =
-  typeof customerProfileBillingSchema.Type;
-
-/**
- * Dotypos owns the customer profile, so the login email is deliberately
- * absent from the profile input: the verified email is the immutable
- * reservation-linking trust boundary and is never an editable field.
- */
-export const updateCustomerProfileSchema = Schema.Struct({
-  firstName: customerProfileNameFieldSchema,
-  lastName: trimmedOptionalText(100),
-  phone: Schema.optional(customerProfilePhoneFieldSchema),
-  billing: Schema.optional(customerProfileBillingSchema),
-});
+export {
+  type CustomerProfile,
+  CustomerProfileCompletionInput as completeCustomerProfileSchema,
+  type CustomerProfileCompletionInput,
+  type CustomerProfileCompletionSave,
+  CustomerProfileInput as updateCustomerProfileSchema,
+  type CustomerProfileInput,
+  type CustomerProfileSave,
+  customerProfileBusinessBillingFields,
+  type ProfileCompletionReferralOutcome,
+} from "@deskohub/workspace-customer-api";
 
 export const updateCustomerProfileStandardSchema = Schema.toStandardSchemaV1(
-  updateCustomerProfileSchema,
-  { parseOptions: { errors: "all", onExcessProperty: "error" } }
+  CustomerProfileSave,
+  { parseOptions: customerInputParseOptions }
 );
 
-export type CustomerProfileInput = typeof updateCustomerProfileSchema.Type;
+export const completeCustomerProfileStandardSchema = Schema.toStandardSchemaV1(
+  CustomerProfileCompletionSave,
+  { parseOptions: customerInputParseOptions }
+);
 
 export type CustomerReservationStatus =
   | "cancelled"
@@ -106,12 +46,35 @@ export type CustomerReservationProduct =
   | { readonly kind: "office" }
   | { readonly kind: "other" };
 
+/**
+ * The other party of a reservation in the account history: the customer the
+ * account booked it for, or the account that booked it for the account's own
+ * customer. A name that could not be read is null, and a deleted author is
+ * never named.
+ */
+export type CustomerReservationParty =
+  | { readonly kind: "booked-for"; readonly customerName: string | null }
+  | { readonly kind: "booked-by"; readonly authorName: string | null }
+  | { readonly kind: "booked-by-deleted-account" };
+
 export type CustomerReservationSummary = {
   readonly id: string;
   readonly workspaceReservationId?: WorkspaceReservationId;
+  /**
+   * Marks a review account's sample or simulated hold: it has a status page
+   * but never an access code.
+   */
+  readonly reviewSandbox?: true;
+  /** Absent when the account's own customer booked it for itself. */
+  readonly party?: CustomerReservationParty;
   readonly product: CustomerReservationProduct;
   readonly startsAt: string | null;
   readonly endsAt: string | null;
+  /**
+   * When the customer of a meeting room booked with early setup may arrive,
+   * before `startsAt`.
+   */
+  readonly setupStartsAt?: string;
   readonly seats: number | null;
   readonly status: CustomerReservationStatus;
 };
@@ -132,28 +95,26 @@ export type CustomerReservationHistory =
         | "provider-unavailable";
     };
 
-/**
- * The closed state of the customer invoice list in the billing section. Rows
- * carry only the issued-document facts the UI renders; loading exists for
- * deferred composition and is never persisted.
- */
-export type CustomerInvoiceListState =
+export type CustomerAvatarPresentation =
+  | { readonly kind: "hidden" }
   | {
-      readonly kind: "populated";
-      readonly invoices: readonly CustomerInvoiceSummary[];
-    }
-  | { readonly kind: "empty" }
-  | { readonly kind: "loading" }
-  | { readonly kind: "unavailable" }
-  | { readonly kind: "failed" };
+      readonly kind: "available";
+      readonly avatar: {
+        readonly url: string;
+        readonly version?: number;
+      } | null;
+    };
 
-const toInstantOrNull = (value: string): Temporal.Instant | null => {
-  try {
-    return Temporal.Instant.from(value);
-  } catch {
-    return null;
-  }
-};
+/**
+ * Whether the account page offers deletion: `pending` once it is requested
+ * and retryable, `withheld` for a review account or while that can't be
+ * ruled out.
+ */
+export type AccountDeletion = "offered" | "pending" | "withheld";
+
+const parseInstant = Option.liftThrowable((value: string) =>
+  Temporal.Instant.from(value)
+);
 
 /**
  * Groups a customer's reservations for the account history. Cancelled
@@ -170,7 +131,9 @@ export const groupCustomerReservations = (
   const unavailable: CustomerReservationSummary[] = [];
 
   for (const reservation of reservations) {
-    const end = reservation.endsAt ? toInstantOrNull(reservation.endsAt) : null;
+    const end = reservation.endsAt
+      ? Option.getOrNull(parseInstant(reservation.endsAt))
+      : null;
     if (!end) {
       unavailable.push(reservation);
     } else if (

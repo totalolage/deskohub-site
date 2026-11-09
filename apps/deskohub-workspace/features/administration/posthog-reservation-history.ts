@@ -2,7 +2,7 @@ import {
   PostHogEventId,
   type PostHogProjectId,
 } from "@deskohub/posthog/identifiers";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import {
   FetchHttpClient,
   HttpClient,
@@ -10,21 +10,16 @@ import {
   HttpClientResponse,
 } from "effect/unstable/http";
 import { env } from "@/env";
+import {
+  type ReservationLifecycleEvent,
+  reservationLifecycleEvents,
+} from "@/features/checkout/reservation-lifecycle-events";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { postHogRuntimeConfig } from "@/shared/backend/config/posthog.config";
+import { parseInstant } from "@/shared/utils/temporal";
 import type { AdministrationTimelineItem } from "./administration.service";
 
-const lifecycleEvents = [
-  "reservation started",
-  "reservation abandoned",
-  "reservation completed",
-  "reservation fulfilled",
-  "payment started",
-  "payment completed",
-  "payment abandoned",
-  "payment failed",
-] as const;
-
-const lifecycleEventSchema = Schema.Literals(lifecycleEvents);
+const lifecycleEventSchema = Schema.Literals(reservationLifecycleEvents);
 
 const postHogHistoryResponseSchema = Schema.Struct({
   results: Schema.Array(
@@ -40,48 +35,56 @@ const postHogHistoryResponseSchema = Schema.Struct({
 
 const eventPresentation = {
   "reservation started": {
+    event: { source: "reservation", kind: "reservation_held" },
     title: "Reservation held",
     description: "The booking was held for the customer.",
     tone: "neutral",
   },
   "reservation abandoned": {
+    event: { source: "reservation", kind: "reservation_cancelled" },
     title: "Reservation cancelled",
     description: "The reservation was cancelled.",
     tone: "warning",
   },
   "reservation completed": {
+    event: { source: "reservation", kind: "reservation_confirmed" },
     title: "Reservation confirmed",
     description: "The reservation was confirmed.",
     tone: "positive",
   },
   "reservation fulfilled": {
+    event: { source: "reservation", kind: "access_sent" },
     title: "Customer access sent",
     description: "The customer confirmation was sent.",
     tone: "positive",
   },
   "payment started": {
+    event: { source: "reservation", kind: "payment_started" },
     title: "Payment started",
     description: "An online payment attempt began.",
     tone: "neutral",
   },
   "payment completed": {
+    event: { source: "reservation", kind: "payment_completed" },
     title: "Payment recorded by Deskohub",
     description: "Deskohub recorded the completed payment.",
     tone: "positive",
   },
   "payment abandoned": {
+    event: { source: "reservation", kind: "payment_unsuccessful" },
     title: "Payment unsuccessful",
     description: "A payment was cancelled or expired.",
     tone: "warning",
   },
   "payment failed": {
+    event: { source: "reservation", kind: "payment_failed" },
     title: "Payment failed",
     description: "An online payment attempt failed.",
     tone: "warning",
   },
 } as const satisfies Record<
-  (typeof lifecycleEvents)[number],
-  Pick<AdministrationTimelineItem, "title" | "description" | "tone">
+  ReservationLifecycleEvent,
+  Pick<AdministrationTimelineItem, "event" | "title" | "description" | "tone">
 >;
 
 export type ReservationHistoryResult =
@@ -105,10 +108,11 @@ export class PostHogHistoryRuntimeConfig extends Context.Service<
 >()("@deskohub-workspace/administration/PostHogHistoryRuntimeConfig") {
   static Default = Layer.succeed(this, {
     apiKey: env.POSTHOG_API_KEY,
-    environment: env.VERCEL_ENV,
+    // The deployment and service the server events are sent under.
+    environment: postHogRuntimeConfig.environment,
     host: env.POSTHOG_API_HOST,
     projectId: env.POSTHOG_PROJECT_ID,
-    serviceName: env.POSTHOG_SERVICE_NAME,
+    serviceName: postHogRuntimeConfig.serviceName,
   });
 }
 
@@ -120,21 +124,19 @@ SELECT
   properties.payment_attempt_id,
   properties.provider
 FROM events
-WHERE distinct_id = {reservationId}
-  AND properties.reservation_id = {reservationId}
+WHERE properties.reservation_id = {reservationId}
   AND properties.\`deployment.environment.name\` = {environment}
   AND properties.\`service.name\` = {serviceName}
-  AND event IN (${lifecycleEvents.map((event) => `'${event}'`).join(", ")})
+  AND event IN (${reservationLifecycleEvents.map((event) => `'${event}'`).join(", ")})
 ORDER BY timestamp ASC, uuid ASC
 LIMIT 100`;
 
-const normalizePostHogTimestamp = (value: string) => {
-  try {
-    return Temporal.Instant.from(value).toString();
-  } catch {
-    return Temporal.Instant.from(`${value}Z`).toString();
-  }
-};
+/** PostHog may return a timestamp without an offset; it is in UTC. */
+const normalizePostHogTimestamp = (value: string) =>
+  parseInstant(value).pipe(
+    Option.orElse(() => parseInstant(`${value}Z`)),
+    Option.map((instant) => instant.toString())
+  );
 
 export class PostHogReservationHistory extends Context.Service<
   PostHogReservationHistory,
@@ -186,21 +188,16 @@ export class PostHogReservationHistory extends Context.Service<
             ),
             Effect.map(({ results }) => ({
               kind: "available" as const,
-              items: results.flatMap(([event, occurredAt, uuid]) => {
-                try {
-                  const normalizedTime = normalizePostHogTimestamp(occurredAt);
-                  const presentation = eventPresentation[event];
-                  return [
-                    {
-                      id: `posthog-${uuid}`,
-                      ...presentation,
-                      occurredAt: normalizedTime,
-                    },
-                  ];
-                } catch {
-                  return [];
-                }
-              }),
+              items: results.flatMap(([event, occurredAt, uuid]) =>
+                normalizePostHogTimestamp(occurredAt).pipe(
+                  Option.map((normalizedTime) => ({
+                    id: `posthog-${uuid}`,
+                    ...eventPresentation[event],
+                    occurredAt: normalizedTime,
+                  })),
+                  Option.toArray
+                )
+              ),
             })),
             Effect.timeout("5 seconds"),
             Effect.catch((cause) =>

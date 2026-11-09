@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Fiber, Layer } from "effect";
+import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
 import { GamesService } from "./service";
 
@@ -100,4 +101,61 @@ describe("GamesService", () => {
       "https://deskohub-games.vercel.app/api/games",
     ]);
   });
+
+  test("retries a transient catalog failure", async () => {
+    let requestCount = 0;
+    const fetchMock = mock(async () => {
+      requestCount += 1;
+      return requestCount === 1
+        ? new Response("unavailable", { status: 503 })
+        : Response.json({ games: [] });
+    }) as unknown as typeof globalThis.fetch;
+
+    const games = await Effect.gen(function* () {
+      const service = yield* GamesService;
+      return yield* service.listGames;
+    }).pipe(
+      Effect.provide(
+        GamesService.Default.pipe(Layer.provide(fetchLayer(fetchMock)))
+      ),
+      Effect.runPromise
+    );
+
+    expect(games).toEqual([]);
+    expect(requestCount).toBe(2);
+  });
+
+  test("fails a stalled catalog request", async () => {
+    const fetchMock = mock(
+      () => new Promise<Response>(() => {})
+    ) as unknown as typeof globalThis.fetch;
+
+    const failure = await Effect.gen(function* () {
+      const service = yield* GamesService;
+      const fiber = yield* service.listGames.pipe(
+        Effect.flip,
+        Effect.forkChild
+      );
+      yield* TestClock.adjust("10 seconds");
+      return yield* Fiber.join(fiber);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          GamesService.Default.pipe(Layer.provide(fetchLayer(fetchMock))),
+          TestClock.layer()
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(failure).toMatchObject({
+      _tag: "GamesRequestError",
+      message: "The board-game catalog request timed out.",
+    });
+  });
 });
+
+const fetchLayer = (fetchMock: typeof globalThis.fetch) =>
+  FetchHttpClient.layer.pipe(
+    Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchMock))
+  );

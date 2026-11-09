@@ -1,18 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
-  normalizeLocaleTag,
   parseAcceptLanguage,
   resolvePreferredLocale,
+  toOpenGraphLocale,
 } from "./core";
-
-describe("normalizeLocaleTag", () => {
-  test("normalizes language, script, and region subtags", () => {
-    expect(normalizeLocaleTag("zh-hant-hk")).toBe("zh-Hant-HK");
-    expect(normalizeLocaleTag("SR-cYRL-rs")).toBe("sr-Cyrl-RS");
-    expect(normalizeLocaleTag("en-us")).toBe("en-US");
-    expect(normalizeLocaleTag("es-419")).toBe("es-419");
-  });
-});
 
 describe("parseAcceptLanguage", () => {
   test("sorts by q-value and ignores wildcard and invalid quality entries", () => {
@@ -87,5 +78,16 @@ describe("resolvePreferredLocale", () => {
     });
 
     expect(preferred).toBeUndefined();
+  });
+});
+
+describe("toOpenGraphLocale", () => {
+  test("joins language and territory with an underscore", () => {
+    expect(toOpenGraphLocale("cs-CZ")).toBe("cs_CZ");
+    expect(toOpenGraphLocale("en-US")).toBe("en_US");
+  });
+
+  test("normalizes the case of each subtag", () => {
+    expect(toOpenGraphLocale("en-us")).toBe("en_US");
   });
 });

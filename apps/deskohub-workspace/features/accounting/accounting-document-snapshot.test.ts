@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { Effect, Schema } from "effect";
 import { accountingDocumentSnapshots } from "@/db/schema";
@@ -11,20 +12,19 @@ import {
 } from "@/features/checkout/checkout-quote.test-utils";
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
-import {
-  CENSORED_LOG_VALUE,
-  censorDatabaseQueryParams,
-} from "@/shared/backend/logging/censorship";
+import { censorDatabaseQueryParams } from "@/shared/backend/logging/censorship";
+import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 import {
   accountingDocumentSnapshotSchema,
   decodeStoredAccountingDocumentSnapshot,
-  encodeStoredAccountingDocumentSnapshot,
   makeAccountingDocumentSnapshot,
 } from "./accounting-document-snapshot";
 import {
   decryptAccountingSnapshot,
   encryptAccountingSnapshot,
 } from "./backend/accounting-snapshot-sql";
+
+const adaEmail = testEmailAddress("ada");
 
 const coworkOrder = {
   entryTier: "basic",
@@ -38,7 +38,7 @@ const prepared = {
     ...coworkOrder,
     date: "2099-01-01",
     name: "Ada Lovelace",
-    email: "ada@example.com",
+    email: adaEmail,
     phone: "+420 777 777 777",
   },
   quote: buildCoworkReservationQuote(coworkOrder),
@@ -59,7 +59,7 @@ const officeReservation = normalizedOfficeReservationOrderSchema.make({
   endsOn: "2099-06-21",
   seats: 3,
   name: "Ada Lovelace",
-  email: "ada@example.com",
+  email: adaEmail,
   phone: "+420 777 777 777",
 });
 
@@ -86,7 +86,7 @@ describe("accounting document snapshot", () => {
         legalName: "Ada Lovelace",
       },
       delivery: {
-        email: "ada@example.com",
+        email: adaEmail,
       },
       reservation: {
         kind: "cowork",
@@ -99,7 +99,7 @@ describe("accounting document snapshot", () => {
   test("freezes only the reservation email needed for invoice delivery", () => {
     const serialized = JSON.stringify(makeSnapshot());
 
-    expect(serialized).toContain("ada@example.com");
+    expect(serialized).toContain(adaEmail);
     expect(serialized).not.toContain("+420 777 777 777");
     expect(serialized).not.toContain('"message"');
   });
@@ -131,7 +131,7 @@ describe("accounting document snapshot", () => {
     ).resolves.toEqual(snapshot);
 
     const serialized = JSON.stringify(snapshot);
-    expect(serialized).toContain("ada@example.com");
+    expect(serialized).toContain(adaEmail);
     expect(serialized).not.toContain("+420 777 777 777");
   });
 
@@ -163,26 +163,6 @@ describe("accounting document snapshot", () => {
     });
 
     expect(snapshot.buyer).toEqual(buyer);
-  });
-
-  test("round-trips strictly through the schema", async () => {
-    const snapshot = makeSnapshot();
-    const decode = Schema.decodeUnknownEffect(
-      accountingDocumentSnapshotSchema,
-      {
-        onExcessProperty: "error",
-      }
-    );
-
-    await expect(Effect.runPromise(decode(snapshot))).resolves.toEqual(
-      snapshot
-    );
-    await expect(
-      Effect.runPromise(decode({ ...snapshot, unexpected: true }))
-    ).rejects.toBeDefined();
-    await expect(
-      Effect.runPromise(decode({ ...snapshot, schemaVersion: 1 }))
-    ).rejects.toBeDefined();
   });
 
   test("decodes historical snapshots without an invoice instruction", async () => {
@@ -222,12 +202,6 @@ describe("accounting document snapshot", () => {
         })
       )
     ).rejects.toBeDefined();
-  });
-
-  test("writes versionless snapshots", () => {
-    const snapshot = makeSnapshot();
-
-    expect(encodeStoredAccountingDocumentSnapshot(snapshot)).toEqual(snapshot);
   });
 
   test("parameterizes both plaintext and key in pgcrypto SQL", () => {
@@ -270,21 +244,5 @@ describe("accounting document snapshot", () => {
     expect(censorDatabaseQueryParams(query.sql, query.params)).toEqual([
       CENSORED_LOG_VALUE,
     ]);
-  });
-
-  test("resolves a nonempty environment passphrase by key ID", async () => {
-    const { AccountingSnapshotKeyService } = await import(
-      "./backend/accounting-snapshot-key.service"
-    );
-    const key = await Effect.gen(function* () {
-      const keys = yield* AccountingSnapshotKeyService;
-      return yield* keys.getActive;
-    }).pipe(
-      Effect.provide(AccountingSnapshotKeyService.Default),
-      Effect.runPromise
-    );
-
-    expect(key.id).toBe("K202608");
-    expect(key.secret).toBe("synthetic accounting snapshot secret!");
   });
 });

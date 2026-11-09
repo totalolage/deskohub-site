@@ -1,0 +1,21 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Provider outcome classes describe what the provider did; only the provider
+// package (and tests) construct them. Application conditions get
+// application-owned errors.
+file($name, $body) where {
+  $name <: r".*apps/.*\.(?:ts|tsx)$",
+  not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+  $body <: r"(?s).*\b(?:Dotypos|Nexi|Email)[A-Z].*",
+  $body <: contains bubble {
+    `new $class($...)` as $construction where {
+      $class <: r"^(?:Dotypos|Nexi|Email)(?:Unavailable|Rejected|Uncertain|VersionConflict|ReservationCancelledError)$",
+      register_diagnostic(
+        span = $construction,
+        message = "Only the provider package constructs its outcomes; give an application condition its own error.",
+        severity = "error"
+      )
+    }
+  }
+}

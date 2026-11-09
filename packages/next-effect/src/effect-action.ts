@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Effect, type Layer } from "effect";
+import type { Effect, Layer } from "effect";
 import type {
   ActionCallbacks,
   EffectiveThrows,
@@ -13,11 +13,8 @@ import type {
   ValidationErrors,
   ValidationErrorsFormat,
 } from "next-safe-action";
-import {
-  type ExecuteOptions,
-  type ExecuteRun,
-  execute,
-} from "./internal/executor";
+import { type ExecuteOptions, execute } from "./internal/executor";
+import { makeSharedLayerProvider } from "./internal/shared-layer";
 
 type SchemaInput<S extends StandardSchemaV1> = StandardSchemaV1.InferInput<S>;
 type SchemaOutput<S extends StandardSchemaV1> = StandardSchemaV1.InferOutput<S>;
@@ -39,7 +36,6 @@ export interface EffectActionArgs<
 
 interface EffectActionBaseOptions {
   readonly mapError?: (error: unknown) => unknown;
-  readonly run?: ExecuteRun;
 }
 
 interface EffectActionRunnableOptions extends EffectActionBaseOptions {
@@ -47,19 +43,19 @@ interface EffectActionRunnableOptions extends EffectActionBaseOptions {
 }
 
 interface EffectActionLayerOptions<R, LE> extends EffectActionBaseOptions {
+  /** Built once, on first action run, and shared by every later run. */
   readonly layer: Layer.Layer<R, LE, never>;
+  /** Lets other runtimes reuse layers this client has already built. */
+  readonly memoMap?: Layer.MemoMap;
 }
 
 export type EffectActionOptions<R = never, LE = never> =
   | EffectActionRunnableOptions
   | EffectActionLayerOptions<R, LE>;
 
-const getExecuteOptions = <E>(
+const getExecuteOptions = (
   options: EffectActionBaseOptions
-): ExecuteOptions<E> =>
-  options.run
-    ? { mapError: options.mapError, run: options.run }
-    : { mapError: options.mapError };
+): ExecuteOptions<unknown> => ({ mapError: options.mapError });
 
 type SafeActionValidationErrors<
   ErrorsFormat extends ValidationErrorsFormat | undefined,
@@ -363,8 +359,12 @@ function fromClient(
   options: EffectActionOptions<unknown, unknown> = {}
 ): unknown {
   if (options.layer) {
+    const provideLayer = makeSharedLayerProvider(
+      options.layer,
+      options.memoMap
+    );
     return makeEffectActionClient(actionClient, (effect) =>
-      execute(Effect.provide(effect, options.layer), getExecuteOptions(options))
+      execute(provideLayer(effect), getExecuteOptions(options))
     );
   }
 

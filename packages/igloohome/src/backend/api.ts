@@ -65,6 +65,8 @@ type AccessTokenCache = {
 
 interface IIgloohomeAccessToken {
   readonly get: Effect.Effect<string, IgloohomeRequestError>;
+  /** Forgets a cached token the provider no longer accepts. */
+  readonly invalidate: Effect.Effect<void>;
 }
 
 export class IgloohomeAccessToken extends Context.Service<
@@ -141,7 +143,9 @@ export class IgloohomeAccessToken extends Context.Service<
         return yield* requestAccessToken();
       });
 
-      return { get };
+      const invalidate = Ref.set(tokenCache, null);
+
+      return { get, invalidate };
     })
   );
 }

@@ -1,23 +1,15 @@
 # Timezone and Temporal values
 
-Reuse the Workspace timezone and Temporal schemas and formatters from [site constants](../../../../apps/deskohub-workspace/shared/utils/site-constants.ts) and [Temporal utilities](../../../../apps/deskohub-workspace/shared/utils/temporal.ts). Do not redeclare them inside feature modules.
+- Reuse the timezone, Temporal schemas, and formatters in [`shared/utils/site-constants.ts`](../../../../apps/deskohub-workspace/shared/utils/site-constants.ts) and [`shared/utils/temporal.ts`](../../../../apps/deskohub-workspace/shared/utils/temporal.ts). Don't redeclare them in feature modules.
+- Reference `workspaceSiteConstants.location.timeZone` directly instead of exporting feature-level timezone aliases. Name site-local date helpers for their Workspace role, not for the city.
+- Use the ambient `Temporal.*` types from the global alias in `types/temporal.d.ts`. Don't redeclare individual Temporal types or export type aliases for them.
+- Feature, route, and shared-component modules use the ambient `Temporal`. `instrumentation.ts` installs the polyfill for the running server. In the browser, the root layout's `<head>` loader (`shared/polyfills/temporal-loader.tsx`, built by `temporal-polyfill:build` from `temporal-loader.browser.ts`) checks the entry points in `requiredTemporalApis` (`shared/polyfills/temporal-runtime.ts`) and a few time zone conversions, and writes a parser-blocking `<script>` for `/polyfills/temporal.js` only when one fails, so the polyfill runs before any app module. Native Chromium and Firefox download nothing; Safari and iOS get the polyfill. `instrumentation-client.ts` asserts the result (`temporal-installed.ts`).
+- Client code never imports `@/shared/polyfills/temporal` or `@js-temporal/polyfill`; either would ship the polyfill to every browser. When code calls a Temporal entry point the list lacks, add it to `requiredTemporalApis`; `temporal-runtime.test.ts` fails until you do.
+- A module that reads `Temporal` while it loads (a top-level const, a static field, an immediately invoked function) breaks the build: Next collects page data without running instrumentation. A server-only module imports `@/shared/polyfills/temporal` itself. A module client code loads can't, so it reads `Temporal` only inside functions. [`shared/polyfills/temporal.test.ts`](../../../../apps/deskohub-workspace/shared/polyfills/temporal.test.ts) enforces both.
+- Type each formatter to the representation it formats. Reservation facts use `Temporal.Instant`. Raw plain-date strings belong only in named form or input adapters. Never mix `Date`, `string`, and Temporal values in one reservation display formatter.
+- Decode a Dotypos reservation's start, end, interval, and seats with `decodeBookedReservation` ([`features/reservation/backend/booked-reservation.ts`](../../../../apps/deskohub-workspace/features/reservation/backend/booked-reservation.ts)), which applies the canonical instant, reservation interval, and seat schemas. Callers keep only their own fallback for a value it can't read. Code that orders or dates thousands of reservations and needs only the start reads `decodeBookedStart`, the same rule without decoding the other facts. Don't add a parallel timestamp or seat parser or accept response shapes the generated Dotypos client rejects.
+- Dotypos holds a meeting room booked with early setup from its setup start, before the booked start. Wherever a reservation's start is shown, dated, ordered, or counted as a visit, pass its stored details to `decodeBookedReservation`; with only Dotypos bookings at hand, load them with `loadEarlySetupDetails` ([`features/reservation/backend/early-setup-details.ts`](../../../../apps/deskohub-workspace/features/reservation/backend/early-setup-details.ts)), and start a Dotypos start-range read that lead earlier (`getMeetingRoomSetupStart`), keeping what's booked in range. Only occupancy reads (availability, table occupancy, capacity) and end-only reads decode without details: there the held span is the right one.
 
-Reference `workspaceSiteConstants.location.timeZone` directly instead of exporting feature-level timezone aliases.
+## Stored instant precision
 
-Name site-local date helpers for their Workspace role rather than the current city, and always derive their timezone from `workspaceSiteConstants.location.timeZone`.
-
-Use the ambient `Temporal.*` types. Keep the polyfill namespace exposed generically through the global alias in `types/temporal.d.ts`; do not manually redeclare individual Temporal types or export/import utility aliases for types provided by that namespace.
-
-Application modules use the ambient `Temporal` runtime installed by the server
-and client instrumentation entry points. Do not import the polyfill directly in
-feature, route, or shared-component modules.
-
-Keep formatting APIs typed to the domain representation they format. Actual
-reservation facts use `Temporal.Instant`; raw plain-date strings belong only in
-explicitly named form/input boundary adapters. Do not combine `Date`, `string`,
-and Temporal values in one reservation display formatter.
-
-Decode Dotypos reservation start/end values through the canonical reservation
-interval schema before projecting them to application timing values. Do not add
-a parallel timestamp parser or compatibility for response shapes rejected by
-the generated Dotypos client.
+`Temporal.Now.instant()` carries nanoseconds, but `instant` columns store microseconds, so a persisted instant never `equals` the in-memory value it came from. Before comparing an in-memory instant, or one serialized into a queue payload or key, with a stored one, pass both through `toStoredInstant` from [`db/instant.ts`](../../../../apps/deskohub-workspace/db/instant.ts). Serialize such instants at stored precision.

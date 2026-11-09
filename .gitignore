@@ -3,6 +3,9 @@
 # dependencies
 /node_modules
 
+# test coverage (bun run coverage)
+/coverage/
+
 # next.js
 /.next/
 /out/

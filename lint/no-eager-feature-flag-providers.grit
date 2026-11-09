@@ -1,0 +1,20 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// The Workspace feature flag service is imported by client-reachable modules,
+// so it loads its server-only providers with dynamic `import()` on first use.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/features/feature-flags/backend/workspace-feature-flag\.service\.ts$",
+  $body <: contains bubble {
+    JsImport() as $import where {
+      $import <: contains JsModuleSource() as $source where {
+        $source <: r"^['\"](?:server-only|\./node|\./subject)['\"]$"
+      },
+      register_diagnostic(
+        span = $import,
+        message = "Load server-only feature flag providers lazily with a dynamic import instead of a static import.",
+        severity = "error"
+      )
+    }
+  }
+}

@@ -1,14 +1,13 @@
 import type { ReactNode } from "react";
 import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-summary";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
+import { formatMoney, type Money } from "@/shared/money/money";
 import { cn } from "@/shared/utils";
 import { CheckoutSummaryDiscountDetails } from "./checkout-summary-discount-details";
 
 type CheckoutSummaryPriceItem = {
-  readonly amount: WorkspaceMoney;
-  readonly originalAmount?: WorkspaceMoney;
+  readonly amount: Money;
+  readonly originalAmount?: Money;
   readonly discounts?: readonly CheckoutSummaryDiscount[];
 };
 
@@ -38,7 +37,7 @@ export function CheckoutSummaryProductLine({
           <span className="sr-only">
             {m.checkoutSummaryOriginalPrice(
               {
-                price: formatWorkspaceMoney(discounted.originalAmount, locale),
+                price: formatMoney(discounted.originalAmount, locale),
               },
               { locale }
             )}
@@ -47,11 +46,11 @@ export function CheckoutSummaryProductLine({
             aria-hidden="true"
             className="text-navy-blue/45 decoration-navy-blue/40"
           >
-            {formatWorkspaceMoney(discounted.originalAmount, locale)}
+            {formatMoney(discounted.originalAmount, locale)}
           </del>
           <span className="sr-only">
             {m.checkoutSummaryDiscountedPrice(
-              { price: formatWorkspaceMoney(item.amount, locale) },
+              { price: formatMoney(item.amount, locale) },
               { locale }
             )}
           </span>
@@ -59,7 +58,7 @@ export function CheckoutSummaryProductLine({
             aria-hidden="true"
             className="shrink-0 font-semibold tabular-nums"
           >
-            {formatWorkspaceMoney(item.amount, locale)}
+            {formatMoney(item.amount, locale)}
           </span>
           <CheckoutSummaryDiscountDetails
             discounts={discounted.discounts}
@@ -69,7 +68,7 @@ export function CheckoutSummaryProductLine({
         </>
       ) : (
         <span className="shrink-0 font-semibold tabular-nums">
-          {formatWorkspaceMoney(item.amount, locale)}
+          {formatMoney(item.amount, locale)}
         </span>
       )}
     </CheckoutSummaryLine>
@@ -83,7 +82,7 @@ export function CheckoutSummaryLine({
   label,
   locale,
 }: {
-  readonly amount?: WorkspaceMoney;
+  readonly amount?: Money;
   readonly changed?: boolean;
   readonly children?: ReactNode;
   readonly label: ReactNode;
@@ -100,7 +99,7 @@ export function CheckoutSummaryLine({
       <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
         {amount ? (
           <span className="shrink-0 font-semibold tabular-nums">
-            {formatWorkspaceMoney(amount, locale)}
+            {formatMoney(amount, locale)}
           </span>
         ) : null}
         {children}

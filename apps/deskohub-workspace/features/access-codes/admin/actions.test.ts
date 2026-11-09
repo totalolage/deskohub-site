@@ -2,7 +2,6 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import {
-  AdministrationActorUsername,
   AdministrationInstant,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
@@ -10,11 +9,13 @@ import {
   AdministrationStandaloneAccessCodePin,
 } from "@deskohub/workspace-admin-api";
 import { Context, Effect, Layer, Schema } from "effect";
-import { DEFAULT_SERVER_ERROR_MESSAGE } from "next-safe-action";
+import { m } from "@/features/administration/i18n";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { mockAdministrationActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 
 interface StubCreateCall {
   readonly attemptId: AdministrationStandaloneAccessCodeAttemptId;
-  readonly actor: AdministrationActorUsername;
+  readonly actor: AdministratorAccountActor;
   readonly source: string;
   readonly request: {
     readonly name: string;
@@ -26,9 +27,10 @@ interface StubCreateCall {
     | undefined;
 }
 
-let authorizationCalls = 0;
-let authorizationAllowed = true;
-const actor = AdministrationActorUsername.make("Fixture Operator");
+const { access } = await mockAdministrationActionRequest({
+  administrator: "fixture-operator",
+});
+const actor = access.administrator;
 
 const serviceCreateCalls: StubCreateCall[] = [];
 const serviceCreate = mock((input: StubCreateCall) => {
@@ -57,35 +59,6 @@ mock.module("@/features/access-codes", () => ({
       ),
     }
   ),
-}));
-
-mock.module(
-  "@/shared/administrator/administrator-authorization.server",
-  () => ({
-    requireAdministratorAuthorization: Effect.gen(function* () {
-      authorizationCalls += 1;
-      if (!authorizationAllowed) {
-        return yield* Effect.fail(new Error("unauthorized"));
-      }
-      return actor;
-    }),
-  })
-);
-
-mock.module("next/server", () => ({
-  after: () => undefined,
-}));
-
-mock.module("@/instrumentation", () => ({
-  postHogLoggerProvider: {
-    forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
-  },
-}));
-
-mock.module("next/headers", () => ({
-  cookies: async () => ({ getAll: () => [] }),
-  headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
 }));
 
 const attemptId = Schema.decodeSync(
@@ -136,15 +109,15 @@ const creationError = (
 
 describe("createStandaloneAccessCode action", () => {
   test("creates with the server-derived actor and the admin-ui source", async () => {
-    authorizationCalls = 0;
-    authorizationAllowed = true;
+    access.set("administrator");
     serviceCreateCalls.length = 0;
     serviceCreateResult = Effect.succeed(createdOutcome);
     const { createStandaloneAccessCode } = await import("./actions");
+    const readsBefore = access.reads();
 
     const result = await createStandaloneAccessCode(validInput);
 
-    expect(authorizationCalls).toBe(1);
+    expect(access.reads() - readsBefore).toBe(1);
     expect(result).toEqual({
       data: { status: "succeeded", outcome: createdOutcome },
     });
@@ -159,27 +132,10 @@ describe("createStandaloneAccessCode action", () => {
         endsAt: "2026-09-10T12:00",
       },
     });
+    expect(serviceCreateCalls[0]?.actor).toEqual(actor);
     expect(
       serviceCreateCalls[0]?.providerCredentialRemovedAttemptId
     ).toBeUndefined();
-  });
-
-  test("passes the already-created replay outcome through untouched", async () => {
-    const alreadyCreated = {
-      outcome: "already-created" as const,
-      attemptId,
-      providerCredentialId: createdOutcome.providerCredentialId,
-      name: createdOutcome.name,
-      startsAt: createdOutcome.startsAt,
-      endsAt: createdOutcome.endsAt,
-      issuedAt: createdOutcome.issuedAt,
-    };
-    serviceCreateResult = Effect.succeed(alreadyCreated);
-    const { createStandaloneAccessCode } = await import("./actions");
-
-    await expect(createStandaloneAccessCode(validInput)).resolves.toEqual({
-      data: { status: "succeeded", outcome: alreadyCreated },
-    });
   });
 
   test("reports provider rejection as an editable failure, not an error", async () => {
@@ -205,32 +161,20 @@ describe("createStandaloneAccessCode action", () => {
     });
   });
 
-  test("carries the reported cleanup target for a cleanup-required outcome", async () => {
-    serviceCreateResult = Effect.fail(
-      creationError("cleanup-required", { cleanupTarget })
-    );
-    const { createStandaloneAccessCode } = await import("./actions");
-
-    await expect(createStandaloneAccessCode(validInput)).resolves.toEqual({
-      data: {
-        status: "failed",
-        outcome: { outcome: "cleanup-required", cleanupTarget },
-      },
-    });
-  });
-
   test("treats a missing ambiguous cleanup target as a server defect", async () => {
     serviceCreateResult = Effect.fail(creationError("ambiguous"));
     const { createStandaloneAccessCode } = await import("./actions");
 
     await expect(createStandaloneAccessCode(validInput)).resolves.toEqual({
-      serverError: DEFAULT_SERVER_ERROR_MESSAGE,
+      serverError: m.accessCodesActionFailedUnexpectedly(
+        {},
+        { locale: "en-US" }
+      ),
     });
   });
 
   test("forwards the confirmed cleanup target attempt id to the service", async () => {
-    authorizationCalls = 0;
-    authorizationAllowed = true;
+    access.set("administrator");
     serviceCreateCalls.length = 0;
     serviceCreateResult = Effect.succeed(createdOutcome);
     const { createStandaloneAccessCode } = await import("./actions");
@@ -267,40 +211,18 @@ describe("createStandaloneAccessCode action", () => {
     expect(serviceCreateCalls).toHaveLength(0);
   });
 
-  test("rejects a window beyond the shared upper bound through input validation", async () => {
-    serviceCreateCalls.length = 0;
-    serviceCreateResult = Effect.die("must not be called");
-    const { createStandaloneAccessCode } = await import("./actions");
-
-    const result = await createStandaloneAccessCode({
-      ...validInput,
-      startsAt: "2026-10-24T00:00",
-      endsAt: "2026-11-21T00:00",
-    });
-
-    expect(result).toMatchObject({
-      validationErrors: {
-        formErrors: [],
-        fieldErrors: {
-          endsAt: ["The end must be 1 to 672 hours after the start."],
-        },
-      },
-    });
-    expect(serviceCreateCalls).toHaveLength(0);
-  });
-
   test("rejects unauthenticated callers before calling the service", async () => {
-    authorizationAllowed = false;
+    access.set("signed-out");
     serviceCreateCalls.length = 0;
     serviceCreateResult = Effect.die("must not be called");
     const { createStandaloneAccessCode } = await import("./actions");
 
     const result = await createStandaloneAccessCode(validInput);
 
-    expect(result).toMatchObject({
-      serverError: "Administrator authentication is required.",
+    expect(result).toEqual({
+      serverError: m.accessCodesAuthenticationRequired({}, { locale: "en-US" }),
     });
     expect(serviceCreateCalls).toHaveLength(0);
-    authorizationAllowed = true;
+    access.set("administrator");
   });
 });

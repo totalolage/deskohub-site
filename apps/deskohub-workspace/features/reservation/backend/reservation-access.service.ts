@@ -1,13 +1,15 @@
 import { DotyposService } from "@deskohub/dotypos";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
 import type { Locale } from "@/features/i18n";
+import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
+import { getDotyposReservationAccessTiming } from "@/features/reservation/backend/workspace-reservation.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
+import { ReservationAccessIssuanceError } from "@/features/reservation-access";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 
 export type ReservationAccessViewModel =
@@ -18,7 +20,17 @@ export type ReservationAccessViewModel =
       readonly accessEndsAt: Temporal.Instant;
     }
   | { readonly state: "invalid_link" }
-  | { readonly state: "unavailable" };
+  | {
+      readonly state: "unavailable";
+      readonly reason: ReservationAccessUnavailableReason;
+    };
+
+/**
+ * Why a code can't be shown: the reservation's state doesn't grant one (not
+ * paid or confirmed, or issuance refuses it, such as once it ended), or a
+ * lookup it needs failed and a later try may succeed.
+ */
+type ReservationAccessUnavailableReason = "reservation-state" | "lookup-failed";
 
 export interface IReservationAccessService {
   readonly getAccess: (input: {
@@ -30,7 +42,17 @@ export interface IReservationAccessService {
 }
 
 const invalidLinkAccess: ReservationAccessViewModel = { state: "invalid_link" };
-const unavailableAccess: ReservationAccessViewModel = { state: "unavailable" };
+const unavailableAccess = (
+  reason: ReservationAccessUnavailableReason
+): ReservationAccessViewModel => ({ state: "unavailable", reason });
+
+/**
+ * Bounds the live Dotypos lookup, including its retries, well inside the
+ * access route's 30-second `maxDuration`, so a slow Dotypos still lets the
+ * page render its unavailable state. Matches the status page's cap.
+ */
+const providerLookupDeadline = "8 seconds";
+
 const implementation = Effect.gen(function* () {
   const reservations = yield* WorkspaceReservationRepository;
   const authorization = yield* ReservationAuthorizationService;
@@ -44,48 +66,65 @@ const implementation = Effect.gen(function* () {
       readonly accessCookie?: string;
       readonly accessToken?: ReservationAccessToken;
     }) {
-      const authorized = yield* authorization.isAuthorized(input);
+      const authorized = yield* authorization.isAuthorized({
+        ...input,
+        permission: "view-access-code",
+      });
       if (!authorized) return invalidLinkAccess;
 
       const reservation = yield* reservations.findById(input.orderId).pipe(
+        Effect.map((found) => found ?? "missing"),
         Effect.tapError(() =>
           Effect.logWarning("Reservation access lookup failed")
         ),
-        Effect.orElseSucceed(() => undefined)
+        Effect.orElseSucceed(() => "failed" as const)
       );
-      if (!reservation) {
-        return unavailableAccess;
-      }
+      if (reservation === "failed") return unavailableAccess("lookup-failed");
       if (
+        reservation === "missing" ||
         reservation.paymentState !== "paid" ||
         reservation.reservationState !== "confirmed" ||
         !reservation.dotyposReservationId
       ) {
-        return unavailableAccess;
+        return unavailableAccess("reservation-state");
       }
 
       const providerReservation = yield* dotypos
         .getReservation(reservation.dotyposReservationId)
         .pipe(
+          Effect.map(Option.getOrUndefined),
+          Effect.timeoutOrElse({
+            duration: providerLookupDeadline,
+            orElse: () =>
+              Effect.logWarning(
+                "Reservation access provider lookup timed out"
+              ).pipe(Effect.as("failed" as const)),
+          }),
           Effect.tapError(() =>
             Effect.logWarning("Reservation access provider lookup failed")
           ),
-          Effect.orElseSucceed(() => undefined)
+          Effect.orElseSucceed(() => "failed" as const)
         );
+      if (providerReservation === "failed") {
+        return unavailableAccess("lookup-failed");
+      }
       if (providerReservation?.reservation.status !== "CONFIRMED") {
-        return unavailableAccess;
+        return unavailableAccess("reservation-state");
       }
 
-      const timing = yield* getDotyposReservationTiming({
+      const timing = yield* getDotyposReservationAccessTiming({
         reservationId: reservation.id,
-        reservation: providerReservation.reservation,
+        reservation: decodeBookedReservation(
+          providerReservation.reservation,
+          reservation.reservationDetails
+        ),
       }).pipe(
         Effect.tapError(() =>
           Effect.logWarning("Reservation access timing is invalid")
         ),
         Effect.orElseSucceed(() => undefined)
       );
-      if (!timing) return unavailableAccess;
+      if (!timing) return unavailableAccess("lookup-failed");
 
       return yield* accessCodes
         .resolveCustomerAccessCode({
@@ -109,7 +148,16 @@ const implementation = Effect.gen(function* () {
           Effect.tapError(() =>
             Effect.logError("Reservation access code resolution failed")
           ),
-          Effect.orElseSucceed(() => unavailableAccess)
+          Effect.catch((failure) =>
+            Effect.succeed(
+              unavailableAccess(
+                failure instanceof ReservationAccessIssuanceError &&
+                  failure.refusal
+                  ? "reservation-state"
+                  : "lookup-failed"
+              )
+            )
+          )
         );
     },
     (effect, input) =>
@@ -132,11 +180,20 @@ export class ReservationAccessService extends Context.Service<
 >()("@deskohub-workspace/reservation/ReservationAccessService") {
   static Default = Layer.effect(this, implementation);
 
-  static Live = this.Default.pipe(
-    Layer.provide(WorkspaceReservationRepository.Default),
-    Layer.provide(ReservationAuthorizationService.Live),
-    Layer.provide(WorkspaceDatabase.Default),
-    Layer.provide(WorkspaceDotyposLayer),
-    Layer.provide(WorkspaceCheckoutAccessCodeService.Live)
-  );
+  /**
+   * The service deciding who may see a code through `authorization`, such as
+   * one reading the customer API's session.
+   */
+  static withAuthorization = <E, R>(
+    authorization: Layer.Layer<ReservationAuthorizationService, E, R>
+  ) =>
+    this.Default.pipe(
+      Layer.provide(WorkspaceReservationRepository.Default),
+      Layer.provide(authorization),
+      Layer.provide(WorkspaceDatabase.Default),
+      Layer.provide(WorkspaceDotyposLayer),
+      Layer.provide(WorkspaceCheckoutAccessCodeService.Live)
+    );
+
+  static Live = this.withAuthorization(ReservationAuthorizationService.Live);
 }

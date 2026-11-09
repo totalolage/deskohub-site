@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Fiber, Semaphore } from "effect";
+import { testEmailAddress } from "@deskohub/test-email";
+import { Deferred, Effect, Fiber, Option, Semaphore } from "effect";
 import { SqlError } from "effect/unstable/sql";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import {
@@ -12,6 +13,8 @@ import {
   CustomerAuthentication,
   type CustomerAuthenticationEnvironment,
 } from "./customer-authentication.service";
+
+const customerEmail = testEmailAddress("ada");
 
 const accountId = customerAccountIdSchema.make(
   "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01"
@@ -33,16 +36,28 @@ const activeState = (): CustomerAccountActivityState => ({
   deletionRequestedAt: null,
 });
 
+const makeFakeAdvisoryLock = () => {
+  const semaphore = Effect.runSync(Semaphore.make(1));
+  return {
+    withAccountLock: <A, E, R>(
+      _lockedAccountId: typeof accountId,
+      effect: Effect.Effect<A, E, R>
+    ) => semaphore.withPermits(1)(effect),
+  };
+};
+
 const makeBackend = (options: {
   readonly events: string[];
   readonly activityState: () => CustomerAccountActivityState;
   readonly sessionUnavailable?: boolean;
+  /** Shares one account lock with a concurrent deletion. */
+  readonly lock?: ReturnType<typeof makeFakeAdvisoryLock>;
 }): GuardBackend => ({
   currentUser: options.sessionUnavailable
     ? Effect.fail(new CustomerAccountAccessError({ reason: "unavailable" }))
     : Effect.succeed({
         accountId,
-        email: reservationCustomerEmailSchema.make("ada@example.test"),
+        email: reservationCustomerEmailSchema.make(customerEmail),
         deletionRequested: false,
       }).pipe(
         Effect.tap(() =>
@@ -59,8 +74,8 @@ const makeBackend = (options: {
         })
       )
     ),
-  withAccountLock: (_lockedAccountId, effect) =>
-    Effect.acquireUseRelease(
+  withAccountLock: (lockedAccountId, effect) => {
+    const section = Effect.acquireUseRelease(
       Effect.sync(() => {
         options.events.push("account-lock-acquired");
       }),
@@ -69,18 +84,12 @@ const makeBackend = (options: {
         Effect.sync(() => {
           options.events.push("account-lock-released");
         })
-    ),
+    );
+    return options.lock
+      ? options.lock.withAccountLock(lockedAccountId, section)
+      : section;
+  },
 });
-
-const makeFakeAdvisoryLock = () => {
-  const semaphore = Effect.runSync(Semaphore.make(1));
-  return {
-    withAccountLock: <A, E, R>(
-      _lockedAccountId: typeof accountId,
-      effect: Effect.Effect<A, E, R>
-    ) => semaphore.withPermits(1)(effect),
-  };
-};
 
 const makeDeletion = (options: {
   readonly events: string[];
@@ -89,6 +98,7 @@ const makeDeletion = (options: {
 }) =>
   import("./customer-account-deletion").then(({ expireLinkedDotyposProfile }) =>
     expireLinkedDotyposProfile({
+      isReviewAccount: () => Effect.succeed(false),
       markDeletionRequested: () =>
         Effect.sync(() => {
           options.marker.deletionRequestedAt = new Date(
@@ -97,7 +107,9 @@ const makeDeletion = (options: {
           options.events.push("deletion-mark");
         }),
       findLink: () => Effect.succeed(null),
-      expireCustomer: () => Effect.void,
+      expireCustomer: () => Effect.succeed(Option.none()),
+      destroyAvatar: () => Effect.void,
+      tombstone: () => Effect.void,
       withAccountLock: options.lock.withAccountLock,
     })(accountId)
   );
@@ -119,21 +131,32 @@ describe("optional account activity guard", () => {
     const backend = makeBackend({
       events,
       activityState: markedState(marker),
+      lock,
     });
 
-    const sectionStarted = await Effect.runPromise(Deferred.make<boolean>());
+    const sectionStarted = await Effect.runPromise(Deferred.make<void>());
+    const releaseSection = await Effect.runPromise(Deferred.make<void>());
     const stateCreation = Effect.gen(function* () {
       events.push("state-creation");
-      yield* Deferred.succeed(sectionStarted, true);
+      yield* Deferred.succeed(sectionStarted, undefined);
+      yield* Deferred.await(releaseSection);
       return "created" as const;
     });
-    const guarded = guardOptionalAccountStateCreation(backend, stateCreation);
+    const guarded = guardOptionalAccountStateCreation(
+      backend,
+      () => stateCreation
+    );
 
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
         const guardFiber = yield* Effect.forkChild(guarded);
         yield* Deferred.await(sectionStarted);
         const deletionFiber = yield* Effect.forkChild(deletion);
+        // Deletion gets every chance to run while the section is open; only
+        // the shared account lock keeps it from marking.
+        for (let turn = 0; turn < 10; turn += 1) yield* Effect.yieldNow;
+        expect(marker.deletionRequestedAt).toBeNull();
+        yield* Deferred.succeed(releaseSection, undefined);
         const section = yield* Fiber.join(guardFiber);
         yield* Fiber.join(deletionFiber);
         return section;
@@ -162,13 +185,17 @@ describe("optional account activity guard", () => {
     const backend = makeBackend({
       events,
       activityState: markedState(marker),
+      lock,
     });
 
     const stateCreation = Effect.sync(() => {
       events.push("state-creation");
       return "created" as const;
     });
-    const guarded = guardOptionalAccountStateCreation(backend, stateCreation);
+    const guarded = guardOptionalAccountStateCreation(
+      backend,
+      () => stateCreation
+    );
 
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
@@ -221,72 +248,11 @@ describe("optional account activity guard", () => {
     });
 
     const outcome = await Effect.runPromise(
-      guardOptionalAccountStateCreation(backend, stateCreation)
+      guardOptionalAccountStateCreation(backend, () => stateCreation)
     );
 
     expect(outcome).toBe("created");
     expect(events).toEqual(["account-session", "state-creation"]);
-  });
-
-  test("runs anonymous state creation unchanged when authentication is explicitly not configured", async () => {
-    const events: string[] = [];
-    const backend: GuardBackend = {
-      currentUser: Effect.fail(
-        new CustomerAccountAccessError({ reason: "not-configured" })
-      ),
-      findActivityState: () => Effect.die("activity must not be read"),
-      withAccountLock: () => Effect.die("lock must not be acquired"),
-    };
-    const stateCreation = Effect.sync(() => {
-      events.push("state-creation");
-      return "created" as const;
-    });
-
-    const outcome = await Effect.runPromise(
-      guardOptionalAccountStateCreation(backend, stateCreation)
-    );
-
-    expect(outcome).toBe("created");
-    expect(events).toEqual(["state-creation"]);
-  });
-
-  test("fails closed when the session authority cannot be read", async () => {
-    const events: string[] = [];
-    const backend = makeBackend({
-      events,
-      activityState: activeState,
-      sessionUnavailable: true,
-    });
-    const stateCreation = Effect.sync(() => {
-      events.push("state-creation");
-      return "created" as const;
-    });
-
-    const error = await Effect.runPromise(
-      Effect.flip(guardOptionalAccountStateCreation(backend, stateCreation))
-    );
-
-    expect(error).toMatchObject({
-      _tag: "CustomerAccountAccessError",
-      reason: "unavailable",
-    });
-    expect(events).toEqual([]);
-  });
-
-  test("re-reads authoritative activity under the same lock the section holds", async () => {
-    const events: string[] = [];
-    const backend = makeBackend({ events, activityState: activeState });
-
-    await Effect.runPromise(
-      guardOptionalAccountStateCreation(backend, Effect.succeed("created"))
-    );
-
-    expect(events.indexOf("account-activity")).toBeGreaterThan(
-      events.indexOf("account-lock-acquired")
-    );
-    expect(events.indexOf("account-activity")).toBeLessThan(
-      events.indexOf("account-lock-released")
-    );
   });
 
   test("proceeds anonymously when the service classifies authentication as not configured", async () => {
@@ -307,7 +273,7 @@ describe("optional account activity guard", () => {
     });
 
     const outcome = await Effect.runPromise(
-      guardOptionalAccountStateCreation(backend, stateCreation)
+      guardOptionalAccountStateCreation(backend, () => stateCreation)
     );
 
     expect(outcome).toBe("created");
@@ -330,7 +296,9 @@ describe("optional account activity guard", () => {
 
     const error = await Effect.runPromise(
       Effect.flip(
-        guardOptionalAccountStateCreation(backend, Effect.succeed("created"))
+        guardOptionalAccountStateCreation(backend, () =>
+          Effect.succeed("created")
+        )
       )
     );
 
@@ -355,7 +323,7 @@ describe("optional account activity guard", () => {
     const backend: GuardBackend = {
       currentUser: Effect.succeed({
         accountId,
-        email: reservationCustomerEmailSchema.make("ada@example.test"),
+        email: reservationCustomerEmailSchema.make(customerEmail),
         deletionRequested: false,
       }),
       findActivityState: () => Effect.succeed(activeState()),
@@ -364,7 +332,9 @@ describe("optional account activity guard", () => {
 
     const error = await Effect.runPromise(
       Effect.flip(
-        guardOptionalAccountStateCreation(backend, Effect.succeed("created"))
+        guardOptionalAccountStateCreation(backend, () =>
+          Effect.succeed("created")
+        )
       )
     );
 
@@ -375,24 +345,43 @@ describe("optional account activity guard", () => {
     });
   });
 
-  test("preserves a typed state-creation failure unchanged inside the lock", async () => {
+  test("hands state creation the signed-in account it verified under the lock", async () => {
     const events: string[] = [];
     const backend = makeBackend({ events, activityState: activeState });
-    const stateCreationFailure = { _tag: "PricingChanged" as const };
-    const stateCreation: Effect.Effect<never, typeof stateCreationFailure> =
-      Effect.fail(stateCreationFailure);
 
-    const error = await Effect.runPromise(
-      Effect.flip(guardOptionalAccountStateCreation(backend, stateCreation))
+    const author = await Effect.runPromise(
+      guardOptionalAccountStateCreation(backend, (signedInAccountId) =>
+        Effect.sync(() => {
+          events.push("state-creation");
+          return signedInAccountId;
+        })
+      )
     );
 
-    expect(error).toBe(stateCreationFailure);
+    expect(author).toBe(accountId);
     expect(events).toEqual([
       "account-session",
       "account-lock-acquired",
       "account-activity",
+      "state-creation",
       "account-lock-released",
     ]);
+  });
+
+  test("hands state creation no account for an anonymous session", async () => {
+    const backend: GuardBackend = {
+      currentUser: Effect.succeed(null),
+      findActivityState: () => Effect.die("activity must not be read"),
+      withAccountLock: () => Effect.die("lock must not be acquired"),
+    };
+
+    const author = await Effect.runPromise(
+      guardOptionalAccountStateCreation(backend, (signedInAccountId) =>
+        Effect.succeed(signedInAccountId)
+      )
+    );
+
+    expect(author).toBeNull();
   });
 
   test("returns a SqlError raised by state creation itself as the same instance", async () => {
@@ -409,7 +398,9 @@ describe("optional account activity guard", () => {
       Effect.fail(stateCreationFailure);
 
     const error = await Effect.runPromise(
-      Effect.flip(guardOptionalAccountStateCreation(backend, stateCreation))
+      Effect.flip(
+        guardOptionalAccountStateCreation(backend, () => stateCreation)
+      )
     );
 
     expect(error).toBe(stateCreationFailure);

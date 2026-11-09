@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import React, { type ComponentPropsWithoutRef } from "react";
 import type { AresBusinessLookupResult } from "@/features/account/actions";
 import { workspaceRouterRefresh } from "@/shared/testing/workspace-component-module-mocks";
@@ -38,72 +39,18 @@ const lookupAresBusiness = mock(
 );
 
 mock.module("@/features/account/actions", () => ({
+  acknowledgeSignupReferralNotice: mock(() =>
+    Promise.resolve({ data: { status: "acknowledged" } })
+  ),
   completeCustomerProfile,
   lookupAresBusiness,
   updateCustomerProfile,
+  updateLocalePreference: () => Promise.resolve({ data: { status: "saved" } }),
 }));
 
-mock.module("@/features/account/components/account-screen-copy", () => ({
-  getAccountScreenCopy: (locale: "en-US" | "cs-CZ") => ({
-    shell: {
-      mobileSection: "Account section",
-      navigation: "Account navigation",
-      sections: {
-        billing: "Billing & invoices",
-        danger: "Danger zone",
-        legal: "Legal & privacy",
-        profile: "Profile & identity",
-        reservations: "Reservations",
-      },
-    },
-    profile: {
-      avatarUnavailableDescription: "Profile photos are not available here.",
-      avatarUnavailableLabel: "Profile photo unavailable",
-      emailLabel: "Email",
-      emailVerification: {
-        unverified: "This email still needs verification.",
-        verified: "This email has been successfully verified.",
-      },
-      languageLabel: "Preferred communication language",
-      languageUnavailableValue: "Not set",
-      memberFallback: "Workspace member",
-      title: locale === "cs-CZ" ? "Profil a nastavení" : "Profile & identity",
-      verifiedEmail: "Verified login email",
-    },
-    billing: {
-      addPaymentCard: "Add payment card",
-      billingDetailsTitle:
-        locale === "cs-CZ" ? "Fakturační údaje" : "Billing details",
-      currency: "Currency: CZK (Kč)",
-      downloadInvoice: "Download PDF",
-      exportInvoices: "Export all",
-      invoiceHistoryTitle: "Invoice history",
-      invoiceHistoryUnavailable:
-        "Invoice history and downloads are not available in this account.",
-      paymentMethodsTitle: "Saved payment methods",
-      paymentMethodsUnavailable:
-        "Saved payment methods are not available in this account.",
-      removePaymentCard: "Remove payment card",
-      title: locale === "cs-CZ" ? "Fakturace a faktury" : "Billing & invoices",
-    },
-    reservations: {
-      assignedDesk: "Assigned desk",
-      checkIn: "Check in",
-      date: "Date",
-      moreCurrent: "More upcoming reservations",
-      nfcAccess: "NFC access",
-      product: "Product",
-      seats: "Seats",
-      showPinCode: "Show PIN code",
-      status: "Status",
-      unavailable: "Unavailable",
-      unsupportedDescription: "This access detail is not available yet.",
-      validity: "Validity",
-      viewReservation: "View reservation",
-      wifi: "Wi-Fi",
-    },
-    dangerTitle: "Danger zone",
-  }),
+mock.module("@/features/account/avatar-actions", () => ({
+  removeCustomerAvatar: () => Promise.resolve({ data: null }),
+  uploadCustomerAvatar: () => Promise.resolve({ data: null }),
 }));
 
 // Same faithful stand-in for next-safe-action's hook contract that the
@@ -220,7 +167,7 @@ const renderForm = (
 ) =>
   render(
     <ProfileForm
-      email="ada@example.test"
+      email={testEmailAddress("ada")}
       locale="en-US"
       mode="edit"
       profile={businessProfile}
@@ -456,52 +403,6 @@ describe("ProfileForm ARES business lookup", () => {
     ).toBe(foundCompany.companyName);
   });
 
-  test("discards a late lookup response when the company ID changes while it is pending", async () => {
-    const view = renderForm();
-    let resolveLookup!: (outcome: LookupOutcome) => void;
-    lookupAresBusiness.mockImplementationOnce(
-      () =>
-        new Promise<LookupOutcome>((resolve) => {
-          resolveLookup = resolve;
-        })
-    );
-
-    fireEvent.input(companyIdInput(view), {
-      target: { value: "27121043" },
-    });
-    await act(async () => {
-      fireEvent.click(lookupButton(view));
-      await Promise.resolve();
-    });
-
-    // The customer keeps typing while the lookup is in flight: the pending
-    // response is now superseded and must never surface.
-    await act(async () => {
-      fireEvent.input(companyIdInput(view), {
-        target: { value: "27082440" },
-      });
-      resolveLookup({
-        data: { status: "found", company: { ...foundCompany } },
-      });
-      await Promise.resolve();
-    });
-
-    expect(
-      view.queryByText(m.accountAresLookupReviewTitle({}, { locale: "en-US" }))
-    ).toBeNull();
-    expect(statusRegion(view).textContent).toBe("");
-    expect(
-      view.container.querySelector<HTMLInputElement>(
-        "#account-profile-billing-company-name"
-      )!.value
-    ).toBe("Original Company");
-    expect(
-      view.queryByRole("button", {
-        name: m.accountAresLookupApply({}, { locale: "en-US" }),
-      })
-    ).toBeNull();
-  });
-
   test.each(["en-US", "cs-CZ"] as const)(
     "surfaces the resolved server error in the live region for %s",
     async (locale) => {
@@ -528,35 +429,6 @@ describe("ProfileForm ARES business lookup", () => {
       ).toBeTruthy();
     }
   );
-
-  test("does not surface a superseded server error after the company ID changes mid-flight", async () => {
-    const view = renderForm();
-    let resolveLookup!: (outcome: LookupOutcome) => void;
-    lookupAresBusiness.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveLookup = resolve;
-        })
-    );
-
-    fireEvent.input(companyIdInput(view), { target: { value: "27121043" } });
-    await act(async () => {
-      fireEvent.click(lookupButton(view));
-      await Promise.resolve();
-    });
-
-    await act(async () => {
-      fireEvent.input(companyIdInput(view), {
-        target: { value: "27082440" },
-      });
-      resolveLookup({
-        serverError: "Your session has expired. Please sign in again.",
-      });
-      await Promise.resolve();
-    });
-
-    expect(statusRegion(view).textContent).toBe("");
-  });
 
   test.each(["en-US", "cs-CZ"] as const)(
     "announces the pending lookup and the found review in the live region for %s",

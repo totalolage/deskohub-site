@@ -1,11 +1,11 @@
-import type { Category, Product } from "@deskohub/dotypos/generated";
+import type { DotyposCategory, DotyposProduct } from "@deskohub/dotypos";
 import { useLocale } from "@/features/i18n/utils/use-locale";
 import { formatPrice } from "@/shared/utils/currency";
 import { formatCategory, formatMenuItem } from "../utils/format-menu-item";
 
 interface MenuSectionProps {
-  products: Product[];
-  category: Category;
+  products: DotyposProduct[];
+  category: DotyposCategory;
   emoji?: string;
 }
 

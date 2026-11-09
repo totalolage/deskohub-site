@@ -21,19 +21,14 @@ import {
   type InvoiceVariableSymbol,
   invoiceIdSchema,
   invoiceVariableSymbolSchema,
-  type ManualInvoicePayment,
   manualInvoiceLineSchema,
   manualInvoiceProvenanceSchema,
   type NormalizedManualInvoiceInput,
 } from "./manual-invoice";
 
 export {
-  type BusinessInvoiceBuyer,
-  businessInvoiceBuyerSchema,
   type InvoiceBuyer,
   invoiceBuyerSchema,
-  type PersonalInvoiceBuyer,
-  personalInvoiceBuyerSchema,
 } from "./billing-identity";
 
 /**
@@ -149,7 +144,7 @@ const manualInvoiceDocumentIdentitySchema = Schema.Struct({
   }),
 });
 
-export const manualInvoiceDocumentSchema = Schema.Union([
+const manualInvoiceDocumentSchema = Schema.Union([
   Schema.Struct({
     ...manualInvoiceDocumentIdentitySchema.fields,
     payment: Schema.Struct({
@@ -180,13 +175,6 @@ export type InvoiceDocument = typeof invoiceDocumentSchema.Type;
 export const isManualInvoiceDocument = (
   document: InvoiceDocument
 ): document is ManualInvoiceDocument => "documentKind" in document;
-
-export const getManualInvoicePayment = (
-  document: ManualInvoiceDocument
-): ManualInvoicePayment =>
-  "payment" in document
-    ? document.payment
-    : { status: "due", date: document.dueDate };
 
 const decodeInvoiceNumber = Schema.decodeUnknownSync(invoiceNumberSchema);
 export const decodeInvoiceDocument = Schema.decodeUnknownEffect(
