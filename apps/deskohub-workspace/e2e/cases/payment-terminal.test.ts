@@ -5,7 +5,6 @@ import { preparedReservationForm } from "../checkout/reservation-form-preparatio
 import type { WorkspaceE2EConfig } from "../config";
 import { makeWorkspaceE2EHostedPaymentPermitRecorder } from "../coordination/hosted-payment-permit.service.mock";
 import { workspaceE2EError } from "../errors";
-import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type {
   CheckoutData,
@@ -59,11 +58,11 @@ const runUntilStatusPage = async (scenario: PaymentTerminalScenario) => {
       config: { timeouts: workspaceE2ETimeouts } as WorkspaceE2EConfig,
       data,
       reservationPath: "/en-US/reservation/cowork",
-      run: (() =>
-        Promise.reject(new Error("runner must not execute"))) as Runner,
+      openSession: Effect.fail(
+        workspaceE2EError("the step contract test opens no browser session")
+      ),
       runStep,
       scenario,
-      session: "payment-terminal-capacity",
       state,
       preparation: preparedReservationForm,
     }).pipe(Effect.provide(hostedPaymentPermit.layer)) as Effect.Effect<
