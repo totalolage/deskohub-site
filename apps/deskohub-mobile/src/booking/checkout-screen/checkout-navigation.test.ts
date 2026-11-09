@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Option } from "effect";
 import type { Href, ImperativeRouter } from "expo-router";
-import { bookFamilyHref, paymentStatusHref } from "../booking-routes";
+import {
+  bookFamilyHref,
+  paymentStatusHref,
+  reservationsHref,
+} from "../booking-routes";
 import type { CheckoutFlowView } from "../checkout/checkout-flow";
 import { startCheckout } from "../checkout/checkout-machine";
 import { CheckoutState } from "../checkout/checkout-state";
@@ -123,28 +127,30 @@ describe("navigationDecision", () => {
 
 describe("leaveCheckout", () => {
   const recordingRouter = () => {
-    const calls: Array<
-      readonly [string, Href, Parameters<ImperativeRouter["dismissTo"]>[1]?]
-    > = [];
+    type Options = Parameters<ImperativeRouter["push"]>[1];
+    const calls: Array<readonly [string, Href, Options]> = [];
     return {
       calls,
       router: {
-        replace: (href: Href) => void calls.push(["replace", href]),
-        dismissTo: (
-          href: Href,
-          options?: Parameters<ImperativeRouter["dismissTo"]>[1]
-        ) => void calls.push(["dismissTo", href, options]),
+        push: (href: Href, options?: Options) =>
+          void calls.push(["push", href, options]),
+        dismissTo: (href: Href, options?: Options) =>
+          void calls.push(["dismissTo", href, options]),
       },
     };
   };
 
-  test("the status leaves the book stack, above the Reservations list", () => {
+  test("the status opens right above the Reservations list", () => {
     const { calls, router } = recordingRouter();
     const href = paymentStatusHref("order-1");
     leaveCheckout(router, { _tag: "Status", href });
-    // The anchor puts the reservations stack's `index` below the status
-    // screen when that stack is created, as the deep link's does.
-    expect(calls).toEqual([["dismissTo", href, { withAnchor: true }]]);
+    // Back to the list first, out of the book stack and past any status
+    // already open; then the status over it. The anchor puts the list below
+    // it when the first step only just created the reservations stack.
+    expect(calls).toEqual([
+      ["dismissTo", reservationsHref, undefined],
+      ["push", href, { withAnchor: true }],
+    ]);
   });
 
   test("a restart returns to the family screen below the checkout", () => {

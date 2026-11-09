@@ -14,6 +14,9 @@ export const bookFamilyHref = (
 
 export const bookCheckoutHref = "/book/checkout" as const;
 
+/** The Reservations list (#991's reservations index). */
+export const reservationsHref = "/reservations" as const;
+
 /** The status screen a finished checkout opens (#991's reservations route). */
 export const paymentStatusHref = (orderId: string) =>
   `/reservations/${encodeURIComponent(orderId)}?after=payment` as const;

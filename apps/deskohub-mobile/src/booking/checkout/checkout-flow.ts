@@ -190,10 +190,9 @@ export const checkoutFlowAtom = (
       // Through the registry: the flow's end may run after its context's.
       // A registry disposed with the account (sign-out) throws instead;
       // nothing is left to refresh then.
-      Effect.try({
-        try: () => get.registry.refresh(reservationHistoryAtom),
-        catch: (cause) => cause,
-      }).pipe(Effect.ignore)
+      Effect.sync(() => get.registry.refresh(reservationHistoryAtom)).pipe(
+        Effect.catchDefect(() => Effect.void)
+      )
     );
   });
 

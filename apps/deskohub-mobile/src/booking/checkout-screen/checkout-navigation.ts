@@ -1,12 +1,16 @@
 import type { CustomerBookingSelection } from "@deskohub/workspace-customer-api";
 import type { ImperativeRouter } from "expo-router";
-import { bookFamilyHref, paymentStatusHref } from "../booking-routes";
+import {
+  bookFamilyHref,
+  paymentStatusHref,
+  reservationsHref,
+} from "../booking-routes";
 import type { CheckoutFlowView } from "../checkout/checkout-flow";
 
 /**
  * Where a finished checkout leaves to, and how:
- * - `Status`: back to the account's tabs below the book stack, on the
- *   order's status screen above the Reservations list.
+ * - `Status`: the order's status screen, right above the Reservations
+ *   list, with the book stack gone.
  * - `FamilyScreen`: back to the family screen the checkout was opened from,
  *   which sits below it in the book stack and re-reads its `restart` reason
  *   on refocus. Without it in the stack (such as after a web reload), the
@@ -85,16 +89,19 @@ export const navigationDecision = (
 
 /** Leaves the checkout for `destination` (see `CheckoutDestination`). */
 export const leaveCheckout = (
-  router: Pick<ImperativeRouter, "replace" | "dismissTo">,
+  router: Pick<ImperativeRouter, "push" | "dismissTo">,
   destination: CheckoutDestination
 ) => {
   switch (destination._tag) {
     case "Status":
-      // Pops the book stack, checkout included, to the tabs already below
-      // it (replacing the checkout when there are none). With the anchor, a
-      // reservations stack this creates gets its Reservations list below
-      // the status screen, as the deep link does, so back leads there.
-      return router.dismissTo(destination.href, { withAnchor: true });
+      // First back to the list: out of the book stack, checkout included,
+      // to the tabs below it, and down the reservations stack past any
+      // status already open. Queued navigations apply in order, so the
+      // status then opens over the list. When the first step only just
+      // created the reservations stack, the anchor puts the list below the
+      // status, as the deep link does. Back from the status is the list.
+      router.dismissTo(reservationsHref);
+      return router.push(destination.href, { withAnchor: true });
     case "FamilyScreen":
       // Replaces the checkout when the family screen isn't below it.
       return router.dismissTo(destination.href);
