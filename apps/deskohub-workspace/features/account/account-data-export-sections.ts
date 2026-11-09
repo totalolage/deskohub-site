@@ -9,7 +9,7 @@
  * The version of the exported archive shape. Increase it whenever an
  * exported section's meaning changes, never to flag data freshness.
  */
-export const accountDataExportSchemaVersion = 2;
+export const accountDataExportSchemaVersion = 3;
 
 /**
  * The fixed manifest entry name. Every other archive entry must appear in
@@ -47,7 +47,7 @@ export const accountDataExportSections = [
   {
     path: "reservation-history.json",
     manifestDescription:
-      "Reservation summaries from the booking system, including current and past reservations: product, times, seats, and status.",
+      "Reservation summaries from the booking system for the reservations made for you as the customer, including current and past reservations: product, times, seats, and status.",
   },
   {
     path: "workspace-reservations.json",
@@ -57,7 +57,7 @@ export const accountDataExportSections = [
   {
     path: "payments.json",
     manifestDescription:
-      "Payment attempts for your reservations: provider kind, status, refund state, amount, timestamps, and any late-payment recovery outcome. No payment credentials or provider secrets.",
+      "Payment attempts for your reservations: provider kind, status, refund state, the amount and any refunded amount as exact money values in minor currency units, timestamps, and any late-payment recovery outcome. No payment credentials or provider secrets.",
   },
   {
     path: "discount-applications.json",
@@ -72,7 +72,7 @@ export const accountDataExportSections = [
   {
     path: "consents.json",
     manifestDescription:
-      "Your marketing communication consent record and the legal-acceptance evidence events recorded for your reservations.",
+      "Your marketing communication consent record and the legal-acceptance evidence events recorded for your reservations, each with the hash of the document version stored when it was recorded.",
   },
   {
     path: "access-grants.json",

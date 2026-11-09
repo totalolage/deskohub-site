@@ -14,6 +14,7 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 import { CustomerProfileService } from "./customer-profile.service";
 
 const customerEmail = testEmailAddress("ada");
@@ -27,6 +28,7 @@ const session = (
   accountId,
   email: reservationCustomerEmailSchema.make(customerEmail),
   deletionRequested: false,
+  ...testSessionProfile,
   ...overrides,
 });
 
