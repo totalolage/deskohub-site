@@ -1158,7 +1158,7 @@ const requireClaimedProduct = (
  * The commitment was affirmed for the reservation this attempt pays for, so
  * the code claim checks service dates against its start date.
  */
-export const validateCommitmentFirstServiceDate = Effect.fn(
+const validateCommitmentFirstServiceDate = Effect.fn(
   "PaymentLifecycle.validateCommitmentFirstServiceDate"
 )(function* (
   commitment: CommitmentPayload,
