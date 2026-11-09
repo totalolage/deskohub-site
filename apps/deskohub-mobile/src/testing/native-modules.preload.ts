@@ -72,6 +72,11 @@ mock.module("expo-crypto", () => ({
   },
 }));
 
+// Better Auth's Expo online manager loads this when a session atom mounts.
+mock.module("expo-network", () => ({
+  addNetworkStateListener: () => ({ remove: () => undefined }),
+}));
+
 mock.module("expo-web-browser", () => ({
   openAuthSessionAsync: async () => ({ type: "cancel" }),
   getCustomTabsSupportingBrowsersAsync: async () => ({
