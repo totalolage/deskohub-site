@@ -16,7 +16,10 @@ import { Cause, Effect } from "effect";
 import * as SqlError from "effect/unstable/sql/SqlError";
 import { makeAuthDatabase } from "@/db/auth-database-client";
 import { drizzleAuthTables } from "@/db/schema/auth";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  type WorkspacePostgresTestDatabase,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { captureWorkspaceLogs } from "@/shared/testing/workspace-telemetry.test-utils";
 import { ensureCustomerAccount } from "../customer-account.repository";
 import type { AuthHookServiceOverrides } from "./auth-hook-services.test-utils";
@@ -70,6 +73,13 @@ export const buildDatabaseAdapter = (pool = testDatabase!.pool) =>
   });
 
 export type TestAuthOptions = AuthHookServiceOverrides & {
+  /**
+   * The migrated database the logins and their Workspace records live in,
+   * the configured test database by default. A suite database keeps them
+   * beside the suite's other rows.
+   */
+  readonly postgres?: WorkspacePostgresTestDatabase;
+  /** Another store; its logins keep no Workspace records. */
   readonly database?: WorkspaceAuthConfig["database"];
   readonly secrets?: { readonly version: number; readonly value: string }[];
   readonly sentLinks?: CapturedMagicLink[];
@@ -109,8 +119,9 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
   const sendMagicLink: MagicLinkSendFunction = (data) => {
     options.sentLinks?.push(data);
   };
+  const postgres = options.postgres ?? testDatabase;
   return makeWorkspaceAuth({
-    database: options.database ?? buildDatabaseAdapter(),
+    database: options.database ?? buildDatabaseAdapter(postgres!.pool),
     secrets: options.secrets ?? [{ version: 1, value: SECRET_V1 }],
     allowedHosts: [HOST],
     nativeAppLinkOrigin: options.nativeAppLinkOrigin ?? `https://${HOST}`,
@@ -127,8 +138,8 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
     // default store; any other store gets capabilities that keep no
     // Workspace records.
     services:
-      testDatabase && !options.database
-        ? postgresAuthHookServices(testDatabase, options)
+      postgres && !options.database
+        ? postgresAuthHookServices(postgres, options)
         : memoryAuthHookServices(options),
     accountDeletion: options.accountDeletion ?? testAccountDeletion(),
   });
@@ -262,8 +273,11 @@ export const getSessionCookie = (response: Response) =>
 
 export const cookieJar = (setCookie: string) => setCookie.split(";")[0]!;
 
-export const userIdForEmail = async (email: string) => {
-  const result = await testDatabase!.pool.query(
+export const userIdForEmail = async (
+  email: string,
+  postgres = testDatabase!
+) => {
+  const result = await postgres.pool.query(
     `select id from auth."user" where email = $1`,
     [email]
   );
@@ -272,9 +286,10 @@ export const userIdForEmail = async (email: string) => {
 
 export const linkAccount = async (
   userId: string,
-  dotyposCustomerId: string
+  dotyposCustomerId: string,
+  postgres = testDatabase!
 ) => {
-  await testDatabase!.pool.query(
+  await postgres.pool.query(
     `update customer_accounts set dotypos_customer_id = $2 where id = $1`,
     [userId, dotyposCustomerId]
   );

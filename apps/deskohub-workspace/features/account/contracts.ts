@@ -3,6 +3,7 @@ import {
   customerProfileSchemas,
 } from "@deskohub/workspace-customer-api";
 import { Option, Schema } from "effect";
+import type { CustomerInvoiceSummary } from "@/features/accounting/customer-invoice";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import { defaultPhoneRegion, type Locale } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -107,6 +108,37 @@ export type CustomerReservationHistory =
         | "link-required"
         | "provider-unavailable";
     };
+
+/**
+ * One issued invoice as the account shows it: its facts, the same facts
+ * formatted on the server in the page's locale, and its PDF download.
+ */
+export interface CustomerInvoiceHistoryItem {
+  readonly invoice: CustomerInvoiceSummary;
+  readonly display: {
+    readonly issuedOn: string;
+    readonly total: string;
+    readonly status: string;
+    /** `null` while the invoice requests no payment. */
+    readonly dueDate: string | null;
+  };
+  readonly pdfPath: string;
+}
+
+/**
+ * The account's issued invoices: `unavailable` when the session has no
+ * active account whose invoices it may see, `failed` when they couldn't be
+ * read.
+ */
+export type CustomerInvoiceHistory =
+  | {
+      readonly kind: "populated";
+      readonly invoices: readonly CustomerInvoiceHistoryItem[];
+      readonly exportPath: string;
+    }
+  | { readonly kind: "empty" }
+  | { readonly kind: "unavailable" }
+  | { readonly kind: "failed" };
 
 export type CustomerAvatarPresentation =
   | { readonly kind: "hidden" }

@@ -157,6 +157,30 @@ glossary defines the customer account, reservation author, and tombstone.
   onto the bare path's, so it reloads the page and closes open dialogs.
   Don't add a catch-all slot page. If a modal ever links to another account
   route, add an explicit null slot page for that route.
+- `GET /[locale]/account/invoices/[invoiceId]/pdf` and
+  `GET /[locale]/account/invoices/export` (under `(site)/(full-header)`) are
+  thin files over `features/account/customer-invoice-download-route.server.ts`,
+  which reads `CustomerInvoiceService`. Every refusal (signed out, no linked
+  customer, a review account, deletion pending, another customer's, unknown,
+  or malformed invoice id, invalid locale) answers the same empty private
+  404; a load failure answers a private 500 without document bytes; success
+  is a private attachment. Build their URLs with `getAccountInvoicePdfPath`
+  and `getAccountInvoiceExportPath` (`features/account/routes.ts`). The page
+  streams the list with `loadCustomerInvoiceHistory`
+  (`features/account/invoice-history.server.ts`), whose Effect
+  `loadInvoiceHistory` never fails: `populated` (server-formatted rows),
+  `empty`, `unavailable`, or `failed`. `AccountSections` hands `AccountPage`
+  a `loadInvoiceHistory` callback; only a linked or review account's page
+  calls it and renders `InvoiceHistoryPanel`
+  (`features/account/components/billing/invoice-history.tsx`) as the Billing
+  section's own panel below the billing form, never inside the form's panel
+  with its sticky Save footer. The panel's title and status region render at
+  once; the rows, the CSV export link, and the status text read the history
+  with `use` inside their own Suspense boundaries, so the page never waits for
+  invoices. Component tests that rerender the page pass an already settled
+  history (a promise with `status: "fulfilled"`), because a pending one keeps
+  a synchronous `act` rerender from committing. See the checkout skill's
+  accounting-documents reference for the invoice rules.
 - Every route into `/account/legal` and `/account/deleted` starts with the
   modal closed. The dialog makes the background inert, closing it goes back to
   `/account`, and deletion leaves through a document navigation.

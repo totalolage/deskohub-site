@@ -1,5 +1,8 @@
 import { Suspense } from "react";
-import { InvoiceSettlement } from "@/features/accounting/invoice-settlement";
+import {
+  formatInvoiceTotal,
+  InvoiceSettlement,
+} from "@/features/accounting/invoice-settlement";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationDetailSection,
@@ -19,7 +22,7 @@ import {
   InvoiceDetailActions,
   InvoicePaymentStatusBadge,
 } from "./invoice-detail";
-import { formatInvoiceTotal, getInvoiceSourceLabel } from "./invoice-display";
+import { getInvoiceSourceLabel } from "./invoice-display";
 import { loadInvoiceAdministrationDetail } from "./page-data.server";
 
 export async function InvoiceAdministrationDetailScreen({
@@ -51,7 +54,10 @@ async function InvoiceDetailContent({
         description={m.accountingInvoiceDetailDescription(
           {
             customerName: invoice.customerName,
-            total: formatInvoiceTotal(invoice, locale),
+            total: formatInvoiceTotal(
+              { amount: invoice.total, currency: invoice.currency },
+              locale
+            ),
           },
           { locale }
         )}

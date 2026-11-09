@@ -1,9 +1,12 @@
+import { formatCurrencyAmount } from "@deskohub/i18n/currency";
 import { BigDecimal, Data, Match } from "effect";
 import {
   type InvoiceDocument,
   isManualInvoiceDocument,
 } from "@/features/accounting/invoice";
 import type { InvoiceVariableSymbol } from "@/features/accounting/manual-invoice";
+import type { Locale } from "@/features/i18n";
+import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import { moneyToDecimalString } from "@/shared/money/money";
 import type { PlainDate } from "@/shared/utils/temporal";
 
@@ -58,6 +61,15 @@ export const getInvoiceTotal = (document: InvoiceDocument): InvoiceTotal =>
         amount: moneyToDecimalString(document.quote.payment.expectedPrice),
         currency: document.quote.payment.expectedPrice.currency,
       };
+
+/** Formats the exact invoice total, never rounded; render it on the server. */
+export const formatInvoiceTotal = (total: InvoiceTotal, locale: Locale) =>
+  formatCurrencyAmount({
+    amount: total.amount,
+    currency: total.currency,
+    locale,
+    fractionDigits: findWorkspaceCurrencyDefinition(total.currency)?.exponent,
+  });
 
 export const getInvoiceSettlement = (
   document: InvoiceDocument

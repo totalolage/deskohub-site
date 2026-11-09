@@ -10,9 +10,9 @@
 // `metadata` and `gradle-cache-key` print `key=value` lines for
 // $GITHUB_OUTPUT; `gradle-cache-key` names the Gradle cache of pull request
 // dry runs (gradle-cache.ts). `prepare-gradle` is for CI runners: it
-// downloads the Gradle distribution the prebuild's wrapper uses, with retries,
-// and raises Gradle's download retries in the Gradle user home
-// (gradle-wrapper.ts). `resolve-gradle-dependencies` fills the Gradle user
+// downloads the Gradle distribution the prebuild's wrapper uses, with retries
+// and a fallback to Gradle's GitHub releases, and raises Gradle's download
+// retries in the Gradle user home (gradle-wrapper.ts). `resolve-gradle-dependencies` fills the Gradle user
 // home for mobile-gradle-cache.yml without building: it generates android/
 // with `expo prebuild`, downloads every resolvable configuration
 // (resolve-dependencies.init.gradle), and removes android/ again. With --tag, both
@@ -417,13 +417,18 @@ const main = async () => {
       return;
     }
     case "prepare-gradle": {
-      const { distribution, result } = await prepareGradle({
+      const { distribution, prefetch } = await prepareGradle({
         gradleUserHome:
           process.env.GRADLE_USER_HOME || join(homedir(), ".gradle"),
         wrapperProperties: readTemplateWrapperProperties(),
       });
+      if (prefetch.result === "downloaded") {
+        for (const failure of prefetch.skipped) {
+          print(`Skipped ${failure}`);
+        }
+      }
       print(
-        `Gradle distribution ${distribution.url}: ${result === "downloaded" ? `downloaded to ${distribution.zipPath}` : "already in the Gradle user home"}`
+        `Gradle distribution ${distribution.url}: ${prefetch.result === "downloaded" ? `downloaded from ${prefetch.zipUrl}, checked against ${prefetch.checksumUrl ?? "distributionSha256Sum"}, to ${distribution.zipPath}` : "already in the Gradle user home"}`
       );
       return;
     }

@@ -1,6 +1,8 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { formatCurrencyAmount } from "@deskohub/i18n/currency";
+import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import { plainDateStringSchema } from "@/shared/utils/temporal";
 import type { InvoiceDocument, ManualInvoiceDocument } from "./invoice";
 import {
@@ -8,6 +10,7 @@ import {
   makeTestManualInvoiceDocument,
 } from "./invoice.test-utils";
 import {
+  formatInvoiceTotal,
   getInvoicePaymentStatus,
   getInvoiceSettlement,
   getInvoiceTotal,
@@ -143,4 +146,42 @@ describe("invoice settlement", () => {
       ).toEqual([...expected.status]);
     }
   );
+});
+
+describe("invoice total format", () => {
+  test("formats the exact total for the locale", () => {
+    expect(
+      formatInvoiceTotal({ amount: "1234.50", currency: "CZK" }, "cs-CZ")
+    ).toBe("1 234,50 Kč");
+    expect(
+      formatInvoiceTotal({ amount: "1234.50", currency: "CZK" }, "en-US")
+    ).toBe("CZK 1,234.50");
+  });
+
+  test("keeps every digit of a total beyond double precision", () => {
+    expect(
+      formatInvoiceTotal(
+        { amount: "123456789012345678.25", currency: "CZK" },
+        "en-US"
+      )
+    ).toBe("CZK 123,456,789,012,345,678.25");
+  });
+
+  test("formats a negative zero total as the stored number reads", () => {
+    for (const amount of ["-0", "-0.00"]) {
+      for (const currency of ["CZK", "EUR"]) {
+        for (const locale of ["cs-CZ", "en-US"] as const) {
+          expect(formatInvoiceTotal({ amount, currency }, locale)).toBe(
+            formatCurrencyAmount({
+              amount: Number(amount),
+              currency,
+              locale,
+              fractionDigits:
+                findWorkspaceCurrencyDefinition(currency)?.exponent,
+            })
+          );
+        }
+      }
+    }
+  });
 });

@@ -133,6 +133,7 @@
   "callback_open_in_app": "Відкрити в застосунку",
   "callback_continue_here": "Продовжити в браузері",
   "callback_back_to_sign_in": "Назад до входу",
+  "callback_go_back": "Назад",
   "signin_error_cancelled": "Вхід скасовано. Можете спробувати ще раз.",
   "signin_error_link": "Це посилання для входу тут не можна використати. Почніть вхід знову.",
   "signin_error_expired": "Вхід тривав надто довго, і його термін дії минув. Почніть знову.",

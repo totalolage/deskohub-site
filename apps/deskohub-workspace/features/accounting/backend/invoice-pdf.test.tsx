@@ -2,8 +2,8 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { m } from "@/features/i18n";
+import { extractPdfText } from "@/shared/testing/pdf-text.test-utils";
 import {
   makeCoworkInvoiceDocument,
   makeTestManualInvoiceDocument,
@@ -80,32 +80,4 @@ const expectSinglePagePdf = (buffer: Buffer, pageCount: number) => {
   expect(buffer.subarray(0, 5).toString()).toBe("%PDF-");
   expect(buffer.subarray(-32).toString()).toContain("%%EOF");
   expect(pageCount).toBe(1);
-};
-
-const extractPdfText = async (buffer: Buffer) => {
-  const loadingTask = getDocument({
-    data: new Uint8Array(buffer),
-    isEvalSupported: false,
-    useSystemFonts: false,
-  });
-  const pdf = await loadingTask.promise;
-  const pages: string[] = [];
-
-  try {
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-      const page = await pdf.getPage(pageNumber);
-      const content = await page.getTextContent();
-      pages.push(
-        content.items
-          .map((item) => ("str" in item ? item.str : ""))
-          .join(" ")
-          .replaceAll(/\s+/g, " ")
-          .trim()
-      );
-    }
-
-    return { pageCount: pdf.numPages, text: pages.join(" ") };
-  } finally {
-    await loadingTask.destroy();
-  }
 };

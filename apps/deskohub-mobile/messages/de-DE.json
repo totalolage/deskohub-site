@@ -133,6 +133,7 @@
   "callback_open_in_app": "In der App öffnen",
   "callback_continue_here": "Im Browser fortfahren",
   "callback_back_to_sign_in": "Zurück zur Anmeldung",
+  "callback_go_back": "Zurück",
   "signin_error_cancelled": "Anmeldung abgebrochen. Du kannst es erneut versuchen.",
   "signin_error_link": "Dieser Anmeldelink kann hier nicht verwendet werden. Starte die Anmeldung neu.",
   "signin_error_expired": "Die Anmeldung hat zu lange gedauert und ist abgelaufen. Starte neu.",

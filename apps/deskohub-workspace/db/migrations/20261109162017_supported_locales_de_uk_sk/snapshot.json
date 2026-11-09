@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "167afe03-7efa-483c-9887-99c4a0c10584",
+  "id": "b9127ce0-0efa-4a81-a8d8-09d7e02ec708",
   "prevIds": [
-    "6601d42f-3129-4830-b5b6-e9655d86b629"
+    "a185c001-23f0-4521-b3f1-1173d7b134c4"
   ],
   "ddl": [
     {
@@ -301,6 +301,12 @@
     {
       "isRlsEnabled": false,
       "name": "mobile_update_publications",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "orders",
       "entityType": "tables",
       "schema": "public"
     },
@@ -6024,6 +6030,175 @@
       "name": "id",
       "entityType": "columns",
       "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "kind",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuid_generate_v7()",
+      "generated": null,
+      "identity": null,
+      "name": "correlation_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "dotypos_customer_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "payment_state",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "fulfillment_state",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "active_payment_attempt_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "paid_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "fulfilled_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "fulfillment_failed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "fulfillment_failure_code",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuid_generate_v7()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
       "table": "payment_attempts"
     },
     {
@@ -6035,6 +6210,19 @@
       "generated": null,
       "identity": null,
       "name": "workspace_reservation_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "order_id",
       "entityType": "columns",
       "schema": "public",
       "table": "payment_attempts"
@@ -11963,6 +12151,62 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "dotypos_customer_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "created_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "orders_customer_created_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "payment_state",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "fulfillment_state",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "orders_states_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "provider_order_id",
           "isExpression": false,
           "asc": true,
@@ -11997,6 +12241,27 @@
       "method": "btree",
       "concurrently": false,
       "name": "payment_attempts_workspace_reservation_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "order_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "payment_attempts_order_idx",
       "entityType": "indexes",
       "schema": "public",
       "table": "payment_attempts"
@@ -14816,6 +15081,23 @@
     {
       "nameExplicit": false,
       "columns": [
+        "order_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "orders",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "payment_attempts_order_id_orders_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "promotion_code_id"
       ],
       "schemaTo": "public",
@@ -15923,6 +16205,16 @@
         "id"
       ],
       "nameExplicit": false,
+      "name": "orders_pkey",
+      "schema": "public",
+      "table": "orders",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
       "name": "payment_attempts_pkey",
       "schema": "public",
       "table": "payment_attempts",
@@ -16187,6 +16479,17 @@
       "name": "discount_codes_promotion_code_id_key",
       "schema": "public",
       "table": "discount_codes",
+      "entityType": "uniques"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "correlation_id"
+      ],
+      "nullsNotDistinct": false,
+      "name": "orders_correlation_id_key",
+      "schema": "public",
+      "table": "orders",
       "entityType": "uniques"
     },
     {
@@ -17189,6 +17492,55 @@
       "table": "manual_invoice_creation_requests"
     },
     {
+      "value": "\"kind\" in ('reservation')",
+      "name": "orders_kind_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "value": "\"payment_state\" in ('not_started', 'pending', 'paid', 'failed', 'cancelled', 'expired')",
+      "name": "orders_payment_state_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "value": "\"fulfillment_state\" in ('not_started', 'processing', 'awaiting_delivery', 'fulfilled', 'failed')",
+      "name": "orders_fulfillment_state_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "value": "btrim(\"dotypos_customer_id\") <> ''",
+      "name": "orders_dotypos_customer_id_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "value": "\"payment_state\" <> 'paid' or \"paid_at\" is not null",
+      "name": "orders_paid_at_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "value": "\"fulfillment_state\" <> 'fulfilled' or \"fulfilled_at\" is not null",
+      "name": "orders_fulfilled_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "value": "\"fulfillment_state\" <> 'failed' or (\"fulfillment_failed_at\" is not null and \"fulfillment_failure_code\" is not null)",
+      "name": "orders_fulfillment_failed_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
       "value": "\"provider\" in ('nexi', 'internal')",
       "name": "payment_attempts_provider_check",
       "entityType": "checks",
@@ -17247,6 +17599,13 @@
     {
       "value": "\"state\" not in ('failed', 'cancelled', 'expired') or \"failure_code\" is not null",
       "name": "payment_attempts_failure_code_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "value": "\"order_id\" is null or \"order_id\" = \"workspace_reservation_id\"",
+      "name": "payment_attempts_reservation_order_match_check",
       "entityType": "checks",
       "schema": "public",
       "table": "payment_attempts"

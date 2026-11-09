@@ -1,6 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
-import { unlink } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdtemp, rm, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import {
   readWorkspaceE2ECaseJournals,
   writeWorkspaceE2ECaseJournal,
@@ -8,6 +9,7 @@ import {
 import type { CheckoutData, CheckoutFlowState } from "../types";
 import {
   makeWorkspaceE2EAccountJournalRecorder,
+  parseWorkspaceE2EAccountJournal,
   readWorkspaceE2EAccountJournal,
 } from "./journal";
 
@@ -42,4 +44,30 @@ test("keeps a case's checkout and account journals apart", async () => {
   expect(accountJournal?.authUserIds).toEqual(["synthetic-auth-user"]);
   expect(accountJournal?.dotyposCustomerIds).toEqual(["synthetic-customer"]);
   expect(checkoutState?.orderId).toBe("order-1");
+});
+
+test("journals an owner's retained invoices only once it records one", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "account-journal-"));
+  try {
+    const ownerId = "invoice-owner";
+    const recorder = makeWorkspaceE2EAccountJournalRecorder(ownerId, directory);
+    await recorder.record({ dotyposCustomerIds: ["synthetic-customer"] });
+    const before = await readWorkspaceE2EAccountJournal(ownerId, directory);
+    await recorder.record({ retainedInvoiceIds: ["issued-invoice"] });
+    await recorder.record({ retainedInvoiceIds: ["issued-invoice"] });
+    const after = await readWorkspaceE2EAccountJournal(ownerId, directory);
+
+    expect(before).toBeDefined();
+    expect(before).not.toHaveProperty("retainedInvoiceIds");
+    expect(after?.retainedInvoiceIds).toEqual(["issued-invoice"]);
+    expect(after?.dotyposCustomerIds).toEqual(["synthetic-customer"]);
+    expect(() =>
+      parseWorkspaceE2EAccountJournal(
+        JSON.stringify({ ...after, retainedInvoiceIds: [42] }),
+        ownerId
+      )
+    ).toThrow();
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
 });

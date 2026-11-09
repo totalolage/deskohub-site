@@ -1,8 +1,6 @@
-import { formatCurrencyAmount } from "@deskohub/i18n/currency";
 import type { AdministrationCustomerName } from "@/features/administration/customer-name";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
-import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import type {
   InvoiceAdministrationCustomerErrorReason,
   InvoiceAdministrationListItem,
@@ -20,18 +18,6 @@ export const getInvoiceSourceLabel = (
     assistant: m.accountingInvoiceSourceAssistant,
     legacy: m.accountingInvoiceSourceLegacy,
   })[source]({}, { locale });
-
-/** Formats the exact decimal invoice total; render it on the server. */
-export const formatInvoiceTotal = (
-  invoice: Pick<InvoiceAdministrationListItem, "currency" | "total">,
-  locale: Locale
-) =>
-  formatCurrencyAmount({
-    amount: invoice.total,
-    currency: invoice.currency,
-    locale,
-    fractionDigits: findWorkspaceCurrencyDefinition(invoice.currency)?.exponent,
-  });
 
 /** The operator message for a rejected customer or billing detail. */
 export const getInvoiceCustomerErrorMessage = (
