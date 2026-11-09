@@ -5,7 +5,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Browser, type BrowserContext, chromium } from "@playwright/test";
-import { Effect, Exit, Fiber, Scope } from "effect";
+import { Effect, Exit, Fiber, Scheduler, Scope } from "effect";
 import { TestClock } from "effect/testing";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { E2EBrowserSession } from "./browser-session";
@@ -783,6 +783,46 @@ test.skipIf(!chromiumAvailable)(
     expect(failures.later).toBe(failures.first);
     expect(isWorkspaceE2ETimeout(failures.first)).toBe(false);
     expect(opener.requests()).toBe(1);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "shares the opening with later uses when the first use is interrupted as it starts it",
+  async () => {
+    const outcomes = await Effect.runPromise(
+      Effect.forEach([2, 3], (yieldsBeforeInterrupt) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const opener = openerBrowser();
+            const openShared = yield* openOnFirstUse(opener);
+            // A three-operation budget makes the first use yield inside the
+            // opener's cache while it starts the opening, so the interrupt
+            // lands there.
+            const first = yield* Effect.forkChild(
+              openShared.pipe(
+                Effect.provideService(Scheduler.MaxOpsBeforeYield, 3)
+              ),
+              { startImmediately: true }
+            );
+            for (let index = 0; index < yieldsBeforeInterrupt; index += 1)
+              yield* Effect.yieldNow;
+            yield* Fiber.interrupt(first);
+            const later = yield* Effect.exit(
+              Effect.timeoutOption(openShared, "10 seconds")
+            );
+            return {
+              opened: Exit.isSuccess(later) && later.value._tag === "Some",
+              requests: opener.requests(),
+            };
+          })
+        )
+      )
+    );
+
+    expect(outcomes).toEqual([
+      { opened: true, requests: 1 },
+      { opened: true, requests: 1 },
+    ]);
   }
 );
 

@@ -144,7 +144,8 @@ export type WorkspaceE2ECaseContext = {
   readonly openSession: OpenE2EBrowserSession;
   /**
    * Another session in its own browser context, such as a second visitor's;
-   * the test's Scope owns it as it owns the case's session.
+   * the test's Scope owns it as it owns the case's session. Each run of the
+   * returned effect opens a new session, which `name` labels.
    */
   readonly openSeparateSession: (name: string) => OpenE2EBrowserSession;
   readonly runStep: WorkspaceE2EStepRunner;

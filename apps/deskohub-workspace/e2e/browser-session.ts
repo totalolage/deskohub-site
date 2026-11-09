@@ -558,9 +558,14 @@ const openOnFirstUse = Effect.fnUntraced(function* (
     )
   );
   const started = yield* Effect.cached(Effect.forkIn(opening, owner));
+  // Starting the opening only forks it, so it runs uninterruptibly: an
+  // interrupt inside `cached` would leave every later use waiting, or cache
+  // the interruption. Each use's wait stays interruptible.
   // Awaited, not joined: closing the Scope while a joined opening is in an
   // uninterruptible region, such as creating the context, never settles.
-  return Effect.flatMap(started, (fiber) => Effect.flatten(Fiber.await(fiber)));
+  return Effect.flatMap(Effect.uninterruptible(started), (fiber) =>
+    Effect.flatten(Fiber.await(fiber))
+  );
 });
 
 export const E2EBrowserSession = { open, openOnFirstUse };
