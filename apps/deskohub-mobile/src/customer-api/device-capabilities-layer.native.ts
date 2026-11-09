@@ -37,25 +37,41 @@ const storage = Layer.succeed(DeviceStorage, {
 });
 
 // One cache subdirectory holds the files the app shares, one folder per
-// owner (account), so an exit removes exactly that account's files.
+// owner (account), so an exit removes exactly that account's files. Each
+// file gets a folder of its own, so the recipient sees its name and a second
+// share of the same file never replaces one a share sheet is still reading.
 const shareDirectory = () => new Directory(Paths.cache, "deskohub-share");
 const ownerDirectory = (owner: string) =>
   new Directory(shareDirectory(), encodeURIComponent(owner));
 
+let sharesWritten = 0;
+// A folder no earlier write (in this run or one before it) has used.
+const newFileDirectory = (owner: string): Directory => {
+  sharesWritten += 1;
+  const directory = new Directory(
+    ownerDirectory(owner),
+    `${Date.now().toString(36)}-${sharesWritten.toString(36)}`
+  );
+  return directory.exists ? newFileDirectory(owner) : directory;
+};
+
 const temporaryFiles = Layer.succeed(TemporaryFiles, {
   write: (owner, name, bytes) =>
     attempt("temporary-files", async () => {
-      const directory = ownerDirectory(owner);
-      if (!directory.exists) directory.create({ intermediates: true });
+      const directory = newFileDirectory(owner);
+      directory.create({ intermediates: true });
       const file = new File(directory, name);
-      if (file.exists) file.delete();
       await file.write(bytes);
       return file.uri;
     }),
   remove: (uri) =>
     attempt("temporary-files", () => {
       const file = new File(uri);
+      const directory = file.parentDirectory;
       if (file.exists) file.delete();
+      if (directory.exists && directory.list().length === 0) {
+        directory.delete();
+      }
     }).pipe(Effect.ignore),
   sweep: (owner) =>
     attempt("temporary-files", () => {

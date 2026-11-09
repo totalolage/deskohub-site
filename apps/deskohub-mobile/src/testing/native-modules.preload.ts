@@ -1,5 +1,6 @@
 import { mock } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+import { createContext, useContext } from "react";
 
 /**
  * Bun can't load React Native or Expo's native modules, so tests get small
@@ -36,9 +37,18 @@ mock.module("react-native", () => ({
   },
 }));
 
+// Insets come from the context, as in the library, so a test can provide some.
+const SafeAreaInsetsContext = createContext({
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+});
+
 mock.module("react-native-safe-area-context", () => ({
+  SafeAreaInsetsContext,
   SafeAreaView: "SafeAreaView",
-  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+  useSafeAreaInsets: () => useContext(SafeAreaInsetsContext),
 }));
 
 mock.module("expo-constants", () => ({

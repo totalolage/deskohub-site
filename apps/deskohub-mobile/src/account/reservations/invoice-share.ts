@@ -13,7 +13,6 @@ import {
 import {
   DeviceCapabilityFailed,
   ShareSheet,
-  TemporaryFiles,
 } from "../../customer-api/device-capabilities";
 
 /** The name the shared PDF carries; the contract doesn't expose the invoice number. */
@@ -25,22 +24,15 @@ const readInvoice = (orderId: CustomerReservationOrderId) =>
     api.reservations.getReservationInvoice({ params: { orderId } })
   ).pipe(customerRead({ dotyposBacked: true }));
 
-const writeTemporaryInvoice = (input: {
+// The PDF lives until sharing ends; an account exit meanwhile leaves it to
+// this share (see `AccountScopedStorage.temporaryFile`).
+const temporaryInvoice = (input: {
   readonly name: string;
   readonly bytes: Uint8Array;
 }) =>
   Effect.flatMap(Effect.service(AccountScopedStorage), (storage) =>
-    storage.writeTemporaryFile(input.name, input.bytes)
+    storage.temporaryFile(input.name, input.bytes)
   );
-
-const removeTemporaryFile = (uri: Option.Option<string>) =>
-  Option.match(uri, {
-    onNone: () => Effect.void,
-    onSome: (written) =>
-      Effect.flatMap(Effect.service(TemporaryFiles), (files) =>
-        files.remove(written)
-      ),
-  });
 
 // The share sheet can't be called back once open, so an interruption waits
 // for it to close rather than removing the file it may still be reading.
@@ -56,18 +48,18 @@ const shareFile = (name: string) => (uri: Option.Option<string>) =>
 /**
  * Downloads the order's invoice and hands it to the share sheet (a download
  * on the web), removing the temporary file once sharing ends, however it
- * ends. Nothing is written when the download fails, and nothing is shared
- * after the session ended (the account's storage then writes no file).
+ * ends, even after the account exited meanwhile. Nothing is written when the
+ * download fails, and nothing is shared after the session ended (the
+ * account's storage then writes no file).
  */
 export const shareInvoice = (orderId: CustomerReservationOrderId) =>
   Effect.Do.pipe(
     Effect.let("name", () => invoiceFileName(orderId)),
     Effect.bind("bytes", () => readInvoice(orderId)),
     Effect.flatMap(({ name, bytes }) =>
-      Effect.acquireUseRelease(
-        writeTemporaryInvoice({ name, bytes }),
-        shareFile(name),
-        removeTemporaryFile
+      temporaryInvoice({ name, bytes }).pipe(
+        Effect.flatMap(shareFile(name)),
+        Effect.scoped
       )
     )
   );

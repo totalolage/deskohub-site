@@ -15,18 +15,20 @@ export type HostProps = Readonly<Record<string, unknown>> & {
  * The element tree a component returns for `props`. The component runs
  * inside a throwaway server render, so its hooks work (effects don't run),
  * and the tree isn't rendered further: with the preload's host components
- * standing in as names, a test reads it as returned.
+ * standing in as names, a test reads it as returned. `within` places the
+ * component under providers, such as a context it reads.
  */
 export const elementTree = <Props>(
   component: (props: Props) => ReactNode,
-  props: Props
+  props: Props,
+  within: (component: ReactElement) => ReactElement = (node) => node
 ): ReactNode => {
   let tree: ReactNode = null;
   const Probe = () => {
     tree = component(props);
     return null;
   };
-  renderToStaticMarkup(createElement(Probe));
+  renderToStaticMarkup(within(createElement(Probe)));
   return tree;
 };
 

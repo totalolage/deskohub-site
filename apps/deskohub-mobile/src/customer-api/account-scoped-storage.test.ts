@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Fiber, Layer, Option } from "effect";
+import { Deferred, Effect, Exit, Fiber, Layer, Option, Scope } from "effect";
 import {
   AccountExitFence,
   AccountScopedStorage,
@@ -143,7 +143,9 @@ describe("AccountScopedStorage", () => {
     expect(setup.device.storage.has(cacheKeyOf("a"))).toBe(false);
     expect(await run(storage.getItem(cache))).toEqual(Option.none());
     expect(
-      await run(storage.writeTemporaryFile("invoice.pdf", new Uint8Array()))
+      await run(
+        Effect.scoped(storage.temporaryFile("invoice.pdf", new Uint8Array()))
+      )
     ).toEqual(Option.none());
     expect(setup.device.files.size).toBe(0);
   });
@@ -193,9 +195,81 @@ describe("AccountScopedStorage", () => {
     expect(await run(second.getItem(cache))).toEqual(Option.some("b-data"));
     expect(
       Option.isSome(
-        await run(second.writeTemporaryFile("invoice.pdf", new Uint8Array([1])))
+        await run(
+          Effect.scoped(
+            second.temporaryFile("invoice.pdf", new Uint8Array([1]))
+          )
+        )
       )
     ).toBe(true);
+  });
+
+  test("a temporary file lasts for its scope, through its session's exit", async () => {
+    const setup = deviceWithFence();
+    const storage = await openStorage(setup, sessionA1);
+
+    await run(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const uri = yield* storage.temporaryFile(
+            "invoice.pdf",
+            new Uint8Array()
+          );
+          yield* setup.exit(sessionA1);
+          expect([...setup.device.files.keys()]).toEqual([
+            ...Option.toArray(uri),
+          ]);
+        })
+      )
+    );
+
+    expect(setup.device.files.size).toBe(0);
+  });
+
+  test("a launch sweep that waited for a held file runs when its scope closes", async () => {
+    const setup = deviceWithFence();
+    const orphan = "file:///cache/deskohub-share/b/0/invoice.pdf";
+    setup.device.files.set(orphan, new Uint8Array());
+    const storage = await openStorage(setup, sessionA1);
+    const launchSweep = customerDataExitCleanup({ scope: "shared-files" }).pipe(
+      Effect.provide(Layer.merge(setup.capabilities, setup.fence))
+    );
+
+    await run(
+      Effect.scoped(
+        Effect.gen(function* () {
+          yield* storage.temporaryFile("invoice.pdf", new Uint8Array());
+          yield* launchSweep;
+          expect(setup.device.files.has(orphan)).toBe(true);
+        })
+      )
+    );
+
+    expect(setup.device.files.size).toBe(0);
+  });
+
+  test("temporary files of one name are separate files, each removed with its own scope", async () => {
+    const setup = deviceWithFence();
+    const storage = await openStorage(setup, sessionA1);
+    const file = (scope: Scope.Closeable) =>
+      storage
+        .temporaryFile("invoice.pdf", new Uint8Array())
+        .pipe(Scope.provide(scope), Effect.map(Option.getOrThrow));
+
+    await run(
+      Effect.gen(function* () {
+        const firstScope = yield* Scope.make();
+        const secondScope = yield* Scope.make();
+        const first = yield* file(firstScope);
+        const second = yield* file(secondScope);
+        expect(first).not.toBe(second);
+
+        yield* Scope.close(firstScope, Exit.void);
+        expect([...setup.device.files.keys()]).toEqual([second]);
+        yield* Scope.close(secondScope, Exit.void);
+        expect(setup.device.files.size).toBe(0);
+      })
+    );
   });
 });
 
@@ -230,6 +304,26 @@ describe("AccountExitFence", () => {
 
     expect(current(fence, sessionA2)).toBe(true);
     expect(current(fence, sessionA1)).toBe(false);
+  });
+
+  test("a file sweep waits while files are held, and is due at the last release", () => {
+    const fence = makeAccountExitFence();
+    Effect.runSync(fence.holdFile("first"));
+    Effect.runSync(fence.holdFile("second"));
+
+    expect(Effect.runSync(fence.fileSweepNow)).toBe(false);
+    expect(Effect.runSync(fence.releaseFile("first"))).toBe(false);
+    expect(Effect.runSync(fence.releaseFile("second"))).toBe(true);
+    Effect.runSync(fence.holdFile("third"));
+    expect(Effect.runSync(fence.releaseFile("third"))).toBe(false);
+  });
+
+  test("a file sweep runs at once when no file is held", () => {
+    const fence = makeAccountExitFence();
+
+    expect(Effect.runSync(fence.fileSweepNow)).toBe(true);
+    Effect.runSync(fence.holdFile("only"));
+    expect(Effect.runSync(fence.releaseFile("only"))).toBe(false);
   });
 
   test("an older session can't take over from a newer one", () => {

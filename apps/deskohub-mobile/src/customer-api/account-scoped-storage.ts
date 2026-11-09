@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Semaphore } from "effect";
+import { Context, Effect, Layer, Option, type Scope, Semaphore } from "effect";
 import { CustomerAccountScope } from "./customer-api.service";
 import {
   type DeviceCapabilities,
@@ -62,6 +62,22 @@ interface IAccountExitFence {
   readonly close: (session: AccountSession) => Effect.Effect<boolean>;
   /** Accounts with a session whose storage is open. */
   readonly openAccounts: Effect.Effect<ReadonlySet<string>>;
+  /**
+   * Records that a share still uses the temporary file at `uri`, so no exit
+   * removes it until `releaseFile`.
+   */
+  readonly holdFile: (uri: string) => Effect.Effect<void>;
+  /**
+   * Ends the hold on the file; answers whether an exit's file sweep waited
+   * for it, which is due now that no file is held.
+   */
+  readonly releaseFile: (uri: string) => Effect.Effect<boolean>;
+  /**
+   * Whether an exit may remove temporary files now: none is held. Otherwise
+   * the sweep waits, and the release of the last held file answers that it
+   * is due.
+   */
+  readonly fileSweepNow: Effect.Effect<boolean>;
 }
 
 /**
@@ -95,6 +111,11 @@ export const makeAccountExitFence = (): IAccountExitFence => {
     accounts.set(accountId, created);
     return created;
   };
+  // Files an open share uses, and whether an exit's file sweep waits for
+  // them. Every live temporary file is held from its write to its removal,
+  // so with none held, anything left is a leftover any sweep may remove.
+  const heldFiles = new Set<string>();
+  let sweepWaiting = false;
   const lock = Semaphore.makeUnsafe(1);
   return {
     exclusive: (effect) => lock.withPermit(effect),
@@ -132,6 +153,22 @@ export const makeAccountExitFence = (): IAccountExitFence => {
             .map(([accountId]) => accountId)
         )
     ),
+    holdFile: (uri) =>
+      Effect.sync(() => {
+        heldFiles.add(uri);
+      }),
+    releaseFile: (uri) =>
+      Effect.sync(() => {
+        heldFiles.delete(uri);
+        const due = sweepWaiting && heldFiles.size === 0;
+        if (due) sweepWaiting = false;
+        return due;
+      }),
+    fileSweepNow: Effect.sync(() => {
+      if (heldFiles.size === 0) return true;
+      sweepWaiting = true;
+      return false;
+    }),
   };
 };
 
@@ -151,13 +188,19 @@ interface IAccountScopedStorage {
     name: string
   ) => Effect.Effect<void, DeviceCapabilityFailed>;
   /**
-   * A temporary file for the share sheet, in the account's own folder; none
-   * once the session has exited.
+   * A new temporary file for the share sheet, in the account's own folder,
+   * for the scope's lifetime: no exit removes it before the scope closes,
+   * and closing the scope removes it, whatever happened to the session
+   * meanwhile. None once the session has exited.
    */
-  readonly writeTemporaryFile: (
+  readonly temporaryFile: (
     name: string,
     bytes: Uint8Array
-  ) => Effect.Effect<Option.Option<string>, DeviceCapabilityFailed>;
+  ) => Effect.Effect<
+    Option.Option<string>,
+    DeviceCapabilityFailed,
+    Scope.Scope
+  >;
 }
 
 /**
@@ -208,6 +251,17 @@ const fencedStorageOf = ({
       (current) => fence.exclusive(current),
       Effect.uninterruptible
     );
+  // Removes the file and ends its hold, then runs the file sweep an exit
+  // left waiting for it. It runs alone but whatever the session: the file
+  // goes even when the account has exited or signed in again meanwhile.
+  const releaseTemporaryFile = (uri: string) =>
+    temporaryFiles.remove(uri).pipe(
+      Effect.andThen(fence.releaseFile(uri)),
+      Effect.flatMap((sweepDue) =>
+        sweepDue ? temporaryFiles.sweep(Option.none()) : Effect.void
+      ),
+      (release) => fence.exclusive(release)
+    );
   const keyOf = (name: string) =>
     Effect.succeed(name).pipe(
       Effect.filterOrElse(
@@ -234,13 +288,18 @@ const fencedStorageOf = ({
       Effect.flatMap(keyOf(name), (key) =>
         whileCurrent(storage.removeItems([key]), undefined)
       ),
-    writeTemporaryFile: (name, bytes) =>
-      whileCurrent(
-        Effect.map(
-          temporaryFiles.write(scope.accountId, name, bytes),
-          Option.some
+    temporaryFile: (name, bytes) =>
+      Effect.acquireRelease(
+        whileCurrent(
+          temporaryFiles
+            .write(scope.accountId, name, bytes)
+            .pipe(Effect.tap(fence.holdFile), Effect.map(Option.some)),
+          Option.none()
         ),
-        Option.none()
+        Option.match({
+          onNone: () => Effect.void,
+          onSome: releaseTemporaryFile,
+        })
       ),
   };
 };

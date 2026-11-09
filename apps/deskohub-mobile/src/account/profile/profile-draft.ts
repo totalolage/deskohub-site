@@ -1,4 +1,9 @@
 import {
+  formatPhoneNumber,
+  isPhoneNumber,
+  parsePhoneNumber,
+} from "@deskohub/phone-number";
+import {
   type CustomerProfile,
   CustomerProfileCompletionInput,
   CustomerProfileInput,
@@ -98,11 +103,23 @@ export const emptyProfileDraft: ProfileDraft = {
   country: "",
 };
 
+// The Workspace stores a phone number in E.164 form; the form shows it for
+// reading. Any other stored text, such as a legacy value with a label, shows
+// as stored.
+const readablePhone = (stored: string) =>
+  Option.match(
+    Option.filter(parsePhoneNumber(stored), () => isPhoneNumber(stored)),
+    {
+      onNone: () => stored,
+      onSome: formatPhoneNumber,
+    }
+  );
+
 /** The draft of a stored profile: what the customer has saved now. */
 export const profileDraftOf = (profile: CustomerProfile): ProfileDraft => ({
   firstName: profile.firstName,
   lastName: profile.lastName ?? "",
-  phone: profile.phone ?? "",
+  phone: readablePhone(profile.phone ?? ""),
   billingKind: profile.billing?.kind ?? "none",
   companyName: profile.billing?.companyName ?? "",
   companyId: profile.billing?.companyId ?? "",
@@ -122,10 +139,23 @@ export const completionDraftOf = (
   referralCode: invitationCode ?? "",
 });
 
-/** Whether two drafts hold the same values. */
+// The Workspace stores an entered phone as its phone number, so two texts
+// holding the same number are the same phone. Text without one compares as
+// entered.
+const samePhone = (left: string, right: string) =>
+  left === right ||
+  Option.exists(parsePhoneNumber(left), (phone) =>
+    Option.contains(parsePhoneNumber(right), phone)
+  );
+
+/**
+ * Whether two drafts hold the same values, a phone counting as the number the
+ * Workspace stores for it.
+ */
 export const sameDraft = <D extends ProfileDraft>(left: D, right: D) =>
+  samePhone(left.phone, right.phone) &&
   (Object.keys(left) as Array<keyof D>).every(
-    (field) => left[field] === right[field]
+    (field) => field === "phone" || left[field] === right[field]
   );
 
 /** Why a field's value can't be saved; the screen picks the copy. */

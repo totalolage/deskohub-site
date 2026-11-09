@@ -5,6 +5,7 @@ import { describe, expect, mock, test } from "bun:test";
 import type { GoogleCalendarEvent } from "@deskohub/google-calendar";
 import { testEmailAddress } from "@deskohub/test-email";
 import { type Duration, Effect, Layer, Schema } from "effect";
+import { SqlError } from "effect/unstable/sql";
 import type { WorkspaceE2EConfig } from "@/e2e/config";
 import { isFreshOwnedPayStateUrl } from "@/e2e/referrals/checkout";
 import { isOwnedReferralCheckoutReviewUrl } from "@/e2e/referrals/checkout-review";
@@ -38,7 +39,6 @@ import {
 } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import type { ReferralService as ReferralServiceTag } from "@/features/referrals";
-import { ReferralError } from "@/features/referrals/contracts";
 import { WithheldReferralService } from "@/features/referrals/referral.service.mock";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
@@ -941,7 +941,15 @@ describe("applyDiscountCodeToPayState", () => {
   test("returns unavailable when the referral registry can't classify the code", async () => {
     const scenario = await runSubmission({
       lookupCodeKind: mock(() =>
-        Effect.fail(new ReferralError({ reason: "unavailable" }))
+        Effect.fail(
+          new SqlError.SqlError({
+            reason: new SqlError.UnknownError({
+              cause: new Error("synthetic connection refused"),
+              message: "synthetic connection refused",
+              operation: "query",
+            }),
+          })
+        )
       ),
     });
 

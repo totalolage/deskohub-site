@@ -34,7 +34,7 @@ describe("accountExitOf", () => {
     ["account switch", signedInA1, signedInB, exitOfA1],
     ["reauthentication of the same account", signedInA1, signedInA2, undefined],
     ["a launch that finds no session", restoring, signedOut, { scope: "device" }],
-    ["a launch that restores a session", restoring, signedInA1, undefined],
+    ["a launch that restores a session", restoring, signedInA1, { scope: "shared-files" }],
     ["a session refetch", signedInA1, signedInA1, undefined],
     ["signing in after being signed out", signedOut, signedInA1, undefined],
     ["staying signed out", signedOut, signedOut, undefined],
@@ -127,7 +127,7 @@ describe("customerDataExitCleanup", () => {
     expect(device.files.size).toBe(0);
   });
 
-  test("a device cleanup spares an account that has signed in meanwhile", async () => {
+  test("a device cleanup spares the entries of an account that has signed in meanwhile", async () => {
     const device = seededDevice();
     const fence = makeAccountExitFence();
     await Effect.runPromise(fence.open(sessionB));
@@ -137,6 +137,38 @@ describe("customerDataExitCleanup", () => {
     expect([...device.storage.keys()].sort()).toEqual(
       [...appKeys, keyOf("deskohub.reservations.v1", "b")].sort()
     );
-    expect(device.files.has(shareFile("b"))).toBe(true);
+    // Files no share holds are leftovers, whoever is signed in.
+    expect(device.files.size).toBe(0);
   });
+
+  test("a launch that restores a session removes only the files earlier runs left", async () => {
+    const device = seededDevice();
+    const keys = [...device.storage.keys()].sort();
+
+    await cleanUp(device, { scope: "shared-files" });
+
+    expect([...device.storage.keys()].sort()).toEqual(keys);
+    expect(device.files.size).toBe(0);
+  });
+
+  const exits: ReadonlyArray<readonly [string, AccountExit]> = [
+    ["an account exit", exitOfA1],
+    ["a launch without a session", { scope: "device" }],
+    ["a launch that restores a session", { scope: "shared-files" }],
+  ];
+
+  test.each(exits)(
+    "%s keeps the files while a share holds one, until its release",
+    async (_title, exit) => {
+      const device = seededDevice();
+      const fence = makeAccountExitFence();
+      await Effect.runPromise(fence.open(sessionA1));
+      await Effect.runPromise(fence.holdFile(shareFile("a")));
+
+      await cleanUp(device, exit, fence);
+
+      expect(device.files.has(shareFile("a"))).toBe(true);
+      expect(Effect.runSync(fence.releaseFile(shareFile("a")))).toBe(true);
+    }
+  );
 });

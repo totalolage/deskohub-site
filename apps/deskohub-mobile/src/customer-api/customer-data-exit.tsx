@@ -26,8 +26,10 @@ const exitCleanupAtom = exitCleanupRuntime.fn(
 
 /**
  * Mounted above the signed-in screens: when an account exits (sign-out,
- * expiry, switch) it clears that account's cached data and shared files. The
- * account's registry resets on its own, keyed by account id.
+ * expiry, switch) it clears that account's cached data and shared files, and
+ * at launch it sweeps shared files a previous run left behind. Files an open
+ * share still holds are swept once that share releases them. The account's
+ * registry resets on its own, keyed by account id.
  */
 export function CustomerDataExitCleanup({
   children,

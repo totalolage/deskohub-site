@@ -195,6 +195,24 @@ describe("saveProfileAtom", () => {
     ).toBe(false);
   });
 
+  test("an unconfirmed save of a phone the server normalized leaves nothing unsaved", async () => {
+    const { registry, workspace } = makeFakeCustomerData("linked");
+    await settle(registry, accountAtom);
+    workspace.fail("updateProfile", "unreadable-answer");
+    // Typed in national form; the Workspace stores it in E.164.
+    const draft = { ...profileDraftOf(sampleProfile), phone: "600 000 001" };
+    registry.set(profileEditsAtom, Option.some(draft));
+
+    await submit(registry, saveProfileAtom, draft);
+
+    const stored = linkedProfileOf(storedAccount(workspace));
+    expect(stored.phone).toBe("+420600000001");
+    expect(registry.get(profileEditsAtom)).toEqual(Option.some(draft));
+    expect(hasUnsavedChanges(registry.get(profileEditsAtom), stored)).toBe(
+      false
+    );
+  });
+
   test("a refused save keeps the edits and reads nothing again", async () => {
     const { registry, workspace } = makeFakeCustomerData("linked");
     await settle(registry, accountAtom);

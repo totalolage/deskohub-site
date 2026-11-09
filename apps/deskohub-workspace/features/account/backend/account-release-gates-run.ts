@@ -3,7 +3,17 @@ import {
   AccountAvatarReleaseGate,
   accountReleaseRunPolicy,
   PasskeyReleaseGate,
+  SignInCodeReleaseGate,
 } from "./account-release-gates";
+
+/**
+ * The sign-in code gate decided once per build, for a run outside Next.js
+ * request scope, such as a Better Auth hook. Build it once per run.
+ */
+export const SignInCodeReleaseGateForRun = releaseGateForRun(
+  SignInCodeReleaseGate,
+  accountReleaseRunPolicy
+);
 
 /**
  * The passkey gate decided once per build, for a request served outside
