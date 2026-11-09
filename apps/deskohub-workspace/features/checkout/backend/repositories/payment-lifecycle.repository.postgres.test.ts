@@ -83,7 +83,10 @@ import {
   waitForAdvisoryLockWaiter,
   waitForPostgresLockWaiter,
 } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  readReservationOrderMirror,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const product = { kind: "cowork", tier: "basic" } as const;
@@ -1322,6 +1325,16 @@ describe.skipIf(!testDatabase)(
         );
 
         expect(paid.changed).toBe(true);
+        const mirror = await readReservationOrderMirror(
+          testDatabase!.pool,
+          reservation.id
+        );
+        expect(mirror.order).toEqual(mirror.expected);
+        expect(mirror.order).toMatchObject({
+          payment_state: "paid",
+          active_payment_attempt_id: attempt.id,
+        });
+        expect(mirror.attemptOrderIds).toEqual([reservation.id]);
         expect((await readClaim(attempt.id))[0]?.state).toBe("redeemed");
         expect(
           await readAttributions(fixture.invitedDotyposCustomerId)
@@ -1503,6 +1516,13 @@ describe.skipIf(!testDatabase)(
             })
           );
 
+          const mirror = await readReservationOrderMirror(
+            testDatabase!.pool,
+            reservation.id
+          );
+          expect(mirror.order).toEqual(mirror.expected);
+          expect(mirror.order?.payment_state).toBe(state);
+          expect(mirror.attemptOrderIds).toEqual([reservation.id]);
           expect((await readClaim(attempt.id))[0]?.state).toBe("released");
           expect(
             await readAttributions(fixture.invitedDotyposCustomerId)
@@ -1770,6 +1790,16 @@ describe.skipIf(!testDatabase)(
         );
 
         expect(internal.attempt.state).toBe("paid");
+        const mirror = await readReservationOrderMirror(
+          testDatabase!.pool,
+          reservation.id
+        );
+        expect(mirror.order).toEqual(mirror.expected);
+        expect(mirror.order).toMatchObject({
+          payment_state: "paid",
+          active_payment_attempt_id: internal.attempt.id,
+        });
+        expect(mirror.attemptOrderIds).toEqual([reservation.id]);
         expect(
           await readAttributions(fixture.invitedDotyposCustomerId)
         ).toEqual([

@@ -89,12 +89,18 @@ export function AuthCallbackScreen() {
             : undefined
         }
       />
-      {state.status === "failed" && (
-        <Button
-          label={m.callback_back_to_sign_in({}, { locale })}
-          onPress={() => router.replace("/sign-in")}
-        />
-      )}
+      {/* A refused callback leaves a signed-in app signed in, as when a
+          reauthentication lands on another account: it goes back to where
+          it was, not to sign-in. */}
+      {state.status === "failed" &&
+        (signedIn ? (
+          <Button label={m.callback_go_back({}, { locale })} onPress={leave} />
+        ) : (
+          <Button
+            label={m.callback_back_to_sign_in({}, { locale })}
+            onPress={() => router.replace("/sign-in")}
+          />
+        ))}
     </Screen>
   );
 }

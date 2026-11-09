@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { Option } from "effect";
 import { act, createElement, useState } from "react";
 import { clientRoot } from "../../testing/client-root";
+import { expoRouterStandIn } from "../../testing/expo-router-stand-in";
 import type { CompletionTextField } from "./profile-draft";
 import type { ProfileSubmitState } from "./profile-save";
 
@@ -20,18 +21,20 @@ const navigator = {
 };
 let currentKey = "";
 
-mock.module("expo-router", () => ({
-  useNavigation: () => ({ getState: () => ({ routes: navigator.routes }) }),
-  useRoute: () => ({ key: currentKey }),
-  useIsFocused: () => navigator.focused,
-  usePreventRemove: (
-    prevent: boolean,
-    blocked: (event: { repeat: () => void }) => void
-  ) => {
-    navigator.prevention.set(currentKey, { prevent, blocked });
-    return () => undefined;
-  },
-}));
+mock.module("expo-router", () =>
+  expoRouterStandIn({
+    useNavigation: () => ({ getState: () => ({ routes: navigator.routes }) }),
+    useRoute: () => ({ key: currentKey }),
+    useIsFocused: () => navigator.focused,
+    usePreventRemove: (
+      prevent: boolean,
+      blocked: (event: { repeat: () => void }) => void
+    ) => {
+      navigator.prevention.set(currentKey, { prevent, blocked });
+      return () => undefined;
+    },
+  })
+);
 
 const { returnsToSharedDraft, useFocusFirstInvalid, useUnsavedChangesGuard } =
   await import("./profile-form");
