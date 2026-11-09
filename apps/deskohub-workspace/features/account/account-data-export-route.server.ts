@@ -30,6 +30,12 @@ export const makeAccountDataExportGet = (
       operation: "account.data-export",
       cancellation: "interrupt-on-disconnect",
       caller: "client",
+      // A shared runtime that can't be built fails before the handler runs,
+      // so `answerUnexpected` can't see it; it still gets the private 500.
+      fallback: {
+        failureCode: "account.data-export",
+        response: () => loadFailedResponse(),
+      },
     },
     (_request: Request, { params }: AccountDataExportParams) =>
       Effect.promise(() => params).pipe(
@@ -72,8 +78,10 @@ class AccountDataExportRouteNotFound extends Data.TaggedError(
  * account, deletion pending, an invalid locale) answers the same private 404
  * without a body. A load failure answers a private generic 500 without any
  * archive bytes; the service already logged its fixed code. Anything else,
- * such as a service that couldn't be built, logs only this route's code. An
- * interruption (the client disconnected) stays an interruption.
+ * such as a service that couldn't be built, logs only this route's code; a
+ * shared runtime that couldn't be built gets the same private 500 through the
+ * route's fallback. An interruption (the client disconnected) stays an
+ * interruption.
  */
 const answerNotFound = () => Effect.sync(notFoundResponse);
 

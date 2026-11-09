@@ -1,7 +1,10 @@
 import { Data, Effect } from "effect";
 import { NextResponse } from "next/server";
 import { unclassifiedTraffic } from "@/shared/agent-traffic/agent-traffic";
-import { runWorkspaceEffect } from "./workspace-effect";
+import {
+  runWorkspaceEffect,
+  runWorkspaceEffectOrElse,
+} from "./workspace-effect";
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 type WorkspaceRouteCancellation =
@@ -39,7 +42,7 @@ export type WorkspaceRouteErrorResponse = NextResponse<{
   readonly code?: string;
 }>;
 
-export interface WorkspaceRouteOptions {
+export interface WorkspaceRouteOptions<A extends Response = Response> {
   /** Stable, low-cardinality name without IDs, URLs, or payload data. */
   readonly operation: string;
   readonly cancellation: WorkspaceRouteCancellation;
@@ -50,6 +53,18 @@ export interface WorkspaceRouteOptions {
    * request's own headers.
    */
   readonly caller: "client" | "service";
+  /**
+   * The response for a failure the handler did not answer: a defect, or a
+   * shared runtime that could not be built before the handler ran. The
+   * failure is logged once with `failureCode`. Interruption, including a
+   * client disconnect, and Next.js control flow still propagate. Without it,
+   * such a failure rejects and Next.js answers it.
+   */
+  readonly fallback?: {
+    /** Stable, low-cardinality log code without IDs, URLs, or payload data. */
+    readonly failureCode: string;
+    readonly response: () => A;
+  };
 }
 
 export const defineWorkspaceRoute =
@@ -57,7 +72,7 @@ export const defineWorkspaceRoute =
     Args extends [request: Request, ...rest: readonly unknown[]],
     A extends Response,
   >(
-    options: WorkspaceRouteOptions,
+    options: WorkspaceRouteOptions<NoInfer<A>>,
     handler: (...args: Args) => Effect.Effect<A, WorkspaceRouteFailure, never>
   ) =>
   (...args: Args): Promise<A | WorkspaceRouteErrorResponse> => {
@@ -77,8 +92,19 @@ export const defineWorkspaceRoute =
         ? request.signal
         : undefined;
 
+    if (options.fallback === undefined) {
+      return effect.pipe(
+        runWorkspaceEffect(options.operation, { boundary: "route", signal })
+      );
+    }
+    const { failureCode, response } = options.fallback;
     return effect.pipe(
-      runWorkspaceEffect(options.operation, { boundary: "route", signal })
+      runWorkspaceEffectOrElse(options.operation, {
+        boundary: "route",
+        signal,
+        failureCode,
+        orElse: response,
+      })
     );
   };
 
