@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import { CustomerAccountAccessError } from "@/features/account/customer-account";
 import { sealSyntheticCoworkPayState } from "@/features/checkout/backend/checkout/pay-state.test-utils";
 import { payStateTokenQueryParam } from "@/features/checkout/pay-state-token-query";
+import type { Locale } from "@/features/i18n";
 import { localeCookieName } from "@/features/i18n/routing";
 import { getReservationAccessCookieName } from "@/features/reservation/backend/reservation-access-cookie";
 import { createReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
@@ -156,7 +157,7 @@ describe("signed-in customer's saved language preference", () => {
   });
 
   const invoiceOrderId = workspaceReservationIdSchema.make("reservation-id");
-  const invoiceToken = (locale: "cs-CZ" | "en-US", orderId = invoiceOrderId) =>
+  const invoiceToken = (locale: Locale, orderId = invoiceOrderId) =>
     encodeURIComponent(
       Effect.runSync(createReservationAccessToken({ orderId, locale }))
     );

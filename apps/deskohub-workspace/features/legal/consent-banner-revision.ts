@@ -12,12 +12,16 @@ type ConsentBannerDocument = (typeof consentBannerDocuments)[number];
 
 /**
  * The published version (`getLegalDocumentVersion`) of each document the
- * banner is bound to. A copy, so the server's consent cookie readers, which
- * every request loads, never load the legal texts or React; a test fails
- * with the current versions whenever either document changes in any locale.
+ * banner is bound to, per locale whose legal documents are published. A copy,
+ * so the server's consent cookie readers, which every request loads, never
+ * load the legal texts or React; a test fails with the current versions
+ * whenever either document changes in any locale.
+ *
+ * Recording a new locale's versions here changes the banner revision, which
+ * reopens the cookie banner for every visitor.
  */
 export const consentBannerDocumentVersions: Readonly<
-  Record<Locale, Readonly<Record<ConsentBannerDocument, string>>>
+  Partial<Record<Locale, Readonly<Record<ConsentBannerDocument, string>>>>
 > = {
   "en-US": {
     "privacy-policy":
@@ -36,7 +40,7 @@ export const consentBannerDocumentVersions: Readonly<
 const publishedVersionOf = (
   locale: Locale,
   documentKey: ConsentBannerDocument
-) => consentBannerDocumentVersions[locale][documentKey];
+): string | undefined => consentBannerDocumentVersions[locale]?.[documentKey];
 
 /**
  * The cookie banner revision of the privacy notice and cookie policy in every
@@ -50,10 +54,14 @@ export function getConsentBannerRevision(
   versionOf: (
     locale: Locale,
     documentKey: ConsentBannerDocument
-  ) => string = publishedVersionOf
+  ) => string | undefined = publishedVersionOf
 ): number {
+  // Only locales with recorded versions count, in registry order.
   const versions = locales.flatMap((locale) =>
-    consentBannerDocuments.map((documentKey) => versionOf(locale, documentKey))
+    consentBannerDocuments.flatMap((documentKey) => {
+      const version = versionOf(locale, documentKey);
+      return version === undefined ? [] : [version];
+    })
   );
   const digest = createHash("sha256").update(versions.join("\n")).digest("hex");
   // 48 bits stay well inside Number.MAX_SAFE_INTEGER.

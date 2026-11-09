@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import { m } from "@/features/i18n";
 import { enablePreviewAccess } from "../preview-access";
-import { auditedLocales, expectAxeClean } from "./accessibility-audit";
+import { ariaSnapshotLocales, expectAxeClean } from "./accessibility-audit";
 import { seededAccountSkipReason } from "./audit-target";
 import { accessibilityTest as test } from "./fixtures";
 import { withPayPage } from "./pay-page";
@@ -17,7 +17,7 @@ test.beforeEach(async ({ baseURL, context }) => {
   await enablePreviewAccess(context, baseURL);
 });
 
-for (const locale of auditedLocales) {
+for (const locale of ariaSnapshotLocales) {
   test(`${locale} Pay with the consent unticked`, async ({
     context,
     page,

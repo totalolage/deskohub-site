@@ -94,7 +94,7 @@ describe("CustomerAuthentication session adapter", () => {
   });
 
   test("leaves the locale preference absent for a null or invalid locale", async () => {
-    for (const locale of [null, undefined, "de-DE", "cs", ""]) {
+    for (const locale of [null, undefined, "fr-FR", "cs", ""]) {
       const outcome = await runDecode(sessionFor({ locale }));
 
       expect(outcome._tag).toBe("Success");

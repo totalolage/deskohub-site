@@ -1,14 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { locales, m } from ".";
+import { baseLocale, locales, m } from ".";
 
 const messagesDirectory = join(import.meta.dir, "paraglide", "messages");
 
-const readCatalog = (locale: string): Record<string, string> =>
-  JSON.parse(
-    readFileSync(join(import.meta.dir, "messages", `${locale}.json`), "utf8")
-  );
+// A locale whose catalog is missing, or lacks a message, compiles to the base
+// locale's text for that message.
+const readCatalog = (locale: string): Partial<Record<string, string>> => {
+  const catalogPath = join(import.meta.dir, "messages", `${locale}.json`);
+  return existsSync(catalogPath)
+    ? JSON.parse(readFileSync(catalogPath, "utf8"))
+    : {};
+};
 
 describe("customer message modules", () => {
   // One module per message cost about 1,000 modules in every cold Turbopack
@@ -19,10 +23,12 @@ describe("customer message modules", () => {
     );
   });
 
-  test("renders each locale's catalog text", () => {
+  test("renders each locale's catalog text, else the base locale's", () => {
+    const baseText = readCatalog(baseLocale).accountHelpTitle;
+    expect(baseText).toBeString();
     for (const locale of locales) {
       expect(m.accountHelpTitle({}, { locale })).toBe(
-        readCatalog(locale).accountHelpTitle
+        readCatalog(locale).accountHelpTitle ?? baseText
       );
     }
   });

@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import type { AccountSection } from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
+import { languageNames } from "@/features/i18n/language-labels";
 import { localeCookieName } from "@/features/i18n/routing";
 import {
   openPage,
@@ -53,12 +54,6 @@ export const accountProfileFieldSelectors = {
 
 /** An account profile or billing field the lane fills. */
 export type AccountProfileField = keyof typeof accountProfileFieldSelectors;
-
-/** Each site language's option in the profile's language select. */
-const languageOptionLabels: Readonly<Record<Locale, string>> = {
-  "cs-CZ": "Čeština",
-  "en-US": "English (US)",
-};
 
 /** The page steps of one account browser, each on its active page. */
 export type WorkspaceE2EAccountBrowser = {
@@ -684,7 +679,7 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
         laneSession.use("click browser element", (page) =>
           page
             .locator('[role="option"]')
-            .filter({ hasText: languageOptionLabels[locale] })
+            .filter({ hasText: languageNames[locale] })
             .filter({ visible: true })
             .click({ timeout: browserAction })
         )
@@ -877,7 +872,7 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
       waitFor(
         description,
         isOptionSelected,
-        languageOptionLabels[locale],
+        languageNames[locale],
         uiTransition
       ),
     waitForSnapshot: (description, matches, timeoutMs) =>

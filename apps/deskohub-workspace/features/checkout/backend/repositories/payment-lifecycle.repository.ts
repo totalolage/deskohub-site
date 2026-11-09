@@ -67,6 +67,7 @@ import {
 } from "@/features/discounts/commitment";
 import type { AppliedDiscount } from "@/features/discounts/contracts";
 import { decodeDiscountDefinition } from "@/features/discounts/discount-definition";
+import { discountLabelFor } from "@/features/discounts/discount-label";
 import { DiscountClaimError } from "@/features/discounts/errors";
 import type {
   DiscountApplicationId,
@@ -2253,7 +2254,7 @@ const validateStoredDiscountClaim = Effect.fn(
       currentDefinition.adjustment,
       input.application.discount.adjustment
     ) ||
-    currentDefinition.labels[input.locale] !==
+    discountLabelFor(currentDefinition.labels, input.locale) !==
       input.application.discount.label ||
     promotionTimingChanged(timing, input.application.discount)
   ) {

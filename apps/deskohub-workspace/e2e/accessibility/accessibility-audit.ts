@@ -1,4 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
+import {
+  type SupportedLocale,
+  supportedLocales,
+} from "@deskohub/i18n/locale-registry";
 import { expect, type Page, type TestInfo } from "@playwright/test";
 import { workspaceE2ETimeouts } from "../timeouts";
 
@@ -12,13 +16,30 @@ const axeTags = [
   "best-practice",
 ];
 
-export const auditedLocales = ["en-US", "cs-CZ"] as const;
-export type AuditedLocale = (typeof auditedLocales)[number];
+/** The locales the axe audits open each page in: every supported one. */
+export const auditedLocales = supportedLocales;
+export type AuditedLocale = SupportedLocale;
+
+/**
+ * The locales with curated ARIA snapshot files; a new locale gets snapshots
+ * only once someone has curated its captures.
+ */
+export const ariaSnapshotLocales = [
+  "en-US",
+  "cs-CZ",
+] as const satisfies readonly AuditedLocale[];
+
+const supportedDocumentLanguage = new RegExp(
+  `^(${supportedLocales.join("|")})$`
+);
 
 /** Opens a page and waits until its streamed content stopped loading. */
 export async function openSettledPage(page: Page, path: string) {
   await page.goto(path, { waitUntil: "load" });
-  await expect(page.locator("html")).toHaveAttribute("lang", /^(en-US|cs-CZ)$/);
+  await expect(page.locator("html")).toHaveAttribute(
+    "lang",
+    supportedDocumentLanguage
+  );
   await expect(page.locator("main")).toBeVisible();
   await expect(page.locator('[aria-busy="true"]')).toHaveCount(0, {
     timeout: workspaceE2ETimeouts.browserNavigation,

@@ -15,6 +15,9 @@ describe("getWorkspaceAlternates", () => {
     expect(getWorkspaceAlternates("cs-CZ", "/contact").languages).toEqual({
       "en-US": "https://workspace.deskohub.cz/en-US/contact",
       "cs-CZ": "https://workspace.deskohub.cz/cs-CZ/contact",
+      "de-DE": "https://workspace.deskohub.cz/de-DE/contact",
+      "uk-UA": "https://workspace.deskohub.cz/uk-UA/contact",
+      "sk-SK": "https://workspace.deskohub.cz/sk-SK/contact",
       "x-default": "https://workspace.deskohub.cz/contact",
     });
   });
@@ -25,6 +28,9 @@ describe("getWorkspaceAlternates", () => {
       languages: {
         "en-US": "https://workspace.deskohub.cz/en-US",
         "cs-CZ": "https://workspace.deskohub.cz/cs-CZ",
+        "de-DE": "https://workspace.deskohub.cz/de-DE",
+        "uk-UA": "https://workspace.deskohub.cz/uk-UA",
+        "sk-SK": "https://workspace.deskohub.cz/sk-SK",
         "x-default": "https://workspace.deskohub.cz/",
       },
     });

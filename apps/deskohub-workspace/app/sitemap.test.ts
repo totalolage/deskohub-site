@@ -97,14 +97,14 @@ describe("sitemap.xml", () => {
     expect(urls).not.toContain(`${origin}/en-US/reservation/office`);
   });
 
-  test("gives every entry reciprocal en-US, cs-CZ and x-default alternates", async () => {
+  test("gives every entry reciprocal alternates for every locale and x-default", async () => {
     const entries = await productionSitemap();
     const entriesByUrl = new Map(entries.map((entry) => [entry.url, entry]));
 
     for (const entry of entries) {
       const languages = entry.alternates?.languages ?? {};
       expect(Object.keys(languages).toSorted()).toEqual(
-        ["cs-CZ", "en-US", "x-default"].toSorted()
+        ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK", "x-default"].toSorted()
       );
       expect(Object.values(languages)).toContain(entry.url);
 

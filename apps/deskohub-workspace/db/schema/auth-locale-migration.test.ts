@@ -106,7 +106,7 @@ describe.skipIf(!testDatabaseUrl)(
     );
 
     test(
-      "accepts only en-US and cs-CZ as a locale preference",
+      "accepts only a supported locale as a locale preference",
       async () => {
         await withScratchDatabase(
           testDatabaseUrl!,
@@ -123,7 +123,7 @@ describe.skipIf(!testDatabaseUrl)(
             );
             await expect(
               pool.query(
-                `update auth."user" set locale = 'de-DE' where id = $1`,
+                `update auth."user" set locale = 'fr-FR' where id = $1`,
                 [account]
               )
             ).rejects.toMatchObject({ code: "23514" });

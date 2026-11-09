@@ -1,19 +1,9 @@
-import { m } from "@/features/administration/i18n";
+import { getLocaleDefinition } from "@deskohub/i18n/locale-registry";
 import type { Locale } from "@/features/i18n";
 
-const campaignLocaleNameMessages = {
-  "cs-CZ": m.emailCampaignsLocaleNameCzech,
-  "en-US": m.emailCampaignsLocaleNameEnglish,
-} as const satisfies Record<Locale, typeof m.emailCampaignsLocaleNameCzech>;
+/** The name of a campaign content or recipient language, in that language. */
+export const campaignLocaleName = (contentLocale: Locale) =>
+  getLocaleDefinition(contentLocale).nativeName;
 
-/** The admin-facing name of a campaign content or recipient language. */
-export const campaignLocaleName = (contentLocale: Locale, locale: Locale) =>
-  campaignLocaleNameMessages[contentLocale]({}, { locale });
-
-export const describeCampaignLocales = (
-  contentLocales: readonly Locale[],
-  locale: Locale
-) =>
-  contentLocales
-    .map((contentLocale) => campaignLocaleName(contentLocale, locale))
-    .join(", ");
+export const describeCampaignLocales = (contentLocales: readonly Locale[]) =>
+  contentLocales.map(campaignLocaleName).join(", ");

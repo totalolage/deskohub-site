@@ -43,7 +43,7 @@ describe("resolveRecipientLocale", () => {
   test("skips unsupported values and falls back to Czech", () => {
     expect(
       resolveRecipientLocale({
-        accountLocale: "de-DE",
+        accountLocale: "fr-FR",
         latestReservationLocale: "en",
         consentLocale: null,
       })

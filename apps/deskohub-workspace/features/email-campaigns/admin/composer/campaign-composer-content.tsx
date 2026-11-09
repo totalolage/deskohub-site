@@ -20,6 +20,10 @@ import {
   TabsTrigger,
 } from "@/shared/components/ui/tabs";
 import type { CampaignPurpose } from "../../body/campaign-content";
+import {
+  campaignFallbackLocale,
+  campaignLocales,
+} from "../../recipient-locale";
 import type { AudienceOption } from "../audiences/audience-page-data.server";
 import { CampaignBodyEditor } from "../editor/campaign-body-editor";
 import { campaignLocaleName } from "../sending/campaign-locale-names";
@@ -36,11 +40,17 @@ import type { CampaignComposerControl } from "./campaign-composer-form";
 const singleLocaleAudienceMessages = {
   "cs-CZ": m.emailCampaignsComposerSingleLocaleAudienceCzech,
   "en-US": m.emailCampaignsComposerSingleLocaleAudienceEnglish,
+  "de-DE": m.emailCampaignsComposerSingleLocaleAudienceGerman,
+  "uk-UA": m.emailCampaignsComposerSingleLocaleAudienceUkrainian,
+  "sk-SK": m.emailCampaignsComposerSingleLocaleAudienceSlovak,
 } as const satisfies Record<Locale, (...args: never) => string>;
 
 const hiddenContentMessages = {
   "cs-CZ": m.emailCampaignsComposerHiddenContentCzech,
   "en-US": m.emailCampaignsComposerHiddenContentEnglish,
+  "de-DE": m.emailCampaignsComposerHiddenContentGerman,
+  "uk-UA": m.emailCampaignsComposerHiddenContentUkrainian,
+  "sk-SK": m.emailCampaignsComposerHiddenContentSlovak,
 } as const satisfies Record<Locale, (...args: never) => string>;
 
 /**
@@ -56,8 +66,8 @@ export const contentLocaleView = (
   const { editable, required } = composerLocales(audience?.singleLocale);
   const shown = editable.includes(selectedLocale)
     ? selectedLocale
-    : (editable[0] ?? "cs-CZ");
-  const hiddenWithContent = (["cs-CZ", "en-US"] as const).filter(
+    : (editable[0] ?? campaignFallbackLocale);
+  const hiddenWithContent = campaignLocales.filter(
     (option) =>
       !editable.includes(option) && hasLocaleContent(localeFields[option])
   );
@@ -105,7 +115,7 @@ export function CampaignContentTabs({
               key={option}
               value={option}
             >
-              {campaignLocaleName(option, routeLocale)}
+              {campaignLocaleName(option)}
               <LocaleStatus
                 fields={localeFields[option]}
                 locale={routeLocale}
@@ -284,7 +294,7 @@ function LocaleContentFields({
               id={bodyId}
               invalid={issues.some(({ _tag }) => _tag !== "SubjectMissing")}
               label={m.emailCampaignsComposerBodyEditorLabel(
-                { language: campaignLocaleName(contentLocale, locale) },
+                { language: campaignLocaleName(contentLocale) },
                 { locale }
               )}
               onChange={field.onChange}

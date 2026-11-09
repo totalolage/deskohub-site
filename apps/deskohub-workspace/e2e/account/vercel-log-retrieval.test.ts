@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
   BasicTracerProvider,
@@ -1129,7 +1130,7 @@ describe("workspace e2e Vercel log retrieval", () => {
     await expect(result).resolves.toEqual({ link, code: "482913" });
   });
 
-  test.each(["en-US", "cs-CZ"] as const)(
+  test.each([...supportedLocales])(
     "retrieves the sign-in link and code from the rendered %s email",
     async (locale) => {
       const link = magicLink(`rendered-${locale}`);

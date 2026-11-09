@@ -12,6 +12,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { DiscountLabels } from "@/features/discounts/discount-label";
 import type {
   CanonicalPromotionCode,
   DiscountCodeId,
@@ -20,12 +21,11 @@ import type {
   VoucherId,
 } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
-import type { Locale } from "@/features/i18n";
 import { instant } from "../instant";
 import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
 
-export type DiscountLabels = Readonly<Record<Locale, string>>;
+export type { DiscountLabels };
 
 export const promotionCodeKinds = ["discount", "voucher", "referral"] as const;
 export type PromotionCodeKind = (typeof promotionCodeKinds)[number];

@@ -18,7 +18,7 @@ import {
   locales,
   withLocalePrefixAndSearch,
 } from "@/features/i18n";
-import { getLanguageLabels } from "@/features/i18n/language-labels";
+import { languageNames } from "@/features/i18n/language-labels";
 import { cn } from "@/shared/utils";
 
 type SignedInState = "pending" | boolean;
@@ -102,25 +102,28 @@ function LocaleLabels({
   getLocaleHref,
   selectLocale,
 }: LocaleLabelsProps) {
-  const languageLabels = getLanguageLabels(currentLocale);
-
   return locales.map((locale, index) => {
     const isCurrent = locale === currentLocale;
-    let label: ReactNode = languageLabels[locale];
+    let label: ReactNode = <span lang={locale}>{languageNames[locale]}</span>;
 
     if (isCurrent) {
-      label = <strong className="text-white">{languageLabels[locale]}</strong>;
+      label = (
+        <strong lang={locale} className="text-white">
+          {languageNames[locale]}
+        </strong>
+      );
     } else if (getLocaleHref) {
       label = (
         <a
           href={getLocaleHref(locale)}
+          lang={locale}
           onClick={(event) => {
             onSwitch?.();
             selectLocale?.(locale, event);
           }}
           className="transition-colors hover:text-sunset-yellow"
         >
-          {languageLabels[locale]}
+          {languageNames[locale]}
         </a>
       );
     }
@@ -156,11 +159,11 @@ function LocaleLinks({ localePreference, ...props }: LocaleSwitcherProps) {
 }
 
 /**
- * The customer site's language links, each named in the current locale's
- * language. Another locale's link opens the current page, query included,
- * under that locale, and a signed-in customer's preference is saved before the
- * navigation. The prerendered shell cannot read the query, so it shows the
- * same labels without links until the client takes over.
+ * The customer site's language links, each language named in itself. Another
+ * locale's link opens the current page, query included, under that locale,
+ * and a signed-in customer's preference is saved before the navigation. The
+ * prerendered shell cannot read the query, so it shows the same labels
+ * without links until the client takes over.
  */
 export function LocaleSwitcher({
   locale,

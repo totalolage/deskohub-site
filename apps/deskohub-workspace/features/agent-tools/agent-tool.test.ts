@@ -1,5 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { Effect, Schema } from "effect";
 import {
   agentToolLocaleField,
@@ -79,14 +80,14 @@ describe("defineAgentTool", () => {
 });
 
 describe("getRequestedAgentToolLocale", () => {
-  test("reads a supported locale from raw arguments", () => {
-    expect(getRequestedAgentToolLocale({ locale: "cs-CZ", seats: "x" })).toBe(
-      "cs-CZ"
-    );
+  test("reads each supported locale from raw arguments", () => {
+    for (const locale of supportedLocales) {
+      expect(getRequestedAgentToolLocale({ locale, seats: "x" })).toBe(locale);
+    }
   });
 
   test("falls back to English for missing or unsupported locales", () => {
     expect(getRequestedAgentToolLocale(undefined)).toBe("en-US");
-    expect(getRequestedAgentToolLocale({ locale: "de-DE" })).toBe("en-US");
+    expect(getRequestedAgentToolLocale({ locale: "fr-FR" })).toBe("en-US");
   });
 });

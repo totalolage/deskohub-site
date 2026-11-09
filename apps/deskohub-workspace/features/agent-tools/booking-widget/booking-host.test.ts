@@ -286,7 +286,7 @@ describe("locale", () => {
     );
     const withUnknown = await localeAfter(
       fakeHost({ context: { locale: "cs-CZ" } }),
-      (app) => app.ontoolinput?.({ arguments: { locale: "de-DE" } })
+      (app) => app.ontoolinput?.({ arguments: { locale: "fr-FR" } })
     );
 
     expect(withoutRequest).toBe("cs-CZ");

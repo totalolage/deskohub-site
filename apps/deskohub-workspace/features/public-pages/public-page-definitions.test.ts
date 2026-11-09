@@ -36,6 +36,9 @@ const legalDocumentKeys = [
 const dateFormatLocale = {
   "en-US": "en-GB",
   "cs-CZ": "cs-CZ",
+  "de-DE": "de-DE",
+  "uk-UA": "uk-UA",
+  "sk-SK": "sk-SK",
 } as const satisfies Record<Locale, string>;
 
 const longDate = (isoDate: string, locale: Locale) =>
@@ -59,7 +62,7 @@ describe("public page content dates", () => {
 
   test("date each legal page by its document's last update in every locale", () => {
     for (const documentKey of legalDocumentKeys) {
-      for (const locale of ["en-US", "cs-CZ"] as const) {
+      for (const locale of locales) {
         expect(getLegalDocument(locale, documentKey).updatedAt).toBe(
           longDate(publicPageDefinitions[`/${documentKey}`].contentDate, locale)
         );

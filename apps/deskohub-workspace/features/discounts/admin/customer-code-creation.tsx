@@ -12,6 +12,7 @@ import {
 } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
+import { discountLabelFor } from "@/features/discounts/discount-label";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
@@ -289,7 +290,7 @@ function ChosenDiscountFields({
                 >
                   {discounts.map((discount) => (
                     <option key={discount.id} value={discount.id}>
-                      {discount.labels[locale]}
+                      {discountLabelFor(discount.labels, locale)}
                     </option>
                   ))}
                 </select>

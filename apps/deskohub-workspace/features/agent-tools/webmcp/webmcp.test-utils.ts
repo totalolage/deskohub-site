@@ -1,8 +1,9 @@
 import { mock } from "bun:test";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { Schema } from "effect";
 import type { ModelContextTool } from "./webmcp";
 
-const localeProperty = { type: "string", enum: ["en-US", "cs-CZ"] };
+const localeProperty = { type: "string", enum: [...supportedLocales] };
 
 const accessMetaKey = "cz.deskohub.workspace/access";
 
