@@ -21,21 +21,25 @@ updates URL and defaults to production, with a real customer account. Plain
 HTTP is accepted only for `localhost`, `127.0.0.1` and the emulator's host
 alias `10.0.2.2`.
 
-- Local Workspace (`bun run dev` in `apps/deskohub-workspace`):
-  `EXPO_PUBLIC_API_ORIGIN=http://localhost:3000` plus
+- Local Workspace: `EXPO_PUBLIC_API_ORIGIN=http://localhost:3000` plus
   `adb reverse tcp:3000 tcp:3000`. Better Auth trusts only `localhost:3000` in
-  development, so keep that port rather than `10.0.2.2`.
-- A preview: Vercel deployment protection answers every request without the
-  bypass, and the app never sends it. Run a local forwarding proxy that adds
-  the `x-vercel-protection-bypass` header to each request and rewrites nothing
-  else, set `EXPO_PUBLIC_API_ORIGIN=http://localhost:<proxy port>`, and
-  `adb reverse` that port. Preview data is synthetic: sign in with a
-  synthetic recipient and read its magic link from the preview's runtime
-  logs (`deskohub-workspace-account` skill,
-  `references/magic-link-delivery-and-e2e.md`). The link names the preview
-  host, which the app doesn't claim: open it in the emulator's Chrome with the
-  host replaced by the proxy origin, then choose "Open in app" so the session
-  handoff reaches the app.
+  development, so keep that port rather than `10.0.2.2`. Native email sign-in
+  opens the web bundle's `/app/sign-in`, which the Workspace dev server serves
+  only after the export is built into it
+  ([web app](web-app-and-android-page.md#app-web-app)). This is the simplest
+  backend for a dev client.
+- A preview: Vercel deployment protection refuses requests without the
+  bypass, and the app never sends it. The repository has no tool for this. A
+  local forwarding proxy on `http://localhost:<port>` (with `adb reverse`)
+  works only if it adds `x-vercel-protection-bypass` and also rewrites `Host`,
+  `Origin` and `Referer` to the preview, `Location` back to itself, and the
+  session cookie between the preview's `__Secure-` name and the plain name an
+  HTTP origin can hold: preview auth trusts only its own HTTPS host. Sign in
+  with a synthetic recipient and read its magic link from the preview's
+  runtime logs (`deskohub-workspace-account` skill,
+  `references/magic-link-delivery-and-e2e.md`); open it in the emulator's
+  Chrome at the proxy origin, the browser that holds the pending handoff,
+  then choose "Open in app".
 - Production: only for read-only checks with an account you own, never for
   booking or profile changes.
 
@@ -103,9 +107,10 @@ the app language.
 ## What a dev client can't show
 
 - Update signing, OTA delivery and the update banner need a release-shaped
-  build ([release](release.md#local-build) with `--signing debug`) pointed at
-  the server under test ([OTA updates](ota-updates.md)). A release-shaped
-  build blocks plain HTTP, so it can't use a `localhost` origin as is.
+  build ([release](release.md#local-build) with `--signing debug`) and an
+  HTTPS update origin it reaches without a bypass
+  ([OTA updates](ota-updates.md#client)). A release-shaped build blocks plain
+  HTTP, so it can't use a `localhost` origin as is.
 - Native passkeys and verified App Links trust only the release signing key on
   production, so they need the release APK on production, on a physical
   device ([auth and passkeys](auth-and-passkeys.md)). The Trusted Web Activity

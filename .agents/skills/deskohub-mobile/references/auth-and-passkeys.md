@@ -73,7 +73,8 @@ The release key's hash comes from `nativeApp.androidReleaseCertificate`
 to `releaseCertificateSha256` in `apps/deskohub-mobile/scripts/release/apk-signature.ts`.
 Android Credential Manager also checks `get_login_creds` in the RP host's
 `assetlinks.json`, so native passkeys work only with the release APK against
-production, on a physical device with a credential provider. Preview and
+production. Test them on a physical device with a credential provider; whether
+an emulator's provider completes the ceremony is unverified. Preview and
 emulator checks cover the web bundle's passkeys and the native code paths up
 to the ceremony.
 

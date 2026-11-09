@@ -1,6 +1,6 @@
 ---
 name: deskohub-mobile
-description: Mobile app, apps/deskohub-mobile, Expo, Expo Router, React Native, Hermes, mobile import ban, development build, dev client, Android emulator, T3 device panel, T3_API_35, adb reverse, Metro, EXPO_PUBLIC_API_ORIGIN, expo prebuild, Gradle, eas build --local, Android APK, mobile-v tag, mobile release, versionCode, mobile CHANGELOG, release keystore, apksigner, Sculpin font licence, OTA update, expo-updates, update server, rollback, fingerprint runtime version, MOBILE_UPDATES_CODE_SIGNING, private-key-path, update banner, /app/ PWA, web export, /android page, Obtainium, latest Android release, native sign-in, App Link, Trusted Web Activity, Custom Tabs, native passkeys, apk-key-hash, assetlinks, apple-app-site-association, app analytics, posthog-react-native.
+description: Mobile app, apps/deskohub-mobile, Expo, React Native, Hermes, mobile import ban, dev client, Android emulator, T3 device panel, adb reverse, Metro, EXPO_PUBLIC_API_ORIGIN, Gradle, eas build --local, Android APK release, mobile-v tag, versionCode, release keystore, Sculpin font licence, OTA update, expo-updates, rollback, fingerprint runtime version, MOBILE_UPDATES_CODE_SIGNING, /app/ PWA, /android page, Obtainium, latest Android release endpoint, native sign-in, Trusted Web Activity, native passkeys, apk-key-hash, assetlinks, app analytics, posthog-react-native.
 ---
 
 # Deskohub mobile app

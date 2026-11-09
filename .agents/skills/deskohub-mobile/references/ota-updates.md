@@ -61,11 +61,19 @@ MOBILE_UPDATES_CODE_SIGNING=required \
 
 ## Rollback
 
-`--rollback` appends a `rollBackToEmbedded` publication for the resolved
-runtime version, with no export and no Blob token: apps on that runtime drop
-their downloaded update and run the JavaScript embedded in their APK. The next
-normal publish for that runtime version supersedes the rollback. Rolling
-forward to an older update means republishing that commit.
+`--rollback` appends a `rollBackToEmbedded` publication for the runtime
+version the checked-out config resolves, with no export and no Blob token, so
+run it from the affected release's commit with that release's env. The
+manifest route then answers the directive until a normal publish for that
+runtime version supersedes it.
+
+The app doesn't act on the directive yet: `findReadyUpdate`
+(`apps/deskohub-mobile/src/updates/ota-update.ts`) stops when
+`checkForUpdateAsync` reports no update available, which is how `expo-updates`
+reports a rollback, and `checkAutomatically` is `ON_ERROR_RECOVERY`. A rollback
+therefore only stops further downloads of the bad update; apps that already
+applied it keep it. Fix a bad update by publishing a corrected one (a new patch
+release).
 
 ## Client
 
@@ -78,6 +86,7 @@ lasts for the session. iOS checks OTA only. `app.config.ts` sets
 `checkAutomatically: "ON_ERROR_RECOVERY"`, so updates install only through
 this prompt.
 
-Development clients load from Metro and never take OTA updates. To try the
-prompt, build a release-shaped APK with `--signing debug` aimed at a preview
-and publish to that preview.
+Development clients load from Metro and never take OTA updates. A
+release-shaped build needs an HTTPS update origin it can reach without a
+bypass, so a protected preview can't serve it; the prompt's no-update path is
+checkable against production.
