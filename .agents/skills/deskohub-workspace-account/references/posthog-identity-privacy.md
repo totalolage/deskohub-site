@@ -405,9 +405,9 @@ Filter every step to `deployment.environment.name = production`.
   captures `email provider fallback` with the `anonymous` subject whatever
   the consent, and only `stream` (`transactional` or `marketing`),
   `category` (the email category tag, such as `email-campaign`),
-  `failed_provider`, `next_provider`, `error_kind` (`provider` or
-  `message`), and `error_code`: no recipient, address, account, or message
-  ID. Don't call
+  `failed_provider`, `next_provider`, `error_kind` (the error's tag,
+  `EmailServiceError` or `NetworkError`), and `error_code` (category and
+  code only when present): no recipient, address, account, or message ID. Don't call
   `ServerAnalytics` from anywhere else; add a domain operation instead.
 - Capture never fails the work it's part of and never waits for PostHog: it
   queues the event on one `posthog-node` client per process
@@ -529,8 +529,10 @@ The processor and transfer rows are in
   when the recipient's Dotypos customer ID belongs to a customer account
   (`customer_accounts.dotypos_customer_id`) whose current analytics consent
   decision (`AnalyticsConsentLedger.currentDecision`) is a grant, the same
-  gate as `ReservationAnalyticsPerson`. Consent is re-read at every send,
-  replays included. Otherwise the message carries no identity and the
+  gate as `ReservationAnalyticsPerson`, in `CampaignRecipientAnalyticsIdentity`
+  (`features/email-campaigns/backend/campaign-recipient-analytics-identity.ts`;
+  live accounts only, and an unreadable account or consent gives no
+  identity). Consent is re-read right before every send, replays included. Otherwise the message carries no identity and the
   PostHog provider sends its one fixed system identity (`systemIdentity`).
   PostHog would use the recipient email as the distinct ID when none is
   sent, so the provider always sends one; never the email or a Dotypos ID.
