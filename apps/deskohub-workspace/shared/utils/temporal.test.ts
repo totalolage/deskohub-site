@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
-import { Option, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import {
   ceilToWholeHour,
+  currentPlainDate,
   floorToWholeHour,
   getPlainDatesBetween,
   instantStringSchema,
@@ -244,5 +246,24 @@ describe("getPlainDatesBetween", () => {
         Temporal.PlainDate.from("2026-02-01")
       ).map(String)
     ).toEqual(["2026-02-01"]);
+  });
+});
+
+describe("currentPlainDate", () => {
+  test("reads today in the time zone from the Effect clock", async () => {
+    const dates = await Effect.runPromise(
+      Effect.gen(function* () {
+        // 22:30 UTC is already the next day in Prague (CEST).
+        yield* TestClock.setTime(
+          Temporal.Instant.from("2026-08-31T22:30:00Z").epochMilliseconds
+        );
+        return [
+          yield* currentPlainDate("Europe/Prague"),
+          yield* currentPlainDate("UTC"),
+        ];
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(dates).toEqual(["2026-09-01", "2026-08-31"]);
   });
 });
