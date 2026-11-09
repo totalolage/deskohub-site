@@ -68,7 +68,8 @@ export async function expectAccessibleLanguageMenu(
     languageMenuOrder.map((locale) => languageNames[locale])
   );
 
-  const current = menu.locator('[aria-current="true"]');
+  expect(await menu.locator("[aria-current]").count()).toBe(1);
+  const current = menu.locator('[role="menuitem"][aria-current="true"]');
   expect(await current.count()).toBe(1);
   expect(await current.innerText()).toBe(languageNames[currentLocale]);
   expect(await current.getAttribute("href")).toBeNull();
@@ -76,6 +77,7 @@ export async function expectAccessibleLanguageMenu(
     if (locale === currentLocale) continue;
     const item = items.nth(index);
     expect(await item.getAttribute("aria-current")).toBeNull();
+    expect(await item.evaluate((element) => element.tagName)).toBe("A");
     expect(await item.getAttribute("href")).toBe(hrefFor(locale));
     expect(await item.getAttribute("hreflang")).toBe(locale);
   }
