@@ -1,6 +1,12 @@
 import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  within,
+} from "@testing-library/react";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import { type Locale, m } from "@/features/i18n";
 import { languageNames } from "@/features/i18n/language-labels";
@@ -37,9 +43,7 @@ afterAll(async () => {
 });
 
 test("the header switcher and the profile language control switch through the same client path", async () => {
-  const { LocaleSwitcher } = await import(
-    "@/shared/components/locale-switcher"
-  );
+  const { LanguageMenu } = await import("@/shared/components/locale-switcher");
   const { ProfileScreen } = await import(
     "@/features/account/components/profile/profile-screen"
   );
@@ -50,9 +54,10 @@ test("the header switcher and the profile language control switch through the sa
   };
   const view = render(
     <>
-      <LocaleSwitcher
+      <LanguageMenu
         locale="en-US"
-        appearance="stacked"
+        triggerLabel="Language menu"
+        tone="inverse"
         localePreference={headerPreference}
       />
       <ProfileScreen
@@ -67,8 +72,16 @@ test("the header switcher and the profile language control switch through the sa
   );
   await act(() => headerPreference.signedIn);
 
+  // Radix opens the menu on a primary-button pointerdown on its trigger.
+  await act(async () => {
+    fireEvent.pointerDown(view.getByRole("button", { name: "Language menu" }), {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse",
+    });
+  });
   fireEvent.click(
-    view.getByRole("link", {
+    within(await view.findByRole("menu")).getByRole("menuitem", {
       name: languageNames["cs-CZ"],
     })
   );
