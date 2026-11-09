@@ -158,7 +158,7 @@ describe.skipIf(!postgresDatabase)(
 
     const keyRing = `original:${Buffer.alloc(32, 1).toString("base64url")}`;
     const rotatedKeyRing = `rotated:${Buffer.alloc(32, 2).toString("base64url")}`;
-    const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
+    const reservation = Schema.decodeUnknownSync(reservationOrderSchema("CZ"))({
       kind: "cowork",
       name: "Ada Lovelace",
       email: testEmailAddress("ada"),

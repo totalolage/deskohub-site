@@ -1,7 +1,7 @@
 import { isPhoneNumber } from "@deskohub/phone-number";
 import { Predicate, Schema, SchemaGetter } from "effect";
 import isEmail from "validator/lib/isEmail.js";
-import { baseLocale, defaultPhoneRegion, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 
 const RESERVATION_VALIDATION = {
   name: { min: 2, max: 100 },
@@ -34,31 +34,50 @@ export const reservationCustomerEmailSchema = Schema.Trim.check(
   })
 );
 
-export const reservationCustomerPhoneSchema = Schema.Trim.check(
+// What a phone is in every region: the region decides only whether a number
+// without a country calling code is valid.
+const reservationCustomerPhoneTextSchema = Schema.Trim.check(
   Schema.isNonEmpty({ message: m.contactValidationPhoneRequired() }),
   Schema.isMaxLength(RESERVATION_VALIDATION.phone.max, {
     message: m.contactValidationPhoneMaximum({
       max: RESERVATION_VALIDATION.phone.max,
     }),
-  }),
-  Schema.makeFilter(
-    (phone: string) => isPhoneNumber(phone, defaultPhoneRegion(baseLocale)),
-    {
-      message: m.contactValidationPhoneInvalid(),
-    }
-  )
+  })
 );
 
-export const reservationCustomerSchema = Schema.Struct({
-  name: reservationCustomerNameSchema,
-  email: reservationCustomerEmailSchema,
-  phone: reservationCustomerPhoneSchema,
-});
+/**
+ * The phone a customer types, reading a number without a country calling code
+ * in `defaultPhoneRegion` (the visitor locale's, `defaultPhoneRegion(locale)`).
+ * It keeps the text as entered, trimmed.
+ */
+export const reservationCustomerPhoneSchema = (defaultPhoneRegion: string) =>
+  reservationCustomerPhoneTextSchema.check(
+    Schema.makeFilter(
+      (phone: string) => isPhoneNumber(phone, defaultPhoneRegion),
+      {
+        message: m.contactValidationPhoneInvalid(),
+      }
+    )
+  );
 
+/** The contact a customer types, phone read in `defaultPhoneRegion`. */
+export const reservationCustomerSchema = (defaultPhoneRegion: string) =>
+  Schema.Struct({
+    name: reservationCustomerNameSchema,
+    email: reservationCustomerEmailSchema,
+    phone: reservationCustomerPhoneSchema(defaultPhoneRegion),
+  });
+
+/**
+ * The contact of a normalized reservation. It carries no locale, so its phone
+ * is checked only for what holds in every region; whether a national number is
+ * valid is decided where the customer's input enters, with the visitor
+ * locale's region, and a provider parse reads it with the submission's locale.
+ */
 export const normalizedReservationCustomerSchema = Schema.Struct({
   name: Schema.toType(reservationCustomerNameSchema),
   email: Schema.toType(reservationCustomerEmailSchema),
-  phone: Schema.toType(reservationCustomerPhoneSchema),
+  phone: Schema.toType(reservationCustomerPhoneTextSchema),
 });
 
 /**

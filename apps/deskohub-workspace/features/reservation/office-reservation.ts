@@ -153,16 +153,13 @@ const officeReservationOrderSelectionFields = {
   seats: officeSeatsSchema,
 } as const;
 
-const officeReservationOrderBaseSchema = Schema.Struct({
-  ...reservationCustomerSchema.fields,
-  billing: reservationBillingSelectionInputSchema,
-  ...officeReservationOrderSelectionFields,
-});
-
-const officeReservationOrderInputSchema = Schema.Struct({
-  kind: Schema.Literal(officeReservationKind),
-  ...officeReservationOrderBaseSchema.fields,
-}).check(...officeReservationOrderInputChecks);
+const officeReservationOrderInputSchema = (defaultPhoneRegion: string) =>
+  Schema.Struct({
+    kind: Schema.Literal(officeReservationKind),
+    ...reservationCustomerSchema(defaultPhoneRegion).fields,
+    billing: reservationBillingSelectionInputSchema,
+    ...officeReservationOrderSelectionFields,
+  }).check(...officeReservationOrderInputChecks);
 
 const officeReservationFormSelectionFields = {
   startsOn: officeDateSchema,
@@ -170,13 +167,13 @@ const officeReservationFormSelectionFields = {
   seats: officeSeatsSchema,
 } as const;
 
-const officeReservationFormInputSchema = Schema.Struct({
-  ...reservationCustomerSchema.fields,
-  billing: reservationBillingSelectionInputSchema,
-  ...officeReservationFormSelectionFields,
-  marketingConsent: Schema.Boolean,
-}).check(
-  Schema.makeFilter(
+type OfficeReservationFormSelection = {
+  readonly startsOn: string;
+  readonly dayCount: number;
+};
+
+const officeReservationFormInputChecks = [
+  Schema.makeFilter<OfficeReservationFormSelection>(
     ({ startsOn }) =>
       startsOn === "" ||
       isOfficeReservationStartOnOrAfterToday({ startsOn }) || {
@@ -184,22 +181,24 @@ const officeReservationFormInputSchema = Schema.Struct({
         issue: m.reservationValidationOfficeStartPassed(),
       }
   ),
-  Schema.makeFilter(({ dayCount, startsOn }) => {
-    if (startsOn === "") return true;
+  Schema.makeFilter<OfficeReservationFormSelection>(
+    ({ dayCount, startsOn }) => {
+      if (startsOn === "") return true;
 
-    const endsOn = getOfficeReservationEndsOn({ startsOn, dayCount });
-    return (
-      Temporal.PlainDate.from(endsOn)
-        .add({ days: 1 })
-        .toZonedDateTime(workspaceSiteConstants.location.timeZone)
-        .toInstant().epochMilliseconds >=
-        Temporal.Now.instant().epochMilliseconds || {
-        path: ["startsOn"],
-        issue: m.reservationValidationOfficeEnded(),
-      }
-    );
-  }),
-  Schema.makeFilter(
+      const endsOn = getOfficeReservationEndsOn({ startsOn, dayCount });
+      return (
+        Temporal.PlainDate.from(endsOn)
+          .add({ days: 1 })
+          .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+          .toInstant().epochMilliseconds >=
+          Temporal.Now.instant().epochMilliseconds || {
+          path: ["startsOn"],
+          issue: m.reservationValidationOfficeEnded(),
+        }
+      );
+    }
+  ),
+  Schema.makeFilter<OfficeReservationFormSelection>(
     ({ dayCount, startsOn }) =>
       startsOn === "" ||
       isOfficeReservationWithinBookingHorizon({
@@ -209,7 +208,7 @@ const officeReservationFormInputSchema = Schema.Struct({
         issue: m.reservationValidationOfficeMaximumEnd(),
       }
   ),
-  Schema.makeFilter(
+  Schema.makeFilter<OfficeReservationFormSelection>(
     ({ dayCount, startsOn }) =>
       startsOn === "" ||
       isOfficeReservationWithinMaximumDuration({
@@ -221,13 +220,23 @@ const officeReservationFormInputSchema = Schema.Struct({
           hours: officeReservationMaximumDurationHours,
         }),
       }
-  )
-);
+  ),
+] as const;
 
-export type OfficeReservationOrderInput =
-  typeof officeReservationOrderInputSchema.Type;
-export type OfficeReservationFormInput =
-  typeof officeReservationFormInputSchema.Type;
+const officeReservationFormInputSchema = (defaultPhoneRegion: string) =>
+  Schema.Struct({
+    ...reservationCustomerSchema(defaultPhoneRegion).fields,
+    billing: reservationBillingSelectionInputSchema,
+    ...officeReservationFormSelectionFields,
+    marketingConsent: Schema.Boolean,
+  }).check(...officeReservationFormInputChecks);
+
+export type OfficeReservationOrderInput = ReturnType<
+  typeof officeReservationOrderInputSchema
+>["Type"];
+export type OfficeReservationFormInput = ReturnType<
+  typeof officeReservationFormInputSchema
+>["Type"];
 
 export const normalizedOfficeReservationOrderSchema =
   droppingRetiredReservationCustomerMessage(
@@ -531,17 +540,16 @@ const normalizeOfficeReservationOrder = (
     seats: reservation.seats,
   });
 
-const decodeOfficeReservationOrder = Schema.decodeUnknownSync(
-  officeReservationOrderInputSchema
-);
-
-export const officeReservationOrderSchema =
-  officeReservationOrderInputSchema.pipe(
+/** An office order a customer submits, phone read in `defaultPhoneRegion`. */
+export const officeReservationOrderSchema = (defaultPhoneRegion: string) => {
+  const inputSchema = officeReservationOrderInputSchema(defaultPhoneRegion);
+  return inputSchema.pipe(
     Schema.decodeTo(normalizedOfficeReservationOrderSchema, {
       decode: SchemaGetter.transform(normalizeOfficeReservationOrder),
-      encode: SchemaGetter.transform(decodeOfficeReservationOrder),
+      encode: SchemaGetter.transform(Schema.decodeUnknownSync(inputSchema)),
     })
   );
+};
 
 const normalizeOfficeReservationForm = (
   reservation: OfficeReservationFormInput
@@ -557,26 +565,32 @@ const normalizeOfficeReservationForm = (
     marketingConsent: reservation.marketingConsent,
   });
 
-export const officeReservationSchema = officeReservationFormInputSchema.pipe(
-  Schema.decodeTo(normalizedOfficeReservationFormSchema, {
-    decode: SchemaGetter.transform(normalizeOfficeReservationForm),
-    encode: SchemaGetter.transform(
-      (reservation): OfficeReservationFormInput => ({
-        name: reservation.name,
-        email: reservation.email,
-        phone: reservation.phone,
-        billing: reservation.billing ?? defaultReservationBillingSelection,
-        startsOn: reservation.startsOn,
-        dayCount: reservation.dayCount,
-        seats: reservation.seats,
-        marketingConsent: reservation.marketingConsent,
-      })
-    ),
-  })
-);
+/** The office reservation form, phone read in `defaultPhoneRegion`. */
+export const officeReservationSchema = (defaultPhoneRegion: string) =>
+  officeReservationFormInputSchema(defaultPhoneRegion).pipe(
+    Schema.decodeTo(normalizedOfficeReservationFormSchema, {
+      decode: SchemaGetter.transform(normalizeOfficeReservationForm),
+      encode: SchemaGetter.transform(
+        (reservation): OfficeReservationFormInput => ({
+          name: reservation.name,
+          email: reservation.email,
+          phone: reservation.phone,
+          billing: reservation.billing ?? defaultReservationBillingSelection,
+          startsOn: reservation.startsOn,
+          dayCount: reservation.dayCount,
+          seats: reservation.seats,
+          marketingConsent: reservation.marketingConsent,
+        })
+      ),
+    })
+  );
 
-export type OfficeReservationInput = typeof officeReservationSchema.Encoded;
-export type OfficeReservationData = typeof officeReservationSchema.Type;
+export type OfficeReservationInput = ReturnType<
+  typeof officeReservationSchema
+>["Encoded"];
+export type OfficeReservationData = ReturnType<
+  typeof officeReservationSchema
+>["Type"];
 
 export const officeReservationDefaultValues: OfficeReservationInput = {
   startsOn: "",
