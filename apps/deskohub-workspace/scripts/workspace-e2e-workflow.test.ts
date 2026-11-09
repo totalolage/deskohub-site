@@ -815,8 +815,7 @@ describe("workspace E2E workflow", () => {
     expect(setupBunAction.outputs?.path?.value).toBe(restore?.with?.path);
     expect(download?.if).toBe("steps.restore.outputs.cache-hit != 'true'");
     expect(download?.run).toContain("--retry-all-errors");
-    // A restored archive is checked as strictly as a downloaded one, so
-    // whoever created the entry, nothing else gets installed or run.
+    // A restored archive is checked as strictly as a downloaded one.
     expect(install?.if).toBeUndefined();
     expect(install?.env?.BUN_SHA256).toContain("inputs.bun-sha256");
     expect(install?.run).toContain("sha256sum --check --strict");

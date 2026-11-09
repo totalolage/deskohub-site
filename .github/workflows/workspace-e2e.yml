@@ -517,7 +517,9 @@ jobs:
       # it with retries instead of failing on a releases outage. It runs
       # before any exact-SHA code and installs the archive only if it matches
       # the pinned digest, the bun-linux-x64.zip line of the release's
-      # SHASUMS256.txt.
+      # SHASUMS256.txt. The digest covers the archive, not the rest of the
+      # restored entry, so the entry's trust still rests on its main-only
+      # writer.
       - name: Set up Bun
         uses: ./.workspace-e2e-coordinator/.github/actions/setup-bun
         with:

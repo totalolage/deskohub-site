@@ -114,12 +114,21 @@ describe("setup-bun action", () => {
     expect(statSync(job.installed).mode & 0o777).toBe(0o755);
   }, 60_000);
 
+  test("installs a restored archive without downloading it", async () => {
+    const job = runner("restored");
+    mkdirSync(join(job.archive, ".."), { recursive: true });
+    writeFileSync(job.archive, archiveBytes);
+    const install = await job.install();
+    expect(install.exitCode).toBe(0);
+    expect(archiveRequests.get("restored")).toBeUndefined();
+    expect(readFileSync(job.installed, "utf8")).toBe(binary);
+  }, 60_000);
+
   test("refuses a restored archive that does not match the pinned digest", async () => {
     const job = runner("poisoned");
     mkdirSync(join(job.archive, ".."), { recursive: true });
     writeFileSync(job.archive, archiveBytes);
-    // A cache entry someone else created holds the same archive, but the
-    // workflow pins another release's digest.
+    // The workflow pins another release's digest than the archive's.
     const install = await job.install("0".repeat(64));
     expect(install.exitCode).not.toBe(0);
     expect(existsSync(job.installed)).toBe(false);

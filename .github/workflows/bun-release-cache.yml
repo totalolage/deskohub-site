@@ -4,11 +4,10 @@ name: Bun release cache
 # Workspace E2E can set up Bun without a GitHub releases download. Workspace
 # E2E runs exact-SHA code and saves nothing, and setup-bun's own cache saves
 # after the job's code ran, so this workflow saves the entry: only on main,
-# from main's code, before running anything else. The action checks the
-# archive against its pinned digest on every restore, so a missing entry that
-# someone else created can't install anything else. Restoring main's entry
-# twice a week keeps it from being evicted while E2E is idle, and a pull
-# request that changes the action runs it without saving anything.
+# from main's code, before running anything else. Restoring main's entry
+# twice a week keeps it from being evicted while E2E is idle, so a saved entry,
+# which nothing can overwrite, stays the one E2E restores. A pull request that
+# changes the action runs it without saving anything.
 on:
   push:
     branches: [main]

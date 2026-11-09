@@ -24,9 +24,9 @@ runs:
   using: composite
   steps:
     # Restore only. bun-release-cache.yml saves the entry from main's code,
-    # but a job that ran exact-SHA code before a later JS action could still
-    # create a missing entry, so the archive is trusted only after it matches
-    # the pinned digest below, never for having come from the cache.
+    # and an entry can't be overwritten once saved. The restore extracts the
+    # entry before any check runs, so this relies on that writer; the pinned
+    # digest below then keeps any other archive from being installed.
     - name: Restore Bun release
       id: restore
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
