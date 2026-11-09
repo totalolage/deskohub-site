@@ -14,7 +14,10 @@ import {
   waitForPageTextContent,
   waitForReactHandler,
 } from "../browser";
-import type { E2EBrowserSession } from "../browser-session";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
 import { workspaceE2EMaximumSameDateCoworkReservations } from "../capacity";
 import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import {
@@ -66,13 +69,14 @@ import {
   prepareDotyposCustomerDiscount,
 } from "../integrations/dotypos";
 import { pollUntil } from "../polling";
-import type { Runner } from "../runtime";
-import { addRedaction, assert, browserSessionFor, log } from "../runtime";
+import { addRedaction } from "../redaction";
+import { assert, log } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
   CheckoutData,
   CheckoutFlowState,
   WorkspaceE2ECase,
+  WorkspaceE2ECaseContext,
 } from "../types";
 import { makeUrl, setSearchParams } from "../urls";
 import { executeCheckoutFlow } from "./checkout";
@@ -209,7 +213,7 @@ export const makeDiscountE2ECases = ({
     const codeCheckoutState = trackCheckoutState(flowStates, codeCheckoutData);
     cases.push({
       checkoutStates: [codeCheckoutState],
-      execute: ({ run, runStep, session }) =>
+      execute: ({ openSeparateSession, openSession, runStep }) =>
         executeDiscountCheckout({
           config,
           data: codeCheckoutData,
@@ -223,9 +227,9 @@ export const makeDiscountE2ECases = ({
             ...coworkAutomaticDiscounts,
             codeDiscountExpectation,
           ],
-          run,
           runStep,
-          session,
+          openSeparateSession,
+          openSession,
           state: codeCheckoutState,
         }).pipe(
           Effect.provideService(HttpClient.HttpClient, httpClient),
@@ -246,15 +250,14 @@ export const makeDiscountE2ECases = ({
     const expiringCodeState = trackCheckoutState(flowStates, expiringCodeData);
     cases.push({
       checkoutStates: [expiringCodeState],
-      execute: ({ run, runStep, session }) =>
+      execute: ({ openSession, runStep }) =>
         executeDiscountCodeExpiresBeforePayment({
           code: discountCodeFixtures.expiresBeforePayment.code,
           codeId: discountCodeFixtures.expiresBeforePayment.id,
           config,
           data: expiringCodeData,
-          run,
           runStep,
-          session,
+          openSession,
           state: expiringCodeState,
         }).pipe(
           Effect.mapError((cause) =>
@@ -277,16 +280,16 @@ export const makeDiscountE2ECases = ({
     );
     cases.push({
       checkoutStates: [calendarCheckoutState],
-      execute: ({ run, runStep, session }) =>
+      execute: ({ openSeparateSession, openSession, runStep }) =>
         executeDiscountCheckout({
           config,
           data: calendarCheckoutData,
           datasourceConfig,
           expectedDiscounts: coworkAutomaticDiscounts,
           flowId: "cowork-calendar-sale",
-          run,
           runStep,
-          session,
+          openSeparateSession,
+          openSession,
           state: calendarCheckoutState,
           // The least loaded payment lane carries the product-independent
           // post-fulfillment paths for every paid case.
@@ -320,7 +323,7 @@ export const makeDiscountE2ECases = ({
     );
     cases.push({
       checkoutStates: [quoteChangeState, paymentChangeState],
-      execute: ({ run, runStep, session }) =>
+      execute: ({ openSession, runStep }) =>
         withE2ECalendarSaleReservedDeskEligibility(
           executeCalendarSalePricingChanges({
             config,
@@ -328,9 +331,8 @@ export const makeDiscountE2ECases = ({
             paymentChangeState,
             quoteChangeData,
             quoteChangeState,
-            run,
             runStep,
-            session,
+            openSession,
           })
         ).pipe(
           Effect.mapError((cause) =>
@@ -366,7 +368,7 @@ export const makeDiscountE2ECases = ({
       const state = trackCheckoutState(flowStates, scenario.data);
       cases.push({
         checkoutStates: [state],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSeparateSession, openSession, runStep }) =>
           Effect.gen(function* () {
             yield* runStep({
               execute: prepareDotyposCustomerDiscount(
@@ -385,9 +387,9 @@ export const makeDiscountE2ECases = ({
                 "discountCode" in scenario ? scenario.discountCode : undefined,
               expectedDiscounts: scenario.expectedDiscounts,
               flowId: `cowork-${scenario.id}`,
-              run,
               runStep,
-              session,
+              openSeparateSession,
+              openSession,
               state,
             });
           }).pipe(
@@ -413,16 +415,15 @@ export const makeDiscountE2ECases = ({
     );
     cases.push({
       checkoutStates: [changingCustomerDiscountState],
-      execute: ({ run, runStep, session }) =>
+      execute: ({ openSession, runStep }) =>
         executeCustomerDiscountChangesBeforePayment({
           config,
           customerDiscount: customerDiscountExpectation,
           data: changingCustomerDiscountData,
           datasourceConfig,
           discountGroupId: customerDiscountGroup.id,
-          run,
           runStep,
-          session,
+          openSession,
           state: changingCustomerDiscountState,
         }).pipe(
           Effect.mapError((cause) =>
@@ -446,14 +447,13 @@ export const makeDiscountE2ECases = ({
       const state = trackCheckoutState(flowStates, data);
       cases.push({
         checkoutStates: [state],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           executeUnavailableDiscountCode({
             code: scenario.code,
             config,
             data,
-            run,
             runStep,
-            session,
+            openSession,
             state,
           }).pipe(
             Effect.mapError((cause) =>
@@ -490,7 +490,7 @@ export const makeDiscountE2ECases = ({
     );
     cases.push({
       checkoutStates: [capacityOwnerState, capacityContenderState],
-      execute: ({ run, runStep, session }) =>
+      execute: ({ openSession, runStep }) =>
         executeConsumedDiscountCode({
           code: discountCodeFixtures.capacityOne.code,
           config,
@@ -499,9 +499,8 @@ export const makeDiscountE2ECases = ({
           datasourceConfig,
           ownerData: capacityOwnerData,
           ownerState: capacityOwnerState,
-          run,
           runStep,
-          session,
+          openSession,
         }).pipe(
           Effect.mapError((cause) =>
             toWorkspaceE2EError("run exhausted-capacity code e2e case", cause)
@@ -534,7 +533,7 @@ export const makeDiscountE2ECases = ({
     );
     cases.push({
       checkoutStates: [redemptionOwnerState, redemptionContenderState],
-      execute: ({ run, runStep, session }) =>
+      execute: ({ openSession, runStep }) =>
         executeConsumedDiscountCode({
           code: discountCodeFixtures.onePerCustomer.code,
           config,
@@ -543,9 +542,8 @@ export const makeDiscountE2ECases = ({
           datasourceConfig,
           ownerData: redemptionOwnerData,
           ownerState: redemptionOwnerState,
-          run,
           runStep,
-          session,
+          openSession,
         }).pipe(
           Effect.mapError((cause) =>
             toWorkspaceE2EError("run already-redeemed code e2e case", cause)
@@ -565,15 +563,15 @@ export const makeDiscountE2ECases = ({
     const voucherFullState = trackCheckoutState(flowStates, voucherFullData);
     cases.push({
       checkoutStates: [voucherFullState],
-      execute: ({ run, runStep, session }) =>
+      execute: ({ openSeparateSession, openSession, runStep }) =>
         executeFullyConsumedVoucherCheckout({
           automaticDiscounts: coworkAutomaticDiscounts,
           config,
           data: voucherFullData,
           datasourceConfig,
-          run,
           runStep,
-          session,
+          openSeparateSession,
+          openSession,
           state: voucherFullState,
         }).pipe(
           Effect.provideService(HttpClient.HttpClient, httpClient),
@@ -615,7 +613,7 @@ export const makeDiscountE2ECases = ({
         voucherReuseState,
         voucherExhaustedState,
       ],
-      execute: ({ run, runStep, session }) =>
+      execute: ({ openSession, runStep }) =>
         executeVoucherReuse({
           config,
           datasourceConfig,
@@ -625,9 +623,8 @@ export const makeDiscountE2ECases = ({
           ownerState: voucherOwnerState,
           reuseData: voucherReuseData,
           reuseState: voucherReuseState,
-          run,
           runStep,
-          session,
+          openSession,
         }).pipe(
           Effect.mapError((cause) =>
             toWorkspaceE2EError("run reusable voucher e2e case", cause)
@@ -658,22 +655,20 @@ const calendarSaleAdvertisementStepTimeoutMs = (config: WorkspaceE2EConfig) =>
 export const waitForAdvertisedCalendarSale = ({
   config,
   data,
-  run,
-  session,
+  openSession,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
-  readonly run: Runner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   pollUntil(
     Effect.gen(function* () {
-      const browser = yield* browserSessionFor(run, session);
+      const browser = yield* openSession;
       yield* openPage(browser, config, data.checkoutUrl, {
         timeoutMs: config.timeouts.browserNavigation,
       });
       // The in-page waits fail with plain errors, so an overrun of the
-      // evaluation stays a failure, as the argv evaluation's was.
+      // evaluation stays a failure.
       yield* browser
         .evaluate(
           "prepare advertised Calendar sale",
@@ -705,18 +700,16 @@ const executeCalendarSalePricingChanges = ({
   paymentChangeState,
   quoteChangeData,
   quoteChangeState,
-  run,
   runStep,
-  session,
+  openSession,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly paymentChangeData: CheckoutData;
   readonly paymentChangeState: CheckoutFlowState;
   readonly quoteChangeData: CheckoutData;
   readonly quoteChangeState: CheckoutFlowState;
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     paymentChangeState.startedAt = new Date();
@@ -724,15 +717,14 @@ const executeCalendarSalePricingChanges = ({
       execute: waitForAdvertisedCalendarSale({
         config,
         data: paymentChangeData,
-        run,
-        session,
+        openSession,
       }),
       id: "advertise-calendar-sale",
       timeoutMs: calendarSaleAdvertisementStepTimeoutMs(config),
     });
     const { orderId: paymentChangeOrderId, payPageUrl } = yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         const orderId = yield* submitReservationForPayPage({
           data: paymentChangeData,
           onOrderId: (startedOrderId) => {
@@ -754,7 +746,7 @@ const executeCalendarSalePricingChanges = ({
     paymentChangeState.orderId = paymentChangeOrderId;
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* assertDisplayedDiscounts({
           config,
           discounts: [calendarDiscountExpectation],
@@ -770,8 +762,7 @@ const executeCalendarSalePricingChanges = ({
       execute: waitForAdvertisedCalendarSale({
         config,
         data: quoteChangeData,
-        run,
-        session,
+        openSession,
       }),
       id: "advertise-calendar-sale-before-quote",
       timeoutMs: calendarSaleAdvertisementStepTimeoutMs(config),
@@ -784,7 +775,7 @@ const executeCalendarSalePricingChanges = ({
 
     const quoteChangeOrderId = yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         const orderId = yield* submitReservationForPayPage({
           data: quoteChangeData,
           onOrderId: (startedOrderId) => {
@@ -810,7 +801,7 @@ const executeCalendarSalePricingChanges = ({
 
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* openPage(browser, config, payPageUrl, {
           timeoutMs: config.timeouts.browserNavigation,
         });
@@ -826,7 +817,7 @@ const executeCalendarSalePricingChanges = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* submitCheckoutPaymentAndWaitForPricingChanged(config, browser);
       }),
       id: "assert-calendar-payment-pricing-change",
@@ -846,9 +837,8 @@ const executeCustomerDiscountChangesBeforePayment = ({
   data,
   datasourceConfig,
   discountGroupId,
-  run,
   runStep,
-  session,
+  openSession,
   state,
 }: {
   readonly config: WorkspaceE2EConfig;
@@ -856,9 +846,8 @@ const executeCustomerDiscountChangesBeforePayment = ({
   readonly data: CheckoutData;
   readonly datasourceConfig: DatasourceConfig;
   readonly discountGroupId: DotyposDiscountGroupId;
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
   readonly state: CheckoutFlowState;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
@@ -874,7 +863,7 @@ const executeCustomerDiscountChangesBeforePayment = ({
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* openPage(browser, config, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
         });
@@ -892,7 +881,7 @@ const executeCustomerDiscountChangesBeforePayment = ({
       timeoutMs: config.timeouts.checkoutStart,
     });
     state.orderId = orderId;
-    const browser = yield* browserSessionFor(run, session);
+    const browser = yield* openSession;
     yield* assertDisplayedDiscounts({
       config,
       discounts: [customerDiscount],
@@ -921,7 +910,7 @@ const executeCustomerDiscountChangesBeforePayment = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* submitCheckoutPaymentAndWaitForPricingChanged(config, browser);
       }),
       id: "assert-customer-discount-pricing-change",
@@ -955,9 +944,8 @@ const executeConsumedDiscountCode = ({
   datasourceConfig,
   ownerData,
   ownerState,
-  run,
   runStep,
-  session,
+  openSession,
 }: {
   readonly code: string;
   readonly config: WorkspaceE2EConfig;
@@ -966,9 +954,8 @@ const executeConsumedDiscountCode = ({
   readonly datasourceConfig: DatasourceConfig;
   readonly ownerData: CheckoutData;
   readonly ownerState: CheckoutFlowState;
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     yield* executeZeroTotalCheckout({
@@ -976,9 +963,8 @@ const executeConsumedDiscountCode = ({
       data: ownerData,
       datasourceConfig,
       discountCode: code,
-      run,
       runStep,
-      session,
+      openSession,
       state: ownerState,
       preparation: toReservationStep(ownerData),
     });
@@ -986,9 +972,8 @@ const executeConsumedDiscountCode = ({
       code,
       config,
       data: contenderData,
-      run,
       runStep,
-      session,
+      openSession,
       state: contenderState,
     });
   });
@@ -1002,9 +987,8 @@ const executeVoucherReuse = ({
   ownerState,
   reuseData,
   reuseState,
-  run,
   runStep,
-  session,
+  openSession,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
@@ -1014,9 +998,8 @@ const executeVoucherReuse = ({
   readonly ownerState: CheckoutFlowState;
   readonly reuseData: CheckoutData;
   readonly reuseState: CheckoutFlowState;
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const fixture = discountCodeFixtures.voucherReuse;
@@ -1026,9 +1009,8 @@ const executeVoucherReuse = ({
       data: ownerData,
       datasourceConfig,
       discountCode: fixture.code,
-      run,
       runStep,
-      session,
+      openSession,
       state: ownerState,
       stepIdPrefix: "first-voucher-",
       preparation: toReservationStep(ownerData),
@@ -1039,9 +1021,8 @@ const executeVoucherReuse = ({
       data: reuseData,
       datasourceConfig,
       discountCode: fixture.code,
-      run,
       runStep,
-      session,
+      openSession,
       state: reuseState,
       stepIdPrefix: "reused-voucher-",
       preparation: toReservationStep(reuseData),
@@ -1081,9 +1062,8 @@ const executeVoucherReuse = ({
       code: fixture.code,
       config,
       data: exhaustedData,
-      run,
       runStep,
-      session,
+      openSession,
       state: exhaustedState,
     });
   });
@@ -1093,18 +1073,18 @@ const executeFullyConsumedVoucherCheckout = ({
   config,
   data,
   datasourceConfig,
-  run,
   runStep,
-  session,
+  openSeparateSession,
+  openSession,
   state,
 }: {
   readonly automaticDiscounts: readonly ExpectedDiscountApplication[];
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
   readonly datasourceConfig: DatasourceConfig;
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSeparateSession: WorkspaceE2ECaseContext["openSeparateSession"];
+  readonly openSession: OpenE2EBrowserSession;
   readonly state: CheckoutFlowState;
 }): Effect.Effect<
   void,
@@ -1131,9 +1111,9 @@ const executeFullyConsumedVoucherCheckout = ({
         },
       ],
       flowId: "cowork-voucher-full-usage",
-      run,
       runStep,
-      session,
+      openSeparateSession,
+      openSession,
       state,
     });
     const orderId = yield* tryWorkspaceE2ESync(
@@ -1171,9 +1151,9 @@ const executeDiscountCheckout = ({
   expectedDiscounts,
   flowId,
   reservationPageDiscounts,
-  run,
   runStep,
-  session,
+  openSeparateSession,
+  openSession,
   state,
   verifyPostFulfillmentPaths,
 }: {
@@ -1185,9 +1165,9 @@ const executeDiscountCheckout = ({
   readonly expectedDiscounts: readonly ExpectedDiscountApplication[];
   readonly flowId: string;
   readonly reservationPageDiscounts?: readonly ExpectedDiscountApplication[];
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSeparateSession: WorkspaceE2ECaseContext["openSeparateSession"];
+  readonly openSession: OpenE2EBrowserSession;
   readonly state: CheckoutFlowState;
   readonly verifyPostFulfillmentPaths?: boolean;
 }): Effect.Effect<
@@ -1201,7 +1181,7 @@ const executeDiscountCheckout = ({
   executeCheckoutFlow({
     beforeReservationSubmit: reservationPageDiscounts
       ? Effect.gen(function* () {
-          const browser = yield* browserSessionFor(run, session);
+          const browser = yield* openSession;
           yield* assertDisplayedDiscounts({
             config,
             discounts: reservationPageDiscounts,
@@ -1222,7 +1202,7 @@ const executeDiscountCheckout = ({
       if (automaticDiscounts.length > 0) {
         steps.push({
           execute: Effect.gen(function* () {
-            const browser = yield* browserSessionFor(run, session);
+            const browser = yield* openSession;
             yield* assertDisplayedDiscounts({
               config,
               discounts: automaticDiscounts,
@@ -1236,7 +1216,7 @@ const executeDiscountCheckout = ({
       if (discountCode) {
         steps.push({
           execute: Effect.gen(function* () {
-            const browser = yield* browserSessionFor(run, session);
+            const browser = yield* openSession;
             yield* applyDiscountCode({
               appliedMessage,
               code: discountCode,
@@ -1250,7 +1230,7 @@ const executeDiscountCheckout = ({
       }
       steps.push({
         execute: Effect.gen(function* () {
-          const browser = yield* browserSessionFor(run, session);
+          const browser = yield* openSession;
           yield* assertDisplayedDiscounts({
             config,
             discounts: expectedDiscounts,
@@ -1262,9 +1242,9 @@ const executeDiscountCheckout = ({
       });
       return steps;
     },
-    run,
     runStep,
-    session,
+    openSeparateSession,
+    openSession,
     state,
     verifyPostFulfillmentPaths,
   });
@@ -1273,24 +1253,22 @@ const executeUnavailableDiscountCode = ({
   code,
   config,
   data,
-  run,
   runStep,
-  session,
+  openSession,
   state,
 }: {
   readonly code: string;
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
   readonly state: CheckoutFlowState;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* openPage(browser, config, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
         });
@@ -1310,7 +1288,7 @@ const executeUnavailableDiscountCode = ({
     state.orderId = orderId;
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* applyUnavailableDiscountCode({ code, config, session: browser });
         yield* assertPageCheck(
           browser,
@@ -1336,25 +1314,23 @@ const executeDiscountCodeExpiresBeforePayment = ({
   codeId,
   config,
   data,
-  run,
   runStep,
-  session,
+  openSession,
   state,
 }: {
   readonly code: string;
   readonly codeId: DiscountCodeId;
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
   readonly state: CheckoutFlowState;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* openPage(browser, config, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
         });
@@ -1374,7 +1350,7 @@ const executeDiscountCodeExpiresBeforePayment = ({
     state.orderId = orderId;
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* applyDiscountCode({
           appliedMessage: "Promotion applied: 10% off 🎉",
           code,
@@ -1392,7 +1368,7 @@ const executeDiscountCodeExpiresBeforePayment = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* submitCheckoutPaymentAndWaitForPricingChanged(config, browser);
       }),
       id: "assert-expired-code-pricing-change",

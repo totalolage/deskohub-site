@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { type Browser, chromium } from "@playwright/test";
-import { Deferred, Effect, Fiber } from "effect";
+import { Deferred, Effect, Exit, Fiber, Scope } from "effect";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
-import type { E2EBrowserSession } from "../browser-session";
+import { E2EBrowserSession } from "../browser-session";
 import { runE2ECase } from "../case-runner";
 import {
   type BrowserStepDriver,
@@ -12,11 +12,7 @@ import {
 } from "../case-runner.browser.test-utils";
 import type { WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
-import {
-  assert,
-  browserSessionFor,
-  makePlaywrightBrowserRunner,
-} from "../runtime";
+import { assert } from "../runtime";
 import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
@@ -450,16 +446,22 @@ test.skipIf(!chromiumAvailable)(
   "fills nothing and cancels the step when the case is interrupted during the handler wait",
   async () => {
     assert(browser, "Chromium is not running");
-    const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
-    const id = `referral-account-cancel-${randomUUID()}`;
+    // The session outlives the interrupted case, so the test reads it after.
+    const scope = Scope.makeUnsafe();
     const observations: E2ETelemetryObservation[] = [];
     const started = Deferred.makeUnsafe<void>();
     try {
+      const session = await Effect.runPromise(
+        E2EBrowserSession.open({
+          browser,
+          id: `referral-account-cancel-${randomUUID()}`,
+          recordHar: false,
+        }).pipe(Scope.provide(scope))
+      );
       const fiber = Effect.runFork(
         runE2ECase({
           body: (step) =>
             Effect.gen(function* () {
-              const session = yield* browserSessionFor(run, id);
               yield* showPage(profileForm({ hydrateAfterMs: 2000 }))(session);
               yield* Deferred.succeed(started, undefined);
               yield* step({
@@ -485,18 +487,16 @@ test.skipIf(!chromiumAvailable)(
       // Past the hydration the interrupted wait was still waiting for.
       await Bun.sleep(3000);
       const fields = await Effect.runPromise(
-        Effect.flatMap(browserSessionFor(run, id), (session) =>
-          session.evaluate(
-            "read profile fields",
-            () =>
-              [
-                ...document.querySelectorAll<HTMLInputElement>(
-                  "#account-profile-form input"
-                ),
-              ].map((input) => input.value),
-            undefined,
-            { timeoutMs: 5000 }
-          )
+        session.evaluate(
+          "read profile fields",
+          () =>
+            [
+              ...document.querySelectorAll<HTMLInputElement>(
+                "#account-profile-form input"
+              ),
+            ].map((input) => input.value),
+          undefined,
+          { timeoutMs: 5000 }
         )
       );
 
@@ -507,7 +507,7 @@ test.skipIf(!chromiumAvailable)(
       ).toEqual(["cancelled"]);
       expect(fields).toEqual(["", "", "", ""]);
     } finally {
-      await run.close?.();
+      await Effect.runPromise(Scope.close(scope, Exit.void));
     }
   },
   60_000

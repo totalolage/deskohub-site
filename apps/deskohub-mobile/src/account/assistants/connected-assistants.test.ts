@@ -94,7 +94,7 @@ const disconnect = async (registry: AtomRegistry.AtomRegistry, id: string) => {
 };
 
 describe("assistantConnectionsAtom", () => {
-  test("reads the connections without spending Dotypos reads", async () => {
+  test("reads the connections without spending account reads", async () => {
     const data = makeFakeCustomerData("linked");
     withAssistants(data, [connection()]);
 

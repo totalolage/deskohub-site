@@ -26,7 +26,7 @@ import { formatInstant, parseInstant } from "../../i18n/date-time-format";
 export const assistantConnectionsAtom = customerDataRuntime.atom(
   Effect.flatMap(Effect.service(CustomerApi), (api) =>
     api.account.listAssistantConnections()
-  ).pipe(customerRead({ dotyposBacked: false }))
+  ).pipe(customerRead({ accountRead: false }))
 );
 
 /**

@@ -7,6 +7,7 @@ import { Effect, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { HttpClientError, HttpClientRequest } from "effect/unstable/http";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AccountReadBudget, accountReadAllowance } from "./account-read-budget";
 import { CustomerSessionCheck } from "./customer-api.service";
 import {
   customerRead,
@@ -14,12 +15,11 @@ import {
   refreshAfterWrite,
 } from "./customer-request";
 import { CustomerRequestDispatch } from "./customer-request-dispatch";
-import { DotyposReadBudget, dotyposReadAllowance } from "./dotypos-read-budget";
 
 const harness = () => {
   const sessionChecks: string[] = [];
   const layer = Layer.mergeAll(
-    DotyposReadBudget.Default,
+    AccountReadBudget.Default,
     Layer.succeed(CustomerSessionCheck, {
       recheck: Effect.sync(() => {
         sessionChecks.push("recheck");
@@ -28,13 +28,13 @@ const harness = () => {
     TestClock.layer()
   );
   const run = <A, E>(
-    effect: Effect.Effect<A, E, DotyposReadBudget | CustomerSessionCheck>
+    effect: Effect.Effect<A, E, AccountReadBudget | CustomerSessionCheck>
   ) =>
     Effect.gen(function* () {
       const fiber = yield* Effect.forkChild(Effect.result(effect));
       yield* TestClock.adjust("1 minute");
       const result = yield* Fiber.join(fiber);
-      const remaining = yield* (yield* DotyposReadBudget).remaining;
+      const remaining = yield* (yield* AccountReadBudget).remaining;
       return { result, remaining };
     }).pipe(Effect.provide(layer), Effect.runPromise);
   return { run, sessionChecks };
@@ -55,32 +55,32 @@ const transportFailure = new HttpClientError.HttpClientError({
 });
 
 describe("customerRead", () => {
-  test("spends the read budget for a Dotypos-backed read", async () => {
+  test("spends the read budget for an account read", async () => {
     const { run } = harness();
 
     const { result, remaining } = await run(
-      customerRead({ dotyposBacked: true })(sent(Effect.succeed("history")))
+      customerRead({ accountRead: true })(sent(Effect.succeed("history")))
     );
 
     expect(result).toMatchObject({ _tag: "Success", success: "history" });
-    expect(remaining).toBe(dotyposReadAllowance.reads - 1);
+    expect(remaining).toBe(accountReadAllowance.reads - 1);
   });
 
   test("leaves the budget alone for a Workspace-only read", async () => {
     const { run } = harness();
 
     const { remaining } = await run(
-      customerRead({ dotyposBacked: false })(sent(Effect.succeed("passkeys")))
+      customerRead({ accountRead: false })(sent(Effect.succeed("passkeys")))
     );
 
-    expect(remaining).toBe(dotyposReadAllowance.reads);
+    expect(remaining).toBe(accountReadAllowance.reads);
   });
 
   test("gives up on a read with no answer in time", async () => {
     const { run } = harness();
 
     const { result } = await run(
-      customerRead({ dotyposBacked: false })(Effect.never)
+      customerRead({ accountRead: false })(Effect.never)
     );
 
     expect(result).toMatchObject({
@@ -93,7 +93,7 @@ describe("customerRead", () => {
     const { run, sessionChecks } = harness();
 
     const { result } = await run(
-      customerRead({ dotyposBacked: false })(
+      customerRead({ accountRead: false })(
         Effect.fail(new CustomerSessionRequired())
       )
     );
@@ -111,12 +111,12 @@ describe("customerRead attempts", () => {
     const { run } = harness();
 
     const { remaining } = await run(
-      customerRead({ dotyposBacked: true })(
+      customerRead({ accountRead: true })(
         Effect.andThen(sent(Effect.void), sent(Effect.succeed("history")))
       )
     );
 
-    expect(remaining).toBe(dotyposReadAllowance.reads - 2);
+    expect(remaining).toBe(accountReadAllowance.reads - 2);
   });
 });
 

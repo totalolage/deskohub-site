@@ -192,7 +192,7 @@
   "account_cancel": "Zrušit",
   "account_error_unavailable": "Nepodařilo se spojit s Deskohubem. Zkontroluj připojení a zkus to znovu.",
   "account_error_timeout": "Deskohub odpovídá příliš dlouho. Zkontroluj připojení a zkus to znovu.",
-  "account_error_rate_limited": "V krátké době proběhlo hodně obnovení. Počkej pár minut a zkus to znovu.",
+  "account_error_rate_limited": "Za krátkou dobu přišlo hodně požadavků. Počkej pár minut a zkus to znovu.",
   "account_error_session": "Ověřujeme tvoje přihlášení.",
   "account_error_unexpected": "Něco se pokazilo. Zkus to znovu.",
   "account_save_unconfirmed": "Změnu se nám nepodařilo potvrdit. Tohle je stav, který má Deskohub teď uložený.",

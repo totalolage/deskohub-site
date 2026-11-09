@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect";
 import { apiOrigin, authClient } from "../auth/auth-client";
+import { AccountReadBudget } from "./account-read-budget";
 import {
   type AccountSession,
   accountDeviceLayer,
@@ -13,7 +14,6 @@ import {
 import { customerApiTransportLayer } from "./customer-api-transport";
 import type { CustomerDataServices } from "./customer-data-runtime";
 import { deviceCapabilitiesLayer } from "./device-capabilities-layer";
-import { DotyposReadBudget } from "./dotypos-read-budget";
 
 /**
  * The production data layer for one signed-in account. A 401 asks the
@@ -28,7 +28,7 @@ export const liveCustomerDataLayer = ({
     Layer.mergeAll(CustomerApi.Default, CustomerAuthApi.Default).pipe(
       Layer.provide(customerApiTransportLayer)
     ),
-    DotyposReadBudget.Default,
+    AccountReadBudget.Default,
     Layer.succeed(CustomerSessionCheck, {
       recheck: Effect.sync(() => authClient.$store.notify("$sessionSignal")),
     }),

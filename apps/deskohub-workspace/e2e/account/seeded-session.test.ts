@@ -15,7 +15,7 @@ import { makeDatabaseClient, makeDatabasePool } from "../../db/database-client";
 import type { E2EBrowserSession } from "../browser-session";
 import { WorkspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
-import { redact } from "../runtime";
+import { redact } from "../redaction";
 import {
   resolveWorkspaceE2ESessionSigningSecret,
   signInWorkspaceE2ESyntheticAccount,

@@ -19,6 +19,23 @@ const updateProfile: CustomerApiCall = {
   body: { firstName: "Ada" },
 };
 const getAccount: CustomerApiCall = { method: "GET", path: "/account" };
+const getMarketingPreferences: CustomerApiCall = {
+  method: "GET",
+  path: "/account/marketing-preferences",
+};
+const orderId = "019edbcf-5026-7ecc-821b-eda46998eaaa";
+const listReservations: CustomerApiCall = {
+  method: "GET",
+  path: "/reservations",
+};
+const getReservationStatus: CustomerApiCall = {
+  method: "GET",
+  path: `/reservations/${orderId}/status`,
+};
+const getReservationAccess: CustomerApiCall = {
+  method: "GET",
+  path: `/reservations/${orderId}/access`,
+};
 const getAvailability: CustomerApiCall = {
   method: "GET",
   path: "/booking/availability?kind=cowork",
@@ -166,16 +183,27 @@ describe("customer session authentication", () => {
 });
 
 describe("customer request budgets", () => {
-  test("spends the general and the Dotypos read budget on a Dotypos-backed read, under keys without the account id", async () => {
+  test("spends the general and the account read budget on an account read, under keys without the account id", async () => {
     const result = await serve(getAccount);
 
     expect(result.status).toBe(200);
     const keys = result.budgetSpends.map(({ key }) => key);
     expect(keys).toEqual([
       expect.stringMatching(/^customer-api:account:/),
-      expect.stringMatching(/^customer-api:dotypos-read:account:/),
+      expect.stringMatching(/^customer-api:account-read:account:/),
     ]);
     expect(keys.join()).not.toContain("operations-test-account");
+  });
+
+  test("spends the general and the Dotypos read budget on another Dotypos-backed read", async () => {
+    const api = makeCustomerApiTestServer({ services: linkedAccountServices });
+
+    await api.handle(customerApiRequest(getMarketingPreferences));
+
+    expect(api.records.budgetSpends.map(({ key }) => key)).toEqual([
+      expect.stringMatching(/^customer-api:account:/),
+      expect.stringMatching(/^customer-api:dotypos-read:account:/),
+    ]);
   });
 
   test("spends the general and the Dotypos mutation budget on a Dotypos-backed mutation", async () => {
@@ -224,14 +252,69 @@ describe("customer request budgets", () => {
     return statuses;
   };
 
-  test("refuses as rate limited once the account spent its Dotypos read budget, and still serves its mutations", async () => {
+  test("refuses as rate limited once the account made 40 account reads, and still serves its other reads and its mutations", async () => {
     const api = makeCustomerApiTestServer({ services: linkedAccountServices });
 
-    expect(await statusesOf(api, getAccount, 21)).toEqual([
-      ...Array(20).fill(200),
+    expect(await statusesOf(api, getAccount, 41)).toEqual([
+      ...Array(40).fill(200),
+      429,
+    ]);
+    expect(await statusesOf(api, getMarketingPreferences, 1)).not.toEqual([
       429,
     ]);
     expect(await statusesOf(api, updateProfile, 1)).toEqual([200]);
+  });
+
+  test("refuses as rate limited once the account spent its Dotypos read budget, and still serves its account reads and mutations", async () => {
+    const api = makeCustomerApiTestServer({ services: linkedAccountServices });
+
+    const statuses = await statusesOf(api, getMarketingPreferences, 21);
+
+    expect(statuses.slice(0, 20)).not.toContain(429);
+    expect(statuses[20]).toBe(429);
+    expect(await statusesOf(api, getAccount, 1)).toEqual([200]);
+    expect(await statusesOf(api, updateProfile, 1)).toEqual([200]);
+  });
+
+  // The per-flow cost the budget comment documents: opening the app reads
+  // the account and the history; a booking reads the account at the booking
+  // screen, the order's status once and then up to nine times while the
+  // payment return settles, the history and the door code. Two bookings
+  // and a session's navigation stay under the budget. Navigation comes
+  // last, so both polling sequences run with the app's reserve still free.
+  test("spends 38 account reads on two bookings with full payment-return polling and a session's navigation, and refuses none of them", async () => {
+    const api = makeCustomerApiTestServer({ services: linkedAccountServices });
+    const booking = [
+      getAccount,
+      ...Array(10).fill(getReservationStatus),
+      listReservations,
+      getReservationAccess,
+    ];
+    const navigation = [
+      ...Array(5).fill(getAccount),
+      ...Array(5).fill(listReservations),
+    ];
+    const session = [
+      getAccount,
+      listReservations,
+      ...booking,
+      ...booking,
+      ...navigation,
+    ];
+
+    const statuses: number[] = [];
+    for (const call of session) {
+      statuses.push(...(await statusesOf(api, call, 1)));
+    }
+
+    expect(session).toHaveLength(38);
+    expect(statuses).not.toContain(429);
+    expect(
+      api.records.budgetSpends.filter(({ key }) =>
+        key.startsWith("customer-api:account-read:")
+      )
+    ).toHaveLength(38);
+    expect(await statusesOf(api, getAccount, 3)).toEqual([200, 200, 429]);
   });
 
   test("refuses as rate limited once the account spent its Dotypos mutation budget, and still serves its reads", async () => {
@@ -244,10 +327,10 @@ describe("customer request budgets", () => {
     expect(await statusesOf(api, getAccount, 1)).toEqual([200]);
   });
 
-  test("keeps serving catalog reads once the account spent its Dotypos read budget", async () => {
+  test("keeps serving catalog reads once the account spent its account read budget", async () => {
     const api = makeCustomerApiTestServer({ services: linkedAccountServices });
 
-    await statusesOf(api, getAccount, 20);
+    await statusesOf(api, getAccount, 40);
 
     expect(await statusesOf(api, getAccount, 1)).toEqual([429]);
     expect(await statusesOf(api, getAvailability, 1)).not.toEqual([429]);

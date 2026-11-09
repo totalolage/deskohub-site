@@ -5,7 +5,6 @@ import type { DatasourceConfig } from "../config";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
-import { browserSessionFor } from "../runtime";
 import type { WorkspaceE2ECaseContext } from "../types";
 import { makeWorkspaceE2EAccountRecipientForRunId } from "./config";
 import { createSyntheticCustomerProfile } from "./fixtures";
@@ -139,9 +138,9 @@ export const makeWorkspaceE2ECaseIdentities = <Label extends string>({
     /** Signs this case's browser session in as one of its accounts. */
     signIn: (
       account: Pick<WorkspaceE2ECaseAccount, "accountId">,
-      { run, session }: Pick<WorkspaceE2ECaseContext, "run" | "session">
+      { openSession }: Pick<WorkspaceE2ECaseContext, "openSession">
     ) =>
-      browserSessionFor(run, session).pipe(
+      openSession.pipe(
         Effect.flatMap((browserSession) =>
           signInWorkspaceE2ESyntheticAccount({
             accountId: account.accountId,

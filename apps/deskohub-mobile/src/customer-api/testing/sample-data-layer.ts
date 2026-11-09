@@ -1,4 +1,5 @@
 import { Effect, Layer } from "effect";
+import { AccountReadBudget } from "../account-read-budget";
 import { accountDeviceLayer } from "../account-scoped-storage";
 import {
   CustomerAccountScope,
@@ -6,7 +7,6 @@ import {
 } from "../customer-api.service";
 import type { CustomerDataServices } from "../customer-data-runtime";
 import { deviceCapabilitiesLayer } from "../device-capabilities-layer";
-import { DotyposReadBudget } from "../dotypos-read-budget";
 import type { SampleAccountKind } from "../sample-data-mode";
 import { fakeCustomerApiLayer } from "./fake-customer-data";
 import { FakeWorkspace, fakeWorkspaceOrigin } from "./fake-workspace";
@@ -22,7 +22,7 @@ export const sampleCustomerDataLayer = (
   const workspace = FakeWorkspace.forKind(kind);
   return Layer.mergeAll(
     fakeCustomerApiLayer(workspace),
-    DotyposReadBudget.Default,
+    AccountReadBudget.Default,
     Layer.succeed(CustomerSessionCheck, { recheck: Effect.void }),
     accountDeviceLayer(deviceCapabilitiesLayer).pipe(
       Layer.provideMerge(

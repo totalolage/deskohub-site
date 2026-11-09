@@ -1,6 +1,6 @@
 import { Effect, Layer } from "effect";
-import type { AsyncResult } from "effect/unstable/reactivity";
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AccountReadBudget } from "../account-read-budget";
 import {
   AccountExitFence,
   makeAccountExitFence,
@@ -8,6 +8,7 @@ import {
 import {
   type CustomerDataServices,
   customerDataLayer,
+  customerDataRuntime,
 } from "../customer-data-runtime";
 import {
   type FakeDevice,
@@ -62,3 +63,15 @@ export const settle = <A, E>(
     )
   ).finally(unmount);
 };
+
+/** The account reads the registry's data runtime has left, by its own count. */
+export const remainingAccountReads = (registry: AtomRegistry.AtomRegistry) =>
+  Effect.runPromise(
+    Effect.provideContext(
+      Effect.flatMap(
+        Effect.service(AccountReadBudget),
+        (budget) => budget.remaining
+      ),
+      AsyncResult.getOrThrow(registry.get(customerDataRuntime))
+    )
+  );

@@ -6,7 +6,7 @@ import {
   withCheckoutContactEmail,
 } from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
-import { WorkspaceE2EError } from "../errors";
+import { WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutFlowState } from "../types";
 import {
@@ -52,12 +52,15 @@ test("plans the signed-out checkout on its own date and requires binding", async
   expect(flowStates.at(-1)).toBe(planned.checkoutStates[0]);
   // The unbound case fails with its binding error before it could reach a
   // browser.
+  const unopenedBrowserSession = Effect.fail(
+    workspaceE2EError("the unbound case opens no browser session")
+  );
   const error = await Effect.runPromise(
     Effect.flip(
       planned.execute({
-        run: undefined as never,
+        openSeparateSession: () => unopenedBrowserSession,
+        openSession: unopenedBrowserSession,
         runStep: (step) => step.execute,
-        session: "session",
       }) as Effect.Effect<void, unknown>
     )
   );

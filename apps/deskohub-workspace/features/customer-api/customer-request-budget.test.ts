@@ -51,7 +51,9 @@ describe("customer request budget classes", () => {
           .filter(
             ([endpoint, budgetClass]) =>
               (methods.get(`${group}.${endpoint}`) === "GET") !==
-              (budgetClass === "dotypos-read" || budgetClass === "catalog-read")
+              (budgetClass === "account-read" ||
+                budgetClass === "dotypos-read" ||
+                budgetClass === "catalog-read")
           )
           .map(
             ([endpoint, budgetClass]) => `${group}.${endpoint}: ${budgetClass}`
@@ -63,12 +65,12 @@ describe("customer request budget classes", () => {
       Object.values(customerRequestBudgetClasses.account).filter(
         (budgetClass) => budgetClass === "dotypos-read"
       )
-    ).toHaveLength(3);
+    ).toHaveLength(2);
     expect(
       Object.values(customerRequestBudgetClasses.reservations).filter(
         (budgetClass) => budgetClass === "dotypos-read"
       )
-    ).toHaveLength(4);
+    ).toHaveLength(1);
     expect(
       Object.values(customerRequestBudgetClasses.booking).filter(
         (budgetClass) => budgetClass === "dotypos-read"
@@ -80,6 +82,33 @@ describe("customer request budget classes", () => {
       )
     ).toHaveLength(3);
   });
+  // The app reads the account on every load, the history on every visit and
+  // a settling order's status while it polls, so these reads spend their own
+  // budget instead of the Dotypos reads the other sections share.
+  test("classify the reads the app repeats while navigating and polling as account reads", () => {
+    const accountReads = Object.entries(customerRequestBudgetClasses)
+      .flatMap(([group, endpoints]) =>
+        Object.entries(endpoints)
+          .filter(([, budgetClass]) => budgetClass === "account-read")
+          .map(([endpoint]) => `${group}.${endpoint}`)
+      )
+      .toSorted();
+
+    expect(accountReads).toEqual([
+      "account.getAccount",
+      "reservations.getReservationAccess",
+      "reservations.getReservationStatus",
+      "reservations.listReservations",
+    ]);
+    expect(customerRequestBudgetClasses).toMatchObject({
+      account: {
+        getMarketingPreferences: "dotypos-read",
+        getReferrals: "dotypos-read",
+      },
+      reservations: { getReservationInvoice: "dotypos-read" },
+    });
+  });
+
   // Browsing the catalog reads the shared snapshots many times per booking,
   // so it spends its own budget instead of the account's Dotypos reads.
   test("classify the booking catalog's reads as catalog reads", () => {

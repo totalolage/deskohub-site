@@ -12,6 +12,7 @@ import {
   CustomerFeatureUnavailable,
   CustomerInvoiceNotIssued,
   CustomerMarketingPreferencesRejected,
+  type CustomerOrderStatus,
   type CustomerProfile,
   CustomerProfileCompletionSave,
   CustomerProfileSave,
@@ -19,6 +20,7 @@ import {
   CustomerRequestOriginCheck,
   CustomerRequestRejected,
   CustomerReservationNotFound,
+  type CustomerReservationOrderId,
   type CustomerReservationsApi,
   CustomerServiceUnavailable,
   CustomerSessionAuthentication,
@@ -121,6 +123,22 @@ export class FakeWorkspace {
       ...queued,
       ...Array.from({ length: times }, () => outcome),
     ]);
+  }
+
+  /** Moves a sample order to `status`; other data stays. */
+  setOrderStatus(
+    orderId: CustomerReservationOrderId,
+    status: CustomerOrderStatus
+  ) {
+    const order = this.data.orders.get(orderId);
+    if (order === undefined) throw new Error(`no sample order ${orderId}`);
+    this.data = {
+      ...this.data,
+      orders: new Map(this.data.orders).set(orderId, {
+        ...order,
+        state: { ...order.state, status },
+      }),
+    };
   }
 
   /** Changes the account; other data stays. */

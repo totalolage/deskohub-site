@@ -54,7 +54,7 @@ Inside a program, recover a non-blocking step from any failure, defects included
 E2E code that runs an Effect outside a case or fixture runtime uses the edge in `apps/deskohub-workspace/e2e/`. Don't add another `Effect.run*` call for it.
 
 - `runE2EEffect(effect, telemetry)` (`telemetry-runtime.ts`) runs a whole E2E run with the trace export, shuts the exporter down, and resolves with the run's `Exit`. `scripts/workspace-e2e.ts` uses it.
-- `runUntracedE2EEffect(effect, { signal })` (`effect-edge.ts`) runs everything else without a tracer, such as the argv `Runner` in `runtime.ts`.
+- `runUntracedE2EEffect(effect, { signal })` (`effect-edge.ts`) runs everything else without a tracer, such as the Playwright fixtures that close a test's or lane's Scope.
 - Both reject exactly like `Effect.runPromise`. A run whose `signal` aborts before it settles rejects as soon as the signal aborts, with the signal's reason or an `AbortError` without one, even when the run recovers from the interrupt or a failing finalizer replaced it in the cause. The run's interruption and finalizers finish in the background, so a stuck Playwright cleanup can't hold up cancellation. An already aborted signal rejects with its reason as is before the run starts. `effect-edge.test.ts` pins this.
 
 ## Browser runs

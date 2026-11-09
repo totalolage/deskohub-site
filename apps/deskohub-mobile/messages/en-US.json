@@ -192,7 +192,7 @@
   "account_cancel": "Cancel",
   "account_error_unavailable": "We couldn't reach Deskohub. Check your connection and try again.",
   "account_error_timeout": "Deskohub is taking too long to answer. Check your connection and try again.",
-  "account_error_rate_limited": "You've refreshed a lot in a short time. Wait a few minutes, then try again.",
+  "account_error_rate_limited": "There were many requests in a short time. Wait a few minutes, then try again.",
   "account_error_session": "We're checking your sign-in.",
   "account_error_unexpected": "Something went wrong. Try again.",
   "account_save_unconfirmed": "We couldn't confirm your change. This is what Deskohub has saved now.",
