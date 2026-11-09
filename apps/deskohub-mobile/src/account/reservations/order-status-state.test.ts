@@ -17,6 +17,7 @@ import {
   focusLost,
   makeOrderStatusAtoms,
 } from "./order-status-state";
+import { reservationHistoryAtom } from "./reservations-list-state";
 import { canRefreshManually, type StatusRefreshState } from "./status-refresh";
 import type { StatusVisit } from "./status-refresh-rules";
 
@@ -93,6 +94,7 @@ const harness = (
     status,
     foreground,
     reads,
+    settle,
     readsSettled: (count: number) => settle(readsSettled(count)),
     quietly: () => settle(quietly),
     adjust,
@@ -361,6 +363,60 @@ describe("order status atoms", () => {
     expect(
       Option.map(AsyncResult.value(refocused), canRefreshManually)
     ).toEqual(Option.some(false));
+    h.dispose();
+  });
+
+  test("an order that settles after payment reads the reservations list again", async () => {
+    const h = harness("after-payment");
+    const listReads = () =>
+      h.workspace.calls.filter((call) => call === "listReservations").length;
+    const unmountList = h.registry.mount(reservationHistoryAtom);
+    await h.settle(
+      eventually(() =>
+        AsyncResult.isSuccess(h.registry.get(reservationHistoryAtom))
+      )
+    );
+    expect(listReads()).toBe(1);
+
+    h.focus(true);
+    await h.readsSettled(1);
+    await h.adjust("3 seconds");
+    await h.readsSettled(2);
+    expect(listReads()).toBe(1);
+
+    h.workspace.setOrderStatus(h.orderId, "fulfilled");
+    await h.adjust("3 seconds");
+    await h.readsSettled(3);
+    await h.settle(eventually(() => listReads() === 2));
+    await h.adjust("30 minutes");
+    await h.quietly();
+
+    expect(listReads()).toBe(2);
+    unmountList();
+    h.dispose();
+  });
+
+  test("refocusing a settled order after payment doesn't read the list again", async () => {
+    const h = harness("after-payment", sampleOrderIds.fulfilled);
+    const listReads = () =>
+      h.workspace.calls.filter((call) => call === "listReservations").length;
+    const unmountList = h.registry.mount(reservationHistoryAtom);
+    await h.settle(
+      eventually(() =>
+        AsyncResult.isSuccess(h.registry.get(reservationHistoryAtom))
+      )
+    );
+
+    h.focus(true);
+    await h.readsSettled(1);
+    await h.settle(eventually(() => listReads() === 2));
+    h.focus(false);
+    h.focus(true);
+    await h.readsSettled(2);
+    await h.quietly();
+
+    expect(listReads()).toBe(2);
+    unmountList();
     h.dispose();
   });
 });
