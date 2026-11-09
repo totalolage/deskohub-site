@@ -48,7 +48,7 @@ registerWorkspaceComponentTestEnv();
 // React DOM, which @testing-library/react and the form load, must load after
 // the happy-dom registration to handle input events; the Radix dialog portal
 // also needs the registered document.
-const { act, cleanup, fireEvent, render } = await import(
+const { act, cleanup, fireEvent, render, waitFor } = await import(
   "@testing-library/react"
 );
 const {
@@ -733,12 +733,51 @@ test("submits the typed invoice dates as calendar dates", async () => {
     "2026-09-15",
   ]);
   submitInvoiceForm(view);
-  await view.findByText("This action creates and sends the invoice");
-  expect(preview).toHaveBeenCalledWith(
-    expect.objectContaining({
-      serviceDate: "2026-08-20",
-      payment: { status: "due", date: "2026-09-15" },
-    })
+  await waitFor(() =>
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        serviceDate: "2026-08-20",
+        payment: { status: "due", date: "2026-09-15" },
+      })
+    )
+  );
+});
+
+test("submits the typed paid-on date once already paid is selected", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+  fireEvent.click(view.getByRole("checkbox", { name: "Already paid" }));
+  typeDate(view, "Paid on", "2026-08-25");
+
+  const form = view.container.querySelector("form")!;
+  expect(new FormData(form).get("paidOn")).toBe("2026-08-25");
+  submitInvoiceForm(view);
+  await waitFor(() =>
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment: { status: "paid", date: "2026-08-25" },
+      })
+    )
+  );
+});
+
+test("drops a hidden due date's unfinished text once already paid is selected", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+  fireEvent.change(view.getByRole("combobox", { name: "Due date" }), {
+    target: { value: "2026-13-45" },
+  });
+
+  fireEvent.click(view.getByRole("checkbox", { name: "Already paid" }));
+  submitInvoiceForm(view);
+  await waitFor(() =>
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment: { status: "paid", date: "2026-08-18" },
+      })
+    )
   );
 });
 
