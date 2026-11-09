@@ -102,10 +102,11 @@ jobs:
 
       # Pull request dry runs keep the Gradle distribution, the Kotlin compiler
       # and the Android dependencies between runs instead of downloading them
-      # every time. GitHub scopes a pull request's cache to that pull request,
-      # and tag runs can't restore it, so the release-signed build always
-      # downloads fresh and never uses a cache. A key miss restores the
-      # closest earlier cache and saves the result under the new key.
+      # every time. mobile-gradle-cache.yml writes main's entry under the same
+      # key, which every pull request can restore; a pull request saves its
+      # own entry only when its native inputs change the key, after restoring
+      # the closest earlier entry. The release-signed build never uses a
+      # cache.
       - name: Resolve the Gradle cache key
         id: gradle-cache-key
         if: github.event_name == 'pull_request'

@@ -1,0 +1,21 @@
+// Gradle init script for `mobile-release.ts resolve-gradle-dependencies`.
+// Every project gets a resolveDependencies task that downloads the artifacts
+// of each of its resolvable configurations, so the Gradle user home ends up
+// with what an APK build downloads without running one. Configurations that
+// can't resolve on their own (variant-ambiguous ones) only log a warning.
+allprojects {
+    def projectPath = path
+    def projectConfigurations = configurations
+    tasks.register("resolveDependencies") {
+        notCompatibleWithConfigurationCache("Resolves configurations while it runs.")
+        doLast {
+            projectConfigurations.toList().findAll { it.canBeResolved }.each { configuration ->
+                try {
+                    configuration.incoming.artifactView { lenient(true) }.files.files
+                } catch (Exception failure) {
+                    logger.warn("${projectPath}:${configuration.name} did not resolve: ${failure.message}")
+                }
+            }
+        }
+    }
+}

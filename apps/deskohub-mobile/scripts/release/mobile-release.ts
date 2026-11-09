@@ -5,13 +5,17 @@
 //   bun scripts/release/mobile-release.ts build [--tag mobile-vX.Y.Z] [--signing release|debug] --out-dir <dir>
 //   bun scripts/release/mobile-release.ts gradle-cache-key
 //   bun scripts/release/mobile-release.ts prepare-gradle
+//   bun scripts/release/mobile-release.ts resolve-gradle-dependencies
 //
 // `metadata` and `gradle-cache-key` print `key=value` lines for
 // $GITHUB_OUTPUT; `gradle-cache-key` names the Gradle cache of pull request
 // dry runs (gradle-cache.ts). `prepare-gradle` is for CI runners: it
 // downloads the Gradle distribution the prebuild's wrapper uses, with retries,
 // and raises Gradle's download retries in the Gradle user home
-// (gradle-wrapper.ts). With --tag, both
+// (gradle-wrapper.ts). `resolve-gradle-dependencies` fills the Gradle user
+// home for mobile-gradle-cache.yml without building: it generates android/
+// with `expo prebuild`, downloads every resolvable configuration
+// (resolve-dependencies.init.gradle), and removes android/ again. With --tag, both
 // commands fail unless the tag matches `expo.version` in app.json and
 // CHANGELOG.md has a section for it. `build` needs EXPO_TOKEN; it writes
 // deskohub-<version>.apk and release-notes.md to the output directory after
@@ -258,6 +262,59 @@ const sha256File = async (path: string): Promise<string> =>
     .update(await Bun.file(path).arrayBuffer())
     .digest("hex");
 
+// A Gradle daemon outlives the build and has been killed on shared machines
+// mid-build; one build per run gains nothing from it.
+const gradleOpts = () =>
+  process.env.GRADLE_OPTS ??
+  "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4";
+
+// Generates android/ the way the production build's prebuild does and
+// downloads every resolvable configuration's artifacts into the Gradle user
+// home. It refuses to run over an existing android/, which belongs to someone
+// else, and removes the one it generated.
+const resolveGradleDependencies = async () => {
+  const androidDirectory = join(projectDirectory, "android");
+  if (existsSync(androidDirectory)) {
+    throw new Error(
+      `${androidDirectory} already exists; remove it so prebuild generates the project the build would.`
+    );
+  }
+  const { build: profiles } = await readJson<{
+    build: { production: { env?: Record<string, string> } };
+  }>("eas.json");
+  const env = profiles.production.env ?? {};
+  try {
+    await run(
+      [
+        "bun",
+        "x",
+        "--no-install",
+        "expo",
+        "prebuild",
+        "--platform",
+        "android",
+        "--no-install",
+      ],
+      { env: { ...env, CI: "1" } }
+    );
+    await run(
+      [
+        join(androidDirectory, "gradlew"),
+        "--project-dir",
+        androidDirectory,
+        "--init-script",
+        join(import.meta.dir, "resolve-dependencies.init.gradle"),
+        "--no-configuration-cache",
+        "--continue",
+        "resolveDependencies",
+      ],
+      { env: { ...env, GRADLE_OPTS: gradleOpts() } }
+    );
+  } finally {
+    rmSync(androidDirectory, { force: true, recursive: true });
+  }
+};
+
 const build = async (
   tag: string | undefined,
   signing: Signing,
@@ -287,13 +344,7 @@ const build = async (
         apkPath,
       ],
       {
-        env: {
-          // A Gradle daemon outlives the build and has been killed on shared
-          // machines mid-build; one build per run gains nothing from it.
-          GRADLE_OPTS:
-            process.env.GRADLE_OPTS ??
-            "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4",
-        },
+        env: { GRADLE_OPTS: gradleOpts() },
       }
     ).then(() => undefined)
   );
@@ -376,6 +427,10 @@ const main = async () => {
       );
       return;
     }
+    case "resolve-gradle-dependencies": {
+      await resolveGradleDependencies();
+      return;
+    }
     case "build": {
       const outDirectory = values["out-dir"];
       if (outDirectory === undefined) {
@@ -397,7 +452,7 @@ const main = async () => {
     }
     default:
       throw new Error(
-        "Usage: mobile-release.ts metadata|build|gradle-cache-key|prepare-gradle [--tag mobile-vX.Y.Z] [--signing release|debug] [--out-dir <dir>]"
+        "Usage: mobile-release.ts metadata|build|gradle-cache-key|prepare-gradle|resolve-gradle-dependencies [--tag mobile-vX.Y.Z] [--signing release|debug] [--out-dir <dir>]"
       );
   }
 };
