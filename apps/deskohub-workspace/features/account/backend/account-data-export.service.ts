@@ -155,7 +155,7 @@ export const AccountDataExportLimits =
  * or provider document. Instants serialize as ISO strings and amounts stay
  * exact `Money` values in minor units.
  */
-export type AccountDataExportContents = {
+type AccountDataExportContents = {
   readonly "identity.json": Pick<
     CustomerAccountSession,
     | "accountId"
@@ -189,7 +189,7 @@ export type AccountDataExportContents = {
 };
 
 /** The archive as a file, ready for `createDownloadResponse`. */
-export type AccountDataExportFile = {
+type AccountDataExportFile = {
   readonly bytes: Uint8Array;
   readonly fileName: string;
 };
