@@ -50,6 +50,22 @@ const withReservationKindFields = (reservation: WorkspaceReservationRow) => {
 
 export type WorkspaceReservation = ReturnType<typeof withReservationKindFields>;
 
+/**
+ * The reservation's identifiers and states for log annotations. Scoped
+ * annotations reach every later row, query rows included, so never annotate
+ * the record.
+ */
+export const reservationLogFields = (
+  reservation: WorkspaceReservation | null | undefined
+) => ({
+  reservationId: reservation?.id,
+  dotyposReservationId: reservation?.dotyposReservationId,
+  reservationState: reservation?.reservationState,
+  paymentState: reservation?.paymentState,
+  fulfillmentState: reservation?.fulfillmentState,
+  activePaymentAttemptId: reservation?.activePaymentAttemptId,
+});
+
 export class WorkspaceReservationStateError extends Data.TaggedError(
   "WorkspaceReservationStateError"
 )<{
