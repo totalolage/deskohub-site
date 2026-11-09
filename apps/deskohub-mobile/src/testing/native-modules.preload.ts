@@ -13,6 +13,7 @@ mock.module("react-native", () => ({
   ActivityIndicator: "ActivityIndicator",
   Modal: "Modal",
   Pressable: "Pressable",
+  RefreshControl: "RefreshControl",
   ScrollView: "ScrollView",
   Text: "Text",
   TextInput: "TextInput",
@@ -70,6 +71,11 @@ mock.module("expo-crypto", () => ({
       digest.byteOffset + digest.byteLength
     );
   },
+}));
+
+// Better Auth's Expo online manager loads this when a session atom mounts.
+mock.module("expo-network", () => ({
+  addNetworkStateListener: () => ({ remove: () => undefined }),
 }));
 
 mock.module("expo-web-browser", () => ({

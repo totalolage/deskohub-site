@@ -1,10 +1,13 @@
 import { Clock, Effect, Exit, Match, Option } from "effect";
-import { trackSignInCompleted, trackSignInStarted } from "../analytics/events";
+import {
+  type SignInMethod,
+  trackSignInCompleted,
+  trackSignInStarted,
+} from "../analytics/events";
 import {
   type AuthCallback,
   nativeReturnUri,
   parseAuthCallbackUrl,
-  type SignInCallbackMethod,
 } from "./auth-callback";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
@@ -334,7 +337,7 @@ export const completeAuthCallback = Effect.fn(
  * Records the completed sign-in once per completion. A handoff carries the
  * method the web page signed in with; without one nothing is recorded.
  */
-const recordCompletion = (method: SignInCallbackMethod | undefined) => () =>
+const recordCompletion = (method: SignInMethod | undefined) => () =>
   Effect.sync(() => {
     if (method !== undefined) trackSignInCompleted(method);
   });

@@ -1,5 +1,5 @@
 import { Predicate } from "effect";
-import { markPrivateResponse } from "./private-response";
+import { createDownloadResponse } from "./download-response";
 
 export type CsvCell = string | number | null | undefined;
 
@@ -61,11 +61,8 @@ export const createCsvDownloadResponse = <Row>({
   readonly filename: string;
   readonly rows: Iterable<Row>;
 }) =>
-  markPrivateResponse(
-    new Response(`${utf8ByteOrderMark}${serializeCsv(columns, rows)}`, {
-      headers: {
-        "Content-Disposition": `attachment; filename="${filename.replaceAll(/[^\w.-]/g, "_")}"`,
-        "Content-Type": "text/csv; charset=utf-8",
-      },
-    })
-  );
+  createDownloadResponse({
+    body: `${utf8ByteOrderMark}${serializeCsv(columns, rows)}`,
+    contentType: "text/csv; charset=utf-8",
+    filename,
+  });

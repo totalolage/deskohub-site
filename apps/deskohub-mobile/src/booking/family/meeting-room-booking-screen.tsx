@@ -34,7 +34,6 @@ import { unneededReadAtom } from "./booking-family-atoms";
 import {
   availabilityNoticeMessage,
   bookingQueryMessage,
-  restartMessage,
 } from "./booking-family-copy";
 import { useBookingStarted, useRestartReason } from "./booking-family-hooks";
 import {
@@ -52,6 +51,7 @@ import {
   meetingRoomBookingModel,
   meetingRoomQueryOf,
 } from "./meeting-room-booking-model";
+import { RestartNotice } from "./restart-notice";
 
 /** The customer's meeting-room draft; none until they change the default. */
 const meetingRoomDraftAtom = Atom.make(Option.none<MeetingRoomDraft>());
@@ -177,12 +177,7 @@ function MeetingRoomSelection({
 
   return (
     <>
-      <Notice
-        tone="info"
-        message={Option.getOrUndefined(
-          Option.map(restart, (reason) => restartMessage(reason, locale))
-        )}
-      />
+      <RestartNotice reason={restart} />
       <SectionHeader title={m.booking_date_heading({}, { locale })} />
       <MonthCalendar
         label={m.booking_date_heading({}, { locale })}

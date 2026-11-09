@@ -32,6 +32,11 @@ const customerAccount = (accountId: CustomerAccountId): TransactionLock =>
  * in ascending rank; equal ranks in ascending key. Each keeps its
  * pre-registry encoding exactly, so old and new code lock the same key during
  * a rollout.
+ *
+ * The reservation order mirror takes no advisory lock. Its triggers take row
+ * locks only: the reservation row, then its order row, inside the
+ * reservation's own statement. Payment attempt foreign key checks take
+ * `KEY SHARE` on the order row, which never waits on the mirror.
  */
 export const WorkspaceLocks = {
   referralGraph: (wait?: LockWait): TransactionLock =>

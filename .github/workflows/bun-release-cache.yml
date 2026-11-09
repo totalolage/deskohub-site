@@ -1,0 +1,56 @@
+name: Bun release cache
+
+# Saves the Bun release archive that .github/actions/setup-bun restores, so
+# Workspace E2E can set up Bun without a GitHub releases download. Workspace
+# E2E runs exact-SHA code and saves nothing, and setup-bun's own cache saves
+# after the job's code ran, so this workflow saves the entry: only on main,
+# from main's code, before running anything else. Restoring main's entry
+# twice a week keeps it from being evicted while E2E is idle, so a saved entry,
+# which nothing can overwrite, stays the one E2E restores. A pull request that
+# changes the action runs it without saving anything.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/actions/setup-bun/**
+      - .github/workflows/bun-release-cache.yml
+  pull_request:
+    paths:
+      - .github/actions/setup-bun/**
+      - .github/workflows/bun-release-cache.yml
+  schedule:
+    - cron: "41 4 * * 1,4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bun-release-cache-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions/setup-bun
+
+      # Keep these equal to Workspace E2E's; workspace-e2e-workflow.test.ts
+      # checks them.
+      - name: Set up Bun
+        id: bun
+        uses: ./.github/actions/setup-bun
+        with:
+          bun-version: 1.4.2
+          bun-sha256: 36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913
+
+      - name: Save Bun release
+        if: steps.bun.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.bun.outputs.path }}
+          key: ${{ steps.bun.outputs.cache-primary-key }}

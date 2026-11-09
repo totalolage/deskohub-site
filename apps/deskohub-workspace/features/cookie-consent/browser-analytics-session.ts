@@ -412,11 +412,14 @@ export function createBrowserAnalyticsSession(): BrowserAnalyticsSession {
     const consented = visitorConsent.accepts("analytics");
     consentSignal = consented;
 
-    // A consent given here, or newly given in another tab, re-verifies the
-    // account before identifying; a focus check only reconciles.
+    // A consent given here, in the banner or the account's preference, or
+    // newly given in another tab, re-verifies the account before
+    // identifying; a focus check only reconciles.
     if (
       consented &&
-      (change === "local" || (change === "other-tab" && !wasConsented))
+      (change === "local" ||
+        change === "preference" ||
+        (change === "other-tab" && !wasConsented))
     ) {
       void refreshAnalyticsAccountIdentity();
     }

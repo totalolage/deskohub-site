@@ -251,6 +251,18 @@ export async function getMarketingPreferences(
 }
 `;
 
+// The fixture has no accounts, so the page shows no analytics preference.
+const fixtureAnalyticsPreference = `
+import type { Locale } from "@/features/i18n";
+import type { AnalyticsPreferenceState } from "@/features/legal/analytics-preference";
+
+export async function getAnalyticsPreference(
+  _locale: Locale
+): Promise<AnalyticsPreferenceState> {
+  return { status: "signed-out" };
+}
+`;
+
 const fixtureMarketingActionError =
   "Unavailable in account continuity fixture: backend action was not executed.";
 
@@ -276,6 +288,12 @@ export async function confirmMarketingManagementAction(
 }
 
 export async function clearMarketingManagementAction(
+  _input: unknown
+): Promise<UnavailableActionResult> {
+  return { serverError: unavailableMessage };
+}
+
+export async function saveAccountAnalyticsPreference(
   _input: unknown
 ): Promise<UnavailableActionResult> {
   return { serverError: unavailableMessage };
@@ -345,6 +363,15 @@ export async function loadCustomerAccountPage() {
   return requestHeaders.get("${accountFixtureAuthHeader}") === "private"
     ? { kind: "fixture" as const }
     : { kind: "unauthenticated" as const };
+}
+`;
+
+// The fixture's stand-in account page shows no invoices, so the sections'
+// route reads none; this keeps the real invoice service and its database out
+// of the fixture build.
+const fixtureInvoiceHistory = `
+export async function loadCustomerInvoiceHistory() {
+  return { kind: "unavailable" as const };
 }
 `;
 
@@ -478,6 +505,7 @@ const writeFixture = async (
     "app/[locale]/layout.tsx": localeLayout(realCookieConsent),
     "fixture/account-release-gates.server.ts": fixtureAccountFeatureFlag,
     "fixture/account-actions.ts": fixtureAccountActions,
+    "fixture/analytics-preference.server.ts": fixtureAnalyticsPreference,
     "fixture/account-draft.tsx": fixtureAccountDraft,
     "fixture/account-page.tsx": fixtureAccountPage,
     "fixture/account-page-data.server.ts": fixtureAccountPageData,
@@ -487,6 +515,7 @@ const writeFixture = async (
       : { "fixture/cookie-consent.ts": fixtureCookieConsent }),
     "fixture/env.ts": fixtureEnv,
     "fixture/hydration.tsx": fixtureHydration,
+    "fixture/invoice-history.server.ts": fixtureInvoiceHistory,
     "fixture/marketing-actions.ts": fixtureMarketingActions,
     "fixture/marketing-preferences.server.ts": fixtureMarketingPreferences,
     "fixture/referral-release-gate.server.ts": fixtureReferralFeatureFlag,
@@ -529,6 +558,9 @@ const writeFixture = async (
         "@/features/account/page-data.server": [
           "./fixture/account-page-data.server.ts",
         ],
+        "@/features/account/invoice-history.server": [
+          "./fixture/invoice-history.server.ts",
+        ],
         "@/features/account/backend/customer-authentication.service": [
           "./fixture/customer-authentication.service.ts",
         ],
@@ -536,6 +568,9 @@ const writeFixture = async (
         ...(realCookieConsent
           ? {}
           : { "@/features/cookie-consent": ["./fixture/cookie-consent.ts"] }),
+        "@/features/legal/analytics-preference.server": [
+          "./fixture/analytics-preference.server.ts",
+        ],
         "@/features/legal/marketing-preferences.server": [
           "./fixture/marketing-preferences.server.ts",
         ],

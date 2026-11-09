@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import {
   type DotyposCustomerId,
   DotyposCustomerSchema,
@@ -11,12 +11,20 @@ import { Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { customerAccounts } from "@/db/schema";
+import { accountingSnapshotKeyIdSchema } from "@/features/accounting/accounting-document-snapshot";
+import { AccountingDocumentSnapshotRepository } from "@/features/accounting/backend/accounting-document-snapshot.repository";
+import { AccountingSnapshotKeyService } from "@/features/accounting/backend/accounting-snapshot-key.service";
+import { InvoiceRepository } from "@/features/accounting/backend/invoice.repository";
+import { manualInvoiceInputSchema } from "@/features/accounting/manual-invoice";
 import { ReviewAccounts } from "@/features/review-accounts";
 import {
   syntheticDotyposCustomerId,
   workspaceFixtures,
 } from "@/shared/testing/workspace-fixtures.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  createWorkspacePostgresSuiteDatabase,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
@@ -24,9 +32,20 @@ import {
 import { CustomerAccountRepository } from "./customer-account.repository";
 import { expireLinkedDotyposProfile } from "./customer-account-deletion";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import { CustomerAccountResolver } from "./customer-account-resolver.service";
 import { CustomerAvatarProviderError } from "./customer-avatar.service";
+import {
+  CustomerInvoiceService,
+  CustomerInvoicesUnavailableError,
+} from "./customer-invoice.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
+// Issued invoices are immutable, so the retention test issues its own into a
+// database no other suite lists invoices from.
+const invoiceDatabase = await createWorkspacePostgresSuiteDatabase(
+  "account_deletion_invoices"
+);
+afterAll(() => invoiceDatabase?.close());
 
 const uniqueId = () => crypto.randomUUID();
 
@@ -331,6 +350,150 @@ describe.skipIf(!testDatabase)(
         account,
       ]);
       expect(row.rows[0]?.dotypos_customer_id).toBeNull();
+    });
+  }
+);
+
+describe.skipIf(!invoiceDatabase)(
+  "Issued invoices after customer account deletion on disposable Postgres",
+  () => {
+    const accountingKey = {
+      id: accountingSnapshotKeyIdSchema.make("K202611"),
+      secret: "synthetic account deletion invoice secret!",
+    };
+
+    const makeLayer = () => {
+      const storage = Layer.mergeAll(
+        invoiceDatabase!.layer,
+        WorkspaceDatabaseAdvisoryLock.makeLayer(invoiceDatabase!.pool),
+        Layer.succeed(
+          AccountingSnapshotKeyService,
+          AccountingSnapshotKeyService.of({
+            getActive: Effect.succeed(accountingKey),
+            getById: () => Effect.succeed(accountingKey),
+          })
+        )
+      );
+      return Layer.mergeAll(
+        CustomerAccountLinkRepository.Default,
+        CustomerAccountRepository.Default,
+        ReviewAccounts.Default,
+        InvoiceRepository.Default.pipe(
+          Layer.provide(AccountingDocumentSnapshotRepository.Default)
+        )
+      ).pipe(Layer.provideMerge(storage));
+    };
+
+    test("keeps the customer's issued invoice and denies the deleted account access to it", async () => {
+      const layer = makeLayer();
+      const fixtures = workspaceFixtures(invoiceDatabase!.db);
+      const dotyposCustomerId = syntheticDotyposCustomerId("deleted-invoices");
+      const { accountId: account } = await Effect.runPromise(
+        fixtures.account("deleted-invoices", {
+          linkedCustomer: dotyposCustomerId,
+        })
+      );
+      const issuer = await Effect.runPromise(
+        fixtures.account("deleted-invoices-issuer")
+      );
+      const input = Schema.decodeUnknownSync(manualInvoiceInputSchema)({
+        invoiceId: uniqueId(),
+        dotyposCustomerId,
+        buyer: {
+          kind: "person",
+          legalName: "Synthetic Deleted Customer",
+          address: {
+            line1: "Synthetic 1",
+            city: "Praha",
+            postalCode: "100 00",
+            country: "CZ",
+          },
+        },
+        deliveryEmail: testEmailAddress("deleted-invoices"),
+        locale: "cs-CZ",
+        serviceDate: "2026-10-01",
+        payment: { status: "paid", date: "2026-10-01" },
+        currency: "CZK",
+        lines: [{ description: "Synthetic line", price: "100.00" }],
+        provenance: { source: "admin-ui", actor: issuer.email },
+      });
+
+      const run = <A, E>(
+        effect: Effect.Effect<A, E, Layer.Success<ReturnType<typeof makeLayer>>>
+      ) => Effect.runPromise(effect.pipe(Effect.provide(layer)));
+
+      const { invoice: issued } = await run(
+        Effect.flatMap(InvoiceRepository, (invoices) =>
+          invoices.issueManual({ ...input, issuedBy: issuer })
+        )
+      );
+
+      await run(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          const accounts = yield* CustomerAccountRepository;
+          const reviewAccounts = yield* ReviewAccounts;
+          return yield* expireLinkedDotyposProfile({
+            isReviewAccount: reviewAccounts.isReviewAccount,
+            markDeletionRequested: links.markDeletionRequested,
+            findLink: links.find,
+            expireCustomer,
+            destroyAvatar: () => Effect.void,
+            tombstone: accounts.tombstone,
+            withAccountLock: links.withAccountLock,
+          })(account);
+        })
+      );
+      // Better Auth removes the identity rows once the hook succeeds.
+      await invoiceDatabase!.pool.query(
+        `delete from auth."user" where id = $1`,
+        [account]
+      );
+
+      const retained = await run(
+        Effect.flatMap(InvoiceRepository, (invoices) =>
+          Effect.all({
+            byId: invoices.findById(issued.id),
+            ofCustomer: invoices.listForCustomer(dotyposCustomerId),
+          })
+        )
+      );
+      expect(retained.byId?.id).toBe(issued.id);
+      expect(retained.byId?.document).toEqual(issued.document);
+      expect(retained.ofCustomer.map(({ id }) => id)).toEqual([issued.id]);
+
+      // The tombstone cleared the account's customer, so no link leads to it.
+      expect(
+        await run(
+          Effect.flatMap(CustomerAccountLinkRepository, (links) =>
+            links.find(account)
+          )
+        )
+      ).toBeNull();
+
+      // Even a session resolved before the deletion is refused by the
+      // account's activity, before any invoice is read.
+      const staleResolution = Layer.mock(CustomerAccountResolver, {
+        resolve: Effect.succeed({ accountId: account, dotyposCustomerId }),
+      });
+      const denied = await run(
+        Effect.flatMap(CustomerInvoiceService, (invoices) =>
+          Effect.all([
+            Effect.flip(invoices.list),
+            Effect.flip(invoices.pdf(issued.id)),
+            Effect.flip(invoices.csv("cs-CZ")),
+          ])
+        ).pipe(
+          Effect.provide(
+            CustomerInvoiceService.Default.pipe(Layer.provide(staleResolution))
+          )
+        )
+      );
+      expect(denied).toEqual([
+        new CustomerInvoicesUnavailableError(),
+        new CustomerInvoicesUnavailableError(),
+        new CustomerInvoicesUnavailableError(),
+      ]);
     });
   }
 );

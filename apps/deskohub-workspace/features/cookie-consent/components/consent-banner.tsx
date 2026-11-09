@@ -189,7 +189,11 @@ function promptForConsentChoice(
     if (answer?.accountId === identity.accountId) {
       if (answer.grantedAt === null) return show();
       if (shown) CookieConsent.hide();
-      visitorConsent.applyAccountGrant(answer.grantedAt);
+      visitorConsent.applyAccountDecision({
+        analytics: true,
+        decidedAt: answer.grantedAt,
+        change: "account",
+      });
       return;
     }
     if (askedAccount === identity.accountId) return;

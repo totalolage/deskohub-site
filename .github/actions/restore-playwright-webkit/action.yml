@@ -1,0 +1,50 @@
+name: Restore Playwright WebKit
+description: Restore the WebKit download for the Workspace's exact Playwright version from the Playwright WebKit cache, without saving any cache
+
+outputs:
+  cache-hit:
+    description: Whether the WebKit download came from the cache
+    value: ${{ steps.restore.outputs.cache-hit }}
+  cache-primary-key:
+    description: Cache key that only the Playwright WebKit cache workflow saves on main
+    value: ${{ steps.restore.outputs.cache-primary-key }}
+  path:
+    description: Playwright's browser directory, which the cache entry holds
+    value: ~/.cache/ms-playwright
+  version:
+    description: Exact @playwright/test version the Workspace pins
+    value: ${{ steps.version.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    # The Workspace pins @playwright/test exactly, and its frozen install
+    # installs that version, so the pin names the WebKit build. Reading it as
+    # data lets Workspace E2E restore before any exact-SHA code runs. The key
+    # also holds the runner image, whose Ubuntu release picks the build.
+    - name: Resolve Workspace Playwright version
+      id: version
+      shell: bash
+      run: |
+        set -euo pipefail
+        image_os="${ImageOS:?The hosted runner must provide ImageOS}"
+        version="$(jq -r '.devDependencies["@playwright/test"] // empty' apps/deskohub-workspace/package.json)"
+        if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "apps/deskohub-workspace/package.json must pin @playwright/test to an exact version" >&2
+          exit 1
+        fi
+        {
+          echo "version=$version"
+          echo "image-os=$image_os"
+        } >> "$GITHUB_OUTPUT"
+
+    # Restore only. playwright-webkit-cache.yml saves the entry from main's
+    # code, and an entry can't be overwritten once saved. No restore-keys, so
+    # only the exact build is restored, and the key's prefix is one no
+    # earlier Workspace E2E run, which saved after its exact-SHA code, used.
+    - name: Restore Playwright WebKit
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: workspace-e2e-playwright-webkit-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.image-os }}-${{ steps.version.outputs.version }}

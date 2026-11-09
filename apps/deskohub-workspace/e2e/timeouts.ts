@@ -18,6 +18,11 @@ export const workspaceE2ETimeouts = {
   // A seeded account connects the test agent (discovery, one consent round,
   // the code exchange), then lists and calls tools over MCP.
   administratorAgentToolsCase: 4 * MINUTE,
+  // A seeded administrator issues a manual invoice through the admin UI for
+  // a new synthetic Dotypos profile (its creation, the customer search, the
+  // issuance with its email delivery), then the profile's seeded account
+  // downloads the PDF and the CSV export.
+  administratorInvoiceDownloadCase: 5 * MINUTE,
   artifactCapture: 60 * SECOND,
   // Each wait ticks the planner and lets the queue drain the units it
   // published: a dry run over 30 days of events, or one booked run through
@@ -174,6 +179,12 @@ export const workspaceE2EAdministratorAccessPlaywrightTimeout =
 // watchdog; their finalizer closes the context the same way.
 export const workspaceE2EAdministratorAgentToolsPlaywrightTimeout =
   workspaceE2ETimeouts.administratorAgentToolsCase +
+  workspaceE2ETimeouts.browserAction;
+
+// The invoice download case shares that project with its own watchdog; its
+// finalizer closes the context the same way.
+export const workspaceE2EAdministratorInvoiceDownloadPlaywrightTimeout =
+  workspaceE2ETimeouts.administratorInvoiceDownloadCase +
   workspaceE2ETimeouts.browserAction;
 
 // Agent evals give each agent a task budget; the harness gets SIGTERM a grace

@@ -43,8 +43,10 @@ const toWorkspaceE2EFailure = (cause: unknown): WorkspaceE2EError =>
  * referral and reservation rows, and deletes exactly the journaled
  * synthetic accounts as account deletion does: each customer
  * account keeps its tombstone, and the Better Auth user rows' cascades remove
- * sessions, accounts, and the customer-account link. Runs for completed journals again
- * because every step is idempotent for the exact owned IDs.
+ * sessions, accounts, and the customer-account link. Journaled issued
+ * invoices are retained: the database refuses to change or delete one, so
+ * no step touches them. Runs for completed journals again because every step
+ * is idempotent for the exact owned IDs.
  */
 const reconcileWorkspaceE2EAccountJournal = ({
   journal,

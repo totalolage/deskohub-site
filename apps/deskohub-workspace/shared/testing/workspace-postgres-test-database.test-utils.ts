@@ -163,3 +163,58 @@ export const withHeldTransaction = <A, E, R>(
       )
     )
   );
+
+/** The columns a reservation and its mirrored order must agree on, as text. */
+const reservationOrderColumns = [
+  "id",
+  "correlation_id",
+  "created_at",
+  "dotypos_customer_id",
+  "payment_state",
+  "fulfillment_state",
+  "active_payment_attempt_id",
+  "paid_at",
+  "fulfilled_at",
+  "fulfillment_failed_at",
+  "fulfillment_failure_code",
+] as const;
+
+const reservationOrderProjection = reservationOrderColumns
+  .map((column) => `${column}::text as ${column}`)
+  .join(", ");
+
+type ReservationOrderFacts = Record<
+  (typeof reservationOrderColumns)[number] | "kind",
+  string | null
+>;
+
+/**
+ * Reads what the database mirror must keep equal: the reservation's facts as
+ * a reservation order would hold them, the stored order with that ID, and the
+ * order each of the reservation's payment attempts links to, oldest first.
+ */
+export const readReservationOrderMirror = async (
+  pool: Pick<Pool, "query">,
+  reservationId: string
+) => {
+  const read = async (table: "workspace_reservations" | "orders") =>
+    (
+      await pool.query<ReservationOrderFacts>(
+        `select ${reservationOrderProjection}, ${
+          table === "orders" ? "kind" : "'reservation'"
+        } as kind from ${table} where id = $1`,
+        [reservationId]
+      )
+    ).rows[0] ?? null;
+  const attempts = await pool.query<{ readonly order_id: string | null }>(
+    `select order_id from payment_attempts
+      where workspace_reservation_id = $1
+      order by created_at, id`,
+    [reservationId]
+  );
+  return {
+    expected: await read("workspace_reservations"),
+    order: await read("orders"),
+    attemptOrderIds: attempts.rows.map(({ order_id }) => order_id),
+  };
+};

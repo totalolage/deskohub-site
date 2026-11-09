@@ -1,0 +1,80 @@
+name: Set up Bun
+description: Install a pinned Bun release from the Bun release cache, or from a download with retries, after checking it against a pinned digest, without saving any cache
+
+inputs:
+  bun-version:
+    description: Exact Bun version to install, such as 1.4.2
+    required: true
+  bun-sha256:
+    description: SHA-256 of that release's bun-linux-x64.zip, as its SHASUMS256.txt lists it
+    required: true
+
+outputs:
+  cache-hit:
+    description: Whether the release archive came from the cache
+    value: ${{ steps.restore.outputs.cache-hit }}
+  cache-primary-key:
+    description: Cache key that only the Bun release cache workflow saves on main
+    value: ${{ steps.restore.outputs.cache-primary-key }}
+  path:
+    description: Path of the release archive the cache entry holds
+    value: ~/.cache/setup-bun/bun-linux-x64.zip
+
+runs:
+  using: composite
+  steps:
+    # Restore only. bun-release-cache.yml saves the entry from main's code,
+    # and an entry can't be overwritten once saved. The restore extracts the
+    # entry before any check runs, so this relies on that writer; the pinned
+    # digest below then keeps any other archive from being installed.
+    - name: Restore Bun release
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/setup-bun/bun-linux-x64.zip
+        key: bun-release-v${{ inputs.bun-version }}-${{ runner.os }}-${{ runner.arch }}
+
+    # setup-bun's own download makes two short attempts, so a GitHub releases
+    # outage fails the job. curl retries every error up to eight times with
+    # doubling waits, and gives up retrying after ten minutes.
+    - name: Download Bun release
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        BUN_RELEASE_URL: https://github.com/oven-sh/bun/releases/download/bun-v${{ inputs.bun-version }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$HOME/.cache/setup-bun"
+        echo "Downloading $BUN_RELEASE_URL/bun-linux-x64.zip"
+        curl --fail --silent --show-error --location \
+          --retry 8 --retry-all-errors --retry-max-time 600 \
+          --connect-timeout 30 --max-time 300 \
+          --output "$HOME/.cache/setup-bun/bun-linux-x64.zip" \
+          "$BUN_RELEASE_URL/bun-linux-x64.zip"
+
+    # Checked on a hit too, before anything runs the binary.
+    - name: Install verified Bun release
+      shell: bash
+      env:
+        BUN_SHA256: ${{ inputs.bun-sha256 }}
+      run: |
+        set -euo pipefail
+        if [[ "$RUNNER_OS/$RUNNER_ARCH" != Linux/X64 ]]; then
+          echo "The pinned Bun digest is for Linux X64, not $RUNNER_OS/$RUNNER_ARCH" >&2
+          exit 1
+        fi
+        archive="$HOME/.cache/setup-bun/bun-linux-x64.zip"
+        echo "$BUN_SHA256  $archive" | sha256sum --check --strict -
+        extract="$(mktemp -d "$RUNNER_TEMP/bun-release.XXXXXX")"
+        unzip -q "$archive" bun-linux-x64/bun -d "$extract"
+        mkdir -p "$HOME/.bun/bin"
+        install -m 755 "$extract/bun-linux-x64/bun" "$HOME/.bun/bin/bun"
+
+    # setup-bun reuses an installed binary of the requested version and only
+    # adds it to PATH. no-cache keeps it from restoring or saving its own
+    # entry, which would land after the caller's exact-SHA code ran.
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      with:
+        bun-version: ${{ inputs.bun-version }}
+        no-cache: true

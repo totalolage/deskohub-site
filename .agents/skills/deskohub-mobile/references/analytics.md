@@ -41,8 +41,15 @@ counts as no consent.
 - Each event has a production caller, and `analytics/events.test.ts` fails
   for one without. Native email sign-in records "sign-in started" (`link`)
   when the auth session opens, since the web page sends the email; the
-  passkey option records `passkey` when its ceremony starts. "access PIN
-  viewed" fires per focus of the access screen. "update applied"
+  passkey option records `passkey` when its ceremony starts. "sign-in
+  completed" takes the method the web page names on the handoff
+  (`auth/auth-callback.ts`): `link`, `code` or `passkey`, or `continue` when
+  the customer taps "Continue as <account>" and the page hands over its
+  existing session, so a re-sign-in without a new email still completes.
+  A handoff with no method, from an older web bundle, records nothing.
+  The start's method is the entry point and the completion's is the method
+  used, so compare methods on completions, not across the two steps.
+  "access PIN viewed" fires per focus of the access screen. "update applied"
   (`updates/applied-update.ts`) fires on the first launch of a downloaded
   update, compared with the update id the previous launch stored; embedded
   launches (rollback, emergency launch, new APK) never record it.

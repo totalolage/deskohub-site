@@ -41,6 +41,13 @@ permissions:
   pull-requests: read
   statuses: read
 
+# Dispatch-triggered runs default to cache write access in the
+# default-branch scope every workflow restores from. test-e2e runs exact-SHA
+# code, which could reach the job's cache token through a later action, so
+# every job gets a read-only cache token; only fill-bun-package-cache, which
+# runs no exact-SHA code, can save.
+cache-mode: read
+
 jobs:
   resolve-target:
     if: >-
@@ -350,8 +357,102 @@ jobs:
 
           decide failure 'Vercel skipped this SHA and no E2E-tested commit has its tree; deploy its Workspace preview'
 
-  test-e2e:
+  # The only job here that can save a cache. It reads the exact SHA's
+  # lockfile, manifests and patches as data and runs no exact-SHA code, so
+  # what it saves can't depend on code a PR controls. Bun checks tarballs
+  # against bun.lock integrity and keys patched packages by patch hash, so
+  # the entry holds only what bun.lock and the patch files produce; those
+  # exact-SHA inputs still choose its content. Exact, workflow-scoped key
+  # without restore-keys.
+  fill-bun-package-cache:
     needs: resolve-target
+    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    cache-mode: write
+    permissions:
+      contents: read
+    env:
+      TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
+    steps:
+      - name: Checkout exact lockfile and manifests
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve-target.outputs.sha }}
+          persist-credentials: false
+
+      - name: Confirm checked-out lockfile commit
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$TARGET_SHA" ]]; then
+            echo "Checked-out commit does not match the deployment SHA" >&2
+            exit 1
+          fi
+
+      # The Bun setup action comes from the workflow commit, never from the
+      # exact-SHA checkout.
+      - name: Checkout Bun setup action
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .workspace-e2e-coordinator
+          persist-credentials: false
+          sparse-checkout: .github/actions/setup-bun
+
+      - name: Look up Bun package cache
+        id: bun-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: workspace-e2e-bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          lookup-only: true
+
+      # Keep this equal to test-e2e's; workspace-e2e-workflow.test.ts checks
+      # it.
+      - name: Set up Bun for the package cache fill
+        if: steps.bun-cache.outputs.cache-hit != 'true'
+        uses: ./.workspace-e2e-coordinator/.github/actions/setup-bun
+        with:
+          bun-version: 1.4.2
+          bun-sha256: 36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913
+
+      # Install from regular-file copies of the lockfile, manifests, and
+      # patches outside the checkout, so exact-SHA bunfig.toml hooks (such as
+      # a security scanner), .npmrc settings, symlinks, and lifecycle scripts
+      # never reach Bun.
+      - name: Fill Bun package cache from install manifests
+        if: steps.bun-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          staging="$RUNNER_TEMP/bun-cache-fill"
+          mkdir "$staging"
+          git ls-files -z --stage -- \
+            bun.lock \
+            ':(glob)**/package.json' \
+            ':(glob)**/*.patch' \
+            ':(exclude,glob)**/node_modules/**' |
+            while IFS= read -r -d '' entry; do
+              read -r mode blob _ <<<"${entry%%$'\t'*}"
+              path="${entry#*$'\t'}"
+              if [[ "$mode" != 100644 && "$mode" != 100755 ]]; then
+                continue
+              fi
+              mkdir -p "$staging/$(dirname "$path")"
+              git cat-file blob "$blob" >"$staging/$path"
+            done
+          cd "$staging"
+          bun install --frozen-lockfile --ignore-scripts
+
+      - name: Save Bun package cache
+        if: steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ steps.bun-cache.outputs.cache-primary-key }}
+
+  test-e2e:
+    needs: [resolve-target, fill-bun-package-cache]
     if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success'
     # Keyed by PR and SHA, so only a duplicate run for the same SHA cancels
     # this one. Runs for different SHAs never cancel each other: a run can
@@ -427,13 +528,18 @@ jobs:
           fi
           echo "Checked out exact deployment SHA $actual_sha"
 
-      - name: Checkout allocation action
+      # The job's local actions come from the workflow commit, never from the
+      # exact-SHA checkout.
+      - name: Checkout workflow actions
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           path: .workspace-e2e-coordinator
           persist-credentials: false
-          sparse-checkout: .github/actions/workspace-e2e-allocation
+          sparse-checkout: |
+            .github/actions/workspace-e2e-allocation
+            .github/actions/setup-bun
+            .github/actions/restore-playwright-webkit
 
       - name: Select preferred date shard
         id: preferred-shard
@@ -506,59 +612,39 @@ jobs:
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             >/dev/null
 
-      # setup-bun saves its binary cache after the job, once exact-SHA code
-      # has run, into the default-branch scope every workflow restores from,
-      # so this job downloads Bun without that cache.
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      # setup-bun's own cache would save the binary after the job, once
+      # exact-SHA code has run, into the default-branch scope every workflow
+      # restores from. This action only restores the release archive that
+      # bun-release-cache.yml saves from main's code, and on a miss downloads
+      # it with retries instead of failing on a releases outage. It runs
+      # before any exact-SHA code and installs the archive only if it matches
+      # the pinned digest, the bun-linux-x64.zip line of the release's
+      # SHASUMS256.txt. The digest covers the archive, not the rest of the
+      # restored entry, so the entry's trust still rests on its main-only
+      # writer.
+      - name: Set up Bun
+        uses: ./.workspace-e2e-coordinator/.github/actions/setup-bun
         with:
           bun-version: 1.4.2
-          no-cache: true
+          bun-sha256: 36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913
 
-      # Exact, workflow-scoped key without restore-keys. A miss is filled and
-      # saved before any exact-SHA code or Bun configuration takes effect.
-      # Bun checks tarballs against bun.lock integrity and keys patched
-      # packages by patch hash, so the entry holds only what bun.lock and the
-      # patch files produce; those exact-SHA inputs still choose its content.
+      # Restore only. fill-bun-package-cache saves this exact key, unless it
+      # already exists, before this job starts. On a miss, the install below
+      # downloads the packages.
       - name: Restore Bun package cache
-        id: bun-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: workspace-e2e-bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
-      # Install from regular-file copies of the lockfile, manifests, and
-      # patches outside the checkout, so exact-SHA bunfig.toml hooks (such as
-      # a security scanner), .npmrc settings, symlinks, and lifecycle scripts
-      # never reach Bun.
-      - name: Fill Bun package cache from install manifests
-        if: steps.bun-cache.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          staging="$RUNNER_TEMP/bun-cache-fill"
-          mkdir "$staging"
-          git ls-files -z --stage -- \
-            bun.lock \
-            ':(glob)**/package.json' \
-            ':(glob)**/*.patch' \
-            ':(exclude,glob)**/node_modules/**' |
-            while IFS= read -r -d '' entry; do
-              read -r mode blob _ <<<"${entry%%$'\t'*}"
-              path="${entry#*$'\t'}"
-              if [[ "$mode" != 100644 && "$mode" != 100755 ]]; then
-                continue
-              fi
-              mkdir -p "$staging/$(dirname "$path")"
-              git cat-file blob "$blob" >"$staging/$path"
-            done
-          cd "$staging"
-          bun install --frozen-lockfile --ignore-scripts
-
-      - name: Save Bun package cache
-        if: steps.bun-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ steps.bun-cache.outputs.cache-primary-key }}
+      # An actions/cache step would save the browser download after the job,
+      # once exact-SHA code has run, into the default-branch scope every
+      # workflow restores from. This action only restores the WebKit download
+      # that playwright-webkit-cache.yml saves from main's code. It reads the
+      # Workspace's exact Playwright pin as data, so it runs before any
+      # exact-SHA code. On a miss, the install step below downloads WebKit.
+      - name: Restore Workspace Playwright WebKit
+        uses: ./.workspace-e2e-coordinator/.github/actions/restore-playwright-webkit
 
       - name: Install repository dependencies
         run: bun install --frozen-lockfile
@@ -680,22 +766,10 @@ jobs:
           "$browser_path" --version
           echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$browser_path" >> "$GITHUB_ENV"
 
-      - name: Resolve Workspace Playwright version
-        id: playwright
-        working-directory: apps/deskohub-workspace
-        run: |
-          echo "image-os=${ImageOS:?The hosted runner must provide ImageOS}" >> "$GITHUB_OUTPUT"
-          echo "version=$(bun -p 'require("@playwright/test/package.json").version')" >> "$GITHUB_OUTPUT"
-
       # The WebKit project covers Safari and iOS, which get the Temporal
-      # polyfill. Restores only the browser download; the install step below
-      # still installs WebKit's system packages on every run.
-      - name: Cache Workspace Playwright WebKit
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-webkit-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.image-os }}-${{ steps.playwright.outputs.version }}
-
+      # polyfill. This installs WebKit's system packages on every run, and
+      # downloads the browser only when "Restore Workspace Playwright WebKit"
+      # found no entry.
       - name: Install Workspace Playwright WebKit
         working-directory: apps/deskohub-workspace
         run: bun ./node_modules/@playwright/test/cli.js install --with-deps webkit
@@ -837,7 +911,9 @@ jobs:
       needs.resolve-target.outputs.deployment == 'success' &&
       needs.resolve-target.outputs.nightly != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    # Covers fill-bun-package-cache and test-e2e, which run in sequence
+    # beside it.
+    timeout-minutes: 65
     permissions:
       actions: write
       pull-requests: read
@@ -878,7 +954,7 @@ jobs:
           done
 
   publish-final-status:
-    needs: [resolve-target, test-e2e]
+    needs: [resolve-target, fill-bun-package-cache, test-e2e]
     if: always() && needs.resolve-target.result == 'success' && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.deployment == 'success' && needs.resolve-target.outputs.nightly != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -891,7 +967,7 @@ jobs:
         if: always()
         env:
           ALLOCATION_SHARD: ${{ needs.test-e2e.outputs.shard }}
-          ALLOCATION_DESCRIPTION: ${{ needs.test-e2e.outputs.shard == '' && 'Workspace E2E shard allocation failed' || needs.test-e2e.outputs.release_outcome == 'success' && 'Workspace E2E shard released' || 'Workspace E2E shard release failed' }}
+          ALLOCATION_DESCRIPTION: ${{ needs.fill-bun-package-cache.result != 'success' && 'Workspace E2E Bun package cache fill failed' || needs.test-e2e.outputs.shard == '' && 'Workspace E2E shard allocation failed' || needs.test-e2e.outputs.release_outcome == 'success' && 'Workspace E2E shard released' || 'Workspace E2E shard release failed' }}
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
           STATUS_STATE: ${{ needs.test-e2e.result == 'success' && 'success' || 'failure' }}

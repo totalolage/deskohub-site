@@ -1,5 +1,6 @@
 import { FilePlus2 } from "lucide-react";
 import { Suspense } from "react";
+import { formatInvoiceTotal } from "@/features/accounting/invoice-settlement";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import { administrationHref } from "@/features/administration/administration-href";
 import {
@@ -16,7 +17,6 @@ import { AdministrationCollectionLoading } from "@/features/administration/loadi
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { Button } from "@/shared/components/ui/button";
-import { formatInvoiceTotal } from "./invoice-display";
 import { invoiceListQuery } from "./invoice-list-query";
 import { InvoiceAdministrationTable } from "./invoice-table";
 import {
@@ -105,7 +105,10 @@ async function InvoiceCollection({
         items={result.items.items.map((invoice) => ({
           ...invoice,
           issuedAtLabel: formatAdministrationDateTime(invoice.issuedAt, locale),
-          totalLabel: formatInvoiceTotal(invoice, locale),
+          totalLabel: formatInvoiceTotal(
+            { amount: invoice.total, currency: invoice.currency },
+            locale
+          ),
         }))}
         query={result.query}
       />
