@@ -14,6 +14,8 @@ import {
   localizeAdministrationHref,
 } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
+import { discountLabelFor } from "@/features/discounts/discount-label";
+import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
@@ -86,10 +88,13 @@ const customerHref = localizeAdministrationHref(
   locale
 );
 
-const renderInLocale = async (node: ReactNode) => {
+const renderInLocale = async (
+  node: ReactNode,
+  routeLocale: Locale = locale
+) => {
   const { RouteLocaleProvider } = await import("@/features/i18n/route-locale");
   return render(
-    <RouteLocaleProvider locale={locale}>{node}</RouteLocaleProvider>
+    <RouteLocaleProvider locale={routeLocale}>{node}</RouteLocaleProvider>
   );
 };
 
@@ -228,6 +233,26 @@ describe("discount code creation form", () => {
     expect(
       view.getByRole("button", { name: m.discountsCreating({}, { locale }) })
     ).toHaveProperty("disabled", true);
+  });
+
+  test("names each existing discount through its label fallback chain", async () => {
+    const { DiscountCodeCreationForm } = await import(
+      "./customer-code-creation"
+    );
+    for (const routeLocale of ["de-DE", "uk-UA", "sk-SK"] as const) {
+      const view = await renderInLocale(
+        <DiscountCodeCreationForm discounts={discounts} />,
+        routeLocale
+      );
+      const [discount] = discounts;
+
+      expect(
+        view.getByRole("option", {
+          name: discountLabelFor(discount!.labels, routeLocale),
+        })
+      ).toBeDefined();
+      cleanup();
+    }
   });
 
   test("offers only a new discount when none exist", async () => {
