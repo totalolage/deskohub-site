@@ -41,7 +41,7 @@ import { CampaignCandidateRepository } from "../../backend/campaign-candidate.re
 import { CampaignDeliveryService } from "../../backend/campaign-delivery.service";
 import { CampaignEmailConfig } from "../../backend/campaign-email.config";
 import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
-import { CampaignRecipientAnalyticsIdentity } from "../../backend/campaign-recipient-analytics-identity";
+import { CampaignRecipientAnalyticsIdentity } from "../../backend/campaign-recipient-analytics-identity.service";
 import { CampaignUnsubscribeService } from "../../backend/campaign-unsubscribe.service";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";

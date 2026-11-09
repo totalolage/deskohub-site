@@ -3,10 +3,12 @@
 // and the recipients' `failure_code` column (S4) bring. At integration:
 // import `EmailBatchResult` and `EmailSendFailure` from "@deskohub/email",
 // replace `CampaignEmailMessage` with `EmailMessage`, drop
-// `emailBatchResults` (the service already returns them), make
+// `emailBatchResults` (the service already returns them), pass
+// `batchRequestOptions`' argument as the `EmailBatchOptions` it is, make
 // `recipientFailureCode` return `{ failureCode: code ?? null }`, and delete
 // this file.
 import {
+  type EmailBatchOptions,
   type EmailMessage,
   type EmailSendError,
   type EmailSendResult,
@@ -57,6 +59,15 @@ export const emailBatchResults = (
             ),
     };
   });
+
+/**
+ * A batch request's options. `replay` marks a repeat of a request whose
+ * outcome is unknown: each email stays with the first provider of its
+ * chain, which may have taken the earlier request.
+ */
+export const batchRequestOptions = (
+  options: EmailBatchOptions & { readonly replay?: boolean }
+): EmailBatchOptions => options;
 
 /** The recipient columns that record why its email failed, if it did. */
 export const recipientFailureCode = (_code: string | undefined) => ({});

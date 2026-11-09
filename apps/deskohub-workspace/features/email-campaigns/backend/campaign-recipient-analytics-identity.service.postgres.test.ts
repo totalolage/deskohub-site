@@ -9,7 +9,7 @@ import { Effect, Layer } from "effect";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { CampaignRecipientAnalyticsIdentity } from "./campaign-recipient-analytics-identity";
+import { CampaignRecipientAnalyticsIdentity } from "./campaign-recipient-analytics-identity.service";
 import {
   analyticsConsentLedgerOf,
   type TestAnalyticsConsent,

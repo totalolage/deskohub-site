@@ -9,9 +9,12 @@ import { ServerAnalytics } from "./server-analytics.service";
 // "@deskohub/email"; delete these local copies and import them.
 type EmailStream = "transactional" | "marketing";
 interface EmailSentEvent {
+  readonly provider: string;
+  readonly deliveryId: string;
   readonly stream: EmailStream;
   readonly category: string | undefined;
-  readonly provider: string;
+  readonly tags: readonly string[];
+  readonly idempotencyKey: string | undefined;
   readonly at: Date;
 }
 export interface EmailFallbackEvent {

@@ -83,11 +83,12 @@ import {
   campaignEligibility,
   consentingCampaignCustomers,
 } from "./campaign-reachability";
-import { CampaignRecipientAnalyticsIdentity } from "./campaign-recipient-analytics-identity";
+import { CampaignRecipientAnalyticsIdentity } from "./campaign-recipient-analytics-identity.service";
 import type { CampaignDeliveryAttempt } from "./campaign-send-queue.service";
 import { sendAutomationVersion } from "./campaign-send-selection";
 import { CampaignUnsubscribeService } from "./campaign-unsubscribe.service";
 import {
+  batchRequestOptions,
   type CampaignEmailMessage,
   type EmailBatchResult,
   emailBatchResults,
@@ -308,6 +309,36 @@ type BatchOutcome =
 const errorCode = (
   error: EmailSendError & { readonly code?: string | undefined }
 ): string | undefined => error.code;
+
+/** An answered batch's outcome from its emails' results, in its order. */
+const answeredOutcome = (
+  results: readonly EmailBatchResult[],
+  replay: boolean
+) => ({
+  status: "accepted" as const,
+  recipients: results.map((result) => recipientOutcome(result, replay)),
+});
+
+/** The emails of an answered batch that weren't sent. */
+const unsentEmails = (recipients: readonly RecipientOutcome[]) => ({
+  failureCodes: recipients.flatMap((outcome) =>
+    outcome.status === "failed" ? [outcome.failureCode ?? "unknown"] : []
+  ),
+  unconfirmed: recipients.filter(({ status }) => status === "unconfirmed")
+    .length,
+});
+
+const logUnsentEmails = ({
+  failureCodes,
+  unconfirmed,
+}: ReturnType<typeof unsentEmails>) =>
+  Effect.logWarning("Campaign delivery batch had emails that weren't sent", {
+    failed: failureCodes.length,
+    failureCodes,
+    unconfirmed,
+  }).pipe(
+    Effect.when(Effect.succeed(failureCodes.length > 0 || unconfirmed > 0))
+  );
 
 /**
  * An email's outcome from its result. A refusal during a replay says
@@ -957,32 +988,6 @@ export class CampaignDeliveryService extends Context.Service<
           )
         );
 
-      /**
-       * An answered batch's outcome from its emails' results, logging the
-       * emails that weren't sent.
-       */
-      const answeredOutcome = Effect.fn(
-        "CampaignDeliveryService.answeredOutcome"
-      )(function* (results: readonly EmailBatchResult[], replay: boolean) {
-        const recipients = results.map((result) =>
-          recipientOutcome(result, replay)
-        );
-        const failureCodes = recipients.flatMap((outcome) =>
-          outcome.status === "failed" ? [outcome.failureCode ?? "unknown"] : []
-        );
-        const unconfirmed = recipients.filter(
-          ({ status }) => status === "unconfirmed"
-        ).length;
-        if (failureCodes.length > 0 || unconfirmed > 0) {
-          yield* Effect.logWarning(
-            "Campaign delivery batch had emails that weren't sent",
-            { failed: failureCodes.length, failureCodes, unconfirmed }
-          );
-        }
-        const outcome: BatchOutcome = { status: "accepted", recipients };
-        return outcome;
-      });
-
       /** What a persisted batch's request under its key settled as. */
       const requestOutcome = (
         input: PreparedBatch & {
@@ -992,12 +997,23 @@ export class CampaignDeliveryService extends Context.Service<
       ) =>
         withRecipientIdentities(input).pipe(
           Effect.flatMap((messages) =>
-            email.sendBatch(messages, {
-              idempotencyKey: campaignDeliveryBatchIdempotencyKey(input.batch),
-            })
+            email.sendBatch(
+              messages,
+              batchRequestOptions({
+                idempotencyKey: campaignDeliveryBatchIdempotencyKey(
+                  input.batch
+                ),
+                // A repeat stays with the provider that may have taken the
+                // earlier request, so no other provider mails it again.
+                replay: input.replay,
+              })
+            )
           ),
-          Effect.flatMap((results) =>
+          Effect.map((results) =>
             answeredOutcome(emailBatchResults(results), input.replay)
+          ),
+          Effect.tap(({ recipients }) =>
+            logUnsentEmails(unsentEmails(recipients))
           ),
           Effect.catchTags({
             EmailServiceError: (error) =>

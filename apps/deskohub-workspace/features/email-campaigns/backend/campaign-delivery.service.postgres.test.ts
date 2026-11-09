@@ -134,7 +134,7 @@ const { AnalyticsConsentLedger } = await import(
   "@/features/legal/backend/analytics-consent-ledger"
 );
 const { CampaignRecipientAnalyticsIdentity } = await import(
-  "./campaign-recipient-analytics-identity"
+  "./campaign-recipient-analytics-identity.service"
 );
 const { connectWorkspacePostgresTestDatabase } = await import(
   "@/shared/testing/workspace-postgres-test-database.test-utils"
@@ -444,12 +444,24 @@ describe.skipIf(!testDatabase)(
       const requests: {
         readonly messages: readonly CampaignEmailMessage[];
         readonly idempotencyKey: string;
+        readonly replay: boolean;
       }[] = [];
       const layer = Layer.succeed(EmailServiceTag, {
         send: () => Effect.die("campaigns send batches"),
-        sendBatch: (messages: readonly EmailMessage[], { idempotencyKey }) =>
+        sendBatch: (messages: readonly EmailMessage[], options) =>
           Effect.suspend(() => {
-            const request = requests.push({ messages, idempotencyKey }) - 1;
+            // seam: replaced at integration — `EmailBatchOptions` carries
+            // `replay` itself.
+            const requested: {
+              readonly idempotencyKey: string;
+              readonly replay?: boolean;
+            } = options;
+            const request =
+              requests.push({
+                messages,
+                idempotencyKey: requested.idempotencyKey,
+                replay: requested.replay ?? false,
+              }) - 1;
             const failure = failRequest(request);
             if (failure) return Effect.fail(failure);
             const results = messages.map((message) =>
@@ -479,8 +491,8 @@ describe.skipIf(!testDatabase)(
       status: "failed",
       provider: "resend",
       timestamp: new Date(),
-      // seam: replaced at integration — S1's EmailServiceError takes
-      // `{ message, provider, failureKind: "message", code }`.
+      // seam: replaced at integration — `new EmailServiceError(message,
+      // undefined, "resend", { failureKind: "message", code })`.
       error: Object.assign(
         new EmailServiceError(`Refused: ${code}`, undefined, "resend"),
         { code }
@@ -715,6 +727,11 @@ describe.skipIf(!testDatabase)(
 
       const [first, replay] = chain.requests;
       expect(replay?.idempotencyKey).toBe(first?.idempotencyKey);
+      // The replay stays with the provider that may have taken the first.
+      expect(chain.requests.map((request) => request.replay)).toEqual([
+        false,
+        true,
+      ]);
       expect(JSON.stringify(replay?.messages)).toBe(
         JSON.stringify(first?.messages)
       );
