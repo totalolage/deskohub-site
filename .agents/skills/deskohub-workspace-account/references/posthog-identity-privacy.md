@@ -530,7 +530,7 @@ The processor and transfer rows are in
   (`customer_accounts.dotypos_customer_id`) whose current analytics consent
   decision (`AnalyticsConsentLedger.currentDecision`) is a grant, the same
   gate as `ReservationAnalyticsPerson`, in `CampaignRecipientAnalyticsIdentity`
-  (`features/email-campaigns/backend/campaign-recipient-analytics-identity.ts`;
+  (`features/email-campaigns/backend/campaign-recipient-analytics-identity.service.ts`;
   live accounts only, and an unreadable account or consent gives no
   identity). Consent is re-read right before every send, replays included. Otherwise the message carries no identity and the
   PostHog provider sends its one fixed system identity (`systemIdentity`).

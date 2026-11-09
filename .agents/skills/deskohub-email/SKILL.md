@@ -64,7 +64,9 @@ take, such as several `to` addresses at PostHog) and on `NetworkError` with
 provider's own retries). It stops on `EmailServiceError` `"message"`
 (validation, suppressed or unreachable recipient, attachments) and on
 `NetworkError` `"unknown-outcome"` (a 409 for a key in flight or reused):
-the message may have been sent, so any replay reuses the same key (campaign
+the message may have been sent, so any replay reuses the same key. A call
+with `replay: true` keeps each message on its chain's first provider, so a
+replay never sends the same message through a second provider (campaign
 replay rules: `deskohub-workspace-domain` skill,
 `references/email-campaigns.md`). The chain adds no retries.
 
