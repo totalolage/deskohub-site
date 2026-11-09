@@ -1,7 +1,7 @@
 # OTA updates
 
 Installed apps receive JavaScript and asset updates from the Workspace's own
-Expo Updates server; native changes still need an APK ([release](release.md)).
+Expo Updates server; native changes still need an APK ([release](../SKILL.md)).
 Server code is in `apps/deskohub-workspace/features/mobile-updates`, the app
 side in `apps/deskohub-mobile/src/updates`.
 
@@ -25,7 +25,8 @@ side in `apps/deskohub-mobile/src/updates`.
   so a republish reuses them.
 - `mobile_update_publications` is append-only history: the newest row for a
   platform and runtime version wins, so there is no pointer to move. Every
-  Neon preview branch has its own history.
+  Neon preview branch has its own history, but previews and production share
+  one Blob store.
 
 ## Publishing
 
@@ -47,8 +48,9 @@ MOBILE_UPDATES_CODE_SIGNING=required \
 ```
 
 - It needs `MOBILE_UPDATES_PUBLISH_TOKEN` and `BLOB_READ_WRITE_TOKEN` for the
-  target deployment, and `VERCEL_AUTOMATION_BYPASS_SECRET` for a protected
-  preview. Set `EXPO_PUBLIC_POSTHOG_KEY`, `EXPO_PUBLIC_POSTHOG_HOST` and
+  target deployment (and `VERCEL_AUTOMATION_BYPASS_SECRET` for a protected
+  deployment). Never publish to a preview: its assets land in the production
+  Blob store. Set `EXPO_PUBLIC_POSTHOG_KEY`, `EXPO_PUBLIC_POSTHOG_HOST` and
   `EXPO_PUBLIC_API_ORIGIN` as the target build had them.
 - Without `MOBILE_UPDATES_CODE_SIGNING=required` the publish resolves a
   runtime version no release build has.
@@ -86,7 +88,11 @@ lasts for the session. iOS checks OTA only. `app.config.ts` sets
 `checkAutomatically: "ON_ERROR_RECOVERY"`, so updates install only through
 this prompt.
 
-Development clients load from Metro and never take OTA updates. A
-release-shaped build needs an HTTPS update origin it can reach without a
-bypass, so a protected preview can't serve it; the prompt's no-update path is
-checkable against production.
+Development clients load from Metro and never take OTA updates. Before a tag,
+the one OTA check is a release-shaped build (`--signing debug`) against
+production: launch it and the manifest request gets a signed 200
+`noUpdateAvailable` and no banner. The banner after a real update, and the
+native-update prompt against a real release, are on the physical-device
+checklist ([release](../SKILL.md#physical-device-checklist)); short of a
+release, the prompt can only be exercised against a clearly labelled local
+stub of `/api/mobile/releases/latest`.

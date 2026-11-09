@@ -48,9 +48,9 @@ Paths are relative to `apps/deskohub-mobile`.
   updates URL, update code signing, and the preview App Link filter. It
   imports no local modules, because Expo transpiles only that file; release
   scripts import from it instead.
-- `scripts/release/` is the APK release tooling ([release](release.md));
+- `scripts/release/` is the APK release tooling (`deskohub-mobile-release` skill);
   `code-signing/` holds the committed update certificate
-  ([OTA updates](ota-updates.md)).
+  (`deskohub-mobile-release` skill, `references/ota-updates.md`).
 
 ## Shared packages
 

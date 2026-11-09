@@ -28,15 +28,21 @@ alias `10.0.2.2`.
   only after the export is built into it
   ([web app](web-app-and-android-page.md#app-web-app)). This is the simplest
   backend for a dev client.
-- A preview: Vercel deployment protection refuses requests without the
-  bypass, and the app never sends it. The repository has no tool for this. A
-  local forwarding proxy on `http://localhost:<port>` (with `adb reverse`)
-  works only if it adds `x-vercel-protection-bypass` and also rewrites `Host`,
-  `Origin` and `Referer` to the preview, `Location` back to itself, and the
-  session cookie between the preview's `__Secure-` name and the plain name an
-  HTTP origin can hold: preview auth trusts only its own HTTPS host. Sign in
-  with a synthetic recipient and read its magic link from the preview's
-  runtime logs (`deskohub-workspace-account` skill,
+- A preview: deployment protection refuses requests without the bypass, and
+  the app never sends it, so the emulator reaches a preview only through a
+  forwarding proxy on the host at `http://localhost:<port>` (plus
+  `adb reverse tcp:<port> tcp:<port>`), which keeps the bypass value off the
+  device. The repository ships no such proxy. It must add
+  `x-vercel-protection-bypass`, rewrite `Host`, `Origin` and `Referer` to the
+  preview and `Location` back to itself, and map the session cookie between
+  the preview's `__Secure-` name and the plain name an HTTP origin can hold,
+  because preview auth trusts only its own HTTPS host. A dev client allows
+  plain HTTP. A release-shaped build doesn't: build it from a temporary
+  evidence commit that adds `"usesCleartextTraffic": true` to the
+  `expo-build-properties` `android` options in `app.json`, with
+  `EXPO_PUBLIC_API_ORIGIN` set to the proxy origin, and never push that
+  commit. Sign in with a synthetic recipient and read its magic link from the
+  preview's runtime logs (`deskohub-workspace-account` skill,
   `references/magic-link-delivery-and-e2e.md`); open it in the emulator's
   Chrome at the proxy origin, the browser that holds the pending handoff,
   then choose "Open in app".
@@ -60,7 +66,9 @@ The APK is `android/app/build/outputs/apk/debug/app-debug.apk` (about
 125 MB). `x86_64` matches the emulator; drop the flag for an ARM device.
 `--no-daemon` matters on a shared machine: a Gradle daemon killed mid-build
 fails it with "Gradle build daemon disappeared". `android/` is generated and
-git-ignored; `--clean` regenerates it from the config. The local modules' Gradle output (`modules/*/android/build/`) is git-ignored too.
+git-ignored; `--clean` regenerates it from the config. The build also writes
+`modules/trusted-web-activity/android/build/`, which isn't ignored yet (#1130):
+leave it out of commits.
 
 `bunx eas-cli@27.5.0 build --platform android --profile development --local`
 builds the same kind of APK through EAS. It needs an Expo login
@@ -69,7 +77,7 @@ the prebuild route needs neither.
 
 If the dev client shows "Must specify --private-key-path argument to sign
 development manifest", it was built with `MOBILE_UPDATES_CODE_SIGNING`
-set; rebuild without it ([release](release.md#update-code-signing-and-development-clients)).
+set; rebuild without it (`deskohub-mobile-release` skill, update code signing).
 
 ## Run it on the emulator
 
@@ -87,7 +95,9 @@ using.
    `EXPO_PUBLIC_API_ORIGIN` as the build:
    `bun turbo dev --filter=deskohub-mobile`. The Turbo task compiles Paraglide
    first, then runs `expo start` on port 8081 and recompiles messages on change.
-   Running `bun run dev` in the app directory skips that first compile.
+   From the app directory, run `bun run i18n:compile` before `bun run dev`:
+   until #1130 lands, `bun run dev` compiles messages only on a change, and
+   Metro answers `UnableToResolveError ./paraglide/messages.js` without them.
 3. Forward Metro into the emulator: `adb reverse tcp:8081 tcp:8081`, plus the
    backend port when it is local. Reverse rules end when the emulator
    restarts.
@@ -97,22 +107,33 @@ using.
 5. When done, remove your reverse rules (`adb reverse --remove tcp:<port>`)
    and stop Metro.
 
-In a dev build the Account tab has a row for `/dev/effect-smoke`, which runs
-the Effect, Paraglide and `Intl` smoke cases on the device's Hermes. Run it
-after upgrading Expo, Effect or a shared package. `adb` stays useful for what
+The runtime check is the smoke screen `/dev/effect-smoke`: an Account tab row
+in a dev build, or the deep link `deskohub://dev/effect-smoke`. It runs the
+Effect, shared-package, Paraglide and `Intl` cases on the device's Hermes and
+reports passed and failed counts; every case passes on a healthy build, with
+the designed fallbacks for `Intl.DisplayNames` and exact decimals. Run it after
+upgrading Expo, Effect or a shared package. `adb` stays useful for what
 the panel lacks: `logcat`, `am force-stop`, and
 `cmd locale set-app-locales cz.deskohub.workspace --locales cs-CZ` to switch
 the app language.
 
-## What a dev client can't show
+## What the emulator can't show
 
-- Update signing, OTA delivery and the update banner need a release-shaped
-  build ([release](release.md#local-build) with `--signing debug`) and an
-  HTTPS update origin it reaches without a bypass
-  ([OTA updates](ota-updates.md#client)). A release-shaped build blocks plain
-  HTTP, so it can't use a `localhost` origin as is.
-- Native passkeys and verified App Links trust only the release signing key on
-  production, so they need the release APK on production, on a physical
-  device ([auth and passkeys](auth-and-passkeys.md)). The Trusted Web Activity
-  falls back to a Custom Tab with a visible toolbar when verification fails,
-  which is expected on a debug build.
+- Update signing and the update check need a release-shaped build
+  (`deskohub-mobile-release` skill, local build with `--signing debug`). Against
+  production it shows the signed "no update" answer and no banner. The OTA
+  "update ready" banner needs a published update, which only a tagged release
+  makes (`references/ota-updates.md` in that skill).
+- Verified App Link opening, native passkeys and a live Obtainium badge need
+  the tagged, release-signed APK: `assetlinks.json` lists only the release
+  certificate, so any locally signed build fails verification
+  ([auth and passkeys](auth-and-passkeys.md)), and Obtainium needs a published
+  release. The Trusted Web Activity falls back to a Custom Tab with a visible
+  toolbar when verification fails, which is expected on a local build.
+- Passkey creation: the emulator has no platform authenticator, so only the
+  screens can be checked.
+- The link-only "sent" state needs the `login_email_code` flag off; previews
+  run with it on.
+
+The release skill's physical-device checklist collects these for the first
+tagged release.

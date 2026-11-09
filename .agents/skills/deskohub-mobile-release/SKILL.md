@@ -1,6 +1,11 @@
-# Release
+---
+name: deskohub-mobile-release
+description: Mobile release, Android APK, mobile-v tag, mobile-release.yml, versionCode, expo.version bump, mobile CHANGELOG, release signing keystore, apksigner fingerprint, eas build --local, release-shaped debug-signed APK, latest Android release lookup, /api/mobile/releases/latest, loadLatestAndroidRelease, GitHub API rate limit, first public release, Sculpin brand font licence, physical-device release checklist, update code signing, MOBILE_UPDATES_CODE_SIGNING, OTA update, publish-mobile-update.ts, Expo Updates server, rollback, fingerprint runtime version.
+---
 
-`.github/workflows/mobile-release.yml` builds the release-signed APK with `eas build --local` and publishes it as the GitHub Release `mobile: vX.Y.Z` with the asset `deskohub-X.Y.Z.apk`. CI and local builds both run `apps/deskohub-mobile/scripts/release/mobile-release.ts`; change the build there, not in the workflow.
+# Deskohub mobile release
+
+`.github/workflows/mobile-release.yml` builds the release-signed APK with `eas build --local` and publishes it as the GitHub Release `mobile: vX.Y.Z` with the asset `deskohub-X.Y.Z.apk`. CI and local builds both run `apps/deskohub-mobile/scripts/release/mobile-release.ts`; change the build there, not in the workflow. OTA publishing and rollback are in [OTA updates](references/ota-updates.md). App layout, dev clients, the emulator, `/app/`, auth and analytics are in the `deskohub-mobile` skill.
 
 ## Versions
 
@@ -35,15 +40,34 @@ EXPO_TOKEN=... ANDROID_KEYSTORE_PATH=<release.keystore> ANDROID_KEYSTORE_PASSWOR
 
 `ANDROID_KEYSTORE_BASE64` replaces `ANDROID_KEYSTORE_PATH` in CI. Without the release keystore, `bun run release:apk --signing debug --out-dir <dir>` builds the same APK signed with a throwaway key (JDK `keytool` from `JAVA_HOME` or `PATH`); it refuses `--tag`. The script writes `credentials.json` (git-ignored) for the build and removes it afterwards; it refuses to run when one already exists. It sets `GRADLE_OPTS=-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4` unless `GRADLE_OPTS` is set, because a Gradle daemon killed mid-build on a shared machine fails the build with "Gradle build daemon disappeared". EAS works in the system temporary directory, so point `TMPDIR` at a disk with room for a full Android build.
 
-The script builds with `bunx eas-cli@27.5.0 build --platform android --profile production --local --non-interactive`. Like CI, set `EXPO_PUBLIC_POSTHOG_KEY` and `EXPO_PUBLIC_POSTHOG_HOST` for an APK that sends analytics (without them analytics stay off), and `EXPO_PUBLIC_API_ORIGIN` only for a build aimed at a preview. `EXPO_PUBLIC_API_ORIGIN` feeds the fingerprint runtime version through the updates URL, and an OTA bundle exported without the PostHog values turns analytics off, so a publish for that APK uses the same values ([OTA updates](ota-updates.md)).
+The `--signing debug` build is the release-shaped dry run: production profile, update signing on, all four ABIs. Locally it takes about 12 minutes and gives an APK of about 111 MB. It is what to install for checks that need release behavior short of the release key (update signing, the production "no update" answer, cold start); everything that trusts the release certificate fails on it by design (see the checklist below). To point one at a preview, see the `deskohub-mobile` skill's `references/dev-build-and-emulator.md`.
+
+The script builds with `bunx eas-cli@27.5.0 build --platform android --profile production --local --non-interactive`. Like CI, set `EXPO_PUBLIC_POSTHOG_KEY` and `EXPO_PUBLIC_POSTHOG_HOST` for an APK that sends analytics (without them analytics stay off), and `EXPO_PUBLIC_API_ORIGIN` only for a build aimed at a preview. `EXPO_PUBLIC_API_ORIGIN` feeds the fingerprint runtime version through the updates URL, and an OTA bundle exported without the PostHog values turns analytics off, so a publish for that APK uses the same values ([OTA updates](references/ota-updates.md)).
 
 The release certificate SHA-256 is `releaseCertificateSha256` in `scripts/release/apk-signature.ts`; `/.well-known/assetlinks.json` and the passkey `android:apk-key-hash` origin use the same key.
+
+## Physical-device checklist
+
+The emulator and debug-signed builds can't show these; check them with the
+tagged APK on a physical Android device after the first release, and hand the
+list to the user when an agent can't:
+
+- A magic link or `/app/` link opens the app directly (verified App Link with
+  the release certificate).
+- The OTA "update ready, restart" banner after a published update, and the
+  native-update prompt and Download link against a real `mobile-v` release.
+- The live Obtainium badge and import on `/android`.
+- Creating and signing in with a passkey through the device's credential
+  provider.
+- The link-only "sent" screen with the `login_email_code` flag off.
+- TalkBack across sign-in, booking and the account screens; iOS once an Apple
+  account exists.
 
 ## Update code signing and development clients
 
 `app.config.ts` embeds the update code-signing certificate (`code-signing/code-signing-certificate.pem`, keyid `main`) only when `MOBILE_UPDATES_CODE_SIGNING=required`; unset or empty leaves it out, and any other value fails the config. The `production` profile in `eas.json` sets it, so every release, dry-run and `release:apk` build verifies update signatures. The `ota-update` job sets it as job env for the runtime-version check and the publish: the signing fields feed the fingerprint runtime version, so a publish without the variable resolves a runtime no release has. Set it for a manual `publish-mobile-update.ts` run too. `app.config.test.ts` pins both config shapes and the two `eas.json` profiles; `mobile-release-workflow.test.ts` pins the `ota-update` job env to the production profile's env.
 
-Development clients and Metro run without it. A build that embeds the certificate asks Metro for a signed development manifest, and Metro refuses with "Must specify --private-key-path argument to sign development manifest" unless started with the private key; never point Metro at the key. Build dev clients with the variable unset ([development build and emulator](dev-build-and-emulator.md)).
+Development clients and Metro run without it. A build that embeds the certificate asks Metro for a signed development manifest, and Metro refuses with "Must specify --private-key-path argument to sign development manifest" unless started with the private key; never point Metro at the key. Build dev clients with the variable unset (`deskohub-mobile` skill, `references/dev-build-and-emulator.md`).
 
 ## Latest-release endpoint
 

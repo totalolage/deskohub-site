@@ -47,7 +47,8 @@ is at `<preview origin>/app/` behind the usual deployment protection.
   (`apps/deskohub-workspace/app/[locale]/(site)/(full-header)/android/page.tsx`)
   offers the latest APK, install guidance, the signing certificate
   fingerprint and an Obtainium link. It reads the release through
-  `loadLatestAndroidRelease` ([release](release.md#latest-release-endpoint)).
+  `loadLatestAndroidRelease` (`deskohub-mobile-release` skill, latest-release
+  endpoint).
 - `features/mobile-distribution/obtainium-link.ts` builds
   `https://apps.obtainium.imranr.dev/redirect?r=<encoded obtainium://app JSON>`
   that tracks the GitHub releases and matches assets named
@@ -55,7 +56,7 @@ is at `<preview origin>/app/` behind the usual deployment protection.
   pattern in step with the release tooling.
 - On Android, `install-environment.ts` calls `getInstalledRelatedApps()`; when
   the app is installed, the footer offers to open it
-  (`install-android-app.ts`: an `intent://` URL to the account screen, falling
+  (`install-android-app.ts`: an `intent://` URL into the app, falling
   back to `/android`). Detection needs both halves of the association: the
   manifest's `related_applications` plus `/.well-known/assetlinks.json` on the
   site, and the app's `asset_statements` resource

@@ -1,6 +1,6 @@
 ---
 name: deskohub-mobile
-description: Mobile app, apps/deskohub-mobile, Expo, React Native, Hermes, mobile import ban, dev client, Android emulator, T3 device panel, adb reverse, Metro, EXPO_PUBLIC_API_ORIGIN, Gradle, eas build --local, Android APK release, mobile-v tag, versionCode, release keystore, Sculpin font licence, OTA update, expo-updates, rollback, fingerprint runtime version, MOBILE_UPDATES_CODE_SIGNING, /app/ PWA, /android page, Obtainium, latest Android release endpoint, native sign-in, Trusted Web Activity, native passkeys, apk-key-hash, assetlinks, app analytics, posthog-react-native.
+description: Mobile app, apps/deskohub-mobile, Expo, React Native, Hermes, mobile import ban, dev client, Android emulator, T3 device panel, adb reverse, Metro, EXPO_PUBLIC_API_ORIGIN, Gradle, --private-key-path, Effect smoke screen, preview bypass proxy, /app/ PWA, web export, /android page, Obtainium, native sign-in, Trusted Web Activity, native passkeys, apk-key-hash, assetlinks, app analytics, posthog-react-native.
 ---
 
 # Deskohub mobile app
@@ -38,6 +38,8 @@ booking flows, not the presentation pages. Paths are relative to
 
 ## References
 
+Tags, release builds, release and update signing, OTA publishing and rollback,
+and the latest-release endpoint are in the `deskohub-mobile-release` skill.
 Read the reference that matches the change before editing:
 
 - [Package layout and checks](references/package-layout.md): routes and
@@ -47,13 +49,6 @@ Read the reference that matches the change before editing:
   building a debug dev client, the T3 device panel and AVD, Metro and
   `adb reverse`, choosing the backend origin, and what only a release build or
   a physical device can show.
-- [Release](references/release.md): `expo.version`, the CHANGELOG and the
-  `mobile-v` tag, the release workflow and PR dry runs, local
-  `eas build --local`, release and update signing, and the latest-release
-  endpoint.
-- [OTA updates](references/ota-updates.md): the self-hosted Expo Updates
-  server, publishing, rollback, runtime-version matching, and the in-app update
-  banner.
 - [Auth and passkeys](references/auth-and-passkeys.md): the app's Better Auth
   client, native email sign-in through the web bundle, the session handoff,
   passkey origins per environment, and the association files.

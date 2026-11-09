@@ -1,4 +1,4 @@
 interface:
   display_name: "Deskohub Mobile"
-  short_description: "Build, run, release and update the Expo mobile app"
-  default_prompt: "Use $deskohub-mobile to change, build, test, release or OTA-update the Deskohub Expo app and its /app/ web export."
+  short_description: "Build, run and test the Expo mobile app"
+  default_prompt: "Use $deskohub-mobile to change, build, run or test the Deskohub Expo app and its /app/ web export."
