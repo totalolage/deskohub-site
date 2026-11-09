@@ -13,6 +13,7 @@ mock.module("react-native", () => ({
   ActivityIndicator: "ActivityIndicator",
   Modal: "Modal",
   Pressable: "Pressable",
+  RefreshControl: "RefreshControl",
   ScrollView: "ScrollView",
   Text: "Text",
   TextInput: "TextInput",

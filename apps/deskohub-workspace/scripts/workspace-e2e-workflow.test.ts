@@ -8,6 +8,7 @@ import { runCommand } from "./shared/command";
 import {
   evaluateWorkflowValue,
   findStepByName,
+  parseCompositeAction,
   parseWorkflow,
   type WorkflowExpressionContext,
   type WorkflowStep,
@@ -74,6 +75,12 @@ const productionWorkflowPath = resolve(
 );
 
 const productionDoc = parseWorkflow(productionWorkflowPath);
+const bunReleaseCacheDoc = parseWorkflow(
+  resolve(import.meta.dir, "../../../.github/workflows/bun-release-cache.yml")
+);
+const setupBunAction = parseCompositeAction(
+  resolve(import.meta.dir, "../../../.github/actions/setup-bun/action.yml")
+);
 const workflowDispatchInputs = doc.on?.workflow_dispatch?.inputs;
 // Format-insensitive view of the parsed workflow used for document-level
 // token presence/absence checks; assertions never touch raw file text.
@@ -378,7 +385,7 @@ describe("workspace E2E workflow", () => {
 
     const targetCheckoutIndex = stepNames.indexOf("Checkout exact target");
     const coordinatorCheckoutIndex = stepNames.indexOf(
-      "Checkout allocation action"
+      "Checkout workflow actions"
     );
     const leaseIndex = stepNames.indexOf("Lease an available date shard");
     const runIndex = stepNames.indexOf("Run checkout E2E");
@@ -738,7 +745,7 @@ describe("workspace E2E workflow", () => {
     ).toEqual(["Fill Bun package cache from install manifests"]);
 
     // Local actions come from the workflow commit, not the exact-SHA checkout.
-    const coordinatorCheckout = stepByName("Checkout allocation action");
+    const coordinatorCheckout = stepByName("Checkout workflow actions");
     expect(coordinatorCheckout.with?.ref).toContain("github.workflow_sha");
     const localActions = beforeSave.filter((step) =>
       (step.uses ?? "").startsWith("./")
@@ -761,15 +768,88 @@ describe("workspace E2E workflow", () => {
     expect(install.run?.trim()).toBe("bun install --frozen-lockfile");
   });
 
-  test("keeps the Bun binary out of the shared Actions cache", () => {
-    // setup-bun would save it after exact-SHA code ran, into the
-    // default-branch scope every workflow restores from.
-    const setupBunSteps = allSteps.filter((step) =>
-      (step.uses ?? "").startsWith("oven-sh/setup-bun@")
+  test("sets up Bun from the workflow commit before any exact-SHA code runs", () => {
+    const steps = testJob?.steps ?? [];
+    const setupBun = stepByName("Set up Bun");
+    const coordinatorCheckout = stepByName("Checkout workflow actions");
+    expect(setupBun.uses).toBe(
+      `./${coordinatorCheckout.with?.path}/.github/actions/setup-bun`
     );
-    expect(setupBunSteps.length).toBeGreaterThan(0);
-    for (const step of setupBunSteps) {
-      expect(step.with?.["no-cache"]).toBe(true);
+    expect(String(coordinatorCheckout.with?.["sparse-checkout"])).toContain(
+      ".github/actions/setup-bun"
+    );
+    // Bun is in place before the package cache steps, the first that run it.
+    const setupIndex = steps.indexOf(setupBun);
+    expect(setupIndex).toBeGreaterThan(steps.indexOf(coordinatorCheckout));
+    expect(setupIndex).toBeLessThan(
+      steps.indexOf(stepByName("Restore Bun package cache"))
+    );
+    expect(
+      steps
+        .slice(0, setupIndex)
+        .filter((step) => /\bbunx?\b/.test(step.run ?? ""))
+    ).toEqual([]);
+    // The job never calls setup-bun directly, whose cache would save the
+    // binary after exact-SHA code ran.
+    expect(
+      allSteps.filter((step) =>
+        (step.uses ?? "").startsWith("oven-sh/setup-bun@")
+      )
+    ).toEqual([]);
+  });
+
+  test("installs Bun only from an archive matching the pinned digest, saving nothing", () => {
+    const steps = setupBunAction.runs.steps;
+    expect(steps.map((step) => step.name)).toEqual([
+      "Restore Bun release",
+      "Download Bun release",
+      "Install verified Bun release",
+      "Set up Bun",
+    ]);
+    const [restore, download, install, setup] = steps;
+    expect(restore?.uses).toStartWith("actions/cache/restore@");
+    expect(restore?.with?.["restore-keys"]).toBeUndefined();
+    for (const part of ["inputs.bun-version", "runner.os", "runner.arch"]) {
+      expect(String(restore?.with?.key)).toContain(part);
     }
+    expect(setupBunAction.outputs?.path?.value).toBe(restore?.with?.path);
+    expect(download?.if).toBe("steps.restore.outputs.cache-hit != 'true'");
+    expect(download?.run).toContain("--retry-all-errors");
+    // A restored archive is checked as strictly as a downloaded one.
+    expect(install?.if).toBeUndefined();
+    expect(install?.env?.BUN_SHA256).toContain("inputs.bun-sha256");
+    expect(install?.run).toContain("sha256sum --check --strict");
+    // setup-bun then finds the requested version installed and reuses it.
+    expect(setup?.uses).toStartWith("oven-sh/setup-bun@");
+    expect(setup?.with?.["no-cache"]).toBe(true);
+    expect(
+      steps.filter((step) => /^actions\/cache(\/save)?@/.test(step.uses ?? ""))
+    ).toEqual([]);
+  });
+
+  test("saves the Bun release only from main's code, before anything else runs", () => {
+    const warmSteps = bunReleaseCacheDoc.jobs.warm?.steps ?? [];
+    expect(warmSteps.map((step) => step.uses?.replace(/@.*/, ""))).toEqual([
+      "actions/checkout",
+      "./.github/actions/setup-bun",
+      "actions/cache/save",
+    ]);
+    const [checkout, setup, save] = warmSteps;
+    expect(checkout?.with?.ref).toBeUndefined();
+    expect(checkout?.with?.["persist-credentials"]).toBe(false);
+    expect(save?.if).toContain("github.ref == 'refs/heads/main'");
+    expect(save?.if).toContain(
+      `steps.${setup?.id}.outputs.cache-hit != 'true'`
+    );
+    expect(save?.with?.path).toBe(`\${{ steps.${setup?.id}.outputs.path }}`);
+    expect(save?.with?.key).toBe(
+      `\${{ steps.${setup?.id}.outputs.cache-primary-key }}`
+    );
+    // The writer saves the release Workspace E2E restores.
+    const e2eSetup = stepByName("Set up Bun");
+    expect(setup?.with?.["bun-version"]).toBe(e2eSetup.with?.["bun-version"]);
+    expect(setup?.with?.["bun-sha256"]).toBe(e2eSetup.with?.["bun-sha256"]);
+    expect(String(e2eSetup.with?.["bun-sha256"])).toMatch(/^[0-9a-f]{64}$/);
+    expect(bunReleaseCacheDoc.permissions).toEqual({ contents: "read" });
   });
 });

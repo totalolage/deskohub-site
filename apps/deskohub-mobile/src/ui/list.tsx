@@ -36,7 +36,8 @@ export function ListGroup({ children }: { readonly children: ReactNode }) {
  * One row of a list. Without `onPress` it only shows content. A `navigation`
  * row (the default) is a link with a chevron that opens another screen; an
  * `action` row is a button that acts in place. `destructive` marks an
- * irreversible action, such as deleting the account.
+ * irreversible action, such as deleting the account. `wrapValue` lets a long
+ * value, such as a date range, take more room and wrap instead of being cut.
  */
 export function ListRow({
   label,
@@ -46,6 +47,7 @@ export function ListRow({
   kind = "navigation",
   destructive = false,
   disabled = false,
+  wrapValue = false,
 }: {
   readonly label: string;
   readonly description?: string;
@@ -54,6 +56,7 @@ export function ListRow({
   readonly kind?: ListRowKind;
   readonly destructive?: boolean;
   readonly disabled?: boolean;
+  readonly wrapValue?: boolean;
 }) {
   const { role, chevron } = listRowPresentation({
     pressable: onPress !== undefined,
@@ -70,7 +73,10 @@ export function ListRow({
         )}
       </View>
       {value !== undefined && (
-        <Text numberOfLines={1} style={styles.value}>
+        <Text
+          numberOfLines={wrapValue ? undefined : 1}
+          style={[styles.value, wrapValue && styles.wrappedValue]}
+        >
           {value}
         </Text>
       )}
@@ -148,6 +154,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
     ...theme.type.body,
   },
+  wrappedValue: { maxWidth: "65%" },
   chevron: {
     color: theme.colors.textMuted,
     fontSize: 24,
