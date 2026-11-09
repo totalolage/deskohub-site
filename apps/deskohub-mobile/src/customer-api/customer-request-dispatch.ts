@@ -8,7 +8,7 @@ interface ICustomerRequestDispatch {
 
 /**
  * What a request run through `customerRead` or `customerWrite` does at each
- * send: a Dotypos-backed read spends the advisory budget once per attempt (the
+ * send: an account read spends the advisory budget once per attempt (the
  * server charges every attempt), a write records that it left the device.
  */
 export class CustomerRequestDispatch extends Context.Service<

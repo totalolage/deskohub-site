@@ -4,7 +4,7 @@ import {
   nextPaymentReturnPoll,
   paymentReturnPollingStatuses,
 } from "../../booking/payment-return-polling";
-import { allowsAutomaticRefresh } from "../../customer-api/dotypos-read-budget";
+import { allowsAutomaticRefresh } from "../../customer-api/account-read-budget";
 
 /**
  * How the customer reached the status screen: straight from payment

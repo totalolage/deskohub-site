@@ -16,8 +16,8 @@ export const paymentReturnPollingStatuses: ReadonlySet<CustomerOrderStatus> =
   ]);
 
 // Nine reads over about three minutes: frequent while the payment return is
-// usually settling, then sparser, so the 20-read budget the status, history,
-// access and invoice reads share per half hour keeps room for the rest.
+// usually settling, then sparser, so the 40 account reads the account,
+// history, status and access share per half hour keep room for the rest.
 const delaysInSeconds = [3, 3, 5, 5, 10, 15, 20, 30, 60] as const;
 
 // Automatic refreshes leave this many reads for what the customer does next.

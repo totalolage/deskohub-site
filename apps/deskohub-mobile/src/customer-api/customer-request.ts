@@ -9,9 +9,9 @@ import {
   Ref,
 } from "effect";
 import type { Atom } from "effect/unstable/reactivity";
+import { AccountReadBudget } from "./account-read-budget";
 import { CustomerSessionCheck } from "./customer-api.service";
 import { CustomerRequestDispatch } from "./customer-request-dispatch";
-import { DotyposReadBudget } from "./dotypos-read-budget";
 
 /**
  * How long one customer request may take. Dotypos-backed answers can be slow,
@@ -57,21 +57,21 @@ const recheckSession = Effect.flatMap(
 
 export interface CustomerReadOptions {
   /**
-   * Whether the endpoint reads Dotypos (history, status, access, invoice,
-   * account, marketing, referrals): it then spends the account's advisory
-   * read budget.
+   * Whether the server counts the endpoint as an account read (the account,
+   * history, status, access): it then spends the account's advisory read
+   * budget.
    */
-  readonly dotyposBacked: boolean;
+  readonly accountRead: boolean;
 }
 
 /**
  * Runs one customer API read the way every screen should: bounded by the
- * request timeout, each attempt counted against the read budget when
- * Dotypos-backed, and re-checking the session on 401. Transient transport
+ * request timeout, each attempt counted against the read budget when it is
+ * an account read, and re-checking the session on 401. Transient transport
  * failures were already retried once by the client.
  */
 export const customerRead =
-  ({ dotyposBacked }: CustomerReadOptions) =>
+  ({ accountRead }: CustomerReadOptions) =>
   <A, E, R>(request: Effect.Effect<A, E, R>) =>
     request.pipe(
       Effect.timeoutOrElse({
@@ -80,16 +80,16 @@ export const customerRead =
       }),
       Effect.provideServiceEffect(
         CustomerRequestDispatch,
-        readDispatch({ dotyposBacked })
+        readDispatch({ accountRead })
       ),
       recheckSessionWhenRequired
     );
 
-// Every attempt of a Dotypos-backed read spends the budget; others spend none.
-const readDispatch = ({ dotyposBacked }: CustomerReadOptions) =>
-  Effect.map(Effect.service(DotyposReadBudget), (budget) => ({
+// Every attempt of an account read spends the budget; others spend none.
+const readDispatch = ({ accountRead }: CustomerReadOptions) =>
+  Effect.map(Effect.service(AccountReadBudget), (budget) => ({
     onSend: budget.spend.pipe(
-      Effect.when(Effect.succeed(dotyposBacked)),
+      Effect.when(Effect.succeed(accountRead)),
       Effect.asVoid
     ),
   }));

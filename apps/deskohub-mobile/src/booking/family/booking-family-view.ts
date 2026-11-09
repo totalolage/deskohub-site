@@ -1,4 +1,5 @@
 import type {
+  CustomerAccountState,
   CustomerBookingQuote,
   CustomerBookingSelection,
   CustomerLocale,
@@ -6,8 +7,10 @@ import type {
 import { Cause, Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
 import {
+  type CustomerRequestFailure,
   CustomerViewError,
   isRetryableViewError,
+  viewErrorOf,
 } from "../../customer-api/customer-view-error";
 import type { CheckoutRestartReason } from "../checkout/booking-problem";
 import type { CheckoutRequest } from "../checkout/checkout-flow";
@@ -181,3 +184,16 @@ export const freshValue = <A>(read: BookingRead<A>): Option.Option<A> =>
   read.kind === "loaded" && !read.refreshing
     ? Option.some(read.value)
     : Option.none();
+
+/**
+ * Whether the booking screens open without the account: its first read was
+ * refused because the account spent its account read budget. Browsing the
+ * catalog spends a budget of its own and the checkout still refuses an
+ * account that can't book, so that budget alone doesn't close booking.
+ */
+export const opensWithoutAccount = <E extends CustomerRequestFailure>(
+  account: AsyncResult.AsyncResult<CustomerAccountState, E>
+): boolean =>
+  AsyncResult.isFailure(account) &&
+  Option.isNone(AsyncResult.value(account)) &&
+  viewErrorOf(account.cause)._tag === "RateLimited";

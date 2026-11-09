@@ -10,11 +10,11 @@ import {
   type Atom,
   type AtomRegistry,
 } from "effect/unstable/reactivity";
-import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
 import {
-  DotyposReadBudget,
-  dotyposReadAllowance,
-} from "../../customer-api/dotypos-read-budget";
+  AccountReadBudget,
+  accountReadAllowance,
+} from "../../customer-api/account-read-budget";
+import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
 import {
   makeCustomerDataRegistry,
   makeFakeCustomerData,
@@ -42,7 +42,7 @@ import { toBookingQueryError } from "./booking-query-error";
 
 const remainingReadsAtom = customerDataRuntime.atom(
   Effect.flatMap(
-    Effect.service(DotyposReadBudget),
+    Effect.service(AccountReadBudget),
     (budget) => budget.remaining
   )
 );
@@ -50,7 +50,7 @@ const remainingReadsAtom = customerDataRuntime.atom(
 /** Runs `effect` on the registry's data runtime. */
 const inRuntime = <A>(
   registry: AtomRegistry.AtomRegistry,
-  effect: Effect.Effect<A, never, DotyposReadBudget>
+  effect: Effect.Effect<A, never, AccountReadBudget>
 ) =>
   Effect.runPromise(
     Effect.provideContext(
@@ -59,11 +59,11 @@ const inRuntime = <A>(
     )
   );
 
-/** Spends `count` reads of the registry's Dotypos read budget. */
+/** Spends `count` reads of the registry's account read budget. */
 const spendReads = (registry: AtomRegistry.AtomRegistry, count: number) =>
   inRuntime(
     registry,
-    Effect.flatMap(Effect.service(DotyposReadBudget), (budget) =>
+    Effect.flatMap(Effect.service(AccountReadBudget), (budget) =>
       Effect.repeat(budget.spend, { times: count - 1 })
     )
   );
@@ -162,7 +162,7 @@ describe("booking catalog queries", () => {
   });
 
   test.each(catalogReads)(
-    "reads the $name as a catalog read, without spending the Dotypos read budget",
+    "reads the $name as a catalog read, without spending the account read budget",
     async ({ endpoint, atom }) => {
       const { registry, workspace } = makeFakeCustomerData("linked");
       const booking = fakeBooking(workspace);
@@ -171,7 +171,7 @@ describe("booking catalog queries", () => {
 
       expect(result._tag).toBe("Success");
       expect(booking.endpoints).toEqual([endpoint]);
-      expect(await remainingReads(registry)).toBe(dotyposReadAllowance.reads);
+      expect(await remainingReads(registry)).toBe(accountReadAllowance.reads);
     }
   );
 
@@ -189,7 +189,7 @@ describe("booking catalog queries", () => {
         ],
       },
     });
-    expect(await remainingReads(registry)).toBe(dotyposReadAllowance.reads);
+    expect(await remainingReads(registry)).toBe(accountReadAllowance.reads);
   });
 
   test("reads availability once per distinct query", async () => {
@@ -353,7 +353,7 @@ describe("bookingQuoteAtom refresh", () => {
     expect(quoteCalls(harness)).toBe(3);
   });
 
-  test("keeps reading the quote automatically with the Dotypos read budget spent", async () => {
+  test("keeps reading the quote automatically with the account read budget spent", async () => {
     const harness = withTestClock();
     const atom = bookingQuoteAtom(
       coworkSelection(harness.booking.dateIn(21)),
@@ -362,7 +362,7 @@ describe("bookingQuoteAtom refresh", () => {
     const unmount = harness.registry.mount(atom);
     await settle(harness.registry, atom);
 
-    await spendReads(harness.registry, dotyposReadAllowance.reads);
+    await spendReads(harness.registry, accountReadAllowance.reads);
     await harness.adjust(quoteRefreshInterval);
     await flush();
     const refreshed = await settle(harness.registry, atom);

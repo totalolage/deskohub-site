@@ -65,7 +65,7 @@ const samplePasskeys = (workspace: FakeWorkspace) => {
 };
 
 describe("the passkey list", () => {
-  test("lists the account's passkeys without spending Dotypos reads", async () => {
+  test("lists the account's passkeys without spending account reads", async () => {
     const { registry, workspace } = makeFakeCustomerData("linked");
 
     const result = await settle(registry, passkeysAtom);

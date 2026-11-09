@@ -1,13 +1,14 @@
 import { Clock, Context, Duration, Effect, Layer, Ref } from "effect";
 
 /**
- * The server lets one account make 20 Dotypos-backed reads per 30 minutes
- * (history, status, access, invoice, account, marketing, referrals share
- * it) and answers 429 after that. The app keeps its own advisory count so
+ * The server lets one account make 40 account reads per 30 minutes (the
+ * account, the reservation history, an order's status and its door code
+ * share them) and answers 429 after that. Consent, referrals and the invoice
+ * spend a budget of their own. The app keeps its own advisory count so
  * automatic refreshes stop well before the customer's own taps hit the limit.
  */
-export const dotyposReadAllowance = {
-  reads: 20,
+export const accountReadAllowance = {
+  reads: 40,
   window: Duration.minutes(30),
 } as const;
 
@@ -17,7 +18,7 @@ export const automaticRefreshReserve = 8;
 /** When each read in the current window was spent, oldest first. */
 export type ReadBudgetWindow = ReadonlyArray<number>;
 
-const windowMillis = Duration.toMillis(dotyposReadAllowance.window);
+const windowMillis = Duration.toMillis(accountReadAllowance.window);
 
 const liveReads = (window: ReadBudgetWindow, now: number) =>
   window.filter((spentAt) => now - spentAt < windowMillis);
@@ -28,13 +29,13 @@ export const spendRead = (
 ): ReadBudgetWindow => [...liveReads(window, now), now];
 
 export const remainingReads = (window: ReadBudgetWindow, now: number) =>
-  Math.max(0, dotyposReadAllowance.reads - liveReads(window, now).length);
+  Math.max(0, accountReadAllowance.reads - liveReads(window, now).length);
 
 export const allowsAutomaticRefresh = (remaining: number) =>
   remaining >= automaticRefreshReserve;
 
-interface IDotyposReadBudget {
-  /** Counts one Dotypos-backed read against the signed-in account. */
+interface IAccountReadBudget {
+  /** Counts one account read against the signed-in account. */
   readonly spend: Effect.Effect<void>;
   /** Reads left in the current window, as far as this app has counted. */
   readonly remaining: Effect.Effect<number>;
@@ -44,10 +45,10 @@ interface IDotyposReadBudget {
  * The signed-in account's advisory read count. The data runtime is built per
  * account, so each account starts with its own window.
  */
-export class DotyposReadBudget extends Context.Service<
-  DotyposReadBudget,
-  IDotyposReadBudget
->()("DotyposReadBudget") {
+export class AccountReadBudget extends Context.Service<
+  AccountReadBudget,
+  IAccountReadBudget
+>()("AccountReadBudget") {
   static Default = Layer.effect(
     this,
     Effect.map(Ref.make<ReadBudgetWindow>([]), (window) => ({

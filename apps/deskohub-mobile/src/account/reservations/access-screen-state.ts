@@ -28,7 +28,7 @@ export const reservationAccessAtom = Atom.family(
     customerDataRuntime.atom(
       Effect.flatMap(Effect.service(CustomerApi), (api) =>
         api.reservations.getReservationAccess({ params: { orderId } })
-      ).pipe(customerRead({ dotyposBacked: true }))
+      ).pipe(customerRead({ accountRead: true }))
     )
 );
 

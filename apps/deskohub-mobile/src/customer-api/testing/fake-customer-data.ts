@@ -1,4 +1,5 @@
 import { Effect, Layer, Option } from "effect";
+import { AccountReadBudget } from "../account-read-budget";
 import {
   AccountExitFence,
   type AccountSession,
@@ -21,7 +22,6 @@ import {
   ShareSheet,
   TemporaryFiles,
 } from "../device-capabilities";
-import { DotyposReadBudget } from "../dotypos-read-budget";
 import { nativeCustomerApiTransport } from "../platform-transports";
 import {
   type FakeWorkspace,
@@ -167,7 +167,7 @@ export const fakeCustomerDataLayer = ({
 }): Layer.Layer<CustomerDataServices> =>
   Layer.mergeAll(
     fakeCustomerApiLayer(workspace),
-    DotyposReadBudget.Default,
+    AccountReadBudget.Default,
     Layer.succeed(CustomerSessionCheck, {
       recheck: Effect.sync(() => {
         device.sessionChecks += 1;
