@@ -51,8 +51,12 @@ mock.module("resend", () => ({
   },
 }));
 
-const { deploymentResendRequestTimeouts, makeResendEmailProvider } =
-  await import("./resend-provider");
+const {
+  deploymentResendRequestTimeouts,
+  makeResendEmailProvider,
+  resendRequestTimeouts,
+} = await import("./resend-provider");
+const { resendRetryPolicy } = await import("./request-policy");
 
 beforeEach(() => {
   send = mock<SendImplementation>(async () => ({
@@ -86,13 +90,34 @@ const runProvider = <A, E>(
   );
 
 /**
+ * The longest a send may run: every attempt waits out the longest timeout
+ * and every backoff draws the maximum jitter.
+ */
+const longestSend = Duration.sum(
+  Duration.times(
+    resendRequestTimeouts.nonProduction.send,
+    resendRetryPolicy.maxRetries + 1
+  ),
+  resendRetryPolicy.worstCaseBackoff
+);
+
+/**
  * Waits for a forked request, advancing the TestClock through every attempt
- * timeout and retry backoff.
+ * timeout and retry backoff, and fails a request that outlives the longest
+ * send.
  */
 const finish = <A, E>(fiber: Fiber.Fiber<A, E>) =>
   Effect.gen(function* () {
-    while (fiber.pollUnsafe() === undefined) {
+    let elapsed = 0;
+    while (
+      fiber.pollUnsafe() === undefined &&
+      elapsed < Duration.toMillis(longestSend)
+    ) {
       yield* TestClock.adjust("1 second");
+      elapsed += 1000;
+    }
+    if (fiber.pollUnsafe() === undefined) {
+      return yield* Effect.die("The request outlived the longest send");
     }
     return yield* Fiber.join(fiber);
   });
@@ -295,22 +320,38 @@ describe("ResendEmailProvider", () => {
     });
   }
 
+  test("retries a send at most three times within 8.4 seconds of backoff", () => {
+    expect(resendRetryPolicy.maxRetries).toBe(3);
+    expect(Duration.toMillis(resendRetryPolicy.worstCaseBackoff)).toBe(8400);
+  });
+
   test("classifies an error without a status code by its message, then its error code", async () => {
-    for (const [error, expected] of [
-      [
-        { error: "invalid_api_key" },
-        { _tag: "EmailServiceError", code: "resend-invalid" },
-      ],
+    const providerRefusal = {
+      _tag: "EmailServiceError",
+      failureKind: "provider",
+      code: "resend-unauthorized",
+    } as const;
+    const messageRefusal = {
+      _tag: "EmailServiceError",
+      failureKind: "message",
+      code: "resend-invalid",
+    } as const;
+    const serverFailure = { _tag: "NetworkError", code: "resend-server" };
+
+    for (const [error, expected, attempts] of [
+      [{ message: "Unauthorized" }, providerRefusal, 1],
+      [{ message: "Forbidden" }, providerRefusal, 1],
+      [{ message: "The domain is not verified" }, providerRefusal, 1],
+      [{ message: "Bad request" }, messageRefusal, 1],
+      [{ error: "invalid_api_key" }, messageRefusal, 1],
       [
         { message: 42, error: "restricted_api_key forbidden" },
-        { _tag: "EmailServiceError", code: "resend-unauthorized" },
+        providerRefusal,
+        1,
       ],
-      [
-        { message: "Rate limited", error: "invalid_request" },
-        { _tag: "NetworkError", code: "resend-server" },
-      ],
-      [{ error: 42 }, { _tag: "NetworkError", code: "resend-server" }],
-      ["Forbidden", { _tag: "NetworkError", code: "resend-server" }],
+      [{ message: "Rate limited", error: "invalid_request" }, serverFailure, 4],
+      [{ error: 42 }, serverFailure, 4],
+      ["Forbidden", serverFailure, 4],
     ] as const) {
       send = mock<SendImplementation>(unclassifiedRefusal(error));
       const result = await runProvider(
@@ -321,6 +362,7 @@ describe("ResendEmailProvider", () => {
       );
 
       expect(result).toMatchObject({ _tag: "Failure", failure: expected });
+      expect(send).toHaveBeenCalledTimes(attempts);
     }
   });
 
@@ -399,13 +441,14 @@ describe("ResendEmailProvider", () => {
   }
 
   test("aborts every stalled attempt when its timeout releases it", async () => {
-    const signals: (AbortSignal | undefined)[] = [];
+    const sendSignals: (AbortSignal | undefined)[] = [];
+    const batchSignals: (AbortSignal | undefined)[] = [];
     send = mock<SendImplementation>((_, options) => {
-      signals.push(options?.signal);
+      sendSignals.push(options?.signal);
       return new Promise(() => {});
     });
     batchSend = mock<BatchSendImplementation>((_, options) => {
-      signals.push(options?.signal);
+      batchSignals.push(options?.signal);
       return new Promise(() => {});
     });
 
@@ -419,8 +462,9 @@ describe("ResendEmailProvider", () => {
       })
     );
 
-    expect(signals).toHaveLength(5);
-    for (const signal of signals) {
+    expect(sendSignals).toHaveLength(4);
+    expect(batchSignals).toHaveLength(1);
+    for (const signal of [...sendSignals, ...batchSignals]) {
       expect(signal?.aborted).toBe(true);
     }
   });
@@ -737,6 +781,7 @@ describe("ResendEmailProvider span censorship", () => {
     const result = await runTracedSend(tracer);
 
     expect(result._tag).toBe("Failure");
+    expect(send).toHaveBeenCalledTimes(1);
     expect(ended.length).toBeGreaterThan(0);
     const traced = JSON.stringify(ended);
     expect(traced).not.toContain(rawProviderDetail);
@@ -761,6 +806,7 @@ describe("ResendEmailProvider span censorship", () => {
     const result = await runTracedSend(tracer);
 
     expect(result._tag).toBe("Failure");
+    expect(send).toHaveBeenCalledTimes(4);
     expect(ended.length).toBeGreaterThan(0);
     const traced = JSON.stringify(ended);
     expect(traced).not.toContain(rawTransportDetail);
