@@ -1,10 +1,16 @@
 import { type ReactNode, type Ref, useId } from "react";
-import { Pressable, StyleSheet, type TextInputInstance, type TextInputProps, View } from "react-native";
-import { Text, TextInput } from "./text";
+import {
+  Pressable,
+  StyleSheet,
+  type TextInputInstance,
+  type TextInputProps,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { theme } from "../theme";
 import { fieldErrorPresentation } from "./field-error-presentation";
 import { useLiveRegionAnnouncement } from "./live-announcement";
+import { Text, TextInput } from "./text";
 import { textFieldSubmit } from "./text-field-submit";
 
 /**

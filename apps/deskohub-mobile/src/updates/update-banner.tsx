@@ -1,10 +1,10 @@
 import { Pressable, StyleSheet, View } from "react-native";
-import { Text } from "../ui/text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAnalyticsConsent } from "../consent/use-analytics-consent";
 import { useAppLocale } from "../i18n/locale-context";
 import { m } from "../i18n/messages";
 import { theme } from "../theme";
+import { Text } from "../ui/text";
 import { updatePromptWaitsForConsent } from "./update-prompt";
 import { useUpdatePrompt } from "./use-update-prompt";
 

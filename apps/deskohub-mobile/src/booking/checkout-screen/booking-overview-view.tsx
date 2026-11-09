@@ -1,10 +1,10 @@
 import type { CustomerBookingSelection } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
 import { StyleSheet, View } from "react-native";
-import { Text } from "../../ui/text";
 import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
+import { Text } from "../../ui/text";
 import { formatPragueDate, formatPragueTime } from "../ui/prague-date-format";
 import {
   bookingOverviewOf,

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { Text } from "./text";
 import { theme } from "../theme";
 import { Button } from "./controls";
 import { useLiveRegionAnnouncement } from "./live-announcement";
+import { Text } from "./text";
 
 /**
  * Fills the screen while its content first loads. The spinner carries

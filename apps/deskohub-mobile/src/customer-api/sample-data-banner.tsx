@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Text } from "../ui/text";
 import {
   SafeAreaInsetsContext,
   useSafeAreaInsets,
@@ -8,6 +7,7 @@ import {
 import { useAppLocale } from "../i18n/locale-context";
 import { m } from "../i18n/messages";
 import { theme } from "../theme";
+import { Text } from "../ui/text";
 import type { SampleAccountKind } from "./sample-data-mode";
 
 /**

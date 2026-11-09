@@ -1,19 +1,19 @@
 import { Option } from "effect";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { Text } from "../../ui/text";
 import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
+import { ChoiceList } from "../../ui/choice-list";
 import { BodyText, Button, TextField } from "../../ui/controls";
 import { ListGroup, ListRow, SectionHeader } from "../../ui/list";
 import { Notice } from "../../ui/notice";
+import { Text } from "../../ui/text";
 import type {
   CheckoutDetails,
   DetailsNotice,
 } from "../checkout/checkout-state";
 import { Checkbox } from "../ui/checkbox";
-import { ChoiceList } from "../ui/choice-list";
 import { retryMessage } from "./checkout-copy";
 import {
   type BillingChoice,

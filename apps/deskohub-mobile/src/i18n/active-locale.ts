@@ -30,7 +30,9 @@ export const localeOverride = (
   locale: AppLocale,
   sessionReads: number
 ): LocaleOverride | undefined =>
-  userId === undefined ? undefined : { userId, locale, afterRead: sessionReads };
+  userId === undefined
+    ? undefined
+    : { userId, locale, afterRead: sessionReads };
 
 /**
  * The locale the app shows: a choice still awaiting the session, else the

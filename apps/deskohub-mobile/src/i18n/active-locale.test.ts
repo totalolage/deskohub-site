@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import type { AuthSessionState } from "../auth/auth-session-state";
 import { toAuthSessionState } from "../auth/auth-session-state";
-import type { AppLocale } from "./app-locale";
 import { activeLocale, localeOverride, sessionUserId } from "./active-locale";
+import type { AppLocale } from "./app-locale";
 
 const signedInAt = new Date(Date.UTC(2026, 10, 9, 12));
 const signedIn = (userId: string, locale?: AppLocale): AuthSessionState => ({
@@ -55,7 +55,12 @@ describe("activeLocale after a choice in the app", () => {
 
   test("shows the choice while no later session read has completed", () => {
     expect(
-      activeLocale({ session: ada("de-DE"), sessionReads: 2, launchLocale, override })
+      activeLocale({
+        session: ada("de-DE"),
+        sessionReads: 2,
+        launchLocale,
+        override,
+      })
     ).toBe("sk-SK");
   });
 
@@ -64,19 +69,34 @@ describe("activeLocale after a choice in the app", () => {
     // failed read isn't counted (session-reads.test.ts): the session still
     // carries German at the save's count.
     expect(
-      activeLocale({ session: ada("de-DE"), sessionReads: 2, launchLocale, override })
+      activeLocale({
+        session: ada("de-DE"),
+        sessionReads: 2,
+        launchLocale,
+        override,
+      })
     ).toBe("sk-SK");
   });
 
   test("hands over to the session once a later read completes", () => {
     expect(
-      activeLocale({ session: ada("sk-SK"), sessionReads: 3, launchLocale, override })
+      activeLocale({
+        session: ada("sk-SK"),
+        sessionReads: 3,
+        launchLocale,
+        override,
+      })
     ).toBe("sk-SK");
   });
 
   test("follows a later change made on the web, even back to the old value", () => {
     expect(
-      activeLocale({ session: ada("de-DE"), sessionReads: 4, launchLocale, override })
+      activeLocale({
+        session: ada("de-DE"),
+        sessionReads: 4,
+        launchLocale,
+        override,
+      })
     ).toBe("de-DE");
   });
 

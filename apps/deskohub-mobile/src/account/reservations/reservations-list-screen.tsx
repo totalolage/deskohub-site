@@ -4,7 +4,6 @@ import { Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { Stack, useRouter } from "expo-router";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Text } from "../../ui/text";
 import { AsyncView } from "../../customer-api/async-view";
 import { accountAtom } from "../../customer-api/customer-data-runtime";
 import type { CustomerRequestFailure } from "../../customer-api/customer-view-error";
@@ -18,6 +17,7 @@ import { ListGroup, ListRow, SectionHeader } from "../../ui/list";
 import { listRowAccessibleLabel } from "../../ui/list-row-presentation";
 import { Notice } from "../../ui/notice";
 import { ScrollScreen } from "../../ui/scroll-screen";
+import { Text } from "../../ui/text";
 import {
   type AccountNotice,
   type ReservationsAccess,

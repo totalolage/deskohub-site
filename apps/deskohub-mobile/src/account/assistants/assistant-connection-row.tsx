@@ -1,9 +1,9 @@
 import { StyleSheet, View } from "react-native";
-import { Text } from "../../ui/text";
 import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
 import { Button } from "../../ui/controls";
+import { Text } from "../../ui/text";
 import type { AssistantRow, AssistantScope } from "./connected-assistants";
 
 const scopeLabel = (scope: AssistantScope, locale: AppLocale) =>

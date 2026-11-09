@@ -13,7 +13,10 @@ const readCatalog = (locale: string): Record<string, unknown> =>
   );
 
 const placeholdersOf = (message: string): ReadonlyArray<string> =>
-  Array.from(message.matchAll(/\{([^{}]+)\}/g), ([, name]) => name ?? "").sort();
+  Array.from(
+    message.matchAll(/\{([^{}]+)\}/g),
+    ([, name]) => name ?? ""
+  ).sort();
 
 const baseCatalog = readCatalog(inlangSettings.baseLocale);
 
@@ -47,7 +50,9 @@ describe.each(
 describe.each(inlangSettings.locales)("the %s message catalog", (locale) => {
   test("has a non-empty text for every message", () => {
     const blank = Object.entries(readCatalog(locale))
-      .filter(([, message]) => typeof message !== "string" || message.trim() === "")
+      .filter(
+        ([, message]) => typeof message !== "string" || message.trim() === ""
+      )
       .map(([key]) => key);
     expect(blank).toEqual([]);
   });

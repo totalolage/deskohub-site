@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { Text } from "./text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { theme } from "../theme";
 import { Button, LiveMessage } from "./controls";
+import { Text } from "./text";
 
 /**
  * Asks the customer to confirm an action before it runs. While `busy`, both

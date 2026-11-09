@@ -6,6 +6,7 @@ import {
   find,
   findAll,
   type HostProps,
+  hostTree,
 } from "./testing/element-tree";
 
 type Value = "a" | "b" | "c";
@@ -23,13 +24,15 @@ const group = ({
   readonly onChange?: (value: Value) => void;
   readonly disabled?: boolean;
 } = {}) => {
-  const tree = elementTree(ChoiceGroup<Value>, {
-    label: "label",
-    options,
-    value: "b",
-    onChange,
-    disabled,
-  });
+  const tree = hostTree(
+    elementTree(ChoiceGroup<Value>, {
+      label: "label",
+      options,
+      value: "b",
+      onChange,
+      disabled,
+    })
+  );
   return {
     group: find(tree, "View")?.props,
     label: find(tree, "Text")?.props,

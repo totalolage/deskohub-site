@@ -5,7 +5,6 @@ import type {
 import { Option } from "effect";
 import * as WebBrowser from "expo-web-browser";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Text } from "../../ui/text";
 import { apiOrigin } from "../../auth/auth-client";
 import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
@@ -13,6 +12,7 @@ import { theme } from "../../theme";
 import { ErrorState, LoadingState } from "../../ui/async-states";
 import { Button, TextField } from "../../ui/controls";
 import { Notice } from "../../ui/notice";
+import { Text } from "../../ui/text";
 import type { CheckoutIntent } from "../checkout/checkout-flow";
 import {
   CheckoutEvent,

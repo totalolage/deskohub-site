@@ -26,7 +26,11 @@ const storeAt = (initial: SessionQueryState) => {
 
 describe("countSessionReads", () => {
   test("counts each read that completes", () => {
-    const store = storeAt({ isPending: true, isRefetching: false, error: null });
+    const store = storeAt({
+      isPending: true,
+      isRefetching: false,
+      error: null,
+    });
     const reads = countSessionReads(store);
     expect(reads.current()).toBe(0);
 

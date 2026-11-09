@@ -27,14 +27,14 @@ describe("localeTextStyle", () => {
   });
 
   test("drops the brand face and its weight axis for another script", () => {
-    expect(
-      localeTextStyle([body, false, [{ marginTop: 4 }]], "uk-UA")
-    ).toEqual({
-      color: theme.colors.text,
-      fontSize: theme.type.bodyStrong.fontSize,
-      fontWeight: brandFonts.weights.emphasis,
-      marginTop: 4,
-    });
+    expect(localeTextStyle([body, false, [{ marginTop: 4 }]], "uk-UA")).toEqual(
+      {
+        color: theme.colors.text,
+        fontSize: theme.type.bodyStrong.fontSize,
+        fontWeight: brandFonts.weights.emphasis,
+        marginTop: 4,
+      }
+    );
   });
 
   test("keeps a style as it is without a locale", () => {

@@ -1,12 +1,12 @@
 import { Children, Fragment, isValidElement, type ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Text } from "./text";
 import { theme } from "../theme";
 import {
   type ListRowKind,
   listRowAccessibleLabel,
   listRowPresentation,
 } from "./list-row-presentation";
+import { Text } from "./text";
 
 /** The heading above a group of rows. */
 export function SectionHeader({ title }: { readonly title: string }) {

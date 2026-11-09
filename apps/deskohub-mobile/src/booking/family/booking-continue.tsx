@@ -3,12 +3,12 @@ import { useAtomSet } from "@effect/atom-react";
 import { Option } from "effect";
 import { useRouter } from "expo-router";
 import { StyleSheet, View } from "react-native";
-import { Text } from "../../ui/text";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
 import { Button } from "../../ui/controls";
 import { Notice } from "../../ui/notice";
+import { Text } from "../../ui/text";
 import { bookCheckoutHref } from "../booking-routes";
 import {
   type CheckoutRequest,

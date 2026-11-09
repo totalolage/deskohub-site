@@ -1,10 +1,13 @@
 import { Pressable, StyleSheet, View } from "react-native";
-import { Text } from "../../ui/text";
-import { theme } from "../../theme";
+import type { AppLocale } from "../i18n/app-locale";
+import { theme } from "../theme";
+import { Text } from "./text";
 
 export interface Choice<Value extends string> {
   readonly value: Value;
   readonly label: string;
+  /** The language the label is in when it isn't the app's, such as a language's own name. */
+  readonly labelLocale?: AppLocale;
   /** A second line, such as a price or why the choice is unavailable. */
   readonly description?: string;
   readonly disabled?: boolean;
@@ -47,7 +50,9 @@ export function ChoiceList<Value extends string>({
           >
             <View style={[styles.mark, isSelected && styles.selectedMark]} />
             <View style={styles.text}>
-              <Text style={styles.label}>{choice.label}</Text>
+              <Text style={styles.label} locale={choice.labelLocale}>
+                {choice.label}
+              </Text>
               {choice.description === undefined ? null : (
                 <Text style={styles.description}>{choice.description}</Text>
               )}

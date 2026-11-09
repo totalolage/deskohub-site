@@ -2,7 +2,6 @@ import { useAtom, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { Atom } from "effect/unstable/reactivity";
 import { StyleSheet } from "react-native";
-import { Text } from "../../ui/text";
 import type { AppLocale } from "../../i18n/app-locale";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
@@ -11,6 +10,7 @@ import { LiveMessage } from "../../ui/controls";
 import { SectionHeader } from "../../ui/list";
 import { Notice } from "../../ui/notice";
 import { ScrollScreen } from "../../ui/scroll-screen";
+import { Text } from "../../ui/text";
 import {
   bookingAvailabilityAtom,
   bookingQuoteAtom,

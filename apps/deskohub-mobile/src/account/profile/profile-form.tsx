@@ -1,9 +1,5 @@
 import type { CustomerProfile } from "@deskohub/workspace-customer-api";
-import {
-  useAtom,
-  useAtomSet,
-  useAtomValue,
-} from "@effect/atom-react";
+import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { Atom } from "effect/unstable/reactivity";
 import {
@@ -14,9 +10,9 @@ import {
 } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import type { TextInputInstance } from "react-native";
+import { useSettledResultReset } from "../../customer-api/settled-result-reset";
 import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
-import { useSettledResultReset } from "../../customer-api/settled-result-reset";
 import { ConfirmDialog } from "../../ui/confirm-dialog";
 import type {
   BillingChoice,

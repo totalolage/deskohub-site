@@ -22,7 +22,10 @@ type TextProps = ComponentProps<typeof NativeText> & {
 export function Text({ locale, style, ...props }: TextProps) {
   const appLocale = useProvidedAppLocale();
   return (
-    <NativeText {...props} style={localeTextStyle(style, locale ?? appLocale)} />
+    <NativeText
+      {...props}
+      style={localeTextStyle(style, locale ?? appLocale)}
+    />
   );
 }
 
@@ -39,7 +42,9 @@ export function TextInput({
   return (
     <NativeTextInput
       {...props}
-      key={locale === undefined ? "default" : (textFontFamily(locale) ?? "system")}
+      key={
+        locale === undefined ? "default" : (textFontFamily(locale) ?? "system")
+      }
       style={localeTextStyle(style, locale)}
     />
   );

@@ -91,8 +91,8 @@ describe("languageSaveFailureMessage", () => {
   });
 
   test("uses the shared sentence for a failure every screen words alike", () => {
-    expect(languageSaveFailureMessage(CustomerViewError.RateLimited(), "en-US")).toBe(
-      m.account_error_rate_limited({}, { locale: "en-US" })
-    );
+    expect(
+      languageSaveFailureMessage(CustomerViewError.RateLimited(), "en-US")
+    ).toBe(m.account_error_rate_limited({}, { locale: "en-US" }));
   });
 });

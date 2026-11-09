@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Text } from "../../ui/text";
 import { theme } from "../../theme";
+import { Text } from "../../ui/text";
 
 /**
  * A labelled checkbox. `children` sits below the label for content such as

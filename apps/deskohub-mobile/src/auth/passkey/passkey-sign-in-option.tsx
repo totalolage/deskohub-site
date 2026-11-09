@@ -1,11 +1,11 @@
 import { useEffect } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
-import { Text } from "../../ui/text";
 import { trackSignInStarted } from "../../analytics/events";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
 import { LiveMessage } from "../../ui/controls";
+import { Text } from "../../ui/text";
 import { passkeySignInFailureMessage } from "./passkey-failure-message";
 import { usePasskeyCeremony } from "./use-passkey-ceremony";
 
