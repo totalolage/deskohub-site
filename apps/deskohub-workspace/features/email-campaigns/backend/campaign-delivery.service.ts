@@ -283,13 +283,16 @@ type RequestedBatch = {
 
 /**
  * What one email of an answered batch settled as. `failed` means every
- * provider refused it, with the last refusal's code; `unconfirmed` that one
- * may have delivered it. Neither is resent.
+ * provider refused it; `unconfirmed` that one may have delivered it, so
+ * only an admin retry that includes unconfirmed recipients resends it.
+ * Both carry the last provider's error code, when it gave one.
  */
 type RecipientOutcome =
   | { readonly status: "sent"; readonly providerMessageId: string }
-  | { readonly status: "failed"; readonly failureCode: string | undefined }
-  | { readonly status: "unconfirmed" };
+  | {
+      readonly status: "failed" | "unconfirmed";
+      readonly failureCode: string | undefined;
+    };
 
 /**
  * What a batch's request settled as. `accepted` means the providers
@@ -302,10 +305,12 @@ type BatchOutcome =
       readonly status: "accepted";
       readonly recipients: readonly RecipientOutcome[];
     }
-  | { readonly status: "rejected"; readonly failureCode: string | undefined }
-  | { readonly status: "unconfirmed" };
+  | {
+      readonly status: "rejected" | "unconfirmed";
+      readonly failureCode?: string | undefined;
+    };
 
-/** The provider's code for a refusal, when it gave one. */
+/** The provider's code for an error, when it gave one. */
 const errorCode = (
   error: EmailSendError & { readonly code?: string | undefined }
 ): string | undefined => error.code;
@@ -319,30 +324,30 @@ const answeredOutcome = (
   recipients: results.map((result) => recipientOutcome(result, replay)),
 });
 
-/** The emails of an answered batch that weren't sent. */
+/** The emails of an answered batch that weren't sent, by error code. */
 const unsentEmails = (recipients: readonly RecipientOutcome[]) => ({
-  failureCodes: recipients.flatMap((outcome) =>
+  failed: recipients.flatMap((outcome) =>
     outcome.status === "failed" ? [outcome.failureCode ?? "unknown"] : []
   ),
-  unconfirmed: recipients.filter(({ status }) => status === "unconfirmed")
-    .length,
+  unconfirmed: recipients.flatMap((outcome) =>
+    outcome.status === "unconfirmed" ? [outcome.failureCode ?? "unknown"] : []
+  ),
 });
 
-const logUnsentEmails = ({
-  failureCodes,
-  unconfirmed,
-}: ReturnType<typeof unsentEmails>) =>
-  Effect.logWarning("Campaign delivery batch had emails that weren't sent", {
-    failed: failureCodes.length,
-    failureCodes,
-    unconfirmed,
-  }).pipe(
-    Effect.when(Effect.succeed(failureCodes.length > 0 || unconfirmed > 0))
+const logUnsentEmails = (unsent: ReturnType<typeof unsentEmails>) =>
+  Effect.logWarning(
+    "Campaign delivery batch had emails that weren't sent",
+    unsent
+  ).pipe(
+    Effect.when(
+      Effect.succeed(unsent.failed.length > 0 || unsent.unconfirmed.length > 0)
+    )
   );
 
 /**
- * An email's outcome from its result. A refusal during a replay says
- * nothing about the earlier request, so its email may have been delivered.
+ * An email's outcome from its result. An email no provider answered may
+ * have been delivered, and so may one refused during a replay, since the
+ * refusal says nothing about the earlier request.
  */
 const recipientOutcome = (
   result: EmailBatchResult,
@@ -352,16 +357,17 @@ const recipientOutcome = (
     ? Match.value(result.error).pipe(
         Match.tag(
           "NetworkError",
-          (): RecipientOutcome => ({
+          (error): RecipientOutcome => ({
             status: "unconfirmed",
+            failureCode: errorCode(error),
           })
         ),
         Match.tag(
           "EmailServiceError",
-          (error): RecipientOutcome =>
-            replay
-              ? { status: "unconfirmed" }
-              : { status: "failed", failureCode: errorCode(error) }
+          (error): RecipientOutcome => ({
+            status: replay ? "unconfirmed" : "failed",
+            failureCode: errorCode(error),
+          })
         ),
         Match.exhaustive
       )
@@ -858,15 +864,12 @@ export class CampaignDeliveryService extends Context.Service<
                   now: input.now,
                 })
               ),
-              Match.orElse((settled) =>
+              Match.orElse(({ status, failureCode }) =>
                 settlePendingRecipients({
                   sendId: input.batch.sendId,
                   customerIds: [dotyposCustomerId],
-                  status: settled.status,
-                  failureCode:
-                    settled.status === "failed"
-                      ? settled.failureCode
-                      : undefined,
+                  status,
+                  failureCode,
                   now: input.now,
                 })
               )
@@ -906,24 +909,15 @@ export class CampaignDeliveryService extends Context.Service<
           Match.when({ status: "accepted" }, ({ recipients }) =>
             settleRecipients({ ...input, recipients })
           ),
-          Match.when({ status: "rejected" }, ({ failureCode }) =>
+          Match.orElse(({ status, failureCode }) =>
             settlePendingRecipients({
               sendId: input.batch.sendId,
               customerIds: input.batch.dotyposCustomerIds,
-              status: "failed",
+              status: status === "rejected" ? "failed" : "unconfirmed",
               failureCode,
               now: input.now,
             }).pipe(Effect.asVoid)
-          ),
-          Match.when({ status: "unconfirmed" }, () =>
-            settlePendingRecipients({
-              sendId: input.batch.sendId,
-              customerIds: input.batch.dotyposCustomerIds,
-              status: "unconfirmed",
-              now: input.now,
-            }).pipe(Effect.asVoid)
-          ),
-          Match.exhaustive
+          )
         );
 
       /** Settles a batch's outcome together with its recipients. */
@@ -1020,11 +1014,10 @@ export class CampaignDeliveryService extends Context.Service<
               Effect.logError("Campaign delivery batch refused", {
                 replay: input.replay,
               }).pipe(
-                Effect.as<BatchOutcome>(
-                  input.replay
-                    ? { status: "unconfirmed" }
-                    : { status: "rejected", failureCode: errorCode(error) }
-                )
+                Effect.as<BatchOutcome>({
+                  status: input.replay ? "unconfirmed" : "rejected",
+                  failureCode: errorCode(error),
+                })
               ),
             NetworkError: () =>
               Effect.logWarning(

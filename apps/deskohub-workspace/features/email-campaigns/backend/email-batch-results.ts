@@ -69,5 +69,5 @@ export const batchRequestOptions = (
   options: EmailBatchOptions & { readonly replay?: boolean }
 ): EmailBatchOptions => options;
 
-/** The recipient columns that record why its email failed, if it did. */
+/** The recipient columns that record why its email wasn't sent, if it wasn't. */
 export const recipientFailureCode = (_code: string | undefined) => ({});

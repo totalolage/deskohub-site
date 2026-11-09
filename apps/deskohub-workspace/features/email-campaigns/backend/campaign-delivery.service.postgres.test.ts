@@ -683,9 +683,14 @@ describe.skipIf(!testDatabase)(
         )
       ).toEqual({
         [sent]: ["sent", `posthog-${run}-each`],
+        // No provider answered for this one, so it may have been mailed:
+        // only a retry that includes unconfirmed recipients resends it.
         [refused]: ["failed", null],
         [unknown]: ["unconfirmed", null],
       });
+      // seam: replaced at integration — with S4's `failure_code` column,
+      // also expect refused → "recipient_suppressed" and unknown → the
+      // NetworkError's code.
       expect(batches.map((batch) => batch.status)).toEqual(["accepted"]);
       expect(campaign.status).toBe("failed");
     });
