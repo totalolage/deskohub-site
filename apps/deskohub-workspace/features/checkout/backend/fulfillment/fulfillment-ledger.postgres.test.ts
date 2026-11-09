@@ -25,7 +25,10 @@ import {
   type ReservationFixtureStage,
   workspaceFixtures,
 } from "@/shared/testing/workspace-fixtures.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  readReservationOrderMirror,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   FulfillmentLedger,
   fulfillmentEmailFailureCode,
@@ -259,6 +262,14 @@ describe.skipIf(!testDatabase)(
             expectedActiveCustomerEmailDeliveryId: null,
           })
         );
+        const awaitingDelivery = await readReservationOrderMirror(
+          testDatabase.pool,
+          id
+        );
+        expect(awaitingDelivery.order).toEqual(awaitingDelivery.expected);
+        expect(awaitingDelivery.order?.fulfillment_state).toBe(
+          "awaiting_delivery"
+        );
         await run((repository) =>
           repository.markCustomerEmailDeliveryFulfilled({
             customerEmailDeliveryId,
@@ -271,6 +282,12 @@ describe.skipIf(!testDatabase)(
           fulfilledAt: at(2),
           fulfillmentFailedAt: at(1),
         });
+        const fulfilled = await readReservationOrderMirror(
+          testDatabase.pool,
+          id
+        );
+        expect(fulfilled.order).toEqual(fulfilled.expected);
+        expect(fulfilled.order?.fulfillment_state).toBe("fulfilled");
       });
 
       test("reports the late-payment recovery that blocks the claim", async () => {
