@@ -88,6 +88,70 @@ describe("the fake Workspace's profile endpoints", () => {
   });
 });
 
+const sessionLocale = (workspace: FakeWorkspace) =>
+  Effect.runPromise(
+    Effect.flatMap(Effect.service(CustomerAuthApi), (auth) =>
+      auth.auth.getSession()
+    ).pipe(Effect.provide(fakeCustomerApiLayer(workspace)))
+  ).then((session) => session?.user.locale);
+
+// The Workspace saves the language on any signed-in account, Dotypos
+// profile or not, and refuses while its deletion is pending.
+describe("the fake Workspace's locale endpoint", () => {
+  test("saves an account's language without a profile, and later account and session reads return it", async () => {
+    const workspace = FakeWorkspace.forKind("completion-required");
+
+    const saved = await accountRequest(workspace, (api) =>
+      api.account.updateLocale({ payload: { locale: "de-DE" } })
+    );
+    const account = await accountRequest(workspace, (api) =>
+      api.account.getAccount({ headers: {} })
+    );
+
+    expect(saved).toMatchObject({ success: { locale: "de-DE" } });
+    expect(account).toMatchObject({
+      success: { kind: "completion-required", locale: "de-DE" },
+    });
+    expect(await sessionLocale(workspace)).toBe("de-DE");
+  });
+
+  test("keeps the saved language through profile completion", async () => {
+    const workspace = FakeWorkspace.forKind("completion-required");
+
+    await accountRequest(workspace, (api) =>
+      api.account.updateLocale({ payload: { locale: "sk-SK" } })
+    );
+    await accountRequest(workspace, (api) =>
+      api.account.completeProfile({
+        headers: {},
+        payload: { firstName: "Jordan" },
+      })
+    );
+
+    expect(workspace.data.account).toMatchObject({
+      kind: "linked",
+      locale: "sk-SK",
+    });
+  });
+
+  test("refuses while deletion is pending, without saving", async () => {
+    const workspace = FakeWorkspace.forKind("deletion-pending");
+    const before = workspace.data.account;
+
+    const result = await accountRequest(workspace, (api) =>
+      api.account.updateLocale({ payload: { locale: "de-DE" } })
+    );
+
+    expect(result).toMatchObject({
+      failure: {
+        _tag: "CustomerAccountLinkRequired",
+        reason: "deletion-pending",
+      },
+    });
+    expect(workspace.data.account).toBe(before);
+  });
+});
+
 describe("the fake Workspace's Better Auth passkey endpoints", () => {
   test("refuse renaming an unknown passkey as Better Auth does", async () => {
     const workspace = FakeWorkspace.forKind("linked");

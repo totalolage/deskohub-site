@@ -219,9 +219,15 @@
                       "@deskohub/i18n/action",
                       "@deskohub/i18n/request-locale"
                     ],
-                    "message": "This @deskohub/i18n entry is bound to the Next.js server. The mobile app may use the root, core, pathname, translatable, effect, and currency entries."
+                    "message": "This @deskohub/i18n entry is bound to the Next.js server. The mobile app may use the root, core, pathname, translatable, effect, currency, and locale-registry entries."
                   }
-                ]
+                ],
+                "paths": {
+                  "react-native": {
+                    "importNames": ["Text", "TextInput"],
+                    "message": "Use the app's Text/TextInput (src/ui/text.tsx), which sets the font for the locale's script."
+                  }
+                }
               }
             }
           }

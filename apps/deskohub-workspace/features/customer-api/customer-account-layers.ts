@@ -6,6 +6,8 @@ import {
   runAccountReleaseLayers,
 } from "@/features/account/backend/account-state-capabilities";
 import { CustomerAccountDeletionEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
+import type { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { CustomerLocalePreference } from "@/features/account/backend/customer-locale-preference.service";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
 
@@ -29,6 +31,12 @@ export type CustomerAccountServiceLayers = Omit<
   >;
   /** Better Auth's delete-user endpoint. */
   readonly accountDeletion: Layer.Layer<CustomerAccountDeletionEndpoint>;
+  /** The account's locale preference, under the request's authentication. */
+  readonly localePreference: Layer.Layer<
+    CustomerLocalePreference,
+    Layer.Error<typeof CustomerLocalePreference.Live>,
+    CustomerAuthentication
+  >;
 };
 
 interface ICustomerAccountLayers {
@@ -53,6 +61,7 @@ export class CustomerAccountLayers extends Context.Service<
       marketingPreferences: MarketingPreferences.AccountScoped,
       consentLedger: MarketingConsentLedger.Live,
       accountDeletion: CustomerAccountDeletionEndpoint.Default,
+      localePreference: CustomerLocalePreference.Live,
     },
     releases: runAccountReleaseLayers,
   });

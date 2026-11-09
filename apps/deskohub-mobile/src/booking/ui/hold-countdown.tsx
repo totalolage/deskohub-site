@@ -1,7 +1,8 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
+import { Text } from "../../ui/text";
 
 /** The last minute is shown as a warning. */
 const warningSeconds = 60;

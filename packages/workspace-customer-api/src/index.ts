@@ -12,6 +12,7 @@ export {
   CustomerAvatarRejectionReason,
   CustomerAvatarUpload,
   CustomerFeatureUnavailable,
+  CustomerLocaleUpdated,
   CustomerMarketingConsentStatus,
   CustomerMarketingPreferences,
   CustomerMarketingPreferencesRejected,

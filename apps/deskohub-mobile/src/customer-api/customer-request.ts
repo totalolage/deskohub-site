@@ -170,20 +170,31 @@ const unconfirmedOnceSent = <F>({
   );
 
 /**
- * Refreshes the atoms a write changes once the server may hold a new state:
- * after success and after an unconfirmed write, so the screen shows what was
- * really saved. A refused write changed nothing and refreshes nothing.
+ * Runs `then` once the server may hold a new state: after success and after
+ * an unconfirmed write. A refused write changed nothing and runs nothing.
  */
-export const refreshAfterWrite =
+export const whenWriteMayHaveApplied =
+  <R2>(then: Effect.Effect<void, never, R2>) =>
+  <A, E, R>(write: Effect.Effect<A, E, R>) =>
+    Effect.onExit(write, (exit) =>
+      writeMayHaveApplied(exit) ? then : Effect.void
+    );
+
+/**
+ * Refreshes the atoms a write changes once the server may hold a new state
+ * ({@link whenWriteMayHaveApplied}), so the screen shows what was really
+ * saved.
+ */
+export const refreshAfterWrite = (
+  get: Atom.FnContext,
   // biome-ignore lint/suspicious/noExplicitAny: any atom's value type
-    (get: Atom.FnContext, atoms: ReadonlyArray<Atom.Atom<any>>) =>
-    <A, E, R>(write: Effect.Effect<A, E, R>) =>
-      Effect.onExit(write, (exit) =>
-        Effect.sync(() => {
-          if (writeMayHaveApplied(exit))
-            for (const atom of atoms) get.refresh(atom);
-        })
-      );
+  atoms: ReadonlyArray<Atom.Atom<any>>
+) =>
+  whenWriteMayHaveApplied(
+    Effect.sync(() => {
+      for (const atom of atoms) get.refresh(atom);
+    })
+  );
 
 const writeMayHaveApplied = <A, E>(exit: Exit.Exit<A, E>) =>
   Exit.match(exit, {
