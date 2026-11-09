@@ -8,7 +8,11 @@ import {
 import { legalTranslationDates } from "@/features/legal/legal-translation-dates";
 import { runtimeImportGraph } from "@/shared/testing/runtime-import-graph.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { publicPageDefinitions, publicPages } from "./public-page-definitions";
+import {
+  getPublicPageContentDate,
+  publicPageDefinitions,
+  publicPages,
+} from "./public-page-definitions";
 
 const workspaceRoot = resolve(import.meta.dir, "../..");
 const renderingPackage = /^(react|react-dom|server-only|next)(\/|$)/;
@@ -83,6 +87,18 @@ describe("public page content dates", () => {
       expect(
         publicPageDefinitions[`/${documentKey}`].localeContentDates
       ).toEqual(legalTranslationDates);
+    }
+  });
+
+  // English's translation notice changed with the new locales' translations,
+  // all after the Czech versions; Czech keeps each document's date.
+  test("date the translated legal pages by their 2026-11-09 translations", () => {
+    for (const documentKey of legalDocumentKeys) {
+      const page = publicPageDefinitions[`/${documentKey}`];
+      for (const locale of ["en-US", "de-DE", "uk-UA", "sk-SK"] as const) {
+        expect(getPublicPageContentDate(page, locale)).toBe("2026-11-09");
+      }
+      expect(getPublicPageContentDate(page, "cs-CZ")).toBe(page.contentDate);
     }
   });
 });
