@@ -34,6 +34,13 @@ export const localeOverride = (
     ? undefined
     : { userId, locale, afterRead: sessionReads };
 
+/** The override to keep while `userId` is signed in: none once its account is gone. */
+export const overrideFor = (
+  override: LocaleOverride | undefined,
+  userId: string | undefined
+): LocaleOverride | undefined =>
+  override?.userId === userId ? override : undefined;
+
 /**
  * The locale the app shows: a choice still awaiting the session, else the
  * account's saved locale while signed in, else the launch locale (the

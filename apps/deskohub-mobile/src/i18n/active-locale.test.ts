@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import type { AuthSessionState } from "../auth/auth-session-state";
 import { toAuthSessionState } from "../auth/auth-session-state";
-import { activeLocale, localeOverride, sessionUserId } from "./active-locale";
+import {
+  activeLocale,
+  localeOverride,
+  overrideFor,
+  sessionUserId,
+} from "./active-locale";
 import type { AppLocale } from "./app-locale";
 
 const signedInAt = new Date(Date.UTC(2026, 10, 9, 12));
@@ -136,5 +141,32 @@ describe("localeOverride", () => {
     expect(
       localeOverride(sessionUserId({ status: "signed-out" }), "sk-SK", 0)
     ).toBeUndefined();
+  });
+});
+
+describe("overrideFor", () => {
+  const override = localeOverride("ada", "sk-SK", 2);
+
+  test("keeps the choice while its account stays signed in", () => {
+    expect(overrideFor(override, "ada")).toBe(override);
+  });
+
+  test("drops the choice once its account signs out or another signs in", () => {
+    expect(overrideFor(override, undefined)).toBeUndefined();
+    expect(overrideFor(override, "grace")).toBeUndefined();
+  });
+
+  test("doesn't bring a dropped choice back when the account returns", () => {
+    // Ada signs out (the hook keeps what overrideFor returns), then back in
+    // before any read completes.
+    const afterSignOut = overrideFor(override, undefined);
+    expect(
+      activeLocale({
+        session: ada("de-DE"),
+        sessionReads: 2,
+        launchLocale,
+        override: overrideFor(afterSignOut, "ada"),
+      })
+    ).toBe("de-DE");
   });
 });

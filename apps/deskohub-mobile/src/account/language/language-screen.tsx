@@ -43,9 +43,9 @@ export function LanguageScreen() {
         choices={languageChoices}
         selected={locale}
         disabled={state.status === "saving"}
-        onSelect={(chosen) => {
-          if (chosen !== locale) save({ locale: chosen, show });
-        }}
+        // Picking the language already shown saves it too: an account
+        // without a saved language shows the device's.
+        onSelect={(chosen) => save({ locale: chosen, show })}
       />
       {/* Kept mounted so assistive tech announces each change. */}
       <Notice

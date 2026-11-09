@@ -8,6 +8,7 @@ import {
   activeLocale,
   type LocaleOverride,
   localeOverride,
+  overrideFor,
   sessionUserId,
 } from "./active-locale";
 import type { AppLocale } from "./app-locale";
@@ -23,11 +24,14 @@ export const useSessionLocale = (
   const sessionReads = useSessionReads();
   const [override, setOverride] = useState<LocaleOverride>();
   const userId = sessionUserId(session);
+  // A sign-out or another account drops the choice for good.
+  const kept = overrideFor(override, userId);
+  if (kept !== override) setOverride(kept);
   const locale = activeLocale({
     session,
     sessionReads,
     launchLocale,
-    override,
+    override: kept,
   });
   const choose = useCallback(
     (chosen: AppLocale) =>
