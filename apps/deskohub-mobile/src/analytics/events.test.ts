@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { AnalyticsEvent } from "./analytics";
 import { createAnalyticsEvents } from "./events";
 
@@ -62,5 +64,41 @@ describe("analytics events", () => {
       },
       { name: "update applied", properties: {} },
     ]);
+  });
+});
+
+const appRoot = join(import.meta.dir, "../..");
+const importStatements = /^import[^;]*?from\s*["'][^"']+["'];?/gm;
+
+/** The app's production sources, routes and modules, without their imports. */
+const productionSources = async () => {
+  const sources: string[] = [];
+  for (const pattern of ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"]) {
+    for await (const path of new Bun.Glob(pattern).scan(appRoot)) {
+      if (/\.test\.tsx?$|\/testing\/|^src\/analytics\/events\.ts$/.test(path))
+        continue;
+      const source = await readFile(join(appRoot, path), "utf8");
+      sources.push(source.replace(importStatements, ""));
+    }
+  }
+  return sources;
+};
+
+describe("analytics event callers", () => {
+  test("every event is recorded somewhere in the app", async () => {
+    const sources = await productionSources();
+    const trackers = Object.keys(
+      createAnalyticsEvents({
+        capture: () => undefined,
+        screen: () => undefined,
+      })
+    );
+
+    const unused = trackers.filter(
+      (tracker) =>
+        !sources.some((source) => new RegExp(`\\b${tracker}\\b`).test(source))
+    );
+
+    expect(unused).toEqual([]);
   });
 });
