@@ -821,9 +821,9 @@ describe("Workspace actions", () => {
       await expect(action(loggedInput)).resolves.toEqual({ data: "Debug" });
       const logs = debugLogs("test.debug-lifecycle");
       expect(logs).toHaveLength(2);
-      expect(JSON.stringify(logs.map(({ attributes }) => attributes))).toContain(
-        loggedInput
-      );
+      expect(
+        JSON.stringify(logs.map(({ attributes }) => attributes))
+      ).toContain(loggedInput);
     });
 
     test("keeps its input off its lifecycle logs when input logging is disabled", async () => {
