@@ -21,13 +21,13 @@ export const consentBannerDocumentVersions: Readonly<
 > = {
   "en-US": {
     "privacy-policy":
-      "d783addd2d40a3221f65c18a560d29c9caf2eadbe677315b9e204c1b08d3c357",
+      "4cf23776d78d518f27c1a80ae4cdd091d3fc73ff6faf3b2b369749fe7f634cac",
     "cookie-policy":
       "b5b9dbefd033c1e03fadf088aadab6e2081a518f4d09d9a4f3bc833dae1a5b07",
   },
   "cs-CZ": {
     "privacy-policy":
-      "8a2a8f97a98f550859993a6c0884422796d86310d054b85198c2cea5aaaf7597",
+      "f17c81a5953a85b6636e978e45feeea5c4db4128ed4ccbe0cfbe01ad0b0e74c0",
     "cookie-policy":
       "9e1622d98ffc2f8879400494842ee8e2ee3f096a5e023636388c65c220dc3801",
   },
