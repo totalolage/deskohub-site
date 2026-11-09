@@ -4,7 +4,7 @@
   "type": "module",
   "main": "./index.ts",
   "scripts": {
-    "dev": "bun --parallel start dev:i18n",
+    "dev": "bun i18n:compile && bun --parallel start dev:i18n",
     "dev:i18n": "chokidar \"messages/*.json\" -c \"bun i18n:compile\"",
     "start": "expo start",
     "build:web": "expo export --platform web",

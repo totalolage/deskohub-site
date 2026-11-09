@@ -26,7 +26,7 @@ import {
   type PaymentBrowserResult,
   type PaymentBrowserUnavailable,
 } from "../payment-browser.service";
-import { RememberedReferralCode } from "../remembered-referral.service";
+import { observedRememberedReferralCode } from "../remembered-referral.service.mock";
 import { fakeBooking } from "./fake-booking-api";
 
 /** The payment page as a test scripts it, recording each page it opened. */
@@ -71,23 +71,21 @@ export const sampleCheckoutDetails: CheckoutDetails = {
 /**
  * One account's data registry for checkout tests: the fake Workspace with
  * its booking group behind the real client, fake device storage under the
- * real account-scoped storage, a scripted payment page, numbered ids, and a
- * test clock that starts at the fake's (frozen) clock.
+ * real account-scoped storage, the real remembered referral code reporting
+ * each update it applied, a scripted payment page, numbered ids, and a test
+ * clock that starts at the fake's (frozen) clock.
  */
 export const makeFakeCheckout = async (kind: SampleAccountKind = "linked") => {
   const workspace = FakeWorkspace.forKind(kind);
   const booking = fakeBooking(workspace);
   const device = makeFakeDevice();
   const browser = makeFakePaymentBrowser();
+  const referral = observedRememberedReferralCode();
   const bookingLayer: Layer.Layer<
     BookingServices,
     never,
     CustomerDataServices
-  > = Layer.mergeAll(
-    browser.layer,
-    RememberedReferralCode.Default,
-    sequentialBookingIds()
-  );
+  > = Layer.mergeAll(browser.layer, referral.layer, sequentialBookingIds());
   const registry = AtomRegistry.make({
     initialValues: [
       Atom.initialValue(
@@ -140,6 +138,7 @@ export const makeFakeCheckout = async (kind: SampleAccountKind = "linked") => {
     booking,
     device,
     browser,
+    referral,
     request,
     inRuntime,
     /** Moves the test clock (the flow's hold clock and request timeouts). */

@@ -77,14 +77,30 @@ describe("runUpdateCheck", () => {
     manifest: { id: "update-a" },
   } as unknown as Awaited<ReturnType<OtaUpdateSource["fetchUpdateAsync"]>>;
 
-  const recordingSources = (
-    download: () => Promise<typeof fetchResult> = async () => fetchResult
-  ) => {
+  const rollBackCheckResult = {
+    isAvailable: false,
+    isRollBackToEmbedded: true,
+    manifest: undefined,
+    reason: undefined,
+  } as unknown as typeof checkResult;
+  const rollBackFetchResult = {
+    isNew: false,
+    isRollBackToEmbedded: true,
+    manifest: undefined,
+  } as unknown as typeof fetchResult;
+
+  const recordingSources = ({
+    answer = async () => checkResult,
+    download = async () => fetchResult,
+  }: {
+    readonly answer?: () => Promise<typeof checkResult>;
+    readonly download?: () => Promise<typeof fetchResult>;
+  } = {}) => {
     const calls: Array<string> = [];
     const updates: OtaUpdateSource = {
-      checkForUpdateAsync: async () => {
+      checkForUpdateAsync: () => {
         calls.push("ota-check");
-        return checkResult;
+        return answer();
       },
       fetchUpdateAsync: () => {
         calls.push("ota-fetch");
@@ -114,7 +130,7 @@ describe("runUpdateCheck", () => {
       updates: sources.updates,
       installedBuildVersion: "1002000",
       latestReleaseUrl: "https://workspace.test/api/mobile/releases/latest",
-      onReadyUpdate: (updateId) => reports.push({ readyUpdate: updateId }),
+      onReadyUpdate: (update) => reports.push({ readyUpdate: update }),
       onNativeRelease: (release) => reports.push({ nativeRelease: release }),
     }).pipe(Effect.provide(sources.layer));
 
@@ -122,7 +138,9 @@ describe("runUpdateCheck", () => {
     const sources = recordingSources();
     const reports: Array<unknown> = [];
     await Effect.runPromise(check("android", sources, reports));
-    expect(reports).toContainEqual({ readyUpdate: "update-a" });
+    expect(reports).toContainEqual({
+      readyUpdate: { kind: "update", updateId: "update-a" },
+    });
     expect(reports).toContainEqual({
       nativeRelease: {
         kind: "newer",
@@ -136,8 +154,21 @@ describe("runUpdateCheck", () => {
     ]);
   });
 
+  test("reports the embedded update ready after a rollback directive", async () => {
+    const sources = recordingSources({
+      answer: async () => rollBackCheckResult,
+      download: async () => rollBackFetchResult,
+    });
+    const reports: Array<unknown> = [];
+    await Effect.runPromise(check("ios", sources, reports));
+    expect(reports).toEqual([{ readyUpdate: { kind: "embedded" } }]);
+    expect(sources.calls).toEqual(["ota-check", "ota-fetch"]);
+  });
+
   test("reports the native release while an update is still downloading", async () => {
-    const sources = recordingSources(() => new Promise(() => undefined));
+    const sources = recordingSources({
+      download: () => new Promise(() => undefined),
+    });
     const reports: Array<unknown> = [];
     const fiber = Effect.runFork(check("android", sources, reports));
     await Effect.runPromise(
