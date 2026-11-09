@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect";
 import { Atom } from "effect/unstable/reactivity";
+import type { AccountReadBudget } from "./account-read-budget";
 import type {
   AccountExitFence,
   AccountScopedStorage,
@@ -12,7 +13,6 @@ import {
 } from "./customer-api.service";
 import { customerRead } from "./customer-request";
 import type { DeviceCapabilities } from "./device-capabilities";
-import type { DotyposReadBudget } from "./dotypos-read-budget";
 
 /** Everything account screens' Effects may require. */
 export type CustomerDataServices =
@@ -22,7 +22,7 @@ export type CustomerDataServices =
   | CustomerAuthApi
   | CustomerAccountScope
   | CustomerSessionCheck
-  | DotyposReadBudget
+  | AccountReadBudget
   | DeviceCapabilities;
 
 const notProvided: Layer.Layer<CustomerDataServices> = Layer.effectContext(
@@ -38,7 +38,7 @@ const notProvided: Layer.Layer<CustomerDataServices> = Layer.effectContext(
 export const customerDataLayer = Atom.keepAlive(Atom.make(notProvided));
 
 // Atom runtimes memoize layers in one MemoMap shared by every registry, so a
-// static layer such as `DotyposReadBudget.Default` built for one account would
+// static layer such as `AccountReadBudget.Default` built for one account would
 // serve the next account while the first registry lives. Each registry builds
 // its layer with a map of its own.
 const builtPerRegistry = <A, E>(layer: Layer.Layer<A, E>) =>
@@ -70,6 +70,6 @@ export const accountAtom = customerDataRuntime
   .atom(
     Effect.flatMap(Effect.service(CustomerApi), (api) =>
       api.account.getAccount({ headers: {} })
-    ).pipe(customerRead({ dotyposBacked: true }))
+    ).pipe(customerRead({ accountRead: true }))
   )
   .pipe(Atom.keepAlive);

@@ -3,12 +3,12 @@ import type {
   CustomerOrderStatus,
 } from "@deskohub/workspace-customer-api";
 import { type Cause, Effect, Option, Queue, Ref, Result, Stream } from "effect";
+import { allowsAutomaticRefresh } from "../../customer-api/account-read-budget";
 import {
   type CustomerRequestFailure,
   CustomerViewError,
   toCustomerViewError,
 } from "../../customer-api/customer-view-error";
-import { allowsAutomaticRefresh } from "../../customer-api/dotypos-read-budget";
 import {
   AutomaticRefresh,
   type AutomaticRefreshStop,

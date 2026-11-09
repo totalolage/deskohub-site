@@ -23,14 +23,14 @@ import { parseInstant } from "../../i18n/date-time-format";
 export const passkeyNameMaximumLength = 64;
 
 /**
- * The account's passkeys (GET /account/passkeys). Not Dotypos-backed, so it
+ * The account's passkeys (GET /account/passkeys). Not an account read, so it
  * spends no read budget. Fails with `CustomerFeatureUnavailable` while the
  * release withholds passkeys.
  */
 export const passkeysAtom = customerDataRuntime.atom(
   Effect.flatMap(Effect.service(CustomerApi), (api) =>
     api.account.listPasskeys()
-  ).pipe(customerRead({ dotyposBacked: false }))
+  ).pipe(customerRead({ accountRead: false }))
 );
 
 /**

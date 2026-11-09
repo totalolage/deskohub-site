@@ -1,10 +1,10 @@
 import type { CustomerReservationOrderId } from "@deskohub/workspace-customer-api";
 import { Cause, Effect, Option, Stream } from "effect";
 import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AccountReadBudget } from "../../customer-api/account-read-budget";
 import { CustomerApi } from "../../customer-api/customer-api.service";
 import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
 import { customerRead } from "../../customer-api/customer-request";
-import { DotyposReadBudget } from "../../customer-api/dotypos-read-budget";
 import { appForegroundAtom } from "../../platform/app-foreground";
 import { reservationHistoryAtom } from "./reservations-list-state";
 import { type StatusRefreshState, statusRefreshes } from "./status-refresh";
@@ -14,11 +14,11 @@ import { AutomaticRefresh, type StatusVisit } from "./status-refresh-rules";
 export const readOrderStatus = (orderId: CustomerReservationOrderId) =>
   Effect.flatMap(Effect.service(CustomerApi), (api) =>
     api.reservations.getReservationStatus({ params: { orderId } })
-  ).pipe(customerRead({ dotyposBacked: true }));
+  ).pipe(customerRead({ accountRead: true }));
 
 /** The advisory number of reads left. */
 export const remainingReadBudget = Effect.flatMap(
-  Effect.service(DotyposReadBudget),
+  Effect.service(AccountReadBudget),
   (budget) => budget.remaining
 );
 

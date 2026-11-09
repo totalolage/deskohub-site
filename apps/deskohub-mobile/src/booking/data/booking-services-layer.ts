@@ -24,7 +24,7 @@ export type BookingServices =
  *
  *   runCheckoutCommand(command).pipe(Effect.provide(get(bookingServicesLayer)))
  *
- * so `CustomerApi`, `DotyposReadBudget` and the session check stay the single
+ * so `CustomerApi`, `AccountReadBudget` and the session check stay the single
  * instances the account's runtime built, never a second `customerDataLayer`.
  *
  * Its default is the live Layer (the platform's payment page, the account's

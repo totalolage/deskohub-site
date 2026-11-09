@@ -5,10 +5,10 @@ import {
   type Atom,
   AtomRegistry,
 } from "effect/unstable/reactivity";
+import { AccountReadBudget, accountReadAllowance } from "./account-read-budget";
 import { CustomerApi, CustomerAuthApi } from "./customer-api.service";
 import { accountAtom, customerDataRuntime } from "./customer-data-runtime";
 import { customerWrite, refreshAfterWrite } from "./customer-request";
-import { DotyposReadBudget, dotyposReadAllowance } from "./dotypos-read-budget";
 import {
   makeFakeCustomerData,
   settle,
@@ -39,7 +39,7 @@ const run = <A, E>(
 
 const remainingReadsAtom = customerDataRuntime.atom(
   Effect.flatMap(
-    Effect.service(DotyposReadBudget),
+    Effect.service(AccountReadBudget),
     (budget) => budget.remaining
   )
 );
@@ -64,10 +64,10 @@ describe("accountAtom", () => {
     await settle(first.registry, accountAtom);
 
     expect(await settle(first.registry, remainingReadsAtom)).toMatchObject({
-      success: dotyposReadAllowance.reads - 1,
+      success: accountReadAllowance.reads - 1,
     });
     expect(await settle(second.registry, remainingReadsAtom)).toMatchObject({
-      success: dotyposReadAllowance.reads,
+      success: accountReadAllowance.reads,
     });
   });
 
@@ -114,7 +114,7 @@ describe("accountAtom", () => {
     await settle(registry, accountAtom);
 
     expect(await settle(registry, remainingReadsAtom)).toMatchObject({
-      success: dotyposReadAllowance.reads - 2,
+      success: accountReadAllowance.reads - 2,
     });
   });
 });

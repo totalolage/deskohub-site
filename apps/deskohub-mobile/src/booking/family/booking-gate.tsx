@@ -10,6 +10,7 @@ import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { ListGroup, ListRow } from "../../ui/list";
 import { Notice } from "../../ui/notice";
+import { opensWithoutAccount } from "./booking-family-view";
 
 const unavailableNotice = (notice: AccountNotice, locale: AppLocale) =>
   ({
@@ -22,13 +23,26 @@ const unavailableNotice = (notice: AccountNotice, locale: AppLocale) =>
 /**
  * Shows `children` only to an account that can book, as the Reservations
  * tab gates its rows: an account without a profile is sent to complete it,
- * any other account sees why it can't book.
+ * any other account sees why it can't book. When the account can't be read
+ * because it spent its read budget, `children` show under that notice: the
+ * checkout still checks the account.
  */
 export function BookingGate({ children }: { readonly children: ReactNode }) {
   const locale = useAppLocale();
   const router = useRouter();
   const account = useAtomValue(accountAtom);
   const refresh = useAtomRefresh(accountAtom);
+  if (opensWithoutAccount(account)) {
+    return (
+      <>
+        <Notice
+          tone="warning"
+          message={m.account_error_rate_limited({}, { locale })}
+        />
+        {children}
+      </>
+    );
+  }
   return (
     <AsyncView result={account} onRetry={refresh}>
       {(current) => {

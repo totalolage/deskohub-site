@@ -5,8 +5,12 @@ import type {
 } from "@deskohub/workspace-customer-api";
 import { Effect, Exit, Fiber, Layer, Option, Queue, Stream } from "effect";
 import { TestClock } from "effect/testing";
+import {
+  AccountReadBudget,
+  accountReadAllowance,
+  automaticRefreshReserve,
+} from "../../customer-api/account-read-budget";
 import { CustomerViewError } from "../../customer-api/customer-view-error";
-import { DotyposReadBudget } from "../../customer-api/dotypos-read-budget";
 import {
   fakeCustomerDataLayer,
   makeFakeDevice,
@@ -61,7 +65,7 @@ const harness = ({
   const run = <A, E>(
     script: (
       manual: Queue.Queue<void>
-    ) => Effect.Effect<A, E, DotyposReadBudget>
+    ) => Effect.Effect<A, E, AccountReadBudget>
   ) =>
     Effect.gen(function* () {
       const manual = yield* Queue.unbounded<void>();
@@ -99,6 +103,12 @@ const stopped = (state: StatusRefreshState | undefined) =>
   state !== undefined && AutomaticRefresh.$is("Stopped")(state.automatic)
     ? state.automatic.reason
     : undefined;
+
+/** Spends every read but the automatic-refresh reserve, as other screens would. */
+const spendAllButReserve = (budget: AccountReadBudget["Service"]) =>
+  Effect.repeat(budget.spend, {
+    times: accountReadAllowance.reads - automaticRefreshReserve - 1,
+  });
 
 describe("statusRefreshes", () => {
   test("a normal visit reads again after 10, 20 and 40 seconds, then stops", async () => {
@@ -223,13 +233,14 @@ describe("statusRefreshes", () => {
 
     await h.run(() =>
       Effect.gen(function* () {
-        const budget = yield* DotyposReadBudget;
-        // 12 reads elsewhere; the screen's first read leaves 7.
-        yield* Effect.repeat(budget.spend, { times: 11 });
+        const budget = yield* AccountReadBudget;
+        // Reads elsewhere leave the reserve; the screen's first read
+        // leaves one fewer.
+        yield* spendAllButReserve(budget);
         yield* h.readsSettled(1);
         yield* TestClock.adjust("1 minute");
         yield* quietly;
-        expect(yield* budget.remaining).toBe(7);
+        expect(yield* budget.remaining).toBe(automaticRefreshReserve - 1);
       })
     );
 
@@ -331,9 +342,10 @@ describe("statusRefreshes", () => {
     await h.run(() =>
       Effect.gen(function* () {
         yield* h.readsSettled(1);
-        const budget = yield* DotyposReadBudget;
-        // Other screens spend 12 reads while the screen waits: 7 are left.
-        yield* Effect.repeat(budget.spend, { times: 11 });
+        const budget = yield* AccountReadBudget;
+        // Other screens spend all but the reserve while the screen waits:
+        // with the screen's first read, one fewer is left.
+        yield* spendAllButReserve(budget);
         yield* TestClock.adjust("10 seconds");
         yield* eventually(() => stopped(h.last()) === "budget");
         yield* TestClock.adjust("30 minutes");
