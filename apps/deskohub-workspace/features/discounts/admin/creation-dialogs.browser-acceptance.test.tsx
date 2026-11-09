@@ -151,12 +151,44 @@ test.skipIf(!chromiumAvailable).each(scenarios)(
   }
 );
 
-// At 390 px each date field is 144 px wide inside, and the typed date needs
-// about 167 px beside the calendar button, so its end hides under the button.
-// Pending a layout decision; this fails loudly once the dates fit.
+/**
+ * The date fields whose text, the typed date or else the format placeholder,
+ * is wider than the room beside the calendar button.
+ */
+const findClippedDateText = async (fields: readonly Locator[]) => {
+  const clipped: string[] = [];
+  for (const field of fields) {
+    const result = await field.evaluate((element) => {
+      const input = element as HTMLInputElement;
+      const style = getComputedStyle(input);
+      const context = document.createElement("canvas").getContext("2d");
+      if (!context) throw new Error("No 2D canvas context.");
+      context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const text = input.value || input.placeholder;
+      const needed = context.measureText(text).width;
+      const room =
+        input.clientWidth -
+        Number.parseFloat(style.paddingLeft) -
+        Number.parseFloat(style.paddingRight);
+      return needed > room
+        ? `${text}: ${Math.ceil(needed)} > ${Math.floor(room)}`
+        : undefined;
+    });
+    if (result) clipped.push(result);
+  }
+  return clipped;
+};
+
+// At 390 px each date field has 80 px for text beside the calendar button,
+// and dates and the format placeholders need up to 122 px. That awaits a
+// layout decision; the 390 px cases assert the clipping so they fail once the
+// text fits, and should then join the others.
 for (const { dialog, locale, width } of scenarios) {
-  test.skipIf(!chromiumAvailable).failingIf(width === 390)(
-    `shows each typed date whole in the ${dialog} dialog at ${width} px (${locale})`,
+  const knownClipping = width === 390;
+  test.skipIf(!chromiumAvailable)(
+    knownClipping
+      ? `still clips date text in the ${dialog} dialog at ${width} px (${locale})`
+      : `shows each date field's placeholder and typed date whole in the ${dialog} dialog at ${width} px (${locale})`,
     async () => {
       if (!browser || !harness) throw new Error("The browser is not ready.");
       const page = await browser.newPage({
@@ -165,24 +197,16 @@ for (const { dialog, locale, width } of scenarios) {
       });
       try {
         await openDiscountDialog(page, harness, { dialog, locale });
-        const fields = await fillDateFields(page, dialog, locale);
-        const dateFields = [fields.validFrom, fields.validUntil];
+        const empty = discountDateFields(page, locale);
+        const dateFields = [empty.validFrom, empty.validUntil];
         if (dialog === "code") {
-          dateFields.push(fields.serviceDateFrom, fields.serviceDateUntil);
+          dateFields.push(empty.serviceDateFrom, empty.serviceDateUntil);
         }
-        const clipped: string[] = [];
-        for (const field of dateFields) {
-          const { clientWidth, scrollWidth, value } = await field.evaluate(
-            (element) => ({
-              clientWidth: element.clientWidth,
-              scrollWidth: element.scrollWidth,
-              value: (element as HTMLInputElement).value,
-            })
-          );
-          if (scrollWidth > clientWidth)
-            clipped.push(`${value}: ${scrollWidth} > ${clientWidth}`);
-        }
-        expect(clipped).toEqual([]);
+        const clipped = await findClippedDateText(dateFields);
+        await fillDateFields(page, dialog, locale);
+        clipped.push(...(await findClippedDateText(dateFields)));
+        if (knownClipping) expect(clipped).not.toEqual([]);
+        else expect(clipped).toEqual([]);
       } finally {
         await page.close();
       }

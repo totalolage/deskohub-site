@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
@@ -9,17 +9,33 @@ import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles
 
 const appDirectory = resolve(import.meta.dir, "../../..");
 
-// The dialogs only reach the router and the Server Action after a valid save,
-// which the browser checks never make.
+// The dialogs only reach the router and the Server Actions after a valid
+// save, which the browser checks never make.
 const moduleStubs: Readonly<Record<string, string>> = {
-  "./actions": `
-    export const mutateDiscountAdmin = async () => ({});
-    export const searchDiscountAdminCustomers = async () => ({});
-  `,
   "next/navigation": `
     const router = { back() {}, forward() {}, prefetch() {}, push() {}, refresh() {}, replace() {} };
     export const useRouter = () => router;
   `,
+};
+
+/** Replaces the discount administration's Server Actions module only. */
+const discountActionsStubPlugin: Bun.BunPlugin = {
+  name: "discount-admin-actions-stub",
+  setup(build) {
+    const namespace = "discount-admin-actions-stub";
+    build.onResolve({ filter: /^\.\/actions$/ }, (args) =>
+      dirname(args.importer) === import.meta.dir
+        ? { namespace, path: args.path }
+        : undefined
+    );
+    build.onLoad({ filter: /.*/, namespace }, () => ({
+      contents: `
+        export const mutateDiscountAdmin = async () => ({});
+        export const searchDiscountAdminCustomers = async () => ({});
+      `,
+      loader: "js",
+    }));
+  },
 };
 
 export type DiscountDialogsBrowserPage = {
@@ -45,7 +61,10 @@ export const buildDiscountDialogsBrowserPage =
       minify: true,
       naming: "[name]-[hash].[ext]",
       outdir: directory,
-      plugins: [browserModuleStubPlugin(moduleStubs)],
+      plugins: [
+        discountActionsStubPlugin,
+        browserModuleStubPlugin(moduleStubs),
+      ],
       target: "browser",
     });
     if (!build.success) {
