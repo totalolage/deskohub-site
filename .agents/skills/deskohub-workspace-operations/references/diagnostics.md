@@ -6,6 +6,8 @@ Report counts, IDs, statuses, and error codes. Never print or quote secrets, tok
 
 Before you diagnose from PostHog Logs, confirm that service `deskohub-workspace` has recent entries, for example with a `logs-count` over `-24h` without the severity filter. Ingestion can stop, and an empty window then means missing evidence, not a healthy system. [posthog-mvp-error-query.md](posthog-mvp-error-query.md) has the query shapes.
 
+Only production exports server logs to PostHog by default, from Info up. Preview and development logs stay in the Vercel runtime logs, from Debug up. To read one preview's logs in PostHog, set `POSTHOG_LOGS_EXPORT=always` as a Vercel Preview variable scoped to that branch, redeploy, and remove it when done; never set it for all previews. `WORKSPACE_LOG_LEVEL` (an Effect log level name) overrides the minimum level in any environment.
+
 ## Log through the censored pipeline
 
 - Use `Effect.log*` for Workspace diagnostics, not `console.*`.
