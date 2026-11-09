@@ -134,7 +134,28 @@ describe.skipIf(!testDatabase)("reservation order mirror on Postgres", () => {
     });
   });
 
-  test("mirrors each fact change a raw reservation update makes", async () => {
+  test.each([
+    ["dotypos_customer_id", `fixture-customer-${crypto.randomUUID()}`],
+    ["payment_state", "pending"],
+    ["fulfillment_state", "processing"],
+    ["active_payment_attempt_id", `attempt-${crypto.randomUUID()}`],
+    ["paid_at", "2031-02-03T04:05:06.789Z"],
+    ["fulfilled_at", "2031-02-03T04:05:06.789Z"],
+    ["fulfillment_failed_at", "2031-02-03T04:05:06.789Z"],
+    ["fulfillment_failure_code", "fixture_fulfillment_failure"],
+  ])("mirrors a raw reservation update of %s alone", async (column, value) => {
+    const id = await insertReservation();
+
+    await pool.query(
+      `update workspace_reservations set ${column} = $2 where id = $1`,
+      [id, value]
+    );
+
+    const mirror = await readReservationOrderMirror(pool, id);
+    expect(mirror.order).toEqual(mirror.expected);
+  });
+
+  test("mirrors a raw reservation update's facts and its updated_at", async () => {
     const id = await insertReservation();
     const [attemptId, ...rest] = attemptValues(id, "pending");
     await pool.query(insertAttemptSql, [attemptId, ...rest]);
