@@ -79,6 +79,13 @@ export const PhoneNumberSchema = Schema.String.pipe(
     "Entered phone number text decoded to a valid phone number in E.164 form.",
 });
 
+/**
+ * A phone number written for reading, in international format such as
+ * `+420 777 123 456`. parsePhoneNumber reads it back as the same number.
+ */
+export const formatPhoneNumber = (phone: PhoneNumber): string =>
+  parsePhoneNumberWithError(phone).formatInternational();
+
 /** A phone number split into its country calling code and national number. */
 export type PhoneNumberParts = {
   readonly countryCallingCode: string;

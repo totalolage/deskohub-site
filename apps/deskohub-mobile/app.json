@@ -84,6 +84,13 @@
       ],
       "expo-status-bar",
       [
+        "expo-image-picker",
+        {
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
         "./plugins/android-asset-statements.cjs",
         {
           "sites": ["https://workspace.deskohub.cz"]
