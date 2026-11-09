@@ -3,10 +3,10 @@ import { Duration, Effect, Latch } from "effect";
 /**
  * How long the sign-out request may run. The server already removed every
  * session and the native client clears the local one before it sends the
- * request, so the request adds nothing worth waiting for, and the
- * deleted-account screen's sign-in action waits about this long at most: an
- * answer already being stored when the bound aborts the request is waited
- * out.
+ * request, so the request adds nothing worth waiting for. The bound aborts
+ * the request; an answer already being stored is waited out however long
+ * its writes take, and the deleted-account screen's sign-in action waits
+ * for that too.
  */
 export const deletedAccountSignOutBound = Duration.seconds(5);
 

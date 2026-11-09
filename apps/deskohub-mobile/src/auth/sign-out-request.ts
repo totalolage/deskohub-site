@@ -10,8 +10,9 @@ export class SignOutFailure extends Data.TaggedError("SignOutFailure") {}
  * client clears the stored session before it sends the request, so the
  * request only ends the session on the server, and every sign-in waits for
  * it: a sign-out that outlasts this leaves the server session to expire,
- * as a failed one does. A response already being stored is waited out, so
- * a sign-out can end a moment after this.
+ * as a failed one does. This bounds the request, not the sign-out: an
+ * abort can't stop a response already being stored, which is waited out
+ * however long its writes take.
  */
 export const signOutRequestBound = Duration.seconds(10);
 

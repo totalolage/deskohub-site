@@ -215,8 +215,10 @@ describe("native session store", () => {
     const signingIn = app.runtime.runPromiseExit(
       completeAuthCallback({ kind: "token", token: server.issueMagicLink(bob) })
     );
-    // Without a gate the sign-in has stored its session by now.
-    await Promise.race([signingIn, Bun.sleep(50)]);
+    // Once its link is verified, a sign-in without a gate only has its
+    // in-memory acceptance left and has stored its session by now.
+    while (server.callsTo("/magic-link/verify").length < 2) await Bun.sleep(1);
+    await Promise.race([signingIn, Bun.sleep(100)]);
     answer();
 
     expect(Exit.isSuccess(await signingOut)).toBe(true);
