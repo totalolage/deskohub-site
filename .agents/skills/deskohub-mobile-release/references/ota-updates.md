@@ -90,9 +90,10 @@ Android it also reads `GET /api/mobile/releases/latest` and compares its
 the `/android` page, an OTA update restarts the app on accept, and dismissing
 lasts for the session. A rollback offers the same restart into the embedded
 update. iOS checks OTA only. `app.config.ts` sets
-`checkAutomatically: "ON_ERROR_RECOVERY"`, so only this check downloads
-updates; the restart applies one at once, and a downloaded update or fetched
-rollback otherwise takes effect at the next cold start.
+`checkAutomatically: "ON_ERROR_RECOVERY"`, which turns off the launch-time
+check; only error recovery after a failed launch still downloads on its own.
+The restart applies a downloaded update or fetched rollback at once; otherwise
+it takes effect at the next cold start.
 
 Development clients load from Metro and never take OTA updates. Before a tag,
 the one OTA check is a release-shaped build (`--signing debug`) against

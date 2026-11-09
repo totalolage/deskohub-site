@@ -179,7 +179,8 @@ describe.skipIf(!testDatabase)("mobile update manifest route", () => {
 
   // An app on its embedded update may hold the rolled-back update, downloaded
   // but not launched yet; only the directive stops its next start from
-  // launching it. expo-updates ignores a directive it has already applied.
+  // launching it. expo-updates ignores the directive once the app has
+  // restarted into its embedded update.
   test("sends the rollback to an app that runs its embedded update too", async () => {
     const android = target();
     await publish({ type: "rollBackToEmbedded", id: randomUUID(), ...android });
