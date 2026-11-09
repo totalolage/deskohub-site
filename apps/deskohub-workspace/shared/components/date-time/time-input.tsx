@@ -107,9 +107,12 @@ const isTimeAccepted = ({
 /**
  * A time-of-day field on the browser's time editor, with optional bounds and
  * a step. Only a complete time inside the bounds and on the step becomes the
- * value. Any other edit stays on screen without changing the value, goes back
- * to the committed time when the field loses focus, and keeps the owning
- * form from submitting while it is on screen.
+ * value. Any other edit stays on screen and keeps the owning form from
+ * submitting while it is there. While the field has focus the value stays,
+ * so a second keystroke can finish the edit; when the field loses focus the
+ * value empties and the field is marked invalid, so the form never holds a
+ * time the field does not show. The field says why when the form can't
+ * submit.
  */
 export function TimeInput({
   "aria-describedby": ariaDescribedBy,
@@ -145,7 +148,6 @@ export function TimeInput({
     value: value === undefined ? undefined : toCanonical(value),
   });
   const hiddenFieldRef = useRef<HTMLInputElement>(null);
-  useFormReset(hiddenFieldRef, committed.reset);
   const resolvedStepMinutes = resolveStepMinutes(stepMinutes);
   const minimumTime = parseCanonicalTime(resolveBound(minimum));
   const editorMinimum = minimumTime
@@ -154,13 +156,44 @@ export function TimeInput({
 
   const editorRef = useRef<HTMLInputElement>(null);
   const problemId = useId();
-  /** Why the owning form last could not submit, until the edit is fixed. */
-  const [problem, setProblem] = useState<"incomplete" | "unavailable">();
+  /**
+   * Why the edit on screen can't be the value. It holds while the value is
+   * the one it was found with, so a value set from outside takes it away.
+   * The field says why once the owning form can't submit; until then it is
+   * only marked invalid, as a message appearing when the field loses focus
+   * would move a submit button out from under the pointer pressing it.
+   */
+  const [problemState, setProblemState] = useState<{
+    readonly explained: boolean;
+    readonly kind: "incomplete" | "unavailable";
+    readonly value: string;
+  }>();
+  const [syncedValue, setSyncedValue] = useState(committed.value);
+  if (committed.value !== syncedValue) {
+    // A value set from outside replaces the edit, and its problem for good.
+    setSyncedValue(committed.value);
+    if (problemState && problemState.value !== committed.value)
+      setProblemState(undefined);
+  }
+  const problem =
+    problemState?.value === committed.value ? problemState : undefined;
+  const explainedProblem = problem?.explained ? problem.kind : undefined;
+  /** Set while the value empties for an edit that stays on screen. */
+  const keepsEditRef = useRef(false);
   // The editor's text is the browser's own, so an unfinished segmented edit
-  // survives re-renders. A changed value replaces whatever it shows.
+  // survives re-renders. A changed value replaces whatever it shows, except
+  // the empty value an edit left on screen gave it.
   useEffect(() => {
+    const keepsEdit = keepsEditRef.current;
+    keepsEditRef.current = false;
+    if (keepsEdit && committed.value === "") return;
     if (editorRef.current) editorRef.current.value = committed.value;
   }, [committed.value]);
+  useFormReset(hiddenFieldRef, () => {
+    // The browser puts the editor itself back to its default.
+    committed.reset();
+    setProblemState(undefined);
+  });
 
   /** Whether the time is on the step and inside the bounds as they are now. */
   const isAccepted = (time: Temporal.PlainTime) =>
@@ -181,11 +214,22 @@ export function TimeInput({
       return "unavailable";
     return undefined;
   };
+  /** Whether the editor shows an edit the field itself can't take. */
+  const showsRejectedEdit = (editor: HTMLInputElement) => {
+    if (editor.validity.badInput) return true;
+    if (editor.value === "") return false;
+    const time = parseCanonicalTime(editor.value);
+    return !(time && isAccepted(time));
+  };
   useSubmitGuard(hiddenFieldRef, () => {
     const editor = editorRef.current;
     const nextProblem = editor && !disabled ? getProblem(editor) : undefined;
     if (!nextProblem) return false;
-    setProblem(nextProblem);
+    setProblemState({
+      explained: true,
+      kind: nextProblem,
+      value: committed.value,
+    });
     editor?.focus();
     return true;
   });
@@ -196,7 +240,7 @@ export function TimeInput({
     // empty value. It stays on screen; the value stays.
     if (editor.validity.badInput) return;
     if (editor.value === "") {
-      setProblem(undefined);
+      setProblemState(undefined);
       committed.setValue("");
       return;
     }
@@ -205,17 +249,31 @@ export function TimeInput({
     // 01:00). It never becomes the value.
     const time = parseCanonicalTime(editor.value);
     if (time && isAccepted(time)) {
-      setProblem(undefined);
+      setProblemState(undefined);
       committed.setValue(formatCanonicalTime(time));
     }
   };
 
   const handleBlur = (event: FocusEvent<HTMLInputElement>) => {
-    // An unfinished or rejected edit goes back to the committed time.
     const editor = event.currentTarget;
-    if (editor.validity.badInput || editor.value !== committed.value) {
+    if (showsRejectedEdit(editor)) {
+      // An unfinished or rejected edit stays on screen and empties the value,
+      // so neither leaving the field nor pressing a submit button, which
+      // takes focus first, swaps the edit for the time before it.
+      const kind = editor.validity.badInput ? "incomplete" : "unavailable";
+      setProblemState({
+        explained: problem?.explained === true && problem.kind === kind,
+        kind,
+        value: "",
+      });
+      if (committed.value !== "") {
+        keepsEditRef.current = true;
+        committed.setValue("");
+      }
+    } else if (editor.value !== committed.value) {
+      // A controlled parent didn't take the edit: the field shows its value.
       editor.value = committed.value;
-      if (isCommittedAccepted()) setProblem(undefined);
+      if (isCommittedAccepted()) setProblemState(undefined);
     }
     onBlur?.();
   };
@@ -238,7 +296,7 @@ export function TimeInput({
           ref={composeRefs(editorRef, ref)}
           id={id}
           aria-describedby={
-            [ariaDescribedBy, problem ? problemId : undefined]
+            [ariaDescribedBy, explainedProblem ? problemId : undefined]
               .filter(Boolean)
               .join(" ") || undefined
           }
@@ -271,11 +329,11 @@ export function TimeInput({
         aria-live="polite"
         className="mt-2 text-sm font-medium text-burned-orange empty:sr-only"
       >
-        {problem &&
+        {explainedProblem &&
           {
             incomplete: m.timeInputIncomplete,
             unavailable: m.timeInputUnavailable,
-          }[problem]({}, messageLocale)}
+          }[explainedProblem]({}, messageLocale)}
       </p>
     </div>
   );

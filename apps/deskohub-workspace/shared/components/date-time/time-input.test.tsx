@@ -15,6 +15,7 @@ const { act, cleanup, fireEvent, render } = await import(
   "@testing-library/react"
 );
 const { TimeInput } = await import("./time-input");
+const { typeTimeAsBrowsers } = await import("./time-input.test-utils");
 
 const timeLabel = "Start time";
 const en = { locale: "en-US" } as const;
@@ -146,16 +147,17 @@ describe("TimeInput", () => {
       });
     }
     expect(onChange).not.toHaveBeenCalled();
-    // A rejected time stays on screen until the field loses focus.
+    // A rejected time stays on screen, even once the field loses focus.
     expect(editor.value).toBe("18:00");
     fireEvent.blur(editor);
-    expect(editor.value).toBe("12:00");
+    expect(editor.value).toBe("18:00");
+    expect(submitted()).toEqual([""]);
 
     typeTime("17:00");
     expect(onChange).toHaveBeenLastCalledWith("17:00");
   });
 
-  test("keeps an unfinished edit without a value, then drops it on blur", () => {
+  test("keeps an unfinished edit without a value until it is finished", () => {
     const onBlur = mock(() => undefined);
     const onChange = mock((_value: string) => undefined);
     const { editor, form, onSubmit, submitted, typeTime } = renderInForm({
@@ -177,11 +179,11 @@ describe("TimeInput", () => {
     expect(describedText(editor)).toContain(m.timeInputIncomplete({}, en));
 
     fireEvent.blur(editor);
-    markUnfinished(editor, false);
-    expect(editor.value).toBe("09:00");
     expect(onBlur).toHaveBeenCalledTimes(1);
-    expect(editor.getAttribute("aria-invalid")).toBe("false");
 
+    markUnfinished(editor, false);
+    typeTime("09:00");
+    expect(editor.getAttribute("aria-invalid")).toBe("false");
     fireEvent.submit(form);
     expect(onSubmit.mock.calls[0]?.[0].getAll("time")).toEqual(["09:00"]);
   });
@@ -204,6 +206,99 @@ describe("TimeInput", () => {
     expect(editor.getAttribute("aria-invalid")).toBe("false");
     fireEvent.submit(form);
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  // Pressing a submit button moves focus out of the field before the form
+  // submits, so leaving the field must not swap the entry for the old time.
+  for (const [bound, rejected] of [
+    ["before the minimum", "10:00"],
+    ["after the maximum", "18:00"],
+  ] as const) {
+    test(`keeps a time ${bound} on screen after blur, without a value, and blocks submission`, async () => {
+      const onChange = mock((_value: string) => undefined);
+      const { editor, form, onSubmit, submitted } = renderInForm({
+        defaultValue: "12:00",
+        maximum: "17:00",
+        minimum: "11:00",
+        onChange,
+      });
+
+      await typeTimeAsBrowsers(editor, rejected);
+      fireEvent.blur(editor);
+
+      expect(editor.value).toBe(rejected);
+      expect(submitted()).toEqual([""]);
+      expect(onChange).toHaveBeenLastCalledWith("");
+      expect(editor.getAttribute("aria-invalid")).toBe("true");
+
+      fireEvent.submit(form);
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(document.activeElement === editor).toBe(true);
+
+      await typeTimeAsBrowsers(editor, "12:00");
+      expect(editor.getAttribute("aria-invalid")).toBe("false");
+      fireEvent.submit(form);
+      expect(onSubmit.mock.calls[0]?.[0].getAll("time")).toEqual(["12:00"]);
+    });
+  }
+
+  test("keeps an unfinished edit on screen after blur, without a value, and blocks submission", () => {
+    const { editor, form, onSubmit, submitted, typeTime } = renderInForm({
+      defaultValue: "09:00",
+    });
+
+    markUnfinished(editor, true);
+    typeTime("");
+    fireEvent.blur(editor);
+
+    expect(submitted()).toEqual([""]);
+    expect(editor.getAttribute("aria-invalid")).toBe("true");
+    fireEvent.submit(form);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(document.activeElement === editor).toBe(true);
+  });
+
+  test("a value set from outside drops a kept edit's problem for good", async () => {
+    const onSubmit = mock((_data: FormData) => undefined);
+    function Controlled() {
+      const [value, setValue] = useState("12:00");
+      return (
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit(new FormData(event.currentTarget));
+          }}
+        >
+          <TimeInput
+            label={timeLabel}
+            minimum="11:00"
+            name="time"
+            onChange={setValue}
+            value={value}
+          />
+          <button onClick={() => setValue("15:00")} type="button">
+            Pick
+          </button>
+          <button onClick={() => setValue("")} type="button">
+            Clear
+          </button>
+        </form>
+      );
+    }
+    const view = render(<Controlled />);
+    const editor = view.getByLabelText(timeLabel) as HTMLInputElement;
+
+    await typeTimeAsBrowsers(editor, "10:00");
+    fireEvent.blur(editor);
+    expect(editor.getAttribute("aria-invalid")).toBe("true");
+
+    fireEvent.click(view.getByRole("button", { name: "Pick" }));
+    expect(editor.value).toBe("15:00");
+    fireEvent.click(view.getByRole("button", { name: "Clear" }));
+    expect(editor.getAttribute("aria-invalid")).toBe("false");
+    fireEvent.submit(view.container.querySelector("form") as HTMLFormElement);
+    expect(onSubmit.mock.calls[0]?.[0].getAll("time")).toEqual([""]);
   });
 
   test("blocks submission of a prefilled time that the bounds no longer allow", () => {

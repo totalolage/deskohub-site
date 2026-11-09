@@ -157,6 +157,12 @@ export function DateTimeInput({
     setDraft(toDraft(committed.value, defaultTime));
     setShowsIncomplete(false);
   }
+  /**
+   * Changes when clearing the date leaves the time's value as it was, so the
+   * time field starts afresh and drops an edit it kept on screen, which a
+   * changed value would replace by itself.
+   */
+  const [timeFieldKey, setTimeFieldKey] = useState(0);
   const hiddenFieldRef = useRef<HTMLInputElement>(null);
   const dateFieldRef = useRef<HTMLInputElement>(null);
   const timeFieldRef = useRef<HTMLInputElement>(null);
@@ -224,7 +230,9 @@ export function DateTimeInput({
   const handleDateChange = (date: string) => {
     if (date === "") {
       // Clearing the date clears the time it went with.
-      updateDraft({ date: "", time: defaultTime ?? "" });
+      const time = defaultTime ?? "";
+      if (draft.time === time) setTimeFieldKey((key) => key + 1);
+      updateDraft({ date: "", time });
       return;
     }
     let time = parseCanonicalTime(draft.time || defaultTime);
@@ -298,6 +306,7 @@ export function DateTimeInput({
           value={draft.date}
         />
         <TimeInput
+          key={timeFieldKey}
           ref={timeFieldRef}
           aria-describedby={describedBy}
           aria-invalid={invalid}

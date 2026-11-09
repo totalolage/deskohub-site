@@ -16,6 +16,7 @@ const { act, cleanup, fireEvent, render } = await import(
   "@testing-library/react"
 );
 const { DateTimeInput } = await import("./date-time-input");
+const { typeTimeAsBrowsers } = await import("./time-input.test-utils");
 
 const dateLabel = "Valid from";
 const timeLabel = "Valid from time";
@@ -339,6 +340,56 @@ describe("DateTimeInput", () => {
     expect(timeField.value).toBe("18:00");
     expect(timeField.getAttribute("aria-invalid")).toBe("false");
     expect(onPartialDraftChange).toHaveBeenLastCalledWith(false);
+  });
+
+  // Pressing a submit button moves focus out of the time field before the
+  // form submits.
+  for (const [bound, rejected] of [
+    ["before the minimum", "07:00"],
+    ["after the maximum", "21:00"],
+  ] as const) {
+    test(`keeps a time ${bound} on screen after blur and submits no value`, async () => {
+      const { form, onSubmit, submitted, timeField } = renderInForm({
+        defaultValue: "2099-06-10T16:00",
+        maximum: "2099-06-10T20:00",
+        minimum: "2099-06-10T16:00",
+        stepMinutes: 60,
+      });
+
+      await typeTimeAsBrowsers(timeField, rejected);
+      fireEvent.blur(timeField);
+
+      expect(timeField.value).toBe(rejected);
+      expect(submitted()).toEqual([""]);
+      expect(timeField.getAttribute("aria-invalid")).toBe("true");
+
+      fireEvent.submit(form);
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(document.activeElement === timeField).toBe(true);
+
+      await typeTimeAsBrowsers(timeField, "18:00");
+      fireEvent.submit(form);
+      expect(onSubmit.mock.calls[0]?.[0].getAll("validFrom")).toEqual([
+        "2099-06-10T18:00",
+      ]);
+    });
+  }
+
+  test("clearing the date drops a time kept on screen", async () => {
+    const { form, onSubmit, timeField, typeDate, view } = renderInForm({
+      defaultValue: "2099-06-10T16:00",
+      minimum: "2099-06-10T16:00",
+    });
+
+    await typeTimeAsBrowsers(timeField, "07:00");
+    fireEvent.blur(timeField);
+    typeDate("");
+
+    const clearedTime = view.getByLabelText(timeLabel) as HTMLInputElement;
+    expect(clearedTime.value).toBe("");
+    expect(clearedTime.getAttribute("aria-invalid")).toBe("false");
+    fireEvent.submit(form);
+    expect(onSubmit.mock.calls[0]?.[0].getAll("validFrom")).toEqual([""]);
   });
 
   test("a form reset drops a partial draft", () => {

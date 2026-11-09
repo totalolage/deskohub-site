@@ -153,13 +153,14 @@ describe("ReservationFormDateTimeInput", () => {
     typeTime("17:00");
     expect(changes()).toEqual(["2099-06-10T17:00"]);
 
-    // A partial hour stays on screen without becoming the start, and goes
-    // back to the start's time when the field is left.
+    // A partial hour stays on screen without becoming the start. Leaving the
+    // field keeps it there and takes the start away, so no earlier time can
+    // be submitted in its place.
     typeTime("17:30");
     expect(changes()).toEqual(["2099-06-10T17:00"]);
     if (timeField) fireEvent.blur(timeField);
-    expect(timeField?.value).toBe("17:00");
-    expect(submitted()).toEqual(["2099-06-10T17:00"]);
+    expect(timeField?.value).toBe("17:30");
+    expect(submitted()).toEqual([""]);
   });
 
   test("a cleared time keeps the form from submitting the start", () => {

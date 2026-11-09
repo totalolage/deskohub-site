@@ -419,6 +419,26 @@ describe("DateInput typed date", () => {
     });
   });
 
+  // Without a date, the calendar opens on a month it offers days in rather
+  // than on a month the bounds leave entirely out.
+  for (const [bound, props, offeredDay] of [
+    ["a later minimum", { minimum: "2099-12-01" }, "2099-12-01"],
+    ["an earlier maximum", { maximum: "2001-03-15" }, "2001-03-15"],
+  ] as const) {
+    test(`opens an empty field's calendar on the month of ${bound}`, async () => {
+      const { input } = renderPicker(props);
+
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+
+      const offered = await waitFor(() => {
+        const cell = document.querySelector(`[data-day="${offeredDay}"]`);
+        if (!cell) throw new Error(`calendar did not open on ${offeredDay}`);
+        return cell;
+      });
+      expect(offered.querySelector("button")?.disabled).toBe(false);
+    });
+  }
+
   test("closing the calendar with Escape or a pick returns focus to the typed field", async () => {
     const { input } = renderPicker({ initialValue: "2099-06-10" });
     const openFromField = () =>
