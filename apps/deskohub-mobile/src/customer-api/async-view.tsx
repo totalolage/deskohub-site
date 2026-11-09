@@ -20,21 +20,24 @@ import { sharedViewErrorMessage } from "./customer-view-error-message";
 export { viewErrorOf } from "./customer-view-error";
 
 /**
- * Renders a screen's async data the same way everywhere: a spinner while it
- * first loads, the content (with a quiet refreshing line while it reloads),
- * and on failure the mapped message with "Try again" when retrying can help.
+ * Renders a screen's async data the same way everywhere: a spinner (or the
+ * screen's own `loading` content) while it first loads, the content (with a
+ * quiet refreshing line while it reloads), and on failure the mapped message with "Try again" when retrying can help.
  * A failure after a success keeps the last content on screen under a notice.
  */
 export function AsyncView<A, E extends CustomerRequestFailure>({
   result,
   onRetry,
   errorMessage,
+  loading,
   children,
 }: {
   readonly result: AsyncResult.AsyncResult<A, E>;
   readonly onRetry: () => void;
   /** Copy for failures only this screen can explain. */
   readonly errorMessage?: (error: CustomerViewError) => string | undefined;
+  /** Shown instead of the spinner while the first load is under way. */
+  readonly loading?: ReactNode;
   readonly children: (value: A) => ReactNode;
 }) {
   const locale = useAppLocale();
@@ -62,9 +65,8 @@ export function AsyncView<A, E extends CustomerRequestFailure>({
       />
       {/* Kept mounted so assistive tech announces each change. */}
       <Notice tone="error" message={retryState ? undefined : message} />
-      {AsyncResult.isInitial(result) && (
-        <LoadingState label={m.account_loading({}, { locale })} />
-      )}
+      {AsyncResult.isInitial(result) &&
+        (loading ?? <LoadingState label={m.account_loading({}, { locale })} />)}
       {retryState && (
         <ErrorState
           message={message ?? ""}
