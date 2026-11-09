@@ -2,6 +2,7 @@ import {
   Children,
   createElement,
   isValidElement,
+  type JSXElementConstructor,
   type ReactElement,
   type ReactNode,
 } from "react";
@@ -32,20 +33,25 @@ export const elementTree = <Props>(
   return tree;
 };
 
-/** Every host element of `type` in an element tree, in document order. */
-export const findAll = (
+/**
+ * Every element of `type` in an element tree, in document order: a host
+ * element by its name, or a component's element by the component.
+ */
+export const findAll = <Props = HostProps>(
   node: ReactNode,
-  type: string
-): ReadonlyArray<ReactElement<HostProps>> => {
+  type: string | JSXElementConstructor<Props>
+): ReadonlyArray<ReactElement<Props>> => {
   if (!isValidElement<HostProps>(node)) return [];
   const nested = Children.toArray(node.props.children).flatMap((child) =>
     findAll(child, type)
   );
-  return node.type === type ? [node, ...nested] : nested;
+  return node.type === type
+    ? [node as unknown as ReactElement<Props>, ...nested]
+    : nested;
 };
 
-/** The first host element of `type` in an element tree. */
-export const find = (
+/** The first element of `type` in an element tree. */
+export const find = <Props = HostProps>(
   node: ReactNode,
-  type: string
-): ReactElement<HostProps> | undefined => findAll(node, type)[0];
+  type: string | JSXElementConstructor<Props>
+): ReactElement<Props> | undefined => findAll(node, type)[0];

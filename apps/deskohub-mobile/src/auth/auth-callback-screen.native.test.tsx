@@ -1,17 +1,12 @@
-import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, ManagedRuntime, Option, Semaphore } from "effect";
-import {
-  act,
-  Children,
-  type ComponentProps,
-  isValidElement,
-  type ReactNode,
-} from "react";
+import { act, type ReactNode } from "react";
 import { AppLocaleProvider } from "../i18n/locale-context";
 import { clientRoot } from "../testing/client-root";
+import { eventually } from "../testing/eventually";
 import { Button, LiveMessage } from "../ui/controls";
-import type { HostProps } from "../ui/testing/element-tree";
+import { find, findAll } from "../ui/testing/element-tree";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
 import { AuthSessionBrowser } from "./auth-session-browser.service";
@@ -88,26 +83,13 @@ mock.module("expo-router", () => ({
 
 const { AuthCallbackScreen } = await import("./auth-callback-screen.native");
 
-/**
- * The fake server's sessions travel in the Cookie header, which happy-dom's
- * fetch primitives drop as a forbidden header; the auth client keeps Bun's
- * (and the abort signals they accept).
- */
-const fetchPrimitives = {
-  AbortController,
-  AbortSignal,
-  Headers,
-  Request,
-  Response,
-  fetch,
-};
-const { render } = clientRoot();
-beforeAll(() => {
-  Object.assign(globalThis, fetchPrimitives);
-});
+const { render } = clientRoot({ keepFetch: true });
+let launched: Array<{ readonly dispose: () => Promise<void> }> = [];
 
 afterEach(async () => {
   await render(null);
+  await Promise.all(launched.map((app) => app.dispose()));
+  launched = [];
   runtime = undefined;
   session = { status: "signed-out" };
   params = {};
@@ -139,6 +121,7 @@ const launchApp = () => {
       Layer.succeed(SessionWriteLock, sessionWriteLock)
     )
   );
+  launched.push(app);
   return { server, app };
 };
 
@@ -162,21 +145,6 @@ const reauthenticationCompletedAsBob = async () => {
   };
 };
 
-type LiveMessageProps = ComponentProps<typeof LiveMessage>;
-type ButtonProps = ComponentProps<typeof Button>;
-
-/** The elements of `type` in a tree the screen returned, in document order. */
-const elementsIn = <Props,>(
-  node: ReactNode,
-  type: unknown
-): ReadonlyArray<Props> => {
-  if (!isValidElement<HostProps>(node)) return [];
-  const nested = Children.toArray(node.props.children).flatMap((child) =>
-    elementsIn<Props>(child, type)
-  );
-  return node.type === type ? [node.props as Props, ...nested] : nested;
-};
-
 /** Draws the screen and waits until its completion has finished. */
 const drawScreen = async () => {
   let tree: ReactNode = null;
@@ -189,24 +157,18 @@ const drawScreen = async () => {
       <Probe />
     </AppLocaleProvider>
   );
+  const alert = () =>
+    findAll(tree, LiveMessage).find(({ props }) => props.role === "alert")
+      ?.props.message;
   // The completion runs on the auth runtime; let it finish and re-render.
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const alert = elementsIn<LiveMessageProps>(tree, LiveMessage).find(
-      ({ role }) => role === "alert"
-    );
-    if (alert?.message !== undefined) break;
-    await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
-  }
+  await act(() => Effect.runPromise(eventually(() => alert() !== undefined)));
   return {
-    alert: () =>
-      elementsIn<LiveMessageProps>(tree, LiveMessage).find(
-        ({ role }) => role === "alert"
-      )?.message,
+    alert,
     pressButton: () =>
       act(async () => {
-        const [button] = elementsIn<ButtonProps>(tree, Button);
+        const button = find(tree, Button);
         if (button === undefined) throw new Error("No button.");
-        button.onPress();
+        button.props.onPress();
       }),
   };
 };
