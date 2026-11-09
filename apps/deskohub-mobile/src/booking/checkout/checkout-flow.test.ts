@@ -121,7 +121,8 @@ const showReservations = async (checkout: FakeCheckout) => {
 
 /**
  * Resolves once the Reservations list has read the history `count` times:
- * each read ends in a new value of the list, which re-checks `reads`.
+ * each successful read ends in a new value of the list, which re-checks
+ * `reads`.
  */
 const untilReads = async (
   checkout: FakeCheckout,
@@ -444,14 +445,17 @@ describe("useCheckoutFlow's flow", () => {
     const flow = await startFlow();
     // The submission is reported as its answer lands, before the payment
     // page would open: the screen leaves view right then.
-    const capture = spyOn(analytics, "capture").mockImplementation(() =>
-      flow.setFocused(false)
-    );
+    const reported = Effect.runSync(Deferred.make<void>());
+    const capture = spyOn(analytics, "capture").mockImplementation(() => {
+      flow.setFocused(false);
+      Effect.runSync(Deferred.succeed(reported, undefined));
+    });
     cleanups.push(() => capture.mockRestore());
 
     await toReview(flow);
     await pay(flow);
     await flow.untilState("Paying");
+    await Effect.runPromise(Deferred.await(reported));
     await settle();
     expect(capture).toHaveBeenCalledTimes(1);
     expect(flow.checkout.browser.opened).toEqual([]);
