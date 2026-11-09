@@ -391,3 +391,28 @@ describe("toProfileFormErrors", () => {
     ).toEqual({ errors: {} });
   });
 });
+
+describe("phone in the visitor's locale", () => {
+  const germanMobile = values({
+    billingKind: "hidden",
+    phone: "0151 23456789",
+  });
+
+  test.each([
+    ["profileFormSchema", (locale: Locale) => profileFormSchema(locale)],
+    [
+      "completionFormSchema",
+      (locale: Locale) => completionFormSchema(locale, "FRIEND10"),
+    ],
+  ] as const)(
+    "%s reads a phone without a country calling code in the locale's region",
+    async (_, schemaFor) => {
+      expect((await resolve(schemaFor("de-DE"), germanMobile)).errors).toEqual(
+        {}
+      );
+      expect(
+        Object.keys(await errorsOf(schemaFor("cs-CZ"), germanMobile))
+      ).toEqual(["phone"]);
+    }
+  );
+});
