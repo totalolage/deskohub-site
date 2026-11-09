@@ -8,8 +8,8 @@ import {
   type EmailProviderConfig,
 } from "../types/email.types";
 import {
-  type EmailDeliveryObserver as EmailDeliveryObserverShape,
   EmailDeliveryObserver,
+  type EmailDeliveryObserver as EmailDeliveryObserverShape,
   type EmailFallbackEvent,
   type EmailSentEvent,
 } from "./email-delivery-observer";

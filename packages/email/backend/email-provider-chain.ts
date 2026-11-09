@@ -134,6 +134,16 @@ const unmatchedBatchAnswer = (provider: EmailProvider) =>
     failureKind: "unknown-outcome",
   });
 
+/** A provider's batch answer, refused when it doesn't answer every message. */
+const checkedBatchAnswer = (
+  provider: EmailProvider,
+  outcome: Result.Result<readonly EmailBatchResult[], EmailSendError>,
+  size: number
+): Result.Result<readonly EmailBatchResult[], EmailSendError> =>
+  Result.isFailure(outcome) || outcome.success.length === size
+    ? outcome
+    : Result.fail(unmatchedBatchAnswer(provider));
+
 /**
  * Sends a batch through the chain. The first provider gets every message
  * under the caller's key; each later provider gets the messages its
@@ -171,11 +181,7 @@ export const sendBatchThroughChain = (
           }
         )
       );
-      const answer = Result.isSuccess(outcome)
-        ? outcome.success.length === pending.length
-          ? Result.succeed(outcome.success)
-          : Result.fail(unmatchedBatchAnswer(provider))
-        : outcome;
+      const answer = checkedBatchAnswer(provider, outcome, pending.length);
 
       if (Result.isFailure(answer)) {
         yield* Effect.logWarning("Email provider failed the batch", {

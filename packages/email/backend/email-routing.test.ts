@@ -3,7 +3,6 @@ import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import {
   addressesOnlyTestRecipients,
   internalRecipientForOrigin,
-  staffEmailSubject,
 } from "./email-routing";
 import { isTestEmailRecipient } from "./test-recipients";
 

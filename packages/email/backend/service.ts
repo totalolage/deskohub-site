@@ -18,8 +18,8 @@ import {
   sendThroughChain,
 } from "./email-provider-chain";
 import {
-  type EmailStream,
   EmailProviders,
+  type EmailStream,
   emailCategoryOf,
   emailStreamOf,
 } from "./email-providers";

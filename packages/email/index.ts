@@ -4,12 +4,12 @@ export {
   type EmailFailureKind,
   type EmailProvider,
 } from "./backend/capabilities";
+export { makeEmailConfigLayer } from "./backend/email-config";
 export {
   EmailDeliveryObserver,
   type EmailFallbackEvent,
   type EmailSentEvent,
 } from "./backend/email-delivery-observer";
-export { makeEmailConfigLayer } from "./backend/email-config";
 export {
   type EmailProviderChains,
   EmailProviders,

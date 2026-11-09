@@ -1,4 +1,4 @@
-import type { ProviderRequestPolicy } from "@deskohub/provider-request";
+import { createHash } from "node:crypto";
 import {
   EmailDeliveryIdSchema,
   type EmailMessage,
@@ -8,7 +8,7 @@ import {
   EmailServiceError,
   NetworkError,
 } from "@deskohub/email";
-import { createHash } from "node:crypto";
+import type { ProviderRequestPolicy } from "@deskohub/provider-request";
 import { Config, Duration, Effect, Option, Schema } from "effect";
 import { Resend } from "resend";
 import { resendRetryPolicy } from "./request-policy";
