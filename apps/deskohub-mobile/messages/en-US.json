@@ -133,6 +133,7 @@
   "callback_open_in_app": "Open in app",
   "callback_continue_here": "Continue in the browser",
   "callback_back_to_sign_in": "Back to sign-in",
+  "callback_go_back": "Go back",
   "signin_error_cancelled": "Sign-in was cancelled. You can try again.",
   "signin_error_link": "This sign-in link can't be used here. Start signing in again.",
   "signin_error_expired": "This sign-in took too long and expired. Start again.",
