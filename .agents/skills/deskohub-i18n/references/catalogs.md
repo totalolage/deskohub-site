@@ -13,7 +13,7 @@ Workspace paths are relative to `apps/deskohub-workspace`. Both Workspace projec
 ## Format
 
 - Each catalog is one JSON object of flat root keys, in the same order as `cs-CZ`. Keys are unique across all catalogs of a project. Administration keys start with their area in camelCase.
-- A plain message is a string. Placeholders are `{name}`, keep their exact name, and are never translated.
+- A plain message is a string. Placeholders are `{name}`, keep their exact name, and are never translated. A literal brace is escaped with a backslash, written `\\{` and `\\}` inside the JSON string; Paraglide renders `"Use \\{name\\}"` as `Use {name}`.
 - A message with variants is a one-element array holding `declarations`, `selectors`, and `match`. Translations keep the declarations and selectors exactly as in `cs-CZ`.
 
 ### Plurals
@@ -63,4 +63,4 @@ Compile after every catalog edit:
 - `features/i18n/inlang-project.test.ts` and its administration twin: the settings match the registry ([architecture](architecture.md#drift-tests)).
 - `features/administration/i18n/administration-message-leaks.test.ts` (unit) and `administration-messages.build.test.ts` (production build output): administration copy stays out of customer chunks. See [administration localization](../../deskohub-workspace-administration/references/localization.md#build-output-check).
 
-None of them checks key parity, order, placeholders, plural categories, or select keys across catalogs, so a translation needs the parity check. Run these tests inside `apps/deskohub-workspace` with `bun run test <path>...`, which adds the Workspace preload.
+None of them checks key parity, order, placeholders, plural categories, or select keys across catalogs, so a translation needs the parity check. Run these tests inside `apps/deskohub-workspace` with `bun run test ./<path>...`, which adds the Workspace preload. Keep the `./`: a bare name is a substring filter, so `vercel.test.ts` also runs `e2e/integrations/vercel.test.ts`.
