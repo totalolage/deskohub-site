@@ -58,9 +58,10 @@ export function LegalScreen({
         marketingPreferences={marketingPreferences}
       />
 
-      {/* Signed-out visitors get no download, as they get no account
-          analytics preference; the export route still refuses them itself. */}
-      {(analyticsPreference?.status ?? "signed-out") !== "signed-out" && (
+      {/* Only a visitor the page read as signed in gets the download: an
+          unavailable preference may mean the session itself couldn't be
+          read. The export route still authorizes every request itself. */}
+      {analyticsPreference?.status === "available" && (
         <section
           aria-labelledby={accountDataExportTitleId}
           className="mt-8 min-w-0 border-t border-[#e5e9ef] pt-6"
