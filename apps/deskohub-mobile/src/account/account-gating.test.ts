@@ -55,6 +55,16 @@ describe("accountIndexModel", () => {
     expect(accountIndexModel(linked).sections).not.toContain("security");
   });
 
+  test("offers the language to every account but one pending deletion", () => {
+    const offered = (kind: SampleAccountKind) =>
+      accountIndexModel(accountOf(kind)).sections.includes("language");
+
+    expect(offered("completion-required")).toBe(true);
+    expect(offered("authenticated-unavailable")).toBe(true);
+    // The server refuses a pending deletion's preference writes.
+    expect(offered("deletion-pending")).toBe(false);
+  });
+
   test("hides the danger zone while deletion is withheld", () => {
     expect(
       accountIndexModel({
