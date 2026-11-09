@@ -29,7 +29,7 @@ export default async function MinimalHeaderLayout({
       <div id="main-content" tabIndex={-1}>
         {children}
       </div>
-      <PublicSiteFooter />
+      <PublicSiteFooter localePreference={localePreference} />
     </>
   );
 }

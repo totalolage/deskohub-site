@@ -28,7 +28,7 @@ export default async function FullHeaderLayout({
           {children}
         </PageNavigationBoundary>
       </div>
-      <PublicSiteFooter />
+      <PublicSiteFooter localePreference={siteHeaderConfig.localePreference} />
     </>
   );
 }

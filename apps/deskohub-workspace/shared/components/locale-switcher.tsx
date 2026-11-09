@@ -108,20 +108,27 @@ function LanguageMenuTrigger({
   return (
     <Button
       type="button"
-      size="sm"
+      size="icon"
       shape="pill"
       aria-label={triggerLabel}
-      className="shrink-0"
+      className="shrink-0 sm:w-auto"
       variant="ghost"
       tone={tone === "inverse" ? "inverse" : "outline"}
       // biome-ignore lint/plugin: the menu trigger passes only its state, ARIA and event props, never a className.
       {...props}
     >
-      <Languages aria-hidden className="size-4" />
-      <span lang={locale} className="hidden sm:inline">
-        {languageNames[locale]}
+      {/* Phones get the icon alone in a round button; wider screens add the
+          current language's name and a chevron. */}
+      <span className="flex items-center gap-1.5 sm:px-3.5">
+        <Languages aria-hidden className="size-4.5" />
+        <span lang={locale} className="hidden sm:inline">
+          {languageNames[locale]}
+        </span>
+        <ChevronDown
+          aria-hidden
+          className="hidden size-3.5 opacity-70 sm:block"
+        />
       </span>
-      <ChevronDown aria-hidden className="size-3.5 opacity-70" />
     </Button>
   );
 }

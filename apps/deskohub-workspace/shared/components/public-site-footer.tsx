@@ -1,6 +1,6 @@
 import { cacheLife } from "next/cache";
 import { Suspense } from "react";
-import { createLocalePreferenceSaving } from "@/features/account/server/locale-preference-saving.server";
+import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import { type Locale, m } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { AppInstallCallToAction } from "@/features/mobile-distribution/app-install-call-to-action";
@@ -13,7 +13,14 @@ import { GuardedLink as Link } from "@/shared/components/guarded-link";
 import { LanguageLinks } from "@/shared/components/locale-switcher";
 import { workspaceSiteConstants } from "@/shared/utils";
 
-export async function PublicSiteFooter() {
+type PublicSiteFooterProps = {
+  /** The header's preference saving, shared so one session check serves both. */
+  readonly localePreference: LocalePreferenceSaving;
+};
+
+export async function PublicSiteFooter({
+  localePreference,
+}: PublicSiteFooterProps) {
   const locale = await getRequestLocale();
   const copyrightYear = await getCopyrightYear(locale);
   const localePath = `/${locale}`;
@@ -186,7 +193,7 @@ export async function PublicSiteFooter() {
           <LanguageLinks
             locale={locale}
             label={m.languageSwitcherLabel({}, { locale })}
-            localePreference={createLocalePreferenceSaving()}
+            localePreference={localePreference}
             className="text-white/78 md:order-last"
           />
           <p>

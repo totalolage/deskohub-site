@@ -56,6 +56,9 @@ function AccountLink({
       active={active}
       asChild
       caps={mobile}
+      // Phones reach the account from the menu, which lists it first, so the
+      // bar keeps room for the language menu.
+      className={mobile ? undefined : "hidden sm:inline-flex"}
       layout={mobile ? "row" : "icon"}
       tone="inverse"
     >
@@ -208,7 +211,7 @@ export function SiteHeader({
             tone="inverse"
             size="sm"
             caps
-            className="shrink-0"
+            className="shrink-0 max-[359px]:hidden"
           >
             <Link href={contactHref} onClick={closeMenu}>
               {contactLabel}
@@ -267,6 +270,20 @@ export function SiteHeader({
         )}
       >
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
+          {/* The narrowest phones have no room for it in the bar. */}
+          <Button
+            asChild
+            variant="secondary"
+            tone="inverse"
+            size="sm"
+            caps
+            fullWidth
+            className="min-[360px]:hidden"
+          >
+            <Link href={contactHref} onClick={closeMenu}>
+              {contactLabel}
+            </Link>
+          </Button>
           {administrator !== undefined && (
             <AdministratorEntryMenuButton
               entry={administrator}
