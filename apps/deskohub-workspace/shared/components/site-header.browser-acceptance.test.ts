@@ -4,17 +4,22 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type Browser, chromium, type Page } from "@playwright/test";
 import { type Locale, locales, m } from "@/features/i18n";
+import { languageNames } from "@/features/i18n/language-labels";
 import { browserModuleStubPlugin } from "@/shared/testing/browser-module-stubs.test-utils";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles.test-utils";
+import { expectAccessibleLanguageMenu } from "./language-menu.browser.test-utils";
 
 const appDirectory = resolve(import.meta.dir, "../..");
 const mobileViewport = { height: 812, width: 375 } as const;
 const desktopViewport = { height: 900, width: 1440 } as const;
 const narrowDesktopViewport = { height: 800, width: 1280 } as const;
 const shortMobileViewport = { height: 600, width: 375 } as const;
-// The narrowest supported phone up to the largest common one.
-const phoneWidths = [320, 390, 430] as const;
+// The narrowest supported phone up to the largest common one, and a portrait
+// tablet, all of which keep the menu button. Below 360px the contact button
+// moves from the bar into the menu.
+const handheldWidths = [320, 360, 390, 430, 768] as const;
+const contactBarMinWidth = 360;
 // Small laptops, the `xl` breakpoint where the full header adds its desktop
 // navigation and language switcher, and a common desktop.
 const desktopWidths = [1024, 1280, 1440] as const;
@@ -252,8 +257,27 @@ const expectNoHorizontalOverflow = async (
   const overflow = await readHorizontalOverflow(page);
   expect(overflow.outsideViewport).toEqual([]);
   if (insideRowPadding) expect(overflow.outsideRowPadding).toEqual([]);
-  expect(overflow.documentOverflow).toBeLessThanOrEqual(1);
+  expect(overflow.documentOverflow).toBeLessThanOrEqual(0);
 };
+
+const languageMenuTrigger = (page: Page) =>
+  page.getByRole("banner").locator("[data-language-menu-trigger]");
+
+// The visible copies of the contact button, in the bar or the open menu.
+const readVisibleContactLinks = (page: Page, locale: Locale) =>
+  page
+    .locator(`header a[href="/${locale}/reservation/cowork"]`)
+    .filter({ visible: true })
+    .evaluateAll((links) =>
+      links.map((link) => {
+        const rect = link.getBoundingClientRect();
+        return {
+          inMenu: link.closest("#site-header-mobile-menu") !== null,
+          left: rect.left,
+          right: rect.right,
+        };
+      })
+    );
 
 // Each desktop navigation label has to stay on one line.
 const readWrappedNavigationLabels = (page: Page, navigationLabel: string) =>
@@ -306,9 +330,9 @@ const readHeaderHeights = (page: Page) =>
 
 for (const locale of locales) {
   for (const variant of headerVariants) {
-    for (const width of phoneWidths) {
+    for (const width of handheldWidths) {
       test.skipIf(!chromiumAvailable)(
-        `fits the ${variant} header on a ${width}px phone (${locale})`,
+        `fits the ${variant} header on a ${width}px screen (${locale})`,
         async () => {
           const page = await openSiteHeader(
             locale,
@@ -316,6 +340,8 @@ for (const locale of locales) {
             { variant }
           );
           try {
+            // The language menu stays in the bar at every width.
+            expect(await languageMenuTrigger(page).isVisible()).toBe(true);
             await expectNoHorizontalOverflow(page);
           } finally {
             await page.close();
@@ -553,7 +579,7 @@ for (const locale of locales) {
   );
 
   test.skipIf(!chromiumAvailable)(
-    `scrolls the administrator's mobile menu to the language switcher (${locale})`,
+    `keeps the administrator's mobile menu reachable in a short screen (${locale})`,
     async () => {
       const page = await openSiteHeader(locale, shortMobileViewport, {
         administrator: true,
@@ -568,33 +594,95 @@ for (const locale of locales) {
           })
           .click();
         const menu = page.locator("#site-header-mobile-menu");
-        const menuAdminButton = menu.getByRole("link", {
-          exact: true,
-          name: m.siteHeaderAdminLabel({}, { locale }),
-        });
-        await menuAdminButton.waitFor();
+        await menu
+          .getByRole("link", {
+            exact: true,
+            name: m.siteHeaderAdminLabel({}, { locale }),
+          })
+          .waitFor();
 
         const menuBox = await menu.boundingBox();
-        expect(menuBox).not.toBeNull();
-        expect((menuBox?.y ?? 0) + (menuBox?.height ?? 0)).toBeLessThanOrEqual(
+        if (!menuBox) throw new Error("The mobile menu is not rendered.");
+        expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(
           shortMobileViewport.height + 1
         );
-        expect(
-          await menu.evaluate(
-            (element) => element.scrollHeight > element.clientHeight
-          )
-        ).toBe(true);
+        // The language menu lives in the bar, not in this menu.
+        expect(await menu.locator("a[hreflang]").count()).toBe(0);
 
-        const switcher = menu.locator("[data-locale-switcher]");
-        await switcher.scrollIntoViewIfNeeded();
-        const switcherBox = await switcher.boundingBox();
-        expect(
-          (switcherBox?.y ?? 0) + (switcherBox?.height ?? 0)
-        ).toBeLessThanOrEqual(shortMobileViewport.height + 1);
-        expect(switcherBox?.y ?? 0).toBeGreaterThanOrEqual(140);
+        const lastLink = menu.getByRole("link").last();
+        await lastLink.scrollIntoViewIfNeeded();
+        const lastLinkBox = await lastLink.boundingBox();
+        if (!lastLinkBox) throw new Error("The last menu link is missing.");
+        expect(lastLinkBox.y).toBeGreaterThanOrEqual(menuBox.y);
+        expect(lastLinkBox.y + lastLinkBox.height).toBeLessThanOrEqual(
+          shortMobileViewport.height + 1
+        );
       } finally {
         await page.close();
       }
     }
   );
+
+  for (const width of [320, 360, 390, 768] as const) {
+    const inBar = width >= contactBarMinWidth;
+    test.skipIf(!chromiumAvailable)(
+      `shows the contact button ${inBar ? "in the bar" : "in the menu"} at ${width}px (${locale})`,
+      async () => {
+        const page = await openSiteHeader(locale, { height: 844, width });
+        try {
+          const barContactLinks = await readVisibleContactLinks(page, locale);
+          expect(barContactLinks.map(({ inMenu }) => inMenu)).toEqual(
+            inBar ? [false] : []
+          );
+
+          await page
+            .getByRole("button", {
+              exact: true,
+              name: m.openNavigationMenuLabel({}, { locale }),
+            })
+            .click();
+          await page
+            .getByRole("button", {
+              exact: true,
+              name: m.closeNavigationMenuLabel({}, { locale }),
+            })
+            .waitFor();
+          const contactLinks = await readVisibleContactLinks(page, locale);
+          // Exactly one copy shows: the bar's, or the menu's below 360px.
+          expect(contactLinks.map(({ inMenu }) => inMenu)).toEqual([!inBar]);
+          for (const { left, right } of contactLinks) {
+            expect(left).toBeGreaterThanOrEqual(0);
+            expect(right).toBeLessThanOrEqual(width);
+          }
+          await expectNoHorizontalOverflow(page);
+        } finally {
+          await page.close();
+        }
+      }
+    );
+  }
+
+  for (const viewport of [mobileViewport, desktopViewport]) {
+    test.skipIf(!chromiumAvailable)(
+      `opens the language menu from the keyboard at ${viewport.width}px (${locale})`,
+      async () => {
+        const page = await openSiteHeader(locale, viewport);
+        try {
+          await expectAccessibleLanguageMenu(page, {
+            currentLocale: locale,
+            // The harness stands in for the home page.
+            hrefFor: (other) => `/${other}`,
+            region: "header",
+            trigger: languageMenuTrigger(page),
+            triggerLabel: m.languageMenuTriggerLabel(
+              { language: languageNames[locale] },
+              { locale }
+            ),
+          });
+        } finally {
+          await page.close();
+        }
+      }
+    );
+  }
 }
