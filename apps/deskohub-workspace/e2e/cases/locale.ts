@@ -124,7 +124,7 @@ export const assertLanguageRedirect = ({
             )
       )
     ),
-    id: `redirect-accept-language-${acceptLanguage}`,
+    id: `redirect-accept-language-${acceptLanguage.toLowerCase()}`,
     timeoutMs: config.timeouts.browserAction,
   });
 

@@ -11,6 +11,7 @@ import type { Locale } from "@/features/i18n";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { E2EBrowserSession } from "../browser-session";
 import { runE2ECase } from "../case-runner";
+import { formatWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { languageMenuMarkup } from "../language-menu.test-utils";
 import {
   type E2ETelemetryObservation,
@@ -22,6 +23,7 @@ import {
   expectedHomeAlternates,
   type LocaleSmokeLocale,
   localeHomeHeading,
+  localeSmokeCaseId,
   localeSmokeLocales,
 } from "./locale-smoke";
 
@@ -130,16 +132,24 @@ const runLocaleSmoke = async (locale: LocaleSmokeLocale, site: FakeSite) => {
                   openSession,
                   runStep,
                 }),
-              caseId: `locale-smoke-${locale}`,
+              caseId: localeSmokeCaseId(locale),
               watchdogMs: 30_000,
             }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
           );
         })
       )
     );
-    return observations
-      .filter(({ scope }) => scope === "annotation")
-      .map(({ scope: _scope, ...annotation }) => annotation);
+    const annotations = observations.flatMap((observation) =>
+      observation.scope === "annotation" ? [observation] : []
+    );
+    // CI prints these through the real formatter, which drops any ID it
+    // cannot print, so every case and step ID must survive it.
+    for (const annotation of annotations) {
+      expect(formatWorkspaceE2EFailureAnnotation(annotation)).not.toContain(
+        "invalid"
+      );
+    }
+    return annotations.map(({ scope: _scope, ...annotation }) => annotation);
   } finally {
     await server.stop(true);
   }
@@ -164,10 +174,10 @@ test.skipIf(!chromiumAvailable)(
 
     expect(annotations).toEqual([
       {
-        caseId: "locale-smoke-de-DE",
+        caseId: "locale-smoke-de-de",
         failureKind: "error",
         outcome: "failed",
-        stepId: "redirect-accept-language-de-AT",
+        stepId: "redirect-accept-language-de-at",
       },
     ]);
   }
@@ -183,7 +193,7 @@ test.skipIf(!chromiumAvailable)(
 
     expect(annotations).toEqual([
       {
-        caseId: "locale-smoke-sk-SK",
+        caseId: "locale-smoke-sk-sk",
         failureKind: "timeout",
         outcome: "timed_out",
         stepId: "assert-home-heading",
@@ -203,7 +213,7 @@ test.skipIf(!chromiumAvailable)(
 
     expect(annotations).toEqual([
       {
-        caseId: "locale-smoke-uk-UA",
+        caseId: "locale-smoke-uk-ua",
         failureKind: "error",
         outcome: "failed",
         stepId: "assert-hreflang-alternates",

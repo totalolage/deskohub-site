@@ -26,6 +26,13 @@ export const localeSmokeLocales = [
 export type LocaleSmokeLocale = (typeof localeSmokeLocales)[number];
 
 /**
+ * A smoke locale's case ID. IDs are lowercase because the CI failure
+ * annotation drops any identifier that isn't.
+ */
+export const localeSmokeCaseId = (locale: LocaleSmokeLocale) =>
+  `locale-smoke-${locale.toLowerCase() as Lowercase<LocaleSmokeLocale>}` as const;
+
+/**
  * Per smoke locale: the Accept-Language values a first-time visitor's
  * browser may state that must land on it, and the locale its header
  * language menu switches to. The switches form a cycle, so the menu is also
@@ -201,7 +208,7 @@ export const assertLocaleSmoke = ({
           waitForDocumentLanguage(session, plan.switchesTo, timeouts)
         )
       ),
-      id: `switch-to-${plan.switchesTo}`,
+      id: `switch-to-${plan.switchesTo.toLowerCase()}`,
       timeoutMs: timeouts.browserNavigation,
     });
 

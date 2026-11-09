@@ -4,10 +4,12 @@ import {
   matchSupportedLocale,
   supportedLocales,
 } from "@deskohub/i18n/locale-registry";
+import { formatWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { workspaceE2ECaseIds } from "../playwright-checkout/case-catalog";
 import {
   expectedHomeAlternates,
   localeHomeHeading,
+  localeSmokeCaseId,
   localeSmokeLocales,
   localeSmokePlans,
 } from "./locale-smoke";
@@ -17,7 +19,19 @@ test("smoke-tests every supported locale the locale-switch case does not", () =>
     [...supportedLocales].toSorted()
   );
   for (const locale of localeSmokeLocales) {
-    expect(workspaceE2ECaseIds).toContain(`locale-smoke-${locale}`);
+    expect(workspaceE2ECaseIds).toContain(localeSmokeCaseId(locale));
+  }
+});
+
+test("keeps every smoke case ID readable in the CI failure annotation", () => {
+  for (const locale of localeSmokeLocales) {
+    const annotation = formatWorkspaceE2EFailureAnnotation({
+      caseId: localeSmokeCaseId(locale),
+      failureKind: "error",
+      outcome: "failed",
+    });
+
+    expect(annotation).toContain(`case=${localeSmokeCaseId(locale)},`);
   }
 });
 

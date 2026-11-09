@@ -38,7 +38,11 @@ import {
   latePaymentRecoveryScenarios,
 } from "./late-payment-recovery";
 import { assertLocaleSwitcher } from "./locale";
-import { assertLocaleSmoke, localeSmokeLocales } from "./locale-smoke";
+import {
+  assertLocaleSmoke,
+  localeSmokeCaseId,
+  localeSmokeLocales,
+} from "./locale-smoke";
 import {
   type MeetingRoomE2EPreparation,
   makeMeetingRoomE2ECases,
@@ -126,7 +130,7 @@ export const makeWorkspaceE2ECases = ({
                   )
                 )
               ),
-            id: `locale-smoke-${locale}`,
+            id: localeSmokeCaseId(locale),
             timeoutMs: config.timeouts.localeCase,
           })
         ),

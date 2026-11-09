@@ -32,9 +32,9 @@ import { checkoutFlows } from "./data";
 const signedOutCaseIds = [
   "contact-form",
   "locale-switch",
-  "locale-smoke-de-DE",
-  "locale-smoke-uk-UA",
-  "locale-smoke-sk-SK",
+  "locale-smoke-de-de",
+  "locale-smoke-uk-ua",
+  "locale-smoke-sk-sk",
   "reservation-url-state-cowork",
   "reservation-url-state-meeting-room",
   "reservation-url-state-office",
