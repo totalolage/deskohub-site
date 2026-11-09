@@ -1,8 +1,9 @@
-import { type LocalizedCopy, m } from "@/features/i18n";
+import { type Locale, type LocalizedCopy, m } from "@/features/i18n";
 import {
   getLegalDocumentSummary,
   type LegalDocumentKey,
 } from "@/features/legal/legal-document-summaries";
+import { legalTranslationDates } from "@/features/legal/legal-translation-dates";
 import { type PublicPagePathname, publicPagePathnames } from "./public-pages";
 
 // Route metadata, the Markdown variants and llms.txt read this registry, so
@@ -28,6 +29,12 @@ export interface PublicPageDefinition {
    * "last updated" date.
    */
   readonly contentDate: string;
+  /**
+   * The ISO day a locale's own text last changed apart from `contentDate`,
+   * such as a legal page's translation. That locale's sitemap entry takes the
+   * later of the two days.
+   */
+  readonly localeContentDates?: Readonly<Partial<Record<Locale, string>>>;
   /** Shares the page as an article rather than a website. */
   readonly article?: true;
   /**
@@ -46,6 +53,7 @@ const legalPage = (
   description: (_inputs, { locale }) =>
     getLegalDocumentSummary(locale, documentKey).lead,
   contentDate,
+  localeContentDates: legalTranslationDates,
   article: true,
 });
 
@@ -146,3 +154,15 @@ export interface PublicPage extends PublicPageDefinition {
 export const publicPages: ReadonlyArray<PublicPage> = publicPagePathnames.map(
   (pathname) => ({ pathname, ...publicPageDefinitions[pathname] })
 );
+
+/** The ISO day a page's content last changed in one locale. */
+export function getPublicPageContentDate(
+  { contentDate, localeContentDates }: PublicPageDefinition,
+  locale: Locale
+): string {
+  const localeDate = localeContentDates?.[locale];
+  // ISO days order the same as text.
+  return localeDate !== undefined && localeDate > contentDate
+    ? localeDate
+    : contentDate;
+}
