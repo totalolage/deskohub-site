@@ -140,7 +140,7 @@ const rows: readonly Row[] = [
       cs: "Každý pátek připadající na 13. den v měsíci v 00:00 (pražský čas)",
     },
     wait: {
-      en: englishWait("a Friday the 13th"),
+      en: englishWait("a Friday that is the 13th"),
       cs: czechWait("pátek připadající na 13. den v měsíci"),
     },
   },

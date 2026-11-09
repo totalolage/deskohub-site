@@ -839,7 +839,7 @@
       "declarations": ["input kind", "input subject", "input qualifier"],
       "selectors": ["kind"],
       "match": {
-        "kind=weekday": "{subject} {qualifier}",
+        "kind=weekday": "{subject} that is {qualifier}",
         "kind=*": "{subject} that is {qualifier}"
       }
     }
