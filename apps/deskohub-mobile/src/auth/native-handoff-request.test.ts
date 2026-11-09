@@ -19,7 +19,8 @@ const request = {
   state,
   returnUri: nativeReturnUri,
   reauthenticate: false,
-};
+  locale: "cs-CZ",
+} as const;
 
 const searchOf = (url: string) => new URL(url).searchParams;
 
@@ -39,6 +40,16 @@ describe("native sign-in URL", () => {
       Option.some({ ...request, reauthenticate: true })
     );
   });
+
+  test("names the app's locale for the page, its email and a new account", () => {
+    for (const locale of ["cs-CZ", "en-US"] as const) {
+      const url = nativeSignInUrl(origin, { ...request, locale });
+      expect(searchOf(url).getAll("locale")).toEqual([locale]);
+      expect(readNativeHandoffRequest(searchOf(url), origin)).toEqual(
+        Option.some({ ...request, locale })
+      );
+    }
+  });
 });
 
 describe("readNativeHandoffRequest", () => {
@@ -49,6 +60,7 @@ describe("readNativeHandoffRequest", () => {
       code_challenge_method: "S256",
       state,
       return_uri: nativeReturnUri,
+      locale: "cs-CZ",
     });
 
   test("ignores a page opened without native=1", () => {
@@ -94,6 +106,27 @@ describe("readNativeHandoffRequest", () => {
     }
   });
 
+  test("leaves the locale to the browser when an older app names none", () => {
+    const search = valid();
+    search.delete("locale");
+    const { locale: _, ...withoutLocale } = request;
+    expect(readNativeHandoffRequest(search, origin)).toEqual(
+      Option.some(withoutLocale)
+    );
+  });
+
+  test("ignores a locale the app doesn't support, or more than one", () => {
+    const { locale: _, ...withoutLocale } = request;
+    for (const locales of [["de-DE"], ["cs"], [""], ["cs-CZ", "en-US"]]) {
+      const search = valid();
+      search.delete("locale");
+      for (const locale of locales) search.append("locale", locale);
+      expect(readNativeHandoffRequest(search, origin)).toEqual(
+        Option.some(withoutLocale)
+      );
+    }
+  });
+
   test("refuses duplicated parameters", () => {
     const search = valid();
     search.append("state", state);
@@ -111,6 +144,14 @@ describe("stored native handoff request", () => {
     ).toEqual(Option.some(request));
   });
 
+  test("restores a request without a locale", () => {
+    const { locale: _, ...withoutLocale } = request;
+    const raw = serializeNativeHandoffRequest(withoutLocale, now);
+    expect(restoreNativeHandoffRequest(raw, now)).toEqual(
+      Option.some(withoutLocale)
+    );
+  });
+
   test("expires within ten minutes", () => {
     expect(nativeHandoffRequestTtlMs).toBeLessThanOrEqual(10 * 60 * 1000);
     const raw = serializeNativeHandoffRequest(request, now);
@@ -125,6 +166,15 @@ describe("stored native handoff request", () => {
     expect(
       restoreNativeHandoffRequest(
         JSON.stringify({ request: { state }, expiresAt: now + 1000 }),
+        now
+      )
+    ).toEqual(Option.none());
+    expect(
+      restoreNativeHandoffRequest(
+        JSON.stringify({
+          request: { ...request, locale: "de-DE" },
+          expiresAt: now + 1000,
+        }),
         now
       )
     ).toEqual(Option.none());

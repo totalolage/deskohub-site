@@ -1,11 +1,11 @@
 import { resolvePreferredLocale } from "@deskohub/i18n/core";
-import { baseLocale, locales } from "./paraglide/runtime.js";
+import { baseLocale, isLocale, locales } from "./paraglide/runtime.js";
 
 export type AppLocale = "cs-CZ" | "en-US";
 
 // Paraglide's project settings own the locale list; `satisfies` fails the
 // typecheck when they gain a locale this union lacks.
-const appLocales = locales satisfies ReadonlyArray<AppLocale>;
+export const appLocales = locales satisfies ReadonlyArray<AppLocale>;
 const defaultAppLocale = baseLocale satisfies AppLocale;
 
 const appLocaleByLanguage = {
@@ -28,3 +28,7 @@ export const resolveAppLocale = (
     locales: appLocales,
     preferredLanguageToLocale: appLocaleByLanguage,
   }) ?? defaultAppLocale;
+
+/** Whether a value names a locale the app supports. */
+export const isAppLocale = (value: unknown): value is AppLocale =>
+  isLocale(value);
