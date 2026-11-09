@@ -1,24 +1,25 @@
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
 import { openPage, waitForPageText, waitForReactFormSubmit } from "../browser";
-import type { E2EBrowserSession } from "../browser-session";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";
 import { failWorkspaceE2E, type WorkspaceE2EError } from "../errors";
-import { browserSessionFor, log, type Runner } from "../runtime";
+import { log } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
 import { makeUrl, setSearchParams } from "../urls";
 
 export const assertContactForm = ({
   config,
-  run,
   runStep,
-  session,
+  openSession,
 }: {
   config: WorkspaceE2EConfig;
-  run: Runner;
   runStep: WorkspaceE2EStepRunner;
-  session: string;
+  openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const runId = new Date().toISOString().replace(/[-:.TZ]/g, "");
@@ -37,7 +38,7 @@ export const assertContactForm = ({
 
     // Each step reaches the session itself, so a browser that fails to open
     // fails the step that needed it.
-    const browser = browserSessionFor(run, session);
+    const browser = openSession;
     yield* runStep({
       execute: Effect.flatMap(browser, (opened) =>
         openPage(opened, config, url.toString(), {

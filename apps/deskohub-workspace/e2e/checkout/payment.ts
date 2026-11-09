@@ -23,12 +23,12 @@ import {
   withoutWorkspaceE2ETimeout,
 } from "../errors";
 import { pollUntil } from "../polling";
-import { redact } from "../redaction";
+import { addRedaction, redact } from "../redaction";
 import {
   recordCheckoutIntent,
   recordReservationResult,
 } from "../reservation-intents";
-import { addRedaction, assert, log, parseUrl } from "../runtime";
+import { assert, log, parseUrl } from "../runtime";
 import {
   type WorkspaceE2ETimeouts,
   workspaceE2EPollIntervalMs,
@@ -173,8 +173,7 @@ const findPayPageOrderId = () => {
   return match?.[0] ?? "";
 };
 
-// An overrunning read fails rather than timing out, as the argv `eval` it
-// replaces did.
+// An overrunning read fails rather than timing out.
 const readPayPageOrderId = (
   session: E2EBrowserSession
 ): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
@@ -494,8 +493,7 @@ const isRetryableReservationStartError = (
     diagnostics?.body?.includes(message)
   );
 
-// An unreadable page has no diagnostics, as the argv read that allowed
-// failure had none. Its text is redacted, as argv output was.
+// An unreadable page has no diagnostics. Its text is redacted.
 const readReservationStartDiagnostics = (
   session: E2EBrowserSession
 ): Effect.Effect<ReservationStartDiagnostics | undefined> =>
@@ -618,9 +616,9 @@ export const submitCheckoutPayment = (
     return checkoutPage;
   });
 
-// The argv runner found the consent and the pay button in the interactive
-// snapshot, polling for at most `checkoutPayControl` and failing, not timing
-// out, when they never showed; it focused them within `browserAction`.
+// The consent and the pay button are found in the interactive snapshot,
+// polling for at most `checkoutPayControl` and failing, not timing out, when
+// they never show; each is focused within `browserAction`.
 const giveCheckoutPayConsent = Effect.fnUntraced(function* (
   session: E2EBrowserSession,
   timeouts: WorkspaceE2ETimeouts
@@ -644,7 +642,7 @@ const giveCheckoutPayConsent = Effect.fnUntraced(function* (
       timeout: timeouts.browserAction,
     })
   );
-  // As the argv `press` command, the key press has no timeout of its own.
+  // The key press has no timeout of its own.
   yield* session.use("press browser key", (page) =>
     page.keyboard.press("Space")
   );
@@ -690,9 +688,9 @@ const checkoutPayConsent = (page: Page, nameMatch: NameMatch) =>
     .filter({ visible: true })
     .first();
 
-// The argv runner looked the pay button up by name in the page's whole
-// accessibility snapshot, whatever its role, so any enabled widget named so
-// qualifies, the first in document order.
+// The pay button is looked up by name in the page's whole accessibility
+// snapshot, whatever its role, so any enabled widget named so qualifies, the
+// first in document order.
 const payButtonRoles = [
   "button",
   "checkbox",
@@ -717,9 +715,8 @@ const checkoutPayButton = (page: Page, nameMatch: NameMatch) => {
 };
 
 /**
- * Waits for a visible control and tells how to match it: as the argv
- * snapshot lookup did, a control named exactly a label wins over one whose
- * name only contains it.
+ * Waits for a visible control and tells how to match it: a control named
+ * exactly a label wins over one whose name only contains it.
  */
 const waitForPayControl = async (
   locate: (nameMatch: NameMatch) => Locator,

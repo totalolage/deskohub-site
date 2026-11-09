@@ -12,7 +12,7 @@ import {
 import type { E2EBrowserSession } from "../browser-session";
 import { runUntracedE2EEffect } from "../effect-edge";
 import { resolveWorkspaceE2ERunContext } from "../playwright-checkout/run-context";
-import { addRedaction } from "../runtime";
+import { addRedaction } from "../redaction";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   instantNavigationAdministratorSkipReason,

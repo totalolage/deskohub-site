@@ -5,23 +5,13 @@ import { Cause, Effect, Exit, Fiber, Option } from "effect";
 import { TestClock } from "effect/testing";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import {
-  activateBrowserElement,
   activateElement,
-  activateHydratedBrowserElement,
   activateHydratedElement,
   assertPageCheck,
-  evalBrowserScript,
   openPage,
   readPageText,
   readPageUrl,
-  runBrowserCommand,
-  scrollBrowserElementIntoView,
   scrollIntoView,
-  waitForBrowserCondition,
-  waitForBrowserReactHandler,
-  waitForBrowserReactHydration,
-  waitForBrowserTextContent,
-  waitForBrowserUrl,
   waitForPageCondition,
   waitForPageSnapshot,
   waitForPageText,
@@ -41,10 +31,8 @@ import {
   type WorkspaceE2EError,
   workspaceE2EError,
 } from "./errors";
-import { pollUntil } from "./polling";
 import { addRedaction } from "./redaction";
-import { browserSessionFor, makePlaywrightBrowserRunner } from "./runtime";
-import { argvCommandTimeoutMs } from "./timeouts";
+import { urlWaitDiagnosticsTimeoutMs } from "./timeouts";
 
 const chromiumAvailable = await playwrightChromiumAvailable();
 let browser: Browser | undefined;
@@ -57,71 +45,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
 });
-
-/**
- * Polls an argv condition wait whose own Playwright budget is shorter than
- * the condition takes, retrying only its timeouts, on a page that sets
- * `window.saleShown` after `showAfterMs`.
- */
-const pollSaleCondition = async (condition: string, showAfterMs: number) => {
-  if (!browser) throw new Error("Chromium is not running");
-  const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
-  const id = `browser-condition-${randomUUID()}`;
-  let attempts = 0;
-  const exit = await Effect.runPromiseExit(
-    Effect.gen(function* () {
-      const session = yield* browserSessionFor(run, id);
-      yield* session.use("show the page", (page) =>
-        page.setContent(
-          `<script>setTimeout(() => { window.saleShown = true; }, ${showAfterMs});</script>`
-        )
-      );
-      return yield* pollUntil(
-        Effect.suspend(() => {
-          attempts += 1;
-          return waitForBrowserCondition(run, id, "sale", condition, {
-            timeoutMs: 100,
-          });
-        }).pipe(
-          Effect.as(true),
-          Effect.catchIf(isWorkspaceE2ETimeout, () => Effect.succeed(undefined))
-        ),
-        { intervalMs: 10, label: "sale", timeoutMs: 10_000 }
-      );
-    })
-  ).finally(() => run.close?.());
-  return { attempts, exit };
-};
-
-test.skipIf(!chromiumAvailable)(
-  "retries a browser condition that hit its Playwright timeout",
-  async () => {
-    const { attempts, exit } = await pollSaleCondition(
-      "window.saleShown === true",
-      500
-    );
-
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(attempts).toBeGreaterThan(1);
-  }
-);
-
-test.skipIf(!chromiumAvailable)(
-  "keeps a non-timeout browser condition failure terminal",
-  async () => {
-    const { attempts, exit } = await pollSaleCondition(
-      "(() => { throw new Error('sale banner missing'); })()",
-      0
-    );
-
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isSuccess(exit)) return;
-    const failure = Cause.findErrorOption(exit.cause);
-    expect(Option.isSome(failure)).toBe(true);
-    expect(isWorkspaceE2ETimeout(Option.getOrUndefined(failure))).toBe(false);
-    expect(attempts).toBe(1);
-  }
-);
 
 /** Runs `drive` on a fresh session showing `html`. */
 const onPage = <A>(
@@ -151,7 +74,7 @@ const isTimeout = <A>(exit: Exit.Exit<A, WorkspaceE2EError>) =>
   );
 
 test.skipIf(!chromiumAvailable)(
-  "waits for page text through the session and the argv wrapper alike",
+  "waits for page text, matching case unless told otherwise",
   async () => {
     const html = "<p>Discount APPLIED</p>";
     const found = (session: E2EBrowserSession) =>
@@ -164,28 +87,6 @@ test.skipIf(!chromiumAvailable)(
 
     expect(Exit.isSuccess(await onPage(html, found))).toBe(true);
     expect(isTimeout(await onPage(html, missing))).toBe(true);
-
-    if (!browser) throw new Error("Chromium is not running");
-    const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
-    const id = `browser-text-${randomUUID()}`;
-    const argv = (caseSensitive: boolean) =>
-      Effect.runPromiseExit(
-        waitForBrowserTextContent(run, id, "discount applied", {
-          caseSensitive,
-          timeoutMs: 300,
-        })
-      );
-    try {
-      await Effect.runPromise(
-        Effect.flatMap(browserSessionFor(run, id), (session) =>
-          session.use("show the page", (page) => page.setContent(html))
-        )
-      );
-      expect(Exit.isSuccess(await argv(false))).toBe(true);
-      expect(isTimeout(await argv(true))).toBe(true);
-    } finally {
-      await run.close?.();
-    }
   }
 );
 
@@ -390,56 +291,8 @@ test.skipIf(!chromiumAvailable)(
   }
 );
 
-test.skipIf(!chromiumAvailable)(
-  "drops the argv runner's selected iframe when it opens a page",
-  async () => {
-    if (!browser) throw new Error("Chromium is not running");
-    const server = Bun.serve({
-      fetch: () =>
-        new Response("<p>Top page</p>", {
-          headers: { "content-type": "text/html" },
-        }),
-      hostname: "127.0.0.1",
-      port: 0,
-    });
-    const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
-    const id = `browser-frame-${randomUUID()}`;
-    try {
-      const exit = await Effect.runPromiseExit(
-        Effect.gen(function* () {
-          const session = yield* browserSessionFor(run, id);
-          yield* session.use("show a framed page", (page) =>
-            page.setContent(
-              `<iframe id="child" srcdoc="<p>Inside the frame</p>"></iframe>`
-            )
-          );
-          yield* runBrowserCommand("select the iframe", run, id, [
-            "frame",
-            "#child",
-          ]);
-          yield* openPage(
-            session,
-            { bypassSecret: undefined },
-            server.url.href,
-            { timeoutMs: 10_000 }
-          );
-          // An argv command after the open reads the new page, not the
-          // iframe it had selected on the old one.
-          yield* waitForBrowserTextContent(run, id, "Top page", {
-            timeoutMs: 1_000,
-          });
-        })
-      );
-      expect(Exit.isSuccess(exit)).toBe(true);
-    } finally {
-      await run.close?.();
-      await server.stop(true);
-    }
-  }
-);
-
-// Shared waits that replace argv helpers: each runs as a C03 step through
-// both drivers on the same page, so annotations can be compared.
+// Shared waits: each runs as the one step of a C03 case, so its
+// annotations and failures can be checked.
 
 const helperServer = Bun.serve({
   fetch: () =>
@@ -504,20 +357,14 @@ const hydratingButton = (afterMs: number, handlers: readonly string[] = []) =>
   </script>`;
 
 test.skipIf(!chromiumAvailable)(
-  "waits for React hydration and handlers through the session and the argv wrapper alike",
+  "waits for React hydration and handlers",
   async () => {
     const html = hydratingButton(300, ["onClick"]);
     const passing = [
       ({ session }: HelperDriver) =>
         waitForReactHydration(session, "#target", { timeoutMs: 5000 }),
-      ({ id, run }: HelperDriver) =>
-        waitForBrowserReactHydration(run, id, "#target", { timeoutMs: 5000 }),
       ({ session }: HelperDriver) =>
         waitForReactHandler(session, "#target", "onClick", {
-          timeoutMs: 5000,
-        }),
-      ({ id, run }: HelperDriver) =>
-        waitForBrowserReactHandler(run, id, "#target", "onClick", {
           timeoutMs: 5000,
         }),
     ];
@@ -534,16 +381,8 @@ test.skipIf(!chromiumAvailable)(
         waitForReactHandler(session, "#target", "onChange", {
           timeoutMs: 1000,
         }),
-      ({ id, run }: HelperDriver) =>
-        waitForBrowserReactHandler(run, id, "#target", "onChange", {
-          timeoutMs: 1000,
-        }),
       ({ session }: HelperDriver) =>
         waitForReactHydration(session, "#other", {
-          timeoutMs: 1000,
-        }),
-      ({ id, run }: HelperDriver) =>
-        waitForBrowserReactHydration(run, id, "#other", {
           timeoutMs: 1000,
         }),
     ];
@@ -557,7 +396,7 @@ test.skipIf(!chromiumAvailable)(
 );
 
 test.skipIf(!chromiumAvailable)(
-  "activates a hydrated element with a trusted Enter through both drivers",
+  "activates a hydrated element with a trusted Enter",
   async () => {
     const readPresses = (session: E2EBrowserSession) =>
       session.evaluate(
@@ -569,42 +408,25 @@ test.skipIf(!chromiumAvailable)(
         undefined,
         { timeoutMs: 5000 }
       );
-    for (const drive of [
-      ({ session }: HelperDriver) =>
-        Effect.andThen(
-          activateHydratedElement(session, "#target", { timeoutMs: 5000 }),
-          readPresses(session)
-        ),
-      ({ id, run, session }: HelperDriver) =>
-        Effect.andThen(
-          activateHydratedBrowserElement(run, id, "#target", {
-            timeoutMs: 5000,
-          }),
-          readPresses(session)
-        ),
-    ]) {
-      const result = await runHelperStep(hydratingButton(300), drive);
-      expect(result.succeeded).toBe(true);
-      expect(result.value).toEqual({ presses: 1, trustedEnters: 1 });
-    }
+    const result = await runHelperStep(hydratingButton(300), ({ session }) =>
+      Effect.andThen(
+        activateHydratedElement(session, "#target", { timeoutMs: 5000 }),
+        readPresses(session)
+      )
+    );
+    expect(result.succeeded).toBe(true);
+    expect(result.value).toEqual({ presses: 1, trustedEnters: 1 });
 
-    for (const drive of [
-      ({ session }: HelperDriver) =>
-        activateHydratedElement(session, "#missing", { timeoutMs: 1000 }),
-      ({ id, run }: HelperDriver) =>
-        activateHydratedBrowserElement(run, id, "#missing", {
-          timeoutMs: 1000,
-        }),
-    ]) {
-      const result = await runHelperStep(hydratingButton(300), drive);
-      expect(result.annotations).toEqual(failedAnnotation("timeout"));
-    }
+    const missing = await runHelperStep(hydratingButton(300), ({ session }) =>
+      activateHydratedElement(session, "#missing", { timeoutMs: 1000 })
+    );
+    expect(missing.annotations).toEqual(failedAnnotation("timeout"));
   },
   90_000
 );
 
 test.skipIf(!chromiumAvailable)(
-  "activates a visible element without waiting for hydration through both drivers",
+  "activates a visible element without waiting for hydration",
   async () => {
     const readPresses = (session: E2EBrowserSession) =>
       session.evaluate(
@@ -618,55 +440,38 @@ test.skipIf(!chromiumAvailable)(
       );
     // The button never hydrates within the test.
     const html = hydratingButton(120_000);
-    for (const drive of [
-      ({ session }: HelperDriver) =>
-        Effect.andThen(
-          activateElement(session, "#target", { timeoutMs: 5000 }),
-          readPresses(session)
-        ),
-      ({ id, run, session }: HelperDriver) =>
-        Effect.andThen(
-          activateBrowserElement(run, id, "#target", { timeoutMs: 5000 }),
-          readPresses(session)
-        ),
-    ]) {
-      const result = await runHelperStep(html, drive);
-      expect(result.succeeded).toBe(true);
-      expect(result.value).toEqual({ presses: 1, trustedEnters: 1 });
-    }
+    const result = await runHelperStep(html, ({ session }) =>
+      Effect.andThen(
+        activateElement(session, "#target", { timeoutMs: 5000 }),
+        readPresses(session)
+      )
+    );
+    expect(result.succeeded).toBe(true);
+    expect(result.value).toEqual({ presses: 1, trustedEnters: 1 });
 
-    // Only a hidden match: neither driver focuses it.
-    const hidden = `${html}<button id="hidden" hidden>Hidden</button>`;
-    for (const drive of [
-      ({ session }: HelperDriver) =>
-        activateElement(session, "#hidden", { timeoutMs: 1000 }),
-      ({ id, run }: HelperDriver) =>
-        activateBrowserElement(run, id, "#hidden", { timeoutMs: 1000 }),
-    ]) {
-      const result = await runHelperStep(hidden, drive);
-      expect(result.annotations).toEqual(failedAnnotation("timeout"));
-    }
+    // Only a hidden match: activation never focuses it.
+    const hidden = await runHelperStep(
+      `${html}<button id="hidden" hidden>Hidden</button>`,
+      ({ session }) => activateElement(session, "#hidden", { timeoutMs: 1000 })
+    );
+    expect(hidden.annotations).toEqual(failedAnnotation("timeout"));
   },
   90_000
 );
 
 test.skipIf(!chromiumAvailable)(
-  "classifies page checks as the argv assertion evaluation does",
+  "classifies page checks",
   async () => {
     const blockFor = 2000;
     const checks: readonly {
-      readonly argv: string;
       readonly check: (ms: number) => string | null;
       readonly message: string;
     }[] = [
       {
-        // The argv form threw the problem the session check returns.
-        argv: "(() => { throw new Error('summary missing'); })()",
         check: () => "summary missing",
         message: "check the page failed: summary missing",
       },
       {
-        argv: "(() => { throw new Error('broken check'); })()",
         check: (): string | null => {
           throw new Error("broken check");
         },
@@ -674,13 +479,6 @@ test.skipIf(!chromiumAvailable)(
       },
       {
         // Overruns the evaluation bound.
-        argv: inPageExpression((ms: number) => {
-          const end = Date.now() + ms;
-          while (Date.now() < end) {
-            // block the page
-          }
-          return true;
-        }, blockFor),
         check: (ms: number) => {
           const end = Date.now() + ms;
           while (Date.now() < end) {
@@ -691,7 +489,7 @@ test.skipIf(!chromiumAvailable)(
         message: "check the page failed",
       },
     ];
-    for (const { argv, check, message } of checks) {
+    for (const { check, message } of checks) {
       const checked = await runHelperStep("<main></main>", ({ session }) =>
         assertPageCheck(session, "check the page", check, blockFor, {
           timeoutMs: 500,
@@ -699,12 +497,6 @@ test.skipIf(!chromiumAvailable)(
       );
       expect(checked.annotations).toEqual(failedAnnotation("error"));
       expect(checked.failures).toEqual([{ message, timeout: false }]);
-
-      const argvRun = await runHelperStep("<main></main>", ({ id, run }) =>
-        evalBrowserScript("check the page", run, id, argv, { timeoutMs: 500 })
-      );
-      expect(argvRun.annotations).toEqual(failedAnnotation("error"));
-      expect(argvRun.failures.map(({ timeout }) => timeout)).toEqual([false]);
     }
 
     const holds = await runHelperStep("<main></main>", ({ session }) =>
@@ -749,7 +541,7 @@ test.skipIf(!chromiumAvailable)(
 );
 
 test.skipIf(!chromiumAvailable)(
-  "classifies page conditions as the argv condition wait does",
+  "classifies page conditions",
   async () => {
     const html = `<p id="state">pending</p>
       <script>setTimeout(() => { document.getElementById("state").textContent = "ready"; }, 300);</script>`;
@@ -775,30 +567,17 @@ test.skipIf(!chromiumAvailable)(
       },
     ];
     for (const { expected, fn, selector, timeoutMs } of cases) {
-      const session = await runHelperStep(html, ({ session }) =>
+      const result = await runHelperStep(html, ({ session }) =>
         waitForPageCondition(session, "state", fn, selector, { timeoutMs })
       );
-      const argvResult = await runHelperStep(html, ({ id, run }) =>
-        waitForBrowserCondition(
-          run,
-          id,
-          "state",
-          inPageExpression(fn, selector),
-          { timeoutMs }
-        )
-      );
-      expect(session.annotations).toEqual(expected);
-      expect(argvResult.annotations).toEqual(expected);
+      expect(result.annotations).toEqual(expected);
     }
   },
   90_000
 );
 
-const inPageExpression = <Arg>(fn: (arg: Arg) => unknown, arg: Arg) =>
-  `(${fn.toString()})(${JSON.stringify(arg)})`;
-
 test.skipIf(!chromiumAvailable)(
-  "scrolls an element into view and fails a missing one through both drivers",
+  "scrolls an element into view and fails a missing one",
   async () => {
     const html = `<div style="height: 4000px"></div><button id="target">Go</button>`;
     const readTop = (session: E2EBrowserSession) =>
@@ -813,35 +592,18 @@ test.skipIf(!chromiumAvailable)(
         undefined,
         { timeoutMs: 5000 }
       );
-    for (const drive of [
-      ({ session }: HelperDriver) =>
-        Effect.andThen(
-          scrollIntoView(session, "#target", { timeoutMs: 5000 }),
-          readTop(session)
-        ),
-      ({ id, run, session }: HelperDriver) =>
-        Effect.andThen(
-          scrollBrowserElementIntoView(run, id, "#target", {
-            timeoutMs: 5000,
-          }),
-          readTop(session)
-        ),
-    ]) {
-      const result = await runHelperStep(html, drive);
-      expect(result.value).toBe(true);
-    }
+    const result = await runHelperStep(html, ({ session }) =>
+      Effect.andThen(
+        scrollIntoView(session, "#target", { timeoutMs: 5000 }),
+        readTop(session)
+      )
+    );
+    expect(result.value).toBe(true);
 
-    for (const drive of [
-      ({ session }: HelperDriver) =>
-        scrollIntoView(session, "#missing", { timeoutMs: 5000 }),
-      ({ id, run }: HelperDriver) =>
-        scrollBrowserElementIntoView(run, id, "#missing", {
-          timeoutMs: 5000,
-        }),
-    ]) {
-      const result = await runHelperStep(html, drive);
-      expect(result.annotations).toEqual(failedAnnotation("error"));
-    }
+    const missing = await runHelperStep(html, ({ session }) =>
+      scrollIntoView(session, "#missing", { timeoutMs: 5000 })
+    );
+    expect(missing.annotations).toEqual(failedAnnotation("error"));
   },
   60_000
 );
@@ -852,16 +614,11 @@ test.skipIf(!chromiumAvailable)(
     // The page never yields to the two animation frames the scroll waits for.
     const html = `<button id="target">Go</button>
       <script>window.requestAnimationFrame = () => 0;</script>`;
-    for (const drive of [
-      ({ session }: HelperDriver) =>
-        scrollIntoView(session, "#target", { timeoutMs: 500 }),
-      ({ id, run }: HelperDriver) =>
-        scrollBrowserElementIntoView(run, id, "#target", { timeoutMs: 500 }),
-    ]) {
-      const result = await runHelperStep(html, drive);
-      expect(result.annotations).toEqual(failedAnnotation("error"));
-      expect(result.failures.map(({ timeout }) => timeout)).toEqual([false]);
-    }
+    const result = await runHelperStep(html, ({ session }) =>
+      scrollIntoView(session, "#target", { timeoutMs: 500 })
+    );
+    expect(result.annotations).toEqual(failedAnnotation("error"));
+    expect(result.failures.map(({ timeout }) => timeout)).toEqual([false]);
   },
   60_000
 );
@@ -871,39 +628,26 @@ const movingUrlPage = (token: string) => `<script>
 </script>`;
 
 test.skipIf(!chromiumAvailable)(
-  "waits for the page URL redacted through the session and the argv wrapper alike",
+  "waits for the page URL redacted",
   async () => {
     const token = `url-token-${randomUUID()}`;
     addRedaction(token, true);
-    for (const wait of [
-      (driver: HelperDriver, matches: (url: string) => boolean) =>
-        waitForPageUrl({
-          description: "reached page",
-          matches,
-          session: driver.session,
-          timeoutMs: 5000,
-        }),
-      (driver: HelperDriver, matches: (url: string) => boolean) =>
-        waitForBrowserUrl({
-          description: "reached page",
-          matches,
-          run: driver.run,
-          session: driver.id,
-          timeoutMs: 5000,
-        }),
-    ]) {
-      const seen: string[] = [];
-      const result = await runHelperStep(movingUrlPage(token), (driver) =>
-        wait(driver, (url) => {
+    const seen: string[] = [];
+    const result = await runHelperStep(movingUrlPage(token), ({ session }) =>
+      waitForPageUrl({
+        description: "reached page",
+        matches: (url) => {
           seen.push(url);
           return new URL(url).pathname === "/reached";
-        })
-      );
-      expect(result.succeeded).toBe(true);
-      expect(result.value).toContain("/reached?token=");
-      expect(result.value).not.toContain(token);
-      expect(seen.join("\n")).not.toContain(token);
-    }
+        },
+        session,
+        timeoutMs: 5000,
+      })
+    );
+    expect(result.succeeded).toBe(true);
+    expect(result.value).toContain("/reached?token=");
+    expect(result.value).not.toContain(token);
+    expect(seen.join("\n")).not.toContain(token);
 
     const read = await runHelperStep(movingUrlPage(token), ({ session }) =>
       Effect.andThen(
@@ -920,35 +664,21 @@ test.skipIf(!chromiumAvailable)(
 test.skipIf(!chromiumAvailable)(
   "fails a page URL wait that runs out as an error with page diagnostics",
   async () => {
-    const results = [];
-    for (const wait of [
-      ({ session }: HelperDriver) =>
-        waitForPageUrl({
-          description: "never reached page",
-          matches: () => false,
-          session,
-          timeoutMs: 1500,
-        }),
-      ({ id, run }: HelperDriver) =>
-        waitForBrowserUrl({
-          description: "never reached page",
-          matches: () => false,
-          run,
-          session: id,
-          timeoutMs: 1500,
-        }),
-    ]) {
-      results.push(await runHelperStep("<h1>Pay</h1>", wait));
-    }
-    for (const result of results) {
-      expect(result.annotations).toEqual(failedAnnotation("error"));
-      expect(result.failures).toHaveLength(1);
-      expect(result.failures[0]?.timeout).toBe(false);
-      expect(result.failures[0]?.message).toStartWith(
-        "never reached page failed: Timed out waiting for never reached page"
-      );
-      expect(result.failures[0]?.message).toContain("Browser diagnostics:\n{");
-    }
+    const result = await runHelperStep("<h1>Pay</h1>", ({ session }) =>
+      waitForPageUrl({
+        description: "never reached page",
+        matches: () => false,
+        session,
+        timeoutMs: 1500,
+      })
+    );
+    expect(result.annotations).toEqual(failedAnnotation("error"));
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]?.timeout).toBe(false);
+    expect(result.failures[0]?.message).toStartWith(
+      "never reached page failed: Timed out waiting for never reached page"
+    );
+    expect(result.failures[0]?.message).toContain("Browser diagnostics:\n{");
   },
   60_000
 );
@@ -987,7 +717,9 @@ test.skipIf(!chromiumAvailable)(
           yield* TestClock.adjust("1001 millis");
           // Real time lets the diagnostics evaluation reach the hung page.
           yield* Effect.promise(() => Bun.sleep(500));
-          yield* TestClock.adjust(`${argvCommandTimeoutMs - 1000} millis`);
+          yield* TestClock.adjust(
+            `${urlWaitDiagnosticsTimeoutMs - 1000} millis`
+          );
           yield* Effect.promise(() => Bun.sleep(200));
           const waitingBeforeBound = waiting.pollUnsafe() === undefined;
           yield* TestClock.adjust("2 seconds");

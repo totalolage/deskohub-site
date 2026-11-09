@@ -21,12 +21,10 @@ import type {
  */
 export const runWorkspaceE2EAccountCase = ({
   journalRef,
-  session,
   testCase,
   verifyPages,
 }: {
   readonly journalRef: WorkspaceE2EAccountJournalRef;
-  readonly session: string;
   readonly testCase: WorkspaceE2EAccountCase;
   readonly verifyPages?: readonly WorkspaceE2EStep<void, E2EDatabase>[];
 }): Effect.Effect<void, WorkspaceE2EError, WorkspaceE2EAccountRequirement> =>
@@ -35,9 +33,7 @@ export const runWorkspaceE2EAccountCase = ({
     // earlier verification failure.
     body: (step) =>
       Effect.acquireUseRelease(
-        Effect.interruptible(
-          testCase.execute({ journalRef, runStep: step, session })
-        ),
+        Effect.interruptible(testCase.execute({ journalRef, runStep: step })),
         () =>
           Effect.forEach(verifyPages ?? [], (page) => step(page), {
             concurrency: 1,

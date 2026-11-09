@@ -24,6 +24,7 @@ import {
   waitForPageUrl,
   waitForReactHandler,
 } from "../browser";
+import type { OpenE2EBrowserSession } from "../browser-session";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import {
   type MeetingRoomCheckoutSlot,
@@ -57,14 +58,8 @@ import {
 import type { E2EDatabase } from "../integrations/database.service";
 import { discountCodeFixtures } from "../integrations/discount-fixtures";
 import { readDotyposReservationStatus } from "../integrations/dotypos";
-import type { Runner } from "../runtime";
-import {
-  addRedaction,
-  assert,
-  browserSessionFor,
-  log,
-  parseUrl,
-} from "../runtime";
+import { addRedaction } from "../redaction";
+import { assert, log, parseUrl } from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -89,15 +84,13 @@ const reservationLinkScreenshotDir = "e2e-artifacts/reservation-links";
 const captureLinkScreenshot = ({
   config,
   name,
-  run,
-  session,
+  openSession,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly name: string;
-  readonly run: Runner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
 }) =>
-  Effect.flatMap(browserSessionFor(run, session), (browser) =>
+  Effect.flatMap(openSession, (browser) =>
     browser.use("capture browser screenshot", (page) =>
       page.screenshot({
         animations: "disabled",
@@ -202,7 +195,7 @@ export const makeReservationLinkE2ECases = ({
     return [
       {
         checkoutStates: [enZeroTotalState, enReplacementState],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           runReservationLinkZeroTotalCase({
             config,
             data: enZeroTotalData,
@@ -212,9 +205,8 @@ export const makeReservationLinkE2ECases = ({
             locale: "en-US",
             replacementData,
             replacementState: enReplacementState,
-            run,
             runStep,
-            session,
+            openSession,
           }).pipe(
             Effect.mapError((cause) =>
               toWorkspaceE2EError(
@@ -228,7 +220,7 @@ export const makeReservationLinkE2ECases = ({
       },
       {
         checkoutStates: [csZeroTotalState],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           runReservationLinkZeroTotalCase({
             config,
             data: csZeroTotalData,
@@ -236,9 +228,8 @@ export const makeReservationLinkE2ECases = ({
             firstState: csZeroTotalState,
             httpClient,
             locale: "cs-CZ",
-            run,
             runStep,
-            session,
+            openSession,
           }).pipe(
             Effect.mapError((cause) =>
               toWorkspaceE2EError(
@@ -252,15 +243,14 @@ export const makeReservationLinkE2ECases = ({
       },
       {
         checkoutStates: [unknownCodeState],
-        execute: ({ run, runStep, session }) =>
+        execute: ({ openSession, runStep }) =>
           runReservationLinkUnknownCodeCase({
             config,
             data: unknownCodeData,
             datasourceConfig,
             httpClient,
-            run,
             runStep,
-            session,
+            openSession,
             state: unknownCodeState,
           }).pipe(
             Effect.mapError((cause) =>
@@ -315,9 +305,8 @@ const runReservationLinkZeroTotalCase = ({
   locale,
   replacementData,
   replacementState,
-  run,
   runStep,
-  session,
+  openSession,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
@@ -327,9 +316,8 @@ const runReservationLinkZeroTotalCase = ({
   readonly locale: LinkLocale;
   readonly replacementData?: CheckoutData;
   readonly replacementState?: CheckoutFlowState;
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     firstState.startedAt = new Date();
@@ -337,9 +325,8 @@ const runReservationLinkZeroTotalCase = ({
       assertSelectedDurationZeroPrice: true,
       config,
       data,
-      run,
       runStep,
-      session,
+      openSession,
       state: firstState,
     });
     const firstRow = yield* runStep({
@@ -360,7 +347,7 @@ const runReservationLinkZeroTotalCase = ({
     // The link code applies during the advertisement/customer quote, so the
     // landing pay URL is already final and safe to reload as captured.
     const payUrl = yield* runStep({
-      execute: readSignedPayUrl(run, session, locale, firstOrderId, "required"),
+      execute: readSignedPayUrl(openSession, locale, firstOrderId, "required"),
       id: "assert-signed-pay-url",
       timeoutMs: config.timeouts.browserAction,
     });
@@ -369,14 +356,12 @@ const runReservationLinkZeroTotalCase = ({
         yield* assertAppliedZeroTotalPaySummary({
           config,
           data,
-          run,
-          session,
+          openSession,
         });
         yield* captureLinkScreenshot({
           config,
           name: `${locale}-applied-summary`,
-          run,
-          session,
+          openSession,
         });
       }),
       id: "assert-applied-zero-total-link-pay-summary",
@@ -384,19 +369,13 @@ const runReservationLinkZeroTotalCase = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openPage(
-          yield* browserSessionFor(run, session),
-          config,
-          payUrl,
-          {
-            timeoutMs: config.timeouts.browserNavigation,
-          }
-        );
+        yield* openPage(yield* openSession, config, payUrl, {
+          timeoutMs: config.timeouts.browserNavigation,
+        });
         yield* assertAppliedZeroTotalPaySummary({
           config,
           data,
-          run,
-          session,
+          openSession,
         });
       }),
       id: "reload-signed-pay-url-and-reassert-summary",
@@ -421,10 +400,9 @@ const runReservationLinkZeroTotalCase = ({
           data,
           locale,
           replacementData,
-          run,
-          session,
+          openSession,
         });
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         return yield* submitReservationForPayPage({
           data: replacementData,
           onOrderId: (orderId) => {
@@ -473,8 +451,7 @@ const runReservationLinkZeroTotalCase = ({
       execute: assertAppliedZeroTotalPaySummary({
         config,
         data: replacementData,
-        run,
-        session,
+        openSession,
       }),
       id: "assert-replacement-zero-total-pay-summary",
       timeoutMs: config.timeouts.uiTransition,
@@ -497,18 +474,16 @@ const runReservationLinkUnknownCodeCase = ({
   data,
   datasourceConfig,
   httpClient,
-  run,
   runStep,
-  session,
+  openSession,
   state,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
   readonly datasourceConfig: DatasourceConfig;
   readonly httpClient: HttpClient.HttpClient;
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
   readonly state: CheckoutFlowState;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
@@ -517,9 +492,8 @@ const runReservationLinkUnknownCodeCase = ({
     const orderId = yield* openLinkAndHoldReservation({
       config,
       data,
-      run,
       runStep,
-      session,
+      openSession,
       state,
     });
     const heldRow = yield* runStep({
@@ -539,8 +513,7 @@ const runReservationLinkUnknownCodeCase = ({
     });
     yield* runStep({
       execute: readSignedPayUrl(
-        run,
-        session,
+        openSession,
         data.locale,
         orderId,
         "required"
@@ -552,7 +525,7 @@ const runReservationLinkUnknownCodeCase = ({
     // replaces the requested discount code in the code box.
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* assertRequestedOnlyDiscountCode({
           code: unknownLinkCode,
           config,
@@ -564,7 +537,7 @@ const runReservationLinkUnknownCodeCase = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* submitDiscountCode({
           code: unknownLinkCode,
           config,
@@ -581,7 +554,7 @@ const runReservationLinkUnknownCodeCase = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* assertRequestedOnlyDiscountCode({
           code: unknownLinkCode,
           config,
@@ -590,8 +563,7 @@ const runReservationLinkUnknownCodeCase = ({
         yield* captureLinkScreenshot({
           config,
           name: `${data.locale}-unavailable-code`,
-          run,
-          session,
+          openSession,
         });
       }),
       id: "assert-unknown-code-intent-retained",
@@ -599,7 +571,7 @@ const runReservationLinkUnknownCodeCase = ({
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* submitDiscountCode({
           code: zeroTotalCode,
           config,
@@ -617,24 +589,20 @@ const runReservationLinkUnknownCodeCase = ({
     // The correction server action re-signs the pay state, so capture the
     // fresh pay URL now and reload exactly that URL.
     const freshPayUrl = yield* runStep({
-      execute: readSignedPayUrl(run, session, data.locale, orderId, "optional"),
+      execute: readSignedPayUrl(openSession, data.locale, orderId, "optional"),
       id: "read-fresh-signed-pay-url-after-correction",
       timeoutMs: config.timeouts.browserAction,
     });
     yield* runStep({
       execute: Effect.gen(function* () {
-        yield* openPage(
-          yield* browserSessionFor(run, session),
-          config,
-          freshPayUrl,
-          { timeoutMs: config.timeouts.browserNavigation }
-        );
-        yield* assertAppliedZeroTotalPaySummary({ config, data, run, session });
+        yield* openPage(yield* openSession, config, freshPayUrl, {
+          timeoutMs: config.timeouts.browserNavigation,
+        });
+        yield* assertAppliedZeroTotalPaySummary({ config, data, openSession });
         yield* captureLinkScreenshot({
           config,
           name: `${data.locale}-corrected-summary`,
-          run,
-          session,
+          openSession,
         });
       }),
       id: "reload-fresh-signed-pay-url-and-reassert-summary",
@@ -652,22 +620,20 @@ const openLinkAndHoldReservation = ({
   assertSelectedDurationZeroPrice = false,
   config,
   data,
-  run,
   runStep,
-  session,
+  openSession,
   state,
 }: {
   readonly assertSelectedDurationZeroPrice?: boolean;
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
   readonly state: CheckoutFlowState;
 }) =>
   runStep({
     execute: Effect.gen(function* () {
-      const browser = yield* browserSessionFor(run, session);
+      const browser = yield* openSession;
       yield* openPage(browser, config, data.checkoutUrl, {
         timeoutMs: config.timeouts.browserNavigation,
       });
@@ -695,8 +661,7 @@ const openLinkAndHoldReservation = ({
         yield* captureLinkScreenshot({
           config,
           name: `${data.locale}-prefilled`,
-          run,
-          session,
+          openSession,
         });
       }
       return yield* submitReservationForPayPage({
@@ -716,14 +681,13 @@ const openLinkAndHoldReservation = ({
   });
 
 const readSignedPayUrl = (
-  run: Runner,
-  session: string,
+  openSession: OpenE2EBrowserSession,
   locale: LinkLocale,
   orderId: WorkspaceReservationId,
   publicOrderIdPolicy: SignedPayUrlOrderIdPolicy
 ): Effect.Effect<string, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const url = yield* readPageUrl(yield* browserSessionFor(run, session));
+    const url = yield* readPageUrl(yield* openSession);
     return yield* tryWorkspaceE2ESync("assert signed pay URL", () => {
       return validateSignedPayUrl({
         locale,
@@ -967,16 +931,14 @@ export const isSelectedDurationZeroPrice = ({
 const assertAppliedZeroTotalPaySummary = ({
   config,
   data,
-  run,
-  session,
+  openSession,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
-  readonly run: Runner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const browser = yield* browserSessionFor(run, session);
+    const browser = yield* openSession;
     yield* waitForPageCondition(
       browser,
       "applied zero-total reservation-link pay summary",
@@ -1016,19 +978,17 @@ const returnToReservationWithConflictingQuery = ({
   data,
   locale,
   replacementData,
-  run,
-  session,
+  openSession,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
   readonly locale: LinkLocale;
   readonly replacementData: CheckoutData;
-  readonly run: Runner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const reservationPath = `/${locale}/reservation/meeting-room`;
-    const browser = yield* browserSessionFor(run, session);
+    const browser = yield* openSession;
     // The Pay page links back to both reservation steps; the selection
     // step's link carries no `step`.
     yield* activateHydratedElement(

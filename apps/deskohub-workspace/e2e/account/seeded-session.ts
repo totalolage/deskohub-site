@@ -14,7 +14,7 @@ import type { WorkspaceE2EEnvironment } from "../e2e-env";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
 import { runDatabaseOperation } from "../integrations/database-operation";
-import { addRedaction } from "../runtime";
+import { addRedaction } from "../redaction";
 
 /**
  * Better Auth's session cookie on an HTTPS deployment. Workspace keeps the

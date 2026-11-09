@@ -234,8 +234,8 @@ export const prepareHostedPayment = (id: string, options: HostedScenario) => {
         await page.waitForLoadState("load");
       }
       if (options.returnActivation) {
-        // Inject a transport error after the real keyboard activation. This is
-        // the native Playwright object, shared by the argv and session drivers.
+        // Inject a transport error after the real keyboard activation, on the
+        // native Playwright object the session drives.
         const original = page.keyboard.press.bind(page.keyboard);
         page.keyboard.press = async (...args) => {
           const reject = await page.evaluate(() =>

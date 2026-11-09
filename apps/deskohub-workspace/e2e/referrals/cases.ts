@@ -24,7 +24,10 @@ import {
 } from "../account/review-screenshots";
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import { openPage, waitForPageText } from "../browser";
-import type { E2EBrowserSession } from "../browser-session";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
 import type { WorkspaceE2EStepRunner } from "../case-runner";
 import { assertDisplayedDiscounts } from "../cases/discounts";
 import {
@@ -40,7 +43,7 @@ import type { WorkspaceE2EReferralCaseId } from "../playwright-checkout/case-cat
 import { pollUntil } from "../polling";
 import { waitForReactClickHandler } from "../react-handlers";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
-import { assert, browserSessionFor, type Runner } from "../runtime";
+import { assert } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type { CheckoutFlowState, WorkspaceE2ECase } from "../types";
 import {
@@ -92,11 +95,9 @@ type ReferralCaseContext = {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly identities: WorkspaceE2EReferralIdentities;
-  /** The argv runner, for the checkout helpers still on argv commands. */
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
   readonly screenshots: boolean;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
 };
 
 /**
@@ -142,11 +143,11 @@ export const bindWorkspaceE2EReferralCase = ({
   return {
     ...testCase,
     checkoutStates,
-    execute: ({ run, runStep, session }) =>
+    execute: ({ openSession, runStep }) =>
       Effect.gen(function* () {
         // Each case's own context starts without a remembered shared link.
         const browserSession = yield* runStep({
-          execute: Effect.tap(browserSessionFor(run, session), (opened) =>
+          execute: Effect.tap(openSession, (opened) =>
             waitForNoRememberedReferralCode({ config, session: opened })
           ),
           id: "assert-no-remembered-referral-code",
@@ -158,10 +159,9 @@ export const bindWorkspaceE2EReferralCase = ({
             config,
             datasourceConfig,
             identities,
-            run,
             runStep,
             screenshots,
-            session,
+            openSession,
           },
           checkoutStates
         );

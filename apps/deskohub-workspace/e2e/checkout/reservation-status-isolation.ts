@@ -4,7 +4,10 @@ import { m } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import { normalizeBrowserText, openPage, waitForPageText } from "../browser";
-import type { E2EBrowserSession } from "../browser-session";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
 import type { WorkspaceE2EStep } from "../case-runner";
 import type { WorkspaceE2EConfig } from "../config";
 import {
@@ -14,14 +17,13 @@ import {
 } from "../errors";
 import { readCheckoutRow } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
-import {
-  addRedaction,
-  assert,
-  browserSessionFor,
-  log,
-  type Runner,
-} from "../runtime";
-import type { CheckoutData, CheckoutRow } from "../types";
+import { addRedaction } from "../redaction";
+import { assert, log } from "../runtime";
+import type {
+  CheckoutData,
+  CheckoutRow,
+  WorkspaceE2ECaseContext,
+} from "../types";
 import { withWorkspaceE2ELocalReservationFixture } from "./local-reservation-fixture";
 
 const makeReservationStatusUrl = (
@@ -100,7 +102,7 @@ const waitForExactReservationUrl = ({
 /**
  * Evaluates a self-contained check of the page and fails with `failure`
  * unless it holds. An evaluation that overruns its bound fails rather than
- * timing out, as the argv evaluation it replaces did.
+ * timing out.
  */
 const assertPage = <Arg>({
   arg,
@@ -319,19 +321,18 @@ const assertSignedOutStatusSignIn = Effect.fn(
 });
 
 /**
- * The signed-out visitor's own browser, opened through the runner's id
- * beside the booking session and closed when the check ends. Interrupting
- * the check also stops waiting for the browser to open, and a close that
- * fails or outlasts `browserSessionClose` is ignored, as the argv close was;
- * the runner's Scope still closes a session that outlives either wait.
+ * The signed-out visitor's own browser, opened beside the booking session
+ * and closed when the check ends. Interrupting the check also stops waiting
+ * for the browser to open, and a close that fails or outlasts
+ * `browserSessionClose` is ignored; the test's Scope still closes a session
+ * that outlives either wait.
  */
 const signedOutBrowser = (
   config: WorkspaceE2EConfig,
-  run: Runner,
-  id: string
+  openSignedOutSession: OpenE2EBrowserSession
 ) =>
   Effect.acquireRelease(
-    browserSessionFor(run, id),
+    openSignedOutSession,
     (session) =>
       session
         .close()
@@ -351,17 +352,18 @@ export const assertReservationStatusIsolation = ({
   config,
   customerId,
   data,
+  openSeparateSession,
+  openSession,
   orderId,
-  run,
-  session: sessionId,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly customerId: DotyposCustomerId;
   readonly data: Pick<CheckoutData, "locale">;
   readonly orderId: WorkspaceReservationId;
-  readonly run: Runner;
-  readonly session: string;
-}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+} & Pick<
+  WorkspaceE2ECaseContext,
+  "openSeparateSession" | "openSession"
+>): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     addRedaction(customerId, true);
     addRedaction(orderId, true);
@@ -373,7 +375,7 @@ export const assertReservationStatusIsolation = ({
       orderId
     );
     addRedaction(targetStatusUrl);
-    const session = yield* browserSessionFor(run, sessionId);
+    const session = yield* openSession;
     yield* waitForReservationContactUrl({
       config,
       description: "original reservation support contact URL",
@@ -411,7 +413,7 @@ export const assertReservationStatusIsolation = ({
         );
         yield* Effect.scoped(
           Effect.flatMap(
-            signedOutBrowser(config, run, `${sessionId}-signed-out`),
+            signedOutBrowser(config, openSeparateSession("signed-out")),
             (signedOut) =>
               assertSignedOutStatusSignIn({
                 config,
@@ -457,24 +459,25 @@ export const reservationStatusIsolationStep = ({
   config,
   customerId,
   data,
+  openSeparateSession,
+  openSession,
   orderId,
-  run,
-  session,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly customerId: DotyposCustomerId;
   readonly data: Pick<CheckoutData, "locale">;
   readonly orderId: WorkspaceReservationId;
-  readonly run: Runner;
-  readonly session: string;
-}): WorkspaceE2EStep<void, E2EDatabase> => ({
+} & Pick<
+  WorkspaceE2ECaseContext,
+  "openSeparateSession" | "openSession"
+>): WorkspaceE2EStep<void, E2EDatabase> => ({
   execute: assertReservationStatusIsolation({
     config,
     customerId,
     data,
+    openSeparateSession,
+    openSession,
     orderId,
-    run,
-    session,
   }),
   id: "assert-reservation-status-isolation",
   timeoutMs: config.timeouts.datasource,

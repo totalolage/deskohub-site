@@ -3,7 +3,7 @@ import { isWorkspaceDeploymentOrigin } from "../config";
 import type { WorkspaceE2EEnvironment } from "../e2e-env";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { pollUntil } from "../polling";
-import { addRedaction } from "../runtime";
+import { addRedaction } from "../redaction";
 
 /** The automation engine's planner, the route Vercel Cron calls in production. */
 export const automationPlannerPath = "/api/cron/workspace/email-automations";
