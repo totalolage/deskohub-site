@@ -14,8 +14,8 @@ export const isPhoneRegion = (region: string): boolean =>
   isSupportedCountry(region);
 
 /**
- * The numbering plan of a default region. Without one, only a number with an
- * international prefix can be read.
+ * The numbering plan of a default region. A region without one, such as an
+ * unknown code, reads only a number with a leading `+`.
  */
 const numberingPlan = (defaultRegion: string): CountryCode | undefined =>
   isSupportedCountry(defaultRegion) ? defaultRegion : undefined;
@@ -55,11 +55,13 @@ const E164PhoneNumberSchema = Schema.String.check(
 export type PhoneNumber = typeof E164PhoneNumberSchema.Type;
 
 /**
- * The phone number a text holds. A number without an international prefix is
- * read in the default region, an ISO 3166-1 alpha-2 code such as `CZ`; one
- * with a prefix is read the same in every region. Text around the number,
- * such as a label, is ignored, and an extension is dropped. Blank or
- * unreadable text and an invalid number have none.
+ * The phone number a text holds. A number without a leading `+` is read in
+ * the default region, an ISO 3166-1 alpha-2 code such as `CZ`, including a
+ * dialing prefix such as `00`, which differs between regions; a region
+ * without a numbering plan reads none of them. A number with a leading `+` is
+ * read the same in every region. Text around the number, such as a label, is
+ * ignored, and an extension is dropped. Blank or unreadable text and an
+ * invalid number have none.
  */
 export const parsePhoneNumber = (
   text: string,
@@ -71,8 +73,8 @@ export const parsePhoneNumber = (
 
 /**
  * Whether the whole text, apart from surrounding whitespace, is one valid
- * phone number, read in the default region when it has no international
- * prefix. Unlike parsePhoneNumber, any other text around the number fails it.
+ * phone number, read in the default region as parsePhoneNumber reads it.
+ * Unlike parsePhoneNumber, any other text around the number fails it.
  */
 export const isPhoneNumber = (text: string, defaultRegion: string): boolean =>
   isValidPhoneNumber(text.trim(), numberingPlan(defaultRegion));
@@ -106,8 +108,8 @@ export const phoneNumberSchema = (defaultRegion: string) =>
 
 /**
  * A phone number written for reading, in international format such as
- * `+420 777 123 456`. parsePhoneNumber reads it back as the same number in
- * every region.
+ * `+420 777 123 456`. Its leading `+` makes parsePhoneNumber read it back as
+ * the same number in every region.
  */
 export const formatPhoneNumber = (phone: PhoneNumber): string =>
   parsePhoneNumberWithError(phone).formatInternational();
