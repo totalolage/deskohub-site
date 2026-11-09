@@ -603,4 +603,38 @@ describe("CheckoutPayPage total beside an amount-free pay button", () => {
       expect(payButton.parentElement?.textContent).toBe(payButton.textContent);
     }
   );
+
+  test("keeps the total beside the de-DE legal order button while the payment starts", async () => {
+    const { CheckoutPaySubmitButton } = await import(
+      "./checkout-pay-page-card"
+    );
+    const { total } = buildCoworkCheckoutSummary({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutPaySubmitButton
+        locale="de-DE"
+        pending
+        total={total}
+        variant="pay"
+      />
+    );
+
+    const describedTotal = describedTotalOf(view.getByRole("button"));
+    expect(describedTotal?.textContent).toContain(formatMoney(total, "de-DE"));
+  });
+
+  test("shows no separate total beside a de-DE order button without a charge", async () => {
+    const { CheckoutPaySubmitButton } = await import(
+      "./checkout-pay-page-card"
+    );
+    const view = render(
+      <CheckoutPaySubmitButton locale="de-DE" variant="pay" />
+    );
+
+    const payButton = payButtonIn(view);
+    expect(payButton.hasAttribute("aria-describedby")).toBe(false);
+    expect(payButton.parentElement?.textContent).toBe(payButton.textContent);
+  });
 });

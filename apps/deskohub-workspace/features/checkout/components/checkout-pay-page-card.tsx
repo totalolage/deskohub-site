@@ -163,7 +163,7 @@ export function CheckoutPaySubmitButton({
 
   return (
     <div className="space-y-3">
-      {separateTotal ? (
+      {!!separateTotal && (
         <div id={separateTotalId}>
           <CheckoutSummaryLine
             amount={separateTotal}
@@ -171,7 +171,7 @@ export function CheckoutPaySubmitButton({
             locale={locale}
           />
         </div>
-      ) : null}
+      )}
       <Button
         type="button"
         size="xl"
