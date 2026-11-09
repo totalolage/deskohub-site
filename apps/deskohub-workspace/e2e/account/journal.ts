@@ -53,6 +53,13 @@ export type WorkspaceE2EAccountJournal = {
   /** Exact synthetic Dotypos reservations; finalizers cancel and converge. */
   readonly dotyposReservationIds: readonly string[];
   readonly laneId: WorkspaceE2EAccountJournalOwnerId;
+  /**
+   * Exact issued invoices, journaled by owners that issue one. The database
+   * refuses every change or deletion of an issued invoice, so their cleanup
+   * disposition is retention: each names a journaled synthetic profile,
+   * which cleanup expires, and the invoice itself stays.
+   */
+  readonly retainedInvoiceIds?: readonly string[];
   readonly startedAt: string;
   readonly version: typeof formatVersion;
 };
@@ -79,7 +86,10 @@ export const writeWorkspaceE2EAccountJournal = async (
 
 type WorkspaceE2EAccountJournalIds = Pick<
   WorkspaceE2EAccountJournal,
-  "authUserIds" | "dotyposCustomerIds" | "dotyposReservationIds"
+  | "authUserIds"
+  | "dotyposCustomerIds"
+  | "dotyposReservationIds"
+  | "retainedInvoiceIds"
 >;
 
 /**
@@ -112,6 +122,12 @@ export const makeWorkspaceE2EAccountJournalRecorder = (
           journal.dotyposReservationIds,
           update.dotyposReservationIds
         ),
+        ...((journal.retainedInvoiceIds ?? update.retainedInvoiceIds) && {
+          retainedInvoiceIds: merge(
+            journal.retainedInvoiceIds ?? [],
+            update.retainedInvoiceIds
+          ),
+        }),
       };
       await writeWorkspaceE2EAccountJournal(journal, directory);
     },
@@ -148,7 +164,9 @@ export const parseWorkspaceE2EAccountJournal = (
     typeof value.completed !== "boolean" ||
     !isStringArray(value.authUserIds) ||
     !isStringArray(value.dotyposCustomerIds) ||
-    !isStringArray(value.dotyposReservationIds)
+    !isStringArray(value.dotyposReservationIds) ||
+    (value.retainedInvoiceIds !== undefined &&
+      !isStringArray(value.retainedInvoiceIds))
   ) {
     throw new Error("Invalid workspace E2E account journal");
   }
@@ -158,6 +176,9 @@ export const parseWorkspaceE2EAccountJournal = (
     dotyposCustomerIds: value.dotyposCustomerIds,
     dotyposReservationIds: value.dotyposReservationIds,
     laneId: value.laneId,
+    ...(value.retainedInvoiceIds !== undefined && {
+      retainedInvoiceIds: value.retainedInvoiceIds,
+    }),
     startedAt: value.startedAt,
     version: value.version,
   } satisfies WorkspaceE2EAccountJournal;

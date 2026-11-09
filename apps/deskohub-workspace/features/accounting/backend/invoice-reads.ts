@@ -1,5 +1,6 @@
-import { eq, isNull, type SQL } from "drizzle-orm";
-import { Data, Effect } from "effect";
+import type { DotyposCustomerId } from "@deskohub/dotypos";
+import { and, desc, eq, isNull, type SQL } from "drizzle-orm";
+import { Data, Effect, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { invoices } from "@/db/schema";
 import {
@@ -7,7 +8,10 @@ import {
   type InvoiceDocument,
   isManualInvoiceDocument,
 } from "@/features/accounting/invoice";
-import { invoiceIdSchema } from "@/features/accounting/manual-invoice";
+import {
+  type InvoiceId,
+  invoiceIdSchema,
+} from "@/features/accounting/manual-invoice";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
@@ -29,7 +33,9 @@ export class InvoiceStorageError extends Data.TaggedError(
  * load every invoice side by side, which no file that opens transactions may
  * state, so they live apart from the repository's issuance transactions.
  * Called inside a transaction, as the legacy administrator backfill does,
- * they load one invoice at a time.
+ * they load one invoice at a time. Customer reads filter by the Dotypos
+ * customer in the same SQL that decrypts, so no other customer's document is
+ * ever decrypted.
  */
 export const makeInvoiceReads = Effect.gen(function* () {
   const { db } = yield* WorkspaceDatabase;
@@ -195,14 +201,62 @@ export const makeInvoiceReads = Effect.gen(function* () {
     );
   });
 
+  const loadCustomerInvoice = (
+    dotyposCustomerId: DotyposCustomerId,
+    invoiceId: InvoiceId
+  ) =>
+    loadInvoice({
+      // `and` of defined conditions is never undefined.
+      where: and(
+        eq(invoices.id, invoiceId),
+        eq(invoices.dotyposCustomerId, dotyposCustomerId)
+      )!,
+      lookupId: invoiceId,
+    });
+
+  /** The customer's issued invoices, newest issue first. */
+  const listForCustomer = Effect.fn("InvoiceRepository.listForCustomer")(
+    function* (dotyposCustomerId: DotyposCustomerId) {
+      const rows = yield* db
+        .select({ id: invoices.id })
+        .from(invoices)
+        .where(eq(invoices.dotyposCustomerId, dotyposCustomerId))
+        .orderBy(desc(invoices.issuedAt), desc(invoices.invoiceNumber));
+      const loaded = yield* Effect.all(
+        rows.map(({ id }) =>
+          loadCustomerInvoice(dotyposCustomerId, invoiceIdSchema.make(id))
+        ),
+        { concurrency: "inherit" }
+      );
+      return loaded.filter((invoice) => invoice !== null);
+    }
+  );
+
+  /**
+   * One of the customer's invoices. Another customer's invoice, an unknown id,
+   * and text that is no invoice id all read as `null`; the last one without a
+   * query.
+   */
+  const findForCustomer = Effect.fn("InvoiceRepository.findForCustomer")(
+    (dotyposCustomerId: DotyposCustomerId, invoiceId: string) =>
+      Option.match(decodeInvoiceId(invoiceId), {
+        onNone: () => Effect.succeed(null),
+        onSome: (id) => loadCustomerInvoice(dotyposCustomerId, id),
+      })
+  );
+
   return {
     findById,
     findByPaymentAttemptId,
     findByReservationId,
+    findForCustomer,
     list,
+    listForCustomer,
     listManualInvoiceProvenance,
   };
 });
+
+const decodeInvoiceId = Schema.decodeUnknownOption(invoiceIdSchema);
 
 const asReservationInvoice = (invoice: Invoice | null) =>
   invoice && !isManualInvoiceDocument(invoice.document)

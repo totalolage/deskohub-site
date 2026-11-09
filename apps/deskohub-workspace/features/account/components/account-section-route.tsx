@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { AccountContentLoading } from "@/features/account/components/account-loading";
 import { AccountPage } from "@/features/account/components/account-page";
+import { loadCustomerInvoiceHistory } from "@/features/account/invoice-history.server";
 import { loadCustomerAccountPage } from "@/features/account/page-data.server";
 import { getAccountPageTitle } from "@/features/account/page-title";
 import { findAccountSectionOfPathname } from "@/features/account/routes";
@@ -60,7 +61,13 @@ async function AccountSectionsContent({ locale }: { readonly locale: Locale }) {
   );
   const state = await loadCustomerAccountPage();
 
-  return <AccountPage locale={locale} state={state} />;
+  return (
+    <AccountPage
+      loadInvoiceHistory={() => loadCustomerInvoiceHistory(locale)}
+      locale={locale}
+      state={state}
+    />
+  );
 }
 
 /**

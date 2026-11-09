@@ -99,9 +99,16 @@ const personalInvoiceBuyer = {
   },
 } satisfies InvoiceBuyer;
 
+// Encrypts another customer's invoice, so a read that must not decrypt it can
+// run without this key.
+const otherCustomerKey: AccountingSnapshotKey = {
+  id: accountingSnapshotKeyIdSchema.make("K209912"),
+  secret: "other synthetic accounting snapshot secret!",
+};
+
 const makeKeyService = (
   activeKey: AccountingSnapshotKey = testKey,
-  readableKeys: readonly AccountingSnapshotKey[] = [activeKey]
+  readableKeys: readonly AccountingSnapshotKey[] = [activeKey, otherCustomerKey]
 ): IAccountingSnapshotKeyService => ({
   getActive: Effect.succeed(activeKey),
   getById: (keyId) => {
@@ -816,6 +823,119 @@ describe.skipIf(!testDatabase)(
         _tag: "InvoiceStorageError",
         operation: "decrypt",
         cause: { _tag: "EffectDrizzleQueryError" },
+      });
+    });
+
+    describe("customer reads", () => {
+      const issueManualFor = async (
+        dotyposCustomerId: string,
+        keys?: IAccountingSnapshotKeyService
+      ) => {
+        const issuer = await Effect.runPromise(
+          workspaceFixtures(postgres.db).account("invoice-repository-issuer")
+        );
+        const { invoice } = await runRepository(
+          (repository) =>
+            repository.issueManual({
+              ...makeManualInvoiceInput(issuer.email),
+              dotyposCustomerId,
+              issuedBy: issuer,
+            }),
+          keys
+        );
+        return invoice;
+      };
+      const ownerOnlyKeys = makeKeyService(testKey, [testKey]);
+
+      test("lists only the customer's invoices, newest issue first", async () => {
+        const fixture = await createPaidFixture();
+        const owner = fixture.dotyposCustomerId;
+        const other = DotyposCustomerIdSchema.make(
+          `${fixtureCustomerPrefix}${randomUUID()}`
+        );
+        const { invoice: reservationInvoice } = await issue(
+          fixture.paymentAttemptId
+        );
+        const manualInvoice = await issueManualFor(owner);
+        const otherInvoice = await issueManualFor(other);
+
+        const owned = await runRepository((repository) =>
+          repository.listForCustomer(owner)
+        );
+        expect(owned.map(({ id }) => id)).toEqual([
+          manualInvoice.id,
+          reservationInvoice.id,
+        ]);
+        expect(owned).toEqual([manualInvoice, reservationInvoice]);
+        expect(
+          (
+            await runRepository((repository) =>
+              repository.listForCustomer(other)
+            )
+          ).map(({ id }) => id)
+        ).toEqual([otherInvoice.id]);
+        expect(
+          await runRepository((repository) =>
+            repository.listForCustomer(
+              DotyposCustomerIdSchema.make(
+                `${fixtureCustomerPrefix}${randomUUID()}`
+              )
+            )
+          )
+        ).toEqual([]);
+      });
+
+      test("finds an invoice only for the customer it was issued to", async () => {
+        const owner = DotyposCustomerIdSchema.make(
+          `${fixtureCustomerPrefix}${randomUUID()}`
+        );
+        const other = DotyposCustomerIdSchema.make(
+          `${fixtureCustomerPrefix}${randomUUID()}`
+        );
+        const invoice = await issueManualFor(owner);
+        const find = (customer: typeof owner, invoiceId: string) =>
+          runRepository((repository) =>
+            repository.findForCustomer(customer, invoiceId)
+          );
+
+        expect(await find(owner, invoice.id)).toEqual(invoice);
+        expect(await find(other, invoice.id)).toBeNull();
+        expect(await find(owner, randomUUID())).toBeNull();
+        expect(await find(owner, "not-an-invoice-id")).toBeNull();
+      });
+
+      test("never decrypts another customer's invoice", async () => {
+        const owner = DotyposCustomerIdSchema.make(
+          `${fixtureCustomerPrefix}${randomUUID()}`
+        );
+        const other = DotyposCustomerIdSchema.make(
+          `${fixtureCustomerPrefix}${randomUUID()}`
+        );
+        const ownInvoice = await issueManualFor(owner);
+        const otherInvoice = await issueManualFor(
+          other,
+          makeKeyService(otherCustomerKey)
+        );
+
+        // Without the other customer's key, decrypting their invoice fails.
+        expect(
+          await runRepository(
+            (repository) => Effect.flip(repository.findById(otherInvoice.id)),
+            ownerOnlyKeys
+          )
+        ).toMatchObject({ _tag: "InvoiceStorageError", operation: "decrypt" });
+        expect(
+          await runRepository(
+            (repository) => repository.listForCustomer(owner),
+            ownerOnlyKeys
+          )
+        ).toEqual([ownInvoice]);
+        expect(
+          await runRepository(
+            (repository) => repository.findForCustomer(owner, otherInvoice.id),
+            ownerOnlyKeys
+          )
+        ).toBeNull();
       });
     });
   }

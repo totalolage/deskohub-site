@@ -63,6 +63,11 @@ export type SignedInAccountState = WithRenderedReservations<
 type SignedInAccountProps = {
   readonly locale: Locale;
   readonly state: SignedInAccountState;
+  /**
+   * The Billing section's invoice history panel, rendered on the server so
+   * it streams in apart from the page; none for states without one.
+   */
+  readonly invoices?: ReactNode;
 };
 
 /**
@@ -135,7 +140,11 @@ function usePublishedAccountNavigation(
   }, [referralBadgeLabel, referralBadgeText, setReferralBadge]);
 }
 
-function SignedInAccountSections({ locale, state }: SignedInAccountProps) {
+function SignedInAccountSections({
+  invoices,
+  locale,
+  state,
+}: SignedInAccountProps) {
   const { activeSection } = useAccountLayout();
   const accountPasskeys = useAccountPasskeys(state.passkeys);
   usePublishedAccountNavigation(state, locale);
@@ -147,10 +156,15 @@ function SignedInAccountSections({ locale, state }: SignedInAccountProps) {
   return (
     <>
       {state.kind === "linked" ? (
-        <LinkedAccountPanels locale={locale} state={state} />
+        <LinkedAccountPanels
+          invoices={invoices}
+          locale={locale}
+          state={state}
+        />
       ) : (
         <AccountWithoutProfilePanels
           accountPasskeys={accountPasskeys}
+          invoices={invoices}
           locale={locale}
           sessionSectionActive={isSessionSectionActive(
             activeSection,
@@ -226,11 +240,13 @@ function AccountDeletion({
   );
 }
 
-/** A linked account's reservations, referrals, and profile. */
+/** A linked account's reservations, referrals, profile, and billing. */
 function LinkedAccountPanels({
+  invoices,
   locale,
   state,
 }: {
+  readonly invoices: ReactNode;
   readonly locale: Locale;
   readonly state: LinkedAccountState;
 }) {
@@ -264,21 +280,28 @@ function LinkedAccountPanels({
           section={activeSection === "billing" ? "billing" : "profile"}
         />
       </div>
+      {invoices && (
+        <div className="mt-6" hidden={activeSection !== "billing"}>
+          {invoices}
+        </div>
+      )}
     </>
   );
 }
 
 /**
- * The reservations, profile notice, and deletion of an account without a
- * profile, hidden while a session section is open.
+ * The reservations, profile notice, invoice history, and deletion of an
+ * account without a profile, hidden while a session section is open.
  */
 function AccountWithoutProfilePanels({
   accountPasskeys,
+  invoices,
   locale,
   sessionSectionActive,
   state,
 }: {
   readonly accountPasskeys: AccountPasskeys | undefined;
+  readonly invoices: ReactNode;
   readonly locale: Locale;
   readonly sessionSectionActive: boolean;
   readonly state: AccountWithoutProfileState;
@@ -295,6 +318,7 @@ function AccountWithoutProfilePanels({
           </div>
         )}
         <ProfileNotice locale={locale} state={state} />
+        {invoices && <div hidden={activeSection !== "billing"}>{invoices}</div>}
         <AccountDeletion
           accountPasskeys={accountPasskeys}
           locale={locale}

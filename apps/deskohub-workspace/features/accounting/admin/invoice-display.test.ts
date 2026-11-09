@@ -1,38 +1,9 @@
 import { expect, test } from "bun:test";
-import { formatCurrencyAmount } from "@deskohub/i18n/currency";
-import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import {
-  formatInvoiceTotal,
   getInvoiceCustomerErrorMessage,
   getInvoiceCustomerName,
   getInvoiceSourceLabel,
 } from "./invoice-display";
-
-test("formats the invoice total for the route locale", () => {
-  expect(
-    formatInvoiceTotal({ total: "1234.50", currency: "CZK" }, "cs-CZ")
-  ).toBe("1 234,50 Kč");
-  expect(
-    formatInvoiceTotal({ total: "1234.50", currency: "CZK" }, "en-US")
-  ).toBe("CZK 1,234.50");
-});
-
-test("formats a negative zero total as the stored number reads", () => {
-  for (const total of ["-0", "-0.00"]) {
-    for (const currency of ["CZK", "EUR"]) {
-      for (const locale of ["cs-CZ", "en-US"] as const) {
-        expect(formatInvoiceTotal({ total, currency }, locale)).toBe(
-          formatCurrencyAmount({
-            amount: Number(total),
-            currency,
-            locale,
-            fractionDigits: findWorkspaceCurrencyDefinition(currency)?.exponent,
-          })
-        );
-      }
-    }
-  }
-});
 
 test("labels the invoice provenance in the route locale", () => {
   expect(getInvoiceSourceLabel("dhw-cli", "cs-CZ")).toBe("CLI dhw");

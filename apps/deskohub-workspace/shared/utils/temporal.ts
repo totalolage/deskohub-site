@@ -220,6 +220,19 @@ export const temporalInstantToPlainDate = ({
   readonly timeZone: string;
 }) => instant.toZonedDateTimeISO(timeZone).toPlainDate();
 
+/**
+ * Today's calendar date in `timeZone`, read from the Effect `Clock` so tests
+ * can control time.
+ */
+export const currentPlainDate = (timeZone: string): Effect.Effect<PlainDate> =>
+  currentInstant.pipe(
+    Effect.map((instant) =>
+      plainDateStringSchema.make(
+        temporalInstantToPlainDate({ instant, timeZone }).toString()
+      )
+    )
+  );
+
 export const isFuturePlainDateTime = ({
   dateTime,
   timeZone,
