@@ -33,7 +33,7 @@ import {
 } from "./email-values-section";
 
 export type EmailEditorProps = {
-  /** The Workspace's current languages; publication needs every one. */
+  /** The Workspace's current languages, one tab each. */
   readonly locales: readonly Locale[];
   /** Discounts a discount value can issue codes from. */
   readonly discounts: readonly EmailEditorDiscount[];
