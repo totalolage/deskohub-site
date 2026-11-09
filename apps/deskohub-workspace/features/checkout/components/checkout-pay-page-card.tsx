@@ -199,9 +199,11 @@ export function CheckoutPaySubmitButton({
       >
         {/* Long labels, such as the German legal order wording, wrap onto
             balanced lines. The icon leads the first line, so it stays
-            beside the text rather than beside the whole wrapped block. On
-            a narrow phone the label takes the small button's type size and
-            caps tracking, so its longest word still fits beside the icon. */}
+            beside the text rather than beside the whole wrapped block.
+            Below 18rem the label takes the small button's type size and
+            caps tracking: at the full size, the longest word
+            ("Zahlungspflichtig", about 206px) beside the icon needs a
+            278px button. */}
         <span className="text-balance @max-[18rem]:text-xs @max-[18rem]:tracking-[0.08em]">
           {!pending &&
             {
