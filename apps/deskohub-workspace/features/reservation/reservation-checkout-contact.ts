@@ -9,15 +9,18 @@ import { reservationCustomerSchema } from "./reservation-contact";
 export const checkoutContactQueryParam = "contact";
 
 /**
- * What a signed-out customer types at the contact-details step. It rides on
- * the sign-in's return path, so the reservation page the sign-in lands on can
- * save the profile and continue the checkout.
+ * What a signed-out customer types at the contact-details step, phone read in
+ * `defaultPhoneRegion` (the visitor locale's, `defaultPhoneRegion(locale)`).
+ * It rides on the sign-in's return path, so the reservation page the sign-in
+ * lands on can save the profile and continue the checkout.
  */
-export const reservationCheckoutContactSchema = Schema.Struct({
-  ...reservationCustomerSchema.fields,
-  billing: reservationBillingSelectionSchema,
-  marketingConsent: Schema.Boolean,
-});
+export const reservationCheckoutContactSchema = (defaultPhoneRegion: string) =>
+  Schema.Struct({
+    ...reservationCustomerSchema(defaultPhoneRegion).fields,
+    billing: reservationBillingSelectionSchema,
+    marketingConsent: Schema.Boolean,
+  });
 
-export type ReservationCheckoutContact =
-  typeof reservationCheckoutContactSchema.Type;
+export type ReservationCheckoutContact = ReturnType<
+  typeof reservationCheckoutContactSchema
+>["Type"];

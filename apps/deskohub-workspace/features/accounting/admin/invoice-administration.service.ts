@@ -577,6 +577,10 @@ const toDotyposDetails = (
   firstName: details.firstName ?? "",
   lastName: details.lastName ?? "",
   email: details.email,
+  // Not a visitor's input: the phone is the Dotypos customer's stored one or
+  // what an administrator enters for the business's own customer, so a number
+  // without a country calling code is a national one of the business's
+  // market, the base locale's region, whatever the Admin's language.
   phone: Option.getOrUndefined(
     parsePhoneNumber(details.phone ?? "", defaultPhoneRegion(baseLocale))
   ),
