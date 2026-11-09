@@ -21,6 +21,8 @@ export const includesAndroidApp = (
 
 /**
  * A Chrome intent link that opens the account page in the installed Android
- * app. Without the app, Chrome follows the fallback to the download page.
+ * app. The app claims only the site's /app/ links, so the link names the web
+ * app's account page, which the app routes to its own. Without the app,
+ * Chrome follows the fallback to the download page.
  */
-export const androidAppIntentUrl = `intent://${new URL(workspaceSiteOrigin).host}/account#Intent;scheme=https;package=${nativeApp.applicationId};S.browser_fallback_url=${encodeURIComponent(getWorkspacePageUrl("/android"))};end`;
+export const androidAppIntentUrl = `intent://${new URL(workspaceSiteOrigin).host}/app/account#Intent;scheme=https;package=${nativeApp.applicationId};S.browser_fallback_url=${encodeURIComponent(getWorkspacePageUrl("/android"))};end`;
