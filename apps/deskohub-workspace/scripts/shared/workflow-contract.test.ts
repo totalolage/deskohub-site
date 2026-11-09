@@ -31,6 +31,14 @@ describe("workflow expression evaluation", () => {
     expect(evaluate("'a' == 'b' || 'c' == 'c' && 'd'")).toBe("d");
   });
 
+  test("negates == with != at the same precedence", () => {
+    expect(evaluate("'a' != 'b' && 'x'")).toBe("x");
+    expect(evaluate("github.event_name != 'WORKFLOW_DISPATCH' || 'y'")).toBe(
+      "y"
+    );
+    expect(() => evaluate("inputs.enabled != 'true'")).toThrow();
+  });
+
   test("treats the string 'false' as truthy and the boolean false as falsy", () => {
     expect(evaluate("'false' && 'set'")).toBe("set");
     expect(evaluate("inputs.disabled || 'unset'")).toBe("unset");

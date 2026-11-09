@@ -33,7 +33,10 @@ import {
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
-import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  readReservationOrderMirror,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   LatePaymentRecoveryRepository,
   LatePaymentRecoveryStateError,
@@ -830,6 +833,16 @@ describe.skipIf(!testDatabase)(
       );
 
       const { reservation } = await readRows(checkout);
+      const mirror = await readReservationOrderMirror(
+        testDatabase.pool,
+        checkout.reservationId
+      );
+      expect(mirror.order).toEqual(mirror.expected);
+      expect(mirror.order).toMatchObject({
+        payment_state: "paid",
+        active_payment_attempt_id: checkout.paymentAttemptId,
+      });
+      expect(mirror.attemptOrderIds).toEqual([checkout.reservationId]);
       expect(await readCustomerEvents(checkout.reservationId)).toEqual([
         {
           kind: "reservation-booked",

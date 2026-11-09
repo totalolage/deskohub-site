@@ -20,6 +20,9 @@ export interface WorkflowStep {
   readonly outputs?: Record<string, string>;
 }
 
+/** Cache access a job's token gets (`cache-mode`). */
+type WorkflowCacheMode = "none" | "read" | "write" | "write-only";
+
 interface WorkflowJob {
   readonly name?: string;
   readonly if?: string;
@@ -29,7 +32,10 @@ interface WorkflowJob {
     readonly "cancel-in-progress"?: boolean | string;
   };
   readonly outputs?: Record<string, string>;
+  readonly "cache-mode"?: WorkflowCacheMode;
+  readonly "runs-on"?: string;
   readonly steps?: readonly WorkflowStep[];
+  readonly "timeout-minutes"?: number;
   readonly permissions?: Record<string, string>;
   readonly env?: Record<string, string>;
   readonly services?: Readonly<Record<string, WorkflowService>>;
@@ -50,6 +56,7 @@ interface WorkflowDispatchInput {
 }
 
 export interface WorkflowDoc {
+  readonly "cache-mode"?: WorkflowCacheMode;
   readonly concurrency?: WorkflowJob["concurrency"];
   readonly jobs: Readonly<Record<string, WorkflowJob>>;
   readonly on?: Readonly<{
@@ -63,6 +70,21 @@ export interface WorkflowDoc {
 
 export const parseWorkflow = (path: string): WorkflowDoc =>
   Bun.YAML.parse(readFileSync(path, "utf8")) as WorkflowDoc;
+
+/** A tracked composite action (`.github/actions/<name>/action.yml`). */
+export interface CompositeActionDoc {
+  readonly inputs?: Readonly<
+    Record<string, { readonly required?: boolean; readonly default?: string }>
+  >;
+  readonly outputs?: Readonly<Record<string, { readonly value: string }>>;
+  readonly runs: {
+    readonly using: string;
+    readonly steps: readonly WorkflowStep[];
+  };
+}
+
+export const parseCompositeAction = (path: string): CompositeActionDoc =>
+  Bun.YAML.parse(readFileSync(path, "utf8")) as CompositeActionDoc;
 
 export const workflowJobs = (doc: WorkflowDoc): readonly string[] =>
   Object.keys(doc.jobs);
@@ -123,7 +145,7 @@ export const workflowExpressionBoolean = (
 ): WorkflowExpressionValue => ({ kind: "boolean", value });
 
 const expressionToken =
-  /\s*(?:(==|&&|\|\|)|'((?:[^']|'')*)'|([A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)*))/y;
+  /\s*(?:(==|!=|&&|\|\|)|'((?:[^']|'')*)'|([A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)*))/y;
 
 const tokenizeExpression = (
   source: string
@@ -179,7 +201,7 @@ const resolveExpressionPath = (
 };
 
 // Evaluates the GitHub Actions expression subset of context paths, string
-// literals, ==, && and ||, with GitHub's precedence and operand-returning &&
+// literals, ==, !=, && and ||, with GitHub's precedence and operand-returning &&
 // and ||. It evaluates both operands where GitHub short-circuits, and anything
 // outside the subset throws, so an expression it cannot model fails instead
 // of misevaluating.
@@ -210,9 +232,13 @@ const evaluateExpression = (
   };
   const equality = (): WorkflowExpressionValue => {
     const left = operand();
-    return accept("==")
-      ? workflowExpressionBoolean(expressionEqual(left, operand()))
-      : left;
+    if (accept("==")) {
+      return workflowExpressionBoolean(expressionEqual(left, operand()));
+    }
+    if (accept("!=")) {
+      return workflowExpressionBoolean(!expressionEqual(left, operand()));
+    }
+    return left;
   };
   const and = (): WorkflowExpressionValue => {
     let value = equality();

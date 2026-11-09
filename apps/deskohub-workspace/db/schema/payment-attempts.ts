@@ -13,10 +13,12 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type { OrderId } from "@/features/order";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { instant } from "../instant";
 import { sensitiveText } from "../sensitive-text";
 import { postgresUuidV7 } from "../uuid-v7";
+import { orders } from "./orders";
 import { quotedSqlList } from "./sql-list";
 import { workspaceReservations } from "./workspace-reservations";
 
@@ -65,6 +67,15 @@ export const paymentAttempts = pgTable(
       .notNull()
       .$type<WorkspaceReservationId>()
       .references(() => workspaceReservations.id, { onDelete: "cascade" }),
+    /**
+     * The order the attempt pays: the reservation's mirrored order, so always
+     * equal to `workspace_reservation_id`. A trigger fills it on insert when
+     * the writer leaves it out, which repairs attempts that writers from
+     * before the mirror insert during a rolling deployment.
+     */
+    orderId: text("order_id")
+      .$type<OrderId>()
+      .references(() => orders.id, { onDelete: "cascade" }),
     provider: text("provider").notNull().$type<PaymentProvider>(),
     providerOrderId: text("provider_order_id").$type<NexiOrderId>(),
     securityToken: sensitiveText("security_token"),
@@ -139,6 +150,11 @@ export const paymentAttempts = pgTable(
     index("payment_attempts_workspace_reservation_idx").on(
       t.workspaceReservationId
     ),
+    check(
+      "payment_attempts_reservation_order_match_check",
+      sql`${t.orderId} is null or ${t.orderId} = ${t.workspaceReservationId}`
+    ),
+    index("payment_attempts_order_idx").on(t.orderId),
     index("payment_attempts_state_created_idx").on(t.state, t.createdAt),
     index("payment_attempts_refund_required_idx")
       .on(t.workspaceReservationId)

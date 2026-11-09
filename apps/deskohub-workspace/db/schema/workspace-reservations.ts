@@ -24,6 +24,7 @@ import {
   paymentReturnTargets,
 } from "@/features/checkout/payment-return-target";
 import type { Locale } from "@/features/i18n";
+import { orderFulfillmentStates, orderPaymentStates } from "@/features/order";
 import type { AgentSelectionKey } from "@/features/reservation/backend/booking-agent";
 import type {
   StoredWorkspaceReservationDetails,
@@ -53,22 +54,9 @@ export const reservationStates = [
   "cancellation_failed",
 ] as const;
 
-export const paymentStates = [
-  "not_started",
-  "pending",
-  "paid",
-  "failed",
-  "cancelled",
-  "expired",
-] as const;
+export const paymentStates = orderPaymentStates;
 
-export const fulfillmentStates = [
-  "not_started",
-  "processing",
-  "awaiting_delivery",
-  "fulfilled",
-  "failed",
-] as const;
+export const fulfillmentStates = orderFulfillmentStates;
 
 export type ReservationState = (typeof reservationStates)[number];
 export type PaymentState = (typeof paymentStates)[number];

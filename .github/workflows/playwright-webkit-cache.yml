@@ -1,0 +1,69 @@
+name: Playwright WebKit cache
+
+# Saves the Playwright WebKit download that
+# .github/actions/restore-playwright-webkit restores, so Workspace E2E finds
+# the browser without saving a cache itself. Workspace E2E runs exact-SHA
+# code, and a cache it saved would land in the default-branch scope every
+# workflow restores from, so this workflow saves the entry: only on main,
+# from main's code and main's Playwright pin. Restoring main's entry twice a
+# week keeps it from being evicted while E2E is idle, so a saved entry, which
+# nothing can overwrite, stays the one E2E restores. A pull request that
+# changes the pin, the action or this workflow runs it without saving
+# anything.
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/deskohub-workspace/package.json
+      - .github/actions/restore-playwright-webkit/**
+      - .github/workflows/playwright-webkit-cache.yml
+  pull_request:
+    paths:
+      - apps/deskohub-workspace/package.json
+      - .github/actions/restore-playwright-webkit/**
+      - .github/workflows/playwright-webkit-cache.yml
+  schedule:
+    - cron: "47 4 * * 1,4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: playwright-webkit-cache-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  warm:
+    # Keep this equal to Workspace E2E's test-e2e runner: the key holds the
+    # runner image. workspace-e2e-workflow.test.ts checks it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            /.github/actions/restore-playwright-webkit/
+            /apps/deskohub-workspace/package.json
+          sparse-checkout-cone-mode: false
+
+      - name: Restore Playwright WebKit
+        id: webkit
+        uses: ./.github/actions/restore-playwright-webkit
+
+      # The pinned @playwright/test pins playwright and playwright-core
+      # exactly, so its CLI downloads the WebKit build Workspace E2E's install
+      # looks for. Only the browser: E2E installs the system packages itself.
+      - name: Download Playwright WebKit
+        if: steps.webkit.outputs.cache-hit != 'true'
+        env:
+          PLAYWRIGHT_VERSION: ${{ steps.webkit.outputs.version }}
+        run: npx --yes --package="@playwright/test@$PLAYWRIGHT_VERSION" -- playwright install webkit
+
+      - name: Save Playwright WebKit
+        if: steps.webkit.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.webkit.outputs.path }}
+          key: ${{ steps.webkit.outputs.cache-primary-key }}

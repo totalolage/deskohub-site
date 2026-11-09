@@ -3,11 +3,13 @@ import { FutureFeatureTooltip } from "@/features/account/components/future-featu
 import { LegalPreferenceSettings } from "@/features/account/components/legal/legal-preference-settings";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import { type Locale, m } from "@/features/i18n";
+import type { AnalyticsPreferenceState } from "@/features/legal/analytics-preference";
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 import { GuardedLink } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
 
 export interface LegalScreenProps {
+  readonly analyticsPreference?: AnalyticsPreferenceState;
   readonly locale: Locale;
   readonly marketingPreferences?: MarketingPreferencesState;
 }
@@ -15,6 +17,7 @@ export interface LegalScreenProps {
 const legalScreenTitleId = "account-legal-title";
 
 export function LegalScreen({
+  analyticsPreference,
   locale,
   marketingPreferences,
 }: LegalScreenProps) {
@@ -50,6 +53,7 @@ export function LegalScreen({
       </nav>
 
       <LegalPreferenceSettings
+        analyticsPreference={analyticsPreference}
         locale={locale}
         marketingPreferences={marketingPreferences}
       />
