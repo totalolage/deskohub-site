@@ -12,7 +12,7 @@ name: Playwright WebKit cache
 # anything.
 on:
   push:
-    branches: [main, subagent/1156-e2e-cache-writers]
+    branches: [main]
     paths:
       - apps/deskohub-workspace/package.json
       - .github/actions/restore-playwright-webkit/**
@@ -62,7 +62,7 @@ jobs:
         run: npx --yes --package="@playwright/test@$PLAYWRIGHT_VERSION" -- playwright install webkit
 
       - name: Save Playwright WebKit
-        if: steps.webkit.outputs.cache-hit != 'true' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/subagent/1156-e2e-cache-writers')
+        if: steps.webkit.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.webkit.outputs.path }}
