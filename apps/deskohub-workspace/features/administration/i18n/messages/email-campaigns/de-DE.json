@@ -646,7 +646,51 @@
     }
   ],
   "emailCampaignsCalendarLastDayOfMonth": "letzten",
-  "emailCampaignsCalendarLastOccurrence": "letzten {weekday}",
+  "emailCampaignsCalendarLastOccurrence": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "letzten Montag",
+        "weekday=tuesday": "letzten Dienstag",
+        "weekday=wednesday": "letzten Mittwoch",
+        "weekday=thursday": "letzten Donnerstag",
+        "weekday=friday": "letzten Freitag",
+        "weekday=saturday": "letzten Samstag",
+        "weekday=*": "letzten Sonntag"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceQualifier": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "letzten Montag",
+        "weekday=tuesday": "letzten Dienstag",
+        "weekday=wednesday": "letzten Mittwoch",
+        "weekday=thursday": "letzten Donnerstag",
+        "weekday=friday": "letzten Freitag",
+        "weekday=saturday": "letzten Samstag",
+        "weekday=*": "letzten Sonntag"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceWait": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "letzten Montag",
+        "weekday=tuesday": "letzten Dienstag",
+        "weekday=wednesday": "letzten Mittwoch",
+        "weekday=thursday": "letzten Donnerstag",
+        "weekday=friday": "letzten Freitag",
+        "weekday=saturday": "letzten Samstag",
+        "weekday=*": "letzten Sonntag"
+      }
+    }
+  ],
   "emailCampaignsCalendarMinute": "xx:{minute}",
   "emailCampaignsCalendarMonthInName": [
     {
@@ -776,6 +820,21 @@
     }
   ],
   "emailCampaignsCalendarWeekdayName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "Montag",
+        "weekday=tuesday": "Dienstag",
+        "weekday=wednesday": "Mittwoch",
+        "weekday=thursday": "Donnerstag",
+        "weekday=friday": "Freitag",
+        "weekday=saturday": "Samstag",
+        "weekday=*": "Sonntag"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayQualifierName": [
     {
       "declarations": ["input weekday"],
       "selectors": ["weekday"],

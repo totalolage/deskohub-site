@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import { nounInSentence } from "@/shared/utils/text-case";
 import {
   ConditionLine,
   ConditionText,
@@ -307,7 +308,7 @@ function ProductPropertyControl({
               removeLabel={(valueLabel) =>
                 m.emailCampaignsAudienceProductRemoveValue(
                   {
-                    property: label.toLocaleLowerCase(locale),
+                    property: nounInSentence(label, locale),
                     value: valueLabel,
                   },
                   { locale }

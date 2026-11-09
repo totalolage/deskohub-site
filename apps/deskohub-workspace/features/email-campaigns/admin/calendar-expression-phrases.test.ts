@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { CalendarExpressionType as CalendarExpression } from "@deskohub/workspace-admin-api";
+import type {
+  CalendarExpressionType as CalendarExpression,
+  CalendarWeekdayType as CalendarWeekday,
+} from "@deskohub/workspace-admin-api";
 import { m } from "@/features/administration/i18n";
-import type { Locale } from "@/features/i18n";
+import { locales as allLocales, type Locale } from "@/features/i18n";
 import {
   type CalendarExpressionUsage,
   describeCalendarExpression,
@@ -359,4 +362,103 @@ describe("wait hour windows", () => {
     expect(sentence).toContain(range(9, 11, locale));
     expect(sentence).not.toContain(range(10, 10, locale));
   });
+});
+
+/**
+ * An occurrence agrees with its weekday's gender and with the case its place
+ * in the sentence takes, so each place has its own message per weekday.
+ */
+describe("weekday occurrence agreement", () => {
+  const weekdays: readonly CalendarWeekday[] = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+  ];
+  const weekdayCases = allLocales.flatMap((locale) =>
+    weekdays.map((weekday) => ({ locale, weekday }))
+  );
+  const lowered = (text: string, locale: Locale) =>
+    text.toLocaleLowerCase(locale);
+
+  test.each(weekdayCases)(
+    "leads a schedule with the last $weekday in $locale",
+    ({ locale, weekday }) => {
+      expect(
+        lowered(
+          describeCalendarExpression(
+            { weekdayOccurrences: [{ occurrence: "last", weekday }] },
+            "schedule",
+            locale
+          ),
+          locale
+        )
+      ).toContain(
+        lowered(
+          m.emailCampaignsCalendarLastOccurrence({ weekday }, { locale }),
+          locale
+        )
+      );
+    }
+  );
+
+  test.each(weekdayCases)(
+    "qualifies a schedule with the last or 2nd $weekday in $locale",
+    ({ locale, weekday }) => {
+      const qualified = (occurrence: 2 | "last") =>
+        describeCalendarExpression(
+          {
+            weekdays: [weekday],
+            weekdayOccurrences: [{ occurrence, weekday }],
+          },
+          "schedule",
+          locale
+        );
+
+      expect(qualified("last")).toContain(
+        m.emailCampaignsCalendarLastOccurrenceQualifier({ weekday }, { locale })
+      );
+      expect(qualified(2)).toContain(
+        m.emailCampaignsCalendarOccurrence(
+          {
+            occurrence: 2,
+            weekday: m.emailCampaignsCalendarWeekdayQualifierName(
+              { weekday },
+              { locale }
+            ),
+          },
+          { locale }
+        )
+      );
+    }
+  );
+
+  test.each(weekdayCases)(
+    "waits for the last $weekday in $locale",
+    ({ locale, weekday }) => {
+      const lastWait = m.emailCampaignsCalendarLastOccurrenceWait(
+        { weekday },
+        { locale }
+      );
+
+      expect(
+        describeCalendarWaitTarget(
+          { weekdayOccurrences: [{ occurrence: "last", weekday }] },
+          locale
+        )
+      ).toContain(lastWait);
+      expect(
+        describeCalendarWaitTarget(
+          {
+            weekdays: [weekday],
+            weekdayOccurrences: [{ occurrence: "last", weekday }],
+          },
+          locale
+        )
+      ).toContain(lastWait);
+    }
+  );
 });

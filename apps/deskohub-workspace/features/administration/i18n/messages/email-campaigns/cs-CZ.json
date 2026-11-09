@@ -684,7 +684,51 @@
     }
   ],
   "emailCampaignsCalendarLastDayOfMonth": "poslední",
-  "emailCampaignsCalendarLastOccurrence": "poslední {weekday}",
+  "emailCampaignsCalendarLastOccurrence": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "poslední pondělí",
+        "weekday=tuesday": "poslední úterý",
+        "weekday=wednesday": "poslední středa",
+        "weekday=thursday": "poslední čtvrtek",
+        "weekday=friday": "poslední pátek",
+        "weekday=saturday": "poslední sobota",
+        "weekday=*": "poslední neděle"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceQualifier": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "poslední pondělí",
+        "weekday=tuesday": "poslední úterý",
+        "weekday=wednesday": "poslední středu",
+        "weekday=thursday": "poslední čtvrtek",
+        "weekday=friday": "poslední pátek",
+        "weekday=saturday": "poslední sobotu",
+        "weekday=*": "poslední neděli"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceWait": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "poslední pondělí",
+        "weekday=tuesday": "poslední úterý",
+        "weekday=wednesday": "poslední středu",
+        "weekday=thursday": "poslední čtvrtek",
+        "weekday=friday": "poslední pátek",
+        "weekday=saturday": "poslední sobotu",
+        "weekday=*": "poslední neděli"
+      }
+    }
+  ],
   "emailCampaignsCalendarMinute": "xx:{minute}",
   "emailCampaignsCalendarMonthInName": [
     {
@@ -827,6 +871,21 @@
         "weekday=friday": "pátek",
         "weekday=saturday": "sobota",
         "weekday=*": "neděle"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayQualifierName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "pondělí",
+        "weekday=tuesday": "úterý",
+        "weekday=wednesday": "středu",
+        "weekday=thursday": "čtvrtek",
+        "weekday=friday": "pátek",
+        "weekday=saturday": "sobotu",
+        "weekday=*": "neděli"
       }
     }
   ],
