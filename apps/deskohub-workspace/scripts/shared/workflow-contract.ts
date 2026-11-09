@@ -20,6 +20,9 @@ export interface WorkflowStep {
   readonly outputs?: Record<string, string>;
 }
 
+/** Cache access a job's token gets (`cache-mode`). */
+type WorkflowCacheMode = "none" | "read" | "write" | "write-only";
+
 interface WorkflowJob {
   readonly name?: string;
   readonly if?: string;
@@ -29,6 +32,7 @@ interface WorkflowJob {
     readonly "cancel-in-progress"?: boolean | string;
   };
   readonly outputs?: Record<string, string>;
+  readonly "cache-mode"?: WorkflowCacheMode;
   readonly "runs-on"?: string;
   readonly steps?: readonly WorkflowStep[];
   readonly permissions?: Record<string, string>;
@@ -51,6 +55,7 @@ interface WorkflowDispatchInput {
 }
 
 export interface WorkflowDoc {
+  readonly "cache-mode"?: WorkflowCacheMode;
   readonly concurrency?: WorkflowJob["concurrency"];
   readonly jobs: Readonly<Record<string, WorkflowJob>>;
   readonly on?: Readonly<{

@@ -101,6 +101,9 @@ const serializedProductionWorkflow = JSON.stringify(productionDoc);
 const stepNames = workflowStepNames(doc);
 const allSteps = Object.values(doc.jobs).flatMap((job) => job.steps ?? []);
 const testJob = doc.jobs["test-e2e"];
+const fillJob = doc.jobs["fill-bun-package-cache"];
+const cacheMode = (job: string) =>
+  doc.jobs[job]?.["cache-mode"] ?? doc["cache-mode"];
 
 const stepByName = (name: string): WorkflowStep => {
   const step = findStepByName(doc, name);
@@ -285,6 +288,8 @@ describe("workspace E2E workflow", () => {
       )
     ).toEqual({
       "resolve-target": undefined,
+      // Reads the exact-SHA checkout and saves the Bun package cache.
+      "fill-bun-package-cache": { contents: "read" },
       "test-e2e": {
         actions: "read",
         contents: "read",
@@ -324,7 +329,7 @@ describe("workspace E2E workflow", () => {
       (step) => step.name === "Run checkout E2E"
     );
 
-    expect(testJob.needs).toBe("resolve-target");
+    expect(testJob.needs).toEqual(["resolve-target", "fill-bun-package-cache"]);
     expect(resolveIndex).toBeGreaterThanOrEqual(0);
     expect(migrateIndex).toBeGreaterThan(resolveIndex);
     expect(staleCleanupIndex).toBeGreaterThan(migrateIndex);
@@ -724,56 +729,66 @@ describe("workspace E2E workflow", () => {
     );
   });
 
-  test("restores Bun packages from a workflow-scoped cache saved before test code runs", () => {
-    const restore = stepByName("Restore Bun package cache");
+  test("fills the Bun package cache in a job that runs no exact-SHA code", () => {
+    const steps = fillJob?.steps ?? [];
+    const lookup = stepByName("Look up Bun package cache");
     const fill = stepByName("Fill Bun package cache from install manifests");
     const save = stepByName("Save Bun package cache");
-    expect(restore.uses).toStartWith("actions/cache/restore@");
+    for (const step of [lookup, fill, save]) {
+      expect(steps).toContain(step);
+    }
+    expect(lookup.uses).toStartWith("actions/cache/restore@");
+    expect(lookup.with?.["lookup-only"]).toBe(true);
+    expect(lookup.with?.["restore-keys"]).toBeUndefined();
+    expect(String(lookup.with?.key)).toStartWith("workspace-e2e-bun-");
     expect(save.uses).toStartWith("actions/cache/save@");
-    expect(restore.with?.["restore-keys"]).toBeUndefined();
-    expect(String(restore.with?.key)).toStartWith("workspace-e2e-bun-");
-    // Only the miss-gated fill runs between the restore and the save;
-    // workspace-e2e-bun-cache-fill.test.ts executes it against a hostile
-    // checkout.
-    expect(
-      stepsBetweenNames("Restore Bun package cache", "Save Bun package cache")
-    ).toEqual([restore, fill]);
-    expect(fill.if).toBe(save.if);
-  });
-
-  test("runs no exact-SHA code before the Bun package cache is saved", () => {
-    const steps = testJob?.steps ?? [];
-    const saveIndex = steps.findIndex(
-      (step) => step.name === "Save Bun package cache"
+    expect(save.with?.key).toBe(
+      `\${{ steps.${lookup.id}.outputs.cache-primary-key }}`
     );
-    expect(saveIndex).toBeGreaterThan(0);
-    const beforeSave = steps.slice(0, saveIndex);
-
-    // Bun runs before the save only to fill the cache.
+    expect(save.with?.path).toBe(lookup.with?.path);
+    const miss = `steps.${lookup.id}.outputs.cache-hit != 'true'`;
+    expect(fill.if).toBe(miss);
+    expect(save.if).toBe(miss);
+    // Bun runs only to fill the cache; workspace-e2e-bun-cache-fill.test.ts
+    // executes the fill against a hostile checkout.
     expect(
-      beforeSave
+      steps
         .filter((step) => /\bbunx?\b/.test(step.run ?? ""))
         .map((step) => step.name)
     ).toEqual(["Fill Bun package cache from install manifests"]);
-
-    // Local actions come from the workflow commit, not the exact-SHA checkout.
-    const coordinatorCheckout = stepByName("Checkout workflow actions");
-    expect(coordinatorCheckout.with?.ref).toContain("github.workflow_sha");
-    const localActions = beforeSave.filter((step) =>
+    expect(steps.at(-1)).toBe(save);
+    // Its only local action comes from the workflow commit.
+    const actionsCheckout = stepByName("Checkout Bun setup action");
+    expect(actionsCheckout.with?.ref).toContain("github.workflow_sha");
+    const localActions = steps.filter((step) =>
       (step.uses ?? "").startsWith("./")
     );
-    expect(localActions.length).toBeGreaterThan(0);
-    for (const step of localActions) {
-      expect(step.uses).toStartWith(`./${coordinatorCheckout.with?.path}/`);
-    }
+    expect(localActions.map((step) => step.uses)).toEqual([
+      `./${actionsCheckout.with?.path}/.github/actions/setup-bun`,
+    ]);
+    const fillSetup = stepByName("Set up Bun for the package cache fill");
+    const e2eSetup = stepByName("Set up Bun");
+    expect(fillSetup.if).toBe(miss);
+    expect(fillSetup.with).toEqual(e2eSetup.with);
+    expect(fillJob?.permissions).toEqual({ contents: "read" });
   });
 
-  test("runs install lifecycle scripts after the Bun package cache is saved", () => {
+  test("restores the Bun package cache test-e2e installs from, saving nothing", () => {
     const steps = testJob?.steps ?? [];
+    const restore = stepByName("Restore Bun package cache");
     const install = stepByName("Install repository dependencies");
-    expect(steps.indexOf(install)).toBeGreaterThan(
-      steps.indexOf(stepByName("Save Bun package cache"))
-    );
+    expect(steps).toContain(restore);
+    expect(restore.uses).toStartWith("actions/cache/restore@");
+    expect(restore.with?.["restore-keys"]).toBeUndefined();
+    expect(restore.with?.["lookup-only"]).toBeUndefined();
+    const lookup = stepByName("Look up Bun package cache");
+    expect(restore.with?.key).toBe(lookup.with?.key);
+    expect(restore.with?.path).toBe(lookup.with?.path);
+    // The fill job finishes before test-e2e starts.
+    expect(testJob?.needs).toContain("fill-bun-package-cache");
+    expect(fillJob?.needs).toBe("resolve-target");
+    expect(fillJob?.if).toBe(testJob?.if);
+    expect(steps.indexOf(install)).toBeGreaterThan(steps.indexOf(restore));
     // The fill installs outside the checkout, so this install always starts
     // from an empty tree and runs every lifecycle script.
     expect(install.if).toBeUndefined();
@@ -865,24 +880,36 @@ describe("workspace E2E workflow", () => {
     expect(bunReleaseCacheDoc.permissions).toEqual({ contents: "read" });
   });
 
-  test("saves every cache entry before any exact-SHA code runs", () => {
-    const steps = testJob?.steps ?? [];
-    const install = stepByName("Install repository dependencies");
-    const installIndex = steps.indexOf(install);
-    expect(installIndex).toBeGreaterThan(0);
-    // actions/cache saves in its post-job step, after every exact-SHA step,
-    // so the job uses only the explicit restore and save actions.
+  test("gives only the job that runs no exact-SHA code a cache token that can save", () => {
+    // Dispatch triggers default to write access, and exact-SHA code could
+    // reach a later action's token, so every job but the fill gets a
+    // read-only one and GitHub refuses its saves.
+    expect(doc["cache-mode"]).toBe("read");
+    expect(
+      Object.fromEntries(
+        Object.keys(doc.jobs).map((name) => [name, cacheMode(name)])
+      )
+    ).toEqual({
+      "resolve-target": "read",
+      "fill-bun-package-cache": "write",
+      "test-e2e": "read",
+      "cancel-superseded-run": "read",
+      "publish-final-status": "read",
+      "publish-status-without-run": "read",
+    });
+    // actions/cache saves in its post-job step, so the workflow uses only
+    // the explicit restore and save actions, and saves only in the fill job.
     expect(
       allSteps.filter((step) => /^actions\/cache@/.test(step.uses ?? ""))
     ).toEqual([]);
-    const saves = allSteps.filter((step) =>
-      /^actions\/cache\/save@/.test(step.uses ?? "")
-    );
-    expect(saves.map((step) => step.name)).toEqual(["Save Bun package cache"]);
-    for (const save of saves) {
-      expect(steps.indexOf(save)).toBeLessThan(installIndex);
-    }
-    // The job's local actions restore without saving.
+    expect(
+      Object.entries(doc.jobs).flatMap(([name, job]) =>
+        (job.steps ?? [])
+          .filter((step) => /^actions\/cache\/save@/.test(step.uses ?? ""))
+          .map((step) => `${name}: ${step.name}`)
+      )
+    ).toEqual(["fill-bun-package-cache: Save Bun package cache"]);
+    // test-e2e's local actions restore without saving.
     for (const action of [setupBunAction, restorePlaywrightWebKitAction]) {
       expect(
         action.runs.steps.filter((step) =>
