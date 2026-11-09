@@ -1,5 +1,6 @@
 import {
   Children,
+  cloneElement,
   createElement,
   isValidElement,
   type JSXElementConstructor,
@@ -32,6 +33,33 @@ export const elementTree = <Props>(
   renderToStaticMarkup(within(createElement(Probe)));
   return tree;
 };
+
+/**
+ * `node` with every function component replaced by the tree it returns, so
+ * a test reads a composite's host elements down to its leaves. Each
+ * component runs as in `elementTree`.
+ */
+export const hostTree = (node: ReactNode): ReactNode => {
+  if (!isValidElement<HostProps>(node)) return node;
+  if (typeof node.type === "function") {
+    return hostTree(
+      elementTree(node.type as (props: HostProps) => ReactNode, node.props)
+    );
+  }
+  return node.props.children === undefined
+    ? node
+    : cloneElement(
+        node,
+        undefined,
+        ...(Children.map(node.props.children, hostTree) ?? [])
+      );
+};
+
+/** A host element's text: its string and number children, joined. */
+export const textOf = (element: ReactElement<HostProps>): string =>
+  Children.toArray(element.props.children)
+    .filter((child) => typeof child === "string" || typeof child === "number")
+    .join("");
 
 /**
  * Every element of `type` in an element tree, in document order: a host

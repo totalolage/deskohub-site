@@ -3,6 +3,8 @@
 The signed-in customer's API for the native app and other first-party
 clients, served at `/api/customer`. The Better Auth session cookie
 authenticates every request.
+The app's client and data layer are in the `deskohub-mobile` skill
+(`references/package-layout.md`).
 
 ## Where things live
 

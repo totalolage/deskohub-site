@@ -16,6 +16,7 @@ import { theme } from "../../theme";
 import { Button, LiveMessage } from "../../ui/controls";
 import { Notice } from "../../ui/notice";
 import { ScrollScreen } from "../../ui/scroll-screen";
+import { useAccessPinView } from "./access-pin-view";
 import {
   accessCountdownAtom,
   accessErrorMessage,
@@ -69,6 +70,7 @@ function AccessDetails({
 }) {
   const locale = useAppLocale();
   const focused = useIsFocused();
+  useAccessPinView(focused);
   const windowState = Option.flatten(
     AsyncResult.value(
       useAtomValue(accessCountdownAtom(accessWindowKey(access)))

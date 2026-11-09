@@ -137,7 +137,11 @@ const reauthenticationCompletedAsBob = async () => {
       token: server.issueMagicLink(ada),
     }).pipe(Effect.provideService(SignInLocale, "en-US"))
   );
-  const request = await app.runPromise(startPendingSignIn(Option.some(ada.id)));
+  const request = await app.runPromise(
+    startPendingSignIn(Option.some(ada.id)).pipe(
+      Effect.provideService(SignInLocale, "en-US")
+    )
+  );
   const callback = new URL(server.mintHandoff(bob, request));
   return {
     runtime: app,

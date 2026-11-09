@@ -1,5 +1,5 @@
 import { Clock, Effect, Exit, Match, Option } from "effect";
-import { trackSignInCompleted } from "../analytics/events";
+import { trackSignInCompleted, trackSignInStarted } from "../analytics/events";
 import {
   type AuthCallback,
   nativeReturnUri,
@@ -49,7 +49,8 @@ import { SignInLocale } from "./sign-in-locale";
  * verified directly. Either way the new session's cookie is stored in
  * SecureStore once the app accepts it. The verification names the app's
  * locale (`SignInLocale`), which an account it creates takes as its language;
- * the web page names it for the accounts it creates.
+ * the sign-in request passes it to the web page, which shows it and names it
+ * for the accounts it creates.
  */
 
 export type NativeSignInServices =
@@ -119,6 +120,7 @@ export const startPendingSignIn = Effect.fn("NativeSignIn.startPendingSignIn")(
       state,
       returnUri: nativeReturnUri,
       reauthenticate: Option.isSome(expectedUserId),
+      locale: yield* SignInLocale,
     };
     return request;
   },
@@ -349,6 +351,9 @@ export const signInWithEmail = Effect.fn("NativeSignIn.signInWithEmail")(
     const browser = yield* AuthSessionBrowser;
     const completions = yield* AuthCallbackCompletions;
     const request = yield* startPendingSignIn(expectedUserId);
+    // The email and its code or link are handled by the web page, so the
+    // app records the start as the page would: an email sign-in, by link.
+    yield* Effect.sync(() => trackSignInStarted("link"));
     const result = yield* browser
       .open(nativeSignInUrl(auth.origin, request), nativeReturnUri)
       .pipe(Effect.mapError(unavailable));

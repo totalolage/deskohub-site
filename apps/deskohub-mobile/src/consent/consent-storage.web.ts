@@ -1,4 +1,4 @@
-import { readDeviceLocale } from "../i18n/device-locale";
+import { readLaunchLocale } from "../i18n/launch-locale";
 import type { ConsentStorage } from "./analytics-consent";
 import { consentCookieAssignment, readConsentCookie } from "./consent-cookie";
 
@@ -17,7 +17,7 @@ export const consentStorage = {
       now: new Date(),
       hostname: window.location.hostname,
       secure: window.location.protocol === "https:",
-      languageCode: readDeviceLocale(),
+      languageCode: readLaunchLocale(),
       createConsentId: () => crypto.randomUUID(),
     });
   },

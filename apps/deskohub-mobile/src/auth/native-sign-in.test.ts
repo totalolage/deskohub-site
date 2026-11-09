@@ -11,6 +11,7 @@ import {
 } from "effect";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
+import { analytics } from "../analytics/analytics";
 import { nativeReturnUri, parseAuthCallbackUrl } from "./auth-callback";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
@@ -435,6 +436,35 @@ describe("native email sign-in through the auth session", () => {
     const signInUrl = new URL(app.opened[0] ?? "");
     expect(signInUrl.origin + signInUrl.pathname).toBe(`${origin}/app/sign-in`);
     expect(signInUrl.searchParams.has("prompt")).toBe(false);
+    // The page, its email and a new account follow the app's language, not
+    // the browser's.
+    expect(signInUrl.searchParams.getAll("locale")).toEqual(["cs-CZ"]);
+  });
+
+  test("records the sign-in as started with the email's link method before the page opens", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const started: Array<unknown> = [];
+    const capture = spyOn(analytics, "capture").mockImplementation((event) => {
+      if (event.name === "sign-in started") started.push(event);
+    });
+    try {
+      const signInPage = webSignInAs(server, ada);
+      let startedWhenOpened: ReadonlyArray<unknown> = [];
+      const app = launchApp(server, store, (url) => {
+        startedWhenOpened = [...started];
+        return signInPage(url);
+      });
+
+      await app.runtime.runPromise(signInWithEmail(Option.none()));
+
+      expect(startedWhenOpened).toEqual([
+        { name: "sign-in started", properties: { method: "link" } },
+      ]);
+      expect(started).toHaveLength(1);
+    } finally {
+      capture.mockRestore();
+    }
   });
 
   test("refuses a handoff with the wrong state without calling the server", async () => {
@@ -748,6 +778,28 @@ describe("reauthentication", () => {
     expect(storedCookie(store)).not.toBe(before);
     expect(signals()).toBeGreaterThan(0);
     expect((await app.client.getSession()).data?.user.id).toBe(ada.id);
+  });
+
+  test("records the reauthentication as a started sign-in, as the web page does", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    await signedInAs(server, store, ada);
+    const capture = spyOn(analytics, "capture").mockImplementation(
+      () => undefined
+    );
+    try {
+      const app = launchApp(server, store, webSignInAs(server, ada));
+
+      await app.runtime.runPromise(reauthenticate);
+
+      expect(
+        capture.mock.calls.filter(([event]) => event.name === "sign-in started")
+      ).toEqual([
+        [{ name: "sign-in started", properties: { method: "link" } }],
+      ]);
+    } finally {
+      capture.mockRestore();
+    }
   });
 
   test("refuses to switch to another account and stays signed in", async () => {
