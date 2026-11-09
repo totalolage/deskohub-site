@@ -147,6 +147,7 @@
   "primaryNavigationLabel": "Hlavná navigácia",
   "mobilePrimaryNavigationLabel": "Hlavná mobilná navigácia",
   "languageSwitcherLabel": "Výber jazyka",
+  "languageMenuTriggerLabel": "Jazyk: {language}",
   "openNavigationMenuLabel": "Otvoriť navigačnú ponuku",
   "closeNavigationMenuLabel": "Zavrieť navigačnú ponuku",
   "closeDialogLabel": "Zavrieť",

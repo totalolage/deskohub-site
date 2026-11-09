@@ -145,6 +145,7 @@
   "primaryNavigationLabel": "Hauptnavigation",
   "mobilePrimaryNavigationLabel": "Mobile Hauptnavigation",
   "languageSwitcherLabel": "Sprachauswahl",
+  "languageMenuTriggerLabel": "Sprache: {language}",
   "openNavigationMenuLabel": "Navigationsmenü öffnen",
   "closeNavigationMenuLabel": "Navigationsmenü schließen",
   "closeDialogLabel": "Schließen",
