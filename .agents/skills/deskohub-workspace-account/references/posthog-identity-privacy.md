@@ -241,8 +241,9 @@ non-production traffic apart:
   only customer identifier allowed. Don't alias a browser to a reservation.
   Customer contact data reaches PostHog only as rows of the Dotypos customer
   warehouse table (see below), joined to persons at query time, never as
-  person properties or as properties of events Workspace captures. The one
-  exception is PostHog's own engagement events for campaign email it sends
+  person properties or as properties of events Workspace captures. Campaign
+  email is the exception: its send requests and PostHog's own engagement
+  events carry the recipient
   ([campaign email through PostHog](#campaign-email-through-posthog)).
 - Booking for someone else creates or reuses a Dotypos customer found by the
   typed email, so the booker's browser isn't linked to it: anyone can type
@@ -509,10 +510,11 @@ skill's
 The processor and transfer rows are in
 [privacy and retention](privacy-and-retention.md).
 
-- Content: for each message PostHog accepts, the recipient address,
-  subject, HTML and text body, sender, and reply-to. PostHog keeps the
-  message's delivery status readable through the API for 30 days and
-  publishes no separate retention for the content. Workspace stores only the
+- Content: every send request carries the recipient address, subject, HTML
+  and text body, sender, and reply-to, so PostHog receives them even when it
+  refuses the message and Resend sends it. PostHog keeps an accepted
+  message's delivery status readable through the API for 30 days; its
+  retention and deletion of the content itself are unverified. Workspace stores only the
   provider message ID (`email_campaign_recipients.provider_message_id`) and
   the recipient's delivery status.
 - Engagement events: with engagement events enabled in the project's

@@ -6,8 +6,6 @@ Resend. Delivery rules are in the `deskohub-workspace-domain` skill's
 `references/email-campaigns.md`, the provider packages and chains in the
 `deskohub-email` skill, and what PostHog receives in the
 `deskohub-workspace-account` skill's `references/posthog-identity-privacy.md`.
-Never print or quote the secret key, the signing secret, recipient
-addresses, or message bodies.
 
 ## Configuration
 
@@ -91,21 +89,22 @@ PostHog starts a new sending project at tier 0 (50 an hour, 100 a day) and
 raises it at most one tier per daily review: time at the tier, at least half
 the daily cap sent on two days, bounces under 2%, complaints under 0.1%.
 Sends above the allowance are accepted (`202`) and stay queued at PostHog,
-so they don't fall back to Resend; a campaign larger than the allowance
-arrives late rather than failing. The API request cap (600 a minute, 20,000
+so they don't fall back to Resend; messages beyond the allowance stay
+queued at PostHog, and a large campaign's statuses stay `queued` until it
+sends them. The API request cap (600 a minute, 20,000
 an hour) and the billing quota answer `429` and do fall back.
 
 ## Diagnosing
 
-- Fallback rate: the anonymous `email provider fallback` server event, with
-  `stream`, `category`, `failed_provider`, `next_provider`, `error_kind`, and
-  `error_code`. A run of `provider` errors from `posthog` means PostHog is
+- Fallback rate: the anonymous `email provider fallback` server event
+  (properties in the `deskohub-workspace-account` skill's
+  `references/posthog-identity-privacy.md`). A run of `provider` errors from `posthog` means PostHog is
   refusing sends (key, paused or suspended sending, quota) and Resend is
   carrying campaign mail.
 - Webhook calls rejected with 401: the destination's signing secret and
   `POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET` differ. With the destination
-  failing or disabled, the cron still settles statuses, up to 15 minutes
-  late.
+  failing or disabled, the 15-minute cron still polls due rows, so statuses
+  settle on its schedule and backoff.
 - Poll result `unauthorized` (logged at error level): the secret key lost
   `transactional_email:read` or was revoked. `rate-limited`: PostHog
   answered 429; the rows stay due.

@@ -47,8 +47,10 @@ category) is in the app's `marketingCategories`, otherwise `transactional`.
 | Workspace | `apps/deskohub-workspace/shared/backend/config/email.config.ts` (`workspaceEmailProviders`, `WorkspaceEmailLayer`), recipient routed | Resend | PostHog, then Resend, for category `email-campaign` |
 | Boardgame Bar | `apps/deskohub-boardgame-bar/shared/backend/config/email.config.ts` | Resend or Console (`EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_TEST_MODE`, stage) | none |
 
-Without a Resend key, Workspace sends everything to Console. PostHog is
-marketing-only by decision: it receives recipients and bodies, so adding it
+Without a Resend key, Workspace sends everything to Console. The marketing
+stream is the category, not the campaign purpose: operational-purpose
+campaigns share `email-campaign` and also go to PostHog. PostHog stays off
+the transactional stream by decision: it receives recipients and bodies, so adding it
 to the transactional chain or another category changes the privacy notice
 first (`deskohub-workspace-account` skill, `references/privacy-and-retention.md`).
 
@@ -62,7 +64,9 @@ take, such as several `to` addresses at PostHog) and on `NetworkError` with
 provider's own retries). It stops on `EmailServiceError` `"message"`
 (validation, suppressed or unreachable recipient, attachments) and on
 `NetworkError` `"unknown-outcome"` (a 409 for a key in flight or reused):
-the caller replays that under the same key. The chain adds no retries.
+the message may have been sent, so any replay reuses the same key (campaign
+replay rules: `deskohub-workspace-domain` skill,
+`references/email-campaigns.md`). The chain adds no retries.
 
 A batch call fails as a whole only when its first provider failed the whole
 batch and nothing fell through. Once anything fell through, the failed
