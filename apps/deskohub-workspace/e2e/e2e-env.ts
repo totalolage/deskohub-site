@@ -7,7 +7,6 @@ import {
 import { createEnv } from "@t3-oss/env-core";
 import { Schema } from "effect";
 import { urlStringSchema } from "../shared/utils/url-schema";
-import { isAdminBasicAuthCredentialPair } from "./admin-basic-auth";
 
 const toEnvironmentSchema = <S extends Schema.Decoder<unknown>>(schema: S) =>
   Schema.toStandardSchemaV1(schema);
