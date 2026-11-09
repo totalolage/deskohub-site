@@ -10,8 +10,10 @@ import {
 import {
   act,
   cleanup,
+  fireEvent,
   type RenderResult,
   render,
+  within,
 } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import type { SiteHeaderAccountEntry } from "@/shared/components/site-header-config";
@@ -105,7 +107,7 @@ const completeSiteHeaderProps = {
   contactHref: "/en-US/reservation/cowork",
   contactLabel: "Book",
   currentLocale: "en-US" as const,
-  languageSwitcherLabel: "Language switcher",
+  languageMenuTriggerLabel: "Language menu",
   links: [],
   mobilePrimaryNavigationLabel: "Mobile primary navigation",
   openNavigationMenuLabel: "Open navigation menu",
@@ -130,6 +132,19 @@ afterAll(async () => {
   await unregisterWorkspaceComponentTestEnv();
 });
 
+// Radix opens the menu on a primary-button pointerdown on its trigger.
+const openLanguageMenu = async (view: RenderResult) => {
+  await act(async () => {
+    fireEvent.pointerDown(
+      view.getByRole("button", {
+        name: completeSiteHeaderProps.languageMenuTriggerLabel,
+      }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+  });
+  return view.findByRole("menu");
+};
+
 test("uses document navigation for every alternate-locale full-header link", async () => {
   const { SiteHeader } = await import("./site-header");
 
@@ -149,22 +164,31 @@ test("uses document navigation for every alternate-locale full-header link", asy
   ] as const) {
     currentPathname = pathname;
     capturedLinks.length = 0;
+    capturedGuardedLinkHrefs.length = 0;
     const view = render(
       <SiteHeader
+        {...completeSiteHeaderProps}
         account={accountEntry(`/${currentLocale}/account`)}
         contactHref={contactHref}
         contactLabel="Contact"
         currentLocale={currentLocale}
-        links={[]}
       />
     );
+    const menu = await openLanguageMenu(view);
 
+    // The language menu is the header's only language switch.
     expect(
-      view.container.querySelectorAll(`a[href="${alternateHref}"]`)
-    ).toHaveLength(2);
+      view.baseElement.querySelectorAll(`a[href="${alternateHref}"]`)
+    ).toHaveLength(1);
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .filter((item) => item.getAttribute("href") === alternateHref)
+    ).toHaveLength(1);
     expect(capturedLinks.filter(({ href }) => href === alternateHref)).toEqual(
       []
     );
+    expect(capturedGuardedLinkHrefs).not.toContain(alternateHref);
     expect(
       view.container.querySelectorAll(`a[href="/${currentLocale}/account"]`)
     ).toHaveLength(2);
@@ -182,7 +206,7 @@ test("renders only the configured full-header items without reserved slots", asy
       contactHref="/en-US/reservation/cowork"
       contactLabel="Book"
       currentLocale="en-US"
-      languageSwitcherLabel="Language switcher"
+      languageMenuTriggerLabel="Language menu"
       links={[
         {
           id: "gallery",
@@ -196,14 +220,31 @@ test("renders only the configured full-header items without reserved slots", asy
     />
   );
 
+  // The bar's contact and account links reappear in the navigation panel,
+  // which phones too narrow for them in the bar open instead.
   expect(capturedGuardedLinkHrefs).toEqual([
     "/en-US",
     galleryHref,
     "/en-US/reservation/cowork",
     "/en-US/account",
+    "/en-US/reservation/cowork",
     "/en-US/account",
     galleryHref,
   ]);
+});
+
+test("keeps the language menu in the bar and no language list in the navigation panel", async () => {
+  const { SiteHeader } = await import("./site-header");
+  const view = render(<SiteHeader {...completeSiteHeaderProps} />);
+  const panel = view.container.querySelector("#site-header-mobile-menu");
+
+  expect(
+    view.container.querySelectorAll("[data-language-menu-trigger]")
+  ).toHaveLength(1);
+  expect(panel).not.toBeNull();
+  expect(panel?.querySelector("[data-language-menu-trigger]")).toBeNull();
+  expect(panel?.querySelector("[hreflang]")).toBeNull();
+  expect(panel?.querySelector("[data-locale-switcher]")).toBeNull();
 });
 
 test("marks navigation links for the current page", async () => {
@@ -334,10 +375,18 @@ test("uses document navigation for the alternate-locale minimal-header link", as
   ] as const) {
     currentPathname = pathname;
     capturedLinks.length = 0;
-    const view = render(<MinimalSiteHeader currentLocale={currentLocale} />);
+    const view = render(
+      <MinimalSiteHeader
+        currentLocale={currentLocale}
+        languageMenuTriggerLabel={
+          completeSiteHeaderProps.languageMenuTriggerLabel
+        }
+      />
+    );
+    await openLanguageMenu(view);
 
     expect(
-      view.container.querySelectorAll(`a[href="${alternateHref}"]`)
+      view.baseElement.querySelectorAll(`a[href="${alternateHref}"]`)
     ).toHaveLength(1);
     expect(capturedLinks.filter(({ href }) => href === alternateHref)).toEqual(
       []

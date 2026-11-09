@@ -52,7 +52,7 @@ const siteHeaderProps = {
   contactHref: `/${locale}/reservation/cowork`,
   contactLabel: "Book",
   currentLocale: locale,
-  languageSwitcherLabel: "Language switcher",
+  languageMenuTriggerLabel: "Language menu",
   links: [],
   mobilePrimaryNavigationLabel: "Mobile primary navigation",
   openNavigationMenuLabel: "Open navigation menu",
