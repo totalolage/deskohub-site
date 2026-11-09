@@ -63,10 +63,10 @@ describe("getConsentBannerRevision", () => {
     }
   });
 
-  test("keeps the published revision while only English and Czech record versions", () => {
+  test("keeps the published revision of every locale's recorded versions", () => {
     // Saved consent choices carry this revision; changing it reopens the
     // banner for every visitor.
-    expect(getConsentBannerRevision()).toBe(39405169722749);
+    expect(getConsentBannerRevision()).toBe(177666884920253);
   });
 
   test("gives a new revision once a locale's versions are recorded", () => {
