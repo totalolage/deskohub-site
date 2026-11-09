@@ -8,21 +8,39 @@ import {
 import type { PostHogFeatureFlagError } from "./errors";
 import {
   PostHogFeatureFlagContractFile,
+  PostHogFeatureFlagSnapshotFile,
   PostHogFeatureFlagSync,
   type PostHogFeatureFlagSyncResult,
+  refreshPostHogFeatureFlagSnapshot,
   runPostHogFeatureFlagSync,
 } from "./sync";
 
-export interface GeneratePostHogFeatureFlagContractOptions {
+interface PostHogFeatureFlagManagementOptions {
   readonly apiKey: string;
   readonly host: URL;
-  readonly outputFile: string | URL;
   readonly projectId: PostHogProjectId;
 }
 
-export interface GeneratePostHogFeatureFlagContractFromDefinitionsOptions {
-  readonly definitions: readonly PostHogFeatureFlagDefinition[];
+interface PostHogFeatureFlagOutputFiles {
   readonly outputFile: string | URL;
+  /** Where the definitions snapshot (`PostHogFeatureFlagSnapshot`) goes. */
+  readonly snapshotFile: string | URL;
+}
+
+export interface GeneratePostHogFeatureFlagContractOptions
+  extends PostHogFeatureFlagManagementOptions,
+    PostHogFeatureFlagOutputFiles {}
+
+export interface GeneratePostHogFeatureFlagContractFromDefinitionsOptions
+  extends PostHogFeatureFlagOutputFiles {
+  readonly definitions: readonly PostHogFeatureFlagDefinition[];
+}
+
+export interface GeneratePostHogFeatureFlagSnapshotOptions
+  extends PostHogFeatureFlagManagementOptions {
+  /** The keys of the contract the snapshot belongs to. */
+  readonly keys: readonly string[];
+  readonly snapshotFile: string | URL;
 }
 
 export const generatePostHogFeatureFlagContract = Effect.fn(
@@ -36,6 +54,7 @@ export const generatePostHogFeatureFlagContract = Effect.fn(
         generatePostHogFeatureFlagContractFromDefinitions({
           definitions,
           outputFile: options.outputFile,
+          snapshotFile: options.snapshotFile,
         })
       )
     );
@@ -51,26 +70,50 @@ export const generatePostHogFeatureFlagContractFromDefinitions = Effect.fn(
     runPostHogFeatureFlagContractGeneration({
       definitions: Effect.succeed(options.definitions),
       outputFile: options.outputFile,
+      snapshotFile: options.snapshotFile,
     })
+);
+
+/**
+ * Rewrites only the definitions snapshot of an existing contract's `keys`,
+ * leaving the contract itself as it is.
+ */
+export const generatePostHogFeatureFlagSnapshot = Effect.fn(
+  "generatePostHogFeatureFlagSnapshot"
+)(
+  (
+    options: GeneratePostHogFeatureFlagSnapshotOptions
+  ): Effect.Effect<{ readonly flagCount: number }, PostHogFeatureFlagError> =>
+    Effect.gen(function* () {
+      const snapshotFile = yield* PostHogFeatureFlagSnapshotFile;
+      return yield* refreshPostHogFeatureFlagSnapshot({
+        definitions: loadPostHogFeatureFlagDefinitions(options),
+        keys: options.keys,
+        snapshotFile,
+      });
+    }).pipe(
+      Effect.provide(PostHogFeatureFlagSnapshotFile.from(options.snapshotFile))
+    )
 );
 
 const runPostHogFeatureFlagContractGeneration = ({
   definitions,
   outputFile,
-}: {
+  snapshotFile,
+}: PostHogFeatureFlagOutputFiles & {
   readonly definitions: Effect.Effect<
     readonly PostHogFeatureFlagDefinition[],
     PostHogFeatureFlagError
   >;
-  readonly outputFile: string | URL;
 }) => {
   const featureFlagSyncLive = PostHogFeatureFlagSync.Default.pipe(
     Layer.provide(
-      Layer.merge(
+      Layer.mergeAll(
         Layer.succeed(PostHogFeatureFlagService, {
           listDefinitions: definitions,
         }),
-        PostHogFeatureFlagContractFile.from(outputFile)
+        PostHogFeatureFlagContractFile.from(outputFile),
+        PostHogFeatureFlagSnapshotFile.from(snapshotFile)
       )
     )
   );

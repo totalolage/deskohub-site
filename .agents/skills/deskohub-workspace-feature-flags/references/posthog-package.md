@@ -14,7 +14,7 @@ The task downloads `https://eu.posthog.com/api/schema/?format=json`; set `POSTHO
 
 ## Typed feature flags
 
-Each application owns its generated contract, because applications can use different PostHog projects and flags. The package exports the generator (`feature-flags/codegen`), the management definition reader (`feature-flags/management`), and the Node and React adapters (`feature-flags/node`, `feature-flags/react`). The generator doesn't read environment variables or choose an output path; the consuming application validates its environment and passes both. `apps/deskohub-workspace/scripts/sync-posthog-feature-flags.ts` is the reference consumer.
+Each application owns its generated contract, because applications can use different PostHog projects and flags. The package exports the generator (`feature-flags/codegen`: the contract with its definitions snapshot, or the snapshot alone for an existing contract's keys), the management definition reader (`feature-flags/management`, whose list errors carry `failureCode` and `httpStatus` for `postHogFeatureFlagFailureLogFields`), and the Node and React adapters (`feature-flags/node`, `feature-flags/react`). The generator doesn't read environment variables or choose an output path; the consuming application validates its environment and passes both. `apps/deskohub-workspace/scripts/sync-posthog-feature-flags.ts` is the reference consumer.
 
 The React adapter doesn't use `@posthog/react`, which imports the whole browser SDK at module load. Its hooks read the client from `PostHogClientProvider`, whose source can publish the client after the hooks mount, and return the default value until then. Workspace's `PostHogProvider` passes the consent-gated SDK module as that source.
 
