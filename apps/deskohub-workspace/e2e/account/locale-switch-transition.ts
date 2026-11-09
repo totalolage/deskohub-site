@@ -9,7 +9,10 @@ import {
   type WorkspaceE2EAccountLocaleSwitchDiagnosticCode,
   workspaceE2EError,
 } from "../errors";
-import { waitForReactClickHandler } from "../react-handlers";
+import {
+  waitForReactClickHandler,
+  waitForReactEventHandler,
+} from "../react-handlers";
 import { redact } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
@@ -21,10 +24,9 @@ import {
 const accountProfilePath = (locale: Locale) =>
   getAccountSectionPath(locale, "profile");
 const languageTriggerSelector = `${accountSectionLandmarks.profile} [data-slot="select-trigger"]`;
+const languageMenuTriggerSelector = "button[data-language-menu-trigger]";
 const localeSwitchLinkSelector = (locale: Locale) =>
   `[data-locale-switcher] a[href^="/${locale}"]`;
-const mobileMenuToggleSelector =
-  'button[aria-controls="site-header-mobile-menu"]';
 
 /**
  * The tab's sessionStorage key for the error-page watch. An empty value arms
@@ -147,16 +149,14 @@ const chooseProfileLanguage = async (page: Page, to: Locale) => {
 };
 
 /**
- * Clicks the visible header language switcher's link, as a visitor's tap
- * does. Below the desktop breakpoint the switcher sits in the collapsed
- * mobile menu, so the menu opens first.
+ * Opens the header's language menu and clicks its link, as a visitor's taps
+ * do. The menu's trigger sits in the header bar at every width and opens on
+ * pointerdown once hydrated.
  */
 export const activateHeaderSwitcher = async (page: Page, to: Locale) => {
-  const menuToggle = page.locator(mobileMenuToggleSelector);
-  if (await menuToggle.isVisible()) {
-    await waitForReactClickHandler(page, menuToggle);
-    await menuToggle.click({ timeout: workspaceE2ETimeouts.browserAction });
-  }
+  const trigger = page.locator(languageMenuTriggerSelector);
+  await waitForReactEventHandler(page, trigger, "onPointerDown");
+  await trigger.click({ timeout: workspaceE2ETimeouts.browserAction });
   const link = page
     .locator(localeSwitchLinkSelector(to))
     .filter({ visible: true });
