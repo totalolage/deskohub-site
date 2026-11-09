@@ -280,8 +280,9 @@ describe("customer request budgets", () => {
   // the account and the history; a booking reads the account at the booking
   // screen, the order's status once and then up to nine times while the
   // payment return settles, the history and the door code. Two bookings
-  // and a session's navigation stay under the budget.
-  test("serves two bookings with full payment-return polling and a session's navigation within the account read budget", async () => {
+  // and a session's navigation stay under the budget. Navigation comes
+  // last, so both polling sequences run with the app's reserve still free.
+  test("spends 38 account reads on two bookings with full payment-return polling and a session's navigation, and refuses none of them", async () => {
     const api = makeCustomerApiTestServer({ services: linkedAccountServices });
     const booking = [
       getAccount,
@@ -297,8 +298,8 @@ describe("customer request budgets", () => {
       getAccount,
       listReservations,
       ...booking,
-      ...navigation,
       ...booking,
+      ...navigation,
     ];
 
     const statuses: number[] = [];
