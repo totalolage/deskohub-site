@@ -100,6 +100,31 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.1.12297006" > /dev/null
           ls -d "$ANDROID_HOME/ndk/27.1.12297006"
 
+      # Pull request dry runs keep the Gradle distribution, the Kotlin compiler
+      # and the Android dependencies between runs instead of downloading them
+      # every time. GitHub scopes a pull request's cache to that pull request,
+      # and tag runs can't restore it, so the release-signed build always
+      # downloads fresh and never uses a cache. A key miss restores the
+      # closest earlier cache and saves the result under the new key.
+      - name: Resolve the Gradle cache key
+        id: gradle-cache-key
+        if: github.event_name == 'pull_request'
+        working-directory: apps/deskohub-mobile
+        run: bun scripts/release/mobile-release.ts gradle-cache-key | tee -a "$GITHUB_OUTPUT"
+
+      - name: Restore the Gradle cache
+        id: gradle-cache
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: mobile-gradle-${{ runner.os }}-${{ runner.arch }}-${{ steps.gradle-cache-key.outputs.gradle }}-${{ steps.gradle-cache-key.outputs.native-inputs }}
+          restore-keys: |
+            mobile-gradle-${{ runner.os }}-${{ runner.arch }}-${{ steps.gradle-cache-key.outputs.gradle }}-
+            mobile-gradle-${{ runner.os }}-${{ runner.arch }}-
+
       # Only tag pushes read the release keystore. A dry run fails if the
       # release certificate signed its APK. Keep the two steps' env the same
       # apart from the keystore, so the dry run builds the app that ships.
@@ -124,6 +149,34 @@ jobs:
           EXPO_PUBLIC_POSTHOG_KEY: ${{ vars.POSTHOG_PROJECT_TOKEN }}
           EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
         run: bun scripts/release/mobile-release.ts build --signing debug --out-dir "$RUNNER_TEMP/mobile-release"
+
+      # The cache holds downloads and transforms only. Gradle settings
+      # (~/.gradle/gradle.properties, init scripts) stay out of it, and the
+      # build writes its keystore and credentials.json outside ~/.gradle; this
+      # fails the save if signing material ever lands in the cached paths.
+      - name: Check the Gradle cache for signing material
+        if: github.event_name == 'pull_request' && steps.gradle-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          ls -A ~/.gradle
+          du -sh ~/.gradle/caches ~/.gradle/wrapper
+          found="$(find ~/.gradle/caches ~/.gradle/wrapper -type f \( \
+            -name gradle.properties -o -name credentials.json -o -name '*.keystore' \
+            -o -name '*.jks' -o -name '*.p12' -o -name '*.pfx' \) -print)"
+          if [ -n "$found" ]; then
+            echo "The Gradle cache paths hold files that may carry credentials:" >&2
+            echo "$found" >&2
+            exit 1
+          fi
+
+      - name: Save the Gradle cache
+        if: github.event_name == 'pull_request' && steps.gradle-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
 
       - name: Summarize the build
         run: cat "$RUNNER_TEMP/mobile-release/release-notes.md" >> "$GITHUB_STEP_SUMMARY"

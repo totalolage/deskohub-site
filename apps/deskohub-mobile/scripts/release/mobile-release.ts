@@ -3,8 +3,11 @@
 //
 //   bun scripts/release/mobile-release.ts metadata [--tag mobile-vX.Y.Z]
 //   bun scripts/release/mobile-release.ts build [--tag mobile-vX.Y.Z] [--signing release|debug] --out-dir <dir>
+//   bun scripts/release/mobile-release.ts gradle-cache-key
 //
-// `metadata` prints `key=value` lines for $GITHUB_OUTPUT. With --tag, both
+// `metadata` and `gradle-cache-key` print `key=value` lines for
+// $GITHUB_OUTPUT; `gradle-cache-key` names the Gradle cache of pull request
+// dry runs (gradle-cache.ts). With --tag, both
 // commands fail unless the tag matches `expo.version` in app.json and
 // CHANGELOG.md has a section for it. `build` needs EXPO_TOKEN; it writes
 // deskohub-<version>.apk and release-notes.md to the output directory after
@@ -35,6 +38,7 @@ import {
   verifyNonReleaseSigners,
   verifyReleaseSigners,
 } from "./apk-signature";
+import { gradleCacheKey } from "./gradle-cache";
 import { changelogSection, renderReleaseNotes } from "./release-notes";
 import { releaseTag, releaseTagVersion } from "./release-tag";
 
@@ -350,6 +354,12 @@ const main = async () => {
       print(`tag=${metadata.tag}`);
       return;
     }
+    case "gradle-cache-key": {
+      const key = await gradleCacheKey();
+      print(`gradle=${key.gradle}`);
+      print(`native-inputs=${key.nativeInputs}`);
+      return;
+    }
     case "build": {
       const outDirectory = values["out-dir"];
       if (outDirectory === undefined) {
@@ -371,7 +381,7 @@ const main = async () => {
     }
     default:
       throw new Error(
-        "Usage: mobile-release.ts metadata|build [--tag mobile-vX.Y.Z] [--signing release|debug] [--out-dir <dir>]"
+        "Usage: mobile-release.ts metadata|build|gradle-cache-key [--tag mobile-vX.Y.Z] [--signing release|debug] [--out-dir <dir>]"
       );
   }
 };
