@@ -13,6 +13,7 @@ import {
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import { censorDatabaseQueryParams } from "@/shared/backend/logging/censorship";
+import { moneyWithValue } from "@/shared/money/money";
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 import {
   accountingDocumentIdentitySchema,
@@ -174,6 +175,53 @@ describe("accounting document snapshot", () => {
     );
 
     expect(decoded.billing).toBeUndefined();
+  });
+
+  test("decodes discounts with and without a staff label", async () => {
+    const snapshot = makeSnapshot();
+    const price = snapshot.quote.payment.expectedPrice;
+    const withDiscount = (discount: {
+      label: string;
+      staffLabel?: string;
+    }) => ({
+      ...snapshot,
+      quote: {
+        ...snapshot.quote,
+        payment: {
+          ...snapshot.quote.payment,
+          discounts: [
+            {
+              discount: {
+                id: "summer-sale",
+                adjustment: { kind: "percentage", basisPoints: 1000 },
+                ...discount,
+              },
+              subtotalBefore: price,
+              amount: moneyWithValue(1, price),
+              subtotalAfter: moneyWithValue(price.value - 1, price),
+            },
+          ],
+        },
+      },
+    });
+
+    const historical = await Effect.runPromise(
+      decodeStoredAccountingDocumentSnapshot(
+        withDiscount({ label: "Sommerrabatt" })
+      )
+    );
+    const current = await Effect.runPromise(
+      decodeStoredAccountingDocumentSnapshot(
+        withDiscount({ label: "Sommerrabatt", staffLabel: "Letní sleva" })
+      )
+    );
+
+    expect(historical.quote.payment.discounts[0]?.discount).not.toHaveProperty(
+      "staffLabel"
+    );
+    expect(current.quote.payment.discounts[0]?.discount.staffLabel).toBe(
+      "Letní sleva"
+    );
   });
 
   test("rejects schema-version metadata from stored snapshots", async () => {

@@ -7,6 +7,7 @@ import {
 import { workspaceProductTargetMatches } from "@/features/discounts/product-target";
 import { m } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import { staffLocale } from "@/shared/backend/staff-locale";
 import { moneyWithValue, sameMoneyUnit } from "@/shared/money/money";
 import { currentInstant } from "@/shared/utils/temporal";
 import type { CanonicalPromotionCode, DiscountQuoteInput } from "./contracts";
@@ -397,6 +398,7 @@ const toDiscountCodeCandidate = (input: {
     discount: {
       id: input.definition.id,
       label: discountLabelFor(input.definition.labels, input.locale),
+      staffLabel: discountLabelFor(input.definition.labels, staffLocale),
       adjustment: input.definition.adjustment,
       ...timing,
     },
@@ -466,6 +468,7 @@ const toVoucherCandidate = (input: {
     discount: {
       id,
       label: m.checkoutVoucherLabel({}, { locale: input.locale }),
+      staffLabel: m.checkoutVoucherLabel({}, { locale: staffLocale }),
       adjustment: { kind: "fixed", amount: availableAmount },
       ...getPromotionTiming(input.configuration.validUntil),
     },

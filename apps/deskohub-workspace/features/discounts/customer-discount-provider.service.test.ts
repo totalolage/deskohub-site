@@ -95,6 +95,7 @@ describe("CustomerDiscountProvider", () => {
 
     expect(result[0][0]?.discount.label).toBe("Customer discount");
     expect(result[1][0]?.discount.label).toBe("Zákaznická sleva");
+    expect(result[0][0]?.discount.staffLabel).toBe("Zákaznická sleva");
     expect(result[0][0]?.discount).not.toHaveProperty("expiresAt");
     expect(result[0][0]?.discount).not.toHaveProperty("countdownStartsAt");
     expect(JSON.stringify(result[0][0]?.discount)).not.toContain("group-id");

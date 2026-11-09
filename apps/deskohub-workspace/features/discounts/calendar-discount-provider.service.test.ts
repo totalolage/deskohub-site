@@ -164,6 +164,23 @@ const invalidEventCases = [
 ] as const;
 
 describe("CalendarDiscountProvider", () => {
+  test("labels a sale for staff in Czech whatever the checkout locale", async () => {
+    const result = await runWithProvider(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(bookedAtOn("2026-07-20").epochMilliseconds);
+        const provider = yield* CalendarDiscountProvider;
+        return yield* provider.discoverActiveSales({ locale: "de-DE" });
+      }),
+      mock(() => Effect.succeed([saleEvent()])),
+      ({ discountId }) => Effect.succeed(definition(discountId))
+    );
+
+    expect(result.activeSales[0]?.discount).toMatchObject({
+      label: "Database sale",
+      staffLabel: "Databázová sleva",
+    });
+  });
+
   test("discovers localized active sales with their complete product targets", async () => {
     const products = [coworkTarget, { kind: "meeting-room" } as const];
     const listEvents = mock(() => Effect.succeed([saleEvent()]));
@@ -198,6 +215,7 @@ describe("CalendarDiscountProvider", () => {
           discount: {
             id: expect.any(String),
             label: "Databázová sleva",
+            staffLabel: "Databázová sleva",
             adjustment: {
               kind: "fixed",
               amount: { value: 5000, exponent: 2, currency: "CZK" },
