@@ -617,7 +617,9 @@ describe("delivery observer", () => {
     const recorded = recordingObserver();
     const failing: EmailDeliveryObserverShape = {
       onSent: () => Effect.die("observer defect"),
-      onFallback: () => Effect.die("observer defect"),
+      onFallback: () => {
+        throw new Error("observer threw before returning an effect");
+      },
     };
 
     const result = await runWithEmail(
@@ -637,6 +639,30 @@ describe("delivery observer", () => {
     expect(recorded.sent).toHaveLength(1);
     expect(recorded.fallbacks).toHaveLength(1);
   });
+});
+
+test("an observer that throws synchronously never fails a send", async () => {
+  const throwing: EmailDeliveryObserverShape = {
+    onSent: () => {
+      throw new Error("observer threw");
+    },
+    onFallback: () => {
+      throw new Error("observer threw");
+    },
+  };
+
+  const result = await runWithEmail(
+    send(campaign),
+    chains({
+      marketing: [
+        failingProvider("posthog", providerLevel("posthog")).provider,
+        scriptedProvider("resend", () => "accept").provider,
+      ],
+    }),
+    { observer: throwing }
+  );
+
+  expect(result.provider).toBe("resend");
 });
 
 describe("Console routing", () => {

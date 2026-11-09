@@ -8,6 +8,7 @@ import {
   EmailServiceError,
   NetworkError,
 } from "@deskohub/email";
+import { createHash } from "node:crypto";
 import { Config, Duration, Effect, Option, Schema } from "effect";
 import { Resend } from "resend";
 import { resendRetryPolicy } from "./request-policy";
@@ -195,6 +196,9 @@ const requestResend = <A>(
 const isRetryableResendFailure = (error: EmailSendError) =>
   error._tag === "NetworkError";
 
+const isUnknownOutcome = (error: EmailSendError) =>
+  error._tag === "NetworkError" && error.failureKind === "unknown-outcome";
+
 const toResendEmail = (message: EmailMessage) => ({
   from: `${message.from.name || ""} <${message.from.email}>`.trim(),
   to: Array.isArray(message.to)
@@ -256,6 +260,9 @@ export const makeResendEmailProvider = ({
           hasText: !!message.text,
         });
 
+        // Once an attempt may have delivered, the send stays uncertain
+        // unless a later attempt succeeds.
+        let uncertain = false;
         const deliveryId = yield* requestResend(
           (signal) =>
             resend.emails.send(
@@ -282,7 +289,21 @@ export const makeResendEmailProvider = ({
             })
           ),
           Effect.flatMap((response) => decodeDeliveryId(response?.id)),
-          sendPolicy.retryWhile(isRetryableResendFailure)
+          Effect.tapError((error) =>
+            Effect.sync(() => {
+              uncertain ||= isUnknownOutcome(error);
+            })
+          ),
+          sendPolicy.retryWhile(isRetryableResendFailure),
+          Effect.mapError((error) =>
+            uncertain && !isUnknownOutcome(error)
+              ? new NetworkError({
+                  message: "An earlier Resend attempt may have delivered",
+                  code: error.code,
+                  failureKind: "unknown-outcome",
+                })
+              : error
+          )
         );
 
         const sendResult: EmailSendResult = {
@@ -368,5 +389,13 @@ export const makeResendEmailProvider = ({
 
 const resendIdempotencyKeyMaxLength = 256;
 
+/**
+ * A key longer than Resend accepts becomes its SHA-256 digest, so keys that
+ * differ only past the limit, such as a provider chain's fallback and route
+ * suffixes, stay distinct.
+ */
 const getResendIdempotencyKey = (idempotencyKey: string | undefined) =>
-  idempotencyKey?.slice(0, resendIdempotencyKeyMaxLength);
+  idempotencyKey === undefined ||
+  idempotencyKey.length <= resendIdempotencyKeyMaxLength
+    ? idempotencyKey
+    : `sha256-${createHash("sha256").update(idempotencyKey).digest("hex")}`;

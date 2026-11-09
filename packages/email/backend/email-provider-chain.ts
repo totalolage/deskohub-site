@@ -40,7 +40,7 @@ const reportSent = (
   message: EmailMessage,
   result: EmailSendResult
 ) =>
-  observeEmailDelivery(
+  observeEmailDelivery(() =>
     context.observer.onSent({
       provider: result.provider,
       deliveryId: result.id,
@@ -60,7 +60,7 @@ const reportFallback = (
   next: EmailProvider,
   error: EmailSendError
 ) =>
-  observeEmailDelivery(
+  observeEmailDelivery(() =>
     context.observer.onFallback({
       stream: context.streamOf(message),
       category: emailCategoryOf(message),
