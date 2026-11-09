@@ -1,0 +1,141 @@
+name: Mobile Gradle cache
+
+# Keeps the Gradle cache that mobile-release.yml's pull request dry runs
+# restore. A pull request's own cache entries are visible only to that pull
+# request, but every pull request can restore main's, so main creates the
+# entry under the same key the dry run computes. It downloads what the build
+# would (the Gradle distribution, plugins, the Kotlin compiler and the Android
+# dependencies) without building the APK. A dry run with unchanged native
+# inputs then hits main's entry exactly and saves nothing; one with changed
+# inputs restores main's entry through restore-keys and saves its own.
+#
+# Pull requests that change this warm-up run it without a cache and save
+# nothing, to check that it still works.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/mobile-gradle-cache.yml"
+      - "apps/deskohub-mobile/**"
+      - "bun.lock"
+  # GitHub evicts entries unused for seven days; restoring main's entry twice
+  # a week keeps it when no mobile change lands.
+  schedule:
+    - cron: "17 3 * * 1,4"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/mobile-gradle-cache.yml"
+      - "apps/deskohub-mobile/scripts/release/gradle-*.ts"
+      - "apps/deskohub-mobile/scripts/release/mobile-release.ts"
+      - "apps/deskohub-mobile/scripts/release/resolve-dependencies.*"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: mobile-gradle-cache-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  warm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.23.2
+
+      # The same NDK as mobile-release.yml, which the Android Gradle plugin
+      # looks for while it configures the native modules.
+      - name: Install the Android NDK
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.1.12297006" > /dev/null
+          ls -d "$ANDROID_HOME/ndk/27.1.12297006"
+
+      - name: Resolve the Gradle cache key
+        id: gradle-cache-key
+        working-directory: apps/deskohub-mobile
+        run: bun scripts/release/mobile-release.ts gradle-cache-key | tee -a "$GITHUB_OUTPUT"
+
+      # Key, restore-keys and paths match mobile-release.yml's restore, which
+      # mobile-gradle-cache-workflow.test.ts checks.
+      - name: Restore the Gradle cache
+        id: gradle-cache
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: mobile-gradle-${{ runner.os }}-${{ runner.arch }}-${{ steps.gradle-cache-key.outputs.gradle }}-${{ steps.gradle-cache-key.outputs.native-inputs }}
+          restore-keys: |
+            mobile-gradle-${{ runner.os }}-${{ runner.arch }}-${{ steps.gradle-cache-key.outputs.gradle }}-
+            mobile-gradle-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Pre-fetch the Gradle distribution
+        if: steps.gradle-cache.outputs.cache-hit != 'true'
+        working-directory: apps/deskohub-mobile
+        run: bun scripts/release/mobile-release.ts prepare-gradle
+
+      - name: Download the Gradle dependencies
+        if: steps.gradle-cache.outputs.cache-hit != 'true'
+        working-directory: apps/deskohub-mobile
+        run: bun scripts/release/mobile-release.ts resolve-gradle-dependencies
+
+      # On the Gradle distribution just unpacked: a download that keeps failing
+      # must fail the warm-up rather than save an incomplete entry, and the
+      # retry properties must ride out 504 answers.
+      - name: Test the dependency download against a failing repository
+        if: steps.gradle-cache.outputs.cache-hit != 'true'
+        working-directory: apps/deskohub-mobile
+        env:
+          GRADLE_DISTRIBUTION: ${{ steps.gradle-cache-key.outputs.gradle }}
+        run: |
+          set -euo pipefail
+          gradle="$(ls -d ~/.gradle/wrapper/dists/"$GRADLE_DISTRIBUTION"/*/*/bin/gradle)"
+          MOBILE_RELEASE_GRADLE="$gradle" bun test scripts/release/resolve-dependencies.test.ts
+
+      - name: Check the Gradle cache for signing material
+        if: steps.gradle-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          du -sh ~/.gradle/caches/* ~/.gradle/caches ~/.gradle/wrapper
+          found="$(find ~/.gradle/caches ~/.gradle/wrapper -type f \( \
+            -name gradle.properties -o -name credentials.json -o -name '*.keystore' \
+            -o -name '*.jks' -o -name '*.p12' -o -name '*.pfx' \) -print)"
+          if [ -n "$found" ]; then
+            echo "The Gradle cache paths hold files that may carry credentials:" >&2
+            echo "$found" >&2
+            exit 1
+          fi
+
+      - name: Save the Gradle cache
+        if: github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
