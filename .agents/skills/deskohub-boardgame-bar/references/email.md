@@ -1,11 +1,11 @@
 # Email
 
-`BoardgameEmailLayer` (`shared/backend/config/email.config.ts`) builds `EmailServiceTag.Live` from `@deskohub/email`. It sends every message through the single provider the config selects, unlike Workspace's per-recipient routing.
+`BoardgameEmailLayer` (`shared/backend/config/email.config.ts`) composes a transactional chain of one provider, Resend (`@deskohub/email-resend`) or Console, for `@deskohub/email`'s `EmailServiceTag.Default`. It has no marketing stream and no per-recipient routing; Boardgame Bar mail never goes to PostHog. Packages and chains: the `deskohub-email` skill.
 
 ## Provider selection
 
 - `EMAIL_PROVIDER=resend` or `console` picks the provider. Without it, the app uses Resend when `EMAIL_API_KEY` is set and Console otherwise.
-- Console is allowed outside production, in Vercel Preview, or with `EMAIL_TEST_MODE=true`. Otherwise production falls back to Resend when `EMAIL_API_KEY` is set and fails without it (`ConfiguredEmailProviderLayer` in `packages/email/backend/provider-factory.ts`).
+- Console is allowed outside production, in Vercel Preview, or with `EMAIL_TEST_MODE=true`. Otherwise production falls back to Resend when `EMAIL_API_KEY` is set and fails without it (`BoardgameEmailLayer`).
 - The sending domain must be verified in Resend.
 
 ## Addresses

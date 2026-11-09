@@ -12,10 +12,10 @@
   keeps the code alone on one bare six-digit line, the only such line, which
   the E2E extractor relies on.
 - `makeMagicLinkEmailDelivery` (`features/account/backend/auth/send-magic-link-email.ts`)
-  sends through the shared `@deskohub/email` `EmailServiceTag.RecipientRouted`
-  service, which owns sending, retry, and routing for every Workspace email:
-  mail addressed only to `EMAIL_TEST_DOMAIN` recipients goes to Console, and
-  everything else, including Resend's `resend.dev` simulator, goes to Resend.
+  sends through `@deskohub/email`'s `EmailServiceTag.RecipientRouted` over
+  Workspace's transactional chain (`deskohub-email` skill): mail addressed
+  only to `EMAIL_TEST_DOMAIN` recipients goes to Console, and everything
+  else, including Resend's `resend.dev` simulator, goes to Resend.
 - Mark every magic-link message `sensitiveContent`, so Console output
   suppresses the bearer content. Delivery reports only the fixed
   `account.magic-link.delivery-*` codes.
