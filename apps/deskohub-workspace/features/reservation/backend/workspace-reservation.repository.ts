@@ -24,6 +24,7 @@ import type {
   CheckoutSessionKey,
   PaymentAttemptId,
 } from "@/features/checkout/checkout-identifiers";
+import type { PaymentReturnTarget } from "@/features/checkout/payment-return-target";
 import type { DiscountClaimError } from "@/features/discounts/errors";
 import type { AgentSelectionKey } from "@/features/reservation/backend/booking-agent";
 import { withCoworkProductFields } from "@/features/reservation/cowork-reservation-product";
@@ -160,6 +161,20 @@ export interface IWorkspaceReservationRepository {
     | WorkspaceReservationDetailsMalformedError
     | WorkspaceReservationStateError
   >;
+  /**
+   * Stores where the reservation's hosted payment returns the customer:
+   * the app a submission asked for, or none for the site's status page. The
+   * last submission that hands out a payment page decides, since every
+   * submission shares the order's one hosted page and return route.
+   */
+  readonly recordPaymentReturnTarget: (input: {
+    readonly id: WorkspaceReservationId;
+    readonly paymentReturnTarget: PaymentReturnTarget | undefined;
+  }) => Effect.Effect<void, EffectDrizzleQueryError>;
+  /** The stored payment return target; `undefined` for none or no reservation. */
+  readonly findPaymentReturnTarget: (
+    id: WorkspaceReservationId
+  ) => Effect.Effect<PaymentReturnTarget | undefined, EffectDrizzleQueryError>;
   readonly claimHoldCreation: (
     id: WorkspaceReservationId
   ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
@@ -779,6 +794,43 @@ export class WorkspaceReservationRepository extends Context.Service<
           }
           return yield* decodeWorkspaceReservation(updated[0]);
         }),
+        // A navigation preference, not reservation state: it leaves
+        // `updatedAt`, which sweeps and status ordering read, untouched.
+        recordPaymentReturnTarget: Effect.fn(
+          "workspaceReservations.recordPaymentReturnTarget"
+        )(
+          function* (input) {
+            const paymentReturnTarget = input.paymentReturnTarget ?? null;
+            yield* db
+              .update(workspaceReservations)
+              .set({ paymentReturnTarget })
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.id),
+                  sql`${workspaceReservations.paymentReturnTarget} is distinct from ${paymentReturnTarget}`
+                )
+              );
+          },
+          (effect, input) =>
+            effect.pipe(Effect.annotateLogs({ reservationId: input.id }))
+        ),
+        findPaymentReturnTarget: Effect.fn(
+          "workspaceReservations.findPaymentReturnTarget"
+        )(
+          function* (id) {
+            const [reservation] = yield* db
+              .select({
+                paymentReturnTarget: workspaceReservations.paymentReturnTarget,
+              })
+              .from(workspaceReservations)
+              .where(eq(workspaceReservations.id, id))
+              .limit(1)
+              .pipe(retryDatabaseRead);
+            return reservation?.paymentReturnTarget ?? undefined;
+          },
+          (effect, reservationId) =>
+            effect.pipe(Effect.annotateLogs({ reservationId }))
+        ),
         claimHoldCreation: Effect.fn("workspaceReservations.claimHoldCreation")(
           function* (id) {
             const updated = yield* db

@@ -5,6 +5,7 @@ import { describe, expect, mock, test } from "bun:test";
 import type { GoogleCalendarEvent } from "@deskohub/google-calendar";
 import { testEmailAddress } from "@deskohub/test-email";
 import { type Duration, Effect, Layer, Schema } from "effect";
+import { SqlError } from "effect/unstable/sql";
 import type { WorkspaceE2EConfig } from "@/e2e/config";
 import { isFreshOwnedPayStateUrl } from "@/e2e/referrals/checkout";
 import { isOwnedReferralCheckoutReviewUrl } from "@/e2e/referrals/checkout-review";
@@ -941,7 +942,15 @@ describe("applyDiscountCodeToPayState", () => {
   test("returns unavailable when the referral registry can't classify the code", async () => {
     const scenario = await runSubmission({
       lookupCodeKind: mock(() =>
-        Effect.fail(new ReferralError({ reason: "unavailable" }))
+        Effect.fail(
+          new SqlError.SqlError({
+            reason: new SqlError.UnknownError({
+              cause: new Error("synthetic connection refused"),
+              message: "synthetic connection refused",
+              operation: "query",
+            }),
+          })
+        )
       ),
     });
 
@@ -1097,6 +1106,101 @@ describe("applyDiscountCodeToPayState", () => {
       await expectReplacementFromOneSeal(scenario.result);
     }
   );
+
+  test.each([
+    [
+      "a referral store outage",
+      () =>
+        new SqlError.SqlError({
+          reason: new SqlError.UnknownError({
+            cause: new Error("synthetic connection refused"),
+            message: "synthetic connection refused",
+            operation: "query",
+          }),
+        }),
+      "provider",
+    ],
+    [
+      "an inactive referral code",
+      () => new ReferralError({ reason: "unavailable" }),
+      "code",
+    ],
+  ] as const)(
+    "tells %s apart: a retry or a correction, without pricing",
+    async (_, failure, reason) => {
+      const affirmForPayment = mock(() =>
+        Effect.succeed({ kind: "cowork" as const, reservation, quote })
+      );
+      const scenario = await runSubmission({
+        submittedCode: "RFL12345",
+        codeKind: "referral",
+        referralAcceptance: {
+          evaluateCheckoutReferral: mock(() => Effect.fail(failure())),
+          affirmForPayment,
+        },
+      });
+
+      expect(scenario.result).toMatchObject({ status: "unavailable", reason });
+      expect(affirmForPayment).not.toHaveBeenCalled();
+      await expectReplacementFromOneSeal(scenario.result);
+    }
+  );
+
+  test("neither evaluates nor reprices a referral once a payment attempt is active", async () => {
+    const evaluateCheckoutReferral = mock(() =>
+      Effect.succeed({
+        kind: "eligible" as const,
+        code: canonicalPromotionCodeSchema.make("RFL12345"),
+      })
+    );
+    const affirmForPayment = mock(() =>
+      Effect.succeed({ kind: "cowork" as const, reservation, quote })
+    );
+    const scenario = await runSubmission({
+      submittedCode: "RFL12345",
+      codeKind: "referral",
+      activePaymentAttemptId: "attempt-id",
+      referralAcceptance: { evaluateCheckoutReferral, affirmForPayment },
+    });
+
+    expect(scenario.result).toStrictEqual({
+      status: "unavailable",
+      reason: "checkout",
+      checkoutReason: "payment_in_progress",
+      freshPayUrl: undefined,
+    });
+    expect(evaluateCheckoutReferral).not.toHaveBeenCalled();
+    expect(affirmForPayment).not.toHaveBeenCalled();
+  });
+
+  test("discards a referral repricing when a payment attempt starts meanwhile", async () => {
+    const affirmForPayment = mock(() =>
+      Effect.succeed({ kind: "cowork" as const, reservation, quote })
+    );
+    const scenario = await runSubmission({
+      submittedCode: "RFL12345",
+      codeKind: "referral",
+      activePaymentAttemptIdAfterPricing: "attempt-id",
+      referralAcceptance: {
+        evaluateCheckoutReferral: mock(() =>
+          Effect.succeed({
+            kind: "eligible" as const,
+            code: canonicalPromotionCodeSchema.make("RFL12345"),
+          })
+        ),
+        affirmForPayment,
+      },
+    });
+
+    expect(scenario.result).toStrictEqual({
+      status: "unavailable",
+      reason: "checkout",
+      checkoutReason: "payment_in_progress",
+      freshPayUrl: undefined,
+    });
+    expect(affirmForPayment).toHaveBeenCalledTimes(1);
+    expect(scenario.requireCurrent).toHaveBeenCalledTimes(2);
+  });
 
   test("reports a referral whose replacement checkout can't be sealed as a provider failure, never a price change", async () => {
     const testKeys = Effect.runSync(

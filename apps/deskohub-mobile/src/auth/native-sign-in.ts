@@ -49,7 +49,8 @@ import { SignInLocale } from "./sign-in-locale";
  * verified directly. Either way the new session's cookie is stored in
  * SecureStore once the app accepts it. The verification names the app's
  * locale (`SignInLocale`), which an account it creates takes as its language;
- * the web page names it for the accounts it creates.
+ * the sign-in request passes it to the web page, which shows it and names it
+ * for the accounts it creates.
  */
 
 export type NativeSignInServices =
@@ -119,6 +120,7 @@ export const startPendingSignIn = Effect.fn("NativeSignIn.startPendingSignIn")(
       state,
       returnUri: nativeReturnUri,
       reauthenticate: Option.isSome(expectedUserId),
+      locale: yield* SignInLocale,
     };
     return request;
   },

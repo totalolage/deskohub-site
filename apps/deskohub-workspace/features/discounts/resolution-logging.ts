@@ -1,12 +1,26 @@
-import { Effect, type Option } from "effect";
-import type { ReferralError } from "@/features/referrals/contracts";
+import { Effect, Match, type Option } from "effect";
+import type { ReferralOutage } from "@/features/referrals/contracts";
 import type { CalendarSaleConfigurationError } from "./calendar-sale";
 import type { DiscountResolutionError } from "./errors";
 
 export type DiscountResolutionFailure =
   | CalendarSaleConfigurationError
-  | ReferralError
+  | ReferralOutage
   | DiscountResolutionError;
+
+/** A low-cardinality reason; a failed database statement has none of its own. */
+const getFailureReason = Match.type<DiscountResolutionFailure>().pipe(
+  Match.tagsExhaustive({
+    CalendarSaleConfigurationError: ({ reason }) => reason,
+    DiscountCalculationError: ({ reason }) => reason,
+    PromotionCodeUnavailableError: ({ reason }) => reason,
+    DiscountProviderError: ({ reason }) => reason,
+    DotyposUnavailable: ({ reason }) => reason,
+    DotyposRejected: ({ reason }) => reason,
+    EffectDrizzleQueryError: () => "database",
+    SqlError: () => "database",
+  })
+);
 
 export type DiscountResolutionProvider =
   | "calendar"
@@ -40,7 +54,7 @@ export const logDiscountResolutionFailure = (input: {
       discountProvider: input.provider,
       discountOperation: input.operation,
       discountErrorTag: input.cause._tag,
-      discountErrorReason: input.cause.reason,
+      discountErrorReason: getFailureReason(input.cause),
     })
   );
 

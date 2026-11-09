@@ -9,7 +9,7 @@ import {
   setSystemTime,
   test,
 } from "bun:test";
-import { DotyposService } from "@deskohub/dotypos";
+import { DotyposService, DotyposUnavailable } from "@deskohub/dotypos";
 import { EmailRecipientDomainServiceMock } from "@deskohub/email/backend/recipient-domain.service.mock";
 import { testEmailAddress } from "@deskohub/test-email";
 import { eq } from "drizzle-orm";
@@ -100,6 +100,16 @@ const inertRememberedReferral = () =>
 // Format of the checkout lookup keys new rows store: the active key's
 // key-ID-prefixed digest.
 const storedLookupKeyPattern = /^test:[a-f0-9]{64}$/;
+/** Referral reads that reached no verdict. */
+const dotyposOutage = new DotyposUnavailable({
+  operation: "listReservations",
+  reason: "server",
+});
+const databaseOutage = new EffectDrizzleQueryError({
+  query: "referral code lookup",
+  params: [],
+  cause: new Error("database unavailable"),
+});
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -3454,9 +3464,7 @@ describe("prepareWorkspacePayState", () => {
           evaluateCheckoutReferral: mock(() =>
             Effect.succeed({ kind: "already_accepted" as const })
           ),
-          hasSettledReferral: mock(() =>
-            Effect.fail(new ReferralError({ reason: "unavailable" }))
-          ),
+          hasSettledReferral: mock(() => Effect.fail(dotyposOutage)),
         });
 
         expect(scenario.result?.status).toBe("ready");
@@ -3502,10 +3510,7 @@ describe("prepareWorkspacePayState", () => {
 
       test.each([
         ["unusable", () => Effect.succeed(undefined)],
-        [
-          "unreadable",
-          () => Effect.fail(new ReferralError({ reason: "unavailable" })),
-        ],
+        ["unreadable", () => Effect.fail(databaseOutage)],
       ] as const)(
         "continues a contact booking without a prefill for an %s code",
         async (_label, lookup) => {
@@ -3649,10 +3654,7 @@ describe("prepareWorkspacePayState", () => {
 
       test.each([
         ["unsettled", () => Effect.succeed(false)],
-        [
-          "unknown",
-          () => Effect.fail(new ReferralError({ reason: "unavailable" })),
-        ],
+        ["unknown", () => Effect.fail(dotyposOutage)],
       ] as const)(
         "keeps the remembered code while the booker's customer is %s",
         async (_label, settled) => {

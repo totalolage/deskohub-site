@@ -149,12 +149,12 @@ test.skipIf(!chromiumAvailable)(
 );
 
 // The status page the payment return left open: the checkout reads it in
-// place, as server and runner whitespace render it.
+// place, whichever whitespace the server and this process format it with.
 const statusPath = "/en-US/reservation/status/order-id";
 const statusPage = (extra = "") =>
   `<!doctype html><body><main>Your reservation is confirmed. Your payment is complete and we've emailed you the secure access link. Tuesday, August 25, 2026 10:00 AM – 2:00 PM CZK 0</main>${extra}</body>`;
 
-const assertStatusPage = ({ id, run }: BrowserStepDriver) =>
+const assertStatusPage = ({ openSession }: BrowserStepDriver) =>
   assertFulfilledStatusPage({
     checkoutRow: {
       amount_exponent: 2,
@@ -170,9 +170,8 @@ const assertStatusPage = ({ id, run }: BrowserStepDriver) =>
       reservedFrom: Temporal.Instant.from("2026-08-25T08:00:00Z"),
       reservedUntil: Temporal.Instant.from("2026-08-25T12:00:00Z"),
     } as never,
+    openSession,
     orderId: "order-id" as CheckoutRow["reservation_id"],
-    run,
-    session: id,
   }).pipe(
     Effect.provideService(E2EDatabase, E2EDatabase.of({ db: {} as never }))
   );

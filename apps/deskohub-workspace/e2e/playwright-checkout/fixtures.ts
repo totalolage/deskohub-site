@@ -1,6 +1,5 @@
 import { Effect, Exit, Scope } from "effect";
 import { runUntracedE2EEffect } from "../effect-edge";
-import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import {
   isWorkspaceE2ENightlyCaseId,
   isWorkspaceE2EOfficeCaseId,
@@ -9,7 +8,7 @@ import { readWorkspaceE2ERunPlan } from "./run-plan";
 import { runtimeTest } from "./runtime-fixtures";
 
 type WorkspaceE2EFixtures = {
-  readonly browserRunner: Runner;
+  readonly testScope: Scope.Scope;
 };
 
 type WorkspaceE2EWorkerFixtures = {
@@ -20,14 +19,14 @@ export const test = runtimeTest.extend<
   WorkspaceE2EFixtures,
   WorkspaceE2EWorkerFixtures
 >({
-  // The test's Scope owns its browser sessions: the case's one session opens
+  // The test's Scope owns its browser session: the case's one session opens
   // there on first use, inside the case runner, so a browser that fails to
-  // open is still the case's failure; closing the Scope closes every session,
-  // each release bounded by one browser action.
-  browserRunner: async ({ browser }, use) => {
+  // open is still the case's failure; closing the Scope closes the session,
+  // its release bounded by one browser action.
+  testScope: async ({ browserName: _browserName }, use) => {
     const scope = Scope.makeUnsafe("parallel");
     try {
-      await use(makePlaywrightBrowserRunner(browser, { scope }));
+      await use(scope);
     } finally {
       await runUntracedE2EEffect(Scope.close(scope, Exit.void));
     }
@@ -58,7 +57,7 @@ export const registerWorkspaceE2ECases = (
   for (const caseId of caseIds) {
     test(
       caseId,
-      async ({ browser, browserRunner, environment, runEffect, runPlan }) => {
+      async ({ browser, environment, runEffect, runPlan, testScope }) => {
         const { nightlyCasesEnabled } = await import("../e2e-env");
         test.skip(
           isWorkspaceE2ENightlyCaseId(caseId) &&
@@ -114,12 +113,12 @@ export const registerWorkspaceE2ECases = (
           await runEffect(
             runWorkspaceE2ECase({
               artifactRoot: `${workspaceDir}/e2e-artifacts/checkout/cases`,
+              browser,
               datasourceConfig,
-              run: browserRunner,
               sessionPrefix: `workspace-checkout-e2e-${runPlan.runContext.runId}`,
               testCase: selected,
               timeouts: config.timeouts,
-            })
+            }).pipe(Scope.provide(testScope))
           );
         } finally {
           await writeWorkspaceE2ECaseJournal(

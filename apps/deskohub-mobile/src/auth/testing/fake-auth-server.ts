@@ -59,12 +59,16 @@ export const makeFakeAuthServer = (origin: string) => {
   const calls: Array<FakeAuthCall> = [];
   const faults: {
     exchangeGate: Promise<void> | undefined;
+    signOutGate: Promise<void> | undefined;
+    sessionReadGate: Promise<void> | undefined;
     getSessionFailuresAfterExchange: number;
     getSessionFailures: number;
     exchanged: boolean;
     refuseAccountSwitch: boolean;
   } = {
     exchangeGate: undefined,
+    signOutGate: undefined,
+    sessionReadGate: undefined,
     getSessionFailuresAfterExchange: 0,
     getSessionFailures: 0,
     exchanged: false,
@@ -162,17 +166,20 @@ export const makeFakeAuthServer = (origin: string) => {
         faults.getSessionFailuresAfterExchange -= 1;
         return json(500, { code: "INTERNAL_SERVER_ERROR" });
       }
+      const gate = faults.sessionReadGate;
+      faults.sessionReadGate = undefined;
+      if (gate !== undefined) await gate;
       const token = sessionTokenFrom(headers.get("cookie"));
-      const user = token === undefined ? undefined : sessions.get(token);
-      return json(
-        200,
-        token === undefined || user === undefined
-          ? null
-          : sessionBody(token, user)
-      );
+      if (token === undefined) return json(200, null);
+      const user = sessions.get(token);
+      // Better Auth expires the cookie of a session it doesn't know.
+      return user === undefined
+        ? json(200, null, { "set-cookie": `${cookieName}=; Max-Age=0; Path=/` })
+        : json(200, sessionBody(token, user));
     }
 
     if (method === "POST" && path === "/sign-out") {
+      if (faults.signOutGate !== undefined) await faults.signOutGate;
       const token = sessionTokenFrom(headers.get("cookie"));
       if (token !== undefined) sessions.delete(token);
       return json(
@@ -227,6 +234,14 @@ export const makeFakeAuthServer = (origin: string) => {
     /** Holds every exchange until `gate` resolves. */
     holdExchanges: (gate: Promise<void>) => {
       faults.exchangeGate = gate;
+    },
+    /** Holds the next session read until `gate` resolves. */
+    holdNextSessionRead: (gate: Promise<void>) => {
+      faults.sessionReadGate = gate;
+    },
+    /** Holds every sign-out answer until `gate` resolves. */
+    holdSignOuts: (gate: Promise<void>) => {
+      faults.signOutGate = gate;
     },
     /**
      * Refuses every valid link the way the Workspace refuses one verified

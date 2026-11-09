@@ -1,11 +1,7 @@
 import { dotyposApiTimeoutDefaultMilliseconds } from "@deskohub/dotypos/api-timeout";
 import type { E2EEnvironment } from "./e2e-env";
-import {
-  addDatabaseUrlRedactions,
-  addRedaction,
-  assert,
-  parseUrl,
-} from "./runtime";
+import { addDatabaseUrlRedactions, addRedaction } from "./redaction";
+import { assert, parseUrl } from "./runtime";
 import { workspaceE2ETimeouts } from "./timeouts";
 
 const immutableWorkspaceDeploymentHost =

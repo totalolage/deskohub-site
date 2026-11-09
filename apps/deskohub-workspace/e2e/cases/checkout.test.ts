@@ -15,7 +15,6 @@ import {
   workspaceE2ETimeoutError,
 } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
-import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutData, CheckoutFlowState, CheckoutRow } from "../types";
 import {
@@ -23,6 +22,11 @@ import {
   completeHostedCheckoutPayment,
   executeCheckoutFlow,
 } from "./checkout";
+
+// The step contract tests fake every step, so no step may open a browser.
+const unopenedBrowserSession = Effect.fail(
+  workspaceE2EError("the step contract test opens no browser session")
+);
 
 const customer: Customer = {
   _cloudId: "customer-id",
@@ -175,10 +179,9 @@ const runCheckoutFlowSteps = async (
           timeoutMs: workspaceE2ETimeouts.uiTransition,
         },
       ],
-      run: (() =>
-        Promise.reject(new Error("runner must not execute"))) as Runner,
+      openSeparateSession: () => unopenedBrowserSession,
+      openSession: unopenedBrowserSession,
       runStep,
-      session: "checkout-capacity-contract",
       state,
     }).pipe(
       Effect.provide(Layer.mergeAll(httpClientLayer, hostedPaymentPermit.layer))
@@ -301,10 +304,8 @@ describe("Nexi sandbox payment restart", () => {
         config: { timeouts: workspaceE2ETimeouts } as WorkspaceE2EConfig,
         data,
         orderId: "order-id" as CheckoutRow["reservation_id"],
-        run: (() =>
-          Promise.reject(new Error("runner must not execute"))) as Runner,
+        openSession: unopenedBrowserSession,
         runStep,
-        session: "nexi-sandbox-restart",
         state: { data },
       }).pipe(
         Effect.provideService(E2EDatabase, E2EDatabase.of({ db: {} as never })),

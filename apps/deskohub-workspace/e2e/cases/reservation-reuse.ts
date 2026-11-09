@@ -8,7 +8,10 @@ import {
   waitForPageUrl,
   waitForReactHydration,
 } from "../browser";
-import type { E2EBrowserSession } from "../browser-session";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
 import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import {
   prepareReservationSelection,
@@ -25,8 +28,7 @@ import { tryWorkspaceE2ESync } from "../errors";
 import { readCheckoutRow, waitForCheckoutRow } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import { readDotyposReservationStatus } from "../integrations/dotypos";
-import type { Runner } from "../runtime";
-import { assert, browserSessionFor, log, parseUrl } from "../runtime";
+import { assert, log, parseUrl } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutData, CheckoutFlowState, CheckoutRow } from "../types";
 
@@ -38,9 +40,8 @@ export const assertReservationReplacement = ({
   toSelectionPreparation,
   replacementData,
   reservationPath,
-  run,
   runStep,
-  session,
+  openSession,
   state,
   toReservationPreparation,
 }: {
@@ -51,9 +52,8 @@ export const assertReservationReplacement = ({
   toSelectionPreparation: (data: CheckoutData) => ReservationFormPreparation;
   replacementData: CheckoutData;
   reservationPath: string;
-  run: Runner;
   runStep: WorkspaceE2EStepRunner;
-  session: string;
+  openSession: OpenE2EBrowserSession;
   state: CheckoutFlowState;
   toReservationPreparation: (data: CheckoutData) => ReservationFormPreparation;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
@@ -61,7 +61,7 @@ export const assertReservationReplacement = ({
     state.startedAt = new Date();
     const firstOrderId = yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* openPage(browser, config, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
         });
@@ -99,7 +99,7 @@ export const assertReservationReplacement = ({
 
     yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         yield* returnToPrefilledReservation({
           browser,
           data,
@@ -119,7 +119,7 @@ export const assertReservationReplacement = ({
     });
     const secondOrderId = yield* runStep({
       execute: Effect.gen(function* () {
-        const browser = yield* browserSessionFor(run, session);
+        const browser = yield* openSession;
         return yield* submitReservationForPayPage({
           data: replacementData,
           onOrderId: (orderId) => {

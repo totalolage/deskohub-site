@@ -1032,7 +1032,6 @@
     "proxy.test.ts": 24345,
     "scripts/account-e2e-graph.test.ts": 878,
     "scripts/anti-slop.test.ts": 3033,
-    "scripts/no-source-string-tests.test.ts": 234,
     "scripts/posthog-identity-fixture-bundle.test.ts": 161,
     "scripts/posthog-sdk-version.test.ts": 74,
     "scripts/production-build.test.ts": 11,

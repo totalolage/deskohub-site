@@ -8,6 +8,7 @@ import {
 } from "@deskohub/dotypos";
 import { ExternalAPIError, NexiService } from "@deskohub/nexi";
 import { testEmailAddress } from "@deskohub/test-email";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Data, Duration, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
 import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
@@ -18,6 +19,7 @@ import {
 } from "@/features/account/customer-account";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
+import type { PaymentReturnTarget } from "@/features/checkout/payment-return-target";
 import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
 import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
@@ -523,6 +525,7 @@ type CheckoutHarnessOptions<ReservationOverrides extends object> = {
   readonly createHostedPaymentPage?: ReturnType<typeof mock>;
   readonly run?: ReturnType<typeof mock>;
   readonly accountAuthority?: OptionalAccountActivityFixture;
+  readonly returnTarget?: PaymentReturnTarget;
 };
 
 const createCheckoutHarness = async <ReservationOverrides extends object>(
@@ -633,9 +636,16 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
             Effect.as(reservationRecord)
           )
     );
+  const recordPaymentReturnTarget = mock(
+    (_input: {
+      readonly id: string;
+      readonly paymentReturnTarget: PaymentReturnTarget | undefined;
+    }): Effect.Effect<void, EffectDrizzleQueryError> => Effect.void
+  );
   const reservations = {
     findById: mock(() => Effect.succeed(reservationRecord)),
     updateReservationDetails,
+    recordPaymentReturnTarget,
   };
   const updateReservation = mock(
     (_input: {
@@ -695,6 +705,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
           }),
         legalConsent: options.legalConsent ?? true,
         earlyPerformanceConsent: options.earlyPerformanceConsent ?? true,
+        ...(options.returnTarget && { returnTarget: options.returnTarget }),
       },
       locale
     );
@@ -739,6 +750,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
     attachHostedPaymentPage,
     markTerminalForReservation,
     updateReservationDetails,
+    recordPaymentReturnTarget,
     updateReservation,
     createHostedPaymentPage,
     fulfillPaidOrder,
@@ -937,6 +949,75 @@ describe("CheckoutService", () => {
       redirectUrl: "https://payments.example/hosted",
     });
     expect(events).toEqual(["attempt-created", "provider-created"]);
+  });
+
+  test("stores the app a new hosted payment returns to before creating it", async () => {
+    const events: string[] = [];
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-native-return",
+      returnTarget: "native-app",
+      createHostedPaymentPage: mock(() => {
+        events.push("provider-created");
+        return Effect.succeed({
+          securityToken: "provider-security-token",
+          hostedPage: "https://payments.example/hosted",
+        });
+      }),
+    });
+    harness.recordPaymentReturnTarget.mockImplementation(() =>
+      Effect.sync(() => {
+        events.push("target-recorded");
+      })
+    );
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({
+      status: "redirect",
+      redirectUrl: "https://payments.example/hosted",
+      statusUrl: "/en-US/reservation/status/reservation-native-return",
+    });
+    expect(harness.recordPaymentReturnTarget.mock.calls).toEqual([
+      [{ id: "reservation-native-return", paymentReturnTarget: "native-app" }],
+    ]);
+    expect(events).toEqual(["target-recorded", "provider-created"]);
+  });
+
+  test("clears the stored app of a hosted payment a site submission starts", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-site-return",
+    });
+
+    await Effect.runPromise(harness.effect);
+
+    expect(harness.recordPaymentReturnTarget.mock.calls).toEqual([
+      [{ id: "reservation-site-return", paymentReturnTarget: undefined }],
+    ]);
+  });
+
+  test("does not start a hosted payment whose return target could not be stored", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-return-store-fails",
+      returnTarget: "web-app",
+    });
+    harness.recordPaymentReturnTarget.mockImplementation(() =>
+      Effect.fail(
+        new EffectDrizzleQueryError({
+          query: "update",
+          params: [],
+          cause: new Error("synthetic outage"),
+        })
+      )
+    );
+
+    const failure = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(failure).toMatchObject({
+      _tag: "CheckoutError",
+      code: "checkout_failed",
+    });
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
   describe("within the pay submit deadline", () => {
@@ -1152,6 +1233,37 @@ describe("CheckoutService", () => {
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.updateReservation).not.toHaveBeenCalled();
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    expect(harness.recordPaymentReturnTarget.mock.calls).toEqual([
+      [{ id: orderId, paymentReturnTarget: undefined }],
+    ]);
+  });
+
+  test("points a reused hosted payment's return at the app that submitted last", async () => {
+    const orderId = "reservation-reuses-for-app";
+    const activeAttempt = makeAttempt({
+      id: "active-attempt",
+      orderId,
+      state: "pending",
+      securityToken: "active-security-token",
+      providerRedirectUrl: "https://payments.example/existing",
+    });
+    const harness = await createCheckoutHarness({
+      orderId,
+      activeAttempt,
+      returnTarget: "native-app",
+      reservationOverrides: { activePaymentAttemptId: activeAttempt.id },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({
+      status: "redirect",
+      redirectUrl: "https://payments.example/existing",
+    });
+    expect(harness.recordPaymentReturnTarget.mock.calls).toEqual([
+      [{ id: orderId, paymentReturnTarget: "native-app" }],
+    ]);
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 

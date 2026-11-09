@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { Effect } from "effect";
 import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import { runtimeTest as test } from "../playwright-checkout/runtime-fixtures";
-import { addRedaction } from "../runtime";
+import { addRedaction } from "../redaction";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { runAdministratorCase } from "./administrator-case";
 import { makeWorkspaceE2EAdministrationIdentities } from "./identities";

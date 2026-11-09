@@ -7,6 +7,10 @@ Code: `features/account/analytics-identity.ts`,
 `features/cookie-consent/components/posthog-analytics.tsx`, and
 `features/cookie-consent/utils/` (`posthog-config.ts`, `posthog-identity.ts`).
 
+The mobile app follows the same rules with `posthog-react-native`; its SDK,
+consent storage and events are in the `deskohub-mobile` skill
+(`references/analytics.md`).
+
 ## Browser analytics session
 
 - `createBrowserAnalyticsSession` owns the page's one PostHog lifecycle: SDK

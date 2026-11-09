@@ -233,22 +233,27 @@ describe("applyDiscountCodeForm", () => {
     expect(redirectedUrl).toBe(freshPayUrl);
   });
 
-  test("redirects an unavailable result that carries a replacement to it", async () => {
-    const freshPayUrl = "/en-US/checkout/pay?payState=requested-intent";
+  test.each([
+    { status: "unavailable", reason: "code" },
+    { status: "unavailable", reason: "provider" },
+  ] as const)(
+    "redirects an unavailable result that carries a replacement to it: %o",
+    async (unavailable) => {
+      const freshPayUrl = "/en-US/checkout/pay?payState=requested-intent";
 
-    const redirectedUrl = await runForm(
-      {
-        status: "unavailable",
-        reason: "code",
-        freshPayUrl,
-        freshPayStateToken: "requested-intent",
-        expiresAt: "2026-06-01T10:08:00Z",
-      },
-      { payStateToken: "original-token" }
-    );
+      const redirectedUrl = await runForm(
+        {
+          ...unavailable,
+          freshPayUrl,
+          freshPayStateToken: "requested-intent",
+          expiresAt: "2026-06-01T10:08:00Z",
+        },
+        { payStateToken: "original-token" }
+      );
 
-    expect(redirectedUrl).toBe(freshPayUrl);
-  });
+      expect(redirectedUrl).toBe(freshPayUrl);
+    }
+  );
 
   test("submits the typed code, or an empty one when the field isn't text", async () => {
     await runForm(

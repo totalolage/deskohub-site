@@ -137,8 +137,8 @@ const exerciseReservationStart = async ({
             });
           });
         }),
-      drive: ({ id, run }) =>
-        bound.execute({ run, runStep, session: id }).pipe(
+      drive: ({ openSeparateSession, openSession }) =>
+        bound.execute({ openSeparateSession, openSession, runStep }).pipe(
           Effect.provideService(
             E2EDatabase,
             E2EDatabase.of({ db: {} as never })

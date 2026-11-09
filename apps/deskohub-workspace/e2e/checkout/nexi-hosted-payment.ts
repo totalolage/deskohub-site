@@ -16,8 +16,8 @@ import {
   workspaceE2ETimeoutError,
 } from "../errors";
 import { pollUntil } from "../polling";
-import { redact, redactDiagnosticText } from "../redaction";
-import { addRedaction, log } from "../runtime";
+import { addRedaction, redact, redactDiagnosticText } from "../redaction";
+import { log } from "../runtime";
 import {
   type WorkspaceE2ETimeouts,
   workspaceE2EPollIntervalMs,
@@ -482,8 +482,7 @@ const activateNexiControl = (
             session.use("focus browser element", (active) =>
               target(active).focus({ timeout: 30_000 })
             ),
-            // As the argv `press` command, the key press has no timeout of
-            // its own; the step bounds it.
+            // The key press has no timeout of its own; the step bounds it.
             session.use("press browser key", (active) =>
               active.keyboard.press("Enter")
             )

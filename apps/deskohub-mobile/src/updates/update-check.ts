@@ -1,7 +1,11 @@
 import { Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
 import { checkNativeRelease, type NativeReleaseCheck } from "./native-release";
-import { findReadyUpdate, type OtaUpdateSource } from "./ota-update";
+import {
+  findReadyUpdate,
+  type OtaUpdateSource,
+  type ReadyUpdate,
+} from "./ota-update";
 
 /**
  * The app checks on launch and whenever it returns to the foreground, at most
@@ -56,14 +60,14 @@ export const runUpdateCheck = ({
   readonly updates: OtaUpdateSource;
   readonly installedBuildVersion: string | null;
   readonly latestReleaseUrl: string;
-  readonly onReadyUpdate: (updateId: string | undefined) => void;
+  readonly onReadyUpdate: (update: ReadyUpdate | undefined) => void;
   readonly onNativeRelease: (check: NativeReleaseCheck) => void;
 }): Effect.Effect<void, never, HttpClient.HttpClient> =>
   Effect.all(
     [
       plan.otaUpdate
         ? findReadyUpdate(updates).pipe(
-            Effect.tap((updateId) => Effect.sync(() => onReadyUpdate(updateId)))
+            Effect.tap((update) => Effect.sync(() => onReadyUpdate(update)))
           )
         : Effect.void,
       plan.nativeRelease

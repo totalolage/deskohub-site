@@ -87,6 +87,9 @@ Read the reference that matches your change before editing:
   to `/api/customer` and `@deskohub/workspace-customer-api` (the native app's
   API), its handler group, budget class, origin and client-header checks,
   error mapping, and the OpenAPI golden.
+- The native app's side of sign-in, passkey origins per environment, the
+  association files, and app analytics: the `deskohub-mobile` skill
+  (`references/auth-and-passkeys.md`, `references/analytics.md`).
 - [Avatar media storage](references/avatar-media-storage.md): Cloudinary
   staging, promotion, recovery, and deletion ordering.
 - [PostHog identity and privacy](references/posthog-identity-privacy.md):

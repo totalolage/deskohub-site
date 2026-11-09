@@ -13,12 +13,12 @@ import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace
 import { hashCampaignContent } from "../body/campaign-content-hash";
 import type { CampaignId } from "../campaign-identifiers";
 import { CampaignService } from "./campaign.service";
-import type { CampaignSendFreeze } from "./campaign-confirmation-code.service";
 import { CampaignConfirmationCodeService } from "./campaign-confirmation-code.service";
 import {
   campaignContentFixture,
   everyoneFilter,
 } from "./email-campaigns.test-utils";
+import type { CampaignSendFreeze } from "./once-campaign-lifecycle";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -211,6 +211,38 @@ describe.skipIf(!testDatabase)(
         _tag: "CampaignReadOnly",
         status: "sending",
       });
+    });
+
+    test("rolls back code consumption and status when freezing recipients fails", async () => {
+      const campaign = await createDraft();
+      const { code } = await issueFor(campaign);
+      const failed = await runAt(
+        { minutes: 5 },
+        CampaignConfirmationCodeService.pipe(
+          Effect.flatMap((codes) =>
+            codes.confirm({
+              campaignId: campaign.id,
+              code,
+              send: {
+                ...frozenSend,
+                recipients: [
+                  frozenSend.recipients[0]!,
+                  frozenSend.recipients[0]!,
+                ],
+              },
+            })
+          )
+        )
+      );
+      expect(Exit.isFailure(failed)).toBe(true);
+      expect((await storedCampaign(campaign.id)).status).toBe("draft");
+      expect((await storedCodes(campaign.id))[0].confirmed_at).toBeNull();
+      const { rows } = await testDatabase.pool.query(
+        "select id from email_campaign_sends where campaign_id = $1",
+        [campaign.id]
+      );
+      expect(rows).toEqual([]);
+      expect(Exit.isSuccess(await confirm(campaign.id, code))).toBe(true);
     });
 
     test("stores only a keyed hash of the code", async () => {

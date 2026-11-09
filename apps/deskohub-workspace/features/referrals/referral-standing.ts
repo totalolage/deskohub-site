@@ -19,6 +19,7 @@ import {
   type ReferralHistoryEvidence,
 } from "./eligibility";
 import { listReferralBenefitIds } from "./referral-benefits";
+import type { InvitationWindow } from "./referral-verdict";
 import { formatReferrerDiscountPercentage } from "./referrer-discount";
 
 const isReservationCancelled = (input: {
@@ -240,8 +241,10 @@ export const makeReferralStandingReads = Effect.gen(function* () {
   );
 
   /**
-   * `closed` once the customer has a prior paid booking, `claimed` while
-   * another payment holds the invitation, otherwise `open`.
+   * `closed` once the customer has a prior paid booking, `held` while an
+   * active invitation claim holds the invitation for a payment, otherwise
+   * `open`. A checkout counts only claims, because its own booking may be the
+   * one whose payment is pending.
    */
   const findInvitationWindow = Effect.fn(
     "ReferralStanding.findInvitationWindow"
@@ -265,10 +268,10 @@ export const makeReferralStandingReads = Effect.gen(function* () {
       ],
       { concurrency: "inherit" }
     ).pipe(
-      Effect.map(([history, activeClaims]) => {
-        if (history.hasPreviousPaidBooking) return "closed" as const;
-        if (activeClaims.length > 0) return "claimed" as const;
-        return "open" as const;
+      Effect.map(([history, activeClaims]): InvitationWindow => {
+        if (history.hasPreviousPaidBooking) return "closed";
+        if (activeClaims.length > 0) return "held";
+        return "open";
       })
     )
   );

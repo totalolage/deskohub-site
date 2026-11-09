@@ -1,15 +1,10 @@
 import "../../shared/polyfills/temporal";
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { type Browser, chromium, type Page } from "@playwright/test";
-import { Effect } from "effect";
 import type { MeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
-import { waitForBrowserCondition } from "../browser";
-import { getPrefilledReservationConditionScript } from "../browser-scripts";
-import { browserSessionFor, makePlaywrightBrowserRunner } from "../runtime";
 import type { CheckoutData } from "../types";
 import {
   makeCoworkCheckoutData,
@@ -326,61 +321,5 @@ test.skipIf(!chromiumAvailable)(
       });
     expect(await isPrefilledOn(repeated(data.email), data)).toBe(true);
     expect(await isPrefilledOn(repeated(otherContact.email), data)).toBe(false);
-  }
-);
-
-test.skipIf(!chromiumAvailable)(
-  "runs the same check as the argv condition for callers on the argv runner",
-  async () => {
-    if (!browser) throw new Error("Chromium is not running");
-    const data = meetingRoomData(
-      "2099-09-01T10:00",
-      { unit: "hour", amount: 1 },
-      "meeting-room-argv"
-    );
-    const html = `
-      <input name="startDateTime" value="2099-09-01" />
-      <input type="time" value="10:00" />
-      <input id="meeting-room-duration-hour:1" type="radio" value="hour:1" checked />
-      ${contactHtml(data)}`;
-    const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
-    const id = `prefilled-argv-${randomUUID()}`;
-    try {
-      const outcome = await Effect.runPromise(
-        Effect.gen(function* () {
-          const session = yield* browserSessionFor(run, id);
-          yield* session.use("show the page", (shown) =>
-            shown.setContent(html)
-          );
-          const matching = yield* Effect.exit(
-            waitForBrowserCondition(
-              run,
-              id,
-              "prefilled reservation fields",
-              getPrefilledReservationConditionScript(data),
-              { timeoutMs: 2000 }
-            )
-          );
-          const other = meetingRoomData(
-            "2099-09-01T11:00",
-            { unit: "hour", amount: 1 },
-            "meeting-room-argv"
-          );
-          const mismatching = yield* Effect.exit(
-            waitForBrowserCondition(
-              run,
-              id,
-              "prefilled reservation fields",
-              getPrefilledReservationConditionScript(other),
-              { timeoutMs: 500 }
-            )
-          );
-          return { matching: matching._tag, mismatching: mismatching._tag };
-        })
-      );
-      expect(outcome).toEqual({ matching: "Success", mismatching: "Failure" });
-    } finally {
-      await run.close?.();
-    }
   }
 );

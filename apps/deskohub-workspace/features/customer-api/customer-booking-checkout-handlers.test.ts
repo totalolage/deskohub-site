@@ -664,6 +664,18 @@ describe("applyCheckoutDiscountCode", () => {
       { _tag: "CustomerServiceUnavailable" },
     ],
     [
+      "a referral store outage, despite the replacement the referral flow signed",
+      {
+        status: "unavailable",
+        reason: "provider",
+        freshPayUrl: "/en-US/checkout/pay?payState=attempted",
+        freshPayStateToken: "attempted-token",
+        expiresAt: "2099-07-01T10:13:00.000Z",
+      },
+      503,
+      { _tag: "CustomerServiceUnavailable" },
+    ],
+    [
       "an expired hold",
       { status: "unavailable", reason: "checkout", checkoutReason: "expired" },
       409,
@@ -864,24 +876,40 @@ describe("submitCheckout", () => {
     ...(headers && { headers }),
   });
 
-  /** Checkout that answers `result` and counts its submissions. */
+  /** Checkout that answers `result` and records its submissions. */
   const checkoutAnswering = (
     result: () => ReturnType<
       CheckoutService["Service"]["createHostedPaymentCheckout"]
     >
   ) => {
-    const submissions = { count: 0 };
+    const submissions = {
+      count: 0,
+      inputs: [] as Parameters<
+        CheckoutService["Service"]["createHostedPaymentCheckout"]
+      >[0][],
+    };
     return {
       submissions,
       layer: Layer.mock(CheckoutService, {
-        createHostedPaymentCheckout: () =>
+        createHostedPaymentCheckout: (input) =>
           Effect.suspend(() => {
             submissions.count += 1;
+            submissions.inputs.push(input);
             return result();
           }),
       }),
     };
   };
+
+  const paymentRequired = () =>
+    checkoutAnswering(() =>
+      Effect.succeed({
+        status: "redirect",
+        orderId: syntheticPayStateOrderId,
+        redirectUrl: "https://payments.nexi.test/hpp/abc",
+        statusUrl: `/en-US/reservation/status/${syntheticPayStateOrderId}`,
+      })
+    );
 
   testCustomerEndpointGuards(submit());
 
@@ -915,6 +943,101 @@ describe("submitCheckout", () => {
         )
       ),
     });
+    expect(checkout.submissions.inputs).toEqual([
+      expect.not.objectContaining({ returnTarget: expect.anything() }),
+    ]);
+  });
+
+  test.each([
+    [
+      "native-app",
+      `deskohub://reservations/${syntheticPayStateOrderId}?after=payment`,
+    ],
+    [
+      "web-app",
+      expect.stringMatching(
+        new RegExp(
+          `^https?://[^/?]+/app/reservations/${syntheticPayStateOrderId}\\?after=payment$`
+        )
+      ),
+    ],
+  ] as const)(
+    "answers the %s screen a returnTarget names as the status screen",
+    async (returnTarget, statusUrl) => {
+      const checkout = paymentRequired();
+      const api = makeCustomerApiTestServer({
+        bookingCheckout: {
+          operations: operationsWith(),
+          checkout: checkout.layer,
+        },
+      });
+
+      const response = await api.handle(
+        customerApiRequest(submit(submitBody({ returnTarget })))
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        status: "payment_required",
+        orderId: syntheticPayStateOrderId,
+        paymentUrl: "https://payments.nexi.test/hpp/abc",
+        statusUrl,
+      });
+      expect(checkout.submissions.inputs).toEqual([
+        expect.objectContaining({ returnTarget }),
+      ]);
+    }
+  );
+
+  test("answers a paid order of an app checkout with its app screen", async () => {
+    const checkout = checkoutAnswering(() =>
+      Effect.succeed({
+        status: "redirect",
+        orderId: syntheticPayStateOrderId,
+        redirectUrl: `/en-US/reservation/status/${syntheticPayStateOrderId}?outcome=success`,
+        paid: true,
+      })
+    );
+    const api = makeCustomerApiTestServer({
+      bookingCheckout: {
+        operations: operationsWith({
+          forgetReferralIfSettled: () => Effect.void,
+        }),
+        checkout: checkout.layer,
+      },
+    });
+
+    const response = await api.handle(
+      customerApiRequest(submit(submitBody({ returnTarget: "native-app" })))
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      status: "paid",
+      orderId: syntheticPayStateOrderId,
+      statusUrl: `deskohub://reservations/${syntheticPayStateOrderId}?after=payment`,
+    });
+  });
+
+  test("refuses a return target outside the allowlist without submitting", async () => {
+    const checkout = paymentRequired();
+    const api = makeCustomerApiTestServer({
+      bookingCheckout: {
+        operations: operationsWith(),
+        checkout: checkout.layer,
+      },
+    });
+
+    for (const returnTarget of ["https://elsewhere.test/return", "app", ""]) {
+      const response = await api.handle(
+        customerApiRequest({
+          ...submit(),
+          body: { ...submitBody(), returnTarget },
+        })
+      );
+      expect(response.status).toBe(400);
+    }
+    expect(checkout.submissions.count).toBe(0);
   });
 
   test("answers a paid order with its status screen and a used-up referral code", async () => {

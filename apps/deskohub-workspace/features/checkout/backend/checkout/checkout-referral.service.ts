@@ -13,9 +13,10 @@ import {
 } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import { ReferralService } from "@/features/referrals";
-import type {
-  CheckoutReferralEvaluation,
+import {
+  type CheckoutReferralEvaluation,
   ReferralError,
+  type ReferralOutage,
 } from "@/features/referrals/contracts";
 import {
   type DotyposCustomerId,
@@ -64,8 +65,11 @@ type CheckoutReferralUnavailable =
     }
   | {
       readonly status: "unavailable";
+      /** The reservation can't be paid now, or a payment already started. */
       readonly reason: "checkout";
-      readonly checkoutReason: PayableReservationUnavailableError["reason"];
+      readonly checkoutReason:
+        | "payment_in_progress"
+        | PayableReservationUnavailableError["reason"];
     };
 
 export type CheckoutReferralResult =
@@ -98,18 +102,21 @@ const providerUnavailable: CheckoutReferralUnavailable = {
   status: "unavailable",
   reason: "provider",
 };
+const paymentInProgress: CheckoutReferralUnavailable = {
+  status: "unavailable",
+  reason: "checkout",
+  checkoutReason: "payment_in_progress",
+};
 
 /**
  * Only an immutable existing attribution and first-booking ineligibility are
- * explained to the customer; every other rejection stays a generic
- * unavailable code so the response cannot probe codes or accounts.
+ * explained to the customer; every other verdict, and a withheld program,
+ * stays a generic unavailable code so the response cannot probe codes or
+ * accounts.
  */
 const evaluationRejections = {
   already_attributed: { status: "already_attributed" },
   ineligible: { status: "ineligible" },
-  // Ambiguous: ReferralService reports both a code without an active target
-  // (referral.service.ts:310) and a failed lookup (:374) as `unavailable`, so
-  // it counts as a code rejection until referral.service.ts tells them apart.
   unavailable: codeUnavailable,
   invalid_code: codeUnavailable,
   self_referral: codeUnavailable,
@@ -117,7 +124,19 @@ const evaluationRejections = {
   cycle: codeUnavailable,
   disabled: codeUnavailable,
   account_unavailable: providerUnavailable,
+  referrer_changed: providerUnavailable,
 } satisfies Record<ReferralError["reason"], CheckoutReferralResult>;
+
+/**
+ * A verdict answers from the table above. An outage reached no verdict, so it
+ * reads as a provider failure that a retry can fix, never as an unusable code.
+ */
+const getEvaluationRejection = (
+  failure: ReferralError | ReferralOutage
+): CheckoutReferralResult =>
+  failure instanceof ReferralError
+    ? evaluationRejections[failure.reason]
+    : providerUnavailable;
 
 /**
  * Only a not-yet-attributed customer carries the typed code; it prices the
@@ -282,10 +301,17 @@ export class CheckoutReferralService extends Context.Service<
 
           // The referral belongs to the booked customer: the account's own
           // customer, or the person it books for.
-          const currentReservation = yield* payableReservations.requireCurrent({
+          const payableReservation = {
             orderId: opened.orderId,
             checkoutSessionId: opened.checkoutSessionId,
-          });
+          };
+          const currentReservation =
+            yield* payableReservations.requireCurrent(payableReservation);
+          // Like an ordinary code, a referral never replaces the summary of a
+          // payment already in progress; payment admission rechecks it too.
+          if (currentReservation.activePaymentAttemptId) {
+            return paymentInProgress;
+          }
           const dotyposCustomerId = yield* Schema.decodeEffect(
             dotyposCustomerIdSchema
           )(currentReservation.dotyposCustomerId);
@@ -294,7 +320,7 @@ export class CheckoutReferralService extends Context.Service<
             .evaluateCheckoutReferral({ code: input.code, dotyposCustomerId })
             .pipe(Effect.result);
           if (evaluation._tag === "Failure") {
-            return evaluationRejections[evaluation.failure.reason];
+            return getEvaluationRejection(evaluation.failure);
           }
           const referralInput = getCarriedReferral({
             evaluation: evaluation.success,
@@ -312,6 +338,13 @@ export class CheckoutReferralService extends Context.Service<
             prepared,
             dotyposCustomerId,
           });
+          // A payment that started while the referral was priced keeps the
+          // summary it was admitted with.
+          const repricedReservation =
+            yield* payableReservations.requireCurrent(payableReservation);
+          if (repricedReservation.activePaymentAttemptId) {
+            return paymentInProgress;
+          }
           const freshPayPathInput = {
             ...prepared,
             locale: input.locale,

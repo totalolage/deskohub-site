@@ -44,8 +44,11 @@ const rootTurbo = await readJson<TurboConfig>(
   join(repositoryRoot, "turbo.json")
 );
 const workspacePackage = await readJson<{
+  readonly dependencies?: Readonly<Record<string, string>>;
+  readonly devDependencies?: Readonly<Record<string, string>>;
   readonly scripts: Readonly<Record<string, string>>;
 }>(join(workspaceRoot, "package.json"));
+const mobilePackage = "deskohub-mobile";
 const rootPackage = await readJson<{ readonly packageManager: string }>(
   join(repositoryRoot, "package.json")
 );
@@ -257,14 +260,40 @@ describe("cached shard tasks", () => {
     expect(first?.env).toEqual(["CI", "TZ"]);
     // Recordings are outputs, never inputs.
     expect(first?.inputs).toContain(`!${shardTimingsRecordingPattern}`);
-    // Internal packages reach the hash only through ^test, and the shard
-    // needs every prerequisite the unsharded suite has.
+    // The shard needs every prerequisite the unsharded suite has, with the
+    // internal packages' tests (^test there) taken from test:dependencies.
     const testPrerequisites = (workspaceTurbo.tasks.test?.dependsOn ?? []).map(
-      (dependency) => (dependency === "$TURBO_EXTENDS$" ? "^test" : dependency)
+      (dependency) =>
+        dependency === "$TURBO_EXTENDS$" ? "test:dependencies" : dependency
     );
     expect([...(first?.dependsOn ?? [])].sort()).toEqual(
       [...testPrerequisites].sort()
     );
+  });
+
+  test("depends on the tests of every internal package but Mobile", () => {
+    // Internal packages reach the shard hash only through these task edges.
+    // Mobile is a dependency only so its changes redeploy the Workspace,
+    // which serves its web export; Workspace tests import none of it, read
+    // only the Mobile files the shard inputs list, and Workspace validation
+    // runs Mobile's tests on every pull request.
+    const internalPackages = Object.entries({
+      ...workspacePackage.dependencies,
+      ...workspacePackage.devDependencies,
+    })
+      .filter(([, version]) => version.startsWith("workspace:"))
+      .map(([name]) => name);
+    expect(internalPackages).toContain(mobilePackage);
+    const dependencies = workspaceTurbo.tasks["test:dependencies"];
+    expect(dependencies?.dependsOn).toEqual(
+      internalPackages
+        .filter((name) => name !== mobilePackage)
+        .sort()
+        .map((name) => `${name}#test`)
+    );
+    // A script would run in every shard job; the task only collects edges.
+    expect(workspacePackage.scripts["test:dependencies"]).toBeUndefined();
+    expect(dependencies?.inputs).toEqual([]);
   });
 
   test("hashes CI and TZ for the package tests the shards depend on, and keeps TMPDIR in strict mode", () => {
@@ -313,18 +342,61 @@ const unhashedRepositoryFiles = async (
 // Workspace CI also runs this file outside Turbo: a file these checks would
 // reject changes no shard hash, so a cached shard would replay their pass.
 describe("shard inputs outside the package", () => {
-  test("hash every test file the repository-wide audits enumerate", async () => {
-    // no-source-string-tests reads every tracked or unignored test file in
-    // the repository, so each one outside this package must be an input.
-    const { files, unhashed } = await unhashedRepositoryFiles([
-      "*.test.ts",
-      "*.test.tsx",
-    ]);
-    expect(files).toBeGreaterThan(0);
-    expect(unhashed).toEqual([]);
+  const ignore = workspaceTestArguments
+    .find((argument) => argument.startsWith("--path-ignore-patterns="))
+    ?.slice("--path-ignore-patterns=".length);
+  const ignored = new Bun.Glob(ignore ?? "");
+
+  test("leave the repository-wide tests to uncached Workspace validation", () => {
+    // A *.repository-wide.test.ts reads files across the repository (every test
+    // file, every scanned module), so no package task may cache it.
+    expect(
+      ignored.match("scripts/no-source-string-tests.repository-wide.test.ts")
+    ).toBe(true);
+    expect(
+      ignored.match(
+        "features/administration/i18n/administration-messages.build.test.ts"
+      )
+    ).toBe(true);
+    expect(ignored.match("scripts/test-shard.test.ts")).toBe(false);
   });
 
-  test("hash every ignore file that decides which test files those audits see", async () => {
+  test("skip only the tests another Workspace CI step runs", async () => {
+    // An ignore pattern that also matched ordinary tests (the database
+    // *.repository.test.ts suites, say) would drop them from every shard.
+    const listed = (
+      await commandOutput(
+        [
+          "git",
+          "ls-files",
+          "--cached",
+          "--others",
+          "--exclude-standard",
+          "--",
+          "*.test.ts",
+          "*.test.tsx",
+        ],
+        { cwd: workspaceRoot, timeoutMs: 20_000 }
+      )
+    )
+      .split("\n")
+      .filter(Boolean);
+    const buildOutput = workspacePackage.scripts["test:build-output"] ?? "";
+    const skipped = listed.filter((file) => ignored.match(file));
+    expect(skipped.length).toBeGreaterThan(0);
+    expect(
+      skipped.filter(
+        (file) =>
+          !buildOutput.split(" ").includes(`./${file}`) &&
+          !file.endsWith(".repository-wide.test.ts")
+      )
+    ).toEqual([]);
+    expect(listed).toContain(
+      "features/checkout/backend/repositories/webhook-event.repository.test.ts"
+    );
+  });
+
+  test("hash every ignore file that decides which files the package's own scans see", async () => {
     const { files, unhashed } = await unhashedRepositoryFiles([
       ":(glob)**/.gitignore",
     ]);

@@ -12,22 +12,14 @@ import type {
 } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Cause, Effect, Layer } from "effect";
+import { Cause, Effect } from "effect";
 import * as SqlError from "effect/unstable/sql/SqlError";
 import { makeAuthDatabase } from "@/db/auth-database-client";
-import { WorkspaceDatabase } from "@/db/database.service";
-import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { drizzleAuthTables } from "@/db/schema/auth";
-import { WorkspaceLockSections } from "@/db/workspace-locks";
-import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
-import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
-import { mirrorDeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
-import { ReviewAccounts } from "@/features/review-accounts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { captureWorkspaceLogs } from "@/shared/testing/workspace-telemetry.test-utils";
 import { ensureCustomerAccount } from "../customer-account.repository";
-import { captureAccountLocalePreference } from "../customer-locale-preference";
-import { revokeUnconsentedAdministrationTokens } from "./administration-agent-access";
+import type { AuthHookServiceOverrides } from "./auth-hook-services.test-utils";
 import type {
   MagicLinkSendFunction,
   SignInEmail,
@@ -44,7 +36,14 @@ import { nativeAppOrigin } from "./native-app";
 /** The Workspace logs the auth handler's runs send. */
 export const workspaceLogs = captureWorkspaceLogs();
 
+// Imported after the instrumentation mock: the hooks' capabilities load the
+// Workspace runner, which reads the logger provider when it loads.
 const { makeWorkspaceAuth } = await import("./auth-server");
+const { memoryAuthHookServices, postgresAuthHookServices } = await import(
+  "./auth-hook-services.test-utils"
+);
+export const { testAccountDeletion, unavailableFlag, unbuildableFlagProvider } =
+  await import("./auth-hook-services.test-utils");
 
 export const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -70,91 +69,25 @@ export const buildDatabaseAdapter = (pool = testDatabase!.pool) =>
     schemaName: "auth",
   });
 
-export type TestAuthOptions = {
+export type TestAuthOptions = AuthHookServiceOverrides & {
   readonly database?: WorkspaceAuthConfig["database"];
   readonly secrets?: { readonly version: number; readonly value: string }[];
   readonly sentLinks?: CapturedMagicLink[];
+  readonly accountDeletion?: WorkspaceAuthConfig["accountDeletion"];
   readonly nativeAppLinkOrigin?: WorkspaceAuthConfig["nativeAppLinkOrigin"];
-  readonly isSignInCodeEnabled?: WorkspaceAuthConfig["isSignInCodeEnabled"];
-  readonly arePasskeysEnabled?: WorkspaceAuthConfig["arePasskeysEnabled"];
   readonly passkeyRelyingParty?: WorkspaceAuthConfig["passkeyRelyingParty"];
-  readonly verifyHuman?: WorkspaceAuthConfig["verifyHuman"];
-  readonly beforeDeleteUser?: WorkspaceAuthConfig["beforeDeleteUser"];
-  readonly captureAccountLocalePreference?: WorkspaceAuthConfig["captureAccountLocalePreference"];
-  readonly mirrorSignInAnalyticsConsent?: WorkspaceAuthConfig["mirrorSignInAnalyticsConsent"];
   readonly clientMetadataTransport?: WorkspaceAuthConfig["clientMetadataTransport"];
-  readonly createCustomerAccount?: WorkspaceAuthConfig["createCustomerAccount"];
-  readonly hasAdministratorGrant?: WorkspaceAuthConfig["hasAdministratorGrant"];
   readonly reviewAccountCredentials?: WorkspaceAuthConfig["reviewAccountCredentials"];
-  readonly isReviewAccount?: WorkspaceAuthConfig["isReviewAccount"];
-  readonly registerReviewAccount?: WorkspaceAuthConfig["registerReviewAccount"];
 };
-
-/** The migrated disposable database as the Workspace database service. */
-const testDatabaseLayer = () =>
-  Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(testDatabase!.db));
-
-/** The real sign-in capture against the migrated disposable database. */
-const realCapture: WorkspaceAuthConfig["captureAccountLocalePreference"] = (
-  accountId,
-  locale
-) =>
-  captureAccountLocalePreference(accountId, locale).pipe(
-    Effect.provide(
-      Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(testDatabase!.db))
-    )
-  );
 
 /**
  * The real durable-account creation against the migrated disposable database,
  * which an adapter wrapping the Postgres one needs before every login insert.
  */
-export const realCreateCustomerAccount: WorkspaceAuthConfig["createCustomerAccount"] =
-  (accountId) =>
-    ensureCustomerAccount(accountId).pipe(Effect.provide(testDatabase!.layer));
-
-/** The real administrator grant read on the migrated disposable database. */
-const realHasAdministratorGrant: WorkspaceAuthConfig["hasAdministratorGrant"] =
-  (accountId) =>
-    Effect.flatMap(AccountRoleGrants, (grants) =>
-      grants.has({ accountId, role: "administrator" })
-    ).pipe(
-      Effect.provide(
-        AccountRoleGrants.Default.pipe(Layer.provide(testDatabaseLayer()))
-      )
-    );
-
-/** The review-account marker on the migrated disposable database. */
-const realReviewAccounts: Pick<
-  WorkspaceAuthConfig,
-  "isReviewAccount" | "registerReviewAccount"
-> = {
-  isReviewAccount: (accountId) =>
-    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
-      reviewAccounts.isReviewAccount(accountId)
-    ).pipe(
-      Effect.provide(
-        ReviewAccounts.Default.pipe(Layer.provide(testDatabaseLayer()))
-      )
-    ),
-  registerReviewAccount: (accountId) =>
-    Effect.flatMap(ReviewAccounts, (reviewAccounts) =>
-      reviewAccounts.register(accountId)
-    ).pipe(
-      Effect.provide(
-        ReviewAccounts.Default.pipe(Layer.provide(testDatabaseLayer()))
-      )
-    ),
-};
-
-/** The production advisory lock on the migrated disposable database. */
-const realSignInEmailLock: WorkspaceAuthConfig["withSignInEmailLock"] = (
-  address,
-  effect
-) =>
-  WorkspaceLockSections.signInEmail(address)(effect).pipe(
-    Effect.provide(WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool))
-  );
+export const realCreateCustomerAccount: NonNullable<
+  TestAuthOptions["createCustomerAccount"]
+> = (accountId) =>
+  ensureCustomerAccount(accountId).pipe(Effect.provide(testDatabase!.layer));
 
 /** A database failure the sign-in capture sees. */
 export const captureFailure = () =>
@@ -176,18 +109,6 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
   const sendMagicLink: MagicLinkSendFunction = (data) => {
     options.sentLinks?.push(data);
   };
-  const captureAccountLocalePreference:
-    | WorkspaceAuthConfig["captureAccountLocalePreference"]
-    | undefined =
-    options.captureAccountLocalePreference ??
-    // The real capture requires the migrated disposable Postgres, so
-    // memory-backed auth instances default to a noop capture.
-    (testDatabase && !options.database ? realCapture : () => Effect.void);
-  // Memory-backed instances run in one process with no Postgres to lock.
-  const withSignInEmailLock: WorkspaceAuthConfig["withSignInEmailLock"] =
-    testDatabase && !options.database
-      ? realSignInEmailLock
-      : (_address, effect) => effect;
   return makeWorkspaceAuth({
     database: options.database ?? buildDatabaseAdapter(),
     secrets: options.secrets ?? [{ version: 1, value: SECRET_V1 }],
@@ -200,60 +121,16 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
     customerMcpResource: `https://${HOST}/api/mcp`,
     clientMetadataTransport: options.clientMetadataTransport,
     httpsOnly: true,
-    isSignInCodeEnabled: options.isSignInCodeEnabled ?? (async () => false),
-    arePasskeysEnabled: options.arePasskeysEnabled ?? (async () => true),
-    verifyHuman: options.verifyHuman ?? (() => Effect.void),
-    withSignInEmailLock,
-    sendMagicLink,
-    beforeDeleteUser: options.beforeDeleteUser ?? (() => Effect.void),
-    createCustomerAccount:
-      options.createCustomerAccount ??
-      // Memory-backed instances have no customer_accounts table.
-      (testDatabase && !options.database
-        ? realCreateCustomerAccount
-        : () => Effect.void),
-    hasAdministratorGrant:
-      options.hasAdministratorGrant ??
-      // Memory-backed instances have no role grants.
-      (testDatabase && !options.database
-        ? realHasAdministratorGrant
-        : () => Effect.succeed(false)),
-    revokeUnconsentedAdministrationTokens:
-      testDatabase && !options.database
-        ? (owner) =>
-            revokeUnconsentedAdministrationTokens(owner).pipe(
-              Effect.provide(testDatabaseLayer())
-            )
-        : () => Effect.void,
-    captureAccountLocalePreference,
-    mirrorSignInAnalyticsConsent:
-      options.mirrorSignInAnalyticsConsent ??
-      // Memory-backed instances have no consent ledger.
-      (testDatabase && !options.database
-        ? (device) =>
-            mirrorDeviceAnalyticsConsent({
-              ...device,
-              source: "sign_in_mirror",
-            }).pipe(
-              Effect.provide(
-                AnalyticsConsentLedger.Default.pipe(
-                  Layer.provide(testDatabaseLayer())
-                )
-              )
-            )
-        : () => Effect.void),
     reviewAccountCredentials: options.reviewAccountCredentials ?? [],
-    // Memory-backed instances have no customer_accounts table.
-    isReviewAccount:
-      options.isReviewAccount ??
-      (testDatabase && !options.database
-        ? realReviewAccounts.isReviewAccount
-        : () => Effect.succeed(false)),
-    registerReviewAccount:
-      options.registerReviewAccount ??
-      (testDatabase && !options.database
-        ? realReviewAccounts.registerReviewAccount
-        : () => Effect.void),
+    sendMagicLink,
+    // The real capabilities need the migrated disposable Postgres behind the
+    // default store; any other store gets capabilities that keep no
+    // Workspace records.
+    services:
+      testDatabase && !options.database
+        ? postgresAuthHookServices(testDatabase, options)
+        : memoryAuthHookServices(options),
+    accountDeletion: options.accountDeletion ?? testAccountDeletion(),
   });
 };
 

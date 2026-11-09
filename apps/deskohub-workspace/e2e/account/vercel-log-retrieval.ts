@@ -15,7 +15,7 @@ import {
   type VercelDeployment,
   vercelRequestTimeoutMs,
 } from "../integrations/vercel";
-import { addRedaction } from "../runtime";
+import { addRedaction } from "../redaction";
 import type { WorkspaceE2EAccountConfig } from "./config";
 
 const workspaceE2EPreviewE2ELogCode = "account.magic-link.preview-e2e";

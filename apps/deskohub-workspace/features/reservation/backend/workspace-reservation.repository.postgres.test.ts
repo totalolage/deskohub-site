@@ -157,6 +157,57 @@ describe.skipIf(!testDatabase)(
       return attempt;
     };
 
+    describe("payment return target", () => {
+      test("stores the last submission's app, clears it, and leaves updatedAt alone", async () => {
+        const id = await insertReservation();
+        const before = await readReservation(id);
+
+        expect(
+          await run((repository) => repository.findPaymentReturnTarget(id))
+        ).toBeUndefined();
+
+        for (const paymentReturnTarget of ["native-app", "web-app"] as const) {
+          await run((repository) =>
+            repository.recordPaymentReturnTarget({ id, paymentReturnTarget })
+          );
+          expect(
+            await run((repository) => repository.findPaymentReturnTarget(id))
+          ).toBe(paymentReturnTarget);
+        }
+
+        await run((repository) =>
+          repository.recordPaymentReturnTarget({
+            id,
+            paymentReturnTarget: undefined,
+          })
+        );
+        const after = await readReservation(id);
+        expect(after?.paymentReturnTarget).toBeNull();
+        expect(after?.updatedAt).toEqual(before?.updatedAt);
+      });
+
+      test("finds no target for an unknown reservation", async () => {
+        expect(
+          await run((repository) =>
+            repository.findPaymentReturnTarget(
+              "missing-reservation" as WorkspaceReservationId
+            )
+          )
+        ).toBeUndefined();
+      });
+
+      test("refuses a stored target outside the allowlist", async () => {
+        const id = await insertReservation();
+
+        await expect(
+          testDatabase.pool.query(
+            "update workspace_reservations set payment_return_target = $2 where id = $1",
+            [id, "https://elsewhere.test"]
+          )
+        ).rejects.toThrow("workspace_reservations_payment_return_target_check");
+      });
+    });
+
     describe("expired holds", () => {
       test("selects unpaid expired holds and queues holds with skipped cleanup behind fresh ones", async () => {
         const skippedCleanup = await insertReservation(

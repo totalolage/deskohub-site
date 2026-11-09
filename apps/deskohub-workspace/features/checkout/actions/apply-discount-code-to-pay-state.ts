@@ -168,6 +168,15 @@ const acceptReferralCode = Effect.fnUntraced(function* (
   if (result.status === "pricing_changed" && result.freshPayUrl !== undefined) {
     return result;
   }
+  // A started payment blocks the checkout, not the code: like an ordinary
+  // code, it signs no replacement.
+  if (
+    result.status === "unavailable" &&
+    result.reason === "checkout" &&
+    result.checkoutReason === "payment_in_progress"
+  ) {
+    return paymentInProgress;
+  }
   return yield* rejectReferralCode(entry, result);
 });
 
@@ -351,7 +360,12 @@ export const applyDiscountCodeToPayState = Effect.fn(
       return unavailableBecause({ status: "unavailable", reason: "code" });
     }
 
-    const codeKind = yield* referrals.lookupCodeKind({ code: submittedCode });
+    // A registry that can't classify the code applies nothing; a retry can
+    // still work.
+    const codeKind = yield* referrals
+      .lookupCodeKind({ code: submittedCode })
+      .pipe(Effect.orElseSucceed(() => undefined));
+    if (codeKind === undefined) return providerUnavailable;
     const entry = { input, state, submittedCode };
     return yield* codeKind.kind === "referral"
       ? acceptReferralCode(entry)
@@ -365,7 +379,6 @@ export const applyDiscountCodeToPayState = Effect.fn(
         DiscountAffirmationUnavailableError: () =>
           Effect.succeed(providerUnavailable),
         DiscountProviderError: () => Effect.succeed(providerUnavailable),
-        ReferralError: () => Effect.succeed(providerUnavailable),
         PayableReservationUnavailableError: (error) =>
           Effect.succeed(
             unavailableBecause({

@@ -1,29 +1,21 @@
 import { APIError } from "better-auth";
 import { type createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
-import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Match, Option, Schema } from "effect";
-import type { SqlError } from "effect/unstable/sql";
+import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import { administrationAgentScope } from "../../agent-scopes";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "../../customer-account";
+import { LoginLifecycleRecords } from "./login-lifecycle-records.service";
 
 type AuthRequest = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 
 /** Whether an account holds the administrator grant right now. */
-export type AdministratorGrantCheck = (
-  accountId: CustomerAccountId
-) => Effect.Effect<boolean, EffectDrizzleQueryError>;
-
-/**
- * Deletes the account's tokens for one agent that carry the administration
- * scope although its consent no longer names it.
- */
-export type AdministrationTokenRevocation = (input: {
-  readonly accountId: CustomerAccountId;
-  readonly clientId: string;
-}) => Effect.Effect<unknown, EffectDrizzleQueryError | SqlError.SqlError>;
+const hasAdministratorGrant = (accountId: CustomerAccountId) =>
+  Effect.flatMap(AccountRoleGrants, (grants) =>
+    grants.has({ accountId, role: "administrator" })
+  );
 
 /** The consent answer fields the guards read from the request body. */
 const consentAnswerSchema = Schema.Struct({
@@ -99,10 +91,7 @@ const sessionAccount = (request: AuthRequest) =>
   );
 
 /** Whether the session's account holds the administrator grant now. */
-const sessionHoldsAdministratorGrant = (
-  request: AuthRequest,
-  hasAdministratorGrant: AdministratorGrantCheck
-) =>
+const sessionHoldsAdministratorGrant = (request: AuthRequest) =>
   sessionAccount(request).pipe(
     Effect.flatMap(
       Option.match({
@@ -118,8 +107,7 @@ const sessionHoldsAdministratorGrant = (
  * needs a signed-in account that holds the administrator grant now.
  */
 const guardConsent = Effect.fn("WorkspaceAuth.guardAgentConsent")(function* (
-  request: AuthRequest,
-  hasAdministratorGrant: AdministratorGrantCheck
+  request: AuthRequest
 ) {
   const answer = acceptedConsent(request);
   if (Option.isNone(answer)) {
@@ -129,7 +117,7 @@ const guardConsent = Effect.fn("WorkspaceAuth.guardAgentConsent")(function* (
     Effect.map(splitScopes),
     Effect.mapError(missingConsentScope)
   );
-  yield* sessionHoldsAdministratorGrant(request, hasAdministratorGrant).pipe(
+  yield* sessionHoldsAdministratorGrant(request).pipe(
     Effect.filterOrFail(Boolean, administrationRefused),
     Effect.when(Effect.succeed(includesAdministration(scopes)))
   );
@@ -189,14 +177,9 @@ const guardSkipConsentAuthorization = (request: AuthRequest) =>
  * consent to. This is issuance policy: administration calls re-check the
  * live grant themselves.
  */
-export const guardAdministrationScope = (
-  request: AuthRequest,
-  hasAdministratorGrant: AdministratorGrantCheck
-) =>
+export const guardAdministrationScope = (request: AuthRequest) =>
   Match.value(request.path).pipe(
-    Match.when("/oauth2/consent", () =>
-      guardConsent(request, hasAdministratorGrant)
-    ),
+    Match.when("/oauth2/consent", () => guardConsent(request)),
     Match.when("/oauth2/authorize", () =>
       guardSkipConsentAuthorization(request)
     ),
@@ -214,10 +197,7 @@ export const guardAdministrationScope = (
  * so its client is the one the consent names, and only the session
  * account's tokens go.
  */
-export const narrowAdministrationOnConsent = (
-  request: AuthRequest,
-  revokeUnconsentedAdministrationTokens: AdministrationTokenRevocation
-) =>
+export const narrowAdministrationOnConsent = (request: AuthRequest) =>
   acceptedConsent(request).pipe(
     Option.filter(() => request.path === "/oauth2/consent"),
     Option.match({
@@ -231,7 +211,11 @@ export const narrowAdministrationOnConsent = (
             new URLSearchParams(answer.oauth_query).get("client_id")
           ),
         }).pipe(
-          Effect.flatMap(revokeUnconsentedAdministrationTokens),
+          Effect.flatMap((owner) =>
+            Effect.flatMap(LoginLifecycleRecords, (records) =>
+              records.revokeUnconsentedAdministrationTokens(owner)
+            )
+          ),
           Effect.catchNoSuchElement,
           Effect.asVoid
         ),

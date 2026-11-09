@@ -22,7 +22,10 @@ import {
   waitForPageUrl,
   waitForReactHandler,
 } from "../browser";
-import type { E2EBrowserSession } from "../browser-session";
+import type {
+  E2EBrowserSession,
+  OpenE2EBrowserSession,
+} from "../browser-session";
 import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import {
   formatNexiBuildFailureCodes,
@@ -72,13 +75,13 @@ import {
   recordCheckoutIntent,
   recordReservationResult,
 } from "../reservation-intents";
-import type { Runner } from "../runtime";
-import { assert, browserSessionFor, log, parseUrl } from "../runtime";
+import { assert, log, parseUrl } from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlow,
   CheckoutFlowState,
   CheckoutRow,
+  WorkspaceE2ECaseContext,
 } from "../types";
 import { isExpectedCheckoutStatusUrl, makeUrl, setSearchParams } from "../urls";
 
@@ -87,9 +90,9 @@ export const executeCheckoutFlow = ({
   data,
   datasourceConfig,
   flow,
-  run,
+  openSeparateSession,
+  openSession,
   runStep,
-  session,
   state,
   payPageSteps,
   beforeReservationSubmit,
@@ -101,9 +104,9 @@ export const executeCheckoutFlow = ({
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
   flow: CheckoutFlowStart;
-  run: Runner;
+  openSeparateSession: WorkspaceE2ECaseContext["openSeparateSession"];
+  openSession: OpenE2EBrowserSession;
   runStep: WorkspaceE2EStepRunner;
-  session: string;
   state: CheckoutFlowState;
   payPageSteps?: (
     orderId: CheckoutRow["reservation_id"]
@@ -141,7 +144,7 @@ export const executeCheckoutFlow = ({
         ? yield* flow.startReservation
         : yield* runStep({
             execute: Effect.gen(function* () {
-              const browser = yield* browserSessionFor(run, session);
+              const browser = yield* openSession;
               yield* openPage(browser, config, data.checkoutUrl, {
                 timeoutMs: config.timeouts.browserNavigation,
               });
@@ -167,9 +170,8 @@ export const executeCheckoutFlow = ({
       config,
       data,
       orderId,
-      run,
       runStep,
-      session,
+      openSession,
       state,
     });
     state.orderId = orderId;
@@ -220,8 +222,7 @@ export const executeCheckoutFlow = ({
         data,
         dotyposReservation,
         orderId,
-        run,
-        session,
+        openSession,
       }),
       id: "assert-fulfilled-status-page",
       timeoutMs: config.timeouts.uiTransition,
@@ -232,8 +233,7 @@ export const executeCheckoutFlow = ({
         execute: restartReservationAfterFulfillment({
           config,
           data,
-          run,
-          session,
+          openSession,
         }),
         id: "restart-reservation-after-fulfillment",
         timeoutMs: config.timeouts.uiTransition,
@@ -258,9 +258,8 @@ export const executeCheckoutFlow = ({
         config,
         data,
         orderId,
-        run,
         runStep,
-        session,
+        openSession,
       });
       const customerId = yield* tryWorkspaceE2ESync(
         "read paid customer for reservation status isolation",
@@ -277,9 +276,9 @@ export const executeCheckoutFlow = ({
           config,
           customerId,
           data,
+          openSeparateSession,
+          openSession,
           orderId,
-          run,
-          session,
         })
       );
     }
@@ -310,9 +309,8 @@ export type HostedCheckoutPaymentOptions = {
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
   readonly orderId: CheckoutRow["reservation_id"];
-  readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
-  readonly session: string;
+  readonly openSession: OpenE2EBrowserSession;
   readonly state: CheckoutFlowState;
 };
 
@@ -341,7 +339,7 @@ export const completeHostedCheckoutPayment = (
   Effect.gen(function* () {
     const hostedPaymentPermit = yield* WorkspaceE2EHostedPaymentPermitService;
     return yield* hostedPaymentPermit.withPermit(
-      options.session,
+      "hosted checkout payment",
       Effect.gen(function* () {
         const first = yield* runHostedPaymentAttempt(options);
         if (first.kind === "completed") return first.row;
@@ -370,9 +368,8 @@ const runHostedPaymentAttempt = (
     config,
     data,
     orderId,
-    run,
     runStep,
-    session,
+    openSession,
     state,
   }: HostedCheckoutPaymentOptions,
   // The first attempt's row when this attempt restarts a rejected payment.
@@ -381,7 +378,7 @@ const runHostedPaymentAttempt = (
   Effect.gen(function* () {
     const stepId = (id: string) => (rejectedRow ? `${id}-retry` : id);
     const hostedPaymentPage = yield* runStep({
-      execute: Effect.flatMap(browserSessionFor(run, session), (browser) =>
+      execute: Effect.flatMap(openSession, (browser) =>
         submitPaymentAndWaitForHostedPage({
           session: browser,
           timeouts: config.timeouts,
@@ -411,7 +408,7 @@ const runHostedPaymentAttempt = (
 
     let authorizationRequested = false;
     const rejected = yield* runStep({
-      execute: Effect.flatMap(browserSessionFor(run, session), (browser) =>
+      execute: Effect.flatMap(openSession, (browser) =>
         completeNexiHostedPayment({
           ...(challengeOutcome ? { challengeOutcome } : {}),
           data,
@@ -444,7 +441,7 @@ const runHostedPaymentAttempt = (
     if (rejected) return rejected;
 
     yield* runStep({
-      execute: waitForCheckoutStatusPage(config, run, session),
+      execute: waitForCheckoutStatusPage(config, openSession),
       id: stepId("reach-checkout-status-page"),
       timeoutMs: config.timeouts.providerTransition,
     });
@@ -468,11 +465,11 @@ export const assertFreshPaymentAttempt = (
 // Decides whether the rejected payment may restart. If so, retires the rejected attempt, leaves the hosted page, and
 // reopens the checkout pay page, which starts a fresh attempt and Nexi order.
 const restartSandboxRejectedPayment = (
-  { config, orderId, run, session, state }: HostedCheckoutPaymentOptions,
+  { config, orderId, openSession, state }: HostedCheckoutPaymentOptions,
   rejected: Extract<HostedPaymentAttempt, { kind: "sandbox-rejected" }>
 ): Effect.Effect<boolean, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
-    const browser = yield* browserSessionFor(run, session);
+    const browser = yield* openSession;
     const networkLog = yield* readNetworkLog(browser);
     const decision = decideNexiSandboxRetry({
       authorizationRequested: rejected.authorizationRequested,
@@ -522,8 +519,7 @@ export const leaveRejectedHostedPayment = ({
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     if (page !== checkoutPage) {
-      // As the argv tab command did, a page that already closed fails. The
-      // argv close had no bound of its own.
+      // A page that already closed fails; the close has no bound of its own.
       yield* session.use(
         "close browser tab",
         async () => {
@@ -543,26 +539,23 @@ export const leaveRejectedHostedPayment = ({
 
 const waitForCheckoutStatusPage = (
   config: WorkspaceE2EConfig,
-  run: Runner,
-  session: string
+  openSession: OpenE2EBrowserSession
 ) =>
   waitForPageUrl({
     description: "checkout status page",
     matches: (url) => isExpectedCheckoutStatusUrl(url, config.expectedHost),
-    session: browserSessionFor(run, session),
+    session: openSession,
     timeoutMs: config.timeouts.providerTransition,
   }).pipe(Effect.asVoid);
 
 const restartReservationAfterFulfillment = ({
   config,
   data,
-  run,
-  session,
+  openSession,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
-  run: Runner;
-  session: string;
+  openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const reservationPath = yield* tryWorkspaceE2ESync(
@@ -574,7 +567,7 @@ const restartReservationAfterFulfillment = ({
       }
     );
 
-    const browser = yield* browserSessionFor(run, session);
+    const browser = yield* openSession;
     yield* activateElement(browser, "#checkout-status-reserve-again", {
       timeoutMs: config.timeouts.browserAction,
     });
@@ -626,16 +619,14 @@ export const assertFulfilledStatusPage = ({
   data,
   dotyposReservation,
   orderId,
-  run,
-  session,
+  openSession,
 }: {
   checkoutRow: CheckoutRow;
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   dotyposReservation: ValidatedDotyposReservation;
   orderId: CheckoutRow["reservation_id"];
-  run: Runner;
-  session: string;
+  openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const expectedPaymentPrice = yield* tryWorkspaceE2ESync(
@@ -663,7 +654,7 @@ export const assertFulfilledStatusPage = ({
     // status route. Keep that page alive so its real auto-refresh observes the
     // fulfillment transition instead of starting another streamed RSC request
     // for every paid case.
-    const browser = yield* browserSessionFor(run, session);
+    const browser = yield* openSession;
     yield* waitForPageUrl({
       description: "fulfilled checkout status page",
       matches: (url) => {
@@ -906,23 +897,21 @@ const assertFulfillmentFailedSupportPath = ({
   config,
   data,
   orderId,
-  run,
   runStep,
-  session,
+  openSession,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   orderId: CheckoutRow["reservation_id"];
-  run: Runner;
   runStep: WorkspaceE2EStepRunner;
-  session: string;
+  openSession: OpenE2EBrowserSession;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     // Each step reaches the browser itself, so a browser that fails to open
     // stays attributed to the step that needed it.
     const inBrowser = <A>(
       drive: (browser: E2EBrowserSession) => Effect.Effect<A, WorkspaceE2EError>
-    ) => Effect.flatMap(browserSessionFor(run, session), drive);
+    ) => Effect.flatMap(openSession, drive);
     yield* runStep({
       execute: markFulfillmentFailedForE2E(orderId),
       id: "mark-fulfillment-failed-for-support-path",

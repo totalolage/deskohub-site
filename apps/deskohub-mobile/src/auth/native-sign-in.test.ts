@@ -1,6 +1,14 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Exit, Fiber, Layer, ManagedRuntime, Option } from "effect";
+import {
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Semaphore,
+} from "effect";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 import { nativeReturnUri, parseAuthCallbackUrl } from "./auth-callback";
@@ -27,7 +35,9 @@ import {
   startPendingSignIn,
 } from "./native-sign-in";
 import { PendingSignIns, pendingSignInKey } from "./pending-sign-in.service";
+import { SessionWriteLock, withSessionWriteLock } from "./session-write-lock";
 import { SignInLocale } from "./sign-in-locale";
+import { signOutOf } from "./sign-out-request";
 import {
   type FakeAuthServer,
   type FakeUser,
@@ -49,7 +59,13 @@ const launchApp = (
   store: MemorySecureStore,
   webPage: WebPage = async () => AuthSessionResult.Closed()
 ) => {
-  const options = { origin, storage: store, fetch: server.fetch };
+  const sessionWriteLock = Semaphore.makeUnsafe(1);
+  const options = {
+    origin,
+    storage: store,
+    fetch: server.fetch,
+    sessionWriteLock,
+  };
   const client = createNativeAuthClient(options);
   const opened: Array<string> = [];
   const browser = Layer.succeed(AuthSessionBrowser, {
@@ -67,7 +83,8 @@ const launchApp = (
       AuthCrypto.Live,
       AuthCallbackCompletions.Default,
       browser,
-      Layer.succeed(SignInLocale, "cs-CZ")
+      Layer.succeed(SignInLocale, "cs-CZ"),
+      Layer.succeed(SessionWriteLock, sessionWriteLock)
     )
   );
   return { client, runtime, opened };
@@ -89,6 +106,14 @@ const failureTag = (exit: Exit.Exit<unknown, { readonly _tag: string }>) =>
 
 const storedCookie = (store: MemorySecureStore) =>
   store.values.get("deskohub_cookie") ?? "";
+
+/** The account of the session the client cached for the next launch. */
+const cachedSessionUserId = (store: MemorySecureStore) =>
+  (
+    JSON.parse(store.values.get("deskohub_session_data") ?? "null") as {
+      readonly user?: { readonly id?: string };
+    } | null
+  )?.user?.id;
 
 /** How often the client told `useSession` its session changed. */
 const sessionSignals = (client: ReturnType<typeof launchApp>["client"]) => {
@@ -176,14 +201,45 @@ describe("native session store", () => {
       completeAuthCallback({ kind: "token", token: server.issueMagicLink(ada) })
     );
 
-    await app.runtime.runPromise(
-      Effect.service(NativeAuth).pipe(Effect.flatMap((auth) => auth.signOut))
-    );
+    await app.runtime.runPromise(signOutOf(app.client));
 
     expect(storedCookie(store)).not.toContain("session_token");
     expect(server.openSessions()).toEqual([]);
     const restarted = launchApp(server, store);
     expect((await restarted.client.getSession()).data).toBeNull();
+  });
+
+  test("a sign-in that completes while a sign-out is in flight keeps its session", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const app = launchApp(server, store);
+    await app.runtime.runPromise(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(ada) })
+    );
+    let answer: () => void = () => undefined;
+    server.holdSignOuts(
+      new Promise<void>((resolve) => {
+        answer = resolve;
+      })
+    );
+
+    const signingOut = app.runtime.runPromiseExit(signOutOf(app.client));
+    // The Expo client clears the stored session before it sends the request.
+    while (server.callsTo("/sign-out").length === 0) await Bun.sleep(1);
+    const signingIn = app.runtime.runPromiseExit(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(bob) })
+    );
+    // Once its link is verified, a sign-in without a gate only has its
+    // in-memory acceptance left and has stored its session by now.
+    while (server.callsTo("/magic-link/verify").length < 2) await Bun.sleep(1);
+    await Promise.race([signingIn, Bun.sleep(100)]);
+    answer();
+
+    expect(Exit.isSuccess(await signingOut)).toBe(true);
+    expect(await signingIn).toEqual(Exit.succeed(bob));
+    expect(storedCookie(store)).toContain("session_token");
+    expect((await app.client.getSession()).data?.user.id).toBe(bob.id);
+    expect(server.openSessions()).toEqual([bob]);
   });
 
   test("an interrupted sign-in finishes storing the session it accepted", async () => {
@@ -215,6 +271,134 @@ describe("native session store", () => {
 
     expect(storedCookie(store)).toContain("session_token");
     expect(signals()).toBeGreaterThan(0);
+  });
+
+  test("a session read stores the answer for the session it was sent with", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const app = launchApp(server, store);
+    await app.runtime.runPromise(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(ada) })
+    );
+    store.values.set("deskohub_session_data", "{}");
+
+    await app.client.getSession();
+
+    expect(cachedSessionUserId(store)).toBe(ada.id);
+  });
+
+  test("a session read answered while another change runs returns its answer without storing it", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const app = launchApp(server, store);
+    await app.runtime.runPromise(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(ada) })
+    );
+    store.values.set("deskohub_session_data", "{}");
+    let holding = false;
+    let finish: () => void = () => undefined;
+    const change = app.runtime.runPromise(
+      withSessionWriteLock(
+        Effect.promise(
+          () =>
+            new Promise<void>((resolve) => {
+              holding = true;
+              finish = resolve;
+            })
+        )
+      )
+    );
+    while (!holding) await Bun.sleep(1);
+
+    expect((await app.client.getSession()).data?.user.id).toBe(ada.id);
+    expect(cachedSessionUserId(store)).toBeUndefined();
+    finish();
+    await change;
+    await app.client.getSession();
+    expect(cachedSessionUserId(store)).toBe(ada.id);
+  });
+
+  test("a session read answered after a sign-out and a new sign-in keeps the new session", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const app = launchApp(server, store);
+    await app.runtime.runPromise(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(ada) })
+    );
+    let answer: () => void = () => undefined;
+    server.holdNextSessionRead(
+      new Promise<void>((resolve) => {
+        answer = resolve;
+      })
+    );
+    const reads = server.callsTo("/get-session").length;
+    const reading = app.client.getSession();
+    while (server.callsTo("/get-session").length === reads) await Bun.sleep(1);
+
+    await app.runtime.runPromise(signOutOf(app.client));
+    expect(
+      await app.runtime.runPromise(
+        completeAuthCallback({
+          kind: "token",
+          token: server.issueMagicLink(bob),
+        })
+      )
+    ).toEqual(bob);
+    // The server now answers the read for Ada's ended session: no session,
+    // and her session cookie expired.
+    answer();
+    await reading;
+
+    expect(storedCookie(store)).toContain("session_token");
+    expect(cachedSessionUserId(store)).toBe(bob.id);
+    const restarted = launchApp(server, store);
+    expect((await restarted.client.getSession()).data?.user.id).toBe(bob.id);
+  });
+
+  test("a session read whose answer is being stored finishes before a sign-out and a new sign-in", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const app = launchApp(server, store, webSignInAs(server, bob));
+    await app.runtime.runPromise(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(ada) })
+    );
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let caching = false;
+    const write = store.setItemAsync;
+    store.setItemAsync = async (key, value) => {
+      if (
+        !caching &&
+        key === "deskohub_session_data" &&
+        value.includes(ada.id)
+      ) {
+        caching = true;
+        await gate;
+      }
+      await write(key, value);
+    };
+
+    const reading = app.client.getSession();
+    while (!caching) await Bun.sleep(1);
+    const signingOut = app.runtime.runPromiseExit(signOutOf(app.client));
+    const signingIn = app.runtime.runPromiseExit(
+      signInWithEmail(Option.none())
+    );
+    // Without the lock both finish while Ada's answer is still being cached.
+    while (server.callsTo("/native-handoff/exchange").length === 0) {
+      await Bun.sleep(1);
+    }
+    await Promise.race([Promise.all([signingOut, signingIn]), Bun.sleep(100)]);
+    release();
+    await reading;
+
+    expect(Exit.isSuccess(await signingOut)).toBe(true);
+    expect(await signingIn).toEqual(Exit.succeed(bob));
+    expect(cachedSessionUserId(store)).toBe(bob.id);
+    const restarted = launchApp(server, store);
+    expect((await restarted.client.getSession()).data?.user.id).toBe(bob.id);
   });
 
   test("a used magic link is refused", async () => {
@@ -251,6 +435,9 @@ describe("native email sign-in through the auth session", () => {
     const signInUrl = new URL(app.opened[0] ?? "");
     expect(signInUrl.origin + signInUrl.pathname).toBe(`${origin}/app/sign-in`);
     expect(signInUrl.searchParams.has("prompt")).toBe(false);
+    // The page, its email and a new account follow the app's language, not
+    // the browser's.
+    expect(signInUrl.searchParams.getAll("locale")).toEqual(["cs-CZ"]);
   });
 
   test("refuses a handoff with the wrong state without calling the server", async () => {
