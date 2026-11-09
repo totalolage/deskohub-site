@@ -4,10 +4,15 @@ import {
   DotyposCustomerIdSchema,
   type DotyposReservation,
   DotyposReservationIdSchema,
+  type DotyposService,
 } from "@deskohub/dotypos";
-import { Effect, Layer, Result } from "effect";
+import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { Effect, Layer, Option, Result } from "effect";
 import { ReadLimitExceededError } from "@/shared/backend/read-limit";
-import { CustomerBookedReservations } from "./customer-booked-reservations";
+import {
+  CustomerBookedReservations,
+  CustomerBookedReservationsUnreadableError,
+} from "./customer-booked-reservations";
 import { countedDotyposReservationReads } from "./reservation-visits.test-utils";
 
 const customer = DotyposCustomerIdSchema.make("booked-customer");
@@ -34,24 +39,43 @@ const reservationsOf = (
     };
   });
 
-const listForCustomer = (
+const readWith = (dotypos: Layer.Layer<DotyposService>, limit: number) =>
+  Effect.runPromise(
+    Effect.flatMap(CustomerBookedReservations, (bookings) =>
+      bookings.listForCustomer({ customerId: customer, limit })
+    ).pipe(
+      Effect.provide(
+        CustomerBookedReservations.Provider.pipe(Layer.provide(dotypos))
+      ),
+      Effect.result
+    )
+  );
+
+const listForCustomer = async (
   reservations: readonly DotyposReservation[],
   limit: number
 ) => {
   const dotypos = countedDotyposReservationReads(reservations);
-  const read = Effect.flatMap(CustomerBookedReservations, (bookings) =>
-    bookings.listForCustomer({ customerId: customer, limit })
-  ).pipe(
-    Effect.provide(
-      CustomerBookedReservations.Provider.pipe(Layer.provide(dotypos.layer))
-    ),
-    Effect.result
-  );
-  return Effect.runPromise(read).then((result) => ({
-    result,
-    requests: dotypos.requests(),
-  }));
+  const result = await readWith(dotypos.layer, limit);
+  return { result, requests: dotypos.requests() };
 };
+
+/** Dotypos answering each page number with the given page. */
+const pagedDotypos = (
+  pages: ReadonlyArray<{
+    readonly reservations: readonly DotyposReservation[];
+    readonly nextPage?: number;
+  }>
+) =>
+  DotyposServiceMock({
+    listReservationsPage: ({ page }) => {
+      const answer = pages[page - 1];
+      return Effect.succeed({
+        reservations: answer?.reservations ?? [],
+        nextPage: Option.fromUndefinedOr(answer?.nextPage),
+      });
+    },
+  });
 
 describe("CustomerBookedReservations.listForCustomer", () => {
   test("reads only the customer's reservations, newest start first, without table, note, or customer link", async () => {
@@ -67,8 +91,8 @@ describe("CustomerBookedReservations.listForCustomer", () => {
             `${customer}-1`
           ),
           status: "CONFIRMED",
-          startsAt: firstStart.add({ hours: 1 }),
-          endsAt: firstStart.add({ hours: 1, minutes: 30 }),
+          heldFrom: firstStart.add({ hours: 1 }),
+          heldUntil: firstStart.add({ hours: 1, minutes: 30 }),
           seats: 2,
         },
         {
@@ -76,8 +100,8 @@ describe("CustomerBookedReservations.listForCustomer", () => {
             `${customer}-0`
           ),
           status: "CONFIRMED",
-          startsAt: firstStart,
-          endsAt: firstStart.add({ minutes: 30 }),
+          heldFrom: firstStart,
+          heldUntil: firstStart.add({ minutes: 30 }),
           seats: 2,
         },
       ])
@@ -104,5 +128,51 @@ describe("CustomerBookedReservations.listForCustomer", () => {
     const farOver = await listForCustomer(reservationsOf(customer, 450), 150);
     expect(farOver.result._tag).toBe("Failure");
     expect(farOver.requests).toBe(2);
+  });
+
+  test("fails on a reservation whose held span or seats can't be read", async () => {
+    const [readable, unreadable] = reservationsOf(customer, 2);
+    const { result } = await listForCustomer(
+      [readable!, { ...unreadable!, seats: "many" }],
+      5
+    );
+
+    expect(result).toEqual(
+      Result.fail(
+        new CustomerBookedReservationsUnreadableError({
+          reason: "malformed-reservation",
+          dotyposReservationId: unreadable!.id,
+        })
+      )
+    );
+  });
+
+  test("fails on pages that contradict each other", async () => {
+    const [first, second] = reservationsOf(customer, 2);
+    const inconsistent = Result.fail(
+      new CustomerBookedReservationsUnreadableError({
+        reason: "inconsistent-pages",
+      })
+    );
+
+    expect(
+      await readWith(
+        pagedDotypos([
+          { reservations: [first!], nextPage: 2 },
+          { reservations: [], nextPage: 3 },
+          { reservations: [second!] },
+        ]),
+        5
+      )
+    ).toEqual(inconsistent);
+    expect(
+      await readWith(
+        pagedDotypos([
+          { reservations: [first!, second!], nextPage: 2 },
+          { reservations: [second!] },
+        ]),
+        5
+      )
+    ).toEqual(inconsistent);
   });
 });

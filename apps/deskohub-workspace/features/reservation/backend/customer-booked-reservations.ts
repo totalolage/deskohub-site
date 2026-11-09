@@ -5,7 +5,7 @@ import {
   type DotyposReservationId,
   DotyposService,
 } from "@deskohub/dotypos";
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Data, Effect, Layer, Option } from "effect";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import {
   type ReadLimitExceededError,
@@ -14,32 +14,62 @@ import {
 import { decodeBookedReservation } from "./booked-reservation";
 
 /**
+ * Dotypos answered with something the customer's reservations can't be read
+ * from: a reservation whose held span or seats Workspace can't read, or pages
+ * that contradict each other (an empty page announcing another, or a
+ * reservation listed twice because the list moved while it was paged).
+ */
+export class CustomerBookedReservationsUnreadableError extends Data.TaggedError(
+  "CustomerBookedReservationsUnreadableError"
+)<{
+  readonly reason: "malformed-reservation" | "inconsistent-pages";
+  readonly dotyposReservationId?: DotyposReservationId;
+}> {}
+
+/**
  * What a customer may read about one reservation Dotypos holds for them: its
- * status, the span Dotypos holds, and its seats. An early-setup meeting room
- * is held from its setup start; its Workspace record's product says so. A
- * start, end, or seat count Workspace can't read is null. No table, note, or
- * customer link is returned.
+ * status, seats, and the span Dotypos holds it for. An early-setup meeting
+ * room is held from its setup start, before its booked start; the customer's
+ * Workspace reservation record with this `dotyposReservationId` holds the
+ * product, early setup included. No table, note, or customer link is returned.
  */
 export type CustomerBookedReservation = {
   readonly dotyposReservationId: DotyposReservationId;
   readonly status: DotyposReservation["status"];
-  readonly startsAt: Temporal.Instant | null;
-  readonly endsAt: Temporal.Instant | null;
-  readonly seats: number | null;
+  readonly heldFrom: Temporal.Instant;
+  readonly heldUntil: Temporal.Instant;
+  readonly seats: number;
 };
 
-const toCustomerBookedReservation = (
-  reservation: DotyposReservation
-): CustomerBookedReservation => {
+const toCustomerBookedReservation = (reservation: DotyposReservation) => {
   const booked = decodeBookedReservation(reservation);
-  return {
-    dotyposReservationId: reservation.id,
-    status: reservation.status,
-    startsAt: Option.getOrNull(booked.start),
-    endsAt: Option.getOrNull(booked.end),
-    seats: Option.getOrNull(booked.seats),
-  };
+  return Option.all({
+    heldFrom: booked.start,
+    heldUntil: booked.end,
+    seats: booked.seats,
+  }).pipe(
+    Option.match({
+      onNone: () =>
+        Effect.fail(
+          new CustomerBookedReservationsUnreadableError({
+            reason: "malformed-reservation",
+            dotyposReservationId: reservation.id,
+          })
+        ),
+      onSome: (facts) =>
+        Effect.succeed<CustomerBookedReservation>({
+          dotyposReservationId: reservation.id,
+          status: reservation.status,
+          ...facts,
+        }),
+    })
+  );
 };
+
+const inconsistentPages = () =>
+  new CustomerBookedReservationsUnreadableError({
+    reason: "inconsistent-pages",
+  });
 
 export interface CustomerBookedReservationReads {
   /**
@@ -49,14 +79,18 @@ export interface CustomerBookedReservationReads {
    * read. Pages are read one at a time and reading stops once more than
    * `limit` reservations arrived, so at most `limit` plus one page is held;
    * it then fails with `ReadLimitExceededError`, returning nothing. Each page
-   * is one Dotypos request that isn't retried, so a failed page fails the read.
+   * is one Dotypos request that isn't retried, so a failed page fails the
+   * read. Fails with `CustomerBookedReservationsUnreadableError` rather than
+   * return a list it can't vouch for.
    */
   readonly listForCustomer: (input: {
     readonly customerId: DotyposCustomerId;
     readonly limit: number;
   }) => Effect.Effect<
     readonly CustomerBookedReservation[],
-    DotyposReadFailure | ReadLimitExceededError
+    | DotyposReadFailure
+    | ReadLimitExceededError
+    | CustomerBookedReservationsUnreadableError
   >;
 }
 
@@ -70,31 +104,25 @@ const makeCustomerBookedReservations = Effect.gen(function* () {
       readonly customerId: DotyposCustomerId;
       readonly limit: number;
     }) {
-      const reservations = new Map<DotyposReservationId, DotyposReservation>();
+      const loaded: DotyposReservation[] = [];
       let page = Option.some(1);
-      while (Option.isSome(page) && reservations.size <= input.limit) {
+      // Every page read adds at least one reservation, so the loop reads at
+      // most `limit + 1` pages.
+      while (Option.isSome(page) && loaded.length <= input.limit) {
         const result = yield* dotypos.listReservationsPage({
           customerId: input.customerId,
           order: "startDateDescending",
           page: page.value,
         });
-        for (const reservation of result.reservations) {
-          // A reservation that moves between pages while they're read is
-          // listed once.
-          if (!reservations.has(reservation.id)) {
-            reservations.set(reservation.id, reservation);
-          }
-        }
-        // An empty page ends the list, so a provider that keeps announcing
-        // empty pages can't keep the read going.
-        page =
-          result.reservations.length === 0 ? Option.none() : result.nextPage;
+        if (result.reservations.length === 0 && Option.isSome(result.nextPage))
+          return yield* inconsistentPages();
+        loaded.push(...result.reservations);
+        page = result.nextPage;
       }
-      const bounded = yield* requireWithinReadLimit(
-        [...reservations.values()],
-        input.limit
-      );
-      return bounded.map(toCustomerBookedReservation);
+      const bounded = yield* requireWithinReadLimit(loaded, input.limit);
+      if (new Set(bounded.map(({ id }) => id)).size !== bounded.length)
+        return yield* inconsistentPages();
+      return yield* Effect.forEach(bounded, toCustomerBookedReservation);
     },
     (effect, { customerId, limit }) =>
       effect.pipe(Effect.annotateLogs({ dotyposCustomerId: customerId, limit }))
