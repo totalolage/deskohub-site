@@ -35,7 +35,7 @@ import {
   startPendingSignIn,
 } from "./native-sign-in";
 import { PendingSignIns, pendingSignInKey } from "./pending-sign-in.service";
-import { SessionWriteLock } from "./session-write-lock";
+import { SessionWriteLock, withSessionWriteLock } from "./session-write-lock";
 import { SignInLocale } from "./sign-in-locale";
 import { signOutOf } from "./sign-out-request";
 import {
@@ -284,6 +284,37 @@ describe("native session store", () => {
 
     await app.client.getSession();
 
+    expect(cachedSessionUserId(store)).toBe(ada.id);
+  });
+
+  test("a session read answered while another change runs returns its answer without storing it", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const app = launchApp(server, store);
+    await app.runtime.runPromise(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(ada) })
+    );
+    store.values.set("deskohub_session_data", "{}");
+    let holding = false;
+    let finish: () => void = () => undefined;
+    const change = app.runtime.runPromise(
+      withSessionWriteLock(
+        Effect.promise(
+          () =>
+            new Promise<void>((resolve) => {
+              holding = true;
+              finish = resolve;
+            })
+        )
+      )
+    );
+    while (!holding) await Bun.sleep(1);
+
+    expect((await app.client.getSession()).data?.user.id).toBe(ada.id);
+    expect(cachedSessionUserId(store)).toBeUndefined();
+    finish();
+    await change;
+    await app.client.getSession();
     expect(cachedSessionUserId(store)).toBe(ada.id);
   });
 

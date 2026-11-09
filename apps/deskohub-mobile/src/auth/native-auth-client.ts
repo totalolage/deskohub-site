@@ -48,8 +48,9 @@ type StoreAnswer = ExpoPlugin["fetchPlugins"][number]["hooks"]["onSuccess"];
  * The answer is stored under the session write lock, so another change
  * waits for its writes. While another change holds the lock, the answer may
  * already be out of date and is not stored. The read still returns it, and
- * the next read stores the session as it is then. Reads never wait for a
- * change, so a holder of the lock may read the session.
+ * a later read answered outside a change stores the session as it is then.
+ * Reads never wait for a change, so a holder of the lock may read the
+ * session.
  */
 const storingCurrentSessionReads = (
   plugin: ExpoPlugin,
