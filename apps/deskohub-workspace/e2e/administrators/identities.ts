@@ -150,6 +150,13 @@ export const makeWorkspaceE2EAdministrationIdentities = <Label extends string>({
       }),
 
     /**
+     * Journals an invoice the case issued. Issued invoices are retained, so
+     * cleanup keeps it beside the expired profile it names.
+     */
+    recordRetainedInvoice: (invoiceId: string) =>
+      record({ retainedInvoiceIds: [invoiceId] }),
+
+    /**
      * Removes the role grants of one of the seeded accounts; its sessions
      * and agent tokens stay.
      */
