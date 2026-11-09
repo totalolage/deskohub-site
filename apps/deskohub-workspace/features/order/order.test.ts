@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
-import { orderIdSchema, orderKindSchema } from "./order";
+import { orderIdSchema, orderKindSchema } from ".";
 
 describe("order domain", () => {
   test("decodes reservation as the only order kind", () => {
