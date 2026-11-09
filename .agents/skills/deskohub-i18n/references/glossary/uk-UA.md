@@ -257,7 +257,7 @@ Never transliterate into Cyrillic (*Дескохаб*, *Нексі*, *Дотип
 
 ### Apostrophe
 
-Write the Ukrainian apostrophe as **U+02BC ʼ (MODIFIER LETTER APOSTROPHE)**: *імʼя, обовʼязково, звʼяжіться, памʼять, компʼютер, пʼять*. Not U+0027 `'` and not U+2019 `’`. Store it as the literal UTF-8 character in the JSON catalogs and in the legal documents, not as a `ʼ` escape, so reviewers can read it. U+02BC is a letter, so words stay whole for search, line breaking and screen readers. Check each batch: `rg -n "[а-яіїєґА-ЯІЇЄҐ]['’][а-яіїєґА-ЯІЇЄҐ]"` must print nothing.
+Write the Ukrainian apostrophe as **U+02BC ʼ (MODIFIER LETTER APOSTROPHE)**: *імʼя, обовʼязково, звʼяжіться, памʼять, компʼютер, пʼять*. Not U+0027 `'` and not U+2019 `’`. Store it as the literal UTF-8 character in the JSON catalogs and in the legal documents, not as a `ʼ` escape, so reviewers can read it. U+02BC is a letter, so words stay whole for search, line breaking and screen readers.
 
 ### Quotation marks, dashes, numbers
 
@@ -300,7 +300,7 @@ Renders: 1 година · 2 години · 5 годин · 21 година · 
 
 | Key(s) | Risk | Rule |
 |---|---|---|
-| All 11 customer plural keys: `accountReferralsHowBenchmark`, `reservationMeetingRoomDurationHours`, `reservationOfficeBasePriceLabel`, `reservationOfficeSeatCountOption`, `checkoutSummaryItemOfficeAccess`, `checkoutSummaryItemOfficeSeatCount`, `checkoutSummaryItemOfficeDayCount`, `reservationValidationOfficeMaximumDuration`, `accountReservationSeats`, `bookingWidgetDayCountRange`, `bookingWidgetSeatCountRange`; every administration plural message (e.g. `administration:administrationCustomerTableReservationCount`, `access-codes:accessCodesNameTooLong`) | Czech has no `many`; without it 5+ prints the fraction form | Add the `many` variant to every one. Admin `…ReservationCount`: one/few «бронювання», many «бронювань», other «бронювання». |
+| All 11 customer plural keys: `accountReferralsHowBenchmark`, `reservationMeetingRoomDurationHours`, `reservationOfficeBasePriceLabel`, `reservationOfficeSeatCountOption`, `checkoutSummaryItemOfficeAccess`, `checkoutSummaryItemOfficeSeatCount`, `checkoutSummaryItemOfficeDayCount`, `reservationValidationOfficeMaximumDuration`, `accountReservationSeats`, `bookingWidgetDayCountRange`, `bookingWidgetSeatCountRange`; every administration plural message (e.g. `administration:administrationCustomerTableReservationCount`, `access-codes:accessCodesNameTooLong`) | Czech has no `many` text to follow; the wrong form there makes 5+ print the fraction form | `many` is the genitive plural (годин, днів, місць) in every one. Admin `…ReservationCount`: one/few «бронювання», many «бронювань», other «бронювання». |
 | `accountReferralsHowBenchmark` | Czech variants are identical (*doporučení* doesn't change); Ukrainian differs (запрошення / запрошень); «достатньо» + genitive breaks with digits | Nominative construction: «Тобто лише {count} запрошення — і ви отримуєте знижку понад {benchmark}!»; many «запрошень». Avoid «достатньо/вистачить {count}…» (genitive). |
 | `reservationValidationOfficeMaximumDuration` | «перевищувати» takes the accusative: `one` must be «годину», not «година» | one «…не може перевищувати {hours} годину.», few «години», many «годин», other «години». |
 | `bookingWidgetDayCountRange`, `bookingWidgetSeatCountRange` | Czech `one` = "Zvol 1 den." for max = 1; Ukrainian `one` also fires for 21, 31… | Use one case-neutral text in all four variants: «Кількість днів: від 1 до {max}.» / «Кількість місць: від 1 до {max}.» |

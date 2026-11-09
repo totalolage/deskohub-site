@@ -88,7 +88,7 @@ Counts use plural messages. Never pick a noun form in code or write "1 hodina(y)
 - **de-DE:** `one` is the singular (*1 Stunde*), `other` the plural (*2 Stunden*, *0 Stunden*, *1,5 Stunden*). Czech `few` has no German counterpart.
 - **uk-UA:** `one` (1, 21, 31…, not 11) takes the nominative singular (*година*); `few` (2–4, 22–24…) the nominative plural (*години*); `many` (0, 5–20, 25–30…) the genitive plural (*годин*), which is the common plural for whole numbers; `other` (fractions such as 1,5) the genitive singular, usually the same text as `few`.
 - **sk-SK:** `one` (1) the nominative singular (*hodina*); `few` (2–4) the nominative plural (*hodiny*); `many` (fractions only, such as 1,5) the genitive singular, usually the same text as `few`; `other` (0, 5+) the genitive plural (*hodín*).
-- Czech has no `many`. Ukrainian and Slovak must add it; a Czech reviewer won't notice it missing. Without Ukrainian `many`, "5 годин" falls to `other` and prints the fraction form.
+- Czech has no `many`, so the Ukrainian and Slovak `many` text has no Czech line to follow, and a Czech-speaking reader won't notice a wrong one. Write it from the rules above: Ukrainian genitive plural (*5 годин*), Slovak fraction form (*1,5 hodiny*).
 - When all Czech variants are identical (*doporučení*), the target may still need different forms (German *Empfehlung / Empfehlungen*). Translate each category on its own.
 - If a Czech message isn't a plural but your language needs one (a count inside plain text), flag the key. Don't hard-code a form.
 
