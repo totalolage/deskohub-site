@@ -10,7 +10,10 @@ import { Atom } from "effect/unstable/reactivity";
 import { CustomerApi } from "../../customer-api/customer-api.service";
 import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
 import { customerRead } from "../../customer-api/customer-request";
-import { selectionKey } from "../selection/booking-selection";
+import {
+  selectionKey,
+  withoutAbsentOptions,
+} from "../selection/booking-selection";
 
 /**
  * What the booking selection and review screens read before checkout, on the
@@ -169,15 +172,18 @@ export const quoteRefreshInterval = Duration.minutes(4);
 
 /** The selection as a quote's query string carries it. */
 const quoteQuery = (
-  { coffee, ...fields }: CustomerBookingSelection,
+  selection: CustomerBookingSelection,
   locale: CustomerLocale
-) => ({
-  ...fields,
-  ...(coffee === undefined
-    ? {}
-    : { coffee: coffee ? ("true" as const) : ("false" as const) }),
-  locale,
-});
+) => {
+  const { coffee, ...fields } = withoutAbsentOptions(selection);
+  return {
+    ...fields,
+    ...(coffee === undefined
+      ? {}
+      : { coffee: coffee ? ("true" as const) : ("false" as const) }),
+    locale,
+  };
+};
 
 /**
  * Schedules the quote's next read in the atom's lifetime: dropping the quote

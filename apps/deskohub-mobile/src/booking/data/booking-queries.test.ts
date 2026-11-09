@@ -280,6 +280,25 @@ describe("booking catalog queries", () => {
   });
 });
 
+describe("bookingQuoteAtom request", () => {
+  test("reads a selection that spells out an absent option as undefined", async () => {
+    const harness = withTestClock();
+    const atom = bookingQuoteAtom(
+      {
+        ...coworkSelection(harness.booking.dateIn(23)),
+        monitorOption: undefined,
+      },
+      "en-US"
+    );
+    const unmount = harness.registry.mount(atom);
+    const result = await settle(harness.registry, atom);
+    unmount();
+
+    expect(result._tag).toBe("Success");
+    expect(quoteCalls(harness)).toBe(1);
+  });
+});
+
 describe("bookingQuoteAtom refresh", () => {
   test("reads the quote again every four minutes while mounted", async () => {
     const harness = withTestClock();

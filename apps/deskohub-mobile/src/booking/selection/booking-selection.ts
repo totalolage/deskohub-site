@@ -56,6 +56,18 @@ export const selectionKey = (selection: CustomerBookingSelection): string =>
     }),
   ].join("&");
 
+/**
+ * The selection without the options it spells out as `undefined`. Equal
+ * selections share one quote, and a request can encode an absent option only
+ * by leaving it out.
+ */
+export const withoutAbsentOptions = (
+  selection: CustomerBookingSelection
+): CustomerBookingSelection =>
+  Object.fromEntries(
+    Object.entries(selection).filter(([, value]) => value !== undefined)
+  ) as CustomerBookingSelection;
+
 const reservationKinds: Record<CustomerReservationFamily, ReservationKind> = {
   cowork: "cowork",
   "meeting-room": "meeting_room",
