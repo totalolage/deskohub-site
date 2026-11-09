@@ -1,6 +1,14 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Exit, Fiber, Layer, ManagedRuntime, Option } from "effect";
+import {
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Semaphore,
+} from "effect";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
 import { nativeReturnUri, parseAuthCallbackUrl } from "./auth-callback";
@@ -27,7 +35,9 @@ import {
   startPendingSignIn,
 } from "./native-sign-in";
 import { PendingSignIns, pendingSignInKey } from "./pending-sign-in.service";
+import { SessionWriteLock } from "./session-write-lock";
 import { SignInLocale } from "./sign-in-locale";
+import { signOutOf } from "./sign-out-request";
 import {
   type FakeAuthServer,
   type FakeUser,
@@ -67,7 +77,8 @@ const launchApp = (
       AuthCrypto.Live,
       AuthCallbackCompletions.Default,
       browser,
-      Layer.succeed(SignInLocale, "cs-CZ")
+      Layer.succeed(SignInLocale, "cs-CZ"),
+      Layer.succeed(SessionWriteLock, Semaphore.makeUnsafe(1))
     )
   );
   return { client, runtime, opened };
@@ -176,14 +187,45 @@ describe("native session store", () => {
       completeAuthCallback({ kind: "token", token: server.issueMagicLink(ada) })
     );
 
-    await app.runtime.runPromise(
-      Effect.service(NativeAuth).pipe(Effect.flatMap((auth) => auth.signOut))
-    );
+    await app.runtime.runPromise(signOutOf(app.client));
 
     expect(storedCookie(store)).not.toContain("session_token");
     expect(server.openSessions()).toEqual([]);
     const restarted = launchApp(server, store);
     expect((await restarted.client.getSession()).data).toBeNull();
+  });
+
+  test("a sign-in that completes while a sign-out is in flight keeps its session", async () => {
+    const server = makeFakeAuthServer(origin);
+    const store = makeMemorySecureStore();
+    const app = launchApp(server, store);
+    await app.runtime.runPromise(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(ada) })
+    );
+    let answer: () => void = () => undefined;
+    server.holdSignOuts(
+      new Promise<void>((resolve) => {
+        answer = resolve;
+      })
+    );
+
+    const signingOut = app.runtime.runPromiseExit(signOutOf(app.client));
+    // The Expo client clears the stored session before it sends the request.
+    while (server.callsTo("/sign-out").length === 0) await Bun.sleep(1);
+    const signingIn = app.runtime.runPromiseExit(
+      completeAuthCallback({ kind: "token", token: server.issueMagicLink(bob) })
+    );
+    // Once its link is verified, a sign-in without a gate only has its
+    // in-memory acceptance left and has stored its session by now.
+    while (server.callsTo("/magic-link/verify").length < 2) await Bun.sleep(1);
+    await Promise.race([signingIn, Bun.sleep(100)]);
+    answer();
+
+    expect(Exit.isSuccess(await signingOut)).toBe(true);
+    expect(await signingIn).toEqual(Exit.succeed(bob));
+    expect(storedCookie(store)).toContain("session_token");
+    expect((await app.client.getSession()).data?.user.id).toBe(bob.id);
+    expect(server.openSessions()).toEqual([bob]);
   });
 
   test("an interrupted sign-in finishes storing the session it accepted", async () => {

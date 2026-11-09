@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Exit, Fiber, Layer } from "effect";
+import {
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Option,
+  Semaphore,
+} from "effect";
+import { SessionWriteLock } from "../session-write-lock";
 import {
   NativePasskeyModule,
   type NativePasskeyModuleSource,
@@ -140,6 +149,57 @@ const setup = (
 const failureOf = async <A>(
   effect: Effect.Effect<A, PasskeyFailure>
 ): Promise<PasskeyFailure> => Effect.runPromise(Effect.flip(effect));
+
+describe("passkey ceremonies and sign-out", () => {
+  test("a sign-in sends nothing until a sign-out in flight has settled", async () => {
+    const { ceremonies, calls } = setup(signInReplies);
+    const lock = Semaphore.makeUnsafe(1);
+    const sentWhileSigningOut = await Effect.runPromise(
+      Effect.gen(function* () {
+        // A sign-out in flight holds the session.
+        yield* lock.take(1);
+        const signingIn = yield* Effect.forkChild(ceremonies.signIn);
+        yield* Effect.promise(() => Bun.sleep(5));
+        const sent = calls.length;
+        yield* lock.release(1);
+        yield* Fiber.join(signingIn);
+        return sent;
+      }).pipe(Effect.provideService(SessionWriteLock, lock))
+    );
+    expect(sentWhileSigningOut).toBe(0);
+    expect(calls.map(({ path }) => path)).toEqual([
+      "/passkey/generate-authenticate-options",
+      "/passkey/verify-authentication",
+    ]);
+  });
+
+  test("a sign-out waits for a running ceremony", async () => {
+    let answerPrompt: () => void = () => undefined;
+    const prompt = new Promise<void>((resolve) => {
+      answerPrompt = resolve;
+    });
+    const { ceremonies, calls } = setup(signInReplies, {
+      get: async () => {
+        await prompt;
+        return authenticationResponse;
+      },
+    });
+    const lock = Semaphore.makeUnsafe(1);
+    const [duringCeremony, afterCeremony] = await Effect.runPromise(
+      Effect.gen(function* () {
+        const signingIn = yield* Effect.forkChild(ceremonies.signIn);
+        while (calls.length === 0) yield* Effect.promise(() => Bun.sleep(1));
+        const during = yield* lock.withPermitsIfAvailable(1)(Effect.void);
+        answerPrompt();
+        yield* Fiber.join(signingIn);
+        const after = yield* lock.withPermitsIfAvailable(1)(Effect.void);
+        return [during, after] as const;
+      }).pipe(Effect.provideService(SessionWriteLock, lock))
+    );
+    expect(Option.isNone(duringCeremony)).toBe(true);
+    expect(Option.isSome(afterCeremony)).toBe(true);
+  });
+});
 
 describe("passkey sign-in", () => {
   test("asks for options, the passkey, then verification, and refreshes the session", async () => {

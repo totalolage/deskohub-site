@@ -37,12 +37,17 @@ export type PasskeyDialog =
       readonly failure: PasskeyDialogFailure | undefined;
     };
 
-/** What the screen announces after a dialog closed. */
-export type SecurityAnnouncement = "renamed" | "deleted" | "gone";
+/**
+ * What the screen announces: a dialog's outcome after it closed, or that a
+ * passkey is being added.
+ */
+export type SecurityAnnouncement = "renamed" | "deleted" | "gone" | "adding";
 
 export interface SecurityScreenState {
   readonly dialog: PasskeyDialog | undefined;
   readonly announcement: SecurityAnnouncement | undefined;
+  /** A passkey is being added: the other passkey controls wait. */
+  readonly adding: boolean;
   /**
    * A change was refused because the sign-in is too old; `outcome` is the
    * latest `reauthenticate()`'s. Cleared once the customer repeats a change.
@@ -55,6 +60,7 @@ export interface SecurityScreenState {
 export const initialSecurityScreenState: SecurityScreenState = {
   dialog: undefined,
   announcement: undefined,
+  adding: false,
   reauthentication: undefined,
 };
 
@@ -74,9 +80,16 @@ export type SecurityScreenEvent = Data.TaggedEnum<{
   /** The customer repeats a change: the earlier reauthentication is spent. */
   WriteStarted: Record<never, never>;
   WriteEnded: { readonly outcome: PasskeyWriteOutcome };
+  /**
+   * The passkey prompt is about to open; like a repeated change, it spends
+   * the earlier reauthentication.
+   */
+  PasskeyAddStarted: Record<never, never>;
   /** Adding a passkey needs a recent sign-in. */
   AddReauthenticationRequired: Record<never, never>;
   PasskeyAdded: Record<never, never>;
+  /** The add ceremony ended, after its outcome. */
+  PasskeyAddSettled: Record<never, never>;
   ReauthenticationEnded: { readonly outcome: ReauthenticationOutcome };
 }>;
 
@@ -155,12 +168,24 @@ export const securityScreenReducer = (
         reauthentication: undefined,
       }),
       WriteEnded: ({ outcome }) => writeEnded(state, outcome),
+      PasskeyAddStarted: () => ({
+        ...state,
+        adding: true,
+        announcement: "adding" as const,
+        reauthentication: undefined,
+      }),
       AddReauthenticationRequired: () => ({
         ...state,
         announcement: undefined,
         reauthentication: reauthenticationRequested,
       }),
       PasskeyAdded: () => ({ ...state, reauthentication: undefined }),
+      PasskeyAddSettled: () => ({
+        ...state,
+        adding: false,
+        announcement:
+          state.announcement === "adding" ? undefined : state.announcement,
+      }),
       ReauthenticationEnded: ({ outcome }) =>
         state.reauthentication === undefined
           ? state

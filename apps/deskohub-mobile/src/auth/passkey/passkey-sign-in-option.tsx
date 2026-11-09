@@ -9,6 +9,7 @@ import {
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
+import { LiveMessage } from "../../ui/controls";
 import { passkeySignInFailureMessage } from "./passkey-failure-message";
 import { usePasskeyCeremony } from "./use-passkey-ceremony";
 
@@ -58,15 +59,15 @@ export function PasskeySignInOption({
         {pending && <ActivityIndicator color={theme.colors.background} />}
         <Text style={styles.label}>{m.passkey_sign_in({}, { locale })}</Text>
       </Pressable>
-      <Text
-        accessibilityLiveRegion="assertive"
+      {/* Kept mounted so assistive tech announces each change. */}
+      <LiveMessage
         role="alert"
-        style={styles.error}
-      >
-        {state.status === "failed"
-          ? passkeySignInFailureMessage(state.failure, locale)
-          : ""}
-      </Text>
+        message={
+          state.status === "failed"
+            ? passkeySignInFailureMessage(state.failure, locale)
+            : undefined
+        }
+      />
     </View>
   );
 }
@@ -85,5 +86,4 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.8 },
   label: { color: theme.colors.background, ...theme.type.body },
-  error: { color: theme.colors.text, ...theme.type.body },
 });

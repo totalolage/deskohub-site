@@ -283,6 +283,7 @@ describe("an old sign-in", () => {
   test.each([
     ["the added passkey", SecurityScreenEvent.PasskeyAdded()],
     ["a repeated change", SecurityScreenEvent.WriteStarted()],
+    ["adding a passkey again", SecurityScreenEvent.PasskeyAddStarted()],
   ])("%s spends the confirmation", (_case, event) => {
     const state = run(
       SecurityScreenEvent.AddReauthenticationRequired(),
@@ -314,5 +315,42 @@ describe("announcements", () => {
       SecurityScreenEvent.RenameOpened({ passkey })
     );
     expect(state.announcement).toBeUndefined();
+  });
+});
+
+describe("adding a passkey", () => {
+  test("holds the passkey controls and says to follow the prompt", () => {
+    const state = run(
+      SecurityScreenEvent.RenameOpened({ passkey }),
+      SecurityScreenEvent.WriteEnded({ outcome: "succeeded" }),
+      SecurityScreenEvent.PasskeyAddStarted()
+    );
+    expect(state.adding).toBe(true);
+    expect(state.announcement).toBe("adding");
+  });
+
+  test.each([
+    ["adds the passkey", [SecurityScreenEvent.PasskeyAdded()]],
+    [
+      "needs a recent sign-in",
+      [SecurityScreenEvent.AddReauthenticationRequired()],
+    ],
+    ["fails", []],
+  ])("releases the controls and the progress once it %s", (_case, events) => {
+    const state = run(
+      SecurityScreenEvent.PasskeyAddStarted(),
+      ...events,
+      SecurityScreenEvent.PasskeyAddSettled()
+    );
+    expect(state.adding).toBe(false);
+    expect(state.announcement).toBeUndefined();
+  });
+
+  test("stays held until the ceremony has settled", () => {
+    const state = run(
+      SecurityScreenEvent.PasskeyAddStarted(),
+      SecurityScreenEvent.PasskeyAdded()
+    );
+    expect(state.adding).toBe(true);
   });
 });

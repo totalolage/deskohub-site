@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from "effect";
+import { abortableRequest } from "../abortable-request";
 import { PasskeyCeremonyFailed } from "./passkey-failure";
 
 /** Better Auth's `{ data, error }` result of a `$fetch` with `throw: false`. */
@@ -45,35 +46,14 @@ export class PasskeyAuthClient extends Context.Service<
   static fromClient = (client: PasskeyAuthClientSource) =>
     Layer.succeed(this, {
       request: (path, { method, body }) =>
-        abortable((signal) =>
-          client.$fetch(path, { method, body, signal, throw: false })
+        // The Expo client may be writing a response's cookies when an
+        // interruption comes, so the next ceremony can't start before a
+        // stale challenge cookie lands.
+        abortableRequest(
+          (signal) =>
+            client.$fetch(path, { method, body, signal, throw: false }),
+          (cause) => new PasskeyCeremonyFailed({ step: "request", cause })
         ),
       refreshSession: Effect.sync(() => client.$store.notify("$sessionSignal")),
     });
 }
-
-/**
- * Sends a request that an interruption aborts and then waits out. The Expo
- * client may already be writing a response's cookies to SecureStore when the
- * abort comes, and `$fetch` settles only once that write is done, so the next
- * ceremony can't start before a stale challenge cookie lands.
- */
-const abortable = (send: (signal: AbortSignal) => Promise<AuthFetchResult>) =>
-  Effect.suspend(() => {
-    const controller = new AbortController();
-    const response = send(controller.signal);
-    return Effect.tryPromise({
-      try: () => response,
-      catch: (cause) => new PasskeyCeremonyFailed({ step: "request", cause }),
-    }).pipe(
-      Effect.onInterrupt(() =>
-        Effect.promise(() => {
-          controller.abort();
-          return response.then(
-            () => undefined,
-            () => undefined
-          );
-        })
-      )
-    );
-  });

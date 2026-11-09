@@ -73,6 +73,7 @@ const announcementMessage = (
         renamed: m.security_renamed,
         deleted: m.security_deleted,
         gone: m.security_passkey_gone,
+        adding: m.passkey_add_pending,
       }[announcement]({}, { locale });
 
 const dialogFailureMessage = ({
@@ -233,6 +234,7 @@ export function SecurityScreen() {
                           <Button
                             variant="secondary"
                             label={m.security_passkey_rename({}, { locale })}
+                            disabled={state.adding}
                             accessibilityLabel={m.security_passkey_rename_label(
                               { name: row.name },
                               { locale }
@@ -250,6 +252,7 @@ export function SecurityScreen() {
                           <Button
                             variant="secondary"
                             label={m.security_passkey_delete({}, { locale })}
+                            disabled={state.adding}
                             accessibilityLabel={m.security_passkey_delete_label(
                               { name: row.name },
                               { locale }
@@ -268,6 +271,12 @@ export function SecurityScreen() {
                     </ListGroup>
                   ))}
                   <AddPasskeyAction
+                    onStart={() =>
+                      dispatch(SecurityScreenEvent.PasskeyAddStarted())
+                    }
+                    onSettled={() =>
+                      dispatch(SecurityScreenEvent.PasskeyAddSettled())
+                    }
                     onAdded={() => {
                       dispatch(SecurityScreenEvent.PasskeyAdded());
                       refreshPasskeys();

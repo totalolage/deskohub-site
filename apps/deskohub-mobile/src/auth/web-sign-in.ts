@@ -4,7 +4,9 @@ import { webCallbackPath } from "./auth-callback";
 import { authClient } from "./auth-client.web";
 import type { AuthUser } from "./auth-session-state";
 import type { NativeHandoffRequest } from "./native-handoff-request";
+import { withSessionWriteLock } from "./session-write-lock";
 import { signInLocaleHeaders } from "./sign-in-locale";
+import { signOutOf } from "./sign-out-request";
 import {
   clearReauthenticatingUser,
   saveReauthenticatingUser,
@@ -81,31 +83,37 @@ export const sendSignInEmail = (email: string, locale: AppLocale) =>
 
 /**
  * Signs in with the email's code. The request names the app's locale, which
- * an account it creates takes as its language.
+ * an account it creates takes as its language. It waits for a sign-out in
+ * flight, whose answer would otherwise expire the new session's cookie.
  */
 export const verifySignInCode = (
   email: string,
   code: string,
   locale: AppLocale
 ) =>
-  call("verify-code", (signal) =>
-    authClient.signIn.emailOtp({
-      email,
-      otp: code,
-      fetchOptions: { signal, headers: signInLocaleHeaders(locale) },
-    })
+  withSessionWriteLock(
+    call("verify-code", (signal) =>
+      authClient.signIn.emailOtp({
+        email,
+        otp: code,
+        fetchOptions: { signal, headers: signInLocaleHeaders(locale) },
+      })
+    )
   ).pipe(Effect.asVoid, Effect.withSpan("WebSignIn.verifySignInCode"));
 
 /**
  * Claims a magic-link token without a callback, for a JSON answer. The
- * request names the app's locale, as the sign-in code does.
+ * request names the app's locale, and waits for a sign-out in flight, as
+ * the sign-in code does.
  */
 export const verifyMagicLinkToken = (token: string, locale: AppLocale) =>
-  call("verify-link", (signal) =>
-    authClient.magicLink.verify({
-      query: { token },
-      fetchOptions: { signal, headers: signInLocaleHeaders(locale) },
-    })
+  withSessionWriteLock(
+    call("verify-link", (signal) =>
+      authClient.magicLink.verify({
+        query: { token },
+        fetchOptions: { signal, headers: signInLocaleHeaders(locale) },
+      })
+    )
   ).pipe(Effect.asVoid, Effect.withSpan("WebSignIn.verifyMagicLinkToken"));
 
 /**
@@ -197,7 +205,7 @@ export const signInEmailField = ({
 const refuseAccount = (
   reason: "account-switch" | "reauthentication-unconfirmed"
 ) =>
-  Effect.tryPromise(() => authClient.signOut()).pipe(
+  signOutOf(authClient).pipe(
     Effect.ignore,
     Effect.andThen(
       Effect.fail(

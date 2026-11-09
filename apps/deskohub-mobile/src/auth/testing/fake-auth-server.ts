@@ -59,12 +59,14 @@ export const makeFakeAuthServer = (origin: string) => {
   const calls: Array<FakeAuthCall> = [];
   const faults: {
     exchangeGate: Promise<void> | undefined;
+    signOutGate: Promise<void> | undefined;
     getSessionFailuresAfterExchange: number;
     getSessionFailures: number;
     exchanged: boolean;
     refuseAccountSwitch: boolean;
   } = {
     exchangeGate: undefined,
+    signOutGate: undefined,
     getSessionFailuresAfterExchange: 0,
     getSessionFailures: 0,
     exchanged: false,
@@ -173,6 +175,7 @@ export const makeFakeAuthServer = (origin: string) => {
     }
 
     if (method === "POST" && path === "/sign-out") {
+      if (faults.signOutGate !== undefined) await faults.signOutGate;
       const token = sessionTokenFrom(headers.get("cookie"));
       if (token !== undefined) sessions.delete(token);
       return json(
@@ -227,6 +230,10 @@ export const makeFakeAuthServer = (origin: string) => {
     /** Holds every exchange until `gate` resolves. */
     holdExchanges: (gate: Promise<void>) => {
       faults.exchangeGate = gate;
+    },
+    /** Holds every sign-out answer until `gate` resolves. */
+    holdSignOuts: (gate: Promise<void>) => {
+      faults.signOutGate = gate;
     },
     /**
      * Refuses every valid link the way the Workspace refuses one verified

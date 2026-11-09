@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer, Option, Semaphore } from "effect";
+import { Context, Data, Effect, Layer, Option } from "effect";
 import type { AppLocale } from "../i18n/app-locale";
 import type { AuthUser } from "./auth-session-state";
 import { makeMemorySecureStore } from "./memory-secure-store";
@@ -8,6 +8,7 @@ import {
   type NativeAuthClient,
   type NativeAuthClientOptions,
 } from "./native-auth-client";
+import { withSessionWriteLock } from "./session-write-lock";
 import { signInLocaleHeaders } from "./sign-in-locale";
 
 export type { AuthUser } from "./auth-session-state";
@@ -49,7 +50,10 @@ export interface HandoffExchange {
 export interface SignInSession {
   /** The account the session belongs to. */
   readonly user: Effect.Effect<Option.Option<AuthUser>, NativeAuthFailure>;
-  /** Makes it the app's session and tells `useSession`. */
+  /**
+   * Makes it the app's session and tells `useSession`. It waits for a
+   * sign-out in flight, whose answer would otherwise clear it.
+   */
   readonly accept: Effect.Effect<void>;
   /** Ends it on the server; the app's own session is untouched. */
   readonly revoke: Effect.Effect<void, NativeAuthFailure>;
@@ -74,8 +78,6 @@ interface INativeAuth {
     Option.Option<AuthUser>,
     NativeAuthFailure
   >;
-  /** Ends the session on the server and clears the stored cookie. */
-  readonly signOut: Effect.Effect<void, NativeAuthFailure>;
 }
 
 /**
@@ -136,7 +138,7 @@ const userOf = (client: NativeAuthClient) =>
     )
   );
 
-const signOutOf = (client: NativeAuthClient) =>
+const endSessionOf = (client: NativeAuthClient) =>
   call("sign-out", (signal) =>
     client.signOut({ fetchOptions: { signal } })
   ).pipe(Effect.asVoid);
@@ -145,8 +147,6 @@ const makeNativeAuth = (
   client: NativeAuthClient,
   options: NativeAuthClientOptions
 ): INativeAuth => {
-  // Two sign-ins accepted at once would interleave their writes.
-  const acceptance = Semaphore.makeUnsafe(1);
   const openSession = <A>(
     operation: NativeAuthOperation,
     request: (
@@ -161,8 +161,8 @@ const makeNativeAuth = (
         Effect.as({
           user: userOf(signIn),
           // The writes can't be called off once they start, so the move and
-          // its signal finish before the permit is released.
-          accept: acceptance.withPermits(1)(
+          // its signal finish before the lock is released.
+          accept: withSessionWriteLock(
             Effect.promise(() => moveSession(storage, options.storage)).pipe(
               Effect.andThen(
                 Effect.sync(() => client.$store.notify("$sessionSignal"))
@@ -170,7 +170,7 @@ const makeNativeAuth = (
               Effect.uninterruptible
             )
           ),
-          revoke: signOutOf(signIn),
+          revoke: endSessionOf(signIn),
         })
       );
     });
@@ -192,6 +192,5 @@ const makeNativeAuth = (
         })
       ),
     currentUser: userOf(client),
-    signOut: signOutOf(client),
   };
 };
