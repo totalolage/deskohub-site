@@ -15,9 +15,10 @@ const environmentFields = {
   ...workspaceClientEnvSchema.fields,
 };
 
-// The preloaded test environment plus a synthetic Resend key, which deployed
-// environments require but the test process runs without, is a valid
-// baseline; each case overrides only the variables it is about.
+// The preloaded test environment plus synthetic Resend and PostHog email
+// secrets, which deployed environments require but the test process runs
+// without, is a valid baseline; each case overrides only the variables it is
+// about.
 const workspaceRuntimeEnv = (
   overrides: Partial<Record<keyof WorkspaceRuntimeEnv, string | undefined>>
 ): WorkspaceRuntimeEnv => ({
@@ -25,6 +26,8 @@ const workspaceRuntimeEnv = (
     Object.keys(environmentFields).map((key) => [key, process.env[key]])
   ) as WorkspaceRuntimeEnv),
   EMAIL_API_KEY: "re_test",
+  POSTHOG_EMAIL_SECRET_KEY: "phx_test",
+  POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET: "whsec_dGVzdA==",
   ...overrides,
 });
 
@@ -128,6 +131,32 @@ describe("workspace environment schemas", () => {
         VERCEL_ENV: "development",
       })
     ).toEqual([]);
+  });
+
+  test("fails production closed when PostHog email status reads or signals are unconfigured", () => {
+    for (const key of [
+      "POSTHOG_EMAIL_SECRET_KEY",
+      "POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET",
+    ] as const) {
+      expect(
+        invalidVariables({ [key]: undefined, VERCEL_ENV: "production" })
+      ).toEqual([key]);
+      expect(
+        invalidVariables({ [key]: "   ", VERCEL_ENV: "production" })
+      ).toEqual([key]);
+    }
+  });
+
+  test("keeps preview and development usable without PostHog email secrets", () => {
+    for (const VERCEL_ENV of ["preview", "development"] as const) {
+      expect(
+        invalidVariables({
+          POSTHOG_EMAIL_SECRET_KEY: undefined,
+          POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET: undefined,
+          VERCEL_ENV,
+        })
+      ).toEqual([]);
+    }
   });
 
   test("requires valid Better Auth secrets in production and accepts rotation", () => {
