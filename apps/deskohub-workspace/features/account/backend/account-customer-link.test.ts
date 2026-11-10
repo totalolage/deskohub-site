@@ -13,6 +13,7 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 
 const accountId = customerAccountIdSchema.make("auth-user-1");
 const customerId = DotyposCustomerIdSchema.make("dotypos-customer-1");
@@ -23,6 +24,7 @@ const session = (
   accountId,
   email: testEmailAddress("ada"),
   deletionRequested: false,
+  ...testSessionProfile,
   ...overrides,
 });
 

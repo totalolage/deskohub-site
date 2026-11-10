@@ -27,6 +27,7 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 
 const avatarAddress = testEmailAddress("avatar");
 
@@ -79,6 +80,7 @@ const makeSession = (account: string): CustomerAccountSession => ({
   accountId: customerAccountIdSchema.make(account),
   email: Schema.decodeSync(reservationCustomerEmailSchema)(avatarAddress),
   deletionRequested: false,
+  ...testSessionProfile,
 });
 
 const makeAsset = (publicId: string, assetId?: string) => ({

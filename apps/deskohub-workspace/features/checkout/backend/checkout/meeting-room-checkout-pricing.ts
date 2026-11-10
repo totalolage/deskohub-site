@@ -103,6 +103,7 @@ const getMeetingRoomPricingContext = Effect.fn(
         duration: productItem.duration,
       },
       discountableSubtotal: productItem.amount,
+      firstServiceDate: reservation.reservationDate,
       lastServiceDate:
         getMeetingRoomPricingSelectionLastServiceDate(reservation),
     },

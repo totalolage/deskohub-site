@@ -89,7 +89,7 @@ test.skipIf(!chromiumAvailable)(
       "meeting-room-backfill"
     );
     const selection = (time = "", duration = "day:1") => `
-      <input name="startDateTime" value="2099-09-01" />
+      <input name="startDateTime" value="2099-09-01T00:00" />
       ${time}
       <input id="meeting-room-duration-${duration}" type="radio" value="${duration}" checked />`;
 
@@ -137,7 +137,7 @@ test.skipIf(!chromiumAvailable)(
       "meeting-room-prefill"
     );
     const selection = (time: string) => `
-      <input name="startDateTime" value="2099-09-01" />
+      <input name="startDateTime" value="2099-09-01T10:00" />
       ${time}
       <input id="meeting-room-duration-hour:1" type="radio" value="hour:1" checked />`;
     const czechTime = (value: string) =>

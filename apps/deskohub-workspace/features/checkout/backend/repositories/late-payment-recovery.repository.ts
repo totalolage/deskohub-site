@@ -2,13 +2,15 @@ import "@/shared/polyfills/temporal";
 
 import type { DotyposReservationId } from "@deskohub/dotypos";
 import type { NexiOperationId, NexiWebhookEventId } from "@deskohub/nexi";
-import { and, desc, eq, gt, inArray, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lte, ne, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
+import { equalsAny } from "@/db/equals-any";
 import {
   type LatePaymentRecovery,
+  type LatePaymentRecoveryState,
   latePaymentRecoveries,
   type PaymentRefundState,
   paymentAttempts,
@@ -20,6 +22,11 @@ import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers"
 import type { DiscountClaimError } from "@/features/discounts/errors";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
+import {
+  type ReadLimitExceededError,
+  readLimitSentinel,
+  requireWithinReadLimit,
+} from "@/shared/backend/read-limit";
 import {
   attemptRecordsReferral,
   ensureReferralFirstPaidTransition,
@@ -86,6 +93,19 @@ type LatePaymentRecoveryRepositoryError =
   | OriginalHoldNotReusableError
   | SqlError;
 
+/**
+ * A late-payment recovery as the customer may see it: when the late payment
+ * was verified and how the recovery ended. Leaves out provider webhook and
+ * operation ids, provider statuses, Dotypos reservation ids and failure codes.
+ */
+export type CustomerLatePaymentRecoveryRecord = {
+  readonly workspaceReservationId: WorkspaceReservationId;
+  readonly state: LatePaymentRecoveryState;
+  readonly verifiedPaidAt: Temporal.Instant;
+  /** `null` while the recovery is pending or processing. */
+  readonly completedAt: Temporal.Instant | null;
+};
+
 export interface ILatePaymentRecoveryRepository {
   readonly start: (
     input: RecoverySettlementInput & LatePaymentProviderFacts
@@ -96,6 +116,19 @@ export interface ILatePaymentRecoveryRepository {
   readonly findLatestByWorkspaceReservationId: (
     workspaceReservationId: WorkspaceReservationId
   ) => Effect.Effect<LatePaymentRecovery | null, EffectDrizzleQueryError>;
+  /**
+   * Every late-payment recovery of the given reservations, oldest first. The
+   * caller owns the reservations' customer scope and the `limit`, which
+   * bounds the whole result: more matching recoveries fail with
+   * `ReadLimitExceededError` and return nothing.
+   */
+  readonly listForReservations: (input: {
+    readonly workspaceReservationIds: readonly WorkspaceReservationId[];
+    readonly limit: number;
+  }) => Effect.Effect<
+    readonly CustomerLatePaymentRecoveryRecord[],
+    EffectDrizzleQueryError | ReadLimitExceededError
+  >;
   readonly claim: (input: {
     readonly paymentAttemptId: PaymentAttemptId;
     readonly staleProcessingBefore: Temporal.Instant;
@@ -224,6 +257,33 @@ export class LatePaymentRecoveryRepository extends Context.Service<
             )
             .limit(1);
           return recovery ?? null;
+        }),
+        listForReservations: Effect.fn(
+          "LatePaymentRecoveryRepository.listForReservations"
+        )(function* (input) {
+          if (input.workspaceReservationIds.length === 0) return [];
+
+          const rows = yield* db
+            .select({
+              workspaceReservationId:
+                latePaymentRecoveries.workspaceReservationId,
+              state: latePaymentRecoveries.state,
+              verifiedPaidAt: latePaymentRecoveries.verifiedPaidAt,
+              completedAt: latePaymentRecoveries.completedAt,
+            })
+            .from(latePaymentRecoveries)
+            .where(
+              equalsAny(
+                latePaymentRecoveries.workspaceReservationId,
+                input.workspaceReservationIds
+              )
+            )
+            .orderBy(
+              asc(latePaymentRecoveries.createdAt),
+              asc(latePaymentRecoveries.paymentAttemptId)
+            )
+            .limit(readLimitSentinel(input.limit));
+          return yield* requireWithinReadLimit(rows, input.limit);
         }),
         start: Effect.fn("LatePaymentRecoveryRepository.start")(
           function* (input) {

@@ -169,6 +169,7 @@ const makeCommitment = (
 ) =>
   makeDiscountCommitment({
     product: { kind: "cowork", tier: "reserved-desk" },
+    firstServiceDate: "2099-07-30",
     applications: discounts.map((application) => ({
       application,
       candidate: overrideCandidate(getCandidate(application), application),

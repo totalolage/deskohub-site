@@ -1,30 +1,31 @@
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  test,
-} from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import type { DotyposCustomerId } from "@deskohub/dotypos/types";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { m } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import { formatNumericPlainDate } from "@/shared/utils/date-time-format";
 import type { CustomerListQuery } from "./customer-list-query";
-import {
+import { operationListQuery } from "./operation-list-query";
+import { orderListQuery } from "./order-list-query";
+import type { ReservationListQuery } from "./reservation-list-query";
+
+// React DOM detects input events and Radix picks its layout-effect hook when
+// they load, so the DOM must exist before either is imported.
+registerWorkspaceComponentTestEnv();
+
+const { cleanup, fireEvent, render, waitFor } = await import(
+  "@testing-library/react"
+);
+const {
   BookingsAdministrationFilterForm,
   CustomersAdministrationFilterForm,
   OperationsAdministrationFilterForm,
   OrdersAdministrationFilterForm,
   ReservationsAdministrationFilterForm,
-} from "./filter-forms";
-import { operationListQuery } from "./operation-list-query";
-import { orderListQuery } from "./order-list-query";
-import type { ReservationListQuery } from "./reservation-list-query";
+} = await import("./filter-forms");
 
 async function expectNativeGetSubmission(form: HTMLFormElement) {
   let submitted = false;
@@ -48,6 +49,26 @@ const formEntries = (form: HTMLFormElement) =>
 
 const getForm = (container: HTMLElement) =>
   container.querySelector("form") as HTMLFormElement;
+
+/** The canonical value a filter submits under `name`. */
+const submittedValue = (form: HTMLFormElement, name: string) =>
+  new FormData(form).get(name);
+
+const getDateField = (view: ReturnType<typeof render>, name: string) =>
+  view.getByRole("combobox", { name }) as HTMLInputElement;
+
+/** The text a date field shows for a canonical date on an en-US route. */
+const shownDate = (date: string) =>
+  formatNumericPlainDate({
+    date: Temporal.PlainDate.from(date),
+    locale: "en-US",
+  });
+
+// A date field takes typed text when focus leaves it.
+const typeDate = (field: HTMLInputElement, text: string) => {
+  fireEvent.change(field, { target: { value: text } });
+  fireEvent.focusOut(field);
+};
 
 const reservationShortcuts = {
   today: { from: "2026-08-12", to: "2026-08-12" },
@@ -84,7 +105,6 @@ const customerFilterForm = (query: Partial<CustomerListQuery>) => (
 );
 
 describe("administration filter forms", () => {
-  beforeAll(() => registerWorkspaceComponentTestEnv());
   afterEach(() => cleanup());
   afterAll(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -98,17 +118,16 @@ describe("administration filter forms", () => {
           query={orderListQuery.parse({ from: "2026-08-03", to: "2026-08-10" })}
         />
       );
-      const from = view.getByLabelText("From") as HTMLInputElement;
-      const to = view.getByLabelText("To") as HTMLInputElement;
-      fireEvent.change(from, { target: { value: "2026-08-04" } });
-      fireEvent.change(to, { target: { value: "2026-08-11" } });
+      const form = getForm(view.container);
+      typeDate(getDateField(view, "From"), "2026-08-04");
+      typeDate(getDateField(view, "To"), "2026-08-11");
       view.rerender(
         <OrdersAdministrationFilterForm
           query={orderListQuery.parse({ from: "2026-08-03", to: "2026-08-10" })}
         />
       );
-      expect(from.value).toBe("2026-08-04");
-      expect(to.value).toBe("2026-08-11");
+      expect(submittedValue(form, "from")).toBe("2026-08-04");
+      expect(submittedValue(form, "to")).toBe("2026-08-11");
 
       view.rerender(
         <OrdersAdministrationFilterForm
@@ -116,14 +135,60 @@ describe("administration filter forms", () => {
         />
       );
 
-      expect(from.value).toBe("2026-08-05");
-      expect(to.value).toBe("2026-08-12");
-      const form = getForm(view.container);
+      expect(getDateField(view, "From").value).toBe(shownDate("2026-08-05"));
+      expect(getDateField(view, "To").value).toBe(shownDate("2026-08-12"));
       expect(formEntries(form)).toEqual([
         ["from", "2026-08-05"],
         ["to", "2026-08-12"],
       ]);
       await expectNativeGetSubmission(form);
+    });
+
+    test("submits a date typed without leaving the field", async () => {
+      const view = render(
+        <OrdersAdministrationFilterForm
+          query={orderListQuery.parse({ from: "2026-08-03", to: "2026-08-10" })}
+        />
+      );
+      const form = getForm(view.container);
+      let submittedEntries: string[][] | undefined;
+      form.submit = () => {
+        submittedEntries = formEntries(form);
+      };
+      fireEvent.change(getDateField(view, "From"), {
+        target: { value: "2026-08-04" },
+      });
+
+      fireEvent.submit(form);
+
+      await waitFor(() =>
+        expect(submittedEntries).toEqual([
+          ["from", "2026-08-04"],
+          ["to", "2026-08-10"],
+        ])
+      );
+    });
+
+    test("keeps typed text that is no date from submitting", async () => {
+      const view = render(
+        <OrdersAdministrationFilterForm
+          query={orderListQuery.parse({ from: "2026-08-03", to: "2026-08-10" })}
+        />
+      );
+      const form = getForm(view.container);
+      const from = getDateField(view, "From");
+      let submitted = false;
+      form.submit = () => {
+        submitted = true;
+      };
+      fireEvent.change(from, { target: { value: "2026-13-45" } });
+
+      fireEvent.submit(form);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(submitted).toBe(false);
+      expect(document.activeElement).toBe(from);
+      expect(from.getAttribute("aria-invalid")).toBe("true");
     });
   });
 
@@ -139,8 +204,8 @@ describe("administration filter forms", () => {
           }}
         />
       );
-      const date = view.getByLabelText("Booking date") as HTMLInputElement;
-      fireEvent.change(date, { target: { value: "2026-08-11" } });
+      const form = getForm(view.container);
+      typeDate(getDateField(view, "Booking date"), "2026-08-11");
       view.rerender(
         <BookingsAdministrationFilterForm
           query={{
@@ -151,7 +216,7 @@ describe("administration filter forms", () => {
           }}
         />
       );
-      expect(date.value).toBe("2026-08-11");
+      expect(submittedValue(form, "date")).toBe("2026-08-11");
 
       view.rerender(
         <BookingsAdministrationFilterForm
@@ -164,8 +229,6 @@ describe("administration filter forms", () => {
         />
       );
 
-      expect(date.value).toBe("2026-08-14");
-      const form = getForm(view.container);
       expect(formEntries(form)).toEqual([
         ["date", "2026-08-14"],
         ["sort", "booking"],
@@ -186,7 +249,7 @@ describe("administration filter forms", () => {
         />
       );
       const form = getForm(view.container);
-      const date = view.getByLabelText("Booking date") as HTMLInputElement;
+      const date = getDateField(view, "Booking date");
       let submitted = false;
       form.submit = () => {
         submitted = true;
@@ -213,9 +276,9 @@ describe("administration filter forms", () => {
           })}
         />
       );
-      const from = view.getByLabelText("From") as HTMLInputElement;
+      const form = getForm(view.container);
       const channel = view.getByLabelText("Origin") as HTMLSelectElement;
-      fireEvent.change(from, { target: { value: "2026-07-02" } });
+      typeDate(getDateField(view, "From"), "2026-07-02");
       fireEvent.change(channel, { target: { value: "ECOMMERCE" } });
       view.rerender(
         <OperationsAdministrationFilterForm
@@ -227,7 +290,7 @@ describe("administration filter forms", () => {
           })}
         />
       );
-      expect(from.value).toBe("2026-07-02");
+      expect(submittedValue(form, "from")).toBe("2026-07-02");
       expect(channel.value).toBe("ECOMMERCE");
 
       view.rerender(
@@ -241,17 +304,12 @@ describe("administration filter forms", () => {
         />
       );
 
-      expect(from.value).toBe("2026-07-03");
-      expect((view.getByLabelText("To") as HTMLInputElement).value).toBe(
-        "2026-08-03"
-      );
       expect((view.getByLabelText("Origin") as HTMLSelectElement).value).toBe(
         "ECOMMERCE"
       );
       expect((view.getByLabelText("Type") as HTMLSelectElement).value).toBe(
         "CAPTURE"
       );
-      const form = getForm(view.container);
       expect(formEntries(form)).toEqual([
         ["from", "2026-07-03"],
         ["to", "2026-08-03"],
@@ -311,16 +369,12 @@ describe("administration filter forms", () => {
       fireEvent.change(view.getByLabelText("Deskohub status"), {
         target: { value: "cancelled" },
       });
-      fireEvent.change(view.getByLabelText("Start date from"), {
-        target: { value: "2026-08-05" },
-      });
+      typeDate(getDateField(view, "Start date from"), "2026-08-05");
       view.rerender(reservationFilterForm({ ...filteredInput }));
       expect(
         (view.getByLabelText("Deskohub status") as HTMLSelectElement).value
       ).toBe("cancelled");
-      expect(
-        (view.getByLabelText("Start date from") as HTMLInputElement).value
-      ).toBe("2026-08-05");
+      expect(submittedValue(form, "from")).toBe("2026-08-05");
       expect(
         view.getByRole("link", { name: "Clear" }).getAttribute("href")
       ).toBe("/en-US/admin/reservations");
@@ -335,9 +389,7 @@ describe("administration filter forms", () => {
       expect(
         (view.getByLabelText("Reservation type") as HTMLSelectElement).value
       ).toBe("");
-      expect(
-        (view.getByLabelText("Start date from") as HTMLInputElement).value
-      ).toBe("");
+      expect(getDateField(view, "Start date from").value).toBe("");
       expect(form.querySelector('input[name="customerId"]')).toBeNull();
       expect(formEntries(form)).toEqual([
         ["status", ""],
@@ -349,9 +401,7 @@ describe("administration filter forms", () => {
       ]);
       await expectNativeGetSubmission(form);
 
-      fireEvent.change(view.getByLabelText("Start date from"), {
-        target: { value: "2026-08-02" },
-      });
+      typeDate(getDateField(view, "Start date from"), "2026-08-02");
       fireEvent.change(view.getByLabelText("Deskohub status"), {
         target: { value: "complete" },
       });
@@ -369,9 +419,7 @@ describe("administration filter forms", () => {
         })
       );
 
-      expect(
-        (view.getByLabelText("Start date from") as HTMLInputElement).value
-      ).toBe("2026-08-13");
+      expect(submittedValue(form, "from")).toBe("2026-08-13");
       expect(
         (view.getByLabelText("Deskohub status") as HTMLSelectElement).value
       ).toBe("");
@@ -405,14 +453,8 @@ describe("administration filter forms", () => {
 
       expect(form.getAttribute("method")).toBe("get");
       expect(form.getAttribute("action")).toBe("/en-US/admin/customers");
-      expect(view.getByLabelText("Reservation start from")).toHaveProperty(
-        "type",
-        "date"
-      );
-      expect(view.getByLabelText("Reservation start to")).toHaveProperty(
-        "type",
-        "date"
-      );
+      expect(getDateField(view, "Reservation start from")).toBeDefined();
+      expect(getDateField(view, "Reservation start to")).toBeDefined();
       expect(
         Array.from(consent.options).map(({ textContent, value }) => [
           value,

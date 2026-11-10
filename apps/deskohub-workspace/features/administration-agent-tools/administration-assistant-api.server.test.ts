@@ -24,6 +24,7 @@ import {
   customerAgentClientIdSchema,
 } from "@/features/account/backend/auth/customer-agent-authorization.service";
 import { CustomerAgentClientDirectory } from "@/features/account/backend/auth/customer-agent-client-directory.service";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import {
   CustomerAccountAccessError,
   customerAccountIdSchema,
@@ -204,6 +205,7 @@ const makeAssistantServices = ({
           accountId: grant.accountId,
           email: administrator.email,
           deletionRequested: false,
+          ...testSessionProfile,
         })),
         Effect.mapError(
           (error) =>

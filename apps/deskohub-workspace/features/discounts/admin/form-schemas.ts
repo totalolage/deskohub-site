@@ -5,6 +5,7 @@ import {
   type WorkspaceProductTargetKey,
 } from "@/features/discounts/product-target";
 import type { Locale } from "@/features/i18n";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
 import {
   discountProductTargetKeys,
   toDiscountProductTargets,
@@ -39,6 +40,46 @@ const optionalLocalDateTimeField = (locale: Locale) =>
       { message: m.discountsValidationDateTime({}, { locale }) }
     )
   );
+
+const isServiceDate = Schema.is(plainDateStringSchema);
+
+const optionalServiceDateField = (locale: Locale) =>
+  Schema.String.check(
+    Schema.makeFilter((value) => value === "" || isServiceDate(value), {
+      message: m.discountsValidationServiceDate({}, { locale }),
+    })
+  );
+
+type ServiceDateFormValues = {
+  readonly serviceDateFrom: string;
+  readonly serviceDateUntil: string;
+};
+
+/**
+ * A code's reservation dates are both empty or both set, and the last one
+ * isn't before the first.
+ */
+const serviceDateWindowFilters = (locale: Locale) =>
+  [
+    Schema.makeFilter<ServiceDateFormValues>(
+      ({ serviceDateFrom, serviceDateUntil }) =>
+        (serviceDateFrom === "") === (serviceDateUntil === "") || {
+          path: [
+            serviceDateFrom === "" ? "serviceDateFrom" : "serviceDateUntil",
+          ],
+          issue: m.discountsValidationServiceDatesPair({}, { locale }),
+        }
+    ),
+    Schema.makeFilter<ServiceDateFormValues>(
+      ({ serviceDateFrom, serviceDateUntil }) =>
+        !isServiceDate(serviceDateFrom) ||
+        !isServiceDate(serviceDateUntil) ||
+        Temporal.PlainDate.compare(serviceDateUntil, serviceDateFrom) >= 0 || {
+          path: ["serviceDateUntil"],
+          issue: m.discountsValidationServiceDatesOrder({}, { locale }),
+        }
+    ),
+  ] as const;
 
 const codeField = (locale: Locale) =>
   Schema.String.check(
@@ -185,6 +226,8 @@ const discountCodeConfigurationFields = (locale: Locale) => ({
   validUntil: optionalLocalDateTimeField(locale),
   maxUses: optionalCountField(locale),
   maxUsesPerCustomer: optionalCountField(locale),
+  serviceDateFrom: optionalServiceDateField(locale),
+  serviceDateUntil: optionalServiceDateField(locale),
 });
 
 export const createDiscountDefinitionFormSchema = (locale: Locale) =>
@@ -193,13 +236,15 @@ export const createDiscountDefinitionFormSchema = (locale: Locale) =>
   );
 
 const createDiscountCodeConfigurationFormSchema = (locale: Locale) =>
-  Schema.Struct(discountCodeConfigurationFields(locale));
+  Schema.Struct(discountCodeConfigurationFields(locale)).check(
+    ...serviceDateWindowFilters(locale)
+  );
 
 export const createDiscountCodeFormSchema = (locale: Locale) =>
   Schema.Struct({
     discountId: discountIdField(locale),
     ...discountCodeConfigurationFields(locale),
-  });
+  }).check(...serviceDateWindowFilters(locale));
 
 export const createVoucherFormSchema = (locale: Locale) => {
   const { code, enabled, validFrom, validUntil } =
@@ -243,7 +288,8 @@ export const createDiscountCodeCreationFormSchema = (locale: Locale) =>
     ...definitionFilters<DiscountCodeCreationFormCheckInput>(
       locale,
       (values) => values.discountKind === "new"
-    )
+    ),
+    ...serviceDateWindowFilters(locale)
   );
 
 export const createCustomerCodeAudienceFormSchema = (locale: Locale) =>

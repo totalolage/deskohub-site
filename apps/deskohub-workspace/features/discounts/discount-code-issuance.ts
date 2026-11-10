@@ -19,9 +19,13 @@ import type {
   StoredDiscountId,
 } from "./persistence-contracts";
 import { generatePromotionCode } from "./promotion-code";
+import type { ServiceDateWindow } from "./service-date-eligibility";
 
-/** Everything an ordinary discount code row owns; omitted limits are unlimited. */
-export type DiscountCodeValues = {
+/**
+ * Everything an ordinary discount code row owns; omitted limits are unlimited
+ * and absent service dates cover every reservation date.
+ */
+export type DiscountCodeValues = ServiceDateWindow & {
   readonly code: CanonicalPromotionCode;
   readonly discountId: StoredDiscountId;
   readonly enabled: boolean;
@@ -84,6 +88,8 @@ const insertDiscountCodeChild = ({ values, promotionCodeId }: PromotionRows) =>
           discountId: values.discountId,
           maxUses: values.maxUses,
           maxUsesPerCustomer: values.maxUsesPerCustomer,
+          serviceDateFrom: values.serviceDateFrom,
+          serviceDateUntil: values.serviceDateUntil,
         })
         .returning({ id: discountCodes.id })
     ),

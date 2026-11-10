@@ -30,6 +30,7 @@
         // Command-line scripts run by path from package.json, CI, or the skills.
         "scripts/*.ts",
         "scripts/account-sticky/run.ts",
+        "scripts/discounts-admin-dates/run.ts",
         // Loaded by path: bundled renderer entries and child-process fixtures.
         "scripts/account-sticky/browser-entry.tsx",
         "scripts/shared/command.*-fixture.{ts,mjs}",

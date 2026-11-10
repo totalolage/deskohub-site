@@ -101,6 +101,10 @@ Rules:
 
 `--product cowork` targets every cowork tier. `cowork:open-space` and `cowork:reserved-desk` target one tier and can't be combined with `cowork`. See [discounts.md](discounts.md#cowork-tier-targets).
 
+## Discount code service dates
+
+`codes create` and `codes update` take `--service-date-from` and `--service-date-until` (YYYY-MM-DD, Prague) together. Without them, `codes update` keeps the code's dates. `--clear-service-dates` removes them and can't be combined with a date flag. `dhw` rejects a lone date flag or that combination before any request. `codes list` and `codes get` show the dates, and the JSON output carries `serviceDateFrom` and `serviceDateUntil`, which decode as null from servers that predate them. See [discounts.md](discounts.md#mutation-rules).
+
 ## Email campaigns
 
 - The campaign contract lives in `packages/workspace-admin-api/src/email-campaigns.ts`, and `features/admin-cli/email-campaigns-api.server.ts` serves it with the services the campaign admin UI uses.

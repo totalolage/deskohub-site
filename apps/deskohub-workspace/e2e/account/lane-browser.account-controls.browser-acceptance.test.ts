@@ -199,6 +199,7 @@ const laneBrowserFor = ({
       makeWorkspaceE2EAccountLaneBrowser({
         config,
         openAssistantSession,
+        openSeparateSession,
         openSession,
       })
   );

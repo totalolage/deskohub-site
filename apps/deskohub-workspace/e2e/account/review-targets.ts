@@ -38,6 +38,7 @@ export const accountReviewTargetByCaseId: Partial<
   Record<WorkspaceE2EAccountCaseId, AccountReviewTarget>
 > = {
   "account-anonymous-redirect": "sign-in-desktop",
+  "account-data-export": "legal-export-delivered-desktop",
   "account-sign-in-form": "sign-in-accepted-desktop",
   "account-magic-link-delivery": "completion-mobile375x900",
   "account-linking-variants": "support-desktop",

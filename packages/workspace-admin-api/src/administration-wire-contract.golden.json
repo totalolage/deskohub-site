@@ -9411,6 +9411,26 @@
                                         }
                                       ]
                                     },
+                                    "serviceDateFrom": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "serviceDateUntil": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
                                     "discountLabel": {
                                       "type": "string"
                                     },
@@ -12865,6 +12885,26 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "serviceDateFrom": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "serviceDateUntil": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           },
                           "required": [
@@ -13962,6 +14002,26 @@
                                     ]
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "serviceDateFrom": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "serviceDateUntil": {
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -19072,6 +19132,42 @@
                                       "type": "null"
                                     }
                                   ]
+                                },
+                                "serviceDateFrom": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "description": "First reservation start date (Prague) the code applies to. Send it with serviceDateUntil; omit both to keep the code's dates, or send both as null to remove them."
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "serviceDateUntil": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "description": "Last reservation start date (Prague) the code applies to. Send it with serviceDateFrom; omit both to keep the code's dates, or send both as null to remove them."
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 }
                               },
                               "required": [
@@ -19522,6 +19618,42 @@
                                           "type": "null"
                                         }
                                       ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "serviceDateFrom": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "description": "First reservation start date (Prague) the code applies to. Send it with serviceDateUntil; omit both to keep the code's dates, or send both as null to remove them."
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "serviceDateUntil": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "description": "Last reservation start date (Prague) the code applies to. Send it with serviceDateFrom; omit both to keep the code's dates, or send both as null to remove them."
                                     },
                                     {
                                       "type": "null"
@@ -19981,6 +20113,42 @@
                                           "type": "null"
                                         }
                                       ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "serviceDateFrom": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "description": "First reservation start date (Prague) the code applies to. Send it with serviceDateUntil; omit both to keep the code's dates, or send both as null to remove them."
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "serviceDateUntil": {
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "description": "Last reservation start date (Prague) the code applies to. Send it with serviceDateFrom; omit both to keep the code's dates, or send both as null to remove them."
                                     },
                                     {
                                       "type": "null"

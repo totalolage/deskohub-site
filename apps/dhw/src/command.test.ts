@@ -1523,6 +1523,138 @@ describe("dhw mutation commands", () => {
     expect(mutations).toHaveLength(0);
   });
 
+  describe("discount code service dates", () => {
+    const discountId = "019c91dd-c560-7e55-b9d8-c95065efd51d";
+    const updateArgs = [
+      "--json",
+      "codes",
+      "update",
+      codeId,
+      "SUMMER10",
+      discountId,
+      "--enabled",
+      "true",
+    ];
+    const createArgs = [
+      "--json",
+      "codes",
+      "create",
+      "existing",
+      "SUMMER10",
+      discountId,
+    ];
+    const sentCode = (mutations: ReadonlyArray<unknown>) =>
+      (mutations[0] as { readonly code: Record<string, unknown> }).code;
+
+    test("sends both dates on create and update", async () => {
+      for (const args of [createArgs, updateArgs]) {
+        const { layer, mutations } = makeCommandLayer();
+
+        await runCommand(
+          [
+            ...args,
+            "--service-date-from",
+            "2026-07-15",
+            "--service-date-until",
+            "2026-07-15",
+          ],
+          layer
+        ).pipe(Effect.runPromise);
+
+        expect(sentCode(mutations)).toMatchObject({
+          serviceDateFrom: "2026-07-15",
+          serviceDateUntil: "2026-07-15",
+        });
+      }
+    });
+
+    test("leaves the dates out without date flags so an update keeps them", async () => {
+      for (const args of [createArgs, updateArgs]) {
+        const { layer, mutations } = makeCommandLayer();
+
+        await runCommand(args, layer).pipe(Effect.runPromise);
+
+        expect(Object.keys(sentCode(mutations))).not.toContain(
+          "serviceDateFrom"
+        );
+        expect(Object.keys(sentCode(mutations))).not.toContain(
+          "serviceDateUntil"
+        );
+      }
+    });
+
+    test("clears the dates with explicit nulls", async () => {
+      const { layer, mutations } = makeCommandLayer();
+
+      await runCommand([...updateArgs, "--clear-service-dates"], layer).pipe(
+        Effect.runPromise
+      );
+
+      expect(sentCode(mutations)).toMatchObject({
+        serviceDateFrom: null,
+        serviceDateUntil: null,
+      });
+    });
+
+    test("rejects incomplete, combined, inverted, or invalid dates before making a request", async () => {
+      for (const args of [
+        [...createArgs, "--service-date-from", "2026-07-01"],
+        [...updateArgs, "--service-date-until", "2026-07-31"],
+        [
+          ...updateArgs,
+          "--clear-service-dates",
+          "--service-date-from",
+          "2026-07-01",
+        ],
+        [
+          ...updateArgs,
+          "--clear-service-dates",
+          "--service-date-from",
+          "2026-07-01",
+          "--service-date-until",
+          "2026-07-31",
+        ],
+        [
+          ...createArgs,
+          "--service-date-from",
+          "2026-07-31",
+          "--service-date-until",
+          "2026-07-01",
+        ],
+        [
+          ...createArgs,
+          "--service-date-from",
+          "2026-02-30",
+          "--service-date-until",
+          "2026-03-31",
+        ],
+      ]) {
+        const { layer, mutations } = makeCommandLayer();
+
+        await expect(
+          runCommand(args, layer).pipe(Effect.runPromise)
+        ).rejects.toBeDefined();
+        expect(mutations).toHaveLength(0);
+      }
+    });
+
+    test("names the conflicting flags as an input error", async () => {
+      const { layer } = makeCommandLayer();
+
+      const error = await runCommand(
+        [
+          ...updateArgs,
+          "--clear-service-dates",
+          "--service-date-until",
+          "2026-07-31",
+        ],
+        layer
+      ).pipe(Effect.flip, Effect.runPromise);
+
+      expect(error).toMatchObject({ _tag: "InvalidMutationInputError" });
+    });
+  });
+
   test("rejects duplicate product flags before making a request", async () => {
     const { layer, mutations } = makeCommandLayer();
 

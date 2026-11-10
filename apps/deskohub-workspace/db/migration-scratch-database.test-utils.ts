@@ -24,8 +24,8 @@ export const linkMigrationsBefore = async (migration: string) => {
 };
 
 /**
- * How many migrations `migration` and those after it make: what migrating a
- * database brought to the state before `migration` applies.
+ * How many migrations `linkMigrationsBefore` left out: the named migration
+ * and every later one, which `migrate` applies together afterwards.
  */
 export const countMigrationsFrom = async (migration: string) =>
   (await readdir(workspaceMigrationsFolder)).filter(
