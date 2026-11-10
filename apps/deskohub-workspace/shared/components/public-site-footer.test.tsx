@@ -156,6 +156,8 @@ test("names every language in itself and links all but the current one to this p
     "de-DE",
     "uk-UA",
     "sk-SK",
+    "vi-VN",
+    "hi-IN",
   ];
 
   expect(

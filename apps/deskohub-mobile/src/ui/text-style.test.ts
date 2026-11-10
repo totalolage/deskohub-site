@@ -15,7 +15,11 @@ describe("textFontFamily", () => {
   });
 
   test("sets other scripts in the system font", () => {
-    expect(textFontFamily("uk-UA")).toBeUndefined();
+    // The brand face lacks Cyrillic, Devanagari and Vietnamese's stacked
+    // diacritics.
+    for (const locale of ["uk-UA", "vi-VN", "hi-IN"] as const) {
+      expect(textFontFamily(locale)).toBeUndefined();
+    }
   });
 });
 

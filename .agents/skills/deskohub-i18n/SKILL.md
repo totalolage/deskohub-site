@@ -1,6 +1,6 @@
 ---
 name: deskohub-i18n
-description: Locale registry, supported locales, adding a locale or language, translating or reviewing message catalogs, catalog parity, plural categories, select messages, Inlang settings, i18n:compile, stale Paraglide output, translation glossary, translation style guide, register (du, ty, ви), de-DE, uk-UA, sk-SK.
+description: Locale registry, supported locales, adding a locale or language, translating or reviewing message catalogs, catalog parity, plural categories, select messages, Inlang settings, i18n:compile, stale Paraglide output, translation glossary, translation style guide, register (du, ty, ви, bạn, आप), de-DE, uk-UA, sk-SK, vi-VN, hi-IN, Devanagari.
 ---
 
 # Deskohub i18n
@@ -12,7 +12,7 @@ Read the reference that matches the work:
 - The registry, what reads it, the drift tests, and content that falls back through a locale's chain: [references/architecture.md](references/architecture.md).
 - The Inlang projects, catalog JSON format (placeholders, plurals, selects), compiling, and the message tests: [references/catalogs.md](references/catalogs.md).
 - Adding a locale, end to end: [references/add-a-locale.md](references/add-a-locale.md).
-- Translating or reviewing a catalog: the register, parity check, and reviewer checklist in [references/translation-workflow.md](references/translation-workflow.md). Terms and style are in [references/glossary/](references/glossary/): [style-guide.md](references/glossary/style-guide.md) first, then the target locale's file (`de-DE.md`, `uk-UA.md`, `sk-SK.md`). [terms.md](references/glossary/terms.md) lists each term's Czech and English source.
+- Translating or reviewing a catalog: the register, parity check, and reviewer checklist in [references/translation-workflow.md](references/translation-workflow.md). Terms and style are in [references/glossary/](references/glossary/): [style-guide.md](references/glossary/style-guide.md) first, then the target locale's file (`de-DE.md`, `uk-UA.md`, `sk-SK.md`, `vi-VN.md`, `hi-IN.md`). [terms.md](references/glossary/terms.md) lists each term's Czech and English source.
 
 Rules for every change:
 

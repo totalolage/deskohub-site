@@ -211,7 +211,7 @@
   "emailsEditorBlockSortDescending": "За спаданням",
   "emailsEditorBlockLimit": "Показати не більше",
   "emailsEditorBlockLimitHint": "Якщо залишити поле порожнім, буде показано всі елементи.",
-  "emailsEditorEnglishFallbackMissing": "Без англійського перекладу німецькомовні та україномовні одержувачі без перекладу їхньою мовою отримають чеську версію.",
+  "emailsEditorEnglishFallbackMissing": "Без англійського перекладу одержувачі, для мови яких немає власного перекладу, а резервною є англійська, отримають чеську версію.",
   "emailsEditorProblemValuePath": "Оберіть поле клієнта.",
   "emailsEditorProblemValueSort": "Оберіть поле для сортування та його напрям.",
   "emailsEditorProblemValueDiscount": "Оберіть знижку.",

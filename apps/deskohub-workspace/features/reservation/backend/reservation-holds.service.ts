@@ -1,4 +1,8 @@
-import { type DotyposReservationId, DotyposService } from "@deskohub/dotypos";
+import {
+  type DotyposReservationId,
+  DotyposService,
+  type DotyposWriteFailure,
+} from "@deskohub/dotypos";
 import {
   Context,
   Data,
@@ -22,6 +26,7 @@ import {
 import {
   DotyposHoldRelease,
   ReservationHoldCleanupScheduleService,
+  UnpaidHoldRelease,
 } from "@/features/checkout/backend/holds";
 import {
   createWorkspaceDotyposReservation,
@@ -1139,34 +1144,47 @@ const supersedeRotatedAgentHolds = Effect.fn(
       !agentSessionKeys.accepted.includes(hold.checkoutSessionKey)
   );
 
+  const unpaidHoldRelease = yield* UnpaidHoldRelease;
   yield* Effect.forEach(
     rotatedHolds,
     Effect.fn(function* (hold) {
-      const claimed = yield* reservations.claimSupersessionCancellation(
-        hold.id
-      );
-      // workspace_reservations_hold_id_check rejects a held or cancelling
-      // row without its Dotypos hold, so a claimed row always carries one.
-      if (!claimed?.dotyposReservationId) return;
-
-      yield* Effect.logInfo(
-        "Agent client's hold in a rotated checkout session superseded",
-        { reservationId: claimed.id }
-      );
-      const cancelled = yield* cancelSupersededHold({
-        reservationId: claimed.id,
-        dotyposReservationId: claimed.dotyposReservationId,
-      });
-      if (cancelled) {
-        yield* reservations.markCancelled({
-          id: claimed.id,
-          cancelledAt: Temporal.Now.instant(),
+      const dotyposReleaseFailed = (cause: DotyposWriteFailure) =>
+        Effect.logError("Checkout supersession Dotypos cancellation failed", {
+          reservationId: hold.id,
+          dotyposReservationId: hold.dotyposReservationId,
+          cause,
         });
+      // A hold Dotypos refused or failed to cancel is left to its own
+      // lifecycle, marked `cancellation_failed`.
+      const released = yield* unpaidHoldRelease
+        .release({ reason: "agent_rotated", reservationId: hold.id })
+        .pipe(
+          Effect.catchTags({
+            DotyposUnavailable: dotyposReleaseFailed,
+            DotyposRejected: dotyposReleaseFailed,
+            DotyposUncertain: dotyposReleaseFailed,
+          })
+        );
+      if (Predicate.hasProperty(released, "refused")) {
+        yield* Effect.logError(
+          "Checkout supersession refused to cancel a non-pending Dotypos reservation",
+          {
+            reservationId: hold.id,
+            dotyposReservationId: hold.dotyposReservationId,
+            status: released.refused,
+          }
+        );
+      }
+      if (Predicate.hasProperty(released, "released")) {
+        yield* Effect.logInfo(
+          "Agent client's hold in a rotated checkout session superseded",
+          { reservationId: hold.id }
+        );
       }
     }),
     { discard: true }
   );
-});
+}, Effect.provide(UnpaidHoldRelease.Default));
 
 type AgentCheckout =
   | {

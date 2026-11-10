@@ -18,6 +18,8 @@ describe("getWorkspaceAlternates", () => {
       "de-DE": "https://workspace.deskohub.cz/de-DE/contact",
       "uk-UA": "https://workspace.deskohub.cz/uk-UA/contact",
       "sk-SK": "https://workspace.deskohub.cz/sk-SK/contact",
+      "vi-VN": "https://workspace.deskohub.cz/vi-VN/contact",
+      "hi-IN": "https://workspace.deskohub.cz/hi-IN/contact",
       "x-default": "https://workspace.deskohub.cz/contact",
     });
   });
@@ -31,6 +33,8 @@ describe("getWorkspaceAlternates", () => {
         "de-DE": "https://workspace.deskohub.cz/de-DE",
         "uk-UA": "https://workspace.deskohub.cz/uk-UA",
         "sk-SK": "https://workspace.deskohub.cz/sk-SK",
+        "vi-VN": "https://workspace.deskohub.cz/vi-VN",
+        "hi-IN": "https://workspace.deskohub.cz/hi-IN",
         "x-default": "https://workspace.deskohub.cz/",
       },
     });

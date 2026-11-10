@@ -1,0 +1,279 @@
+{
+  "emailAutomationRunsStepLabel": "Bước {position} · {step}",
+  "emailAutomationRunsStepById": "Bước “{stepId}”",
+  "emailAutomationRunsStepCondition": "Điều kiện",
+  "emailAutomationRunsStepSend": "Gửi email",
+  "emailAutomationRunsStepWaitUntil": "Chờ đến {target}",
+  "emailAutomationRunsStepWaitMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "Chờ {formattedCount} phút"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "Chờ {formattedCount} giờ"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "Chờ {formattedCount} ngày"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitWeeks": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "Chờ {formattedCount} tuần"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitMonths": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "Chờ {formattedCount} tháng"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "{formattedCount} phút"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "{formattedCount} giờ"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "{formattedCount} ngày"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeJustNow": "vừa xong",
+  "emailAutomationRunsAgeMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "{formattedCount} phút trước"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "{formattedCount} giờ trước"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "{formattedCount} ngày trước"
+      }
+    }
+  ],
+  "emailAutomationRunsHealthRunning": "Hệ thống tự động hóa đang chạy · lập kế hoạch gần nhất: {lastPlanned}",
+  "emailAutomationRunsHealthBehind": "Hệ thống tự động hóa cần được kiểm tra · lập kế hoạch gần nhất: {lastPlanned}",
+  "emailAutomationRunsHealthNotPlannedYet": "chưa có",
+  "emailAutomationRunsHealthUnavailable": "Hiện không thể tải trạng thái của hệ thống tự động hóa.",
+  "emailAutomationRunsHealthWarningTitle": "Hệ thống tự động hóa đang bị chậm. Lượt chạy của mọi chiến dịch tự động có thể bắt đầu hoặc gửi muộn.",
+  "emailAutomationRunsHealthCampaignTitle": "Lịch của chiến dịch này hiện đang quá tải.",
+  "emailAutomationRunsHealthPlannerStale": "Trình lập kế hoạch chạy lần gần nhất {age}.",
+  "emailAutomationRunsHealthPlannerNeverRan": "Trình lập kế hoạch chưa chạy lần nào.",
+  "emailAutomationRunsHealthSweepLagging": "Thời điểm bắt đầu và kết thúc đặt chỗ đang được phát hiện chậm {duration}.",
+  "emailAutomationRunsHealthSweepLaggingUnknown": "Thời điểm bắt đầu và kết thúc đặt chỗ đang được phát hiện chậm.",
+  "emailAutomationRunsHealthReconcileStalled": "Lượt kiểm tra hằng giờ thời điểm bắt đầu và kết thúc đặt chỗ đang chậm {duration}.",
+  "emailAutomationRunsHealthReconcileStalledUnknown": "Lượt kiểm tra hằng giờ thời điểm bắt đầu và kết thúc đặt chỗ không chạy.",
+  "emailAutomationRunsHealthEventBacklog": "Các sự kiện của khách hàng đang chờ xử lý; sự kiện cũ nhất từ {date}.",
+  "emailAutomationRunsHealthEventBacklogUnknown": "Các sự kiện của khách hàng đang chờ xử lý.",
+  "emailAutomationRunsHealthUnitBacklog": "Công việc đã lên kế hoạch đang chờ chạy; công việc cũ nhất đã chờ từ {date}.",
+  "emailAutomationRunsHealthUnitBacklogUnknown": "Công việc đã lên kế hoạch đang chờ chạy.",
+  "emailAutomationRunsHealthScheduleLagging": "Các chiến dịch theo lịch đang khởi chạy muộn.",
+  "emailAutomationRunsHealthFallingBehind": "Một chiến dịch theo lịch cần nhiều thời gian để xử lý một lần khởi chạy hơn khoảng thời gian đến lần khởi chạy tiếp theo.",
+  "emailAutomationRunsHealthUnrecognized": "Hệ thống tự động hóa báo một cảnh báo mà trang này không nhận ra: {code}.",
+  "emailAutomationRunsHealthCampaignScheduleLag": "Lịch của chiến dịch này đang chậm {duration}.",
+  "emailAutomationRunsHealthCampaignEnteringFire": "Chiến dịch này đang tạo lượt chạy cho lần khởi chạy lúc {date}: đã xong {done}/{total} phần.",
+  "emailAutomationRunsHealthCampaignFallingBehind": "Lần khởi chạy gần nhất của chiến dịch này mất {duration}, lâu hơn khoảng {interval} đến lần khởi chạy tiếp theo.",
+  "emailAutomationRunsHealthCampaignFallingBehindUnknown": "Lần khởi chạy gần nhất của chiến dịch này mất {duration}, lâu hơn khoảng thời gian đến lần khởi chạy tiếp theo.",
+  "emailAutomationRunsCountsTitle": "Lượt chạy theo trạng thái",
+  "emailAutomationRunsCountsScopeAll": "Tất cả phiên bản",
+  "emailAutomationRunsCountsScopeVersion": "Phiên bản {versionNumber}",
+  "emailAutomationRunsCountsWaiting": "Đang chờ",
+  "emailAutomationRunsCountsSendingNow": "Đang gửi",
+  "emailAutomationRunsCountsSent": "Đã gửi",
+  "emailAutomationRunsCountsFailed": "Thất bại",
+  "emailAutomationRunsCountsSkipped": "Đã bỏ qua",
+  "emailAutomationRunsCountsArchived": "Kết thúc do lưu trữ",
+  "emailAutomationRunsOutcomeSent": "Đã gửi",
+  "emailAutomationRunsOutcomeUnconfirmed": "Có thể đã gửi",
+  "emailAutomationRunsOutcomeConditionFailed": "Kết thúc tại điều kiện",
+  "emailAutomationRunsOutcomeSkipped": "Đã bỏ qua",
+  "emailAutomationRunsOutcomeSkippedBecause": "Đã bỏ qua · {reason}",
+  "emailAutomationRunsOutcomeFailed": "Thất bại",
+  "emailAutomationRunsOutcomeFailedBecause": "Thất bại · {reason}",
+  "emailAutomationRunsOutcomeWithdrawn": "Sự kiện kích hoạt đã bị hủy",
+  "emailAutomationRunsOutcomeArchived": "Kết thúc do lưu trữ",
+  "emailAutomationRunsSkipOutsideTestDomain": "người nhận không phải thử nghiệm",
+  "emailAutomationRunsSkipConsentWithdrawn": "đã rút lại sự đồng ý",
+  "emailAutomationRunsSkipMissingEmail": "thiếu địa chỉ email",
+  "emailAutomationRunsSkipInvalidEmail": "địa chỉ email không hợp lệ",
+  "emailAutomationRunsSkipDeletedCustomer": "khách hàng đã bị xóa",
+  "emailAutomationRunsSkipMissingFromDotypos": "khách hàng không có trong Dotypos",
+  "emailAutomationRunsFailureDeliveryRefused": "bị từ chối gửi",
+  "emailAutomationRunsFailureEvaluationUnavailable": "không thể đánh giá",
+  "emailAutomationRunsStatusWaitingUntil": "Đang chờ đến {date}",
+  "emailAutomationRunsStatusInProgress": "Đang diễn ra",
+  "emailAutomationRunsStatusSending": "Đang gửi",
+  "emailAutomationRunsStateActive": "Đang diễn ra",
+  "emailAutomationRunsStateSending": "Đang gửi",
+  "emailAutomationRunsStateEnded": "Đã kết thúc",
+  "emailAutomationRunsFilterState": "Trạng thái",
+  "emailAutomationRunsFilterStateAny": "Mọi trạng thái",
+  "emailAutomationRunsFilterOutcome": "Kết quả",
+  "emailAutomationRunsFilterOutcomeAny": "Mọi kết quả",
+  "emailAutomationRunsFilterSkipReason": "Lý do bỏ qua",
+  "emailAutomationRunsFilterSkipReasonAny": "Mọi lý do",
+  "emailAutomationRunsFilterStep": "Bước",
+  "emailAutomationRunsFilterStepAny": "Mọi bước",
+  "emailAutomationRunsFilterVersion": "Phiên bản",
+  "emailAutomationRunsFilterVersionAll": "Tất cả phiên bản",
+  "emailAutomationRunsFilterCustomer": "Khách hàng",
+  "emailAutomationRunsFilterCustomerPlaceholder": "ID khách hàng trong Dotypos",
+  "emailAutomationRunsFilterApply": "Hiển thị lượt chạy",
+  "emailAutomationRunsFilterClear": "Xóa bộ lọc",
+  "emailAutomationRunsVersion": "Phiên bản {versionNumber}",
+  "emailAutomationRunsVersionLive": "Phiên bản {versionNumber} (đang hoạt động)",
+  "emailAutomationRunsListControls": "Điều khiển danh sách lượt chạy",
+  "emailAutomationRunsListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "{formattedCount} lượt chạy trên trang này"
+      }
+    }
+  ],
+  "emailAutomationRunsListEmpty": "Chưa có lượt chạy nào. Lượt chạy sẽ hiển thị ở đây khi chiến dịch tự động đang hoạt động và sự kiện kích hoạt của nó xảy ra.",
+  "emailAutomationRunsListEmptyFiltered": "Không có lượt chạy nào khớp với các bộ lọc này.",
+  "emailAutomationRunsColumnStarted": "Bắt đầu",
+  "emailAutomationRunsColumnCustomer": "Khách hàng",
+  "emailAutomationRunsCustomerProfileNotFound": "Không tìm thấy trong Dotypos",
+  "emailAutomationRunsCustomerProfileUnavailable": "Không có hồ sơ",
+  "emailAutomationRunsCustomerContactsUnavailable": "Hiện không thể tải tên khách hàng từ Dotypos, nên lượt chạy hiển thị ID khách hàng.",
+  "emailAutomationRunsColumnTrigger": "Sự kiện kích hoạt",
+  "emailAutomationRunsColumnStep": "Bước",
+  "emailAutomationRunsColumnStatus": "Trạng thái",
+  "emailAutomationRunsColumnEnded": "Kết thúc",
+  "emailAutomationRunsColumnVersion": "Phiên bản",
+  "emailAutomationRunsPagination": "Các trang của danh sách lượt chạy",
+  "emailAutomationRunsFirstPage": "Trang đầu",
+  "emailAutomationRunsNextPage": "Trang tiếp",
+  "emailAutomationRunsLoadFailed": "Không thể tải nhật ký lượt chạy. Vui lòng thử lại sau ít phút.",
+  "emailAutomationRunsCursorInvalid": "Liên kết trang này không còn hiệu lực. Vui lòng bắt đầu lại từ trang đầu.",
+  "emailAutomationRunsBackToList": "Tất cả lượt chạy",
+  "emailAutomationRunsRunTitle": "Lượt chạy",
+  "emailAutomationRunsTriggeredAt": "{trigger} · {date}",
+  "emailAutomationRunsCurrentStep": "Bước hiện tại",
+  "emailAutomationRunsEndedAtStep": "Kết thúc tại bước",
+  "emailAutomationRunsNotEnded": "Chưa kết thúc",
+  "emailAutomationRunsTimelineTitle": "Dòng thời gian",
+  "emailAutomationRunsTimelineLabel": "Dòng thời gian của lượt chạy",
+  "emailAutomationRunsEventStarted": "Lượt chạy đã bắt đầu",
+  "emailAutomationRunsEventConditionPassed": "Đã đáp ứng điều kiện",
+  "emailAutomationRunsEventConditionFailed": "Không đáp ứng điều kiện; lượt chạy kết thúc tại đây",
+  "emailAutomationRunsEventConditionFailedClause": "Không đáp ứng: {clause}",
+  "emailAutomationRunsEventWaiting": "Đang chờ đến {date}",
+  "emailAutomationRunsEventWoke": "Đã hết thời gian chờ",
+  "emailAutomationRunsEventDeferred": "Lượt ghé thăm của sự kiện kích hoạt chưa bắt đầu; sẽ kiểm tra lại vào {date}",
+  "emailAutomationRunsEventSendQueued": "Email đã được đưa vào hàng đợi gửi",
+  "emailAutomationRunsEventSent": "Đã gửi email",
+  "emailAutomationRunsEventUnconfirmed": "Email có thể đã được gửi",
+  "emailAutomationRunsEventUnconfirmedDetail": "Dịch vụ email không xác nhận việc gửi thành công, nên lượt chạy sẽ không gửi lại email.",
+  "emailAutomationRunsEventWithdrawnDetail": "Đặt chỗ của sự kiện kích hoạt đã bị hủy trong lúc lượt chạy đang chờ.",
+  "emailAutomationRunsEventArchivedDetail": "Chiến dịch đã được lưu trữ trong lúc lượt chạy đang diễn ra.",
+  "emailAutomationRunsEventUnknown": "Sự kiện được ghi nhận “{kind}”",
+  "emailAutomationRunsConditionClause": "Phần {position} của điều kiện",
+  "emailAutomationRunsConditionInAudience": "Khách hàng trong nhóm người nhận đã lưu “{audience}”",
+  "emailAutomationRunsConditionNotInAudience": "Khách hàng ngoài nhóm người nhận đã lưu “{audience}”",
+  "emailAutomationRunsConditionAudienceUnknown": "nhóm người nhận đã xóa"
+}

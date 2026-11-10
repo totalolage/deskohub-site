@@ -1,7 +1,7 @@
 {
   "$schema": "https://inlang.com/schema/project-settings",
   "baseLocale": "en-US",
-  "locales": ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK"],
+  "locales": ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK", "vi-VN", "hi-IN"],
   "modules": [
     "https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js",
     "https://cdn.jsdelivr.net/npm/@inlang/message-lint-rule-empty-pattern@1/dist/index.js",

@@ -588,8 +588,10 @@ describe("audienceLocales", () => {
       "cs-CZ",
       "de-DE",
       "en-US",
+      "hi-IN",
       "sk-SK",
       "uk-UA",
+      "vi-VN",
     ]);
   });
 
@@ -597,7 +599,7 @@ describe("audienceLocales", () => {
     expect([...audienceLocales(speaks("cs-CZ"))]).toEqual(["cs-CZ"]);
     expect([
       ...audienceLocales({ ...speaks("cs-CZ"), operator: "noneOf" }),
-    ]).toEqual(["en-US", "de-DE", "uk-UA", "sk-SK"]);
+    ]).toEqual(["en-US", "de-DE", "uk-UA", "sk-SK", "vi-VN", "hi-IN"]);
   });
 
   test("intersects AND groups and unites OR groups at any depth", () => {
@@ -608,7 +610,7 @@ describe("audienceLocales", () => {
     ]).toEqual(["cs-CZ"]);
     expect(
       [...audienceLocales(group("or", [speaks("cs-CZ"), taggedVip]))].sort()
-    ).toEqual(["cs-CZ", "de-DE", "en-US", "sk-SK", "uk-UA"]);
+    ).toEqual(["cs-CZ", "de-DE", "en-US", "hi-IN", "sk-SK", "uk-UA", "vi-VN"]);
     expect([...audienceLocales(group("or", []))]).toEqual([]);
   });
 });
