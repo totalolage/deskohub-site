@@ -68,6 +68,8 @@ const displayOrder: readonly Locale[] = [
   "de-DE",
   "uk-UA",
   "sk-SK",
+  "vi-VN",
+  "hi-IN",
 ];
 
 const localePreference = (signedIn: boolean) => {
@@ -278,13 +280,9 @@ describe("LanguageLinks", () => {
     pendingSearch = undefined;
     const ready = render(<LanguageLinks locale="en-US" label={linksLabel} />);
 
-    expect(shellItems.map(([tagName]) => tagName)).toEqual([
-      "SPAN",
-      "SPAN",
-      "SPAN",
-      "SPAN",
-      "SPAN",
-    ]);
+    expect(shellItems.map(([tagName]) => tagName)).toEqual(
+      displayOrder.map(() => "SPAN")
+    );
     // The shell keeps the client's list: the same names, languages and current
     // marker, with plain text where the client renders links.
     expect(shellItems.map(([, ...rest]) => rest)).toEqual(

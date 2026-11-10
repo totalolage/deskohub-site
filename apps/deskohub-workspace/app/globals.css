@@ -100,3 +100,11 @@ main section[id],
 footer[id] {
   scroll-margin-top: var(--anchor-scroll-offset);
 }
+
+/* Devanagari joins a word's letters along its headline stroke, so letter
+   spacing breaks words apart. Unlayered, it overrides the tracking
+   utilities on Hindi pages; features/i18n/locale-fonts.ts sets Devanagari's
+   fonts and line heights. */
+:root:lang(hi) * {
+  letter-spacing: normal;
+}

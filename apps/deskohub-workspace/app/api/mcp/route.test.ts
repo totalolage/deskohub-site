@@ -452,7 +452,17 @@ describe("customer MCP route", () => {
       expect(tool.inputSchema).toMatchObject({
         type: "object",
         properties: {
-          locale: { enum: ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK"] },
+          locale: {
+            enum: [
+              "en-US",
+              "cs-CZ",
+              "de-DE",
+              "uk-UA",
+              "sk-SK",
+              "vi-VN",
+              "hi-IN",
+            ],
+          },
         },
       });
       expect(tool.outputSchema).toMatchObject({ type: "object" });
