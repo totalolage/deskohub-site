@@ -66,9 +66,7 @@ describe.skipIf(!suiteDatabase)(
           Layer.mergeAll(
             Layer.succeed(CustomerAuthentication, { currentUser }),
             CustomerAccountLinkRepository.Default.pipe(
-              Layer.provide(
-                Layer.mergeAll(suiteDatabase.layer, healthyAdvisoryLock)
-              )
+              Layer.provide(suiteDatabase.layer)
             ),
             advisoryLock
           )
