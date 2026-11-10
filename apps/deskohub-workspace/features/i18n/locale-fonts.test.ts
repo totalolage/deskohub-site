@@ -7,7 +7,9 @@ import { nextFontLocal } from "@/shared/testing/next-font-local.test-utils";
 
 mock.module("next/font/local", () => nextFontLocal);
 
-const { getLocaleFontStyle } = await import("./locale-fonts");
+const { getLocaleFontStyle, languageNameFontStyle } = await import(
+  "./locale-fonts"
+);
 
 const brandFamilies = "'sculpin', 'sculpin Fallback'";
 const fonts = "'../../assets/fonts";
@@ -39,6 +41,16 @@ describe("locale font style", () => {
   test("puts Poppins' Devanagari and the system Devanagari fonts between Sculpin and its fallback on Hindi pages", () => {
     expect(getLocaleFontStyle("hi-IN", brandFamilies)).toEqual({
       "--font-text": `'sculpin', ${fonts}/Poppins/devanagari-400.woff2', "Noto Sans Devanagari", "Nirmala UI", "Kohinoor Devanagari", 'sculpin Fallback'`,
+    });
+  });
+});
+
+describe("language name font style", () => {
+  test("names the face of every language name in a script the brand face lacks", () => {
+    expect(languageNameFontStyle).toEqual({
+      "--font-language-name-uk-UA": `${fonts}/Montserrat/language-name-cyrillic.woff2'`,
+      "--font-language-name-vi-VN": `${fonts}/Montserrat/language-name-vietnamese.woff2'`,
+      "--font-language-name-hi-IN": `${fonts}/Poppins/language-name-devanagari-400.woff2'`,
     });
   });
 });
