@@ -2,15 +2,12 @@ import "server-only";
 
 import { Effect, Layer, Result } from "effect";
 import { cache } from "react";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import {
   type CurrentLinkedAccount,
   CustomerAccountContactService,
 } from "@/features/account/backend/customer-account-contact.service";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
-import {
-  isCustomerAccountSupportRequired,
-  isCustomerProfileMissing,
-} from "@/features/account/customer-account";
+import { CustomerAccountAccessError } from "@/features/account/customer-account";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import type { CoworkReservationInput } from "@/features/reservation/cowork-reservation";
 import type { MeetingRoomReservationInput } from "@/features/reservation/meeting-room-reservation";
@@ -27,10 +24,7 @@ import {
   isMeetingRoomAvailable,
   type WorkspaceAvailabilityQuery,
 } from "@/features/reservation/workspace-availability";
-import {
-  getReviewAccountContact,
-  ReviewAccounts,
-} from "@/features/review-accounts";
+import { getReviewAccountContact } from "@/features/review-accounts";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { CustomerLastReservationService } from "./customer-last-reservation.service";
 import { WorkspaceAvailabilityService } from "./workspace-availability.service";
@@ -50,11 +44,10 @@ export const loadReservationCheckoutAccount = cache(
     const account = await loadCheckoutAccount(kind).pipe(
       Effect.provide(
         Layer.mergeAll(
+          CurrentCustomerAccount.Live,
           CustomerAccountContactService.Live,
-          CustomerAccountResolver.Live,
           CustomerLastReservationService.Live,
-          MarketingConsentLedger.Live,
-          ReviewAccounts.Live
+          MarketingConsentLedger.Live
         )
       ),
       Effect.tapError((error) =>
@@ -77,64 +70,89 @@ export const loadReservationCheckoutAccount = cache(
   }
 );
 
-const loadCheckoutAccount = Effect.fn("reservation.loadCheckoutAccount")(
-  function* <Kind extends WorkspaceReservationKind>(kind: Kind) {
-    const contacts = yield* CustomerAccountContactService;
-    const account = yield* contacts.currentAccount;
-    if (account.status === "signed-out") {
-      return {
-        status: "signed-out",
-      } satisfies ReservationCheckoutAccount<Kind>;
-    }
-    if (account.status === "linked") {
-      return yield* loadLinkedCheckoutAccount(account, kind);
-    }
-    const reviewAccount = yield* ReviewAccounts.pipe(
-      Effect.flatMap((accounts) => accounts.isReviewAccount(account.accountId))
-    );
-    if (reviewAccount) {
+type CheckoutStanding = Effect.Success<
+  CurrentCustomerAccount["Service"]["peek" | "resolve"]
+>;
+
+/**
+ * Checkout's own policy over the account's standing. It deliberately differs
+ * from the account page's: an account awaiting deletion books as signed out,
+ * and an unverified email is unavailable.
+ */
+const checkoutAccountFor = Effect.fnUntraced(function* <
+  Kind extends WorkspaceReservationKind,
+>(standing: CheckoutStanding, kind: Kind) {
+  switch (standing.kind) {
+    case "signed-out":
+    case "deletion-pending":
+      return { status: "signed-out" } satisfies ReservationCheckoutAccount<Kind>;
+    case "unverified":
+      // As the session read reports it, so the page logs it as before.
+      return yield* new CustomerAccountAccessError({
+        reason: "unverified-email",
+      });
+    case "review":
       return {
         status: "review-account",
-        contact: getReviewAccountContact(account.email),
+        contact: getReviewAccountContact(standing.session.email),
       } satisfies ReservationCheckoutAccount<Kind>;
-    }
-
-    // As on the account page, an account without a link first claims its
-    // exact-email Dotypos customer, so a returning customer books with the
-    // saved profile instead of creating another one.
-    const resolution = yield* CustomerAccountResolver.pipe(
-      Effect.flatMap((resolver) => resolver.resolve),
-      Effect.result
-    );
-    if (Result.isSuccess(resolution)) {
+    case "unlinked":
+      // Only an unreadable review marker leaves an account unlinked here:
+      // without knowing it isn't a review account, checkout can't link it.
+      return { status: "unavailable" } satisfies ReservationCheckoutAccount<Kind>;
+    case "linked":
       return yield* loadLinkedCheckoutAccount(
-        { ...resolution.success, email: account.email },
+        { ...standing.account, email: standing.session.email },
         kind
       );
-    }
-
-    const failure = resolution.failure;
-    if (isCustomerProfileMissing(failure)) {
+    case "profile-missing":
       return {
         status: "profile-missing",
-        email: account.email,
+        email: standing.session.email,
       } satisfies ReservationCheckoutAccount<Kind>;
-    }
-    if (isCustomerAccountSupportRequired(failure)) {
+    case "support-required":
       return {
         status: "support-required",
       } satisfies ReservationCheckoutAccount<Kind>;
-    }
-    // The session ended or requested deletion since it was read.
-    if (
-      failure.reason === "unauthenticated" ||
-      failure.reason === "link-required"
-    ) {
-      return {
-        status: "signed-out",
-      } satisfies ReservationCheckoutAccount<Kind>;
-    }
-    return yield* failure;
+    case "unavailable":
+      return yield* standing.failure;
+  }
+});
+
+/** The session ended or requested deletion since the first read. */
+const endedSinceRead = (failure: CustomerAccountAccessError) =>
+  failure.reason === "unauthenticated" || failure.reason === "link-required";
+
+const signedOut = { kind: "signed-out" } as const;
+
+/**
+ * The standing of an account the first read found unlinked, after it
+ * resolves its link. A session that ended or requested deletion since that
+ * read books as signed out.
+ */
+const resolveUnlinkedAccount = CurrentCustomerAccount.pipe(
+  Effect.flatMap((current) => current.resolve),
+  Effect.catchIf(endedSinceRead, () => Effect.succeed(signedOut)),
+  Effect.map((standing): CheckoutStanding =>
+    standing.kind === "unavailable" && endedSinceRead(standing.failure)
+      ? signedOut
+      : standing
+  )
+);
+
+const loadCheckoutAccount = Effect.fn("reservation.loadCheckoutAccount")(
+  function* <Kind extends WorkspaceReservationKind>(kind: Kind) {
+    const current = yield* CurrentCustomerAccount;
+    const peeked = yield* current.peek;
+    // As on the account page, an account without a link first claims its
+    // exact-email Dotypos customer, so a returning customer books with the
+    // saved profile instead of creating another one. A linked account never
+    // resolves, so it loads without taking the account lock.
+    const standing =
+      peeked.kind === "unlinked" && peeked.reviewMarker === "absent"
+        ? yield* resolveUnlinkedAccount
+        : peeked;
+    return yield* checkoutAccountFor(standing, kind);
   }
 );
 
