@@ -5,7 +5,11 @@ import {
   type DotyposCustomerId,
   DotyposService,
 } from "@deskohub/dotypos";
-import { type EmailMessage, EmailServiceTag } from "@deskohub/email";
+import {
+  type EmailMessage,
+  type EmailSendError,
+  EmailServiceTag,
+} from "@deskohub/email";
 import {
   and,
   asc,
@@ -45,6 +49,7 @@ import {
 } from "@/db/schema";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
 import type { Locale } from "@/features/i18n";
+import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
 import { currentInstant } from "@/shared/utils/temporal";
@@ -78,9 +83,17 @@ import {
   campaignEligibility,
   consentingCampaignCustomers,
 } from "./campaign-reachability";
+import { CampaignRecipientAnalyticsIdentity } from "./campaign-recipient-analytics-identity.service";
 import type { CampaignDeliveryAttempt } from "./campaign-send-queue.service";
 import { sendAutomationVersion } from "./campaign-send-selection";
 import { CampaignUnsubscribeService } from "./campaign-unsubscribe.service";
+import {
+  batchRequestOptions,
+  type CampaignEmailMessage,
+  type EmailBatchResult,
+  emailBatchResults,
+  recipientFailureCode,
+} from "./email-batch-results";
 import { OnceCampaignLifecycle } from "./once-campaign-lifecycle";
 
 /**
@@ -93,9 +106,10 @@ const deliveryStartBudget = Duration.seconds(120);
 /**
  * A run gives up this long after it starts, inside the queue consumer's
  * 300-second limit. Its slowest batch can outlast the remaining time: a
- * Dotypos read with every retry takes up to about 121 seconds, and a
- * provider request is made once and waits up to 10 seconds in production or
- * 30 seconds elsewhere.
+ * Dotypos read with every retry takes up to about 121 seconds, and a batch
+ * is requested once: in production its emails take up to 15 seconds at
+ * PostHog and those it passes on up to 10 more at Resend, and elsewhere
+ * Resend waits up to 30 seconds.
  */
 const deliveryRunDeadline = Duration.seconds(270);
 
@@ -268,18 +282,96 @@ type RequestedBatch = {
 };
 
 /**
- * What a batch's request settled as. `rejected` means the provider refused
- * it and sent nothing; `unconfirmed` that it may have delivered and is never
- * resent.
+ * What one email of an answered batch settled as. `failed` means every
+ * provider refused it; `unconfirmed` that one may have delivered it, so
+ * only an admin retry that includes unconfirmed recipients resends it.
+ * Both carry the last provider's error code, when it gave one.
+ */
+type RecipientOutcome =
+  | { readonly status: "sent"; readonly providerMessageId: string }
+  | {
+      readonly status: "failed" | "unconfirmed";
+      readonly failureCode: string | undefined;
+    };
+
+/**
+ * What a batch's request settled as. `accepted` means the providers
+ * answered each email, in the batch's order; `rejected` that the provider
+ * refused the whole batch and sent nothing; `unconfirmed` that it may have
+ * delivered and is never resent.
  */
 type BatchOutcome =
-  | { readonly status: "accepted"; readonly ids: readonly string[] }
-  | { readonly status: "rejected" | "unconfirmed" };
+  | {
+      readonly status: "accepted";
+      readonly recipients: readonly RecipientOutcome[];
+    }
+  | {
+      readonly status: "rejected" | "unconfirmed";
+      readonly failureCode?: string | undefined;
+    };
 
-const recipientStatusOf = {
-  rejected: "failed",
-  unconfirmed: "unconfirmed",
-} as const;
+/** The provider's code for an error, when it gave one. */
+const errorCode = (
+  error: EmailSendError & { readonly code?: string | undefined }
+): string | undefined => error.code;
+
+/** An answered batch's outcome from its emails' results, in its order. */
+const answeredOutcome = (
+  results: readonly EmailBatchResult[],
+  replay: boolean
+) => ({
+  status: "accepted" as const,
+  recipients: results.map((result) => recipientOutcome(result, replay)),
+});
+
+/** The emails of an answered batch that weren't sent, by error code. */
+const unsentEmails = (recipients: readonly RecipientOutcome[]) => ({
+  failed: recipients.flatMap((outcome) =>
+    outcome.status === "failed" ? [outcome.failureCode ?? "unknown"] : []
+  ),
+  unconfirmed: recipients.flatMap((outcome) =>
+    outcome.status === "unconfirmed" ? [outcome.failureCode ?? "unknown"] : []
+  ),
+});
+
+const logUnsentEmails = (unsent: ReturnType<typeof unsentEmails>) =>
+  Effect.logWarning(
+    "Campaign delivery batch had emails that weren't sent",
+    unsent
+  ).pipe(
+    Effect.when(
+      Effect.succeed(unsent.failed.length > 0 || unsent.unconfirmed.length > 0)
+    )
+  );
+
+/**
+ * An email's outcome from its result. An email no provider answered may
+ * have been delivered, and so may one refused during a replay, since the
+ * refusal says nothing about the earlier request.
+ */
+const recipientOutcome = (
+  result: EmailBatchResult,
+  replay: boolean
+): RecipientOutcome =>
+  result.status === "failed"
+    ? Match.value(result.error).pipe(
+        Match.tag(
+          "NetworkError",
+          (error): RecipientOutcome => ({
+            status: "unconfirmed",
+            failureCode: errorCode(error),
+          })
+        ),
+        Match.tag(
+          "EmailServiceError",
+          (error): RecipientOutcome => ({
+            status: replay ? "unconfirmed" : "failed",
+            failureCode: errorCode(error),
+          })
+        ),
+        Match.exhaustive
+      )
+    : { status: "sent", providerMessageId: result.id };
 
 /** Delivers frozen campaign sends; the campaign send queue consumer runs it. */
 export class CampaignDeliveryService extends Context.Service<
@@ -295,6 +387,7 @@ export class CampaignDeliveryService extends Context.Service<
       const config = yield* CampaignEmailConfig;
       const unsubscribe = yield* CampaignUnsubscribeService;
       const runSettlement = yield* AutomationRunSettlement;
+      const analyticsIdentity = yield* CampaignRecipientAnalyticsIdentity;
 
       /**
        * The current attempt's campaign email. A one-off campaign must still
@@ -670,16 +763,24 @@ export class CampaignDeliveryService extends Context.Service<
           renderMessage({ context: input.context, recipient })
         );
 
-      /** Moves the given recipients that are still `pending` to `status`. */
+      /**
+       * Moves the given recipients that are still `pending` to `status`,
+       * with the refusal's code when they failed.
+       */
       const settlePendingRecipients = (input: {
         readonly sendId: CampaignSendId;
         readonly customerIds: readonly DotyposCustomerId[];
         readonly status: "failed" | "unconfirmed";
+        readonly failureCode?: string | undefined;
         readonly now: Temporal.Instant;
       }) =>
         db
           .update(emailCampaignRecipients)
-          .set({ status: input.status, statusUpdatedAt: input.now })
+          .set({
+            status: input.status,
+            ...recipientFailureCode(input.failureCode),
+            statusUpdatedAt: input.now,
+          })
           .where(
             and(
               eq(emailCampaignRecipients.sendId, input.sendId),
@@ -716,34 +817,59 @@ export class CampaignDeliveryService extends Context.Service<
         );
 
       /**
-       * Records the provider's message IDs. An accepted batch wins over any
-       * failure recorded for its recipients; a webhook that arrived first
-       * may already have moved one past `sent`, and that status stays.
+       * Records the provider's message ID of a recipient's accepted email. It
+       * wins over any failure recorded for the recipient; a webhook that
+       * arrived first may already have moved it past `sent`, and that status
+       * stays.
        */
-      const markBatchSent = (input: {
+      const markSent = (input: {
+        readonly sendId: CampaignSendId;
+        readonly dotyposCustomerId: DotyposCustomerId;
+        readonly providerMessageId: string;
+        readonly now: Temporal.Instant;
+      }) =>
+        db
+          .update(emailCampaignRecipients)
+          .set({
+            providerMessageId: input.providerMessageId,
+            status: sql`case when ${inArray(emailCampaignRecipients.status, undeliveredRecipientStatuses)} then 'sent' else ${emailCampaignRecipients.status} end`,
+            ...recipientFailureCode(undefined),
+            statusUpdatedAt: input.now,
+          })
+          .where(
+            and(
+              eq(emailCampaignRecipients.sendId, input.sendId),
+              eq(
+                emailCampaignRecipients.dotyposCustomerId,
+                input.dotyposCustomerId
+              )
+            )
+          );
+
+      /** Moves each recipient of an answered batch to its email's outcome. */
+      const settleRecipients = (input: {
         readonly batch: DeliveryBatch;
-        readonly ids: readonly string[];
+        readonly recipients: readonly RecipientOutcome[];
         readonly now: Temporal.Instant;
       }) =>
         Effect.forEach(
-          input.batch.dotyposCustomerIds,
-          (dotyposCustomerId, index) =>
-            db
-              .update(emailCampaignRecipients)
-              .set({
-                providerMessageId: input.ids[index]!,
-                status: sql`case when ${inArray(emailCampaignRecipients.status, undeliveredRecipientStatuses)} then 'sent' else ${emailCampaignRecipients.status} end`,
-                statusUpdatedAt: input.now,
-              })
-              .where(
-                and(
-                  eq(emailCampaignRecipients.sendId, input.batch.sendId),
-                  eq(
-                    emailCampaignRecipients.dotyposCustomerId,
-                    dotyposCustomerId
-                  )
-                )
-              )
+          Arr.zip(input.batch.dotyposCustomerIds, input.recipients),
+          ([dotyposCustomerId, outcome]) =>
+            outcome.status === "sent"
+              ? markSent({
+                  sendId: input.batch.sendId,
+                  dotyposCustomerId,
+                  providerMessageId: outcome.providerMessageId,
+                  now: input.now,
+                })
+              : settlePendingRecipients({
+                  sendId: input.batch.sendId,
+                  customerIds: [dotyposCustomerId],
+                  status: outcome.status,
+                  failureCode: outcome.failureCode,
+                  now: input.now,
+                }),
+          { discard: true }
         );
 
       const recordBatchStatus = (input: {
@@ -774,19 +900,16 @@ export class CampaignDeliveryService extends Context.Service<
         readonly outcome: BatchOutcome;
         readonly now: Temporal.Instant;
       }): Effect.Effect<void, EffectDrizzleQueryError> =>
-        Match.value(input.outcome).pipe(
-          Match.when({ status: "accepted" }, ({ ids }) =>
-            markBatchSent({ ...input, ids }).pipe(Effect.asVoid)
-          ),
-          Match.orElse(({ status }) =>
-            settlePendingRecipients({
+        input.outcome.status === "accepted"
+          ? settleRecipients({ ...input, recipients: input.outcome.recipients })
+          : settlePendingRecipients({
               sendId: input.batch.sendId,
               customerIds: input.batch.dotyposCustomerIds,
-              status: recipientStatusOf[status],
+              status:
+                input.outcome.status === "rejected" ? "failed" : "unconfirmed",
+              failureCode: input.outcome.failureCode,
               now: input.now,
-            }).pipe(Effect.asVoid)
-          )
-        );
+            }).pipe(Effect.asVoid);
 
       /** Settles a batch's outcome together with its recipients. */
       const settleBatch = (input: {
@@ -823,6 +946,33 @@ export class CampaignDeliveryService extends Context.Service<
           Effect.flatMap((outcome) => settleBatch({ ...input, outcome }))
         );
 
+      /**
+       * The batch's emails as requested now: each names its recipient's
+       * PostHog person while the recipient's analytics consent allows it. The
+       * person is read at each request and isn't part of the persisted
+       * payload, so a replay names whom consent allows then.
+       */
+      const withRecipientIdentities = (input: PreparedBatch) =>
+        analyticsIdentity.forRecipients(input.batch.dotyposCustomerIds).pipe(
+          Effect.map((identities) =>
+            Arr.zipWith(
+              input.messages,
+              input.batch.dotyposCustomerIds,
+              (message, dotyposCustomerId): CampaignEmailMessage =>
+                Option.match(
+                  Option.fromUndefinedOr(identities.get(dotyposCustomerId)),
+                  {
+                    onNone: () => message,
+                    onSome: (recipientIdentity) => ({
+                      ...message,
+                      recipientIdentity,
+                    }),
+                  }
+                )
+            )
+          )
+        );
+
       /** What a persisted batch's request under its key settled as. */
       const requestOutcome = (
         input: PreparedBatch & {
@@ -830,37 +980,47 @@ export class CampaignDeliveryService extends Context.Service<
           readonly replay: boolean;
         }
       ) =>
-        email
-          .sendBatch(input.messages, {
-            idempotencyKey: campaignDeliveryBatchIdempotencyKey(input.batch),
-          })
-          .pipe(
-            Effect.map(
-              (results): BatchOutcome => ({
-                status: "accepted",
-                ids: results.map(({ id }) => id),
-              })
-            ),
-            Effect.catchTags({
-              EmailServiceError: () =>
-                Effect.logError("Campaign delivery batch refused", {
-                  replay: input.replay,
-                }).pipe(
-                  Effect.as<BatchOutcome>({
-                    status: input.replay ? "unconfirmed" : "rejected",
-                  })
+        withRecipientIdentities(input).pipe(
+          Effect.flatMap((messages) =>
+            email.sendBatch(
+              messages,
+              batchRequestOptions({
+                idempotencyKey: campaignDeliveryBatchIdempotencyKey(
+                  input.batch
                 ),
-              NetworkError: () =>
-                Effect.logWarning(
-                  "Campaign delivery batch outcome unknown; it will be replayed"
-                ).pipe(Effect.andThen(incomplete(input.context))),
-            }),
-            Effect.annotateLogs({
-              batchIndex: input.batch.batchIndex,
-              batchSize: input.batch.dotyposCustomerIds.length,
-            }),
-            Effect.withSpan("CampaignDeliveryService.requestBatch")
-          );
+                // A repeat stays with the provider that may have taken the
+                // earlier request, so no other provider mails it again.
+                replay: input.replay,
+              })
+            )
+          ),
+          Effect.map((results) =>
+            answeredOutcome(emailBatchResults(results), input.replay)
+          ),
+          Effect.tap(({ recipients }) =>
+            logUnsentEmails(unsentEmails(recipients))
+          ),
+          Effect.catchTags({
+            EmailServiceError: (error) =>
+              Effect.logError("Campaign delivery batch refused", {
+                replay: input.replay,
+              }).pipe(
+                Effect.as<BatchOutcome>({
+                  status: input.replay ? "unconfirmed" : "rejected",
+                  failureCode: errorCode(error),
+                })
+              ),
+            NetworkError: () =>
+              Effect.logWarning(
+                "Campaign delivery batch outcome unknown; it will be replayed"
+              ).pipe(Effect.andThen(incomplete(input.context))),
+          }),
+          Effect.annotateLogs({
+            batchIndex: input.batch.batchIndex,
+            batchSize: input.batch.dotyposCustomerIds.length,
+          }),
+          Effect.withSpan("CampaignDeliveryService.requestBatch")
+        );
 
       /** Ends the run once it's too far in to start another batch. */
       const ensureStartBudget = (context: AttemptContext) =>
@@ -1550,6 +1710,9 @@ export class CampaignDeliveryService extends Context.Service<
         CampaignEmailConfig.Default,
         CampaignUnsubscribeService.Live,
         AutomationRunSettlement.Default,
+        CampaignRecipientAnalyticsIdentity.Default.pipe(
+          Layer.provide(AnalyticsConsentLedger.Default)
+        ),
         WorkspaceDotyposLayer,
         WorkspaceEmailLayer
       )
