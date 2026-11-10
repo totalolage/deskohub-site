@@ -272,6 +272,7 @@ export const reservationCheckoutPricing = <
       "ReservationCheckoutPricing.previewSubmittedCode"
     )(function* (input: {
       readonly discountQuote: DiscountQuote;
+      readonly firstServiceDate: string;
       readonly locale: Locale;
       readonly submittedCode?: CanonicalPromotionCode;
       readonly advertisedCodeDiscountId?: DiscountId;
@@ -281,6 +282,7 @@ export const reservationCheckoutPricing = <
       const preview = yield* discounts
         .previewDiscountCode({
           baseQuote: input.discountQuote,
+          firstServiceDate: input.firstServiceDate,
           locale: input.locale,
           submittedCode: input.submittedCode,
         })
@@ -330,9 +332,10 @@ export const reservationCheckoutPricing = <
             locale: input.locale,
           })
         ),
-        Effect.bind("preview", ({ advertisement }) =>
+        Effect.bind("preview", ({ advertisement, pricing }) =>
           previewSubmittedCode({
             discountQuote: advertisement.quote,
+            firstServiceDate: pricing.discountInput.firstServiceDate,
             locale: input.locale,
             submittedCode: input.submittedCode,
           })
@@ -370,9 +373,10 @@ export const reservationCheckoutPricing = <
               ),
           })
         ),
-        Effect.bind("preview", ({ discountQuote }) =>
+        Effect.bind("preview", ({ discountQuote, pricing }) =>
           previewSubmittedCode({
             discountQuote,
+            firstServiceDate: pricing.discountInput.firstServiceDate,
             locale: input.locale,
             submittedCode: input.submittedCode,
             advertisedCodeDiscountId: input.submittedCodeDiscountId,
@@ -403,10 +407,11 @@ export const reservationCheckoutPricing = <
     )((input: ReservationCustomerQuoteInput<CustomerReservation>) =>
       domain.getPricingContext(input.reservation).pipe(
         Effect.bindTo("pricing"),
-        Effect.bind("customerQuote", () =>
+        Effect.bind("customerQuote", ({ pricing }) =>
           discounts.applyCustomerDiscount({
             affirmedAdvertisement: input.affirmedAdvertisement,
             dotyposCustomerId: input.dotyposCustomerId,
+            firstServiceDate: pricing.discountInput.firstServiceDate,
             locale: input.locale,
             ...getSubmittedCodeMetadata(input),
             ...getReferralCode(input),
@@ -521,6 +526,7 @@ export const reservationCheckoutPricing = <
       const appliedCode = yield* discounts.applyDiscountCode({
         baseQuote: affirmation.quote,
         dotyposCustomerId: input.dotyposCustomerId,
+        firstServiceDate: pricing.discountInput.firstServiceDate,
         locale: input.locale,
         submittedCode: input.submittedCode,
         ...getReferralCode(input),

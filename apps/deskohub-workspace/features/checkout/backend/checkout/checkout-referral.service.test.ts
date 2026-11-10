@@ -282,6 +282,7 @@ const makeCommitment = (
 ) =>
   makeDiscountCommitment({
     product,
+    firstServiceDate: "2099-06-20",
     applications: applications.map((application) => ({
       application,
       candidate: getCandidate(application),

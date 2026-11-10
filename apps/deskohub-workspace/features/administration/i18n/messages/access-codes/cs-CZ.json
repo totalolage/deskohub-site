@@ -21,9 +21,11 @@
   ],
   "accessCodesWindowLegend": "Časové okno přístupu ({timeZone})",
   "accessCodesStartsLabel": "Začátek",
+  "accessCodesStartsTimeLabel": "Čas začátku",
   "accessCodesStartRequired": "Vyberte čas začátku.",
   "accessCodesStartInvalid": "Vyberte platný čas začátku v celou hodinu.",
   "accessCodesEndsLabel": "Konec",
+  "accessCodesEndsTimeLabel": "Čas konce",
   "accessCodesEndRequired": "Vyberte čas konce.",
   "accessCodesEndInvalid": "Vyberte platný čas konce v celou hodinu.",
   "accessCodesWindowDurationInvalid": [

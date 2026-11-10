@@ -30,6 +30,7 @@ import type {
   DiscountAdminSalesPage,
   DiscountAdminVouchersPage,
 } from "./discount-administration.service";
+import { formatDiscountCodeServiceDates } from "./service-date-display";
 
 export function CodesAdministrationActions({
   dashboard,
@@ -49,7 +50,7 @@ export function CodesAdministrationCollection({
   readonly locale: Locale;
 }) {
   const discounts = toDiscountTableItems(dashboard);
-  const codes = toDiscountCodeTableItems(dashboard);
+  const codes = toDiscountCodeTableItems(dashboard, locale);
 
   return (
     <section aria-labelledby="discount-codes-heading">
@@ -216,9 +217,10 @@ const toDiscountTableItems = ({
     products,
   }));
 
-const toDiscountCodeTableItems = ({
-  codes,
-}: Pick<DiscountAdminCodesPage, "codes">) =>
+const toDiscountCodeTableItems = (
+  { codes }: Pick<DiscountAdminCodesPage, "codes">,
+  locale: Locale
+) =>
   codes.map((code) => ({
     code: code.code,
     discountId: code.discountId,
@@ -226,6 +228,9 @@ const toDiscountCodeTableItems = ({
     id: code.id,
     maxUses: code.maxUses,
     maxUsesPerCustomer: code.maxUsesPerCustomer,
+    serviceDateFrom: code.serviceDateFrom,
+    serviceDateUntil: code.serviceDateUntil,
+    serviceDates: formatDiscountCodeServiceDates(code, locale),
     audienceSize: code.audienceSize,
     audienceCustomerIds: code.audienceCustomerIds,
     reservedUses: code.reservedUses,

@@ -15,12 +15,12 @@ test("reservation date utilities can load before Temporal instrumentation", asyn
   expect(result.exitCode).toBe(0);
 });
 
-test("reservation date-time picker can load before Temporal instrumentation", async () => {
+test("reservation date and date-time inputs can load before Temporal instrumentation", async () => {
   const result = await runCommand(
     [
       "bun",
       "-e",
-      'delete globalThis.Temporal; await import("./features/reservation/components/reservation-date-time-picker.tsx")',
+      'delete globalThis.Temporal; await import("./features/reservation/components/reservation-date-input.tsx"); await import("./features/reservation/components/reservation-date-time-input.tsx")',
     ],
     { cwd: fileURLToPath(new URL("../..", import.meta.url)) }
   );

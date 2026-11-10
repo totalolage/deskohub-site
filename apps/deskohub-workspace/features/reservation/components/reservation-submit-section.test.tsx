@@ -55,18 +55,15 @@ describe("ReservationSubmitSection", () => {
     await unregisterWorkspaceComponentTestEnv();
   });
 
-  test("submits the form unless it continues to the next step", () => {
+  test("submits the form at either step, so the form routes the step", () => {
     const submit = renderSection();
     expect(submit.button.id).toBe("reservation-submit");
     expect(submit.button.type).toBe("submit");
     cleanup();
 
-    const onContinue = mock(() => undefined);
-    const next = renderSection({ onContinue });
+    const next = renderSection({ continues: true });
     expect(next.button.id).toBe("reservation-continue");
-    expect(next.button.type).toBe("button");
-    fireEvent.click(next.button);
-    expect(onContinue).toHaveBeenCalledTimes(1);
+    expect(next.button.type).toBe("submit");
   });
 
   test("marks the button with what blocks it", () => {

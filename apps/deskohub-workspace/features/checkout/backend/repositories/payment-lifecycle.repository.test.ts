@@ -87,6 +87,7 @@ const validateClaims = (
         getDiscountCommitmentPayload(
           makeDiscountCommitment({
             product: committedProduct,
+            firstServiceDate: "2099-01-01",
             applications: claims.map((claim, index) =>
               claimedApplication(
                 10_000 * 0.9 ** index,
@@ -142,6 +143,7 @@ describe("PaymentLifecycleRepository", () => {
     };
     const commitment = makeDiscountCommitment({
       product: { kind: "cowork", tier: "basic" },
+      firstServiceDate: "2099-01-01",
       applications: [
         {
           application,
@@ -175,6 +177,7 @@ describe("PaymentLifecycleRepository", () => {
   test("rejects an internal payment without a full-discount commitment", async () => {
     const commitment = makeDiscountCommitment({
       product: { kind: "cowork", tier: "basic" },
+      firstServiceDate: "2099-01-01",
       applications: [],
     });
 
@@ -337,6 +340,7 @@ describe("PaymentLifecycleRepository", () => {
   test("checks an application's money before its claim", async () => {
     const commitment = makeDiscountCommitment({
       product,
+      firstServiceDate: "2099-01-01",
       applications: [
         claimedApplication(10_000, codeClaim("code-1"), "discount-0"),
         (() => {

@@ -5,6 +5,7 @@ import {
   DiscountAdminAudienceError,
   DiscountAdminConflictError,
   DiscountAdminNotFoundError,
+  DiscountAdminServiceDatesError,
 } from "./discount-administration.service";
 
 /**
@@ -70,6 +71,9 @@ export const getDiscountAdminMutationErrorMessage = (
         ),
         Match.exhaustive
       )({}, { locale })
+    ),
+    Match.when(Match.instanceOf(DiscountAdminServiceDatesError), () =>
+      m.discountsErrorServiceDatesInvalid({}, { locale })
     ),
     Match.orElse(() => m.discountsErrorSaveFailed({}, { locale }))
   );

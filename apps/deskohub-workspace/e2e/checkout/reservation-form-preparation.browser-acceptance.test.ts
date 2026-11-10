@@ -159,7 +159,7 @@ const meetingRoomHtml = ({
     <input name="phone" />
     <input name="name" />
     <textarea name="message"></textarea>
-    <input name="startDateTime" value="${initialDate}" />
+    <input name="startDateTime" value="${initialDate}T${time}" />
     <button id="reservation-continue" type="button" ${disabled ? "disabled" : ""}></button>
   </form>
   <script>
@@ -169,10 +169,15 @@ const meetingRoomHtml = ({
             const target = event.target;
             const button = target instanceof Element ? target.closest("[data-day] button") : null;
             const date = button?.closest("[data-day]")?.getAttribute("data-day");
-            if (date) document.querySelector('input[name="startDateTime"]').value = date;
+            if (date) document.querySelector('input[name="startDateTime"]').value = date + "T${time}";
           });`
         : ""
     }
+    // The start keeps its date and takes the typed time, as the form does.
+    document.querySelector('input[aria-label="Meeting room start time"]').addEventListener("input", (event) => {
+      const start = document.querySelector('input[name="startDateTime"]');
+      if (start.value) start.value = start.value.slice(0, 11) + event.currentTarget.value;
+    });
     ${script}
   </script>
 `;
@@ -224,6 +229,7 @@ describe("meeting-room reservation preparation in Chromium", () => {
               '</div>';
             document.querySelector('#listed-start input').addEventListener("change", () => {
               time.value = "14:00";
+              document.querySelector('input[name="startDateTime"]').value = "2099-09-02T14:00";
             });
           }, 100);
         `,
@@ -361,12 +367,12 @@ describe("meeting-room reservation preparation in Chromium", () => {
       ).resolves.toBe("about:blank");
       await expect(
         getPage().locator('input[name="startDateTime"]').inputValue()
-      ).resolves.toBe("2099-10-01");
+      ).resolves.toBe("2099-10-01T10:00");
     }
   );
 
   test.skipIf(!chromiumAvailable)(
-    "waits for the date-only meeting-room state before editing time",
+    "waits for the picked date's start before editing time",
     async () => {
       const data = meetingRoomData(
         "2099-10-02T10:00",
@@ -384,11 +390,11 @@ describe("meeting-room reservation preparation in Chromium", () => {
           window.timeChangedBeforeDate = false;
           document.querySelector('[data-day] button').addEventListener("click", () => {
             queueMicrotask(() => {
-              hiddenStart.value = "2099-10-02";
+              hiddenStart.value = "2099-10-02T10:00";
             });
           });
           time.addEventListener("change", () => {
-            if (hiddenStart.value !== "2099-10-02") window.timeChangedBeforeDate = true;
+            if (hiddenStart.value !== "2099-10-02T10:00") window.timeChangedBeforeDate = true;
           });
         `,
       });
@@ -401,7 +407,7 @@ describe("meeting-room reservation preparation in Chromium", () => {
       ).resolves.toBe("about:blank");
       await expect(
         getPage().evaluate(() => ({
-          date: document.querySelector<HTMLInputElement>(
+          start: document.querySelector<HTMLInputElement>(
             'input[name="startDateTime"]'
           )?.value,
           time: document.querySelector<HTMLInputElement>(
@@ -412,7 +418,7 @@ describe("meeting-room reservation preparation in Chromium", () => {
           ).timeChangedBeforeDate,
         }))
       ).resolves.toEqual({
-        date: "2099-10-02",
+        start: "2099-10-02T10:00",
         time: "10:00",
         timeChangedBeforeDate: false,
       });

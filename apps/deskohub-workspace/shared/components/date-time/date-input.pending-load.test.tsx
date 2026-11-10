@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import "@/shared/polyfills/temporal";
+import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -33,14 +34,13 @@ const renderPickerWithPendingCalendar = async (moduleKey: string) => {
   calendarLoad = new Promise<CalendarModule>((resolve) => {
     resolveCalendarLoad = resolve;
   });
-  const { ReservationDatePicker } = await import(
-    `./reservation-date-picker?${moduleKey}`
-  );
+  const { DateInput } = await import(`./date-input?${moduleKey}`);
   const onBlur = mock(() => undefined);
   const view = render(
     <div>
-      <ReservationDatePicker
-        ariaLabel="Reservation date"
+      <DateInput
+        label="Reservation date"
+        locale="en-US"
         onBlur={onBlur}
         value="2099-06-10"
       />
@@ -49,7 +49,10 @@ const renderPickerWithPendingCalendar = async (moduleKey: string) => {
     </div>
   );
   const trigger = view.getByRole("button", {
-    name: "Reservation date: choose from the calendar",
+    name: m.dateInputCalendarButtonLabel(
+      { field: "Reservation date" },
+      { locale: "en-US" }
+    ),
   });
   const elsewhere = view.getByRole("button", { name: "Elsewhere" });
 
@@ -71,7 +74,7 @@ const renderPickerWithPendingCalendar = async (moduleKey: string) => {
 
 const openDialog = () => document.body.querySelector('[role="dialog"]');
 
-describe("ReservationDatePicker deferred calendar load", () => {
+describe("DateInput deferred calendar load", () => {
   afterEach(() => {
     cleanup();
   });

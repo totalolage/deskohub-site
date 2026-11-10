@@ -2,7 +2,7 @@
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import type { FormEvent } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import {
   getWorkspaceMeetingRoomProductTitle,
   getWorkspaceOfficeProductTitle,
@@ -21,9 +21,9 @@ import {
 } from "./customer-list-query";
 import { getAdministrationCustomerMarketingConsentLabel } from "./customer-presentation";
 import {
+  AdministrationFilterDateField,
   AdministrationFilterField,
   AdministrationFilterForm,
-  AdministrationFilterInput,
   AdministrationFilterSelect,
 } from "./filter-controls";
 import { m } from "./i18n";
@@ -95,6 +95,9 @@ function ReservationDateShortcutLinks({
   );
 }
 
+/** Standalone filter forms wrap their fields, so a date field gets a width. */
+const standaloneDateFieldClassName = "w-full sm:w-52";
+
 /** A list's apply button, beside a link clearing every filter once any is set. */
 function AdministrationFilterActions({
   clearHref,
@@ -160,30 +163,32 @@ export function OrdersAdministrationFilterForm({
       }}
       variant="standalone"
     >
-      <AdministrationFilterField
-        htmlFor="order-from"
-        label={m.administrationFilterFrom({}, { locale })}
-      >
-        <AdministrationFilterInput
-          {...form.register("from")}
-          aria-invalid={form.formState.errors.from ? true : undefined}
-          defaultValue={values.from}
-          id="order-from"
-          type="date"
-        />
-      </AdministrationFilterField>
-      <AdministrationFilterField
-        htmlFor="order-to"
-        label={m.administrationFilterTo({}, { locale })}
-      >
-        <AdministrationFilterInput
-          {...form.register("to")}
-          aria-invalid={form.formState.errors.to ? true : undefined}
-          defaultValue={values.to}
-          id="order-to"
-          type="date"
-        />
-      </AdministrationFilterField>
+      <Controller
+        control={form.control}
+        name="from"
+        render={({ field, fieldState }) => (
+          <AdministrationFilterDateField
+            {...field}
+            aria-invalid={fieldState.invalid || undefined}
+            className={standaloneDateFieldClassName}
+            id="order-from"
+            label={m.administrationFilterFrom({}, { locale })}
+          />
+        )}
+      />
+      <Controller
+        control={form.control}
+        name="to"
+        render={({ field, fieldState }) => (
+          <AdministrationFilterDateField
+            {...field}
+            aria-invalid={fieldState.invalid || undefined}
+            className={standaloneDateFieldClassName}
+            id="order-to"
+            label={m.administrationFilterTo({}, { locale })}
+          />
+        )}
+      />
       <Button size="md" type="submit">
         {m.administrationFilterShowOrders({}, { locale })}
       </Button>
@@ -215,19 +220,20 @@ export function BookingsAdministrationFilterForm({
       }}
       variant="standalone"
     >
-      <AdministrationFilterField
-        htmlFor="booking-date"
-        label={m.administrationFilterBookingDate({}, { locale })}
-      >
-        <AdministrationFilterInput
-          {...form.register("date")}
-          aria-invalid={form.formState.errors.date ? true : undefined}
-          defaultValue={values.date}
-          id="booking-date"
-          required
-          type="date"
-        />
-      </AdministrationFilterField>
+      <Controller
+        control={form.control}
+        name="date"
+        render={({ field, fieldState }) => (
+          <AdministrationFilterDateField
+            {...field}
+            aria-invalid={fieldState.invalid || undefined}
+            className={standaloneDateFieldClassName}
+            id="booking-date"
+            label={m.administrationFilterBookingDate({}, { locale })}
+            required
+          />
+        )}
+      />
       <input {...form.register("sort")} type="hidden" value={values.sort} />
       <input
         {...form.register("direction")}
@@ -265,30 +271,32 @@ export function OperationsAdministrationFilterForm({
       }}
       variant="standalone"
     >
-      <AdministrationFilterField
-        htmlFor="operation-from"
-        label={m.administrationFilterFrom({}, { locale })}
-      >
-        <AdministrationFilterInput
-          {...form.register("from")}
-          aria-invalid={form.formState.errors.from ? true : undefined}
-          defaultValue={values.from}
-          id="operation-from"
-          type="date"
-        />
-      </AdministrationFilterField>
-      <AdministrationFilterField
-        htmlFor="operation-to"
-        label={m.administrationFilterTo({}, { locale })}
-      >
-        <AdministrationFilterInput
-          {...form.register("to")}
-          aria-invalid={form.formState.errors.to ? true : undefined}
-          defaultValue={values.to}
-          id="operation-to"
-          type="date"
-        />
-      </AdministrationFilterField>
+      <Controller
+        control={form.control}
+        name="from"
+        render={({ field, fieldState }) => (
+          <AdministrationFilterDateField
+            {...field}
+            aria-invalid={fieldState.invalid || undefined}
+            className={standaloneDateFieldClassName}
+            id="operation-from"
+            label={m.administrationFilterFrom({}, { locale })}
+          />
+        )}
+      />
+      <Controller
+        control={form.control}
+        name="to"
+        render={({ field, fieldState }) => (
+          <AdministrationFilterDateField
+            {...field}
+            aria-invalid={fieldState.invalid || undefined}
+            className={standaloneDateFieldClassName}
+            id="operation-to"
+            label={m.administrationFilterTo({}, { locale })}
+          />
+        )}
+      />
       <AdministrationFilterField
         htmlFor="operation-channel"
         label={m.administrationFilterOperationOrigin({}, { locale })}
@@ -358,7 +366,7 @@ export function ReservationsAdministrationFilterForm({
   return (
     <AdministrationFilterForm
       action={administrationHref("/[locale]/admin/reservations")}
-      className="2xl:grid-cols-[10rem_12rem_10rem_10rem]"
+      className="2xl:grid-cols-[10rem_12rem_13rem_13rem]"
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         const nativeForm = event.currentTarget;
         void form.handleSubmit(() => nativeForm.submit())(event);
@@ -415,30 +423,30 @@ export function ReservationsAdministrationFilterForm({
           </option>
         </AdministrationFilterSelect>
       </AdministrationFilterField>
-      <AdministrationFilterField
-        htmlFor="reservation-date-from"
-        label={m.administrationFilterReservationFrom({}, { locale })}
-      >
-        <AdministrationFilterInput
-          {...form.register("from")}
-          aria-invalid={form.formState.errors.from ? true : undefined}
-          defaultValue={values.from}
-          id="reservation-date-from"
-          type="date"
-        />
-      </AdministrationFilterField>
-      <AdministrationFilterField
-        htmlFor="reservation-date-to"
-        label={m.administrationFilterReservationTo({}, { locale })}
-      >
-        <AdministrationFilterInput
-          {...form.register("to")}
-          aria-invalid={form.formState.errors.to ? true : undefined}
-          defaultValue={values.to}
-          id="reservation-date-to"
-          type="date"
-        />
-      </AdministrationFilterField>
+      <Controller
+        control={form.control}
+        name="from"
+        render={({ field, fieldState }) => (
+          <AdministrationFilterDateField
+            {...field}
+            aria-invalid={fieldState.invalid || undefined}
+            id="reservation-date-from"
+            label={m.administrationFilterReservationFrom({}, { locale })}
+          />
+        )}
+      />
+      <Controller
+        control={form.control}
+        name="to"
+        render={({ field, fieldState }) => (
+          <AdministrationFilterDateField
+            {...field}
+            aria-invalid={fieldState.invalid || undefined}
+            id="reservation-date-to"
+            label={m.administrationFilterReservationTo({}, { locale })}
+          />
+        )}
+      />
       {values.customerId && (
         <input
           {...form.register("customerId")}
@@ -492,7 +500,7 @@ export function CustomersAdministrationFilterForm({
   return (
     <AdministrationFilterForm
       action={administrationHref("/[locale]/admin/customers")}
-      className="2xl:grid-cols-[12rem_10rem_10rem]"
+      className="2xl:grid-cols-[12rem_13rem_13rem]"
       onSubmit={(event: FormEvent<HTMLFormElement>) => {
         const nativeForm = event.currentTarget;
         void form.handleSubmit(() => nativeForm.submit())(event);
@@ -521,30 +529,33 @@ export function CustomersAdministrationFilterForm({
           ))}
         </AdministrationFilterSelect>
       </AdministrationFilterField>
-      <AdministrationFilterField
-        htmlFor="customer-reservation-from"
-        label={m.administrationFilterCustomerReservationFrom({}, { locale })}
-      >
-        <AdministrationFilterInput
-          {...form.register("from")}
-          aria-invalid={form.formState.errors.from ? true : undefined}
-          defaultValue={values.from}
-          id="customer-reservation-from"
-          type="date"
-        />
-      </AdministrationFilterField>
-      <AdministrationFilterField
-        htmlFor="customer-reservation-to"
-        label={m.administrationFilterCustomerReservationTo({}, { locale })}
-      >
-        <AdministrationFilterInput
-          {...form.register("to")}
-          aria-invalid={form.formState.errors.to ? true : undefined}
-          defaultValue={values.to}
-          id="customer-reservation-to"
-          type="date"
-        />
-      </AdministrationFilterField>
+      <Controller
+        control={form.control}
+        name="from"
+        render={({ field, fieldState }) => (
+          <AdministrationFilterDateField
+            {...field}
+            aria-invalid={fieldState.invalid || undefined}
+            id="customer-reservation-from"
+            label={m.administrationFilterCustomerReservationFrom(
+              {},
+              { locale }
+            )}
+          />
+        )}
+      />
+      <Controller
+        control={form.control}
+        name="to"
+        render={({ field, fieldState }) => (
+          <AdministrationFilterDateField
+            {...field}
+            aria-invalid={fieldState.invalid || undefined}
+            id="customer-reservation-to"
+            label={m.administrationFilterCustomerReservationTo({}, { locale })}
+          />
+        )}
+      />
       <input {...form.register("sort")} type="hidden" value={values.sort} />
       <input
         {...form.register("direction")}
