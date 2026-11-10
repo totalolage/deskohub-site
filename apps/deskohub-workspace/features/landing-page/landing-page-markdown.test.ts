@@ -200,15 +200,18 @@ describe.each(locales)("landingPageMarkdown in %s", (locale) => {
   });
 
   test("leaves out the meeting room call to action while that page is unpublished", async () => {
+    const published = await renderLandingPage(locale, true);
     const markdown = await renderLandingPage(locale, false);
 
-    expect(markdownPlainText(markdown)).not.toContain(
-      m.landingHeroMeetingRoomCta({}, { locale })
+    // Structural, not textual: other landing copy may repeat the call to
+    // action's words (vi-VN, hi-IN), so only the links can show it is gone.
+    // Both meeting room page links (hero and offering) drop out; every other
+    // link stays in order.
+    expect(markdownLinkUrls(markdown)).toEqual(
+      markdownLinkUrls(published).filter(
+        (url) => url !== `${origin}/meeting-room`
+      )
     );
-    expect(markdownPlainText(markdown)).not.toContain(
-      m.landingOfferingMeetingRoomPageLink({}, { locale })
-    );
-    expect(markdownLinkUrls(markdown)).not.toContain(`${origin}/meeting-room`);
     expect(markdownPlainText(markdown)).toContain(
       m.landingHeroPrimaryCta({}, { locale })
     );
