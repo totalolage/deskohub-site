@@ -55,7 +55,8 @@ Paths are relative to `apps/deskohub-workspace` unless they start with
   services that lock themselves compose; a step that must run held declares
   `HeldCustomerAccount` in its requirements, never a name suffix. Under
   `withOptionalAccount`, read the contact with
-  `CustomerAccountContactService.current` and never resolve through
+  `CustomerAccountContactService.current` or the standing with
+  `CurrentCustomerAccount.peek`, and never resolve through
   `CustomerAccountResolver` or `CurrentCustomerAccount.resolve`.
 - Keep Drizzle as the only migration authority. Never run Better Auth runtime
   migrations.

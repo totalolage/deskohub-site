@@ -304,7 +304,7 @@ describe.skipIf(!suiteDatabase)(
           sessions: [linkedSession],
           reviewAccounts: failingReviewMarker,
         });
-        expect(await resolve(forLinked.layer)).toEqual({
+        const linkedStanding = {
           kind: "linked",
           session: linkedSession,
           reviewMarker: "unreadable",
@@ -313,7 +313,9 @@ describe.skipIf(!suiteDatabase)(
             dotyposCustomerId: customerId,
           },
           autoLinked: false,
-        });
+        };
+        expect(await peek(forLinked.layer)).toEqual(linkedStanding);
+        expect(await resolve(forLinked.layer)).toEqual(linkedStanding);
 
         const forUnlinked = makeCurrentAccount({
           sessions: [unlinkedSession],
@@ -372,6 +374,26 @@ describe.skipIf(!suiteDatabase)(
         });
         expect(calls.classify).toEqual([]);
         expect(await storedLink(account.accountId)).toBeNull();
+      });
+
+      test("peek never enters the account section", async () => {
+        const customerId = uniqueDotyposId();
+        const linked = await seedAccount({ linkedCustomer: customerId });
+        const unlinked = await seedAccount();
+        // Any section entry would fail: the fake implements none.
+        const noSections = Layer.mock(CustomerAccountSections, {});
+
+        const forLinked = makeCurrentAccount({
+          sessions: [sessionOf(linked)],
+          sections: noSections,
+        });
+        expect((await peek(forLinked.layer)).kind).toBe("linked");
+
+        const forUnlinked = makeCurrentAccount({
+          sessions: [sessionOf(unlinked)],
+          sections: noSections,
+        });
+        expect((await peek(forUnlinked.layer)).kind).toBe("unlinked");
       });
 
       test("resolve claims a unique active exact-email customer and writes no referral", async () => {
