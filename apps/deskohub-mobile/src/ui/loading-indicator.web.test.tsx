@@ -7,12 +7,12 @@ import {
 import { act, type ReactNode } from "react";
 import { AccessibilityInfo } from "react-native";
 import { clientRoot } from "../testing/client-root";
+import { LoadingIndicator } from "./loading-indicator.web";
 import {
   type LoadingIndicatorProps,
   loadingIndicatorLayout,
   loadingIndicatorSemantics,
 } from "./loading-indicator-presentation";
-import { LoadingIndicator } from "./loading-indicator.web";
 import {
   find,
   findAll,
@@ -53,7 +53,9 @@ beforeEach(() => {
     requested.set(lastRequest, callback);
     return lastRequest;
   };
-  browser.cancelAnimationFrame = (id) => requested.delete(id);
+  browser.cancelAnimationFrame = (id) => {
+    if (typeof id === "number") requested.delete(id);
+  };
   accessibility.addEventListener = (_event, listener) => {
     changeReducedMotion = listener;
     return { remove: () => undefined };
@@ -136,9 +138,7 @@ describe("the web LoadingIndicator", () => {
     await act(async () => changeReducedMotion(true));
 
     expect(requested.size).toBe(0);
-    expect(indicator.faces()).toEqual([
-      ...loadingDieFrame("tumble", 0).faces,
-    ]);
+    expect(indicator.faces()).toEqual([...loadingDieFrame("tumble", 0).faces]);
   });
 
   test("stops asking for frames once unmounted", async () => {
@@ -184,16 +184,16 @@ describe("the web LoadingIndicator", () => {
     expect(indicator.group().fill).toBe(`url(#${gradient.id})`);
   });
 
-  test.each([
-    ["label"],
-    [undefined],
-  ] as const)("carries the native semantics for label %p", async (label) => {
-    const indicator = await draw(
-      { size: "section", tone: "white", label },
-      { reduced: true }
-    );
-    expect(find(indicator.tree(), "View")?.props).toMatchObject(
-      loadingIndicatorSemantics(label)
-    );
-  });
+  test.each([["label"], [undefined]] as const)(
+    "carries the native semantics for label %p",
+    async (label) => {
+      const indicator = await draw(
+        { size: "section", tone: "white", label },
+        { reduced: true }
+      );
+      expect(find(indicator.tree(), "View")?.props).toMatchObject(
+        loadingIndicatorSemantics(label)
+      );
+    }
+  );
 });
