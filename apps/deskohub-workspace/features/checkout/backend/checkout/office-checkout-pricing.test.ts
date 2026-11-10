@@ -73,6 +73,7 @@ describe("office checkout pricing", () => {
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
       product,
       discountableSubtotal: money,
+      firstServiceDate: reservation.startsOn,
       lastServiceDate: reservation.endsOn,
       locale: "en-US",
       bookedAt: expect.any(Temporal.Instant),

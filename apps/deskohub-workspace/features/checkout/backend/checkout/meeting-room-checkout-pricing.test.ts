@@ -99,6 +99,7 @@ describe("meeting-room checkout pricing", () => {
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
       product: meetingRoomProduct,
       discountableSubtotal: money,
+      firstServiceDate: "2099-06-10",
       lastServiceDate: "2099-06-10",
       locale: "en-US",
       bookedAt: expect.any(Temporal.Instant),

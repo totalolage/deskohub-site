@@ -360,14 +360,28 @@ export function ReservationCheckoutForm<
           className="space-y-7"
           noValidate
           onSubmit={(event) => {
-            void submit({ event });
+            // The selection step's button submits too, so the date and time
+            // fields can stop an entry they can't take before the step moves
+            // on.
+            if (isContactStep) {
+              void submit({ event });
+              return;
+            }
+            event.preventDefault();
+            void continueReservationToContact(submission);
           }}
           ref={formRef}
         >
-          {/* Both steps stay mounted, so going back keeps what was typed. */}
-          <div className="space-y-7" hidden={isContactStep}>
+          {/* Both steps stay mounted, so going back keeps what was typed. The
+              hidden selection is disabled, so its fields don't hold up the
+              contact step's submission; the form's values still decide it. */}
+          <fieldset
+            className="min-w-0 space-y-7"
+            disabled={isContactStep}
+            hidden={isContactStep}
+          >
             {children}
-          </div>
+          </fieldset>
           <ReservationContactStep
             asksMarketingConsent={asksMarketingConsent}
             checkoutCustomer={checkoutCustomer}
@@ -391,11 +405,7 @@ export function ReservationCheckoutForm<
                 advertisedPrice.isFetching && !advertisedPrice.token
               }
               locale={locale}
-              onContinue={
-                isContactStep
-                  ? undefined
-                  : () => void continueReservationToContact(submission)
-              }
+              continues={!isContactStep}
               onRetryPrice={advertisedPrice.retry}
               priceError={advertisedPrice.isError}
               retryingPrice={advertisedPrice.isFetching}

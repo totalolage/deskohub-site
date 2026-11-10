@@ -1,6 +1,6 @@
 import { deepStrictEqual, equal, ok } from "node:assert/strict";
 import type { AdministrationStandaloneAccessCodeName } from "@deskohub/workspace-admin-api";
-import { expect, type Request } from "@playwright/test";
+import { expect, type Page, type Request } from "@playwright/test";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import type { DatabaseClient } from "@/db/database-client";
@@ -38,6 +38,37 @@ import {
 } from "./access-code-case";
 
 const accessCodeCreationCaseId = "access-code-creation";
+
+/**
+ * Fills one bound of the access window on its date and time fields. The date
+ * field takes typed ISO text once focus leaves it.
+ */
+const fillWindowBound = async (
+  page: Page,
+  {
+    dateLabel,
+    dateTime,
+    timeLabel,
+  }: {
+    readonly dateLabel: string;
+    readonly dateTime: string;
+    readonly timeLabel: string;
+  }
+) => {
+  const [date, time] = dateTime.split("T");
+  ok(date && time, `${dateLabel} is not a local date-time`);
+  const dateField = page.getByRole("combobox", {
+    exact: true,
+    name: dateLabel,
+  });
+  await dateField.fill(date, { timeout: workspaceE2ETimeouts.browserAction });
+  await dateField.press("Tab", {
+    timeout: workspaceE2ETimeouts.browserAction,
+  });
+  await page
+    .getByLabel(timeLabel, { exact: true })
+    .fill(time, { timeout: workspaceE2ETimeouts.browserAction });
+};
 const editingFormSelector =
   'form[data-standalone-access-code-creation="editing"]';
 const createdRegionSelector =
@@ -191,24 +222,25 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
         id: "fill-access-code-name",
         timeoutMs: workspaceE2ETimeouts.browserAction,
       });
+      // The start goes first: it bounds the end's date and time fields.
       yield* step({
         execute: input.session.use("fill the access window start", (page) =>
-          page
-            .getByLabel("Starts", { exact: true })
-            .fill(input.plan.startsAtLocal, {
-              timeout: workspaceE2ETimeouts.browserAction,
-            })
+          fillWindowBound(page, {
+            dateLabel: "Starts",
+            dateTime: input.plan.startsAtLocal,
+            timeLabel: "Start time",
+          })
         ),
         id: "fill-window-start",
         timeoutMs: workspaceE2ETimeouts.browserAction,
       });
       yield* step({
         execute: input.session.use("fill the access window end", (page) =>
-          page
-            .getByLabel("Ends", { exact: true })
-            .fill(input.plan.endsAtLocal, {
-              timeout: workspaceE2ETimeouts.browserAction,
-            })
+          fillWindowBound(page, {
+            dateLabel: "Ends",
+            dateTime: input.plan.endsAtLocal,
+            timeLabel: "End time",
+          })
         ),
         id: "fill-window-end",
         timeoutMs: workspaceE2ETimeouts.browserAction,

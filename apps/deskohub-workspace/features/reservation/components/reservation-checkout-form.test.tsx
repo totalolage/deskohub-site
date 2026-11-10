@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Schema } from "effect";
-import { type ComponentProps, useState } from "react";
+import { type ComponentProps, type ReactNode, useState } from "react";
 import { useForm } from "react-hook-form";
 import type { SiteToolReservationForm } from "@/features/agent-tools/webmcp/use-prepare-reservation-site-tool";
 import { discountIdSchema } from "@/features/discounts/contracts";
@@ -91,6 +91,7 @@ const { act, cleanup, fireEvent, render, waitFor } = await import(
   "@testing-library/react/pure"
 );
 const { ReservationCheckoutForm } = await import("./reservation-checkout-form");
+const { DateInput } = await import("@/shared/components/date-time/date-input");
 
 type HarnessValues = {
   readonly billing: {
@@ -118,6 +119,7 @@ function Harness({
   date = "2026-10-20",
   fromSearchParams = () => ({}),
   requiresName = false,
+  selectionField,
   values,
 }: {
   /** Validates the name with a resolver, as a family's schema does. */
@@ -131,6 +133,8 @@ function Harness({
   readonly availability?: CheckoutFormProps["availability"];
   readonly checkoutCustomer?: CheckoutFormProps["checkoutCustomer"];
   readonly date?: string;
+  /** Another field of the space's step, beside the date. */
+  readonly selectionField?: ReactNode;
   /** Contact values already in the form, as a restored checkout has them. */
   readonly values?: Partial<HarnessValues> & {
     readonly emailConfirmation?: string;
@@ -186,6 +190,7 @@ function Harness({
         aria-label="Reservation date"
         {...form.register("date", { required: "Pick a date" })}
       />
+      {selectionField}
     </ReservationCheckoutForm>
   );
 }
@@ -346,6 +351,54 @@ describe("ReservationCheckoutForm", () => {
       expect(
         getContinueButton(view).getAttribute("data-reservation-unavailable")
       ).toBe("true");
+    });
+
+    test("stays on the space while a date field holds an entry it can't take", async () => {
+      initialStep = "selection";
+      const view = render(
+        <Harness
+          advertisedPrice={signedPrice}
+          selectionField={<DateInput label="Second date" locale="en-US" />}
+        />
+      );
+      const secondDate = view.getByRole("combobox", { name: "Second date" });
+
+      fireEvent.change(secondDate, { target: { value: "next friday" } });
+      await act(async () => {
+        fireEvent.click(getContinueButton(view));
+      });
+
+      expect(getSubmitButton(view)).toBeNull();
+      expect(document.activeElement).toBe(secondDate);
+
+      fireEvent.change(secondDate, { target: { value: "10/21/2026" } });
+      await act(async () => {
+        fireEvent.click(getContinueButton(view));
+      });
+      await waitFor(() => expect(getSubmitButton(view)).not.toBeNull());
+    });
+
+    test("books without the hidden space's fields holding the booking up", async () => {
+      // The date the field holds is one its bounds no longer allow, as when
+      // the clock moves past it during the contact step; the form's own
+      // validation decides the booking.
+      const view = render(
+        <Harness
+          advertisedPrice={signedPrice}
+          checkoutCustomer={linked()}
+          selectionField={
+            <DateInput
+              defaultValue="2026-10-20"
+              label="Second date"
+              locale="en-US"
+              minimum="2026-10-21"
+            />
+          }
+        />
+      );
+
+      fireEvent.click(getSubmitButton(view));
+      await waitFor(() => expect(startCheckout).toHaveBeenCalledTimes(1));
     });
 
     test("returns to the space when the selection went stale before submitting", async () => {

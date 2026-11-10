@@ -175,9 +175,10 @@ export const findRepeatReservationProblem = (
         break;
       }
       case "meeting-room": {
-        const startDate = value('input[name="startDateTime"]');
-        if (startDate === null) return "start date";
-        if (startDate === expected.oldDate) return "fresh meeting-room date";
+        const startDateTime = value('input[name="startDateTime"]');
+        if (startDateTime === null) return "start date";
+        if (startDateTime.slice(0, 10) === expected.oldDate)
+          return "fresh meeting-room date";
         break;
       }
     }

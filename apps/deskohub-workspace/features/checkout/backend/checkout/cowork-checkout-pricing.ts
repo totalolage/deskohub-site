@@ -95,6 +95,7 @@ const getCoworkPricingContext = Effect.fn(
     discountInput: {
       product: { kind: "cowork" as const, tier: reservation.entryTier },
       discountableSubtotal: product.price,
+      firstServiceDate: reservation.date,
       lastServiceDate: reservation.date,
     },
   });

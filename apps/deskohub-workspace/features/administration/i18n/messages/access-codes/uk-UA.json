@@ -22,9 +22,11 @@
   ],
   "accessCodesWindowLegend": "Часове вікно доступу ({timeZone})",
   "accessCodesStartsLabel": "Початок",
+  "accessCodesStartsTimeLabel": "Час початку",
   "accessCodesStartRequired": "Оберіть час початку.",
   "accessCodesStartInvalid": "Оберіть правильний час початку — лише повні години.",
   "accessCodesEndsLabel": "Кінець",
+  "accessCodesEndsTimeLabel": "Час закінчення",
   "accessCodesEndRequired": "Оберіть час завершення.",
   "accessCodesEndInvalid": "Оберіть правильний час завершення — лише повні години.",
   "accessCodesWindowDurationInvalid": [

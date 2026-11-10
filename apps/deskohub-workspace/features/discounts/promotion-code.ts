@@ -4,6 +4,7 @@ import {
   TemporalInstantSchema,
   temporalInstantToIsoString,
 } from "@/shared/utils";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
 import { canonicalPromotionCodeSchema, type Discount } from "./contracts";
 import { PromotionCodeUnavailableError } from "./errors";
 import {
@@ -16,6 +17,10 @@ import {
   type VoucherId,
   voucherIdSchema,
 } from "./persistence-contracts";
+import {
+  getServiceDateWindowIssue,
+  type ServiceDateWindow,
+} from "./service-date-eligibility";
 
 type PromotionConfiguration = {
   readonly promotionCodeId: PromotionCodeId;
@@ -24,13 +29,14 @@ type PromotionConfiguration = {
   readonly validUntil: Temporal.Instant | null;
 };
 
-export type DiscountCodeConfiguration = PromotionConfiguration & {
-  readonly kind: "discount";
-  readonly id: DiscountCodeId;
-  readonly discountId: StoredDiscountId;
-  readonly maxUses: number | null;
-  readonly maxUsesPerCustomer: number | null;
-};
+export type DiscountCodeConfiguration = PromotionConfiguration &
+  ServiceDateWindow & {
+    readonly kind: "discount";
+    readonly id: DiscountCodeId;
+    readonly discountId: StoredDiscountId;
+    readonly maxUses: number | null;
+    readonly maxUsesPerCustomer: number | null;
+  };
 
 export type VoucherConfiguration = PromotionConfiguration & {
   readonly kind: "voucher";
@@ -126,6 +132,8 @@ export type PromotionConfigurationRow = {
   readonly discountId: StoredDiscountId | null;
   readonly maxUses: number | null;
   readonly maxUsesPerCustomer: number | null;
+  readonly serviceDateFrom: string | null;
+  readonly serviceDateUntil: string | null;
   readonly voucherId: VoucherId | null;
   readonly issuedAmountValue: number | null;
   readonly issuedAmountExponent: number | null;
@@ -153,6 +161,8 @@ export const decodePromotionConfiguration = Effect.fn(
               validUntil: discount.validUntil,
               maxUses: discount.maxUses,
               maxUsesPerCustomer: discount.maxUsesPerCustomer,
+              serviceDateFrom: discount.serviceDateFrom,
+              serviceDateUntil: discount.serviceDateUntil,
             }),
             voucher: (voucher): VoucherConfiguration => ({
               kind: "voucher",
@@ -199,6 +209,8 @@ const promotionConfigurationSchema = Schema.Union([
     maxUsesPerCustomer: Schema.NullOr(
       Schema.Int.check(Schema.isGreaterThan(0))
     ),
+    serviceDateFrom: Schema.NullOr(plainDateStringSchema),
+    serviceDateUntil: Schema.NullOr(plainDateStringSchema),
     voucherId: Schema.Null,
     issuedAmountValue: Schema.Null,
     issuedAmountExponent: Schema.Null,
@@ -211,6 +223,8 @@ const promotionConfigurationSchema = Schema.Union([
     discountId: Schema.Null,
     maxUses: Schema.Null,
     maxUsesPerCustomer: Schema.Null,
+    serviceDateFrom: Schema.Null,
+    serviceDateUntil: Schema.Null,
     voucherId: voucherIdSchema,
     issuedAmountValue: Schema.Int.check(Schema.isGreaterThan(0)),
     issuedAmountExponent: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
@@ -225,7 +239,11 @@ const promotionConfigurationSchema = Schema.Union([
         path: ["validUntil"],
         issue: "validUntil must be later than validFrom",
       }
-  )
+  ),
+  Schema.makeFilter((configuration) => {
+    const issue = getServiceDateWindowIssue(configuration);
+    return issue === undefined || { path: ["serviceDateUntil"], issue };
+  })
 );
 
 const generatedDiscountCodeAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";

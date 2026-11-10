@@ -1,10 +1,12 @@
 "use client";
 
-import { Option, Predicate } from "effect";
+import { Option } from "effect";
 import { CalendarIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { type Ref, useEffect, useId, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { isLocale, m } from "@/features/i18n";
-import { useFormField } from "@/shared/components/ui/form";
+import { useRouteLocale } from "@/features/i18n/route-locale";
+import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import {
   Popover,
@@ -12,6 +14,7 @@ import {
   PopoverTrigger,
 } from "@/shared/components/ui/popover";
 import { cn } from "@/shared/utils";
+import { composeRefs } from "@/shared/utils/compose-refs";
 import {
   formatNumericPlainDate,
   formatNumericPlainDatePattern,
@@ -23,29 +26,47 @@ import {
   useLoadedModule,
   usePreloadWhenIdle,
 } from "@/shared/utils/preloadable-module";
-import { parsePlainDate } from "@/shared/utils/temporal";
+import {
+  type ControlBound,
+  fromCalendarDate,
+  parseCanonicalDate,
+  resolveBound,
+  toCalendarDate,
+} from "./canonical-value";
+import { useControllableValue } from "./use-controllable-value";
+import { useFormReset } from "./use-form-reset";
+import { useSubmitGuard } from "./use-submit-guard";
 
-export type ReservationDatePickerProps = {
-  readonly ariaDescribedBy?: string;
-  readonly ariaInvalid?: boolean;
-  /** Names the calendar button and dialog, and the text field when no visible label names it. */
-  readonly ariaLabel: string;
-  /** The visible label that names the text field. */
-  readonly ariaLabelledBy?: string;
-  readonly ariaRequired?: boolean;
-  readonly className?: string;
-  /** The selected date as shown under the typed field; a long date by default. */
-  readonly displayValue?: string;
-  readonly isDateDisabled?: (date: Temporal.PlainDate) => boolean;
-  readonly locale?: string;
-  readonly id?: string;
-  readonly maximum?: string | (() => string);
-  readonly minimum?: string | (() => string);
-  readonly name?: string;
-  readonly onBlur?: () => void;
-  readonly onChange?: (value: string) => void;
-  readonly value?: string;
-  readonly variant?: "default" | "error";
+/** Values are canonical `YYYY-MM-DD` dates; an empty string is no date. */
+export type DateInputProps = {
+  readonly "aria-describedby"?: string | undefined;
+  readonly "aria-invalid"?: boolean | undefined;
+  /** A visible label that names the text field instead of `label`. */
+  readonly "aria-labelledby"?: string | undefined;
+  readonly className?: string | undefined;
+  readonly defaultValue?: string | undefined;
+  readonly disabled?: boolean | undefined;
+  /**
+   * The selected date as shown under the field: the long date by default, or
+   * nothing with `false`.
+   */
+  readonly displayValue?: string | false | undefined;
+  readonly id?: string | undefined;
+  /** Dates the calendar doesn't offer and typed text can't choose. */
+  readonly isDateDisabled?: ((date: Temporal.PlainDate) => boolean) | undefined;
+  /** Names the field, its calendar button, and the calendar. */
+  readonly label: string;
+  /** Defaults to the route locale. */
+  readonly locale?: string | undefined;
+  readonly maximum?: ControlBound | undefined;
+  readonly minimum?: ControlBound | undefined;
+  /** Submits the value with the form under this name. */
+  readonly name?: string | undefined;
+  readonly onBlur?: (() => void) | undefined;
+  readonly onChange?: ((value: string) => void) | undefined;
+  readonly ref?: Ref<HTMLInputElement> | undefined;
+  readonly required?: boolean | undefined;
+  readonly value?: string | undefined;
 };
 
 /** Why typed text did not become the field's date. */
@@ -58,40 +79,24 @@ type TypedDateError =
     };
 
 // The day picker stays out of the page bundle. It preloads when the browser
-// is idle or the trigger is approached, and the popover opens only once it is
-// loaded, so the popover never shows a loading state. An open requested
-// before then is dropped if the user moves on.
-const reservationCalendar = createPreloadableModule(
+// is idle or the calendar button is approached, and the popover opens only
+// once it is loaded, so the popover never shows a loading state. An open
+// requested before then is dropped if the user moves on.
+const calendarModule = createPreloadableModule(
   () => import("@/shared/components/ui/calendar")
 );
 type CalendarModule = typeof import("@/shared/components/ui/calendar");
 
-const parseCalendarDate = (value: string | undefined) =>
-  value ? Option.getOrUndefined(parsePlainDate(value)) : undefined;
-
-const getCalendarDate = (date: Temporal.PlainDate) =>
-  new Date(date.year, date.month - 1, date.day, 12);
-
-const getPlainDateFromCalendar = (date: Date) =>
-  Temporal.PlainDate.from({
-    year: date.getFullYear(),
-    month: date.getMonth() + 1,
-    day: date.getDate(),
-  });
-
-const resolveDateBound = (bound: ReservationDatePickerProps["maximum"]) =>
-  parseCalendarDate(Predicate.isFunction(bound) ? bound() : bound);
-
-const formatLongDate = (date: Temporal.PlainDate, locale: string | undefined) =>
+const formatLongDate = (date: Temporal.PlainDate, locale: string) =>
   formatPlainDate({ date, dateStyle: "long", locale });
 
-/** The numeric date format the field takes, worded for the visitor. */
-const getDateInputFormat = (locale: string | undefined) => {
+/** The numeric date format the field takes, worded for the reader. */
+const getDateInputFormat = (locale: string) => {
   const messageLocale = isLocale(locale) ? { locale } : undefined;
   const tokens = {
-    day: m.reservationDateInputDayToken({}, messageLocale),
-    month: m.reservationDateInputMonthToken({}, messageLocale),
-    year: m.reservationDateInputYearToken({}, messageLocale),
+    day: m.dateInputDayToken({}, messageLocale),
+    month: m.dateInputMonthToken({}, messageLocale),
+    year: m.dateInputYearToken({}, messageLocale),
   };
   return {
     format: formatNumericPlainDatePattern({ locale, tokens }),
@@ -102,17 +107,17 @@ const getDateInputFormat = (locale: string | undefined) => {
 
 const getTypedDateErrorMessage = (
   typedError: TypedDateError | undefined,
-  locale: string | undefined,
+  locale: string,
   { format, isoFormat, messageLocale }: ReturnType<typeof getDateInputFormat>
 ) => {
   if (!typedError) return undefined;
   if (typedError.kind === "invalid") {
-    return m.reservationDateInputInvalid({ format, isoFormat }, messageLocale);
+    return m.dateInputInvalid({ format, isoFormat }, messageLocale);
   }
   return {
-    afterMaximum: m.reservationDateInputAfterMaximum,
-    beforeMinimum: m.reservationDateInputBeforeMinimum,
-    unavailable: m.reservationDateInputUnavailable,
+    afterMaximum: m.dateInputAfterMaximum,
+    beforeMinimum: m.dateInputBeforeMinimum,
+    unavailable: m.dateInputUnavailable,
   }[typedError.kind](
     { date: formatLongDate(typedError.date, locale) },
     messageLocale
@@ -121,23 +126,24 @@ const getTypedDateErrorMessage = (
 
 /**
  * The calendar popover's open state. The popover opens only once the
- * calendar is loaded; until then, leaving the trigger drops the open request.
+ * calendar is loaded; until then, leaving the calendar button drops the open
+ * request.
  */
-function useReservationCalendarPopover(onBlur: (() => void) | undefined) {
+function useCalendarPopover(onBlur: (() => void) | undefined) {
   const [openRequested, setOpenRequested] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  // Escape and a pick close the calendar back into the text field, as in the
-  // APG pattern; other closes keep Radix's focus handling.
+  const fieldRef = useRef<HTMLInputElement>(null);
+  // Escape, a pick, and Clear close the calendar back into the text field,
+  // as in the APG pattern; other closes keep Radix's focus handling.
   const closesToFieldRef = useRef(false);
-  const calendar = useLoadedModule(reservationCalendar);
-  usePreloadWhenIdle(reservationCalendar);
+  const calendar = useLoadedModule(calendarModule);
+  usePreloadWhenIdle(calendarModule);
   const openPending = openRequested && calendar === undefined;
 
   useEffect(() => {
     if (!openPending) return;
 
-    // Leaving the trigger dismisses the pending open as it would dismiss the
+    // Leaving the button dismisses the pending open as it would dismiss the
     // open popover, including the blur that runs onBlur validation.
     const dismiss = () => {
       setOpenRequested(false);
@@ -169,10 +175,10 @@ function useReservationCalendarPopover(onBlur: (() => void) | undefined) {
   return {
     calendar,
     closesToFieldRef,
-    inputRef,
+    fieldRef,
     open: openRequested && calendar !== undefined,
     requestOpen: () => {
-      reservationCalendar.preload();
+      calendarModule.preload();
       setOpenRequested(true);
     },
     setOpenRequested,
@@ -185,41 +191,44 @@ function useReservationCalendarPopover(onBlur: (() => void) | undefined) {
  * date the calendar would not offer, clears the committed value and keeps
  * why.
  */
-function useTypedReservationDate({
+function useTypedDate({
   committedValue,
   isDateDisabled,
   locale,
   maximum,
   minimum,
-  onChange,
-}: Pick<
-  ReservationDatePickerProps,
-  "isDateDisabled" | "locale" | "maximum" | "minimum" | "onChange"
-> & { readonly committedValue: string }) {
-  const selectedDate = parseCalendarDate(committedValue);
-  const maximumDate = resolveDateBound(maximum);
-  const minimumDate = resolveDateBound(minimum);
+  setValue,
+}: Pick<DateInputProps, "isDateDisabled" | "maximum" | "minimum"> & {
+  readonly committedValue: string;
+  readonly locale: string;
+  readonly setValue: (value: string) => void;
+}) {
+  const selectedDate = parseCanonicalDate(committedValue);
   const formatText = (date: string) => {
-    const parsedDate = parseCalendarDate(date);
+    const parsedDate = parseCanonicalDate(date);
     return parsedDate
       ? formatNumericPlainDate({ date: parsedDate, locale })
-      : date;
+      : "";
   };
 
   const [text, setText] = useState(() => formatText(committedValue));
   const [typedError, setTypedError] = useState<TypedDateError>();
   const [syncedValue, setSyncedValue] = useState(committedValue);
   if (committedValue !== syncedValue) {
-    // A date set from outside the field, such as a restored selection,
-    // replaces whatever was typed.
+    // A date set from outside the field, such as a restored selection or a
+    // form reset, replaces whatever was typed.
     setSyncedValue(committedValue);
     setText(formatText(committedValue));
     setTypedError(undefined);
   }
 
+  // Bounds are read at each check, so a bound that moved since the last
+  // render still holds.
   const getUnavailability = (
     date: Temporal.PlainDate
   ): TypedDateError | undefined => {
+    const minimumDate = parseCanonicalDate(resolveBound(minimum));
+    const maximumDate = parseCanonicalDate(resolveBound(maximum));
     if (minimumDate && Temporal.PlainDate.compare(date, minimumDate) < 0) {
       return { kind: "beforeMinimum", date: minimumDate };
     }
@@ -231,7 +240,7 @@ function useTypedReservationDate({
 
   const commitValue = (nextValue: string) => {
     setSyncedValue(nextValue);
-    if (nextValue !== committedValue) onChange?.(nextValue);
+    if (nextValue !== committedValue) setValue(nextValue);
   };
 
   /** Makes the typed text the field's value; false when it holds no usable date. */
@@ -264,16 +273,24 @@ function useTypedReservationDate({
   };
 
   /** Commits a date picked in the calendar, which offers only available dates. */
-  const pickDate = (date: Temporal.PlainDate) => {
-    setText(formatNumericPlainDate({ date, locale }));
+  const pickDate = (date: Temporal.PlainDate | undefined) => {
+    setText(date ? formatNumericPlainDate({ date, locale }) : "");
     setTypedError(undefined);
-    commitValue(date.toString());
+    commitValue(date?.toString() ?? "");
+  };
+
+  /** Shows the value's date and drops any typed text and its error. */
+  const showValue = (nextValue: string) => {
+    setSyncedValue(nextValue);
+    setText(formatText(nextValue));
+    setTypedError(undefined);
   };
 
   return {
     commitText,
     getUnavailability,
     pickDate,
+    showValue,
     selectedDate,
     setText,
     text,
@@ -281,16 +298,20 @@ function useTypedReservationDate({
   };
 }
 
-function ReservationDateCalendar({
+function DateInputCalendar({
   calendar,
   isUnavailable,
   locale,
+  maximumDate,
+  minimumDate,
   onPick,
   selectedDate,
 }: {
   readonly calendar: CalendarModule | undefined;
   readonly isUnavailable: (date: Temporal.PlainDate) => boolean;
-  readonly locale: string | undefined;
+  readonly locale: string;
+  readonly maximumDate: Temporal.PlainDate | undefined;
+  readonly minimumDate: Temporal.PlainDate | undefined;
   readonly onPick: (date: Temporal.PlainDate) => void;
   readonly selectedDate: Temporal.PlainDate | undefined;
 }) {
@@ -299,14 +320,18 @@ function ReservationDateCalendar({
   return (
     <calendar.Calendar
       autoFocus
-      defaultMonth={selectedDate ? getCalendarDate(selectedDate) : undefined}
+      defaultMonth={selectedDate ? toCalendarDate(selectedDate) : undefined}
+      // The calendar keeps to the bounds' months, so it opens on a month
+      // with days it offers, even when today is outside the bounds.
+      endMonth={maximumDate ? toCalendarDate(maximumDate) : undefined}
+      startMonth={minimumDate ? toCalendarDate(minimumDate) : undefined}
       locale={calendar.getCalendarLocale(locale)}
-      disabled={(date) => isUnavailable(getPlainDateFromCalendar(date))}
+      disabled={(date) => isUnavailable(fromCalendarDate(date))}
       mode="single"
       onSelect={(date) => {
-        if (date) onPick(getPlainDateFromCalendar(date));
+        if (date) onPick(fromCalendarDate(date));
       }}
-      selected={selectedDate ? getCalendarDate(selectedDate) : undefined}
+      selected={selectedDate ? toCalendarDate(selectedDate) : undefined}
     />
   );
 }
@@ -317,68 +342,119 @@ function ReservationDateCalendar({
  * Arrow opens the calendar dialog. Typed text becomes the field's value on
  * blur, Enter, or opening the calendar. Text that is no date, or a date the
  * calendar would not offer, clears the value and shows why, so the form never
- * holds a date the field does not show. Escape or a pick closes the calendar
- * back into the text field.
+ * holds a date the field does not show; while it shows such text, the owning
+ * form doesn't submit. Escape, a pick, or Clear closes the calendar back into
+ * the text field.
  */
-export function ReservationDatePicker({
-  ariaDescribedBy,
-  ariaInvalid,
-  ariaLabel,
-  ariaLabelledBy,
-  ariaRequired,
+export function DateInput({
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
+  "aria-labelledby": ariaLabelledBy,
   className,
+  defaultValue,
+  disabled = false,
   displayValue,
-  isDateDisabled,
-  locale,
   id,
+  isDateDisabled,
+  label,
+  locale: localeProp,
   maximum,
   minimum,
   name,
   onBlur,
   onChange,
+  ref,
+  required = false,
   value,
-  variant = "default",
-}: ReservationDatePickerProps) {
+}: DateInputProps) {
+  const routeLocale = useRouteLocale();
+  const locale = localeProp ?? routeLocale;
   // Destructured, so the React Compiler sees the refs as refs and the open
   // state as a plain value.
   const {
     calendar,
     closesToFieldRef,
-    inputRef,
+    fieldRef,
     open,
     requestOpen,
     setOpenRequested,
     triggerRef,
-  } = useReservationCalendarPopover(onBlur);
+  } = useCalendarPopover(onBlur);
   const baseId = useId();
   const calendarId = `${baseId}-calendar`;
   const formatId = `${baseId}-format`;
   const errorId = `${baseId}-error`;
-  const committedValue = value ?? "";
-  const typed = useTypedReservationDate({
-    committedValue,
+  // A value that is no canonical date shows as empty instead of being
+  // re-shaped.
+  const toCanonical = (date: string | undefined) =>
+    parseCanonicalDate(date) ? (date ?? "") : "";
+  const committed = useControllableValue({
+    defaultValue: toCanonical(defaultValue),
+    onChange,
+    value: value === undefined ? undefined : toCanonical(value),
+  });
+  const typed = useTypedDate({
+    committedValue: committed.value,
     isDateDisabled,
     locale,
     maximum,
     minimum,
-    onChange,
+    setValue: committed.setValue,
   });
   const inputFormat = getDateInputFormat(locale);
   const { format, isoFormat, messageLocale } = inputFormat;
   const { selectedDate, typedError } = typed;
   const controlsId = open ? calendarId : undefined;
+  const hiddenFieldRef = useRef<HTMLInputElement>(null);
+  useFormReset(hiddenFieldRef, () => {
+    committed.reset();
+    typed.showValue(
+      committed.isControlled ? committed.value : toCanonical(defaultValue)
+    );
+  });
+  // Text the field cannot take blocks submission, so the form never submits
+  // an empty value while the field shows text.
+  useSubmitGuard(hiddenFieldRef, () => {
+    if (disabled) return false;
+    // The submission reads the form right after this, so the commit renders
+    // now.
+    if (flushSync(() => typed.commitText())) return false;
+    fieldRef.current?.focus();
+    return true;
+  });
+
+  const closeToField = () => {
+    closesToFieldRef.current = true;
+    setOpenRequested(false);
+    onBlur?.();
+  };
 
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
-      {name && <input name={name} type="hidden" value={committedValue} />}
+    // The field's own width decides where the calendar button goes: beside
+    // the text where the cell leaves room for a whole date, on its own row
+    // below in a narrow cell, so the text keeps the full width.
+    <div
+      className={cn(
+        "@container/date-field flex min-w-0 flex-col gap-2",
+        className
+      )}
+    >
+      <input
+        ref={hiddenFieldRef}
+        disabled={disabled}
+        name={name}
+        type="hidden"
+        value={committed.value}
+      />
       <Popover
         open={open}
         onOpenChange={(nextOpen) => {
+          if (disabled) return;
           // The popover opens once the calendar is loaded. A failed chunk load
           // leaves it closed; the next open request retries it.
           if (nextOpen) {
             typed.commitText();
-            reservationCalendar.preload();
+            calendarModule.preload();
           }
           setOpenRequested(nextOpen);
           // Closing the calendar is the field's blur; this lets onBlur form
@@ -386,9 +462,9 @@ export function ReservationDatePicker({
           if (!nextOpen) onBlur?.();
         }}
       >
-        <div className="relative">
+        <div className="relative @max-[12rem]/date-field:grid @max-[12rem]/date-field:gap-2">
           <Input
-            ref={inputRef}
+            ref={composeRefs(fieldRef, ref)}
             id={id}
             role="combobox"
             aria-autocomplete="none"
@@ -399,10 +475,11 @@ export function ReservationDatePicker({
             aria-expanded={open}
             aria-haspopup="dialog"
             aria-invalid={Boolean(ariaInvalid || typedError)}
-            aria-label={ariaLabelledBy ? undefined : ariaLabel}
+            aria-label={ariaLabelledBy ? undefined : label}
             aria-labelledby={ariaLabelledBy}
             autoComplete="off"
-            className="pe-12"
+            className="pe-12 @max-[12rem]/date-field:px-3"
+            disabled={disabled}
             onBlur={() => {
               if (typed.commitText()) onBlur?.();
             }}
@@ -419,23 +496,24 @@ export function ReservationDatePicker({
               }
             }}
             placeholder={format}
-            required={ariaRequired}
+            required={required}
             type="text"
             value={typed.text}
-            variant={typedError ? "error" : variant}
+            variant={ariaInvalid || typedError ? "error" : "default"}
           />
           <PopoverTrigger asChild>
             <button
               ref={triggerRef}
               aria-controls={controlsId}
-              aria-label={m.reservationDateCalendarButtonLabel(
-                { field: ariaLabel },
+              aria-label={m.dateInputCalendarButtonLabel(
+                { field: label },
                 messageLocale
               )}
-              onFocus={reservationCalendar.preload}
-              onPointerDown={reservationCalendar.preload}
-              onPointerEnter={reservationCalendar.preload}
-              className="absolute inset-y-1 end-1 flex w-10 cursor-pointer items-center justify-center rounded-[0.85rem] text-burned-orange outline-none transition hover:bg-burned-orange/10 focus-visible:ring-2 focus-visible:ring-burned-orange"
+              disabled={disabled}
+              onFocus={calendarModule.preload}
+              onPointerDown={calendarModule.preload}
+              onPointerEnter={calendarModule.preload}
+              className="absolute inset-y-1 end-1 flex w-10 cursor-pointer items-center justify-center rounded-[0.85rem] text-burned-orange outline-none transition hover:bg-burned-orange/10 focus-visible:ring-2 focus-visible:ring-burned-orange disabled:cursor-not-allowed disabled:opacity-50 @max-[12rem]/date-field:static @max-[12rem]/date-field:h-10 @max-[12rem]/date-field:w-full @max-[12rem]/date-field:border @max-[12rem]/date-field:border-navy-blue/45 @max-[12rem]/date-field:bg-white"
               type="button"
             >
               <CalendarIcon aria-hidden="true" className="h-5 w-5" />
@@ -445,7 +523,7 @@ export function ReservationDatePicker({
         <PopoverContent
           id={calendarId}
           align="end"
-          aria-label={ariaLabel}
+          aria-label={label}
           className="w-auto p-3"
           // The calendar focuses the selected day, or today, itself.
           onOpenAutoFocus={(event) => event.preventDefault()}
@@ -456,31 +534,47 @@ export function ReservationDatePicker({
             if (!closesToFieldRef.current) return;
             closesToFieldRef.current = false;
             event.preventDefault();
-            inputRef.current?.focus();
+            fieldRef.current?.focus();
           }}
         >
-          <ReservationDateCalendar
-            calendar={calendar}
-            isUnavailable={(date) =>
-              typed.getUnavailability(date) !== undefined
-            }
-            locale={locale}
-            onPick={(date) => {
-              if (typed.getUnavailability(date)) return;
+          <div className="grid gap-2">
+            <DateInputCalendar
+              calendar={calendar}
+              isUnavailable={(date) =>
+                typed.getUnavailability(date) !== undefined
+              }
+              locale={locale}
+              maximumDate={parseCanonicalDate(resolveBound(maximum))}
+              minimumDate={parseCanonicalDate(resolveBound(minimum))}
+              onPick={(date) => {
+                if (typed.getUnavailability(date)) return;
 
-              typed.pickDate(date);
-              closesToFieldRef.current = true;
-              setOpenRequested(false);
-              onBlur?.();
-            }}
-            selectedDate={selectedDate}
-          />
+                typed.pickDate(date);
+                closeToField();
+              }}
+              selectedDate={selectedDate}
+            />
+            {selectedDate && (
+              <Button
+                className="justify-self-start"
+                onClick={() => {
+                  typed.pickDate(undefined);
+                  closeToField();
+                }}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                {m.dateInputClear({}, messageLocale)}
+              </Button>
+            )}
+          </div>
         </PopoverContent>
       </Popover>
       <span id={formatId} className="sr-only">
-        {m.reservationDateInputFormat({ format, isoFormat }, messageLocale)}
+        {m.dateInputFormat({ format, isoFormat }, messageLocale)}
       </span>
-      {selectedDate && (
+      {selectedDate && displayValue !== false && (
         <p className="text-sm text-navy-blue/72">
           {displayValue ?? formatLongDate(selectedDate, locale)}
         </p>
@@ -493,20 +587,5 @@ export function ReservationDatePicker({
         {getTypedDateErrorMessage(typedError, locale, inputFormat)}
       </p>
     </div>
-  );
-}
-
-export function ReservationFormDatePicker(props: ReservationDatePickerProps) {
-  const { error, formItemId, formLabelId, formMessageId } = useFormField();
-
-  return (
-    <ReservationDatePicker
-      {...props}
-      id={formItemId}
-      ariaDescribedBy={error ? formMessageId : undefined}
-      ariaInvalid={Boolean(error)}
-      ariaLabelledBy={formLabelId}
-      ariaRequired
-    />
   );
 }

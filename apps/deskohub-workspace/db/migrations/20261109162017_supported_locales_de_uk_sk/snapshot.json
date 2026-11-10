@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "b9127ce0-0efa-4a81-a8d8-09d7e02ec708",
+  "id": "e28c07b4-c991-476b-8012-4d80c58d1352",
   "prevIds": [
-    "a185c001-23f0-4521-b3f1-1173d7b134c4"
+    "8395f596-dcb1-4129-b1d8-2511ecefdd4e"
   ],
   "ddl": [
     {
@@ -2398,6 +2398,32 @@
       "generated": null,
       "identity": null,
       "name": "max_uses_per_customer",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "discount_codes"
+    },
+    {
+      "type": "date",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "service_date_from",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "discount_codes"
+    },
+    {
+      "type": "date",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "service_date_until",
       "entityType": "columns",
       "schema": "public",
       "table": "discount_codes"
@@ -16969,6 +16995,13 @@
     {
       "value": "\"valid_from\" is null or \"valid_until\" is null or \"valid_until\" > \"valid_from\"",
       "name": "discount_codes_valid_window_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "discount_codes"
+    },
+    {
+      "value": "(\"service_date_from\" is null and \"service_date_until\" is null) or (\"service_date_from\" is not null and \"service_date_until\" is not null and \"service_date_until\" >= \"service_date_from\")",
+      "name": "discount_codes_service_date_window_check",
       "entityType": "checks",
       "schema": "public",
       "table": "discount_codes"

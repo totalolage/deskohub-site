@@ -122,9 +122,7 @@ describe("CustomersAdministrationPage", () => {
       .getByLabelText("Marketing consent")
       .closest("form") as HTMLFormElement;
     expect(form.getAttribute("action")).toBe("/en-US/admin/customers");
-    expect(
-      (view.getByLabelText("Reservation start from") as HTMLInputElement).value
-    ).toBe("2026-10-01");
+    expect(new FormData(form).get("from")).toBe("2026-10-01");
     expect(view.getByLabelText("49 customers")).toBeDefined();
     expect(
       view.getByRole("link", { name: "Previous" }).getAttribute("href")

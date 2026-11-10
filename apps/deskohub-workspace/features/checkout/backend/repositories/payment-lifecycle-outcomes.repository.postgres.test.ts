@@ -420,6 +420,7 @@ describe.skipIf(!testDatabase)(
         amount: accountingSnapshot.quote.payment.expectedPrice,
         commitment: makeDiscountCommitment({
           product,
+          firstServiceDate: "2099-01-01",
           applications: calculation.applications,
         }),
         locale,

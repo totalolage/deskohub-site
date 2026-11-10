@@ -1221,3 +1221,122 @@ describe("invoice locale contract", () => {
     );
   });
 });
+
+describe("discount code service dates contract", () => {
+  const discountId = "01980000-0000-7000-8000-000000000002";
+  const codeId = "01980000-0000-7000-8000-000000000001";
+  const decodeMutation = Schema.decodeUnknownSync(
+    AdministrationDiscountMutation,
+    { errors: "all", onExcessProperty: "error" }
+  );
+  const codeConfiguration = {
+    code: "SUMMER10",
+    enabled: true,
+    validFrom: null,
+    validUntil: null,
+    maxUses: null,
+  };
+  const updateCode = (serviceDates: object) =>
+    decodeMutation({
+      kind: "update-code",
+      code: { id: codeId, discountId, ...codeConfiguration, ...serviceDates },
+    });
+  const createCode = (serviceDates: object) =>
+    decodeMutation({
+      kind: "create-code",
+      code: { ...codeConfiguration, ...serviceDates },
+      discount: { kind: "existing", discountId },
+    });
+  const storedCode = {
+    id: codeId,
+    discountId,
+    code: "SUMMER10",
+    enabled: true,
+    validFrom: null,
+    validUntil: null,
+    audienceSize: 0,
+    reservedUses: 0,
+    redeemedUses: 0,
+    releasedUses: 0,
+    createdAt: "2026-08-10T10:00:00Z",
+    updatedAt: "2026-08-10T10:00:00Z",
+    maxUses: null,
+    maxUsesPerCustomer: null,
+    remainingUses: null,
+  };
+
+  test("accepts an omitted, cleared, one-day, or longer pair", () => {
+    const omitted = updateCode({});
+    expect(omitted.kind).toBe("update-code");
+    expect(
+      omitted.kind === "update-code" ? Object.keys(omitted.code) : []
+    ).not.toContain("serviceDateFrom");
+    for (const serviceDates of [
+      { serviceDateFrom: null, serviceDateUntil: null },
+      { serviceDateFrom: "2026-07-15", serviceDateUntil: "2026-07-15" },
+      { serviceDateFrom: "2026-07-01", serviceDateUntil: "2026-07-31" },
+    ]) {
+      expect(updateCode(serviceDates)).toMatchObject({ code: serviceDates });
+      expect(createCode(serviceDates)).toMatchObject({ code: serviceDates });
+    }
+  });
+
+  test("rejects half, inverted, and non-canonical pairs", () => {
+    for (const serviceDates of [
+      { serviceDateFrom: "2026-07-01" },
+      { serviceDateUntil: "2026-07-31" },
+      { serviceDateFrom: null },
+      { serviceDateFrom: "2026-07-01", serviceDateUntil: null },
+      { serviceDateFrom: null, serviceDateUntil: "2026-07-31" },
+      { serviceDateFrom: "2026-07-31", serviceDateUntil: "2026-07-01" },
+      { serviceDateFrom: "2026-7-1", serviceDateUntil: "2026-07-31" },
+      { serviceDateFrom: "2026-02-30", serviceDateUntil: "2026-03-31" },
+      {
+        serviceDateFrom: "2026-07-01T00:00:00Z",
+        serviceDateUntil: "2026-07-31",
+      },
+    ]) {
+      expect(() => updateCode(serviceDates)).toThrow();
+      expect(() => createCode(serviceDates)).toThrow();
+    }
+  });
+
+  test("keeps service dates off vouchers", () => {
+    expect(() =>
+      decodeMutation({
+        kind: "create-voucher",
+        voucher: {
+          ...codeConfiguration,
+          credit: { value: 10_000, exponent: 2, currency: "CZK" },
+          serviceDateFrom: "2026-07-01",
+          serviceDateUntil: "2026-07-31",
+        },
+      })
+    ).toThrow();
+  });
+
+  test("keeps a code with service dates readable by released dhw", () => {
+    const {
+      serviceDateFrom: _from,
+      serviceDateUntil: _until,
+      ...released
+    } = AdministrationDiscountCode.fields;
+    const response = Schema.encodeSync(AdministrationDiscountCode)(
+      Schema.decodeUnknownSync(AdministrationDiscountCode)({
+        ...storedCode,
+        serviceDateFrom: "2026-07-01",
+        serviceDateUntil: "2026-07-31",
+      })
+    );
+
+    expect(
+      Schema.decodeUnknownSync(Schema.Struct(released))(response)
+    ).toMatchObject({ id: codeId, code: "SUMMER10" });
+  });
+
+  test("reads an older server's code as having no service dates", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationDiscountCode)(storedCode)
+    ).toMatchObject({ serviceDateFrom: null, serviceDateUntil: null });
+  });
+});

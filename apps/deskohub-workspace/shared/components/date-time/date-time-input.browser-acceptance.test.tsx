@@ -5,7 +5,7 @@ import "@/shared/polyfills/temporal";
 import { Input } from "@/shared/components/ui/input";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles.test-utils";
-import { ReservationDateTimePicker } from "./reservation-date-time-picker";
+import { DateTimeInput } from "./date-time-input";
 
 const chromiumAvailable = await playwrightChromiumAvailable();
 let browser: Browser | undefined;
@@ -26,12 +26,12 @@ afterAll(async () => {
 // show the same text with and without Chromium's own clock button.
 const markup = renderToStaticMarkup(
   <main className="grid gap-4 p-4" style={{ width: 720 }}>
-    <ReservationDateTimePicker
+    <DateTimeInput
       className="grid-cols-2"
       dateLabel="Start date"
       locale="en-US"
       timeLabel="Start time"
-      timeStepMinutes={60}
+      stepMinutes={60}
       value="2099-11-28T10:00"
     />
     {["with-button", "without-button"].map((plainTime) => (

@@ -16,9 +16,11 @@ import { censorDatabaseQueryParams } from "@/shared/backend/logging/censorship";
 import { moneyWithValue } from "@/shared/money/money";
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 import {
+  type AccountingDocumentSnapshot,
   accountingDocumentIdentitySchema,
   accountingDocumentSnapshotSchema,
   decodeStoredAccountingDocumentSnapshot,
+  getAccountingDocumentSnapshotFirstServiceDate,
   makeAccountingDocumentSnapshot,
 } from "./accounting-document-snapshot";
 import {
@@ -135,6 +137,48 @@ describe("accounting document snapshot", () => {
     const serialized = JSON.stringify(snapshot);
     expect(serialized).toContain(adaEmail);
     expect(serialized).not.toContain("+420 777 777 777");
+  });
+
+  test("reads the Prague start date of every reservation family", () => {
+    const meetingRoomSnapshot = {
+      ...makeSnapshot(),
+      reservation: {
+        kind: "meeting-room",
+        // 00:30 in Prague on June 21, still June 20 in UTC.
+        startsAt: "2099-06-20T22:30:00Z",
+        endsAt: "2099-06-21T00:30:00Z",
+      },
+    } as AccountingDocumentSnapshot;
+    const overnightMeetingRoomSnapshot = {
+      ...makeSnapshot(),
+      reservation: {
+        kind: "meeting-room",
+        startsAt: "2099-06-20T20:00:00Z",
+        endsAt: "2099-06-20T23:00:00Z",
+      },
+    } as AccountingDocumentSnapshot;
+    const officeSnapshot = makeAccountingDocumentSnapshot({
+      workspaceReservationId: "reservation-id",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      locale: "en-US",
+      prepared: officePrepared,
+    });
+
+    expect(getAccountingDocumentSnapshotFirstServiceDate(makeSnapshot())).toBe(
+      "2099-01-01"
+    );
+    expect(
+      getAccountingDocumentSnapshotFirstServiceDate(meetingRoomSnapshot)
+    ).toBe("2099-06-21");
+    expect(
+      getAccountingDocumentSnapshotFirstServiceDate(
+        overnightMeetingRoomSnapshot
+      )
+    ).toBe("2099-06-20");
+    expect(getAccountingDocumentSnapshotFirstServiceDate(officeSnapshot)).toBe(
+      "2099-06-20"
+    );
   });
 
   test("supports a reservation-specific business billing identity", () => {
