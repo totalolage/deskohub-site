@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { appLocales } from "../i18n/app-locale";
 import { parseConsentRecord, serializeConsentRecord } from "./consent-record";
 
 const decidedAt = "2026-11-07T10:00:00.000Z";
@@ -90,22 +91,25 @@ describe("parseConsentRecord", () => {
     }
   });
 
-  test("round-trips a serialized answer", () => {
-    const raw = serializeConsentRecord({
-      categories: ["necessary", "analytics"],
-      decidedAt,
-      locale: "en-US",
-    });
-    expect(JSON.parse(raw)).toEqual({
-      categories: ["necessary", "analytics"],
-      decidedAt,
-      locale: "en-US",
-    });
-    expect(parseConsentRecord(raw)).toEqual({
-      kind: "decided",
-      categories: ["necessary", "analytics"],
-      decidedAt,
-      locale: "en-US",
-    });
-  });
+  test.each([...appLocales])(
+    "round-trips a serialized answer made in %s",
+    (locale) => {
+      const raw = serializeConsentRecord({
+        categories: ["necessary", "analytics"],
+        decidedAt,
+        locale,
+      });
+      expect(JSON.parse(raw)).toEqual({
+        categories: ["necessary", "analytics"],
+        decidedAt,
+        locale,
+      });
+      expect(parseConsentRecord(raw)).toEqual({
+        kind: "decided",
+        categories: ["necessary", "analytics"],
+        decidedAt,
+        locale,
+      });
+    }
+  );
 });

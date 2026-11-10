@@ -130,3 +130,20 @@ describe("the Legal screen's analytics preference", () => {
     });
   }
 });
+
+// The app doesn't offer the site's data export: every signed-in account sees
+// the archive section's row saying so.
+describe("the Legal screen's personal data archive", () => {
+  const archiveRow = m.legal_archive_unavailable({}, { locale: "en-US" });
+
+  for (const kind of [
+    "linked",
+    "completion-required",
+    "authenticated-unavailable",
+  ] as const) {
+    test(`keeps its archive row (${kind})`, async () => {
+      const markup = await legalScreen(kind);
+      expect(markup).toContain(archiveRow);
+    });
+  }
+});

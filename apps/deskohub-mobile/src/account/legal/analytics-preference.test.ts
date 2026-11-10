@@ -21,6 +21,7 @@ import {
   makeFakeDevice,
 } from "../../customer-api/testing/fake-customer-data";
 import { FakeWorkspace } from "../../customer-api/testing/fake-workspace";
+import { type AppLocale, appLocales } from "../../i18n/app-locale";
 import { makeAppForegroundAtom } from "../../platform/app-foreground";
 import { fakeAppState } from "../../platform/testing/fake-app-state";
 import {
@@ -82,11 +83,8 @@ const openScreen = async ({
     device,
     registry,
     preference,
-    save: async (choice: boolean) => {
-      registry.set(saveAnalyticsPreferenceAtom, {
-        granted: choice,
-        locale: "cs-CZ",
-      });
+    save: async (choice: boolean, locale: AppLocale = "cs-CZ") => {
+      registry.set(saveAnalyticsPreferenceAtom, { granted: choice, locale });
       const outcome = await run(registry, saveAnalyticsPreferenceAtom);
       return {
         outcome,
@@ -193,6 +191,20 @@ describe("saveAnalyticsPreferenceAtom", () => {
         locale: "en-US",
       },
     ]);
+    screen.close();
+  });
+
+  test("saves in each language the app is translated into", async () => {
+    const screen = await openScreen({ granted: true });
+
+    for (const locale of appLocales) {
+      const { outcome } = await screen.save(false, locale);
+      expect(outcome._tag).toBe("Success");
+    }
+
+    expect(
+      screen.workspace.analyticsPreferenceSaves.map(({ locale }) => locale)
+    ).toEqual([...appLocales]);
     screen.close();
   });
 

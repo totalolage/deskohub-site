@@ -27,6 +27,7 @@ import {
   CustomerSessionRequired,
   customerApiClientHeader,
   type ProfileCompletionReferralOutcome,
+  type SaveCustomerAnalyticsPreference,
   type SyncCustomerAnalyticsConsent,
   WorkspaceCustomerApi,
 } from "@deskohub/workspace-customer-api";
@@ -114,6 +115,8 @@ export class FakeWorkspace {
   analyticsDecision: FakeAnalyticsDecision | undefined;
   /** What each analytics consent sync sent, in order. */
   readonly analyticsSyncs: SyncCustomerAnalyticsConsent[] = [];
+  /** What each analytics preference save sent, in order. */
+  readonly analyticsPreferenceSaves: SaveCustomerAnalyticsPreference[] = [];
   /**
    * Runs while an analytics consent sync or preference save is handled,
    * before it answers, as when the device changes meanwhile.
@@ -546,8 +549,10 @@ const serverLayer = (workspace: FakeWorkspace) => {
           }))
         )
         // The decision is made now, answered to the millisecond.
-        .handle("saveAnalyticsPreference", ({ payload: { granted } }) =>
+        .handle("saveAnalyticsPreference", ({ payload }) =>
           Effect.map(Clock.currentTimeMillis, (now) => {
+            const { granted } = payload;
+            workspace.analyticsPreferenceSaves.push(payload);
             workspace.onAnalyticsConsentRequest?.();
             const decidedAt = new Date(now).toISOString();
             workspace.analyticsDecision = {

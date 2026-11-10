@@ -121,6 +121,23 @@ describe("syncAccountAnalyticsConsent", () => {
     expect(device.check.firstCheckPending(device.accountId)).toBe(false);
   });
 
+  test("sends a choice stored in a language added after Czech and English in that language", async () => {
+    const device = setup({
+      stored: {
+        kind: "decided",
+        categories: ["necessary", "analytics"],
+        decidedAt: "2026-11-01T08:00:00.123Z",
+        locale: "uk-UA",
+      },
+    });
+
+    await device.syncOnce();
+
+    expect(device.workspace.analyticsSyncs.map(({ locale }) => locale)).toEqual(
+      ["uk-UA"]
+    );
+  });
+
   test("sends the app's language for a choice stored without one", async () => {
     const { locale: _locale, ...withoutLocale } = deviceGrant as Extract<
       StoredConsent,
