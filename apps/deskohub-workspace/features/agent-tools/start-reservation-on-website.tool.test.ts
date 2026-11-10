@@ -7,15 +7,18 @@ import type { GetQuoteResult } from "./get-quote.schema";
 /** Every call of the booking operation, which must never run here. */
 const bookingCalls: PreparePayStateInput[] = [];
 const preparePayStateModule = await import(
-  "@/features/reservation/actions/prepare-pay-state"
+  "@/features/reservation/backend/reservation-booking.service"
 );
-mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
-  ...preparePayStateModule,
-  prepareWorkspacePayState: (input: PreparePayStateInput) =>
-    Effect.sync(() => bookingCalls.push(input)).pipe(
-      Effect.andThen(Effect.die(new Error("Booked a reservation")))
-    ),
-}));
+mock.module(
+  "@/features/reservation/backend/reservation-booking.service",
+  () => ({
+    ...preparePayStateModule,
+    prepareWorkspacePayState: (input: PreparePayStateInput) =>
+      Effect.sync(() => bookingCalls.push(input)).pipe(
+        Effect.andThen(Effect.die(new Error("Booked a reservation")))
+      ),
+  })
+);
 
 const { makeAgentToolTestServices, workspaceDateFromToday } = await import(
   "./agent-tools.test-utils"
