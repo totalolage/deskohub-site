@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, mock, test } from "bun:test";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import {
   getLocaleDefinition,
   supportedLocales,
@@ -43,36 +43,59 @@ for (const locale of otherScriptLocales) {
           ([property]) => property === languageNameFontProperty(locale)
         ) ?? [];
       expect(face).toBeString();
-      const fontFile = await readFile(
-        resolve(import.meta.dir, String(face).replaceAll("'", ""))
+      // The stand-in names a face of several weights by its first file, so
+      // the face's other weight files are its siblings with the same stem.
+      const firstFile = resolve(
+        import.meta.dir,
+        String(face).replaceAll("'", "")
       );
-      const page = await (browser as Browser).newPage();
-      try {
-        await page.setContent(
-          `<!doctype html><html><head><meta charset="utf-8"><style>
-@font-face { font-family: "Language name"; src: url(data:font/woff2;base64,${fontFile.toString("base64")}) format("woff2"); }
-</style></head><body><span id="name" style='font-family: "Language name", monospace'>${languageNames[locale]}</span></body></html>`
-        );
-        await page.evaluate(() => document.fonts.ready);
-        const session = await page.context().newCDPSession(page);
-        await session.send("DOM.enable");
-        await session.send("CSS.enable");
-        const { root } = await session.send("DOM.getDocument");
-        const { nodeId } = await session.send("DOM.querySelector", {
-          nodeId: root.nodeId,
-          selector: "#name",
-        });
-        const { fonts } = await session.send("CSS.getPlatformFontsForNode", {
-          nodeId,
-        });
-
-        expect(fonts.length).toBeGreaterThan(0);
-        expect(
-          fonts.filter((font) => !font.isCustomFont).map((f) => f.familyName)
-        ).toEqual([]);
-      } finally {
-        await page.close();
+      const weightStem = /^(.*)-\d{3}\.woff2$/.exec(basename(firstFile))?.[1];
+      const faceFiles = weightStem
+        ? await Array.fromAsync(
+            new Bun.Glob(`${weightStem}-[0-9][0-9][0-9].woff2`).scan({
+              absolute: true,
+              cwd: dirname(firstFile),
+            })
+          )
+        : [firstFile];
+      expect(faceFiles).toContain(firstFile);
+      for (const file of faceFiles) {
+        expect({
+          file: basename(file),
+          fallbacks: await fallbackFontsFor(
+            languageNames[locale],
+            await readFile(file)
+          ),
+        }).toEqual({ file: basename(file), fallbacks: [] });
       }
     }
   );
+}
+
+/** The system fonts a text takes letters from when set in the given face. */
+async function fallbackFontsFor(text: string, fontFile: Buffer) {
+  const page = await (browser as Browser).newPage();
+  try {
+    await page.setContent(
+      `<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face { font-family: "Language name"; src: url(data:font/woff2;base64,${fontFile.toString("base64")}) format("woff2"); }
+</style></head><body><span id="name" style='font-family: "Language name", monospace'>${text}</span></body></html>`
+    );
+    await page.evaluate(() => document.fonts.ready);
+    const session = await page.context().newCDPSession(page);
+    await session.send("DOM.enable");
+    await session.send("CSS.enable");
+    const { root } = await session.send("DOM.getDocument");
+    const { nodeId } = await session.send("DOM.querySelector", {
+      nodeId: root.nodeId,
+      selector: "#name",
+    });
+    const { fonts } = await session.send("CSS.getPlatformFontsForNode", {
+      nodeId,
+    });
+    expect(fonts.length).toBeGreaterThan(0);
+    return fonts.filter((font) => !font.isCustomFont).map((f) => f.familyName);
+  } finally {
+    await page.close();
+  }
 }
