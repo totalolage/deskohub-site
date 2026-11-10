@@ -23,7 +23,7 @@ beforeEach(() => setSystemTime(new Date("2026-08-12T12:00:00Z")));
 afterEach(() => setSystemTime());
 
 const coworkReservation = (date: string) =>
-  Schema.decodeUnknownSync(reservationOrderSchema)({
+  Schema.decodeUnknownSync(reservationOrderSchema("CZ"))({
     kind: "cowork",
     entryTier: "basic",
     date,

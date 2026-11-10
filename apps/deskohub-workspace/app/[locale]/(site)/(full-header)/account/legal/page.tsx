@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { getAccountDataExportAvailability } from "@/features/account/account-data-export-availability.server";
 import { AccountContentLoading } from "@/features/account/components/account-loading";
 import { PublicAccountLegal } from "@/features/account/components/public-account-legal";
 import { type Locale, m } from "@/features/i18n";
@@ -31,13 +32,19 @@ async function PublicAccountLegalPageContent({
 }) {
   await connection();
 
-  const [marketingPreferences, analyticsPreference] = await Promise.all([
+  const [
+    marketingPreferences,
+    analyticsPreference,
+    accountDataExportAvailable,
+  ] = await Promise.all([
     getMarketingPreferences(locale),
     getAnalyticsPreference(locale),
+    getAccountDataExportAvailability(locale),
   ]);
 
   return (
     <PublicAccountLegal
+      accountDataExportAvailable={accountDataExportAvailable}
       analyticsPreference={analyticsPreference}
       locale={locale}
       marketingPreferences={marketingPreferences}

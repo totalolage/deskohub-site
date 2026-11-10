@@ -428,13 +428,14 @@ export {
 export {
   type EmailComponentText,
   type EmailContentLocation,
+  EmailDocumentForPublication,
   EmailDocumentProblem,
   emailComponentTexts,
-  emailDocumentForPublication,
   emailDraftProblems,
   emailPublicationProblems,
   englishEmailDocumentProblem,
   referencedEmailValueNames,
+  requiredEmailLocale,
   requiredEmailValueNames,
 } from "./email-publication";
 export {
@@ -703,6 +704,8 @@ export {
   type AdministrationReservationStatusGroup as AdministrationReservationStatusGroupType,
   AdministrationReservationSummary,
   type AdministrationReservationSummary as AdministrationReservationSummaryType,
+  AdministrationServiceDate,
+  type AdministrationServiceDate as AdministrationServiceDateType,
   AdministrationStandaloneAccessCodeAttemptId,
   type AdministrationStandaloneAccessCodeAttemptId as AdministrationStandaloneAccessCodeAttemptIdType,
   AdministrationStandaloneAccessCodeCleanupTarget,

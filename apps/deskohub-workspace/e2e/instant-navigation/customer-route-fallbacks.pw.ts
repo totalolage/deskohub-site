@@ -45,7 +45,7 @@ test("renders the not-found page for an unknown address inside the customer prov
 for (const [prefix, localizedPrefix] of [
   ["", `/${locale}`],
   ["/EN-us", `/${locale}`],
-  ["/de-de", `/${locale}/de-de`],
+  ["/fr-fr", `/${locale}/fr-fr`],
 ] as const) {
   test(`renders the localized not-found page for an unknown file address at "${prefix}/"`, async ({
     page,

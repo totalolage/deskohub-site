@@ -1,15 +1,10 @@
 import { Match } from "effect";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
 import { LiveMessage } from "../../ui/controls";
+import { Text } from "../../ui/text";
 import type { AddedPasskey } from "./passkey-ceremony";
 import { addPasskeyFailureMessage } from "./passkey-failure-message";
 import { usePasskeyCeremony } from "./use-passkey-ceremony";

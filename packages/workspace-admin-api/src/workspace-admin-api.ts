@@ -1,3 +1,4 @@
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { Temporal } from "@js-temporal/polyfill";
 import { Context, Effect, Option, Schema } from "effect";
 import {
@@ -830,7 +831,7 @@ export const AdministrationInvoiceCreateInput = Schema.Struct({
   /** Chosen by the caller, so a retried creation names the same invoice. */
   invoiceId: AdministrationInvoiceId.annotateKey({ changeKey: true }),
   customer: AdministrationInvoiceCustomerInput,
-  locale: Schema.Literals(["cs-CZ", "en-US"]),
+  locale: Schema.Literals(supportedLocales),
   serviceDate: administrationCalendarDate,
   payment: Schema.Union([
     Schema.Struct({
@@ -967,7 +968,7 @@ const AdministrationInvoiceBuyer = Schema.Union([
 
 export const AdministrationInvoiceDetail = Schema.Struct({
   ...AdministrationInvoiceListItem.fields,
-  locale: Schema.Literals(["cs-CZ", "en-US"]),
+  locale: Schema.Literals(supportedLocales),
   serviceDate: Schema.NullOr(administrationCalendarDate),
   dueDate: Schema.NullOr(administrationCalendarDate),
   paidOn: Schema.NullOr(administrationCalendarDate),
@@ -1879,6 +1880,10 @@ export const AdministrationDiscountGroupList = Schema.Struct({
 export type AdministrationDiscountGroupList =
   typeof AdministrationDiscountGroupList.Type;
 
+/** A Prague calendar date a discount code's service dates name. */
+export const AdministrationServiceDate = administrationCalendarDate;
+export type AdministrationServiceDate = typeof AdministrationServiceDate.Type;
+
 const administrationPromotionFields = {
   code: Schema.String,
   enabled: Schema.Boolean,
@@ -1899,6 +1904,12 @@ export const AdministrationDiscountCode = Schema.Struct({
   maxUses: Schema.NullOr(Schema.Number),
   maxUsesPerCustomer: Schema.NullOr(Schema.Number),
   remainingUses: Schema.NullOr(Schema.Number),
+  serviceDateFrom: Schema.NullOr(AdministrationServiceDate).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
+  serviceDateUntil: Schema.NullOr(AdministrationServiceDate).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
 });
 export type AdministrationDiscountCode = typeof AdministrationDiscountCode.Type;
 
@@ -2114,6 +2125,40 @@ const administrationDiscountCodeWindow = Schema.makeFilter<{
     ) > 0
 );
 
+/**
+ * A code's service dates arrive as a pair: both omitted (a new code has none,
+ * an update keeps the stored ones), both null (none), or two calendar dates
+ * where the last isn't before the first.
+ */
+const administrationServiceDateWindow = Schema.makeFilter<{
+  readonly serviceDateFrom?: string | null;
+  readonly serviceDateUntil?: string | null;
+}>(({ serviceDateFrom, serviceDateUntil }) => {
+  if (serviceDateFrom === undefined || serviceDateUntil === undefined) {
+    return (
+      serviceDateFrom === serviceDateUntil ||
+      "serviceDateFrom and serviceDateUntil must be sent together"
+    );
+  }
+  if (serviceDateFrom === null || serviceDateUntil === null) {
+    return (
+      serviceDateFrom === serviceDateUntil ||
+      "serviceDateFrom and serviceDateUntil must both be dates or both be null"
+    );
+  }
+  return (
+    Temporal.PlainDate.compare(
+      Temporal.PlainDate.from(serviceDateUntil),
+      Temporal.PlainDate.from(serviceDateFrom)
+    ) >= 0 || "serviceDateUntil must not be before serviceDateFrom"
+  );
+});
+
+const administrationServiceDate = (description: string) =>
+  Schema.optional(
+    Schema.NullOr(AdministrationServiceDate).annotate({ description })
+  );
+
 export const AdministrationDiscountCodeConfigurationInput = Schema.Struct({
   code: AdministrationCanonicalPromotionCode,
   enabled: Schema.Boolean,
@@ -2123,14 +2168,20 @@ export const AdministrationDiscountCodeConfigurationInput = Schema.Struct({
   maxUsesPerCustomer: Schema.optional(
     Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0)))
   ),
-}).check(administrationDiscountCodeWindow);
+  serviceDateFrom: administrationServiceDate(
+    "First reservation start date (Prague) the code applies to. Send it with serviceDateUntil; omit both to keep the code's dates, or send both as null to remove them."
+  ),
+  serviceDateUntil: administrationServiceDate(
+    "Last reservation start date (Prague) the code applies to. Send it with serviceDateFrom; omit both to keep the code's dates, or send both as null to remove them."
+  ),
+}).check(administrationDiscountCodeWindow, administrationServiceDateWindow);
 export type AdministrationDiscountCodeConfigurationInput =
   typeof AdministrationDiscountCodeConfigurationInput.Type;
 
 export const AdministrationExistingDiscountCodeCreateInput = Schema.Struct({
   discountId: AdministrationStoredDiscountId,
   ...AdministrationDiscountCodeConfigurationInput.fields,
-}).check(administrationDiscountCodeWindow);
+}).check(administrationDiscountCodeWindow, administrationServiceDateWindow);
 export type AdministrationExistingDiscountCodeCreateInput =
   typeof AdministrationExistingDiscountCodeCreateInput.Type;
 
@@ -2173,7 +2224,7 @@ export const AdministrationDiscountCodeUpdateInput = Schema.Struct({
   id: AdministrationDiscountCodeId,
   discountId: AdministrationStoredDiscountId,
   ...AdministrationDiscountCodeConfigurationInput.fields,
-}).check(administrationDiscountCodeWindow);
+}).check(administrationDiscountCodeWindow, administrationServiceDateWindow);
 export type AdministrationDiscountCodeUpdateInput =
   typeof AdministrationDiscountCodeUpdateInput.Type;
 

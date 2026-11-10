@@ -1,9 +1,6 @@
+import type { SupportedLocale } from "@deskohub/i18n/locale-registry";
 import { isMatchingSecret } from "@deskohub/secret-comparison";
 import { type Duration, Effect, Schema } from "effect";
-
-export const locales = ["cs-CZ", "en-US"] as const;
-
-export type Locale = (typeof locales)[number];
 
 export const nexiMinorUnitExponent = 2;
 
@@ -258,7 +255,7 @@ export interface CreateHostedPaymentPageInput {
   /** Integer minor-unit/scaled amount string, e.g. "5000" for 50.00. */
   readonly amount: string;
   readonly currency: NexiCurrency;
-  readonly locale: Locale;
+  readonly locale: SupportedLocale;
   readonly resultUrl: string;
   readonly cancelUrl: string;
   readonly notificationUrl: string;

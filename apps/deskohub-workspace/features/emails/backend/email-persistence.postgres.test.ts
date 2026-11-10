@@ -12,6 +12,7 @@ import {
   seedAutomationVersion,
   seedCampaignSend,
 } from "@/features/email-campaigns/backend/email-campaigns.test-utils";
+import { locales } from "@/features/i18n";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { EmailPersistence } from "./email-persistence.service";
 import { EmailRecipientPersistence } from "./email-recipient-persistence.service";
@@ -25,7 +26,7 @@ const draft = {
   templateKey: "workspace",
   structure: [{ _tag: "Paragraph", id: "intro", textKey: "intro" }],
   translations: Object.fromEntries(
-    ["en-US", "cs-CZ"].map((locale) => [
+    locales.map((locale) => [
       locale,
       {
         subject: [{ _tag: "Text", text: "Synthetic offer" }],

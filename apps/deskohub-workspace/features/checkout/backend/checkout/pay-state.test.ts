@@ -91,7 +91,7 @@ const buildState = (overrides: Partial<SignedPayState> = {}) => ({
 });
 
 const buildMeetingRoomState = () => {
-  const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
+  const reservation = Schema.decodeUnknownSync(reservationOrderSchema("CZ"))({
     kind: "meeting-room",
     duration: { unit: "hour", amount: 4 },
     reservationDate: "2099-06-10",
@@ -511,8 +511,11 @@ describe("reservation phone in signed Pay state", () => {
   });
 
   // Seal below the Pay-state schema, as a token from before a rule change would be.
-  const openWithPhone = (phone: string) => {
-    const state = buildState();
+  const openWithPhone = (
+    phone: string,
+    locale: SignedPayState["locale"] = "en-US"
+  ) => {
+    const state = buildState({ locale });
     const token = run(
       payStateRecord.seal({
         ...state,
@@ -532,4 +535,36 @@ describe("reservation phone in signed Pay state", () => {
       expect(() => openWithPhone(phone)).toThrow("Invalid Pay state token");
     }
   );
+
+  test("reads the phone in the region of the token's own locale", () => {
+    expect(openWithPhone("0151 23456789", "de-DE").reservation.phone).toBe(
+      "0151 23456789"
+    );
+    expect(() => openWithPhone("0151 23456789", "cs-CZ")).toThrow(
+      "Invalid Pay state token"
+    );
+    expect(() => openWithPhone("0151 234567890123", "de-DE")).toThrow(
+      "Invalid Pay state token"
+    );
+  });
+
+  test("builds and opens a de-DE Pay state with a phone read in Germany", () => {
+    const state = run(
+      buildSignedPayState({
+        locale: "de-DE",
+        reservation: { ...baseReservation, phone: "0151 23456789" },
+        quote: buildCoworkReservationQuote(baseReservation),
+        orderId: "pay-state-test-order-id",
+        bookedAt: payStateBookedAt,
+        checkoutSessionId: "pay-state-test-checkout-session-id",
+        ttlMilliseconds: 10 * 60 * 1000,
+      }),
+      { keys: fixedKey, at: fixedNow }
+    );
+
+    expect(
+      run(openPayState(seal(state)), { keys: fixedKey, at: fixedNow })
+        .reservation.phone
+    ).toBe("0151 23456789");
+  });
 });

@@ -1,6 +1,10 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import {
+  getLocaleDefinition,
+  supportedLocales,
+} from "@deskohub/i18n/locale-registry";
 import { BigDecimal, Option, Schema } from "effect";
 import { Minus, Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -18,6 +22,7 @@ import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { getLocalizedPagePath } from "@/features/i18n/routing";
+import { FormDateInput } from "@/shared/components/date-time/form-fields";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
@@ -113,7 +118,7 @@ export const createInvoiceFormSchema = (locale: Locale) => {
         ...address,
       }),
     ]),
-    locale: Schema.Literals(["cs-CZ", "en-US"]),
+    locale: Schema.Literals(supportedLocales),
     serviceDate: Schema.Trim.check(
       Schema.isNonEmpty({ message: requiredMessage }),
       Schema.makeFilter(isCalendarDate, { message: calendarDateMessage })
@@ -1044,20 +1049,16 @@ function InvoiceDetailsSection({
         <FormField
           control={control}
           name="serviceDate"
-          render={({ field: { onChange, ...field }, fieldState }) => (
+          render={({ field }) => (
             <FormItem>
               <FormLabel>
                 {m.accountingInvoiceFormServiceDate({}, { locale })}
               </FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  onInput={onChange}
-                  required
-                  type="date"
-                  variant={fieldState.error ? "error" : "default"}
-                />
-              </FormControl>
+              <FormDateInput
+                {...field}
+                label={m.accountingInvoiceFormServiceDate({}, { locale })}
+                required
+              />
               <FormMessage />
             </FormItem>
           )}
@@ -1067,20 +1068,16 @@ function InvoiceDetailsSection({
             control={control}
             key="paid"
             name="paidOn"
-            render={({ field: { onChange, ...field }, fieldState }) => (
+            render={({ field }) => (
               <FormItem>
                 <FormLabel>
                   {m.accountingInvoiceFormPaidOn({}, { locale })}
                 </FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    onInput={onChange}
-                    required
-                    type="date"
-                    variant={fieldState.error ? "error" : "default"}
-                  />
-                </FormControl>
+                <FormDateInput
+                  {...field}
+                  label={m.accountingInvoiceFormPaidOn({}, { locale })}
+                  required
+                />
                 <FormMessage />
               </FormItem>
             )}
@@ -1090,20 +1087,16 @@ function InvoiceDetailsSection({
             control={control}
             key="due"
             name="dueDate"
-            render={({ field: { onChange, ...field }, fieldState }) => (
+            render={({ field }) => (
               <FormItem>
                 <FormLabel>
                   {m.accountingInvoiceFormDueDate({}, { locale })}
                 </FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    onInput={onChange}
-                    required
-                    type="date"
-                    variant={fieldState.error ? "error" : "default"}
-                  />
-                </FormControl>
+                <FormDateInput
+                  {...field}
+                  label={m.accountingInvoiceFormDueDate({}, { locale })}
+                  required
+                />
                 <FormMessage />
               </FormItem>
             )}
@@ -1127,12 +1120,11 @@ function InvoiceDetailsSection({
                   }
                   value={field.value}
                 >
-                  <option value="cs-CZ">
-                    {m.accountingInvoiceFormLanguageCzech({}, { locale })}
-                  </option>
-                  <option value="en-US">
-                    {m.accountingInvoiceFormLanguageEnglish({}, { locale })}
-                  </option>
+                  {supportedLocales.map((option) => (
+                    <option key={option} value={option}>
+                      {getLocaleDefinition(option).nativeName}
+                    </option>
+                  ))}
                 </select>
               </FormControl>
               <FormMessage />

@@ -10,7 +10,9 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 import { saveAccountLocalePreference } from "./customer-locale-preference";
+import { CustomerLocalePreference } from "./customer-locale-preference.service";
 
 type ActivityState =
   | { readonly kind: "missing" }
@@ -98,6 +100,7 @@ const makeSession = (accountId: CustomerAccountId): CustomerAccountSession => ({
   accountId,
   email: testEmailAddress(`pref-${accountId}`),
   deletionRequested: false,
+  ...testSessionProfile,
 });
 
 const accountId = "pref-account-1" as CustomerAccountId;
@@ -164,3 +167,46 @@ type CustomerAccountAccessErrorLike = {
   readonly reason: string;
   readonly linkReason?: string;
 };
+
+describe("CustomerLocalePreference", () => {
+  const saveThroughService = async (state: ActivityState) => {
+    const { Dependencies, updates } = makeTestLayers({ state });
+    const outcome = await Effect.runPromise(
+      Effect.flatMap(CustomerLocalePreference, (preference) =>
+        preference.save(accountId, "en-US")
+      ).pipe(
+        Effect.result,
+        Effect.provide(
+          CustomerLocalePreference.Default.pipe(Layer.provide(Dependencies))
+        )
+      )
+    );
+    return { outcome, updates };
+  };
+
+  test("saves through the guarded write", async () => {
+    const { outcome, updates } = await saveThroughService({
+      kind: "active",
+      deletionRequestedAt: null,
+    });
+
+    expect(outcome._tag).toBe("Success");
+    expect(updates).toEqual([{ accountId, locale: "en-US" }]);
+  });
+
+  test("refuses a deletion-marked account without writing", async () => {
+    const { outcome, updates } = await saveThroughService({
+      kind: "active",
+      deletionRequestedAt: new Date("2026-11-01T00:00:00Z"),
+    });
+
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag === "Failure") {
+      expect(outcome.failure).toMatchObject({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      });
+    }
+    expect(updates).toEqual([]);
+  });
+});

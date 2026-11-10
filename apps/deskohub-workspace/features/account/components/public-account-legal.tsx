@@ -4,18 +4,21 @@ import type { AnalyticsPreferenceState } from "@/features/legal/analytics-prefer
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 
 type PublicAccountLegalProps = {
+  readonly accountDataExportAvailable?: boolean;
   readonly analyticsPreference?: AnalyticsPreferenceState;
   readonly locale: Locale;
   readonly marketingPreferences?: MarketingPreferencesState;
 };
 
 export function PublicAccountLegal({
+  accountDataExportAvailable,
   analyticsPreference,
   locale,
   marketingPreferences,
 }: PublicAccountLegalProps) {
   return (
     <LegalScreen
+      accountDataExportAvailable={accountDataExportAvailable}
       analyticsPreference={analyticsPreference}
       locale={locale}
       marketingPreferences={marketingPreferences}

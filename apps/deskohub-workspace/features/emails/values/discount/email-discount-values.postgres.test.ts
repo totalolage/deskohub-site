@@ -38,6 +38,7 @@ import {
   EmailPersistence,
   EmailRecipientPersistence,
 } from "@/features/emails/backend";
+import { locales } from "@/features/i18n";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -111,7 +112,7 @@ describe.skipIf(!database)(
       templateKey: "workspace",
       structure: [{ _tag: "Paragraph", id: "intro", textKey: "intro" }],
       translations: Object.fromEntries(
-        ["en-US", "cs-CZ"].map((locale) => [
+        locales.map((locale) => [
           locale,
           {
             subject: [{ _tag: "Text", text: "Synthetic offer" }],
@@ -720,6 +721,8 @@ describe.skipIf(!database)(
                 validUntil: Temporal.Instant.from(issued.expiresAt),
                 maxUses: 1,
                 maxUsesPerCustomer: 1,
+                serviceDateFrom: null,
+                serviceDateUntil: null,
                 audience: [dotyposCustomerId],
               })
             )

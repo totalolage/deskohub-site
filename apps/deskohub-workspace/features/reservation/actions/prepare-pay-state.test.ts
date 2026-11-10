@@ -1,3 +1,4 @@
+import type { Locale } from "@/features/i18n";
 import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
@@ -170,7 +171,7 @@ const withInstant = <A, E, R>(
 const buildAdvertisedPriceToken = async (
   quote: CoworkReservationQuote = buildCoworkReservationQuote(reservation),
   ttlMilliseconds?: number,
-  locale: "en-US" | "cs-CZ" = "en-US",
+  locale: Locale = "en-US",
   requestedDiscountCode?: string,
   at?: Temporal.Instant,
   coworkReservation = reservation
@@ -431,6 +432,8 @@ const runReusableReservationScenario = async (input: {
   readonly checkoutSessionId?: string;
   readonly checkoutAttemptId?: string;
   readonly now?: Temporal.Instant;
+  /** The submission's locale; en-US by default. */
+  readonly locale?: Locale;
   readonly marketingConsent?: boolean;
   readonly marketingConsentSource?: "site_tool" | "customer_app";
   /** Replaces the mocked marketing consent ledger. */
@@ -679,7 +682,7 @@ const runReusableReservationScenario = async (input: {
   );
 
   const submission = {
-    locale: "en-US",
+    locale: input.locale ?? "en-US",
     checkoutSessionId: input.checkoutSessionId ?? "session-id",
     checkoutAttemptId: input.checkoutAttemptId ?? "attempt-id",
     advertisedPriceToken:
@@ -687,7 +690,7 @@ const runReusableReservationScenario = async (input: {
       (await buildAdvertisedPriceToken(
         undefined,
         undefined,
-        "en-US",
+        input.locale ?? "en-US",
         undefined,
         input.now,
         input.reservation ?? reservation
@@ -1643,6 +1646,111 @@ describe("prepareWorkspacePayState", () => {
         mode: "initial",
         channel: "customer_app",
       })
+    );
+  });
+
+  describe("phone region of the submission's locale", () => {
+    const submissionIn = (locale: Locale, phone: string) => ({
+      locale,
+      checkoutSessionId: "session-id",
+      checkoutAttemptId: "attempt-id",
+      advertisedPriceToken: "advertised-price-token",
+      reservation: { ...reservation, date: "2099-07-01", phone },
+    });
+
+    test.each([
+      ["de-DE", "0151 23456789"],
+      ["uk-UA", "050 123 4567"],
+      ["sk-SK", "0905 123 456"],
+      ["cs-CZ", "777 123 456"],
+      ["en-US", "777 123 456"],
+      ["cs-CZ", "+420 777 123 456"],
+      ["en-US", "+420 777 123 456"],
+      ["de-DE", "+420 777 123 456"],
+      ["uk-UA", "+420 777 123 456"],
+      ["sk-SK", "+420 777 123 456"],
+    ] as const)("accepts a %s submission's phone %s", async (locale, phone) => {
+      const { preparePayStateSchema } = await import(
+        "./prepare-pay-state.schema"
+      );
+
+      const result = await preparePayStateSchema["~standard"].validate(
+        submissionIn(locale, phone)
+      );
+
+      expect(result.issues).toBeUndefined();
+    });
+
+    test.each([
+      ["cs-CZ", "0151 23456789"],
+      ["cs-CZ", "050 123 4567"],
+      ["cs-CZ", "0905 123 456"],
+      ["en-US", "0151 23456789"],
+    ] as const)("rejects a %s submission's phone %s", async (locale, phone) => {
+      const { preparePayStateSchema } = await import(
+        "./prepare-pay-state.schema"
+      );
+
+      const result = await preparePayStateSchema["~standard"].validate(
+        submissionIn(locale, phone)
+      );
+
+      expect(result.issues).toEqual([
+        expect.objectContaining({ path: ["reservation", "phone"] }),
+      ]);
+    });
+
+    test("reads the same phone in the region of each submission's own locale", async () => {
+      const { preparePayStateSchema } = await import(
+        "./prepare-pay-state.schema"
+      );
+
+      const german = await preparePayStateSchema["~standard"].validate(
+        submissionIn("de-DE", "0151 23456789")
+      );
+      const czech = await preparePayStateSchema["~standard"].validate(
+        submissionIn("cs-CZ", "0151 23456789")
+      );
+
+      expect(german.issues).toBeUndefined();
+      expect(czech.issues).toEqual([
+        expect.objectContaining({ path: ["reservation", "phone"] }),
+      ]);
+    });
+
+    test("rejects a locale the site doesn't serve", async () => {
+      const { preparePayStateSchema } = await import(
+        "./prepare-pay-state.schema"
+      );
+
+      const result = await preparePayStateSchema["~standard"].validate(
+        submissionIn("fr-FR" as Locale, "+420 777 123 456")
+      );
+
+      expect(result.issues).toBeDefined();
+    });
+
+    test.each([
+      ["reservation form", {}],
+      ["customer app", { serverCaller: true }],
+    ] as const)(
+      "looks up the Dotypos customer for a de-DE %s submission with its phone read in Germany",
+      async (_caller, caller) => {
+        const result = await runReusableReservationScenario({
+          ...caller,
+          locale: "de-DE",
+          findByAttemptKeys: mock(() =>
+            Effect.succeed(makeReusableReservation())
+          ),
+          reservation: { ...reservation, phone: "0151 23456789" },
+        });
+
+        expect(result.result.status).toBe("ready");
+        expect(result.findOrCreateCustomer).toHaveBeenCalledWith(
+          expect.objectContaining({ phone: "+4915123456789" }),
+          { lookupFields: ["email"] }
+        );
+      }
     );
   });
 
@@ -3036,6 +3144,32 @@ describe("prepareWorkspacePayState", () => {
         });
       }
     );
+
+    test("saves a de-DE booking's first profile with its phone read in Germany", async () => {
+      const completeProfileUnderHeldLock = mock(() =>
+        accountContact({ dotyposCustomerId: createdCustomerId })
+      );
+      const scenario = await runReusableReservationScenario({
+        locale: "de-DE",
+        findByAttemptKeys: mock(() => Effect.succeed(null)),
+        createDraft: createFreshDraft(),
+        accountAuthority: { session: {}, activityState: "active" },
+        reservation: {
+          ...reservation,
+          name: "Grace Hopper",
+          email: testEmailAddressForGrace,
+          phone: "0151 23456789",
+        },
+        customer: "account",
+        account: unlinkedAccountState(),
+        completeProfileUnderHeldLock,
+      });
+
+      expect(scenario.error).toBeUndefined();
+      expect(completeProfileUnderHeldLock.mock.calls[0]?.[1]).toMatchObject({
+        phone: "+4915123456789",
+      });
+    });
 
     test.each([
       ["an account booking", () => linkedAccountBooking()],

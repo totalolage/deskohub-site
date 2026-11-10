@@ -15,6 +15,7 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 
 const account = {
   accountId: customerAccountIdSchema.make("account-1"),
@@ -25,6 +26,7 @@ const session: CustomerAccountSession = {
   accountId: account.accountId,
   email: testEmailAddress("account-1"),
   deletionRequested: false,
+  ...testSessionProfile,
 };
 
 const provideOwnership = (options: {

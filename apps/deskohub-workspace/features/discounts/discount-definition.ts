@@ -9,8 +9,8 @@ import {
   type WorkspaceProductTarget,
   workspaceProductTargetSchema,
 } from "@/features/discounts/product-target";
-import { locales } from "@/features/i18n";
 import { type DiscountAdjustment, discountAdjustmentSchema } from "./contracts";
+import { discountLabelLocales } from "./discount-label";
 import {
   type StoredDiscountId,
   storedDiscountIdSchema,
@@ -64,7 +64,7 @@ export const decodeDiscountDefinition = Effect.fn("DiscountDefinition.decode")(
 const definitionLabelSchema = Schema.Trim.check(Schema.isNonEmpty());
 
 const discountLabelsCodec: Schema.Decoder<DiscountLabels> = Schema.Record(
-  Schema.Literals(locales),
+  Schema.Literals(discountLabelLocales),
   definitionLabelSchema
 );
 

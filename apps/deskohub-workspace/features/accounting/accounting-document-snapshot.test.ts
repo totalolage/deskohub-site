@@ -13,10 +13,14 @@ import {
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import { censorDatabaseQueryParams } from "@/shared/backend/logging/censorship";
+import { moneyWithValue } from "@/shared/money/money";
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 import {
+  type AccountingDocumentSnapshot,
+  accountingDocumentIdentitySchema,
   accountingDocumentSnapshotSchema,
   decodeStoredAccountingDocumentSnapshot,
+  getAccountingDocumentSnapshotFirstServiceDate,
   makeAccountingDocumentSnapshot,
 } from "./accounting-document-snapshot";
 import {
@@ -135,6 +139,48 @@ describe("accounting document snapshot", () => {
     expect(serialized).not.toContain("+420 777 777 777");
   });
 
+  test("reads the Prague start date of every reservation family", () => {
+    const meetingRoomSnapshot = {
+      ...makeSnapshot(),
+      reservation: {
+        kind: "meeting-room",
+        // 00:30 in Prague on June 21, still June 20 in UTC.
+        startsAt: "2099-06-20T22:30:00Z",
+        endsAt: "2099-06-21T00:30:00Z",
+      },
+    } as AccountingDocumentSnapshot;
+    const overnightMeetingRoomSnapshot = {
+      ...makeSnapshot(),
+      reservation: {
+        kind: "meeting-room",
+        startsAt: "2099-06-20T20:00:00Z",
+        endsAt: "2099-06-20T23:00:00Z",
+      },
+    } as AccountingDocumentSnapshot;
+    const officeSnapshot = makeAccountingDocumentSnapshot({
+      workspaceReservationId: "reservation-id",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      locale: "en-US",
+      prepared: officePrepared,
+    });
+
+    expect(getAccountingDocumentSnapshotFirstServiceDate(makeSnapshot())).toBe(
+      "2099-01-01"
+    );
+    expect(
+      getAccountingDocumentSnapshotFirstServiceDate(meetingRoomSnapshot)
+    ).toBe("2099-06-21");
+    expect(
+      getAccountingDocumentSnapshotFirstServiceDate(
+        overnightMeetingRoomSnapshot
+      )
+    ).toBe("2099-06-20");
+    expect(getAccountingDocumentSnapshotFirstServiceDate(officeSnapshot)).toBe(
+      "2099-06-20"
+    );
+  });
+
   test("supports a reservation-specific business billing identity", () => {
     const buyer = {
       kind: "business" as const,
@@ -173,6 +219,53 @@ describe("accounting document snapshot", () => {
     );
 
     expect(decoded.billing).toBeUndefined();
+  });
+
+  test("decodes discounts with and without a staff label", async () => {
+    const snapshot = makeSnapshot();
+    const price = snapshot.quote.payment.expectedPrice;
+    const withDiscount = (discount: {
+      label: string;
+      staffLabel?: string;
+    }) => ({
+      ...snapshot,
+      quote: {
+        ...snapshot.quote,
+        payment: {
+          ...snapshot.quote.payment,
+          discounts: [
+            {
+              discount: {
+                id: "summer-sale",
+                adjustment: { kind: "percentage", basisPoints: 1000 },
+                ...discount,
+              },
+              subtotalBefore: price,
+              amount: moneyWithValue(1, price),
+              subtotalAfter: moneyWithValue(price.value - 1, price),
+            },
+          ],
+        },
+      },
+    });
+
+    const historical = await Effect.runPromise(
+      decodeStoredAccountingDocumentSnapshot(
+        withDiscount({ label: "Sommerrabatt" })
+      )
+    );
+    const current = await Effect.runPromise(
+      decodeStoredAccountingDocumentSnapshot(
+        withDiscount({ label: "Sommerrabatt", staffLabel: "Letní sleva" })
+      )
+    );
+
+    expect(historical.quote.payment.discounts[0]?.discount).not.toHaveProperty(
+      "staffLabel"
+    );
+    expect(current.quote.payment.discounts[0]?.discount.staffLabel).toBe(
+      "Letní sleva"
+    );
   });
 
   test("rejects schema-version metadata from stored snapshots", async () => {
@@ -245,4 +338,13 @@ describe("accounting document snapshot", () => {
       CENSORED_LOG_VALUE,
     ]);
   });
+});
+
+test("keeps a document only in a language Workspace serves", () => {
+  const decodeLocale = Schema.decodeUnknownSync(
+    accountingDocumentIdentitySchema.fields.locale
+  );
+  expect(decodeLocale("cs-CZ")).toBe("cs-CZ");
+  expect(decodeLocale("en-US")).toBe("en-US");
+  expect(() => decodeLocale("zz-ZZ")).toThrow();
 });

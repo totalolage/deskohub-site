@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { testEmailAddress } from "@deskohub/test-email";
 import { type Browser, chromium } from "@playwright/test";
 import { Effect } from "effect";
+import { languageNames } from "@/features/i18n/language-labels";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import {
   type BrowserStepDriver,
@@ -39,8 +41,6 @@ const html = (body: string) =>
     { headers: { "content-type": "text/html; charset=utf-8" } }
   );
 
-const languageNames = { "cs-CZ": "Čeština", "en-US": "English (US)" };
-
 /**
  * The account page the lane's controls meet, in the path's locale.
  * `hydrate=0` leaves the profile without React props, `dialogDelayMs`
@@ -53,7 +53,7 @@ const accountPage = (url: URL) => {
   const hydrate = url.searchParams.get("hydrate") !== "0";
   const hidden = url.searchParams.get("section") === "hidden" ? " hidden" : "";
   const dialogDelayMs = Number(url.searchParams.get("dialogDelayMs") ?? "0");
-  const options = (["en-US", "cs-CZ"] as const)
+  const options = supportedLocales
     .map(
       (option) =>
         `<div role="option" aria-selected="${option === locale}" data-locale="${option}">${languageNames[option]}</div>`
@@ -199,6 +199,7 @@ const laneBrowserFor = ({
       makeWorkspaceE2EAccountLaneBrowser({
         config,
         openAssistantSession,
+        openSeparateSession,
         openSession,
       })
   );

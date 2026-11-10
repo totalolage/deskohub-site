@@ -4,6 +4,8 @@ import { describe, expect, mock, test } from "bun:test";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
+import { m } from "@/features/i18n";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
 import { canonicalPromotionCodeSchema } from "./contracts";
 import type { DiscountDefinition } from "./discount-definition";
 import {
@@ -54,6 +56,7 @@ const product = { kind: "cowork", tier: "basic" } as const;
 const input: PromotionCodeProviderInput = {
   submittedCode: canonicalCode,
   dotyposCustomerId: "customer-1",
+  firstServiceDate: "2026-07-15",
   locale: "en-US",
   product,
   discountableSubtotal: { value: 35_000, exponent: 2, currency: "CZK" },
@@ -71,6 +74,8 @@ const configuration = (
   validUntil: null,
   maxUses: null,
   maxUsesPerCustomer: null,
+  serviceDateFrom: null,
+  serviceDateUntil: null,
   ...overrides,
 });
 
@@ -179,6 +184,7 @@ const resolve = (overrides: Partial<PromotionCodeProviderInput> = {}) =>
 
 const previewInput: PromotionCodePreviewInput = {
   submittedCode: canonicalCode,
+  firstServiceDate: input.firstServiceDate,
   locale: input.locale,
   product,
   discountableSubtotal: input.discountableSubtotal,
@@ -228,6 +234,7 @@ describe("PromotionCodeProvider", () => {
       discount: {
         id: discountId,
         label: "Summer database sale",
+        staffLabel: "Letní databázová sleva",
         adjustment: { kind: "percentage", basisPoints: 5000 },
       },
       provenance: {
@@ -269,6 +276,7 @@ describe("PromotionCodeProvider", () => {
     expect(result[0]).toMatchObject({
       discount: {
         label: "Voucher",
+        staffLabel: m.checkoutVoucherLabel({}, { locale: "cs-CZ" }),
         adjustment: {
           kind: "fixed",
           amount: { value: 6_000, exponent: 2, currency: "CZK" },
@@ -410,6 +418,78 @@ describe("PromotionCodeProvider", () => {
       _tag: "Failure",
       failure: { reason: "usage_limit_reached", codeId },
     });
+  });
+
+  test("accepts a reservation starting on either service date", async () => {
+    for (const window of [
+      { serviceDateFrom: "2026-07-15", serviceDateUntil: "2026-07-31" },
+      { serviceDateFrom: "2026-07-01", serviceDateUntil: "2026-07-15" },
+      { serviceDateFrom: "2026-07-15", serviceDateUntil: "2026-07-15" },
+    ]) {
+      const findByCode = () =>
+        Effect.succeed(
+          Option.some(
+            configuration({
+              serviceDateFrom: plainDateStringSchema.make(
+                window.serviceDateFrom
+              ),
+              serviceDateUntil: plainDateStringSchema.make(
+                window.serviceDateUntil
+              ),
+            })
+          )
+        );
+
+      expect(await runWithProvider(resolve(), { findByCode })).toHaveLength(1);
+      expect(
+        await runWithProvider(
+          Effect.gen(function* () {
+            yield* TestClock.setTime(now);
+            const provider = yield* PromotionCodeProvider;
+            return yield* provider.preview(previewInput);
+          }),
+          { findByCode }
+        )
+      ).toHaveLength(1);
+    }
+  });
+
+  test("rejects a reservation that starts outside the service dates", async () => {
+    const findByCode = () =>
+      Effect.succeed(
+        Option.some(
+          configuration({
+            serviceDateFrom: plainDateStringSchema.make("2026-07-16"),
+            serviceDateUntil: plainDateStringSchema.make("2026-07-31"),
+          })
+        )
+      );
+    const loadDefinition = mock(defaultLoadDefinition);
+
+    const revalidated = await runWithProvider(resolve().pipe(Effect.result), {
+      findByCode,
+      loadDefinition,
+    });
+    const previewed = await runWithProvider(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(now);
+        const provider = yield* PromotionCodeProvider;
+        return yield* provider.preview(previewInput);
+      }).pipe(Effect.result),
+      { findByCode, loadDefinition }
+    );
+
+    for (const result of [revalidated, previewed]) {
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "PromotionCodeUnavailableError",
+          reason: "service_date_ineligible",
+          codeId,
+        },
+      });
+    }
+    expect(loadDefinition).not.toHaveBeenCalled();
   });
 
   test("fails explicitly when the product is not targeted", async () => {

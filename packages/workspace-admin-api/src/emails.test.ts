@@ -10,7 +10,7 @@ import {
 } from "./email-customer-selection";
 import { EmailValueName } from "./email-identifiers";
 import {
-  emailDocumentForPublication,
+  EmailDocumentForPublication,
   requiredEmailValueNames,
 } from "./email-publication";
 import { emailValueSnapshotForDefinition } from "./email-value-snapshot";
@@ -158,9 +158,7 @@ const document: EmailDocument = {
   translations: { "cs-CZ": translation, "en-US": translation },
   values: [],
 };
-const publish = Schema.decodeUnknownSync(
-  emailDocumentForPublication(["cs-CZ", "en-US"])
-);
+const publish = Schema.decodeUnknownSync(EmailDocumentForPublication);
 
 function selection(input: unknown) {
   return Schema.decodeUnknownSync(EmailCustomerSelection)(input);
@@ -197,16 +195,15 @@ describe("reusable email publication", () => {
     ).toThrow();
   });
 
-  test("current languages are required only at publication, not historical decoding", () => {
-    expect(() =>
+  test("Czech is required only at publication, not historical decoding", () => {
+    const englishOnly = { ...document, translations: { "en-US": translation } };
+    expect(() => publish(englishOnly)).toThrow();
+    expect(
       publish({ ...document, translations: { "cs-CZ": translation } })
-    ).toThrow();
-    expect(() =>
-      Schema.decodeUnknownSync(
-        emailDocumentForPublication(["cs-CZ", "en-US", "de-DE"])
-      )(document)
-    ).toThrow();
-    expect(Schema.decodeUnknownSync(EmailDocument)(document)).toEqual(document);
+    ).toEqual({ ...document, translations: { "cs-CZ": translation } });
+    expect(Schema.decodeUnknownSync(EmailDocument)(englishOnly)).toEqual(
+      englishOnly
+    );
   });
 
   test("blocks removed values, missing texts, duplicate definitions and wrong shapes", () => {

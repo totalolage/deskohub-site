@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { Locale } from "@/features/i18n";
+import { languageNames } from "@/features/i18n/language-labels";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   registerWorkspaceComponentTestEnv,
@@ -56,6 +57,26 @@ const renderShell = async (pathname: string) => {
       <main id="main-content">Page</main>
     </AdminShell>
   );
+};
+
+// Opens the shell's language menu, whose trigger names the current language.
+const openLanguageMenu = async (
+  view: ReturnType<typeof render>,
+  locale: Locale
+) => {
+  const { m } = await import("./i18n");
+  await act(async () => {
+    fireEvent.pointerDown(
+      view.getByRole("button", {
+        name: m.shellLanguageMenuTriggerLabel(
+          { language: languageNames[locale] },
+          { locale }
+        ),
+      }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+  });
+  return view.findByRole("menu");
 };
 
 // Each navigation section as its heading and its links' labels and hrefs.
@@ -214,16 +235,16 @@ test("renders English copy on English administration routes", async () => {
 
 test("switches the current administration page to the other locale", async () => {
   const view = await renderShell("/cs-CZ/admin/reservations");
-  const switcher = view.getByRole("navigation", {
-    name: "Jazyk administrace",
-  });
+  const menu = await openLanguageMenu(view, "cs-CZ");
 
   expect(
-    within(switcher).getByText("Čeština").getAttribute("aria-current")
+    within(menu)
+      .getByRole("menuitem", { name: languageNames["cs-CZ"] })
+      .getAttribute("aria-current")
   ).toBe("true");
   expect(
-    within(switcher)
-      .getByRole("link", { name: "Angličtina" })
+    within(menu)
+      .getByRole("menuitem", { name: languageNames["en-US"] })
       .getAttribute("href")
   ).toBe("/en-US/admin/reservations?status=paid");
 });
@@ -247,8 +268,11 @@ test("a signed-in switch saves the preference before navigating", async () => {
     />
   );
   await act(() => signedIn);
+  const menu = await openLanguageMenu(view, "en-US");
 
-  fireEvent.click(view.getByRole("link", { name: "Czech" }));
+  fireEvent.click(
+    within(menu).getByRole("menuitem", { name: languageNames["cs-CZ"] })
+  );
 
   await waitFor(() => expect(saves).toEqual([{ locale: "cs-CZ" }]));
   await waitFor(() =>

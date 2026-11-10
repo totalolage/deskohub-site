@@ -367,7 +367,9 @@ const reportedOnProfileFormFields =
 export const profileFormSchema = (locale: Locale) =>
   profileFormValuesSchema.pipe(
     Schema.decodeTo(
-      updateCustomerProfileSchema.pipe(reportedOnProfileFormFields(locale)),
+      updateCustomerProfileSchema(locale).pipe(
+        reportedOnProfileFormFields(locale)
+      ),
       SchemaTransformation.transform({
         decode: toCustomerProfileInput,
         encode: (input) => toProfileFormValues(input),
@@ -380,11 +382,12 @@ export const profileFormSchema = (locale: Locale) =>
  * left to the server action, so a code it rejects comes back as a server
  * validation error rather than stopping the submit.
  */
-const completionFormContract = Schema.Struct({
-  ...completeCustomerProfileSchema.fields,
-  referralCode: Schema.optional(Schema.String),
-  prefilledReferralCode: Schema.optional(Schema.String),
-});
+const completionFormContract = (locale: Locale) =>
+  Schema.Struct({
+    ...completeCustomerProfileSchema(locale).fields,
+    referralCode: Schema.optional(Schema.String),
+    prefilledReferralCode: Schema.optional(Schema.String),
+  });
 
 /**
  * Decodes the flat form values to the first-time completion contract, which
@@ -397,7 +400,7 @@ export const completionFormSchema = (
 ) =>
   profileFormValuesSchema.pipe(
     Schema.decodeTo(
-      completionFormContract.pipe(reportedOnProfileFormFields(locale)),
+      completionFormContract(locale).pipe(reportedOnProfileFormFields(locale)),
       SchemaTransformation.transform({
         decode: (values) =>
           toCustomerProfileCompletionInput(values, prefilledReferralCode),

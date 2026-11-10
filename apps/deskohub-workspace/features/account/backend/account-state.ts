@@ -41,6 +41,7 @@ import {
 } from "@/features/account/customer-account";
 import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import type { AccountPasskeySettings } from "@/features/account/passkeys";
+import type { Locale } from "@/features/i18n";
 import { ReferralService } from "@/features/referrals";
 import type { ReferralCode } from "@/features/referrals/client";
 import type { ReferralAccountOverview } from "@/features/referrals/contracts";
@@ -69,6 +70,8 @@ type SessionSettings = {
    * authorize, and deleting the account removes them.
    */
   readonly assistants?: readonly CustomerAgentConnection[] | null;
+  /** The session's saved locale preference; absent when it has none. */
+  readonly localePreference?: Locale;
 };
 
 /**
@@ -285,6 +288,7 @@ const loadAccount: Effect.Effect<
     deletion: accountDeletion(content, reviewAccount),
     ...(passkeys && { passkeys }),
     ...(assistants !== undefined && { assistants }),
+    ...(user.localePreference && { localePreference: user.localePreference }),
   });
 });
 

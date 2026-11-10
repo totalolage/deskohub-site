@@ -1,5 +1,6 @@
 "use client";
 
+import { getLocaleDefinition } from "@deskohub/i18n/locale-registry";
 import { Check } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 import { updateLocalePreference } from "@/features/account/actions";
@@ -8,13 +9,7 @@ import {
   type LocalePreferenceSaving,
   switchLocale,
 } from "@/features/account/switch-locale";
-import {
-  isLocale,
-  type Locale,
-  type LocalizedCopy,
-  locales,
-  m,
-} from "@/features/i18n";
+import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { Label } from "@/shared/components/ui/label";
 import {
   Select,
@@ -45,16 +40,6 @@ export interface ProfileScreenProps {
   readonly footer?: ReactNode;
   readonly avatar?: ReactNode;
 }
-
-/**
- * Every Inlang locale must have a translated label message, so adding a locale
- * to the tuple is a compile error until this record gains its label. The
- * option list derives from the tuple, keeping the selector exhaustive.
- */
-const languageOptionLabels = {
-  "cs-CZ": m.accountProfileScreenLanguageOptionCs,
-  "en-US": m.accountProfileScreenLanguageOptionEn,
-} satisfies Readonly<Record<Locale, LocalizedCopy>>;
 
 // The profile renders only for a signed-in customer, so a choice always saves
 // the preference before the document moves to the chosen locale.
@@ -151,7 +136,7 @@ export function ProfileScreen({
           <SelectContent>
             {locales.map((optionLocale) => (
               <SelectItem key={optionLocale} value={optionLocale}>
-                {languageOptionLabels[optionLocale]({}, { locale })}
+                {getLocaleDefinition(optionLocale).nativeName}
               </SelectItem>
             ))}
           </SelectContent>

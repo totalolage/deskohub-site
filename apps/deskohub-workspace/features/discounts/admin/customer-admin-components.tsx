@@ -21,6 +21,7 @@ import {
 import { groupCustomerReservations } from "@/features/administration/customer-activity";
 import { m } from "@/features/administration/i18n";
 import { getAdministrationReservationProductTitle } from "@/features/administration/reservation-product";
+import { discountLabelFor } from "@/features/discounts/discount-label";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
@@ -58,6 +59,7 @@ import type {
 } from "./discount-administration.service";
 import { PromotionAudienceSection } from "./promotion-audience";
 import { PromotionCustomerPicker } from "./promotion-customers";
+import { formatDiscountCodeServiceDates } from "./service-date-display";
 import { formatDiscountUsageLimit } from "./usage-limit";
 
 type Notice = {
@@ -94,7 +96,7 @@ export function CodeAdministrationDetailPage({
 
       <CodeSummary
         code={code}
-        discountLabel={detail.discountLabels[locale]}
+        discountLabel={discountLabelFor(detail.discountLabels, locale)}
         locale={locale}
       />
 
@@ -759,6 +761,10 @@ function CodeSummary({
       <SummaryFact
         label={m.discountsValidUntilLabel({}, { locale })}
         value={formatOptionalInstant(code.validUntil, locale)}
+      />
+      <SummaryFact
+        label={m.discountsColumnServiceDates({}, { locale })}
+        value={formatDiscountCodeServiceDates(code, locale)}
       />
       <SummaryFact
         label={m.discountsColumnAudience({}, { locale })}

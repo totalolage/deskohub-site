@@ -1,11 +1,12 @@
 ---
 name: deskohub-react-ui
-description: React, TSX, JSX, components, page metadata, generateMetadata, Open Graph, share image, og:locale, Twitter card, shadcn, Tailwind container queries, accessibility, live regions, translated copy, Inlang, Paraglide, m.* messages, locale, React Hook Form, Workspace forms, useWorkspaceAction, memoization, shareable or external links, locale prefix, locale-agnostic page URL, llms.txt links, JSON-LD url, canonical, hreflang, sitemap URL.
+description: React, TSX, JSX, components, page metadata, generateMetadata, Open Graph, share image, og:locale, Twitter card, shadcn, Tailwind container queries, accessibility, live regions, translated copy, Inlang, Paraglide, m.* messages, locale, React Hook Form, Workspace forms, useWorkspaceAction, memoization, shareable or external links, locale prefix, locale-agnostic page URL, llms.txt links, JSON-LD url, canonical, hreflang, sitemap URL, date picker, time picker, date-time input, DateInput, TimeInput, DateTimeInput, calendar popover.
 ---
 
 # Deskohub React UI
 
 For Workspace forms, also read [references/workspace-forms.md](references/workspace-forms.md).
+For date, time, or date-time fields, also read [references/date-time-controls.md](references/date-time-controls.md).
 
 ## Components and JSX
 
@@ -14,7 +15,7 @@ For Workspace forms, also read [references/workspace-forms.md](references/worksp
 - Inline one-use `className` strings, literals, and lookup objects where they're consumed.
 - Use the matching shadcn primitive for standard interactions, for example Tooltip for hover and focus hints. Add a missing primitive through the app's `components.json` and adapt only its shared styling and React conventions.
 - Build administration list counts and their search or filter controls with `AdministrationTableToolbar` and `AdministrationTableCount` (`features/administration/table-toolbar.tsx`).
-- Keep reservation-family-neutral form shells and primitives, including date and date-time pickers, in `features/reservation/components`. Put only family-specific fields and policy UI under `features/cowork` or `features/meeting-room`.
+- Build date, time, and date-time fields from the shared controls in `shared/components/date-time`, not native `date`, `time`, or `datetime-local` inputs. Keep reservation-family-neutral form shells and reservation policy adapters in `features/reservation/components`. Put only family-specific fields and policy UI under `features/cowork` or `features/meeting-room`.
 - Lay out content in a variable-width slot, such as beside a sidebar, with Tailwind container queries (`@container` on the slot, `@xl:`-style variants inside). The account content slot in `features/account/components/shell/account-frame.tsx` is the reference. Use viewport breakpoints for page shells and portaled content such as dialogs.
 
 ## State and effects
@@ -27,7 +28,8 @@ For Workspace forms, also read [references/workspace-forms.md](references/worksp
 
 ## Copy and locale
 
-- Keep customer-facing copy in the owning app's Inlang message catalogs as full sentences in both locale files, consumed with `m.*` in components and email-rendering TSX alike. Long-form legal and GDPR prose stays in its source modules: `features/legal/content.tsx` (Workspace) and `features/gdpr/texts/` (Boardgame Bar).
+- Keep customer-facing copy in the owning app's Inlang message catalogs as full sentences in every locale file, consumed with `m.*` in components and email-rendering TSX alike. Long-form legal and GDPR prose stays in its source modules: `features/legal/content.tsx` (Workspace) and `features/gdpr/texts/` (Boardgame Bar).
+- Before editing a catalog or adding a locale, load `$deskohub-i18n` for the catalog format, compiling, and translation.
 - Admin interface copy (`/[locale]/admin`, `features/administration`, `features/*/admin`) comes from the administration Inlang project: `m` from `@/features/administration/i18n`, never a customer catalog entry. Customer code must never import it. Customer-facing content shown inside admin screens, such as email previews or catalog product names, keeps the customer `m.*`. Read [administration localization](../deskohub-workspace-administration/references/localization.md) before adding admin copy. Screens not yet migrated still hard-code English.
 - Call `m.someMessage({}, { locale })` at each use site. Don't build per-locale copy maps or copy props for injection, and assert real catalog or rendered text in tests.
 - When a localized sentence contains links or other components, use `@doist/react-interpolate` and keep the whole sentence in one message.

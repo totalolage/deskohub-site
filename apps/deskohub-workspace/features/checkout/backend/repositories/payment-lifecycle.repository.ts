@@ -49,6 +49,7 @@ import {
   type AccountingDocumentSnapshot,
   accountingDocumentSnapshotSchema,
   encodeStoredAccountingDocumentSnapshot,
+  getAccountingDocumentSnapshotFirstServiceDate,
 } from "@/features/accounting/accounting-document-snapshot";
 import {
   AccountingDocumentSnapshotStorageError,
@@ -67,6 +68,7 @@ import {
 } from "@/features/discounts/commitment";
 import type { AppliedDiscount } from "@/features/discounts/contracts";
 import { decodeDiscountDefinition } from "@/features/discounts/discount-definition";
+import { discountLabelFor } from "@/features/discounts/discount-label";
 import { DiscountClaimError } from "@/features/discounts/errors";
 import type {
   DiscountApplicationId,
@@ -77,6 +79,7 @@ import type {
 import { getWorkspaceProductTargetsCovering } from "@/features/discounts/product-target";
 import { getPromotionTiming } from "@/features/discounts/promotion-code";
 import type { DiscountClaimInstruction } from "@/features/discounts/provider";
+import { isFirstServiceDateEligible } from "@/features/discounts/service-date-eligibility";
 import type { Locale } from "@/features/i18n";
 import { evaluateReferralAttribution } from "@/features/referrals/attribution";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -242,6 +245,10 @@ export class PaymentLifecycleRepository extends Context.Service<
         const commitment = getDiscountCommitmentPayload(input.commitment);
         const claimedApplications =
           yield* validateDiscountCommitment(commitment);
+        const firstServiceDate = yield* validateCommitmentFirstServiceDate(
+          commitment,
+          accountingSnapshot
+        );
 
         return yield* transaction(
           Effect.gen(function* () {
@@ -387,6 +394,7 @@ export class PaymentLifecycleRepository extends Context.Service<
               locale: input.locale,
               reservationCustomerId: reservation.dotyposCustomerId,
               reservationExpiresAt: reservation.reservationHoldExpiresAt,
+              firstServiceDate,
             });
 
             return toPaymentAttempt(attemptRow);
@@ -423,6 +431,10 @@ export class PaymentLifecycleRepository extends Context.Service<
         const claimedApplications = yield* validateInternalPaymentCommitment(
           commitment,
           input.amount
+        );
+        const firstServiceDate = yield* validateCommitmentFirstServiceDate(
+          commitment,
+          accountingSnapshot
         );
 
         if (input.amount.value !== 0) {
@@ -601,6 +613,7 @@ export class PaymentLifecycleRepository extends Context.Service<
               locale: input.locale,
               reservationCustomerId: reservation.dotyposCustomerId,
               reservationExpiresAt: reservation.reservationHoldExpiresAt,
+              firstServiceDate,
             });
             yield* redeemInternalPaymentClaims({
               paymentAttemptId: attemptRow.id,
@@ -1142,6 +1155,29 @@ const requireClaimedProduct = (
       )
     : Effect.void;
 
+/**
+ * The commitment was affirmed for the reservation this attempt pays for, so
+ * the code claim checks service dates against its start date.
+ */
+const validateCommitmentFirstServiceDate = Effect.fn(
+  "PaymentLifecycle.validateCommitmentFirstServiceDate"
+)(function* (
+  commitment: CommitmentPayload,
+  snapshot: AccountingDocumentSnapshot
+) {
+  const firstServiceDate =
+    getAccountingDocumentSnapshotFirstServiceDate(snapshot);
+  if (commitment.firstServiceDate !== firstServiceDate) {
+    return yield* new DiscountClaimError({
+      operation: "reserve",
+      reason: "claim_conflict",
+      message:
+        "The discount commitment was affirmed for a different reservation start date.",
+    });
+  }
+  return firstServiceDate;
+});
+
 export const validateInternalPaymentCommitment = Effect.fn(
   "PaymentLifecycle.validateInternalPaymentCommitment"
 )(function* (commitment: CommitmentPayload, amount: Money) {
@@ -1678,6 +1714,7 @@ const reserveCommittedClaims = Effect.fn(
   readonly locale: Locale;
   readonly reservationCustomerId: DotyposCustomerId;
   readonly reservationExpiresAt: Temporal.Instant;
+  readonly firstServiceDate: string;
 }) {
   const findApplicationId = (
     claimed: ClaimedApplication<DiscountClaimInstruction>
@@ -1705,6 +1742,7 @@ const reserveCommittedClaims = Effect.fn(
       locale: input.locale,
       reservationCustomerId: input.reservationCustomerId,
       reservationExpiresAt: input.reservationExpiresAt,
+      firstServiceDate: input.firstServiceDate,
     });
   }
 
@@ -1821,6 +1859,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     readonly locale: Locale;
     readonly reservationCustomerId: DotyposCustomerId;
     readonly reservationExpiresAt: Temporal.Instant;
+    readonly firstServiceDate: string;
   }) {
     if (input.reservationCustomerId !== input.claim.dotyposCustomerId) {
       return yield* claimError(
@@ -1838,6 +1877,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
 
     const claimedAt = Temporal.Now.instant();
     yield* requirePromotionWindow(input, stored.promotion, claimedAt);
+    yield* requireServiceDateEligible(stored, input.firstServiceDate);
     yield* requireAllowlistedCustomer(stored.promotion.id, input.claim);
 
     yield* Match.value(stored).pipe(
@@ -1975,6 +2015,23 @@ const requireEnabledPromotion = (
 };
 
 /** The hold and the promotion are both current when the claim is made. */
+/** A discount code's current service dates still cover the reservation. */
+const requireServiceDateEligible = (
+  stored: StoredPromotion,
+  firstServiceDate: string
+): Effect.Effect<void, DiscountClaimError> =>
+  stored.kind === "discount_code" &&
+  !isFirstServiceDateEligible(stored.code, firstServiceDate)
+    ? Effect.fail(
+        claimError(
+          "reserve",
+          "service_date_ineligible",
+          "The accepted discount code no longer covers the reservation start date.",
+          stored.claim
+        )
+      )
+    : Effect.void;
+
 const requirePromotionWindow = (
   input: {
     readonly claim: OrdinaryPromotionClaim;
@@ -2253,7 +2310,7 @@ const validateStoredDiscountClaim = Effect.fn(
       currentDefinition.adjustment,
       input.application.discount.adjustment
     ) ||
-    currentDefinition.labels[input.locale] !==
+    discountLabelFor(currentDefinition.labels, input.locale) !==
       input.application.discount.label ||
     promotionTimingChanged(timing, input.application.discount)
   ) {

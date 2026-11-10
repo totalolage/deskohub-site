@@ -69,7 +69,15 @@ export const discountAdjustmentSchema = Schema.Union([
 
 export type Discount = {
   readonly id: DiscountId;
+  /** The label in the checkout locale, shown to the customer. */
   readonly label: string;
+  /**
+   * The label in `staffLocale`, written to staff-facing records such as the
+   * Dotypos reservation note. It stays out of the quote fingerprint, so it
+   * never causes `pricing_changed`. Pay states and accounting snapshots
+   * signed before it existed lack it; staff then read `label`.
+   */
+  readonly staffLabel?: string;
   readonly adjustment: DiscountAdjustment;
   readonly expiresAt?: string;
   readonly countdownStartsAt?: string;
@@ -87,6 +95,7 @@ export type ActiveSaleDiscoveryInput = {
 export const discountCodec = Schema.Struct({
   id: discountIdSchema,
   label: Schema.NonEmptyString,
+  staffLabel: Schema.optionalKey(Schema.NonEmptyString),
   adjustment: discountAdjustmentSchema,
   expiresAt: Schema.optionalKey(Schema.toEncoded(instantStringSchema)),
   countdownStartsAt: Schema.optionalKey(Schema.toEncoded(instantStringSchema)),
@@ -163,6 +172,11 @@ export type DiscountAdvertisementInput = {
    * when it is on or before the sale's last day.
    */
   readonly lastServiceDate: string;
+  /**
+   * Prague date the reservation starts. Discount-code service-date windows
+   * are judged on it; later days of the reservation never count.
+   */
+  readonly firstServiceDate: string;
   /** Moment the booking is made; calendar sales are evaluated at it. */
   readonly bookedAt: Temporal.Instant;
   readonly locale: Locale;
@@ -176,6 +190,11 @@ export type DiscountQuoteInput = {
    * when it is on or before the sale's last day.
    */
   readonly lastServiceDate: string;
+  /**
+   * Prague date the reservation starts. Discount-code service-date windows
+   * are judged on it; later days of the reservation never count.
+   */
+  readonly firstServiceDate: string;
   /** Moment the booking is made; calendar sales are evaluated at it. */
   readonly bookedAt: Temporal.Instant;
   readonly locale: Locale;

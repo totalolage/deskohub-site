@@ -17,7 +17,9 @@ import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date
 import { officeCheckoutPricing } from "./office-checkout-pricing";
 
 const startsOn = getCurrentWorkspaceDate().add({ days: 1 });
-const reservation = Schema.decodeUnknownSync(officeReservationOrderSchema)({
+const reservation = Schema.decodeUnknownSync(
+  officeReservationOrderSchema("CZ")
+)({
   kind: "office",
   startsOn: startsOn.toString(),
   endsOn: startsOn.add({ days: 1 }).toString(),
@@ -71,6 +73,7 @@ describe("office checkout pricing", () => {
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
       product,
       discountableSubtotal: money,
+      firstServiceDate: reservation.startsOn,
       lastServiceDate: reservation.endsOn,
       locale: "en-US",
       bookedAt: expect.any(Temporal.Instant),
@@ -86,7 +89,7 @@ describe("office checkout pricing", () => {
     "applies a calendar sale only when the office range %s",
     async (_label, extraDays, expectedDiscounts) => {
       const rangeReservation = Schema.decodeUnknownSync(
-        officeReservationOrderSchema
+        officeReservationOrderSchema("CZ")
       )({
         ...reservation,
         endsOn: startsOn.add({ days: extraDays }).toString(),

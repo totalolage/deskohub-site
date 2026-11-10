@@ -37,7 +37,7 @@ describe("meetingRoomSelectionLink.read", () => {
         phone: "+420777777777",
         startDateTime: "2099-08-12T09:00",
       },
-      { now: deterministicNow() }
+      { locale: "cs-CZ", now: deterministicNow() }
     );
 
     expect(values).toEqual({
@@ -68,7 +68,7 @@ describe("meetingRoomSelectionLink.read", () => {
           duration: "hour:4",
           startDateTime: "2099-02-30T09:00",
         },
-        { now: deterministicNow() }
+        { locale: "cs-CZ", now: deterministicNow() }
       )
     ).toMatchObject({
       startDateTime: "2099-07-30T12:00",
@@ -87,7 +87,7 @@ describe("meetingRoomSelectionLink.read", () => {
           name: "Ada Lovelace",
           startDateTime: "2099-07-30T10:00",
         },
-        { now }
+        { locale: "cs-CZ", now }
       )
     ).toEqual({
       startDateTime: "2099-07-30T10:00",
@@ -103,7 +103,7 @@ describe("meetingRoomSelectionLink.read", () => {
     expect(
       meetingRoomSelectionLink.read(
         { duration: "hour:4", startDateTime: "2099-07-30T09:00" },
-        { now }
+        { locale: "cs-CZ", now }
       )
     ).toMatchObject({
       startDateTime: "2099-07-30T09:00",
@@ -112,7 +112,7 @@ describe("meetingRoomSelectionLink.read", () => {
     expect(
       meetingRoomSelectionLink.read(
         { duration: "day:1", startDateTime: "2099-07-30T00:00" },
-        { now }
+        { locale: "cs-CZ", now }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T00:00", duration: "day:1" });
   });
@@ -123,19 +123,19 @@ describe("meetingRoomSelectionLink.read", () => {
     expect(
       meetingRoomSelectionLink.read(
         { duration: "hour:1", startDateTime: "2099-07-30T09:00" },
-        { now }
+        { locale: "cs-CZ", now }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T10:00", duration: "hour:1" });
     expect(
       meetingRoomSelectionLink.read(
         { duration: "hour:4", startDateTime: "2099-07-30T06:00" },
-        { now }
+        { locale: "cs-CZ", now }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T07:00", duration: "hour:4" });
     expect(
       meetingRoomSelectionLink.read(
         { duration: "day:1", startDateTime: "2099-07-29T00:00" },
-        { now }
+        { locale: "cs-CZ", now }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T00:00", duration: "day:1" });
   });
@@ -146,7 +146,7 @@ describe("meetingRoomSelectionLink.read", () => {
     expect(
       meetingRoomSelectionLink.read(
         { duration: "hour:4", startDateTime: "2099-07-30T07:00" },
-        { now }
+        { locale: "cs-CZ", now }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T07:00", duration: "hour:4" });
     expect(
@@ -160,7 +160,7 @@ describe("meetingRoomSelectionLink.read", () => {
     expect(
       meetingRoomSelectionLink.read(
         { startDateTime: "2099-07-30T11:00" },
-        { now }
+        { locale: "cs-CZ", now }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T11:00" });
   });
@@ -169,13 +169,13 @@ describe("meetingRoomSelectionLink.read", () => {
     expect(
       meetingRoomSelectionLink.read(
         { startDateTime: "2099-07-30T09:00" },
-        { now: deterministicNow() }
+        { locale: "cs-CZ", now: deterministicNow() }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T15:00", duration: "hour:1" });
     expect(
       meetingRoomSelectionLink.read(
         { startDateTime: "" },
-        { now: deterministicNow() }
+        { locale: "cs-CZ", now: deterministicNow() }
       )
     ).toMatchObject({ startDateTime: "2099-07-30T15:00" });
   });
@@ -211,7 +211,7 @@ describe("meetingRoomSelectionLink.read", () => {
       expect(
         meetingRoomSelectionLink.read(
           { startDateTime: `${transition}T02:00` },
-          { now }
+          { locale: "cs-CZ", now }
         )
       ).toMatchObject({ startDateTime: earliest });
 
@@ -222,7 +222,7 @@ describe("meetingRoomSelectionLink.read", () => {
             name: "Ada Lovelace",
             startDateTime: `${transition}T${nearbyValid}`,
           },
-          { now }
+          { locale: "cs-CZ", now }
         )
       ).toMatchObject({
         startDateTime: `${transition}T${nearbyValid}`,
@@ -239,6 +239,7 @@ describe("customer last reservation defaults", () => {
       meetingRoomSelectionLink.read(
         { startDateTime: "2099-08-12T09:00" },
         {
+          locale: "cs-CZ",
           now: deterministicNow(),
           lastReservation: { kind: "meeting-room", duration: "hour:4" },
         }
@@ -248,6 +249,7 @@ describe("customer last reservation defaults", () => {
       meetingRoomSelectionLink.read(
         { duration: "hour:1", startDateTime: "2099-08-12T09:00" },
         {
+          locale: "cs-CZ",
           now: deterministicNow(),
           lastReservation: { kind: "meeting-room", duration: "hour:4" },
         }
@@ -265,6 +267,7 @@ describe("meetingRoomSelectionLink.write", () => {
     );
     expect(
       meetingRoomSelectionLink.read(link.searchParams, {
+        locale: "cs-CZ",
         now: deterministicNow(),
       })
     ).toMatchObject({
@@ -321,7 +324,10 @@ describe("meetingRoomSelectionLink.write", () => {
     );
 
     expect(
-      meetingRoomSelectionLink.read(searchParams, { now: deterministicNow() })
+      meetingRoomSelectionLink.read(searchParams, {
+        locale: "cs-CZ",
+        now: deterministicNow(),
+      })
     ).toEqual(expect.objectContaining(selection));
     expect(searchParams.get("discountCode")).toBe("SPRING");
   });
@@ -348,8 +354,10 @@ describe("meetingRoomSelectionLink.write", () => {
     );
 
     expect(
-      meetingRoomSelectionLink.read(searchParams, { now: deterministicNow() })
-        .earlySetup
+      meetingRoomSelectionLink.read(searchParams, {
+        locale: "cs-CZ",
+        now: deterministicNow(),
+      }).earlySetup
     ).toBe(false);
   });
 
@@ -377,6 +385,7 @@ describe("meetingRoomSelectionLink.write", () => {
 
     expect(
       meetingRoomSelectionLink.read(writeSelection(new URLSearchParams()), {
+        locale: "cs-CZ",
         now: ongoingNow,
       })
     ).toEqual(expect.objectContaining(ongoingSelection));
@@ -399,7 +408,7 @@ describe("meetingRoomSelectionLink.write", () => {
       meetingRoomSelectionLink.restore(
         getMeetingRoomReservationDefaultValues(restoredReservation),
         writeSelection(new URLSearchParams("payState=signed")),
-        { now: ongoingNow }
+        { locale: "cs-CZ", now: ongoingNow }
       )
     ).toEqual(
       expect.objectContaining({
@@ -428,14 +437,14 @@ describe("meetingRoomSelectionLink.write", () => {
       meetingRoomSelectionLink.restore(
         getMeetingRoomReservationDefaultValues(restoredReservation),
         new URLSearchParams("payState=signed"),
-        { now: ongoingNow }
+        { locale: "cs-CZ", now: ongoingNow }
       )?.earlySetup
     ).toBe(true);
     expect(
       meetingRoomSelectionLink.restore(
         getMeetingRoomReservationDefaultValues(restoredReservation),
         writeSelection(new URLSearchParams("payState=signed")),
-        { now: ongoingNow }
+        { locale: "cs-CZ", now: ongoingNow }
       )?.earlySetup
     ).toBe(false);
   });
@@ -456,6 +465,7 @@ describe("meetingRoomSelectionLink.fromStored", () => {
       expect(searchParams.has(contactKey)).toBe(false);
     }
     return meetingRoomSelectionLink.read(searchParams, {
+      locale: "cs-CZ",
       now: deterministicNow(),
     });
   };

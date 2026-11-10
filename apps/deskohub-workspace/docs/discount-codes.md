@@ -37,9 +37,14 @@ Codes use uppercase ASCII letters, digits, underscores, and hyphens and contain 
 
 - whether it is enabled;
 - an optional inclusive start and exclusive end;
+- an optional service-date range;
 - an optional positive global-use limit; and
 - an optional positive per-customer-use limit; and
 - an optional customer allowlist.
+
+The service-date range limits which reservations the code covers. It is a first and a last Prague calendar date, and a reservation qualifies when its start date falls on either date or between them, so a one-day range names the same date twice. A cowork reservation starts on its reserved date, an office reservation on its first reserved day, and a meeting-room reservation on the Prague date its booking starts. Only the start date counts: an overnight booking or a multi-day office stay qualifies by its first day, whatever its later days are. A code without a range covers every reservation date. The range has both dates or neither, and the last date is never before the first. It is separate from the code's validity window, which governs when the code can be entered and redeemed. A code must satisfy both. Vouchers never have a service-date range.
+
+Checkout checks the code's current range wherever it checks the code: the anonymous preview from the reservation URL, the order summary, code entry, and final payment admission. A code whose range was changed after the customer saw it is handled like any other change to a shown discount: checkout presents an updated summary for acceptance.
 
 Omitting either use limit makes that dimension unlimited. Existing codes with a finite global limit retain one use per customer; existing globally unlimited codes remain unlimited per customer. An empty customer allowlist means the code is open to every customer; adding the first customer makes it restricted.
 
@@ -59,7 +64,7 @@ Administration exposes discount codes and vouchers as separate resources. Both t
 
 Automatic discounts shown on the reservation page are affirmed again when the order summary is created. Customer-specific discounts may first appear after the customer is identified.
 
-An ordinary discount code supplied through the reservation URL's `discountCode` query parameter is normalized with the ordinary code rules and then provisionally advertised like an automatic sale. The anonymous preview checks the code's public configuration, product eligibility, and global capacity; after reservation submission, checkout performs the complete customer, audience, and usage validation before creating the order summary. Vouchers are never advertised from reservation URLs. Codes may still be entered deliberately on the order summary.
+An ordinary discount code supplied through the reservation URL's `discountCode` query parameter is normalized with the ordinary code rules and then provisionally advertised like an automatic sale. The anonymous preview checks the code's public configuration, service-date range, product eligibility, and global capacity; after reservation submission, checkout performs the complete customer, audience, and usage validation before creating the order summary. Vouchers are never advertised from reservation URLs. Codes may still be entered deliberately on the order summary.
 
 The intended code and the applied code are kept distinct. A code that is eligible may apply automatically; a code that is unknown or unavailable to the identified customer stays in the code input on the payment page for ordinary retry or correction and is never shown as applied. When checkout restores signed state, the intended code recorded in that state takes precedence over a fresh URL parameter. Navigating back, refreshing the price, or editing the reservation keeps the intended code, and checkout revalidates it at the existing summary boundaries.
 

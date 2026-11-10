@@ -169,6 +169,7 @@ const makeCommitment = (
 ) =>
   makeDiscountCommitment({
     product: { kind: "cowork", tier: "reserved-desk" },
+    firstServiceDate: "2099-07-30",
     applications: discounts.map((application) => ({
       application,
       candidate: overrideCandidate(getCandidate(application), application),
@@ -385,6 +386,37 @@ describe("referral checkout quote comparison outcomes", () => {
             count: 1,
           }),
         ],
+      })
+    ).toBe(true);
+  });
+
+  test("accepts fresh staff labels on a quote accepted before they existed", () => {
+    const withStaffLabel = (application: AppliedDiscount) =>
+      withDiscount(application, {
+        staffLabel: `${application.discount.label} (cs)`,
+      });
+    const codeInvitation = makeInvitationDiscount(9_000);
+
+    expect(
+      compare({
+        previous: [invitation, referrer],
+        current: [invitation, referrer].map(withStaffLabel),
+      })
+    ).toBe(true);
+    expect(
+      compare({
+        previous: [
+          ordinaryCode,
+          makeReferrerDiscount({ subtotalBefore: 9_000, count: 1 }),
+        ],
+        current: [
+          ordinaryCode,
+          codeInvitation,
+          makeReferrerDiscount({
+            subtotalBefore: codeInvitation.subtotalAfter.value,
+            count: 1,
+          }),
+        ].map(withStaffLabel),
       })
     ).toBe(true);
   });

@@ -1,6 +1,6 @@
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { Schema } from "effect";
 import { workspaceCoworkCurrentTiers } from "@/features/checkout/product-catalog";
-import { locales } from "@/features/i18n";
 import { meetingRoomReservationDurationKeySchema } from "@/features/reservation/meeting-room-reservation-duration";
 import { workspaceReservationKindSchema } from "@/features/reservation/reservation-kind";
 import { agentOfferingSchema } from "./list-offerings.schema";
@@ -18,7 +18,7 @@ export const showBookingResultSchema = Schema.Struct({
     description:
       "How the customer finishes in the view. reserve: the customer starts the booking in the view. reservation_page: the view links to the reservation page, prefilled with the selection.",
   }),
-  locale: Schema.Literals(locales).annotate({
+  locale: Schema.Literals(supportedLocales).annotate({
     description: "Language of the names and the note in the result.",
   }),
   selection: Schema.Struct({

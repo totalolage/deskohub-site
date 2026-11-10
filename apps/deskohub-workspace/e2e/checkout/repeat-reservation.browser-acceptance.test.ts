@@ -106,7 +106,7 @@ test.skipIf(!chromiumAvailable)(
           },
           "meeting-room-repeat"
         ),
-        html: '<input name="startDateTime" value="2099-08-27" />',
+        html: '<input name="startDateTime" value="2099-08-27T10:00" />',
         path: "/en-US/reservation/meeting-room",
       },
       {

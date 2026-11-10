@@ -4,6 +4,10 @@ import { Data, Effect, Schema } from "effect";
 import { Download } from "lucide-react";
 import { type MouseEvent, Suspense, use, useState } from "react";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import {
+  getAttachmentFileName,
+  saveBlobAsFile,
+} from "@/shared/browser/file-download";
 import { runWorkspaceBrowserEffect } from "@/shared/browser/workspace-browser-effect";
 import { reportWorkspaceBrowserFailure } from "@/shared/browser/workspace-browser-logs";
 import { Button } from "@/shared/components/ui/button";
@@ -37,11 +41,6 @@ const isCsvAttachment = (response: Response) =>
   /^text\/csv\b/i.test(response.headers.get("Content-Type") ?? "") &&
   /^attachment\b/i.test(response.headers.get("Content-Disposition") ?? "");
 
-const getAttachmentFileName = (response: Response) =>
-  /filename="([^"]+)"/.exec(
-    response.headers.get("Content-Disposition") ?? ""
-  )?.[1] ?? "export.csv";
-
 const saveFile = ({
   blob,
   fileName,
@@ -50,15 +49,7 @@ const saveFile = ({
   readonly fileName: string;
 }) =>
   Effect.try({
-    try: () => {
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName;
-      link.click();
-      // Revoking right away can cancel the download in some browsers.
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    },
+    try: () => saveBlobAsFile({ blob, fileName }),
     catch: (cause) =>
       new AdministrationListExportError({ reason: "failed", cause }),
   });
@@ -110,7 +101,7 @@ const downloadListExport = (href: string) =>
       }).pipe(
         Effect.map((blob) => ({
           blob,
-          fileName: getAttachmentFileName(response),
+          fileName: getAttachmentFileName(response) ?? "export.csv",
         }))
       )
     ),

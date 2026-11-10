@@ -7,7 +7,7 @@ import { tabScreenOptions } from "../../../src/ui/navigation";
 export default function AccountTabsLayout() {
   const locale = useAppLocale();
   return (
-    <Tabs screenOptions={tabScreenOptions}>
+    <Tabs screenOptions={tabScreenOptions(locale)}>
       <Tabs.Screen
         name="reservations"
         options={{ title: m.account_tab_reservations({}, { locale }) }}

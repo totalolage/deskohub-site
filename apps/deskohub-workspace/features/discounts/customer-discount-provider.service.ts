@@ -4,6 +4,7 @@ import { Context, Data, Effect, Layer, Option } from "effect";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import { type Locale, m } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import { staffLocale } from "@/shared/backend/staff-locale";
 import type { DiscountQuoteInput } from "./contracts";
 import { toDotyposDiscountBasisPoints } from "./dotypos-discount-percentage";
 import { DiscountProviderError } from "./errors";
@@ -111,6 +112,10 @@ const toCustomerDiscountCandidate = (input: {
             providerReference: discountGroup.discountGroupId,
           }),
           label: m.checkoutSummaryItemCustomerDiscount({}, { locale }),
+          staffLabel: m.checkoutSummaryItemCustomerDiscount(
+            {},
+            { locale: staffLocale }
+          ),
           adjustment: {
             kind: "percentage",
             basisPoints,

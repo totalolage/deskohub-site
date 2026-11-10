@@ -34,6 +34,8 @@ export const adminCustomerCode = (
   validUntil: instant("2026-09-01T08:00:00Z"),
   maxUses: 100,
   maxUsesPerCustomer: 2,
+  serviceDateFrom: null,
+  serviceDateUntil: null,
   audienceSize: 1,
   audienceCustomerIds: [
     "dotypos-customer" as CustomerCode["audienceCustomerIds"][number],

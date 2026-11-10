@@ -23,7 +23,7 @@ beforeEach(() => {
 test("rejects a missing or unsupported root route parameter", async () => {
   const { getRequestLocale } = await import("./request-locale");
 
-  for (const value of [undefined, "sk-SK"]) {
+  for (const value of [undefined, "fr-FR", "sk"]) {
     requestedLocale = value;
     await expect(getRequestLocale()).rejects.toBe(notFoundError);
   }

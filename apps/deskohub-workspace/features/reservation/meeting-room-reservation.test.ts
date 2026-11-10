@@ -17,9 +17,11 @@ import {
 
 const testEmailAddressForAda = testEmailAddress("ada");
 
-const safeParseForm = Schema.decodeUnknownResult(meetingRoomReservationSchema);
+const safeParseForm = Schema.decodeUnknownResult(
+  meetingRoomReservationSchema("CZ")
+);
 const decodeOrder = Schema.decodeUnknownSync(
-  meetingRoomReservationOrderInputSchema
+  meetingRoomReservationOrderInputSchema("CZ")
 );
 const safeParseStoredDetails = Schema.decodeUnknownResult(
   storedMeetingRoomReservationDetailsSchema,

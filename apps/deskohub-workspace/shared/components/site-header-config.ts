@@ -6,6 +6,7 @@ import { isCustomerSignedIn } from "@/features/account/server/customer-session.s
 import { createLocalePreferenceSaving } from "@/features/account/server/locale-preference-saving.server";
 import { isCurrentAccountAdministrator } from "@/features/administrators/server/current-account-administrator.server";
 import { type Locale, m } from "@/features/i18n";
+import { languageNames } from "@/features/i18n/language-labels";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-release-gate.server";
 import { isOfficePageEnabled } from "@/features/office/backend/office-release-gate.server";
 import {
@@ -58,7 +59,10 @@ type DisabledSiteHeaderMenuItems = Partial<
 
 export const getSiteHeaderAccessibilityLabels = (locale: Locale) => ({
   closeNavigationMenuLabel: m.closeNavigationMenuLabel({}, { locale }),
-  languageSwitcherLabel: m.languageSwitcherLabel({}, { locale }),
+  languageMenuTriggerLabel: m.languageMenuTriggerLabel(
+    { language: languageNames[locale] },
+    { locale }
+  ),
   mobilePrimaryNavigationLabel: m.mobilePrimaryNavigationLabel({}, { locale }),
   openNavigationMenuLabel: m.openNavigationMenuLabel({}, { locale }),
   primaryNavigationLabel: m.primaryNavigationLabel({}, { locale }),

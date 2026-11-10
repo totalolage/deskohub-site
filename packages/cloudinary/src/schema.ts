@@ -1,3 +1,7 @@
+import {
+  type SupportedLocale,
+  supportedLocales,
+} from "@deskohub/i18n/locale-registry";
 import * as Schema from "effect/Schema";
 
 export const CloudinaryPublicIdSchema = Schema.NonEmptyString.pipe(
@@ -16,6 +20,29 @@ export const CloudinarySearchCursorSchema = Schema.NonEmptyString.pipe(
   description: "Opaque cursor identifying a Cloudinary search result page.",
 });
 export type CloudinarySearchCursor = typeof CloudinarySearchCursorSchema.Type;
+
+/** A context field an asset carries per locale, beside a bare fallback. */
+export type LocalizedContextField = "alt" | "caption" | "detail";
+
+const optionalContextValue = Schema.optional(Schema.String);
+
+/**
+ * The bare `alt`, `caption` and `detail` context fields and one
+ * `<field>-<locale>` field each per supported locale, such as `alt-cs-CZ`.
+ */
+const localizedContextFields = Object.fromEntries(
+  (["alt", "caption", "detail"] as const).flatMap((field) => [
+    [field, optionalContextValue],
+    ...supportedLocales.map((locale) => [
+      `${field}-${locale}`,
+      optionalContextValue,
+    ]),
+  ])
+) as {
+  readonly [Key in
+    | LocalizedContextField
+    | `${LocalizedContextField}-${SupportedLocale}`]: typeof optionalContextValue;
+};
 
 export const CloudinaryAssetSchema = Schema.Struct({
   public_id: CloudinaryPublicIdSchema,
@@ -37,19 +64,7 @@ export const CloudinaryAssetSchema = Schema.Struct({
   tags: Schema.optional(Schema.Array(Schema.String)),
   context: Schema.optional(
     Schema.Struct({
-      custom: Schema.optional(
-        Schema.Struct({
-          alt: Schema.optional(Schema.String),
-          "alt-cs-CZ": Schema.optional(Schema.String),
-          "alt-en-US": Schema.optional(Schema.String),
-          caption: Schema.optional(Schema.String),
-          "caption-cs-CZ": Schema.optional(Schema.String),
-          "caption-en-US": Schema.optional(Schema.String),
-          detail: Schema.optional(Schema.String),
-          "detail-cs-CZ": Schema.optional(Schema.String),
-          "detail-en-US": Schema.optional(Schema.String),
-        })
-      ),
+      custom: Schema.optional(Schema.Struct(localizedContextFields)),
     })
   ),
 });

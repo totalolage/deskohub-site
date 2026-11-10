@@ -7,6 +7,7 @@ export type CommitmentPayloadRemainsPrivate = AssertTrue<
   Extract<
     keyof DiscountCommitment,
     | "product"
+    | "firstServiceDate"
     | "applications"
     | "claimInstructions"
     | "provenance"

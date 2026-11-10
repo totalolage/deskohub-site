@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema, Struct } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { Locale } from "@/features/i18n";
@@ -78,6 +78,8 @@ type DiscountAdvertisementAffirmationInput = DiscountAdvertisementInput & {
 type ApplyCustomerDiscountInput = {
   readonly affirmedAdvertisement: AffirmedDiscountAdvertisementQuote;
   readonly dotyposCustomerId: DotyposCustomerId;
+  /** Prague date the reservation starts; code service dates are judged on it. */
+  readonly firstServiceDate: string;
   readonly locale: Locale;
   readonly submittedCode?: CanonicalPromotionCode;
   readonly submittedCodeDiscountId?: DiscountId;
@@ -92,6 +94,8 @@ type AppliedCustomerDiscountQuote = DiscountQuote & {
 type ApplyDiscountCodeInput = {
   readonly baseQuote: DiscountQuote;
   readonly dotyposCustomerId: DotyposCustomerId;
+  /** Prague date the reservation starts; code service dates are judged on it. */
+  readonly firstServiceDate: string;
   readonly locale: Locale;
   readonly submittedCode: CanonicalPromotionCode;
   readonly referralCode?: CanonicalPromotionCode;
@@ -511,6 +515,7 @@ export class DiscountService extends Context.Service<
                       discountableSubtotal:
                         input.affirmedAdvertisement.discountableSubtotal,
                       dotyposCustomerId: input.dotyposCustomerId,
+                      firstServiceDate: input.firstServiceDate,
                       locale: input.locale,
                       submittedCode: input.submittedCode,
                     })
@@ -588,6 +593,7 @@ export class DiscountService extends Context.Service<
               code.preview({
                 product: input.baseQuote.product,
                 discountableSubtotal: input.baseQuote.discountableSubtotal,
+                firstServiceDate: input.firstServiceDate,
                 locale: input.locale,
                 submittedCode: input.submittedCode,
               })
@@ -658,6 +664,7 @@ export class DiscountService extends Context.Service<
                 quote: referralQuote.quote,
                 commitment: makeDiscountCommitment({
                   product: referralQuote.quote.product,
+                  firstServiceDate: input.firstServiceDate,
                   applications,
                 }),
               };
@@ -686,6 +693,7 @@ export class DiscountService extends Context.Service<
                 product: input.baseQuote.product,
                 discountableSubtotal: input.baseQuote.discountableSubtotal,
                 dotyposCustomerId: input.dotyposCustomerId,
+                firstServiceDate: input.firstServiceDate,
                 locale: input.locale,
                 submittedCode: input.submittedCode,
               })
@@ -1090,4 +1098,7 @@ const makeAffirmedDiscountAdvertisementQuote = (
 ): AffirmedDiscountAdvertisementQuote =>
   affirmedDiscountAdvertisementQuoteCodec.make(quote);
 
-const discountEquals = Schema.toEquivalence(discountCodec);
+/** Equal as the customer sees them; the staff label is not compared. */
+const discountEquals = Schema.toEquivalence(
+  discountCodec.mapFields(Struct.omit(["staffLabel"]))
+);

@@ -13,9 +13,9 @@ import type { Locale } from "@/features/i18n";
 import { workspaceSiteConstants } from "@/shared/utils";
 import type { CsvColumn } from "@/shared/utils/csv";
 import { currentPlainDate, type PlainDate } from "@/shared/utils/temporal";
-import type {
-  CustomerAccountAccessError,
-  LinkedCustomerAccount,
+import {
+  isCustomerAccountAccessDenial,
+  type LinkedCustomerAccount,
 } from "../customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
@@ -116,7 +116,7 @@ export class CustomerInvoiceService extends Context.Service<
             never,
             CustomerInvoicesUnavailableError | CustomerInvoicesLoadError
           > =>
-            isAccessDenial(error)
+            isCustomerAccountAccessDenial(error)
               ? Effect.fail(new CustomerInvoicesUnavailableError())
               : failLoad("account.authority")
         )
@@ -194,14 +194,6 @@ export class CustomerInvoiceService extends Context.Service<
 }
 
 const workspaceTimeZone = workspaceSiteConstants.location.timeZone;
-
-/**
- * Whether the session is refused rather than unreadable. The `unavailable`
- * reason means a session, link, lock, or Dotypos read failed, except for a
- * review account, which never has a Dotypos customer.
- */
-const isAccessDenial = (error: CustomerAccountAccessError) =>
-  error.reason !== "unavailable" || error.cause?.code === "account.review";
 
 /** Logs the step's fixed code, never its cause, and fails with it. */
 const failLoad = (code: CustomerInvoiceLoadFailureCode) =>

@@ -14,6 +14,7 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 import { CustomerProfileService } from "./customer-profile.service";
 
 const customerEmail = testEmailAddress("ada");
@@ -27,6 +28,7 @@ const session = (
   accountId,
   email: reservationCustomerEmailSchema.make(customerEmail),
   deletionRequested: false,
+  ...testSessionProfile,
   ...overrides,
 });
 
@@ -187,6 +189,26 @@ describe("CustomerAccountContactService.current", () => {
       expect(outcome).toMatchObject({
         _tag: "Success",
         success: { name: "Ada Lovelace", phone: null },
+      });
+    }
+  );
+
+  test.each([
+    // What the Workspace writes: kept, it reads the same in every locale.
+    ["in E.164 form", "+420777777777", "+420777777777"],
+    // Entered without a country calling code, such as at the till: read in
+    // the base locale's region and offered with one, so a de-DE checkout
+    // doesn't read it as a German number.
+    ["as a national number", "777 777 777", "+420 777 777 777"],
+    ["with an international prefix", "00420777777777", "+420 777 777 777"],
+  ] as const)(
+    "offers a stored phone written %s in a form every locale reads alike",
+    async (_label, phone, offered) => {
+      const { outcome } = await runCurrent({ profile: profile({ phone }) });
+
+      expect(outcome).toMatchObject({
+        _tag: "Success",
+        success: { phone: offered },
       });
     }
   );

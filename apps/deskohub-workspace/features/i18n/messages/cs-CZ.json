@@ -98,9 +98,26 @@
   "legalScreenMarketingDescription": "Marketingová sdělení pro zákazníka můžeš spravovat na stránce ochrany osobních údajů v účtu, pokud je tvůj ověřený účet propojený s tímto záznamem zákazníka. Vyhrazený odkaz pro konkrétního zákazníka v budoucím marketingovém sdělení ti také může umožnit souhlas udělit nebo odvolat. Pokud žádná možnost není dostupná, kontaktuj podporu.",
   "legalScreenPreferencesUnavailable": "Cookies tohoto prohlížeče spravuj v nastavení cookies. Marketingová sdělení spravuj na stránce ochrany osobních údajů v účtu, pokud je tvůj ověřený účet propojený se záznamem zákazníka, prostřednictvím vyhrazeného odkazu pro konkrétního zákazníka v budoucím marketingovém sdělení nebo kontaktováním podpory.",
   "legalScreenUnavailable": "Nedostupné",
-  "legalScreenArchiveTitle": "Archiv tvých osobních údajů",
   "legalScreenArchiveDescription": "Žádost o archiv osobních údajů ani jeho stažení nejsou v účtu dostupné.",
-  "legalScreenArchiveAction": "Požádat o archiv osobních údajů",
+  "legalScreenExportTitle": "Stažení údajů z tvého účtu",
+  "legalScreenExportDescription": "Stáhni si strojově čitelný archiv ZIP s údaji, které o tobě Deskohub v účtu vede: identitu a profil, rezervace, platby, slevy, údaje o fakturách, souhlasy a přijaté právní podmínky a přístupy ke dveřím. Archiv vytváříme znovu při každém stažení a neukládáme ho.",
+  "legalScreenExportAction": "Stáhnout údaje z účtu",
+  "legalScreenExportPendingStatus": "Připravujeme stažení údajů z tvého účtu…",
+  "legalScreenExportDeliveredStatus": "Stahování údajů z tvého účtu začalo.",
+  "legalScreenExportErrorStatus": "Stažení údajů z tvého účtu se nepodařilo připravit. Zkus to prosím znovu.",
+  "legalScreenExportContentsToggle": "Co archiv obsahuje",
+  "legalScreenExportSectionIdentity": "Identita tvého účtu",
+  "legalScreenExportSectionDotyposProfile": "Tvůj zákaznický profil v rezervačním systému",
+  "legalScreenExportSectionReservationHistory": "Přehled tvých rezervací z rezervačního systému",
+  "legalScreenExportSectionWorkspaceReservations": "Záznamy tvých rezervací v systému Deskohub",
+  "legalScreenExportSectionPayments": "Tvoje platby a výsledky opožděných plateb",
+  "legalScreenExportSectionDiscountApplications": "Slevy uplatněné na tvoje platby",
+  "legalScreenExportSectionInvoices": "Údaje o tvých fakturách a stav doručení každého e-mailu s fakturou",
+  "legalScreenExportSectionConsents": "Tvůj marketingový souhlas a záznamy o přijatých právních podmínkách",
+  "legalScreenExportSectionAccessGrants": "Přístupy ke dveřím pro tvoje rezervace, bez PINů a přístupových kódů",
+  "legalScreenExportSectionManifest": "Manifest s popisem každé sekce",
+  "legalScreenExportOmissions": "Toto stažení není úplnou kopií všeho, co pokrývá úplná žádost o přístup k osobním údajům nebo o jejich přenositelnost. Neobsahuje faktury v PDF, analytické a e-mailové záznamy u našich zpracovatelů, záznamy nepropojené s tvým účtem ani další údaje, které je potřeba ověřit ručně. Můžeš si je vyžádat přes kontakt uvedený v zásadách ochrany osobních údajů.",
+  "legalScreenExportFullRequestLink": "Jak podat úplnou žádost o osobní údaje",
   "legalScreenSavePreferences": "Uložit nastavení souhlasů",
   "marketingPreferencesFormRowTitle": "Marketingová sdělení",
   "marketingPreferencesFormRowDescription": "Zapnutím povolíš Deskohubu zasílat ti budoucí marketingová a komunitní sdělení.",
@@ -156,12 +173,11 @@
   "effectLabel": "Spolehlivá služba",
   "sharedPackageLabel": "Sdílené zázemí",
   "workspaceStatusNote": "Web je dostupný ve více jazycích.",
-  "languageEnglish": "Angličtina",
-  "languageCzech": "Čeština",
   "skipToMainContent": "Přejít na hlavní obsah",
   "primaryNavigationLabel": "Hlavní navigace",
   "mobilePrimaryNavigationLabel": "Mobilní hlavní navigace",
   "languageSwitcherLabel": "Výběr jazyka",
+  "languageMenuTriggerLabel": "Jazyk: {language}",
   "openNavigationMenuLabel": "Otevřít navigační nabídku",
   "closeNavigationMenuLabel": "Zavřít navigační nabídku",
   "closeDialogLabel": "Zavřít",
@@ -363,7 +379,7 @@
   "landingOfferingOffices": "Soukromé kanceláře zatím nenabízíme.",
   "landingAmenitiesTitle": "Co tu najdeš",
   "landingAmenityInternetTitle": "Internet",
-  "landingAmenityInternetText": "Optický internet a Wi-Fi 6G.",
+  "landingAmenityInternetText": "Optický internet a Wi-Fi 6.",
   "landingAmenityWorkstationTitle": "Pracovní stanice",
   "landingAmenityWorkstationText": "K rezervovanému místu si přidáš dva monitory 27″ nebo 32″, v rozlišení QHD nebo 4K.",
   "landingAmenityCoffeeTitle": "Káva",
@@ -388,7 +404,7 @@
   "faqQuestionHowItWorks": "Jak to funguje?",
   "faqAnswerHowItWorks": "Místo si zarezervuješ a zaplatíš online v <reservation>rezervačním formuláři</reservation>. V potvrzovacím e-mailu dostaneš odkaz na stránku s PINem ke dveřím. PIN zadáš na klávesnici u hlavních dveří a během rezervace můžeš přicházet i odcházet.",
   "faqQuestionInternet": "Je tu kvalitní internetové připojení?",
-  "faqAnswerInternet": "K dispozici máme optický internet a Wi-Fi 6G.",
+  "faqAnswerInternet": "K dispozici máme optický internet a Wi-Fi 6.",
   "faqQuestionFood": "Můžu si přinést jídlo?",
   "faqAnswerFood": "Ano, jídlo si můžeš přinést a můžeš si také koupit nápoje z naší lednice. Máme dokonce talíře, příbory a malou troubu na ohřátí jídla!",
   "faqQuestionCalls": "Je tu prostor pro telefonování?",
@@ -508,15 +524,19 @@
   "reservationTierPerkProSetup": "profi setup",
   "reservationDateLabel": "Datum rezervace",
   "reservationDatePlaceholder": "Vyber datum",
-  "reservationDateCalendarButtonLabel": "{field}: vybrat v kalendáři",
-  "reservationDateInputFormat": "Formát: {format} nebo {isoFormat}",
-  "reservationDateInputDayToken": "DD",
-  "reservationDateInputMonthToken": "MM",
-  "reservationDateInputYearToken": "RRRR",
-  "reservationDateInputInvalid": "Zadej datum ve formátu {format} nebo {isoFormat}.",
-  "reservationDateInputBeforeMinimum": "Vyber datum nejdříve {date}.",
-  "reservationDateInputAfterMaximum": "Vyber datum nejpozději {date}.",
-  "reservationDateInputUnavailable": "Termín {date} není k dispozici. Vyber jiné datum.",
+  "dateInputCalendarButtonLabel": "{field}: vybrat v kalendáři",
+  "dateInputFormat": "Formát: {format} nebo {isoFormat}",
+  "dateInputDayToken": "DD",
+  "dateInputMonthToken": "MM",
+  "dateInputYearToken": "RRRR",
+  "dateInputInvalid": "Datum musí být ve formátu {format} nebo {isoFormat}.",
+  "dateInputBeforeMinimum": "Datum musí být nejdříve {date}.",
+  "dateInputAfterMaximum": "Datum musí být nejpozději {date}.",
+  "dateInputUnavailable": "Termín {date} není k dispozici.",
+  "dateInputClear": "Vymazat datum",
+  "dateTimeInputIncomplete": "Datum a čas musí být vyplněné oba, nebo ani jeden.",
+  "timeInputIncomplete": "Čas musí být úplný.",
+  "timeInputUnavailable": "Tento čas není k dispozici.",
   "reservationMeetingRoomMetadataTitle": "Rezervace zasedací místnosti",
   "reservationMeetingRoomMetadataDescription": "Vyber si den, začátek a délku: hodinu, 4 hodiny nebo celý den. Zasedací místnost na Palmovce je až pro 10 lidí a zaplatíš ji online.",
   "reservationMeetingRoomFormTitle": "Rezervuj zasedací místnost.",
@@ -990,19 +1010,79 @@
   "reservationValidationCoffeeRequired": "Káva je u tohoto tarifu zahrnutá a musí zůstat vybraná.",
   "automatedRequestRejected": "Tento požadavek vypadal jako automatizovaný, a tak jsme ho nemohli přijmout. Pokračuj prosím ve vlastním prohlížeči.",
   "reservationSecurityInvalidOrigin": "Rezervační požadavek se nepodařilo ověřit. Načti stránku znovu a zkus to prosím znovu.",
-  "contactValidationNameMinimum": "Jméno musí mít alespoň {min} znaky.",
-  "contactValidationNameMaximum": "Jméno může mít maximálně {max} znaků.",
+  "contactValidationNameMinimum": [
+    {
+      "declarations": ["input min", "local minPlural = min: plural"],
+      "selectors": ["minPlural"],
+      "match": {
+        "minPlural=one": "Jméno musí mít alespoň {min} znak.",
+        "minPlural=few": "Jméno musí mít alespoň {min} znaky.",
+        "minPlural=other": "Jméno musí mít alespoň {min} znaků."
+      }
+    }
+  ],
+  "contactValidationNameMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Jméno může mít maximálně {max} znak.",
+        "maxPlural=few": "Jméno může mít maximálně {max} znaky.",
+        "maxPlural=other": "Jméno může mít maximálně {max} znaků."
+      }
+    }
+  ],
   "contactValidationEmailRequired": "Email je povinný.",
   "contactValidationEmailInvalid": "Zadej platnou emailovou adresu.",
-  "contactValidationEmailMaximum": "Email může mít maximálně {max} znaků.",
+  "contactValidationEmailMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Email může mít maximálně {max} znak.",
+        "maxPlural=few": "Email může mít maximálně {max} znaky.",
+        "maxPlural=other": "Email může mít maximálně {max} znaků."
+      }
+    }
+  ],
   "contactEmailConfirmationLabel": "Zopakuj e-mail",
   "contactValidationEmailConfirmationMismatch": "E-maily se neshodují. Zkontroluj, že v nich není překlep.",
   "contactValidationEmailUndeliverable": "Na tuto emailovou adresu nelze doručit email. Zkontroluj, jestli v ní není překlep, protože na ni posíláme potvrzení a přístupový odkaz.",
-  "contactValidationPhoneInvalid": "Zadej platné české telefonní číslo.",
-  "contactValidationPhoneMaximum": "Telefon může mít maximálně {max} znaků.",
+  "contactValidationPhoneInvalid": "Zadej platné telefonní číslo. Číslo v mezinárodním formátu s + na začátku projde vždy.",
+  "contactValidationPhoneMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Telefon může mít maximálně {max} znak.",
+        "maxPlural=few": "Telefon může mít maximálně {max} znaky.",
+        "maxPlural=other": "Telefon může mít maximálně {max} znaků."
+      }
+    }
+  ],
   "contactValidationPhoneRequired": "Telefon je povinný.",
-  "contactValidationMessageMinimum": "Zpráva musí mít alespoň {min} znaků.",
-  "contactValidationMessageMaximum": "Zpráva může mít maximálně {max} znaků.",
+  "contactValidationMessageMinimum": [
+    {
+      "declarations": ["input min", "local minPlural = min: plural"],
+      "selectors": ["minPlural"],
+      "match": {
+        "minPlural=one": "Zpráva musí mít alespoň {min} znak.",
+        "minPlural=few": "Zpráva musí mít alespoň {min} znaky.",
+        "minPlural=other": "Zpráva musí mít alespoň {min} znaků."
+      }
+    }
+  ],
+  "contactValidationMessageMaximum": [
+    {
+      "declarations": ["input max", "local maxPlural = max: plural"],
+      "selectors": ["maxPlural"],
+      "match": {
+        "maxPlural=one": "Zpráva může mít maximálně {max} znak.",
+        "maxPlural=few": "Zpráva může mít maximálně {max} znaky.",
+        "maxPlural=other": "Zpráva může mít maximálně {max} znaků."
+      }
+    }
+  ],
   "galleryMetadataTitle": "Fotky coworkingu na Palmovce",
   "galleryMetadataDescription": "Fotky z Deskohub Workspace na Palmovce v Praze 8. Podívej se, jak to u nás vypadá, než si zarezervuješ místo nebo zasedací místnost.",
   "gallerySrTitle": "Galerie Workspace",
@@ -1463,7 +1543,7 @@
   "coworkingReservedDeskHours": "celý den, 24/7",
   "coworkingOpenSpaceText": "Sedneš si k volnému místu u sdíleného stolu. Hodí se na běžný pracovní den mimo domov.",
   "coworkingOpenSpacePointHours": "Od půlnoci do {until} v den rezervace",
-  "coworkingOpenSpacePointInternet": "Optický internet a Wi-Fi 6G",
+  "coworkingOpenSpacePointInternet": "Optický internet a Wi-Fi 6",
   "coworkingOpenSpacePointCoffee": "Kávu si můžeš přikoupit",
   "coworkingOpenSpaceCta": "Rezervovat sdílené místo",
   "coworkingReservedDeskText": "Stůl máš celý den jen pro sebe. Nemusíš hledat volné místo a přijít i odejít můžeš kdykoli ve dne i v noci.",
@@ -1474,7 +1554,7 @@
   "coworkingPricesNote": "Ceny doplňků a případné akce najdeš v <pricing>ceníku</pricing>.",
   "coworkingAmenitiesTitle": "Co tu najdeš",
   "coworkingAmenityInternetTitle": "Internet",
-  "coworkingAmenityInternetText": "Optický internet a Wi-Fi 6G zvládnou videohovory i velké soubory.",
+  "coworkingAmenityInternetText": "Optický internet a Wi-Fi 6 zvládnou videohovory i velké soubory.",
   "coworkingAmenityWorkstationTitle": "Pracovní stanice",
   "coworkingAmenityWorkstationText": "K vyhrazenému místu si přidáš dva monitory 27″ nebo 32″ v rozlišení QHD nebo 4K.",
   "coworkingAmenityKitchenTitle": "Kuchyňka",

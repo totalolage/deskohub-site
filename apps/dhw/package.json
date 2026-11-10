@@ -1,6 +1,6 @@
 {
   "name": "dhw",
-  "version": "1.33.0",
+  "version": "1.34.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,6 +10,7 @@
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
+    "@deskohub/i18n": "workspace:*",
     "@deskohub/workspace-admin-api": "workspace:*",
     "@effect/platform-bun": "4.0.0-beta.85",
     "effect": "4.0.0-beta.85",
