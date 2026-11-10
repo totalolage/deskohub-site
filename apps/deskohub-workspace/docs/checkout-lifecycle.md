@@ -117,7 +117,7 @@ Returning from the order summary to edit a reservation replaces the previous unp
 
 An existing reservation with a pending or completed payment is never silently cancelled or reused by a new form submission. The new submission starts a separate checkout journey.
 
-Every unpaid hold has its own expiry. Expired or abandoned holds are cancelled, with periodic recovery for work that was delayed or failed. A cancellation problem remains visible for operator recovery and must not be presented as a completed cancellation.
+Every unpaid hold has its own expiry. Expired or abandoned holds are cancelled, with periodic recovery for work that was delayed or failed. Workspace cancels an expired hold only while Dotypos still has it as a new, unconfirmed booking; a hold Dotypos has meanwhile confirmed or otherwise changed is never cancelled automatically and is left for an operator. A cancellation problem remains visible for operator recovery and must not be presented as a completed cancellation.
 
 Nexi does not publish an expiry guarantee for the current card payment page. Once Nexi has accepted a payment-page order, Workspace therefore keeps the reservation held for a 30-minute local abandonment window. At the end of that window, Workspace may expire and cancel the reservation only after a fresh Nexi lookup reports no operations and no authorized or captured amount. Any provider operation keeps the reservation held for payment reconciliation or operator attention.
 

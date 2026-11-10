@@ -253,8 +253,10 @@ function makeReservationHoldCleanupServiceLayer(
           )
         );
 
-      // Hold cleanup releases whatever it claims without the live Dotypos
-      // NEW check that supersession and late payment apply.
+      // Cleanup claims the hold, then cancels it only while Dotypos still
+      // keeps it NEW. A hold Dotypos kept is left for an operator: the
+      // release moved it to `cancellation_failed`, and the skip acknowledges
+      // the cleanup so nothing retries it.
       const releaseExpiredHold = Effect.fnUntraced(function* (input: {
         readonly orderId: WorkspaceReservationId;
         readonly checkedAt?: Temporal.Instant;
@@ -286,7 +288,14 @@ function makeReservationHoldCleanupServiceLayer(
             { orderId: input.orderId }
           );
         }
-        if (Predicate.isString(outcome) || !("released" in outcome)) {
+        if (Predicate.isString(outcome)) {
+          return "skipped" as const;
+        }
+        if ("refused" in outcome) {
+          yield* Effect.logError(
+            "Reservation hold cancellation refused: Dotypos kept the hold",
+            { orderId: input.orderId, dotyposStatus: outcome.refused }
+          );
           return "skipped" as const;
         }
         yield* Effect.logInfo("Reservation hold marked cancelled");

@@ -21,9 +21,10 @@ type DotyposHoldReleaseFailureCode =
  * What a release requires of the live Dotypos status before it cancels:
  *
  * - `require_new`: read it, cancel only `NEW`, take `CANCELLED` as already
- *   released, and refuse any other status. Session supersession.
- * - `unchecked`: cancel without reading it. Hold cleanup cancels every hold it
- *   claims, and late payment read `NEW` itself before claiming.
+ *   released, and refuse any other status. Hold cleanup and session
+ *   supersession.
+ * - `unchecked`: cancel without reading it. Late payment read `NEW` itself
+ *   before claiming.
  */
 type DotyposHoldLiveStatusRule = "require_new" | "unchecked";
 

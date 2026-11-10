@@ -153,49 +153,131 @@ describe.skipIf(!postgresDatabase)(
     describe("for an expired hold", () => {
       const holdExpiredAt = Temporal.Instant.from("2026-07-01T08:00:00Z");
 
-      test("claims the hold, cancels it in Dotypos without reading its status and records the expiry", async () => {
-        const hold = await heldHold();
-        const dotypos = makeDotypos(hold.id);
+      const expired = (hold: { readonly id: WorkspaceReservationId }) =>
+        ({
+          reason: "hold_expired",
+          reservationId: hold.id,
+          holdExpiredAt,
+        }) satisfies UnpaidHoldReleaseRequest;
 
-        const outcome = await release(
-          { reason: "hold_expired", reservationId: hold.id, holdExpiredAt },
-          dotypos
-        );
+      /**
+       * Every hold cleanup releases: a fresh claim, a re-claim of a
+       * cancellation that failed before, and a takeover of a claimed one.
+       */
+      const releasableHolds = [
+        ["a held hold", () => heldHold()],
+        [
+          "a hold whose cancellation failed before",
+          () =>
+            newReservation({
+              stage: { reservation: "cancellation_failed" },
+              overrides: { failureCode: "dotypos_cancel_failed" },
+            }),
+        ],
+        [
+          "a cancellation another run claimed",
+          () => newReservation({ stage: { reservation: "cancelling" } }),
+        ],
+      ] as const;
 
-        expect(outcome).toMatchObject({
-          _tag: "Success",
-          success: {
-            released: { id: hold.id, reservationState: "cancelling" },
-          },
-        });
-        expect(dotypos.calls).toEqual(["cancelReservation while cancelling"]);
-        expect(dotypos.cancelReservation).toHaveBeenCalledWith(
-          hold.dotyposReservationId
-        );
-        expect(await rowOf(hold.id)).toMatchObject({
-          reservationState: "cancelled",
-          reservationHoldExpiredAt: holdExpiredAt,
-        });
-      });
+      test.each(releasableHolds)(
+        "claims %s, then cancels it once Dotypos reports it NEW and records the expiry",
+        async (_, makeHold) => {
+          const hold = await makeHold();
+          const dotypos = makeDotypos(hold.id, "NEW");
 
-      test("finishes a cancellation another run claimed", async () => {
-        const hold = await newReservation({
-          stage: { reservation: "cancelling" },
-        });
-        const dotypos = makeDotypos(hold.id);
+          const outcome = await release(expired(hold), dotypos);
 
-        const outcome = await release(
-          { reason: "hold_expired", reservationId: hold.id, holdExpiredAt },
-          dotypos
-        );
+          expect(outcome).toMatchObject({
+            _tag: "Success",
+            success: {
+              released: { id: hold.id, reservationState: "cancelling" },
+            },
+          });
+          expect(dotypos.calls).toEqual([
+            "getReservationStatus while cancelling",
+            "cancelReservation while cancelling",
+          ]);
+          expect(dotypos.getReservationStatus).toHaveBeenCalledWith(
+            hold.dotyposReservationId
+          );
+          expect(dotypos.cancelReservation).toHaveBeenCalledWith(
+            hold.dotyposReservationId
+          );
+          expect(await rowOf(hold.id)).toMatchObject({
+            reservationState: "cancelled",
+            reservationHoldExpiredAt: holdExpiredAt,
+          });
+        }
+      );
 
-        expect(outcome).toMatchObject({
-          _tag: "Success",
-          success: { released: { id: hold.id } },
-        });
-        expect(dotypos.calls).toEqual(["cancelReservation while cancelling"]);
-        expect((await rowOf(hold.id)).reservationState).toBe("cancelled");
-      });
+      test.each(releasableHolds)(
+        "records the cancellation of %s that Dotypos already cancelled without cancelling again",
+        async (_, makeHold) => {
+          const hold = await makeHold();
+          const dotypos = makeDotypos(hold.id, "CANCELLED");
+
+          const outcome = await release(expired(hold), dotypos);
+
+          expect(outcome).toMatchObject({
+            _tag: "Success",
+            success: { released: { id: hold.id } },
+          });
+          expect(dotypos.calls).toEqual([
+            "getReservationStatus while cancelling",
+          ]);
+          expect(await rowOf(hold.id)).toMatchObject({
+            reservationState: "cancelled",
+            reservationHoldExpiredAt: holdExpiredAt,
+          });
+        }
+      );
+
+      test.each(releasableHolds)(
+        "refuses %s that Dotypos confirmed and marks its cancellation failed",
+        async (_, makeHold) => {
+          const hold = await makeHold();
+          const dotypos = makeDotypos(hold.id, "CONFIRMED");
+
+          const outcome = await release(expired(hold), dotypos);
+
+          expect(outcome).toMatchObject({
+            _tag: "Success",
+            success: { refused: "CONFIRMED" },
+          });
+          expect(dotypos.calls).toEqual([
+            "getReservationStatus while cancelling",
+          ]);
+          expect(dotypos.cancelReservation).not.toHaveBeenCalled();
+          expect(await rowOf(hold.id)).toMatchObject({
+            reservationState: "cancellation_failed",
+            failureCode: "dotypos_cancel_failed",
+          });
+        }
+      );
+
+      test.each(releasableHolds)(
+        "marks the cancellation of %s failed when its status can't be read",
+        async (_, makeHold) => {
+          const hold = await makeHold();
+          const dotypos = makeDotypos(hold.id);
+          dotypos.getReservationStatus.mockImplementationOnce(() =>
+            Effect.fail(dotyposUnavailable("getReservationStatus"))
+          );
+
+          const outcome = await release(expired(hold), dotypos);
+
+          expect(outcome).toMatchObject({
+            _tag: "Failure",
+            failure: { _tag: "DotyposUnavailable" },
+          });
+          expect(dotypos.cancelReservation).not.toHaveBeenCalled();
+          expect(await rowOf(hold.id)).toMatchObject({
+            reservationState: "cancellation_failed",
+            failureCode: "dotypos_cancel_failed",
+          });
+        }
+      );
 
       test("leaves a paid hold alone", async () => {
         const hold = await newReservation({
@@ -203,10 +285,7 @@ describe.skipIf(!postgresDatabase)(
         });
         const dotypos = makeDotypos(hold.id);
 
-        const outcome = await release(
-          { reason: "hold_expired", reservationId: hold.id, holdExpiredAt },
-          dotypos
-        );
+        const outcome = await release(expired(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Success",
@@ -219,22 +298,21 @@ describe.skipIf(!postgresDatabase)(
         });
       });
 
-      test("marks the cancellation failed when Dotypos can't cancel the hold", async () => {
+      test("marks the cancellation failed when Dotypos can't cancel the NEW hold", async () => {
         const hold = await heldHold();
-        const dotypos = makeDotypos(hold.id);
+        const dotypos = makeDotypos(hold.id, "NEW");
         dotypos.cancelReservation.mockImplementationOnce(() =>
           Effect.fail(dotyposUnavailable("cancelReservation"))
         );
 
-        const outcome = await release(
-          { reason: "hold_expired", reservationId: hold.id, holdExpiredAt },
-          dotypos
-        );
+        const outcome = await release(expired(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Failure",
           failure: { _tag: "DotyposUnavailable" },
         });
+        expect(dotypos.getReservationStatus).toHaveBeenCalledTimes(1);
+        expect(dotypos.cancelReservation).toHaveBeenCalledTimes(1);
         expect(await rowOf(hold.id)).toMatchObject({
           reservationState: "cancellation_failed",
           failureCode: "dotypos_cancel_failed",
@@ -253,10 +331,7 @@ describe.skipIf(!postgresDatabase)(
           ).pipe(Effect.orDie)
         );
 
-        const outcome = await release(
-          { reason: "hold_expired", reservationId: hold.id, holdExpiredAt },
-          dotypos
-        );
+        const outcome = await release(expired(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Success",
