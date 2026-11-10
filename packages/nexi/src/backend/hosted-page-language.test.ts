@@ -20,8 +20,10 @@ describe("toHostedPageLanguage", () => {
       ["en-US", "ENG"],
       ["de-DE", "DEU"],
       ["sk-SK", "SLK"],
-      // Nexi offers no Ukrainian.
+      // Nexi offers no Ukrainian, Vietnamese or Hindi.
       ["uk-UA", "ENG"],
+      ["vi-VN", "ENG"],
+      ["hi-IN", "ENG"],
     ] as const) {
       expect(
         toHostedPageLanguage(getLocaleDefinition(locale).nexiLanguage)

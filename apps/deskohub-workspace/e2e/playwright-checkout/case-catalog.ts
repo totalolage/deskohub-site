@@ -25,6 +25,8 @@ export const workspaceE2ENonPaymentCaseIds = [
   "locale-smoke-de-de",
   "locale-smoke-uk-ua",
   "locale-smoke-sk-sk",
+  "locale-smoke-vi-vn",
+  "locale-smoke-hi-in",
   "discount-code-unknown",
   "discount-code-customer-ineligible",
   "reservation-url-state-cowork",

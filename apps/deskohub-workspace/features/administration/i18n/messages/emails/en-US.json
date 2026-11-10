@@ -207,7 +207,7 @@
   "emailsEditorBlockSortDescending": "Descending",
   "emailsEditorBlockLimit": "Show at most",
   "emailsEditorBlockLimitHint": "Leave empty to show every item.",
-  "emailsEditorEnglishFallbackMissing": "Without an English translation, German and Ukrainian recipients without a translation of their own get the Czech one.",
+  "emailsEditorEnglishFallbackMissing": "Without an English translation, recipients whose language has no translation of its own and falls back to English get the Czech one.",
   "emailsEditorProblemValuePath": "Choose a customer field.",
   "emailsEditorProblemValueSort": "Choose both the sort field and the direction.",
   "emailsEditorProblemValueDiscount": "Choose a discount.",
