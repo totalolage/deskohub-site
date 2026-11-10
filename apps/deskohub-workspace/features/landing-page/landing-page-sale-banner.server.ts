@@ -6,6 +6,7 @@ import {
   type WorkspaceProductFamily,
   workspaceProductFamilies,
 } from "@/features/discounts/product-target";
+import { ReleaseGateUnavailableError } from "@/features/feature-flags/backend/release-gate";
 import type { Locale } from "@/features/i18n";
 import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
@@ -20,16 +21,20 @@ export const getActiveLandingPageSaleBanner = Effect.fn(
       getActivePublicSales({ locale })
     ),
     Effect.flatMap(getLandingPageSaleBanner),
-    Effect.tapError((cause) =>
-      Effect.logWarning("Landing sale banner lookup failed").pipe(
-        Effect.annotateLogs({
-          cause,
-          landingPageBoundary: "sale_banner",
-          landingPageErrorReason: "sale_lookup_failed",
-        })
-      )
-    ),
-    Effect.orElseSucceed(() => undefined)
+    // A release gate PostHog can't decide fails the banner, so a stored home
+    // page keeps its last good banner instead of storing none.
+    Effect.catchIf(
+      (error) => !(error instanceof ReleaseGateUnavailableError),
+      (cause) =>
+        Effect.logWarning("Landing sale banner lookup failed").pipe(
+          Effect.annotateLogs({
+            cause,
+            landingPageBoundary: "sale_banner",
+            landingPageErrorReason: "sale_lookup_failed",
+          }),
+          Effect.as(undefined)
+        )
+    )
   )
 );
 

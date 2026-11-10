@@ -14,9 +14,10 @@ const meetingRoomPageRequest = releaseGateForRequest(
 /**
  * The meeting-room page release gate, decided at most once per server
  * render, so the page metadata, page content, header, and landing hero
- * share one evaluation.
+ * share one evaluation. They are stored in static shells, so it rejects
+ * while PostHog can't decide the flag (`ReleaseGateRequest.decision`).
  */
-export const isMeetingRoomPageEnabled = meetingRoomPageRequest.isOpen;
+export const isMeetingRoomPageEnabled = meetingRoomPageRequest.decision;
 
 /** The meeting-room page gate backed by the request's one decision. */
 export const MeetingRoomPageReleaseGateRequest = meetingRoomPageRequest.layer;

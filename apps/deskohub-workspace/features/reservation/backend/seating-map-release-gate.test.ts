@@ -7,9 +7,11 @@ test("opens on the seating_map flag", async () => {
     await decideReleaseGateOnlyFor(SeatingMapReleaseGate, "seating_map")
   ).toEqual({
     isOpen: true,
+    decision: true,
     release: "on",
     lookups: [
       ["isEnabled", "seating_map"],
+      ["decision", "seating_map"],
       ["constantValue", "seating_map"],
     ],
   });

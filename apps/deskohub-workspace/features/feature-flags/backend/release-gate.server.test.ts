@@ -2,8 +2,9 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, spyOn, test } from "bun:test";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
-import { Effect } from "effect";
+import { Effect, Logger } from "effect";
 import { runReactServerFixture } from "@/shared/testing/react-server-fixture.test-utils";
+import { ReleaseGateUnavailableError } from "./release-gate";
 import type { ReleaseGateRequestOptions } from "./release-gate.server";
 import {
   TestReleaseGate,
@@ -51,7 +52,71 @@ const decideRequest = async (
   }
 };
 
+// Decides the request's gate for stored output against PostHog answering
+// with `decision`, as `decision()` and as the request layer.
+const decideStoredOutput = async (
+  options: ReleaseGateRequestOptions,
+  decision: Effect.Effect<boolean, PostHogFeatureFlagEvaluationError>
+) => {
+  const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+  try {
+    const request = releaseGateForRequest(
+      testReleaseGateEvaluating(
+        () => Effect.succeed(true),
+        () => decision
+      ),
+      options
+    );
+    return await Promise.allSettled([
+      request.decision(),
+      Effect.runPromise(
+        TestReleaseGate.decision.pipe(
+          Effect.provide(request.layer),
+          Effect.provide(Logger.layer([]))
+        )
+      ),
+      request.isOpen(),
+    ]);
+  } finally {
+    warn.mockRestore();
+  }
+};
+
 describe("releaseGateForRequest", () => {
+  test.each([closeOnRunFailure, rejectOnRunFailure])(
+    "rejects the decision for stored output while PostHog can't decide the flag, apart from the fail-closed read ($whenRunFails)",
+    async (options) => {
+      const [decision, layerDecision, isOpen] = await decideStoredOutput(
+        options,
+        Effect.fail(
+          new PostHogFeatureFlagEvaluationError({
+            message: "Could not evaluate the PostHog feature flag.",
+            cause: undefined,
+          })
+        )
+      );
+
+      for (const settled of [decision, layerDecision]) {
+        expect(settled.status).toBe("rejected");
+        if (settled.status === "rejected") {
+          expect(settled.reason).toBeInstanceOf(ReleaseGateUnavailableError);
+          expect(settled.reason.flags).toEqual(["webmcp_site_tools"]);
+        }
+      }
+      expect(isOpen).toEqual({ status: "fulfilled", value: true });
+    }
+  );
+
+  test("answers PostHog's explicit false as closed in the decision for stored output", async () => {
+    expect(
+      await decideStoredOutput(rejectOnRunFailure, Effect.succeed(false))
+    ).toEqual([
+      { status: "fulfilled", value: false },
+      { status: "fulfilled", value: false },
+      { status: "fulfilled", value: true },
+    ]);
+  });
+
   test.each([closeOnRunFailure, rejectOnRunFailure])(
     "keeps the gate's own fail-closed policy when the flag is unavailable ($whenRunFails)",
     async (options) => {

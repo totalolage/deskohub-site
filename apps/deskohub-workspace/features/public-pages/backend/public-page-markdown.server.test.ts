@@ -8,6 +8,7 @@ import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings"
 import { DiscountDefinitionRepositoryMock } from "@/features/discounts/discount-definition.repository.mock";
 import type { DiscountReleaseGates } from "@/features/discounts/discount-release-gate.service";
 import { storedDiscountIdSchema } from "@/features/discounts/persistence-contracts";
+import { classifiedConstancy } from "@/features/feature-flags/backend/feature-flag-constancy.test-utils";
 import { m } from "@/features/i18n";
 import { publicPages } from "@/features/public-pages/public-page-definitions";
 import { salesCalendarIdSchema } from "@/shared/backend/config/calendar-resource.config";
@@ -33,6 +34,8 @@ mock.module(
   () => ({
     getGlobalWorkspaceFeatureFlagValues: () => Promise.resolve(undefined),
     getGlobalWorkspaceFeatureFlagValue: () => Promise.resolve(undefined),
+    getWorkspaceFeatureFlagConstancy: () =>
+      Promise.resolve(classifiedConstancy(undefined)),
   })
 );
 

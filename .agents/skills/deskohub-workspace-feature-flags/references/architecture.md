@@ -38,7 +38,9 @@ Overrides win over every source. Missing management configuration skips the clas
 
 `getConstantEnabledValue` in `packages/posthog/src/feature-flags/definitions.ts` holds these rules.
 
-`isEnabled` returns a constant directly. `constantValue` returns only a constant, as an `Option`, and never reads the request or calls PostHog. `evaluateFlags` returns constants locally only when every requested flag is constant. Never infer constancy from an evaluated value.
+`isEnabled` returns a constant directly; otherwise it evaluates remotely (below), which also stands in for a classification that couldn't be read. `decision` serves output that can be stored: it returns a constant, evaluates a flag decided per visitor remotely, and fails without reading the request or calling `/flags` while the classification source is `none`, since a prerender can't read the request and its stored output must not depend on a guess. `constantValue` returns only a constant, as an `Option`, never reads the request or calls PostHog, and fails while the source is `none`; `loadGlobalRelease` counts that as `undecided`, so `GlobalReleaseGate` defers the gate to the request. `evaluateFlags` returns constants locally only when every requested flag is constant. Never infer constancy from an evaluated value.
+
+A build prerenders stored output with `decision`, so it fails on a gated page or shell only when the definition list fails and the process has neither a last-known classification nor a snapshot within its age limit. Next.js may report that prerender failure as an unstable `Date.now()` read; the `Release gate unavailable; the read fails` warning logged before it names the flag. At runtime the same failure fails a regeneration, so Next.js and Vercel keep serving the last good copy and retry.
 
 ### One remote evaluation per request
 
@@ -46,7 +48,7 @@ Any other read goes through `evaluateRequestFlags` (`backend/request-flag-evalua
 
 - The subject is the consented PostHog visitor identity, or the fixed `deskohub-workspace:global-release` subject (with `sendFeatureFlagEvents: false`) before consent and for work that serves no visitor (`backend/subject.ts`).
 - The evaluation is shared per request and subject, keyed by the request's headers object: the headers a Server Action, route, or HttpApi boundary captured (`CurrentWorkspaceRequestHeaders`), else Next's request headers, which are one object per request. Server Components, Server Actions, route handlers, and Effect layers of one request share it without React `cache`. A run outside any request (no captured headers and a visitor its boundary resolved, such as a task) shares it per build of `WorkspaceFeatureFlagService.Default`.
-- An incomplete classification (definitions unavailable) adds flags to that one evaluation; it never fans out per gate.
+- An incomplete classification (definitions unavailable) adds flags to that one evaluation for `isEnabled`; it never fans out per gate. `decision` never evaluates such a flag.
 - A consented visitor's evaluation uses the SDK's `evaluateFlags` snapshot, so reading a flag still records its `$feature_flag_called` event, once per flag and visitor per client. The global subject records none.
 
 The global subject's result is the same for every anonymous visitor while no flag targets persons or groups, so each isolate keeps it in an Effect `Cache` keyed by subject id and sorted flag set: 60 seconds for a complete evaluation, 15 seconds for a failed one or one PostHog left incomplete (the Node SDK turns failed, timed-out, or quota-limited evaluations into missing flags, not errors). Identified visitors never use it. When a flag gains person or group targeting, drop this cache.

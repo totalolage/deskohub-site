@@ -11,7 +11,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (env.VERCEL_ENV !== "production") return [];
 
   // Release gates change without a deploy. Evaluate them per request, as the
-  // gated pages do, so a build-time value never lists a page that 404s.
+  // gated pages do, so a build-time value never lists a page that 404s. A
+  // gate PostHog can't decide fails the response instead of dropping its
+  // page; crawlers keep the sitemap they fetched last.
   await connection();
   const pages = await PublishedPublicPagesService.pipe(
     Effect.flatMap((publishedPages) => publishedPages.list),

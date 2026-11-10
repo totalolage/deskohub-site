@@ -1,7 +1,11 @@
 import { Effect, Layer, Option } from "effect";
 import type { PostHogFeatureFlagKey } from "../generated/contract";
 import type { GlobalRelease } from "./global-release";
-import { ReleaseGate, type ReleaseGateClass } from "./release-gate";
+import {
+  ReleaseGate,
+  type ReleaseGateClass,
+  type ReleaseGateUnavailableError,
+} from "./release-gate";
 import type {
   IWorkspaceFeatureFlagService,
   WorkspaceFeatureFlagService,
@@ -21,23 +25,29 @@ export const releaseGateOverFlags = <Self>(
   },
   featureFlags: Layer.Layer<WorkspaceFeatureFlagService>
 ): ReleaseGateClass<Self> => ({
+  flags: gate.flags,
   isOpen: gate.isOpen,
+  decision: gate.decision,
   fromDecision: gate.fromDecision,
   fromEvaluation: gate.fromEvaluation,
   Live: gate.Default.pipe(Layer.provide(featureFlags)),
 });
 
-/** `TestReleaseGate` whose `Live` evaluates the flag with `isEnabled`. */
+/**
+ * `TestReleaseGate` whose `Live` evaluates the flag with `isEnabled`, and
+ * with `decision` for output that can be stored (`isEnabled` by default).
+ */
 export const testReleaseGateEvaluating = (
-  isEnabled: IWorkspaceFeatureFlagService["isEnabled"]
+  isEnabled: IWorkspaceFeatureFlagService["isEnabled"],
+  decision: IWorkspaceFeatureFlagService["decision"] = isEnabled
 ): ReleaseGateClass<TestReleaseGate> =>
   releaseGateOverFlags(
     TestReleaseGate,
-    WorkspaceFeatureFlagServiceMock({ isEnabled })
+    WorkspaceFeatureFlagServiceMock({ isEnabled, decision })
   );
 
 type FlagLookup = readonly [
-  "isEnabled" | "constantValue",
+  "isEnabled" | "decision" | "constantValue",
   PostHogFeatureFlagKey,
 ];
 
@@ -49,10 +59,15 @@ type FlagLookup = readonly [
 export const decideReleaseGateOnlyFor = async <Self>(
   gate: {
     readonly isOpen: Effect.Effect<boolean, never, Self>;
+    readonly decision: Effect.Effect<
+      boolean,
+      ReleaseGateUnavailableError,
+      Self
+    >;
     readonly Default: Layer.Layer<Self, never, WorkspaceFeatureFlagService>;
     readonly release: Effect.Effect<
       GlobalRelease,
-      never,
+      ReleaseGateUnavailableError,
       WorkspaceFeatureFlagService
     >;
   },
@@ -65,17 +80,23 @@ export const decideReleaseGateOnlyFor = async <Self>(
         lookups.push(["isEnabled", key]);
         return key === flag;
       }),
+    decision: (key) =>
+      Effect.sync(() => {
+        lookups.push(["decision", key]);
+        return key === flag;
+      }),
     constantValue: (key) =>
       Effect.sync(() => {
         lookups.push(["constantValue", key]);
         return Option.some(key === flag);
       }),
   });
-  const [isOpen, release] = await Effect.runPromise(
+  const [isOpen, decision, release] = await Effect.runPromise(
     Effect.all([
       gate.isOpen.pipe(Effect.provide(gate.Default)),
+      gate.decision.pipe(Effect.provide(gate.Default)),
       gate.release,
     ]).pipe(Effect.provide(featureFlags))
   );
-  return { isOpen, release, lookups };
+  return { isOpen, decision, release, lookups };
 };

@@ -7,9 +7,11 @@ test("opens on the webmcp_site_tools flag", async () => {
     await decideReleaseGateOnlyFor(SiteToolsReleaseGate, "webmcp_site_tools")
   ).toEqual({
     isOpen: true,
+    decision: true,
     release: "on",
     lookups: [
       ["isEnabled", "webmcp_site_tools"],
+      ["decision", "webmcp_site_tools"],
       ["constantValue", "webmcp_site_tools"],
     ],
   });

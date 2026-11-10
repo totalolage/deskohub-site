@@ -1,7 +1,7 @@
-import type {
+import {
   PostHogFeatureFlagEvaluationError,
-  PostHogFeatureFlagEvaluationOptions,
-  TypedPostHogFeatureFlagEvaluationSnapshot,
+  type PostHogFeatureFlagEvaluationOptions,
+  type TypedPostHogFeatureFlagEvaluationSnapshot,
 } from "@deskohub/posthog/feature-flags/node";
 import { Context, Effect, Layer, Option } from "effect";
 import type {
@@ -22,17 +22,37 @@ export interface IWorkspaceFeatureFlagService {
     WorkspaceFeatureFlagSnapshot,
     PostHogFeatureFlagEvaluationError
   >;
+  /**
+   * The flag's value: a constant, else the request's evaluation, which also
+   * stands in for a classification that couldn't be read.
+   */
   readonly isEnabled: <Key extends PostHogFeatureFlagKey>(
     key: Key
   ) => Effect.Effect<boolean, PostHogFeatureFlagEvaluationError>;
   /**
+   * The flag's value for output that can be stored: a constant, else the
+   * request's evaluation of a flag decided per visitor. Fails without
+   * reading the request when no classification could be read, since a
+   * prerender can't read the request.
+   */
+  readonly decision: <Key extends PostHogFeatureFlagKey>(
+    key: Key
+  ) => Effect.Effect<boolean, PostHogFeatureFlagEvaluationError>;
+  /**
    * The flag's value when it is the same for every visitor, read without the
-   * request; none when the flag is decided per visitor.
+   * request; none when the flag is decided per visitor. Fails when no
+   * classification could be read.
    */
   readonly constantValue: <Key extends PostHogFeatureFlagKey>(
     key: Key
-  ) => Effect.Effect<Option.Option<boolean>>;
+  ) => Effect.Effect<Option.Option<boolean>, PostHogFeatureFlagEvaluationError>;
 }
+
+const unclassifiedFlag = () =>
+  new PostHogFeatureFlagEvaluationError({
+    message: "PostHog feature flag definitions are unavailable.",
+    cause: undefined,
+  });
 
 export class WorkspaceFeatureFlagService extends Context.Service<
   WorkspaceFeatureFlagService,
@@ -48,6 +68,7 @@ export class WorkspaceFeatureFlagService extends Context.Service<
         {
           getGlobalWorkspaceFeatureFlagValue,
           getGlobalWorkspaceFeatureFlagValues,
+          getWorkspaceFeatureFlagConstancy,
         },
         { evaluateRequestFlags, isFlagEnabled, makeRunEvaluations },
       ] = await Promise.all([
@@ -56,6 +77,8 @@ export class WorkspaceFeatureFlagService extends Context.Service<
       ]);
       // One remote evaluation per request, or per build outside any request.
       const requestFlags = evaluateRequestFlags(makeRunEvaluations());
+      const constancyOf = (key: PostHogFeatureFlagKey) =>
+        Effect.promise(() => getWorkspaceFeatureFlagConstancy(key));
 
       return WorkspaceFeatureFlagService.from({
         evaluateFlags: Effect.fn("WorkspaceFeatureFlagService.evaluateFlags")(
@@ -86,10 +109,34 @@ export class WorkspaceFeatureFlagService extends Context.Service<
             )
           )
         ),
+        decision: Effect.fn("WorkspaceFeatureFlagService.decision")((key) =>
+          constancyOf(key).pipe(
+            Effect.flatMap((constancy) => {
+              if (constancy.kind === "constant") {
+                return Effect.succeed(constancy.value);
+              }
+              if (constancy.kind === "unclassified") {
+                return Effect.fail(unclassifiedFlag());
+              }
+              return requestFlags.pipe(
+                Effect.flatMap((flags) => isFlagEnabled(flags, key))
+              );
+            })
+          )
+        ),
         constantValue: Effect.fn("WorkspaceFeatureFlagService.constantValue")(
           (key) =>
-            Effect.promise(() => getGlobalWorkspaceFeatureFlagValue(key)).pipe(
-              Effect.map(Option.fromUndefinedOr)
+            constancyOf(key).pipe(
+              Effect.flatMap((constancy) => {
+                if (constancy.kind === "unclassified") {
+                  return Effect.fail(unclassifiedFlag());
+                }
+                return Effect.succeed(
+                  constancy.kind === "constant"
+                    ? Option.some(constancy.value)
+                    : Option.none()
+                );
+              })
             )
         ),
       });

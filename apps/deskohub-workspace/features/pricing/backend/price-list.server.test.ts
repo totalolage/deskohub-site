@@ -6,6 +6,7 @@ import { Effect, Layer } from "effect";
 import type { PublicPriceListOffering } from "@/features/checkout/public-offerings";
 import { calendarSaleDiscountServiceLayer } from "@/features/discounts/calendar-sale.test-utils";
 import type { DiscountReleaseGates } from "@/features/discounts/discount-release-gate.service";
+import { classifiedConstancy } from "@/features/feature-flags/backend/feature-flag-constancy.test-utils";
 import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
@@ -33,6 +34,8 @@ mock.module(
     getGlobalWorkspaceFeatureFlagValues: () => Promise.resolve(undefined),
     getGlobalWorkspaceFeatureFlagValue: (key: PostHogFeatureFlagKey) =>
       Promise.resolve(constantFlags[key]),
+    getWorkspaceFeatureFlagConstancy: (key: PostHogFeatureFlagKey) =>
+      Promise.resolve(classifiedConstancy(constantFlags[key])),
   })
 );
 

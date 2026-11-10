@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import * as envModule from "@/env";
+import { ReleaseGateUnavailableError } from "@/features/feature-flags/backend/release-gate";
 import { locales } from "@/features/i18n";
 import { PublishedPublicPagesService } from "@/features/public-pages/backend";
 import {
@@ -35,11 +36,22 @@ mock.module("@/shared/backend/workspace-effect", () => ({
 
 // The service's own tests cover release-gate evaluation; here it reports
 // which pages are published.
+// While `gatesUnavailable`, PostHog can't decide a page's release gate.
 let publishedPages: ReadonlyArray<PublicPage> = publicPages;
+let gatesUnavailable = false;
 const originalLive = PublishedPublicPagesService.Live;
 Object.assign(PublishedPublicPagesService, {
   Live: Layer.succeed(PublishedPublicPagesService, {
-    list: Effect.sync(() => publishedPages),
+    list: Effect.suspend(() =>
+      gatesUnavailable
+        ? Effect.fail(
+            new ReleaseGateUnavailableError({
+              flags: ["meeting_room_page"],
+              message: "PostHog couldn't decide the release gate.",
+            })
+          )
+        : Effect.succeed(publishedPages)
+    ),
   }),
 });
 afterAll(() => {
@@ -95,6 +107,17 @@ describe("sitemap.xml", () => {
 
     expect(urls.toSorted()).toEqual(localizedUrls(pages).toSorted());
     expect(urls).not.toContain(`${origin}/en-US/reservation/office`);
+  });
+
+  test("fails, instead of leaving out a published page, while PostHog can't decide its gate", async () => {
+    gatesUnavailable = true;
+    try {
+      await expect(productionSitemap()).rejects.toBeInstanceOf(
+        ReleaseGateUnavailableError
+      );
+    } finally {
+      gatesUnavailable = false;
+    }
   });
 
   test("gives every entry reciprocal alternates for every locale and x-default", async () => {

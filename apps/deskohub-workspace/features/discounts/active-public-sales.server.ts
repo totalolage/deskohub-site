@@ -12,8 +12,10 @@ import { logDiscountResolutionFailure } from "./resolution-logging";
 export const getActivePublicSales = Effect.fn("Discounts.getActivePublicSales")(
   (input: { readonly locale: Locale }) =>
     DiscountReleaseGateService.pipe(
+      // Read before `connection()`, so a closed gate's empty banner can be
+      // stored in the home page's shell: only PostHog's answer closes it.
       Effect.flatMap((releaseGates) =>
-        releaseGates.evaluate({ operation: "discover_active_sales" })
+        releaseGates.decision({ operation: "discover_active_sales" })
       ),
       Effect.flatMap(({ calendarSales }) =>
         calendarSales

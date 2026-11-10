@@ -2,11 +2,12 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
-import { Context, Effect, Layer, Logger } from "effect";
+import { Context, Effect, Layer, Logger, Result } from "effect";
 import {
   type IWorkspaceFeatureFlagService,
   WorkspaceFeatureFlagService,
 } from "@/features/feature-flags/backend";
+import { ReleaseGateUnavailableError } from "@/features/feature-flags/backend/release-gate";
 import { DiscountReleaseGateService } from "./discount-release-gate.service";
 
 type LogRecord = {
@@ -50,13 +51,16 @@ const { getActivePublicSales } = await import("./active-public-sales.server");
 const originalGatesLive = DiscountReleaseGateService.Live;
 
 const installFeatureFlags = (
-  evaluateFlags: IWorkspaceFeatureFlagService["evaluateFlags"]
+  decision: IWorkspaceFeatureFlagService["decision"]
 ) => {
   Object.assign(DiscountReleaseGateService, {
     Live: DiscountReleaseGateService.Default.pipe(
       Layer.provide(
         Layer.succeed(WorkspaceFeatureFlagService, {
-          evaluateFlags,
+          // The banner can be stored in the home page's shell, so it reads
+          // the gates' decision for stored output only.
+          decision,
+          evaluateFlags: () => Effect.die("evaluateFlags should not be called"),
           isEnabled: () => Effect.die("isEnabled should not be called"),
           constantValue: () => Effect.die("constantValue should not be called"),
         })
@@ -81,27 +85,46 @@ afterEach(() => {
   logRecords.length = 0;
 });
 
+const activeSales = () =>
+  Effect.runPromise(
+    getActivePublicSales({ locale: "en-US" }).pipe(
+      Effect.provide(Logger.layer([logger])),
+      Effect.result
+    )
+  );
+
 describe("getActivePublicSales", () => {
-  test("fails closed without request or provider work and logs evaluation failures", async () => {
-    const evaluateFlags = mock(() => Effect.fail(evaluationError()));
-    installFeatureFlags(evaluateFlags);
+  test("fails without request or provider work while PostHog can't decide the gates, and logs it", async () => {
+    const decision = mock(() => Effect.fail(evaluationError()));
+    installFeatureFlags(decision);
 
-    await expect(
-      Effect.runPromise(
-        getActivePublicSales({ locale: "en-US" }).pipe(
-          Effect.provide(Logger.layer([logger]))
-        )
-      )
-    ).resolves.toEqual([]);
+    const result = await activeSales();
 
-    expect(evaluateFlags).toHaveBeenCalledWith({
-      flagKeys: ["calendar_sales", "customer_discounts", "discount_codes"],
-    });
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(ReleaseGateUnavailableError);
+      expect(result.failure.flags).toEqual([
+        "calendar_sales",
+        "customer_discounts",
+        "discount_codes",
+      ]);
+    }
+    expect(decision).toHaveBeenCalledWith("calendar_sales");
     expect(connection).not.toHaveBeenCalled();
     expect(discoverActiveSales).not.toHaveBeenCalled();
     expect(logRecords).toContainEqual({
       level: "Warn",
-      message: "Release gate unavailable; it stays closed",
+      message: "Release gate unavailable; the read fails",
     });
+  });
+
+  test("answers no sales without request or provider work while the sale gate is off", async () => {
+    installFeatureFlags((key) => Effect.succeed(key !== "calendar_sales"));
+
+    const result = await activeSales();
+
+    expect(result).toEqual(Result.succeed([]));
+    expect(connection).not.toHaveBeenCalled();
+    expect(discoverActiveSales).not.toHaveBeenCalled();
   });
 });

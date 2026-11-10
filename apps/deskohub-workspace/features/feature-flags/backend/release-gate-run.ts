@@ -48,21 +48,41 @@ export const releaseGateForRun = <Self>(
             Layer.CurrentMemoMap.getOrCreate(context),
             Context.get(context, Scope.Scope)
           )
-        ).pipe(
-          Effect.flatMap((services) =>
-            gate.isOpen.pipe(Effect.provideContext(services))
-          ),
-          policy.whenRunFails === "close"
-            ? catchRecoverableCause(() =>
-                Effect.logWarning(
-                  "Release gate run failed; it stays closed"
-                ).pipe(
-                  Effect.annotateLogs({ failureCode: policy.failureCode }),
-                  Effect.as(false)
-                )
-              )
-            : identity
         )
       )
-    ).pipe(Effect.map(gate.fromEvaluation))
+    ).pipe(
+      Effect.flatMap((services) =>
+        Effect.all({
+          isOpen: cached(
+            services.pipe(
+              Effect.flatMap((built) =>
+                gate.isOpen.pipe(Effect.provideContext(built))
+              ),
+              policy.whenRunFails === "close"
+                ? catchRecoverableCause(() =>
+                    Effect.logWarning(
+                      "Release gate run failed; it stays closed"
+                    ).pipe(
+                      Effect.annotateLogs({ failureCode: policy.failureCode }),
+                      Effect.as(false)
+                    )
+                  )
+                : identity
+            )
+          ),
+          // A run's responses are never stored, so its consumers read
+          // `isOpen`; a run failure rejects `decision` whatever the policy.
+          decision: cached(
+            services.pipe(
+              Effect.flatMap((built) =>
+                gate.decision.pipe(Effect.provideContext(built))
+              )
+            )
+          ),
+        })
+      ),
+      Effect.map(({ isOpen, decision }) =>
+        gate.fromEvaluation(isOpen, decision)
+      )
+    )
   );
