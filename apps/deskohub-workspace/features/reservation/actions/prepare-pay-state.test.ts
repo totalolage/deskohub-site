@@ -44,7 +44,10 @@ import {
   canonicalPromotionCodeSchema,
   discountIdSchema,
 } from "@/features/discounts/contracts";
-import { PromotionCodeUnavailableError } from "@/features/discounts/errors";
+import {
+  DiscountAffirmationUnavailableError,
+  PromotionCodeUnavailableError,
+} from "@/features/discounts/errors";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type { AnalyticsConsentMirrorRecord } from "@/features/legal/backend/analytics-consent-ledger";
 import type {
@@ -1480,6 +1483,53 @@ describe("prepareWorkspacePayState", () => {
     expect(scenario.quoteForCustomer).toHaveBeenLastCalledWith(
       expect.objectContaining({ dotyposCustomerId: "conflict-customer-id" })
     );
+  });
+
+  // The hold module has already refreshed the reused hold's details and
+  // captured its start by the time this re-quote runs.
+  test("surfaces the pricing failure of a reused hold's re-quote for the customer it holds", async () => {
+    const repricingFailure = new DiscountAffirmationUnavailableError({
+      message: "Discount affirmation unavailable.",
+      discountIds: [],
+    });
+    const scenario = await runReusableReservationScenario({
+      holdForAttempt: mock(() =>
+        Effect.succeed({
+          kind: "reused",
+          reservation: makeReusableReservation({
+            id: "claim-conflict-reservation-id",
+            dotyposCustomerId: "conflict-customer-id",
+          }),
+          checkoutSessionId: "session-id",
+          pricedFor: "conflict-customer-id",
+        })
+      ),
+      serverCaller: true,
+      quoteForCustomer: mock(({ affirmedAdvertisement, dotyposCustomerId }) =>
+        dotyposCustomerId === "conflict-customer-id"
+          ? Effect.fail(repricingFailure)
+          : Effect.succeed(buildQuoteFromAdvertisement(affirmedAdvertisement))
+      ),
+    });
+
+    expect(scenario.result).toBeUndefined();
+    expect(scenario.error).toBe(repricingFailure);
+    expect(scenario.holdForAttempt).toHaveBeenCalledTimes(1);
+    expect(scenario.quoteForCustomer).toHaveBeenLastCalledWith(
+      expect.objectContaining({ dotyposCustomerId: "conflict-customer-id" })
+    );
+  });
+
+  test("re-quotes nothing when holding the attempt fails", async () => {
+    const scenario = await runReusableReservationScenario({
+      holdForAttempt: mock(() => Effect.fail(databaseOutage)),
+      serverCaller: true,
+    });
+
+    expect(scenario.result).toBeUndefined();
+    expect(scenario.error).toBe(databaseOutage);
+    // Only the submission's own quote, taken before the hold.
+    expect(scenario.quoteForCustomer).toHaveBeenCalledTimes(1);
   });
 
   test("reports a contended hold as an error result", async () => {
