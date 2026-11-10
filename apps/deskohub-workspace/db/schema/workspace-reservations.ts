@@ -33,7 +33,7 @@ import type {
 import {
   type ReservationPurpose,
   reservationPurposeSchema,
-} from "@/features/reservation/reservation-billing";
+} from "@/features/reservation/reservation-purpose";
 import inlangSettings from "../../project.inlang/settings.json" with {
   type: "json",
 };

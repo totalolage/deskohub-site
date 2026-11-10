@@ -1,6 +1,15 @@
 import { Clock, Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 
+/** Runs an Effect with the clock fixed at an instant. */
+export const atInstant =
+  (instant: Temporal.Instant) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    TestClock.setTime(instant.epochMilliseconds).pipe(
+      Effect.andThen(effect),
+      Effect.provide(TestClock.layer())
+    );
+
 /**
  * Runs `effect` on a TestClock that advances in steps far shorter than any
  * request timeout until the effect finishes, so sleeps and retry backoff

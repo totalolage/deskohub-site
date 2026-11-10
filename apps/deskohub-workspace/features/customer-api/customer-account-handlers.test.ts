@@ -1,8 +1,12 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { customerReferralCodeHeader } from "@deskohub/workspace-customer-api";
-import { Effect, Layer } from "effect";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
+import {
+  accountProfileSchemas,
+  customerReferralCodeHeader,
+} from "@deskohub/workspace-customer-api";
+import { Effect, Layer, Option, Schema } from "effect";
 import {
   testCustomerSession,
   testLinkedAccount,
@@ -346,6 +350,65 @@ describe("updateProfile", () => {
     expect(updates).toEqual([]);
   });
 
+  test("reads a phone in the phone region of the account's saved language", async () => {
+    const { updates, services } = recordingUpdates();
+    const api = makeCustomerApiTestServer({
+      services,
+      session: { ...testCustomerSession, localePreference: "de-DE" },
+    });
+
+    const response = await api.handle(
+      customerApiRequest({
+        ...updateProfile,
+        body: { firstName: "Grace", phone: "0151 23456789" },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(updates).toEqual([{ firstName: "Grace", phone: "+4915123456789" }]);
+  });
+
+  test("reads a phone as Czech for an account without a saved language", async () => {
+    const { updates, services } = recordingUpdates();
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest({
+        ...updateProfile,
+        body: { firstName: "Grace", phone: "0151 23456789" },
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe("");
+    expect(updates).toEqual([]);
+  });
+
+  test("reads a phone as the account's profile schemas do, in every language", async () => {
+    const body = { firstName: "Grace", phone: "0151 23456789" };
+    for (const locale of supportedLocales) {
+      const { updates, services } = recordingUpdates();
+      const api = makeCustomerApiTestServer({
+        services,
+        session: { ...testCustomerSession, localePreference: locale },
+      });
+
+      const response = await api.handle(
+        customerApiRequest({ ...updateProfile, body })
+      );
+
+      expect({ locale, status: response.status, updates }).toEqual(
+        Option.match(
+          Schema.decodeOption(accountProfileSchemas(locale).save)(body),
+          {
+            onNone: () => ({ locale, status: 400, updates: [] }),
+            onSome: (save) => ({ locale, status: 200, updates: [save] }),
+          }
+        )
+      );
+    }
+  });
+
   test("refuses an account whose deletion is pending", async () => {
     const { updates, services } = recordingUpdates();
     const api = makeCustomerApiTestServer({
@@ -522,6 +585,40 @@ describe("completeProfile", () => {
 
     expect(response.status).toBe(200);
     expect(created).toEqual([{ firstName: "Grace", phone: "+420601123456" }]);
+  });
+
+  test("creates the customer with a phone read in the account's saved language", async () => {
+    const { created, services } = unlinkedServices();
+    const api = makeCustomerApiTestServer({
+      services,
+      session: { ...testCustomerSession, localePreference: "de-DE" },
+    });
+
+    const response = await api.handle(
+      customerApiRequest({
+        ...completeProfile,
+        body: { firstName: "Grace", phone: "0151 23456789" },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(created).toEqual([{ firstName: "Grace", phone: "+4915123456789" }]);
+  });
+
+  test("creates nothing for a national number its account's region doesn't hold", async () => {
+    const { created, services } = unlinkedServices();
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest({
+        ...completeProfile,
+        body: { firstName: "Grace", phone: "0151 23456789" },
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe("");
+    expect(created).toEqual([]);
   });
 
   test("saves nothing for a referral code that can't be used", async () => {

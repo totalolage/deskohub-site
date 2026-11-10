@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "8bc19098-6c43-41ef-a834-1048c2e9821f",
+  "id": "257344ff-46dc-4142-87f7-67ad9e79c533",
   "prevIds": [
     "e28c07b4-c991-476b-8012-4d80c58d1352"
   ],
@@ -313,12 +313,6 @@
     {
       "isRlsEnabled": false,
       "name": "payment_attempts",
-      "entityType": "tables",
-      "schema": "public"
-    },
-    {
-      "isRlsEnabled": false,
-      "name": "posthog_email_deliveries",
       "entityType": "tables",
       "schema": "public"
     },
@@ -1884,6 +1878,19 @@
       "generated": null,
       "identity": null,
       "name": "label",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "discount_applications"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "staff_label",
       "entityType": "columns",
       "schema": "public",
       "table": "discount_applications"
@@ -4453,19 +4460,6 @@
       "table": "email_campaign_recipients"
     },
     {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "failure_code",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "email_campaign_recipients"
-    },
-    {
       "type": "timestamp with time zone",
       "typeSchema": null,
       "notNull": true,
@@ -6518,149 +6512,6 @@
       "entityType": "columns",
       "schema": "public",
       "table": "payment_attempts"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "message_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "posthog_email_deliveries"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "category",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "posthog_email_deliveries"
-    },
-    {
-      "type": "jsonb",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "tags",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "posthog_email_deliveries"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "'queued'",
-      "generated": null,
-      "identity": null,
-      "name": "status",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "posthog_email_deliveries"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "reason",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "posthog_email_deliveries"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "sent_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "posthog_email_deliveries"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "status_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "posthog_email_deliveries"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "next_poll_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "posthog_email_deliveries"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "last_polled_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "posthog_email_deliveries"
-    },
-    {
-      "type": "integer",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "0",
-      "generated": null,
-      "identity": null,
-      "name": "poll_count",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "posthog_email_deliveries"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "settled_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "posthog_email_deliveries"
     },
     {
       "type": "text",
@@ -12507,27 +12358,6 @@
       "nameExplicit": true,
       "columns": [
         {
-          "value": "next_poll_at",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": false,
-      "where": "\"settled_at\" is null",
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "posthog_email_deliveries_pending_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "posthog_email_deliveries"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
           "value": "code",
           "isExpression": false,
           "asc": true,
@@ -16431,16 +16261,6 @@
     },
     {
       "columns": [
-        "message_id"
-      ],
-      "nameExplicit": false,
-      "name": "posthog_email_deliveries_pkey",
-      "schema": "public",
-      "table": "posthog_email_deliveries",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
         "id"
       ],
       "nameExplicit": false,
@@ -17104,6 +16924,13 @@
     {
       "value": "btrim(\"public_discount_id\") <> '' and btrim(\"label\") <> ''",
       "name": "discount_applications_identity_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "discount_applications"
+    },
+    {
+      "value": "\"staff_label\" is null or btrim(\"staff_label\") <> ''",
+      "name": "discount_applications_staff_label_check",
       "entityType": "checks",
       "schema": "public",
       "table": "discount_applications"
@@ -17835,13 +17662,6 @@
       "entityType": "checks",
       "schema": "public",
       "table": "payment_attempts"
-    },
-    {
-      "value": "\"status\" in ('queued', 'sent', 'failed', 'delivered', 'bounced', 'complained', 'expired')",
-      "name": "posthog_email_deliveries_status_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "posthog_email_deliveries"
     },
     {
       "value": "btrim(\"dotypos_customer_id\") <> ''",

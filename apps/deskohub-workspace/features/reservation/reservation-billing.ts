@@ -7,12 +7,6 @@ import {
   invoiceBuyerAddressSchema,
 } from "@/features/accounting/billing-identity";
 
-export const reservationPurposeSchema = Schema.Literals([
-  "personal",
-  "business",
-]);
-export type ReservationPurpose = typeof reservationPurposeSchema.Type;
-
 export const reservationBillingSelectionSchema = Schema.Union([
   Schema.Struct({
     purpose: Schema.Literal("personal"),
