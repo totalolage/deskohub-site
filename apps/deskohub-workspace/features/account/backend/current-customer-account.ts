@@ -296,6 +296,51 @@ const makeCurrentCustomerAccount = (
 };
 
 /**
+ * The standing over the account services in context and the Dotypos adapter
+ * that `dotypos` yields. `dotypos` runs at most once, when a resolution
+ * first needs it, in the context and scope the standing was made in.
+ */
+const standingOver = <E, R>(
+  dotypos: Effect.Effect<CustomerDotyposAdapter["Service"], E, R>
+) =>
+  Effect.gen(function* () {
+    const authentication = yield* CustomerAuthentication;
+    const reviewAccounts = yield* ReviewAccounts;
+    const links = yield* CustomerAccountLinkRepository;
+    const sections = yield* CustomerAccountSections;
+    const resolutionDotypos = yield* Effect.cached(
+      Effect.provide(dotypos, yield* Effect.context<R>())
+    );
+    return makeCurrentCustomerAccount({
+      currentUser: authentication.currentUser,
+      isReviewAccount: reviewAccounts.isReviewAccount,
+      findLink: (accountId) =>
+        links
+          .find(accountId)
+          .pipe(
+            Effect.mapError(mapCustomerAccountFailure("account-link.read"))
+          ),
+      resolveLink: (accountId) =>
+        resolutionDotypos.pipe(
+          Effect.mapError(mapCustomerAccountFailure("account-link.lock")),
+          Effect.flatMap((adapter) =>
+            sections.withActiveAccount(
+              accountId,
+              resolveHeldCustomerAccountLink({
+                findLink: links.find,
+                isReviewAccount: reviewAccounts.isReviewAccount,
+                classify: adapter.classifyExactEmailCustomers,
+                claimLink: links.claim,
+                reactivate: adapter.reactivateCustomer,
+              }),
+              { recheck: "session" }
+            )
+          )
+        ),
+    });
+  });
+
+/**
  * The current session's customer account standing: the one place that
  * orders the session read, the review marker, the deletion marker, and link
  * resolution, and maps their failures. Callers keep their own policy as a
@@ -305,39 +350,40 @@ export class CurrentCustomerAccount extends Context.Service<
   CurrentCustomerAccount,
   ICurrentCustomerAccount
 >()("@deskohub-workspace/account/CurrentCustomerAccount") {
+  /**
+   * The standing over the account services in context. The Dotypos adapter
+   * is taken from context when the layer is built.
+   */
   static Default = Layer.effect(
     this,
-    Effect.gen(function* () {
-      const authentication = yield* CustomerAuthentication;
-      const reviewAccounts = yield* ReviewAccounts;
-      const links = yield* CustomerAccountLinkRepository;
-      const sections = yield* CustomerAccountSections;
-      const dotypos = yield* CustomerDotyposAdapter;
-      const heldSteps = {
-        findLink: links.find,
-        isReviewAccount: reviewAccounts.isReviewAccount,
-        classify: dotypos.classifyExactEmailCustomers,
-        claimLink: links.claim,
-        reactivate: dotypos.reactivateCustomer,
-      };
-      return makeCurrentCustomerAccount({
-        currentUser: authentication.currentUser,
-        isReviewAccount: reviewAccounts.isReviewAccount,
-        findLink: (accountId) =>
-          links
-            .find(accountId)
-            .pipe(
-              Effect.mapError(mapCustomerAccountFailure("account-link.read"))
-            ),
-        resolveLink: (accountId) =>
-          sections.withActiveAccount(
-            accountId,
-            resolveHeldCustomerAccountLink(heldSteps),
-            { recheck: "session" }
-          ),
-      });
-    })
+    standingOver(Effect.service(CustomerDotyposAdapter))
   );
+
+  /**
+   * The standing whose Dotypos adapter is built from `dotypos` when a
+   * resolution first needs it, so `peek` and `requireActive` never depend on
+   * Dotypos configuration. An adapter that can't be built reads as
+   * `unavailable` (`account-link.lock`) from `resolve`.
+   */
+  static resolvingThrough = <E, R>(
+    dotypos: Layer.Layer<CustomerDotyposAdapter, E, R>
+  ) =>
+    Layer.effect(
+      this,
+      standingOver(
+        Effect.gen(function* () {
+          const memoMap = Layer.CurrentMemoMap.getOrCreate(
+            yield* Effect.context<never>()
+          );
+          const built = yield* Layer.buildWithMemoMap(
+            dotypos,
+            memoMap,
+            yield* Effect.scope
+          );
+          return Context.get(built, CustomerDotyposAdapter);
+        })
+      )
+    );
 
   /**
    * The standing when its link capabilities can't be built: the session and
@@ -364,13 +410,14 @@ export class CurrentCustomerAccount extends Context.Service<
    * The standing reading the session through the `CustomerAuthentication`
    * the caller provides later, such as a customer API request's.
    */
-  static ForProvidedAuthentication = this.Default.pipe(
+  static ForProvidedAuthentication = this.resolvingThrough(
+    CustomerDotyposAdapter.Live
+  ).pipe(
     Layer.provide(
       Layer.mergeAll(
         ReviewAccounts.Live,
         CustomerAccountLinkRepository.Live,
-        CustomerAccountSections.ForProvidedAuthentication,
-        CustomerDotyposAdapter.Live
+        CustomerAccountSections.ForProvidedAuthentication
       )
     )
   );

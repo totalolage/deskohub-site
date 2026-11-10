@@ -19,7 +19,10 @@
     `account.review.unavailable` and resolution still runs), deletion marker,
     review account, then the link.
   - `peek` reads the stored link only: no claim, reactivation, or Dotypos
-    call.
+    call. The live layers (`resolvingThrough`) build the Dotypos adapter when
+    a resolution first needs it, so `peek` and `requireActive` work without
+    Dotypos configuration; an adapter that can't be built reads as
+    `unavailable` (`account-link.lock`) from `resolve`.
   - `resolve` runs the held steps in a `session` account section, so it
     reuses an enclosing hold of the same account. A recheck under the lock
     that finds the session gone reports `signed-out`; one that finds the

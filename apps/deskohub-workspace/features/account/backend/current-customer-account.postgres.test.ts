@@ -104,6 +104,13 @@ describe.skipIf(!suiteDatabase)(
       readonly links?: Layer.Layer<CustomerAccountLinkRepository>;
       /** Stands in for the account sections the standing resolves in. */
       readonly sections?: Layer.Layer<CustomerAccountSections>;
+      /**
+       * Wraps the Dotypos adapter layer, which the standing then builds
+       * itself when a resolution first needs it.
+       */
+      readonly dotyposBuiltOnDemand?: (
+        adapter: Layer.Layer<CustomerDotyposAdapter>
+      ) => Layer.Layer<CustomerDotyposAdapter, unknown>;
     }) => {
       const calls: Calls = { sessionReads: 0, classify: [], reactivate: [] };
       const currentUser = Effect.suspend(() => {
@@ -143,18 +150,20 @@ describe.skipIf(!suiteDatabase)(
           return options.reactivation ?? Effect.void;
         },
       });
-      const layer = CurrentCustomerAccount.Default.pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            authentication,
-            options.reviewAccounts ??
-              ReviewAccounts.Default.pipe(Layer.provide(suiteDatabase.layer)),
-            options.links ?? links,
-            sections,
-            dotypos
-          )
-        )
+      const accountServices = Layer.mergeAll(
+        authentication,
+        options.reviewAccounts ??
+          ReviewAccounts.Default.pipe(Layer.provide(suiteDatabase.layer)),
+        options.links ?? links,
+        sections
       );
+      const layer = options.dotyposBuiltOnDemand
+        ? CurrentCustomerAccount.resolvingThrough(
+            options.dotyposBuiltOnDemand(dotypos)
+          ).pipe(Layer.provide(accountServices))
+        : CurrentCustomerAccount.Default.pipe(
+            Layer.provide(Layer.mergeAll(accountServices, dotypos))
+          );
       return { calls, layer, sections };
     };
 
@@ -797,6 +806,95 @@ describe.skipIf(!suiteDatabase)(
           );
         }
       });
+    });
+
+    describe("a Dotypos adapter built on demand", () => {
+      test("peek and requireActive never build it, and resolutions build it once", async () => {
+        const customerId = uniqueDotyposId();
+        const account = await seedAccount();
+        const session = sessionOf(account);
+        let builds = 0;
+        const { layer, calls } = makeCurrentAccount({
+          sessions: [session],
+          match: { kind: "matched", state: "active", customerId },
+          dotyposBuiltOnDemand: (adapter) =>
+            Layer.unwrap(
+              Effect.sync(() => {
+                builds += 1;
+                return adapter;
+              })
+            ),
+        });
+
+        const standings = await run(
+          layer,
+          Effect.gen(function* () {
+            const current = yield* currentAccount;
+            const peeked = yield* current.peek;
+            const active = yield* current.requireActive;
+            const buildsBeforeResolving = builds;
+            const resolved = yield* current.resolve;
+            const resolvedAgain = yield* current.resolve;
+            return {
+              peeked,
+              active,
+              buildsBeforeResolving,
+              resolved,
+              resolvedAgain,
+            };
+          })
+        );
+
+        expect(standings.peeked).toMatchObject({ kind: "unlinked", session });
+        expect(standings.active).toEqual(session);
+        expect(standings.buildsBeforeResolving).toBe(0);
+        expect(standings.resolved).toMatchObject({
+          kind: "linked",
+          autoLinked: true,
+        });
+        expect(standings.resolvedAgain).toMatchObject({
+          kind: "linked",
+          autoLinked: false,
+        });
+        expect(builds).toBe(1);
+        expect(calls.classify).toEqual([account.email]);
+        expect(await storedLink(account.accountId)).toBe(customerId);
+      });
+
+      test.each([
+        ["fails", Effect.fail(new Error("dotypos configuration"))],
+        ["dies", Effect.die(new Error("dotypos configuration"))],
+      ] as const)(
+        "an adapter whose construction %s leaves peek working and makes resolve unavailable",
+        async (_label, construction) => {
+          const account = await seedAccount();
+          const session = sessionOf(account);
+          const { layer } = makeCurrentAccount({
+            sessions: [session],
+            match: {
+              kind: "matched",
+              state: "active",
+              customerId: uniqueDotyposId(),
+            },
+            dotyposBuiltOnDemand: () => Layer.unwrap(construction),
+          });
+
+          expect(await peek(layer)).toMatchObject({
+            kind: "unlinked",
+            session,
+          });
+          const resolved = await resolve(layer);
+          expect(resolved).toMatchObject({
+            kind: "unavailable",
+            session,
+            reviewMarker: "absent",
+          });
+          expect(
+            resolved.kind === "unavailable" && resolved.failure.cause?.code
+          ).toBe("account-link.lock");
+          expect(await storedLink(account.accountId)).toBeNull();
+        }
+      );
     });
 
     describe("LinksUnavailable", () => {
