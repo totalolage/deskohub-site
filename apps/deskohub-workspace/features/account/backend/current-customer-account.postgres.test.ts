@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { Effect, Layer } from "effect";
+import { Effect, Exit, Layer } from "effect";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { ReviewAccounts } from "@/features/review-accounts";
@@ -437,6 +437,50 @@ describe.skipIf(!suiteDatabase)(
         expect(
           resolved.kind === "unavailable" && resolved.failure.cause?.code
         ).toBe("dotypos.customer-expiration");
+        expect(await storedLink(account.accountId)).toBeNull();
+      });
+
+      test("a resolution step that dies reports the unavailable lock with the session, and claims nothing", async () => {
+        const customerId = uniqueDotyposId();
+        const account = await seedAccount();
+        const session = sessionOf(account);
+        const { layer } = makeCurrentAccount({
+          sessions: [session],
+          match: { kind: "matched", state: "expired", customerId },
+          reactivation: Effect.die(new Error("reactivation died")),
+        });
+
+        const resolved = await resolve(layer);
+        expect(resolved).toMatchObject({
+          kind: "unavailable",
+          session,
+          reviewMarker: "absent",
+        });
+        expect(
+          resolved.kind === "unavailable" && resolved.failure.cause?.code
+        ).toBe("account-link.lock");
+        expect(await storedLink(account.accountId)).toBeNull();
+      });
+
+      test("an interrupted resolution is not answered as a standing", async () => {
+        const account = await seedAccount();
+        const { layer } = makeCurrentAccount({
+          sessions: [sessionOf(account)],
+          match: {
+            kind: "matched",
+            state: "expired",
+            customerId: uniqueDotyposId(),
+          },
+          reactivation: Effect.interrupt,
+        });
+
+        const exit = await Effect.runPromiseExit(
+          currentAccount.pipe(
+            Effect.flatMap((service) => service.resolve),
+            Effect.provide(layer)
+          )
+        );
+        expect(Exit.hasInterrupts(exit)).toBe(true);
         expect(await storedLink(account.accountId)).toBeNull();
       });
 

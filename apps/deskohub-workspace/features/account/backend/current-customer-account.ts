@@ -5,8 +5,9 @@ import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
 import {
   type CustomerAccountAccessError,
   type CustomerAccountId,
-  type CustomerAccountLinkFailure,
+  type CustomerAccountSupportReason,
   customerAccountUnavailable,
+  isCustomerAccountSupportRequired,
   isCustomerProfileMissing,
   type LinkedCustomerAccount,
   mapCustomerAccountFailure,
@@ -36,12 +37,6 @@ type SignedInFacts = {
   readonly session: CustomerAccountSession;
   readonly reviewMarker: ReviewMarker;
 };
-
-/** Why only support can link the account to its Dotypos customer. */
-type SupportReason = Extract<
-  CustomerAccountLinkFailure,
-  "ambiguous" | "unusable" | "claimed"
->;
 
 /**
  * The current session's customer account, as facts. Each caller maps it to
@@ -79,7 +74,7 @@ export type CustomerAccountStanding =
   | ({ readonly kind: "profile-missing" } & SignedInFacts)
   | ({
       readonly kind: "support-required";
-      readonly reason: SupportReason;
+      readonly reason: CustomerAccountSupportReason;
     } & SignedInFacts)
   | ({
       readonly kind: "linked";
@@ -112,8 +107,10 @@ interface ICurrentCustomerAccount {
    * its account section (`recheck: "session"`): an existing link wins, then
    * one usable exact-email Dotypos customer is reactivated if expired and
    * claimed. It writes nothing else, no signup referral included. Inside a
-   * section that already holds the account it runs under that hold. Fails
-   * only when the session can't be read.
+   * section that already holds the account it runs under that hold. A step
+   * that dies reads as `unavailable` (`account-link.lock`); interruption and
+   * Next.js control flow propagate. Fails only when the session can't be
+   * read.
    */
   readonly resolve: Effect.Effect<ResolvedStanding, CustomerAccountAccessError>;
   /**
@@ -155,14 +152,6 @@ type SessionStanding =
 
 const signedOut = { kind: "signed-out" } as const;
 const unverified = { kind: "unverified" } as const;
-
-const supportReasons: ReadonlySet<CustomerAccountLinkFailure> =
-  new Set<CustomerAccountLinkFailure>(["ambiguous", "unusable", "claimed"]);
-
-const isSupportReason = (
-  reason: CustomerAccountLinkFailure | undefined
-): reason is SupportReason =>
-  reason !== undefined && supportReasons.has(reason);
 
 const makeCurrentCustomerAccount = (
   reads: StandingReads
@@ -242,10 +231,7 @@ const makeCurrentCustomerAccount = (
     if (isCustomerProfileMissing(failure)) {
       return { kind: "profile-missing", ...facts };
     }
-    if (
-      failure.reason === "link-required" &&
-      isSupportReason(failure.linkReason)
-    ) {
+    if (isCustomerAccountSupportRequired(failure)) {
       return { kind: "support-required", reason: failure.linkReason, ...facts };
     }
     // The section's recheck under the lock found the session gone.
@@ -274,6 +260,17 @@ const makeCurrentCustomerAccount = (
         ),
         Effect.catch((failure) =>
           Effect.succeed(resolutionFailure(failure, facts))
+        ),
+        // A resolution step that died reads as the unavailable lock.
+        catchRecoverableCause((cause) =>
+          Effect.logError("Account resolution died", { cause }).pipe(
+            Effect.as(
+              resolutionFailure(
+                customerAccountUnavailable("account-link.lock"),
+                facts
+              )
+            )
+          )
         )
       );
     }),

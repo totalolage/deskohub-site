@@ -10,7 +10,9 @@
   only), `profile-missing` and `support-required` (resolve only, with
   `ambiguous`, `unusable`, or `claimed`), `linked` (with `autoLinked`), and
   `unavailable` (the session is known but a link, lock, or Dotypos step
-  failed, or the locked recheck refused it; `failure` says which). Signed-in kinds carry the session and `reviewMarker` (`absent` or
+  failed, or the locked recheck refused it; `failure` says which, and a
+  resolve step that dies reads as `account-link.lock`). Signed-in kinds carry
+  the session and `reviewMarker` (`absent` or
   `unreadable`; `deletion-pending` may also carry `present`). Only a failed
   session read fails the Effect (`not-configured`, `unavailable`).
   - Order: session, review marker (an unreadable marker is logged once as
