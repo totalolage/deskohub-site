@@ -380,6 +380,7 @@ describe("updateProfile", () => {
     );
 
     expect(response.status).toBe(400);
+    expect(await response.text()).toBe("");
     expect(updates).toEqual([]);
   });
 
@@ -616,6 +617,7 @@ describe("completeProfile", () => {
     );
 
     expect(response.status).toBe(400);
+    expect(await response.text()).toBe("");
     expect(created).toEqual([]);
   });
 

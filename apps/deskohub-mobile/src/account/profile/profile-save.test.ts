@@ -91,7 +91,7 @@ describe("unsaved changes", () => {
       firstName: "Al",
     });
     expect(currentDraft(edits, edited(sampleProfile))).toEqual({
-      ...profileDraftOf(sampleProfile),
+      ...profileDraftOf(sampleProfile, phoneRegion),
       firstName: "Al",
     });
   });
@@ -101,7 +101,10 @@ describe("saveProfileAtom", () => {
   test("a name edit saves the complete profile, billing included", async () => {
     const { registry, workspace } = makeFakeCustomerData("linked");
     await settle(registry, accountAtom);
-    const draft = { ...profileDraftOf(sampleProfile), firstName: "Alexa" };
+    const draft = {
+      ...profileDraftOf(sampleProfile, phoneRegion),
+      firstName: "Alexa",
+    };
     registry.set(profileEditsAtom, Option.some(draft));
 
     const state = await submit(registry, saveProfileAtom, {
@@ -128,7 +131,7 @@ describe("saveProfileAtom", () => {
     const { registry, workspace } = makeFakeCustomerData("linked");
     await settle(registry, accountAtom);
     const draft = {
-      ...profileDraftOf(sampleProfile),
+      ...profileDraftOf(sampleProfile, phoneRegion),
       billingKind: "personal" as const,
       city: "Othertown",
     };
@@ -149,7 +152,7 @@ describe("saveProfileAtom", () => {
 
     const state = await submit(registry, saveProfileAtom, {
       draft: {
-        ...profileDraftOf(sampleProfile),
+        ...profileDraftOf(sampleProfile, phoneRegion),
         firstName: "",
       },
       phoneRegion,
@@ -170,7 +173,10 @@ describe("saveProfileAtom", () => {
     await settle(registry, accountAtom);
     // The server applies the save (trimming the name), then the connection breaks.
     workspace.fail("updateProfile", "transport-failure");
-    const draft = { ...profileDraftOf(sampleProfile), firstName: "Alexa " };
+    const draft = {
+      ...profileDraftOf(sampleProfile, phoneRegion),
+      firstName: "Alexa ",
+    };
     registry.set(profileEditsAtom, Option.some(draft));
 
     const state = await submit(registry, saveProfileAtom, {
@@ -206,7 +212,7 @@ describe("saveProfileAtom", () => {
     workspace.fail("updateProfile", "unreadable-answer");
     // The phone as the Workspace stores it, so the stored profile matches.
     const draft = {
-      ...profileDraftOf(sampleProfile),
+      ...profileDraftOf(sampleProfile, phoneRegion),
       phone: "+420600000000",
       city: "Othertown",
     };
@@ -227,7 +233,10 @@ describe("saveProfileAtom", () => {
     await settle(registry, accountAtom);
     workspace.fail("updateProfile", "unreadable-answer");
     // Typed in national form; the Workspace stores it in E.164.
-    const draft = { ...profileDraftOf(sampleProfile), phone: "600 000 001" };
+    const draft = {
+      ...profileDraftOf(sampleProfile, phoneRegion),
+      phone: "600 000 001",
+    };
     registry.set(profileEditsAtom, Option.some(draft));
 
     await submit(registry, saveProfileAtom, { draft, phoneRegion });
@@ -244,7 +253,10 @@ describe("saveProfileAtom", () => {
     const { registry, workspace } = makeFakeCustomerData("linked");
     await settle(registry, accountAtom);
     workspace.fail("updateProfile", "rate-limited");
-    const draft = { ...profileDraftOf(sampleProfile), city: "Othertown" };
+    const draft = {
+      ...profileDraftOf(sampleProfile, phoneRegion),
+      city: "Othertown",
+    };
     registry.set(profileEditsAtom, Option.some(draft));
 
     const state = await submit(registry, saveProfileAtom, {
@@ -385,6 +397,7 @@ describe("completeProfileAtom", () => {
     const state = await submit(registry, completeProfileAtom, {
       draft,
       invitationCode: undefined,
+      phoneRegion,
     });
 
     expect(state._tag).toBe("Done");
@@ -398,6 +411,7 @@ describe("completeProfileAtom", () => {
     const empty = {
       draft: completionDraftOf(undefined),
       invitationCode: undefined,
+      phoneRegion,
     };
 
     const first = await submit(registry, completeProfileAtom, empty);
@@ -418,6 +432,7 @@ describe("completeProfileAtom", () => {
     const state = await submit(registry, completeProfileAtom, {
       draft: completionDraftOf(undefined),
       invitationCode: undefined,
+      phoneRegion,
     });
 
     expect(state._tag).toBe("Invalid");

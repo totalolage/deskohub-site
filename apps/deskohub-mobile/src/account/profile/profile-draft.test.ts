@@ -38,7 +38,7 @@ const personalProfile: CustomerProfile = {
 };
 
 const validDraft = (draft: Partial<ProfileDraft> = {}): ProfileDraft => ({
-  ...profileDraftOf(sampleProfile),
+  ...profileDraftOf(sampleProfile, phoneRegion),
   ...draft,
 });
 
@@ -121,7 +121,9 @@ describe("profileDraftOf", () => {
 
 describe("validateProfileDraft", () => {
   test("submits the complete stored profile, its phone as the number", () => {
-    expect(validateProfileDraft(validDraft(), phoneRegion)).toEqual(
+    expect<Result.Result<unknown, unknown>>(
+      validateProfileDraft(validDraft(), phoneRegion)
+    ).toEqual(
       Result.succeed({
         firstName: "Alex",
         lastName: "Sample",
@@ -152,7 +154,7 @@ describe("validateProfileDraft", () => {
       vatId: "CZ00000000",
       city: "Sampletown",
     });
-    expect(input.phone).toBe("+420600000000");
+    expect<string | undefined>(input.phone).toBe("+420600000000");
   });
 
   test("editing only billing keeps the name and phone", () => {
@@ -293,7 +295,7 @@ describe("an account with a saved language", () => {
 
   test("submits a phone without a country calling code as its region's number", () => {
     const draft = validDraft({ phone: nationalNumber });
-    expect(
+    expect<Result.Result<string | undefined, unknown>>(
       Result.map(validateProfileDraft(draft, german), ({ phone }) => phone)
     ).toEqual(Result.succeed("+4915123456789"));
     expect(

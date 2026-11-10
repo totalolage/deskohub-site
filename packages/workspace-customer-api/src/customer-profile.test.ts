@@ -75,7 +75,13 @@ describe("customerProfileSchemas", () => {
 describe("the customer API profile input", () => {
   test("carries a phone a served locale's region reads, for the account's region to read", () => {
     for (const schema of [CustomerProfileInput, CustomerProfileCompletionInput])
-      for (const entered of ["0151 23456789", "777 123 456", "+1 202 555 0143"])
+      for (const entered of [
+        "0151 23456789",
+        "777 123 456",
+        "050 123 4567",
+        "0905 123 456",
+        "+1 202 555 0143",
+      ])
         expect(acceptsInput(schema, entered)).toBe(true);
   });
 
