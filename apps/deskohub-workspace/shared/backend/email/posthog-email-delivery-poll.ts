@@ -268,6 +268,7 @@ const reschedule = (
     Effect.flatMap((repository) =>
       repository.recordPoll({
         messageId: claim.messageId,
+        polledAt: now,
         ...progress,
         pollCount: claim.pollCount + 1,
         nextPollAt: now.add({

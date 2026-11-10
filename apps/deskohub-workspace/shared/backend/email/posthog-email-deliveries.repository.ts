@@ -41,14 +41,19 @@ export type PostHogEmailProgressStatus = Extract<
 >;
 
 /** The statuses that settle a delivery: PostHog's final ones, or `expired`. */
-export type PostHogEmailSettledStatus = Exclude<
+type PostHogEmailSettledStatus = Exclude<
   PostHogEmailDeliveryStatus,
   PostHogEmailProgressStatus
 >;
 
 /** What a poll learned of a delivery it did not settle. */
-export interface PostHogEmailDeliveryPollRecord {
+interface PostHogEmailDeliveryPollRecord {
   readonly messageId: EmailDeliveryId;
+  /**
+   * When this poll claimed the delivery. A later claim supersedes it, and
+   * the record no longer applies.
+   */
+  readonly polledAt: Temporal.Instant;
   /** PostHog's progress status, when the read returned one. */
   readonly status?: PostHogEmailProgressStatus;
   readonly statusAt?: Temporal.Instant | null;
@@ -79,7 +84,8 @@ export interface IPostHogEmailDeliveryRepository {
    * per-minute read budget counts deliveries whose last read falls in the
    * minute, as committed before this claim: claims running at the same
    * moment, and a signal rereading a delivery after 30 seconds, can exceed
-   * it, which PostHog's rate limit then stops.
+   * it, which PostHog's rate limit then stops. A delivery a later claim takes
+   * over keeps only that claim's poll record.
    */
   readonly claim: (request: {
     readonly trigger: PostHogEmailDeliveryPollTrigger;
@@ -90,7 +96,8 @@ export interface IPostHogEmailDeliveryRepository {
   >;
   /**
    * Stores a poll that settled nothing: the progress status PostHog
-   * reported, if any, and when to poll again.
+   * reported, if any, and when to poll again. Does nothing once a later
+   * claim took the delivery over.
    */
   readonly recordPoll: (
     record: PostHogEmailDeliveryPollRecord
@@ -231,11 +238,20 @@ export class PostHogEmailDeliveryRepository extends Context.Service<
       );
 
       const recordPoll = Effect.fn("PostHogEmailDeliveryRepository.recordPoll")(
-        ({ messageId, ...progress }: PostHogEmailDeliveryPollRecord) =>
+        ({
+          messageId,
+          polledAt,
+          ...progress
+        }: PostHogEmailDeliveryPollRecord) =>
           db
             .update(postHogEmailDeliveries)
             .set(progress)
-            .where(unsettled(messageId))
+            .where(
+              and(
+                unsettled(messageId),
+                eq(postHogEmailDeliveries.lastPolledAt, polledAt)
+              )
+            )
             .pipe(Effect.asVoid)
       );
 

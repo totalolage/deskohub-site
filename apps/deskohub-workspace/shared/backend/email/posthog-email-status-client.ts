@@ -25,7 +25,7 @@ export type PostHogEmailStatus =
   | "complained";
 
 /** PostHog's report of one email's current status. */
-export interface PostHogEmailStatusReport {
+interface PostHogEmailStatusReport {
   readonly messageId: string;
   readonly status: PostHogEmailStatus;
   readonly createdAt: Date;

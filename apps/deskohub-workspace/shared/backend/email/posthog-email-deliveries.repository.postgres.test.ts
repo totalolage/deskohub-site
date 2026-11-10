@@ -350,11 +350,12 @@ describe.skipIf(!database)("PostHog email delivery repository", () => {
 
   describe("recordPoll", () => {
     test("stores the progress status with the next poll", async () => {
-      const id = await insertDelivery({ pollCount: 1 });
+      const id = await insertDelivery({ pollCount: 1, lastPolledAt: now });
 
       await runRepository((repository) =>
         repository.recordPoll({
           messageId: id,
+          polledAt: now,
           status: "sent",
           statusAt: secondsAgo(20),
           pollCount: 2,
@@ -370,10 +371,11 @@ describe.skipIf(!database)("PostHog email delivery repository", () => {
     });
 
     test("clears the status time when the poll reports none", async () => {
-      const id = await insertDelivery();
+      const id = await insertDelivery({ lastPolledAt: now });
       await runRepository((repository) =>
         repository.recordPoll({
           messageId: id,
+          polledAt: now,
           status: "sent",
           statusAt: secondsAgo(20),
           pollCount: 1,
@@ -384,6 +386,7 @@ describe.skipIf(!database)("PostHog email delivery repository", () => {
       await runRepository((repository) =>
         repository.recordPoll({
           messageId: id,
+          polledAt: now,
           status: "sent",
           statusAt: null,
           pollCount: 2,
@@ -403,11 +406,13 @@ describe.skipIf(!database)("PostHog email delivery repository", () => {
         status: "delivered",
         settledAt: secondsAgo(100),
         nextPollAt: secondsAgo(200),
+        lastPolledAt: now,
       });
 
       await runRepository((repository) =>
         repository.recordPoll({
           messageId: id,
+          polledAt: now,
           status: "sent",
           statusAt: secondsAgo(20),
           pollCount: 3,
@@ -425,10 +430,11 @@ describe.skipIf(!database)("PostHog email delivery repository", () => {
     });
 
     test("keeps the stored status when the poll brought none", async () => {
-      const id = await insertDelivery({ status: "sent" });
+      const id = await insertDelivery({ status: "sent", lastPolledAt: now });
       await runRepository((repository) =>
         repository.recordPoll({
           messageId: id,
+          polledAt: now,
           status: "sent",
           statusAt: secondsAgo(500),
           pollCount: 1,
@@ -439,6 +445,7 @@ describe.skipIf(!database)("PostHog email delivery repository", () => {
       await runRepository((repository) =>
         repository.recordPoll({
           messageId: id,
+          polledAt: now,
           pollCount: 2,
           nextPollAt: now.add({ seconds: 300 }),
         })
@@ -448,6 +455,30 @@ describe.skipIf(!database)("PostHog email delivery repository", () => {
       expect(row).toMatchObject({ status: "sent", pollCount: 2 });
       expect(row?.statusAt?.equals(secondsAgo(500))).toBe(true);
       expect(row?.nextPollAt.equals(now.add({ seconds: 300 }))).toBe(true);
+    });
+
+    test("ignores a poll whose claim a later poll superseded", async () => {
+      const id = await insertDelivery({
+        status: "sent",
+        lastPolledAt: now,
+        pollCount: 4,
+        nextPollAt: now.add({ seconds: 900 }),
+      });
+
+      await runRepository((repository) =>
+        repository.recordPoll({
+          messageId: id,
+          polledAt: secondsAgo(45),
+          status: "queued",
+          statusAt: secondsAgo(50),
+          pollCount: 3,
+          nextPollAt: secondsAgo(40).add({ seconds: 300 }),
+        })
+      );
+
+      const row = await readDelivery(id);
+      expect(row).toMatchObject({ status: "sent", pollCount: 4 });
+      expect(row?.nextPollAt.equals(now.add({ seconds: 900 }))).toBe(true);
     });
   });
 
