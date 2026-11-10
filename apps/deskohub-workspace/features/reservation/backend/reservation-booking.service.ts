@@ -836,7 +836,9 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
           referralCodePrefill,
           referralCode: accountReferral?.referralCode,
         });
-        yield* Effect.annotateLogsScoped({ quote: prepared.quote });
+        yield* Effect.annotateLogsScoped({
+          quoteFingerprint: prepared.quote.fingerprint,
+        });
         yield* Effect.logDebug("Workspace reservation quote built");
 
         // An agent's hold is anchored at its booking instant, and a repeated

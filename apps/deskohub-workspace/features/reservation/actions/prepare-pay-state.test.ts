@@ -15,7 +15,16 @@ import { EmailRecipientDomainServiceMock } from "@deskohub/email/backend/recipie
 import { testEmailAddress } from "@deskohub/test-email";
 import { eq } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Duration, Effect, Fiber, Layer, Option, Schema } from "effect";
+import {
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Option,
+  References,
+  Schema,
+} from "effect";
 import { TestClock } from "effect/testing";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -74,6 +83,11 @@ import { NoReviewAccounts } from "@/features/review-accounts/backend/review-acco
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import { savedConsentCookie } from "@/shared/testing/consent-cookie.test-utils";
+import {
+  captureLogAnnotationsWithExit,
+  expectScalarLogAnnotations,
+  type LogRowAnnotations,
+} from "@/shared/testing/log-annotations.test-utils";
 import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
@@ -507,6 +521,8 @@ const runReusableReservationScenario = async (input: {
    * operation without BotID or an agent.
    */
   readonly serverCaller?: boolean;
+  /** Records every row's log annotations, Debug rows included. */
+  readonly captureLogAnnotations?: boolean;
 }) => {
   const holdsProvided = input.holdForAttempt !== undefined;
   const prepareFromReservationForm = await loadReservationFormPreparation(
@@ -773,14 +789,29 @@ const runReusableReservationScenario = async (input: {
         TestClock.setTime(Date.now()).pipe(Effect.andThen(bookingPreparation))
       )
     : bookingPreparation;
-  const result = await (input.now
-    ? withInstant(input.now, timedPreparation)
-    : timedPreparation
-  ).pipe(Effect.result, Effect.runPromise);
+  const preparation = (
+    input.now ? withInstant(input.now, timedPreparation) : timedPreparation
+  ).pipe(Effect.result);
+  const { result, logAnnotations } = await (input.captureLogAnnotations
+    ? captureLogAnnotationsWithExit(
+        Effect.provideService(preparation, References.MinimumLogLevel, "Debug")
+      ).pipe(
+        Effect.flatMap(({ rows, exit }) =>
+          Exit.isSuccess(exit)
+            ? Effect.succeed({ result: exit.value, logAnnotations: rows })
+            : Effect.failCause(exit.cause)
+        )
+      )
+    : Effect.map(preparation, (result) => ({
+        result,
+        logAnnotations: [] as readonly LogRowAnnotations[],
+      }))
+  ).pipe(Effect.runPromise);
 
   return {
     result: result._tag === "Success" ? result.success : undefined,
     error: result._tag === "Failure" ? (result.failure as unknown) : undefined,
+    logAnnotations,
     guardEvents: accountAuthority.events,
     enqueueCleanup,
     updateReservationDetails,
@@ -1461,6 +1492,19 @@ describe("prepareWorkspacePayState", () => {
       )
     );
     expect(state.orderId).toBe(scenario.result.orderId);
+  });
+
+  test("annotates the booking's rows with its quote fingerprint, never the quote", async () => {
+    const scenario = await runReusableReservationScenario({
+      holdForAttempt: reuseHold(makeReusableReservation()),
+      captureLogAnnotations: true,
+    });
+
+    expect(scenario.result?.status).toBe("ready");
+    expectScalarLogAnnotations(scenario.logAnnotations);
+    expect(scenario.logAnnotations).toContainEqual(
+      expect.objectContaining({ quoteFingerprint: expect.any(String) })
+    );
   });
 
   test("quotes a hold another request created for the customer it holds", async () => {
