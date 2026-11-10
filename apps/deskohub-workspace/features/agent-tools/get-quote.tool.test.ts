@@ -7,10 +7,10 @@ import { m } from "@/features/i18n";
 import { coworkSelectionLink } from "@/features/reservation/cowork-selection-link";
 import { meetingRoomSelectionLink } from "@/features/reservation/meeting-room-selection-link";
 import { officeSelectionLink } from "@/features/reservation/office-selection-link";
+import { atInstant } from "@/shared/testing/workspace-test-clock.test-utils";
 import type { GetQuoteResult } from "./get-quote.schema";
 
 const {
-  atInstant,
   makeAgentToolTestServices,
   workspaceDateFromToday,
   workspaceInstantToday,
