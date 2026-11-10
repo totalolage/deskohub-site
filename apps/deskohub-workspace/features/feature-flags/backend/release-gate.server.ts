@@ -33,7 +33,9 @@ export interface ReleaseGateRequest<Self> {
   /**
    * The gate's decision, memoized per server render, so layouts, metadata,
    * pages, and loaders of one render share it. React `cache` doesn't memoize
-   * in a Server Action or route handler, where every call evaluates.
+   * in a Server Action or route handler, where every call decides again, but
+   * from the flags `WorkspaceFeatureFlagService` evaluated once for the
+   * request.
    *
    * A flag that is the same for every visitor is decided without the
    * request, so prerendered shells keep the decision. A flag PostHog decides

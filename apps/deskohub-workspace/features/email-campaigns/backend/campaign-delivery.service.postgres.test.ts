@@ -20,7 +20,7 @@ import {
   waitForPostgresLockWaiter,
 } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import { campaignEmailKind } from "../campaign-email";
-import type { CampaignId } from "../campaign-identifiers";
+import type { CampaignId, CampaignSendId } from "../campaign-identifiers";
 import type { CampaignDeliveryEvent } from "./campaign-delivery-status.service";
 import {
   deleteAutomatedCampaigns,
@@ -115,25 +115,18 @@ const { EmailConfigTag, EmailServiceTag } = await import("@deskohub/email");
 const { connectWorkspacePostgresTestDatabase } = await import(
   "@/shared/testing/workspace-postgres-test-database.test-utils"
 );
-const { MarketingConsentLedger } = await import(
-  "@/features/legal/backend/marketing-consent-ledger"
+const { AutomatedSendSubmission, CampaignDeliveryService } = await import(
+  "./campaign-delivery.service"
 );
-const { MarketingManagementService } = await import(
-  "@/features/legal/backend/marketing-management.service"
+const { campaignDeliveryTestLayer } = await import(
+  "./campaign-delivery.test-utils"
 );
-const { AutomationRunSettlement } = await import(
-  "../automation/backend/automation-run-settlement.service"
-);
-const { CampaignDeliveryService } = await import("./campaign-delivery.service");
 const { CampaignDeliveryStatusService } = await import(
   "./campaign-delivery-status.service"
 );
 const { CampaignEmailConfig } = await import("./campaign-email.config");
 const { processCampaignSendMessage } = await import(
   "./campaign-send-queue-consumer"
-);
-const { CampaignUnsubscribeService } = await import(
-  "./campaign-unsubscribe.service"
 );
 const { OnceCampaignLifecycle } = await import("./once-campaign-lifecycle");
 
@@ -195,47 +188,35 @@ describe.skipIf(!testDatabase)(
     const consumerLayerFor = (
       deploymentEnvironment: "production" | "development"
     ) =>
-      CampaignDeliveryService.Default.pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            DotyposServiceMock({
-              getCustomersByIds: (ids) =>
-                readCustomers(ids).pipe(
-                  Effect.flatMap((records) =>
-                    makeInMemoryDotypos({
-                      customers: records,
-                    }).service.getCustomersByIds(ids)
-                  )
-                ),
-            }),
-            EmailServiceTag.Live.pipe(
-              Layer.provide(
-                Layer.succeed(EmailConfigTag, {
-                  provider: "resend",
-                  apiKey: "re_test",
-                  defaultFrom: { email: testEmailAddress("campaigns") },
-                })
-              )
-            ),
-            AutomationRunSettlement.Default,
-            Layer.succeed(CampaignEmailConfig, {
-              deploymentEnvironment,
-              from: { email: testEmailAddress("campaigns") },
-              replyTo: { email: testEmailAddress("hello") },
-              adminInbox: testEmailAddress("admin"),
-            }),
-            CampaignUnsubscribeService.Default.pipe(
-              Layer.provide(
-                Layer.mergeAll(
-                  MarketingConsentLedger.Default,
-                  MarketingManagementService.Default
+      campaignDeliveryTestLayer(
+        Layer.mergeAll(
+          DotyposServiceMock({
+            getCustomersByIds: (ids) =>
+              readCustomers(ids).pipe(
+                Effect.flatMap((records) =>
+                  makeInMemoryDotypos({
+                    customers: records,
+                  }).service.getCustomersByIds(ids)
                 )
-              )
+              ),
+          }),
+          EmailServiceTag.Live.pipe(
+            Layer.provide(
+              Layer.succeed(EmailConfigTag, {
+                provider: "resend",
+                apiKey: "re_test",
+                defaultFrom: { email: testEmailAddress("campaigns") },
+              })
             )
-          )
-        ),
-        Layer.provide(testDatabase.layer)
-      );
+          ),
+          Layer.succeed(CampaignEmailConfig, {
+            deploymentEnvironment,
+            from: { email: testEmailAddress("campaigns") },
+            replyTo: { email: testEmailAddress("hello") },
+            adminInbox: testEmailAddress("admin"),
+          })
+        )
+      ).pipe(Layer.provide(testDatabase.layer));
 
     const consumerLayer = consumerLayerFor("development");
 
@@ -543,12 +524,10 @@ describe.skipIf(!testDatabase)(
      * published version is marketing, with one send of that version.
      */
     const seedAutomated = async (input: {
-      readonly status?: "active" | "paused";
       readonly recipient: DotyposCustomerId;
     }) => {
       const campaignId = await seedAutomatedCampaign(db, {
         purpose: "operational",
-        status: input.status,
       });
       automatedCampaignIds.push(campaignId);
       const versionId = await seedAutomationVersion(db, {
@@ -566,29 +545,23 @@ describe.skipIf(!testDatabase)(
       return { campaignId, versionId, sendId };
     };
 
-    test("mails an automated send's version email and leaves its Active campaign as it is", async () => {
-      const id = customerId("automated");
+    test("treats a queue message for an automated send as stale: only its deliver unit submits it", async () => {
+      const id = customerId("automated-queued");
       profiles = [profile(id)];
       await grantConsent([id]);
       const { sendId } = await seedAutomated({ recipient: id });
 
-      expect(await consume({ sendId, deliveryAttempt: 1 })).toBe("sent");
-
-      const [message] = batchSend.mock.calls[0]![0];
-      expect(message!.headers?.["List-Unsubscribe"]).toBeDefined();
-      expect(requestPayloads()[0]).toContain("Verze jedna");
-      expect(requestPayloads()[0]).not.toContain("Rozpracovan");
-      const { recipients, campaign } = await stored(sendId);
-      expect(recipients.map((row) => row.status)).toEqual(["sent"]);
-      expect(campaign.status).toBe("active");
-      expect(campaign.completed_at).not.toBeNull();
-
-      // A completed automated send has nothing left to deliver.
       expect(await consume({ sendId, deliveryAttempt: 1 })).toBe("stale");
-      expect(batchSend.mock.calls).toHaveLength(1);
+
+      expect(batchSend.mock.calls).toHaveLength(0);
+      const { recipients, campaign, batches } = await stored(sendId);
+      expect(recipients.map((row) => row.status)).toEqual(["pending"]);
+      expect(batches).toEqual([]);
+      expect(campaign.status).toBe("active");
+      expect(campaign.completed_at).toBeNull();
     });
 
-    test("settles an automated send whatever its campaign's status and ends its runs from their recipients", async () => {
+    test("settles a submitted automated send whatever its campaign's status and leaves the status as it is", async () => {
       batchSend = mock(async () => ({
         data: null,
         error: { message: "Invalid batch", statusCode: 422 },
@@ -596,40 +569,40 @@ describe.skipIf(!testDatabase)(
       const id = customerId("automated-paused");
       profiles = [profile(id)];
       await grantConsent([id]);
-      const { campaignId, versionId, sendId } = await seedAutomated({
+      const campaignId = await seedAutomatedCampaign(db, {
+        purpose: "operational",
         status: "paused",
-        recipient: id,
       });
-      await testDatabase.pool.query(
-        `insert into email_campaign_automation_runs
-           (campaign_id, version_id, dotypos_customer_id, trigger_kind, trigger_at, status, step_id, step_entered_at, send_id)
-         values ($1, $2, $3, 'account-created', now(), 'sending', 'send', now(), $4)`,
-        [campaignId, versionId, id, sendId]
-      );
+      automatedCampaignIds.push(campaignId);
+      const versionId = await seedAutomationVersion(db, {
+        campaignId,
+        purpose: "marketing",
+        text: "Verze jedna",
+      });
 
-      expect(await consume({ sendId, deliveryAttempt: 1 })).toBe("failed");
+      const sendId = await deliverAutomated({
+        campaignId,
+        versionId,
+        recipients: [id],
+      });
 
       const { recipients, campaign, batches } = await stored(sendId);
       expect(recipients.map((row) => row.status)).toEqual(["failed"]);
       expect(batches.map((batch) => batch.status)).toEqual(["rejected"]);
       expect(campaign.status).toBe("paused");
       expect(campaign.completed_at).not.toBeNull();
-      const { rows: runs } = await testDatabase.pool.query(
-        "select status, outcome, outcome_reason from email_campaign_automation_runs where send_id = $1",
-        [sendId]
-      );
-      expect(runs).toEqual([
-        {
-          status: "ended",
-          outcome: "failed",
-          outcome_reason: "delivery-refused",
-        },
-      ]);
+
+      // A completed automated send has nothing left to submit or settle.
+      expect(await resubmitAutomated(sendId)).toMatchObject({
+        _tag: "AlreadyCompleted",
+      });
+      expect(batchSend.mock.calls).toHaveLength(1);
     });
 
     /**
-     * Persists an automated send of the version to `recipients` and submits
-     * it from the profiles read for it, as a deliver unit does (§5.9).
+     * Persists an automated send of the version to `recipients`, submits it
+     * from the profiles read for it and settles it, as a deliver unit does
+     * (§5.9). The unit also ends the send's runs; its own suite covers that.
      */
     const deliverAutomated = (input: {
       readonly campaignId: CampaignId;
@@ -667,15 +640,33 @@ describe.skipIf(!testDatabase)(
                 )
               )
           );
-          const settle = yield* delivery.submitAutomatedSend({
+          const submission = yield* delivery.submitAutomatedSend({
             sendId,
             profiles: Option.some(read),
           });
-          yield* transaction(settle(Temporal.Now.instant()));
+          yield* transaction(
+            AutomatedSendSubmission.$match(submission, {
+              AlreadyCompleted: () => Effect.void,
+              Submitted: ({ batches }) =>
+                delivery.settleAutomatedSend({
+                  sendId,
+                  batches,
+                  at: Temporal.Now.instant(),
+                }),
+            })
+          );
           return sendId;
         }).pipe(Effect.provide(Layer.merge(consumerLayer, testDatabase.layer)))
       );
     };
+
+    /** Submits an automated send again, as a reclaimed deliver unit does. */
+    const resubmitAutomated = (sendId: CampaignSendId) =>
+      Effect.runPromise(
+        Effect.flatMap(CampaignDeliveryService, (delivery) =>
+          delivery.submitAutomatedSend({ sendId, profiles: Option.none() })
+        ).pipe(Effect.provide(consumerLayer))
+      );
 
     test("automated batch reads consent written in its transaction", async () => {
       const id = customerId("unit-transaction-consent");
@@ -752,6 +743,10 @@ describe.skipIf(!testDatabase)(
       ]);
       expect(requestPayloads()[0]).toContain("Verze jedna");
       expect(requestPayloads()[0]).not.toContain("Rozpracovan");
+      // The version's marketing purpose, not the campaign's own.
+      expect(
+        batchSend.mock.calls[0]![0][0]!.headers?.["List-Unsubscribe"]
+      ).toBeDefined();
       expect(mailed).toEqual([testEmailAddress(inside)]);
       const { recipients, campaign, batches } = await stored(sendId);
       expect(

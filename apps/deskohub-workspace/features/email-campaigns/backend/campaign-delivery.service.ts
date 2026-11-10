@@ -12,11 +12,11 @@ import {
   eq,
   gt,
   inArray,
-  isNotNull,
   isNull,
   lte,
   notExists,
   or,
+  type SQL,
   sql,
 } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
@@ -49,7 +49,6 @@ import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
 import { currentInstant } from "@/shared/utils/temporal";
 import type { AutomationVersionId } from "../automation/automation-identifiers";
-import { AutomationRunSettlement } from "../automation/backend/automation-run-settlement.service";
 import type {
   CampaignLocalizedContent,
   CampaignPurpose,
@@ -135,16 +134,15 @@ type CampaignDeliveryOutcome = "sent" | "failed" | "stale";
 
 export interface ICampaignDeliveryService {
   /**
-   * Delivers one attempt of a frozen send in provider batches. A one-off
-   * send then marks its campaign Sent, or Failed when any recipient wasn't
-   * delivered; an automated send completes and settles its runs, leaving
-   * its campaign's status to the automation's lifecycle. One run at a time
-   * owns the send. Each recipient's email (and, for
+   * Delivers one attempt of a frozen one-off send in provider batches, then
+   * marks its campaign Sent, or Failed when any recipient wasn't delivered.
+   * One run at a time owns the send. Each recipient's email (and, for
    * marketing, consent) is re-read first; one who lost it, or who is
    * outside the email test domain outside production, is `skipped`. A batch
    * whose outcome is unknown is replayed with its identical payload under
    * its key while the key lasts, and its recipients become `unconfirmed`
-   * once it can't be.
+   * once it can't be. An automated send is `stale` here: its deliver unit
+   * submits and settles it.
    */
   readonly deliverAttempt: (
     attempt: CampaignDeliveryAttempt
@@ -178,13 +176,11 @@ export interface ICampaignDeliveryService {
   }) => Effect.Effect<void, DatabaseQueryError, WorkspaceTransaction>;
   /**
    * §5.9 step 3: requests an automated send's persisted batch under its
-   * key and returns the writes that settle it (step 4). With the profiles
-   * the batch was persisted from, it's the first request; without them it
-   * replays the batch as `deliverAttempt` does, re-reading its recipients,
-   * and past the replay window its recipients become `unconfirmed`. The
-   * settlement records the outcome, completes the send and ends its runs;
-   * a send already completed settles nothing. An unknown outcome fails, so
-   * the caller retries the replay.
+   * key and returns each batch's outcome for step 4. With the profiles the
+   * batch was persisted from, it's the first request; without them it
+   * replays the batch, re-reading its recipients, and past the replay
+   * window the batch is `unconfirmed`. A send already completed requests
+   * nothing. An unknown outcome fails, so the caller retries the replay.
    */
   readonly submitAutomatedSend: (input: {
     readonly sendId: CampaignSendId;
@@ -192,18 +188,42 @@ export interface ICampaignDeliveryService {
       ReadonlyMap<DotyposCustomerId, DotyposCustomer>
     >;
   }) => Effect.Effect<
-    AutomatedSendSettlement,
+    AutomatedSendSubmission,
     CampaignDeliveryIncomplete | DatabaseQueryError
   >;
+  /**
+   * §5.9 step 4, in the caller's transaction: records a submitted automated
+   * send's batch outcomes on the batches and their recipients, then
+   * completes the send. An automated send is never retried, so it completes
+   * however its batch settled. Its campaign's status belongs to the
+   * automation's lifecycle and stays as it is; its runs are the caller's.
+   */
+  readonly settleAutomatedSend: (input: {
+    readonly sendId: CampaignSendId;
+    readonly batches: readonly RequestedBatchOutcome[];
+    readonly at: Temporal.Instant;
+  }) => Effect.Effect<void, DatabaseQueryError, WorkspaceTransaction>;
 }
 
 /**
- * Settles a submitted automated send in the caller's transaction: records
- * its batch outcome, completes the send and ends its runs.
+ * What submitting an automated send found. `AlreadyCompleted`: an earlier
+ * settlement completed the send, so nothing is left to record and its runs
+ * already ended. `Submitted`: the outcome of each batch it requested, for
+ * `settleAutomatedSend`.
  */
-type AutomatedSendSettlement = (
-  at: Temporal.Instant
-) => Effect.Effect<void, DatabaseQueryError, WorkspaceTransaction>;
+export type AutomatedSendSubmission = Data.TaggedEnum<{
+  AlreadyCompleted: Record<never, never>;
+  Submitted: { readonly batches: readonly RequestedBatchOutcome[] };
+}>;
+
+export const AutomatedSendSubmission =
+  Data.taggedEnum<AutomatedSendSubmission>();
+
+/** A persisted batch with what its request settled as. */
+type RequestedBatchOutcome = {
+  readonly batch: DeliveryBatch;
+  readonly outcome: BatchOutcome;
+};
 
 /** Automated sends are never retried, so they deliver their first attempt only. */
 const automatedAttempt = (sendId: CampaignSendId): CampaignDeliveryAttempt => ({
@@ -218,8 +238,6 @@ const automatedAttempt = (sendId: CampaignSendId): CampaignDeliveryAttempt => ({
  */
 type DeliveredCampaign = {
   readonly id: CampaignId;
-  /** Null for a one-off send. */
-  readonly automationVersionId: AutomationVersionId | null;
   readonly purpose: CampaignPurpose;
   readonly templateKey: CampaignTemplateKey;
   readonly content: CampaignLocalizedContent;
@@ -294,51 +312,35 @@ export class CampaignDeliveryService extends Context.Service<
       const email = yield* EmailServiceTag;
       const config = yield* CampaignEmailConfig;
       const unsubscribe = yield* CampaignUnsubscribeService;
-      const runSettlement = yield* AutomationRunSettlement;
 
       /**
-       * The current attempt's campaign email. A one-off campaign must still
-       * be Sending. An automated send must not be complete yet, and its
-       * persisted batch settles whatever its campaign's status.
+       * The campaign email of a one-off send's current attempt, while its
+       * campaign is still Sending.
        */
       const findCurrentAttempt = (attempt: CampaignDeliveryAttempt) =>
         db
           .select({
-            campaign: {
-              id: emailCampaigns.id,
-              purpose: emailCampaigns.purpose,
-              templateKey: emailCampaigns.templateKey,
-              content: emailCampaigns.content,
-            },
-            version: {
-              id: emailCampaignAutomationVersions.id,
-              purpose: emailCampaignAutomationVersions.purpose,
-              templateKey: emailCampaignAutomationVersions.templateKey,
-              content: emailCampaignAutomationVersions.content,
-            },
+            id: emailCampaigns.id,
+            purpose: emailCampaigns.purpose,
+            templateKey: emailCampaigns.templateKey,
+            content: emailCampaigns.content,
           })
           .from(emailCampaignSends)
           .innerJoin(
             emailCampaigns,
             eq(emailCampaigns.id, emailCampaignSends.campaignId)
           )
-          .leftJoin(emailCampaignAutomationVersions, sendAutomationVersion)
           .where(
             and(
-              eq(emailCampaignSends.id, attempt.sendId),
-              eq(emailCampaignSends.deliveryAttempt, attempt.deliveryAttempt),
-              or(
-                eq(emailCampaigns.status, "sending"),
-                and(
-                  isNotNull(emailCampaignSends.automationVersionId),
-                  isNull(emailCampaignSends.completedAt)
-                )
-              )
+              currentAttemptSend(attempt),
+              isNull(emailCampaignSends.automationVersionId),
+              eq(emailCampaigns.status, "sending")
             )
           )
           .pipe(
-            Effect.map(([row]) =>
-              Option.fromNullishOr(row).pipe(Option.map(deliveredCampaign))
+            Effect.map(
+              ([campaign]): Option.Option<DeliveredCampaign> =>
+                Option.fromNullishOr(campaign)
             )
           );
 
@@ -1234,64 +1236,21 @@ export class CampaignDeliveryService extends Context.Service<
           Effect.repeat({ while: (delivered) => delivered })
         );
 
-      const countUndelivered = (context: AttemptContext) =>
-        db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(emailCampaignRecipients)
-          .where(
-            and(
-              eq(emailCampaignRecipients.sendId, context.sendId),
-              inArray(
-                emailCampaignRecipients.status,
-                undeliveredRecipientStatuses
-              )
-            )
-          )
-          .pipe(Effect.map(([row]) => row?.count ?? 0));
-
       /**
-       * An automated send is never retried, so it completes however its
-       * batch settled, and its runs end with it. Its campaign's status
-       * belongs to the automation's lifecycle and stays as it is.
-       */
-      const completeAutomatedSend = (input: {
-        readonly sendId: CampaignSendId;
-        readonly now: Temporal.Instant;
-      }) =>
-        db
-          .update(emailCampaignSends)
-          .set({ completedAt: input.now })
-          .where(eq(emailCampaignSends.id, input.sendId))
-          .pipe(
-            Effect.andThen(
-              runSettlement.settle({ sendId: input.sendId, at: input.now })
-            )
-          );
-
-      /**
-       * Settles the send: a one-off campaign becomes Sent, or Failed when
-       * anyone wasn't delivered; an automated send completes.
+       * Settles the send: its campaign becomes Sent, or Failed when anyone
+       * wasn't delivered.
        */
       const settle = (context: AttemptContext) =>
         currentInstant.pipe(
           Effect.flatMap((now) =>
             leasedTransaction(
               context,
-              context.campaign.automationVersionId === null
-                ? OnceCampaignLifecycle.settle({
-                    campaignId: context.campaign.id,
-                    sendId: context.sendId,
-                    deliveryAttempt: context.deliveryAttempt,
-                    now,
-                  })
-                : countUndelivered(context).pipe(
-                    Effect.map((undelivered) =>
-                      undelivered > 0 ? ("failed" as const) : ("sent" as const)
-                    ),
-                    Effect.tap(() =>
-                      completeAutomatedSend({ sendId: context.sendId, now })
-                    )
-                  )
+              OnceCampaignLifecycle.settle({
+                campaignId: context.campaign.id,
+                sendId: context.sendId,
+                deliveryAttempt: context.deliveryAttempt,
+                now,
+              })
             )
           ),
           Effect.withSpan("CampaignDeliveryService.settle")
@@ -1319,22 +1278,42 @@ export class CampaignDeliveryService extends Context.Service<
           (leaseId) => releaseLease({ ...input, leaseId })
         );
 
-      /** The campaign email a version pins, as an automated send mails it. */
-      const automatedCampaign = (
-        sendId: CampaignSendId
-      ): Effect.Effect<DeliveredCampaign, DatabaseQueryError> =>
+      /**
+       * The campaign email that the version of the automated send `send`
+       * selects pins, if such a send exists.
+       */
+      const automatedCampaignOf = (
+        send: SQL | undefined
+      ): Effect.Effect<Option.Option<DeliveredCampaign>, DatabaseQueryError> =>
         db
           .select({
             id: emailCampaignSends.campaignId,
-            automationVersionId: emailCampaignAutomationVersions.id,
             purpose: emailCampaignAutomationVersions.purpose,
             templateKey: emailCampaignAutomationVersions.templateKey,
             content: emailCampaignAutomationVersions.content,
           })
           .from(emailCampaignSends)
           .innerJoin(emailCampaignAutomationVersions, sendAutomationVersion)
-          .where(eq(emailCampaignSends.id, sendId))
-          .pipe(Effect.map(([campaign]) => campaign!));
+          .where(send)
+          .pipe(Effect.map(([campaign]) => Option.fromNullishOr(campaign)));
+
+      /** The campaign email a version pins, as an automated send mails it. */
+      const automatedCampaign = (sendId: CampaignSendId) =>
+        automatedCampaignOf(eq(emailCampaignSends.id, sendId)).pipe(
+          Effect.map(Option.getOrThrow)
+        );
+
+      /**
+       * The campaign email of an automated send its deliver unit hasn't
+       * settled yet, whatever its campaign's status.
+       */
+      const uncompletedAutomatedCampaign = (sendId: CampaignSendId) =>
+        automatedCampaignOf(
+          and(
+            currentAttemptSend(automatedAttempt(sendId)),
+            isNull(emailCampaignSends.completedAt)
+          )
+        );
 
       const createAutomatedSend: ICampaignDeliveryService["createAutomatedSend"] =
         (input) =>
@@ -1449,12 +1428,14 @@ export class CampaignDeliveryService extends Context.Service<
 
       const submitAutomatedSend: ICampaignDeliveryService["submitAutomatedSend"] =
         (input) =>
-          findCurrentAttempt(automatedAttempt(input.sendId)).pipe(
+          uncompletedAutomatedCampaign(input.sendId).pipe(
             Effect.flatMap(
               Option.match({
                 // Completed meanwhile: nothing is left to settle.
                 onNone: () =>
-                  Effect.succeed<AutomatedSendSettlement>(() => Effect.void),
+                  Effect.succeed<AutomatedSendSubmission>(
+                    AutomatedSendSubmission.AlreadyCompleted()
+                  ),
                 onSome: (campaign) =>
                   listRequestedBatches(automatedAttempt(input.sendId)).pipe(
                     Effect.flatMap((requested) =>
@@ -1482,28 +1463,8 @@ export class CampaignDeliveryService extends Context.Service<
                       )
                     ),
                     Effect.map(
-                      (settled): AutomatedSendSettlement =>
-                        (at) =>
-                          Effect.forEach(
-                            settled,
-                            (batch) =>
-                              recordBatchStatus({ ...batch, now: at }).pipe(
-                                Effect.andThen(
-                                  recordRecipientsOutcome({
-                                    ...batch,
-                                    now: at,
-                                  })
-                                )
-                              ),
-                            { discard: true }
-                          ).pipe(
-                            Effect.andThen(
-                              completeAutomatedSend({
-                                sendId: input.sendId,
-                                now: at,
-                              })
-                            )
-                          )
+                      (batches): AutomatedSendSubmission =>
+                        AutomatedSendSubmission.Submitted({ batches })
                     )
                   ),
               })
@@ -1512,10 +1473,33 @@ export class CampaignDeliveryService extends Context.Service<
             Effect.withSpan("CampaignDeliveryService.submitAutomatedSend")
           );
 
+      const settleAutomatedSend: ICampaignDeliveryService["settleAutomatedSend"] =
+        (input) =>
+          Effect.forEach(
+            input.batches,
+            (batch) =>
+              recordBatchStatus({ ...batch, now: input.at }).pipe(
+                Effect.andThen(
+                  recordRecipientsOutcome({ ...batch, now: input.at })
+                )
+              ),
+            { discard: true }
+          ).pipe(
+            Effect.andThen(
+              db
+                .update(emailCampaignSends)
+                .set({ completedAt: input.at })
+                .where(eq(emailCampaignSends.id, input.sendId))
+            ),
+            Effect.asVoid,
+            Effect.withSpan("CampaignDeliveryService.settleAutomatedSend")
+          );
+
       return {
         createAutomatedSend,
         persistAutomatedBatch,
         submitAutomatedSend,
+        settleAutomatedSend,
         deliverAttempt: (attempt) =>
           Effect.Do.pipe(
             Effect.bind("startedAt", () => currentInstant),
@@ -1549,7 +1533,6 @@ export class CampaignDeliveryService extends Context.Service<
       Layer.mergeAll(
         CampaignEmailConfig.Default,
         CampaignUnsubscribeService.Live,
-        AutomationRunSettlement.Default,
         WorkspaceDotyposLayer,
         WorkspaceEmailLayer
       )
@@ -1575,24 +1558,6 @@ const requestedDeliveryBatch = (
   batchIndex: requested.batchIndex,
   dotyposCustomerIds: requested.dotyposCustomerIds,
 });
-
-type CampaignEmail = Pick<
-  DeliveredCampaign,
-  "purpose" | "templateKey" | "content"
->;
-
-const deliveredCampaign = ({
-  campaign,
-  version,
-}: {
-  readonly campaign: CampaignEmail & { readonly id: CampaignId };
-  readonly version:
-    | (CampaignEmail & { readonly id: AutomationVersionId })
-    | null;
-}): DeliveredCampaign =>
-  version === null
-    ? { ...campaign, automationVersionId: null }
-    : { ...version, id: campaign.id, automationVersionId: version.id };
 
 const incomplete = (attempt: CampaignDeliveryAttempt) =>
   Effect.fail(

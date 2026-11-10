@@ -1,0 +1,11 @@
+import type { PostHogFeatureFlagSnapshot } from "@deskohub/posthog/feature-flags";
+
+/** Generated from PostHog feature flag definitions. Do not edit manually. */
+export const postHogFeatureFlagSnapshot = {
+  generatedAt: {{{generatedAtLiteral}}},
+  constantValues: {
+{{#featureFlags}}
+    {{{keyLiteral}}}: {{{constantValueLiteral}}},
+{{/featureFlags}}
+  },
+} as const satisfies PostHogFeatureFlagSnapshot;

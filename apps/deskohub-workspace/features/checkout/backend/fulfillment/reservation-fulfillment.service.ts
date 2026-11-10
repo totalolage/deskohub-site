@@ -15,6 +15,7 @@ import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/
 import type { Locale } from "@/features/i18n";
 import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import {
+  reservationLogFields,
   type WorkspaceReservation,
   WorkspaceReservationRepository,
   type WorkspaceReservationStateError,
@@ -257,7 +258,11 @@ export class ReservationFulfillment extends Context.Service<
           readonly failureCode: WorkspacePaidFulfillmentFailureCode;
           readonly cause?: unknown;
         }) {
-          yield* Effect.annotateLogsScoped({ input });
+          // The cause stays off the marker's query rows; the fatal row has it.
+          yield* Effect.annotateLogsScoped({
+            orderId: input.orderId,
+            failureCode: input.failureCode,
+          });
           yield* Effect.logInfo("Paid fulfillment failure handling started");
 
           yield* Effect.logInfo("Paid fulfillment failure marker started");
@@ -278,7 +283,9 @@ export class ReservationFulfillment extends Context.Service<
               Effect.ignore
             );
           yield* Effect.logInfo("Paid fulfillment failure marker completed");
-          yield* Effect.logFatal("Paid fulfillment failure handling completed");
+          yield* Effect.logFatal(
+            "Paid fulfillment failure handling completed"
+          ).pipe(Effect.annotateLogs({ cause: input.cause }));
 
           return yield* new WorkspacePaidFulfillmentError({
             ...input,
@@ -899,7 +906,7 @@ export class ReservationFulfillment extends Context.Service<
                     })
                 )
               );
-            yield* Effect.annotateLogsScoped({ reservation });
+            yield* Effect.annotateLogsScoped(reservationLogFields(reservation));
             yield* Effect.logDebug("Paid fulfillment reservation loaded");
 
             const admitted = yield* admitPaidOrder(reservation);
@@ -917,7 +924,11 @@ export class ReservationFulfillment extends Context.Service<
               reservation: admitted,
               staleProcessingBefore,
             });
-            yield* Effect.annotateLogsScoped({ claimed });
+            // A missed claim keeps the loaded reservation's fields.
+            yield* Effect.annotateLogsScoped({
+              claimed: claimed !== null,
+              ...(claimed && reservationLogFields(claimed)),
+            });
             yield* Effect.logDebug("Paid fulfillment claim completed");
 
             if (!claimed) {

@@ -3,7 +3,6 @@ import "@/shared/testing/workspace-test-env";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
 
-const isEnabled = mock(() => Effect.succeed(true));
 const evaluateFlags = mock(() =>
   // posthog-node reports failed remote evaluations as empty snapshots.
   Effect.succeed({ getFlag: () => undefined })
@@ -32,7 +31,6 @@ const subjectModule = await import("./subject");
 mock.module("./node", () => ({
   nodeFeatureFlags: {
     evaluateFlags,
-    isEnabled,
   },
 }));
 
@@ -43,7 +41,8 @@ mock.module("./feature-flag-evaluation-mode.server", () => ({
 
 mock.module("./subject", () => ({
   ...subjectModule,
-  getCurrentPostHogFeatureFlagSubject: () => Effect.succeed(visitorSubject),
+  getCurrentFeatureFlagAudience: () =>
+    Effect.succeed({ subject: visitorSubject, request: undefined }),
 }));
 
 describe("WorkspaceFeatureFlagService", () => {
@@ -51,7 +50,6 @@ describe("WorkspaceFeatureFlagService", () => {
     evaluateFlags.mockClear();
     getGlobalWorkspaceFeatureFlagValue.mockClear();
     getGlobalWorkspaceFeatureFlagValues.mockClear();
-    isEnabled.mockClear();
   });
 
   test("does not read the request subject for globally evaluated flags", async () => {
@@ -72,7 +70,7 @@ describe("WorkspaceFeatureFlagService", () => {
       "meeting_room_page"
     );
     expect(enabled).toBe(true);
-    expect(isEnabled).not.toHaveBeenCalled();
+    expect(evaluateFlags).not.toHaveBeenCalled();
   });
 
   const discountFlagKeys = [

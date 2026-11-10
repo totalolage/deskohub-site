@@ -1,28 +1,22 @@
 import "server-only";
 
-import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
-import {
-  loadPostHogFeatureFlagDefinitions,
-  type PostHogFeatureFlagDefinition,
-} from "@deskohub/posthog/feature-flags/management";
+import { loadPostHogFeatureFlagDefinitions } from "@deskohub/posthog/feature-flags/management";
 import { Effect } from "effect";
 import { cacheLife } from "next/cache";
 import { env } from "@/env";
 import { postHogRuntimeConfig } from "@/shared/backend/config/posthog.config";
 import { readSharedSnapshot } from "@/shared/backend/shared-snapshot";
+import type { PostHogFeatureFlagKey } from "../generated/contract";
+import { postHogFeatureFlagSnapshot } from "../generated/flag-snapshot";
 import {
-  type PostHogFeatureFlagDefinitions,
-  type PostHogFeatureFlagKey,
-  postHogFeatureFlags,
-} from "../generated/contract";
-
-type GlobalWorkspaceFeatureFlagValues =
-  PostHogFeatureFlagOverrides<PostHogFeatureFlagDefinitions>;
+  type ConstantFeatureFlagValues,
+  makeFeatureFlagClassifier,
+} from "./feature-flag-classification";
 
 /** Returns the requested values only when every requested flag is constant. */
 export async function getGlobalWorkspaceFeatureFlagValues(
   keys: readonly PostHogFeatureFlagKey[]
-): Promise<GlobalWorkspaceFeatureFlagValues | undefined> {
+): Promise<ConstantFeatureFlagValues | undefined> {
   const values = await classifyWorkspaceFeatureFlags();
   if (!keys.every((key) => Object.hasOwn(values, key))) return undefined;
 
@@ -35,13 +29,12 @@ export async function getGlobalWorkspaceFeatureFlagValue(
   return (await classifyWorkspaceFeatureFlags())[key];
 }
 
-interface ClassifiedDefinitions {
-  readonly definitions: ReadonlyArray<PostHogFeatureFlagDefinition>;
-  /** False when PostHog couldn't answer with the management definitions. */
-  readonly complete: boolean;
-}
+/** Remembers this process's last complete classification across refreshes. */
+const classifyFeatureFlags = makeFeatureFlagClassifier({
+  snapshot: postHogFeatureFlagSnapshot,
+});
 
-async function classifyWorkspaceFeatureFlags(): Promise<GlobalWorkspaceFeatureFlagValues> {
+async function classifyWorkspaceFeatureFlags(): Promise<ConstantFeatureFlagValues> {
   "use cache";
 
   const overrides = postHogRuntimeConfig.featureFlagOverrides ?? {};
@@ -53,47 +46,22 @@ async function classifyWorkspaceFeatureFlags(): Promise<GlobalWorkspaceFeatureFl
     return overrides;
   }
 
-  const { definitions } = await readSharedSnapshot(
+  const { values } = await readSharedSnapshot(
     "feature-flags.classify",
-    Effect.suspend(() =>
-      loadPostHogFeatureFlagDefinitions({
-        apiKey,
-        host: new URL(host),
-        projectId,
-      })
-    ).pipe(
-      Effect.map(
-        (definitions): ClassifiedDefinitions => ({
-          definitions,
-          complete: true,
+    classifyFeatureFlags({
+      definitions: Effect.suspend(() =>
+        loadPostHogFeatureFlagDefinitions({
+          apiKey,
+          host: new URL(host),
+          projectId,
         })
       ),
-      // Without the definitions only the overrides are constant.
-      Effect.catch((error) =>
-        Effect.logWarning(error.message, { cause: error.cause }).pipe(
-          Effect.as<ClassifiedDefinitions>({ definitions: [], complete: false })
-        )
-      )
-    ),
-    {
-      complete: { lifetime: "publicContent" },
-      // Shared as long as a complete classification.
-      incomplete: {
-        when: ({ complete }) => !complete,
-        lifetime: "publicContent",
-      },
-    }
+      overrides,
+    }),
+    // Every source refreshes on the same cadence: a failed refresh serves
+    // the last complete classification or the snapshot until the next one.
+    { complete: { lifetime: "publicContent" } }
   );
 
-  const values: Partial<Record<PostHogFeatureFlagKey, boolean>> = {};
-  for (const { constantEnabledValue, key } of definitions) {
-    if (
-      constantEnabledValue !== undefined &&
-      postHogFeatureFlags.keys.includes(key as PostHogFeatureFlagKey)
-    ) {
-      values[key as PostHogFeatureFlagKey] = constantEnabledValue;
-    }
-  }
-
-  return { ...values, ...overrides };
+  return values;
 }
