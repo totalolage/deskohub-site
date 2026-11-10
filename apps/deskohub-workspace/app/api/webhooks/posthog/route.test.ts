@@ -169,22 +169,35 @@ describe("PostHog email webhook route", () => {
   );
 
   test.each([
-    ["missing", undefined, "posthog_webhook_secret_missing"],
-    ["blank", "  ", "posthog_webhook_secret_missing"],
-    ["not a base64 key", "whsec_not base64!", "posthog_webhook_secret_invalid"],
+    ["missing", undefined],
+    ["blank", "  "],
+    ["not a base64 key", "whsec_not base64!"],
   ])(
-    "answers 500 so PostHog retries while the signing secret is %s",
-    async (_, secret, code) => {
+    "answers a bare 500 so PostHog retries while the signing secret is %s",
+    async (_, secret) => {
       const request = signedRequest({ secret: standardWebhookSigningSecret() });
       configuredSigningSecret = secret;
 
       const { status, body } = await send(request);
 
       expect(status).toBe(500);
-      expect(body.code).toBe(code);
+      // Only the generic error: the caller learns nothing of the setup.
+      expect(Object.keys(body)).toEqual(["error"]);
       expect(pollTriggers).toEqual([]);
     }
   );
+
+  test("tells an unsigned caller nothing when no signing secret is configured", async () => {
+    configuredSigningSecret = undefined;
+
+    const { status, body } = await send(
+      new Request(webhookUrl, { method: "POST", body: "{}" })
+    );
+
+    expect(status).toBe(500);
+    expect(Object.keys(body)).toEqual(["error"]);
+    expect(pollTriggers).toEqual([]);
+  });
 
   test("answers 500 without polling when the request body cannot be read", async () => {
     const signed = signedRequest();

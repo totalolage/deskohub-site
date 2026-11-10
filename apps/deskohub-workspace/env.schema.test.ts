@@ -26,8 +26,6 @@ const workspaceRuntimeEnv = (
     Object.keys(environmentFields).map((key) => [key, process.env[key]])
   ) as WorkspaceRuntimeEnv),
   EMAIL_API_KEY: "re_test",
-  POSTHOG_EMAIL_SECRET_KEY: "phx_test",
-  POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET: "whsec_dGVzdA==",
   ...overrides,
 });
 
@@ -133,29 +131,23 @@ describe("workspace environment schemas", () => {
     ).toEqual([]);
   });
 
-  test("fails production closed when PostHog email status reads or signals are unconfigured", () => {
-    for (const key of [
-      "POSTHOG_EMAIL_SECRET_KEY",
-      "POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET",
+  test("lets every environment, production included, run without PostHog email secrets", () => {
+    // Production deploys before PostHog email is set up; campaign email then
+    // goes through Resend alone and nothing polls PostHog.
+    for (const VERCEL_ENV of [
+      "production",
+      "preview",
+      "development",
     ] as const) {
-      expect(
-        invalidVariables({ [key]: undefined, VERCEL_ENV: "production" })
-      ).toEqual([key]);
-      expect(
-        invalidVariables({ [key]: "   ", VERCEL_ENV: "production" })
-      ).toEqual([key]);
-    }
-  });
-
-  test("keeps preview and development usable without PostHog email secrets", () => {
-    for (const VERCEL_ENV of ["preview", "development"] as const) {
-      expect(
-        invalidVariables({
-          POSTHOG_EMAIL_SECRET_KEY: undefined,
-          POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET: undefined,
-          VERCEL_ENV,
-        })
-      ).toEqual([]);
+      for (const secret of [undefined, "   "]) {
+        expect(
+          invalidVariables({
+            POSTHOG_EMAIL_SECRET_KEY: secret,
+            POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET: secret,
+            VERCEL_ENV,
+          })
+        ).toEqual([]);
+      }
     }
   });
 

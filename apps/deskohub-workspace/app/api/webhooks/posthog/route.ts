@@ -31,6 +31,19 @@ const retryRefusal = (code: string, cause?: unknown) =>
   });
 
 /**
+ * A missing or unusable signing secret answers like any other failure, so an
+ * unsigned caller can't tell whether this deployment checks signatures; PostHog
+ * delivers the signal again once the secret is configured.
+ */
+const configurationRefusal = (code: string, cause?: unknown) =>
+  new WebhookRefusal({
+    disposition: { kind: "retry", severity: "error" },
+    code,
+    codeVisibility: "logs-only",
+    cause,
+  });
+
+/**
  * Verifies PostHog's signal that the status of some PostHog email changed.
  * The signal names no message, so a verified request polls every pending
  * delivery; its payload is ignored.
@@ -40,7 +53,7 @@ const receiveDeliveryStatusSignal = Effect.fn(
 )(function* (request: Request) {
   const { signingSecret } = yield* PostHogEmailWebhookConfig;
   if (!signingSecret) {
-    return yield* retryRefusal("posthog_webhook_secret_missing");
+    return yield* configurationRefusal("posthog_webhook_secret_missing");
   }
 
   const webhook = yield* verifyStandardWebhookRequest(
@@ -51,7 +64,9 @@ const receiveDeliveryStatusSignal = Effect.fn(
       StandardWebhookBodyUnreadable: ({ cause }) =>
         Effect.fail(retryRefusal("posthog_webhook_body_unreadable", cause)),
       StandardWebhookSecretInvalid: ({ cause }) =>
-        Effect.fail(retryRefusal("posthog_webhook_secret_invalid", cause)),
+        Effect.fail(
+          configurationRefusal("posthog_webhook_secret_invalid", cause)
+        ),
       StandardWebhookRejection: ({ reason, cause }) =>
         Effect.fail(
           new WebhookRefusal({

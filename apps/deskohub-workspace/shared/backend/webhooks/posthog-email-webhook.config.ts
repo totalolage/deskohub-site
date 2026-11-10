@@ -5,7 +5,7 @@ import { env } from "@/env";
 
 /**
  * The secret PostHog's realtime webhook destination signs email status
- * signals with. Production requires it; elsewhere it may be absent.
+ * signals with; absent until PostHog email is set up, and outside production.
  */
 export class PostHogEmailWebhookConfig extends Context.Service<
   PostHogEmailWebhookConfig,

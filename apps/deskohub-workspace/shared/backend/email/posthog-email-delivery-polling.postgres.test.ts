@@ -818,6 +818,18 @@ describe.skipIf(!database)("PostHog email delivery polling", () => {
     ).toEqual({ outcome: "not-configured" });
   });
 
+  test("reads nothing from PostHog while no delivery is pending", async () => {
+    for (const trigger of ["schedule", "signal"] as const) {
+      expect(await pollAt(trigger, start)).toMatchObject({
+        outcome: "polled",
+        polled: 0,
+        settled: 0,
+        expired: 0,
+      });
+    }
+    expect(reads).toEqual([]);
+  });
+
   test("fails with the database's error and still logs one summary line", async () => {
     await expect(
       pollAt("schedule", start, { repository: failingClaimRepository })

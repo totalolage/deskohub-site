@@ -51,31 +51,6 @@ const isBlank = (value: string | undefined): boolean =>
   value === undefined || value.trim() === "";
 
 /**
- * Production sends campaign email through PostHog first, so it must be able to
- * read PostHog's per-message delivery status and to verify the PostHog webhook
- * that signals new statuses. Preview and development never send through
- * PostHog and may omit both secrets.
- */
-const postHogEmailDeliveryEnvironmentCheck = Schema.makeFilter<{
-  readonly VERCEL_ENV: "production" | "preview" | "development";
-  readonly POSTHOG_EMAIL_SECRET_KEY?: string | undefined;
-  readonly POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET?: string | undefined;
-}>((environment) => {
-  if (environment.VERCEL_ENV !== "production") return undefined;
-
-  const keys = [
-    "POSTHOG_EMAIL_SECRET_KEY",
-    "POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET",
-  ] as const;
-
-  return keys.flatMap((key) =>
-    isBlank(environment[key])
-      ? [{ path: [key], issue: `${key} is required in production.` }]
-      : []
-  );
-});
-
-/**
  * Deployed environments must never serve a release whose account email
  * delivery is unconfigured: without a Resend key every message, including
  * magic links, is only logged. Production must also never leave cleanup jobs
@@ -267,8 +242,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   postHogFeatureFlagOverridesEnvironmentCheck,
   igloohomeProductionEnvironmentCheck,
   accountOperationsEnvironmentCheck,
-  betterAuthSecretsProductionEnvironmentCheck,
-  postHogEmailDeliveryEnvironmentCheck
+  betterAuthSecretsProductionEnvironmentCheck
 );
 
 /**
@@ -289,8 +263,7 @@ export const createEnvironmentSchema = (
           postHogFeatureFlagOverridesEnvironmentCheck,
           igloohomeProductionEnvironmentCheck,
           accountOperationsEnvironmentCheck,
-          betterAuthSecretsProductionEnvironmentCheck,
-          postHogEmailDeliveryEnvironmentCheck
+          betterAuthSecretsProductionEnvironmentCheck
         )
       : schema
   );
