@@ -3,12 +3,13 @@ import {
   type PostHogFeatureFlagEvaluationOptions,
   type TypedPostHogFeatureFlagEvaluationSnapshot,
 } from "@deskohub/posthog/feature-flags/node";
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Match, Option } from "effect";
 import type {
   PostHogFeatureFlagDefinitions,
   PostHogFeatureFlagKey,
 } from "../generated/contract";
 import { postHogFeatureFlags } from "../generated/contract";
+import type { WorkspaceFeatureFlagConstancy } from "./feature-flag-evaluation-mode.server";
 
 type WorkspaceFeatureFlagSnapshot = Pick<
   TypedPostHogFeatureFlagEvaluationSnapshot<PostHogFeatureFlagDefinitions>,
@@ -111,32 +112,36 @@ export class WorkspaceFeatureFlagService extends Context.Service<
         ),
         decision: Effect.fn("WorkspaceFeatureFlagService.decision")((key) =>
           constancyOf(key).pipe(
-            Effect.flatMap((constancy) => {
-              if (constancy.kind === "constant") {
-                return Effect.succeed(constancy.value);
-              }
-              if (constancy.kind === "unclassified") {
-                return Effect.fail(unclassifiedFlag());
-              }
-              return requestFlags.pipe(
-                Effect.flatMap((flags) => isFlagEnabled(flags, key))
-              );
-            })
+            Effect.flatMap(
+              Match.type<WorkspaceFeatureFlagConstancy>().pipe(
+                Match.discriminatorsExhaustive("kind")({
+                  constant: ({ value }) => Effect.succeed<boolean>(value),
+                  "per-request": () =>
+                    requestFlags.pipe(
+                      Effect.flatMap((flags) => isFlagEnabled(flags, key))
+                    ),
+                  unclassified: () => Effect.fail(unclassifiedFlag()),
+                })
+              )
+            )
           )
         ),
         constantValue: Effect.fn("WorkspaceFeatureFlagService.constantValue")(
           (key) =>
             constancyOf(key).pipe(
-              Effect.flatMap((constancy) => {
-                if (constancy.kind === "unclassified") {
-                  return Effect.fail(unclassifiedFlag());
-                }
-                return Effect.succeed(
-                  constancy.kind === "constant"
-                    ? Option.some(constancy.value)
-                    : Option.none()
-                );
-              })
+              Effect.flatMap(
+                Match.type<WorkspaceFeatureFlagConstancy>().pipe(
+                  Match.discriminatorsExhaustive("kind")({
+                    constant: ({ value }) =>
+                      Effect.succeed<Option.Option<boolean>>(
+                        Option.some(value)
+                      ),
+                    "per-request": () =>
+                      Effect.succeed<Option.Option<boolean>>(Option.none()),
+                    unclassified: () => Effect.fail(unclassifiedFlag()),
+                  })
+                )
+              )
             )
         ),
       });

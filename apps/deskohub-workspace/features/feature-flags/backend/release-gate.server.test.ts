@@ -179,7 +179,7 @@ describe("releaseGateForRequest", () => {
     );
 
     expect(exitCode).toBe(0);
-    expect(output).toContain("3 pass");
+    expect(output).toContain("5 pass");
     expect(output).toContain("RELEASE_GATE_REQUEST_REACT_SERVER_PROOF");
   });
 });
