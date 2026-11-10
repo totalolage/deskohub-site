@@ -1,22 +1,13 @@
 import { Effect, Layer } from "effect";
 import { NextResponse } from "next/server";
 import {
-  customerAccessDeliveryReports,
-  ReservationFulfillment,
-} from "@/features/checkout/backend/fulfillment";
-import { campaignDeliveryReports } from "@/features/email-campaigns/backend/campaign-delivery-reports";
-import { CampaignDeliveryStatusService } from "@/features/email-campaigns/backend/campaign-delivery-status.service";
-import {
-  type DeliveryReportHandler,
-  ingestDeliveryReport,
-} from "@/shared/backend/email/delivery-reports";
+  DeliveryReportHandlersLive,
+  deliveryReportHandlers,
+} from "@/shared/backend/email/delivery-report-handlers";
+import { ingestDeliveryReport } from "@/shared/backend/email/delivery-reports";
 import { ResendWebhookConfig } from "@/shared/backend/email/resend-webhook.config";
 import { resendWebhookRefusal } from "@/shared/backend/email/resend-webhook-disposition";
 import { defineWebhookRoute } from "@/shared/backend/service-route";
-
-const deliveryReportHandlers: readonly DeliveryReportHandler<
-  ReservationFulfillment | CampaignDeliveryStatusService
->[] = [customerAccessDeliveryReports, campaignDeliveryReports];
 
 /**
  * POST /api/webhooks/resend
@@ -36,11 +27,7 @@ export const POST = defineWebhookRoute(
       ),
       Effect.mapError(resendWebhookRefusal),
       Effect.provide(
-        Layer.mergeAll(
-          ResendWebhookConfig.Default,
-          ReservationFulfillment.Live,
-          CampaignDeliveryStatusService.Live
-        )
+        Layer.mergeAll(ResendWebhookConfig.Default, DeliveryReportHandlersLive)
       )
     )
 );

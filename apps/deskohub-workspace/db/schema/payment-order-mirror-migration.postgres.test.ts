@@ -20,6 +20,7 @@ import {
 } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import { readReservationOrderMirror } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
+  countMigrationsFrom,
   linkMigrationsBefore,
   workspaceMigrationsFolder,
 } from "../migration-scratch-database.test-utils";
@@ -337,7 +338,9 @@ describe.skipIf(!testDatabaseUrl)(
         expect(mirror.order?.payment_state).toBe("pending");
         expect(await migrationTrace(pool)).toEqual({
           orderColumn: 1,
-          appliedMigrations: before.appliedMigrations! + 1,
+          appliedMigrations:
+            before.appliedMigrations! +
+            (await countMigrationsFrom(MIGRATION_DIR)),
         });
       });
     });
