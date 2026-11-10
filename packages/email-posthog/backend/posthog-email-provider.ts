@@ -1,8 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  continuesEmailChain,
+  type EmailBatchResult,
   EmailDeliveryIdSchema,
+  type EmailMessage,
+  type EmailProvider,
   type EmailRecipient,
+  type EmailSendError,
+  type EmailSendFailure,
   type EmailSendResult,
+  EmailServiceError,
+  NetworkError,
 } from "@deskohub/email";
 import {
   Clock,
@@ -19,15 +27,6 @@ import {
   HttpClient,
   HttpClientRequest,
 } from "effect/unstable/http";
-import {
-  type ClassifiedEmailSendError,
-  type EmailBatchResult,
-  type EmailProvider,
-  type EmailSendFailure,
-  emailServiceFailure,
-  networkFailure,
-  type RoutedEmailMessage,
-} from "./email-port.seam";
 import {
   type PostHogEmailConnection,
   postHogAppHost,
@@ -72,7 +71,7 @@ const batchConcurrency = 4;
 export const makePostHogEmailProvider = (
   config: PostHogEmailProviderConfig
 ): EmailProvider => {
-  const prepare = (message: RoutedEmailMessage) =>
+  const prepare = (message: EmailMessage) =>
     Effect.map(refuseUncarriable(message), (carried) =>
       toPostHogEmail(carried, config)
     );
@@ -81,7 +80,7 @@ export const makePostHogEmailProvider = (
     name: providerName,
 
     send: Effect.fn("PostHogEmailProvider.send")(
-      function* (message: RoutedEmailMessage) {
+      function* (message: EmailMessage) {
         yield* logDroppedHeaders([message]);
         const idempotencyKey = yield* messageIdempotencyKey(
           message.idempotencyKey
@@ -110,7 +109,7 @@ export const makePostHogEmailProvider = (
         const stopped = yield* Ref.make(false);
 
         const sendOne = Effect.fn("PostHogEmailProvider.sendBatchMessage")(
-          function* (message: RoutedEmailMessage, index: number) {
+          function* (message: EmailMessage, index: number) {
             if (yield* Ref.get(stopped)) {
               return yield* failedResult(notAttempted);
             }
@@ -138,7 +137,7 @@ export const makePostHogEmailProvider = (
                   Effect.tapError((error) =>
                     Effect.when(
                       Ref.set(stopped, true),
-                      Effect.succeed(failsProvider(error))
+                      Effect.succeed(continuesEmailChain(error))
                     )
                   )
                 )
@@ -184,7 +183,7 @@ interface PostHogEmail {
 }
 
 /** A message PostHog can carry: one recipient and at least one body. */
-type CarriedMessage = RoutedEmailMessage & {
+type CarriedMessage = EmailMessage & {
   readonly to: EmailRecipient;
 };
 
@@ -203,11 +202,12 @@ const addressList = (
  * stream never reaches PostHog). Recipient lists PostHog cannot carry go to
  * the next provider, which can.
  */
-const refuseUncarriable = (message: RoutedEmailMessage) => {
+const refuseUncarriable = (message: EmailMessage) => {
   if (message.attachments?.length) {
     return Effect.fail(
-      emailServiceFailure(
+      new EmailServiceError(
         "PostHog email cannot carry attachments",
+        undefined,
         providerName,
         {
           failureKind: "message",
@@ -225,8 +225,9 @@ const refuseUncarriable = (message: RoutedEmailMessage) => {
     addressList(message.bcc).length > maxListedAddresses
   ) {
     return Effect.fail(
-      emailServiceFailure(
+      new EmailServiceError(
         "PostHog email takes one recipient and up to ten copies",
+        undefined,
         providerName,
         { failureKind: "provider", code: "recipients_unsupported" }
       )
@@ -234,10 +235,15 @@ const refuseUncarriable = (message: RoutedEmailMessage) => {
   }
   if (message.html === undefined && message.text === undefined) {
     return Effect.fail(
-      emailServiceFailure("The email has no content", providerName, {
-        failureKind: "message",
-        code: "missing_content",
-      })
+      new EmailServiceError(
+        "The email has no content",
+        undefined,
+        providerName,
+        {
+          failureKind: "message",
+          code: "missing_content",
+        }
+      )
     );
   }
   return Effect.succeed<CarriedMessage>({ ...message, to: recipient });
@@ -423,12 +429,13 @@ const requestSend = ({
     const answer = yield* Schema.decodeEffect(
       Schema.fromJsonString(SendAnswerSchema)
     )(body).pipe(
-      Effect.mapError(() =>
-        networkFailure({
-          message: "PostHog accepted the email without a readable message id",
-          code: "invalid_response",
-          failureKind: "unknown-outcome",
-        })
+      Effect.mapError(
+        () =>
+          new NetworkError({
+            message: "PostHog accepted the email without a readable message id",
+            code: "invalid_response",
+            failureKind: "unknown-outcome",
+          })
       )
     );
 
@@ -455,34 +462,38 @@ const projectRefusalCodes: ReadonlySet<string> = new Set([
  * may still deliver it ("unknown-outcome": the caller replays under the same
  * key later).
  */
-const toEmailSendError = (
-  failure: PostHogSendAttemptFailure
-): ClassifiedEmailSendError =>
+const toEmailSendError = (failure: PostHogSendAttemptFailure): EmailSendError =>
   Match.value(failure).pipe(
-    Match.when({ kind: "transport" }, ({ code }) =>
-      networkFailure({
-        message: "PostHog email request failed",
-        code,
-        failureKind: "provider",
-      })
+    Match.when(
+      { kind: "transport" },
+      ({ code }) =>
+        new NetworkError({
+          message: "PostHog email request failed",
+          code,
+          failureKind: "provider",
+        })
     ),
-    Match.when({ kind: "timeout" }, ({ code }) =>
-      networkFailure({
-        message: "PostHog email request timed out",
-        code,
-        failureKind: "provider",
-      })
+    Match.when(
+      { kind: "timeout" },
+      ({ code }) =>
+        new NetworkError({
+          message: "PostHog email request timed out",
+          code,
+          failureKind: "provider",
+        })
     ),
-    Match.when({ kind: "accepted" }, ({ code }) =>
-      networkFailure({
-        message: "PostHog accepted the email without a readable message id",
-        code,
-        failureKind: "unknown-outcome",
-      })
+    Match.when(
+      { kind: "accepted" },
+      ({ code }) =>
+        new NetworkError({
+          message: "PostHog accepted the email without a readable message id",
+          code,
+          failureKind: "unknown-outcome",
+        })
     ),
     Match.when({ kind: "answered" }, ({ status = 0, code }) => {
       if (status === 409 && code === "idempotency_key_in_flight") {
-        return networkFailure({
+        return new NetworkError({
           message: "PostHog is still sending an email under this key",
           code,
           failureKind: "unknown-outcome",
@@ -495,8 +506,9 @@ const toEmailSendError = (
         projectRefusalCodes.has(code)
           ? "provider"
           : "message";
-      return emailServiceFailure(
+      return new EmailServiceError(
         `PostHog refused the email (HTTP ${status})`,
+        undefined,
         providerName,
         { failureKind, code }
       );
@@ -504,31 +516,33 @@ const toEmailSendError = (
     Match.exhaustive
   );
 
-/** Whether `error` means PostHog cannot send now, so the batch stops. */
-const failsProvider = (error: ClassifiedEmailSendError) =>
-  error.failureKind === "provider";
-
 const notAttempted = () =>
-  emailServiceFailure(
+  new EmailServiceError(
     "PostHog stopped sending this batch after a provider failure",
+    undefined,
     providerName,
     { failureKind: "provider", code: "not_attempted" }
   );
 
 const pastDeadline = () =>
-  emailServiceFailure("The PostHog batch deadline passed", providerName, {
-    failureKind: "provider",
-    code: "batch_deadline",
-  });
+  new EmailServiceError(
+    "The PostHog batch deadline passed",
+    undefined,
+    providerName,
+    {
+      failureKind: "provider",
+      code: "batch_deadline",
+    }
+  );
 
 const abandonedAtDeadline = () =>
-  networkFailure({
+  new NetworkError({
     message: "PostHog email send was abandoned at the batch deadline",
     code: "batch_deadline",
     failureKind: "unknown-outcome",
   });
 
-const failedResult = (error: () => ClassifiedEmailSendError) =>
+const failedResult = (error: () => EmailSendError) =>
   Effect.map(
     Clock.currentTimeMillis,
     (now): EmailSendFailure => ({
@@ -539,7 +553,7 @@ const failedResult = (error: () => ClassifiedEmailSendError) =>
     })
   );
 
-const logSendFailure = (error: ClassifiedEmailSendError) =>
+const logSendFailure = (error: EmailSendError) =>
   Effect.logWarning("PostHog email send failed", {
     errorType: error._tag,
     failureKind: error.failureKind,
@@ -547,7 +561,7 @@ const logSendFailure = (error: ClassifiedEmailSendError) =>
   });
 
 /** PostHog accepts no custom headers, so List-Unsubscribe and others are dropped. */
-const logDroppedHeaders = (messages: readonly RoutedEmailMessage[]) => {
+const logDroppedHeaders = (messages: readonly EmailMessage[]) => {
   const names = new Set(
     messages.flatMap((message) => Object.keys(message.headers ?? {}))
   );

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import type { EmailMessage } from "@deskohub/email";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Exit } from "effect";
-import type { RoutedEmailMessage } from "./email-port.seam";
 import {
   accepted,
   connection,
@@ -23,7 +23,7 @@ const provider = makePostHogEmailProvider({
   systemIdentity: "deskohub-email-system",
 });
 
-const message: RoutedEmailMessage = {
+const message: EmailMessage = {
   from: { email: sender, name: "Deskohub" },
   to: { email: ada, name: "Ada" },
   subject: "Spring at the workspace",
@@ -37,7 +37,7 @@ const message: RoutedEmailMessage = {
 const production = { VERCEL_ENV: "production" };
 
 const sendOnce = async (
-  sent: RoutedEmailMessage,
+  sent: EmailMessage,
   answer: (index: number, request: RecordedRequest) => FakeAnswer = () =>
     accepted(),
   sending = provider,
@@ -132,7 +132,7 @@ describe("PostHog email send request", () => {
   });
 
   test("names the template by the message category, limited to the characters PostHog accepts", async () => {
-    const cases: readonly [RoutedEmailMessage["tags"], string][] = [
+    const cases: readonly [EmailMessage["tags"], string][] = [
       [["email-campaign", "other"], "email-campaign"],
       [["spring sale/2026!"], "spring_sale_2026_"],
       [["x".repeat(450)], "x".repeat(400)],
@@ -510,14 +510,14 @@ describe("PostHog email Retry-After", () => {
   });
 });
 
-const batchMessage = (index: number): RoutedEmailMessage => ({
+const batchMessage = (index: number): EmailMessage => ({
   ...message,
   to: { email: testEmailAddress(`recipient-${index}`) },
   idempotencyKey: undefined,
 });
 
 const sendBatch = async (
-  messages: readonly RoutedEmailMessage[],
+  messages: readonly EmailMessage[],
   answer: (index: number, request: RecordedRequest) => FakeAnswer,
   env: Record<string, string> = production
 ) => {
