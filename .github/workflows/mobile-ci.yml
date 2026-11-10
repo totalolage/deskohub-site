@@ -10,6 +10,7 @@ on:
       - .github/workflows/mobile-ci.yml
       - apps/deskohub-mobile/**
       - packages/brand-tokens/**
+      - packages/brand-motion/**
       - packages/i18n/**
       - packages/reservation/**
       - packages/standard-schema/**
@@ -26,6 +27,7 @@ on:
       - .github/workflows/mobile-ci.yml
       - apps/deskohub-mobile/**
       - packages/brand-tokens/**
+      - packages/brand-motion/**
       - packages/i18n/**
       - packages/reservation/**
       - packages/standard-schema/**
