@@ -32,7 +32,11 @@ const firstPaint = (visit: StatusVisit) => {
   // React DOM warns about the React Native host names and props it renders.
   const { error } = console;
   const warnings = spyOn(console, "error").mockImplementation((...args) => {
-    if (!/incorrect casing|does not recognize the|non-boolean attribute/.test(String(args[0])))
+    if (
+      !/incorrect casing|does not recognize the|non-boolean attribute/.test(
+        String(args[0])
+      )
+    )
       error(...args);
   });
   try {
