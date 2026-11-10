@@ -10,11 +10,7 @@ import {
   accountDataExportSchemaVersion,
   accountDataExportSections,
 } from "../account-data-export-sections";
-import {
-  CustomerAccountAccessError,
-  customerAccountIdSchema,
-  customerAccountUnavailable,
-} from "../customer-account";
+import { customerAccountUnavailable } from "../customer-account";
 import {
   AccountDataExportLimits,
   AccountDataExportLoadError,
@@ -24,6 +20,7 @@ import {
 import {
   type AccountDataExportRead,
   type AccountDataExportSources,
+  accountDataExportRefusals,
   deskDotyposReservationId,
   exportAccountId,
   exportCustomerId,
@@ -285,97 +282,7 @@ describe("AccountDataExportService.download", () => {
 });
 
 describe("AccountDataExportService refusals", () => {
-  const denials: readonly [
-    string,
-    (sources: AccountDataExportSources) => AccountDataExportSources,
-  ][] = [
-    [
-      "signed out",
-      (s) => ({
-        ...s,
-        resolve: Effect.fail(
-          new CustomerAccountAccessError({ reason: "unauthenticated" })
-        ),
-      }),
-    ],
-    [
-      "unverified email",
-      (s) => ({
-        ...s,
-        resolve: Effect.fail(
-          new CustomerAccountAccessError({ reason: "unverified-email" })
-        ),
-      }),
-    ],
-    [
-      "no linked customer",
-      (s) => ({
-        ...s,
-        resolve: Effect.fail(
-          new CustomerAccountAccessError({
-            reason: "link-required",
-            linkReason: "not-found",
-          })
-        ),
-      }),
-    ],
-    [
-      "a review account",
-      (s) => ({
-        ...s,
-        resolve: Effect.fail(customerAccountUnavailable("account.review")),
-      }),
-    ],
-    [
-      "a session that ended after resolution",
-      (s) => ({ ...s, session: Effect.succeed(null) }),
-    ],
-    [
-      "a session of another account",
-      (s) => ({
-        ...s,
-        session: s.session.pipe(
-          Effect.map((session) =>
-            session
-              ? {
-                  ...session,
-                  accountId: customerAccountIdSchema.make(
-                    "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a99"
-                  ),
-                }
-              : session
-          )
-        ),
-      }),
-    ],
-    [
-      "a deletion request on the session",
-      (s) => ({
-        ...s,
-        session: s.session.pipe(
-          Effect.map((session) =>
-            session ? { ...session, deletionRequested: true } : session
-          )
-        ),
-      }),
-    ],
-    [
-      "a removed account",
-      (s) => ({ ...s, activity: Effect.succeed({ kind: "missing" }) }),
-    ],
-    [
-      "a pending deletion",
-      (s) => ({
-        ...s,
-        activity: Effect.succeed({
-          kind: "active",
-          deletionRequestedAt: new Date("2026-09-01T10:00:00Z"),
-        }),
-      }),
-    ],
-  ];
-
-  for (const [name, refuse] of denials) {
+  for (const [name, refuse] of accountDataExportRefusals) {
     test(`refuses ${name} before reading any section`, async () => {
       sources = refuse(sources);
 

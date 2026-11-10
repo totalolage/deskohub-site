@@ -8,6 +8,8 @@ import type { MarketingPreferencesState } from "@/features/legal/marketing-prefe
 import { GuardedLink } from "@/shared/components/guarded-link";
 
 export interface LegalScreenProps {
+  /** Whether the export route would serve this session its data archive. */
+  readonly accountDataExportAvailable?: boolean;
   readonly analyticsPreference?: AnalyticsPreferenceState;
   readonly locale: Locale;
   readonly marketingPreferences?: MarketingPreferencesState;
@@ -17,6 +19,7 @@ const legalScreenTitleId = "account-legal-title";
 const accountDataExportTitleId = "account-data-export-title";
 
 export function LegalScreen({
+  accountDataExportAvailable = false,
   analyticsPreference,
   locale,
   marketingPreferences,
@@ -58,10 +61,10 @@ export function LegalScreen({
         marketingPreferences={marketingPreferences}
       />
 
-      {/* Only a visitor the page read as signed in gets the download: an
-          unavailable preference may mean the session itself couldn't be
-          read. The export route still authorizes every request itself. */}
-      {analyticsPreference?.status === "available" && (
+      {/* Offered only to a session the export route would serve, so the
+          download never answers a refusal. The route still authorizes every
+          request itself. */}
+      {accountDataExportAvailable && (
         <section
           aria-labelledby={accountDataExportTitleId}
           className="mt-8 min-w-0 border-t border-[#e5e9ef] pt-6"

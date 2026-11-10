@@ -15,7 +15,8 @@ GDPR compliance or completeness, and it does not replace those requests.
 The download sits on the account's Legal & Privacy page, below the consent
 preferences. The page explains what the archive contains, lists its sections
 in a disclosure, and explains what it leaves out, in every customer language.
-Only a signed-in customer sees the download.
+Only a signed-in customer who can download the archive (see Delivery and
+retention) sees it; the page never offers a download it would refuse.
 
 ## Scope
 

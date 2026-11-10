@@ -34,6 +34,21 @@ review account, deletion pending or done) is
 `AccountDataExportUnavailableError`; an unreadable authority is a load failure
 with code `account.authority`.
 
+That authorization is `authorizeAccountDataExport`, an Effect over
+`AccountDataExportAuthority` (resolver, session, account link;
+`accountDataExportAuthorityLive` in production). `download` runs it with the
+service's own dependencies, and `/account/legal` offers the download through
+`getAccountDataExportAvailability`
+(`features/account/account-data-export-availability.server.ts`), which runs
+the same Effect: `true` on success, `false` on a refusal, an unreadable
+authority, or an authority that can't be built. The page passes it to
+`LegalScreen` as `accountDataExportAvailable`, so the control appears for
+exactly the sessions the route serves; never gate it on another read such as
+the analytics preference. Like the route, the read resolves the account, so
+an account whose email matches one customer is auto-linked on the page
+visit. The test-utils `accountDataExportRefusals` table drives both the
+service's refusal tests and the availability tests.
+
 ## Section reads
 
 Each section reads through its owner, scoped to the linked Dotypos customer.

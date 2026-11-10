@@ -194,6 +194,7 @@ test.each(["en-US", "cs-CZ"] as const)(
       <>
         <ConsentBanner locale={locale} revision={1} />
         <LegalScreen
+          accountDataExportAvailable
           analyticsPreference={{ status: "available", granted: true }}
           locale={locale}
           marketingPreferences={{ ...linkMarketingState }}
@@ -295,12 +296,9 @@ test.each(["en-US", "cs-CZ"] as const)(
   }
 );
 
-test("offers the account data export to a visitor read as signed in", () => {
+test("offers the account data export to a session the export route serves", () => {
   const view = render(
-    <LegalScreen
-      analyticsPreference={{ status: "available", granted: false }}
-      locale="en-US"
-    />
+    <LegalScreen accountDataExportAvailable locale="en-US" />
   );
 
   const exportControl = view.container.querySelector(
@@ -313,13 +311,17 @@ test("offers the account data export to a visitor read as signed in", () => {
 });
 
 test.each([
-  { name: "signed out", state: { status: "signed-out" } },
-  { name: "unavailable", state: { status: "unavailable" } },
+  { name: "is unavailable", accountDataExportAvailable: false },
+  { name: "is not given", accountDataExportAvailable: undefined },
 ] as const)(
-  "offers no account data export when the analytics preference is $name",
-  ({ state }) => {
+  "offers no account data export to a signed-in visitor when the export $name",
+  ({ accountDataExportAvailable }) => {
     const view = render(
-      <LegalScreen analyticsPreference={state} locale="en-US" />
+      <LegalScreen
+        accountDataExportAvailable={accountDataExportAvailable}
+        analyticsPreference={{ status: "available", granted: false }}
+        locale="en-US"
+      />
     );
 
     expect(

@@ -17,7 +17,11 @@ import { CustomerBookedReservations } from "@/features/reservation/backend/custo
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { ReservationAccessRepository } from "@/features/reservation-access/backend/reservation-access.repository";
-import { customerAccountIdSchema } from "../customer-account";
+import {
+  CustomerAccountAccessError,
+  customerAccountIdSchema,
+  customerAccountUnavailable,
+} from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import { CustomerAccountResolver } from "./customer-account-resolver.service";
 import { CustomerAuthentication } from "./customer-authentication.service";
@@ -257,6 +261,102 @@ export const syntheticExportSources = (): AccountDataExportSources => ({
     },
   ]),
 });
+
+/**
+ * Every session the export refuses, each as a change to the synthetic
+ * sources: signed out, unverified, unlinked, a review account, a session
+ * that ended or changed account, and a requested, pending, or completed
+ * deletion.
+ */
+export const accountDataExportRefusals: readonly [
+  name: string,
+  refuse: (sources: AccountDataExportSources) => AccountDataExportSources,
+][] = [
+  [
+    "signed out",
+    (s) => ({
+      ...s,
+      resolve: Effect.fail(
+        new CustomerAccountAccessError({ reason: "unauthenticated" })
+      ),
+    }),
+  ],
+  [
+    "unverified email",
+    (s) => ({
+      ...s,
+      resolve: Effect.fail(
+        new CustomerAccountAccessError({ reason: "unverified-email" })
+      ),
+    }),
+  ],
+  [
+    "no linked customer",
+    (s) => ({
+      ...s,
+      resolve: Effect.fail(
+        new CustomerAccountAccessError({
+          reason: "link-required",
+          linkReason: "not-found",
+        })
+      ),
+    }),
+  ],
+  [
+    "a review account",
+    (s) => ({
+      ...s,
+      resolve: Effect.fail(customerAccountUnavailable("account.review")),
+    }),
+  ],
+  [
+    "a session that ended after resolution",
+    (s) => ({ ...s, session: Effect.succeed(null) }),
+  ],
+  [
+    "a session of another account",
+    (s) => ({
+      ...s,
+      session: s.session.pipe(
+        Effect.map((session) =>
+          session
+            ? {
+                ...session,
+                accountId: customerAccountIdSchema.make(
+                  "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a99"
+                ),
+              }
+            : session
+        )
+      ),
+    }),
+  ],
+  [
+    "a deletion request on the session",
+    (s) => ({
+      ...s,
+      session: s.session.pipe(
+        Effect.map((session) =>
+          session ? { ...session, deletionRequested: true } : session
+        )
+      ),
+    }),
+  ],
+  [
+    "a removed account",
+    (s) => ({ ...s, activity: Effect.succeed({ kind: "missing" }) }),
+  ],
+  [
+    "a pending deletion",
+    (s) => ({
+      ...s,
+      activity: Effect.succeed({
+        kind: "active",
+        deletionRequestedAt: new Date("2026-09-01T10:00:00Z"),
+      }),
+    }),
+  ],
+];
 
 /**
  * Every source the export service reads, answering from `sources()` at read

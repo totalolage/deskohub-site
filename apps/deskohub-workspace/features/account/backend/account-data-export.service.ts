@@ -194,6 +194,70 @@ type AccountDataExportFile = {
   readonly fileName: string;
 };
 
+/** What decides whether a session may export its account data. */
+export type AccountDataExportAuthority =
+  | CustomerAccountResolver
+  | CustomerAuthentication
+  | CustomerAccountLinkRepository;
+
+/** The live authority: the browser session and its account link. */
+export const accountDataExportAuthorityLive = Layer.mergeAll(
+  CustomerAccountResolver.Live,
+  CustomerAuthentication.Default,
+  CustomerAccountLinkRepository.Live
+);
+
+/**
+ * The linked account whose data this session may export, and the session it
+ * was resolved from. The identity section comes from this session, so it
+ * must be the account the resolver linked; the activity re-read stops a
+ * pending deletion. Every refusal fails with
+ * `AccountDataExportUnavailableError`, an unreadable authority with a load
+ * failure. The archive download and the legal page's offer of it both
+ * authorize here, so the page offers the download to exactly the sessions
+ * the route serves.
+ */
+export const authorizeAccountDataExport: Effect.Effect<
+  {
+    readonly account: LinkedCustomerAccount;
+    readonly session: CustomerAccountSession;
+  },
+  AccountDataExportUnavailableError | AccountDataExportLoadError,
+  AccountDataExportAuthority
+> = Effect.gen(function* () {
+  const account = yield* Effect.flatMap(
+    CustomerAccountResolver,
+    (resolver) => resolver.resolve
+  );
+  const session = yield* Effect.flatMap(
+    CustomerAuthentication,
+    (authentication) => authentication.currentUser
+  ).pipe(Effect.flatMap(requireVerifiedIdentity));
+  if (session.accountId !== account.accountId) {
+    return yield* new CustomerAccountAccessError({
+      reason: "unauthenticated",
+    });
+  }
+  yield* requireAccountActivity(
+    yield* CustomerAccountLinkRepository,
+    account.accountId
+  );
+  return { account, session };
+}).pipe(
+  Effect.catchTag(
+    "CustomerAccountAccessError",
+    (
+      error
+    ): Effect.Effect<
+      never,
+      AccountDataExportUnavailableError | AccountDataExportLoadError
+    > =>
+      isCustomerAccountAccessDenial(error)
+        ? Effect.fail(new AccountDataExportUnavailableError())
+        : failLoad("account.authority", "unreadable")
+  )
+);
+
 interface IAccountDataExportService {
   /**
    * The signed-in customer's data archive. Any unreadable source or exceeded
@@ -225,9 +289,7 @@ export class AccountDataExportService extends Context.Service<
     this,
     Effect.gen(function* () {
       const limits = yield* AccountDataExportLimits;
-      const resolver = yield* CustomerAccountResolver;
-      const authentication = yield* CustomerAuthentication;
-      const links = yield* CustomerAccountLinkRepository;
+      const authority = yield* Effect.context<AccountDataExportAuthority>();
       const dotypos = yield* CustomerDotyposAdapter;
       const workspaceReservations = yield* WorkspaceReservationRepository;
       const bookedReservations = yield* CustomerBookedReservations;
@@ -240,42 +302,8 @@ export class AccountDataExportService extends Context.Service<
       const legalEvidence = yield* LegalEvidenceEventRepository;
       const accessGrants = yield* ReservationAccessRepository;
 
-      /**
-       * The linked account and the session it was resolved from. The
-       * identity section comes from this session, so it must be the account
-       * the resolver linked; the activity re-read stops a pending deletion.
-       */
-      const authorize: Effect.Effect<
-        {
-          readonly account: LinkedCustomerAccount;
-          readonly session: CustomerAccountSession;
-        },
-        AccountDataExportUnavailableError | AccountDataExportLoadError
-      > = Effect.gen(function* () {
-        const account = yield* resolver.resolve;
-        const session = yield* authentication.currentUser.pipe(
-          Effect.flatMap(requireVerifiedIdentity)
-        );
-        if (session.accountId !== account.accountId) {
-          return yield* new CustomerAccountAccessError({
-            reason: "unauthenticated",
-          });
-        }
-        yield* requireAccountActivity(links, account.accountId);
-        return { account, session };
-      }).pipe(
-        Effect.catchTag(
-          "CustomerAccountAccessError",
-          (
-            error
-          ): Effect.Effect<
-            never,
-            AccountDataExportUnavailableError | AccountDataExportLoadError
-          > =>
-            isCustomerAccountAccessDenial(error)
-              ? Effect.fail(new AccountDataExportUnavailableError())
-              : failLoad("account.authority", "unreadable")
-        )
+      const authorize = authorizeAccountDataExport.pipe(
+        Effect.provideContext(authority)
       );
 
       const download = Effect.gen(function* () {
@@ -425,9 +453,7 @@ export class AccountDataExportService extends Context.Service<
   static Live = this.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        CustomerAccountResolver.Live,
-        CustomerAuthentication.Default,
-        CustomerAccountLinkRepository.Live,
+        accountDataExportAuthorityLive,
         CustomerDotyposAdapter.Live,
         CustomerBookedReservations.Live,
         WorkspaceReservationRepository.Live,
