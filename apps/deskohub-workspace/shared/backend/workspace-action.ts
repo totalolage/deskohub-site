@@ -14,7 +14,13 @@ import type {
   SafeActionResult,
   ValidationErrors,
 } from "next-safe-action";
-import { type Locale, type LocalizedCopy, m } from "@/features/i18n";
+import {
+  baseLocale,
+  type Locale,
+  type LocalizedCopy,
+  m,
+} from "@/features/i18n";
+import { requestLocaleScope } from "@/features/i18n/server/request-locale-scope";
 import {
   createWorkspaceActionClient,
   PublicSafeActionError,
@@ -100,7 +106,12 @@ export interface WorkspaceActionOptions<S extends StandardSchemaV1> {
   readonly logInput?: boolean;
   /** Stable, low-cardinality name without IDs or payload data. */
   readonly operation: string;
-  readonly schema: S;
+  /**
+   * The input schema, or the schema for the action's locale when what the
+   * input accepts depends on it, such as a phone number read in the locale's
+   * default region.
+   */
+  readonly schema: S | ((locale: Locale) => S);
 }
 
 export interface WorkspaceActionContext<S extends StandardSchemaV1> {
@@ -217,14 +228,26 @@ export const defineWorkspaceStateAction = <
     )
   );
 
+/**
+ * The schema the action validates its input with. A schema that depends on
+ * the locale is built when the input arrives, inside the locale middleware's
+ * scope, so it is the schema for the action's locale.
+ */
+const inputSchemaOf = <S extends StandardSchemaV1>(
+  schema: S | ((locale: Locale) => S)
+): S | (() => Promise<S>) =>
+  "~standard" in schema
+    ? schema
+    : async () => schema(requestLocaleScope.getLocale() ?? baseLocale);
+
 const defineInput = <S extends StandardSchemaV1>(
   options: WorkspaceActionOptions<S>
 ) =>
   createActionClient(options).inputSchema<
-    S,
+    S | (() => Promise<S>),
     S,
     WorkspaceActionValidationErrors<S>
-  >(options.schema, {
+  >(inputSchemaOf(options.schema), {
     handleValidationErrorsShape: (validationErrors) =>
       handleWorkspaceActionValidationFailure(
         options.operation,

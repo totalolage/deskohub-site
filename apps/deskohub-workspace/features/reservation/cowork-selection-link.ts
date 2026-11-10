@@ -6,6 +6,7 @@ import {
   workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
+import { defaultPhoneRegion, type Locale } from "@/features/i18n";
 import {
   type CoworkReservationInput,
   coworkReservationDefaultValues,
@@ -54,7 +55,8 @@ type CoworkSelection = Pick<CoworkReservationInput, "entryTier"> &
   );
 
 const decodeCoworkQuery = (
-  searchParams: SupportedSearchParams
+  searchParams: SupportedSearchParams,
+  locale: Locale
 ): Partial<CoworkReservationInput> => {
   const requestedTier =
     getTrimmedSearchParam(searchParams, "entryTier") ??
@@ -85,7 +87,10 @@ const decodeCoworkQuery = (
       monitorOption:
         monitorOption === noMonitorQueryValue ? undefined : monitorOption,
     }),
-    ...decodeReservationCheckoutCustomer(searchParams),
+    ...decodeReservationCheckoutCustomer(
+      searchParams,
+      defaultPhoneRegion(locale)
+    ),
   };
 };
 
@@ -101,17 +106,19 @@ export const coworkSelectionLink = defineSelectionLink({
   /**
    * The customer's last cowork reservation fills the offer options the link
    * leaves open; a link naming another tier replaces the whole remembered
-   * offer.
+   * offer. A linked phone is read in the page `locale`'s default region.
    */
   read: (
     searchParams: SupportedSearchParams,
     {
+      locale,
       lastReservation,
     }: {
+      readonly locale: Locale;
       readonly lastReservation?: CustomerLastReservationForKind<"cowork">;
-    } = {}
+    }
   ): CoworkReservationInput => {
-    const query = decodeCoworkQuery(searchParams);
+    const query = decodeCoworkQuery(searchParams, locale);
     const values: CoworkReservationInput = {
       ...coworkReservationDefaultValues,
       ...(lastReservation &&

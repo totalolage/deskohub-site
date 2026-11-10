@@ -1,4 +1,8 @@
-import { PhoneNumberSchema, parsePhoneNumber } from "@deskohub/phone-number";
+import {
+  baseLocale,
+  getLocaleDefinition,
+} from "@deskohub/i18n/locale-registry";
+import { parsePhoneNumber, phoneNumberSchema } from "@deskohub/phone-number";
 import { Option, Schema, type SchemaAST } from "effect";
 
 /**
@@ -27,20 +31,26 @@ const trimmedOptionalText = (maximumLength: number) =>
  * explicit clearing.
  *
  * Clients and the form send the phone as entered text, which this field keeps.
+ * A number without a country calling code is read in the default phone
+ * region.
  */
-const customerProfilePhoneText = Schema.Trim.check(
-  Schema.isMaxLength(32),
-  Schema.makeFilter((value: string): boolean | string =>
-    value === "" || Option.isSome(parsePhoneNumber(value))
-      ? true
-      : "Invalid phone number"
-  )
-);
+const customerProfilePhoneText = (defaultPhoneRegion: string) =>
+  Schema.Trim.check(
+    Schema.isMaxLength(32),
+    Schema.makeFilter((value: string): boolean | string =>
+      value === "" || Option.isSome(parsePhoneNumber(value, defaultPhoneRegion))
+        ? true
+        : "Invalid phone number"
+    )
+  );
 
 /** The Workspace's reading of the entered phone: blank, or its phone number. */
-const customerProfilePhoneNumber = customerProfilePhoneText.pipe(
-  Schema.decodeTo(Schema.Union([Schema.Literal(""), PhoneNumberSchema]))
-);
+const customerProfilePhoneNumber = (defaultPhoneRegion: string) =>
+  customerProfilePhoneText(defaultPhoneRegion).pipe(
+    Schema.decodeTo(
+      Schema.Union([Schema.Literal(""), phoneNumberSchema(defaultPhoneRegion)])
+    )
+  );
 
 const customerProfileAddressFields = {
   addressLine1: trimmedOptionalText(200),
@@ -97,42 +107,69 @@ const profileCompletionReferralFields = {
 };
 
 /**
+ * The profile schemas for a phone entered in a default phone region, an
+ * ISO 3166-1 alpha-2 code such as `DE`: a phone number without a country
+ * calling code is read in that region, and one with it in any region.
+ *
  * Dotypos owns the customer profile, so the login email is deliberately
  * absent from the profile input: the verified email is the immutable
  * reservation-linking trust boundary and is never an editable field.
  *
- * This is the profile as a client sends it, with the phone as entered text.
+ * - `input` is the profile as a client sends it, with the phone as entered
+ *   text, and `completionInput` the first-time completion.
+ * - `save` is the profile save the Workspace reads from an `input`: the same
+ *   rules, with the entered phone decoded to its phone number, and
+ *   `completionSave` the first-time completion it reads.
  */
-export const CustomerProfileInput = Schema.Struct(
-  customerProfileFields(customerProfilePhoneText)
+export const customerProfileSchemas = (defaultPhoneRegion: string) => {
+  const input = Schema.Struct(
+    customerProfileFields(customerProfilePhoneText(defaultPhoneRegion))
+  );
+  const save = Schema.Struct(
+    customerProfileFields(customerProfilePhoneNumber(defaultPhoneRegion))
+  );
+  return {
+    input,
+    completionInput: Schema.Struct({
+      ...input.fields,
+      ...profileCompletionReferralFields,
+    }),
+    save,
+    completionSave: Schema.Struct({
+      ...save.fields,
+      ...profileCompletionReferralFields,
+    }),
+  };
+};
+
+/**
+ * The customer API's profile schemas, which read a phone number without a
+ * country calling code in the base locale's phone region.
+ */
+const customerApiProfileSchemas = customerProfileSchemas(
+  getLocaleDefinition(baseLocale).phoneRegion
 );
+
+/** The profile as a client of the customer API sends it. */
+export const CustomerProfileInput = customerApiProfileSchemas.input;
 export type CustomerProfileInput = typeof CustomerProfileInput.Type;
 
-/** The first-time completion as a client sends it. */
-export const CustomerProfileCompletionInput = Schema.Struct({
-  ...CustomerProfileInput.fields,
-  ...profileCompletionReferralFields,
-});
+/** The first-time completion as a client of the customer API sends it. */
+export const CustomerProfileCompletionInput =
+  customerApiProfileSchemas.completionInput;
 export type CustomerProfileCompletionInput =
   typeof CustomerProfileCompletionInput.Type;
 
-/**
- * The profile save the Workspace reads from a `CustomerProfileInput`: the
- * same rules, with the entered phone decoded to its phone number.
- */
-export const CustomerProfileSave = Schema.Struct(
-  customerProfileFields(customerProfilePhoneNumber)
-);
+/** The profile save the Workspace reads from a `CustomerProfileInput`. */
+export const CustomerProfileSave = customerApiProfileSchemas.save;
 export type CustomerProfileSave = typeof CustomerProfileSave.Type;
 
 /**
  * The first-time completion the Workspace reads from a
  * `CustomerProfileCompletionInput`.
  */
-export const CustomerProfileCompletionSave = Schema.Struct({
-  ...CustomerProfileSave.fields,
-  ...profileCompletionReferralFields,
-});
+export const CustomerProfileCompletionSave =
+  customerApiProfileSchemas.completionSave;
 export type CustomerProfileCompletionSave =
   typeof CustomerProfileCompletionSave.Type;
 

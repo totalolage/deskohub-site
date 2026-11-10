@@ -1,6 +1,10 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import {
+  getLocaleDefinition,
+  supportedLocales,
+} from "@deskohub/i18n/locale-registry";
 import { BigDecimal, Option, Schema } from "effect";
 import { Minus, Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -114,7 +118,7 @@ export const createInvoiceFormSchema = (locale: Locale) => {
         ...address,
       }),
     ]),
-    locale: Schema.Literals(["cs-CZ", "en-US"]),
+    locale: Schema.Literals(supportedLocales),
     serviceDate: Schema.Trim.check(
       Schema.isNonEmpty({ message: requiredMessage }),
       Schema.makeFilter(isCalendarDate, { message: calendarDateMessage })
@@ -1116,12 +1120,11 @@ function InvoiceDetailsSection({
                   }
                   value={field.value}
                 >
-                  <option value="cs-CZ">
-                    {m.accountingInvoiceFormLanguageCzech({}, { locale })}
-                  </option>
-                  <option value="en-US">
-                    {m.accountingInvoiceFormLanguageEnglish({}, { locale })}
-                  </option>
+                  {supportedLocales.map((option) => (
+                    <option key={option} value={option}>
+                      {getLocaleDefinition(option).nativeName}
+                    </option>
+                  ))}
                 </select>
               </FormControl>
               <FormMessage />

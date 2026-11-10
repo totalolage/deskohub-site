@@ -18,9 +18,16 @@ export function LegalPage({ locale, documentKey }: LegalPageProps) {
       title={document.title}
       lead={document.lead}
       meta={
-        <p className="text-sm uppercase tracking-[0.14em] text-navy-blue/46">
-          {m.legalPageLastUpdatedLabel({}, { locale })}: {document.updatedAt}
-        </p>
+        <>
+          <p className="text-sm uppercase tracking-[0.14em] text-navy-blue/46">
+            {m.legalPageLastUpdatedLabel({}, { locale })}: {document.updatedAt}
+          </p>
+          {document.translationNotice === undefined ? null : (
+            <p className="max-w-3xl text-sm leading-6 text-navy-blue/62">
+              {document.translationNotice}
+            </p>
+          )}
+        </>
       }
     >
       {document.sections.map((section) => (

@@ -25,7 +25,7 @@ const { deriveCheckoutAttemptKeys, deriveCheckoutSessionKeys } = await import(
 );
 
 const decodeReservation = <T>(input: T) =>
-  Schema.decodeUnknownEffect(reservationOrderSchema)(input).pipe(
+  Schema.decodeUnknownEffect(reservationOrderSchema("CZ"))(input).pipe(
     Effect.runSync
   );
 

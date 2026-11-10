@@ -6,7 +6,7 @@ import { useAtom, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { type Duration, Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { useIsFocused } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { AsyncView } from "../../customer-api/async-view";
 import type { AppLocale } from "../../i18n/app-locale";
 import { formatInstant } from "../../i18n/date-time-format";
@@ -16,6 +16,7 @@ import { theme } from "../../theme";
 import { Button, LiveMessage } from "../../ui/controls";
 import { Notice } from "../../ui/notice";
 import { ScrollScreen } from "../../ui/scroll-screen";
+import { Text } from "../../ui/text";
 import { useAccessPinView } from "./access-pin-view";
 import {
   accessCountdownAtom,

@@ -317,6 +317,72 @@ describe("createCheckout", () => {
     });
   });
 
+  test.each([
+    ["de-DE", "0151 23456789"],
+    ["uk-UA", "050 123 4567"],
+    ["de-DE", "+420777000111"],
+  ] as const)(
+    "prepares a %s booking's contact phone %s for its own locale",
+    async (locale, phone) => {
+      const preparation = recordingPreparation(readyHold);
+      const api = makeCustomerApiTestServer({
+        bookingCheckout: checkoutWith({
+          operations: operationsWith(preparation),
+        }),
+      });
+
+      const response = await api.handle(
+        customerApiRequest(
+          createCheckout(
+            createBody({
+              locale,
+              bookingFor: "someone-else",
+              contact: {
+                name: "Ada Lovelace",
+                email: testEmailAddress("ada"),
+                phone,
+              },
+            })
+          )
+        )
+      );
+
+      expect(response.status).toBe(200);
+      expect(preparation.inputs[0]).toMatchObject({
+        locale,
+        reservation: { phone },
+      });
+    }
+  );
+
+  test("refuses a national phone of another region than the booking's locale", async () => {
+    const api = makeCustomerApiTestServer({
+      bookingCheckout: checkoutWith({ operations: operationsWith() }),
+    });
+
+    const response = await api.handle(
+      customerApiRequest(
+        createCheckout(
+          createBody({
+            locale: "cs-CZ",
+            bookingFor: "someone-else",
+            contact: {
+              name: "Ada Lovelace",
+              email: testEmailAddress("ada"),
+              phone: "0151 23456789",
+            },
+          })
+        )
+      )
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerCheckoutDetailsInvalid",
+      field: "contact.phone",
+    });
+  });
+
   test("names the contact field the booking form refuses", async () => {
     const api = makeCustomerApiTestServer({
       bookingCheckout: checkoutWith({ operations: operationsWith() }),

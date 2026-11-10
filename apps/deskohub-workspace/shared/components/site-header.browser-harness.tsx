@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { isLocale, m } from "@/features/i18n";
+import { languageNames } from "@/features/i18n/language-labels";
 import { MinimalSiteHeader } from "./minimal-site-header";
 import { SiteHeader } from "./site-header";
 
@@ -15,7 +16,10 @@ if (!(locale && isLocale(locale))) {
   throw new Error("The SiteHeader browser harness needs a supported locale.");
 }
 
-const languageSwitcherLabel = m.languageSwitcherLabel({}, { locale });
+const languageMenuTriggerLabel = m.languageMenuTriggerLabel(
+  { language: languageNames[locale] },
+  { locale }
+);
 const administrator = mountPoint.dataset.administrator === "true";
 const signedIn = mountPoint.dataset.session === "signed-in";
 const signInHref = `/${locale}/auth/sign-in`;
@@ -25,7 +29,7 @@ createRoot(mountPoint).render(
   mountPoint.dataset.variant === "minimal" ? (
     <MinimalSiteHeader
       currentLocale={locale}
-      languageSwitcherLabel={languageSwitcherLabel}
+      languageMenuTriggerLabel={languageMenuTriggerLabel}
     />
   ) : (
     <SiteHeader
@@ -43,7 +47,7 @@ createRoot(mountPoint).render(
       contactHref={`/${locale}/reservation/cowork`}
       contactLabel={m.reservationNavCta({}, { locale })}
       currentLocale={locale}
-      languageSwitcherLabel={languageSwitcherLabel}
+      languageMenuTriggerLabel={languageMenuTriggerLabel}
       localePreference={{
         save: async () => undefined,
         signedIn: Promise.resolve(signedIn),

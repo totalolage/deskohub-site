@@ -35,7 +35,7 @@ describe("customer API package imports", () => {
     expect(imports).toEqual(["effect"]);
   });
 
-  test("the customer locale entry point imports only Effect", async () => {
+  test("the customer locale entry point imports only Effect and the locale registry", async () => {
     // The app takes it for its sign-in requests; anything more would pull
     // the HTTP API contract into its bundle.
     const source = await Bun.file(
@@ -45,6 +45,6 @@ describe("customer API package imports", () => {
       ([, specifier]) => specifier
     );
 
-    expect(imports).toEqual(["effect"]);
+    expect(imports).toEqual(["@deskohub/i18n/locale-registry", "effect"]);
   });
 });

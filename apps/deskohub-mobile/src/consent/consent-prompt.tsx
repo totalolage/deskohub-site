@@ -1,7 +1,8 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useAppLocale } from "../i18n/locale-context";
 import { m } from "../i18n/messages";
 import { theme } from "../theme";
+import { Text } from "../ui/text";
 
 /**
  * Asks once for analytics consent. Both answers carry the same weight, like

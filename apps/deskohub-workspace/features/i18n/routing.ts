@@ -1,3 +1,8 @@
+import {
+  localeByLanguage,
+  unservedLanguageLocale,
+  unstatedLanguageLocale,
+} from "@deskohub/i18n/locale-registry";
 import { replaceLocaleInPathname } from "@deskohub/i18n/pathname";
 import type { AppRouteHandlerRoutes, AppRoutes } from "@/.next/types/routes";
 import {
@@ -13,23 +18,16 @@ export const defaultLocale: Locale = baseLocale;
 
 export const localeConfig = {
   locales,
-  // Czech is the primary market: a request that states no language, such as
-  // a crawler's, opens the Czech site.
-  unstatedLanguageLocale: "cs-CZ",
-  // A visitor whose languages the site doesn't serve reads English.
-  unservedLanguageLocale: "en-US",
+  unstatedLanguageLocale,
+  unservedLanguageLocale,
   // Maps the browser's Accept-Language, not the saved locale preference, and
-  // a bare language segment in the URL (`/en/faq`). Slovak readers get Czech.
-  preferredLanguageToLocale: {
-    cs: "cs-CZ",
-    sk: "cs-CZ",
-    en: "en-US",
-  },
+  // a bare language segment in the URL (`/en/faq`) by the language subtag.
+  preferredLanguageToLocale: localeByLanguage,
 } as const satisfies {
   readonly locales: readonly Locale[];
   readonly unstatedLanguageLocale: Locale;
   readonly unservedLanguageLocale: Locale;
-  readonly preferredLanguageToLocale: Readonly<Record<string, Locale>>;
+  readonly preferredLanguageToLocale: Readonly<Partial<Record<string, Locale>>>;
 };
 
 const withLocalePrefix = (pathname: string, locale: Locale): string =>

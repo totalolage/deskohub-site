@@ -7,6 +7,7 @@ import { useBrandFontReady } from "../src/brand-font";
 import { CustomerDataExitCleanup } from "../src/customer-api/customer-data-exit";
 import { readLaunchLocale } from "../src/i18n/launch-locale";
 import { AppLocaleProvider } from "../src/i18n/locale-context";
+import { useSessionLocale } from "../src/i18n/use-session-locale";
 import { UpdateBanner } from "../src/updates/update-banner";
 
 // The entry (index.ts) has already taken sign-in secrets out of the address
@@ -17,8 +18,9 @@ initializeBotProtection();
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [locale] = useState(readLaunchLocale);
+  const [launchLocale] = useState(readLaunchLocale);
   const session = useAuthSession();
+  const { locale, choose } = useSessionLocale(session, launchLocale);
   const brandFontReady = useBrandFontReady();
   const restoring = session.status === "restoring";
   // The navigator mounts once the launch's session restore settles: while the
@@ -37,7 +39,7 @@ export default function RootLayout() {
   if (!brandFontReady) return null;
 
   return (
-    <AppLocaleProvider locale={locale}>
+    <AppLocaleProvider locale={locale} choose={choose}>
       <AnalyticsRoot>
         <CustomerDataExitCleanup>
           {restored && (

@@ -1,0 +1,49 @@
+{
+  "emailAutomationsEyebrow": "Automatisierte Kampagne",
+  "emailAutomationsFrequencyBannerBody": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Dieser Zeitplan wird bis zu {count}-mal pro Stunde ausgeführt. Jede Ausführung wertet die gesamte Zielgruppe aus. Prüfen Sie daher, ob diese Häufigkeit beabsichtigt ist.",
+        "countPlural=other": "Dieser Zeitplan wird bis zu {count}-mal pro Stunde ausgeführt. Jede Ausführung wertet die gesamte Zielgruppe aus. Prüfen Sie daher, ob diese Häufigkeit beabsichtigt ist."
+      }
+    }
+  ],
+  "emailAutomationsFrequencyBannerTitle": "Möglicherweise zu häufige Ausführungen",
+  "emailAutomationsNeverActivated": "Noch nicht aktiviert",
+  "emailAutomationsPendingChanges": "Unveröffentlichte Änderungen",
+  "emailAutomationsSectionEmail": "E-Mail",
+  "emailAutomationsSectionFlow": "Ablauf",
+  "emailAutomationsSectionPreview": "Vorschau und Aktivierung",
+  "emailAutomationsSectionRuns": "Durchlaufprotokoll",
+  "emailAutomationsSectionsLabel": "Bereiche der automatisierten Kampagne",
+  "emailAutomationsStatusActive": "Aktiv",
+  "emailAutomationsStatusArchived": "Archiviert",
+  "emailAutomationsStatusDraft": "Entwurf",
+  "emailAutomationsStatusPaused": "Pausiert",
+  "emailAutomationsTriggerAccountCreated": "Erstellung des Kontos",
+  "emailAutomationsTriggerReservationBooked": "Bestätigung der Reservierung",
+  "emailAutomationsTriggerReservationCancelled": "Stornierung der Reservierung",
+  "emailAutomationsTriggerReservationFinished": "Ende der Reservierung",
+  "emailAutomationsTriggerReservationStarted": "Beginn der Reservierung",
+  "emailAutomationsTriggerSchedule": "Nach Zeitplan",
+  "emailAutomationsVersionLive": "Version {version} live seit {date}",
+  "emailAutomationsListDeliveryFilter": "Versandart",
+  "emailAutomationsListDeliveryAll": "Alle Kampagnen",
+  "emailAutomationsListDeliveryOnce": "Einmalig",
+  "emailAutomationsListDeliveryAutomated": "Automatisiert",
+  "emailAutomationsComposerDeliveryLabel": "Versandart",
+  "emailAutomationsComposerDeliveryOnce": "Einmal senden",
+  "emailAutomationsComposerDeliveryOnceDescription": "Eine E-Mail an die Zielgruppe, gesendet nach einem Testversand.",
+  "emailAutomationsComposerDeliveryAutomated": "Automatisiert",
+  "emailAutomationsComposerDeliveryAutomatedDescription": "Der Ablauf sendet diese E-Mail an jeden Kunden, sobald er die Bedingungen erfüllt.",
+  "emailAutomationsComposerDeliveryHint": "Nach dem Erstellen der Kampagne lässt sich das nicht mehr ändern.",
+  "emailAutomationsComposerNewDescription": "Schreiben Sie die E-Mail und erstellen Sie dann die Kampagne, um den Ablauf aufzubauen, der sie sendet.",
+  "emailAutomationsComposerAudienceLabel": "Zielgruppe (Ausgangsmenge bei Zeitplänen, Eingangsbedingung bei Ereignissen)",
+  "emailAutomationsComposerAudiencePlaceholder": "Zielgruppe auswählen",
+  "emailAutomationsEmailSave": "Änderungen speichern",
+  "emailAutomationsEmailUnpublishedNote": "Änderungen hier werden erst veröffentlicht, wenn Sie sie in der Vorschau prüfen und aktivieren. Bereits laufende Durchläufe behalten die E-Mail, mit der sie begonnen haben.",
+  "emailAutomationsEmailArchivedNote": "Diese Kampagne ist archiviert, daher lassen sich ihre E-Mail und ihre Zielgruppe nicht mehr ändern.",
+  "emailAutomationsEmailSaveArchived": "Diese Kampagne ist archiviert, daher lässt sich ihre E-Mail nicht mehr bearbeiten."
+}

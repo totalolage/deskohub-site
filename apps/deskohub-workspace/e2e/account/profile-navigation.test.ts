@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { parsePhoneNumber } from "@deskohub/phone-number";
 import { chromium, errors, type Page } from "@playwright/test";
 import { Option } from "effect";
+import { baseLocale, defaultPhoneRegion } from "@/features/i18n";
 import {
   accountSectionLabel,
   accountSections,
@@ -64,7 +65,7 @@ const makeProfileNavigationFakePage = (
     phone: "+420 555 000 111",
   };
   const normalizedPhone = Option.getOrThrowWith(
-    parsePhoneNumber(originalProfile.phone),
+    parsePhoneNumber(originalProfile.phone, defaultPhoneRegion(baseLocale)),
     () => new Error("fake profile phone is not a valid canonical phone number")
   );
   const serverSnapshot = {

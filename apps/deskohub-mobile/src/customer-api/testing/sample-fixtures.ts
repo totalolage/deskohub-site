@@ -441,6 +441,8 @@ const sampleAccount = (
       passkeys: [...samplePasskeys(now)],
     },
     assistants: [...sampleAssistants(now)],
+    // No saved language: the app follows the device language.
+    locale: null,
   };
   switch (kind) {
     case "linked":
@@ -471,6 +473,7 @@ const sampleAccount = (
         kind,
         email: sampleEmail,
         passkeys: sessionSettings.passkeys,
+        locale: sessionSettings.locale,
         deletion: "pending",
       };
   }

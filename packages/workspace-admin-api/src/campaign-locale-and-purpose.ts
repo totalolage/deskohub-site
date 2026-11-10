@@ -1,6 +1,7 @@
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { Schema } from "effect";
 
-export const AdministrationCampaignLocale = Schema.Literals(["cs-CZ", "en-US"]);
+export const AdministrationCampaignLocale = Schema.Literals(supportedLocales);
 export type AdministrationCampaignLocale =
   typeof AdministrationCampaignLocale.Type;
 

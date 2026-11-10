@@ -1,0 +1,315 @@
+{
+  "emailAutomationRunsStepLabel": "Krok {position} · {step}",
+  "emailAutomationRunsStepById": "Krok „{stepId}“",
+  "emailAutomationRunsStepCondition": "Podmienka",
+  "emailAutomationRunsStepSend": "Odoslať e-mail",
+  "emailAutomationRunsStepWaitUntil": "Počkať na {target}",
+  "emailAutomationRunsStepWaitMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Počkať {formattedCount} minútu",
+        "countPlural=few": "Počkať {formattedCount} minúty",
+        "countPlural=many": "Počkať {formattedCount} minúty",
+        "countPlural=other": "Počkať {formattedCount} minút"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Počkať {formattedCount} hodinu",
+        "countPlural=few": "Počkať {formattedCount} hodiny",
+        "countPlural=many": "Počkať {formattedCount} hodiny",
+        "countPlural=other": "Počkať {formattedCount} hodín"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Počkať {formattedCount} deň",
+        "countPlural=few": "Počkať {formattedCount} dni",
+        "countPlural=many": "Počkať {formattedCount} dňa",
+        "countPlural=other": "Počkať {formattedCount} dní"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitWeeks": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Počkať {formattedCount} týždeň",
+        "countPlural=few": "Počkať {formattedCount} týždne",
+        "countPlural=many": "Počkať {formattedCount} týždňa",
+        "countPlural=other": "Počkať {formattedCount} týždňov"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitMonths": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Počkať {formattedCount} mesiac",
+        "countPlural=few": "Počkať {formattedCount} mesiace",
+        "countPlural=many": "Počkať {formattedCount} mesiaca",
+        "countPlural=other": "Počkať {formattedCount} mesiacov"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} minúta",
+        "countPlural=few": "{formattedCount} minúty",
+        "countPlural=many": "{formattedCount} minúty",
+        "countPlural=other": "{formattedCount} minút"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} hodina",
+        "countPlural=few": "{formattedCount} hodiny",
+        "countPlural=many": "{formattedCount} hodiny",
+        "countPlural=other": "{formattedCount} hodín"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} deň",
+        "countPlural=few": "{formattedCount} dni",
+        "countPlural=many": "{formattedCount} dňa",
+        "countPlural=other": "{formattedCount} dní"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeJustNow": "pred chvíľou",
+  "emailAutomationRunsAgeMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "pred {formattedCount} minútou",
+        "countPlural=few": "pred {formattedCount} minútami",
+        "countPlural=many": "pred {formattedCount} minútami",
+        "countPlural=other": "pred {formattedCount} minútami"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "pred {formattedCount} hodinou",
+        "countPlural=few": "pred {formattedCount} hodinami",
+        "countPlural=many": "pred {formattedCount} hodinami",
+        "countPlural=other": "pred {formattedCount} hodinami"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "pred {formattedCount} dňom",
+        "countPlural=few": "pred {formattedCount} dňami",
+        "countPlural=many": "pred {formattedCount} dňami",
+        "countPlural=other": "pred {formattedCount} dňami"
+      }
+    }
+  ],
+  "emailAutomationRunsHealthRunning": "Modul automatizácií beží · posledné plánovanie {lastPlanned}",
+  "emailAutomationRunsHealthBehind": "Modul automatizácií vyžaduje pozornosť · posledné plánovanie {lastPlanned}",
+  "emailAutomationRunsHealthNotPlannedYet": "zatiaľ žiadne",
+  "emailAutomationRunsHealthUnavailable": "Stav modulu automatizácií teraz nemožno načítať.",
+  "emailAutomationRunsHealthWarningTitle": "Modul automatizácií nestíha. Behy všetkých automatických kampaní môžu začínať alebo odosielať e-maily s oneskorením.",
+  "emailAutomationRunsHealthCampaignTitle": "Plán tejto kampane je práve vyťažený.",
+  "emailAutomationRunsHealthPlannerStale": "Plánovač naposledy bežal {age}.",
+  "emailAutomationRunsHealthPlannerNeverRan": "Plánovač zatiaľ nebežal.",
+  "emailAutomationRunsHealthSweepLagging": "Začiatky a konce rezervácií sa zisťujú s oneskorením {duration}.",
+  "emailAutomationRunsHealthSweepLaggingUnknown": "Začiatky a konce rezervácií sa zisťujú s oneskorením.",
+  "emailAutomationRunsHealthReconcileStalled": "Hodinová kontrola začiatkov a koncov rezervácií má oneskorenie {duration}.",
+  "emailAutomationRunsHealthReconcileStalledUnknown": "Hodinová kontrola začiatkov a koncov rezervácií nebeží.",
+  "emailAutomationRunsHealthEventBacklog": "Udalosti zákazníkov čakajú na spracovanie; najstaršia je z {date}.",
+  "emailAutomationRunsHealthEventBacklogUnknown": "Udalosti zákazníkov čakajú na spracovanie.",
+  "emailAutomationRunsHealthUnitBacklog": "Naplánovaná práca čaká na spustenie; najstaršia čaká od {date}.",
+  "emailAutomationRunsHealthUnitBacklogUnknown": "Naplánovaná práca čaká na spustenie.",
+  "emailAutomationRunsHealthScheduleLagging": "Plánované kampane sa spúšťajú neskoro.",
+  "emailAutomationRunsHealthFallingBehind": "Niektorá plánovaná kampaň spracúva spustenie dlhšie, ako je čas do ďalšieho.",
+  "emailAutomationRunsHealthUnrecognized": "Modul automatizácií hlási varovanie, ktoré táto stránka nepozná: {code}.",
+  "emailAutomationRunsHealthCampaignScheduleLag": "Plán tejto kampane má oneskorenie {duration}.",
+  "emailAutomationRunsHealthCampaignEnteringFire": "Táto kampaň zakladá behy pre spustenie {date}: hotovo {done} z {total} častí.",
+  "emailAutomationRunsHealthCampaignFallingBehind": "Posledné spustenie tejto kampane trvalo {duration}, dlhšie ako {interval} do ďalšieho spustenia.",
+  "emailAutomationRunsHealthCampaignFallingBehindUnknown": "Posledné spustenie tejto kampane trvalo {duration}, dlhšie ako čas do ďalšieho spustenia.",
+  "emailAutomationRunsCountsTitle": "Behy podľa stavu",
+  "emailAutomationRunsCountsScopeAll": "Všetky verzie",
+  "emailAutomationRunsCountsScopeVersion": "Verzia {versionNumber}",
+  "emailAutomationRunsCountsWaiting": "Čakajú",
+  "emailAutomationRunsCountsSendingNow": "Práve sa odosielajú",
+  "emailAutomationRunsCountsSent": "Odoslané",
+  "emailAutomationRunsCountsFailed": "Zlyhalo",
+  "emailAutomationRunsCountsSkipped": "Preskočené",
+  "emailAutomationRunsCountsArchived": "Ukončené archiváciou",
+  "emailAutomationRunsOutcomeSent": "Odoslané",
+  "emailAutomationRunsOutcomeUnconfirmed": "Možno odoslané",
+  "emailAutomationRunsOutcomeConditionFailed": "Skončilo pri podmienke",
+  "emailAutomationRunsOutcomeSkipped": "Preskočené",
+  "emailAutomationRunsOutcomeSkippedBecause": "Preskočené · {reason}",
+  "emailAutomationRunsOutcomeFailed": "Zlyhalo",
+  "emailAutomationRunsOutcomeFailedBecause": "Zlyhalo · {reason}",
+  "emailAutomationRunsOutcomeWithdrawn": "Spúšťač zrušený",
+  "emailAutomationRunsOutcomeArchived": "Ukončené archiváciou",
+  "emailAutomationRunsSkipOutsideTestDomain": "netestovací príjemca",
+  "emailAutomationRunsSkipConsentWithdrawn": "súhlas odvolaný",
+  "emailAutomationRunsSkipMissingEmail": "chýba e-mailová adresa",
+  "emailAutomationRunsSkipInvalidEmail": "neplatná e-mailová adresa",
+  "emailAutomationRunsSkipDeletedCustomer": "zákazník odstránený",
+  "emailAutomationRunsSkipMissingFromDotypos": "zákazník chýba v Dotypose",
+  "emailAutomationRunsFailureDeliveryRefused": "doručenie odmietnuté",
+  "emailAutomationRunsFailureEvaluationUnavailable": "vyhodnotenie nedostupné",
+  "emailAutomationRunsStatusWaitingUntil": "Čaká do {date}",
+  "emailAutomationRunsStatusInProgress": "Prebieha",
+  "emailAutomationRunsStatusSending": "Odosiela sa",
+  "emailAutomationRunsStateActive": "Prebieha",
+  "emailAutomationRunsStateSending": "Odosiela sa",
+  "emailAutomationRunsStateEnded": "Skončilo",
+  "emailAutomationRunsFilterState": "Stav",
+  "emailAutomationRunsFilterStateAny": "Akýkoľvek stav",
+  "emailAutomationRunsFilterOutcome": "Výsledok",
+  "emailAutomationRunsFilterOutcomeAny": "Akýkoľvek výsledok",
+  "emailAutomationRunsFilterSkipReason": "Dôvod preskočenia",
+  "emailAutomationRunsFilterSkipReasonAny": "Akýkoľvek dôvod",
+  "emailAutomationRunsFilterStep": "Krok",
+  "emailAutomationRunsFilterStepAny": "Akýkoľvek krok",
+  "emailAutomationRunsFilterVersion": "Verzia",
+  "emailAutomationRunsFilterVersionAll": "Všetky verzie",
+  "emailAutomationRunsFilterCustomer": "Zákazník",
+  "emailAutomationRunsFilterCustomerPlaceholder": "ID zákazníka v Dotypose",
+  "emailAutomationRunsFilterApply": "Zobraziť behy",
+  "emailAutomationRunsFilterClear": "Zrušiť filtre",
+  "emailAutomationRunsVersion": "Verzia {versionNumber}",
+  "emailAutomationRunsVersionLive": "Verzia {versionNumber} (aktívna)",
+  "emailAutomationRunsListControls": "Ovládanie zoznamu behov",
+  "emailAutomationRunsListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} beh na tejto stránke",
+        "countPlural=few": "{formattedCount} behy na tejto stránke",
+        "countPlural=many": "{formattedCount} behu na tejto stránke",
+        "countPlural=other": "{formattedCount} behov na tejto stránke"
+      }
+    }
+  ],
+  "emailAutomationRunsListEmpty": "Zatiaľ žiadne behy. Behy sa tu zobrazia, keď bude automatizácia aktívna a spustí sa jej spúšťač.",
+  "emailAutomationRunsListEmptyFiltered": "Týmto filtrom nezodpovedá žiadny beh.",
+  "emailAutomationRunsColumnStarted": "Začiatok",
+  "emailAutomationRunsColumnCustomer": "Zákazník",
+  "emailAutomationRunsCustomerProfileNotFound": "Nenájdený v Dotypose",
+  "emailAutomationRunsCustomerProfileUnavailable": "Profil nedostupný",
+  "emailAutomationRunsCustomerContactsUnavailable": "Mená zákazníkov teraz nemožno načítať z Dotyposu, preto behy zobrazujú ID zákazníkov.",
+  "emailAutomationRunsColumnTrigger": "Spúšťač",
+  "emailAutomationRunsColumnStep": "Krok",
+  "emailAutomationRunsColumnStatus": "Stav",
+  "emailAutomationRunsColumnEnded": "Koniec",
+  "emailAutomationRunsColumnVersion": "Verzia",
+  "emailAutomationRunsPagination": "Strany zoznamu behov",
+  "emailAutomationRunsFirstPage": "Prvá strana",
+  "emailAutomationRunsNextPage": "Ďalšia strana",
+  "emailAutomationRunsLoadFailed": "Protokol behov sa nepodarilo načítať. Skúste to o chvíľu znova.",
+  "emailAutomationRunsCursorInvalid": "Tento odkaz na stranu už neplatí. Začnite znova od prvej strany.",
+  "emailAutomationRunsBackToList": "Všetky behy",
+  "emailAutomationRunsRunTitle": "Beh",
+  "emailAutomationRunsTriggeredAt": "{trigger} · {date}",
+  "emailAutomationRunsCurrentStep": "Aktuálny krok",
+  "emailAutomationRunsEndedAtStep": "Skončilo v kroku",
+  "emailAutomationRunsNotEnded": "Ešte neskončilo",
+  "emailAutomationRunsTimelineTitle": "Časová os",
+  "emailAutomationRunsTimelineLabel": "Časová os behu",
+  "emailAutomationRunsEventStarted": "Beh sa začal",
+  "emailAutomationRunsEventConditionPassed": "Podmienka splnená",
+  "emailAutomationRunsEventConditionFailed": "Podmienka nesplnená; beh sa tu skončil",
+  "emailAutomationRunsEventConditionFailedClause": "Nesplnené: {clause}",
+  "emailAutomationRunsEventWaiting": "Čaká do {date}",
+  "emailAutomationRunsEventWoke": "Čakanie sa skončilo",
+  "emailAutomationRunsEventDeferred": "Spúšťacia návšteva sa ešte nezačala; znova sa overí {date}",
+  "emailAutomationRunsEventSendQueued": "E-mail zaradený na odoslanie",
+  "emailAutomationRunsEventSent": "E-mail odoslaný",
+  "emailAutomationRunsEventUnconfirmed": "E-mail možno odišiel",
+  "emailAutomationRunsEventUnconfirmedDetail": "E-mailová služba nepotvrdila doručenie, preto ho beh znova neodošle.",
+  "emailAutomationRunsEventWithdrawnDetail": "Spúšťacia rezervácia bola zrušená, kým beh čakal.",
+  "emailAutomationRunsEventArchivedDetail": "Kampaň bola archivovaná, kým beh prebiehal.",
+  "emailAutomationRunsEventUnknown": "Zaznamenaná udalosť „{kind}“",
+  "emailAutomationRunsConditionClause": "Časť {position} podmienky",
+  "emailAutomationRunsConditionInAudience": "Zákazníci v uloženom publiku „{audience}“",
+  "emailAutomationRunsConditionNotInAudience": "Zákazníci mimo uloženého publika „{audience}“",
+  "emailAutomationRunsConditionAudienceUnknown": "odstránené publikum"
+}

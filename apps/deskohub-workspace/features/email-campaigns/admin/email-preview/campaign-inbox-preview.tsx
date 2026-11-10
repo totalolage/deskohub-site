@@ -75,7 +75,7 @@ export function CampaignInboxPreview({
               name={localeName}
               onValueChange={onLocaleChange}
               options={locales.map((option) => ({
-                label: campaignLocaleName(option, routeLocale),
+                label: campaignLocaleName(option),
                 value: option,
               }))}
               size="sm"
@@ -127,7 +127,7 @@ export function CampaignInboxPreview({
           sandbox=""
           srcDoc={html}
           title={m.emailCampaignsEmailPreviewFrameTitle(
-            { language: campaignLocaleName(locale, routeLocale) },
+            { language: campaignLocaleName(locale) },
             { locale: routeLocale }
           )}
         />

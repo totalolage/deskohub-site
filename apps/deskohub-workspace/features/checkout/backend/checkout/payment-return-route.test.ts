@@ -129,7 +129,7 @@ describe("checkout pay return route", () => {
   test("rejects invalid route params", async () => {
     for (const params of [
       { locale: "en-US", orderId: "" },
-      { locale: "sk-SK", orderId: "order-id" },
+      { locale: "fr-FR", orderId: "order-id" },
     ]) {
       const { response, lookups } = await invoke("", {
         params,

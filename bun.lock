@@ -355,6 +355,7 @@
       "name": "dhw",
       "version": "1.33.0",
       "dependencies": {
+        "@deskohub/i18n": "workspace:*",
         "@deskohub/workspace-admin-api": "workspace:*",
         "@effect/platform-bun": "4.0.0-beta.85",
         "effect": "4.0.0-beta.85",
@@ -387,6 +388,7 @@
       "name": "@deskohub/cloudinary",
       "version": "0.1.0",
       "dependencies": {
+        "@deskohub/i18n": "workspace:*",
         "@deskohub/provider-request": "workspace:*",
         "@opentelemetry/api": "^1.9.0",
         "@opentelemetry/core": "2.8.0",
@@ -404,6 +406,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@deskohub/cloudinary": "workspace:*",
+        "@deskohub/i18n": "workspace:*",
         "next-cloudinary": "^6.16.0",
       },
       "devDependencies": {
@@ -519,6 +522,7 @@
       "name": "@deskohub/nexi",
       "version": "0.1.0",
       "dependencies": {
+        "@deskohub/i18n": "workspace:*",
         "@deskohub/provider-request": "workspace:*",
         "@deskohub/secret-comparison": "workspace:*",
         "effect": "4.0.0-beta.85",
@@ -663,6 +667,7 @@
       "name": "@deskohub/workspace-admin-api",
       "version": "0.1.0",
       "dependencies": {
+        "@deskohub/i18n": "workspace:*",
         "@js-temporal/polyfill": "^0.5.1",
         "effect": "4.0.0-beta.85",
       },
@@ -675,6 +680,7 @@
       "name": "@deskohub/workspace-customer-api",
       "version": "0.1.0",
       "dependencies": {
+        "@deskohub/i18n": "workspace:*",
         "@deskohub/phone-number": "workspace:*",
         "effect": "4.0.0-beta.85",
       },

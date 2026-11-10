@@ -163,28 +163,32 @@ const getCoworkReservationDateIssues = (data: {
       ]
     : [];
 
-const coworkReservationOrderBaseSchema = Schema.Struct({
-  ...reservationCustomerSchema.fields,
-  billing: reservationBillingSelectionInputSchema,
-  ...coworkReservationProductInputSchema.fields,
-  date: dateSchema,
-});
+const coworkReservationOrderBaseSchema = (defaultPhoneRegion: string) =>
+  Schema.Struct({
+    ...reservationCustomerSchema(defaultPhoneRegion).fields,
+    billing: reservationBillingSelectionInputSchema,
+    ...coworkReservationProductInputSchema.fields,
+    date: dateSchema,
+  });
 
-const coworkReservationOrderInputSchema = Schema.Struct({
-  kind: Schema.Literal(coworkReservationKind),
-  ...coworkReservationOrderBaseSchema.fields,
-});
+const coworkReservationOrderInputSchema = (defaultPhoneRegion: string) =>
+  Schema.Struct({
+    kind: Schema.Literal(coworkReservationKind),
+    ...coworkReservationOrderBaseSchema(defaultPhoneRegion).fields,
+  });
 
-const coworkReservationFormInputSchema =
-  coworkReservationOrderBaseSchema.mapFields((fields) => ({
+const coworkReservationFormInputSchema = (defaultPhoneRegion: string) =>
+  coworkReservationOrderBaseSchema(defaultPhoneRegion).mapFields((fields) => ({
     ...fields,
     marketingConsent: Schema.Boolean,
   }));
 
-export type CoworkReservationOrderInput =
-  typeof coworkReservationOrderInputSchema.Type;
-export type CoworkReservationFormInput =
-  typeof coworkReservationFormInputSchema.Type;
+export type CoworkReservationOrderInput = ReturnType<
+  typeof coworkReservationOrderInputSchema
+>["Type"];
+export type CoworkReservationFormInput = ReturnType<
+  typeof coworkReservationFormInputSchema
+>["Type"];
 
 export const normalizedOpenSpaceCoworkReservationOrderSchema = Schema.Struct({
   kind: Schema.Literal(coworkReservationKind),
@@ -579,18 +583,16 @@ const normalizeCoworkReservationOrder = (
   );
 };
 
-const decodeCoworkReservationOrder = Schema.decodeUnknownSync(
-  coworkReservationOrderInputSchema
-);
-
-export const coworkReservationOrderSchema = coworkReservationOrderInputSchema
-  .check(Schema.makeFilter(getCoworkReservationIssues))
-  .pipe(
+/** A cowork order a customer submits, phone read in `defaultPhoneRegion`. */
+export const coworkReservationOrderSchema = (defaultPhoneRegion: string) => {
+  const inputSchema = coworkReservationOrderInputSchema(defaultPhoneRegion);
+  return inputSchema.check(Schema.makeFilter(getCoworkReservationIssues)).pipe(
     Schema.decodeTo(normalizedCoworkReservationOrderSchema, {
       decode: SchemaGetter.transform(normalizeCoworkReservationOrder),
-      encode: SchemaGetter.transform(decodeCoworkReservationOrder),
+      encode: SchemaGetter.transform(Schema.decodeUnknownSync(inputSchema)),
     })
   );
+};
 
 // Public order issuance only produces the current offers.
 export const normalizedCurrentCoworkReservationOrderSchema = Schema.Union([
@@ -601,20 +603,26 @@ export const normalizedCurrentCoworkReservationOrderSchema = Schema.Union([
 export type NormalizedCurrentCoworkReservationOrder =
   typeof normalizedCurrentCoworkReservationOrderSchema.Type;
 
-export const coworkCurrentReservationOrderSchema =
-  coworkReservationOrderInputSchema
-    .check(Schema.makeFilter(getCoworkReservationIssues))
-    .pipe(
-      Schema.decodeTo(normalizedCurrentCoworkReservationOrderSchema, {
-        decode: SchemaGetter.transform(
-          (data) =>
-            normalizeCoworkReservationOrder(
-              data
-            ) as NormalizedCurrentCoworkReservationOrder
-        ),
-        encode: SchemaGetter.transform(decodeCoworkReservationOrder),
-      })
-    );
+/**
+ * A cowork order for a current offer a customer submits, phone read in
+ * `defaultPhoneRegion`.
+ */
+export const coworkCurrentReservationOrderSchema = (
+  defaultPhoneRegion: string
+) => {
+  const inputSchema = coworkReservationOrderInputSchema(defaultPhoneRegion);
+  return inputSchema.check(Schema.makeFilter(getCoworkReservationIssues)).pipe(
+    Schema.decodeTo(normalizedCurrentCoworkReservationOrderSchema, {
+      decode: SchemaGetter.transform(
+        (data) =>
+          normalizeCoworkReservationOrder(
+            data
+          ) as NormalizedCurrentCoworkReservationOrder
+      ),
+      encode: SchemaGetter.transform(Schema.decodeUnknownSync(inputSchema)),
+    })
+  );
+};
 
 const normalizeCoworkReservationForm = (
   data: CoworkReservationFormInput
@@ -655,24 +663,28 @@ export const getCoworkCurrentReservationOrder = (
     })
   );
 
-const coworkReservationDraftSchema = coworkReservationFormInputSchema.check(
-  Schema.makeFilter(getCoworkReservationIssues)
-);
-
-export const coworkReservationSchema = coworkReservationDraftSchema.pipe(
-  Schema.decodeTo(normalizedCurrentCoworkReservationFormSchema, {
-    decode: SchemaGetter.transform(normalizeCoworkReservationForm),
-    encode: SchemaGetter.transform(
-      (reservation): CoworkReservationFormInput => ({
-        ...reservation,
-        billing: reservation.billing ?? defaultReservationBillingSelection,
+/** The cowork reservation form, phone read in `defaultPhoneRegion`. */
+export const coworkReservationSchema = (defaultPhoneRegion: string) =>
+  coworkReservationFormInputSchema(defaultPhoneRegion)
+    .check(Schema.makeFilter(getCoworkReservationIssues))
+    .pipe(
+      Schema.decodeTo(normalizedCurrentCoworkReservationFormSchema, {
+        decode: SchemaGetter.transform(normalizeCoworkReservationForm),
+        encode: SchemaGetter.transform(
+          (reservation): CoworkReservationFormInput => ({
+            ...reservation,
+            billing: reservation.billing ?? defaultReservationBillingSelection,
+          })
+        ),
       })
-    ),
-  })
-);
+    );
 
-export type CoworkReservationInput = typeof coworkReservationSchema.Encoded;
-export type CoworkReservationData = typeof coworkReservationSchema.Type;
+export type CoworkReservationInput = ReturnType<
+  typeof coworkReservationSchema
+>["Encoded"];
+export type CoworkReservationData = ReturnType<
+  typeof coworkReservationSchema
+>["Type"];
 
 export const coworkReservationDefaultValues: CoworkReservationInput = {
   entryTier: "open-space",

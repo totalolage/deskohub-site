@@ -40,7 +40,7 @@ const createRecipientColumns = (
     header: m.emailCampaignsRecipientPreviewEmailColumn({}, { locale }),
   },
   {
-    accessorFn: (recipient) => campaignLocaleName(recipient.locale, locale),
+    accessorFn: (recipient) => campaignLocaleName(recipient.locale),
     id: "locale",
     header: m.emailCampaignsRecipientPreviewLanguageColumn({}, { locale }),
   },
@@ -145,7 +145,7 @@ export function RecipientTable({
             <MobileItem key={recipient.customerId}>
               <p className="break-all font-semibold">{recipient.email}</p>
               <p className="text-navy-blue/65">
-                {campaignLocaleName(recipient.locale, locale)} ·{" "}
+                {campaignLocaleName(recipient.locale)} ·{" "}
                 <Interpolate
                   mapping={{
                     customer: (

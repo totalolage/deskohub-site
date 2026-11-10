@@ -411,7 +411,7 @@ describe("dhw campaigns create and update", () => {
   });
 
   test.each([
-    [["--subject", "de=Hallo", "--body", "de=./de.md"], "unknown locale"],
+    [["--subject", "fr=Bonjour", "--body", "fr=./fr.md"], "unknown locale"],
     [
       ["--subject", "Hello", "--body", "en=./en.md"],
       "expects <locale>=<value>",
@@ -1162,9 +1162,9 @@ describe("dhw campaigns audiences", () => {
     [
       [
         "--filter",
-        '{"attribute":"locale","_tag":"Condition","operator":"anyOf","value":["de-DE"]}',
+        '{"attribute":"locale","_tag":"Condition","operator":"anyOf","value":["xx-XX"]}',
       ],
-      'Expected "cs-CZ" | "en-US", got "de-DE"\n  at ["value"][0]',
+      'got "xx-XX"\n  at ["value"][0]',
     ],
     [
       [

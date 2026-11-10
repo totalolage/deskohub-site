@@ -21,6 +21,7 @@ import {
 import { groupCustomerReservations } from "@/features/administration/customer-activity";
 import { m } from "@/features/administration/i18n";
 import { getAdministrationReservationProductTitle } from "@/features/administration/reservation-product";
+import { discountLabelFor } from "@/features/discounts/discount-label";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
@@ -95,7 +96,7 @@ export function CodeAdministrationDetailPage({
 
       <CodeSummary
         code={code}
-        discountLabel={detail.discountLabels[locale]}
+        discountLabel={discountLabelFor(detail.discountLabels, locale)}
         locale={locale}
       />
 

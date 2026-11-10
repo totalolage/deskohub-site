@@ -67,6 +67,9 @@ afterAll(() => setSystemTime());
 const formattedOccupancy = {
   "en-US": { average: "0.6", capacity: "4" },
   "cs-CZ": { average: "0,6", capacity: "4" },
+  "de-DE": { average: "0,6", capacity: "4" },
+  "uk-UA": { average: "0,6", capacity: "4" },
+  "sk-SK": { average: "0,6", capacity: "4" },
 } as const;
 
 const renderMarkdown = async (
@@ -121,7 +124,9 @@ describe.each(locales)("faqPageMarkdown in %s", (locale) => {
     expect(urls.length).toBeGreaterThan(0);
     for (const url of urls) {
       expect(url).toStartWith("https://workspace.deskohub.cz/");
-      expect(new URL(url).pathname).not.toMatch(/^\/(en-US|cs-CZ)(\/|$)/);
+      expect(new URL(url).pathname).not.toMatch(
+        new RegExp(`^/(${locales.join("|")})(/|$)`)
+      );
     }
   });
 

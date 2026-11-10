@@ -97,14 +97,14 @@ describe("sitemap.xml", () => {
     expect(urls).not.toContain(`${origin}/en-US/reservation/office`);
   });
 
-  test("gives every entry reciprocal en-US, cs-CZ and x-default alternates", async () => {
+  test("gives every entry reciprocal alternates for every locale and x-default", async () => {
     const entries = await productionSitemap();
     const entriesByUrl = new Map(entries.map((entry) => [entry.url, entry]));
 
     for (const entry of entries) {
       const languages = entry.alternates?.languages ?? {};
       expect(Object.keys(languages).toSorted()).toEqual(
-        ["cs-CZ", "en-US", "x-default"].toSorted()
+        ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK", "x-default"].toSorted()
       );
       expect(Object.values(languages)).toContain(entry.url);
 
@@ -119,16 +119,39 @@ describe("sitemap.xml", () => {
     }
   });
 
-  test("dates every page's entries by its content, the same in each locale", async () => {
+  test("dates every page's entries by its content, or a later day of the locale's own", async () => {
     const entries = await productionSitemap();
     const entriesByUrl = new Map(entries.map((entry) => [entry.url, entry]));
 
-    for (const { pathname, contentDate } of publicPages) {
+    for (const { pathname, contentDate, localeContentDates } of publicPages) {
       for (const locale of locales) {
         const url = `${origin}/${locale}${pathname === "/" ? "" : pathname}`;
-        expect(entriesByUrl.get(url)?.lastModified).toBe(contentDate);
+        const localeDate = localeContentDates?.[locale];
+        expect(entriesByUrl.get(url)?.lastModified).toBe(
+          localeDate === undefined
+            ? contentDate
+            : [contentDate, localeDate].toSorted().at(-1)
+        );
       }
     }
+  });
+
+  test("dates a locale's entry by its own day only when that day is later", async () => {
+    const [home] = publicPages;
+    const entries = await productionSitemap([
+      {
+        ...home,
+        contentDate: "2026-08-12",
+        localeContentDates: { "de-DE": "2026-11-09", "en-US": "2026-08-01" },
+      },
+    ]);
+    const lastModified = new Map(
+      entries.map((entry) => [entry.url, entry.lastModified])
+    );
+
+    expect(lastModified.get(`${origin}/de-DE`)).toBe("2026-11-09");
+    expect(lastModified.get(`${origin}/en-US`)).toBe("2026-08-12");
+    expect(lastModified.get(`${origin}/cs-CZ`)).toBe("2026-08-12");
   });
 
   test("keeps every URL absolute on the production origin", async () => {

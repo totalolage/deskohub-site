@@ -112,6 +112,17 @@ export const CustomerAuthSession = Schema.Struct({
     emailVerified: Schema.Boolean,
     name: Schema.String,
     image: Schema.optional(Schema.NullOr(Schema.String)),
+    /**
+     * The account's saved language, null or absent when it has none. Any
+     * locale tag, so a locale added later never fails an older client's
+     * decoding.
+     */
+    locale: Schema.optional(
+      Schema.NullOr(Schema.String).annotate({
+        description:
+          "The account's saved locale tag, or null when none is saved. Clients ignore tags they don't support.",
+      })
+    ),
   }),
 }).annotate({ identifier: "CustomerAuthSession" });
 export type CustomerAuthSession = typeof CustomerAuthSession.Type;

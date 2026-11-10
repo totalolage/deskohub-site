@@ -390,6 +390,37 @@ describe("referral checkout quote comparison outcomes", () => {
     ).toBe(true);
   });
 
+  test("accepts fresh staff labels on a quote accepted before they existed", () => {
+    const withStaffLabel = (application: AppliedDiscount) =>
+      withDiscount(application, {
+        staffLabel: `${application.discount.label} (cs)`,
+      });
+    const codeInvitation = makeInvitationDiscount(9_000);
+
+    expect(
+      compare({
+        previous: [invitation, referrer],
+        current: [invitation, referrer].map(withStaffLabel),
+      })
+    ).toBe(true);
+    expect(
+      compare({
+        previous: [
+          ordinaryCode,
+          makeReferrerDiscount({ subtotalBefore: 9_000, count: 1 }),
+        ],
+        current: [
+          ordinaryCode,
+          codeInvitation,
+          makeReferrerDiscount({
+            subtotalBefore: codeInvitation.subtotalAfter.value,
+            count: 1,
+          }),
+        ].map(withStaffLabel),
+      })
+    ).toBe(true);
+  });
+
   test("rejects a carried invitation that changed, lost its proof or is not the referral percentage", () => {
     const relabelled = withDiscount(invitation, { label: "Changed" });
     expect(compare({ previous: [invitation], current: [relabelled] })).toBe(
