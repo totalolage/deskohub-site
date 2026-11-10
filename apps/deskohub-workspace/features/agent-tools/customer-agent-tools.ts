@@ -11,6 +11,7 @@ import { SharedReservationRecordsLive } from "@/features/reservation/backend/res
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { ReviewSandbox } from "@/features/review-accounts";
+import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 
 /**
  * The services customer tools read through. Public tools read availability
@@ -32,5 +33,6 @@ export const CustomerAgentToolsLive = Layer.mergeAll(
   WorkspaceReservationRepository.Live,
   CheckoutStatusService.withRecords(SharedReservationRecordsLive),
   CustomerReservationHistoryService.withRecords(SharedReservationRecordsLive),
-  ReviewSandbox.Live
+  ReviewSandbox.Live,
+  SealedStateKeys.Default
 );
