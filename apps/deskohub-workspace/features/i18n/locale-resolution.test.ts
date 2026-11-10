@@ -99,6 +99,8 @@ describe("Workspace locale resolution", () => {
       ["sk", "sk-SK"],
       ["uk", "uk-UA"],
       ["uk-UA,uk;q=0.9,ru;q=0.8", "uk-UA"],
+      ["vi", "vi-VN"],
+      ["hi-IN,hi;q=0.9,en;q=0.8", "hi-IN"],
     ] as const) {
       expect(
         resolveWorkspaceLocale(

@@ -65,8 +65,10 @@ const brandColorVariables = {
 const cssFontFamilyList = (families: readonly string[]): string =>
   families.map((name) => (name.includes(" ") ? `"${name}"` : name)).join(", ");
 
-// The site's font loader sets `--font-sculpin` to the loaded brand face.
-const webFontStack = `var(--font-sculpin), ${cssFontFamilyList(brandFonts.fallback)}`;
+// The site's font loader sets `--font-sculpin` to the loaded brand face, and
+// a page whose script the brand face can't set names its own text stack in
+// `--font-text`.
+const webFontStack = `var(--font-text, var(--font-sculpin)), ${cssFontFamilyList(brandFonts.fallback)}`;
 
 /**
  * The app's `fontFamily` style values. Native text takes one family and the
