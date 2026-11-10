@@ -209,7 +209,7 @@
   "emailsEditorBlockSortDescending": "Sestupně",
   "emailsEditorBlockLimit": "Zobrazit nejvýše",
   "emailsEditorBlockLimitHint": "Když pole necháte prázdné, zobrazí se všechny položky.",
-  "emailsEditorEnglishFallbackMissing": "Bez anglického překladu dostanou němečtí a ukrajinští příjemci bez vlastního překladu ten český.",
+  "emailsEditorEnglishFallbackMissing": "Bez anglického překladu dostanou příjemci, jejichž jazyk nemá vlastní překlad a nahrazuje se angličtinou, ten český.",
   "emailsEditorProblemValuePath": "Vyberte pole zákazníka.",
   "emailsEditorProblemValueSort": "Vyberte pole pro řazení i jeho směr.",
   "emailsEditorProblemValueDiscount": "Vyberte slevu.",

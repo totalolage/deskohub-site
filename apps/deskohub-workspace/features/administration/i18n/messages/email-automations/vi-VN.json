@@ -1,0 +1,48 @@
+{
+  "emailAutomationsEyebrow": "Chiến dịch tự động",
+  "emailAutomationsFrequencyBannerBody": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "Lịch này kích hoạt tối đa {count} lần mỗi giờ. Mỗi lần kích hoạt đều đánh giá toàn bộ nhóm người nhận, vì vậy vui lòng kiểm tra xem tần suất này có đúng như dự định không."
+      }
+    }
+  ],
+  "emailAutomationsFrequencyBannerTitle": "Tần suất kích hoạt có thể quá cao",
+  "emailAutomationsNeverActivated": "Chưa kích hoạt",
+  "emailAutomationsPendingChanges": "Thay đổi chưa xuất bản",
+  "emailAutomationsSectionEmail": "Email",
+  "emailAutomationsSectionFlow": "Kịch bản",
+  "emailAutomationsSectionPreview": "Xem trước và kích hoạt",
+  "emailAutomationsSectionRuns": "Nhật ký lượt chạy",
+  "emailAutomationsSectionsLabel": "Các phần của chiến dịch tự động",
+  "emailAutomationsStatusActive": "Đang hoạt động",
+  "emailAutomationsStatusArchived": "Đã lưu trữ",
+  "emailAutomationsStatusDraft": "Bản nháp",
+  "emailAutomationsStatusPaused": "Đã tạm dừng",
+  "emailAutomationsTriggerAccountCreated": "Tạo tài khoản",
+  "emailAutomationsTriggerReservationBooked": "Xác nhận đặt chỗ",
+  "emailAutomationsTriggerReservationCancelled": "Hủy đặt chỗ",
+  "emailAutomationsTriggerReservationFinished": "Kết thúc đặt chỗ",
+  "emailAutomationsTriggerReservationStarted": "Bắt đầu đặt chỗ",
+  "emailAutomationsTriggerSchedule": "Theo lịch",
+  "emailAutomationsVersionLive": "Phiên bản {version} đang chạy từ {date}",
+  "emailAutomationsListDeliveryFilter": "Cách gửi",
+  "emailAutomationsListDeliveryAll": "Tất cả chiến dịch",
+  "emailAutomationsListDeliveryOnce": "Một lần",
+  "emailAutomationsListDeliveryAutomated": "Tự động",
+  "emailAutomationsComposerDeliveryLabel": "Cách gửi",
+  "emailAutomationsComposerDeliveryOnce": "Gửi một lần",
+  "emailAutomationsComposerDeliveryOnceDescription": "Một email gửi đến nhóm người nhận sau lần gửi thử.",
+  "emailAutomationsComposerDeliveryAutomated": "Tự động",
+  "emailAutomationsComposerDeliveryAutomatedDescription": "Kịch bản gửi email này đến từng khách hàng ngay khi khách hàng đáp ứng các điều kiện.",
+  "emailAutomationsComposerDeliveryHint": "Sau khi tạo chiến dịch, không thể thay đổi lựa chọn này.",
+  "emailAutomationsComposerNewDescription": "Vui lòng soạn email rồi tạo chiến dịch để xây dựng kịch bản gửi email này.",
+  "emailAutomationsComposerAudienceLabel": "Nhóm người nhận (nhóm đầu vào khi chạy theo lịch, điều kiện đầu vào khi có sự kiện kích hoạt)",
+  "emailAutomationsComposerAudiencePlaceholder": "Chọn nhóm người nhận",
+  "emailAutomationsEmailSave": "Lưu thay đổi",
+  "emailAutomationsEmailUnpublishedNote": "Các chỉnh sửa tại đây chưa được xuất bản cho đến khi được xem trước và kích hoạt. Các lượt chạy đang diễn ra vẫn giữ email đã dùng khi bắt đầu.",
+  "emailAutomationsEmailArchivedNote": "Chiến dịch này đã được lưu trữ nên không thể thay đổi email và nhóm người nhận của chiến dịch nữa.",
+  "emailAutomationsEmailSaveArchived": "Chiến dịch này đã được lưu trữ nên không thể chỉnh sửa email của chiến dịch nữa."
+}
