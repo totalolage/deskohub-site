@@ -1378,6 +1378,7 @@ describe.skipIf(!testDatabase)(
             providerReference: occurrenceReference,
           }),
           label: "Calendar sale",
+          staffLabel: "Kalendářová akce",
           adjustment: { kind: "percentage", basisPoints: 2_000 },
         },
         provenance: {
@@ -1418,6 +1419,8 @@ describe.skipIf(!testDatabase)(
               id: discountApplications.id,
               sequence: discountApplications.sequence,
               publicDiscountId: discountApplications.publicDiscountId,
+              label: discountApplications.label,
+              staffLabel: discountApplications.staffLabel,
               subtotalBefore: discountApplications.subtotalBeforeValue,
               applied: discountApplications.appliedAmountValue,
             })
@@ -1448,6 +1451,14 @@ describe.skipIf(!testDatabase)(
           subtotalBefore: 28_000,
           applied: 4_200,
         });
+        // Each row keeps the guest label; the staff label is stored only
+        // when the accepted application carries one.
+        expect(sale).toMatchObject({
+          label: calendarSale.discount.label,
+          staffLabel: calendarSale.discount.staffLabel,
+        });
+        expect(invitation?.label).toEqual(expect.any(String));
+        expect(invitation?.staffLabel).toBeNull();
         expect(attempt.amount.value).toBe(23_800);
         const [claim] = (
           await testDatabase!.pool.query(

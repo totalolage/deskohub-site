@@ -4,9 +4,13 @@ import {
   CustomerApi,
   CustomerSessionCheck,
 } from "../../customer-api/customer-api.service";
-import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
+import {
+  accountAtom,
+  customerDataRuntime,
+} from "../../customer-api/customer-data-runtime";
 import {
   customerWrite,
+  refreshAfterWrite,
   whenWriteMayHaveApplied,
 } from "../../customer-api/customer-request";
 import {
@@ -30,10 +34,12 @@ export interface LanguageChoice {
  * its emails use. Once saved, the app shows it at once and asks Better Auth
  * to read the session again, whose saved locale then takes over
  * (`active-locale.ts`). An unconfirmed save shows nothing new but reads the
- * session too, which tells whether it was applied.
+ * session too, which tells whether it was applied. Either also reads the
+ * account again: the profile forms read a phone in the phone region of its
+ * saved language, as the Workspace does.
  */
 export const saveLanguageAtom = customerDataRuntime.fn(
-  ({ locale, show }: LanguageChoice) =>
+  ({ locale, show }: LanguageChoice, get) =>
     Effect.flatMap(Effect.service(CustomerApi), (api) =>
       api.account.updateLocale({ payload: { locale } })
     ).pipe(
@@ -45,6 +51,7 @@ export const saveLanguageAtom = customerDataRuntime.fn(
           (session) => session.recheck
         )
       ),
+      refreshAfterWrite(get, [accountAtom]),
       Effect.asVoid
     )
 );

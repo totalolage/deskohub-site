@@ -1,4 +1,7 @@
-import type { CustomerAccountState } from "@deskohub/workspace-customer-api";
+import {
+  accountPhoneRegion,
+  type CustomerAccountState,
+} from "@deskohub/workspace-customer-api";
 import {
   useAtom,
   useAtomRefresh,
@@ -117,12 +120,17 @@ function CompletionForm({
 }) {
   const locale = useAppLocale();
   const invitationCode = invitationCodeOf(account);
+  const phoneRegion = accountPhoneRegion(account.locale);
   const [edits, setEdits] = useAtom(completionEditsAtom);
   const result = useAtomValue(completeProfileAtom);
   const complete = useAtomSet(completeProfileAtom);
   const state = profileSubmitState(result);
   const draft = currentCompletionDraft(edits, invitationCode);
-  const unsaved = !sameDraft(draft, completionDraftOf(invitationCode));
+  const unsaved = !sameDraft(
+    draft,
+    completionDraftOf(invitationCode),
+    phoneRegion
+  );
   const fields: ReadonlyArray<CompletionTextField> = [
     ...identityFields,
     ...(account.referralsEnabled ? (["referralCode"] as const) : []),
@@ -197,7 +205,7 @@ function CompletionForm({
         state={state}
         // Created, but the account wasn't read again yet: don't create twice.
         unsaved={state._tag !== "Done"}
-        onSubmit={() => complete({ draft, invitationCode })}
+        onSubmit={() => complete({ draft, invitationCode, phoneRegion })}
         submitLabel={m.profile_complete_submit({}, { locale })}
         submittingLabel={m.profile_complete_submitting({}, { locale })}
         doneMessage={m.profile_complete_done({}, { locale })}
