@@ -1,7 +1,9 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
 import { RegistryProvider } from "@effect/atom-react";
 import { Atom } from "effect/unstable/reactivity";
+import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { AsyncView } from "../../customer-api/async-view";
 import { customerDataLayer } from "../../customer-api/customer-data-runtime";
 import {
   fakeCustomerDataLayer,
@@ -12,6 +14,8 @@ import { sampleOrderIds } from "../../customer-api/testing/sample-fixtures";
 import { AppLocaleProvider } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { expoRouterStandIn } from "../../testing/expo-router-stand-in";
+import { LoadingIndicator } from "../../ui/loading-indicator";
+import { elementTree, find } from "../../ui/testing/element-tree";
 import type { StatusVisit } from "./status-refresh-rules";
 
 // The stand-in's focus effect never runs the screen's callback, so the
@@ -38,24 +42,48 @@ const firstPaint = (visit: StatusVisit) => {
   }
 };
 
+/** `screen` under the locale and the fake customer data it reads. */
+const withCustomerData = (screen: ReactElement) => (
+  <AppLocaleProvider locale="en-US">
+    <RegistryProvider
+      initialValues={[
+        Atom.initialValue(
+          customerDataLayer,
+          fakeCustomerDataLayer({
+            workspace: FakeWorkspace.forKind("linked"),
+            device: makeFakeDevice(),
+          })
+        ),
+      ]}
+    >
+      {screen}
+    </RegistryProvider>
+  </AppLocaleProvider>
+);
+
 const renderStatusScreen = (visit: StatusVisit) =>
   renderToStaticMarkup(
-    <AppLocaleProvider locale="en-US">
-      <RegistryProvider
-        initialValues={[
-          Atom.initialValue(
-            customerDataLayer,
-            fakeCustomerDataLayer({
-              workspace: FakeWorkspace.forKind("linked"),
-              device: makeFakeDevice(),
-            })
-          ),
-        ]}
-      >
-        <OrderStatusScreen orderId={sampleOrderIds.pending} visit={visit} />
-      </RegistryProvider>
-    </AppLocaleProvider>
+    withCustomerData(
+      <OrderStatusScreen orderId={sampleOrderIds.pending} visit={visit} />
+    )
   );
+
+/** The loading indicator on the status card shown before the first read. */
+const pendingIndicator = (visit: StatusVisit) => {
+  const screen = elementTree(
+    OrderStatusScreen,
+    { orderId: sampleOrderIds.pending, visit },
+    withCustomerData
+  );
+  const pending = find(screen, AsyncView)?.props.loading;
+  if (!isValidElement(pending) || typeof pending.type !== "function")
+    throw new Error("No status card.");
+  const card = pending.type as (props: unknown) => ReactNode;
+  return find(
+    elementTree(card, pending.props, withCustomerData),
+    LoadingIndicator
+  )?.props;
+};
 
 const headings = (markup: string) =>
   [...markup.matchAll(/<Text[^>]*role="heading"[^>]*>([^<]*)<\/Text>/g)].map(
@@ -63,8 +91,7 @@ const headings = (markup: string) =>
   );
 
 const progressBars = (markup: string) =>
-  [...markup.matchAll(/<ActivityIndicator[^>]*role="progressbar"[^>]*>/g)]
-    .length;
+  [...markup.matchAll(/<View[^>]*role="progressbar"[^>]*>/g)].length;
 
 // The deep-link return from payment opened on a lone spinner, which read as
 // a blank screen until the first read answered (#1131). The screen opens on
@@ -77,6 +104,14 @@ describe("the status screen before its first read answers", () => {
         m.reservations_refresh_reading({}, { locale: "en-US" }),
       ]);
       expect(progressBars(markup)).toBe(1);
+    });
+
+    test(`checks with the labelled brand die at screen size (${visit})`, () => {
+      expect(pendingIndicator(visit)).toEqual({
+        size: "screen",
+        tone: "brand",
+        label: m.account_loading({}, { locale: "en-US" }),
+      });
     });
 
     test(`shows no order details yet (${visit})`, () => {

@@ -1,15 +1,10 @@
 import { Match } from "effect";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
 import { LiveMessage } from "../../ui/controls";
+import { LoadingIndicator } from "../../ui/loading-indicator";
 import type { AddedPasskey } from "./passkey-ceremony";
 import { addPasskeyFailureMessage } from "./passkey-failure-message";
 import { usePasskeyCeremony } from "./use-passkey-ceremony";
@@ -77,7 +72,12 @@ export function AddPasskeyAction({
         onPress={start}
         style={({ pressed }) => [styles.button, pressed && styles.pressed]}
       >
-        {pending && <ActivityIndicator color={theme.colors.accent} />}
+        {pending && (
+          <LoadingIndicator
+            size="inline"
+            tone={{ color: theme.colors.accent }}
+          />
+        )}
         <Text style={styles.label}>{m.passkey_add({}, { locale })}</Text>
       </Pressable>
       {/* Kept mounted so assistive tech announces each change. */}
