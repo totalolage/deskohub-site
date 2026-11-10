@@ -720,6 +720,8 @@ describe.skipIf(!database)(
                 validUntil: Temporal.Instant.from(issued.expiresAt),
                 maxUses: 1,
                 maxUsesPerCustomer: 1,
+                serviceDateFrom: null,
+                serviceDateUntil: null,
                 audience: [dotyposCustomerId],
               })
             )

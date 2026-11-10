@@ -18,8 +18,12 @@ import { CreateDiscountForm, CreateVoucherForm } from "./admin-tables";
 import { DiscountCodeCreationForm } from "./customer-code-creation";
 import type { AdminDiscount } from "./discount-administration.service";
 
-const dialogContentClassName =
-  "max-h-[calc(100vh-2rem)] max-w-4xl overflow-y-auto";
+/**
+ * The discount dialogs' frame. Its narrower padding on phones leaves each
+ * half of a date pair room for a whole date.
+ */
+export const discountDialogContentClassName =
+  "max-h-[calc(100vh-2rem)] max-w-4xl overflow-y-auto p-4 sm:p-6";
 
 export function DiscountCodeCreationDialog({
   discounts,
@@ -35,7 +39,7 @@ export function DiscountCodeCreationDialog({
           {m.discountsCodeCreateButton({}, { locale })}
         </Button>
       </DialogTrigger>
-      <DialogContent className={dialogContentClassName} locale={locale}>
+      <DialogContent className={discountDialogContentClassName} locale={locale}>
         <DialogHeader>
           <DialogTitle>
             {m.discountsCodeCreateTitle({}, { locale })}
@@ -68,7 +72,7 @@ export function SaleDiscountCreationDialog() {
           {m.discountsSaleCreateButton({}, { locale })}
         </Button>
       </DialogTrigger>
-      <DialogContent className={dialogContentClassName} locale={locale}>
+      <DialogContent className={discountDialogContentClassName} locale={locale}>
         <DialogHeader>
           <DialogTitle>
             {m.discountsSaleCreateTitle({}, { locale })}
@@ -118,7 +122,7 @@ export function VoucherCreationDialog() {
           {m.discountsVoucherCreateButton({}, { locale })}
         </Button>
       </DialogTrigger>
-      <DialogContent className={dialogContentClassName} locale={locale}>
+      <DialogContent className={discountDialogContentClassName} locale={locale}>
         <DialogHeader>
           <DialogTitle>
             {m.discountsVoucherCreateTitle({}, { locale })}

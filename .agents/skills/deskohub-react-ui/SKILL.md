@@ -1,11 +1,12 @@
 ---
 name: deskohub-react-ui
-description: React, TSX, JSX, components, page metadata, generateMetadata, Open Graph, share image, og:locale, Twitter card, shadcn, Tailwind container queries, accessibility, live regions, translated copy, Inlang, Paraglide, m.* messages, locale, React Hook Form, Workspace forms, useWorkspaceAction, memoization, shareable or external links, locale prefix, locale-agnostic page URL, llms.txt links, JSON-LD url, canonical, hreflang, sitemap URL.
+description: React, TSX, JSX, components, page metadata, generateMetadata, Open Graph, share image, og:locale, Twitter card, shadcn, Tailwind container queries, accessibility, live regions, translated copy, Inlang, Paraglide, m.* messages, locale, React Hook Form, Workspace forms, useWorkspaceAction, memoization, shareable or external links, locale prefix, locale-agnostic page URL, llms.txt links, JSON-LD url, canonical, hreflang, sitemap URL, date picker, time picker, date-time input, DateInput, TimeInput, DateTimeInput, calendar popover.
 ---
 
 # Deskohub React UI
 
 For Workspace forms, also read [references/workspace-forms.md](references/workspace-forms.md).
+For date, time, or date-time fields, also read [references/date-time-controls.md](references/date-time-controls.md).
 
 ## Components and JSX
 
@@ -14,7 +15,7 @@ For Workspace forms, also read [references/workspace-forms.md](references/worksp
 - Inline one-use `className` strings, literals, and lookup objects where they're consumed.
 - Use the matching shadcn primitive for standard interactions, for example Tooltip for hover and focus hints. Add a missing primitive through the app's `components.json` and adapt only its shared styling and React conventions.
 - Build administration list counts and their search or filter controls with `AdministrationTableToolbar` and `AdministrationTableCount` (`features/administration/table-toolbar.tsx`).
-- Keep reservation-family-neutral form shells and primitives, including date and date-time pickers, in `features/reservation/components`. Put only family-specific fields and policy UI under `features/cowork` or `features/meeting-room`.
+- Build date, time, and date-time fields from the shared controls in `shared/components/date-time`, not native `date`, `time`, or `datetime-local` inputs. Keep reservation-family-neutral form shells and reservation policy adapters in `features/reservation/components`. Put only family-specific fields and policy UI under `features/cowork` or `features/meeting-room`.
 - Lay out content in a variable-width slot, such as beside a sidebar, with Tailwind container queries (`@container` on the slot, `@xl:`-style variants inside). The account content slot in `features/account/components/shell/account-frame.tsx` is the reference. Use viewport breakpoints for page shells and portaled content such as dialogs.
 
 ## State and effects

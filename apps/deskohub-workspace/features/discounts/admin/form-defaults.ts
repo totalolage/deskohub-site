@@ -48,10 +48,12 @@ export const discountCodeFormDefaults = (
 });
 
 const discountCodeConfigurationFormDefaults = (
-  item?: DiscountCodeTableItem | VoucherTableItem
+  code?: DiscountCodeTableItem
 ): DiscountCodeConfigurationFormValues => ({
-  ...codeAvailabilityFormDefaults(item),
-  ...usageLimitFormDefaults(item),
+  ...codeAvailabilityFormDefaults(code),
+  ...usageLimitFormDefaults(code),
+  serviceDateFrom: code?.serviceDateFrom ?? "",
+  serviceDateUntil: code?.serviceDateUntil ?? "",
 });
 
 export const voucherFormDefaults = (

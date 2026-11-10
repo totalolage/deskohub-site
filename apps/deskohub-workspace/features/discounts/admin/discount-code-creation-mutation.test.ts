@@ -26,6 +26,8 @@ const formValues = (
   validUntil: "",
   maxUses: "5",
   maxUsesPerCustomer: "",
+  serviceDateFrom: "",
+  serviceDateUntil: "",
   ...overrides,
 });
 
@@ -36,6 +38,8 @@ const code = {
   validUntil: null,
   maxUses: 5,
   maxUsesPerCustomer: null,
+  serviceDateFrom: null,
+  serviceDateUntil: null,
 };
 
 describe("toDiscountCodeCreationMutation", () => {
@@ -44,6 +48,29 @@ describe("toDiscountCodeCreationMutation", () => {
       Option.some({
         kind: "create-code",
         code,
+        discount: { kind: "existing", discountId },
+      })
+    );
+  });
+
+  test("creates a customer code with its reservation dates", () => {
+    expect(
+      toDiscountCodeCreationMutation(
+        formValues({
+          serviceDateFrom: "2026-07-01",
+          serviceDateUntil: "2026-07-31",
+        }),
+        customerId
+      )
+    ).toEqual(
+      Option.some({
+        kind: "create-customer-code",
+        customerId,
+        code: {
+          ...code,
+          serviceDateFrom: "2026-07-01",
+          serviceDateUntil: "2026-07-31",
+        },
         discount: { kind: "existing", discountId },
       })
     );

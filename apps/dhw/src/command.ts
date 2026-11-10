@@ -25,6 +25,8 @@ import {
   type AdministrationReservationProductDetailsBackfillBatchType,
   AdministrationReservationQuery,
   type AdministrationReservationSummaryType,
+  AdministrationServiceDate,
+  type AdministrationServiceDateType,
   AdministrationStandaloneAccessCodeAttemptId,
   type AdministrationStandaloneAccessCodeAttemptIdType,
   AdministrationStandaloneAccessCodeCreateInput,
@@ -101,6 +103,7 @@ import {
   formatMutationResult,
   formatProductTarget,
   formatPromotionDetailLines,
+  formatServiceDatesLine,
 } from "./discount-output";
 import {
   formatProviderListSummary,
@@ -1501,7 +1504,25 @@ const customerIdFlag = Flag.string("customer").pipe(
   Flag.withDescription("Restrict the new code to this Dotypos customer")
 );
 
+const serviceDateFlags = {
+  serviceDateFrom: Flag.string("service-date-from").pipe(
+    Flag.withSchema(AdministrationServiceDate),
+    Flag.optional,
+    Flag.withDescription(
+      "First reservation start date (YYYY-MM-DD, Prague) the code applies to; pass with --service-date-until"
+    )
+  ),
+  serviceDateUntil: Flag.string("service-date-until").pipe(
+    Flag.withSchema(AdministrationServiceDate),
+    Flag.optional,
+    Flag.withDescription(
+      "Last reservation start date (YYYY-MM-DD, Prague) the code applies to; pass with --service-date-from"
+    )
+  ),
+};
+
 const discountCodeCreateFlags = {
+  ...serviceDateFlags,
   customer: customerIdFlag,
   disabled: Flag.boolean("disabled").pipe(
     Flag.withDescription("Create the code disabled")
@@ -1536,12 +1557,10 @@ const codesCreateExistingCommand = Command.make(
     ...discountCodeCreateFlags,
   },
   (input) =>
-    runDiscountMutation(
-      makeCreateCodeMutation(input, {
-        kind: "existing",
-        discountId: input.discountId,
-      })
-    )
+    makeCreateCodeMutation(input, {
+      kind: "existing",
+      discountId: input.discountId,
+    }).pipe(Effect.flatMap(runDiscountMutation))
 ).pipe(Command.withDescription("Create a code for an existing discount"));
 
 const codesCreatePercentageCommand = Command.make(
@@ -1553,20 +1572,18 @@ const codesCreatePercentageCommand = Command.make(
     percentage: percentageFlag,
   },
   (input) =>
-    runDiscountMutation(
-      makeCreateCodeMutation(input, {
-        kind: "new",
-        discount: makeDiscountDefinition({
-          adjustment: {
-            kind: "percentage",
-            basisPoints: input.percentage,
-          },
-          labelCs: input.labelCs,
-          labelEn: input.labelEn,
-          products: input.products,
-        }),
-      })
-    )
+    makeCreateCodeMutation(input, {
+      kind: "new",
+      discount: makeDiscountDefinition({
+        adjustment: {
+          kind: "percentage",
+          basisPoints: input.percentage,
+        },
+        labelCs: input.labelCs,
+        labelEn: input.labelEn,
+        products: input.products,
+      }),
+    }).pipe(Effect.flatMap(runDiscountMutation))
 ).pipe(
   Command.withDescription("Create a code and percentage discount atomically")
 );
@@ -1581,24 +1598,22 @@ const codesCreateFixedCommand = Command.make(
     fixedValue: fixedValueFlag,
   },
   (input) =>
-    runDiscountMutation(
-      makeCreateCodeMutation(input, {
-        kind: "new",
-        discount: makeDiscountDefinition({
-          adjustment: {
-            kind: "fixed",
-            amount: {
-              value: input.fixedValue,
-              exponent: 2,
-              currency: input.currency,
-            },
+    makeCreateCodeMutation(input, {
+      kind: "new",
+      discount: makeDiscountDefinition({
+        adjustment: {
+          kind: "fixed",
+          amount: {
+            value: input.fixedValue,
+            exponent: 2,
+            currency: input.currency,
           },
-          labelCs: input.labelCs,
-          labelEn: input.labelEn,
-          products: input.products,
-        }),
-      })
-    )
+        },
+        labelCs: input.labelCs,
+        labelEn: input.labelEn,
+        products: input.products,
+      }),
+    }).pipe(Effect.flatMap(runDiscountMutation))
 ).pipe(Command.withDescription("Create a code and fixed discount atomically"));
 
 const creditValueFlag = Flag.integer("credit-value").pipe(
@@ -1674,32 +1689,50 @@ const codesUpdateCommand = Command.make(
     ] as const),
     maxUses: discountCodeCreateFlags.maxUses,
     maxUsesPerCustomer: discountCodeCreateFlags.maxUsesPerCustomer,
+    ...serviceDateFlags,
+    clearServiceDates: Flag.boolean("clear-service-dates").pipe(
+      Flag.withDescription(
+        "Remove the code's reservation dates; without date flags the update keeps them"
+      )
+    ),
     validFrom: discountCodeCreateFlags.validFrom,
     validUntil: discountCodeCreateFlags.validUntil,
   },
   ({
+    clearServiceDates,
     code,
     codeId,
     discountId,
     enabled,
     maxUses,
     maxUsesPerCustomer,
+    serviceDateFrom,
+    serviceDateUntil,
     validFrom,
     validUntil,
   }) =>
-    runDiscountMutation({
-      kind: "update-code",
-      code: {
-        id: codeId,
-        discountId,
-        code,
-        enabled,
-        maxUses: Option.getOrNull(maxUses),
-        maxUsesPerCustomer: Option.getOrNull(maxUsesPerCustomer),
-        validFrom: Option.getOrNull(validFrom),
-        validUntil: Option.getOrNull(validUntil),
-      },
-    })
+    toServiceDateInput({
+      clearServiceDates,
+      serviceDateFrom,
+      serviceDateUntil,
+    }).pipe(
+      Effect.flatMap((serviceDates) =>
+        runDiscountMutation({
+          kind: "update-code",
+          code: {
+            id: codeId,
+            discountId,
+            code,
+            enabled,
+            maxUses: Option.getOrNull(maxUses),
+            maxUsesPerCustomer: Option.getOrNull(maxUsesPerCustomer),
+            ...serviceDates,
+            validFrom: Option.getOrNull(validFrom),
+            validUntil: Option.getOrNull(validUntil),
+          },
+        })
+      )
+    )
 ).pipe(Command.withDescription("Replace a managed discount code"));
 
 const voucherIdArgument = Argument.string("voucher-id").pipe(
@@ -1834,6 +1867,7 @@ const codesGetCommand = Command.make(
           return;
         }
         yield* Console.log(formatCodeRow(detail.code, detail.discountLabel));
+        yield* Console.log(formatServiceDatesLine(detail.code));
         for (const line of formatPromotionDetailLines(detail.code, detail)) {
           yield* Console.log(line);
         }
@@ -2475,6 +2509,47 @@ type CreateCustomerCodeMutation = Extract<
   { readonly kind: "create-customer-code" }
 >;
 
+type ServiceDateInput = Pick<
+  CreateCodeMutation["code"],
+  "serviceDateFrom" | "serviceDateUntil"
+>;
+
+/**
+ * The service dates a code command sends: none without date flags (a new code
+ * then has none and an update keeps the stored ones), both dates, or both null
+ * to remove them.
+ */
+const toServiceDateInput = ({
+  clearServiceDates = false,
+  serviceDateFrom,
+  serviceDateUntil,
+}: {
+  readonly clearServiceDates?: boolean;
+  readonly serviceDateFrom: Option.Option<AdministrationServiceDateType>;
+  readonly serviceDateUntil: Option.Option<AdministrationServiceDateType>;
+}): Effect.Effect<ServiceDateInput, InvalidMutationInputError> => {
+  const dates = Option.all({ serviceDateFrom, serviceDateUntil });
+  if (clearServiceDates) {
+    return Option.isNone(serviceDateFrom) && Option.isNone(serviceDateUntil)
+      ? Effect.succeed({ serviceDateFrom: null, serviceDateUntil: null })
+      : Effect.fail(
+          new InvalidMutationInputError({
+            message:
+              "Use either --clear-service-dates or the service-date flags, not both.",
+          })
+        );
+  }
+  if (Option.isSome(dates)) return Effect.succeed(dates.value);
+  return Option.isNone(serviceDateFrom) && Option.isNone(serviceDateUntil)
+    ? Effect.succeed({})
+    : Effect.fail(
+        new InvalidMutationInputError({
+          message:
+            "Pass --service-date-from and --service-date-until together.",
+        })
+      );
+};
+
 const makeCreateCodeMutation = (
   input: {
     readonly code: CreateCodeMutation["code"]["code"];
@@ -2482,6 +2557,8 @@ const makeCreateCodeMutation = (
     readonly disabled: boolean;
     readonly maxUses: Option.Option<number>;
     readonly maxUsesPerCustomer: Option.Option<number>;
+    readonly serviceDateFrom: Option.Option<AdministrationServiceDateType>;
+    readonly serviceDateUntil: Option.Option<AdministrationServiceDateType>;
     readonly validFrom: Option.Option<
       NonNullable<CreateCodeMutation["code"]["validFrom"]>
     >;
@@ -2490,25 +2567,36 @@ const makeCreateCodeMutation = (
     >;
   },
   discount: CreateCodeMutation["discount"]
-): AdministrationDiscountMutationType => {
-  const code: CreateCodeMutation["code"] = {
-    code: input.code,
-    enabled: !input.disabled,
-    maxUses: Option.getOrNull(input.maxUses),
-    maxUsesPerCustomer: Option.getOrNull(input.maxUsesPerCustomer),
-    validFrom: Option.getOrNull(input.validFrom),
-    validUntil: Option.getOrNull(input.validUntil),
-  };
-  return Option.match(input.customer, {
-    onNone: (): CreateCodeMutation => ({ kind: "create-code", code, discount }),
-    onSome: (customerId): CreateCustomerCodeMutation => ({
-      kind: "create-customer-code",
-      customerId,
-      code,
-      discount,
-    }),
-  });
-};
+): Effect.Effect<
+  AdministrationDiscountMutationType,
+  InvalidMutationInputError
+> =>
+  toServiceDateInput(input).pipe(
+    Effect.map((serviceDates) => {
+      const code: CreateCodeMutation["code"] = {
+        code: input.code,
+        enabled: !input.disabled,
+        maxUses: Option.getOrNull(input.maxUses),
+        maxUsesPerCustomer: Option.getOrNull(input.maxUsesPerCustomer),
+        ...serviceDates,
+        validFrom: Option.getOrNull(input.validFrom),
+        validUntil: Option.getOrNull(input.validUntil),
+      };
+      return Option.match(input.customer, {
+        onNone: (): CreateCodeMutation => ({
+          kind: "create-code",
+          code,
+          discount,
+        }),
+        onSome: (customerId): CreateCustomerCodeMutation => ({
+          kind: "create-customer-code",
+          customerId,
+          code,
+          discount,
+        }),
+      });
+    })
+  );
 
 const runDiscountMutation = (mutation: AdministrationDiscountMutationType) =>
   runAuthenticatedCommand((api, accessToken, json) =>

@@ -155,6 +155,30 @@ const captureWorkspaceActions = () => {
   };
 };
 
+// The code form's date controls, found by the names their labels give them.
+const codeDateFields = async (codeForm: HTMLElement) => {
+  const { m } = await import("@/features/administration/i18n");
+  const locale = { locale: "en-US" } as const;
+  const combobox = (name: string) =>
+    within(codeForm).getByRole("combobox", { name }) as HTMLInputElement;
+  const time = (name: string) =>
+    within(codeForm).getByLabelText(name) as HTMLInputElement;
+  return {
+    validFrom: combobox(m.discountsValidFromLabel({}, locale)),
+    validFromTime: time(m.discountsValidFromTimeLabel({}, locale)),
+    validUntil: combobox(m.discountsValidUntilLabel({}, locale)),
+    validUntilTime: time(m.discountsValidUntilTimeLabel({}, locale)),
+    serviceDateFrom: combobox(m.discountsServiceDateFromLabel({}, locale)),
+    serviceDateUntil: combobox(m.discountsServiceDateUntilLabel({}, locale)),
+  };
+};
+
+// A date control takes typed text when focus leaves it.
+const typeDate = (field: HTMLInputElement, text: string) => {
+  fireEvent.change(field, { target: { value: text } });
+  fireEvent.focusOut(field);
+};
+
 const dashboard: DiscountAdminDashboard = {
   discounts: [
     {
@@ -180,6 +204,8 @@ const dashboard: DiscountAdminDashboard = {
       validUntil: Temporal.Instant.from("2026-09-01T08:00:00Z"),
       maxUses: 100,
       maxUsesPerCustomer: 2,
+      serviceDateFrom: "2026-07-01",
+      serviceDateUntil: "2026-07-31",
       audienceSize: 2,
       audienceCustomerIds: [
         "dotypos-customer",
@@ -1277,6 +1303,8 @@ describe("discount administration pages", () => {
           validUntil: null,
           maxUses: null,
           maxUsesPerCustomer: null,
+          serviceDateFrom: null,
+          serviceDateUntil: null,
         },
         discount: {
           kind: "existing",
@@ -1682,6 +1710,140 @@ describe("discount administration pages", () => {
         },
       })
     );
+  });
+
+  test("clears a code's reservation dates when both fields are emptied", async () => {
+    const captured = captureWorkspaceActions();
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
+    );
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+    const codeForm = view
+      .getByRole("button", { name: "Save code" })
+      .closest("form")!;
+    const fields = await codeDateFields(codeForm);
+    expect(fields.serviceDateFrom.value).not.toBe("");
+    for (const field of [fields.serviceDateFrom, fields.serviceDateUntil]) {
+      fireEvent.change(field, { target: { value: "" } });
+      fireEvent.focusOut(field);
+    }
+    fireEvent.submit(codeForm);
+    const { execute } = captured("update-code");
+
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "update-code",
+        code: expect.objectContaining({
+          serviceDateFrom: null,
+          serviceDateUntil: null,
+        }),
+      })
+    );
+  });
+
+  test("submits the redemption window in Prague time and new reservation dates", async () => {
+    const captured = captureWorkspaceActions();
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
+    );
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+    const codeForm = view
+      .getByRole("button", { name: "Save code" })
+      .closest("form")!;
+    const fields = await codeDateFields(codeForm);
+
+    // Summer time (UTC+2) and winter time (UTC+1) on either side of the change.
+    typeDate(fields.validFrom, "2026-08-02");
+    fireEvent.input(fields.validFromTime, { target: { value: "09:30" } });
+    typeDate(fields.validUntil, "2026-12-01");
+    fireEvent.input(fields.validUntilTime, { target: { value: "10:00" } });
+    typeDate(fields.serviceDateFrom, "2026-07-05");
+    typeDate(fields.serviceDateUntil, "2026-07-20");
+    fireEvent.submit(codeForm);
+    const { execute } = captured("update-code");
+
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "update-code",
+        code: expect.objectContaining({
+          validFrom: "2026-08-02T07:30:00Z",
+          validUntil: "2026-12-01T09:00:00Z",
+          serviceDateFrom: "2026-07-05",
+          serviceDateUntil: "2026-07-20",
+        }),
+      })
+    );
+  });
+
+  test("keeps a redemption bound with a date but no time from saving", async () => {
+    const captured = captureWorkspaceActions();
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
+    );
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+    const codeForm = view
+      .getByRole("button", { name: "Save code" })
+      .closest("form")!;
+    const fields = await codeDateFields(codeForm);
+    const { execute } = captured("update-code");
+
+    fireEvent.input(fields.validUntilTime, { target: { value: "" } });
+    fireEvent.submit(codeForm);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(document.activeElement === fields.validUntilTime).toBe(true);
+    expect(fields.validUntilTime.getAttribute("aria-invalid")).toBe("true");
+
+    fireEvent.input(fields.validUntilTime, { target: { value: "11:00" } });
+    fireEvent.submit(codeForm);
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "update-code",
+        code: expect.objectContaining({
+          validFrom: "2026-08-01T08:00:00Z",
+          validUntil: "2026-09-01T09:00:00Z",
+        }),
+      })
+    );
+  });
+
+  test("marks the reservation date a validation error belongs to", async () => {
+    const captured = captureWorkspaceActions();
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
+    );
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+    const codeForm = view
+      .getByRole("button", { name: "Save code" })
+      .closest("form")!;
+    const fields = await codeDateFields(codeForm);
+    const { execute } = captured("update-code");
+
+    typeDate(fields.serviceDateFrom, "2026-07-20");
+    typeDate(fields.serviceDateUntil, "2026-07-05");
+    fireEvent.submit(codeForm);
+
+    const { m } = await import("@/features/administration/i18n");
+    await waitFor(() =>
+      expect(fields.serviceDateUntil.getAttribute("aria-invalid")).toBe("true")
+    );
+    const described = (
+      fields.serviceDateUntil.getAttribute("aria-describedby") ?? ""
+    )
+      .split(" ")
+      .map((id) => document.getElementById(id)?.textContent);
+    expect(described).toContain(
+      m.discountsValidationServiceDatesOrder({}, { locale: "en-US" })
+    );
+    expect(fields.serviceDateFrom.getAttribute("aria-invalid")).toBe("false");
+    expect(execute).not.toHaveBeenCalled();
   });
 
   test("keeps create feedback through the reset to defaults until the next edit", async () => {
@@ -2113,6 +2275,8 @@ describe("discount administration pages", () => {
       validUntil: null,
       maxUses: null,
       maxUsesPerCustomer: null,
+      serviceDateFrom: null,
+      serviceDateUntil: null,
     };
 
     fireEvent.change(view.getByRole("textbox", { name: "Code" }), {
@@ -2270,6 +2434,8 @@ describe("discount administration pages", () => {
           validUntil: null,
           maxUses: null,
           maxUsesPerCustomer: null,
+          serviceDateFrom: null,
+          serviceDateUntil: null,
         },
         discount: {
           kind: "existing",
