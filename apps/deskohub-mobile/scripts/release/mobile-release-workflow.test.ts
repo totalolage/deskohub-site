@@ -268,4 +268,37 @@ describe("mobile-release.yml update publish", () => {
       }
     }
   });
+
+  // The APK build gets its generated sources from EAS's post-install hook;
+  // an export without them fails to bundle (mobile-v0.1.0's publish did).
+  test("generates the sources the APK build generated after installing, before resolving or exporting", async () => {
+    const manifest = (await Bun.file(
+      resolve(import.meta.dir, "../../package.json")
+    ).json()) as { scripts: Record<string, string> };
+    expect(manifest.scripts["eas-build-post-install"]).toBeDefined();
+
+    const steps = workflow.jobs["ota-update"]?.steps ?? [];
+    const indexOf = (matches: (step: Step) => boolean) => {
+      const index = steps.findIndex(matches);
+      expect(index).toBeGreaterThanOrEqual(0);
+      return index;
+    };
+    const install = indexOf(
+      (step) => step.run === "bun install --frozen-lockfile"
+    );
+    const generate = indexOf(
+      (step) =>
+        step["working-directory"] === "apps/deskohub-mobile" &&
+        step.run === "bun run eas-build-post-install"
+    );
+    const runtimeCheck = indexOf(
+      (step) => step.name === "Match the APK's runtime version"
+    );
+    const publish = indexOf(
+      (step) => step.name === "Publish the over-the-air update"
+    );
+    expect(install).toBeLessThan(generate);
+    expect(generate).toBeLessThan(runtimeCheck);
+    expect(generate).toBeLessThan(publish);
+  });
 });
