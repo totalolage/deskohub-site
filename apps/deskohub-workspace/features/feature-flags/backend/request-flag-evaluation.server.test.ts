@@ -15,6 +15,7 @@ import {
   Option,
   References,
 } from "effect";
+import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
 import {
   POSTHOG_DISTINCT_ID_COOKIE,
@@ -37,7 +38,8 @@ type LogAnnotations = Context.Service.Shape<
 
 // The flags the classification settles: constants and overrides.
 let constants: FlagValues = {};
-let policy: "allowed" | "disabled" = "allowed";
+// The deployment the evaluation runs in; its policy decides remote calls.
+let deploymentEnvironment: DeploymentEnvironment = "production";
 // What PostHog answers a remote evaluation with.
 let remoteAnswer: Effect.Effect<
   RemoteFlagValues,
@@ -82,8 +84,15 @@ mock.module("./feature-flag-evaluation-mode.server", () => ({
         : undefined
     ),
 }));
+// Kept before the mock replaces the module, so the deployment's policy comes
+// from the real mapping.
+const { remoteEvaluationPolicyFor } = await import(
+  "./remote-evaluation-policy.server"
+);
 mock.module("./remote-evaluation-policy.server", () => ({
-  readRemoteEvaluationPolicy: () => policy,
+  remoteEvaluationPolicyFor,
+  readRemoteEvaluationPolicy: () =>
+    remoteEvaluationPolicyFor(deploymentEnvironment),
 }));
 mock.module("next/headers", () => ({
   headers: async () => nextRequestHeaders,
@@ -241,7 +250,7 @@ const recordLogs = <A, E>(effect: Effect.Effect<A, E>) => {
 
 beforeEach(() => {
   constants = {};
-  policy = "allowed";
+  deploymentEnvironment = "production";
   remoteAnswer = Effect.succeed({});
   nextRequestHeaders = new Headers();
   remoteEvaluations.length = 0;
@@ -499,9 +508,10 @@ describe("the global subject's shared evaluation", () => {
   });
 });
 
-describe("disabled remote evaluation", () => {
+describe("remote evaluation outside production", () => {
+  // Runs first: each flag warns only the first time this isolate closes it.
   test("closes undecided flags without calling PostHog, warning once per flag", async () => {
-    policy = "disabled";
+    deploymentEnvironment = "preview";
     constants = { office_page: true, login_passkeys: true };
     const undecided = postHogFeatureFlags.keys.filter(
       (key) => constants[key] === undefined
@@ -529,5 +539,51 @@ describe("disabled remote evaluation", () => {
       .filter(({ code }) => code === disabledWarningCode)
       .map(({ featureFlag }) => featureFlag);
     expect(disabledWarnings.toSorted()).toEqual(undecided.toSorted());
+  });
+
+  for (const environment of ["preview", "development"] as const) {
+    test(`a ${environment} landing render reads overrides and constants only`, async () => {
+      deploymentEnvironment = environment;
+      // An override opens referrals; office and the discounts stay undecided.
+      constants = { referrals: true, meeting_room_page: true };
+      remoteAnswer = Effect.succeed({
+        office_page: true,
+        calendar_sales: true,
+      });
+      nextRequestHeaders = visitorHeaders(`${environment}-visitor`);
+
+      await expect(renderLandingPage()).resolves.toEqual([
+        false,
+        true,
+        true,
+        false,
+        false,
+      ]);
+      expect(remoteEvaluations).toHaveLength(0);
+    });
+  }
+});
+
+describe("remote evaluation in production", () => {
+  test("a landing render evaluates every undecided flag in one batched call", async () => {
+    constants = { referrals: true, meeting_room_page: true };
+    remoteAnswer = Effect.succeed({ office_page: true, calendar_sales: true });
+    nextRequestHeaders = visitorHeaders("production-visitor");
+
+    await expect(renderLandingPage()).resolves.toEqual([
+      true,
+      true,
+      true,
+      false,
+      true,
+    ]);
+    expect(remoteEvaluations).toEqual([
+      {
+        distinctId: "production-visitor",
+        flagKeys: postHogFeatureFlags.keys.filter(
+          (key) => constants[key] === undefined
+        ),
+      },
+    ]);
   });
 });
