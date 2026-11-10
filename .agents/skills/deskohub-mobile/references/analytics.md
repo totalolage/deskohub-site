@@ -25,7 +25,11 @@ browser SDK; this page covers what differs in the app. Paths are relative to
 - A refusal with no running client clears the SDK's stored state
   (`clearPostHogStoredState`: the two AsyncStorage keys posthog-react-native
   4.83.0 uses; recheck them on an SDK upgrade), so a withdrawn identity or
-  queued event never returns with the next client.
+  queued event never returns with the next client. After a withdrawal no
+  client starts until the old client's shutdown or this clearing has
+  succeeded: a grant retries a failed clearing first, and if that fails too
+  its analytics stays off and its events are dropped until the next refusal
+  or reconnect.
 
 ## Consent
 

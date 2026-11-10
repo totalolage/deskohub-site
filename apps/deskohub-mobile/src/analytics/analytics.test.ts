@@ -20,6 +20,7 @@ const setup = ({
   restoredDistinctId = null,
   holdLoading = false,
   accountCheck = false,
+  failedStoredStateClears = 0,
 }: {
   readonly consent?: AnalyticsConsentStatus;
   readonly runtimeSettings?: AnalyticsSettings | null;
@@ -30,6 +31,8 @@ const setup = ({
   readonly holdLoading?: boolean;
   /** Holds signed-in delivery until the test settles the account's check. */
   readonly accountCheck?: boolean;
+  /** How many attempts to clear the stored state fail before one succeeds. */
+  readonly failedStoredStateClears?: number;
 } = {}) => {
   const analytics = createAnalytics();
   const clients: FakeAnalyticsClient[] = [];
@@ -39,12 +42,14 @@ const setup = ({
   const checkListeners = new Set<() => void>();
   const checkedAccounts = new Set<string>();
   let storedStateClears = 0;
+  // A client restores this identity until a clear succeeds.
+  let storedDistinctId = restoredDistinctId;
   const runtime: AnalyticsRuntime = {
     settings: runtimeSettings,
     createClient: (options) => {
       const fake = makeFakeAnalyticsClient(
         options,
-        restoredDistinctId,
+        storedDistinctId,
         holdLoading
       );
       clients.push(fake);
@@ -71,6 +76,10 @@ const setup = ({
       : {}),
     clearStoredState: async () => {
       storedStateClears++;
+      if (storedStateClears <= failedStoredStateClears) {
+        throw new Error("storage");
+      }
+      storedDistinctId = null;
     },
     warn: (message) => warnings.push(message),
   };
@@ -795,5 +804,71 @@ describe("stored state", () => {
     app.clients[0]?.finishShutdown();
     await settle();
     expect(app.storedStateClears()).toBe(0);
+  });
+
+  test("retries a failed clear before a later grant starts a client", async () => {
+    const app = setup({
+      consent: "denied",
+      restoredDistinctId: "workspace-account:acc_old",
+      failedStoredStateClears: 1,
+    });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+    expect(app.storedStateClears()).toBe(1);
+
+    app.setConsent("granted");
+    app.analytics.capture({ name: "booking started" });
+    expect(app.clients).toHaveLength(0);
+
+    await settle();
+    expect(app.storedStateClears()).toBe(2);
+    // Built only once the clear succeeded, so nothing of the old identity
+    // remains to be reset or reused.
+    expect(app.clients).toHaveLength(1);
+    expect(app.clients[0]?.calls).toEqual([
+      ["reloadFeatureFlags"],
+      ["capture", "booking started", undefined],
+    ]);
+  });
+
+  test("keeps analytics off for a grant while clearing keeps failing", async () => {
+    const app = setup({
+      consent: "denied",
+      restoredDistinctId: "workspace-account:acc_old",
+      failedStoredStateClears: 2,
+    });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+
+    app.setConsent("granted");
+    app.analytics.capture({ name: "booking started" });
+    await settle();
+    app.analytics.capture({ name: "booking submitted" });
+    await settle();
+    expect(app.storedStateClears()).toBe(2);
+    expect(app.clients).toHaveLength(0);
+
+    app.setConsent("denied");
+    await settle();
+    app.setConsent("granted");
+    await settle();
+    expect(app.storedStateClears()).toBe(3);
+    expect(app.clients[0]?.calls).toEqual([["reloadFeatureFlags"]]);
+  });
+
+  test("clears it before a grant when the withdrawn client's shutdown fails", async () => {
+    const app = setup();
+    app.connect();
+    app.analytics.setIdentity(account("acc_1"));
+    await settle();
+    app.setConsent("denied");
+    app.setConsent("granted");
+
+    app.clients[0]?.failShutdown();
+    await settle();
+    expect(app.storedStateClears()).toBe(1);
+    expect(app.clients).toHaveLength(2);
   });
 });

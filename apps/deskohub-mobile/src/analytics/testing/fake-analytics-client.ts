@@ -19,6 +19,7 @@ export const makeFakeAnalyticsClient = (
   let flags: Record<string, boolean | string> | undefined;
   let networkHeld = false;
   let finishShutdown: () => void = () => {};
+  let failShutdown: () => void = () => {};
   let finishLoading: () => void = () => {};
   let failLoading: () => void = () => {};
   const flagReloads: {
@@ -56,8 +57,9 @@ export const makeFakeAnalyticsClient = (
     },
     shutDown: () => {
       calls.push(["shutDown"]);
-      return new Promise<void>((resolve) => {
+      return new Promise<void>((resolve, reject) => {
         finishShutdown = resolve;
+        failShutdown = () => reject(new Error("storage"));
       });
     },
   };
@@ -82,6 +84,8 @@ export const makeFakeAnalyticsClient = (
     failFlagReload: (index: number) =>
       flagReloads[index]?.reject(new Error("flags")),
     finishShutdown: () => finishShutdown(),
+    /** Shutdown fails, so the client's stored state may remain. */
+    failShutdown: () => failShutdown(),
     finishLoading: () => finishLoading(),
     failLoading: () => failLoading(),
     flagListenerCount: () => flagListeners.size,
