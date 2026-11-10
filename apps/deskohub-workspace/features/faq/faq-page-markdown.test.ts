@@ -70,6 +70,8 @@ const formattedOccupancy = {
   "de-DE": { average: "0,6", capacity: "4" },
   "uk-UA": { average: "0,6", capacity: "4" },
   "sk-SK": { average: "0,6", capacity: "4" },
+  "vi-VN": { average: "0,6", capacity: "4" },
+  "hi-IN": { average: "0.6", capacity: "4" },
 } as const;
 
 const renderMarkdown = async (

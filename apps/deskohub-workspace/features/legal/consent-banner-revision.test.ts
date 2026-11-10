@@ -66,7 +66,7 @@ describe("getConsentBannerRevision", () => {
   test("keeps the published revision of every locale's recorded versions", () => {
     // Saved consent choices carry this revision; changing it reopens the
     // banner for every visitor.
-    expect(getConsentBannerRevision()).toBe(177666884920253);
+    expect(getConsentBannerRevision()).toBe(270153653160380);
   });
 
   test("gives a new revision once a locale's versions are recorded", () => {

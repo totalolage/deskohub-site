@@ -21,6 +21,8 @@ export const localeSmokeLocales = [
   "de-DE",
   "uk-UA",
   "sk-SK",
+  "vi-VN",
+  "hi-IN",
 ] as const satisfies readonly Locale[];
 
 export type LocaleSmokeLocale = (typeof localeSmokeLocales)[number];
@@ -48,8 +50,10 @@ export const localeSmokePlans: Readonly<
   >
 > = {
   "de-DE": { acceptLanguages: ["de", "de-AT"], switchesTo: "uk-UA" },
-  "sk-SK": { acceptLanguages: ["sk"], switchesTo: "de-DE" },
+  "sk-SK": { acceptLanguages: ["sk"], switchesTo: "vi-VN" },
   "uk-UA": { acceptLanguages: ["uk"], switchesTo: "sk-SK" },
+  "vi-VN": { acceptLanguages: ["vi", "vi-VN"], switchesTo: "hi-IN" },
+  "hi-IN": { acceptLanguages: ["hi", "hi-IN"], switchesTo: "de-DE" },
 };
 
 /** The home heading a locale's catalog renders. */
