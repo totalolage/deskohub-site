@@ -24,6 +24,15 @@ export const linkMigrationsBefore = async (migration: string) => {
 };
 
 /**
+ * How many migrations `migration` and those after it make: what migrating a
+ * database brought to the state before `migration` applies.
+ */
+export const countMigrationsFrom = async (migration: string) =>
+  (await readdir(workspaceMigrationsFolder)).filter(
+    (entry) => entry >= migration
+  ).length;
+
+/**
  * Creates a disposable sibling database next to the configured test
  * database, runs the callback against it, and always drops it.
  */
