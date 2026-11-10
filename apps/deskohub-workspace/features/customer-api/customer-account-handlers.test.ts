@@ -482,7 +482,7 @@ describe("completeProfile", () => {
         resolve: Effect.fail(profileMissing),
       }),
       profile: Layer.mock(CustomerProfileService, {
-        create: (_accountId, _email, profileInput) =>
+        create: (_accountId, profileInput) =>
           Effect.sync(() => {
             created.push(profileInput);
             return {

@@ -180,7 +180,6 @@ export const accountStateCapabilities = (
         load: () => failure,
         update: () => failure,
         create: () => failure,
-        createUnderHeldLock: () => failure,
       }))
     ),
     layers.avatar.pipe(

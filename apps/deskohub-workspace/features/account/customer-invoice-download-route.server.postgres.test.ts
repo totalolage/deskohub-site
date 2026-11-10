@@ -35,6 +35,7 @@ import {
 } from "./backend/auth/auth-handler.test-utils";
 import { CustomerAccountLinkRepository } from "./backend/customer-account-link.repository";
 import { CustomerAccountResolver } from "./backend/customer-account-resolver.service";
+import { CustomerAccountSections } from "./backend/customer-account-sections";
 import {
   CustomerAuthentication,
   makeAuthoritySessionRead,
@@ -86,7 +87,11 @@ const makeInvoiceService = (auth: TestAuth) => {
   );
   const resolver = CustomerAccountResolver.Default.pipe(
     Layer.provide(
-      Layer.mergeAll(requestSession, Layer.mock(CustomerDotyposAdapter, {}))
+      Layer.mergeAll(
+        requestSession,
+        CustomerAccountSections.Default.pipe(Layer.provide(requestSession)),
+        Layer.mock(CustomerDotyposAdapter, {})
+      )
     )
   );
   return CustomerInvoiceService.Default.pipe(

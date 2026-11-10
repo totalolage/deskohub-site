@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { SqlError } from "effect/unstable/sql";
@@ -86,7 +87,11 @@ beforeEach(() => {
   events = [];
   fixture = {
     resolve: Effect.succeed({ accountId, dotyposCustomerId }),
-    activity: Effect.succeed({ kind: "active", deletionRequestedAt: null }),
+    activity: Effect.succeed({
+      kind: "active",
+      email: testEmailAddress("owner"),
+      deletionRequestedAt: null,
+    }),
     list: Effect.succeed([dueInvoice, paidInvoice]),
     find: (invoiceId) =>
       Effect.succeed(invoiceId === dueInvoice.id ? dueInvoice : null),
@@ -201,6 +206,7 @@ const deniedAuthorities: readonly (readonly [
     {
       activity: Effect.succeed({
         kind: "active",
+        email: testEmailAddress("owner"),
         deletionRequestedAt: new Date("2026-09-01T10:00:00Z"),
       }),
     },

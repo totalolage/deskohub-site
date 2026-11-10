@@ -5,13 +5,11 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { authUser } from "@/db/schema/auth";
 import type { Locale } from "@/features/i18n";
 import {
-  CustomerAccountAccessError,
+  type CustomerAccountAccessError,
   type CustomerAccountId,
   mapCustomerAccountFailure,
 } from "../customer-account";
-import { requireAccountActivity } from "./customer-account-activity";
-import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import { CustomerAuthentication } from "./customer-authentication.service";
+import { CustomerAccountSections } from "./customer-account-sections";
 
 /*
  * The customer's locale preference is the nullable `locale` field on the
@@ -23,37 +21,12 @@ import { CustomerAuthentication } from "./customer-authentication.service";
  */
 
 /**
- * Folds every non-access failure of the guarded save — the advisory lock
- * itself and the update — into one fixed, non-PII write cause. Access
- * failures raised by the under-lock session recheck and the
- * deletion-authority recheck pass through unchanged.
- */
-const mapPreferenceSaveFailure = mapCustomerAccountFailure(
-  "account-locale-preference.write"
-);
-
-/**
- * Fails unless the authoritative verified session read under the account
- * lock still belongs to the locked account. A missing session or a session
- * for another account maps to the fixed non-PII `unauthenticated` access
- * error, matching the action's pre-lock session guard.
- */
-const requireSessionForAccount = (accountId: CustomerAccountId) =>
-  Effect.flatMap(
-    CustomerAuthentication,
-    (authentication) => authentication.currentUser
-  ).pipe(
-    Effect.filterOrFail(
-      (session) => session?.accountId === accountId,
-      () => new CustomerAccountAccessError({ reason: "unauthenticated" })
-    )
-  );
-
-/**
- * Saves the signed-in customer's locale preference under the account lock.
- * The session is re-read only after the lock is held, so a session that
- * expires or is revoked while the saver waits can never write, and a
- * deletion-marked account is rejected.
+ * Saves the signed-in customer's locale preference in the account's section.
+ * The section re-reads the session only after the lock is held, so a session
+ * that expires or is revoked while the saver waits can never write, and a
+ * deletion-marked account is rejected. A failed write is the fixed, non-PII
+ * `account-locale-preference.write` cause; the section's own failures pass
+ * through.
  */
 export const saveAccountLocalePreference = (
   accountId: CustomerAccountId,
@@ -61,24 +34,25 @@ export const saveAccountLocalePreference = (
 ): Effect.Effect<
   void,
   CustomerAccountAccessError,
-  WorkspaceDatabase | CustomerAccountLinkRepository | CustomerAuthentication
+  WorkspaceDatabase | CustomerAccountSections
 > =>
   Effect.gen(function* () {
     const { db } = yield* WorkspaceDatabase;
-    const links = yield* CustomerAccountLinkRepository;
-    yield* links.withAccountLock(
+    const sections = yield* CustomerAccountSections;
+    yield* sections.withActiveAccount(
       accountId,
-      requireSessionForAccount(accountId).pipe(
-        Effect.andThen(requireAccountActivity(links, accountId)),
-        Effect.andThen(
-          db.update(authUser).set({ locale }).where(eq(authUser.id, accountId))
-        )
-      )
+      db
+        .update(authUser)
+        .set({ locale })
+        .where(eq(authUser.id, accountId))
+        .pipe(
+          Effect.mapError(
+            mapCustomerAccountFailure("account-locale-preference.write")
+          )
+        ),
+      { recheck: "session" }
     );
-  }).pipe(
-    Effect.mapError(mapPreferenceSaveFailure),
-    Effect.withSpan("CustomerLocalePreference.save")
-  );
+  }).pipe(Effect.withSpan("CustomerLocalePreference.save"));
 
 /**
  * Records the sign-in locale for an account that has no preference yet. The
