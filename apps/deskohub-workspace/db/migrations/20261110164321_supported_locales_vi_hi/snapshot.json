@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "6734a65b-5567-4130-9f22-7c12e04143dc",
+  "id": "c5de1837-0e7f-4f76-8327-3c584918dfde",
   "prevIds": [
-    "e28c07b4-c991-476b-8012-4d80c58d1352"
+    "257344ff-46dc-4142-87f7-67ad9e79c533"
   ],
   "ddl": [
     {
@@ -1878,6 +1878,19 @@
       "generated": null,
       "identity": null,
       "name": "label",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "discount_applications"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "staff_label",
       "entityType": "columns",
       "schema": "public",
       "table": "discount_applications"
@@ -16911,6 +16924,13 @@
     {
       "value": "btrim(\"public_discount_id\") <> '' and btrim(\"label\") <> ''",
       "name": "discount_applications_identity_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "discount_applications"
+    },
+    {
+      "value": "\"staff_label\" is null or btrim(\"staff_label\") <> ''",
+      "name": "discount_applications_staff_label_check",
       "entityType": "checks",
       "schema": "public",
       "table": "discount_applications"
