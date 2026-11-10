@@ -48,7 +48,7 @@ export const makeFakeDeviceConsent = ({
     now: () => fakeDeviceNow,
     locale: () => "en-US",
   });
-  const check: AccountConsentCheck = createAccountConsentCheck();
+  const check: AccountConsentCheck = createAccountConsentCheck(consent.current);
   check.follow(accountId);
   return {
     consent,

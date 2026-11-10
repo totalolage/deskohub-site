@@ -208,6 +208,10 @@ describe("saveAnalyticsPreferenceAtom", () => {
       categories: ["necessary", "preferences", "analytics"],
       decidedAt: screen.workspace.analyticsDecision?.decidedAt,
     });
+    // The account's own decision needs no further sync before analytics runs.
+    expect(screen.device.check.holds(screen.workspace.data.accountId)).toBe(
+      false
+    );
     screen.close();
   });
 

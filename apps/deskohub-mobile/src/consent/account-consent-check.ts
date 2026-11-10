@@ -1,5 +1,7 @@
 import { Context } from "effect";
 import { Platform } from "react-native";
+import { consentChoiceMark, type StoredConsent } from "./analytics-consent";
+import { appAnalyticsConsent } from "./use-analytics-consent";
 
 /**
  * Whether this device's analytics consent has been checked against the
@@ -7,9 +9,11 @@ import { Platform } from "react-native";
  * Analytics holds everything attributed to the account until the check
  * settles (at sign-in or session restore, and again on each return to the
  * foreground), so an account withdrawal made elsewhere stops the device
- * before it sends anything that would revive the anonymised person. The
- * consent prompt waits for the session's first check, which may answer it
- * with the account's grant.
+ * before it sends anything that would revive the anonymised person. A check
+ * covers the device's choice it settled for: any other choice, such as the
+ * customer's answer to the prompt, is held from the moment it is stored
+ * until a check settles for it. The consent prompt waits for the session's
+ * first check, which may answer it with the account's grant.
  */
 export interface AccountConsentCheck {
   /** The signed-in account, or `undefined` while signed out. */
@@ -20,32 +24,43 @@ export interface AccountConsentCheck {
   readonly holds: (accountId: string) => boolean;
   /** Whether the session's first check for its account is still pending. */
   readonly firstCheckPending: () => boolean;
-  /** Records a finished check of `accountId`; ignored for another account. */
-  readonly settle: (accountId: string) => void;
+  /**
+   * Records a finished check of `accountId` for the device's `choice`;
+   * ignored for another account, or once the device holds another choice,
+   * which needs a check of its own.
+   */
+  readonly settle: (accountId: string, choice: StoredConsent) => void;
   /** Requires a new check, as when the app returns to the foreground. */
   readonly recheck: () => void;
   readonly subscribe: (listener: () => void) => () => void;
 }
 
-export const createAccountConsentCheck = (): AccountConsentCheck => {
+/** A check of the device's choice, read when it settles or holds. */
+export const createAccountConsentCheck = (
+  deviceChoice: () => StoredConsent | undefined
+): AccountConsentCheck => {
   let account: string | undefined;
   let checkedOnce = false;
   let current = false;
+  /** The device's choice the last check settled for. */
+  let checkedChoice: string | undefined;
   const listeners = new Set<() => void>();
 
   const update = (next: {
     readonly account: string | undefined;
     readonly checkedOnce: boolean;
     readonly current: boolean;
+    readonly checkedChoice: string | undefined;
   }) => {
     if (
       next.account === account &&
       next.checkedOnce === checkedOnce &&
-      next.current === current
+      next.current === current &&
+      next.checkedChoice === checkedChoice
     ) {
       return;
     }
-    ({ account, checkedOnce, current } = next);
+    ({ account, checkedOnce, current, checkedChoice } = next);
     for (const listener of listeners) listener();
   };
 
@@ -53,15 +68,34 @@ export const createAccountConsentCheck = (): AccountConsentCheck => {
     account: () => account,
     follow: (accountId) => {
       if (accountId === account) return;
-      update({ account: accountId, checkedOnce: false, current: false });
+      update({
+        account: accountId,
+        checkedOnce: false,
+        current: false,
+        checkedChoice: undefined,
+      });
     },
-    holds: (accountId) => accountId !== account || !current,
+    // Read from the device's choice itself, so a new choice is held before
+    // anything that hears of it can act on it.
+    holds: (accountId) =>
+      accountId !== account ||
+      !current ||
+      checkedChoice !== consentChoiceMark(deviceChoice()),
     firstCheckPending: () => account !== undefined && !checkedOnce,
-    settle: (accountId) => {
-      if (accountId !== account) return;
-      update({ account, checkedOnce: true, current: true });
+    settle: (accountId, choice) => {
+      const mark = consentChoiceMark(choice);
+      if (accountId !== account || mark !== consentChoiceMark(deviceChoice())) {
+        return;
+      }
+      update({
+        account,
+        checkedOnce: true,
+        current: true,
+        checkedChoice: mark,
+      });
     },
-    recheck: () => update({ account, checkedOnce, current: false }),
+    recheck: () =>
+      update({ account, checkedOnce, current: false, checkedChoice }),
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {
@@ -80,8 +114,10 @@ export const createAccountConsentCheck = (): AccountConsentCheck => {
  */
 export const accountConsentCheckEnabled = Platform.OS !== "web";
 
-/** The app's one account consent check. */
-export const appAccountConsentCheck = createAccountConsentCheck();
+/** The app's one account consent check, of the app's consent answer. */
+export const appAccountConsentCheck = createAccountConsentCheck(() =>
+  appAnalyticsConsent().current()
+);
 
 /**
  * The app's account consent check, for Effects that settle it. A Reference,

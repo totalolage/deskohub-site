@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { AtomRegistry } from "effect/unstable/reactivity";
+import { createAnalytics } from "../analytics/analytics";
+import {
+  type FakeAnalyticsClient,
+  makeFakeAnalyticsClient,
+} from "../analytics/testing/fake-analytics-client";
 import type { CustomerDataServices } from "../customer-api/customer-data-runtime";
 import { makeCustomerDataRegistry } from "../customer-api/testing/customer-data-test-registry";
 import {
@@ -179,6 +184,7 @@ describe("syncAccountAnalyticsConsent", () => {
       locale: "en-US",
     });
     expect(device.check.firstCheckPending()).toBe(false);
+    expect(device.check.holds(device.accountId)).toBe(false);
   });
 
   test("keeps asking without a choice when the account's grant predates the notice or it withdrew", async () => {
@@ -331,5 +337,152 @@ describe("followAccountConsent", () => {
     expect(device.workspace.analyticsSyncs).toHaveLength(1);
     expect(device.check.holds(device.accountId)).toBe(false);
     stop();
+  });
+});
+
+/**
+ * The analytics controller over the device's consent and check, connected
+ * before or after the account sync starts following, so either consent
+ * subscriber hears a new choice first.
+ */
+const withAnalytics = (
+  device: ReturnType<typeof setup>,
+  order: "analytics first" | "sync first"
+) => {
+  const analytics = createAnalytics();
+  const clients: FakeAnalyticsClient[] = [];
+  const connect = () =>
+    analytics.connect({
+      settings: {
+        apiKey: "phc_test",
+        host: "https://t.example.test",
+        environment: "production",
+      },
+      createClient: (options) => {
+        const fake = makeFakeAnalyticsClient(options);
+        clients.push(fake);
+        return fake.client;
+      },
+      detectOtherSdk: () => false,
+      consent: device.consent,
+      accountCheck: device.check,
+      clearStoredState: async () => {},
+      warn: () => {},
+    });
+  const stops =
+    order === "analytics first"
+      ? [connect(), device.follow()]
+      : [device.follow(), connect()];
+  analytics.setIdentity({
+    kind: "authenticated",
+    accountId: device.accountId,
+    testAccount: false,
+  });
+  return {
+    analytics,
+    clients,
+    /** Every identity any client applied. */
+    identified: () =>
+      clients.flatMap(({ calls }) =>
+        calls.filter(([name]) => name === "identify")
+      ),
+    stop: () => {
+      for (const stop of stops) stop();
+    },
+  };
+};
+
+/** Lets pending requests and their callbacks run. */
+const until = async (reached: () => boolean) => {
+  for (let attempt = 0; attempt < 100 && !reached(); attempt++) await flush();
+  expect(reached()).toBe(true);
+};
+
+describe("followAccountConsent with analytics", () => {
+  // Made on the site after the fake device's clock (`fakeDeviceNow`).
+  const withdrawnAfterDeviceClock: FakeAnalyticsDecision = {
+    granted: false,
+    decidedAt: "2026-11-10T13:00:00.000Z",
+    notice: "current",
+  };
+
+  /** Settles the session's first check, then delays the next sync's answer. */
+  const answeredPrompt = async (
+    decision: FakeAnalyticsDecision | undefined,
+    order: "analytics first" | "sync first"
+  ) => {
+    const device = setup({ stored: { kind: "undecided" }, decision });
+    const app = withAnalytics(device, order);
+    await device.synced();
+    expect(device.check.firstCheckPending()).toBe(false);
+    let answer = () => {};
+    device.workspace.analyticsSyncDelay = new Promise((resolve) => {
+      answer = resolve;
+    });
+
+    device.consent.grant();
+    await until(() => device.workspace.analyticsSyncs.length === 2);
+    app.analytics.capture({ name: "booking started" });
+    await flush();
+    return { device, app, answer };
+  };
+
+  for (const order of ["analytics first", "sync first"] as const) {
+    test(`starts no client for the prompt's answer until its sync answers (${order})`, async () => {
+      const { device, app, answer } = await answeredPrompt(
+        withdrawnAfterDeviceClock,
+        order
+      );
+      expect(device.consent.status()).toBe("granted");
+      expect(app.identified()).toEqual([]);
+      expect(app.clients).toHaveLength(0);
+
+      answer();
+      await device.synced();
+
+      // The account's later withdrawal outranks the older grant.
+      expect(device.consent.status()).toBe("denied");
+      expect(app.identified()).toEqual([]);
+      expect(app.clients).toHaveLength(0);
+      app.stop();
+    });
+  }
+
+  test("delivers what waited once the account takes the answer", async () => {
+    const { device, app, answer } = await answeredPrompt(
+      undefined,
+      "analytics first"
+    );
+    expect(app.clients).toHaveLength(0);
+
+    answer();
+    await device.synced();
+    await flush();
+
+    expect(device.consent.status()).toBe("granted");
+    expect(app.clients[0]?.calls).toEqual([
+      ["identify", `workspace-account:${device.accountId}`],
+      ["reloadFeatureFlags"],
+      ["capture", "booking started", undefined],
+    ]);
+    app.stop();
+  });
+
+  test("releases the answer when its sync fails", async () => {
+    const device = setup({ stored: { kind: "undecided" } });
+    const app = withAnalytics(device, "analytics first");
+    await device.synced();
+    device.workspace.fail("syncAnalyticsConsent", "service-unavailable");
+
+    device.consent.grant();
+    await device.synced();
+    await flush();
+
+    expect(device.consent.status()).toBe("granted");
+    expect(app.clients[0]?.calls[0]).toEqual([
+      "identify",
+      `workspace-account:${device.accountId}`,
+    ]);
+    app.stop();
   });
 });

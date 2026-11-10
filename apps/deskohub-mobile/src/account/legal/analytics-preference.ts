@@ -9,7 +9,7 @@ import type {
   AtomRegistry,
 } from "effect/unstable/reactivity";
 import { CurrentAccountConsentCheck } from "../../consent/account-consent-check";
-import { consentChoiceMark } from "../../consent/analytics-consent";
+import { takeAccountDecision } from "../../consent/account-consent-sync";
 import { DeviceAnalyticsConsent } from "../../consent/use-analytics-consent";
 import { CustomerApi } from "../../customer-api/customer-api.service";
 import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
@@ -92,8 +92,8 @@ export const saveAnalyticsPreference = Effect.fn(
 )(function* ({ granted, locale }: AnalyticsPreferenceChoice) {
   const consent = yield* DeviceAnalyticsConsent;
   const check = yield* CurrentAccountConsentCheck;
-  const choiceAtSend = consentChoiceMark(consent.current());
-  const accountAtSend = check.account();
+  const sent = consent.current();
+  const accountId = check.account();
 
   const api = yield* CustomerApi;
   const saved = yield* api.account
@@ -101,19 +101,11 @@ export const saveAnalyticsPreference = Effect.fn(
       payload: { granted, locale } satisfies SaveCustomerAnalyticsPreference,
     })
     .pipe(customerWrite);
-
-  if (
-    consentChoiceMark(consent.current()) !== choiceAtSend ||
-    check.account() !== accountAtSend
-  ) {
-    return;
-  }
-  yield* Effect.promise(() =>
-    consent.applyAccountDecision({
-      analytics: saved.granted,
-      decidedAt: saved.decidedAt,
-    })
-  );
+  yield* takeAccountDecision({
+    accountId,
+    sent,
+    decision: { analytics: saved.granted, decidedAt: saved.decidedAt },
+  });
 });
 
 /**

@@ -49,7 +49,49 @@ export const syncAccountAnalyticsConsent = Effect.fn(
   if (sent === undefined) return;
 
   yield* exchangeWithAccount({ accountId, locale, sent }).pipe(Effect.ignore);
-  yield* Effect.sync(() => check.settle(accountId));
+  // Covers the choice sent, unless the device took the account's decision
+  // or holds a newer choice, which was settled or needs a sync of its own.
+  yield* Effect.sync(() => check.settle(accountId, sent));
+});
+
+/**
+ * Takes the account's decision (from a sync's answer or a preference save)
+ * as this device's choice, unless the device's choice changed since `sent`,
+ * which is newer, or another account signed in; the next sync orders them.
+ * The decision is the account's own, so its check then covers the stored
+ * answer and analytics doesn't hold it for another sync.
+ */
+export const takeAccountDecision = Effect.fn(
+  "AccountAnalyticsConsent.takeDecision"
+)(function* ({
+  accountId,
+  sent,
+  decision,
+}: {
+  /** The signed-in account when the request was sent. */
+  readonly accountId: string | undefined;
+  /** The device's choice when the request was sent. */
+  readonly sent: StoredConsent | undefined;
+  readonly decision: AccountAnalyticsDecision;
+}) {
+  const consent = yield* DeviceAnalyticsConsent;
+  const check = yield* CurrentAccountConsentCheck;
+  if (
+    consentChoiceMark(consent.current()) !== consentChoiceMark(sent) ||
+    check.account() !== accountId
+  ) {
+    return;
+  }
+  // A newer sync mustn't interrupt between the two, or the decision applied
+  // would stay held: that sync may have sent the choice it replaced.
+  yield* Effect.promise(() => consent.applyAccountDecision(decision)).pipe(
+    Effect.flatMap((stored) =>
+      Effect.sync(() => {
+        if (accountId !== undefined) check.settle(accountId, stored);
+      })
+    ),
+    Effect.uninterruptible
+  );
 });
 
 /**
@@ -164,17 +206,6 @@ const exchangeWithAccount = Effect.fn("AccountAnalyticsConsent.exchange")(
       .pipe(customerWrite);
     const decision = accountDecisionFrom(answer, sent);
     if (decision === undefined) return;
-
-    // A choice made meanwhile is newer than the answer, and another
-    // account's decision never applies here; the next sync orders them.
-    const consent = yield* DeviceAnalyticsConsent;
-    const check = yield* CurrentAccountConsentCheck;
-    if (
-      consentChoiceMark(consent.current()) !== consentChoiceMark(sent) ||
-      check.account() !== accountId
-    ) {
-      return;
-    }
-    yield* Effect.promise(() => consent.applyAccountDecision(decision));
+    yield* takeAccountDecision({ accountId, sent, decision });
   }
 );

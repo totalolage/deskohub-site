@@ -121,12 +121,13 @@ export interface AnalyticsConsent {
   /**
    * Takes the account's decision as this device's choice, dated when the
    * account made it, keeping the other categories (none but the necessary
-   * ones when there was no choice). Resolves once it applies: a withdrawal
-   * at once, a grant once saved.
+   * ones when there was no choice). Resolves with the answer it stored once
+   * it applies: a withdrawal at once, a grant once saved (or the refusal a
+   * failed save stores instead).
    */
   readonly applyAccountDecision: (
     decision: AccountAnalyticsDecision
-  ) => Promise<void>;
+  ) => Promise<StoredConsent>;
   /** Reads the stored answer again. */
   readonly refresh: () => void;
 }
@@ -190,7 +191,7 @@ export const createAnalyticsConsent = (
   const save = (
     { analytics, decidedAt }: AccountAnalyticsDecision,
     change: Exclude<ConsentChange, "storage">
-  ): Promise<void> => {
+  ): Promise<StoredConsent> => {
     // A later read must not overwrite the answer just given.
     const generation = ++readGeneration;
     const choice: ConsentChoice = {
@@ -207,16 +208,18 @@ export const createAnalyticsConsent = (
       warn(`Saving the consent answer failed: ${String(error)}`);
     if (!analytics) {
       set(answer, change);
-      return saving.catch(failed);
+      return saving.catch(failed).then(() => answer);
     }
     // Fail closed: a grant applies only once it is saved.
     return saving.then(
       () => {
         if (generation === readGeneration) set(answer, change);
+        return answer;
       },
       (error: unknown) => {
         failed(error);
         if (generation === readGeneration) set(declined, change);
+        return declined;
       }
     );
   };

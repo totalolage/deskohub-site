@@ -56,17 +56,23 @@ The privacy reference's ledger section covers the server side.
   device's choice and the signed-in account are unchanged since the request.
   A failure changes nothing and shows nothing; the next trigger retries.
 - The hold (`consent/account-consent-check.ts`): a signed-in account is held
-  until its check settles, from session start and again from each
-  foreground `AppState` event (set synchronously, before the SDK's own
-  flush). While held the controller starts no client, identifies nothing and
-  keeps captures and screens in its outbox, and an identified client's
-  network is paused (`holdNetwork`), so its queued events and its
-  app-state flushes wait. A withdrawal applied meanwhile discards all of it;
-  a settled or failed check releases it. The consent prompt waits for the
-  session's first check. Not covered: requests already in flight, the SDK's
-  flush when the app leaves the foreground, and `$feature_flag_called` events
-  `getFeatureFlag` queues while a foreground hold pauses an identified
-  client (they wait with the network and a withdrawal drops them).
+  until its check settles, from session start and again from each foreground
+  `AppState` event (set synchronously, before the SDK's own flush). A check
+  covers only the device choice it settled for, and `holds` reads that choice
+  itself, so a new choice (the prompt's answer, a storage read) is held from
+  the moment it is stored, whatever order consent subscribers run in, until
+  its own sync settles. An account decision the device takes
+  (`takeAccountDecision`: a sync's answer or a Legal save) settles the check
+  for the stored answer. While held the controller starts no client,
+  identifies nothing and keeps captures and screens in its outbox, and an
+  identified client's network is paused (`holdNetwork`), so its queued events
+  and its app-state flushes wait. A withdrawal applied meanwhile discards all
+  of it; a settled or failed (or timed-out) sync releases it. The consent
+  prompt waits for the session's first check. Not covered: requests already in
+  flight, the SDK's flush when the app leaves the foreground, and
+  `$feature_flag_called` events `getFeatureFlag` queues while a foreground
+  hold pauses an identified client (they wait with the network and a
+  withdrawal drops them).
 - The web bundle doesn't sync, hold or gate the prompt: its consent is the
   site's cookie, which the site mirrors at sign-in and on each signed-in page
   and withdraws there.
