@@ -18,7 +18,7 @@ import { CustomerAccountContactService } from "./customer-account-contact.servic
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import {
   type CustomerAccountResolutionDependencies,
-  resolveCustomerAccountLink,
+  resolveCustomerAccount,
 } from "./customer-account-resolver.service";
 import { CustomerAccountSections } from "./customer-account-sections";
 import { makeCustomerAccountSections } from "./customer-account-sections.test-utils";
@@ -87,7 +87,7 @@ describe("a review account's Dotypos link", () => {
       ).withActiveAccount,
     };
 
-    const outcome = await resolveCustomerAccountLink(dependencies).pipe(
+    const outcome = await resolveCustomerAccount(dependencies).pipe(
       Effect.result,
       Effect.runPromise
     );
