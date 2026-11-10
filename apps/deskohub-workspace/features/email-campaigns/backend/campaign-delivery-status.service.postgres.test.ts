@@ -4,7 +4,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { Effect, Layer, Option } from "effect";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import type { CampaignEmailRecipient } from "../campaign-email";
+import type { CampaignEmailRecipient } from "../campaign-email-kind";
 import type { CampaignRecipientStatus } from "../campaign-states";
 import {
   type CampaignDeliveryEvent,

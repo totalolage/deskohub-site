@@ -13,10 +13,10 @@ import type {
 import {
   CampaignDeliveryAudience,
   CampaignEmailOccasion,
-  campaignEmailKind,
   campaignEmailMessage,
   renderCampaignEmailPreview,
 } from "./campaign-email";
+import { campaignEmailKind } from "./campaign-email-kind";
 import type {
   CampaignConfirmationCode,
   CampaignSendId,

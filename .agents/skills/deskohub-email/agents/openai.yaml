@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Email"
+  short_description: "Change email providers, chains, and delivery"
+  default_prompt: "Use $deskohub-email to change this email provider, chain, or delivery behavior."

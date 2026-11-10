@@ -1,6 +1,6 @@
 import "server-only";
 
-import { makePostHogNodeFeatureFlagService } from "@deskohub/posthog/feature-flags/node";
+import { makePostHogNodeFeatureFlagService } from "@deskohub/analytics-posthog/feature-flags/node";
 import { postHogRuntimeConfig } from "@/shared/backend/config/posthog.config";
 import { postHogFeatureFlags } from "../generated/contract";
 

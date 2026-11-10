@@ -4,7 +4,7 @@ import {
   deliveryReportHandlerOwningIgnores,
   ignoredDeliveryReport,
 } from "@/shared/backend/email/delivery-reports";
-import { campaignEmailKind } from "../campaign-email";
+import { campaignEmailKind } from "../campaign-email-kind";
 import { CampaignDeliveryStatusService } from "./campaign-delivery-status.service";
 
 /**

@@ -272,6 +272,29 @@ describe("Webhook routes", () => {
     );
   });
 
+  test("logs a logs-only code without answering it", async () => {
+    const operation = "test.webhook.logs-only";
+    const POST = defineWebhookRoute(
+      { operation, failureMessage: "Test failed" },
+      () =>
+        Effect.fail(
+          new WebhookRefusal({
+            disposition: { kind: "retry", severity: "error" },
+            code: "test_secret_missing",
+            codeVisibility: "logs-only",
+          })
+        )
+    );
+
+    const response = await POST(webhookRequest());
+
+    expect(response.status).toBe(500);
+    expect(Object.keys(JSON.parse(await response.text()))).toEqual(["error"]);
+    expect(fieldsAt(operation, "error")).toMatchObject({
+      errorCode: "test_secret_missing",
+    });
+  });
+
   test("answers an unclassified failure with the route's failure message", async () => {
     const POST = defineWebhookRoute(
       { operation: "test.webhook.unclassified", failureMessage: "Test failed" },

@@ -1,4 +1,4 @@
-import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
+import type { PostHogFeatureFlagOverrides } from "@deskohub/analytics-posthog/feature-flags";
 import { Schema } from "effect";
 import {
   type ConfiguredFeatureFlagOverrides,

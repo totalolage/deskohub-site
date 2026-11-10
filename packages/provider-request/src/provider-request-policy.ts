@@ -25,12 +25,39 @@ export interface ProviderRetryPolicy {
   ) => <A, E extends Failure, R>(
     attempt: Effect.Effect<A, E, R>
   ) => Effect.Effect<A, E, R>;
+  /**
+   * Retries like `retryWhile`, but waits at least the delay the provider asked
+   * for in the failure (an HTTP `Retry-After`, for example). A failure that
+   * asks for more than `maxRequestedDelay` ends the retries at once, so the
+   * caller never retries earlier than the provider allows.
+   */
+  readonly retryWhileHonoringDelay: <Failure>(
+    isRetryable: (failure: Failure) => boolean,
+    delay: ProviderRequestedDelay<Failure>
+  ) => <A, E extends Failure, R>(
+    attempt: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E, R>;
   /** The longest total backoff between attempts, with jitter at its maximum. */
   readonly worstCaseBackoff: Duration.Duration;
+  /**
+   * The longest total backoff of `retryWhileHonoringDelay`: each retry waits
+   * the larger of its maximal backoff and `maxRequestedDelay`.
+   */
+  readonly worstCaseBackoffHonoringDelay: (
+    maxRequestedDelay: Duration.Input
+  ) => Duration.Duration;
   /** Adds the per-attempt timeout of a deployment. */
   readonly withAttemptTimeout: (
     attemptTimeout: Duration.Input
   ) => ProviderRequestPolicy;
+}
+
+/** How a retry reads the wait a provider asked for before the next attempt. */
+export interface ProviderRequestedDelay<Failure> {
+  /** The wait `failure` asks for, if it asks for one. */
+  readonly requestedDelay: (failure: Failure) => Duration.Duration | undefined;
+  /** The longest requested wait the retry honours. */
+  readonly maxRequestedDelay: Duration.Input;
 }
 
 /** A provider's retry backoff and per-attempt timeout, with their bounds. */
@@ -113,18 +140,32 @@ export const ProviderRetryPolicy = {
         Effect.retry(attempt, {
           schedule: retrySchedule(declaration, isRetryable),
         });
+    const retryWhileHonoringDelay =
+      <Failure>(
+        isRetryable: (failure: Failure) => boolean,
+        delay: ProviderRequestedDelay<Failure>
+      ) =>
+      <A, E extends Failure, R>(attempt: Effect.Effect<A, E, R>) =>
+        Effect.retry(attempt, {
+          schedule: retryScheduleHonoringDelay(declaration, isRetryable, delay),
+        });
     const worstCaseBackoff = getWorstCaseBackoff(declaration);
-
-    return {
+    const worstCaseBackoffHonoringDelay = (maxRequestedDelay: Duration.Input) =>
+      getWorstCaseBackoff(declaration, maxRequestedDelay);
+    const retries = {
       maxRetries: declaration.maxRetries,
       retryWhile,
+      retryWhileHonoringDelay,
       worstCaseBackoff,
+      worstCaseBackoffHonoringDelay,
+    };
+
+    return {
+      ...retries,
       withAttemptTimeout: (input) => {
         const attemptTimeout = Duration.fromInputUnsafe(input);
         return {
-          maxRetries: declaration.maxRetries,
-          retryWhile,
-          worstCaseBackoff,
+          ...retries,
           attemptTimeout,
           attempt:
             <TimeoutFailure>(onTimeout: () => TimeoutFailure) =>
@@ -165,17 +206,64 @@ const retrySchedule = <Failure>(
     )
   );
 
-const getWorstCaseBackoff = ({
-  baseDelay,
-  maxRetries,
-}: ProviderRetryDeclaration) => {
+/**
+ * `retrySchedule` whose every delay is at least the one the failure asks for,
+ * ending the retries when a failure asks for more than the honoured maximum.
+ */
+const retryScheduleHonoringDelay = <Failure>(
+  declaration: ProviderRetryDeclaration,
+  isRetryable: (failure: Failure) => boolean,
+  { requestedDelay, maxRequestedDelay }: ProviderRequestedDelay<Failure>
+) => {
+  const maxDelay = Duration.fromInputUnsafe(maxRequestedDelay);
+  return Schedule.exponential(declaration.baseDelay, backoffFactor).pipe(
+    Schedule.jittered,
+    Schedule.both(
+      Schedule.passthrough<number, Failure, never, never>(Schedule.forever)
+    ),
+    Schedule.while<Failure, readonly [Duration.Duration, Failure]>(
+      ({ input }) => {
+        const delay = requestedDelay(input);
+        return (
+          isRetryable(input) &&
+          (delay === undefined || Duration.isLessThanOrEqualTo(delay, maxDelay))
+        );
+      }
+    ),
+    Schedule.modifyDelay(([, failure], delay) =>
+      Effect.succeed(
+        Duration.max(delay, requestedDelay(failure) ?? Duration.zero)
+      )
+    ),
+    Schedule.both(Schedule.recurs(declaration.maxRetries)),
+    Schedule.tapOutput(([[backoff, failure], attempt]) =>
+      Effect.logWarning(`${declaration.label} retry attempt #${attempt + 1}`, {
+        attemptNumber: attempt + 1,
+        delayMs: Duration.toMillis(
+          Duration.max(backoff, requestedDelay(failure) ?? Duration.zero)
+        ),
+        maxRetries: declaration.maxRetries,
+      })
+    )
+  );
+};
+
+const getWorstCaseBackoff = (
+  { baseDelay, maxRetries }: ProviderRetryDeclaration,
+  maxRequestedDelay: Duration.Input = Duration.zero
+) => {
   const baseMilliseconds = Duration.toMillis(
     Duration.fromInputUnsafe(baseDelay)
   );
+  const requestedMilliseconds = Duration.toMillis(
+    Duration.fromInputUnsafe(maxRequestedDelay)
+  );
   let backoffMilliseconds = 0;
   for (let retry = 0; retry < maxRetries; retry += 1) {
-    backoffMilliseconds +=
-      baseMilliseconds * backoffFactor ** retry * maxJitterFactor;
+    backoffMilliseconds += Math.max(
+      baseMilliseconds * backoffFactor ** retry * maxJitterFactor,
+      requestedMilliseconds
+    );
   }
   return Duration.millis(backoffMilliseconds);
 };

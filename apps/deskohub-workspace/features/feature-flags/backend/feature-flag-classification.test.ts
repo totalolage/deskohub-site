@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { PostHogFeatureFlagSnapshot } from "@deskohub/posthog/feature-flags";
+import type { PostHogFeatureFlagSnapshot } from "@deskohub/analytics-posthog/feature-flags";
 import {
   type PostHogFeatureFlagDefinition,
   PostHogFeatureFlagError,
-} from "@deskohub/posthog/feature-flags/management";
+} from "@deskohub/analytics-posthog/feature-flags/management";
 import { Duration, Effect } from "effect";
 import { TestClock } from "effect/testing";
 import type { PostHogFeatureFlagKey } from "../generated/contract";

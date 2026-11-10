@@ -2,7 +2,7 @@ import type {
   PostHogFeatureFlagEvaluationError,
   PostHogFeatureFlagEvaluationOptions,
   TypedPostHogFeatureFlagEvaluationSnapshot,
-} from "@deskohub/posthog/feature-flags/node";
+} from "@deskohub/analytics-posthog/feature-flags/node";
 import { Context, Effect, Layer, Option } from "effect";
 import type {
   PostHogFeatureFlagDefinitions,

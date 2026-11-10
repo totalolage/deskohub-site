@@ -131,7 +131,7 @@ consent storage and events are in the `deskohub-mobile` skill
   loads `posthog-js` with a dynamic import once consent and a safe telemetry host
   allow initialization; the `no-eager-posthog-browser-sdk` lint rule rejects
   static value imports of `posthog-js` or `@posthog/react` (which imports the
-  SDK at module load) in Workspace and `@deskohub/posthog` source. Use
+  SDK at module load) in Workspace and `@deskohub/analytics-posthog` source. Use
   `import type` for SDK types.
 - Capture browser events with `captureAnalyticsEvent`
   (`features/cookie-consent/analytics-events.ts`), never the SDK directly.
@@ -258,7 +258,10 @@ non-production traffic apart:
   only customer identifier allowed. Don't alias a browser to a reservation.
   Customer contact data reaches PostHog only as rows of the Dotypos customer
   warehouse table (see below), joined to persons at query time, never as
-  person or event properties.
+  person properties or as properties of events Workspace captures. Campaign
+  email is the exception: its send requests and PostHog's own engagement
+  events carry the recipient
+  ([campaign email through PostHog](#campaign-email-through-posthog)).
 - Booking for someone else creates or reuses a Dotypos customer found by the
   typed email, so the booker's browser isn't linked to it: anyone can type
   another customer's email. Join that customer's activity through the
@@ -404,8 +407,10 @@ Filter every step to `deployment.environment.name = production`.
 ## Server capture
 
 - Server events go out only through typed domain operations:
-  `CheckoutAnalytics` and `AgentTrafficEvents`
-  (`shared/backend/agent-traffic/agent-traffic-events.ts`). Their inputs
+  `CheckoutAnalytics`, `AgentTrafficEvents`
+  (`shared/backend/agent-traffic/agent-traffic-events.ts`), and
+  `EmailFallbackAnalyticsObserver`
+  (`shared/backend/analytics/email-fallback-analytics-observer.ts`). Their inputs
   take only the identifiers the event may carry. Each wraps
   `ServerAnalytics` (`shared/backend/analytics/server-analytics.service.ts`),
   whose subject policy sets the distinct ID, UUID, agent fields,
@@ -413,7 +418,13 @@ Filter every step to `deployment.environment.name = production`.
   lifecycle event), `record` (a reservation-keyed lifecycle event), the
   request's consented `visitor` (skipped without one), or `anonymous` (a
   random distinct ID per event). `CheckoutAnalytics` picks `account` or
-  `record` by the capture-time rule. Don't call
+  `record` by the capture-time rule. `EmailFallbackAnalyticsObserver`
+  captures `email provider fallback` with the `anonymous` subject whatever
+  the consent, and only `stream` (`transactional` or `marketing`),
+  `category` (the email category tag, such as `email-campaign`),
+  `failed_provider`, `next_provider`, `error_kind` (the error's tag,
+  `EmailServiceError` or `NetworkError`), and `error_code` (category and
+  code only when present): no recipient, address, account, or message ID. Don't call
   `ServerAnalytics` from anywhere else; add a domain operation instead.
 - Capture never fails the work it's part of and never waits for PostHog: it
   queues the event on one `posthog-node` client per process
@@ -501,6 +512,59 @@ blanks the row and marks it deleted on the next sync.
   [PostHog customer source](../../deskohub-dotypos/references/posthog-customer-source.md)
   reference.
 
+## Campaign email through PostHog
+
+Campaign (marketing) email, campaign test emails included, goes to PostHog's
+transactional email API (EU Cloud, the production project) first and Resend
+second, per message, which
+makes PostHog an email processor as well as the analytics one.
+Transactional email (magic links, reservations, invoices, contact form,
+Boardgame Bar) goes only to Resend. Delivery rules are in the
+`deskohub-workspace-domain` skill's
+[email campaigns](../../deskohub-workspace-domain/references/email-campaigns.md)
+reference; setup and operations in the `deskohub-workspace-operations`
+skill's
+[PostHog email delivery](../../deskohub-workspace-operations/references/posthog-email-delivery.md).
+The processor and transfer rows are in
+[privacy and retention](privacy-and-retention.md).
+
+- Content: every send request carries the recipient address, subject, HTML
+  and text body, sender, and reply-to, so PostHog receives them even when it
+  refuses the message and Resend sends it. PostHog keeps an accepted
+  message's delivery status readable through the API for 30 days; its
+  retention and deletion of the content itself are unverified. Workspace stores only the
+  provider message ID (`email_campaign_recipients.provider_message_id`) and
+  the recipient's delivery status.
+- Engagement events: with engagement events enabled in the project's
+  Workflows settings, PostHog captures `$workflows_email_sent`,
+  `_delivered`, `_bounced`, `_failed`, `_blocked`, `_unsubscribed`,
+  `_opened`, and `_link_clicked` itself. They carry `$email_to` (the
+  recipient address) and `$email_subject`, whatever the recipient's
+  analytics consent; the consent decides only which distinct ID they join.
+  Workspace doesn't capture them, so the URL and property rules above don't
+  filter them.
+- Distinct ID: a send carries `workspace-account:<CustomerAccountId>` only
+  when the recipient's Dotypos customer ID belongs to a customer account
+  (`customer_accounts.dotypos_customer_id`) whose current analytics consent
+  decision (`AnalyticsConsentLedger.currentDecision`) is a grant, the same
+  gate as `ReservationAnalyticsPerson`, in `CampaignRecipientAnalyticsIdentity`
+  (`features/email-campaigns/backend/campaign-recipient-analytics-identity.service.ts`;
+  live accounts only, and an unreadable account or consent gives no
+  identity). Consent is re-read right before every send, replays included. A campaign test email never has one. Otherwise the message carries no identity and the
+  PostHog provider sends its one fixed system identity (`systemIdentity`;
+  Workspace: `workspace-email-system`, `workspaceEmailSystemIdentity` in
+  `shared/backend/config/email.config.ts`).
+  PostHog would use the recipient email as the distinct ID when none is
+  sent, so the provider always sends one; never the email or a Dotypos ID.
+  Consented recipients' engagement events join their account person; all
+  other recipients' events share the system identity.
+- Anonymisation keeps them:
+  [person anonymisation](#person-anonymisation) deletes the person and
+  keeps its events, so a withdrawn or deleted account's engagement events
+  keep `$email_to` and `$email_subject` (owner decision, 2026-11-09).
+  Erasing them goes through a manual PostHog support request, like other
+  kept events.
+
 ## Not part of this integration
 
 - No auth or user database connector, other warehouse sync, or bulk export. A
@@ -519,11 +583,13 @@ blanks the row and marks it deleted on the next sync.
 PostHog person `workspace-account:<accountId>`, with its person properties
 and distinct IDs, and keeps its events and recordings. It calls
 `PostHogPersonsService.deletePersonKeepingEvents` from
-`@deskohub/posthog/persons`, which sends `POST
+`@deskohub/analytics-posthog/persons`, which sends `POST
 /api/projects/<projectId>/persons/bulk_delete/` with `delete_events: false`
 and `delete_recordings: false`. The kept events stay queryable as
 pseudonymous records keyed by the account's distinct ID and, on lifecycle
 events, `properties.reservation_id`. It sends nothing else to PostHog.
+Kept campaign email engagement events still carry the recipient address and
+subject ([campaign email through PostHog](#campaign-email-through-posthog)).
 
 - Two entry points. Account deletion calls `anonymiseDeletedAccount` after
   the tombstone, and only when every earlier step succeeded
@@ -548,7 +614,7 @@ events, `properties.reservation_id`. It sends nothing else to PostHog.
 - Retries cover only failures that prove nothing was applied: 429, and a 202
   whose `deletion_errors` name a step other than `log_activity` or
   `publish_clickhouse_tombstone`. The ceiling is the private table in
-  `packages/posthog/src/persons`. A server error, timeout, or lost
+  `packages/analytics-posthog/src/persons`. A server error, timeout, or lost
   connection may have applied, so it runs once and logs `…_uncertain`. An
   attempt waits 5 seconds in production and 30 elsewhere, and
   `posthog-person-privacy.config.test.ts` keeps the retried worst case inside

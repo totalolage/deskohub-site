@@ -445,7 +445,7 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["rejects a named SDK import", 'import { posthog } from "posthog-js";\nexport const client = posthog;\n', true],
       ["rejects an inline type specifier, which keeps the import", 'import { type PostHog } from "posthog-js";\nexport type Client = PostHog;\n', true],
       ["rejects the React bindings", 'import { usePostHog } from "@posthog/react";\nexport const useClient = usePostHog;\n', true],
-      ["rejects the SDK in the shared PostHog package", 'import posthog from "posthog-js";\nexport const client = posthog;\n', true, "packages/posthog/src/feature-flags/react.ts"],
+      ["rejects the SDK in the shared PostHog package", 'import posthog from "posthog-js";\nexport const client = posthog;\n', true, "packages/analytics-posthog/src/feature-flags/react.ts"],
       ["permits a type-only import", 'import type { PostHog } from "posthog-js";\nexport type Client = PostHog;\n', false],
       ["permits the consent-gated dynamic import", 'export const load = () => import("posthog-js");\n', false],
       ["permits test fixtures", 'import posthog from "posthog-js";\nexport const client = posthog;\n', false, "apps/deskohub-workspace/shared/testing/posthog-identity-browser-fixture.tsx"],

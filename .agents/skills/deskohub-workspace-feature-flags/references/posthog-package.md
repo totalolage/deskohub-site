@@ -1,11 +1,11 @@
-# `@deskohub/posthog` package
+# `@deskohub/analytics-posthog` package
 
 ## Generated API client
 
 The package's Effect client is generated from PostHog's complete public OpenAPI schema. Regenerate from the repository root and commit the result:
 
 ```sh
-bun turbo run generate --filter=@deskohub/posthog
+bun turbo run generate --filter=@deskohub/analytics-posthog
 ```
 
 The task downloads `https://eu.posthog.com/api/schema/?format=json`; set `POSTHOG_OPENAPI_SCHEMA_URL` only to target another PostHog installation. It's uncached and nothing depends on it, so typecheck and consumers use the checked-in client.

@@ -24,7 +24,7 @@ test.each([
   ["apps/deskohub-workspace/features/administration/fixtures.ts", false],
   ["scripts/generate-effect-openapi-client.ts", false],
   ["packages/dotypos/src/generated/client.ts", false],
-  ["packages/posthog/src/generated/effect.gen.ts", false],
+  ["packages/analytics-posthog/src/generated/effect.gen.ts", false],
   ["apps/deskohub-workspace/playwright.e2e.config.ts", false],
   ["packages/test-coverage/src/crap.ts", false],
   ["packages/test-email/src/index.ts", false],

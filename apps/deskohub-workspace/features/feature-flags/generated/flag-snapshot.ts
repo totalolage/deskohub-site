@@ -1,4 +1,4 @@
-import type { PostHogFeatureFlagSnapshot } from "@deskohub/posthog/feature-flags";
+import type { PostHogFeatureFlagSnapshot } from "@deskohub/analytics-posthog/feature-flags";
 
 /** Generated from PostHog feature flag definitions. Do not edit manually. */
 export const postHogFeatureFlagSnapshot = {

@@ -297,7 +297,7 @@ const operatingRulesSections: LegalSection[] = [
 
 const legalDocuments = {
   "privacy-policy": {
-    updatedAt: "8. novembra 2026",
+    updatedAt: "10. novembra 2026",
     sections: [
       {
         heading: "1. Prevádzkovateľ",
@@ -555,6 +555,11 @@ const legalDocuments = {
             iba počas doby potrebnej na uvedené účely merania.
           </>,
           <>
+            PostHog uchováva stav doručenia každého e-mailu z kampane približne
+            30 dní. Záznamy o e-mailoch z kampaní opísané v bode 6 uchovávame
+            rovnako ako ostatné analytické údaje.
+          </>,
+          <>
             Záznam o vašom marketingovom súhlase vrátane jeho odvolania
             uchovávame pri vašom zákazníckom zázname, aby sme mohli preukázať,
             ako ste sa rozhodli.
@@ -587,9 +592,19 @@ const legalDocuments = {
             tam dostanú preto, že ste o to požiadali.
           </>,
           <>
-            Ak budeme v budúcnosti zasielať marketingové správy, môže náš
-            poskytovateľ e-mailových služieb v našom mene spracúvať kontaktné a
-            doručovacie údaje potrebné na ich odoslanie.
+            E-maily z našich e-mailových kampaní vrátane marketingových e-mailov
+            rozosielame prostredníctvom nášho analytického poskytovateľa,
+            spoločnosti PostHog Inc., cez jej službu EU Cloud s údajmi uloženými
+            vo Frankfurte nad Mohanom v Nemecku. Ak PostHog e-mail odoslať
+            nemôže, odošle ho namiesto neho náš poskytovateľ e-mailových služieb
+            Resend. Pri každom e-maile z kampane PostHog dostane vašu e-mailovú
+            adresu, predmet a obsah e-mailu. Zaznamenáva tiež, kedy bol e-mail
+            odoslaný, doručený alebo vrátený, kedy jeho doručenie zlyhalo alebo
+            bolo zablokované a kedy sa odhlásite, e-mail otvoríte alebo kliknete
+            na odkaz v ňom. Tieto záznamy obsahujú vašu e-mailovú adresu a
+            predmet e-mailu a s vaším analytickým súhlasom sú prepojené s vaším
+            analytickým profilom. Všetky ostatné e-maily, napríklad odkazy na
+            prihlásenie a e-maily k rezerváciám, odosielame iba cez Resend.
           </>,
         ],
       },

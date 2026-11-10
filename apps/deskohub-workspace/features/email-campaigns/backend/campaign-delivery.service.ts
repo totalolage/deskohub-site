@@ -52,9 +52,10 @@ const deliveryStartBudget = Duration.seconds(120);
 /**
  * A run gives up this long after it starts, inside the queue consumer's
  * 300-second limit. Its slowest batch can outlast the remaining time: a
- * Dotypos read with every retry takes up to about 121 seconds, and a
- * provider request is made once and waits up to 10 seconds in production or
- * 30 seconds elsewhere.
+ * Dotypos read with every retry takes up to about 121 seconds, and a batch
+ * is requested once: in production its emails take up to 15 seconds at
+ * PostHog and those it passes on up to 10 more at Resend, and elsewhere
+ * Resend waits up to 30 seconds.
  */
 const deliveryRunDeadline = Duration.seconds(270);
 

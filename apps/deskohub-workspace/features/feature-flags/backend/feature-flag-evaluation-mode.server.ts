@@ -1,6 +1,6 @@
 import "server-only";
 
-import { loadPostHogFeatureFlagDefinitions } from "@deskohub/posthog/feature-flags/management";
+import { loadPostHogFeatureFlagDefinitions } from "@deskohub/analytics-posthog/feature-flags/management";
 import { Effect } from "effect";
 import { cacheLife } from "next/cache";
 import { env } from "@/env";

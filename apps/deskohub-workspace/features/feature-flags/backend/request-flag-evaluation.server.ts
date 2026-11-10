@@ -1,12 +1,12 @@
 import "server-only";
 
-import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
+import type { PostHogFeatureFlagOverrides } from "@deskohub/analytics-posthog/feature-flags";
 import {
   PostHogFeatureFlagEvaluationError,
   type PostHogFeatureFlagSubject,
   type TypedPostHogFeatureFlagEvaluationSnapshot,
-} from "@deskohub/posthog/feature-flags/node";
-import type { PostHogDistinctId } from "@deskohub/posthog/identifiers";
+} from "@deskohub/analytics-posthog/feature-flags/node";
+import type { PostHogDistinctId } from "@deskohub/analytics-posthog/identifiers";
 import { Cache, Deferred, Effect, Exit } from "effect";
 import {
   type PostHogFeatureFlagDefinitions,

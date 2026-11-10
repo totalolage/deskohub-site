@@ -15,9 +15,10 @@ const environmentFields = {
   ...workspaceClientEnvSchema.fields,
 };
 
-// The preloaded test environment plus a synthetic Resend key, which deployed
-// environments require but the test process runs without, is a valid
-// baseline; each case overrides only the variables it is about.
+// The preloaded test environment plus synthetic Resend and PostHog email
+// secrets, which deployed environments require but the test process runs
+// without, is a valid baseline; each case overrides only the variables it is
+// about.
 const workspaceRuntimeEnv = (
   overrides: Partial<Record<keyof WorkspaceRuntimeEnv, string | undefined>>
 ): WorkspaceRuntimeEnv => ({
@@ -128,6 +129,26 @@ describe("workspace environment schemas", () => {
         VERCEL_ENV: "development",
       })
     ).toEqual([]);
+  });
+
+  test("lets every environment, production included, run without PostHog email secrets", () => {
+    // Production deploys before PostHog email is set up; campaign email then
+    // goes through Resend alone and nothing polls PostHog.
+    for (const VERCEL_ENV of [
+      "production",
+      "preview",
+      "development",
+    ] as const) {
+      for (const secret of [undefined, "   "]) {
+        expect(
+          invalidVariables({
+            POSTHOG_EMAIL_SECRET_KEY: secret,
+            POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET: secret,
+            VERCEL_ENV,
+          })
+        ).toEqual([]);
+      }
+    }
   });
 
   test("requires valid Better Auth secrets in production and accepts rotation", () => {

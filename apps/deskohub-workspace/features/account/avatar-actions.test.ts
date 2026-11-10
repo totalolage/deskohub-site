@@ -2,7 +2,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
+import { PostHogFeatureFlagEvaluationError } from "@deskohub/analytics-posthog/feature-flags/node";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { m } from "@/features/i18n";

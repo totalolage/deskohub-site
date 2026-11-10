@@ -124,3 +124,10 @@ test("triggers each queue topic's route, and only those", async () => {
     expect(await Bun.file(new URL(route, import.meta.url)).exists()).toBe(true);
   }
 });
+
+test("polls PostHog email delivery statuses every 15 minutes", () => {
+  expect(vercelConfig.crons).toContainEqual({
+    path: "/api/cron/workspace/posthog-email-deliveries",
+    schedule: "*/15 * * * *",
+  });
+});

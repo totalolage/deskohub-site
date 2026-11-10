@@ -1,7 +1,7 @@
 import {
   PostHogDistinctId,
   PostHogSessionId,
-} from "@deskohub/posthog/identifiers";
+} from "@deskohub/analytics-posthog/identifiers";
 import { Effect, Option, Schema } from "effect";
 import { type CookieStore, cookieStoreFromHeader } from "posthog-node";
 import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";

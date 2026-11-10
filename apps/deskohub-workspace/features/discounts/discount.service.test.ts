@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
+import { PostHogFeatureFlagEvaluationError } from "@deskohub/analytics-posthog/feature-flags/node";
 import { DotyposUnavailable } from "@deskohub/dotypos";
-import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
 import {
   type Context,
   Deferred,

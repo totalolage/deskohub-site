@@ -301,7 +301,7 @@ const operatingRulesSections: LegalSection[] = [
 
 const legalDocuments = {
   "privacy-policy": {
-    updatedAt: "8. November 2026",
+    updatedAt: "10. November 2026",
     sections: [
       {
         heading: "1. Verantwortlicher",
@@ -586,6 +586,11 @@ const legalDocuments = {
             Messzwecke erforderlich ist.
           </>,
           <>
+            PostHog speichert den Zustellstatus jeder Kampagnen-E-Mail etwa 30
+            Tage lang. Die in Abschnitt 6 beschriebenen Aufzeichnungen zu
+            Kampagnen-E-Mails speichern wir wie andere Analysedaten.
+          </>,
+          <>
             Die Aufzeichnung Ihrer Marketing-Einwilligung, einschließlich ihres
             Widerrufs, speichern wir bei Ihrem Kundendatensatz, damit wir
             nachweisen können, wie Sie sich entschieden haben.
@@ -621,9 +626,21 @@ const legalDocuments = {
             verlangt haben.
           </>,
           <>
-            Wenn wir künftig Marketingnachrichten versenden, kann unser
-            E-Mail-Dienstleister in unserem Namen die für ihren Versand
-            erforderlichen Kontakt- und Zustelldaten verarbeiten.
+            Die E-Mails unserer E-Mail-Kampagnen, einschließlich
+            Marketing-E-Mails, versenden wir über unseren Analysedienstleister
+            PostHog Inc. mit dessen EU Cloud, deren Daten in Frankfurt am Main,
+            Deutschland, gespeichert werden. Kann PostHog eine E-Mail nicht
+            versenden, versendet sie stattdessen unser E-Mail-Dienstleister
+            Resend. Für jede Kampagnen-E-Mail erhält PostHog Ihre E-Mail-Adresse
+            sowie Betreff und Inhalt der E-Mail. PostHog zeichnet außerdem auf,
+            wann die E-Mail versendet, zugestellt oder als unzustellbar
+            zurückgesandt wurde, wann ihre Zustellung fehlgeschlagen ist oder
+            blockiert wurde und wann Sie sich abmelden, die E-Mail öffnen oder
+            einen Link darin anklicken. Diese Aufzeichnungen enthalten Ihre
+            E-Mail-Adresse und den Betreff und werden mit Ihrer
+            Analyse-Einwilligung mit Ihrem Analyseprofil verknüpft. Alle anderen
+            E-Mails, zum Beispiel Anmeldelinks und Reservierungs-E-Mails,
+            versenden wir ausschließlich über Resend.
           </>,
         ],
       },

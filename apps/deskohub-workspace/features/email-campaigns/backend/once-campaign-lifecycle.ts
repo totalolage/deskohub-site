@@ -159,6 +159,7 @@ const retry = Effect.fn("OnceCampaignLifecycle.retry")(function* (input: {
     .set({
       deliveryAttempt: send!.deliveryAttempt,
       status: "pending",
+      failureCode: null,
       statusUpdatedAt: now,
     })
     .where(

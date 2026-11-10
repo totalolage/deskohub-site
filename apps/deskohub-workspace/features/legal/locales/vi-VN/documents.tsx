@@ -298,7 +298,7 @@ const operatingRulesSections: LegalSection[] = [
 
 const legalDocuments = {
   "privacy-policy": {
-    updatedAt: "8 tháng 11, 2026",
+    updatedAt: "10 tháng 11, 2026",
     sections: [
       {
         heading: "1. Bên Kiểm soát dữ liệu cá nhân",
@@ -578,6 +578,11 @@ const legalDocuments = {
             lường đã nêu.
           </>,
           <>
+            PostHog lưu trạng thái gửi của từng email chiến dịch trong khoảng 30
+            ngày. Chúng tôi lưu trữ các bản ghi về email chiến dịch được mô tả
+            tại mục 6 như các dữ liệu phân tích khác.
+          </>,
+          <>
             Chúng tôi lưu bản ghi về sự đồng ý nhận thông tin tiếp thị của Quý
             khách, bao gồm cả việc rút lại sự đồng ý, cùng với bản ghi khách
             hàng của Quý khách, để có thể chứng minh lựa chọn của Quý khách.
@@ -612,9 +617,20 @@ const legalDocuments = {
             yêu cầu như vậy.
           </>,
           <>
-            Nếu trong tương lai chúng tôi gửi thông tin tiếp thị, nhà cung cấp
-            dịch vụ email của chúng tôi có thể thay mặt chúng tôi xử lý thông
-            tin liên hệ và dữ liệu gửi thư cần thiết để gửi các thông tin đó.
+            Chúng tôi gửi các email trong các chiến dịch email của mình, bao gồm
+            email tiếp thị, thông qua nhà cung cấp dịch vụ phân tích của chúng
+            tôi, PostHog Inc., sử dụng dịch vụ EU Cloud của công ty này với dữ
+            liệu được lưu trữ tại Frankfurt, Đức. Nếu PostHog không thể gửi một
+            email, nhà cung cấp dịch vụ email của chúng tôi, Resend, sẽ gửi
+            email đó thay thế. Đối với mỗi email chiến dịch, PostHog nhận địa
+            chỉ email của Quý khách cùng tiêu đề và nội dung của email. PostHog
+            cũng ghi lại thời điểm email được gửi đi, được chuyển đến, bị trả
+            lại, gửi không thành công hoặc bị chặn, cũng như thời điểm Quý khách
+            hủy đăng ký, mở email hoặc nhấp vào một liên kết trong email. Các
+            bản ghi này bao gồm địa chỉ email của Quý khách và tiêu đề email và,
+            khi có sự đồng ý phân tích của Quý khách, được gắn vào hồ sơ phân
+            tích của Quý khách. Chúng tôi chỉ gửi tất cả các email khác, chẳng
+            hạn liên kết đăng nhập và email về đặt chỗ, thông qua Resend.
           </>,
         ],
       },

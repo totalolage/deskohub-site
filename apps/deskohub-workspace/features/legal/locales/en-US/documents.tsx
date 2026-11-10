@@ -299,7 +299,7 @@ const operatingRulesSections: LegalSection[] = [
 
 const legalDocuments = {
   "privacy-policy": {
-    updatedAt: "8 November 2026",
+    updatedAt: "10 November 2026",
     sections: [
       {
         heading: "1. Controller",
@@ -548,6 +548,11 @@ const legalDocuments = {
             long as necessary for the stated measurement purposes.
           </>,
           <>
+            PostHog keeps the delivery status of each campaign email for about
+            30 days. The campaign email records described in section 6 are kept
+            like other analytics data.
+          </>,
+          <>
             We keep the record of your marketing consent, including any
             withdrawal, with your customer record so that we can show what you
             chose.
@@ -580,9 +585,17 @@ const legalDocuments = {
             it.
           </>,
           <>
-            If we send marketing communications in the future, our email
-            delivery provider may process the contact and delivery information
-            needed to send them on our behalf.
+            We send the emails in our email campaigns, including marketing
+            emails, through our analytics provider, PostHog Inc., using its EU
+            Cloud with data hosted in Frankfurt, Germany. If PostHog cannot send
+            an email, our email delivery provider, Resend, sends it instead. For
+            each campaign email, PostHog receives your email address and the
+            email's subject and content. It also records when the email is sent,
+            delivered, bounced, failed, or blocked, and when you unsubscribe,
+            open it, or click a link in it. These records include your email
+            address and the subject and, with your analytics consent, are linked
+            to your analytics profile. We send all other emails, such as sign-in
+            links and reservation emails, only through Resend.
           </>,
         ],
       },

@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, test } from "bun:test";
-import { PostHogProjectId } from "@deskohub/posthog/identifiers";
+import { PostHogProjectId } from "@deskohub/analytics-posthog/identifiers";
 import type { AnyValue } from "@opentelemetry/api-logs";
 import { Duration, Effect, Layer, Option, Redacted } from "effect";
 import {

@@ -1,12 +1,12 @@
 import type {
   PostHogFeatureFlagOverrides,
   PostHogFeatureFlagSnapshot,
-} from "@deskohub/posthog/feature-flags";
+} from "@deskohub/analytics-posthog/feature-flags";
 import {
   type PostHogFeatureFlagDefinition,
   type PostHogFeatureFlagError,
   postHogFeatureFlagFailureLogFields,
-} from "@deskohub/posthog/feature-flags/management";
+} from "@deskohub/analytics-posthog/feature-flags/management";
 import { Clock, Duration, Effect } from "effect";
 import {
   type PostHogFeatureFlagDefinitions,

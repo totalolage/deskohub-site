@@ -37,7 +37,7 @@ Paths are under `apps/deskohub-workspace/`.
 | Hold cleanup | `features/checkout/backend/holds/`, queue `app/api/queues/workspace/reservation-hold-cleanup`, daily cron `app/api/cron/workspace/reservation-holds` |
 | Dotypos hold release (live-status rule, cancel, failure marker) shared by supersession, agent rotated holds, hold cleanup, and late payment | `features/checkout/backend/holds/dotypos-hold-release.service.ts` |
 | Paid fulfillment | `features/checkout/backend/fulfillment/reservation-fulfillment.service.ts`, trigger adapters `paid-fulfillment-triggers.ts` for queue `app/api/queues/workspace/paid-fulfillment` and daily cron `app/api/cron/workspace/paid-fulfillment` |
-| Email delivery webhook | `app/api/webhooks/resend/route.ts` composes the ingress `shared/backend/email/delivery-reports.ts` with the handlers `customerAccessDeliveryReports` (`features/checkout/backend/fulfillment/reservation-delivery-reports.ts`; `ReservationFulfillment.recordDelivery` applies) and `campaignDeliveryReports` |
+| Email delivery webhook | `app/api/webhooks/resend/route.ts` composes the ingress `shared/backend/email/delivery-reports.ts` with the handlers `customerAccessDeliveryReports` (`features/checkout/backend/fulfillment/reservation-delivery-reports.ts`; `ReservationFulfillment.recordDelivery` applies) and `campaignDeliveryReports`. PostHog-sent campaign mail reports through `app/api/webhooks/posthog/route.ts` and the `posthog-email-deliveries` cron, which poll PostHog's status API into the same handlers (`deskohub-workspace-operations` skill, `references/posthog-email-delivery.md`) |
 
 Cron schedules are in `vercel.json`. Queue payloads are versionless; evolve their strict decoders directly and never add `schemaVersion`.
 

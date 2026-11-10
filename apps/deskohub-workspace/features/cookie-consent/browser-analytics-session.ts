@@ -1,5 +1,5 @@
-import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
-import type { PostHogClientSource } from "@deskohub/posthog/feature-flags/react";
+import type { PostHogFeatureFlagOverrides } from "@deskohub/analytics-posthog/feature-flags";
+import type { PostHogClientSource } from "@deskohub/analytics-posthog/feature-flags/react";
 import type { BeforeSendFn, PostHog } from "posthog-js";
 import {
   getAnalyticsDotyposCustomerId,

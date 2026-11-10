@@ -1,7 +1,7 @@
 import {
   getPostHogPersonDeletionWorstCase,
   type PostHogPersonsConfigInput,
-} from "@deskohub/posthog/persons";
+} from "@deskohub/analytics-posthog/persons";
 import { Context, Duration, Layer, Option, Redacted } from "effect";
 import { env } from "@/env";
 import {

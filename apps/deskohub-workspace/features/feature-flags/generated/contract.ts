@@ -1,4 +1,4 @@
-import { definePostHogFeatureFlags } from "@deskohub/posthog/feature-flags";
+import { definePostHogFeatureFlags } from "@deskohub/analytics-posthog/feature-flags";
 
 /** Generated from PostHog feature flag definitions. Do not edit manually. */
 export const postHogFeatureFlags = definePostHogFeatureFlags<

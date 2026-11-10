@@ -36,7 +36,7 @@ The sync writes the contract when it changed and the snapshot every time. The ta
 
 Overrides win over every source. Missing management configuration skips the classification entirely: only the overrides are constant, and the snapshot isn't used, since it stands in for a failed read, not for configuration. Every source is shared with the `publicContent` profile, so a failed refresh is retried on the next revalidation. List failures log `failureCode` (the failed step, such as `StatusCodeError`, `TransportError` or `Timeout`) and `httpStatus` through `postHogFeatureFlagFailureLogFields`, since logs redact the provider's error text. PostHog's private API rate limits apply per personal API key, so every warm server instance of every deployment shares one budget for this list request, made once per revalidation. If throttling shows up, give the classification its own longer lifetime instead of changing `publicContent`.
 
-`getConstantEnabledValue` in `packages/posthog/src/feature-flags/definitions.ts` holds these rules.
+`getConstantEnabledValue` in `packages/analytics-posthog/src/feature-flags/definitions.ts` holds these rules.
 
 `isEnabled` returns a constant directly. `constantValue` returns only a constant, as an `Option`, and never reads the request or calls PostHog. `evaluateFlags` returns constants locally only when every requested flag is constant. Never infer constancy from an evaluated value.
 

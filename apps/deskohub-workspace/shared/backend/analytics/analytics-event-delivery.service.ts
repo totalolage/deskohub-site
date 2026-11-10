@@ -3,7 +3,7 @@ import "server-only";
 import type {
   PostHogDistinctId,
   PostHogEventId,
-} from "@deskohub/posthog/identifiers";
+} from "@deskohub/analytics-posthog/identifiers";
 import { waitUntil } from "@vercel/functions";
 import { Context, Effect, Layer } from "effect";
 import { PostHog } from "posthog-node";

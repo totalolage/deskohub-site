@@ -437,3 +437,102 @@ describe("ProviderRetryPolicy operation bounds", () => {
     ).toBe(false);
   });
 });
+
+describe("ProviderRetryPolicy requested delays", () => {
+  class ProviderBusy extends Data.TaggedError("ProviderBusy")<{
+    readonly retryAfter?: Duration.Duration;
+  }> {}
+
+  const requestedDelayPolicy = ProviderRetryPolicy.make({
+    label: "Provider",
+    baseDelay: "1 second",
+    maxRetries: 2,
+  });
+  const retryHonoringRetryAfter = requestedDelayPolicy.retryWhileHonoringDelay(
+    (failure: ProviderBusy) => failure._tag === "ProviderBusy",
+    {
+      requestedDelay: (failure) => failure.retryAfter,
+      maxRequestedDelay: "30 seconds",
+    }
+  );
+
+  /** An attempt that fails busy with `retryAfter` and counts its starts. */
+  const busyAttempt = (
+    attempts: Ref.Ref<number>,
+    retryAfter: Duration.Duration | undefined
+  ) =>
+    Ref.update(attempts, (count) => count + 1).pipe(
+      Effect.andThen(Effect.fail(new ProviderBusy({ retryAfter })))
+    );
+
+  /** Starts of the attempt after `elapsed` of test-clock time. */
+  const attemptsAfter = (
+    retryAfter: Duration.Duration | undefined,
+    elapsed: Duration.Input
+  ) =>
+    run(
+      Effect.gen(function* () {
+        const attempts = yield* Ref.make(0);
+        const fiber = yield* Effect.forkChild(
+          busyAttempt(attempts, retryAfter).pipe(
+            retryHonoringRetryAfter,
+            withJitterAt(0.5)
+          )
+        );
+        yield* TestClock.adjust(elapsed);
+        return {
+          attempts: yield* Ref.get(attempts),
+          finished: fiber.pollUnsafe() !== undefined,
+        };
+      })
+    );
+
+  test("waits out a requested delay longer than the backoff", async () => {
+    // Backoff under neutral jitter is 1 s then 2 s; Retry-After asks 10 s.
+    expect(await attemptsAfter(Duration.seconds(10), "9999 millis")).toEqual({
+      attempts: 1,
+      finished: false,
+    });
+    expect(await attemptsAfter(Duration.seconds(10), "10 seconds")).toEqual({
+      attempts: 2,
+      finished: false,
+    });
+    expect(await attemptsAfter(Duration.seconds(10), "20 seconds")).toEqual({
+      attempts: 3,
+      finished: true,
+    });
+  });
+
+  test("keeps the backoff when the requested delay is shorter or absent", async () => {
+    expect(await attemptsAfter(undefined, "1 second")).toEqual({
+      attempts: 2,
+      finished: false,
+    });
+    expect(await attemptsAfter(Duration.millis(10), "3 seconds")).toEqual({
+      attempts: 3,
+      finished: true,
+    });
+  });
+
+  test("gives up at once when the provider asks for more than the longest honoured delay", async () => {
+    expect(await attemptsAfter(Duration.seconds(31), "0 millis")).toEqual({
+      attempts: 1,
+      finished: true,
+    });
+  });
+
+  test("bounds the backoff by the longest honoured delay per retry", () => {
+    // max(1.2 s, 30 s) + max(2.4 s, 30 s)
+    expect(
+      Duration.toMillis(
+        requestedDelayPolicy.worstCaseBackoffHonoringDelay("30 seconds")
+      )
+    ).toBe(60_000);
+    // max(1.2 s, 2 s) + max(2.4 s, 2 s)
+    expect(
+      Duration.toMillis(
+        requestedDelayPolicy.worstCaseBackoffHonoringDelay("2 seconds")
+      )
+    ).toBe(4400);
+  });
+});

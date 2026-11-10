@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
+import type { PostHogFeatureFlagOverrides } from "@deskohub/analytics-posthog/feature-flags";
 import { Deferred, Effect, Exit, Fiber, Layer } from "effect";
 import type { IWorkspaceFeatureFlagService } from "@/features/feature-flags/backend/workspace-feature-flag.service";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";

@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
+import { PostHogFeatureFlagEvaluationError } from "@deskohub/analytics-posthog/feature-flags/node";
 import { Effect } from "effect";
 import { runReactServerFixture } from "@/shared/testing/react-server-fixture.test-utils";
 import type { GlobalRelease } from "./global-release";

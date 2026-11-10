@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   PostHogFeatureFlagEvaluationError,
   type PostHogFeatureFlagSubject,
-} from "@deskohub/posthog/feature-flags/node";
-import { PostHogDistinctId } from "@deskohub/posthog/identifiers";
+} from "@deskohub/analytics-posthog/feature-flags/node";
+import { PostHogDistinctId } from "@deskohub/analytics-posthog/identifiers";
 import {
   Clock,
   type Context,

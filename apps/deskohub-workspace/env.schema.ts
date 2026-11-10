@@ -1,6 +1,6 @@
+import { PostHogProjectId } from "@deskohub/analytics-posthog/identifiers";
 import { dotyposApiTimeoutDefaultMilliseconds } from "@deskohub/dotypos/api-timeout";
 import { igloohomeApiTimeoutMaximumMilliseconds } from "@deskohub/igloohome/config";
-import { PostHogProjectId } from "@deskohub/posthog/identifiers";
 import { Effect, Schema } from "effect";
 import {
   optionalStringSchema,
@@ -228,6 +228,8 @@ export const workspaceServerEnvSchema = Schema.Struct({
     postHogFeatureFlagOverridesSchema
   ),
   POSTHOG_INGEST_HOST: urlEnvSchema,
+  POSTHOG_EMAIL_SECRET_KEY: optionalStringSchema,
+  POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET: optionalStringSchema,
   // Which deployments export server logs to PostHog: "production-only" (the
   // default when unset) or "always". Set "always" as a branch-scoped Vercel
   // Preview variable to read one preview's logs in PostHog; it is read at

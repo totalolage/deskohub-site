@@ -126,6 +126,11 @@ export class WebhookRefusal extends Data.TaggedError("WebhookRefusal")<{
   readonly publicMessage?: string;
   /** A stable code for the response and logs, when the provider has one. */
   readonly code?: string;
+  /**
+   * `logs-only` keeps the code out of the response, for codes that would tell
+   * an unauthenticated caller how this deployment is configured.
+   */
+  readonly codeVisibility?: "response-and-logs" | "logs-only";
   /** A public detail the response carries as `message`. */
   readonly publicDetail?: string;
   /** Delivery identifiers for the logs, never payload data. */
@@ -194,7 +199,7 @@ const respondToRefusal = Effect.fn("webhookRoute.respondToRefusal")(function* (
   return NextResponse.json(
     {
       error: refusal.publicMessage ?? "Webhook processing failed",
-      code,
+      code: refusal.codeVisibility === "logs-only" ? undefined : code,
       message: refusal.publicDetail,
     },
     { status: webhookResponseStatus(disposition) }

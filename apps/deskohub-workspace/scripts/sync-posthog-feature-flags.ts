@@ -4,12 +4,12 @@ import {
   generatePostHogFeatureFlagSnapshot,
   PostHogFeatureFlagError,
   type PostHogFeatureFlagSyncResult,
-} from "@deskohub/posthog/feature-flags/codegen";
+} from "@deskohub/analytics-posthog/feature-flags/codegen";
 import {
   listPostHogFeatureFlagDefinitions,
   postHogFeatureFlagFailureLogFields,
-} from "@deskohub/posthog/feature-flags/management";
-import { PostHogProjectId } from "@deskohub/posthog/identifiers";
+} from "@deskohub/analytics-posthog/feature-flags/management";
+import { PostHogProjectId } from "@deskohub/analytics-posthog/identifiers";
 import { Effect, Schema } from "effect";
 import { postHogFeatureFlags } from "@/features/feature-flags/generated/contract";
 import { runStandaloneWorkspaceEffect } from "@/shared/backend/standalone-workspace-effect";

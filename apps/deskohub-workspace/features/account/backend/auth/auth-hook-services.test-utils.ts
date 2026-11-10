@@ -1,4 +1,4 @@
-import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
+import { PostHogFeatureFlagEvaluationError } from "@deskohub/analytics-posthog/feature-flags/node";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
