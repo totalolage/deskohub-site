@@ -363,8 +363,9 @@ Better Auth's public delete endpoint is the only identity-deletion path:
    4. tombstones the durable customer account (`deleted_at`), last, so
       reservations it authored keep their author. A retry keeps the first
       deletion instant.
-3. Any retryable provider failure throws before Better Auth removes the
-   identity rows, so deletion stays retryable. The link row goes by cascade;
+3. Any retryable provider failure, and a section that can't take the lock
+   or find the account (`CustomerAccountAccessError`), throws before Better
+   Auth removes the identity rows, so deletion stays retryable. The link row goes by cascade;
    the customer account row stays.
 
 The marker blocks profile, reservation, checkout, and resolver activity but
