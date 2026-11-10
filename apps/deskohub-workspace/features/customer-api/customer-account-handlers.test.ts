@@ -1215,11 +1215,12 @@ const deletionPending = {
 
 describe("syncAnalyticsConsent", () => {
   const syncAnalyticsConsent = (
-    choice: { readonly analytics: boolean; readonly decidedAt: string } | null
+    choice: { readonly analytics: boolean; readonly decidedAt: string } | null,
+    locale = "en-US"
   ): CustomerApiCall => ({
     method: "POST",
     path: "/account/analytics-consent",
-    body: { choice, locale: "en-US" },
+    body: { choice, locale },
   });
   const acceptingApp = syncAnalyticsConsent({
     analytics: true,
@@ -1250,6 +1251,48 @@ describe("syncAnalyticsConsent", () => {
         decidedAt: "2026-11-02T09:30:00Z",
       },
     ]);
+  });
+
+  test("mirrors a choice made in a locale added after Czech and English in that locale", async () => {
+    const { mirrored, services } = analyticsConsentServices();
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest(
+        syncAnalyticsConsent(
+          { analytics: false, decidedAt: "2026-11-02T09:30:00.000Z" },
+          "sk-SK"
+        )
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(
+      mirrored.map(({ decision, locale, source }) => ({
+        decision,
+        locale,
+        source,
+      }))
+    ).toEqual([
+      { decision: "withdraw", locale: "sk-SK", source: "app_mirror" },
+    ]);
+  });
+
+  test("refuses a locale the Workspace doesn't serve, mirroring nothing", async () => {
+    const { mirrored, services } = analyticsConsentServices();
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest(
+        syncAnalyticsConsent(
+          { analytics: true, decidedAt: "2026-11-02T09:30:00.000Z" },
+          "fr-FR"
+        )
+      )
+    );
+
+    expect(response.status).toBe(400);
+    expect(mirrored).toEqual([]);
   });
 
   test("answers the account's withdrawal the accepting app didn't outrank, at its instant to the millisecond", async () => {
@@ -1408,10 +1451,13 @@ describe("getAnalyticsPreference", () => {
 });
 
 describe("saveAnalyticsPreference", () => {
-  const saveAnalyticsPreference = (granted: boolean): CustomerApiCall => ({
+  const saveAnalyticsPreference = (
+    granted: boolean,
+    locale = "en-US"
+  ): CustomerApiCall => ({
     method: "PUT",
     path: "/account/analytics-preference",
-    body: { granted, locale: "en-US" },
+    body: { granted, locale },
   });
 
   testCustomerEndpointGuards(saveAnalyticsPreference(false));
@@ -1438,6 +1484,20 @@ describe("saveAnalyticsPreference", () => {
       },
     ]);
     expect(anonymised).toEqual([]);
+  });
+
+  test("records a decision made in a locale added after Czech and English in that locale", async () => {
+    const { recorded, services } = analyticsConsentServices();
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest(saveAnalyticsPreference(true, "uk-UA"))
+    );
+
+    expect(response.status).toBe(200);
+    expect(
+      recorded.map(({ decision, locale }) => ({ decision, locale }))
+    ).toEqual([{ decision: "grant", locale: "uk-UA" }]);
   });
 
   test("records a withdrawal and requests the anonymisation of the account's PostHog person", async () => {

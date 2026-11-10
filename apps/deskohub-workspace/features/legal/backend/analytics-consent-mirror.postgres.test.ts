@@ -9,7 +9,9 @@ import { accountAnalyticsConsentDecisions } from "@/db/schema";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import type { CustomerAccountId } from "@/features/account/customer-account";
+import type { Locale } from "@/features/i18n";
 import { getConsentBannerRevision } from "@/features/legal/consent-banner-revision";
+import { getLegalDocumentVersion } from "@/features/legal/document-version";
 import { CurrentWorkspaceRequestHeaders } from "@/shared/backend/workspace-request-context";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -43,11 +45,12 @@ const newAccount = () =>
     workspaceFixtures(testDatabase!.db).account("analytics-mirror")
   ).then(({ accountId }) => accountId);
 
-/** Records the account's decision from preferences at `at`. */
+/** Records the account's decision from preferences at `at`, in `locale`. */
 const decideAt = (
   accountId: CustomerAccountId,
   at: string,
-  decision: "grant" | "withdraw"
+  decision: "grant" | "withdraw",
+  locale: Locale = "cs-CZ"
 ) =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -55,7 +58,7 @@ const decideAt = (
       return yield* ledger.record({
         accountId,
         decision,
-        locale: "cs-CZ",
+        locale,
         source: "preference",
       });
     }).pipe(
@@ -191,21 +194,35 @@ const storedDecisionsOf = (accountId: CustomerAccountId) =>
     }))
   );
 
+/** The locale and privacy notice of the account's stored decisions, oldest first. */
+const storedNoticesOf = (accountId: CustomerAccountId) =>
+  Effect.runPromise(
+    testDatabase!.db
+      .select({
+        locale: accountAnalyticsConsentDecisions.locale,
+        documentHash: accountAnalyticsConsentDecisions.documentHash,
+      })
+      .from(accountAnalyticsConsentDecisions)
+      .where(eq(accountAnalyticsConsentDecisions.accountId, accountId))
+      .orderBy(asc(accountAnalyticsConsentDecisions.decidedAt))
+  );
+
 /**
  * Syncs the app's choice (none, or analytics accepted or declined at an ISO
- * instant, as the app stores it) for the signed-in account. Returns the
- * account decision the app takes, its instant as the customer API answers
- * it.
+ * instant, as the app stores it, in `locale`) for the signed-in account.
+ * Returns the account decision the app takes, its instant as the customer
+ * API answers it.
  */
 const syncApp = (
   accountId: CustomerAccountId,
-  choice?: { readonly analytics: boolean; readonly decidedAt: string }
+  choice?: { readonly analytics: boolean; readonly decidedAt: string },
+  locale: Locale = "en-US"
 ) =>
   Effect.runPromise(
     syncAppAnalyticsConsent({
       choice: Option.map(Option.fromUndefinedOr(choice), (made) => ({
         decision: made.analytics ? ("grant" as const) : ("withdraw" as const),
-        locale: "en-US" as const,
+        locale,
         decidedAt: Option.some(Temporal.Instant.from(made.decidedAt)),
       })),
     }).pipe(
@@ -348,6 +365,38 @@ describe.skipIf(!testDatabase)(
         })
       ).toBeUndefined();
       expect(await storedDecisionsOf(accountId)).toEqual(storedBefore);
+    });
+
+    test("an app choice in a locale added after Czech and English is stored under that locale's privacy notice", async () => {
+      const accountId = await newAccount();
+
+      await syncApp(
+        accountId,
+        { analytics: true, decidedAt: "2026-11-02T09:30:00.123Z" },
+        "sk-SK"
+      );
+
+      expect(await storedNoticesOf(accountId)).toEqual([
+        {
+          locale: "sk-SK",
+          documentHash: getLegalDocumentVersion("sk-SK", "privacy-policy"),
+        },
+      ]);
+    });
+
+    test("an app without a choice takes a grant given under the current privacy notice of a locale added after Czech and English", async () => {
+      const accountId = await newAccount();
+      await decideAt(
+        accountId,
+        "2026-11-05T10:00:00.123456Z",
+        "grant",
+        "de-DE"
+      );
+
+      expect(await syncApp(accountId)).toEqual({
+        decision: "grant",
+        decidedAt: "2026-11-05T10:00:00.123Z",
+      });
     });
 
     test("an app without a choice takes nothing from the account's withdrawal", async () => {
