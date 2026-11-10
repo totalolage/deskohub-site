@@ -248,7 +248,7 @@ describe.skipIf(!database)("prepareAgentPayState on Postgres", () => {
         Layer.mergeAll(
           ReferralReleaseGate.fromDecision(false),
           WithheldReferralService,
-          contacts
+          currentAccount
         )
       )
     ),

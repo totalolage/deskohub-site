@@ -102,19 +102,19 @@ mock.module(
   () => ({ ...authorizationModule, ReservationAuthorizationService })
 );
 
-const contactModule = await import(
-  "@/features/account/backend/customer-account-contact.service"
+const currentAccountModule = await import(
+  "@/features/account/backend/current-customer-account"
 );
-class CustomerAccountContactService extends Context.Service<
-  CustomerAccountContactService,
+class CurrentCustomerAccount extends Context.Service<
+  CurrentCustomerAccount,
   object
->()("CustomerAccountContactService") {
+>()("CurrentCustomerAccount") {
   static Live = Layer.succeed(this, {});
 }
-mock.module(
-  "@/features/account/backend/customer-account-contact.service",
-  () => ({ ...contactModule, CustomerAccountContactService })
-);
+mock.module("@/features/account/backend/current-customer-account", () => ({
+  ...currentAccountModule,
+  CurrentCustomerAccount,
+}));
 
 let signedOut = false;
 let signedOutReads = 0;

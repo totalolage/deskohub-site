@@ -3,6 +3,11 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { testLinkedAccount } from "@/features/account/backend/account-operations.test-utils";
+import {
+  peeking,
+  testPeekedStandings,
+} from "@/features/account/backend/current-customer-account.test-utils";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
@@ -34,7 +39,6 @@ const runSubmitReservation = async (options?: {
   const { BotProtectionServiceMock } = await import(
     "@/shared/backend/bot-protection/bot-protection.service.mock"
   );
-  const { CustomerAccountContactService } = await import("@/features/account");
   const { ReferralServiceMock } = await import(
     "@/features/referrals/referral.service.mock"
   );
@@ -53,17 +57,17 @@ const runSubmitReservation = async (options?: {
       })
     );
 
-  const contacts = Layer.mock(CustomerAccountContactService, {
-    currentAccount: Effect.succeed(
-      options?.bookerCustomerId === undefined
-        ? ({ status: "signed-out" } as const)
-        : ({
-            status: "linked",
-            accountId: "booker-account",
-            dotyposCustomerId: options.bookerCustomerId,
-          } as never)
-    ),
-  });
+  const currentAccount = peeking(
+    options?.bookerCustomerId === undefined
+      ? testPeekedStandings["signed out"]
+      : {
+          ...testPeekedStandings.linked,
+          account: {
+            ...testLinkedAccount,
+            dotyposCustomerId: options.bookerCustomerId as never,
+          },
+        }
+  );
   const referrals = ReferralServiceMock({
     hasSettledReferral: hasSettledReferral as never,
   });
@@ -77,7 +81,6 @@ const runSubmitReservation = async (options?: {
         Layer.succeed(CheckoutService, {
           createHostedPaymentCheckout,
         }),
-        contacts,
         referrals,
         ReferralReleaseGate.fromDecision(true),
         RememberedReferral.inMemory(cookie).pipe(
@@ -85,7 +88,7 @@ const runSubmitReservation = async (options?: {
             Layer.mergeAll(
               ReferralReleaseGate.fromDecision(true),
               referrals,
-              contacts
+              currentAccount
             )
           )
         )

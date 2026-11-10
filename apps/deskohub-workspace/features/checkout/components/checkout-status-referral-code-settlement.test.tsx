@@ -1,26 +1,20 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
-import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { testLinkedAccount } from "@/features/account/backend/account-operations.test-utils";
+import {
+  peeking,
+  testPeekedStandings,
+} from "@/features/account/backend/current-customer-account.test-utils";
 import type { CheckoutStatusKind } from "@/features/checkout/checkout-status-kind";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
-import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
-import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 
 mock.module("server-only", () => ({}));
 
-const booker = dotyposCustomerIdSchema.make("60111");
-const currentAccount = {
-  status: "linked" as const,
-  accountId: customerAccountIdSchema.make("account-1"),
-  dotyposCustomerId: booker,
-  email: reservationCustomerEmailSchema.make(testEmailAddress("booker")),
-};
+const booker = testLinkedAccount.dotyposCustomerId;
 
 const runSettlement = async (
   status: CheckoutStatusKind,
@@ -56,9 +50,7 @@ const runSettlement = async (
               ReferralServiceMock({
                 hasSettledReferral: hasSettledReferral as never,
               }),
-              Layer.mock(CustomerAccountContactService, {
-                currentAccount: Effect.succeed(currentAccount),
-              })
+              peeking(testPeekedStandings.linked)
             )
           )
         )

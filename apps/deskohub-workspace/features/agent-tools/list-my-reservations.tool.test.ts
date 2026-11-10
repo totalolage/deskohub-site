@@ -10,7 +10,10 @@ import {
   type CustomerReservationHistory,
   CustomerReservationHistoryService,
 } from "@/features/account";
+import { testCustomerSession } from "@/features/account/backend/account-operations.test-utils";
 import type { CustomerAccountId } from "@/features/account/customer-account";
+import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
+import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { inMemoryCustomerAgentCallServices } from "./agent-tools.test-utils";
 import { listMyReservationsTool } from "./list-my-reservations.tool";
 
@@ -34,16 +37,34 @@ const list = () =>
         Layer.merge(
           Layer.mock(CustomerReservationHistoryService, { load }),
           inMemoryCustomerAgentCallServices(({ accountId }) => ({
-            contact: {
-              currentLinkedAccount: Effect.sync(() =>
-                linked
+            currentAccount: {
+              peek: Effect.sync(() => {
+                const session = {
+                  ...testCustomerSession,
+                  accountId,
+                  email: reservationCustomerEmailSchema.make(
+                    testEmailAddress("list-my-reservations")
+                  ),
+                };
+                return linked
                   ? ({
-                      accountId,
-                      email: testEmailAddress("list-my-reservations"),
-                      ...linked,
-                    } as never)
-                  : null
-              ),
+                      kind: "linked",
+                      session,
+                      reviewMarker: "absent",
+                      account: {
+                        accountId,
+                        dotyposCustomerId: dotyposCustomerIdSchema.make(
+                          linked.dotyposCustomerId
+                        ),
+                      },
+                      autoLinked: false,
+                    } as const)
+                  : ({
+                      kind: "unlinked",
+                      session,
+                      reviewMarker: "absent",
+                    } as const);
+              }),
             },
           }))
         )

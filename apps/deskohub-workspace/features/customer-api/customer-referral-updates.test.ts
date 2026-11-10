@@ -1,19 +1,19 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
-import { CustomerAccountContactService } from "@/features/account";
-import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { testLinkedAccount } from "@/features/account/backend/account-operations.test-utils";
+import {
+  peeking,
+  testPeekedStandings,
+} from "@/features/account/backend/current-customer-account.test-utils";
 import { canonicalPromotionCodeSchema } from "@/features/discounts/contracts";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
-import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
-import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { CustomerReferralUpdates } from "./customer-referral-updates";
 
-const booker = dotyposCustomerIdSchema.make("60111");
+const booker = testLinkedAccount.dotyposCustomerId;
 const sentCode = "RFL12345";
 const acceptedCode = canonicalPromotionCodeSchema.make("RFLTYPED1");
 
@@ -44,16 +44,7 @@ const run = <A>(
           ReferralServiceMock({
             hasSettledReferral: () => Effect.succeed(options.settled ?? false),
           }),
-          Layer.mock(CustomerAccountContactService, {
-            currentAccount: Effect.succeed({
-              status: "linked",
-              accountId: customerAccountIdSchema.make("account-1"),
-              dotyposCustomerId: booker,
-              email: reservationCustomerEmailSchema.make(
-                testEmailAddress("booker")
-              ),
-            }),
-          })
+          peeking(testPeekedStandings.linked)
         )
       )
     )

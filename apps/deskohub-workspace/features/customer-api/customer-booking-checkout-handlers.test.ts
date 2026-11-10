@@ -9,7 +9,11 @@ import {
 } from "@deskohub/workspace-customer-api";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Cause, Effect, Layer } from "effect";
-import { CustomerAccountContactService } from "@/features/account";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
+import {
+  peeking,
+  testPeekedStandings,
+} from "@/features/account/backend/current-customer-account.test-utils";
 import {
   CheckoutError,
   CheckoutService,
@@ -503,7 +507,7 @@ describe("createCheckout", () => {
                       Layer.provide(
                         Layer.mergeAll(
                           ReferralServiceMock({}),
-                          Layer.mock(CustomerAccountContactService, {}),
+                          Layer.mock(CurrentCustomerAccount, {}),
                           Layer.succeed(ReferralReleaseGate, referral)
                         )
                       )
@@ -621,7 +625,7 @@ describe("applyCheckoutDiscountCode", () => {
                         Layer.provide(
                           Layer.mergeAll(
                             ReferralServiceMock({}),
-                            Layer.mock(CustomerAccountContactService, {}),
+                            Layer.mock(CurrentCustomerAccount, {}),
                             Layer.succeed(ReferralReleaseGate, referral)
                           )
                         )
@@ -1141,11 +1145,7 @@ describe("submitCheckout", () => {
                           ReferralServiceMock({
                             hasSettledReferral: () => Effect.succeed(true),
                           }),
-                          Layer.mock(CustomerAccountContactService, {
-                            currentAccount: Effect.succeed({
-                              status: "signed-out",
-                            }),
-                          }),
+                          peeking(testPeekedStandings["signed out"]),
                           ReferralReleaseGate.fromDecision(true)
                         )
                       )

@@ -14,6 +14,7 @@ import {
   type CustomerAccountAccessError,
   customerAccountIdSchema,
 } from "../customer-account";
+import { CurrentCustomerAccount } from "./current-customer-account";
 import { CustomerAccountContactService } from "./customer-account-contact.service";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import {
@@ -134,16 +135,26 @@ describe("a review account's booking contact", () => {
         CustomerAccountContactService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(CustomerAuthentication, {
-                currentUser: Effect.succeed({
-                  accountId,
-                  email,
-                  deletionRequested: false,
-                }),
-              } as never),
-              activeLinks,
-              Layer.mock(CustomerProfileService, {}),
-              reviewAccounts(review)
+              // The real standing over the review marker; it never enters
+              // the account section or reaches Dotypos.
+              CurrentCustomerAccount.Default.pipe(
+                Layer.provide(
+                  Layer.mergeAll(
+                    Layer.succeed(CustomerAuthentication, {
+                      currentUser: Effect.succeed({
+                        accountId,
+                        email,
+                        deletionRequested: false,
+                      }),
+                    } as never),
+                    activeLinks,
+                    Layer.mock(CustomerAccountSections, {}),
+                    unreachableDotypos,
+                    reviewAccounts(review)
+                  )
+                )
+              ),
+              Layer.mock(CustomerProfileService, {})
             )
           )
         )

@@ -19,7 +19,7 @@ import {
   RememberedReferral,
 } from "@/features/referrals/remembered-referral.service";
 import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
-import { CustomerAccountContactService } from "./backend/customer-account-contact.service";
+import { CurrentCustomerAccount } from "./backend/current-customer-account";
 import { CustomerAccountAccessError } from "./customer-account";
 
 const customerEmail = testEmailAddress("ada");
@@ -263,10 +263,7 @@ Object.assign(Referrals, {
 mock.module("@/features/referrals", () => ({ ReferralService: Referrals }));
 
 // Completion supplies its resolved customer, so settlement never reads a session.
-CustomerAccountContactService.Live = Layer.mock(
-  CustomerAccountContactService,
-  {}
-);
+CurrentCustomerAccount.Live = Layer.mock(CurrentCustomerAccount, {});
 // The remembered code lives in the request's referral cookie.
 const rememberedReferralCookie: InMemoryReferralCookie = {
   get value() {

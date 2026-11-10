@@ -1,21 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Layer } from "effect";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
+import { Effect } from "effect";
 import {
-  customerAccountIdSchema,
+  type PeekedStanding,
+  peeking,
+  type TestPeekedStandingLabel,
+  testPeekedStandingLabels,
+  testPeekedStandings,
+} from "@/features/account/backend/current-customer-account.test-utils";
+import {
+  type CustomerAccountAccessError,
   customerAccountUnavailable,
 } from "@/features/account/customer-account";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import {
   getReservationStatusSignInPath,
   isStatusViewerSignedOut,
 } from "./checkout-status-sign-in";
-
-type CurrentCustomerAccount = Effect.Success<
-  CustomerAccountContactService["Service"]["currentAccount"]
->;
 
 const orderId = workspaceReservationIdSchema.make("reservation-1");
 
@@ -47,38 +47,39 @@ describe("getReservationStatusSignInPath", () => {
 });
 
 describe("isStatusViewerSignedOut", () => {
-  const accountId = customerAccountIdSchema.make("auth-user-1");
-  const email = reservationCustomerEmailSchema.make(testEmailAddress("ada"));
-
-  const run = (
-    currentAccount: CustomerAccountContactService["Service"]["currentAccount"]
-  ) =>
+  const run = (standing: PeekedStanding | CustomerAccountAccessError) =>
     isStatusViewerSignedOut().pipe(
-      Effect.provide(
-        Layer.mock(CustomerAccountContactService, { currentAccount })
-      ),
+      Effect.provide(peeking(standing)),
       Effect.runPromise
     );
 
-  test("reads a signed-out session as signed out", async () => {
-    expect(await run(Effect.succeed({ status: "signed-out" }))).toBe(true);
-  });
+  // The status page's policy, one row per standing `peek` reports.
+  const signedOut: Record<TestPeekedStandingLabel, boolean> = {
+    "signed out": true,
+    // An unverified session isn't signed out.
+    unverified: false,
+    "awaiting deletion": true,
+    "awaiting deletion, review marker present": true,
+    "awaiting deletion, review marker unreadable": true,
+    "review account": false,
+    unlinked: false,
+    "unlinked, review marker unreadable": false,
+    linked: false,
+    "linked, review marker unreadable": false,
+    // An unreadable link isn't signed out.
+    "link unavailable": false,
+  };
 
-  test.each([
-    ["an unlinked", { status: "unlinked", accountId, email }],
-    [
-      "a linked",
-      { status: "linked", accountId, dotyposCustomerId: "60111", email },
-    ],
-  ] as const)("reads %s session as signed in", async (_label, account) => {
-    expect(await run(Effect.succeed(account as CurrentCustomerAccount))).toBe(
-      false
-    );
-  });
+  test.each(testPeekedStandingLabels)(
+    "answers the standing %s with its own sign-in policy",
+    async (label) => {
+      expect(await run(testPeekedStandings[label])).toBe(signedOut[label]);
+    }
+  );
 
   test("doesn't read an unreadable session as signed out", async () => {
     expect(
-      await run(Effect.fail(customerAccountUnavailable("account-link.read")))
+      await run(customerAccountUnavailable("authentication.session"))
     ).toBe(false);
   });
 });
