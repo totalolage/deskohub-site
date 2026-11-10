@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { testEmailAddress } from "@deskohub/test-email";
+import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, References } from "effect";
 import {
   type EmailBatchResult,
@@ -29,7 +29,8 @@ const config: EmailProviderConfig = {
   defaultFrom: { email: testEmailAddress("deskohub"), name: "Deskohub" },
 };
 
-const realRecipient = { email: "ada@example.com" };
+// A real destination, so the message goes through the provider chain.
+const realRecipient = { email: resendSimulatorAddress("delivered", "ada") };
 
 const message: EmailMessage = {
   from: undefined as never,
@@ -379,20 +380,22 @@ describe("attachments", () => {
 });
 
 describe("batch failover", () => {
+  const batchRecipient = (name: string) =>
+    resendSimulatorAddress("delivered", name);
   const recipients = ["accepted", "throttled", "invalid", "in-flight"].map(
     (name): EmailMessage => ({
       ...campaign,
-      to: { email: `${name}@example.com` },
+      to: { email: batchRecipient(name) },
     })
   );
   const firstAnswer = (sent: EmailMessage): Answer => {
     const [recipient] = [sent.to].flat();
     switch (recipient?.email) {
-      case "throttled@example.com":
+      case batchRecipient("throttled"):
         return providerLevel("posthog");
-      case "invalid@example.com":
+      case batchRecipient("invalid"):
         return messageLevel("posthog");
-      case "in-flight@example.com":
+      case batchRecipient("in-flight"):
         return new NetworkError({
           message: "key in flight",
           code: "http-409",
@@ -429,7 +432,7 @@ describe("batch failover", () => {
     ]);
     expect(second.batches).toHaveLength(1);
     expect(second.batches[0]!.messages.map((sent) => sent.to)).toEqual([
-      { email: "throttled@example.com" },
+      { email: batchRecipient("throttled") },
     ]);
     expect(second.batches[0]!.idempotencyKey).toMatch(
       /^batch-1:fallback:[0-9a-f]{16}$/
@@ -609,7 +612,7 @@ describe("delivery observer", () => {
     const logged = consoleLines.join("\n");
     expect(logged).toContain("Email provider fallback observed");
     expect(logged).toContain("Email delivery observed");
-    expect(logged).not.toContain("ada@example.com");
+    expect(logged).not.toContain(realRecipient.email);
     expect(logged).not.toContain("metadata-marker");
   });
 
@@ -821,7 +824,7 @@ describe("censorship", () => {
     expect(logged).toContain("http-429");
     expect(logged).not.toContain("raw quota detail");
     expect(logged).not.toContain("raw validation detail");
-    expect(logged).not.toContain("ada@example.com");
+    expect(logged).not.toContain(realRecipient.email);
     expect(logged).not.toContain("Hello");
   });
 });
