@@ -19,7 +19,7 @@ Read the reference for the task:
 - For a boolean release gate, only `true` is enabled. Explicit `false` is the ordinary off state; don't log it as an error. An omitted value means PostHog didn't evaluate the flag, for example because it's inactive: fail the gate closed and log the flag as unavailable.
 - When a release gate applies to one reservation family, dispatch exhaustively by `kind` so other families never evaluate the lookup.
 - Keep the one PostHog React provider in `app/[locale]/layout.tsx`. Don't add page- or feature-local providers. Consent-aware initialization and analytics rendering may suspend inside it so consent state doesn't gate cacheable navigation shells.
-- Only production evaluates flags remotely. Elsewhere a flag is on only when its classification makes it constant on or an override turns it on; enable one for a PR with a branch-scoped Preview override ([references/architecture.md](references/architecture.md), Remote evaluation only in production).
+- Only production evaluates flags remotely, on the server, in the browser, and in the mobile app. Elsewhere a flag is on only when its classification makes it constant on or an override turns it on; enable one for a PR with a branch-scoped Preview override ([references/architecture.md](references/architecture.md), Remote evaluation only in production).
 - Keep PostHog origins role-specific: `POSTHOG_API_HOST` is the server-only management and query origin, `POSTHOG_INGEST_HOST` is the direct server SDK and OTLP origin, and `NEXT_PUBLIC_POSTHOG_HOST` is the browser ingest proxy. Server clients never go through the public proxy.
 
 ## Page release gates

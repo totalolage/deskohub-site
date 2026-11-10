@@ -20,7 +20,10 @@ import {
   discardWorkspaceBrowserLogs,
   type WorkspaceBrowserLogRecord,
 } from "@/shared/browser/workspace-browser-logs";
-import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
+import {
+  byStage,
+  type DeploymentEnvironment,
+} from "@/shared/deployment/deployment-stage";
 import {
   createPostHogSessionClearCookieStrings,
   createPostHogSessionCookieStrings,
@@ -271,15 +274,27 @@ export function createBrowserAnalyticsSession(): BrowserAnalyticsSession {
     hasReadyConsent = true;
   };
 
+  // Previews, E2E runs and local development share production's PostHog
+  // project and its flag-request quota, so, as on the server, only production
+  // evaluates flags remotely. Elsewhere the SDK keeps flags disabled and makes
+  // no `/flags` request; overrides still apply locally.
+  const evaluatesFlagsRemotely = () =>
+    settings !== undefined &&
+    byStage(settings.posthogEnvironment, {
+      otherwise: false,
+      production: true,
+    });
+
   const resumeDelivery = (
     client: PostHog,
     identity: SettledAnalyticsAccountIdentity
   ) => {
+    const remoteFlags = evaluatesFlagsRemotely();
     client.set_config({
-      advanced_disable_feature_flags: false,
+      advanced_disable_feature_flags: !remoteFlags,
       tracing_headers: [window.location.hostname],
     });
-    client.reloadFeatureFlags();
+    if (remoteFlags) client.reloadFeatureFlags();
     capturePageviewIfNeeded();
     // Events captured while analytics was loading or paused follow the pageview.
     detachAnalyticsEvents ??= deliverAnalyticsEvents(
