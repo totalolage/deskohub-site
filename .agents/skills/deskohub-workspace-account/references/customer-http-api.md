@@ -237,7 +237,7 @@ Wiring: each request builds its operations from
 closes over the request's referral and office gates (their `…ForRun`
 layers) and its `CustomerReferralUpdates`, so the selection, the shared
 operation and the referral record share one decision per gate; preparation
-receives the gates through `payStatePreparationServicesWith`. Each operation
+provides the gates to `ReservationBooking.Live`. Each operation
 builds its own services when it runs: acceptance builds only the sealing
 keys, and services that can't be built answer 503. A checkout state the
 server fails to seal or sign also answers 503, never `expired`: only the
