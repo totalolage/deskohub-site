@@ -64,7 +64,7 @@ function ProfileForm({
 }) {
   const locale = useAppLocale();
   const router = useRouter();
-  const form = useProfileForm(account.profile);
+  const form = useProfileForm(account);
   const { inputs, invalidElsewhere } = useFocusFirstInvalid(
     form.state,
     identityFields

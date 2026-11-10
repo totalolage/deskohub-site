@@ -1,3 +1,4 @@
+import { isSupportedLocale } from "@deskohub/i18n/locale-registry";
 import {
   CurrentCustomerSession,
   CustomerAccessCodeUnavailable,
@@ -14,8 +15,7 @@ import {
   CustomerMarketingPreferencesRejected,
   type CustomerOrderStatus,
   type CustomerProfile,
-  CustomerProfileCompletionSave,
-  CustomerProfileSave,
+  type CustomerProfileSave,
   CustomerRateLimited,
   CustomerRequestOriginCheck,
   CustomerRequestRejected,
@@ -27,11 +27,13 @@ import {
   CustomerSessionRequired,
   customerApiClientHeader,
   type ProfileCompletionReferralOutcome,
+  profileCompletionSaveOf,
+  profileUpdateSaveOf,
   type SaveCustomerAnalyticsPreference,
   type SyncCustomerAnalyticsConsent,
   WorkspaceCustomerApi,
 } from "@deskohub/workspace-customer-api";
-import { Clock, Effect, Layer, Schema, Stream } from "effect";
+import { Clock, Effect, Layer, Stream } from "effect";
 import {
   HttpClient,
   HttpClientError,
@@ -267,17 +269,9 @@ const avatarUploadParts = (
     Effect.catchTag("MultipartError", () => Effect.succeed([]))
   );
 
-/**
- * The save a profile payload asks for, read as the Workspace's handlers read
- * it: the entered phone decoded to the phone number it holds. The payload
- * already passed the same rules, so a failure here is a defect.
- */
-const readProfileSave = <S extends Schema.Top>(schema: S) => {
-  const decode = Schema.decodeEffect(schema);
-  return (payload: S["Encoded"]) => decode(payload).pipe(Effect.orDie);
-};
-const readProfileUpdate = readProfileSave(CustomerProfileSave);
-const readProfileCompletion = readProfileSave(CustomerProfileCompletionSave);
+// The saved language the Workspace's session check reads with the session.
+const savedLocaleOf = ({ locale }: CustomerAccountState) =>
+  locale !== null && isSupportedLocale(locale) ? locale : null;
 
 // Dotypos stores a cleared phone as blank, which reads back as no phone.
 const storedProfile = (input: CustomerProfileSave): CustomerProfile => ({
@@ -366,7 +360,7 @@ const serverLayer = (workspace: FakeWorkspace) => {
           Effect.sync(() => accountView(workspace.data))
         )
         .handle("updateProfile", ({ payload }) =>
-          Effect.all([linkedAccount, readProfileUpdate(payload)]).pipe(
+          Effect.all([linkedAccount, profileUpdateSaveOf(payload)]).pipe(
             Effect.flatMap(([current, save]) =>
               update((data) => ({
                 ...data,
@@ -393,7 +387,7 @@ const serverLayer = (workspace: FakeWorkspace) => {
           ).pipe(Effect.as({ locale }))
         )
         .handle("completeProfile", ({ payload }) =>
-          Effect.flatMap(readProfileCompletion(payload), (save) =>
+          Effect.flatMap(profileCompletionSaveOf(payload), (save) =>
             Effect.suspend(
               (): Effect.Effect<
                 | {
@@ -758,6 +752,7 @@ const serverLayer = (workspace: FakeWorkspace) => {
           {
             accountId: workspace.data.accountId,
             email: workspace.data.account.email,
+            locale: savedLocaleOf(workspace.data.account),
           }
         );
         if (outcome === "transport-failure") return brokenConnection();

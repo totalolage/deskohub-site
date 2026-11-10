@@ -100,6 +100,7 @@ const server = HttpRouter.toWebHandler(
             return Effect.provideService(httpEffect, CurrentCustomerSession, {
               accountId: CustomerAccountId.make("account-1"),
               email: customerEmail,
+              locale: null,
             });
           })
         )

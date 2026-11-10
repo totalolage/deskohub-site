@@ -1,4 +1,7 @@
-import type { CustomerProfile } from "@deskohub/workspace-customer-api";
+import {
+  accountPhoneRegion,
+  type CustomerProfile,
+} from "@deskohub/workspace-customer-api";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { Atom } from "effect/unstable/reactivity";
@@ -23,6 +26,7 @@ import type {
 import type { ProfileFieldRefs } from "./profile-fields";
 import {
   currentDraft,
+  type EditedProfile,
   editedDraft,
   hasUnsavedChanges,
   type ProfileSubmitState,
@@ -35,27 +39,35 @@ import {
  * The shared profile draft for the Profile and Billing screens of a linked
  * account: its current values, whether it has unsaved changes, and its save.
  */
-export function useProfileForm(profile: CustomerProfile) {
+export function useProfileForm(account: {
+  readonly profile: CustomerProfile;
+  /** The account's saved language, whose phone region the Workspace reads. */
+  readonly locale: string | null;
+}) {
+  const edited: EditedProfile = {
+    profile: account.profile,
+    phoneRegion: accountPhoneRegion(account.locale),
+  };
   const [edits, setEdits] = useAtom(profileEditsAtom);
   const result = useAtomValue(saveProfileAtom);
   const save = useAtomSet(saveProfileAtom);
   const state = profileSubmitState(result);
-  const draft = currentDraft(edits, profile);
+  const draft = currentDraft(edits, edited);
   useSettledResultReset(saveProfileAtom);
   const change = (change: Partial<ProfileDraft>) => {
-    setEdits(editedDraft(edits, profile, change));
+    setEdits(editedDraft(edits, edited, change));
     // The last save's message and field problems no longer describe it.
     if (!result.waiting) save(Atom.Reset);
   };
   return {
     draft,
     state,
-    unsaved: hasUnsavedChanges(edits, profile),
+    unsaved: hasUnsavedChanges(edits, edited),
     setField: (field: ProfileTextField, value: string) =>
       change({ [field]: value }),
     setBillingKind: (billingKind: BillingChoice) => change({ billingKind }),
     discard: () => setEdits(Option.none()),
-    save: () => save(draft),
+    save: () => save({ draft, phoneRegion: edited.phoneRegion }),
   };
 }
 

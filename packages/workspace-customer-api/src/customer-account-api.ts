@@ -1,12 +1,14 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { Multipart } from "effect/unstable/http";
 import {
   HttpApiEndpoint,
+  HttpApiError,
   HttpApiGroup,
   HttpApiSchema,
 } from "effect/unstable/httpapi";
 import { CustomerLocale } from "./customer-locale";
 import {
+  accountProfileSchemas,
   CustomerProfile,
   CustomerProfileCompletionInput,
   CustomerProfileInput,
@@ -14,6 +16,7 @@ import {
   ProfileCompletionReferralOutcome,
 } from "./customer-profile";
 import {
+  CurrentCustomerSession,
   CustomerAccountId,
   CustomerServiceUnavailable,
   customerReferralCodeHeader,
@@ -274,6 +277,34 @@ const ProfileCompletionPayload = CustomerProfileCompletionInput.annotate({
   identifier: "CustomerProfileCompletionInput",
   parseOptions: customerInputParseOptions,
 });
+
+type AccountProfileSchemas = ReturnType<typeof accountProfileSchemas>;
+
+/**
+ * The save a profile payload asks for, as a handler reads it: its entered
+ * phone read in the phone region of the session's saved language and decoded
+ * to the phone number it holds. The payload carries the phone only as entered
+ * text, because the API reads it before it knows the account; a phone with no
+ * phone number in that region answers as the payload check does, with an
+ * empty 400.
+ */
+const profileSaveReader =
+  <S extends Schema.Top>(schemaOf: (schemas: AccountProfileSchemas) => S) =>
+  (payload: S["Encoded"]) =>
+    Effect.flatMap(CurrentCustomerSession, ({ locale }) =>
+      HttpApiError.HttpApiSchemaError.wrap(
+        "Payload",
+        Schema.decodeEffect(schemaOf(accountProfileSchemas(locale)))(payload)
+      )
+    ).pipe(Effect.orDie);
+
+/** The profile save an update's payload asks for (`profileSaveReader`). */
+export const profileUpdateSaveOf = profileSaveReader(({ save }) => save);
+
+/** The first-time completion a payload asks for (`profileSaveReader`). */
+export const profileCompletionSaveOf = profileSaveReader(
+  ({ completionSave }) => completionSave
+);
 
 /** The language to save on the account, as the web language switcher does. */
 const LocaleUpdatePayload = Schema.Struct({ locale: CustomerLocale }).annotate({

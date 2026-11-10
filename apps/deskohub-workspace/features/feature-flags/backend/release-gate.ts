@@ -34,6 +34,9 @@ export const ReleaseGate =
     flag: PostHogFeatureFlagKey
   ) =>
     class Gate extends Context.Service<Self, IReleaseGate>()(identifier) {
+      /** The flag that decides the gate. */
+      static readonly flag = flag;
+
       /** The provided gate's decision. */
       static readonly isOpen: Effect.Effect<boolean, never, Self> =
         Effect.flatMap(this, (gate) => gate.isOpen);
@@ -83,6 +86,7 @@ export const ReleaseGate =
 
 /** The class `ReleaseGate` declares for a feature's gate. */
 export interface ReleaseGateClass<Self> {
+  readonly flag: PostHogFeatureFlagKey;
   readonly isOpen: Effect.Effect<boolean, never, Self>;
   readonly Live: Layer.Layer<Self>;
   readonly fromDecision: (open: boolean) => Layer.Layer<Self>;
