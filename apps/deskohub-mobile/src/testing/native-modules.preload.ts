@@ -7,6 +7,17 @@ import { Component, createContext, useContext } from "react";
  * stand-ins for the parts the auth code touches: the platform, the app
  * scheme, and crypto backed by Node's.
  */
+// React Native's `StyleSheet.flatten`: nested arrays merged left to right,
+// falsy entries skipped.
+const flattenStyle = (style: unknown): Record<string, unknown> | undefined => {
+  if (!style) return undefined;
+  if (!Array.isArray(style)) return { ...(style as Record<string, unknown>) };
+  return style.reduce<Record<string, unknown>>(
+    (merged, entry) => Object.assign(merged, flattenStyle(entry)),
+    {}
+  );
+};
+
 mock.module("react-native", () => ({
   // Host components stand in as their names, so a test can read the element
   // tree a component returns without a native renderer.
@@ -20,6 +31,7 @@ mock.module("react-native", () => ({
   StyleSheet: {
     absoluteFill: {},
     create: <Styles>(styles: Styles) => styles,
+    flatten: flattenStyle,
     hairlineWidth: 1,
   },
   AccessibilityInfo: {

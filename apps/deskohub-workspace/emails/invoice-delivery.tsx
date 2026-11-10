@@ -1,6 +1,6 @@
 import { Match } from "effect";
 import { type Locale, m } from "@/features/i18n";
-import { staffEmailLocale } from "@/shared/backend/email/staff-email-locale";
+import { staffLocale } from "@/shared/backend/staff-locale";
 import {
   WorkspaceEmailBody,
   WorkspaceEmailHeading,
@@ -20,7 +20,7 @@ export type InvoiceDeliveryEmailProps = {
 };
 
 const recipientLocale = ({ recipient }: InvoiceDeliveryEmailProps): Locale =>
-  recipient.audience === "customer" ? recipient.locale : staffEmailLocale;
+  recipient.audience === "customer" ? recipient.locale : staffLocale;
 
 /** The invoice's title and number; the subject and inbox preview. */
 export const invoiceDeliveryEmailTitle = (props: InvoiceDeliveryEmailProps) =>

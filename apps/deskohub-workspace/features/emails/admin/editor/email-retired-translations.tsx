@@ -54,7 +54,7 @@ function RetiredTranslation({
   const locale = useRouteLocale();
   const fieldId = emailEditorFieldIds.retiredTranslation(language);
   const { controlProps } = useEmailFieldProblems(fieldId);
-  const name = emailEditorLanguageName(language, locale);
+  const name = emailEditorLanguageName(language);
   return (
     <li className="rounded-md bg-sunset-yellow/15 px-3 py-2 text-navy-blue/80 text-sm">
       <p>

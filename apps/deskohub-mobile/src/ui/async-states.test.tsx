@@ -5,14 +5,14 @@ import { clientRoot } from "../testing/client-root";
 import { theme } from "../theme";
 import { ErrorState, LoadingState, RefreshingIndicator } from "./async-states";
 import { LoadingIndicator } from "./loading-indicator";
-import { elementTree, find, findAll } from "./testing/element-tree";
+import { elementTree, find, findAll, hostTree } from "./testing/element-tree";
 
 /** The component's live region: its only Text with a role. */
 const liveRegion = <Props,>(
   component: Parameters<typeof elementTree<Props>>[0],
   props: Props
 ) =>
-  findAll(elementTree(component, props), "Text").find(
+  findAll(hostTree(elementTree(component, props)), "Text").find(
     (text) => text.props.role !== undefined
   )?.props;
 

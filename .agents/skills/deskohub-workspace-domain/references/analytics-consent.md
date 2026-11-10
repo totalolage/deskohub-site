@@ -97,7 +97,7 @@ Code: `features/legal/backend/analytics-consent-ledger.ts` (ledger),
 mirror points in `features/account/backend/auth/auth-server.ts` (session
 create hook), `features/legal/components/account-analytics-consent-mirror.tsx`
 with the `recordDeviceAnalyticsConsent` action (hydration and banner saves,
-and the cross-device withdrawal), `features/reservation/actions/prepare-pay-state.ts`
+and the cross-device withdrawal), `features/reservation/backend/reservation-booking.service.ts`
 (bookings), and `features/legal/backend/analytics-consent-preference.ts`
 with `features/legal/components/analytics-preference-row.tsx` (the
 analytics preference).

@@ -19,7 +19,7 @@ import {
   type InvoicePresentation,
   type InvoicePresentationParty,
 } from "@/features/accounting/invoice-presentation";
-import { m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import {
   getInvoicePaymentRequest,
   type InvoicePaymentRequest,
@@ -192,7 +192,7 @@ const PaymentRequest = ({
   locale,
 }: {
   readonly payment: InvoicePaymentRequest;
-  readonly locale: "cs-CZ" | "en-US";
+  readonly locale: Locale;
 }): ReactElement => {
   const labels = {
     heading: m.invoicePaymentRequestHeading({}, { locale }),

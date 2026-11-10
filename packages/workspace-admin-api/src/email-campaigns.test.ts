@@ -213,7 +213,7 @@ describe("campaign admin API contract", () => {
         attribute: "locale",
         _tag: "Condition",
         operator: "anyOf",
-        value: ["de-DE"],
+        value: ["fr-FR"],
       },
     ],
     [
@@ -294,7 +294,7 @@ describe("campaign admin API contract", () => {
     expect(
       decodes(
         AdministrationCampaignCreateInput,
-        create({ content: { "de-DE": content } })
+        create({ content: { "fr-FR": content } })
       )
     ).toBe(false);
     expect(

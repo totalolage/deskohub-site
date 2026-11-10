@@ -9,7 +9,7 @@ import { Match, Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { type Href, useFocusEffect, useRouter } from "expo-router";
 import { useCallback } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { AsyncView } from "../../customer-api/async-view";
 import { CustomerViewError } from "../../customer-api/customer-view-error";
 import { sharedViewErrorMessage } from "../../customer-api/customer-view-error-message";
@@ -25,6 +25,7 @@ import { useLiveRegionAnnouncement } from "../../ui/live-announcement";
 import { LoadingIndicator } from "../../ui/loading-indicator";
 import { Notice } from "../../ui/notice";
 import { ScrollScreen } from "../../ui/scroll-screen";
+import { Text } from "../../ui/text";
 import { bookingEntryEnabled } from "./booking-entry";
 import {
   InvoiceShareFailure,

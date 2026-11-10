@@ -712,6 +712,60 @@ describe("cowork reservation preparation in Chromium", () => {
   );
 
   test.skipIf(!chromiumAvailable)(
+    "pages the calendar back to an edited cowork date before the restored month",
+    async () => {
+      // The calendar opens on the restored date's month, after the edited date.
+      const html = `
+        <button aria-haspopup="dialog" type="button"></button>
+        <button aria-label="Go to the Previous Month" type="button"></button>
+        <button aria-label="Go to the Next Month" type="button"></button>
+        <div id="calendar"></div>
+        <input name="date" value="2099-11-03" />
+        <button data-reservation-type-price="open-space" data-reservation-type-price-ready="true"></button>
+        <input id="reservation-entry-tier-open-space" type="radio" checked />
+        <script>
+          const date = document.querySelector('input[name="date"]');
+          const price = document.querySelector('[data-reservation-type-price="open-space"]');
+          const calendar = document.querySelector("#calendar");
+          let shownMonth = 11;
+          const renderMonth = () => {
+            const days = new Date(Date.UTC(2099, shownMonth, 0)).getUTCDate();
+            calendar.innerHTML = Array.from({ length: days }, (_, index) => {
+              const day = "2099-" + String(shownMonth).padStart(2, "0") + "-" + String(index + 1).padStart(2, "0");
+              return '<div data-day="' + day + '"><button type="button"></button></div>';
+            }).join("");
+          };
+          const pageBy = (months) => {
+            calendar.innerHTML = "";
+            shownMonth += months;
+            setTimeout(renderMonth, 50);
+          };
+          renderMonth();
+          document.querySelector('[aria-label="Go to the Previous Month"]').addEventListener("click", () => pageBy(-1));
+          document.querySelector('[aria-label="Go to the Next Month"]').addEventListener("click", () => pageBy(1));
+          calendar.addEventListener("click", (event) => {
+            const day = event.target instanceof Element ? event.target.closest("[data-day]") : null;
+            if (!day) return;
+            date.value = day.getAttribute("data-day");
+            price.dataset.reservationTypePriceReady = "false";
+            setTimeout(() => {
+              price.dataset.reservationTypePriceReady = "true";
+            }, 50);
+          });
+        </script>
+      `;
+
+      await prepareOn(
+        html,
+        withWaits(toReservationSelectionPreparation(editedDateData), 2_000)
+      );
+      await expect(
+        getPage().locator('input[name="date"]').inputValue()
+      ).resolves.toBe("2099-10-02");
+    }
+  );
+
+  test.skipIf(!chromiumAvailable)(
     "fails when an edited cowork date never refreshes its advertised price",
     async () => {
       await expect(

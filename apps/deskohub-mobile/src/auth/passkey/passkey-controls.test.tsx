@@ -22,7 +22,7 @@ import { clientRoot } from "../../testing/client-root";
 import { theme } from "../../theme";
 import { LiveMessage } from "../../ui/controls";
 import { LoadingIndicator } from "../../ui/loading-indicator";
-import { find, type HostProps } from "../../ui/testing/element-tree";
+import { find, type HostProps, hostTree } from "../../ui/testing/element-tree";
 import { PasskeyCeremonies, type PasskeyCeremonyApi } from "./passkey-ceremony";
 import { PasskeyNotSupported, PasskeyRejected } from "./passkey-failure";
 
@@ -93,7 +93,7 @@ const draw = async <Props,>(
     /** The control's live region, as its only `LiveMessage` draws it. */
     region: () => {
       expect(regions).toHaveLength(1);
-      return find(regions[0], "Text")?.props;
+      return find(hostTree(regions[0]), "Text")?.props;
     },
   };
 };

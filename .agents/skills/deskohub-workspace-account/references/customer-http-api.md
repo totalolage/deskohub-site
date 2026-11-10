@@ -65,8 +65,8 @@ The app's client and data layer are in the `deskohub-mobile` skill
    (offerings, availability, meeting-room start times, quotes) are
    `catalog-read` (120 per 10 minutes): they read the shared snapshots, which
    call Dotypos only on a miss, and a booking compares several dates before it
-   checks out, so they keep off the account read budget. `workspace-only` reads only the Workspace database and
-   Better Auth. Account reads count as Dotypos-backed: they read Dotypos live,
+   checks out, so they keep off the account read budget. `workspace-only` reads or writes only the Workspace database
+   and Better Auth, as the account's language save (`updateLocale`) does. Account reads count as Dotypos-backed: they read Dotypos live,
    with no response cache. If the
    endpoint changes the Dotypos call rate, recheck the budget numbers against
    the site's shared 150 requests per 30 minutes. Per-account budgets bound one account's share;
@@ -143,6 +143,15 @@ The app's client and data layer are in the `deskohub-mobile` skill
   (`@deskohub/workspace-customer-api/customer-locale`, an Effect-only entry
   point the app bundles without the HTTP API). The account it creates takes it
   as its language; see the locale-preference reference.
+- The app's language setting saves the account's language with
+  `PUT /account/locale` (`updateLocale`): a strict `{ locale: CustomerLocale }`
+  body, echoed on success, and no locale header. It is the web switcher's
+  guarded write, so it needs no Dotypos profile and answers 409
+  `deletion-pending` while deletion is pending. Every signed-in
+  `CustomerAccountState` carries the saved `locale`, and the typed
+  `get-session` user may carry it, both as any string or null: a response tag
+  stays open so a locale added later never breaks an older app's decoding,
+  while the request stays strict.
 
 ## Booking checkout
 
@@ -228,7 +237,7 @@ Wiring: each request builds its operations from
 closes over the request's referral and office gates (their `…ForRun`
 layers) and its `CustomerReferralUpdates`, so the selection, the shared
 operation and the referral record share one decision per gate; preparation
-receives the gates through `payStatePreparationServicesWith`. Each operation
+provides the gates to `ReservationBooking.Live`. Each operation
 builds its own services when it runs: acceptance builds only the sealing
 keys, and services that can't be built answer 503. A checkout state the
 server fails to seal or sign also answers 503, never `expired`: only the

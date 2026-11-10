@@ -176,19 +176,24 @@ const {
 } = await import("@/features/agent-tools/agent-tools.test-utils");
 const services = makeAgentToolTestServices();
 const preparePayStateModule = await import(
-  "@/features/reservation/actions/prepare-pay-state"
+  "@/features/reservation/backend/reservation-booking.service"
 );
 /** Every booking the route started, so a test can assert it booked nothing. */
 const bookingCalls: unknown[] = [];
-mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
-  ...preparePayStateModule,
-  prepareWorkspacePayState: (
-    input: Parameters<typeof preparePayStateModule.prepareWorkspacePayState>[0]
-  ) =>
-    Effect.sync(() => bookingCalls.push(input)).pipe(
-      Effect.andThen(preparePayStateModule.prepareWorkspacePayState(input))
-    ),
-}));
+mock.module(
+  "@/features/reservation/backend/reservation-booking.service",
+  () => ({
+    ...preparePayStateModule,
+    prepareWorkspacePayState: (
+      input: Parameters<
+        typeof preparePayStateModule.prepareWorkspacePayState
+      >[0]
+    ) =>
+      Effect.sync(() => bookingCalls.push(input)).pipe(
+        Effect.andThen(preparePayStateModule.prepareWorkspacePayState(input))
+      ),
+  })
+);
 
 const { agentToolLocaleField, defineSignedInAgentTool } = await import(
   "@/features/agent-tools/agent-tool"
@@ -451,7 +456,9 @@ describe("customer MCP route", () => {
       });
       expect(tool.inputSchema).toMatchObject({
         type: "object",
-        properties: { locale: { enum: ["en-US", "cs-CZ"] } },
+        properties: {
+          locale: { enum: ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK"] },
+        },
       });
       expect(tool.outputSchema).toMatchObject({ type: "object" });
     }

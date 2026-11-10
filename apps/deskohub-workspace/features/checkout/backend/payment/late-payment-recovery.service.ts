@@ -41,7 +41,10 @@ import {
   LatePaymentRecoveryRepository,
 } from "../repositories/late-payment-recovery.repository";
 import { administrationForcedPaymentCancellationFailureCode } from "../repositories/payment-lifecycle.repository";
-import { createWorkspaceDotyposReservation } from "../reservation/dotypos-reservation.adapter";
+import {
+  createWorkspaceDotyposReservation,
+  noteNamesPaymentOrder,
+} from "../reservation/dotypos-reservation.adapter";
 import {
   getWorkspaceReservationInterval,
   type WorkspaceTableAssignmentReservation,
@@ -194,9 +197,6 @@ const ensureAvailable = (
         ensureOfficePayStateAvailable({ availability, reservation: office }),
     })
   );
-
-const recoveryMarker = (reservationId: WorkspaceReservationId) =>
-  `Payment order: ${reservationId}`;
 
 /**
  * Local states whose original Dotypos hold may still exist and must be
@@ -436,13 +436,12 @@ export class LatePaymentRecoveryService extends Context.Service<
           : null;
       });
 
-      // Replacements an earlier run of this recovery created in Dotypos carry
-      // its marker in their note.
+      // Replacements an earlier run of this recovery created in Dotypos name
+      // the payment order in their note.
       const findRecoveryReplacements = Effect.fnUntraced(function* (input: {
         readonly reservation: WorkspaceReservation;
         readonly interval: Pick<ReservationInterval, "startsAt" | "endsAt">;
       }) {
-        const marker = recoveryMarker(input.reservation.id);
         return (yield* dotypos.listActiveReservationsOverlapping({
           startDate: temporalInstantToDate(
             Temporal.Instant.from(input.interval.startsAt)
@@ -450,7 +449,9 @@ export class LatePaymentRecoveryService extends Context.Service<
           endDate: temporalInstantToDate(
             Temporal.Instant.from(input.interval.endsAt)
           ),
-        })).filter((candidate) => candidate.note?.split("\n").includes(marker));
+        })).filter((candidate) =>
+          noteNamesPaymentOrder(candidate.note, input.reservation.id)
+        );
       });
 
       const refundNewerReservation = Effect.fnUntraced(function* (input: {

@@ -63,7 +63,7 @@ const createColumns = (
     ),
   },
   {
-    accessorFn: (recipient) => campaignLocaleName(recipient.locale, locale),
+    accessorFn: (recipient) => campaignLocaleName(recipient.locale),
     id: "locale",
     header: m.emailCampaignsSentRecipientsLanguageColumn({}, { locale }),
   },
@@ -149,7 +149,7 @@ export function SentRecipientTable({
               <p className="text-navy-blue/65">
                 {m.emailCampaignsSentRecipientsLanguageSince(
                   {
-                    language: campaignLocaleName(recipient.locale, locale),
+                    language: campaignLocaleName(recipient.locale),
                     statusUpdatedAt: recipient.statusSince,
                   },
                   { locale }

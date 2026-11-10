@@ -43,7 +43,12 @@ type ReservationQuoteFingerprintReservation =
   | MeetingRoomReservationPricingInput
   | OfficeReservationPricingInput;
 
-const getCanonicalAppliedDiscount = (
+/**
+ * The pricing facts of an application the customer accepts, in a fixed shape.
+ * Staff-only metadata such as `staffLabel` stays out, so a quote signed before
+ * it existed compares equal to its fresh equivalent.
+ */
+export const getCanonicalAppliedDiscount = (
   application: AppliedDiscount
 ): CanonicalAppliedDiscount => ({
   discount: {

@@ -528,6 +528,6 @@ describe.skipIf(!testDatabase)("AnalyticsConsentLedger", () => {
     }
     await expect(insert({ decision: "accept" })).rejects.toThrow();
     await expect(insert({ source: "cookie" })).rejects.toThrow();
-    await expect(insert({ locale: "de-DE" })).rejects.toThrow();
+    await expect(insert({ locale: "fr-FR" })).rejects.toThrow();
   });
 });

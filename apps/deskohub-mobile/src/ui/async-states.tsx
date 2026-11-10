@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { theme } from "../theme";
 import { Button } from "./controls";
 import { useLiveRegionAnnouncement } from "./live-announcement";
 import { LoadingIndicator } from "./loading-indicator";
+import { Text } from "./text";
 
 /**
  * Fills the screen while its content first loads. The indicator carries

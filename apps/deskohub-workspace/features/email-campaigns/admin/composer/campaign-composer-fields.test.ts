@@ -9,6 +9,7 @@ import {
   type CampaignComposerLocaleFields,
   campaignComposerFieldsFromCampaign,
   composerLocales,
+  englishFallbackMissing,
   localeContentIssueMessage,
   localeContentIssues,
   newCampaignComposerFields,
@@ -31,7 +32,7 @@ const withSubject = (
 describe("composerLocales", () => {
   test("without a single-locale audience, every locale shows and Czech is required", () => {
     expect(composerLocales(undefined)).toEqual({
-      editable: ["cs-CZ", "en-US"],
+      editable: ["cs-CZ", "en-US", "de-DE", "uk-UA", "sk-SK"],
       required: "cs-CZ",
     });
   });
@@ -45,6 +46,26 @@ describe("composerLocales", () => {
       editable: ["cs-CZ"],
       required: "cs-CZ",
     });
+  });
+});
+
+describe("englishFallbackMissing", () => {
+  const czechOnly = withSubject(newCampaignComposerFields, "cs-CZ", "Ahoj");
+
+  test("warns while an audience of every locale has no English content", () => {
+    expect(englishFallbackMissing(undefined, czechOnly.locales)).toBe(true);
+    expect(
+      englishFallbackMissing(
+        undefined,
+        withSubject(czechOnly, "en-US", "Hello").locales
+      )
+    ).toBe(false);
+  });
+
+  test("never warns for a single-locale audience", () => {
+    for (const locale of ["cs-CZ", "de-DE", "uk-UA"] as const) {
+      expect(englishFallbackMissing(locale, czechOnly.locales)).toBe(false);
+    }
   });
 });
 
@@ -198,6 +219,9 @@ describe("editor round trip", () => {
     ).toEqual({
       "cs-CZ": { ...saved.content["cs-CZ"] },
       "en-US": { operationalReason: null, ...saved.content["en-US"] },
+      "de-DE": null,
+      "uk-UA": null,
+      "sk-SK": null,
     });
   });
 });

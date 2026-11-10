@@ -1,4 +1,3 @@
-import type { CustomerLocale } from "@deskohub/workspace-customer-api";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { Redirect, useIsFocused, useNavigation, useRouter } from "expo-router";
@@ -6,6 +5,7 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { AsyncView } from "../../customer-api/async-view";
 import { accountAtom } from "../../customer-api/customer-data-runtime";
+import type { AppLocale } from "../../i18n/app-locale";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
@@ -99,7 +99,7 @@ function CheckoutStateView({
   readonly request: CheckoutRequest;
   readonly draft: DetailsDraft;
   readonly onDraftChange: (draft: DetailsDraft) => void;
-  readonly locale: CustomerLocale;
+  readonly locale: AppLocale;
 }) {
   const retry = () => flow.send(CheckoutEvent.Retry());
   switch (state._tag) {
@@ -180,7 +180,7 @@ function DetailsForAccount({
   readonly flow: CheckoutController;
   readonly draft: DetailsDraft;
   readonly onDraftChange: (draft: DetailsDraft) => void;
-  readonly locale: CustomerLocale;
+  readonly locale: AppLocale;
 }) {
   const account = useAtomValue(accountAtom);
   const refresh = useAtomRefresh(accountAtom);
@@ -228,7 +228,7 @@ function StatusNotice({
   /** Why the last attempt failed, below the message. */
   readonly detail?: Option.Option<CheckoutRetryKind>;
   readonly action?: NoticeAction;
-  readonly locale: CustomerLocale;
+  readonly locale: AppLocale;
 }) {
   const detailKind =
     detail === undefined ? undefined : Option.getOrUndefined(detail);
@@ -261,7 +261,7 @@ function FinishedNotice({
 }: {
   readonly state: Extract<CheckoutState, { readonly _tag: "Done" | "Restart" }>;
   readonly request: CheckoutRequest;
-  readonly locale: CustomerLocale;
+  readonly locale: AppLocale;
 }) {
   const router = useRouter();
   const destination = checkoutDestination(
@@ -301,7 +301,7 @@ function BlockedNotice({
     CheckoutState,
     { readonly _tag: "Blocked" }
   >["reason"];
-  readonly locale: CustomerLocale;
+  readonly locale: AppLocale;
 }) {
   const router = useRouter();
   if (reason === "profile-missing") {
@@ -342,7 +342,7 @@ function AccountUnavailableNotice({
     | "support-required"
     | "deletion-pending"
     | "authenticated-unavailable";
-  readonly locale: CustomerLocale;
+  readonly locale: AppLocale;
 }) {
   return (
     <StatusNotice

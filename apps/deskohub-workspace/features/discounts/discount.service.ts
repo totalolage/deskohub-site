@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema, Struct } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { Locale } from "@/features/i18n";
@@ -1098,4 +1098,7 @@ const makeAffirmedDiscountAdvertisementQuote = (
 ): AffirmedDiscountAdvertisementQuote =>
   affirmedDiscountAdvertisementQuoteCodec.make(quote);
 
-const discountEquals = Schema.toEquivalence(discountCodec);
+/** Equal as the customer sees them; the staff label is not compared. */
+const discountEquals = Schema.toEquivalence(
+  discountCodec.mapFields(Struct.omit(["staffLabel"]))
+);

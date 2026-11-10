@@ -1,9 +1,9 @@
 import { Effect, Match } from "effect";
 import { type Locale, m } from "@/features/i18n";
+import type { prepareWorkspacePayState } from "@/features/reservation/backend/reservation-booking.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
-import type { prepareWorkspacePayState } from "./prepare-pay-state";
 import type { PreparePayStateInput } from "./prepare-pay-state.schema";
 
 // The reservation form's side of Pay preparation, around the shared booking

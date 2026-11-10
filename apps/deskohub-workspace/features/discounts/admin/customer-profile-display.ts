@@ -1,5 +1,6 @@
 import { m } from "@/features/administration/i18n";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
+import { discountLabelFor } from "@/features/discounts/discount-label";
 import type { Locale } from "@/features/i18n";
 import type { AdminCustomerProfile } from "./discount-administration.service";
 
@@ -49,7 +50,7 @@ export const customerVisiblePromotionCodes = (
         audienceSize,
         code,
         discountAdjustment,
-        discountLabel: discountLabels[locale],
+        discountLabel: discountLabelFor(discountLabels, locale),
         eligible,
         enabled,
         id,

@@ -1,0 +1,315 @@
+{
+  "emailAutomationRunsStepLabel": "Крок {position} · {step}",
+  "emailAutomationRunsStepById": "Крок «{stepId}»",
+  "emailAutomationRunsStepCondition": "Умова",
+  "emailAutomationRunsStepSend": "Надіслати лист",
+  "emailAutomationRunsStepWaitUntil": "Чекати до: {target}",
+  "emailAutomationRunsStepWaitMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Чекати {formattedCount} хвилину",
+        "countPlural=few": "Чекати {formattedCount} хвилини",
+        "countPlural=many": "Чекати {formattedCount} хвилин",
+        "countPlural=other": "Чекати {formattedCount} хвилини"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Чекати {formattedCount} годину",
+        "countPlural=few": "Чекати {formattedCount} години",
+        "countPlural=many": "Чекати {formattedCount} годин",
+        "countPlural=other": "Чекати {formattedCount} години"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Чекати {formattedCount} день",
+        "countPlural=few": "Чекати {formattedCount} дні",
+        "countPlural=many": "Чекати {formattedCount} днів",
+        "countPlural=other": "Чекати {formattedCount} дня"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitWeeks": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Чекати {formattedCount} тиждень",
+        "countPlural=few": "Чекати {formattedCount} тижні",
+        "countPlural=many": "Чекати {formattedCount} тижнів",
+        "countPlural=other": "Чекати {formattedCount} тижня"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitMonths": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Чекати {formattedCount} місяць",
+        "countPlural=few": "Чекати {formattedCount} місяці",
+        "countPlural=many": "Чекати {formattedCount} місяців",
+        "countPlural=other": "Чекати {formattedCount} місяця"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} хвилина",
+        "countPlural=few": "{formattedCount} хвилини",
+        "countPlural=many": "{formattedCount} хвилин",
+        "countPlural=other": "{formattedCount} хвилини"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} година",
+        "countPlural=few": "{formattedCount} години",
+        "countPlural=many": "{formattedCount} годин",
+        "countPlural=other": "{formattedCount} години"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} день",
+        "countPlural=few": "{formattedCount} дні",
+        "countPlural=many": "{formattedCount} днів",
+        "countPlural=other": "{formattedCount} дня"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeJustNow": "щойно",
+  "emailAutomationRunsAgeMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} хвилину тому",
+        "countPlural=few": "{formattedCount} хвилини тому",
+        "countPlural=many": "{formattedCount} хвилин тому",
+        "countPlural=other": "{formattedCount} хвилини тому"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} годину тому",
+        "countPlural=few": "{formattedCount} години тому",
+        "countPlural=many": "{formattedCount} годин тому",
+        "countPlural=other": "{formattedCount} години тому"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} день тому",
+        "countPlural=few": "{formattedCount} дні тому",
+        "countPlural=many": "{formattedCount} днів тому",
+        "countPlural=other": "{formattedCount} дня тому"
+      }
+    }
+  ],
+  "emailAutomationRunsHealthRunning": "Механізм автоматизацій працює · останнє планування: {lastPlanned}",
+  "emailAutomationRunsHealthBehind": "Механізм автоматизацій потребує уваги · останнє планування: {lastPlanned}",
+  "emailAutomationRunsHealthNotPlannedYet": "ще не було",
+  "emailAutomationRunsHealthUnavailable": "Зараз не вдається отримати статус механізму автоматизацій.",
+  "emailAutomationRunsHealthWarningTitle": "Механізм автоматизацій не встигає. Виконання всіх автоматичних кампаній можуть починатися або надсилати листи із запізненням.",
+  "emailAutomationRunsHealthCampaignTitle": "Розклад цієї кампанії зараз перевантажений.",
+  "emailAutomationRunsHealthPlannerStale": "Планувальник востаннє працював {age}.",
+  "emailAutomationRunsHealthPlannerNeverRan": "Планувальник ще не працював.",
+  "emailAutomationRunsHealthSweepLagging": "Початки й завершення бронювань виявляються із затримкою: {duration}.",
+  "emailAutomationRunsHealthSweepLaggingUnknown": "Початки й завершення бронювань виявляються із затримкою.",
+  "emailAutomationRunsHealthReconcileStalled": "Щогодинна перевірка початків і завершень бронювань має затримку: {duration}.",
+  "emailAutomationRunsHealthReconcileStalledUnknown": "Щогодинна перевірка початків і завершень бронювань не працює.",
+  "emailAutomationRunsHealthEventBacklog": "Події клієнтів очікують на обробку; найстаріша — від {date}.",
+  "emailAutomationRunsHealthEventBacklogUnknown": "Події клієнтів очікують на обробку.",
+  "emailAutomationRunsHealthUnitBacklog": "Запланована робота очікує на запуск; найстаріша очікує з {date}.",
+  "emailAutomationRunsHealthUnitBacklogUnknown": "Запланована робота очікує на запуск.",
+  "emailAutomationRunsHealthScheduleLagging": "Заплановані кампанії запускаються із запізненням.",
+  "emailAutomationRunsHealthFallingBehind": "Одна із запланованих кампаній обробляє запуск довше, ніж триває інтервал до наступного.",
+  "emailAutomationRunsHealthUnrecognized": "Механізм автоматизацій повідомляє про попередження, якого ця сторінка не знає: {code}.",
+  "emailAutomationRunsHealthCampaignScheduleLag": "Розклад цієї кампанії має затримку: {duration}.",
+  "emailAutomationRunsHealthCampaignEnteringFire": "Ця кампанія створює виконання для запуску {date}: готово частин — {done} з {total}.",
+  "emailAutomationRunsHealthCampaignFallingBehind": "Тривалість останнього запуску цієї кампанії: {duration}. Це довше, ніж інтервал до наступного запуску ({interval}).",
+  "emailAutomationRunsHealthCampaignFallingBehindUnknown": "Тривалість останнього запуску цієї кампанії: {duration}. Це довше, ніж час до наступного запуску.",
+  "emailAutomationRunsCountsTitle": "Виконання за статусом",
+  "emailAutomationRunsCountsScopeAll": "Усі версії",
+  "emailAutomationRunsCountsScopeVersion": "Версія {versionNumber}",
+  "emailAutomationRunsCountsWaiting": "Очікують",
+  "emailAutomationRunsCountsSendingNow": "Надсилаються",
+  "emailAutomationRunsCountsSent": "Надіслано",
+  "emailAutomationRunsCountsFailed": "Збій",
+  "emailAutomationRunsCountsSkipped": "Пропущено",
+  "emailAutomationRunsCountsArchived": "Завершено архівуванням",
+  "emailAutomationRunsOutcomeSent": "Надіслано",
+  "emailAutomationRunsOutcomeUnconfirmed": "Можливо, надіслано",
+  "emailAutomationRunsOutcomeConditionFailed": "Завершено на умові",
+  "emailAutomationRunsOutcomeSkipped": "Пропущено",
+  "emailAutomationRunsOutcomeSkippedBecause": "Пропущено · {reason}",
+  "emailAutomationRunsOutcomeFailed": "Збій",
+  "emailAutomationRunsOutcomeFailedBecause": "Збій · {reason}",
+  "emailAutomationRunsOutcomeWithdrawn": "Подію відкликано",
+  "emailAutomationRunsOutcomeArchived": "Завершено архівуванням",
+  "emailAutomationRunsSkipOutsideTestDomain": "не тестовий одержувач",
+  "emailAutomationRunsSkipConsentWithdrawn": "згоду відкликано",
+  "emailAutomationRunsSkipMissingEmail": "немає електронної адреси",
+  "emailAutomationRunsSkipInvalidEmail": "недійсна електронна адреса",
+  "emailAutomationRunsSkipDeletedCustomer": "клієнта видалено",
+  "emailAutomationRunsSkipMissingFromDotypos": "клієнта немає в Dotypos",
+  "emailAutomationRunsFailureDeliveryRefused": "у доставці відмовлено",
+  "emailAutomationRunsFailureEvaluationUnavailable": "оцінювання недоступне",
+  "emailAutomationRunsStatusWaitingUntil": "Очікує до {date}",
+  "emailAutomationRunsStatusInProgress": "Триває",
+  "emailAutomationRunsStatusSending": "Надсилається",
+  "emailAutomationRunsStateActive": "Триває",
+  "emailAutomationRunsStateSending": "Надсилається",
+  "emailAutomationRunsStateEnded": "Завершено",
+  "emailAutomationRunsFilterState": "Статус",
+  "emailAutomationRunsFilterStateAny": "Будь-який статус",
+  "emailAutomationRunsFilterOutcome": "Результат",
+  "emailAutomationRunsFilterOutcomeAny": "Будь-який результат",
+  "emailAutomationRunsFilterSkipReason": "Причина пропуску",
+  "emailAutomationRunsFilterSkipReasonAny": "Будь-яка причина",
+  "emailAutomationRunsFilterStep": "Крок",
+  "emailAutomationRunsFilterStepAny": "Будь-який крок",
+  "emailAutomationRunsFilterVersion": "Версія",
+  "emailAutomationRunsFilterVersionAll": "Усі версії",
+  "emailAutomationRunsFilterCustomer": "Клієнт",
+  "emailAutomationRunsFilterCustomerPlaceholder": "ID клієнта в Dotypos",
+  "emailAutomationRunsFilterApply": "Показати виконання",
+  "emailAutomationRunsFilterClear": "Скинути фільтри",
+  "emailAutomationRunsVersion": "Версія {versionNumber}",
+  "emailAutomationRunsVersionLive": "Версія {versionNumber} (активна)",
+  "emailAutomationRunsListControls": "Керування списком виконань",
+  "emailAutomationRunsListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} виконання на цій сторінці",
+        "countPlural=few": "{formattedCount} виконання на цій сторінці",
+        "countPlural=many": "{formattedCount} виконань на цій сторінці",
+        "countPlural=other": "{formattedCount} виконання на цій сторінці"
+      }
+    }
+  ],
+  "emailAutomationRunsListEmpty": "Виконань ще немає. Вони зʼявляться тут, щойно автоматизація стане активною й відбудеться її запуск.",
+  "emailAutomationRunsListEmptyFiltered": "Жодне виконання не відповідає цим фільтрам.",
+  "emailAutomationRunsColumnStarted": "Початок",
+  "emailAutomationRunsColumnCustomer": "Клієнт",
+  "emailAutomationRunsCustomerProfileNotFound": "Не знайдено в Dotypos",
+  "emailAutomationRunsCustomerProfileUnavailable": "Профіль недоступний",
+  "emailAutomationRunsCustomerContactsUnavailable": "Зараз не вдається отримати імена клієнтів із Dotypos, тому у виконаннях показано ID клієнтів.",
+  "emailAutomationRunsColumnTrigger": "Спосіб запуску",
+  "emailAutomationRunsColumnStep": "Крок",
+  "emailAutomationRunsColumnStatus": "Статус",
+  "emailAutomationRunsColumnEnded": "Кінець",
+  "emailAutomationRunsColumnVersion": "Версія",
+  "emailAutomationRunsPagination": "Сторінки списку виконань",
+  "emailAutomationRunsFirstPage": "Перша сторінка",
+  "emailAutomationRunsNextPage": "Наступна сторінка",
+  "emailAutomationRunsLoadFailed": "Не вдалося завантажити журнал виконань. Спробуйте ще раз трохи згодом.",
+  "emailAutomationRunsCursorInvalid": "Це посилання на сторінку більше не дійсне. Почніть знову з першої сторінки.",
+  "emailAutomationRunsBackToList": "Усі виконання",
+  "emailAutomationRunsRunTitle": "Виконання",
+  "emailAutomationRunsTriggeredAt": "{trigger} · {date}",
+  "emailAutomationRunsCurrentStep": "Поточний крок",
+  "emailAutomationRunsEndedAtStep": "Завершено на кроці",
+  "emailAutomationRunsNotEnded": "Ще не завершено",
+  "emailAutomationRunsTimelineTitle": "Часова шкала",
+  "emailAutomationRunsTimelineLabel": "Часова шкала виконання",
+  "emailAutomationRunsEventStarted": "Виконання почалося",
+  "emailAutomationRunsEventConditionPassed": "Умову виконано",
+  "emailAutomationRunsEventConditionFailed": "Умову не виконано; виконання завершилося тут",
+  "emailAutomationRunsEventConditionFailedClause": "Не виконано: {clause}",
+  "emailAutomationRunsEventWaiting": "Очікує до {date}",
+  "emailAutomationRunsEventWoke": "Очікування завершено",
+  "emailAutomationRunsEventDeferred": "Візит, що запустив виконання, ще не почався; повторна перевірка: {date}",
+  "emailAutomationRunsEventSendQueued": "Лист поставлено в чергу на надсилання",
+  "emailAutomationRunsEventSent": "Лист надіслано",
+  "emailAutomationRunsEventUnconfirmed": "Можливо, лист надіслано",
+  "emailAutomationRunsEventUnconfirmedDetail": "Поштовий сервіс не підтвердив доставку, тому виконання не надсилатиме лист повторно.",
+  "emailAutomationRunsEventWithdrawnDetail": "Бронювання, що запустило виконання, скасовано, поки виконання очікувало.",
+  "emailAutomationRunsEventArchivedDetail": "Кампанію архівовано, поки виконання тривало.",
+  "emailAutomationRunsEventUnknown": "Зареєстрована подія «{kind}»",
+  "emailAutomationRunsConditionClause": "Частина {position} умови",
+  "emailAutomationRunsConditionInAudience": "Клієнти у збереженій аудиторії «{audience}»",
+  "emailAutomationRunsConditionNotInAudience": "Клієнти поза збереженою аудиторією «{audience}»",
+  "emailAutomationRunsConditionAudienceUnknown": "видалена аудиторія"
+}

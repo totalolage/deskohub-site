@@ -12,6 +12,7 @@ export {
   CustomerAvatarRejectionReason,
   CustomerAvatarUpload,
   CustomerFeatureUnavailable,
+  CustomerLocaleUpdated,
   CustomerMarketingConsentStatus,
   CustomerMarketingPreferences,
   CustomerMarketingPreferencesRejected,
@@ -100,6 +101,7 @@ export {
   CustomerProfileSave,
   customerInputParseOptions,
   customerProfileBusinessBillingFields,
+  customerProfileSchemas,
   ProfileCompletionReferralOutcome,
 } from "./customer-profile";
 export {

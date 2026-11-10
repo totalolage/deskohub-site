@@ -1,0 +1,196 @@
+{
+  "emailAutomationFlowCampaignSourceThis": "diese Kampagne",
+  "emailAutomationFlowPeriodTriggerWindow": "innerhalb von … relativ zum Auslöser",
+  "emailAutomationFlowPeriodTriggerWindowCountLabel": "{subject}: Anzahl Einheiten relativ zum Auslöser",
+  "emailAutomationFlowPeriodTriggerWindowSide": [
+    {
+      "declarations": ["input side"],
+      "selectors": ["side"],
+      "match": {
+        "side=before": "vor dem auslösenden Ereignis",
+        "side=*": "nach dem auslösenden Ereignis"
+      }
+    }
+  ],
+  "emailAutomationFlowPeriodTriggerWindowSideLabel": "{subject}: vor oder nach dem auslösenden Ereignis",
+  "emailAutomationFlowPeriodWithin": "innerhalb von",
+  "emailAutomationFlowSavedAudienceEmpty": "Keine Zielgruppe passt.",
+  "emailAutomationFlowSavedAudienceLiveNote": "Verwendet die Zielgruppe so, wie sie ist, wenn ein Durchlauf diesen Schritt erreicht. Änderungen an der Zielgruppe gelten daher sofort für laufende Durchläufe.",
+  "emailAutomationFlowSavedAudienceMenuLabel": "Gespeicherte Zielgruppe",
+  "emailAutomationFlowSavedAudienceMenuSection": "Gespeicherte Zielgruppen",
+  "emailAutomationFlowSavedAudienceOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=in": "ist in der gespeicherten Zielgruppe",
+        "operator=*": "ist nicht in der gespeicherten Zielgruppe"
+      }
+    }
+  ],
+  "emailAutomationFlowSavedAudienceOperatorLabel": "Zugehörigkeit zur gespeicherten Zielgruppe",
+  "emailAutomationFlowSavedAudiencePickerLabel": "Gespeicherte Zielgruppe",
+  "emailAutomationFlowSavedAudiencePickerPlaceholder": "Zielgruppe auswählen",
+  "emailAutomationFlowSavedAudienceRequired": "Wählen Sie eine gespeicherte Zielgruppe aus.",
+  "emailAutomationFlowSavedAudienceSearch": "Zielgruppen suchen",
+  "emailAutomationFlowSavedAudienceUnknown": "Gelöschte Zielgruppe",
+  "emailAutomationFlowArchived": "Diese Automatisierung ist archiviert, daher lässt sich ihr Ablauf nicht ändern.",
+  "emailAutomationFlowCalendarAddPart": "Teil hinzufügen",
+  "emailAutomationFlowCalendarLastDay": "Letzter Tag",
+  "emailAutomationFlowCalendarMinuteAdd": "Minute hinzufügen",
+  "emailAutomationFlowCalendarMinuteOther": "Andere Minute",
+  "emailAutomationFlowCalendarNeverOccurs": "Diese Kombination tritt in den nächsten acht Jahren nicht ein. Ändern Sie einen ihrer Teile.",
+  "emailAutomationFlowCalendarNextFires": "Nächste Ausführungen (Prager Zeit)",
+  "emailAutomationFlowCalendarOccurrence": [
+    {
+      "declarations": ["input occurrence"],
+      "selectors": ["occurrence"],
+      "match": {
+        "occurrence=1": "1.",
+        "occurrence=2": "2.",
+        "occurrence=3": "3.",
+        "occurrence=4": "4.",
+        "occurrence=5": "5.",
+        "occurrence=*": "letzter"
+      }
+    }
+  ],
+  "emailAutomationFlowCalendarOccurrenceAdd": "Wochentag hinzufügen",
+  "emailAutomationFlowCalendarOccurrenceLabel": "Welcher im Monat",
+  "emailAutomationFlowCalendarOccurrenceRemove": "Diesen Wochentag entfernen",
+  "emailAutomationFlowCalendarOccurrenceWeekdayLabel": "Wochentag",
+  "emailAutomationFlowCalendarPart": [
+    {
+      "declarations": ["input part"],
+      "selectors": ["part"],
+      "match": {
+        "part=minutes": "Minute der Stunde",
+        "part=hours": "Stunde des Tages",
+        "part=weekdays": "Wochentag",
+        "part=daysOfMonth": "Tag des Monats",
+        "part=weekdayOccurrences": "Wochentag im Monat",
+        "part=weeksOfYear": "Woche des Jahres",
+        "part=*": "Monat des Jahres"
+      }
+    }
+  ],
+  "emailAutomationFlowCalendarPartLabel": "Kalenderteil",
+  "emailAutomationFlowCalendarPreviewUnavailable": "Die Beschreibung ist gerade nicht verfügbar. Versuchen Sie es gleich noch einmal.",
+  "emailAutomationFlowCalendarRemovePart": "Entfernen: {part}",
+  "emailAutomationFlowCalendarRemoveValue": "{value} entfernen",
+  "emailAutomationFlowCalendarWeekAdd": "Woche hinzufügen",
+  "emailAutomationFlowCalendarWeekOther": "Wochennummer",
+  "emailAutomationFlowCalendarWeekValue": "Kalenderwoche {week}",
+  "emailAutomationFlowConditionDescription": "Der Durchlauf geht nur für Kunden weiter, die in diesem Moment passen. Für alle anderen endet er hier.",
+  "emailAutomationFlowConditionTitle": "Kunden prüfen",
+  "emailAutomationFlowDiscard": "Verwerfen",
+  "emailAutomationFlowEventAccountCreatedDescription": "Ein neuer Kunde erstellt ein Workspace-Konto.",
+  "emailAutomationFlowEventBookedDescription": "Die Reservierung eines Kunden wird im Workspace bestätigt.",
+  "emailAutomationFlowEventCancelledDescription": "Ein Kunde storniert eine Reservierung im Workspace.",
+  "emailAutomationFlowEventFinishedDescription": "Das Ende der Reservierung eines Kunden ist erreicht.",
+  "emailAutomationFlowEventKindLabel": "Welches Ereignis einen Durchlauf startet",
+  "emailAutomationFlowEventProductHint": "Wenn Sie „beliebiges Produkt“ beibehalten, beginnt bei jeder Reservierung ein Durchlauf.",
+  "emailAutomationFlowEventStartedDescription": "Der Beginn der Reservierung eines Kunden ist erreicht.",
+  "emailAutomationFlowInsertCondition": "Bedingung",
+  "emailAutomationFlowInsertConditionDescription": "Prüft den Kunden zu diesem Zeitpunkt.",
+  "emailAutomationFlowInsertLabel": "Schritt an Position {position} hinzufügen",
+  "emailAutomationFlowInsertWait": "Warten",
+  "emailAutomationFlowInsertWaitDescription": "Für eine bestimmte Dauer oder bis zu einem bestimmten Zeitpunkt.",
+  "emailAutomationFlowSave": "Ablauf speichern",
+  "emailAutomationFlowSaveFailed": "Der Ablauf konnte nicht gespeichert werden. Versuchen Sie es gleich noch einmal.",
+  "emailAutomationFlowSaveInvalid": "So lässt sich der Ablauf nicht speichern. Prüfen Sie die hervorgehobenen Schritte.",
+  "emailAutomationFlowScheduleMinutesNotAllowed": "Ein Zeitplan kann nur um {minutes} jeder Stunde beginnen. Wählen Sie eine dieser Minuten aus.",
+  "emailAutomationFlowSaving": "Wird gespeichert …",
+  "emailAutomationFlowSendDescription": "Sendet die E-Mail dieser Kampagne und beendet den Durchlauf.",
+  "emailAutomationFlowSendEditEmail": "E-Mail bearbeiten",
+  "emailAutomationFlowSendSubjectLabel": "Betreff – {language}",
+  "emailAutomationFlowSendSubjectMissing": "In dieser Sprache gibt es noch keinen Inhalt",
+  "emailAutomationFlowSendTitle": "E-Mail senden",
+  "emailAutomationFlowStatusArchived": "Diese Automatisierung ist archiviert, daher lässt sich ihr Ablauf nur anzeigen.",
+  "emailAutomationFlowStatusEmpty": "Diese Automatisierung hat noch keinen Ablauf. Wählen Sie einen Auslöser aus und speichern Sie.",
+  "emailAutomationFlowStatusPending": "Gespeichert. <link>Prüfen Sie die Vorschau und aktivieren Sie</link>, damit die Änderungen für neue Durchläufe gelten.",
+  "emailAutomationFlowStatusPublished": "Entspricht der Live-Version.",
+  "emailAutomationFlowStatusUnsaved": "Nicht gespeicherte Änderungen",
+  "emailAutomationFlowStepDelete": "Schritt löschen",
+  "emailAutomationFlowStepEyebrow": [
+    {
+      "declarations": ["input number", "input kind"],
+      "selectors": ["kind"],
+      "match": {
+        "kind=condition": "Schritt {number} · Bedingung",
+        "kind=wait": "Schritt {number} · Warten",
+        "kind=*": "Schritt {number} · Senden"
+      }
+    }
+  ],
+  "emailAutomationFlowStepMenuLabel": "Aktionen für {step}",
+  "emailAutomationFlowStepMoveDown": "Nach unten",
+  "emailAutomationFlowStepMoveUp": "Nach oben",
+  "emailAutomationFlowTriggerChooseDescription": "Ein Durchlauf beginnt für einen Kunden bei jeder Ausführung eines Zeitplans oder jedes Mal, wenn der Kunde ein Ereignis auslöst.",
+  "emailAutomationFlowTriggerChooseTitle": "Wählen Sie aus, was diese Automatisierung auslöst",
+  "emailAutomationFlowTriggerEyebrow": "Auslöser",
+  "emailAutomationFlowTriggerFamilyEvent": "Ereignis",
+  "emailAutomationFlowTriggerFamilyEventDescription": "Wenn ein Kunde eine Reservierung vornimmt, storniert, beginnt oder beendet oder ein Konto erstellt.",
+  "emailAutomationFlowTriggerFamilyLabel": "Was einen Durchlauf startet",
+  "emailAutomationFlowTriggerFamilySchedule": "Zeitplan",
+  "emailAutomationFlowTriggerFamilyScheduleDescription": "Zu festgelegten Zeiten, für alle in der Zielgruppe der Kampagne.",
+  "emailAutomationFlowTriggerRequired": "Wählen Sie aus, was diese Automatisierung auslöst.",
+  "emailAutomationFlowWaitCountError": "Geben Sie eine ganze Zahl von 1 bis 9.999 ein.",
+  "emailAutomationFlowWaitCountLabel": "Wie lange warten",
+  "emailAutomationFlowWaitFor": "Wartezeit",
+  "emailAutomationFlowWaitModeCalendar": "Bis zu einem Zeitpunkt",
+  "emailAutomationFlowWaitModeDuration": "Für eine Dauer",
+  "emailAutomationFlowWaitModeLabel": "Wie der Schritt wartet",
+  "emailAutomationFlowWaitTitle": "Warten",
+  "emailAutomationFlowWaitUnitDay": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Tag",
+        "countPlural=other": "Tage"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitHour": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Stunde",
+        "countPlural=other": "Stunden"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitLabel": "Zeiteinheit",
+  "emailAutomationFlowWaitUnitMinute": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Minute",
+        "countPlural=other": "Minuten"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitMonth": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Monat",
+        "countPlural=other": "Monate"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitWeek": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Woche",
+        "countPlural=other": "Wochen"
+      }
+    }
+  ]
+}

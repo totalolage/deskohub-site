@@ -2,10 +2,10 @@ import "server-only";
 
 import {
   EmailDocument,
+  EmailDocumentForPublication,
   type EmailDraft,
   type EmailId,
   type EmailVersionId,
-  emailDocumentForPublication,
   requiredEmailValueNames,
 } from "@deskohub/workspace-admin-api";
 import { desc, eq } from "drizzle-orm";
@@ -24,7 +24,6 @@ import {
   type EmailImageNotAllowed,
   emailImages,
 } from "@/features/emails/body/email-image-policy";
-import { locales } from "@/features/i18n";
 import { currentInstant } from "@/shared/utils/temporal";
 
 export class EmailNotFound extends Data.TaggedError("EmailNotFound")<{
@@ -113,7 +112,7 @@ export class EmailPersistence extends Context.Service<
                 .for("update");
               if (!email) return yield* new EmailNotFound({ emailId });
               const document = yield* Schema.decodeUnknownEffect(
-                emailDocumentForPublication(locales)
+                EmailDocumentForPublication
               )(email.draft).pipe(
                 Effect.mapError(() => new EmailPublicationInvalid({ emailId }))
               );
@@ -151,7 +150,7 @@ export class EmailPersistence extends Context.Service<
             })
           );
         }),
-        // Historical reads deliberately do not apply today's publication locales.
+        // Historical reads deliberately do not apply today's publication rules.
         getVersion: Effect.fn("EmailPersistence.getVersion")(function* (
           versionId: EmailVersionId
         ) {

@@ -12,7 +12,12 @@ import {
   InvalidMutationInputError,
   runAuthenticatedCommand,
 } from "../command-runtime";
-import { campaignLocaleFlag, readBodies, requireText } from "./campaign-input";
+import {
+  campaignLocaleFlag,
+  campaignLocaleShortNames,
+  readBodies,
+  requireText,
+} from "./campaign-input";
 
 const templatesListCommand = Command.make("list", {}, () =>
   runAuthenticatedCommand((api, accessToken, json) =>
@@ -40,7 +45,7 @@ const templatesPreviewCommand = Command.make(
       AdministrationCampaignTemplateKey.literals
     ),
     locale: campaignLocaleFlag("locale").pipe(
-      Flag.withDescription("Locale to render: cs or en")
+      Flag.withDescription(`Locale to render: ${campaignLocaleShortNames}`)
     ),
     campaign: Flag.string("campaign").pipe(
       Flag.withSchema(AdministrationCampaignId),
