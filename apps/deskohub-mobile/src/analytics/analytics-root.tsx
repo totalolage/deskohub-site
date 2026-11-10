@@ -1,10 +1,12 @@
 import { usePathname, useSegments } from "expo-router";
-import { type ReactNode, useEffect, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect } from "react";
 import { Platform } from "react-native";
+import type { AuthSessionState } from "../auth/auth-session-state";
 import { useAuthSession } from "../auth/use-auth-session";
 import {
   accountConsentCheckEnabled,
   appAccountConsentCheck,
+  useConsentPromptWaits,
 } from "../consent/account-consent-check";
 import { ConsentPrompt } from "../consent/consent-prompt";
 import {
@@ -21,6 +23,11 @@ import { detectOtherPostHogSdk } from "./other-posthog-sdk";
 import { clearPostHogStoredState, createPostHogClient } from "./posthog-client";
 import { screenPathPattern } from "./screen-path";
 import { analyticsIdentityOf } from "./session-identity";
+
+/** The account consent check, on the platforms that check (not the web). */
+const accountCheck = accountConsentCheckEnabled
+  ? appAccountConsentCheck
+  : undefined;
 
 const webHostname = () =>
   Platform.OS === "web" ? window.location.hostname : undefined;
@@ -40,9 +47,7 @@ const connectAnalytics = () =>
     detectOtherSdk: () =>
       Platform.OS === "web" && detectOtherPostHogSdk(window),
     consent: appAnalyticsConsent(),
-    accountCheck: accountConsentCheckEnabled
-      ? appAccountConsentCheck
-      : undefined,
+    accountCheck,
     clearStoredState: clearPostHogStoredState,
     warn: (message) => console.warn(message),
   });
@@ -53,8 +58,8 @@ const connectAnalytics = () =>
  * while the stored session is restored. The account consent check follows
  * the same session first, so a new account is held from the start.
  */
-const useSessionAnalyticsIdentity = () => {
-  const identity = analyticsIdentityOf(useAuthSession());
+const useSessionAnalyticsIdentity = (session: AuthSessionState) => {
+  const identity = analyticsIdentityOf(session);
   // Effects key on the identity's parts: each session refetch is a new object.
   const { kind } = identity;
   const accountId =
@@ -71,25 +76,14 @@ const useSessionAnalyticsIdentity = () => {
 };
 
 /**
- * Whether a signed-in session's first consent check is still pending: the
- * account's grant may answer the prompt. Never on the web bundle, which
- * doesn't check.
- */
-const useFirstAccountCheckPending = () =>
-  useSyncExternalStore(
-    appAccountConsentCheck.subscribe,
-    () =>
-      accountConsentCheckEnabled && appAccountConsentCheck.firstCheckPending()
-  );
-
-/**
  * Connects analytics for the app's lifetime, records screen views and asks
- * for analytics consent while there is no answer, once a signed-in session's
- * first account check has settled.
+ * for analytics consent while there is no answer, once the session's first
+ * account check has settled (`useConsentPromptWaits`).
  */
 export function AnalyticsRoot({ children }: { readonly children: ReactNode }) {
+  const session = useAuthSession();
   const consent = useAnalyticsConsent();
-  const firstAccountCheckPending = useFirstAccountCheckPending();
+  const promptWaits = useConsentPromptWaits(accountCheck, session);
   // Views record the route pattern (`/reservations/[orderId]`), never the
   // concrete path; the path only marks a new view, such as another order.
   const screen = screenPathPattern(useSegments());
@@ -100,7 +94,7 @@ export function AnalyticsRoot({ children }: { readonly children: ReactNode }) {
     consent.status === "granted" || consent.status === "loading";
 
   useEffect(connectAnalytics, []);
-  useSessionAnalyticsIdentity();
+  useSessionAnalyticsIdentity(session);
   // biome-ignore lint/correctness/useExhaustiveDependencies: pathname records a new view when only the order changes.
   useEffect(() => {
     if (recording) trackScreenView(screen);
@@ -109,7 +103,7 @@ export function AnalyticsRoot({ children }: { readonly children: ReactNode }) {
   return (
     <>
       {children}
-      {consent.status === "undecided" && !firstAccountCheckPending && (
+      {consent.status === "undecided" && !promptWaits && (
         <ConsentPrompt onAccept={consent.grant} onDecline={consent.deny} />
       )}
     </>

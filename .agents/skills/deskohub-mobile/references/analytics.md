@@ -72,7 +72,9 @@ The privacy reference's ledger section covers the server side.
   identified client's network is paused (`holdNetwork`), so its queued events
   and its app-state flushes wait. A withdrawal applied meanwhile discards all
   of it; a settled or failed (or timed-out) sync releases it. The consent
-  prompt waits for the session's first check. Not covered: requests already in
+  prompt waits while the stored session is restored and until the rendered
+  account's own first check settles (`useConsentPromptWaits`), so a new
+  account never sees it a frame early. Not covered: requests already in
   flight, the SDK's flush when the app leaves the foreground, and
   `$feature_flag_called` events `getFeatureFlag` queues while a foreground
   hold pauses an identified client (they wait with the network and a

@@ -118,7 +118,7 @@ describe("syncAccountAnalyticsConsent", () => {
       },
     ]);
     expect(device.check.holds(device.accountId)).toBe(false);
-    expect(device.check.firstCheckPending()).toBe(false);
+    expect(device.check.firstCheckPending(device.accountId)).toBe(false);
   });
 
   test("sends the app's language for a choice stored without one", async () => {
@@ -170,7 +170,7 @@ describe("syncAccountAnalyticsConsent", () => {
       notice: "current",
     };
     const device = setup({ stored: { kind: "undecided" }, decision: grant });
-    expect(device.check.firstCheckPending()).toBe(true);
+    expect(device.check.firstCheckPending(device.accountId)).toBe(true);
 
     await device.syncOnce();
 
@@ -183,7 +183,7 @@ describe("syncAccountAnalyticsConsent", () => {
       decidedAt: "2026-11-05T09:30:15.250Z",
       locale: "en-US",
     });
-    expect(device.check.firstCheckPending()).toBe(false);
+    expect(device.check.firstCheckPending(device.accountId)).toBe(false);
     expect(device.check.holds(device.accountId)).toBe(false);
   });
 
@@ -198,7 +198,7 @@ describe("syncAccountAnalyticsConsent", () => {
 
       expect(device.consent.status()).toBe("undecided");
       expect(device.writes).toEqual([]);
-      expect(device.check.firstCheckPending()).toBe(false);
+      expect(device.check.firstCheckPending(device.accountId)).toBe(false);
     }
   });
 
@@ -414,7 +414,7 @@ describe("followAccountConsent with analytics", () => {
     const device = setup({ stored: { kind: "undecided" }, decision });
     const app = withAnalytics(device, order);
     await device.synced();
-    expect(device.check.firstCheckPending()).toBe(false);
+    expect(device.check.firstCheckPending(device.accountId)).toBe(false);
     let answer = () => {};
     device.workspace.analyticsSyncDelay = new Promise((resolve) => {
       answer = resolve;

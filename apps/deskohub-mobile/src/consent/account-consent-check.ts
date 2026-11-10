@@ -1,5 +1,7 @@
 import { Context } from "effect";
+import { useSyncExternalStore } from "react";
 import { Platform } from "react-native";
+import type { AuthSessionState } from "../auth/auth-session-state";
 import { consentChoiceMark, type StoredConsent } from "./analytics-consent";
 import { appAnalyticsConsent } from "./use-analytics-consent";
 
@@ -22,8 +24,11 @@ export interface AccountConsentCheck {
   readonly follow: (accountId: string | undefined) => void;
   /** Whether analytics must hold the account's delivery. */
   readonly holds: (accountId: string) => boolean;
-  /** Whether the session's first check for its account is still pending. */
-  readonly firstCheckPending: () => boolean;
+  /**
+   * Whether `accountId`'s first check of the session is still pending: until
+   * the check follows it and a check of it settles.
+   */
+  readonly firstCheckPending: (accountId: string) => boolean;
   /**
    * Records a finished check of `accountId` for the device's `choice`;
    * ignored for another account, or once the device holds another choice,
@@ -81,7 +86,7 @@ export const createAccountConsentCheck = (
       accountId !== account ||
       !current ||
       checkedChoice !== consentChoiceMark(deviceChoice()),
-    firstCheckPending: () => account !== undefined && !checkedOnce,
+    firstCheckPending: (accountId) => accountId !== account || !checkedOnce,
     settle: (accountId, choice) => {
       const mark = consentChoiceMark(choice);
       if (accountId !== account || mark !== consentChoiceMark(deviceChoice())) {
@@ -103,6 +108,34 @@ export const createAccountConsentCheck = (
       };
     },
   };
+};
+
+const ignoreChanges = () => () => {};
+
+/**
+ * Whether the consent prompt waits for the session's first account check,
+ * which may answer it with the account's grant: while the stored session is
+ * restored, and until the signed-in account's first check settles. Read from
+ * the session being rendered, so a new account waits from its first render,
+ * before the check follows it. Never without a check, as on the web bundle.
+ */
+export const useConsentPromptWaits = (
+  check: AccountConsentCheck | undefined,
+  session: AuthSessionState
+): boolean => {
+  const accountId =
+    session.status === "signed-in" ? session.user.id : undefined;
+  const firstCheckPending = () =>
+    check !== undefined &&
+    accountId !== undefined &&
+    check.firstCheckPending(accountId);
+  // The check lives in memory, so a server render reads it as the client does.
+  const pending = useSyncExternalStore(
+    check?.subscribe ?? ignoreChanges,
+    firstCheckPending,
+    firstCheckPending
+  );
+  return check !== undefined && (session.status === "restoring" || pending);
 };
 
 /**
