@@ -16,6 +16,10 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { m } from "@/features/i18n";
 import { workspaceDefaultFromAddress } from "@/shared/backend/config/email.config";
+import {
+  captureLogAnnotationsWithExit,
+  expectScalarLogAnnotations,
+} from "@/shared/testing/log-annotations.test-utils";
 import { ContactService } from "./contact.service";
 
 const sentResult = (id: string): EmailSendResult => ({
@@ -26,6 +30,50 @@ const sentResult = (id: string): EmailSendResult => ({
 });
 
 describe("ContactService", () => {
+  test("annotates its rows with the submission's shape, never its contents", async () => {
+    const emailService: EmailService = {
+      send: () => Effect.succeed(sentResult("email-annotated")),
+      sendBatch: () => Effect.die("Contact tests do not send batches."),
+    };
+    const ContactServiceTest = ContactService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(EmailServiceTag, emailService),
+          Layer.succeed(EmailConfigTag, {
+            defaultFrom: { email: workspaceDefaultFromAddress },
+          } satisfies EmailConfig)
+        )
+      )
+    );
+    const submission = {
+      name: "Annotated Customer",
+      email: testEmailAddress("annotated"),
+      phone: "+420 123 456 789",
+      message: "A message that stays off log rows.",
+    };
+
+    const { rows, exit } = await ContactService.pipe(
+      Effect.flatMap((service) => service.submit(submission, "en-US")),
+      Effect.provide(ContactServiceTest),
+      captureLogAnnotationsWithExit,
+      Effect.runPromise
+    );
+
+    expect(exit._tag).toBe("Success");
+    expectScalarLogAnnotations(rows);
+    const serialized = JSON.stringify(rows);
+    for (const value of Object.values(submission)) {
+      expect(serialized).not.toContain(value);
+    }
+    expect(rows).toContainEqual(
+      expect.objectContaining({
+        locale: "en-US",
+        hasPhone: true,
+        messageLength: submission.message.length,
+      })
+    );
+  });
+
   test("always sends the business notification in Czech", async () => {
     const sentMessages: EmailMessage[] = [];
     const send = mock((message: EmailMessage) => {

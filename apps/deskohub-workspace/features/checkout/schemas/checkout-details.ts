@@ -13,3 +13,14 @@ export const checkoutDetailsSchema = Schema.Union([
 });
 
 export type CheckoutDetails = typeof checkoutDetailsSchema.Type;
+
+/**
+ * Checkout details for log annotations: the reservation kind and how many
+ * discounts the price includes. The details themselves, with the reservation
+ * projection, price summary and legal evidence, stay off every row the
+ * annotation reaches.
+ */
+export const checkoutDetailsLogFields = (details: CheckoutDetails) => ({
+  reservationKind: details.reservation.kind,
+  discountCount: details.payment.discounts.length,
+});

@@ -35,7 +35,7 @@ const loadWorkspaceAvailabilityRequest = Effect.fn(
         onSome: Effect.succeed,
       }
     );
-    yield* Effect.annotateLogsScoped({ query });
+    yield* Effect.annotateLogsScoped(query);
     yield* Effect.logInfo("Meeting-room start times request parsed");
 
     return yield* loadMeetingRoomStartTimes({ query, replacementToken });
@@ -54,7 +54,7 @@ const loadWorkspaceAvailabilityRequest = Effect.fn(
       onSome: Effect.succeed,
     }
   );
-  yield* Effect.annotateLogsScoped({ query });
+  yield* Effect.annotateLogsScoped(query);
   yield* Effect.logInfo("Workspace availability request parsed");
 
   return yield* loadAvailability({ query, replacementToken });

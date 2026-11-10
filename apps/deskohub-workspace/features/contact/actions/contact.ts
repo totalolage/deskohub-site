@@ -2,9 +2,10 @@ import "server-only";
 
 import { Effect, Schema } from "effect";
 import { ContactService } from "@/features/contact/backend/contact.service";
-import type { ContactFormValues } from "@/features/contact/schemas/contact";
 import {
+  type ContactFormValues,
   contactDefaultValues,
+  contactSubmissionLogFields,
   createContactSchema,
 } from "@/features/contact/schemas/contact";
 import { type Locale, m } from "@/features/i18n";
@@ -69,7 +70,10 @@ export const processContactSubmission = Effect.fn("submitContactForm")(
       callSite: "contact.submit",
     });
 
-    yield* Effect.annotateLogsScoped({ submittedValues, locale });
+    yield* Effect.annotateLogsScoped({
+      locale,
+      ...contactSubmissionLogFields(submittedValues),
+    });
     yield* Effect.logInfo("Workspace contact form action received");
 
     const validation = yield* Schema.decodeUnknownEffect(

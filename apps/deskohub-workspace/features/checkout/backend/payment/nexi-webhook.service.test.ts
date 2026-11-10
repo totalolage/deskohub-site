@@ -8,6 +8,7 @@ import type {
 import { type Context, Effect, Layer, Logger, References } from "effect";
 import type { CheckoutAnalytics } from "@/features/checkout/backend/analytics/checkout-analytics.service";
 import type { IWorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import { expectScalarLogAnnotations } from "@/shared/testing/log-annotations.test-utils";
 import {
   type IReservationFulfillment,
   WorkspacePaidFulfillmentError,
@@ -822,7 +823,7 @@ describe("NexiWebhookService", () => {
       )
     );
 
-    expect(annotations.length).toBeGreaterThan(0);
+    expectScalarLogAnnotations(annotations);
     for (const row of annotations) {
       for (const key of [
         "payload",

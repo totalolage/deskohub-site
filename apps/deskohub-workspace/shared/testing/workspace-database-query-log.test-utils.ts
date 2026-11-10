@@ -1,5 +1,10 @@
 import { expect } from "bun:test";
-import { Effect, type Exit, Logger, Predicate, References } from "effect";
+import { Effect, type Exit, Predicate, References } from "effect";
+import {
+  captureLogAnnotationsWithExit,
+  expectScalarLogAnnotations,
+  type LogRowAnnotations,
+} from "./log-annotations.test-utils";
 
 export interface LoggedDatabaseQuery {
   readonly query: string;
@@ -16,6 +21,38 @@ export const withDatabaseQueryDetail = <A, E, R>(
 ): Effect.Effect<A, E, R> =>
   Effect.provideService(effect, References.MinimumLogLevel, "Debug");
 
+const isDatabaseQueryRow = (
+  annotations: LogRowAnnotations
+): annotations is LogRowAnnotations & LoggedDatabaseQuery =>
+  Predicate.isString(annotations.query) && Array.isArray(annotations.params);
+
+/** The statement fields the Workspace database query logger puts on its row. */
+const databaseQueryFields = ["query", "params", "parameterCount"];
+
+/**
+ * Runs an effect with query detail (`withDatabaseQueryDetail`) and records
+ * the annotations of each Workspace database query row, the scoped
+ * annotations of the code that ran the statement included, beside the
+ * effect's exit.
+ */
+export const captureDatabaseQueryRowsWithExit = <A, E, R>(
+  effect: Effect.Effect<A, E, R>
+) =>
+  captureLogAnnotationsWithExit(withDatabaseQueryDetail(effect)).pipe(
+    Effect.map(({ rows, exit }) => ({
+      rows: rows.filter(isDatabaseQueryRow),
+      exit,
+    }))
+  );
+
+/**
+ * Asserts that query rows were logged and that, beside the statement's own
+ * fields, each carries only scalar annotations from its scope.
+ */
+export const expectScalarDatabaseQueryAnnotations = (
+  rows: readonly LogRowAnnotations[]
+) => expectScalarLogAnnotations(rows, { exempt: databaseQueryFields });
+
 /**
  * Runs an effect with query detail (`withDatabaseQueryDetail`) and records
  * what the Workspace database query logger emits for each statement, after
@@ -31,27 +68,12 @@ export const captureDatabaseQueryLogsWithExit = <A, E, R>(
   never,
   R
 > =>
-  Effect.suspend(() => {
-    const logged: LoggedDatabaseQuery[] = [];
-    const captureLogger = Logger.make((options) => {
-      const annotations = options.fiber.getRef(
-        References.CurrentLogAnnotations
-      );
-      if (
-        Predicate.isString(annotations.query) &&
-        Array.isArray(annotations.params)
-      ) {
-        logged.push({ query: annotations.query, params: annotations.params });
-      }
-    });
-
-    return effect.pipe(
-      Effect.exit,
-      withDatabaseQueryDetail,
-      Effect.provide(Logger.layer([captureLogger])),
-      Effect.map((exit) => ({ logs: logged, exit }))
-    );
-  });
+  captureDatabaseQueryRowsWithExit(effect).pipe(
+    Effect.map(({ rows, exit }) => ({
+      logs: rows.map(({ query, params }) => ({ query, params })),
+      exit,
+    }))
+  );
 
 /**
  * Runs an effect and records what the Workspace database query logger emits

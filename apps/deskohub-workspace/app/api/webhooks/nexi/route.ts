@@ -4,6 +4,7 @@ import {
   NexiWebhookProcessingError,
   NexiWebhookService,
   nexiWebhookRefusal,
+  nexiWebhookResultLogFields,
 } from "@/features/checkout/backend/payment";
 import { WorkspaceNexiLayer } from "@/shared/backend/config/nexi.config";
 import { defineWebhookRoute } from "@/shared/backend/service-route";
@@ -24,7 +25,7 @@ const processWebhookRequest = Effect.fn("processNexiWebhookRequest")(function* (
 
   const webhooks = yield* NexiWebhookService;
   const result = yield* webhooks.processNotification(payload);
-  yield* Effect.annotateLogsScoped({ result });
+  yield* Effect.annotateLogsScoped(nexiWebhookResultLogFields(result));
   yield* Effect.logInfo("Nexi webhook request processed");
 
   return result;

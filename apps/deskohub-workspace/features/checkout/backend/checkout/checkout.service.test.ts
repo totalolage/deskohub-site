@@ -58,6 +58,7 @@ import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/o
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
 import { getNexiRequestTimeoutMilliseconds } from "@/shared/backend/config/nexi.config";
+import { expectScalarLogAnnotations } from "@/shared/testing/log-annotations.test-utils";
 import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -1048,6 +1049,8 @@ describe("CheckoutService", () => {
 
       const annotations = await captureAnnotations(harness.effect);
 
+      expectScalarLogAnnotations(annotations);
+
       for (const row of annotations) {
         for (const key of recordKeys) expect(row).not.toHaveProperty(key);
         const serialized = JSON.stringify(row);
@@ -1078,6 +1081,8 @@ describe("CheckoutService", () => {
       });
 
       const annotations = await captureAnnotations(harness.effect);
+
+      expectScalarLogAnnotations(annotations);
 
       for (const row of annotations) {
         for (const key of recordKeys) expect(row).not.toHaveProperty(key);

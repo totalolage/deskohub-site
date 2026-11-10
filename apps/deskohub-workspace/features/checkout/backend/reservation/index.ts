@@ -1,5 +1,8 @@
 export { splitCustomerName } from "./dotypos-customer-policy";
-export { createWorkspaceDotyposReservation } from "./dotypos-reservation.adapter";
+export {
+  createWorkspaceDotyposReservation,
+  dotyposReservationLogFields,
+} from "./dotypos-reservation.adapter";
 export { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
 export {
   excludeDotyposReservationsById,

@@ -21,6 +21,7 @@ import {
   type MeetingRoomReservationDurationKey,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import { getMeetingRoomDayStartTimes } from "@/features/reservation/meeting-room-reservation-time";
+import { expectScalarLogAnnotations } from "@/shared/testing/log-annotations.test-utils";
 import { plainDateStringSchema } from "@/shared/utils/temporal";
 import {
   getMeetingRoomSelectionAvailabilityQuery,
@@ -721,11 +722,7 @@ describe("WorkspaceAvailabilityService", () => {
     expect(annotations).not.toHaveProperty("tables");
     expect(annotations).not.toHaveProperty("reservations");
     expect(annotations).not.toHaveProperty("limitations");
-    for (const { annotations } of logs) {
-      for (const value of Object.values(annotations)) {
-        expect(Array.isArray(value)).toBe(false);
-      }
-    }
+    expectScalarLogAnnotations(logs.map(({ annotations }) => annotations));
   });
 
   test("loads a meeting-room check from the previous date through every date a start on its date can occupy", async () => {

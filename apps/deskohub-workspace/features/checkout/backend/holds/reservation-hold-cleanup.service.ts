@@ -13,6 +13,7 @@ import { CheckoutAnalytics } from "../analytics/checkout-analytics.service";
 import {
   ProviderPaymentDeferral,
   ProviderPaymentFinalizationService,
+  providerPaymentFinalizationLogFields,
 } from "../payment/provider-payment-finalization.service";
 import { PaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import { UnpaidHoldRelease } from "./unpaid-hold-release.service";
@@ -206,9 +207,9 @@ function makeReservationHoldCleanupServiceLayer(
               )
             )
           );
-        yield* Effect.annotateLogsScoped({
-          providerFinalizationResult: result,
-        });
+        yield* Effect.annotateLogsScoped(
+          providerPaymentFinalizationLogFields(result)
+        );
         yield* Effect.logInfo(
           "Reservation hold cancellation provider finalization completed"
         );
@@ -304,7 +305,6 @@ function makeReservationHoldCleanupServiceLayer(
           readonly orderId: WorkspaceReservationId;
           readonly checkedAt?: Temporal.Instant;
         }) {
-          yield* Effect.annotateLogsScoped({ input });
           yield* Effect.logInfo("Reservation hold cancellation started");
 
           const active = yield* loadOrder(input.orderId);
@@ -336,7 +336,6 @@ function makeReservationHoldCleanupServiceLayer(
           "reservationHoldCleanup.sweepExpiredHolds"
         )(
           function* (input) {
-            yield* Effect.annotateLogsScoped({ input });
             yield* Effect.logInfo("Expired reservation hold sweep started");
 
             const orders = yield* reservations.selectExpiredHolds(input).pipe(

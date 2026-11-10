@@ -16,6 +16,10 @@ import { discountIdSchema } from "@/features/discounts/contracts";
 import { type Locale, locales } from "@/features/i18n";
 import { formatMoney, moneyWithValue } from "@/shared/money/money";
 import {
+  captureLogAnnotationsWithExit,
+  expectScalarLogAnnotations,
+} from "@/shared/testing/log-annotations.test-utils";
+import {
   createWorkspaceDotyposReservation,
   formatWorkspaceReservationNote,
   noteNamesPaymentOrder,
@@ -137,6 +141,42 @@ describe("createWorkspaceDotyposReservation", () => {
       expect.objectContaining({
         startDate: new Date("2099-06-09T22:00:00Z"),
         endDate: new Date("2099-06-10T22:00:00Z"),
+      })
+    );
+  });
+
+  test("annotates its rows with the created reservation's id and status, never a record", async () => {
+    const testLayer = Layer.mergeAll(
+      Layer.mock(WorkspaceTableAssignmentService, {
+        assignTableId: () => Effect.succeed("cowork-table-id" as never),
+      } satisfies IWorkspaceTableAssignmentService),
+      Layer.mock(DotyposService, {
+        createReservation: () =>
+          Effect.succeed({
+            id: "dotypos-reservation-id",
+            status: "NEW",
+          } as never),
+      })
+    );
+
+    const { rows, exit } = await createWorkspaceDotyposReservation({
+      paymentOrderId: "payment-order-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      checkoutDetails,
+      reservation: checkoutDetails.reservation,
+      status: "NEW",
+    }).pipe(
+      Effect.provide(testLayer),
+      captureLogAnnotationsWithExit,
+      Effect.runPromise
+    );
+
+    expect(exit._tag).toBe("Success");
+    expectScalarLogAnnotations(rows);
+    expect(rows).toContainEqual(
+      expect.objectContaining({
+        dotyposReservationId: "dotypos-reservation-id",
+        dotyposReservationStatus: "NEW",
       })
     );
   });

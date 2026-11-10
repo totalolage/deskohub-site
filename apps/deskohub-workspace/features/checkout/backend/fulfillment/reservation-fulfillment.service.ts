@@ -886,7 +886,6 @@ export class ReservationFulfillment extends Context.Service<
         run: Effect.fn("workspacePaidFulfillment.fulfillPaidOrder")(
           function* (orderId) {
             const input = { orderId };
-            yield* Effect.annotateLogsScoped({ input });
             yield* Effect.logInfo("Paid fulfillment started");
 
             yield* Effect.logDebug(

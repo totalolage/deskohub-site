@@ -77,6 +77,16 @@ interface NexiWebhookResult {
   readonly eventId?: NexiWebhookEventId;
 }
 
+/**
+ * A webhook result for log annotations: its status and the ids it names.
+ * Ids the result leaves out stay off the row.
+ */
+export const nexiWebhookResultLogFields = (result: NexiWebhookResult) => ({
+  webhookResultStatus: result.status,
+  ...(result.orderId && { orderId: result.orderId }),
+  ...(result.eventId && { eventId: result.eventId }),
+});
+
 export interface INexiWebhookService {
   readonly processNotification: (
     payload: Parameters<typeof decodeNexiWebhookNotification>[0]
@@ -309,7 +319,7 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
           eventId: input.eventId,
           orderId: input.providerOrderId,
         };
-        yield* Effect.annotateLogsScoped({ result });
+        yield* Effect.annotateLogsScoped(nexiWebhookResultLogFields(result));
         yield* Effect.logInfo("Nexi webhook processing accepted");
 
         return result;
@@ -517,7 +527,9 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
           notificationSecurityToken: envelope.securityToken,
           expectedSecurityToken: attempt.securityToken,
         });
-        yield* Effect.annotateLogsScoped({ tokenCheck });
+        yield* Effect.annotateLogsScoped({
+          tokenCheckStatus: tokenCheck.status,
+        });
         yield* Effect.logDebug("Nexi webhook security token checked");
         // Nexi marks the token optional; a notification without one
         // only triggers the authoritative order lookup below.
@@ -622,7 +634,10 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
         });
 
         const providerMetadata = getNexiPaymentMetadata(verification);
-        yield* Effect.annotateLogsScoped({ providerMetadata });
+        yield* Effect.annotateLogsScoped({
+          providerOperationId: providerMetadata.providerOperationId,
+          providerStatus: providerMetadata.providerStatus,
+        });
         yield* Effect.logDebug("Nexi webhook provider metadata resolved");
 
         const verified: VerifiedPaymentNotification = {
