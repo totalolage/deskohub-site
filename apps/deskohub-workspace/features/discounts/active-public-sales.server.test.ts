@@ -7,6 +7,7 @@ import {
   type IWorkspaceFeatureFlagService,
   WorkspaceFeatureFlagService,
 } from "@/features/feature-flags/backend";
+import type { GlobalRelease } from "@/features/feature-flags/backend/global-release";
 import { DiscountReleaseGateService } from "./discount-release-gate.service";
 
 type LogRecord = {
@@ -21,7 +22,16 @@ const logger = Logger.make((options) => {
     message: options.message[0],
   });
 });
-const connection = mock(() => Promise.resolve());
+// Resolves once the render reaches request time; a prerender never does.
+let requestStarts: Promise<void> = Promise.resolve();
+const connection = mock(() => requestStarts);
+// The `calendar_sales` release for every visitor; PostHog decides an
+// undecided one per visitor.
+let calendarSalesRelease: GlobalRelease = "undecided";
+const loadGlobalRelease = mock(() => Promise.resolve(calendarSalesRelease));
+mock.module("@/features/feature-flags/backend/global-release.server", () => ({
+  loadGlobalRelease,
+}));
 const discoverActiveSales = mock(() =>
   Effect.die("provider should not be called")
 );
@@ -76,13 +86,52 @@ afterAll(() => {
 });
 
 afterEach(() => {
+  requestStarts = Promise.resolve();
+  calendarSalesRelease = "undecided";
+  loadGlobalRelease.mockClear();
   connection.mockClear();
   discoverActiveSales.mockClear();
   logRecords.length = 0;
 });
 
 describe("getActivePublicSales", () => {
-  test("fails closed without request or provider work and logs evaluation failures", async () => {
+  test("answers no sales without the request while calendar sales are off for everyone", async () => {
+    calendarSalesRelease = "off";
+    const evaluateFlags = mock(() =>
+      Effect.die("evaluateFlags should not be called")
+    );
+    installFeatureFlags(evaluateFlags);
+
+    await expect(
+      Effect.runPromise(getActivePublicSales({ locale: "en-US" }))
+    ).resolves.toEqual([]);
+
+    expect(loadGlobalRelease).toHaveBeenCalledWith("calendar_sales");
+    expect(connection).not.toHaveBeenCalled();
+    expect(evaluateFlags).not.toHaveBeenCalled();
+    expect(discoverActiveSales).not.toHaveBeenCalled();
+  });
+
+  test("asks PostHog about the visitor only at request time", async () => {
+    // posthog-node reads the clock before its request, which Next.js reports
+    // as an error while prerendering (#1187).
+    const { promise: requestTime, resolve: startRequest } =
+      Promise.withResolvers<void>();
+    requestStarts = requestTime;
+    const evaluateFlags = mock(() => Effect.fail(evaluationError()));
+    installFeatureFlags(evaluateFlags);
+
+    const sales = Effect.runPromise(getActivePublicSales({ locale: "en-US" }));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(connection).toHaveBeenCalledTimes(1);
+    expect(evaluateFlags).not.toHaveBeenCalled();
+
+    startRequest();
+    await expect(sales).resolves.toEqual([]);
+    expect(evaluateFlags).toHaveBeenCalledTimes(1);
+  });
+
+  test("fails closed without provider work and logs evaluation failures", async () => {
     const evaluateFlags = mock(() => Effect.fail(evaluationError()));
     installFeatureFlags(evaluateFlags);
 
@@ -97,7 +146,6 @@ describe("getActivePublicSales", () => {
     expect(evaluateFlags).toHaveBeenCalledWith({
       flagKeys: ["calendar_sales", "customer_discounts", "discount_codes"],
     });
-    expect(connection).not.toHaveBeenCalled();
     expect(discoverActiveSales).not.toHaveBeenCalled();
     expect(logRecords).toContainEqual({
       level: "Warn",
