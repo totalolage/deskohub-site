@@ -334,12 +334,6 @@ const die = buildDie();
 /** Unit axes through each of the die's twelve vertices, in rest-view coordinates. */
 export const vertexAxes: readonly Vector3[] = die.rest.map(normalize);
 
-export const identityRotation: Rotation = [
-  [1, 0, 0],
-  [0, 1, 0],
-  [0, 0, 1],
-];
-
 /** Rotation by `degrees` about `axis` (right-handed). */
 export const axisRotation = (axis: Vector3, degrees: number): Rotation => {
   const [x, y, z] = normalize(axis);

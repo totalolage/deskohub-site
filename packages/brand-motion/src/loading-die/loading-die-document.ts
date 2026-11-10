@@ -267,7 +267,7 @@ const layerTiming = (index: number, name: string) =>
     bm: 0,
   }) as const;
 
-export const loadingDieDocumentName = (motion: LoadingDieMotion) =>
+const loadingDieDocumentName = (motion: LoadingDieMotion) =>
   motion === "tumble" ? "loading-die-tumble" : "loading-die-in-place";
 
 export const buildLoadingDieDocument = (
