@@ -139,6 +139,34 @@
     },
     {
       "includes": [
+        "apps/deskohub-workspace/scripts/workspace-e2e-capacity.ts",
+        "apps/deskohub-workspace/scripts/workspace-e2e-stale-cleanup.ts",
+        "apps/deskohub-workspace/e2e/integrations/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@/features/i18n": "Workspace E2E setup runs before i18n:compile. Import a message-free module such as @deskohub/i18n/locale-registry or @/features/i18n/phone-region.",
+                  "@/features/administration/i18n": "Workspace E2E setup runs before i18n:compile. Import a message-free module such as @deskohub/i18n/locale-registry or @/features/i18n/phone-region."
+                },
+                "patterns": [
+                  {
+                    "group": ["**/paraglide", "**/paraglide/**"],
+                    "message": "Workspace E2E setup runs before i18n:compile. Import a message-free module such as @deskohub/i18n/locale-registry or @/features/i18n/phone-region."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
         "apps/deskohub-workspace/features/account/backend/auth/**",
         "apps/deskohub-workspace/features/account/backend/customer-authentication.service.ts"
       ],
