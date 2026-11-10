@@ -55,7 +55,7 @@ const numberedInstances = (meet: Effect.Effect<void> = Effect.void) =>
     })
   );
 
-const perOperation = (implementation: Layer.Layer<Operations, never, never>) =>
+const perOperation = <R>(implementation: Layer.Layer<Operations, never, R>) =>
   servicePerOperation(
     Operations,
     { answer: true, refuse: true },
@@ -108,6 +108,32 @@ describe("servicePerOperation", () => {
     );
 
     expect(answers[0]?.instance).not.toBe(answers[1]?.instance);
+  });
+
+  test("builds what the implementation requires once, for overlapping and later operations", async () => {
+    const meetingPoint = makeMeetingPoint(2);
+    const handlerBuildsBefore = builds.handler;
+
+    const answers = await Effect.gen(function* () {
+      const operations = yield* Operations;
+      const overlapping = yield* Effect.all(
+        ["first", "second"].map(operations.answer),
+        { concurrency: "unbounded" }
+      );
+      return [...overlapping, yield* operations.answer("later")];
+    }).pipe(
+      Effect.provide(
+        perOperation(numberedInstances(meetingPoint.arrive("answer"))).pipe(
+          Layer.provide(HandlerOwn.Live)
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(meetingPoint.arrivals()).toEqual({ answer: 3 });
+    expect(builds.handler - handlerBuildsBefore).toBe(1);
+    expect(new Set(answers.map(({ handler }) => handler)).size).toBe(1);
+    expect(new Set(answers.map(({ instance }) => instance)).size).toBe(3);
   });
 
   test("fails an operation with its own typed failure", async () => {

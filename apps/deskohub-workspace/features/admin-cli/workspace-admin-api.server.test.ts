@@ -94,9 +94,7 @@ import {
   ReservationProductDetailsBackfill,
   type ReservationProductDetailsBackfillBatch,
 } from "@/features/reservation/backend/reservation-product-details-backfill.service";
-import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { WorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { toWorkspaceWebHandler } from "@/shared/backend/workspace-effect";
 import { makeMeetingPoint } from "@/shared/testing/overlapping-requests.test-utils";
@@ -1588,23 +1586,27 @@ describe("customer and reservation administration endpoints", () => {
     expect(errors[2]).toBeInstanceOf(CliServiceUnavailable);
   });
 
-  test("cancels overlapping requests' reservations under each request's own seating-map release", async () => {
-    const cohorts = ["open", "closed"] as const;
-    type Cohort = (typeof cohorts)[number];
-    const reservationIdOf = {
-      open: AdministrationWorkspaceReservationId.make(
-        "01980000-0000-7000-8000-0000000000d1"
-      ),
-      closed: AdministrationWorkspaceReservationId.make(
-        "01980000-0000-7000-8000-0000000000d2"
-      ),
-    };
-    // Each bearer acts as its cohort's administrator.
-    const administratorOf = (cohort: Cohort) =>
+  /**
+   * One administration API handler whose cancellations run through
+   * `ReservationAdministrationService.perOperationOver`, as `Live`'s do, over
+   * fakes of what it shares that count their builds. Each bearer acts as its
+   * cohort's administrator, every flag is on for the open cohort's, and the
+   * stored reservation sits on a table the seating map shows.
+   */
+  const cancellationHandler = (overlapping: number) => {
+    const builds = { dotypos: 0, emails: 0, featureFlags: 0, reservations: 0 };
+    const counted = <I>(name: keyof typeof builds, layer: Layer.Layer<I>) =>
+      Layer.unwrap(
+        Effect.sync(() => {
+          builds[name] += 1;
+          return layer;
+        })
+      );
+    const administratorOf = (cohort: string) =>
       customerAccountIdSchema.make(`administrator-${cohort}`);
     const authentication = Layer.succeed(AdministrationAuthentication, {
       bearer: (httpEffect, { credential }) => {
-        const cohort = Redacted.value(credential) as Cohort;
+        const cohort = Redacted.value(credential);
         return Effect.provideService(httpEffect, CurrentAdministrationCaller, {
           actor: {
             accountId: administratorOf(cohort),
@@ -1617,8 +1619,7 @@ describe("customer and reservation administration endpoints", () => {
         });
       },
     });
-    // Every flag is on for the open cohort's administrator.
-    const meetingPoint = makeMeetingPoint(cohorts.length);
+    const meetingPoint = makeMeetingPoint(overlapping);
     const featureFlags = featureFlagsByCohort(
       meetingPoint,
       Effect.map(Effect.serviceOption(CurrentAdministrationCaller), (caller) =>
@@ -1628,64 +1629,91 @@ describe("customer and reservation administration endpoints", () => {
           : "closed"
       )
     );
-    const emails: Array<{ readonly id: string; readonly placement: unknown }> =
+    const emails: Array<{ readonly id: string; readonly tableMap: boolean }> =
       [];
     const stored = (id: string) =>
       ({
         id,
+        activePaymentAttemptId: null,
+        dotyposCustomerId: "customer-id",
         dotyposReservationId: `dotypos-${id}`,
+        failureCode: null,
         fulfillmentState: "fulfilled",
+        locale: "cs-CZ",
+        paymentState: "paid",
+        reservationDetails: {
+          kind: "cowork",
+          entryTier: "profi",
+          coffee: false,
+          monitorOption: "none",
+        },
         reservationState: "confirmed",
         updatedAt: Temporal.Now.instant(),
       }) as never;
-    // Places the reservation on the seating map while that's released, as
-    // its live details do.
-    const reservationDetails = Layer.unwrap(
-      Effect.map(SeatingMapReleaseGate, (seatingMap) =>
-        Layer.mock(WorkspaceReservationService, {
+    const shared = Layer.mergeAll(
+      counted(
+        "dotypos",
+        Layer.mock(DotyposService, {
+          cancelReservation: () => Effect.void,
           getReservation: (id) =>
-            Effect.map(
-              seatingMap.isOpen,
-              (open) =>
-                ({
+            Effect.succeed(
+              Option.some({
+                reservation: {
                   id,
-                  dotyposReservationId: `dotypos-${id}`,
-                  providerStatus: "CONFIRMED",
-                  placement: open ? "seating-map" : "unplaced",
-                }) as never
+                  _branchId: "branch",
+                  _cloudId: "cloud",
+                  _customerId: "customer-id",
+                  _tableId: "table-id",
+                  startDate: "2026-06-15T22:00:00.000Z",
+                  endDate: "2026-06-16T22:00:00.000Z",
+                  seats: "1",
+                  status: "CONFIRMED",
+                },
+                customer: {
+                  _cloudId: "cloud",
+                  email: testEmailAddress("customer"),
+                  firstName: "Synthetic",
+                  lastName: "Customer",
+                },
+              }) as never
             ),
+          getTables: () =>
+            Effect.succeed([
+              {
+                _cloudId: "cloud",
+                id: "table-id",
+                name: "12",
+                display: true,
+                enabled: true,
+                locationName: "Main room",
+                seats: "1",
+                tags: ["tier:profi"],
+              },
+            ] as never),
         })
-      )
-    ).pipe(
-      Layer.provide(SeatingMapReleaseGate.Default),
-      Layer.provide(featureFlags)
-    );
-    const reservations = ReservationAdministrationService.perOperation(
-      ReservationAdministrationService.Default.pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            Layer.mock(DotyposService, {
-              cancelReservation: () => Effect.void,
+      ),
+      counted(
+        "emails",
+        Layer.mock(WorkspaceReservationEmailService, {
+          sendCancellationEmail: ({ reservation }) =>
+            Effect.sync(() => {
+              emails.push({
+                id: reservation.id,
+                tableMap: reservation.placement.tableMap !== undefined,
+              });
             }),
-            Layer.mock(WorkspaceReservationEmailService, {
-              sendCancellationEmail: ({ reservation }) =>
-                Effect.sync(() => {
-                  emails.push({
-                    id: reservation.id,
-                    placement: reservation.placement,
-                  });
-                }),
-            }),
-            Layer.mock(WorkspaceReservationRepository, {
-              findById: (id) => Effect.succeed(stored(id)),
-              claimAdministrationCancellation: ({ id }) =>
-                Effect.succeed(stored(id)),
-              markAdministrationCancelled: () => Effect.void,
-              markAdministrationCancellationFailed: () => Effect.void,
-            }),
-            reservationDetails
-          )
-        )
+        })
+      ),
+      counted("featureFlags", featureFlags),
+      counted(
+        "reservations",
+        Layer.mock(WorkspaceReservationRepository, {
+          findById: (id) => Effect.succeed(stored(id)),
+          claimAdministrationCancellation: ({ id }) =>
+            Effect.succeed(stored(id)),
+          markAdministrationCancelled: () => Effect.void,
+          markAdministrationCancellationFailed: () => Effect.void,
+        })
       )
     );
     const handle = toWorkspaceWebHandler(
@@ -1696,7 +1724,7 @@ describe("customer and reservation administration endpoints", () => {
       }).pipe(
         Layer.provide(
           Layer.mergeAll(
-            reservations,
+            ReservationAdministrationService.perOperationOver(shared),
             ClaimEveryCliMutation,
             DiscardedAdministrationActionLog,
             Layer.succeed(CliAuthentication, {} as never),
@@ -1714,35 +1742,96 @@ describe("customer and reservation administration endpoints", () => {
         )
       )
     );
-
-    const responses = await Promise.all(
-      cohorts.map((cohort) =>
-        handle(
-          new Request(
-            `https://workspace.deskohub.test/api/v1/cli/reservations/${reservationIdOf[cohort]}/cancellation`,
-            {
-              method: "POST",
-              headers: {
-                authorization: `Bearer ${cohort}`,
-                "content-type": "application/json",
-              },
-              body: JSON.stringify({
-                accessGrantUpdatedAt: null,
-                providerCredentialRemoved: false,
-                sendCancellationEmail: true,
-              }),
-            }
-          )
+    /** Cancels `reservationId` as the administrator of `cohort`. */
+    const cancel = (cohort: string, reservationId: string) =>
+      handle(
+        new Request(
+          `https://workspace.deskohub.test/api/v1/cli/reservations/${reservationId}/cancellation`,
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${cohort}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              accessGrantUpdatedAt: null,
+              providerCredentialRemoved: false,
+              sendCancellationEmail: true,
+            }),
+          }
         )
+      ).then(({ status }) => status);
+    const sentEmails = () =>
+      emails.toSorted((a, b) => a.id.localeCompare(b.id));
+    return { builds, cancel, meetingPoint, sentEmails };
+  };
+  const cancelledReservationId = (suffix: string) =>
+    AdministrationWorkspaceReservationId.make(
+      `01980000-0000-7000-8000-0000000000${suffix}`
+    );
+
+  test("cancels overlapping requests' reservations under each request's own seating-map release", async () => {
+    const cohorts = ["open", "closed"];
+    const reservationIds = [
+      cancelledReservationId("d1"),
+      cancelledReservationId("d2"),
+    ];
+    const { cancel, meetingPoint, sentEmails } = cancellationHandler(
+      cohorts.length
+    );
+
+    const statuses = await Promise.all(
+      cohorts.map((cohort, index) =>
+        cancel(cohort, reservationIds[index] ?? "")
       )
     );
 
-    expect(responses.map(({ status }) => status)).toEqual([200, 200]);
-    expect(emails.toSorted((a, b) => a.id.localeCompare(b.id))).toEqual([
-      { id: reservationIdOf.open, placement: "seating-map" },
-      { id: reservationIdOf.closed, placement: "unplaced" },
+    expect(statuses).toEqual([200, 200]);
+    expect(sentEmails()).toEqual([
+      { id: reservationIds[0], tableMap: true },
+      { id: reservationIds[1], tableMap: false },
     ]);
     expect(Object.values(meetingPoint.arrivals())).toEqual([cohorts.length]);
+  });
+
+  test("builds what cancellations share once for overlapping and later requests", async () => {
+    const overlapping = [
+      { cohort: "open", reservationId: cancelledReservationId("e1") },
+      { cohort: "closed", reservationId: cancelledReservationId("e2") },
+    ];
+    const later = [
+      { cohort: "closed", reservationId: cancelledReservationId("e3") },
+      { cohort: "open", reservationId: cancelledReservationId("e4") },
+    ];
+    const { builds, cancel, meetingPoint, sentEmails } = cancellationHandler(
+      overlapping.length
+    );
+
+    const statuses = await Promise.all(
+      overlapping.map(({ cohort, reservationId }) =>
+        cancel(cohort, reservationId)
+      )
+    );
+    for (const { cohort, reservationId } of later) {
+      statuses.push(await cancel(cohort, reservationId));
+    }
+
+    expect(statuses).toEqual([200, 200, 200, 200]);
+    expect(builds).toEqual({
+      dotypos: 1,
+      emails: 1,
+      featureFlags: 1,
+      reservations: 1,
+    });
+    expect(sentEmails()).toEqual(
+      [...overlapping, ...later].map(({ cohort, reservationId }) => ({
+        id: reservationId,
+        tableMap: cohort === "open",
+      }))
+    );
+    expect(Object.values(meetingPoint.arrivals())).toEqual([
+      overlapping.length + later.length,
+    ]);
   });
 });
 
