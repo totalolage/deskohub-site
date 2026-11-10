@@ -9,6 +9,7 @@ import {
   DotyposVersionConflict,
 } from "@deskohub/dotypos";
 import { Effect, Layer, Logger, Option, Schema } from "effect";
+import { SqlError } from "effect/unstable/sql";
 import { customerAccountIdSchema } from "../customer-account";
 import {
   type CustomerAccountDeletionDependencies,
@@ -449,6 +450,127 @@ describe("Customer account deletion", () => {
       expect(result._tag).toBe("Failure");
       expect(calls).not.toContain("tombstone");
       expect(logCodes).toContain("account.deletion.retryable");
+    });
+  });
+
+  describe("the retryable deletion warning", () => {
+    const retryableWarning = Schema.Struct({
+      code: Schema.Literal("account.deletion.retryable"),
+    });
+    // Decoding fails on any annotation value that isn't a string.
+    const fixedFields = Schema.Record(Schema.String, Schema.String);
+
+    const retryableWarningsOf = async (
+      program: Effect.Effect<void, { readonly _tag: string }>
+    ) => {
+      const logged: unknown[] = [];
+      const capturingLogger = Logger.make(({ message }) => {
+        const [, annotations] = Array.isArray(message) ? message : [];
+        logged.push(annotations);
+      });
+      const result = await Effect.runPromise(
+        program.pipe(
+          Effect.result,
+          Effect.provide(Logger.layer([capturingLogger]))
+        )
+      );
+      return { result, warnings: logged.filter(Schema.is(retryableWarning)) };
+    };
+
+    const expectFixedFields = (
+      warnings: readonly unknown[],
+      keys: readonly string[],
+      rawTexts: readonly string[]
+    ) => {
+      expect(warnings).toHaveLength(1);
+      const fields = Schema.decodeUnknownSync(fixedFields)(warnings[0]);
+      expect(Object.keys(fields).sort()).toEqual([...keys].sort());
+      for (const value of Object.values(fields)) {
+        for (const rawText of rawTexts) {
+          expect(rawText.length).toBeGreaterThan(0);
+          expect(value).not.toContain(rawText);
+        }
+      }
+    };
+
+    test("logs only fixed fields when a Dotypos failure keeps deletion retryable", async () => {
+      const providerOutage = new DotyposUnavailable({
+        operation: "expireCustomer",
+        request: "customer.patch",
+        reason: "server",
+        httpStatus: 503,
+        message: "synthetic provider detail 4c1e",
+        cause: new Error("synthetic provider cause 4c1e"),
+      });
+      const { result, warnings } = await retryableWarningsOf(
+        Effect.gen(function* () {
+          const adapter = yield* CustomerDotyposAdapter;
+          const { dependencies } = makeDependencies({
+            expireCustomer: adapter.expireCustomer,
+          });
+          yield* expireLinkedDotyposProfile(dependencies)(accountId);
+        }).pipe(
+          Effect.provide(
+            CustomerDotyposAdapter.Default.pipe(
+              Layer.provide(
+                Layer.mock(DotyposService, {
+                  expireCustomer: () => Effect.fail(providerOutage),
+                })
+              )
+            )
+          )
+        )
+      );
+
+      expect(result._tag).toBe("Failure");
+      expectFixedFields(
+        warnings,
+        ["code", "failure"],
+        ["synthetic provider detail 4c1e", "synthetic provider cause 4c1e"]
+      );
+    });
+
+    test("logs only fixed fields when a database failure keeps deletion retryable", async () => {
+      const databaseOutage = new SqlError.SqlError({
+        reason: new SqlError.UnknownError({
+          cause: new Error("synthetic database cause 9b2d"),
+          message: "synthetic database detail 9b2d",
+          operation: "query",
+        }),
+      });
+      const { dependencies } = makeDependencies({
+        markDeletionRequested: () => Effect.fail(databaseOutage),
+      });
+      const { result, warnings } = await retryableWarningsOf(
+        expireLinkedDotyposProfile(dependencies)(accountId)
+      );
+
+      expect(result._tag).toBe("Failure");
+      expectFixedFields(
+        warnings,
+        ["code", "failure"],
+        [
+          databaseOutage.message,
+          "synthetic database detail 9b2d",
+          "synthetic database cause 9b2d",
+        ]
+      );
+    });
+
+    test("logs the access reason and failure code when the account lock is unavailable", async () => {
+      const { dependencies } = makeDependencies({
+        account: { lockUnavailable: true },
+      });
+      const { result, warnings } = await retryableWarningsOf(
+        expireLinkedDotyposProfile(dependencies)(accountId)
+      );
+
+      expect(result._tag).toBe("Failure");
+      expectFixedFields(
+        warnings,
+        ["code", "failure", "failureCode", "reason"],
+        ["advisory lock unavailable"]
+      );
     });
   });
 });

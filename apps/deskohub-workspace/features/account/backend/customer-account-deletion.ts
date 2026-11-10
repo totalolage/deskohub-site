@@ -41,6 +41,22 @@ type CustomerAccountDeletionError =
   | CustomerAvatarProviderError
   | CustomerAvatarUnavailableError;
 
+/**
+ * The fixed, low-cardinality fields a deletion that stays retryable logs.
+ * The failure itself stays out of the log: its message and cause can carry
+ * raw database or provider output.
+ */
+const retryableDeletionLogFields = (
+  failure: CustomerAccountDeletionError
+): Readonly<Record<string, string>> =>
+  failure._tag === "CustomerAccountAccessError"
+    ? {
+        failure: failure._tag,
+        reason: failure.reason,
+        ...(failure.cause && { failureCode: failure.cause.code }),
+      }
+    : { failure: failure._tag };
+
 export type CustomerAccountDeletionDependencies = {
   readonly isReviewAccount: (
     accountId: CustomerAccountId
@@ -130,10 +146,13 @@ export const expireLinkedDotyposProfile = (
         { recheck: "present" }
       )
       .pipe(
-        Effect.tapError((cause) =>
+        Effect.tapError((failure) =>
           Effect.logWarning(
             "Customer account deletion did not complete; deletion stays retryable.",
-            { code: "account.deletion.retryable", cause }
+            {
+              code: "account.deletion.retryable",
+              ...retryableDeletionLogFields(failure),
+            }
           )
         )
       );
