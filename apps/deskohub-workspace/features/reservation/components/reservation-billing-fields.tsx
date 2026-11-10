@@ -5,8 +5,6 @@ import { Info } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { type FieldPathByValue, useFormContext } from "react-hook-form";
 import {
-  type BillingIdentityIssue,
-  billingIdentityIssue,
   type InvoiceBuyerAddressInput,
   invoiceCountryCodes,
 } from "@/features/accounting/billing-identity";
@@ -44,29 +42,6 @@ type BillingFieldName = FieldPathByValue<
   ReservationBillingFormValues,
   string | undefined
 >;
-
-const billingIdentityIssueCopy = {
-  [billingIdentityIssue.required]: (locale) =>
-    m.reservationBillingFieldRequired({}, { locale }),
-  [billingIdentityIssue.countryInvalid]: (locale) =>
-    m.reservationBillingCountryInvalid({}, { locale }),
-  [billingIdentityIssue.postalCodeInvalid]: (locale) =>
-    m.reservationBillingPostalCodeInvalid({}, { locale }),
-} satisfies Record<BillingIdentityIssue, (locale: Locale) => string>;
-
-const isBillingIdentityIssue = (
-  message: string
-): message is BillingIdentityIssue =>
-  Object.hasOwn(billingIdentityIssueCopy, message);
-
-/**
- * A billing field's error in the form's locale. Billing identity rules arrive
- * as rule names; any other schema message is shown as given.
- */
-const localizeBillingFieldError = (message: string, locale: Locale) =>
-  isBillingIdentityIssue(message)
-    ? billingIdentityIssueCopy[message](locale)
-    : message;
 
 const stableInvoiceCountries = invoiceCountryCodes.map((code) => ({
   code,
@@ -210,18 +185,15 @@ function BusinessFields({ locale }: { readonly locale: Locale }) {
   return (
     <div className="grid gap-5 sm:grid-cols-2">
       <BillingTextField
-        locale={locale}
         autoComplete="organization"
         label={m.reservationBillingCompanyNameLabel({}, { locale })}
         name="billing.buyer.legalName"
       />
       <BillingTextField
-        locale={locale}
         label={m.reservationBillingCompanyIdLabel({}, { locale })}
         name="billing.buyer.companyId"
       />
       <BillingTextField
-        locale={locale}
         label={m.reservationBillingVatIdLabel({}, { locale })}
         name="billing.buyer.vatId"
         optional
@@ -240,26 +212,22 @@ export function ReservationBillingAddressFields({
   return (
     <div className="grid gap-5 sm:grid-cols-2">
       <BillingTextField
-        locale={locale}
         autoComplete="address-line1"
         label={m.reservationBillingAddressLine1Label({}, { locale })}
         name={`${address}.line1` as BillingFieldName}
       />
       <BillingTextField
-        locale={locale}
         autoComplete="address-line2"
         label={m.reservationBillingAddressLine2Label({}, { locale })}
         name={`${address}.line2` as BillingFieldName}
         optional
       />
       <BillingTextField
-        locale={locale}
         autoComplete="address-level2"
         label={m.reservationBillingCityLabel({}, { locale })}
         name={`${address}.city` as BillingFieldName}
       />
       <BillingTextField
-        locale={locale}
         autoComplete="postal-code"
         label={m.reservationBillingPostalCodeLabel({}, { locale })}
         name={`${address}.postalCode` as BillingFieldName}
@@ -312,11 +280,7 @@ function BillingCountryField({
               ))}
             </select>
           </FormControl>
-          <FormMessage
-            formatError={(message) =>
-              localizeBillingFieldError(message, locale)
-            }
-          />
+          <FormMessage />
         </FormItem>
       )}
     />
@@ -326,13 +290,11 @@ function BillingCountryField({
 function BillingTextField({
   autoComplete,
   label,
-  locale,
   name,
   optional = false,
 }: {
   readonly autoComplete?: string;
   readonly label: string;
-  readonly locale: Locale;
   readonly name: BillingFieldName;
   readonly optional?: boolean;
 }) {
@@ -363,11 +325,7 @@ function BillingTextField({
               variant={fieldState.error ? "error" : "default"}
             />
           </FormControl>
-          <FormMessage
-            formatError={(message) =>
-              localizeBillingFieldError(message, locale)
-            }
-          />
+          <FormMessage />
         </FormItem>
       )}
     />

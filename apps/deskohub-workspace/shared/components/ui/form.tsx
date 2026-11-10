@@ -144,16 +144,13 @@ function FormControl({
 function FormMessage({
   className,
   children,
-  formatError = String,
   ref,
   ...props
 }: React.HTMLAttributes<HTMLParagraphElement> & {
-  /** The text shown for the field's error message, the message by default. */
-  formatError?: (message: string) => string;
   ref?: React.Ref<HTMLParagraphElement>;
 }) {
   const { error, formMessageId } = useFormField();
-  const body = error ? formatError(String(error.message)) : children;
+  const body = error ? String(error.message) : children;
 
   // The live region stays mounted so screen readers announce the message when
   // it appears; while empty it leaves the item's flow and gap.
