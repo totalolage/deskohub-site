@@ -1,5 +1,5 @@
 import { CustomerAnalyticsChoice } from "@deskohub/workspace-customer-api";
-import { Schema } from "effect";
+import { Predicate, Schema } from "effect";
 import { isAppLocale } from "../i18n/app-locale";
 import {
   type ConsentChoice,
@@ -18,11 +18,6 @@ const declined: StoredConsent = { kind: "decided", categories: [] };
  */
 const isDecisionTime = Schema.is(CustomerAnalyticsChoice.fields.decidedAt);
 
-const field = (value: unknown, name: string): unknown =>
-  typeof value === "object" && value !== null && name in value
-    ? (value as Readonly<Record<string, unknown>>)[name]
-    : undefined;
-
 /**
  * Reads the stored native consent record. A missing record is no answer; a
  * malformed one, including one with an unknown category or without a valid
@@ -39,9 +34,8 @@ export const parseConsentRecord = (raw: string | null): StoredConsent => {
   } catch {
     return declined;
   }
-  const categories = field(value, "categories");
-  const decidedAt = field(value, "decidedAt");
-  const locale = field(value, "locale");
+  if (!Predicate.isReadonlyObject(value)) return declined;
+  const { categories, decidedAt, locale } = value;
   if (
     !Array.isArray(categories) ||
     !categories.every(isConsentCategory) ||
