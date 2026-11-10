@@ -49,8 +49,9 @@ type SupportReason = Extract<
  *
  * - `signed-out`: no session, or the session ended while resolution waited
  *   for the account lock.
- * - `unverified`: the session's login email isn't verified.
- * - `deletion-pending`: the account awaits deletion. It carries the review
+ * - `unverified`: the session's login email isn't verified (pre-lock read).
+ * - `deletion-pending`: the session's account awaits deletion (pre-lock
+ *   read). It carries the review
  *   marker, `present` included, because the account page decides its
  *   sign-in methods from it.
  * - `review`: an app-directory review account, which never links.
@@ -61,7 +62,9 @@ type SupportReason = Extract<
  * - `linked`: the account's Dotypos customer. `autoLinked` is true only when
  *   this resolution claimed an existing exact-email customer.
  * - `unavailable`: the session is known, but the link, lock, or Dotypos step
- *   failed with `failure`.
+ *   failed, or the recheck under the lock refused the session as unverified
+ *   (`unverified-email`) or awaiting deletion (`link-required` with
+ *   `deletion-requested`); `failure` says which.
  */
 export type CustomerAccountStanding =
   | { readonly kind: "signed-out" }
@@ -153,11 +156,8 @@ type SessionStanding =
 const signedOut = { kind: "signed-out" } as const;
 const unverified = { kind: "unverified" } as const;
 
-const supportReasons: ReadonlySet<CustomerAccountLinkFailure> = new Set([
-  "ambiguous",
-  "unusable",
-  "claimed",
-]);
+const supportReasons: ReadonlySet<CustomerAccountLinkFailure> =
+  new Set<CustomerAccountLinkFailure>(["ambiguous", "unusable", "claimed"]);
 
 const isSupportReason = (
   reason: CustomerAccountLinkFailure | undefined
@@ -173,7 +173,9 @@ const makeCurrentCustomerAccount = (
    */
   const readReviewMarker = (accountId: CustomerAccountId) =>
     reads.isReviewAccount(accountId).pipe(
-      Effect.map((review) => (review ? "present" : "absent") as const),
+      Effect.map((review): "present" | "absent" =>
+        review ? "present" : "absent"
+      ),
       catchRecoverableCause(() =>
         Effect.logWarning("Account review marker unavailable").pipe(
           Effect.annotateLogs({ code: "account.review.unavailable" }),
@@ -246,15 +248,11 @@ const makeCurrentCustomerAccount = (
     ) {
       return { kind: "support-required", reason: failure.linkReason, ...facts };
     }
-    // The section's recheck under the lock saw the session end or change.
+    // The section's recheck under the lock found the session gone.
     if (failure.reason === "unauthenticated") return signedOut;
-    if (failure.reason === "unverified-email") return unverified;
-    if (
-      failure.reason === "link-required" &&
-      failure.linkReason === "deletion-requested"
-    ) {
-      return { kind: "deletion-pending", ...facts };
-    }
+    // Everything else, including a recheck that found the email unverified
+    // or a deletion marker, stays a fact on `unavailable`: callers map those
+    // residual refusals differently on purpose.
     return { kind: "unavailable", failure, ...facts };
   };
 

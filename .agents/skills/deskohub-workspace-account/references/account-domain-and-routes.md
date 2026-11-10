@@ -10,7 +10,7 @@
   only), `profile-missing` and `support-required` (resolve only, with
   `ambiguous`, `unusable`, or `claimed`), `linked` (with `autoLinked`), and
   `unavailable` (the session is known but a link, lock, or Dotypos step
-  failed). Signed-in kinds carry the session and `reviewMarker` (`absent` or
+  failed, or the locked recheck refused it; `failure` says which). Signed-in kinds carry the session and `reviewMarker` (`absent` or
   `unreadable`; `deletion-pending` may also carry `present`). Only a failed
   session read fails the Effect (`not-configured`, `unavailable`).
   - Order: session, review marker (an unreadable marker is logged once as
@@ -20,15 +20,19 @@
     call.
   - `resolve` runs the held steps in a `session` account section, so it
     reuses an enclosing hold of the same account. A recheck under the lock
-    that finds the session gone, unverified, or awaiting deletion reports
-    `signed-out`, `unverified`, or `deletion-pending`. It writes only the
-    reactivation and the link claim, never a signup referral.
+    that finds the session gone reports `signed-out`; one that finds the
+    email unverified or a deletion marker reports `unavailable` with that
+    refusal (`unverified` and `deletion-pending` come only from the
+    pre-lock read). It writes only the reactivation and the link claim,
+    never a signup referral.
   - `requireActive` is the verified session of an account not awaiting
     deletion, or `unauthenticated`, `unverified-email`, or `link-required`
     with `deletion-requested`.
   - Callers map outcomes differently on purpose. The account state
     (`loadAccountState`) shows `unverified` and a failed session read as
-    `unavailable`, and `unavailable` as `authenticated-unavailable`.
+    `unavailable`, an `unavailable` whose failure is the recheck's
+    `link-required` or `unverified-email` as `support-required` without
+    history, and any other `unavailable` as `authenticated-unavailable`.
     Checkout treats `not-configured` as signed out. Don't merge those
     mappings into the module.
   - The account state reads it through `AccountStateCapabilities`. When its

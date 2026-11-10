@@ -652,13 +652,25 @@ const loadSignedInAccount = Effect.fn(function* (
         state: { kind: "support-required", email: session.email },
         ...authoredHistory(session),
       } satisfies LoadedContent;
-    case "unavailable":
+    case "unavailable": {
+      const { failure } = standing;
       yield* Effect.logError("Account resolution failed", {
-        error: standing.failure,
+        error: failure,
       }).pipe(withOperation("account.resolve"));
+      // A recheck under the lock that found the email unverified or a
+      // pending deletion shows no reservations.
+      if (
+        failure.reason === "link-required" ||
+        failure.reason === "unverified-email"
+      ) {
+        return {
+          state: { kind: "support-required", email: session.email },
+        } satisfies LoadedContent;
+      }
       return {
         state: { kind: "authenticated-unavailable", email: session.email },
       } satisfies LoadedContent;
+    }
   }
 });
 

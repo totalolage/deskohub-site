@@ -193,7 +193,10 @@ export const accountStateCapabilities = (
           ? CurrentCustomerAccount.LinksUnavailable.pipe(
               Layer.provide(reviewAccounts)
             )
-          : Layer.effectDiscard(Effect.failCause(failuresAsDefects(cause)))
+          : Layer.effect(
+              CurrentCustomerAccount,
+              Effect.failCause(failuresAsDefects(cause))
+            )
       ),
       Layer.provide(layers.authentication)
     ),

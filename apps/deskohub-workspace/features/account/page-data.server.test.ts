@@ -81,8 +81,12 @@ type StandingSpec =
         | "unverified"
         | "deletion-pending"
         | "review"
-        | "profile-missing"
-        | "unavailable";
+        | "profile-missing";
+    }
+  | {
+      readonly kind: "unavailable";
+      /** What failed; the lock by default. */
+      readonly failure?: CustomerAccountAccessError;
     };
 
 /** The review marker every signed-in standing reports. */
@@ -111,7 +115,8 @@ const standing = (
       case "unavailable":
         return Effect.succeed({
           kind: "unavailable",
-          failure: customerAccountUnavailable("account-link.lock"),
+          failure:
+            spec.failure ?? customerAccountUnavailable("account-link.lock"),
           ...facts,
         });
       case "linked":
@@ -825,6 +830,50 @@ describe("loadAccountPageState", () => {
       email: customerEmail,
       history: { kind: "unavailable", reason: "provider-unavailable" },
     });
+  });
+
+  test("reads no reservations when the locked recheck finds the email unverified or a pending deletion", async () => {
+    historyEffect = Effect.succeed({
+      kind: "available",
+      groups: {
+        current: [{ id: "workspace-reservation-1" }],
+        past: [],
+        unavailable: [],
+      },
+    });
+
+    for (const failure of [
+      new CustomerAccountAccessError({ reason: "unverified-email" }),
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      }),
+    ]) {
+      currentStanding = standing({ kind: "unavailable", failure });
+      await expect(loadPageState()).resolves.toEqual({
+        kind: "support-required",
+        deletion: "offered",
+        assistants: [],
+        email: customerEmail,
+      });
+    }
+    expect(historyLoadCalls).toBe(0);
+  });
+
+  test("shows the authenticated unavailable state when the link, lock, or Dotypos step fails", async () => {
+    for (const failure of [
+      customerAccountUnavailable("account-link.lock"),
+      customerAccountUnavailable("dotypos.customer-lookup"),
+    ]) {
+      currentStanding = standing({ kind: "unavailable", failure });
+      await expect(loadPageState()).resolves.toEqual({
+        kind: "authenticated-unavailable",
+        deletion: "offered",
+        assistants: [],
+        email: customerEmail,
+      });
+    }
+    expect(historyLoadCalls).toBe(0);
   });
 
   test("offers no deletion without a profile when the review marker can't be read", async () => {

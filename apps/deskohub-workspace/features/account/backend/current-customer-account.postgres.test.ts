@@ -510,7 +510,7 @@ describe.skipIf(!suiteDatabase)(
         expect(await storedLink(account.accountId)).toBeNull();
       });
 
-      test("a deletion marker found under the lock is pending deletion", async () => {
+      test("a deletion marker found under the lock is unavailable with that refusal, not pending deletion", async () => {
         const account = await seedAccount({ deletionRequested: true });
         const session = sessionOf(account);
         const { layer, calls } = makeCurrentAccount({
@@ -522,12 +522,48 @@ describe.skipIf(!suiteDatabase)(
           },
         });
 
-        expect(await resolve(layer)).toEqual({
-          kind: "deletion-pending",
+        const resolved = await resolve(layer);
+        expect(resolved).toMatchObject({
+          kind: "unavailable",
           session,
           reviewMarker: "absent",
         });
+        expect(resolved.kind === "unavailable" && resolved.failure).toEqual(
+          new CustomerAccountAccessError({
+            reason: "link-required",
+            linkReason: "deletion-requested",
+          })
+        );
         expect(calls.classify).toEqual([]);
+        expect(await storedLink(account.accountId)).toBeNull();
+      });
+
+      test("an email the locked recheck finds unverified is unavailable with that refusal, not unverified", async () => {
+        const account = await seedAccount();
+        const session = sessionOf(account);
+        const refusal = new CustomerAccountAccessError({
+          reason: "unverified-email",
+        });
+        const { layer, calls } = makeCurrentAccount({
+          sessions: [session, refusal],
+          match: {
+            kind: "matched",
+            state: "active",
+            customerId: uniqueDotyposId(),
+          },
+        });
+
+        const resolved = await resolve(layer);
+        expect(resolved).toMatchObject({
+          kind: "unavailable",
+          session,
+          reviewMarker: "absent",
+        });
+        expect(resolved.kind === "unavailable" && resolved.failure).toBe(
+          refusal
+        );
+        expect(calls.classify).toEqual([]);
+        expect(await storedLink(account.accountId)).toBeNull();
       });
 
       test("inside an enclosing hold of the same account it resolves under that hold, without a second lock or recheck", async () => {
