@@ -27,6 +27,12 @@ export type CustomerAccountSession = {
   readonly accountId: CustomerAccountId;
   readonly email: typeof reservationCustomerEmailSchema.Type;
   readonly deletionRequested: boolean;
+  /** The account's saved name; `null` when it is blank. */
+  readonly displayName: string | null;
+  /** When the account was created, as Better Auth recorded it. */
+  readonly accountCreatedAt: Temporal.Instant;
+  /** When the account was last updated, as Better Auth recorded it. */
+  readonly accountUpdatedAt: Temporal.Instant;
   /**
    * The saved locale preference on the account. Absent for an account that
    * has none yet; never defaulted.
@@ -40,6 +46,16 @@ const decodeLocalePreference = Schema.decodeUnknownOption(
 
 const accessError = (reason: CustomerAccountAccessError["reason"]) =>
   new CustomerAccountAccessError({ reason });
+
+/**
+ * Better Auth's account timestamp as a domain instant. A value that is not a
+ * valid date fails closed as an unavailable session instead of a defect.
+ */
+const accountInstant = (value: Date) =>
+  Effect.try({
+    try: () => Temporal.Instant.fromEpochMilliseconds(value.getTime()),
+    catch: () => customerAccountUnavailable("authentication.session"),
+  });
 
 export const decodeCustomerAccountSession = (
   session: { readonly user: BetterAuthUser } | null
@@ -66,11 +82,16 @@ export const decodeCustomerAccountSession = (
     const localePreference = Option.getOrUndefined(
       decodeLocalePreference((session.user as { locale?: unknown }).locale)
     );
+    const accountCreatedAt = yield* accountInstant(session.user.createdAt);
+    const accountUpdatedAt = yield* accountInstant(session.user.updatedAt);
 
     return {
       accountId,
       email,
       deletionRequested: withDeletionMarker.deletionRequestedAt != null,
+      displayName: session.user.name.trim() === "" ? null : session.user.name,
+      accountCreatedAt,
+      accountUpdatedAt,
       ...(localePreference && { localePreference }),
     } satisfies CustomerAccountSession;
   });

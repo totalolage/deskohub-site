@@ -12,6 +12,7 @@ type TestAnalyticsPreference = {
 };
 
 type PublicAccountLegalProps = {
+  readonly accountDataExportAvailable: boolean;
   readonly analyticsPreference: TestAnalyticsPreference;
   readonly locale: "en-US";
   readonly marketingPreferences: TestMarketingPreferences;
@@ -37,6 +38,11 @@ const getAnalyticsPreference = mock((_locale: "en-US") => {
   callOrder.push("analytics-preference");
   return Promise.resolve<TestAnalyticsPreference>({ status: "unavailable" });
 });
+const accountDataExportAvailability = { value: false };
+const getAccountDataExportAvailability = mock((_locale: "en-US") => {
+  callOrder.push("account-data-export-availability");
+  return Promise.resolve(accountDataExportAvailability.value);
+});
 const runWithRequestLocale = mock(
   (callback: (locale: "en-US") => unknown): unknown => callback("en-US")
 );
@@ -54,6 +60,12 @@ mock.module("@/features/legal/marketing-preferences.server", () => ({
 mock.module("@/features/legal/analytics-preference.server", () => ({
   getAnalyticsPreference,
 }));
+mock.module(
+  "@/features/account/account-data-export-availability.server",
+  () => ({
+    getAccountDataExportAvailability,
+  })
+);
 mock.module("@/features/i18n/server/request-locale", () => ({
   runWithRequestLocale,
 }));
@@ -64,9 +76,11 @@ describe("public account legal route boundary", () => {
     connection.mockClear();
     getMarketingPreferences.mockClear();
     getAnalyticsPreference.mockClear();
+    getAccountDataExportAvailability.mockClear();
     runWithRequestLocale.mockClear();
     callOrder.length = 0;
     marketingPreferences.value = { status: "unavailable" };
+    accountDataExportAvailability.value = false;
   });
 
   test("checks request connection before preference data", async () => {
@@ -90,9 +104,30 @@ describe("public account legal route boundary", () => {
       "connection",
       "marketing-preferences",
       "analytics-preference",
+      "account-data-export-availability",
     ]);
     expect(connection).toHaveBeenCalledTimes(1);
     expect(getMarketingPreferences).toHaveBeenCalledWith("en-US");
     expect(getAnalyticsPreference).toHaveBeenCalledWith("en-US");
+    expect(getAccountDataExportAvailability).toHaveBeenCalledWith("en-US");
   });
+
+  test.each([true, false])(
+    "passes the export availability %p to the legal screen",
+    async (available) => {
+      accountDataExportAvailability.value = available;
+      const { default: PublicAccountLegalPage } = await import("./page");
+      const route = PublicAccountLegalPage() as ReactElement<{
+        readonly children: ReactElement<{ readonly locale: "en-US" }>;
+      }>;
+      const content = route.props.children;
+      const Content = content.type as (props: {
+        readonly locale: "en-US";
+      }) => Promise<ReactElement<PublicAccountLegalProps>>;
+
+      const rendered = await Content(content.props);
+
+      expect(rendered.props.accountDataExportAvailable).toBe(available);
+    }
+  );
 });

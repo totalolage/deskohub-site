@@ -71,6 +71,10 @@ export const getAccountInvoicePdfPath = (locale: Locale, invoiceId: string) =>
 export const getAccountInvoiceExportPath = (locale: Locale) =>
   getLocalizedPagePath(locale, "/[locale]/account/invoices/export");
 
+/** Downloads the signed-in customer's account data archive as a ZIP. */
+export const getAccountDataExportPath = (locale: Locale) =>
+  getLocalizedPagePath(locale, "/[locale]/account/data-export");
+
 /**
  * Where a finished sign-in continues: `returnTo` when it is a same-origin
  * path, otherwise the account.

@@ -10,6 +10,7 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 import { saveAccountLocalePreference } from "./customer-locale-preference";
 
 type ActivityState =
@@ -98,6 +99,7 @@ const makeSession = (accountId: CustomerAccountId): CustomerAccountSession => ({
   accountId,
   email: testEmailAddress(`pref-${accountId}`),
   deletionRequested: false,
+  ...testSessionProfile,
 });
 
 const accountId = "pref-account-1" as CustomerAccountId;
