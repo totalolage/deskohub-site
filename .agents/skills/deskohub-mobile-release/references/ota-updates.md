@@ -31,14 +31,18 @@ side in `apps/deskohub-mobile/src/updates`.
 ## Publishing
 
 The `ota-update` job of `mobile-release.yml` publishes the tagged commit to
-production after its release is published. It first checks that the APK's
-`assets/fingerprint` equals the runtime version the commit resolves, and fails
-instead of publishing an update no build can receive. A failed publish leaves
-the release alone; rerun only that job. A JavaScript-only fix therefore ships
-as a new patch release. Expo's default fingerprint preset ignores the version
-fields, so installed apps of earlier releases get that update whenever nothing
-native changed between them; after a native change they keep their old runtime
-until the customer installs the new APK, which the update banner offers.
+production after its release is published. It first runs the app's
+`eas-build-post-install` script, the hook in which EAS generated the APK
+build's untracked sources (the Paraglide catalogs); without them `expo export`
+fails to resolve `./paraglide/messages.js`. Keep the job's generation steps
+equal to that hook. It then checks that the APK's `assets/fingerprint` equals
+the runtime version the commit resolves, and fails instead of publishing an
+update no build can receive. A failed publish leaves the release alone; rerun
+only that job. A JavaScript-only fix therefore ships as a new patch release.
+Expo's default fingerprint preset ignores the version fields, so installed apps
+of earlier releases get that update whenever nothing native changed between
+them; after a native change they keep their old runtime until the customer
+installs the new APK, which the update banner offers.
 
 A manual publish runs from `apps/deskohub-workspace`:
 
@@ -47,6 +51,8 @@ MOBILE_UPDATES_CODE_SIGNING=required \
   bun scripts/publish-mobile-update.ts --project ../deskohub-mobile --target <deployment origin>
 ```
 
+- Run `bun run eas-build-post-install` in `apps/deskohub-mobile` first, as
+  the job does, so the export bundles the compiled catalogs.
 - It needs `MOBILE_UPDATES_PUBLISH_TOKEN` and `BLOB_READ_WRITE_TOKEN` for the
   target deployment (and `VERCEL_AUTOMATION_BYPASS_SECRET` for a protected
   deployment). Never publish to a preview: its assets land in the production
