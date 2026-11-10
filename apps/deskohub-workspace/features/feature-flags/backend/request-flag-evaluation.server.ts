@@ -198,7 +198,16 @@ const closeWithoutRemoteEvaluation = (
         })
       ),
     { discard: true }
-  ).pipe(Effect.as<RequestFlagValues>({ getFlag: () => false }));
+  ).pipe(Effect.as(closedFlagValues(keys)));
+
+const closedFlagValues = (
+  keys: ReadonlyArray<PostHogFeatureFlagKey>
+): RequestFlagValues => {
+  const closed: ConstantFlagValues = Object.fromEntries(
+    keys.map((key) => [key, false])
+  );
+  return { getFlag: (key) => closed[key] };
+};
 
 interface GlobalReleaseEvaluation {
   readonly distinctId: PostHogDistinctId;
