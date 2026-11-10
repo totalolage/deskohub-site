@@ -32,6 +32,7 @@ class RetirablePostHog extends PostHog {
 export const createPostHogClient: CreateAnalyticsClient = ({
   apiKey,
   host,
+  remoteFeatureFlags,
   superProperties,
 }) => {
   let storageRetired = false;
@@ -51,6 +52,8 @@ export const createPostHogClient: CreateAnalyticsClient = ({
     errorTracking: { autocapture: false },
     // The controller loads flags once the identity is settled.
     preloadFeatureFlags: false,
+    // Turns every flag reload, identify() and reset() included, into a no-op.
+    disableRemoteFeatureFlags: !remoteFeatureFlags,
   });
   // A withdrawal persists the opt-out; this client exists only with consent.
   void posthog.optIn();

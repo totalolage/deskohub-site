@@ -150,7 +150,11 @@ export const syntheticExportSources = (): AccountDataExportSources => ({
     deletionRequested: false,
     ...testSessionProfile,
   }),
-  activity: Effect.succeed({ kind: "active", deletionRequestedAt: null }),
+  activity: Effect.succeed({
+    kind: "active",
+    email: testEmailAddress("account-data-export"),
+    deletionRequestedAt: null,
+  }),
   profile: Effect.succeed({
     firstName: "Ada",
     lastName: "Synthetic",
@@ -352,6 +356,7 @@ export const accountDataExportRefusals: readonly [
       ...s,
       activity: Effect.succeed({
         kind: "active",
+        email: testEmailAddress("account-data-export"),
         deletionRequestedAt: new Date("2026-09-01T10:00:00Z"),
       }),
     }),

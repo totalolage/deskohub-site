@@ -44,6 +44,7 @@ const provideOwnership = (options: {
         });
   const activity = options.activity ?? {
     kind: "active",
+    email: testEmailAddress("owner"),
     deletionRequestedAt: null,
   };
 
@@ -86,6 +87,7 @@ test.each([
     "account pending deletion",
     {
       kind: "active",
+      email: testEmailAddress("owner"),
       deletionRequestedAt: new Date("2026-09-01T10:00:00.000Z"),
     } as const,
     "link-required",
@@ -127,6 +129,7 @@ test.each([
     {
       activity: {
         kind: "active",
+        email: testEmailAddress("owner"),
         deletionRequestedAt: new Date("2026-09-01T10:00:00.000Z"),
       } as const,
     },

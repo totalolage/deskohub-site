@@ -32,7 +32,7 @@ import type {
   StoredWorkspaceReservationDetails,
   WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
-import type { ReservationPurpose } from "@/features/reservation/reservation-billing";
+import type { ReservationPurpose } from "@/features/reservation/reservation-purpose";
 import { reservationAccessProvisioningStaleAfterMilliseconds } from "@/features/reservation-access";
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import {

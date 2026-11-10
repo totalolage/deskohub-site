@@ -1,17 +1,14 @@
 import {
-  baseLocale,
-  getLocaleDefinition,
-} from "@deskohub/i18n/locale-registry";
-import {
   formatPhoneNumber,
   isPhoneNumber,
   parsePhoneNumber,
 } from "@deskohub/phone-number";
 import {
   type CustomerProfile,
-  CustomerProfileCompletionInput,
-  CustomerProfileInput,
+  type CustomerProfileCompletionSave,
+  type CustomerProfileSave,
   customerInputParseOptions,
+  customerProfileSchemas,
 } from "@deskohub/workspace-customer-api";
 import { Option, Result, SchemaIssue, SchemaParser } from "effect";
 
@@ -107,14 +104,15 @@ export const emptyProfileDraft: ProfileDraft = {
   country: "",
 };
 
-// A phone without a country calling code is read in the region the customer
-// API's profile schemas read it in.
-const phoneRegion = getLocaleDefinition(baseLocale).phoneRegion;
+// Every function below that reads a phone takes `phoneRegion`: the region a
+// phone without a country calling code is read in. For a signed-in account it
+// is `accountPhoneRegion(account.locale)`, the region the Workspace reads the
+// account's profile saves in.
 
 // The Workspace stores a phone number in E.164 form; the form shows it for
 // reading. Any other stored text, such as a legacy value with a label, shows
 // as stored.
-const readablePhone = (stored: string) =>
+const readablePhone = (stored: string, phoneRegion: string) =>
   Option.match(
     Option.filter(parsePhoneNumber(stored, phoneRegion), () =>
       isPhoneNumber(stored, phoneRegion)
@@ -126,10 +124,13 @@ const readablePhone = (stored: string) =>
   );
 
 /** The draft of a stored profile: what the customer has saved now. */
-export const profileDraftOf = (profile: CustomerProfile): ProfileDraft => ({
+export const profileDraftOf = (
+  profile: CustomerProfile,
+  phoneRegion: string
+): ProfileDraft => ({
   firstName: profile.firstName,
   lastName: profile.lastName ?? "",
-  phone: readablePhone(profile.phone ?? ""),
+  phone: readablePhone(profile.phone ?? "", phoneRegion),
   billingKind: profile.billing?.kind ?? "none",
   companyName: profile.billing?.companyName ?? "",
   companyId: profile.billing?.companyId ?? "",
@@ -152,7 +153,7 @@ export const completionDraftOf = (
 // The Workspace stores an entered phone as its phone number, so two texts
 // holding the same number are the same phone. Text without one compares as
 // entered.
-const samePhone = (left: string, right: string) =>
+const samePhone = (left: string, right: string, phoneRegion: string) =>
   left === right ||
   Option.exists(parsePhoneNumber(left, phoneRegion), (phone) =>
     Option.contains(parsePhoneNumber(right, phoneRegion), phone)
@@ -162,8 +163,12 @@ const samePhone = (left: string, right: string) =>
  * Whether two drafts hold the same values, a phone counting as the number the
  * Workspace stores for it.
  */
-export const sameDraft = <D extends ProfileDraft>(left: D, right: D) =>
-  samePhone(left.phone, right.phone) &&
+export const sameDraft = <D extends ProfileDraft>(
+  left: D,
+  right: D,
+  phoneRegion: string
+) =>
+  samePhone(left.phone, right.phone, phoneRegion) &&
   (Object.keys(left) as Array<keyof D>).every(
     (field) => field === "phone" || left[field] === right[field]
   );
@@ -256,25 +261,23 @@ const invalidDraft = <F extends CompletionTextField>({
   };
 };
 
-const decodeProfileInput = SchemaParser.decodeUnknownResult(
-  CustomerProfileInput,
-  customerInputParseOptions
-);
-
-const decodeCompletionInput = SchemaParser.decodeUnknownResult(
-  CustomerProfileCompletionInput,
-  customerInputParseOptions
-);
-
 /**
- * The profile a save submits, validated by the contract's own schema (trimmed
- * and length-checked, phone normalizable or blank), or the fields to fix.
+ * The profile a save submits, validated by the contract's own schema for the
+ * phone region (trimmed and length-checked, phone normalizable or blank), or
+ * the fields to fix. It submits the phone number it read, as the site's forms
+ * do, so the Workspace saves that number even if the account's language has
+ * changed since the app last read it.
  */
 export const validateProfileDraft = (
-  draft: ProfileDraft
-): Result.Result<CustomerProfileInput, ProfileDraftInvalid<ProfileTextField>> =>
-  Result.mapError(decodeProfileInput(profileInputOf(draft)), (issue) =>
-    invalidDraft({ issue, draft, order: profileFieldOrder })
+  draft: ProfileDraft,
+  phoneRegion: string
+): Result.Result<CustomerProfileSave, ProfileDraftInvalid<ProfileTextField>> =>
+  Result.mapError(
+    SchemaParser.decodeUnknownResult(
+      customerProfileSchemas(phoneRegion).save,
+      customerInputParseOptions
+    )(profileInputOf(draft)),
+    (issue) => invalidDraft({ issue, draft, order: profileFieldOrder })
   );
 
 /**
@@ -283,13 +286,17 @@ export const validateProfileDraft = (
  */
 export const validateCompletionDraft = (
   draft: CompletionDraft,
-  invitationCode: string | undefined
+  invitationCode: string | undefined,
+  phoneRegion: string
 ): Result.Result<
-  CustomerProfileCompletionInput,
+  CustomerProfileCompletionSave,
   ProfileDraftInvalid<CompletionTextField>
 > =>
   Result.mapError(
-    decodeCompletionInput({
+    SchemaParser.decodeUnknownResult(
+      customerProfileSchemas(phoneRegion).completionSave,
+      customerInputParseOptions
+    )({
       ...profileInputOf(draft),
       referralCode: entered(draft.referralCode),
       prefilledReferralCode: invitationCode,

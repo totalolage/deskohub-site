@@ -37,6 +37,7 @@ import {
   unreachableAccountLinks,
 } from "./customer-account-link.test-utils";
 import { waitForAccountAdvisoryLockWait } from "./customer-account-lock.test-utils";
+import { CustomerAccountSections } from "./customer-account-sections";
 import {
   signedInAuthentication,
   unreachableSessionAuthentication,
@@ -211,7 +212,7 @@ const completionLayer = (options: {
     ReferralReleaseGate.fromDecision(options.referralsEnabled ?? true);
   const lock = WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool);
   const links = CustomerAccountLinkRepository.Default.pipe(
-    Layer.provide(Layer.mergeAll(database, lock))
+    Layer.provide(database)
   );
   const profile = {
     firstName: "Nova",
@@ -242,6 +243,12 @@ const completionLayer = (options: {
         unreachable: options.accountActivityUnreachable,
       })
     : links;
+  const sectionsOver = (
+    accountLinks: Layer.Layer<CustomerAccountLinkRepository>
+  ) =>
+    CustomerAccountSections.Default.pipe(
+      Layer.provide(Layer.mergeAll(authentication, accountLinks, lock))
+    );
   const referrals = ReferralService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -250,6 +257,7 @@ const completionLayer = (options: {
         lock,
         referralLinks,
         authentication,
+        sectionsOver(referralLinks),
         Layer.mock(DotyposService, {
           listReservations: () =>
             options.dotyposUnavailable
@@ -266,7 +274,14 @@ const completionLayer = (options: {
   );
   return Layer.mergeAll(
     CustomerProfileService.Default.pipe(
-      Layer.provide(Layer.mergeAll(links, dotyposAdapter, NoReviewAccounts))
+      Layer.provide(
+        Layer.mergeAll(
+          links,
+          sectionsOver(links),
+          dotyposAdapter,
+          NoReviewAccounts
+        )
+      )
     ),
     referrals,
     ReferralSignupIntentRepository.Default.pipe(Layer.provide(database)),

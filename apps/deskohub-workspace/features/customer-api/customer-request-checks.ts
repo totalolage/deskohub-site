@@ -89,10 +89,14 @@ export const CustomerSessionAuthenticationLive = Layer.effect(
         Option.fromNullishOr(session).pipe(
           Option.match({
             onNone: () => Effect.fail(new CustomerSessionRequired()),
-            onSome: ({ accountId, email }) =>
+            onSome: ({ accountId, email, localePreference }) =>
               decodeAccountId(accountId).pipe(
                 Effect.mapError(() => new CustomerSessionRequired()),
-                Effect.map((accountId) => ({ accountId, email }))
+                Effect.map((accountId) => ({
+                  accountId,
+                  email,
+                  locale: localePreference ?? null,
+                }))
               ),
           })
         )

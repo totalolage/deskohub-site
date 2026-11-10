@@ -9,11 +9,17 @@ import {
   DotyposVersionConflict,
 } from "@deskohub/dotypos";
 import { Effect, Layer, Logger, Option, Schema } from "effect";
+import { SqlError } from "effect/unstable/sql";
 import { customerAccountIdSchema } from "../customer-account";
 import {
   type CustomerAccountDeletionDependencies,
   expireLinkedDotyposProfile,
 } from "./customer-account-deletion";
+import { CustomerAccountSections } from "./customer-account-sections";
+import {
+  type CustomerAccountSectionsFixture,
+  makeCustomerAccountSections,
+} from "./customer-account-sections.test-utils";
 import { CustomerAvatarProviderError } from "./customer-avatar.service";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 
@@ -27,9 +33,16 @@ const makeDependencies = (
       CustomerAccountDeletionDependencies["expireCustomer"]
     >;
     readonly avatarOutcome?: Effect.Effect<void, unknown>;
+    readonly account?: CustomerAccountSectionsFixture;
   } & Partial<CustomerAccountDeletionDependencies> = {}
 ) => {
-  const calls: string[] = [];
+  // The real sections, whose lock and recheck events share the call log.
+  const { layer, events: calls } = makeCustomerAccountSections(
+    overrides.account
+  );
+  const sections = Effect.runSync(
+    Effect.service(CustomerAccountSections).pipe(Effect.provide(layer))
+  );
   const dependencies: CustomerAccountDeletionDependencies = {
     isReviewAccount: () => {
       calls.push("review-check");
@@ -63,13 +76,7 @@ const makeDependencies = (
       calls.push("tombstone");
       return Effect.void;
     },
-    withAccountLock: (_key, effect) => {
-      calls.push("lock-acquire");
-      return Effect.void.pipe(
-        Effect.andThen(effect),
-        Effect.ensuring(Effect.sync(() => calls.push("lock-release")))
-      );
-    },
+    withActiveAccount: sections.withActiveAccount,
     anonymiseAnalyticsPerson: () => {
       calls.push("anonymise-analytics-person");
       return Effect.void;
@@ -89,13 +96,14 @@ describe("Customer account deletion", () => {
 
     expect(calls).toEqual([
       "review-check",
-      "lock-acquire",
+      "account-lock-acquired",
+      "account-activity",
       "marker",
       "find-link",
       "expire",
       "destroy-avatar",
       "tombstone",
-      "lock-release",
+      "account-lock-released",
       "anonymise-analytics-person",
     ]);
   });
@@ -131,11 +139,12 @@ describe("Customer account deletion", () => {
     expect(outcome._tag).toBe("Failure");
     expect(calls).toEqual([
       "review-check",
-      "lock-acquire",
+      "account-lock-acquired",
+      "account-activity",
       "marker",
       "find-link",
       "expire",
-      "lock-release",
+      "account-lock-released",
     ]);
   });
 
@@ -199,7 +208,7 @@ describe("Customer account deletion", () => {
 
       expect(outcome._tag).toBe("Success");
       expect(anonymisationRequests).toBe(1);
-      expect(calls.slice(-2)).toEqual(["tombstone", "lock-release"]);
+      expect(calls.slice(-2)).toEqual(["tombstone", "account-lock-released"]);
       expect(JSON.stringify(logged)).toContain(
         "account.deletion.analytics-person-not-scheduled"
       );
@@ -230,14 +239,77 @@ describe("Customer account deletion", () => {
     expect(outcome._tag).toBe("Success");
     expect(calls).toEqual([
       "review-check",
-      "lock-acquire",
+      "account-lock-acquired",
+      "account-activity",
       "marker",
       "find-link",
       "destroy-avatar",
       "tombstone",
-      "lock-release",
+      "account-lock-released",
       "anonymise-analytics-person",
     ]);
+  });
+
+  test("retries with the deletion marker already set", async () => {
+    const { dependencies, calls } = makeDependencies({
+      account: { activityState: "deletion-requested" },
+    });
+
+    const outcome = await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(Effect.result)
+    );
+
+    expect(outcome._tag).toBe("Success");
+    expect(calls).toEqual([
+      "review-check",
+      "account-lock-acquired",
+      "account-activity",
+      "marker",
+      "find-link",
+      "expire",
+      "destroy-avatar",
+      "tombstone",
+      "account-lock-released",
+      "anonymise-analytics-person",
+    ]);
+  });
+
+  test("fails unauthenticated before it marks anything when the account is gone", async () => {
+    const { dependencies, calls } = makeDependencies({
+      account: { activityState: "missing" },
+    });
+
+    const failure = await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(Effect.flip)
+    );
+
+    expect(failure).toMatchObject({
+      _tag: "CustomerAccountAccessError",
+      reason: "unauthenticated",
+    });
+    expect(calls).toEqual([
+      "review-check",
+      "account-lock-acquired",
+      "account-activity",
+      "account-lock-released",
+    ]);
+  });
+
+  test("fails retryably as an unavailable account lock before it marks anything", async () => {
+    const { dependencies, calls } = makeDependencies({
+      account: { lockUnavailable: true },
+    });
+
+    const failure = await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(Effect.flip)
+    );
+
+    expect(failure).toMatchObject({
+      _tag: "CustomerAccountAccessError",
+      reason: "unavailable",
+      cause: { code: "account-link.lock" },
+    });
+    expect(calls).toEqual(["review-check"]);
   });
 
   describe("with the Dotypos adapter", () => {
@@ -378,6 +450,127 @@ describe("Customer account deletion", () => {
       expect(result._tag).toBe("Failure");
       expect(calls).not.toContain("tombstone");
       expect(logCodes).toContain("account.deletion.retryable");
+    });
+  });
+
+  describe("the retryable deletion warning", () => {
+    const retryableWarning = Schema.Struct({
+      code: Schema.Literal("account.deletion.retryable"),
+    });
+    // Decoding fails on any annotation value that isn't a string.
+    const fixedFields = Schema.Record(Schema.String, Schema.String);
+
+    const retryableWarningsOf = async (
+      program: Effect.Effect<void, { readonly _tag: string }>
+    ) => {
+      const logged: unknown[] = [];
+      const capturingLogger = Logger.make(({ message }) => {
+        const [, annotations] = Array.isArray(message) ? message : [];
+        logged.push(annotations);
+      });
+      const result = await Effect.runPromise(
+        program.pipe(
+          Effect.result,
+          Effect.provide(Logger.layer([capturingLogger]))
+        )
+      );
+      return { result, warnings: logged.filter(Schema.is(retryableWarning)) };
+    };
+
+    const expectFixedFields = (
+      warnings: readonly unknown[],
+      keys: readonly string[],
+      rawTexts: readonly string[]
+    ) => {
+      expect(warnings).toHaveLength(1);
+      const fields = Schema.decodeUnknownSync(fixedFields)(warnings[0]);
+      expect(Object.keys(fields).sort()).toEqual([...keys].sort());
+      for (const value of Object.values(fields)) {
+        for (const rawText of rawTexts) {
+          expect(rawText.length).toBeGreaterThan(0);
+          expect(value).not.toContain(rawText);
+        }
+      }
+    };
+
+    test("logs only fixed fields when a Dotypos failure keeps deletion retryable", async () => {
+      const providerOutage = new DotyposUnavailable({
+        operation: "expireCustomer",
+        request: "customer.patch",
+        reason: "server",
+        httpStatus: 503,
+        message: "synthetic provider detail 4c1e",
+        cause: new Error("synthetic provider cause 4c1e"),
+      });
+      const { result, warnings } = await retryableWarningsOf(
+        Effect.gen(function* () {
+          const adapter = yield* CustomerDotyposAdapter;
+          const { dependencies } = makeDependencies({
+            expireCustomer: adapter.expireCustomer,
+          });
+          yield* expireLinkedDotyposProfile(dependencies)(accountId);
+        }).pipe(
+          Effect.provide(
+            CustomerDotyposAdapter.Default.pipe(
+              Layer.provide(
+                Layer.mock(DotyposService, {
+                  expireCustomer: () => Effect.fail(providerOutage),
+                })
+              )
+            )
+          )
+        )
+      );
+
+      expect(result._tag).toBe("Failure");
+      expectFixedFields(
+        warnings,
+        ["code", "failure"],
+        ["synthetic provider detail 4c1e", "synthetic provider cause 4c1e"]
+      );
+    });
+
+    test("logs only fixed fields when a database failure keeps deletion retryable", async () => {
+      const databaseOutage = new SqlError.SqlError({
+        reason: new SqlError.UnknownError({
+          cause: new Error("synthetic database cause 9b2d"),
+          message: "synthetic database detail 9b2d",
+          operation: "query",
+        }),
+      });
+      const { dependencies } = makeDependencies({
+        markDeletionRequested: () => Effect.fail(databaseOutage),
+      });
+      const { result, warnings } = await retryableWarningsOf(
+        expireLinkedDotyposProfile(dependencies)(accountId)
+      );
+
+      expect(result._tag).toBe("Failure");
+      expectFixedFields(
+        warnings,
+        ["code", "failure"],
+        [
+          databaseOutage.message,
+          "synthetic database detail 9b2d",
+          "synthetic database cause 9b2d",
+        ]
+      );
+    });
+
+    test("logs the access reason and failure code when the account lock is unavailable", async () => {
+      const { dependencies } = makeDependencies({
+        account: { lockUnavailable: true },
+      });
+      const { result, warnings } = await retryableWarningsOf(
+        expireLinkedDotyposProfile(dependencies)(accountId)
+      );
+
+      expect(result._tag).toBe("Failure");
+      expectFixedFields(
+        warnings,
+        ["code", "failure", "failureCode", "reason"],
+        ["advisory lock unavailable"]
+      );
     });
   });
 });

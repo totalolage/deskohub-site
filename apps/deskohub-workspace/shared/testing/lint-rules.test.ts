@@ -389,6 +389,7 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["rejects generated Paraglide output", 'import { locales } from "@/features/i18n/paraglide/runtime.js";\nexport { locales };\n', true],
       ["rejects the i18n barrel in the capacity script", 'import { m } from "@/features/i18n";\nexport { m };\n', true, "apps/deskohub-workspace/scripts/workspace-e2e-capacity.ts"],
       ["rejects the i18n barrel in the stale cleanup script", 'import { m } from "@/features/i18n";\nexport { m };\n', true, "apps/deskohub-workspace/scripts/workspace-e2e-stale-cleanup.ts"],
+      ["rejects the i18n barrel in the account state diagnostic", 'import { m } from "@/features/i18n";\nexport { m };\n', true, "apps/deskohub-workspace/scripts/workspace-e2e-account-state.ts"],
       ["permits the locale registry", 'import { baseLocale } from "@deskohub/i18n/locale-registry";\nexport { baseLocale };\n', false],
       ["permits a message-free i18n module", 'import { defaultPhoneRegion } from "@/features/i18n/phone-region";\nexport { defaultPhoneRegion };\n', false],
       ["permits the i18n barrel in Playwright cases", 'import { m } from "@/features/i18n";\nexport { m };\n', false, "apps/deskohub-workspace/e2e/cases/locale.ts"],
