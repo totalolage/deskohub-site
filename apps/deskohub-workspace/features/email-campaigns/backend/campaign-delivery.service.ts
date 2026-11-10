@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import {
   and,
   asc,

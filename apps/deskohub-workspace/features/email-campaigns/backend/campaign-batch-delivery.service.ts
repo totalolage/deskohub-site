@@ -246,12 +246,16 @@ export interface ICampaignBatchDelivery {
    * request, never retried here. A reproduced or replayed payload must hash
    * as persisted and the key must be within its replay window; otherwise
    * nothing is requested and the batch is `Unconfirmed`. An unknown outcome,
-   * or a re-read that failed, fails with `CampaignDeliveryIncomplete` and
-   * leaves the batch for a replay.
+   * or a Dotypos re-read that failed, fails with
+   * `CampaignDeliveryIncomplete` and leaves the batch for a replay; so does
+   * a failed database read, with its own error.
    */
   readonly request: (
     request: BatchRequest
-  ) => Effect.Effect<BatchOutcome, CampaignDeliveryIncomplete>;
+  ) => Effect.Effect<
+    BatchOutcome,
+    CampaignDeliveryIncomplete | DatabaseQueryError
+  >;
   /**
    * In the caller's transaction: records a batch's outcome on the batch and
    * moves its recipients to what the outcome means.
