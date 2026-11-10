@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AuthSessionState } from "../auth/auth-session-state";
@@ -110,7 +111,7 @@ describe("createAccountConsentCheck", () => {
 describe("useConsentPromptWaits", () => {
   const signedIn = (id: string): AuthSessionState => ({
     status: "signed-in",
-    user: { id, email: `${id}@example.test` },
+    user: { id, email: testEmailAddress(id) },
     signedInAt: new Date("2026-11-01T08:00:00.000Z"),
   });
   const sessions: readonly AuthSessionState[] = [

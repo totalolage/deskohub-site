@@ -7,6 +7,7 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
 import { act, Profiler } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -30,7 +31,7 @@ const restoring: AuthSessionState = { status: "restoring" };
 const signedOut: AuthSessionState = { status: "signed-out" };
 const signedIn = (id: string): AuthSessionState => ({
   status: "signed-in",
-  user: { id, email: `${id}@example.test` },
+  user: { id, email: testEmailAddress(id) },
   signedInAt: new Date("2026-11-10T08:00:00.000Z"),
 });
 
