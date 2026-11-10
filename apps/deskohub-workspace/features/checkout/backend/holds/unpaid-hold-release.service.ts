@@ -186,6 +186,14 @@ interface ClaimedHold {
   readonly statusBeforeClaim?: "NEW" | "CANCELLED";
 }
 
+/** A hold this run claimed, or the outcome that ended the release first. */
+type ClaimResult =
+  | ClaimedHold
+  | Exclude<UnpaidHoldReleaseOutcome, ReleasedHold | "state_changed">;
+
+const isClaimedHold = (result: ClaimResult): result is ClaimedHold =>
+  !Predicate.isString(result) && "reservation" in result;
+
 interface IUnpaidHoldRelease {
   /**
    * Releases an unpaid reservation hold for a reason: claims the
@@ -216,7 +224,7 @@ export class UnpaidHoldRelease extends Context.Service<
       // released.
       const claimResumingClaimed = Effect.fnUntraced(function* (
         reservationId: WorkspaceReservationId
-      ) {
+      ): Effect.fn.Return<ClaimResult, UnpaidHoldReleaseError> {
         const claimedFromNew =
           yield* reservations.claimCancellation(reservationId);
         yield* Effect.logDebug(
@@ -251,7 +259,7 @@ export class UnpaidHoldRelease extends Context.Service<
 
       const claimSupersession = Effect.fnUntraced(function* (
         reservationId: WorkspaceReservationId
-      ) {
+      ): Effect.fn.Return<ClaimResult, UnpaidHoldReleaseError> {
         const claimed =
           yield* reservations.claimSupersessionCancellation(reservationId);
         if (!claimed) return "unclaimed" as const;
@@ -268,7 +276,7 @@ export class UnpaidHoldRelease extends Context.Service<
       // keeps pending leaves the reservation untouched.
       const claimResumingStale = Effect.fnUntraced(function* (
         reservationId: WorkspaceReservationId
-      ) {
+      ): Effect.fn.Return<ClaimResult, UnpaidHoldReleaseError> {
         const reservation = yield* reservations.findById(reservationId);
         if (!reservation) {
           return yield* Effect.die(
@@ -319,11 +327,7 @@ export class UnpaidHoldRelease extends Context.Service<
         ReleasePolicy["claim"],
         (
           reservationId: WorkspaceReservationId
-        ) => Effect.Effect<
-          | ClaimedHold
-          | Exclude<UnpaidHoldReleaseOutcome, ReleasedHold | "state_changed">,
-          UnpaidHoldReleaseError
-        >
+        ) => Effect.Effect<ClaimResult, UnpaidHoldReleaseError>
       >;
 
       // Releases the claimed hold in Dotypos: a refusal when its live status
@@ -392,9 +396,7 @@ export class UnpaidHoldRelease extends Context.Service<
           yield* Effect.annotateCurrentSpan({ reason: request.reason });
           const policy: ReleasePolicy = releasePolicies[request.reason];
           const claimed = yield* claimHold[policy.claim](request.reservationId);
-          if (Predicate.isString(claimed) || "refused" in claimed) {
-            return claimed;
-          }
+          if (!isClaimedHold(claimed)) return claimed;
           const refused = yield* releaseDotyposHold(policy, claimed);
           if (refused) return refused;
           return yield* markReleased(
