@@ -66,7 +66,7 @@ import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
 import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 
 /** One checkout attempt's hold request, as a submission books it. */
-export type ReservationHoldRequest = {
+type ReservationHoldRequest = {
   readonly checkout: {
     readonly sessionId: CheckoutSessionId;
     readonly attemptId: CheckoutAttemptId;
@@ -637,7 +637,7 @@ const waitForPendingReservationTransition = Effect.fn(
   );
 });
 
-export class CheckoutAttemptUnavailableError extends Data.TaggedError(
+class CheckoutAttemptUnavailableError extends Data.TaggedError(
   "CheckoutAttemptUnavailableError"
 )<{
   readonly reservation: WorkspaceReservation;
