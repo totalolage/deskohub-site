@@ -21,9 +21,12 @@ import {
   makeFakeDevice,
 } from "../../customer-api/testing/fake-customer-data";
 import { FakeWorkspace } from "../../customer-api/testing/fake-workspace";
+import { makeAppForegroundAtom } from "../../platform/app-foreground";
+import { fakeAppState } from "../../platform/testing/fake-app-state";
 import {
   analyticsPreferenceAtom,
   analyticsSwitchView,
+  followAnalyticsPreference,
   isAnalyticsPreferenceUnavailable,
   saveAnalyticsPreferenceAtom,
 } from "./analytics-preference";
@@ -130,6 +133,45 @@ describe("analyticsPreferenceAtom", () => {
     expect(
       isAnalyticsPreferenceUnavailable(CustomerViewError.RateLimited())
     ).toBe(false);
+  });
+});
+
+// A withdrawal made on the site while the app was in the background reaches
+// this device at its next foreground; the Legal screen then shows it too,
+// instead of the preference it read before.
+describe("followAnalyticsPreference", () => {
+  test("reads the account's preference again on each return to the foreground", async () => {
+    const screen = await openScreen({ granted: true });
+    const appState = fakeAppState();
+    const stop = followAnalyticsPreference({
+      registry: screen.registry,
+      foreground: makeAppForegroundAtom(appState.source),
+    });
+
+    screen.workspace.analyticsDecision = {
+      granted: false,
+      decidedAt: "2026-11-10T10:35:13.487Z",
+      notice: "current",
+    };
+    appState.change("background");
+    expect(screen.workspace.calls).toEqual(["getAnalyticsPreference"]);
+    appState.change("active");
+
+    expect(await run(screen.registry, analyticsPreferenceAtom)).toMatchObject({
+      _tag: "Success",
+      success: { granted: false },
+    });
+    expect(screen.workspace.calls).toEqual([
+      "getAnalyticsPreference",
+      "getAnalyticsPreference",
+    ]);
+
+    stop();
+    appState.change("background");
+    appState.change("active");
+    await run(screen.registry, analyticsPreferenceAtom);
+    expect(screen.workspace.calls).toHaveLength(2);
+    screen.close();
   });
 });
 

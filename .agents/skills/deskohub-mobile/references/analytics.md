@@ -73,12 +73,17 @@ The privacy reference's ledger section covers the server side.
 
 ### Analytics preference
 
-The Legal screen (`account/legal/analytics-preference.ts`) shows a linked
-account's preference (`getAnalyticsPreference`) and saves it
+The Legal screen (`account/legal/analytics-preference.ts`) shows the
+signed-in account's preference (`getAnalyticsPreference`) whatever its
+profile's state, as the site does (only marketing consent needs a linked
+profile), and saves it
 (`saveAnalyticsPreference`, app locale). The saved `{granted, decidedAt}`
 becomes this device's choice in either direction, unless the choice or the
-account changed during the save (the web preference row's rule). A failed
-read shows "unavailable", never "off".
+account changed during the save (the web preference row's rule). While the
+screen is mounted it reads the preference again on each return to the
+foreground (`followAnalyticsPreference`), so a withdrawal made on the site
+shows there as the account sync applies it. A failed read shows
+"unavailable", never "off".
 
 ## Events, identity and flags
 

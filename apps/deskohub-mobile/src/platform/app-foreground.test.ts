@@ -1,22 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AtomRegistry } from "effect/unstable/reactivity";
-import type { AppStateStatus } from "react-native";
-import { type AppStateSource, makeAppForegroundAtom } from "./app-foreground";
-
-const fakeAppState = (initial: AppStateStatus) => {
-  const listeners = new Set<(state: AppStateStatus) => void>();
-  const source: AppStateSource = {
-    currentState: initial,
-    addEventListener: (_type, listener) => {
-      listeners.add(listener);
-      return { remove: () => listeners.delete(listener) };
-    },
-  };
-  const change = (state: AppStateStatus) => {
-    for (const listener of listeners) listener(state);
-  };
-  return { source, change, listeners };
-};
+import { makeAppForegroundAtom } from "./app-foreground";
+import { fakeAppState } from "./testing/fake-app-state";
 
 describe("makeAppForegroundAtom", () => {
   test("starts from the current app state", () => {

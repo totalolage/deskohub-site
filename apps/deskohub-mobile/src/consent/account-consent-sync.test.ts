@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { AtomRegistry } from "effect/unstable/reactivity";
-import type { AppStateStatus } from "react-native";
 import type { CustomerDataServices } from "../customer-api/customer-data-runtime";
 import { makeCustomerDataRegistry } from "../customer-api/testing/customer-data-test-registry";
 import {
@@ -12,10 +11,8 @@ import {
   type FakeAnalyticsDecision,
   FakeWorkspace,
 } from "../customer-api/testing/fake-workspace";
-import {
-  type AppStateSource,
-  makeAppForegroundAtom,
-} from "../platform/app-foreground";
+import { makeAppForegroundAtom } from "../platform/app-foreground";
+import { fakeAppState } from "../platform/testing/fake-app-state";
 import {
   followAccountConsent,
   syncAccountAnalyticsConsent,
@@ -37,23 +34,6 @@ const laterWithdrawal: FakeAnalyticsDecision = {
 };
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-const fakeAppState = () => {
-  const listeners = new Set<(state: AppStateStatus) => void>();
-  const source: AppStateSource = {
-    currentState: "active",
-    addEventListener: (_type, listener) => {
-      listeners.add(listener);
-      return { remove: () => listeners.delete(listener) };
-    },
-  };
-  return {
-    source,
-    change: (state: AppStateStatus) => {
-      for (const listener of listeners) listener(state);
-    },
-  };
-};
 
 /**
  * A signed-in device over the fake Workspace: its stored consent (read at

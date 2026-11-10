@@ -7,7 +7,7 @@ import {
 import { Effect, Match, Option } from "effect";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { openBrowserAsync } from "expo-web-browser";
-import { useContext, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { StyleSheet, Switch, Text, View } from "react-native";
 import { apiOrigin } from "../../auth/auth-client";
 import { AsyncView } from "../../customer-api/async-view";
@@ -16,6 +16,7 @@ import { sharedViewErrorMessage } from "../../customer-api/customer-view-error-m
 import type { AppLocale } from "../../i18n/app-locale";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
+import { appForegroundAtom } from "../../platform/app-foreground";
 import { theme } from "../../theme";
 import { LiveMessage } from "../../ui/controls";
 import { ListGroup, ListRow, SectionHeader } from "../../ui/list";
@@ -24,6 +25,7 @@ import {
   type AnalyticsSaveFeedback,
   analyticsPreferenceAtom,
   analyticsSwitchView,
+  followAnalyticsPreference,
   isAnalyticsPreferenceUnavailable,
   saveAnalyticsPreferenceAtom,
 } from "./analytics-preference";
@@ -57,10 +59,11 @@ const openDocumentAtom = Atom.fn((url: string) =>
 
 /**
  * Legal & Privacy: the site's legal documents (opened in the in-app
- * browser), a linked account's marketing consent and analytics preference,
- * and the data archive the account doesn't offer yet. The analytics
- * preference is the account's; the app's own analytics answer comes from its
- * consent prompt and follows the account's decisions. The other cookie
+ * browser), a linked account's marketing consent, the signed-in account's
+ * analytics preference, and the data archive the account doesn't offer yet.
+ * The analytics preference is the account's, whatever its profile's state,
+ * as on the site; the app's own analytics answer comes from its consent
+ * prompt and follows the account's decisions. The other cookie
  * categories are a website setting the app doesn't manage; the cookie policy
  * describes them.
  */
@@ -74,13 +77,11 @@ export function LegalScreen() {
     AsyncResult.value(account),
     (current) => current.kind === "linked"
   );
-  // Only a linked account's screen shows (and so reads) the preferences.
+  // Only a linked account's screen shows (and so reads) marketing consent.
   const refresh = () => {
     refreshAccount();
-    if (linked) {
-      registry.refresh(marketingPreferencesAtom);
-      registry.refresh(analyticsPreferenceAtom);
-    }
+    registry.refresh(analyticsPreferenceAtom);
+    if (linked) registry.refresh(marketingPreferencesAtom);
   };
   const openPrivacyPolicy = () =>
     openDocument(legalDocumentUrl("privacy", apiOrigin));
@@ -111,32 +112,16 @@ export function LegalScreen() {
       <AsyncView result={account} onRetry={refreshAccount}>
         {(current) =>
           current.kind === "linked" ? (
-            <>
-              <MarketingPreference />
-              <SectionHeader
-                title={m.legal_analytics_heading({}, { locale })}
-              />
-              <AnalyticsPreference onOpenPrivacyPolicy={openPrivacyPolicy} />
-            </>
+            <MarketingPreference />
           ) : (
-            <>
-              <ListGroup>
-                <ListRow
-                  label={m.legal_marketing_unavailable({}, { locale })}
-                />
-              </ListGroup>
-              <SectionHeader
-                title={m.legal_analytics_heading({}, { locale })}
-              />
-              <ListGroup>
-                <ListRow
-                  label={m.legal_analytics_unavailable({}, { locale })}
-                />
-              </ListGroup>
-            </>
+            <ListGroup>
+              <ListRow label={m.legal_marketing_unavailable({}, { locale })} />
+            </ListGroup>
           )
         }
       </AsyncView>
+      <SectionHeader title={m.legal_analytics_heading({}, { locale })} />
+      <AnalyticsPreference onOpenPrivacyPolicy={openPrivacyPolicy} />
       <SectionHeader title={m.legal_archive_heading({}, { locale })} />
       <ListGroup>
         <ListRow label={m.legal_archive_unavailable({}, { locale })} />
@@ -253,8 +238,9 @@ const analyticsFeedbackMessage = (
   );
 
 /**
- * The linked account's analytics preference switch. A saved choice also
- * becomes this device's analytics answer. While the preference can't be
+ * The signed-in account's analytics preference switch, read again on each
+ * return to the foreground. A saved choice also becomes this device's
+ * analytics answer. While the preference can't be
  * read there is no switch, so it never reads as off.
  */
 function AnalyticsPreference({
@@ -263,8 +249,14 @@ function AnalyticsPreference({
   readonly onOpenPrivacyPolicy: () => void;
 }) {
   const locale = useAppLocale();
+  const registry = useContext(RegistryContext);
   const preference = useAtomValue(analyticsPreferenceAtom);
   const refresh = useAtomRefresh(analyticsPreferenceAtom);
+  useEffect(
+    () =>
+      followAnalyticsPreference({ registry, foreground: appForegroundAtom }),
+    [registry]
+  );
   const [save, choose] = useAtom(saveAnalyticsPreferenceAtom);
   const [requested, setRequested] = useState<boolean>();
 

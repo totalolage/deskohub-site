@@ -3,7 +3,11 @@ import type {
   SaveCustomerAnalyticsPreference,
 } from "@deskohub/workspace-customer-api";
 import { type Cause, Effect, Match } from "effect";
-import type { AsyncResult } from "effect/unstable/reactivity";
+import type {
+  AsyncResult,
+  Atom,
+  AtomRegistry,
+} from "effect/unstable/reactivity";
 import { CurrentAccountConsentCheck } from "../../consent/account-consent-check";
 import { consentChoiceMark } from "../../consent/analytics-consent";
 import { DeviceAnalyticsConsent } from "../../consent/use-analytics-consent";
@@ -37,6 +41,29 @@ export const analyticsPreferenceAtom = customerDataRuntime.atom(
     api.account.getAnalyticsPreference()
   ).pipe(customerRead({ accountRead: false }))
 );
+
+/**
+ * Reads the account's analytics preference again on each return to the
+ * foreground while the screen showing it is mounted. A decision made on
+ * another device meanwhile, such as a withdrawal on the site, then shows here
+ * as the account consent sync applies it to this device; the Workspace
+ * already holds it, so the read doesn't wait for the sync. Returns the
+ * function that stops following.
+ */
+export const followAnalyticsPreference = ({
+  registry,
+  foreground,
+}: {
+  readonly registry: AtomRegistry.AtomRegistry;
+  /** Whether the app is in the foreground (`appForegroundAtom`). */
+  readonly foreground: Atom.Atom<boolean>;
+}): (() => void) => {
+  // Reading the atom first starts it listening; a subscription alone doesn't.
+  registry.get(foreground);
+  return registry.subscribe(foreground, (active) => {
+    if (active) registry.refresh(analyticsPreferenceAtom);
+  });
+};
 
 /**
  * Whether a failed read is the Workspace not reading the preference: it is

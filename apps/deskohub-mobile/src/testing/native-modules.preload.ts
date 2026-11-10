@@ -15,6 +15,7 @@ mock.module("react-native", () => ({
   Pressable: "Pressable",
   RefreshControl: "RefreshControl",
   ScrollView: "ScrollView",
+  Switch: "Switch",
   Text: "Text",
   TextInput: "TextInput",
   View: "View",
@@ -80,6 +81,7 @@ mock.module("expo-network", () => ({
 
 mock.module("expo-web-browser", () => ({
   openAuthSessionAsync: async () => ({ type: "cancel" }),
+  openBrowserAsync: async () => ({ type: "opened" }),
   getCustomTabsSupportingBrowsersAsync: async () => ({
     browserPackages: [],
     servicePackages: [],
