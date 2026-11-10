@@ -38,9 +38,23 @@ Paths are relative to `apps/deskohub-workspace` unless they start with
   failures out of logs, traces, errors, and analytics. Log fixed non-PII codes.
   The only exceptions are the two gated magic-link lines in
   [magic-link delivery](references/magic-link-delivery-and-e2e.md).
-- Serialize account mutations with the account advisory lock
-  (`CustomerAccountLinkRepository.withAccountLock`). The lock isn't reentrant (requesting it again inside the section is a defect, not a hang): under
-  `OptionalAccountActivityGuard`, read the contact with
+- Serialize account mutations in a customer account section
+  (`CustomerAccountSections`, `features/account/backend/customer-account-sections.ts`),
+  the only way to take the account lock. `withActiveAccount(accountId, work, { recheck })`
+  holds the lock on its own connection, rechecks the account once under it,
+  and provides `HeldCustomerAccount` (`{ accountId, email }`) to the work.
+  Recheck `session` (the default: the session is this account's, and the
+  account exists without a deletion marker), `active` (the account exists
+  without a marker; no session read), or `present` (a marker is tolerated;
+  deletion only, so its retry works). The lock's own failure is
+  `unavailable` (`account-link.lock`); the work's failures pass through.
+  `withOptionalAccount` runs reservation and checkout state creation held for
+  a signed-in session and unlocked for an anonymous one.
+- Enter a section outside every Workspace transaction. A section inside a
+  section for the same account reuses the hold without a second recheck, so
+  services that lock themselves compose; a step that must run held declares
+  `HeldCustomerAccount` in its requirements, never a name suffix. Under
+  `withOptionalAccount`, read the contact with
   `CustomerAccountContactService.current` and never resolve through
   `CustomerAccountResolver`.
 - Keep Drizzle as the only migration authority. Never run Better Auth runtime

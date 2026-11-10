@@ -2,7 +2,7 @@ import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   CustomerAccountContactService,
-  OptionalAccountActivityGuard,
+  CustomerAccountSections,
 } from "@/features/account";
 import { applyDiscountCodeToPayState } from "@/features/checkout/actions/apply-discount-code-to-pay-state";
 import {
@@ -121,7 +121,7 @@ export class CustomerCheckoutOperations extends Context.Service<
           Layer.mergeAll(
             ReservationBooking.Live,
             ReferralService.Live,
-            OptionalAccountActivityGuard.Live,
+            CustomerAccountSections.Live,
             CustomerAccountContactService.Live
           )
         ),

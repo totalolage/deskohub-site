@@ -15,7 +15,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import {
   CustomerAccountAccessError,
   CustomerAccountContactService,
-  OptionalAccountActivityGuard,
+  CustomerAccountSections,
 } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { CheckoutAnalytics } from "@/features/checkout/backend/analytics";
@@ -125,7 +125,7 @@ export type PayStateSubmission = Omit<
 
 /** The services each caller provides per request for its own channel. */
 type ChannelServices =
-  | OptionalAccountActivityGuard
+  | CustomerAccountSections
   | CustomerAccountContactService
   | RememberedReferral;
 
@@ -423,8 +423,8 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
  * Dotypos customer and the contact the reservation must carry. An account
  * without a profile yet saves the submitted contact and billing as its
  * profile first, except through a customer agent: the customer completes
- * the profile on the site. The account advisory lock is already held, so
- * this reads the existing link and creates one without taking the lock
+ * the profile on the site. It runs inside the account section, so
+ * completing the profile reuses that hold instead of taking the account lock
  * again.
  */
 const resolveAccountCustomer = Effect.fn(
@@ -446,7 +446,7 @@ const resolveAccountCustomer = Effect.fn(
       unlinked: (unlinked) =>
         Option.isSome(bookingAgent)
           ? Effect.fail(new AgentBookingProfileRequiredError({}))
-          : contacts.completeProfileUnderHeldLock(
+          : contacts.completeProfile(
               unlinked,
               getReservationCustomerProfile(
                 input.reservation,
@@ -709,13 +709,13 @@ const mirrorBookingDeviceAnalyticsConsent = Effect.fnUntraced(
 const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
   function* (input: PayStateSubmission, inReviewSandbox: Ref.Ref<boolean>) {
     const bookingAgent = yield* Effect.serviceOption(BookingAgent);
-    const accountActivity = yield* OptionalAccountActivityGuard;
+    const accountSections = yield* CustomerAccountSections;
     const rememberedReferral = yield* RememberedReferral;
     const bookedCustomer = yield* Ref.make<DotyposCustomerId | undefined>(
       undefined
     );
     // Whether the account booking carries the remembered referral, which the
-    // guarded section evaluates once it knows the account's customer.
+    // account section evaluates once it knows the account's customer.
     const carriesAccountReferral = yield* Ref.make(false);
 
     // The full state-creating section runs inside the account advisory
@@ -723,7 +723,7 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
     // held until the section completes, so deletion cannot interleave
     // between the check and the created state. Only a signed-in account
     // books; a session-authority failure fails closed.
-    const result = yield* accountActivity.guardStateCreation(
+    const result = yield* accountSections.withOptionalAccount(
       Effect.fn(function* (accountId) {
         if (!accountId) {
           return yield* new CustomerAccountAccessError({

@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
+import { FetchHttpClient } from "effect/unstable/http";
 import { PostHogProjectId } from "../identifiers";
 import {
   listPostHogFeatureFlagDefinitions,
+  loadPostHogFeatureFlagDefinitions,
   type PostHogFeatureFlagPageSource,
 } from "./definitions";
 
@@ -257,6 +259,27 @@ describe("listPostHogFeatureFlagDefinitions", () => {
     expect(error).toMatchObject({
       _tag: "PostHogFeatureFlagError",
       message: "PostHog feature flag request timed out.",
+    });
+  });
+
+  test("keeps the HTTP status of a refused list request", async () => {
+    const refuse = Object.assign(
+      async () => new Response(null, { status: 429 }),
+      { preconnect: globalThis.fetch.preconnect }
+    );
+
+    const error = await Effect.runPromise(
+      loadPostHogFeatureFlagDefinitions({
+        apiKey: "synthetic-api-key",
+        host: new URL("https://posthog.example"),
+        projectId,
+      }).pipe(Effect.flip, Effect.provideService(FetchHttpClient.Fetch, refuse))
+    );
+
+    expect(error).toMatchObject({
+      _tag: "PostHogFeatureFlagError",
+      failureCode: "StatusCodeError",
+      httpStatus: 429,
     });
   });
 

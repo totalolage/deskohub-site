@@ -29,7 +29,7 @@ Only `db/`, `e2e/`, `scripts/` and tests build database clients (`workspace-data
 
 ## Take locks
 
-Take advisory locks with `WorkspaceLocks` (`db/workspace-locks.ts`), inside the transaction. Hold a lock across non-transactional work only with `WorkspaceLockSections`, which hold it on their own connection. Registry operations need `WorkspaceTransaction`. The `workspace-lock-statements` rule rejects advisory-lock SQL, `lock_timeout` and the old statement builders anywhere else in the app.
+Take advisory locks with `WorkspaceLocks` (`db/workspace-locks.ts`), inside the transaction. Hold a lock across non-transactional work only with `WorkspaceLockSections`, which hold it on their own connection. Account work enters the customer account section through `CustomerAccountSections` (account skill), never `WorkspaceLockSections.customerAccount` directly. Registry operations need `WorkspaceTransaction`. The `workspace-lock-statements` rule rejects advisory-lock SQL, `lock_timeout` and the old statement builders anywhere else in the app.
 
 - Take locks in ascending rank, and equal ranks in ascending key. The registry checks the order at run time. Lock several accounts with `WorkspaceLocks.customerAccounts(ids)`, which sorts them.
 - Take a lock out of rank order only with a bounded wait (`{ boundedWait: Duration.seconds(5) }`), and only while every higher-ranked lock you hold is held by an enclosing `WorkspaceLockSections` section. Any other out-of-order request is a defect, raised before the lock is taken. Expect the wait to fail with a lock timeout (`isLockWaitTimeout`) instead of deadlocking.
