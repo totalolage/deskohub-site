@@ -10,7 +10,11 @@ import {
   testCustomerSession,
   testLinkedAccount,
 } from "@/features/account/backend/account-operations.test-utils";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
+import {
+  type PeekedStanding,
+  peeking,
+  testPeekedStandings,
+} from "@/features/account/backend/current-customer-account.test-utils";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
 import {
@@ -113,12 +117,12 @@ describe("listReservations", () => {
 
   const historyServices = (
     options: {
-      readonly linked?: boolean;
+      /** The session's standing; linked to `testLinkedAccount` unless given. */
+      readonly standing?: PeekedStanding;
       readonly history?: Effect.Effect<
         CustomerReservationHistory,
         CustomerAccountAccessError
       >;
-      readonly linkRead?: Effect.Effect<never, CustomerAccountAccessError>;
     } = {}
   ) => {
     const load = mock(
@@ -134,16 +138,8 @@ describe("listReservations", () => {
         })
     );
     const reservations: Partial<CustomerReservationServiceLayers> = {
-      contacts: () =>
-        Layer.mock(CustomerAccountContactService, {
-          currentLinkedAccount:
-            options.linkRead ??
-            Effect.succeed(
-              options.linked === false
-                ? null
-                : { ...testLinkedAccount, email: testCustomerSession.email }
-            ),
-        }),
+      currentAccount: () =>
+        peeking(options.standing ?? testPeekedStandings.linked),
       history: Layer.mock(CustomerReservationHistoryService, { load }),
     };
     return { load, reservations };
@@ -199,7 +195,9 @@ describe("listReservations", () => {
   });
 
   test("lists only the reservations an account without a Dotypos customer authored", async () => {
-    const { load, reservations } = historyServices({ linked: false });
+    const { load, reservations } = historyServices({
+      standing: testPeekedStandings.unlinked,
+    });
     const api = makeCustomerApiTestServer({ reservations });
 
     const response = await api.handle(customerApiRequest(listReservations));
@@ -232,7 +230,7 @@ describe("listReservations", () => {
 
   test("answers unavailable when the account's link can't be read", async () => {
     const { load, reservations } = historyServices({
-      linkRead: Effect.fail(customerAccountUnavailable("account-link.read")),
+      standing: testPeekedStandings["link unavailable"],
     });
     const api = makeCustomerApiTestServer({ reservations });
 

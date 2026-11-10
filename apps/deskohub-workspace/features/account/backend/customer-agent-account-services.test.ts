@@ -28,6 +28,20 @@ mock.module("./customer-account-link.repository", () => ({
   CustomerAccountLinkRepository: TestCustomerAccountLinkRepository,
 }));
 
+// The standing reads the review marker; the fake reports none.
+const reviewAccountsModule = await import(
+  "@/features/review-accounts/backend/review-accounts.repository"
+);
+class TestReviewAccounts extends reviewAccountsModule.ReviewAccounts {
+  static override Live = Layer.mock(reviewAccountsModule.ReviewAccounts, {
+    isReviewAccount: () => Effect.succeed(false),
+  });
+}
+mock.module(
+  "@/features/review-accounts/backend/review-accounts.repository",
+  () => ({ ...reviewAccountsModule, ReviewAccounts: TestReviewAccounts })
+);
+
 // The account sections take the account lock through the advisory lock; the
 // fake records which account each lock is for instead of reaching Postgres.
 const advisoryLockModule = await import("@/db/postgres-advisory-lock");
@@ -57,9 +71,7 @@ mock.module("@/db/postgres-advisory-lock", () => ({
 const { CustomerAgentAuthorization } = await import(
   "./auth/customer-agent-authorization.service"
 );
-const { CustomerAccountContactService } = await import(
-  "./customer-account-contact.service"
-);
+const { CurrentCustomerAccount } = await import("./current-customer-account");
 const { CustomerAccountReservationOwnership } = await import(
   "./customer-account-reservation-ownership"
 );
@@ -130,8 +142,8 @@ describe("customerAgentAccountServices", () => {
             )
           )
         ),
-        linked: CustomerAccountContactService.pipe(
-          Effect.flatMap((contacts) => contacts.currentLinkedAccount)
+        standing: CurrentCustomerAccount.pipe(
+          Effect.flatMap((current) => current.peek)
         ),
         author: CustomerAccountReservationOwnership.pipe(
           Effect.flatMap((ownership) => ownership.activeAccountId)
@@ -144,7 +156,11 @@ describe("customerAgentAccountServices", () => {
       success: {
         session: { accountId: agentAccountId, deletionRequested: false },
         guarded: agentAccountId,
-        linked: { accountId: agentAccountId, dotyposCustomerId: "60111" },
+        standing: {
+          kind: "linked",
+          reviewMarker: "absent",
+          account: { accountId: agentAccountId, dotyposCustomerId: "60111" },
+        },
         author: agentAccountId,
       },
     });

@@ -1,6 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer } from "effect";
-import { CustomerAccountContactService } from "@/features/account";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
+import { CustomerAccountAccessError } from "@/features/account/customer-account";
 import {
   type CanonicalPromotionCode,
   canonicalPromotionCodeSchema,
@@ -174,7 +175,7 @@ function makeRememberedReferral(jar: ReferralCodeJar) {
   return Effect.gen(function* () {
     const release = yield* ReferralReleaseGate;
     const referrals = yield* ReferralService;
-    const contacts = yield* CustomerAccountContactService;
+    const currentAccount = yield* CurrentCustomerAccount;
 
     // A withheld program ignores the remembered code.
     const read = release.isOpen.pipe(
@@ -191,14 +192,28 @@ function makeRememberedReferral(jar: ReferralCodeJar) {
           dotyposCustomerId: booker.customerId,
         });
       }
-      const account = yield* contacts.currentAccount;
-      if (account.status === "linked") {
-        return yield* referrals.hasSettledReferral({
-          dotyposCustomerId: account.dotyposCustomerId,
-        });
+      const standing = yield* currentAccount.peek;
+      switch (standing.kind) {
+        case "linked":
+          return yield* referrals.hasSettledReferral({
+            dotyposCustomerId: standing.account.dotyposCustomerId,
+          });
+        // An account without a profile yet has no referral of its own.
+        case "unlinked":
+        case "review":
+          return false;
+        case "unverified":
+          // As the session read reports it.
+          return yield* new CustomerAccountAccessError({
+            reason: "unverified-email",
+          });
+        case "unavailable":
+          return yield* standing.failure;
+        // A session awaiting deletion can't book, so the order stands in.
+        case "signed-out":
+        case "deletion-pending":
+          break;
       }
-      // An account without a profile yet has no referral of its own.
-      if (account.status === "unlinked") return false;
       if (booker.paid) return true;
       if (booker.bookedCustomerId === undefined) return false;
       return yield* referrals.hasSettledReferral({

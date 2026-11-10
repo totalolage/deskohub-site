@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { Effect, Layer, Predicate } from "effect";
 import { RedirectType, redirect } from "next/navigation";
 import { env } from "@/env";
-import { CustomerAccountContactService } from "@/features/account";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import {
   buildCheckoutPayPathFromToken,
   CheckoutReferralService,
@@ -63,7 +63,7 @@ const applyDiscountCodeOnSite = Effect.fn("checkout.applyDiscountCodeOnSite")(
                 PayableReservationService.Live,
                 ReferralService.Live,
                 CheckoutReferralService.Live,
-                CustomerAccountContactService.Live,
+                CurrentCustomerAccount.Live,
                 SealedStateKeys.Default
               )
             ),

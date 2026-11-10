@@ -12,7 +12,6 @@ import {
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import {
   type CustomerAccountSession,
   CustomerAuthentication,
@@ -361,7 +360,7 @@ const pageLayer = () =>
     }),
     rememberedReferral: RememberedReferral.inMemory(
       cookieWithCountingGetter
-    ).pipe(Layer.provide(Layer.mock(CustomerAccountContactService, {}))),
+    ).pipe(Layer.provide(Layer.mock(CurrentCustomerAccount, {}))),
     referralRelease: Layer.unwrap(
       Effect.promise(() => referralsFlag()).pipe(
         Effect.map(ReferralReleaseGate.fromDecision)

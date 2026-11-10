@@ -19,7 +19,6 @@ import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passk
 import { CustomerRequestOrigins } from "@/features/account/backend/auth/customer-request-origins.service";
 import { CustomerAccountDeletionEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
 import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import {
   type CustomerAccountSession,
@@ -212,7 +211,6 @@ const unusedAccountServices: CustomerAccountServiceLayers = {
   reviewAccounts: ReviewAccountsMock({}),
   referrals: ReferralServiceMock({}),
   signupIntents: Layer.mock(ReferralSignupIntentRepository, {}),
-  contacts: Layer.mock(CustomerAccountContactService, {}),
   marketingPreferences: Layer.mock(MarketingPreferences, {}),
   consentLedger: Layer.mock(MarketingConsentLedger, {}),
   accountDeletion: Layer.mock(CustomerAccountDeletionEndpoint, {}),
@@ -222,7 +220,7 @@ const unusedAccountServices: CustomerAccountServiceLayers = {
 };
 
 const unusedReservationServices: CustomerReservationServiceLayers = {
-  contacts: () => Layer.mock(CustomerAccountContactService, {}),
+  currentAccount: () => Layer.mock(CurrentCustomerAccount, {}),
   history: Layer.mock(CustomerReservationHistoryService, {}),
   authorization: () => Layer.mock(ReservationAuthorizationService, {}),
   checkoutStatus: Layer.mock(CheckoutStatusService, {}),
@@ -251,27 +249,28 @@ export const linkedAccountServices: CustomerAccountServiceLayers = {
     CurrentCustomerAccount,
     Effect.gen(function* () {
       const authentication = yield* CustomerAuthentication;
-      return CurrentCustomerAccount.of({
-        resolve: authentication.currentUser.pipe(
-          Effect.map((session) => {
-            if (session === null) return { kind: "signed-out" } as const;
-            if (session.deletionRequested) {
-              return {
-                kind: "deletion-pending",
-                session,
-                reviewMarker: "absent",
-              } as const;
-            }
+      const standing = authentication.currentUser.pipe(
+        Effect.map((session) => {
+          if (session === null) return { kind: "signed-out" } as const;
+          if (session.deletionRequested) {
             return {
-              kind: "linked",
+              kind: "deletion-pending",
               session,
               reviewMarker: "absent",
-              account: testLinkedAccount,
-              autoLinked: false,
             } as const;
-          })
-        ),
-        peek: Effect.die("peek is not faked"),
+          }
+          return {
+            kind: "linked",
+            session,
+            reviewMarker: "absent",
+            account: testLinkedAccount,
+            autoLinked: false,
+          } as const;
+        })
+      );
+      return CurrentCustomerAccount.of({
+        resolve: standing,
+        peek: standing,
         requireActive: Effect.die("requireActive is not faked"),
       });
     })

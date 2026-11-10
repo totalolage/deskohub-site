@@ -27,12 +27,16 @@ import {
   type WorkspaceReservationRow,
 } from "@/db/schema";
 import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
+import {
+  type CurrentLinkedAccount,
+  CustomerAccountContactService,
+} from "@/features/account/backend/customer-account-contact.service";
 import type { CustomerAccountSectionsFixture } from "@/features/account/backend/customer-account-sections.test-utils";
 import type { CustomerAccountSession } from "@/features/account/backend/customer-authentication.service";
 import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import {
   CustomerAccountAccessError,
+  type CustomerAccountId,
   customerAccountIdSchema,
   customerAccountUnavailable,
 } from "@/features/account/customer-account";
@@ -102,9 +106,15 @@ mock.module("next/headers", () => ({
   headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
 }));
 
-type ContactAccount = Effect.Success<
-  CustomerAccountContactService["Service"]["currentAccount"]
->;
+/** The session's account as the fixtures below describe it. */
+type ContactAccount =
+  | { readonly status: "signed-out" }
+  | {
+      readonly status: "unlinked";
+      readonly accountId: CustomerAccountId;
+      readonly email: CustomerAccountSession["email"];
+    }
+  | ({ readonly status: "linked" } & CurrentLinkedAccount);
 type PeekedStanding = Effect.Success<CurrentCustomerAccount["Service"]["peek"]>;
 
 /** The standing behind a contact reader's account, with no review marker. */
@@ -137,7 +147,7 @@ const inertRememberedReferral = () =>
       Layer.mergeAll(
         ReferralReleaseGate.fromDecision(true),
         WithheldReferralService,
-        Layer.mock(CustomerAccountContactService, {})
+        Layer.mock(CurrentCustomerAccount, {})
       )
     )
   );
@@ -522,13 +532,16 @@ const runReusableReservationScenario = async (input: {
   };
   readonly accountAuthority?: Parameters<typeof accountAuthorityFixture>[0];
   readonly customer?: "account";
-  /** The session's account as the contact reader reports it. */
-  readonly account?: CustomerAccountContactService["Service"]["currentAccount"];
+  /** The session's account, from which its standing follows. */
+  readonly account?: Effect.Effect<ContactAccount, CustomerAccountAccessError>;
   /** The standing booking peeks at; by default the one `account` reports. */
   readonly standing?: CurrentCustomerAccount["Service"]["peek"];
   readonly linkedContact?: ReturnType<typeof mock>;
   readonly completeProfile?: ReturnType<typeof mock>;
-  readonly linkedAccount?: CustomerAccountContactService["Service"]["currentLinkedAccount"];
+  readonly linkedAccount?: Effect.Effect<
+    CurrentLinkedAccount | null,
+    CustomerAccountAccessError
+  >;
   readonly rememberedReferralCode?: string;
   readonly evaluateCheckoutReferral?: ReturnType<typeof mock>;
   readonly findAvailableCode?: ReturnType<typeof mock>;
@@ -694,10 +707,11 @@ const runReusableReservationScenario = async (input: {
     input.hasSettledReferral ?? mock(() => Effect.succeed(false));
   const rememberedReferralCookie = { value: input.rememberedReferralCode };
   const contacts = Layer.mock(CustomerAccountContactService, {
-    currentAccount: Effect.suspend(() => readAccount()),
     linkedContact: linkedContact as never,
     completeProfile: completeProfile as never,
-    currentLinkedAccount: Effect.suspend(() => readLinkedAccount()),
+  });
+  const currentAccount = Layer.mock(CurrentCustomerAccount, {
+    peek: Effect.suspend(() => peekStanding()),
   });
   const referrals =
     input.referralService ??
@@ -710,16 +724,14 @@ const runReusableReservationScenario = async (input: {
     TestSealedStateKeys,
     accountAuthority.layer,
     contacts,
-    Layer.mock(CurrentCustomerAccount, {
-      peek: Effect.suspend(() => peekStanding()),
-    }),
+    currentAccount,
     referrals,
     RememberedReferral.inMemory(rememberedReferralCookie).pipe(
       Layer.provide(
         Layer.mergeAll(
           ReferralReleaseGate.fromDecision(true),
           referrals,
-          contacts
+          currentAccount
         )
       )
     ),

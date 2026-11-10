@@ -212,7 +212,7 @@ describe.skipIf(!database)(
           Layer.mergeAll(
             ReferralReleaseGate.fromDecision(false),
             WithheldReferralService,
-            contacts
+            currentAccount
           )
         )
       ),

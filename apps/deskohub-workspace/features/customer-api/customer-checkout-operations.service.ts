@@ -139,7 +139,7 @@ export class CustomerCheckoutOperations extends Context.Service<
             PayableReservationService.Live,
             ReferralService.Live,
             CheckoutReferralService.Live,
-            CustomerAccountContactService.Live,
+            CurrentCustomerAccount.Live,
             SealedStateKeys.Default
           )
         ),
@@ -151,7 +151,7 @@ export class CustomerCheckoutOperations extends Context.Service<
         Layer.provide(
           Layer.mergeAll(
             ReferralService.Live,
-            CustomerAccountContactService.Live
+            CurrentCustomerAccount.Live
           ).pipe(Layer.provideMerge(releases.referral))
         )
       );

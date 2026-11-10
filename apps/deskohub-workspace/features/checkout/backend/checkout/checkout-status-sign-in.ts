@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { getAccountSignInPath } from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -23,14 +23,21 @@ export const getReservationStatusSignInPath = (
   );
 };
 
-/** Whether no account is signed in; an unreadable session isn't signed out. */
+/**
+ * Whether no account is signed in, or only one awaiting deletion; an
+ * unreadable session isn't signed out.
+ */
 export const isStatusViewerSignedOut = Effect.fn(
   "checkout.status.readSignedOut"
 )(
   function* () {
-    const contacts = yield* CustomerAccountContactService;
-    const account = yield* contacts.currentAccount;
-    return account.status === "signed-out";
+    const current = yield* CurrentCustomerAccount;
+    const standing = yield* current.peek;
+    // A session awaiting deletion can't book or link, so it reads as signed
+    // out; an unverified or unreadable account doesn't.
+    return (
+      standing.kind === "signed-out" || standing.kind === "deletion-pending"
+    );
   },
   Effect.orElseSucceed(() => false)
 );

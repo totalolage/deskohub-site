@@ -1,36 +1,27 @@
 import { describe, expect, mock, test } from "bun:test";
-import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Result } from "effect";
-import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
-import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
+import { getReviewAccountContact } from "@/features/review-accounts";
 import type { CustomerProfile } from "../contracts";
 import {
   CustomerAccountAccessError,
-  customerAccountIdSchema,
+  customerAccountUnavailable,
 } from "../customer-account";
-import { CustomerAccountContactService } from "./customer-account-contact.service";
-import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import {
-  type CustomerAccountSession,
-  CustomerAuthentication,
-} from "./customer-authentication.service";
-import { testSessionProfile } from "./customer-authentication.test-utils";
+  testCustomerSession,
+  testLinkedAccount,
+} from "./account-operations.test-utils";
+import {
+  type PeekedStanding,
+  peeking,
+  type TestPeekedStandingLabel,
+  testPeekedStandingLabels,
+  testPeekedStandings,
+} from "./current-customer-account.test-utils";
+import { CustomerAccountContactService } from "./customer-account-contact.service";
 import { CustomerProfileService } from "./customer-profile.service";
 
-const customerEmail = testEmailAddress("ada");
-
-const accountId = customerAccountIdSchema.make("auth-user-1");
-const dotyposCustomerId = "60111";
-
-const session = (
-  overrides: Partial<CustomerAccountSession> = {}
-): CustomerAccountSession => ({
-  accountId,
-  email: reservationCustomerEmailSchema.make(customerEmail),
-  deletionRequested: false,
-  ...testSessionProfile,
-  ...overrides,
-});
+const { accountId, email: customerEmail } = testCustomerSession;
+const { dotyposCustomerId } = testLinkedAccount;
 
 const profile = (
   overrides: Partial<CustomerProfile> = {}
@@ -42,10 +33,13 @@ const profile = (
   ...overrides,
 });
 
+/**
+ * The contact service over a faked standing (`peek` answers `standing`) and
+ * profile service; the standing table test covers how the standing is read.
+ */
 const runCurrent = (
   options: {
-    readonly session?: CustomerAccountSession | null;
-    readonly find?: ReturnType<typeof mock>;
+    readonly standing?: PeekedStanding | CustomerAccountAccessError;
     readonly profile?: CustomerProfile;
     readonly create?: ReturnType<typeof mock>;
   } = {},
@@ -54,36 +48,17 @@ const runCurrent = (
   ) => Effect.Effect<unknown, CustomerAccountAccessError> = (contacts) =>
     contacts.current
 ) => {
-  const find =
-    options.find ?? mock(() => Effect.succeed(dotyposCustomerId as never));
-  const claim = mock(() => Effect.die("claim must not be called"));
-  const markDeletionRequested = mock(() =>
-    Effect.die("markDeletionRequested must not be called")
-  );
   const load = mock(() => Effect.succeed(options.profile ?? profile()));
   const create =
     options.create ?? mock(() => Effect.die("create must not be called"));
   const update = mock(() => Effect.die("update must not be called"));
-  const currentSession =
-    options.session !== undefined ? options.session : session();
+  const calls = { peeks: 0 };
 
   const layer = CustomerAccountContactService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        Layer.succeed(CustomerAuthentication, {
-          currentUser: Effect.succeed(currentSession),
-        }),
-        Layer.mock(CustomerAccountLinkRepository, {
-          find,
-          claim,
-          markDeletionRequested,
-        }),
-        Layer.mock(CustomerProfileService, {
-          load,
-          create,
-          update,
-        }),
-        NoReviewAccounts
+        peeking(options.standing ?? testPeekedStandings.linked, calls),
+        Layer.mock(CustomerProfileService, { load, create, update })
       )
     )
   );
@@ -93,46 +68,78 @@ const runCurrent = (
     return yield* operation(contacts);
   })
     .pipe(Effect.provide(layer), Effect.result, Effect.runPromise)
-    .then((outcome) => ({
-      outcome,
-      find,
-      claim,
-      markDeletionRequested,
-      load,
-      create,
-      update,
-    }));
+    .then((outcome) => ({ outcome, calls, load, create, update }));
 };
 
+const linkedContact = {
+  accountId,
+  dotyposCustomerId,
+  name: "Ada Lovelace",
+  email: customerEmail,
+  phone: "+420 777 777 777",
+};
+
+/** What `current` answers for a standing. */
+type ContactOutcome =
+  | { readonly contact: unknown }
+  | { readonly failure: CustomerAccountAccessError };
+
 describe("CustomerAccountContactService.current", () => {
-  test("returns null for an anonymous session without reading the link", async () => {
-    const { outcome, find, load } = await runCurrent({ session: null });
+  // The booking contact's policy, one row per standing `peek` reports.
+  const expected = {
+    "signed out": { contact: null },
+    unverified: {
+      failure: new CustomerAccountAccessError({ reason: "unverified-email" }),
+    },
+    "awaiting deletion": { contact: null },
+    "awaiting deletion, review marker present": { contact: null },
+    "awaiting deletion, review marker unreadable": { contact: null },
+    "review account": {
+      contact: { accountId, ...getReviewAccountContact(customerEmail) },
+    },
+    unlinked: { contact: null },
+    // As the review marker read failed before.
+    "unlinked, review marker unreadable": {
+      failure: customerAccountUnavailable("account-link.read"),
+    },
+    linked: { contact: linkedContact },
+    "linked, review marker unreadable": { contact: linkedContact },
+    "link unavailable": {
+      failure: customerAccountUnavailable("account-link.read"),
+    },
+  } satisfies Record<TestPeekedStandingLabel, ContactOutcome>;
 
-    expect(outcome).toMatchObject({ _tag: "Success", success: null });
-    expect(find).not.toHaveBeenCalled();
-    expect(load).not.toHaveBeenCalled();
+  test.each(testPeekedStandingLabels)(
+    "answers the standing %s with its own contact policy",
+    async (label) => {
+      const standing = testPeekedStandings[label];
+      const { outcome, calls, load, create } = await runCurrent({ standing });
+      const row = expected[label];
+
+      if ("contact" in row) {
+        expect(Result.getOrThrow(outcome)).toEqual(row.contact);
+      } else {
+        expect(outcome).toEqual(Result.fail(row.failure));
+      }
+      expect(calls.peeks).toBe(1);
+      // Only a linked account's profile is read.
+      expect(load).toHaveBeenCalledTimes(standing.kind === "linked" ? 1 : 0);
+      expect(create).not.toHaveBeenCalled();
+    }
+  );
+
+  test("fails with the session read's error", async () => {
+    const failure = customerAccountUnavailable("authentication.session");
+
+    const { outcome } = await runCurrent({ standing: failure });
+
+    expect(outcome).toEqual(Result.fail(failure));
   });
 
-  test("returns null for a deletion-pending session without reading the link", async () => {
-    const { outcome, find, load } = await runCurrent({
-      session: session({ deletionRequested: true }),
-    });
+  test("reads the linked account's profile by its stored link", async () => {
+    const { load } = await runCurrent();
 
-    expect(outcome).toMatchObject({ _tag: "Success", success: null });
-    expect(find).not.toHaveBeenCalled();
-    expect(load).not.toHaveBeenCalled();
-  });
-
-  test("returns null for an unlinked account without claiming a link", async () => {
-    const { outcome, find, claim, load, create } = await runCurrent({
-      find: mock(() => Effect.succeed(null)),
-    });
-
-    expect(outcome).toMatchObject({ _tag: "Success", success: null });
-    expect(find).toHaveBeenCalledWith(accountId);
-    expect(claim).not.toHaveBeenCalled();
-    expect(create).not.toHaveBeenCalled();
-    expect(load).not.toHaveBeenCalled();
+    expect(load).toHaveBeenCalledWith(testLinkedAccount);
   });
 
   test.each([
@@ -142,25 +149,6 @@ describe("CustomerAccountContactService.current", () => {
     const { outcome } = await runCurrent({ profile: profile(name) });
 
     expect(outcome).toMatchObject({ _tag: "Success", success: null });
-  });
-
-  test("returns the linked account contact from the session and profile", async () => {
-    const { outcome, find, claim, load, markDeletionRequested } =
-      await runCurrent();
-
-    expect(outcome._tag).toBe("Success");
-    if (outcome._tag !== "Success") throw new Error("Expected a contact");
-    expect(outcome.success).toEqual({
-      accountId,
-      dotyposCustomerId,
-      name: "Ada Lovelace",
-      email: customerEmail,
-      phone: "+420 777 777 777",
-    });
-    expect(find).toHaveBeenCalledTimes(1);
-    expect(load).toHaveBeenCalledWith({ accountId, dotyposCustomerId });
-    expect(claim).not.toHaveBeenCalled();
-    expect(markDeletionRequested).not.toHaveBeenCalled();
   });
 
   test("joins padded name parts with a single space", async () => {
@@ -208,125 +196,6 @@ describe("CustomerAccountContactService.current", () => {
       });
     }
   );
-
-  test("maps a link read failure to an unavailable account error", async () => {
-    const { outcome, load } = await runCurrent({
-      find: mock(() => Effect.fail(new Error("database unavailable"))),
-    });
-
-    expect(outcome._tag).toBe("Failure");
-    if (outcome._tag !== "Failure") throw new Error("Expected a failure");
-    expect(outcome.failure).toBeInstanceOf(CustomerAccountAccessError);
-    expect(outcome.failure).toMatchObject({
-      reason: "unavailable",
-      cause: { code: "account-link.read" },
-    });
-    expect(load).not.toHaveBeenCalled();
-  });
-});
-
-describe("CustomerAccountContactService.currentAccount", () => {
-  const runCurrentAccount = (options: Parameters<typeof runCurrent>[0] = {}) =>
-    runCurrent(options, (contacts) => contacts.currentAccount);
-
-  test("reads an anonymous session as signed out without reading the link", async () => {
-    const { outcome, find } = await runCurrentAccount({ session: null });
-
-    expect(Result.getOrThrow(outcome)).toEqual({ status: "signed-out" });
-    expect(find).not.toHaveBeenCalled();
-  });
-
-  test("reads a deletion-pending session as signed out without reading the link", async () => {
-    const { outcome, find } = await runCurrentAccount({
-      session: session({ deletionRequested: true }),
-    });
-
-    expect(Result.getOrThrow(outcome)).toEqual({ status: "signed-out" });
-    expect(find).not.toHaveBeenCalled();
-  });
-
-  test("reads a session without a link as unlinked without claiming one", async () => {
-    const { outcome, find, claim, load } = await runCurrentAccount({
-      find: mock(() => Effect.succeed(null)),
-    });
-
-    expect(Result.getOrThrow(outcome)).toEqual({
-      status: "unlinked",
-      accountId,
-      email: customerEmail,
-    });
-    expect(find).toHaveBeenCalledWith(accountId);
-    expect(claim).not.toHaveBeenCalled();
-    expect(load).not.toHaveBeenCalled();
-  });
-
-  test("reads a linked session with its Dotypos customer without reading the profile", async () => {
-    const { outcome, load } = await runCurrentAccount();
-
-    expect(Result.getOrThrow(outcome)).toEqual({
-      status: "linked",
-      accountId,
-      dotyposCustomerId,
-      email: customerEmail,
-    });
-    expect(load).not.toHaveBeenCalled();
-  });
-
-  test("maps a link read failure to an unavailable account error", async () => {
-    const { outcome } = await runCurrentAccount({
-      find: mock(() => Effect.fail(new Error("database unavailable"))),
-    });
-
-    expect(outcome._tag).toBe("Failure");
-    if (outcome._tag !== "Failure") throw new Error("Expected a failure");
-    expect(outcome.failure).toBeInstanceOf(CustomerAccountAccessError);
-    expect(outcome.failure).toMatchObject({
-      reason: "unavailable",
-      cause: { code: "account-link.read" },
-    });
-  });
-});
-
-describe("CustomerAccountContactService.currentLinkedAccount", () => {
-  test.each([
-    ["an anonymous", { session: null }],
-    ["a deletion-pending", { session: session({ deletionRequested: true }) }],
-    ["an unlinked", { find: mock(() => Effect.succeed(null)) }],
-  ] as const)("returns null for %s session", async (_label, options) => {
-    const { outcome } = await runCurrent(
-      options,
-      (contacts) => contacts.currentLinkedAccount
-    );
-
-    expect(Result.getOrThrow(outcome)).toBeNull();
-  });
-
-  test("keeps the link read failure", async () => {
-    const { outcome } = await runCurrent(
-      { find: mock(() => Effect.fail(new Error("database unavailable"))) },
-      (contacts) => contacts.currentLinkedAccount
-    );
-
-    expect(outcome).toMatchObject({
-      _tag: "Failure",
-      failure: { reason: "unavailable", cause: { code: "account-link.read" } },
-    });
-  });
-
-  test("returns the session's link without reading the profile", async () => {
-    const { outcome, find, load } = await runCurrent(
-      {},
-      (contacts) => contacts.currentLinkedAccount
-    );
-
-    expect(Result.getOrThrow(outcome)).toEqual({
-      accountId,
-      dotyposCustomerId,
-      email: customerEmail,
-    });
-    expect(find).toHaveBeenCalledWith(accountId);
-    expect(load).not.toHaveBeenCalled();
-  });
 });
 
 describe("CustomerAccountContactService.completeProfile", () => {
@@ -351,7 +220,7 @@ describe("CustomerAccountContactService.completeProfile", () => {
   };
 
   test("creates the account's profile and returns its contact", async () => {
-    const { outcome, create, find, load } = await runComplete(profile());
+    const { outcome, create, calls, load } = await runComplete(profile());
 
     expect(Result.getOrThrow(outcome)).toEqual({
       accountId,
@@ -361,7 +230,7 @@ describe("CustomerAccountContactService.completeProfile", () => {
       phone: "+420 777 777 777",
     });
     expect(create).toHaveBeenCalledWith(accountId, profileInput);
-    expect(find).not.toHaveBeenCalled();
+    expect(calls.peeks).toBe(0);
     expect(load).not.toHaveBeenCalled();
   });
 

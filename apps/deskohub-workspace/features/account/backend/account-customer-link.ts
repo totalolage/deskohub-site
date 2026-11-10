@@ -1,11 +1,7 @@
 import { Effect } from "effect";
 import type { AccountCustomerLinkResponse } from "../account-customer-link";
-import {
-  type CustomerAccountAccessError,
-  mapCustomerAccountFailure,
-} from "../customer-account";
-import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import { CustomerAuthentication } from "./customer-authentication.service";
+import { CustomerAccountAccessError } from "../customer-account";
+import type { CurrentCustomerAccount } from "./current-customer-account";
 
 const signedOut: AccountCustomerLinkResponse = {
   accountId: null,
@@ -13,25 +9,35 @@ const signedOut: AccountCustomerLinkResponse = {
 };
 
 /**
- * Reads the verified account's existing Dotypos customer link without
- * claiming one, so the read never creates or reactivates a customer. An
- * account awaiting deletion reports no link.
+ * The customer-link route's own policy over the standing it peeks, so the
+ * read never creates or reactivates a customer: only identifiers, and no
+ * customer for an account awaiting deletion. A standing that can't say
+ * whether a link exists fails.
  */
-export const readCurrentAccountCustomerLink: Effect.Effect<
-  AccountCustomerLinkResponse,
-  CustomerAccountAccessError,
-  CustomerAuthentication | CustomerAccountLinkRepository
-> = Effect.gen(function* () {
-  const authentication = yield* CustomerAuthentication;
-  const user = yield* authentication.currentUser;
-  if (user === null) return signedOut;
-  if (user.deletionRequested) {
-    return { accountId: user.accountId, dotyposCustomerId: null };
+export const accountCustomerLinkFor = (
+  standing: Effect.Success<CurrentCustomerAccount["Service"]["peek"]>
+): Effect.Effect<AccountCustomerLinkResponse, CustomerAccountAccessError> => {
+  switch (standing.kind) {
+    case "signed-out":
+      return Effect.succeed(signedOut);
+    case "unverified":
+      // As the session read reports it.
+      return Effect.fail(
+        new CustomerAccountAccessError({ reason: "unverified-email" })
+      );
+    case "deletion-pending":
+    case "review":
+    case "unlinked":
+      return Effect.succeed({
+        accountId: standing.session.accountId,
+        dotyposCustomerId: null,
+      });
+    case "linked":
+      return Effect.succeed({
+        accountId: standing.account.accountId,
+        dotyposCustomerId: standing.account.dotyposCustomerId,
+      });
+    case "unavailable":
+      return Effect.fail(standing.failure);
   }
-
-  const links = yield* CustomerAccountLinkRepository;
-  const dotyposCustomerId = yield* links
-    .find(user.accountId)
-    .pipe(Effect.mapError(mapCustomerAccountFailure("account-link.read")));
-  return { accountId: user.accountId, dotyposCustomerId };
-}).pipe(Effect.withSpan("account.readCurrentAccountCustomerLink"));
+};

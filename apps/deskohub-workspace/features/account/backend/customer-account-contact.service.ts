@@ -1,23 +1,20 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { formatPhoneNumber, parsePhoneNumber } from "@deskohub/phone-number";
-import { Context, Effect, Layer, Match, Option, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import { baseLocale, defaultPhoneRegion } from "@/features/i18n";
 import {
   reservationCustomerNameSchema,
   reservationCustomerPhoneSchema,
 } from "@/features/reservation/reservation-contact";
-import {
-  getReviewAccountContact,
-  ReviewAccounts,
-} from "@/features/review-accounts";
+import { getReviewAccountContact } from "@/features/review-accounts";
 import type { CustomerProfile, CustomerProfileSave } from "../contracts";
 import {
-  type CustomerAccountAccessError,
+  CustomerAccountAccessError,
   type CustomerAccountId,
+  customerAccountUnavailable,
   type LinkedCustomerAccount,
-  mapCustomerAccountFailure,
 } from "../customer-account";
-import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import { CurrentCustomerAccount } from "./current-customer-account";
 import {
   type CustomerAccountSession,
   CustomerAuthentication,
@@ -25,27 +22,12 @@ import {
 import { CustomerProfileService } from "./customer-profile.service";
 
 /**
- * The current session's durable Dotypos link with its login email, before
- * the profile is read. Work that needs only the linked customer can start
- * from here.
+ * A signed-in account's durable Dotypos link with its login email, before
+ * the profile is read.
  */
 export type CurrentLinkedAccount = LinkedCustomerAccount & {
   readonly email: CustomerAccountSession["email"];
 };
-
-/**
- * The current session's account before any profile is read: signed out,
- * signed in without a Dotypos profile linked yet, or linked. A session with
- * deletion pending reads as signed out, since it can't book or link.
- */
-type CurrentCustomerAccount =
-  | { readonly status: "signed-out" }
-  | {
-      readonly status: "unlinked";
-      readonly accountId: CustomerAccountId;
-      readonly email: CustomerAccountSession["email"];
-    }
-  | ({ readonly status: "linked" } & CurrentLinkedAccount);
 
 /**
  * The reservation contact a signed-in, already-linked customer books with.
@@ -117,19 +99,6 @@ const toContact = (
 };
 
 interface ICustomerAccountContactService {
-  /** Reads the current session's account without claiming a link. */
-  readonly currentAccount: Effect.Effect<
-    CurrentCustomerAccount,
-    CustomerAccountAccessError
-  >;
-  /**
-   * Reads the current session's existing link without claiming one.
-   * Anonymous, deletion-pending, and unlinked sessions yield null.
-   */
-  readonly currentLinkedAccount: Effect.Effect<
-    CurrentLinkedAccount | null,
-    CustomerAccountAccessError
-  >;
   /**
    * Reads a linked account's Dotypos profile into its reservation contact.
    * The profile read re-checks account activity; a profile whose name
@@ -139,11 +108,13 @@ interface ICustomerAccountContactService {
     account: CurrentLinkedAccount
   ) => Effect.Effect<CustomerAccountContact | null, CustomerAccountAccessError>;
   /**
-   * Reads the current account's booking contact without claiming a link, so
-   * it is safe both on read-only pages and inside the account activity
-   * guard. A review account books with its synthetic contact. Anonymous,
-   * deletion-pending, and other unlinked sessions, and profiles whose name
-   * cannot book a reservation, yield null.
+   * Reads the current account's booking contact from its standing's stored
+   * link (`CurrentCustomerAccount.peek`), never claiming one, so it is safe
+   * both on read-only pages and inside the account activity guard. A review
+   * account books with its synthetic contact. Anonymous, deletion-pending,
+   * and other unlinked sessions, and profiles whose name cannot book a
+   * reservation, yield null. An unlinked account whose review marker can't
+   * be read fails as the link read does.
    */
   readonly current: Effect.Effect<
     BookingContact | null,
@@ -169,50 +140,8 @@ export class CustomerAccountContactService extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const authentication = yield* CustomerAuthentication;
-      const links = yield* CustomerAccountLinkRepository;
+      const currentAccount = yield* CurrentCustomerAccount;
       const profiles = yield* CustomerProfileService;
-      const reviewAccounts = yield* ReviewAccounts;
-
-      const currentAccount = Effect.gen(function* () {
-        const session = yield* authentication.currentUser;
-        if (!session || session.deletionRequested) {
-          return { status: "signed-out" } satisfies CurrentCustomerAccount;
-        }
-
-        const dotyposCustomerId = yield* links
-          .find(session.accountId)
-          .pipe(
-            Effect.mapError(mapCustomerAccountFailure("account-link.read"))
-          );
-        if (!dotyposCustomerId) {
-          return {
-            status: "unlinked",
-            accountId: session.accountId,
-            email: session.email,
-          } satisfies CurrentCustomerAccount;
-        }
-
-        return {
-          status: "linked",
-          accountId: session.accountId,
-          dotyposCustomerId,
-          email: session.email,
-        } satisfies CurrentCustomerAccount;
-      }).pipe(Effect.withSpan("CustomerAccountContactService.currentAccount"));
-
-      const currentLinkedAccount = currentAccount.pipe(
-        Effect.map((account): CurrentLinkedAccount | null =>
-          account.status === "linked"
-            ? {
-                accountId: account.accountId,
-                dotyposCustomerId: account.dotyposCustomerId,
-                email: account.email,
-              }
-            : null
-        ),
-        Effect.withSpan("CustomerAccountContactService.currentLinkedAccount")
-      );
 
       const linkedContact = Effect.fn(
         "CustomerAccountContactService.linkedContact"
@@ -240,42 +169,47 @@ export class CustomerAccountContactService extends Context.Service<
         );
       });
 
-      const unlinkedContact = (account: {
-        readonly accountId: CustomerAccountId;
-        readonly email: string;
-      }) =>
-        reviewAccounts.isReviewAccount(account.accountId).pipe(
-          Effect.mapError(mapCustomerAccountFailure("account-link.read")),
-          Effect.map((review): BookingContact | null =>
-            review
-              ? {
-                  accountId: account.accountId,
-                  ...getReviewAccountContact(account.email),
-                }
-              : null
-          )
-        );
+      /** The booking contact's own policy over the standing. */
+      const contactFor = (
+        standing: Effect.Success<CurrentCustomerAccount["Service"]["peek"]>
+      ): Effect.Effect<BookingContact | null, CustomerAccountAccessError> => {
+        switch (standing.kind) {
+          case "signed-out":
+          case "deletion-pending":
+            return Effect.succeed(null);
+          case "unverified":
+            // As the session read reports it.
+            return Effect.fail(
+              new CustomerAccountAccessError({ reason: "unverified-email" })
+            );
+          case "review":
+            return Effect.succeed({
+              accountId: standing.session.accountId,
+              ...getReviewAccountContact(standing.session.email),
+            });
+          case "unlinked":
+            // Without knowing it isn't a review account, the account has no
+            // contact; this is the failure its marker read reported.
+            return standing.reviewMarker === "unreadable"
+              ? Effect.fail(customerAccountUnavailable("account-link.read"))
+              : Effect.succeed(null);
+          case "linked":
+            return linkedContact({
+              ...standing.account,
+              email: standing.session.email,
+            });
+          case "unavailable":
+            return Effect.fail(standing.failure);
+        }
+      };
 
-      const current = currentAccount.pipe(
-        Effect.flatMap(
-          (
-            account
-          ): Effect.Effect<BookingContact | null, CustomerAccountAccessError> =>
-            Match.value(account).pipe(
-              Match.discriminatorsExhaustive("status")({
-                "signed-out": () => Effect.succeed(null),
-                unlinked: unlinkedContact,
-                linked: linkedContact,
-              })
-            )
-        ),
+      const current = currentAccount.peek.pipe(
+        Effect.flatMap(contactFor),
         Effect.withSpan("CustomerAccountContactService.current")
       );
 
       return {
-        currentAccount,
         completeProfile,
-        currentLinkedAccount,
         linkedContact,
         current,
       } satisfies ICustomerAccountContactService;
@@ -292,10 +226,8 @@ export class CustomerAccountContactService extends Context.Service<
     this.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
-          authentication,
-          CustomerAccountLinkRepository.Live,
-          CustomerProfileService.withAuthentication(authentication),
-          ReviewAccounts.Live
+          CurrentCustomerAccount.withAuthentication(authentication),
+          CustomerProfileService.withAuthentication(authentication)
         )
       )
     );

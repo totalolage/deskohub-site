@@ -9,7 +9,7 @@ import { SqlError } from "effect/unstable/sql";
 import type { WorkspaceE2EConfig } from "@/e2e/config";
 import { isFreshOwnedPayStateUrl } from "@/e2e/referrals/checkout";
 import { isOwnedReferralCheckoutReviewUrl } from "@/e2e/referrals/checkout-review";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import {
   buildFreshCheckoutPayPath,
   getPayStateExpiresAt,
@@ -206,7 +206,7 @@ const prepareSubmission = async (input?: SubmissionInput) => {
   const referralService = Layer.succeed(ReferralService, {
     lookupCodeKind,
   } as never);
-  const contacts = Layer.mock(CustomerAccountContactService, {});
+  const currentAccount = Layer.mock(CurrentCustomerAccount, {});
   const payStateToken =
     input?.payStateToken ??
     (await makePayStateToken({
@@ -249,7 +249,7 @@ const prepareSubmission = async (input?: SubmissionInput) => {
             Layer.mergeAll(
               ReferralReleaseGate.fromDecision(true),
               input?.referralService ?? referralService,
-              contacts
+              currentAccount
             )
           )
         )

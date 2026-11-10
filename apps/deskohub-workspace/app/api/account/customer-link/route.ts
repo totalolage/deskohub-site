@@ -1,8 +1,7 @@
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { NextResponse } from "next/server";
-import { readCurrentAccountCustomerLink } from "@/features/account/backend/account-customer-link";
-import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
-import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { accountCustomerLinkFor } from "@/features/account/backend/account-customer-link";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
@@ -22,18 +21,15 @@ export const GET = defineWorkspaceRoute(
     caller: "client",
   },
   () =>
-    readCurrentAccountCustomerLink.pipe(
+    CurrentCustomerAccount.pipe(
+      Effect.flatMap((current) => current.peek),
+      Effect.flatMap(accountCustomerLinkFor),
       Effect.map((link) =>
         NextResponse.json(link, {
           headers: { "Cache-Control": "private, no-store" },
         })
       ),
-      Effect.provide(
-        Layer.mergeAll(
-          CustomerAuthentication.Default,
-          CustomerAccountLinkRepository.Live
-        )
-      ),
+      Effect.provide(CurrentCustomerAccount.Live),
       Effect.mapError(
         (cause) =>
           new WorkspaceRouteFailure({
