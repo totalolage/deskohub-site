@@ -239,7 +239,9 @@ describe.skipIf(!database)(
       input: PreparePayStateInput,
       bookingAgent?: Layer.Layer<BookingAgent>
     ) => {
-      const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+      const { prepareWorkspacePayState } = await import(
+        "@/features/reservation/backend/reservation-booking.service"
+      );
       const operation = prepareWorkspacePayState(input).pipe(
         Effect.provide(services),
         // A consenting visitor, so every outcome the booking captures reaches
