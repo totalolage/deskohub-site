@@ -298,7 +298,7 @@ const operatingRulesSections: LegalSection[] = [
 
 const legalDocuments = {
   "privacy-policy": {
-    updatedAt: "ngày 8 tháng 11 năm 2026",
+    updatedAt: "8 tháng 11, 2026",
     sections: [
       {
         heading: "1. Bên Kiểm soát dữ liệu cá nhân",
@@ -703,7 +703,7 @@ const legalDocuments = {
     ],
   },
   "marketing-communications": {
-    updatedAt: "ngày 5 tháng 8 năm 2026",
+    updatedAt: "5 tháng 8, 2026",
     sections: [
       {
         heading: "1. Ai có thể liên hệ với Quý khách",
@@ -777,11 +777,11 @@ const legalDocuments = {
     ],
   },
   "terms-and-conditions": {
-    updatedAt: "ngày 12 tháng 8 năm 2026",
+    updatedAt: "12 tháng 8, 2026",
     sections: termsAndConditionsSections,
   },
   "cookie-policy": {
-    updatedAt: "ngày 8 tháng 11 năm 2026",
+    updatedAt: "8 tháng 11, 2026",
     sections: [
       {
         heading: "1. Cookie là gì",
@@ -882,7 +882,7 @@ const legalDocuments = {
     ],
   },
   "operating-rules": {
-    updatedAt: "ngày 12 tháng 8 năm 2026",
+    updatedAt: "12 tháng 8, 2026",
     sections: operatingRulesSections,
   },
 } satisfies LegalDocumentBodies;

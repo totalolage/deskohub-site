@@ -55,9 +55,9 @@ export const consentBannerDocumentVersions: Readonly<
   },
   "vi-VN": {
     "privacy-policy":
-      "88fa88987d34b33157ee6d978ebdac75060a31c580895baa90111b428f30252e",
+      "89898a2e9b0b8ff9873d44e48c0d13c5dade1d79f91f9dc58de79bd46b918795",
     "cookie-policy":
-      "966c866ce16bf0e1327d539550c070d25cbc65442d782a9e7e5ed802847ddacb",
+      "d1a469bc79c9be640a99e42a1266b825ad10e543c7895526567d9207c4f2dd92",
   },
   "hi-IN": {
     "privacy-policy":

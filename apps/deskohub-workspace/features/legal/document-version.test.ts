@@ -141,27 +141,27 @@ const publishedDocuments: ReadonlyArray<{
   {
     locale: "vi-VN",
     documentKey: "terms-and-conditions",
-    version: "c6b239939a762863dc700b17267f4c3cd81803d1d3fd86b4844d1fdfbf91d04f",
+    version: "ac564a4887b5794001b9e33c3e558365a8a6ef01cc0dbde792517a0fb222b090",
   },
   {
     locale: "vi-VN",
     documentKey: "operating-rules",
-    version: "d2125bd8cbd8c34df56668f119d7a687ac84fee1882f700ff2a280612684ebae",
+    version: "2bfa7e9a4afa15bcea55db7daa0737e64c79f395606737bd76bd64f0a740784f",
   },
   {
     locale: "vi-VN",
     documentKey: "privacy-policy",
-    version: "88fa88987d34b33157ee6d978ebdac75060a31c580895baa90111b428f30252e",
+    version: "89898a2e9b0b8ff9873d44e48c0d13c5dade1d79f91f9dc58de79bd46b918795",
   },
   {
     locale: "vi-VN",
     documentKey: "marketing-communications",
-    version: "8f334d1300bfcd2fd8521c5a3046803c897ca7428bb53261e15cb4c415dc725a",
+    version: "7a48ca1500301f44bc87fc89fa88b159386cc8e70ec04bf2374c9ea37c2adf44",
   },
   {
     locale: "vi-VN",
     documentKey: "cookie-policy",
-    version: "966c866ce16bf0e1327d539550c070d25cbc65442d782a9e7e5ed802847ddacb",
+    version: "d1a469bc79c9be640a99e42a1266b825ad10e543c7895526567d9207c4f2dd92",
   },
 ];
 
