@@ -1,16 +1,25 @@
 import {
   generatePostHogFeatureFlagContract,
   generatePostHogFeatureFlagContractFromDefinitions,
+  generatePostHogFeatureFlagSnapshot,
   PostHogFeatureFlagError,
   type PostHogFeatureFlagSyncResult,
 } from "@deskohub/posthog/feature-flags/codegen";
-import { listPostHogFeatureFlagDefinitions } from "@deskohub/posthog/feature-flags/management";
+import {
+  listPostHogFeatureFlagDefinitions,
+  postHogFeatureFlagFailureLogFields,
+} from "@deskohub/posthog/feature-flags/management";
 import { PostHogProjectId } from "@deskohub/posthog/identifiers";
 import { Effect, Schema } from "effect";
+import { postHogFeatureFlags } from "@/features/feature-flags/generated/contract";
 import { runStandaloneWorkspaceEffect } from "@/shared/backend/standalone-workspace-effect";
 
 const outputFile = new URL(
   "../features/feature-flags/generated/contract.ts",
+  import.meta.url
+);
+const snapshotFile = new URL(
+  "../features/feature-flags/generated/flag-snapshot.ts",
   import.meta.url
 );
 const workspacePostHogProjectId = PostHogProjectId.make("204184");
@@ -21,11 +30,13 @@ const PostHogFeatureFlagGenerationEnv = Schema.Struct({
   POSTHOG_PROJECT_ID: PostHogProjectId,
 });
 
-const loadPostHogFeatureFlagGenerationEnv = () =>
+const loadPostHogFeatureFlagGenerationEnv = (
+  environment: Readonly<Record<string, string | undefined>> = process.env
+) =>
   Schema.decodeUnknownEffect(PostHogFeatureFlagGenerationEnv)({
-    POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
-    POSTHOG_API_HOST: process.env.POSTHOG_API_HOST,
-    POSTHOG_PROJECT_ID: process.env.POSTHOG_PROJECT_ID,
+    POSTHOG_API_KEY: environment.POSTHOG_API_KEY,
+    POSTHOG_API_HOST: environment.POSTHOG_API_HOST,
+    POSTHOG_PROJECT_ID: environment.POSTHOG_PROJECT_ID,
   }).pipe(
     Effect.mapError(
       (cause) =>
@@ -44,6 +55,7 @@ const syncPostHogFeatureFlags = Effect.fn(function* () {
     host: env.POSTHOG_API_HOST,
     outputFile,
     projectId: env.POSTHOG_PROJECT_ID,
+    snapshotFile,
   });
 
   yield* Effect.logInfo("Workspace PostHog feature flags synchronized", {
@@ -52,6 +64,54 @@ const syncPostHogFeatureFlags = Effect.fn(function* () {
   });
 
   return result;
+});
+
+interface RefreshPostHogFeatureFlagSnapshotOptions {
+  readonly environment: Readonly<Record<string, string | undefined>>;
+  readonly keys: readonly string[];
+  readonly snapshotFile: string | URL;
+}
+
+/**
+ * Refreshes the committed contract's definitions snapshot during a Vercel
+ * build, so a deployment's snapshot is as fresh as the deployment. Outside
+ * Vercel it leaves the committed snapshot alone, and any failure keeps it:
+ * the build never depends on the management API.
+ */
+export const refreshPostHogFeatureFlagSnapshotForBuild = Effect.fn(function* ({
+  environment,
+  keys,
+  snapshotFile,
+}: RefreshPostHogFeatureFlagSnapshotOptions) {
+  if (!environment.VERCEL) {
+    yield* Effect.logInfo(
+      "Kept the committed PostHog feature flag snapshot outside a Vercel build"
+    );
+    return;
+  }
+
+  yield* loadPostHogFeatureFlagGenerationEnv(environment).pipe(
+    Effect.flatMap((env) =>
+      generatePostHogFeatureFlagSnapshot({
+        apiKey: env.POSTHOG_API_KEY,
+        host: env.POSTHOG_API_HOST,
+        keys,
+        projectId: env.POSTHOG_PROJECT_ID,
+        snapshotFile,
+      })
+    ),
+    Effect.flatMap(({ flagCount }) =>
+      Effect.logInfo("Workspace PostHog feature flag snapshot refreshed", {
+        flagCount,
+      })
+    ),
+    Effect.catch((error) =>
+      Effect.logWarning(
+        "Kept the committed PostHog feature flag snapshot after a failed refresh",
+        postHogFeatureFlagFailureLogFields(error)
+      )
+    )
+  );
 });
 
 const PostHogCliProject = Schema.Struct({
@@ -269,12 +329,14 @@ const loadPostHogFeatureFlagDefinitionsFromCli = Effect.fn(function* (options: {
 export interface SyncPostHogFeatureFlagsFromCliOptions {
   readonly projectId: PostHogProjectId;
   readonly outputFile: string | URL;
+  readonly snapshotFile: string | URL;
   readonly readCliJson?: ReadPostHogCliJson;
 }
 
 export const syncPostHogFeatureFlagsFromCli = ({
   projectId,
   outputFile,
+  snapshotFile,
   readCliJson = readPostHogCliJson,
 }: SyncPostHogFeatureFlagsFromCliOptions): Effect.Effect<
   PostHogFeatureFlagSyncResult,
@@ -288,6 +350,7 @@ export const syncPostHogFeatureFlagsFromCli = ({
     const result = yield* generatePostHogFeatureFlagContractFromDefinitions({
       definitions,
       outputFile,
+      snapshotFile,
     });
 
     yield* Effect.logInfo("Workspace PostHog feature flags synchronized", {
@@ -298,14 +361,24 @@ export const syncPostHogFeatureFlagsFromCli = ({
     return result;
   });
 
-if (import.meta.main) {
-  const sync = process.argv.includes("--cli")
-    ? loadPostHogFeatureFlagCliEnv().pipe(
-        Effect.flatMap(({ POSTHOG_PROJECT_ID: projectId }) =>
-          syncPostHogFeatureFlagsFromCli({ projectId, outputFile })
-        )
+const selectSync = () => {
+  if (process.argv.includes("--build")) {
+    return refreshPostHogFeatureFlagSnapshotForBuild({
+      environment: process.env,
+      keys: postHogFeatureFlags.keys,
+      snapshotFile,
+    });
+  }
+  if (process.argv.includes("--cli")) {
+    return loadPostHogFeatureFlagCliEnv().pipe(
+      Effect.flatMap(({ POSTHOG_PROJECT_ID: projectId }) =>
+        syncPostHogFeatureFlagsFromCli({ projectId, outputFile, snapshotFile })
       )
-    : syncPostHogFeatureFlags();
+    );
+  }
+  return syncPostHogFeatureFlags();
+};
 
-  await sync.pipe(runStandaloneWorkspaceEffect("feature-flags.sync"));
+if (import.meta.main) {
+  await selectSync().pipe(runStandaloneWorkspaceEffect("feature-flags.sync"));
 }

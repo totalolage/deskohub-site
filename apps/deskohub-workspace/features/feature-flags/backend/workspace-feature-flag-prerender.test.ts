@@ -44,7 +44,9 @@ const getCurrentFeatureFlagAudience = mock(() =>
   Effect.fail(new Error("Unexpected request subject lookup"))
 );
 
+const management = await import("@deskohub/posthog/feature-flags/management");
 mock.module("@deskohub/posthog/feature-flags/management", () => ({
+  ...management,
   loadPostHogFeatureFlagDefinitions,
 }));
 mock.module("@/env", () => ({ env }));
