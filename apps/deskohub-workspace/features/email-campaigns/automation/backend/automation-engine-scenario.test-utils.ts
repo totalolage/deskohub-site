@@ -18,8 +18,6 @@ import { Effect, Fiber, Layer, Result, Struct } from "effect";
 import { TestClock } from "effect/testing";
 import { customerEvents, customerMarketingConsents } from "@/db/schema";
 import type { CustomerAccountId } from "@/features/account/customer-account";
-import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
-import { MarketingManagementService } from "@/features/legal/backend/marketing-management.service";
 import { ReservationActivitySweep } from "@/features/reservation/backend/reservation-activity-sweep.service";
 import {
   type WorkspaceReservationId,
@@ -37,10 +35,9 @@ import type {
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { AudienceFactsService } from "../../backend/audience-facts.service";
 import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";
-import { CampaignDeliveryService } from "../../backend/campaign-delivery.service";
+import { campaignDeliveryTestLayer } from "../../backend/campaign-delivery.test-utils";
 import { CampaignEmailConfig } from "../../backend/campaign-email.config";
 import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
-import { CampaignUnsubscribeService } from "../../backend/campaign-unsubscribe.service";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AutomationWorkUnitId } from "../automation-identifiers";
 import {
@@ -353,30 +350,18 @@ export const automationScenarioLayer = async (input: {
   const evaluationFacts = AutomationEvaluationFacts.Default.pipe(
     Layer.provide(base)
   );
-  const delivery = CampaignDeliveryService.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        input.dotypos.layer,
-        resend.layer,
-        AutomationRunSettlement.Default,
-        Layer.succeed(CampaignEmailConfig, {
-          deploymentEnvironment: input.deploymentEnvironment ?? "development",
-          from: { email: testEmailAddress("campaigns") },
-          replyTo: { email: testEmailAddress("hello") },
-          adminInbox: testEmailAddress("admin"),
-        }),
-        CampaignUnsubscribeService.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              MarketingConsentLedger.Default,
-              MarketingManagementService.Default
-            )
-          )
-        )
-      )
-    ),
-    Layer.provide(database)
-  );
+  const delivery = campaignDeliveryTestLayer(
+    Layer.mergeAll(
+      input.dotypos.layer,
+      resend.layer,
+      Layer.succeed(CampaignEmailConfig, {
+        deploymentEnvironment: input.deploymentEnvironment ?? "development",
+        from: { email: testEmailAddress("campaigns") },
+        replyTo: { email: testEmailAddress("hello") },
+        adminInbox: testEmailAddress("admin"),
+      })
+    )
+  ).pipe(Layer.provide(database));
   const dependencies = Layer.mergeAll(
     base,
     candidates,
@@ -384,6 +369,7 @@ export const automationScenarioLayer = async (input: {
     conditionEvaluation,
     evaluationFacts,
     delivery,
+    AutomationRunSettlement.Default,
     ReservationActivitySweep.Default
   );
   const kinds = input.kinds ?? automationWorkUnitKinds;

@@ -22,7 +22,10 @@ import {
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";
-import { CampaignDeliveryService } from "../../backend/campaign-delivery.service";
+import {
+  AutomatedSendSubmission,
+  CampaignDeliveryService,
+} from "../../backend/campaign-delivery.service";
 import type { CampaignId, CampaignSendId } from "../../campaign-identifiers";
 import {
   campaignFallbackLocale,
@@ -45,6 +48,7 @@ import {
   withdrawnByCancellation,
 } from "../automation-trigger-verification";
 import { lockAutomationForEngine } from "./automation-lifecycle-lock";
+import { AutomationRunSettlement } from "./automation-run-settlement.service";
 import { appendAutomationRunProgress } from "./automation-run-timeline";
 import { AutomationRunTransitions } from "./automation-run-transitions";
 import { lockTriggeringReservations } from "./automation-triggering-reservations";
@@ -142,6 +146,7 @@ export const makeDeliverHandler = Effect.gen(function* () {
   const dotypos = yield* DotyposService;
   const candidates = yield* CampaignCandidateRepository;
   const delivery = yield* CampaignDeliveryService;
+  const runSettlement = yield* AutomationRunSettlement;
   const context = yield* Effect.context<WorkspaceDatabase | DotyposService>();
 
   /** The unit's runs still open at their send step and owned by it. */
@@ -483,6 +488,28 @@ export const makeDeliverHandler = Effect.gen(function* () {
       .set({ sendId: input.sendId })
       .where(and(eq(units.id, input.unitId), isNull(units.sendId)));
 
+  /**
+   * §5.9 step 4: records the submitted send's batch outcomes, completes the
+   * send and ends its runs from their recipients. A send an earlier
+   * settlement completed already ended its runs, so nothing is left.
+   */
+  const settleSubmission = (input: {
+    readonly sendId: CampaignSendId;
+    readonly submission: AutomatedSendSubmission;
+    readonly at: Temporal.Instant;
+  }) =>
+    AutomatedSendSubmission.$match(input.submission, {
+      AlreadyCompleted: () => Effect.void,
+      Submitted: ({ batches }) =>
+        delivery
+          .settleAutomatedSend({ sendId: input.sendId, batches, at: input.at })
+          .pipe(
+            Effect.andThen(
+              runSettlement.settle({ sendId: input.sendId, at: input.at })
+            )
+          ),
+    });
+
   const handler: AutomationUnitHandler<DeliverSubject, DeliverFacts> = {
     kind: "deliver",
     subject: deliverSubjectSchema,
@@ -496,12 +523,16 @@ export const makeDeliverHandler = Effect.gen(function* () {
         })
         .pipe(
           Effect.map(
-            (settlement) => (at: Temporal.Instant) =>
+            (submission) => (at: Temporal.Instant) =>
               // Serialises the settlement with archive (§5.4).
               Effect.forEach(
                 Option.toArray(Option.fromNullishOr(unit.campaignId)),
                 (campaignId) => lockAutomationForEngine(campaignId)
-              ).pipe(Effect.andThen(settlement(at)))
+              ).pipe(
+                Effect.andThen(
+                  settleSubmission({ sendId: unit.sendId, submission, at })
+                )
+              )
           ),
           Effect.catchTag("CampaignDeliveryIncomplete", (cause) =>
             Effect.fail(
