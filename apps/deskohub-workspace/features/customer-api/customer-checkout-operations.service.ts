@@ -149,9 +149,10 @@ export class CustomerCheckoutOperations extends Context.Service<
       /** What settling the client's referral code reads. */
       const referralSettlement = remembered.pipe(
         Layer.provide(
-          Layer.mergeAll(ReferralService.Live, CurrentCustomerAccount.Live).pipe(
-            Layer.provideMerge(releases.referral)
-          )
+          Layer.mergeAll(
+            ReferralService.Live,
+            CurrentCustomerAccount.Live
+          ).pipe(Layer.provideMerge(releases.referral))
         )
       );
 

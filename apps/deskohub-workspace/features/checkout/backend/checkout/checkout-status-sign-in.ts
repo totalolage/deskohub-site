@@ -35,7 +35,9 @@ export const isStatusViewerSignedOut = Effect.fn(
     const standing = yield* current.peek;
     // A session awaiting deletion can't book or link, so it reads as signed
     // out; an unverified or unreadable account doesn't.
-    return standing.kind === "signed-out" || standing.kind === "deletion-pending";
+    return (
+      standing.kind === "signed-out" || standing.kind === "deletion-pending"
+    );
   },
   Effect.orElseSucceed(() => false)
 );

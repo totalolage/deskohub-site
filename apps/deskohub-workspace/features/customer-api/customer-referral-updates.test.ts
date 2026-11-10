@@ -2,7 +2,6 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
-import { testLinkedAccount } from "@/features/account/backend/account-operations.test-utils";
 import {
   peeking,
   testPeekedStandings,
@@ -13,7 +12,6 @@ import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate"
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { CustomerReferralUpdates } from "./customer-referral-updates";
 
-const booker = testLinkedAccount.dotyposCustomerId;
 const sentCode = "RFL12345";
 const acceptedCode = canonicalPromotionCodeSchema.make("RFLTYPED1");
 

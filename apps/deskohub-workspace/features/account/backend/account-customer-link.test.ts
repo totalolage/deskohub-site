@@ -16,6 +16,11 @@ import {
   testPeekedStandings,
 } from "./current-customer-account.test-utils";
 
+/** What the route answers for a standing. */
+type LinkOutcome =
+  | { readonly link: AccountCustomerLinkResponse }
+  | { readonly failure: CustomerAccountAccessError };
+
 describe("accountCustomerLinkFor", () => {
   const noCustomer = {
     accountId: testCustomerSession.accountId,
@@ -23,11 +28,7 @@ describe("accountCustomerLinkFor", () => {
   };
   // The customer-link route's policy, one row per standing `peek` reports.
   // A failure answers 503.
-  const expected: Record<
-    TestPeekedStandingLabel,
-    | { readonly link: AccountCustomerLinkResponse }
-    | { readonly failure: CustomerAccountAccessError }
-  > = {
+  const expected = {
     "signed out": { link: { accountId: null, dotyposCustomerId: null } },
     unverified: {
       failure: new CustomerAccountAccessError({ reason: "unverified-email" }),
@@ -43,7 +44,7 @@ describe("accountCustomerLinkFor", () => {
     "link unavailable": {
       failure: customerAccountUnavailable("account-link.read"),
     },
-  };
+  } satisfies Record<TestPeekedStandingLabel, LinkOutcome>;
 
   test.each(testPeekedStandingLabels)(
     "answers the standing %s with its own link",
@@ -64,7 +65,10 @@ describe("accountCustomerLinkFor", () => {
       accountCustomerLinkFor(testPeekedStandings.linked)
     );
 
-    expect(Object.keys(link).sort()).toEqual(["accountId", "dotyposCustomerId"]);
+    expect(Object.keys(link).sort()).toEqual([
+      "accountId",
+      "dotyposCustomerId",
+    ]);
     expect(JSON.stringify(link)).not.toContain("@");
   });
 });

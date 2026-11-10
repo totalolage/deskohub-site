@@ -54,7 +54,7 @@ describe("isStatusViewerSignedOut", () => {
     );
 
   // The status page's policy, one row per standing `peek` reports.
-  const signedOut: Record<TestPeekedStandingLabel, boolean> = {
+  const signedOut = {
     "signed out": true,
     // An unverified session isn't signed out.
     unverified: false,
@@ -68,7 +68,7 @@ describe("isStatusViewerSignedOut", () => {
     "linked, review marker unreadable": false,
     // An unreadable link isn't signed out.
     "link unavailable": false,
-  };
+  } satisfies Record<TestPeekedStandingLabel, boolean>;
 
   test.each(testPeekedStandingLabels)(
     "answers the standing %s with its own sign-in policy",

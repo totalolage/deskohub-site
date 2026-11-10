@@ -28,14 +28,15 @@ const readWith = (standing: PeekedStanding | CustomerAccountAccessError) =>
     Effect.runPromise
   );
 
+/** What the history reads for a standing. */
+type HistoryOutcome =
+  | { readonly account: ReservationHistoryAccount }
+  | { readonly failure: CustomerAccountAccessError };
+
 describe("currentReservationHistoryAccount", () => {
   const authoredOnly = { accountId: requestedAccountId };
   // The history's policy, one row per standing `peek` reports.
-  const expected: Record<
-    TestPeekedStandingLabel,
-    | { readonly account: ReservationHistoryAccount }
-    | { readonly failure: CustomerAccountAccessError }
-  > = {
+  const expected = {
     "signed out": { account: authoredOnly },
     unverified: {
       failure: new CustomerAccountAccessError({ reason: "unverified-email" }),
@@ -52,7 +53,7 @@ describe("currentReservationHistoryAccount", () => {
     "link unavailable": {
       failure: customerAccountUnavailable("account-link.read"),
     },
-  };
+  } satisfies Record<TestPeekedStandingLabel, HistoryOutcome>;
 
   test.each(testPeekedStandingLabels)(
     "answers the standing %s with its own history account",
@@ -61,7 +62,9 @@ describe("currentReservationHistoryAccount", () => {
       const row = expected[label];
 
       expect(result).toEqual(
-        "account" in row ? Result.succeed(row.account) : Result.fail(row.failure)
+        "account" in row
+          ? Result.succeed(row.account)
+          : Result.fail(row.failure)
       );
     }
   );

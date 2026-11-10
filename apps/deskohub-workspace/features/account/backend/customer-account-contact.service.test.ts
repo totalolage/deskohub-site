@@ -79,13 +79,14 @@ const linkedContact = {
   phone: "+420 777 777 777",
 };
 
+/** What `current` answers for a standing. */
+type ContactOutcome =
+  | { readonly contact: unknown }
+  | { readonly failure: CustomerAccountAccessError };
+
 describe("CustomerAccountContactService.current", () => {
   // The booking contact's policy, one row per standing `peek` reports.
-  const expected: Record<
-    TestPeekedStandingLabel,
-    | { readonly contact: unknown }
-    | { readonly failure: CustomerAccountAccessError }
-  > = {
+  const expected = {
     "signed out": { contact: null },
     unverified: {
       failure: new CustomerAccountAccessError({ reason: "unverified-email" }),
@@ -106,7 +107,7 @@ describe("CustomerAccountContactService.current", () => {
     "link unavailable": {
       failure: customerAccountUnavailable("account-link.read"),
     },
-  };
+  } satisfies Record<TestPeekedStandingLabel, ContactOutcome>;
 
   test.each(testPeekedStandingLabels)(
     "answers the standing %s with its own contact policy",

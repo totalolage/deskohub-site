@@ -261,6 +261,12 @@ describe("RememberedReferral.remember", () => {
   });
 });
 
+/** What a paid order does with the remembered code. */
+type PaidOrderOutcome = {
+  readonly forgets: boolean;
+  readonly checks: readonly DotyposCustomerId[];
+};
+
 describe("RememberedReferral.forgetIfSettled", () => {
   test("forgets the code once a linked account's referral is settled", async () => {
     const result = await run(
@@ -327,13 +333,7 @@ describe("RememberedReferral.forgetIfSettled", () => {
   // An order's booker policy, one row per standing `peek` reports, for a
   // paid order whose signed-in booker's own referral is still open: the
   // cookie stays unless the order stands in for a signed-out booker.
-  const forgetsForPaidOrder: Record<
-    TestPeekedStandingLabel,
-    {
-      readonly forgets: boolean;
-      readonly checks: readonly DotyposCustomerId[];
-    }
-  > = {
+  const forgetsForPaidOrder = {
     "signed out": { forgets: true, checks: [] },
     // A failed read keeps the code.
     unverified: { forgets: false, checks: [] },
@@ -352,7 +352,7 @@ describe("RememberedReferral.forgetIfSettled", () => {
       checks: [testLinkedAccount.dotyposCustomerId],
     },
     "link unavailable": { forgets: false, checks: [] },
-  };
+  } satisfies Record<TestPeekedStandingLabel, PaidOrderOutcome>;
 
   test.each(testPeekedStandingLabels)(
     "settles a paid order of the standing %s by its own booker policy",
