@@ -35,6 +35,18 @@ export const toPaymentAttempt = (attempt: PaymentAttemptRow) => {
 
 export type PaymentAttempt = ReturnType<typeof toPaymentAttempt>;
 
+/**
+ * The attempt's identifiers and state for log annotations. Scoped annotations
+ * reach every later row, query rows included, so never annotate the record.
+ */
+export const paymentAttemptLogFields = (
+  attempt: PaymentAttempt | null | undefined
+) => ({
+  paymentAttemptId: attempt?.id,
+  paymentAttemptState: attempt?.state,
+  providerOrderId: attempt?.providerOrderId,
+});
+
 export type NexiPaymentAttempt = PaymentAttempt & {
   readonly provider: "nexi";
   readonly providerOrderId: NexiOrderId;

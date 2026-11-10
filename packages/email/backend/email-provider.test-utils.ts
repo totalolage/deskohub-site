@@ -32,7 +32,12 @@ export const makeEmailProviderFake = () => {
       { payload: string; results: readonly EmailSendResult[] }
     >(),
   };
-  const requests: { readonly key: string; readonly to: string[] }[] = [];
+  const requests: {
+    readonly key: string;
+    readonly to: string[];
+    /** The request's messages as `JSON.stringify` writes them. */
+    readonly payload: string;
+  }[] = [];
   const mailed: string[] = [];
   const subjects: { readonly to: string; readonly subject: string }[] = [];
   let respond: (key: string) => EmailProviderFakeResponse = () => "accept";
@@ -55,7 +60,12 @@ export const makeEmailProviderFake = () => {
           (): Effect.Effect<readonly EmailSendResult[], EmailSendError> => {
             // A direct unkeyed send is a fresh delivery each time it executes.
             const requestKey = key ?? crypto.randomUUID();
-            requests.push({ key: requestKey, to: recipientsOf(messages) });
+            const payload = JSON.stringify(messages);
+            requests.push({
+              key: requestKey,
+              to: recipientsOf(messages),
+              payload,
+            });
             reached();
             const earlier = accepted[operation].get(requestKey);
             const response = earlier ? "accept" : respond(requestKey);
@@ -65,7 +75,6 @@ export const makeEmailProviderFake = () => {
               );
             }
             if (response === "hang") return Effect.never;
-            const payload = JSON.stringify(messages);
             if (earlier && earlier.payload !== payload) {
               return Effect.fail(
                 new NetworkError({ message: "invalid_idempotent_request" })

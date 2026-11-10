@@ -17,6 +17,10 @@ import {
   postHogFeatureFlagOverridesSchema,
   vercelEnvironmentSchema,
 } from "./features/feature-flags/feature-flag-overrides.schema";
+import {
+  postHogLogsExportSchema,
+  workspaceLogLevelSchema,
+} from "./shared/backend/observability/telemetry-policy";
 import { urlStringSchema } from "./shared/utils/url-schema";
 
 const nonEmptyStringSchema = toEnvSchema(Schema.NonEmptyString);
@@ -224,6 +228,11 @@ export const workspaceServerEnvSchema = Schema.Struct({
     postHogFeatureFlagOverridesSchema
   ),
   POSTHOG_INGEST_HOST: urlEnvSchema,
+  // Which deployments export server logs to PostHog: "production-only" (the
+  // default when unset) or "always". Set "always" as a branch-scoped Vercel
+  // Preview variable to read one preview's logs in PostHog; it is read at
+  // runtime, so a redeploy of that branch picks it up.
+  POSTHOG_LOGS_EXPORT: toEnvSchema(Schema.optional(postHogLogsExportSchema)),
   POSTHOG_PERSON_PRIVACY_API_KEY: optionalNonEmptyStringSchema,
   POSTHOG_PROJECT_ID: toEnvSchema(Schema.optional(PostHogProjectId)),
   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: optionalStringSchema,
@@ -236,6 +245,10 @@ export const workspaceServerEnvSchema = Schema.Struct({
   // Read by `next.config.mjs` at build time for the `Origin-Trial` header.
   WEBMCP_ORIGIN_TRIAL_TOKENS: optionalNonEmptyStringSchema,
   WORKSPACE_E2E_BASE_URL: optionalUrlEnvSchema,
+  // The least severe level Workspace server runs log, as an Effect log level
+  // name ("All", "Fatal", "Error", "Warn", "Info", "Debug", "Trace", "None").
+  // Unset, production logs from Info and every other deployment from Debug.
+  WORKSPACE_LOG_LEVEL: toEnvSchema(Schema.optional(workspaceLogLevelSchema)),
 }).check(
   postHogFeatureFlagOverridesEnvironmentCheck,
   igloohomeProductionEnvironmentCheck,

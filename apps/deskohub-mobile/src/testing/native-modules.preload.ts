@@ -1,6 +1,6 @@
 import { mock } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
-import { createContext, useContext } from "react";
+import { Component, createContext, useContext } from "react";
 
 /**
  * Bun can't load React Native or Expo's native modules, so tests get small
@@ -21,7 +21,6 @@ const flattenStyle = (style: unknown): Record<string, unknown> | undefined => {
 mock.module("react-native", () => ({
   // Host components stand in as their names, so a test can read the element
   // tree a component returns without a native renderer.
-  ActivityIndicator: "ActivityIndicator",
   Modal: "Modal",
   Pressable: "Pressable",
   RefreshControl: "RefreshControl",
@@ -36,7 +35,11 @@ mock.module("react-native", () => ({
     flatten: flattenStyle,
     hairlineWidth: 1,
   },
-  AccessibilityInfo: { announceForAccessibility: () => undefined },
+  AccessibilityInfo: {
+    announceForAccessibility: () => undefined,
+    isReduceMotionEnabled: async () => false,
+    addEventListener: () => ({ remove: () => undefined }),
+  },
   Platform: {
     OS: "android",
     select: (options: Record<string, unknown>) =>
@@ -64,6 +67,20 @@ mock.module("react-native-safe-area-context", () => ({
   SafeAreaView: "SafeAreaView",
   useSafeAreaInsets: () => useContext(SafeAreaInsetsContext),
 }));
+
+// Lottie's player is a class with commands a component calls through a ref;
+// the stand-in keeps them and draws nothing.
+class LottieView extends Component<Readonly<Record<string, unknown>>> {
+  play() {}
+  pause() {}
+  resume() {}
+  reset() {}
+  override render() {
+    return null;
+  }
+}
+
+mock.module("lottie-react-native", () => ({ default: LottieView }));
 
 mock.module("expo-constants", () => ({
   default: { expoConfig: { scheme: "deskohub" } },

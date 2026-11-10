@@ -189,18 +189,23 @@ const implementation = Effect.gen(function* () {
           ? [replacementReservationId]
           : []),
       ]);
-      yield* Effect.annotateLogsScoped({
-        tables,
-        reservations,
-        limitations,
-      });
-      yield* Effect.logInfo("Workspace availability inventory load completed");
+      // Counts, not the records: whole inventories made each row tens of KB.
+      yield* Effect.logInfo(
+        "Workspace availability inventory load completed"
+      ).pipe(
+        Effect.annotateLogs({
+          activeReservationCount: activeReservations.length,
+          dateCount: input.dates.length,
+          limitationCount: limitations.length,
+          reservationCount: reservations.length,
+          tableCount: tables.length,
+        })
+      );
 
       return { tables, reservations: activeReservations, limitations };
     },
     (effect) =>
       effect.pipe(
-        Effect.scoped,
         Effect.tapError((cause) =>
           Effect.logError("Workspace availability inventory load failed", {
             cause,
@@ -293,7 +298,7 @@ const implementation = Effect.gen(function* () {
         ),
       } satisfies WorkspaceAvailability;
 
-      yield* Effect.annotateLogsScoped({ result });
+      yield* Effect.annotateLogsScoped(availabilityLogFields(result));
       yield* Effect.logInfo("Workspace availability computed");
 
       return result;
@@ -354,7 +359,7 @@ const implementation = Effect.gen(function* () {
           to: availabilityRange.to,
         },
       });
-      yield* Effect.annotateLogsScoped({ availability });
+      yield* Effect.annotateLogsScoped(availabilityLogFields(availability));
 
       const unavailableDate = availability.unavailableDates[0];
       const officeUnavailable =
@@ -473,7 +478,11 @@ const implementation = Effect.gen(function* () {
             ),
           })
         ),
-        Effect.tap((result) => Effect.annotateLogsScoped({ result })),
+        Effect.tap((result) =>
+          Effect.annotateLogsScoped({
+            startTimeCount: result.startTimes.length,
+          })
+        ),
         Effect.tap(() => Effect.logInfo("Meeting-room start times computed"))
       ),
     (effect) =>
@@ -512,6 +521,21 @@ export class WorkspaceAvailabilityService extends Context.Service<
     )
   );
 }
+
+/**
+ * Availability for log annotations: counts for its lists, since the date
+ * lists span up to the whole queried range, and its flags as they are.
+ */
+const availabilityLogFields = (availability: WorkspaceAvailability) => ({
+  unavailableDateCount: availability.unavailableDates.length,
+  reservedDeskWorkstationRequiredDateCount:
+    availability.reservedDeskWorkstationRequiredDates.length,
+  unavailableCoworkTierCount: availability.unavailableCoworkTiers.length,
+  unavailableMonitorOptionCount: availability.unavailableMonitorOptions.length,
+  meetingRoomUnavailable: availability.meetingRoomUnavailable,
+  officeUnavailable: availability.officeUnavailable,
+  noticeCount: availability.notices.length,
+});
 
 const getFullyOccupiedCalendarDates = (
   limitations: readonly WorkspaceCalendarLimitationType[]
