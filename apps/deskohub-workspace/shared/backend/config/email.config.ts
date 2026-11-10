@@ -7,11 +7,14 @@ import {
   EmailServiceTag,
   makeEmailConfigLayer,
 } from "@deskohub/email";
+import { makePostHogEmailProvider } from "@deskohub/email-posthog";
 import {
   deploymentResendRequestTimeouts,
   makeResendEmailProvider,
 } from "@deskohub/email-resend";
-import { Config, Effect, Layer } from "effect";
+import { Config, Effect, Layer, Option, Redacted } from "effect";
+import { makeEmailFallbackAnalyticsObserver } from "@/shared/backend/analytics/email-fallback-analytics-observer";
+import { ServerAnalytics } from "@/shared/backend/analytics/server-analytics.service";
 import { workspaceSiteConstants } from "@/shared/utils";
 
 export const workspaceDefaultFromAddress = "reservations@workspace.deskohub.cz";
@@ -57,6 +60,36 @@ export const workspaceEmailProviders = (providers: {
   };
 };
 
+/**
+ * The PostHog distinct id of campaign mail to a recipient without a consented
+ * customer account, so PostHog never keys a person by the recipient's
+ * address. Engagement events of all such recipients share this one person.
+ */
+export const workspaceEmailSystemIdentity = "workspace-email-system";
+
+/**
+ * The PostHog email provider, when `POSTHOG_EMAIL_SECRET_KEY` is set
+ * (production). It sends through the `POSTHOG_API_HOST` project. Campaign
+ * messages carry the campaign sender, so PostHog sends from the same address
+ * as Resend.
+ */
+const configuredPostHogEmailProvider = Effect.gen(function* () {
+  const secretKey = (yield* Config.option(
+    Config.string("POSTHOG_EMAIL_SECRET_KEY")
+  )).pipe(
+    Option.map((key) => key.trim()),
+    Option.filter((key) => key !== "")
+  );
+  const host = yield* Config.option(Config.string("POSTHOG_API_HOST"));
+  return Option.isSome(secretKey) && Option.isSome(host)
+    ? makePostHogEmailProvider({
+        secretKey: Redacted.make(secretKey.value),
+        host: host.value,
+        systemIdentity: workspaceEmailSystemIdentity,
+      })
+    : undefined;
+});
+
 const WorkspaceEmailProvidersLayer = Layer.effect(
   EmailProviders,
   Effect.gen(function* () {
@@ -68,20 +101,21 @@ const WorkspaceEmailProvidersLayer = Layer.effect(
           timeouts: yield* deploymentResendRequestTimeouts,
         })
       : undefined;
-    // PostHog integration: build the PostHog provider here and pass it as
-    // `posthog`.
-    return workspaceEmailProviders({ resend });
+    const posthog = yield* configuredPostHogEmailProvider;
+    return workspaceEmailProviders({ resend, ...(posthog && { posthog }) });
   })
 );
 
 /**
- * Every delivery observer of the Workspace, combined. PostHog integration
- * adds the delivery tracking and fallback analytics observers to the list.
+ * Every delivery observer of the Workspace, combined: the fallback analytics
+ * observer reports each message one provider failed and the next took over.
  */
-const WorkspaceEmailDeliveryObserverLayer = Layer.succeed(
+const WorkspaceEmailDeliveryObserverLayer = Layer.effect(
   EmailDeliveryObserver,
-  EmailDeliveryObserver.all([EmailDeliveryObserver.none])
-);
+  Effect.map(makeEmailFallbackAnalyticsObserver, (fallbackAnalytics) =>
+    EmailDeliveryObserver.all([fallbackAnalytics])
+  )
+).pipe(Layer.provide(ServerAnalytics.Live));
 
 /**
  * Routes each message by recipient: mail only for `EMAIL_TEST_DOMAIN`

@@ -62,6 +62,7 @@
     "@deskohub/dotypos": "workspace:*",
     "@deskohub/effect-schema-resolver": "workspace:*",
     "@deskohub/email": "workspace:*",
+    "@deskohub/email-posthog": "workspace:*",
     "@deskohub/email-resend": "workspace:*",
     "@deskohub/google-calendar": "workspace:*",
     "@deskohub/i18n": "workspace:*",

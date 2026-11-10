@@ -533,7 +533,9 @@ The processor and transfer rows are in
   (`features/email-campaigns/backend/campaign-recipient-analytics-identity.service.ts`;
   live accounts only, and an unreadable account or consent gives no
   identity). Consent is re-read right before every send, replays included. Otherwise the message carries no identity and the
-  PostHog provider sends its one fixed system identity (`systemIdentity`).
+  PostHog provider sends its one fixed system identity (`systemIdentity`;
+  Workspace: `workspace-email-system`, `workspaceEmailSystemIdentity` in
+  `shared/backend/config/email.config.ts`).
   PostHog would use the recipient email as the distinct ID when none is
   sent, so the provider always sends one; never the email or a Dotypos ID.
   Consented recipients' engagement events join their account person; all

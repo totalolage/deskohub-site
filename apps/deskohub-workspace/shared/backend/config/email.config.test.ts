@@ -11,6 +11,7 @@ import {
 import { makeEmailProviderFake } from "@deskohub/email/testing";
 import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
 import { ConfigProvider, Effect, Logger } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 
 type SendImplementation = (payload?: {
   readonly subject?: string;
@@ -47,6 +48,7 @@ mock.module("resend", () => ({
 const {
   WorkspaceEmailLayer,
   workspaceEmailProviders,
+  workspaceEmailSystemIdentity,
   workspaceMarketingCategories,
 } = await import("./email.config");
 const { campaignEmailKind } = await import(
@@ -75,10 +77,17 @@ const message = (to: EmailMessage["to"], subject = "Hello"): EmailMessage => ({
   text: "Hello",
 });
 
-/** Runs an effect on the Workspace email layer with `EMAIL_API_KEY` set or not. */
+/**
+ * Runs an effect on the Workspace email layer with `EMAIL_API_KEY` set or
+ * not, plus any other `config`; `fetch` answers PostHog's requests.
+ */
 const runWorkspaceEmail = <A, E>(
   effect: Effect.Effect<A, E, EmailServiceTag>,
-  apiKey: string | undefined
+  apiKey: string | undefined,
+  postHog: {
+    readonly config?: Readonly<Record<string, string>>;
+    readonly fetch?: typeof globalThis.fetch;
+  } = {}
 ) => {
   const logMessages: unknown[] = [];
   return Effect.runPromise(
@@ -93,9 +102,15 @@ const runWorkspaceEmail = <A, E>(
       ),
       Effect.provideService(
         ConfigProvider.ConfigProvider,
-        ConfigProvider.fromUnknown(
-          apiKey === undefined ? {} : { EMAIL_API_KEY: apiKey }
-        )
+        ConfigProvider.fromUnknown({
+          ...postHog.config,
+          ...(apiKey !== undefined && { EMAIL_API_KEY: apiKey }),
+        })
+      ),
+      Effect.provideService(
+        FetchHttpClient.Fetch,
+        postHog.fetch ??
+          (() => Promise.reject(new Error("PostHog is not expected here")))
       ),
       Effect.result
     )
@@ -235,6 +250,98 @@ describe("WorkspaceEmailLayer", () => {
     if (result._tag === "Success") {
       expect(result.success.provider).toBe("resend");
     }
+  });
+
+  describe("with PostHog configured", () => {
+    const config = {
+      POSTHOG_EMAIL_SECRET_KEY: "phs_test",
+      POSTHOG_API_HOST: "https://eu.i.posthog.com",
+    };
+    /** PostHog's answer: an accepted message id, or a refusal code. */
+    type PostHogAnswer =
+      | { readonly message_id: string }
+      | { readonly type: string; readonly code: string };
+    /** The parts of a PostHog send request these tests read. */
+    interface PostHogRequest {
+      readonly url: string;
+      readonly distinctId: string | undefined;
+    }
+    const postHogAnswering = (status: number, answer: PostHogAnswer) => {
+      const requests: PostHogRequest[] = [];
+      const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const sent: { readonly distinct_id?: string } = JSON.parse(
+          await new Response(init?.body).text()
+        );
+        requests.push({
+          url: input instanceof Request ? input.url : String(input),
+          distinctId: sent.distinct_id,
+        });
+        return Response.json(answer, { status });
+      }) as typeof globalThis.fetch;
+      return { fetch, requests };
+    };
+    const campaignMessage = {
+      ...message(realRecipient),
+      tags: [campaignEmailKind.category],
+    };
+
+    test("sends campaign mail through PostHog's app host under the system identity", async () => {
+      const posthog = postHogAnswering(202, {
+        message_id: "0197a5e1-1b52-7c4e-9f5a-2d3b4c5d6e7f",
+      });
+      const result = await runWorkspaceEmail(send(campaignMessage), "re_test", {
+        config,
+        fetch: posthog.fetch,
+      });
+
+      expect(result._tag).toBe("Success");
+      if (result._tag === "Success") {
+        expect(result.success.provider).toBe("posthog");
+      }
+      expect(posthog.requests).toHaveLength(1);
+      expect(new URL(posthog.requests[0]?.url ?? "").origin).toBe(
+        "https://eu.posthog.com"
+      );
+      expect(posthog.requests[0]?.distinctId).toBe(
+        workspaceEmailSystemIdentity
+      );
+      expect(resendSend).not.toHaveBeenCalled();
+    });
+
+    test("falls back to Resend when PostHog refuses to send", async () => {
+      const posthog = postHogAnswering(401, {
+        type: "authentication_error",
+        code: "authentication_failed",
+      });
+      const result = await runWorkspaceEmail(send(campaignMessage), "re_test", {
+        config,
+        fetch: posthog.fetch,
+      });
+
+      expect(posthog.requests).toHaveLength(1);
+      expect(result._tag).toBe("Success");
+      if (result._tag === "Success") {
+        expect(result.success.provider).toBe("resend");
+      }
+      expect(resendSend).toHaveBeenCalledTimes(1);
+    });
+
+    test("never sends transactional mail through PostHog", async () => {
+      const posthog = postHogAnswering(202, {
+        message_id: "0197a5e1-1b52-7c4e-9f5a-2d3b4c5d6e7f",
+      });
+      const result = await runWorkspaceEmail(
+        send(message(realRecipient)),
+        "re_test",
+        { config, fetch: posthog.fetch }
+      );
+
+      expect(result._tag).toBe("Success");
+      if (result._tag === "Success") {
+        expect(result.success.provider).toBe("resend");
+      }
+      expect(posthog.requests).toHaveLength(0);
+    });
   });
 
   test("keeps the test tag on staff copies outside production on both providers", async () => {
