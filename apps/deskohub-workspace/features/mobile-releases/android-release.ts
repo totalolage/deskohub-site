@@ -1,6 +1,7 @@
 import { Array as Arr, Option, Order, Schema } from "effect";
 import { compare, valid } from "semver";
 import { nativeApp } from "@/features/account/backend/auth/native-app";
+import { parseInstant } from "@/shared/utils/temporal";
 
 /** The APK a published mobile release offers Android users. */
 export type AndroidRelease = {
@@ -97,7 +98,9 @@ const toAndroidRelease = (
     ) {
       return yield* Option.none();
     }
-    const publishedAt = yield* Option.fromNullOr(release.published_at);
+    const publishedAt = yield* Option.fromNullOr(release.published_at).pipe(
+      Option.filter(isPublishTime)
+    );
 
     return {
       versionName,
@@ -110,6 +113,14 @@ const toAndroidRelease = (
       releaseUrl: release.html_url,
     };
   });
+
+/**
+ * An ISO instant with an offset that `Date.parse` also reads: the `/android`
+ * page parses it that way, since the Temporal polyfill's parser reads the
+ * current time, which fails its prerender.
+ */
+const isPublishTime = (value: string) =>
+  Option.isSome(parseInstant(value)) && !Number.isNaN(Date.parse(value));
 
 // The lines `renderReleaseNotes` in apps/deskohub-mobile/scripts/release
 // writes under `### Android APK`.
