@@ -74,7 +74,8 @@ describe.skipIf(!databaseUrl)(
               ).rows,
               recipients: (
                 await pool.query(
-                  "select to_jsonb(t) as row from email_campaign_recipients t order by send_id"
+                  // `failure_code` is a later additive column, null until a send fails.
+                  "select to_jsonb(t) - 'failure_code' as row from email_campaign_recipients t order by send_id"
                 )
               ).rows,
               retryKeys: (
