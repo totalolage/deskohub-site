@@ -17,3 +17,13 @@ export const prepareOverProvidedServices = (submission: PayStateSubmission) =>
       ReservationBooking.Default.pipe(Layer.provide(ReservationHolds.Default))
     )
   );
+
+/**
+ * Books one submission through `ReservationBooking` built over the services
+ * the test provides, `ReservationHolds` among them, for booking cases that
+ * only need a hold outcome.
+ */
+export const prepareOverProvidedHolds = (submission: PayStateSubmission) =>
+  prepareWorkspacePayState(submission).pipe(
+    Effect.provide(ReservationBooking.Default)
+  );

@@ -64,6 +64,11 @@ const reservation = Schema.decodeUnknownSync(reservationOrderIssuanceSchema)({
   billing: { purpose: "personal", invoice: "none" },
 });
 
+/** The same visit with coffee: another selection, so another attempt key. */
+const reservationWithCoffee = Schema.decodeUnknownSync(
+  reservationOrderIssuanceSchema
+)({ ...reservation, coffee: true });
+
 const checkoutDetails = Schema.decodeUnknownSync(checkoutDetailsSchema)({
   locale: "en-US",
   reservation: {
@@ -203,6 +208,39 @@ describe.skipIf(!postgresDatabase)(
       };
     };
 
+    /**
+     * Holds for two identical requests that race: both pass the availability
+     * check before either drafts, so both resume the same draft and race for
+     * its hold creation. The Dotypos write takes a while, as a real one does,
+     * so the loser reaches the claim while the winner holds it.
+     */
+    const makeRacingHolds = (dotypos = makeDotypos()) => {
+      const bothChecked = Effect.runSync(Latch.make());
+      const checked = Effect.runSync(Ref.make(0));
+      const ensureAvailable = mock(() =>
+        Ref.updateAndGet(checked, (count) => count + 1).pipe(
+          Effect.flatMap((count) =>
+            count >= 2 ? bothChecked.open : Effect.void
+          ),
+          Effect.andThen(bothChecked.await)
+        )
+      );
+      const createHold = dotypos.createReservation.getMockImplementation()!;
+      dotypos.createReservation.mockImplementation(() =>
+        Effect.sleep("200 millis").pipe(Effect.andThen(createHold()))
+      );
+      return makeHolds({ dotypos, ensureAvailable });
+    };
+
+    /** Runs the same request twice at once; each outcome as a `Result`. */
+    const race = (holds: ReturnType<typeof makeHolds>, request: HoldRequest) =>
+      Effect.all(
+        [request, request].map((racing) =>
+          holds.hold(racing).pipe(Effect.result)
+        ),
+        { concurrency: "unbounded" }
+      ).pipe(Effect.runPromise);
+
     const holdRequest = (input: {
       readonly author: CustomerAccountId;
       readonly sessionId?: CheckoutSessionId;
@@ -211,12 +249,13 @@ describe.skipIf(!postgresDatabase)(
       readonly locale?: HoldRequest["booking"]["locale"];
       readonly bookedAt?: Temporal.Instant;
       readonly agent?: BookingAgent["Service"];
+      readonly reservation?: HoldRequest["reservation"];
     }): HoldRequest => ({
       checkout: {
         sessionId: input.sessionId ?? newSessionId(),
         attemptId: input.attemptId ?? newAttemptId(),
       },
-      reservation,
+      reservation: input.reservation ?? reservation,
       booking: {
         author: input.author,
         customer: input.customer ?? syntheticDotyposCustomerId(),
@@ -319,6 +358,16 @@ describe.skipIf(!postgresDatabase)(
         expect(row?.paymentState).toBe("not_started");
         expect(row?.dotyposCustomerId).toBe(request.booking.customer);
         expect(row?.checkoutAttemptKey).toBe(storedAttemptKey(request));
+        expect(holds.ensureAvailable.mock.calls).toEqual([
+          [
+            {
+              kind: "cowork",
+              date: "2099-06-10",
+              entryTier: "open-space",
+              monitorOption: undefined,
+            },
+          ],
+        ]);
         expect(holds.dotypos.createReservation).toHaveBeenCalledTimes(1);
         expect(holds.dotypos.createReservation.mock.calls[0]).toEqual([
           expect.objectContaining({
@@ -374,33 +423,9 @@ describe.skipIf(!postgresDatabase)(
         for (let round = 0; round < 5; round++) {
           const author = await newAuthor();
           const request = holdRequest({ author });
-          // Both requests pass the availability check before either drafts,
-          // so both resume the same draft and race for its hold creation.
-          const bothChecked = Effect.runSync(Latch.make());
-          const checked = Effect.runSync(Ref.make(0));
-          const ensureAvailable = mock(() =>
-            Ref.updateAndGet(checked, (count) => count + 1).pipe(
-              Effect.flatMap((count) =>
-                count >= 2 ? bothChecked.open : Effect.void
-              ),
-              Effect.andThen(bothChecked.await)
-            )
-          );
-          const dotypos = makeDotypos();
-          // The winner's Dotypos write takes a while, as a real one does, so
-          // the other request reaches the claim while the draft is claimed.
-          const createHold = dotypos.createReservation.getMockImplementation()!;
-          dotypos.createReservation.mockImplementation(() =>
-            Effect.sleep("200 millis").pipe(Effect.andThen(createHold()))
-          );
-          const holds = makeHolds({ dotypos, ensureAvailable });
+          const holds = makeRacingHolds();
 
-          const outcomes = await Effect.all(
-            [request, request].map((race) =>
-              holds.hold(race).pipe(Effect.result)
-            ),
-            { concurrency: "unbounded" }
-          ).pipe(Effect.runPromise);
+          const outcomes = await race(holds, request);
 
           const rows = await rowsOf(author);
           expect(holds.dotypos.createReservation).toHaveBeenCalledTimes(1);
@@ -539,22 +564,133 @@ describe.skipIf(!postgresDatabase)(
         ]);
       });
 
-      test("refuses to resume an attempt another account holds", async () => {
-        const holder = await newAuthor();
-        const other = await newAuthor();
-        const holds = makeHolds();
-        const request = holdRequest({ author: holder });
-        await holds.holdForAttempt(request);
+      test.each([
+        ["hold", "held"],
+        ["draft", "draft"],
+      ] as const)(
+        "refuses to resume an attempt whose %s another account authored",
+        async (_label, state) => {
+          const holder = await newAuthor();
+          const other = await newAuthor();
+          const dotypos = makeDotypos();
+          if (state === "draft") {
+            // A failed hold creation leaves the holder's attempt a draft.
+            dotypos.createReservation.mockImplementationOnce(
+              () =>
+                Effect.fail(dotyposUnavailable("createReservation")) as never
+            );
+          }
+          const holds = makeHolds({ dotypos });
+          const request = holdRequest({ author: holder });
+          await holds.hold(request).pipe(Effect.result, Effect.runPromise);
 
-        const failure = await holds.holdFailure({
-          ...request,
-          booking: { ...request.booking, author: other },
+          const failure = await holds.holdFailure({
+            ...request,
+            booking: { ...request.booking, author: other },
+          });
+
+          expect(failure._tag).toBe("CheckoutAttemptUnavailableError");
+          expect(dotypos.createReservation).toHaveBeenCalledTimes(1);
+          expect(await rowsOf(other)).toEqual([]);
+          expect((await rowsOf(holder))[0]?.reservationState).toBe(state);
+        }
+      );
+
+      test("reports the conflict when the request holding the claim leaves no usable hold", async () => {
+        const author = await newAuthor();
+        const request = holdRequest({ author });
+        const creationFailure = dotyposUnavailable("createReservation");
+        const dotypos = makeDotypos();
+        dotypos.createReservation.mockImplementation(
+          () => Effect.fail(creationFailure) as never
+        );
+        const holds = makeRacingHolds(dotypos);
+
+        const outcomes = await race(holds, request);
+
+        expect(dotypos.createReservation).toHaveBeenCalledTimes(1);
+        expect(
+          outcomes.map((outcome) =>
+            Result.isSuccess(outcome) ? outcome.success : outcome.failure
+          )
+        ).toEqual(
+          expect.arrayContaining([{ kind: "contended" }, creationFailure])
+        );
+        const rows = await rowsOf(author);
+        expect(rows.map((row) => row.reservationState)).toEqual(["draft"]);
+      });
+
+      test("moves an attempt whose reservation ended into the attempt's own session", async () => {
+        const author = await newAuthor();
+        const holds = makeHolds();
+        const request = holdRequest({ author });
+        await holds.holdForAttempt(request);
+        const [ended] = await rowsOf(author);
+        await postgres.pool.query(
+          `update workspace_reservations
+              set reservation_state = 'cancelled', reservation_cancelled_at = now()
+            where id = $1`,
+          [ended!.id]
+        );
+
+        const hold = await holds.holdForAttempt(request);
+
+        const replacement = (await rowsOf(author)).find(
+          (row) => row.id !== ended!.id
+        );
+        expect(hold).toEqual({
+          kind: "created",
+          reservationId: replacement!.id,
+          checkoutSessionId: promoteCheckoutAttemptToSessionId(
+            request.checkout.attemptId
+          ),
         });
+        expect(replacement?.checkoutSessionKey).not.toBe(
+          ended!.checkoutSessionKey
+        );
+        expect(holds.dotypos.createReservation).toHaveBeenCalledTimes(2);
+      });
+
+      test("refuses an attempt whose unpaid hold lapsed", async () => {
+        const author = await newAuthor();
+        const holds = makeHolds();
+        const request = holdRequest({ author });
+        await holds.holdForAttempt(request);
+        const [lapsed] = await rowsOf(author);
+        await postgres.pool.query(
+          `update workspace_reservations
+              set reservation_hold_expires_at = now() - interval '1 minute'
+            where id = $1`,
+          [lapsed!.id]
+        );
+
+        const failure = await holds.holdFailure(request);
 
         expect(failure._tag).toBe("CheckoutAttemptUnavailableError");
+        expect(await rowsOf(author)).toHaveLength(1);
         expect(holds.dotypos.createReservation).toHaveBeenCalledTimes(1);
-        expect(await rowsOf(other)).toEqual([]);
-        expect((await rowsOf(holder))[0]?.reservationState).toBe("held");
+        expect(holds.dotypos.cancelReservation).not.toHaveBeenCalled();
+      });
+
+      test("refuses a session whose current draft stays unsettled", async () => {
+        const author = await newAuthor();
+        const dotypos = makeDotypos();
+        dotypos.createReservation.mockImplementationOnce(
+          () => Effect.fail(dotyposUnavailable("createReservation")) as never
+        );
+        const holds = makeHolds({ dotypos });
+        const sessionId = newSessionId();
+        // A failed hold creation leaves the session's current reservation a draft.
+        await holds.holdFailure(holdRequest({ author, sessionId }));
+
+        const failure = await holds
+          .hold(holdRequest({ author, sessionId }))
+          .pipe(Effect.flip, withInstantSleeps, Effect.runPromise);
+
+        expect(failure._tag).toBe("CheckoutAttemptUnavailableError");
+        expect(dotypos.createReservation).toHaveBeenCalledTimes(1);
+        const rows = await rowsOf(author);
+        expect(rows.map((row) => row.reservationState)).toEqual(["draft"]);
       });
 
       test("drafts nothing for an unavailable selection", async () => {
@@ -616,6 +752,9 @@ describe.skipIf(!postgresDatabase)(
           checkoutSessionKey: previous.checkoutSessionKey,
         });
         expect(holds.dotypos.createReservation).toHaveBeenCalledTimes(2);
+        // The replacement checks availability again once the previous hold
+        // is cancelled.
+        expect(holds.ensureAvailable).toHaveBeenCalledTimes(2);
       });
 
       test("cancels the claimed previous hold locally when the new selection is unavailable", async () => {
@@ -731,6 +870,55 @@ describe.skipIf(!postgresDatabase)(
           reservationState: "held",
         });
         expect(holds.dotypos.cancelReservation).not.toHaveBeenCalled();
+      });
+
+      test("supersedes the hold it left in the attempt's own session after moving there", async () => {
+        const { author, holds, sessionId, previous } = await holdInSession();
+        await setPaymentState(previous.id, "pending");
+        const attemptId = newAttemptId();
+        const ownSessionId = promoteCheckoutAttemptToSessionId(attemptId);
+        const customer =
+          previous.dotyposCustomerId as HoldRequest["booking"]["customer"];
+        await holds.holdForAttempt(
+          holdRequest({ author, sessionId, attemptId, customer })
+        );
+        const [rotated] = (await rowsOf(author)).filter(
+          (row) => row.id !== previous.id
+        );
+
+        // The same attempt with another selection is a new attempt key in
+        // the same own session, whose hold it supersedes.
+        const hold = await holds.holdForAttempt(
+          holdRequest({
+            author,
+            sessionId,
+            attemptId,
+            customer,
+            reservation: reservationWithCoffee,
+          })
+        );
+
+        const replacement = (await rowsOf(author)).find(
+          (row) => row.id !== previous.id && row.id !== rotated!.id
+        );
+        expect(hold).toEqual({
+          kind: "created",
+          reservationId: replacement!.id,
+          checkoutSessionId: ownSessionId,
+        });
+        expect(replacement?.checkoutSessionKey).toBe(
+          rotated!.checkoutSessionKey
+        );
+        expect(await rowOf(rotated!.id)).toMatchObject({
+          reservationState: "cancelled",
+        });
+        expect(holds.dotypos.cancelReservation.mock.calls).toEqual([
+          [rotated!.dotyposReservationId!],
+        ]);
+        expect(await rowOf(previous.id)).toMatchObject({
+          reservationState: "held",
+          paymentState: "pending",
+        });
       });
 
       test("refuses an attempt whose reservation ended in its own session", async () => {
@@ -918,6 +1106,86 @@ describe.skipIf(!postgresDatabase)(
           reservationState: "held",
           paymentState: "paid",
         });
+      });
+      test("supersedes the client's previous selection in its session", async () => {
+        const author = await newAuthor();
+        const holds = makeHolds();
+        const clientId = "https://agent.example/client";
+        const sessionId = newSessionId();
+        const customer = syntheticDotyposCustomerId();
+        await holds.holdForAttempt(
+          holdRequest({
+            author,
+            sessionId,
+            customer,
+            agent: agentOf(clientId, "previous"),
+          })
+        );
+        const [previous] = await rowsOf(author);
+
+        const hold = await holds.holdForAttempt(
+          holdRequest({
+            author,
+            sessionId,
+            customer,
+            agent: agentOf(clientId, "next"),
+          })
+        );
+
+        const replacement = (await rowsOf(author)).find(
+          (row) => row.id !== previous!.id
+        );
+        expect(hold).toEqual({
+          kind: "created",
+          reservationId: replacement!.id,
+          checkoutSessionId: sessionId,
+        });
+        expect(replacement?.checkoutSessionKey).toBe(
+          previous!.checkoutSessionKey
+        );
+        expect(await rowOf(previous!.id)).toMatchObject({
+          reservationState: "cancelled",
+        });
+        expect(holds.dotypos.cancelReservation.mock.calls).toEqual([
+          [previous!.dotyposReservationId!],
+        ]);
+      });
+
+      test("holds a new selection when cancelling the client's rotated hold fails", async () => {
+        const author = await newAuthor();
+        const holds = makeHolds();
+        const clientId = "https://agent.example/client";
+        const sessionId = newSessionId();
+        const customer = syntheticDotyposCustomerId();
+        const book = (selection: string) =>
+          holds.holdForAttempt(
+            holdRequest({
+              author,
+              sessionId,
+              customer,
+              agent: agentOf(clientId, selection),
+            })
+          );
+        const paid = await book("paid");
+        await setPaymentState(
+          paid.kind === "created" ? paid.reservationId : "",
+          "paid"
+        );
+        const rotated = await book("rotated");
+        holds.dotypos.cancelReservation.mockImplementationOnce(
+          () => Effect.fail(dotyposUnavailable("cancelReservation")) as never
+        );
+
+        const next = await book("next");
+
+        expect(next.kind).toBe("created");
+        expect(
+          await rowOf(rotated.kind === "created" ? rotated.reservationId : "")
+        ).toMatchObject({
+          reservationState: "cancellation_failed",
+          failureCode: "checkout_supersession_cancel_failed",
+        });
+        expect(await rowsOf(author)).toHaveLength(3);
       });
     });
   }
