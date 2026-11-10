@@ -238,7 +238,7 @@ describe("listOfferings", () => {
     const response = await api.handle(
       customerApiRequest({
         ...listOfferings,
-        path: "/booking/offerings?locale=de-DE",
+        path: "/booking/offerings?locale=fr-FR",
       })
     );
 

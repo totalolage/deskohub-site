@@ -117,7 +117,7 @@ describe("readNativeHandoffRequest", () => {
 
   test("ignores a locale the app doesn't support, or more than one", () => {
     const { locale: _, ...withoutLocale } = request;
-    for (const locales of [["de-DE"], ["cs"], [""], ["cs-CZ", "en-US"]]) {
+    for (const locales of [["fr-FR"], ["cs"], [""], ["cs-CZ", "en-US"]]) {
       const search = valid();
       search.delete("locale");
       for (const locale of locales) search.append("locale", locale);
@@ -172,7 +172,7 @@ describe("stored native handoff request", () => {
     expect(
       restoreNativeHandoffRequest(
         JSON.stringify({
-          request: { ...request, locale: "de-DE" },
+          request: { ...request, locale: "fr-FR" },
           expiresAt: now + 1000,
         }),
         now

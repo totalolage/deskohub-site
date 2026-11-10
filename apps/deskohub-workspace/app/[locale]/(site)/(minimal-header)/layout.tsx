@@ -15,7 +15,7 @@ export default async function MinimalHeaderLayout({
   children,
 }: MinimalHeaderLayoutProps) {
   const locale = await getRequestLocale();
-  const { languageSwitcherLabel } = getSiteHeaderAccessibilityLabels(locale);
+  const { languageMenuTriggerLabel } = getSiteHeaderAccessibilityLabels(locale);
   const localePreference = createLocalePreferenceSaving();
 
   return (
@@ -23,13 +23,13 @@ export default async function MinimalHeaderLayout({
       <SkipLink label={m.skipToMainContent({}, { locale })} />
       <MinimalSiteHeader
         currentLocale={locale}
-        languageSwitcherLabel={languageSwitcherLabel}
+        languageMenuTriggerLabel={languageMenuTriggerLabel}
         localePreference={localePreference}
       />
       <div id="main-content" tabIndex={-1}>
         {children}
       </div>
-      <PublicSiteFooter />
+      <PublicSiteFooter localePreference={localePreference} />
     </>
   );
 }

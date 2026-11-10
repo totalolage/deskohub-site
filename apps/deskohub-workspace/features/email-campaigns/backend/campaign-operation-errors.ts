@@ -498,7 +498,7 @@ const toSendOperationError = (
         new OperationConflict({
           code: "fallback-content-missing",
           message:
-            "Customers without content in their language get the Czech version, so add Czech (cs-CZ) content, or restrict the audience to one locale the campaign has content for. Nothing was sent.",
+            "Czech is the last fallback for customers without content in their language, so add Czech (cs-CZ) content, or restrict the audience to one locale the campaign has content for. Nothing was sent.",
           cause,
         })
     ),

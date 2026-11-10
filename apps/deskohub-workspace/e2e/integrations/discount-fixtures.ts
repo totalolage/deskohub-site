@@ -16,6 +16,7 @@ import {
   voucherRedemptions,
   vouchers,
 } from "@/db/schema";
+import type { DiscountLabels } from "@/features/discounts/discount-label";
 import type {
   CanonicalPromotionCode,
   DiscountCodeId,
@@ -469,7 +470,7 @@ export const setE2ECalendarSaleReservedDeskEligibility = (
 interface DiscountDefinitionFixture {
   readonly basisPoints: number;
   readonly id: StoredDiscountId;
-  readonly labels: Readonly<Record<"cs-CZ" | "en-US", string>>;
+  readonly labels: DiscountLabels;
   readonly products: readonly WorkspaceProductTarget[];
 }
 

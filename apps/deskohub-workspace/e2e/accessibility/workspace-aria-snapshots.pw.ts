@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { enablePreviewAccess } from "../preview-access";
-import { auditedLocales, openSettledPage } from "./accessibility-audit";
+import { ariaSnapshotLocales, openSettledPage } from "./accessibility-audit";
 import { localFixtureSkipReason, sandboxSkipReason } from "./audit-target";
 import { accessibilityTest as test } from "./fixtures";
 import {
@@ -24,7 +24,7 @@ test.beforeEach(async ({ baseURL, context }) => {
   await enablePreviewAccess(context, baseURL);
 });
 
-for (const locale of auditedLocales) {
+for (const locale of ariaSnapshotLocales) {
   for (const { family, path } of reservationForms) {
     test(`${locale} ${family} form default state`, async ({ page }) => {
       test.skip(sandboxSkipReason !== undefined, sandboxSkipReason);

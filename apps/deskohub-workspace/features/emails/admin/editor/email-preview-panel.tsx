@@ -158,7 +158,7 @@ export function EmailPreviewPanel({
     renderPreview,
     values,
   });
-  const language = emailEditorLanguageName(activeLocale, locale);
+  const language = emailEditorLanguageName(activeLocale);
   return (
     <section
       aria-labelledby="email-editor-preview-heading"

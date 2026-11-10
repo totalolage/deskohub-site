@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { includesSearchText, upperCaseFirst } from "./text-case";
+import {
+  includesSearchText,
+  nounInSentence,
+  upperCaseFirst,
+} from "./text-case";
 
 describe("upperCaseFirst", () => {
   test("upper-cases only the first character", () => {
@@ -23,5 +27,17 @@ describe("includesSearchText", () => {
 
   test("rejects text that doesn't contain the search", () => {
     expect(includesSearchText("Spring sale", "winter")).toBe(false);
+  });
+});
+
+describe("nounInSentence", () => {
+  test("lower-cases a noun label for the middle of a sentence", () => {
+    expect(nounInSentence("Meeting Room", "en-US")).toBe("meeting room");
+    expect(nounInSentence("Zasedačka", "cs-CZ")).toBe("zasedačka");
+    expect(nounInSentence("Тариф", "uk-UA")).toBe("тариф");
+  });
+
+  test("keeps the case in languages that capitalise nouns", () => {
+    expect(nounInSentence("Meetingraum", "de-DE")).toBe("Meetingraum");
   });
 });

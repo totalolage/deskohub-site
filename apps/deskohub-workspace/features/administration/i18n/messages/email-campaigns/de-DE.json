@@ -1,0 +1,1259 @@
+{
+  "emailCampaignsAudienceAccountCreatedEver": "ein Workspace-Konto haben",
+  "emailCampaignsAudienceAccountCreatedInPeriod": "ein Workspace-Konto {period} erstellt haben",
+  "emailCampaignsAudienceAccountCreatedLabel": "Kontoerstellung",
+  "emailCampaignsAudienceAccountCreatedNever": "kein Workspace-Konto haben",
+  "emailCampaignsAudienceAccountCreatedNoValue": "kein Konto",
+  "emailCampaignsAudienceAccountCreatedNotInPeriod": "ein Workspace-Konto haben, das nicht {period} erstellt wurde",
+  "emailCampaignsAudienceArchive": "Archivieren",
+  "emailCampaignsAudienceArchiveConfirm": "Zielgruppe archivieren",
+  "emailCampaignsAudienceArchiveDescription": "Neue Kampagnen können sie nicht mehr auswählen. Kampagnenentwürfe, die sie bereits verwenden, behalten sie, und gesendete Kampagnen sind nicht betroffen.",
+  "emailCampaignsAudienceArchiveFailedRetry": "Die Zielgruppe konnte nicht archiviert werden. Versuchen Sie es erneut.",
+  "emailCampaignsAudienceArchiveTitle": "Diese Zielgruppe archivieren?",
+  "emailCampaignsAudienceArchiving": "Wird archiviert …",
+  "emailCampaignsAudienceCampaignEmailCountAmount": "{amount}{period} erhalten haben",
+  "emailCampaignsAudienceCampaignEmailCountAny": "mindestens eine {single}{period} erhalten haben",
+  "emailCampaignsAudienceCampaignEmailCountCountLabel": "Anzahl der Kampagnen-E-Mails",
+  "emailCampaignsAudienceCampaignEmailCountLabel": "Erhaltene Kampagnen-E-Mails",
+  "emailCampaignsAudienceCampaignEmailCountLeadText": "aus",
+  "emailCampaignsAudienceCampaignEmailCountNone": "keine {single}{period} erhalten haben",
+  "emailCampaignsAudienceCampaignEmailCountNounAny": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "E-Mail aus einer Kampagne",
+        "countPlural=other": "E-Mails aus Kampagnen"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounDeleted": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "E-Mail aus einer gelöschten Kampagne",
+        "countPlural=other": "E-Mails aus einer gelöschten Kampagne"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounMarketing": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Marketing-E-Mail aus einer Kampagne",
+        "countPlural=other": "Marketing-E-Mails aus Kampagnen"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounOperational": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Service-E-Mail aus einer Kampagne",
+        "countPlural=other": "Service-E-Mails aus Kampagnen"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounSpecific": [
+    {
+      "declarations": [
+        "input count",
+        "input campaign",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "E-Mail aus der Kampagne {campaign}",
+        "countPlural=other": "E-Mails aus der Kampagne {campaign}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounThis": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "E-Mail aus dieser Kampagne",
+        "countPlural=other": "E-Mails aus dieser Kampagne"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountPeriodLabel": "Erhaltene E-Mails",
+  "emailCampaignsAudienceCampaignEmailCountPurposeAny": "erhaltener E-Mails jeder Art",
+  "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Kampagnenzweck",
+  "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "erhaltener Marketing-E-Mails",
+  "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "erhaltener Service-E-Mails",
+  "emailCampaignsAudienceCampaignEmailCountSourceAny": "einer beliebigen Kampagne",
+  "emailCampaignsAudienceCampaignEmailCountSourceEmpty": "Keine passende Kampagne.",
+  "emailCampaignsAudienceCampaignEmailCountSourceLabel": "Kampagne",
+  "emailCampaignsAudienceCampaignEmailCountSourceSearch": "Kampagnen suchen",
+  "emailCampaignsAudienceCampaignEmailCountSourceUnknown": "Gelöschte Kampagne",
+  "emailCampaignsAudienceConditionAttributeLabel": "Kundenmerkmal",
+  "emailCampaignsAudienceConditionRemove": "Bedingung entfernen",
+  "emailCampaignsAudienceCountAlwaysMatchesError": "„≥ 0“ trifft immer zu. Verwenden Sie „≥ 1“ für mindestens eins oder entfernen Sie die Bedingung.",
+  "emailCampaignsAudienceCountComparisonLabel": "{subject}: Vergleich",
+  "emailCampaignsAudienceCountIs": "ist",
+  "emailCampaignsAudienceCountNeverMatchesError": "„< 0“ trifft nie zu. Verwenden Sie „= 0“ für keine.",
+  "emailCampaignsAudienceCountNumberOf": "Anzahl",
+  "emailCampaignsAudienceCountOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=eq": "gleich",
+        "operator=ne": "ungleich",
+        "operator=lt": "weniger als",
+        "operator=lte": "höchstens",
+        "operator=gt": "mehr als",
+        "operator=*": "mindestens"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCountWholeNumberError": "Geben Sie eine ganze Zahl ab 0 ein.",
+  "emailCampaignsAudienceDateConditionLabel": "{subject}: Bedingung",
+  "emailCampaignsAudienceDateIn": "ist",
+  "emailCampaignsAudienceDateNotIn": "ist nicht",
+  "emailCampaignsAudienceDelete": "Löschen",
+  "emailCampaignsAudienceDeleteConfirm": "Zielgruppe löschen",
+  "emailCampaignsAudienceDeleteDescription": "Dies kann nicht rückgängig gemacht werden. Gesendete Kampagnen behalten ihre eigene Kopie der Filter. Eine Zielgruppe, die von Kampagnenentwürfen verwendet wird, kann nur archiviert werden.",
+  "emailCampaignsAudienceDeleteFailedRetry": "Die Zielgruppe konnte nicht gelöscht werden. Versuchen Sie es erneut.",
+  "emailCampaignsAudienceDeleteTitle": "Diese Zielgruppe löschen?",
+  "emailCampaignsAudienceDeleting": "Wird gelöscht …",
+  "emailCampaignsAudienceDiscountGroupChoose": "Gruppen auswählen",
+  "emailCampaignsAudienceDiscountGroupEmptyError": "Wählen Sie mindestens eine Rabattgruppe aus.",
+  "emailCampaignsAudienceDiscountGroupIdAdd": "Rabattgruppen-ID hinzufügen",
+  "emailCampaignsAudienceDiscountGroupIdPlaceholder": "Gruppen-ID in Dotypos",
+  "emailCampaignsAudienceDiscountGroupIdRemove": "Rabattgruppen-ID {value} entfernen",
+  "emailCampaignsAudienceDiscountGroupLabel": "Rabattgruppe",
+  "emailCampaignsAudienceDiscountGroupRemove": "Rabattgruppe {value} entfernen",
+  "emailCampaignsAudienceDiscountGroupSummaryAnyOf": "in der Rabattgruppe {values} sind",
+  "emailCampaignsAudienceDiscountGroupSummaryNoneOf": "nicht in der Rabattgruppe {values} sind",
+  "emailCampaignsAudienceDiscountGroupUnknown": "Unbekannte Rabattgruppe {id}",
+  "emailCampaignsAudienceDiscountGroupUnnamed": "Gruppe {id}",
+  "emailCampaignsAudienceDotyposTagsAdd": "Tag hinzufügen",
+  "emailCampaignsAudienceDotyposTagsEmptyError": "Fügen Sie mindestens ein Tag hinzu.",
+  "emailCampaignsAudienceDotyposTagsLabel": "Tags in Dotypos",
+  "emailCampaignsAudienceDotyposTagsLead": "Tags",
+  "emailCampaignsAudienceDotyposTagsPlaceholder": "Tag hinzufügen",
+  "emailCampaignsAudienceDotyposTagsRemove": "Tag {value} entfernen",
+  "emailCampaignsAudienceDotyposTagsSummaryAllOf": "die Tags {values} haben",
+  "emailCampaignsAudienceDotyposTagsSummaryAnyOf": "das Tag {values} haben",
+  "emailCampaignsAudienceDotyposTagsSummaryNoneOf": "das Tag {values} nicht haben",
+  "emailCampaignsAudienceEditorArchivedNotice": "Diese Zielgruppe ist archiviert. Neue Kampagnen können sie nicht auswählen.",
+  "emailCampaignsAudienceEditorCancel": "Abbrechen",
+  "emailCampaignsAudienceEditorCreate": "Zielgruppe erstellen",
+  "emailCampaignsAudienceEditorDescription": "Wählen Sie aus, wen eine Kampagne erreicht. Die Bedingungen werden erst beim Senden der Kampagne ausgewertet, daher verwenden Entwürfe immer die neueste Version.",
+  "emailCampaignsAudienceEditorEyebrow": "E-Mail-Zielgruppe",
+  "emailCampaignsAudienceEditorNewTitle": "Neue Zielgruppe",
+  "emailCampaignsAudienceEditorReachDescription": "Den Bedingungen können nur Kunden entsprechen, die im Workspace bereits durch Reservierungen, Konten oder eine Marketing-Einwilligung bekannt sind. Marketingkampagnen lassen zusätzlich alle aus, die keine gültige Einwilligung haben.",
+  "emailCampaignsAudienceEditorReachHeading": "Wen sie erreicht",
+  "emailCampaignsAudienceEditorSave": "Zielgruppe speichern",
+  "emailCampaignsAudienceEditorSaveFailed": "Die Zielgruppe konnte nicht gespeichert werden. Überprüfen Sie das Formular und versuchen Sie es erneut.",
+  "emailCampaignsAudienceEditorSaved": "Die Zielgruppe wurde gespeichert.",
+  "emailCampaignsAudienceEditorSaving": "Wird gespeichert …",
+  "emailCampaignsAudienceEditorSingleLocaleCzech": "Alle Empfänger sprechen Tschechisch, daher brauchen Kampagnen für diese Zielgruppe nur tschechische Inhalte.",
+  "emailCampaignsAudienceEditorSingleLocaleEnglish": "Alle Empfänger sprechen Englisch, daher brauchen Kampagnen für diese Zielgruppe nur englische Inhalte.",
+  "emailCampaignsAudienceEditorSingleLocaleGerman": "Alle Empfänger sprechen Deutsch, daher brauchen Kampagnen für diese Zielgruppe nur deutsche Inhalte.",
+  "emailCampaignsAudienceEditorSingleLocaleSlovak": "Alle Empfänger sprechen Slowakisch, daher brauchen Kampagnen für diese Zielgruppe nur slowakische Inhalte.",
+  "emailCampaignsAudienceEditorSingleLocaleUkrainian": "Alle Empfänger sprechen Ukrainisch, daher brauchen Kampagnen für diese Zielgruppe nur ukrainische Inhalte.",
+  "emailCampaignsAudienceEditorSummary": "{summary}.",
+  "emailCampaignsAudienceEditorSummaryHeading": "Einfach gesagt",
+  "emailCampaignsAudienceEditorTitleLabel": "Name",
+  "emailCampaignsAudienceEditorTitlePlaceholder": "z. B. Tschechische Kunden, die dieses Jahr da waren",
+  "emailCampaignsAudienceGroupAddCondition": "Bedingung hinzufügen",
+  "emailCampaignsAudienceGroupAddGroup": "Gruppe hinzufügen",
+  "emailCampaignsAudienceGroupCombineLabel": "Wie die Bedingungen verknüpft werden",
+  "emailCampaignsAudienceGroupEmptyAll": "Noch keine Bedingungen, daher trifft dies auf alle bekannten Kunden zu.",
+  "emailCampaignsAudienceGroupEmptyAny": "Noch keine Bedingungen, daher trifft dies auf niemanden zu.",
+  "emailCampaignsAudienceGroupJoinAnd": "und",
+  "emailCampaignsAudienceGroupJoinOr": "oder",
+  "emailCampaignsAudienceGroupMatchAll": "Alle",
+  "emailCampaignsAudienceGroupMatchAny": "Mindestens eine",
+  "emailCampaignsAudienceGroupOfFollowing": "der folgenden Bedingungen erfüllen",
+  "emailCampaignsAudienceGroupOfThisGroup": "der Bedingungen dieser Gruppe erfüllen",
+  "emailCampaignsAudienceGroupRemove": "Gruppe entfernen",
+  "emailCampaignsAudienceHasAccountFalse": "Hat kein",
+  "emailCampaignsAudienceHasAccountLabel": "Workspace-Konto",
+  "emailCampaignsAudienceHasAccountObject": "Workspace-Konto",
+  "emailCampaignsAudienceHasAccountSummaryFalse": "kein Workspace-Konto haben",
+  "emailCampaignsAudienceHasAccountSummaryTrue": "ein Workspace-Konto haben",
+  "emailCampaignsAudienceHasAccountTrue": "Hat ein",
+  "emailCampaignsAudienceFirstVisitEver": "uns{product} besucht haben",
+  "emailCampaignsAudienceFirstVisitInPeriod": "uns{product} {period} erstmals besucht haben",
+  "emailCampaignsAudienceFirstVisitLabel": "Erster Besuch",
+  "emailCampaignsAudienceFirstVisitNever": "uns{product} noch nie besucht haben",
+  "emailCampaignsAudienceFirstVisitNoValue": "kein Besuch",
+  "emailCampaignsAudienceFirstVisitNotInPeriod": "uns{product} besucht haben, erstmals aber nicht {period}",
+  "emailCampaignsAudienceLastVisitEver": "uns{product} besucht haben",
+  "emailCampaignsAudienceLastVisitInPeriod": "uns{product} {period} zuletzt besucht haben",
+  "emailCampaignsAudienceLastVisitLabel": "Letzter Besuch",
+  "emailCampaignsAudienceLastVisitNever": "uns{product} noch nie besucht haben",
+  "emailCampaignsAudienceLastVisitNoValue": "kein Besuch",
+  "emailCampaignsAudienceLastVisitNotInPeriod": "uns{product} besucht haben, zuletzt aber nicht {period}",
+  "emailCampaignsAudienceListColumnAudience": "Zielgruppe",
+  "emailCampaignsAudienceListColumnReach": "Wen sie erreicht",
+  "emailCampaignsAudienceListColumnStatus": "Status",
+  "emailCampaignsAudienceListColumnUpdated": "Geändert",
+  "emailCampaignsAudienceListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} Zielgruppe",
+        "countPlural=other": "{formattedCount} Zielgruppen"
+      }
+    }
+  ],
+  "emailCampaignsAudienceListCountLoading": "Anzahl der Zielgruppen wird geladen",
+  "emailCampaignsAudienceListEmpty": "Noch keine Zielgruppen. Erstellen Sie eine Zielgruppe und wählen Sie aus, wen eine Kampagne erreicht.",
+  "emailCampaignsAudienceListLoading": "Zielgruppen werden geladen",
+  "emailCampaignsAudienceListNew": "Neue Zielgruppe",
+  "emailCampaignsAudienceListTitle": "E-Mail-Zielgruppen",
+  "emailCampaignsAudienceListToolbarLabel": "Steuerung der Zielgruppentabelle",
+  "emailCampaignsAudienceListUpdated": "Geändert am {date}",
+  "emailCampaignsAudienceLocaleEmptyError": "Wählen Sie mindestens eine Sprache aus.",
+  "emailCampaignsAudienceLocaleLabel": "Sprache",
+  "emailCampaignsAudienceLocaleNameCzech": "Tschechisch",
+  "emailCampaignsAudienceLocaleNameEnglish": "Englisch",
+  "emailCampaignsAudienceLocaleNameGerman": "Deutsch",
+  "emailCampaignsAudienceLocaleNameSlovak": "Slowakisch",
+  "emailCampaignsAudienceLocaleNameUkrainian": "Ukrainisch",
+  "emailCampaignsAudienceLocaleOptionCzech": "Tschechisch (cs-CZ)",
+  "emailCampaignsAudienceLocaleOptionEnglish": "Englisch (en-US)",
+  "emailCampaignsAudienceLocaleSummaryAnyOf": "{values} sprechen",
+  "emailCampaignsAudienceLocaleSummaryNoneOf": "{values} nicht sprechen",
+  "emailCampaignsAudienceNotFound": "Diese Zielgruppe existiert nicht mehr.",
+  "emailCampaignsAudiencePeriodCountError": "Geben Sie eine ganze Zahl ab 1 ein.",
+  "emailCampaignsAudiencePeriodCountLabel": "{subject}: Länge des Zeitraums",
+  "emailCampaignsAudiencePeriodDateError": "Geben Sie ein gültiges Datum ein.",
+  "emailCampaignsAudiencePeriodDateLabel": "{subject}: Datum",
+  "emailCampaignsAudiencePeriodEndLabel": "{subject}: Enddatum",
+  "emailCampaignsAudiencePeriodKind": [
+    {
+      "declarations": ["input kind"],
+      "selectors": ["kind"],
+      "match": {
+        "kind=AnyTime": "jederzeit",
+        "kind=Past": "jederzeit bis jetzt",
+        "kind=Last": "in den letzten",
+        "kind=Range": "von … bis …",
+        "kind=Since": "seit",
+        "kind=Onward": "von … an",
+        "kind=*": "bis"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodLabel": "{subject}: Zeitraum",
+  "emailCampaignsAudiencePeriodLast": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "innerhalb von",
+        "countPlural=other": "in den letzten"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodOnward": "an",
+  "emailCampaignsAudiencePeriodOrderError": "Das Startdatum darf nicht nach dem Enddatum liegen.",
+  "emailCampaignsAudiencePeriodStartLabel": "{subject}: Startdatum",
+  "emailCampaignsAudiencePeriodTo": "bis",
+  "emailCampaignsAudiencePeriodUnitDay": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Tag",
+        "countPlural=other": "Tagen"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitLabel": "{subject}: Zeiteinheit",
+  "emailCampaignsAudiencePeriodUnitMonth": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Monat",
+        "countPlural=other": "Monaten"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitWeek": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Woche",
+        "countPlural=other": "Wochen"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitYear": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Jahr",
+        "countPlural=other": "Jahren"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductAddCondition": "Produktbedingung hinzufügen",
+  "emailCampaignsAudienceProductAny": "beliebiges Produkt",
+  "emailCampaignsAudienceProductChoose": "Auswählen",
+  "emailCampaignsAudienceProductChooseValueError": "Wählen Sie mindestens einen Wert aus.",
+  "emailCampaignsAudienceProductFamilyCowork": "Coworking",
+  "emailCampaignsAudienceProductFamilyMeetingRoom": "Meetingraum",
+  "emailCampaignsAudienceProductFamilyOffice": "Büro",
+  "emailCampaignsAudienceProductLabel": "Produkt",
+  "emailCampaignsAudienceProductPropertyCoffee": "Kaffee",
+  "emailCampaignsAudienceProductPropertyDays": "Anzahl Tage",
+  "emailCampaignsAudienceProductPropertyMonitor": "Monitor-Setup",
+  "emailCampaignsAudienceProductPropertyOffer": "Dauer",
+  "emailCampaignsAudienceProductPropertySeats": "Anzahl Plätze",
+  "emailCampaignsAudienceProductPropertyTier": "Tarif",
+  "emailCampaignsAudienceProductRemoveCondition": "Bedingung entfernen: {property}",
+  "emailCampaignsAudienceProductRemoveValue": "{value} ({property}) entfernen",
+  "emailCampaignsAudienceProductRetired": "(nicht mehr im Verkauf)",
+  "emailCampaignsAudienceProductSelectLabel": "Reservierungsprodukt",
+  "emailCampaignsAudienceProductUnitDays": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Tag",
+        "countPlural=other": "Tage"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductUnitSeats": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Platz",
+        "countPlural=other": "Plätze"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductWith": "mit",
+  "emailCampaignsAudienceProductWithout": "ohne",
+  "emailCampaignsAudienceReservationCountAmount": "{amount}{period} haben",
+  "emailCampaignsAudienceReservationCountAny": "mindestens eine {single}{period} haben",
+  "emailCampaignsAudienceReservationCountBookingPeriod": "mit Bestätigung {period}",
+  "emailCampaignsAudienceReservationCountDateBasisBooking": "Bestätigungsdatum",
+  "emailCampaignsAudienceReservationCountDateBasisLabel": "Maßgebliches Datum",
+  "emailCampaignsAudienceReservationCountDateBasisVisit": "Besuchsdatum",
+  "emailCampaignsAudienceReservationCountDateBasisVisitEnd": "Besuchsende",
+  "emailCampaignsAudienceReservationCountLabel": "Anzahl der Reservierungen",
+  "emailCampaignsAudienceReservationCountLeadText": "Reservierungen nach",
+  "emailCampaignsAudienceReservationCountNone": "keine {single}{period} haben",
+  "emailCampaignsAudienceReservationCountNounBooked": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "bestätigte Reservierung{product}",
+        "countPlural=other": "bestätigte Reservierungen{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounCancelled": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "stornierte Reservierung{product}",
+        "countPlural=other": "stornierte Reservierungen{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounComplete": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "abgeschlossene Reservierung{product}",
+        "countPlural=other": "abgeschlossene Reservierungen{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounInProgress": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "laufende Reservierung{product}",
+        "countPlural=other": "laufende Reservierungen{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounNeedsRefund": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "zu erstattende Reservierung{product}",
+        "countPlural=other": "zu erstattende Reservierungen{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountPeriodLabel": "Reservierungen",
+  "emailCampaignsAudienceReservationCountStatusBooked": "bestätigter",
+  "emailCampaignsAudienceReservationCountStatusCancelled": "stornierter",
+  "emailCampaignsAudienceReservationCountStatusComplete": "abgeschlossener",
+  "emailCampaignsAudienceReservationCountStatusInProgress": "laufender",
+  "emailCampaignsAudienceReservationCountStatusLabel": "Reservierungsstatus",
+  "emailCampaignsAudienceReservationCountStatusNeedsRefund": "zu erstattender",
+  "emailCampaignsAudienceReservationCountVisitEndPeriod": "mit Ende {period}",
+  "emailCampaignsAudienceReservationCountVisitPeriod": "mit Besuch {period}",
+  "emailCampaignsAudienceSaveCampaignNotFound": "Die Zielgruppe konnte nicht gespeichert werden. Eine Kampagne, deren E-Mails sie zählt, existiert nicht mehr. Wählen Sie eine andere Kampagne aus.",
+  "emailCampaignsAudienceSaveFailedCheckFilters": "Die Zielgruppe konnte nicht gespeichert werden. Überprüfen Sie die Filter und versuchen Sie es erneut.",
+  "emailCampaignsAudienceSaveFailedRetry": "Die Zielgruppe konnte nicht gespeichert werden. Versuchen Sie es erneut.",
+  "emailCampaignsAudienceSaveFilterUnavailable": "Die Zielgruppe konnte nicht gespeichert werden. Zeiträume relativ zum Auslöser und „diese Kampagne“ funktionieren nur in Bedingungen von Automatisierungen.",
+  "emailCampaignsAudienceSectionAccount": "Konto",
+  "emailCampaignsAudienceSectionEmails": "E-Mails",
+  "emailCampaignsAudienceSectionProfile": "Profil",
+  "emailCampaignsAudienceSectionReservations": "Reservierungen",
+  "emailCampaignsAudienceSetMatchLabel": "{subject}: Übereinstimmung",
+  "emailCampaignsAudienceSetOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=allOf": "alle von",
+        "operator=noneOf": "keiner von",
+        "operator=*": "mindestens einer von"
+      }
+    }
+  ],
+  "emailCampaignsAudienceStatusActive": "Aktiv",
+  "emailCampaignsAudienceStatusArchived": "Archiviert",
+  "emailCampaignsAudienceSummaryAmount": [
+    {
+      "declarations": [
+        "input operator",
+        "input count",
+        "local formattedCount = count: number",
+        "input noun",
+        "input none"
+      ],
+      "selectors": ["operator"],
+      "match": {
+        "operator=eq": "genau {formattedCount} {noun}",
+        "operator=ne": "{none} in einer anderen Anzahl als {formattedCount}",
+        "operator=lt": "weniger als {formattedCount} {noun}",
+        "operator=lte": "höchstens {formattedCount} {noun}",
+        "operator=gt": "mehr als {formattedCount} {noun}",
+        "operator=*": "mindestens {formattedCount} {noun}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryAmountPending": "… {none}",
+  "emailCampaignsAudienceSummaryAnd": "{left} und {right}",
+  "emailCampaignsAudienceSummaryCustomersWho": "Kunden, die {predicate}",
+  "emailCampaignsAudienceSummaryEveryone": "Alle im Workspace bekannten Kunden",
+  "emailCampaignsAudienceSummaryGap": "…",
+  "emailCampaignsAudienceSummaryGroup": "({filter})",
+  "emailCampaignsAudienceSummaryMatchAnything": "allem entsprechen",
+  "emailCampaignsAudienceSummaryMatchNothing": "nichts entsprechen",
+  "emailCampaignsAudienceSummaryNobody": "Niemand",
+  "emailCampaignsAudienceSummaryOr": "{left} oder {right}",
+  "emailCampaignsAudienceSummaryPeriodAnyTime": "jederzeit",
+  "emailCampaignsAudienceSummaryPeriodLastDay": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "innerhalb des letzten Tages",
+        "countPlural=other": "in den letzten {formattedCount} Tagen"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastMonth": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "im letzten Monat",
+        "countPlural=other": "in den letzten {formattedCount} Monaten"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastWeek": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "in der letzten Woche",
+        "countPlural=other": "in den letzten {formattedCount} Wochen"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastYear": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "im letzten Jahr",
+        "countPlural=other": "in den letzten {formattedCount} Jahren"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodOnward": "ab {date}",
+  "emailCampaignsAudienceSummaryPeriodPast": "jederzeit bis jetzt",
+  "emailCampaignsAudienceSummaryPeriodRange": "vom {from} bis {to}",
+  "emailCampaignsAudienceSummaryPeriodSince": "seit {date}",
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowDay": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "innerhalb von {formattedCount} Tag vor dem auslösenden Ereignis",
+        "side=before, countPlural=other": "innerhalb von {formattedCount} Tagen vor dem auslösenden Ereignis",
+        "side=after, countPlural=one": "innerhalb von {formattedCount} Tag nach dem auslösenden Ereignis",
+        "side=after, countPlural=other": "innerhalb von {formattedCount} Tagen nach dem auslösenden Ereignis"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowMonth": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "innerhalb von {formattedCount} Monat vor dem auslösenden Ereignis",
+        "side=before, countPlural=other": "innerhalb von {formattedCount} Monaten vor dem auslösenden Ereignis",
+        "side=after, countPlural=one": "innerhalb von {formattedCount} Monat nach dem auslösenden Ereignis",
+        "side=after, countPlural=other": "innerhalb von {formattedCount} Monaten nach dem auslösenden Ereignis"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowWeek": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "innerhalb von {formattedCount} Woche vor dem auslösenden Ereignis",
+        "side=before, countPlural=other": "innerhalb von {formattedCount} Wochen vor dem auslösenden Ereignis",
+        "side=after, countPlural=one": "innerhalb von {formattedCount} Woche nach dem auslösenden Ereignis",
+        "side=after, countPlural=other": "innerhalb von {formattedCount} Wochen nach dem auslösenden Ereignis"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowYear": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "innerhalb von {formattedCount} Jahr vor dem auslösenden Ereignis",
+        "side=before, countPlural=other": "innerhalb von {formattedCount} Jahren vor dem auslösenden Ereignis",
+        "side=after, countPlural=one": "innerhalb von {formattedCount} Jahr nach dem auslösenden Ereignis",
+        "side=after, countPlural=other": "innerhalb von {formattedCount} Jahren nach dem auslösenden Ereignis"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodUntil": "bis {date}",
+  "emailCampaignsAudienceSummaryProduct": "({family})",
+  "emailCampaignsAudienceSummaryProductAnyOf": "{property} {values}",
+  "emailCampaignsAudienceSummaryProductDisabled": "{property}: nein",
+  "emailCampaignsAudienceSummaryProductEnabled": "{property}: ja",
+  "emailCampaignsAudienceSummaryProductNoneOf": "{property} außer {values}",
+  "emailCampaignsAudienceSummaryProductWith": "({family}, {details})",
+  "emailCampaignsAudienceSummaryQuoted": "„{value}“",
+  "emailCampaignsAudienceTitleRequired": "Geben Sie einen Namen für die Zielgruppe ein.",
+  "emailCampaignsAudienceTitleTooLong": "Verwenden Sie höchstens {max} Zeichen.",
+  "emailCampaignsAudienceUnarchive": "Wiederherstellen",
+  "emailCampaignsAudienceUnarchiveFailedRetry": "Die Zielgruppe konnte nicht aus dem Archiv wiederhergestellt werden. Versuchen Sie es erneut.",
+  "emailCampaignsAudienceUnarchiving": "Wird wiederhergestellt …",
+  "emailCampaignsCalendarDayOfMonth": "{day}.",
+  "emailCampaignsCalendarDaysOfMonth": "{days} Tag",
+  "emailCampaignsCalendarEveryDay": "täglich",
+  "emailCampaignsCalendarEveryHour": "stündlich",
+  "emailCampaignsCalendarHourRange": "zwischen {start} und {end}",
+  "emailCampaignsCalendarHourSpan": "{start}–{end}",
+  "emailCampaignsCalendarHourSpans": "im Zeitfenster {spans}",
+  "emailCampaignsCalendarInMonths": "im {months}",
+  "emailCampaignsCalendarInWeeks": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "in Kalenderwoche {weeks}",
+        "countPlural=*": "in den Kalenderwochen {weeks}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastDayOfMonth": "letzten",
+  "emailCampaignsCalendarLastOccurrence": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "letzten Montag",
+        "weekday=tuesday": "letzten Dienstag",
+        "weekday=wednesday": "letzten Mittwoch",
+        "weekday=thursday": "letzten Donnerstag",
+        "weekday=friday": "letzten Freitag",
+        "weekday=saturday": "letzten Samstag",
+        "weekday=*": "letzten Sonntag"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceQualifier": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "letzten Montag",
+        "weekday=tuesday": "letzten Dienstag",
+        "weekday=wednesday": "letzten Mittwoch",
+        "weekday=thursday": "letzten Donnerstag",
+        "weekday=friday": "letzten Freitag",
+        "weekday=saturday": "letzten Samstag",
+        "weekday=*": "letzten Sonntag"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceWait": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "letzten Montag",
+        "weekday=tuesday": "letzten Dienstag",
+        "weekday=wednesday": "letzten Mittwoch",
+        "weekday=thursday": "letzten Donnerstag",
+        "weekday=friday": "letzten Freitag",
+        "weekday=saturday": "letzten Samstag",
+        "weekday=*": "letzten Sonntag"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMinute": "xx:{minute}",
+  "emailCampaignsCalendarMonthInName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "Januar",
+        "month=2": "Februar",
+        "month=3": "März",
+        "month=4": "April",
+        "month=5": "Mai",
+        "month=6": "Juni",
+        "month=7": "Juli",
+        "month=8": "August",
+        "month=9": "September",
+        "month=10": "Oktober",
+        "month=11": "November",
+        "month=*": "Dezember"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMonthName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "Januar",
+        "month=2": "Februar",
+        "month=3": "März",
+        "month=4": "April",
+        "month=5": "Mai",
+        "month=6": "Juni",
+        "month=7": "Juli",
+        "month=8": "August",
+        "month=9": "September",
+        "month=10": "Oktober",
+        "month=11": "November",
+        "month=*": "Dezember"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMonthOfName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "Januar",
+        "month=2": "Februar",
+        "month=3": "März",
+        "month=4": "April",
+        "month=5": "Mai",
+        "month=6": "Juni",
+        "month=7": "Juli",
+        "month=8": "August",
+        "month=9": "September",
+        "month=10": "Oktober",
+        "month=11": "November",
+        "month=*": "Dezember"
+      }
+    }
+  ],
+  "emailCampaignsCalendarOccurrence": "{occurrence}. {weekday}",
+  "emailCampaignsCalendarOccurrences": "{occurrences}",
+  "emailCampaignsCalendarSchedule": "{description} (Prager Zeit)",
+  "emailCampaignsCalendarScheduleDate": "jedes Jahr am {day}. {month}",
+  "emailCampaignsCalendarScheduleMonthStart": "jedes Jahr am ersten Tag im {months}",
+  "emailCampaignsCalendarScheduleOn": "am {subject}",
+  "emailCampaignsCalendarScheduleQualified": "{subject}, der auf den {qualifier} fällt,",
+  "emailCampaignsCalendarScheduleWeekMonthStart": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "input months",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "jedes Jahr am ersten Tag der Kalenderwoche {weeks}, der im {months} liegt,",
+        "countPlural=*": "jedes Jahr am ersten Tag der Kalenderwochen {weeks}, der im {months} liegt,"
+      }
+    }
+  ],
+  "emailCampaignsCalendarScheduleWeekStart": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "jedes Jahr zu Beginn der Kalenderwoche {weeks} (montags)",
+        "countPlural=*": "jedes Jahr zu Beginn der Kalenderwochen {weeks} (montags)"
+      }
+    }
+  ],
+  "emailCampaignsCalendarScopeAnyMonth": "{phrase} eines Monats",
+  "emailCampaignsCalendarScopeEveryMonth": "{phrase} jedes Monats",
+  "emailCampaignsCalendarScopeMonths": "{phrase} im {months}",
+  "emailCampaignsCalendarScopeQualifier": "{phrase} des Monats",
+  "emailCampaignsCalendarTimeAt": "um {times}",
+  "emailCampaignsCalendarTimeEveryHourAt": "stündlich um {minutes}",
+  "emailCampaignsCalendarTimeMinutesPastHours": "in den Stunden {hours} jeweils um {minutes}",
+  "emailCampaignsCalendarWait": "Wartet auf den nächsten Zeitpunkt: {target} (Prager Zeit); ist er bereits erreicht, geht es sofort weiter",
+  "emailCampaignsCalendarWaitClockWindow": "täglich {windows}",
+  "emailCampaignsCalendarWaitDay": "Tag",
+  "emailCampaignsCalendarWaitMonthDay": "Tag im {months}",
+  "emailCampaignsCalendarWaitNextMinute": "stündlich um {minutes}",
+  "emailCampaignsCalendarWaitQualified": "{subject}, der auf den {qualifier} fällt",
+  "emailCampaignsCalendarWaitTime": "täglich {time}",
+  "emailCampaignsCalendarWaitWeeks": "Kalenderwoche {weeks}",
+  "emailCampaignsCalendarWeekNumber": "{week}",
+  "emailCampaignsCalendarWeekdayEveryName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "jeden Montag",
+        "weekday=tuesday": "jeden Dienstag",
+        "weekday=wednesday": "jeden Mittwoch",
+        "weekday=thursday": "jeden Donnerstag",
+        "weekday=friday": "jeden Freitag",
+        "weekday=saturday": "jeden Samstag",
+        "weekday=*": "jeden Sonntag"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "Montag",
+        "weekday=tuesday": "Dienstag",
+        "weekday=wednesday": "Mittwoch",
+        "weekday=thursday": "Donnerstag",
+        "weekday=friday": "Freitag",
+        "weekday=saturday": "Samstag",
+        "weekday=*": "Sonntag"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayQualifierName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "Montag",
+        "weekday=tuesday": "Dienstag",
+        "weekday=wednesday": "Mittwoch",
+        "weekday=thursday": "Donnerstag",
+        "weekday=friday": "Freitag",
+        "weekday=saturday": "Samstag",
+        "weekday=*": "Sonntag"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayWaitName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "Montag",
+        "weekday=tuesday": "Dienstag",
+        "weekday=wednesday": "Mittwoch",
+        "weekday=thursday": "Donnerstag",
+        "weekday=friday": "Freitag",
+        "weekday=saturday": "Samstag",
+        "weekday=*": "Sonntag"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysEvery": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "jeden Arbeitstag",
+        "set=weekend": "jeden Wochenendtag",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysWait": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "Arbeitstag",
+        "set=weekend": "Wochenendtag",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysWaitQualified": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "Arbeitstag",
+        "set=weekend": "Wochenendtag",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsBadgeDeliveryAutomated": "Automatisiert",
+  "emailCampaignsBadgePurposeMarketing": "Marketing",
+  "emailCampaignsBadgePurposeOperational": "Service",
+  "emailCampaignsBadgeRecipientStatusBounced": "Unzustellbar",
+  "emailCampaignsBadgeRecipientStatusComplained": "Als Spam gemeldet",
+  "emailCampaignsBadgeRecipientStatusDelivered": "Zugestellt",
+  "emailCampaignsBadgeRecipientStatusFailed": "Fehlgeschlagen",
+  "emailCampaignsBadgeRecipientStatusPending": "Ausstehend",
+  "emailCampaignsBadgeRecipientStatusSent": "Gesendet",
+  "emailCampaignsBadgeRecipientStatusSkipped": "Übersprungen",
+  "emailCampaignsBadgeRecipientStatusUnconfirmed": "Unbestätigt",
+  "emailCampaignsBadgeStatusDraft": "Entwurf",
+  "emailCampaignsBadgeStatusFailed": "Fehlgeschlagen",
+  "emailCampaignsBadgeStatusSending": "Wird gesendet",
+  "emailCampaignsBadgeStatusSent": "Gesendet",
+  "emailCampaignsBodyButtonHrefInvalid": "Eine Schaltfläche muss auf eine https:- oder mailto:-Adresse verweisen.",
+  "emailCampaignsBodyButtonLabelLineBreaks": "Der Text einer Schaltfläche darf Zeilen nur mit einem Zeilenvorschub (LF) umbrechen.",
+  "emailCampaignsBodyButtonLabelMissing": "Eine Schaltfläche braucht einen Text.",
+  "emailCampaignsBodyImageLayoutInvalid": "Ein Bild muss links, zentriert oder rechts ausgerichtet sein und eine Breite in ganzen Pixeln haben.",
+  "emailCampaignsBodyImageSourceInvalid": "Ein Bild muss aus dem Cloudinary-Konto von Deskohub stammen.",
+  "emailCampaignsBodyLinkHrefInvalid": "Ein Link muss eine https:- oder mailto:-Adresse verwenden.",
+  "emailCampaignsBodyMissing": "Schreiben Sie den E-Mail-Text.",
+  "emailCampaignsBodyNotDocument": "Der E-Mail-Text muss ein Knoten vom Typ „doc“ sein.",
+  "emailCampaignsBodyStructureInvalid": "Der E-Mail-Text enthält Elemente, die Kampagnen-E-Mails nicht unterstützen.",
+  "emailCampaignsComposerAllChangesSaved": "Alle Änderungen gespeichert",
+  "emailCampaignsComposerAudienceHint": "Wählen Sie vor dem Senden aus, wer die Kampagne erhält.",
+  "emailCampaignsComposerAudienceLabel": "Zielgruppe",
+  "emailCampaignsComposerAudienceNone": "Noch keine Zielgruppe",
+  "emailCampaignsComposerAudiencesEmpty": "Sie haben noch keine Zielgruppe. Erstellen Sie eine im Bereich „Zielgruppen“.",
+  "emailCampaignsComposerBodyEditorLabel": "E-Mail-Text, {language}",
+  "emailCampaignsComposerBodyLabel": "E-Mail-Text",
+  "emailCampaignsComposerCampaignSection": "Kampagne",
+  "emailCampaignsComposerContentLanguageLabel": "Inhaltssprache",
+  "emailCampaignsComposerContentSection": "Inhalt",
+  "emailCampaignsComposerCreateDraft": "Entwurf erstellen",
+  "emailCampaignsComposerDraftDescription": "Entwurf. Speichern Sie die Änderungen und senden Sie dann eine Test-E-Mail. Darin finden Sie den Bestätigungscode für den tatsächlichen Versand.",
+  "emailCampaignsComposerEyebrow": "E-Mail-Kampagne",
+  "emailCampaignsComposerFallbackLocaleHint": "Tschechisch ist als letzte Ersatzsprache erforderlich. Deutsch- und ukrainischsprachige Empfänger, für deren Sprache Inhalte fehlen, erhalten zuerst die englische Fassung, sofern es eine gibt.",
+  "emailCampaignsComposerHiddenContentCzech": "Tschechische Inhalte sind für diese Zielgruppe ausgeblendet und werden nicht gespeichert.",
+  "emailCampaignsComposerHiddenContentEnglish": "Englische Inhalte sind für diese Zielgruppe ausgeblendet und werden nicht gespeichert.",
+  "emailCampaignsComposerHiddenContentGerman": "Deutsche Inhalte sind für diese Zielgruppe ausgeblendet und werden nicht gespeichert.",
+  "emailCampaignsComposerHiddenContentSlovak": "Slowakische Inhalte sind für diese Zielgruppe ausgeblendet und werden nicht gespeichert.",
+  "emailCampaignsComposerHiddenContentUkrainian": "Ukrainische Inhalte sind für diese Zielgruppe ausgeblendet und werden nicht gespeichert.",
+  "emailCampaignsComposerLocaleIssues": "{count} zu beheben",
+  "emailCampaignsComposerLocaleOptional": "Optional",
+  "emailCampaignsComposerLocaleReady": "Bereit",
+  "emailCampaignsComposerLocaleRequired": "Erforderlich",
+  "emailCampaignsComposerNewDescription": "Schreiben Sie die Kampagne und erstellen Sie einen Entwurf, den Sie dann testweise senden können.",
+  "emailCampaignsComposerNewTitle": "Neue Kampagne",
+  "emailCampaignsComposerOperationalReasonHint": "Warum der Kunde diese E-Mail erhält. Wenn Sie das Feld leer lassen, wird der Standardtext verwendet.",
+  "emailCampaignsComposerOperationalReasonLabel": "Grund in der Fußzeile",
+  "emailCampaignsComposerPreheaderHint": "Die meisten E-Mail-Postfächer zeigen ihn nach dem Betreff an.",
+  "emailCampaignsComposerPreheaderLabel": "Vorschautext",
+  "emailCampaignsComposerPurposeLabel": "Zweck",
+  "emailCampaignsComposerPurposeMarketing": "Marketing",
+  "emailCampaignsComposerPurposeMarketingDescription": "Nur Kunden mit Marketing-Einwilligung. Jede E-Mail enthält einen Link zum Abbestellen.",
+  "emailCampaignsComposerPurposeOperational": "Service",
+  "emailCampaignsComposerPurposeOperationalDescription": "Servicemitteilungen für alle passenden Kunden. Die Fußzeile nennt den Grund, warum sie die E-Mail erhalten.",
+  "emailCampaignsComposerSaveAudienceArchived": "Die ausgewählte Zielgruppe ist archiviert. Wählen Sie eine andere aus.",
+  "emailCampaignsComposerSaveAudienceFilterUnavailable": "Die ausgewählte Zielgruppe verwendet Filter, die nur in Bedingungen von Automatisierungen möglich sind. Wählen Sie eine andere aus.",
+  "emailCampaignsComposerSaveAudienceNotFound": "Die ausgewählte Zielgruppe existiert nicht mehr.",
+  "emailCampaignsComposerSaveCheckFields": "Die Kampagne konnte nicht gespeichert werden. Überprüfen Sie Ihre Angaben.",
+  "emailCampaignsComposerSaveContentInvalid": "Der Inhalt enthält Fehler. Beheben Sie die angezeigten Probleme und speichern Sie die Kampagne dann.",
+  "emailCampaignsComposerSaveDraft": "Entwurf speichern",
+  "emailCampaignsComposerSaveFailed": "Die Kampagne konnte nicht gespeichert werden. Versuchen Sie es erneut.",
+  "emailCampaignsComposerSaveReadOnly": "Diese Kampagne ist kein Entwurf mehr und kann nicht mehr bearbeitet werden.",
+  "emailCampaignsComposerSaving": "Wird gespeichert …",
+  "emailCampaignsComposerSingleLocaleAudienceCzech": "Die Zielgruppe umfasst nur tschechischsprachige Kunden.",
+  "emailCampaignsComposerSingleLocaleAudienceEnglish": "Die Zielgruppe umfasst nur englischsprachige Kunden.",
+  "emailCampaignsComposerSingleLocaleAudienceGerman": "Die Zielgruppe umfasst nur deutschsprachige Kunden.",
+  "emailCampaignsComposerSingleLocaleAudienceSlovak": "Die Zielgruppe umfasst nur slowakischsprachige Kunden.",
+  "emailCampaignsComposerSingleLocaleAudienceUkrainian": "Die Zielgruppe umfasst nur ukrainischsprachige Kunden.",
+  "emailCampaignsComposerSubjectLabel": "Betreff",
+  "emailCampaignsComposerSubjectMissing": "Geben Sie einen Betreff ein.",
+  "emailCampaignsComposerTemplateLabel": "Vorlage",
+  "emailCampaignsComposerTemplatePreview": "Vorlagenvorschau",
+  "emailCampaignsComposerTemplatePreviewFrameTitle": "Vorlage {template} mit Beispielinhalt",
+  "emailCampaignsComposerTemplateWorkspaceDescription": "Das E-Mail-Layout von Workspace: dunkelblaue Kopfzeile, weiße Inhaltskarte und Fußzeile mit Adresse.",
+  "emailCampaignsComposerTitleHint": "Der Name ist nur für Admins sichtbar.",
+  "emailCampaignsComposerTitleLabel": "Name",
+  "emailCampaignsComposerTitlePlaceholder": "Öffnungszeiten im Frühling",
+  "emailCampaignsComposerTitleRequired": "Geben Sie einen Namen für die Kampagne ein.",
+  "emailCampaignsComposerUnsavedChanges": "Nicht gespeichert",
+  "emailCampaignsComposerUntitledTitle": "Unbenannte Kampagne",
+  "emailCampaignsCtaCancel": "Abbrechen",
+  "emailCampaignsCtaDescription": "Eine auffällige Schaltfläche, die auf eine Seite oder eine E-Mail-Adresse verweist.",
+  "emailCampaignsCtaEdit": "Schaltfläche bearbeiten",
+  "emailCampaignsCtaHrefLabel": "Link",
+  "emailCampaignsCtaHrefMissing": "Link fehlt",
+  "emailCampaignsCtaInsert": "Schaltfläche einfügen",
+  "emailCampaignsCtaLabelLabel": "Schaltflächentext",
+  "emailCampaignsCtaLabelMissing": "Schaltflächentext fehlt",
+  "emailCampaignsCtaLabelPlaceholder": "Schreibtisch reservieren",
+  "emailCampaignsCtaLabelRequired": "Geben Sie den Schaltflächentext ein.",
+  "emailCampaignsCtaRemove": "Schaltfläche entfernen",
+  "emailCampaignsCtaUpdate": "Schaltfläche speichern",
+  "emailCampaignsDraftDelete": "Entwurf löschen",
+  "emailCampaignsDraftDeleteDescription": "Dies kann nicht rückgängig gemacht werden. Der Entwurf, sein Inhalt und alle ungespeicherten Änderungen werden entfernt. Gesendete Kampagnen können nicht gelöscht werden.",
+  "emailCampaignsDraftDeleteFailed": "Die Kampagne konnte nicht gelöscht werden. Versuchen Sie es erneut.",
+  "emailCampaignsDraftDeleteReadOnly": "Diese Kampagne ist kein Entwurf mehr und kann nicht mehr gelöscht werden.",
+  "emailCampaignsDraftDeleteTitle": "Diesen Entwurf löschen?",
+  "emailCampaignsDraftDeleting": "Wird gelöscht …",
+  "emailCampaignsDraftNotFound": "Diese Kampagne existiert nicht mehr.",
+  "emailCampaignsEditorBold": "Fett",
+  "emailCampaignsEditorBulletList": "Aufzählung",
+  "emailCampaignsEditorDivider": "Trennlinie",
+  "emailCampaignsEditorHeading1": "Überschrift 1",
+  "emailCampaignsEditorHeading2": "Überschrift 2",
+  "emailCampaignsEditorHeading3": "Überschrift 3",
+  "emailCampaignsEditorItalic": "Kursiv",
+  "emailCampaignsEditorNumberedList": "Nummerierte Liste",
+  "emailCampaignsEditorParagraph": "Absatz",
+  "emailCampaignsEditorPlaceholder": "Schreiben Sie die E-Mail. Überschriften, Links, Bilder und Schaltflächen fügen Sie über die Symbolleiste hinzu.",
+  "emailCampaignsEditorRedo": "Wiederholen",
+  "emailCampaignsEditorTextStyle": "Textstil",
+  "emailCampaignsEditorToolbar": "Formatierung",
+  "emailCampaignsEditorUndo": "Rückgängig",
+  "emailCampaignsEmailPreviewFrameTitle": "E-Mail-Vorschau, {language}",
+  "emailCampaignsEmailPreviewHeading": "Vorschau",
+  "emailCampaignsEmailPreviewLabel": "E-Mail-Vorschau",
+  "emailCampaignsEmailPreviewLanguage": "Vorschausprache",
+  "emailCampaignsEmailPreviewMissingContentCzech": "Die E-Mail wird angezeigt, sobald Sie tschechische Inhalte hinzufügen.",
+  "emailCampaignsEmailPreviewMissingContentEnglish": "Die E-Mail wird angezeigt, sobald Sie englische Inhalte hinzufügen.",
+  "emailCampaignsEmailPreviewMissingContentGerman": "Die E-Mail wird angezeigt, sobald Sie deutsche Inhalte hinzufügen.",
+  "emailCampaignsEmailPreviewMissingContentSlovak": "Die E-Mail wird angezeigt, sobald Sie slowakische Inhalte hinzufügen.",
+  "emailCampaignsEmailPreviewMissingContentUkrainian": "Die E-Mail wird angezeigt, sobald Sie ukrainische Inhalte hinzufügen.",
+  "emailCampaignsEmailPreviewNoPreheader": "Kein Vorschautext",
+  "emailCampaignsEmailPreviewNoSubject": "Kein Betreff",
+  "emailCampaignsEmailPreviewRenderFailed": "Die Vorschau konnte nicht dargestellt werden.",
+  "emailCampaignsEmailPreviewRendering": "Vorschau wird erstellt …",
+  "emailCampaignsEmailPreviewUpdating": "Wird aktualisiert …",
+  "emailCampaignsImageAlignCenter": "Bild zentrieren",
+  "emailCampaignsImageAlignLeft": "Bild links ausrichten",
+  "emailCampaignsImageAlignRight": "Bild rechts ausrichten",
+  "emailCampaignsImageWidth": "Bildbreite (px)",
+  "emailCampaignsImageWidthHint": "Geben Sie eine ganze Zahl von 1 bis {maxWidth} ein. Auf kleineren Bildschirmen werden Bilder verkleinert.",
+  "emailCampaignsImageShrinking": "Bild wird verkleinert …",
+  "emailCampaignsImageUploadAnimationTooLarge": "Ein animiertes Bild darf über alle Einzelbilder zusammen höchstens {maxMegabytes} MB und {maxMegapixels} Megapixel haben. Kürzen oder verkleinern Sie die Animation.",
+  "emailCampaignsImageUploadFailed": "Das Bild konnte nicht hochgeladen werden. Versuchen Sie es erneut.",
+  "emailCampaignsImageUploadInsert": "Bild einfügen",
+  "emailCampaignsImageUploadUnreadable": "Das Bild konnte nicht gelesen werden. Versuchen Sie es mit einer anderen Datei.",
+  "emailCampaignsImageUploading": "Bild wird hochgeladen …",
+  "emailCampaignsLinkAdd": "Link hinzufügen",
+  "emailCampaignsLinkHrefHint": "Geben Sie eine Adresse ein, die mit https:// beginnt, oder eine E-Mail-Adresse.",
+  "emailCampaignsLinkHrefLabel": "Linkadresse",
+  "emailCampaignsLinkRemove": "Link entfernen",
+  "emailCampaignsLinkToggle": "Link",
+  "emailCampaignsLinkUpdate": "Link aktualisieren",
+  "emailCampaignsListAudienceColumn": "Zielgruppe",
+  "emailCampaignsListCampaignColumn": "Kampagne",
+  "emailCampaignsListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} Kampagne",
+        "countPlural=other": "{formattedCount} Kampagnen"
+      }
+    }
+  ],
+  "emailCampaignsListCountLoading": "Anzahl der Kampagnen wird geladen",
+  "emailCampaignsListEmpty": "Noch keine Kampagnen. Erstellen Sie die erste und schreiben Sie Ihre erste E-Mail.",
+  "emailCampaignsListLoading": "Kampagnen werden geladen",
+  "emailCampaignsListNewCampaign": "Neue Kampagne",
+  "emailCampaignsListNoAudience": "Keine Zielgruppe",
+  "emailCampaignsListPurposeColumn": "Zweck",
+  "emailCampaignsListStatusColumn": "Status",
+  "emailCampaignsListTableControls": "Steuerung der Kampagnentabelle",
+  "emailCampaignsListTitle": "E-Mail-Kampagnen",
+  "emailCampaignsListUpdatedAt": "Geändert am {updatedAt}",
+  "emailCampaignsListUpdatedColumn": "Geändert",
+  "emailCampaignsLocaleNameCzech": "Tschechisch",
+  "emailCampaignsLocaleNameEnglish": "Englisch",
+  "emailCampaignsRecipientPreviewAsOfNow": "Die Zielgruppe wird zum aktuellen Zeitpunkt ermittelt. Beim Senden wird sie erneut ermittelt und die daraus entstehende Liste festgeschrieben.",
+  "emailCampaignsRecipientPreviewAudienceDescription": "{audience}: {filter}.",
+  "emailCampaignsRecipientPreviewBackToCampaign": "Zurück zur Kampagne",
+  "emailCampaignsRecipientPreviewCustomerColumn": "Kunde",
+  "emailCampaignsRecipientPreviewCustomerInline": "Kunde {customer}",
+  "emailCampaignsRecipientPreviewEmailColumn": "E-Mail",
+  "emailCampaignsRecipientPreviewExcluded": "Ausgeschlossen",
+  "emailCampaignsRecipientPreviewExcludedCustomers": "Ausgeschlossene Kunden",
+  "emailCampaignsRecipientPreviewExcludedEmpty": "Kein passender Kunde wurde ausgeschlossen.",
+  "emailCampaignsRecipientPreviewExclusionDeletedCustomer": "In Dotypos gelöscht",
+  "emailCampaignsRecipientPreviewExclusionInvalidEmail": "Ungültige E-Mail-Adresse in Dotypos",
+  "emailCampaignsRecipientPreviewExclusionMissingEmail": "Keine E-Mail-Adresse in Dotypos",
+  "emailCampaignsRecipientPreviewExclusionMissingFromDotypos": "In Dotypos nicht gefunden",
+  "emailCampaignsRecipientPreviewLanguageColumn": "Sprache",
+  "emailCampaignsRecipientPreviewNoAudience": "Diese Kampagne hat noch keine Zielgruppe. Wählen Sie im Kampagneneditor eine aus und sehen Sie sich dann die Empfänger an.",
+  "emailCampaignsRecipientPreviewReasonColumn": "Grund",
+  "emailCampaignsRecipientPreviewReceivesColumn": "Erhält die E-Mail",
+  "emailCampaignsRecipientPreviewReceivesInline": "Erhält sie: {customer}",
+  "emailCampaignsRecipientPreviewRecipients": "Empfänger",
+  "emailCampaignsRecipientPreviewRecipientsEmpty": "Die Zielgruppe umfasst derzeit keine Kunden.",
+  "emailCampaignsRecipientPreviewSharedEmails": "Geteilte Adressen",
+  "emailCampaignsRecipientPreviewSharedEmailsEmpty": "Keine zwei Kunden haben dieselbe E-Mail-Adresse.",
+  "emailCampaignsRecipientPreviewSharedEmailsNote": "Kunden mit derselben E-Mail-Adresse erhalten nur eine E-Mail. Sie geht an die Person, die zuletzt reserviert hat.",
+  "emailCampaignsRecipientPreviewSharedEmailsTitle": "Geteilte E-Mail-Adressen",
+  "emailCampaignsRecipientPreviewSkippedColumn": "Übersprungen",
+  "emailCampaignsRecipientPreviewSkippedInline": "Übersprungen:",
+  "emailCampaignsRecipientPreviewSummary": "Zusammenfassung",
+  "emailCampaignsRecipientPreviewTitle": "Empfängervorschau",
+  "emailCampaignsRecipientPreviewTryAgain": "Erneut versuchen",
+  "emailCampaignsRecipientPreviewUnavailable": "Die Empfänger konnten nicht ermittelt werden, weil Dotypos nicht erreichbar ist. Es wurde nichts geändert.",
+  "emailCampaignsSendConfirmCancel": "Abbrechen",
+  "emailCampaignsSendConfirmCodeInvalid": "Geben Sie den achtstelligen Code aus der letzten Test-E-Mail ein.",
+  "emailCampaignsSendConfirmCodeLabel": "Bestätigungscode",
+  "emailCampaignsSendConfirmDescription": "Geben Sie den Bestätigungscode aus der letzten Test-E-Mail ein. Der Code gilt 24 Stunden und nur für den Inhalt, den dieser Test gezeigt hat. Eine neuere Test-E-Mail oder eine Änderung des Inhalts ersetzt ihn.",
+  "emailCampaignsSendConfirmFailed": "Die Kampagne konnte nicht gesendet werden. Versuchen Sie es erneut.",
+  "emailCampaignsSendConfirmIrreversible": "Der Versand schreibt die Empfängerliste fest und kann nicht rückgängig gemacht werden.",
+  "emailCampaignsSendConfirmSubmit": "Kampagne senden",
+  "emailCampaignsSendConfirmSubmitting": "Wird gesendet …",
+  "emailCampaignsSendConfirmTitle": "Diese Kampagne senden",
+  "emailCampaignsSendConfirmUnsavedChanges": "Speichern Sie zuerst die Änderungen und senden Sie einen neuen Test. Die Kampagne sendet nur gespeicherte Inhalte.",
+  "emailCampaignsSendPreviewRecipients": "Empfängervorschau",
+  "emailCampaignsSendingFailureAudienceMissing": "Wählen Sie vor dem Senden eine Zielgruppe für diese Kampagne aus.",
+  "emailCampaignsSendingFailureAudienceNotFound": "Die Zielgruppe dieser Kampagne existiert nicht mehr. Wählen Sie eine andere Zielgruppe aus; es wurde nichts gesendet und der Code ist weiterhin gültig.",
+  "emailCampaignsSendingFailureCampaignNotFound": "Diese Kampagne existiert nicht mehr.",
+  "emailCampaignsSendingFailureCampaignReadOnly": "Diese Kampagne ist kein Entwurf mehr. Wenn Sie eine neue Kopie senden möchten, duplizieren Sie die Kampagne.",
+  "emailCampaignsSendingFailureCodeContentChanged": "Die Kampagne wurde nach dieser Test-E-Mail geändert. Senden Sie eine neue Test-E-Mail und verwenden Sie deren Code.",
+  "emailCampaignsSendingFailureCodeExpired": "Dieser Code ist abgelaufen. Senden Sie eine neue Test-E-Mail, um einen neuen Code zu erhalten.",
+  "emailCampaignsSendingFailureCodeSuperseded": "Dieser Code wurde durch eine neuere Test-E-Mail ersetzt. Verwenden Sie den Code aus der letzten Test-E-Mail.",
+  "emailCampaignsSendingFailureCodeTooManyAttempts": "Es wurden zu viele falsche Codes eingegeben, daher funktioniert dieser Code nicht mehr. Senden Sie eine neue Test-E-Mail, um einen neuen Code zu erhalten.",
+  "emailCampaignsSendingFailureCodeUnknown": "Dieser Code passt nicht zur letzten Test-E-Mail. Prüfen Sie ihn auf Tippfehler und versuchen Sie es erneut.",
+  "emailCampaignsSendingFailureContentMissing": "Geben Sie zuerst einen Betreff und einen E-Mail-Text in mindestens einer Sprache ein.",
+  "emailCampaignsSendingFailureDeliveryQueueFailed": "Die Zustellung konnte nicht in die Warteschlange gestellt werden, daher ist die Kampagne als „Fehlgeschlagen“ markiert. Senden Sie sie in Kürze erneut an die nicht erreichten Empfänger.",
+  "emailCampaignsSendingFailureEmailDeliveryFailed": "Der E-Mail-Anbieter hat die Test-E-Mail nicht angenommen. Versuchen Sie es in Kürze erneut.",
+  "emailCampaignsSendingFailureFallbackContentMissing": "Tschechisch ist die letzte Ersatzsprache für Kunden ohne Inhalte in ihrer Sprache. Ergänzen Sie daher tschechische Inhalte oder beschränken Sie die Zielgruppe auf eine der Sprachen, in denen die Kampagne vorliegt. Es wurde nichts gesendet.",
+  "emailCampaignsSendingFailureNoRecipients": "Die Zielgruppe hat derzeit keine erreichbaren Empfänger, daher wurde nichts gesendet.",
+  "emailCampaignsSendingFailureNotRetryable": "Ein erneuter Versand an nicht erreichte Empfänger ist nur bei einer fehlgeschlagenen Kampagne möglich.",
+  "emailCampaignsSendingFailureSigningKeyInvalid": "Bestätigungscodes können nicht ausgestellt werden, weil der Signaturschlüssel falsch konfiguriert ist. Bitten Sie das Entwicklungsteam, BETTER_AUTH_SECRETS zu prüfen.",
+  "emailCampaignsSendingFailureUnauthorized": "Ihre Anmeldung in der Administration ist nicht mehr gültig. Laden Sie die Seite neu und melden Sie sich an.",
+  "emailCampaignsSendingFailureUnexpected": "Etwas ist schiefgelaufen. Versuchen Sie es in Kürze erneut.",
+  "emailCampaignsSentAudience": "Zielgruppe",
+  "emailCampaignsSentAudienceDeleted": "Gelöschte Zielgruppe",
+  "emailCampaignsSentAudienceFilter": "Filter",
+  "emailCampaignsSentAudienceFilterCountedBack": "{filter}, zurückgerechnet ab dem Zeitpunkt des Versands ({sentAt}).",
+  "emailCampaignsSentAudienceFilterSummary": "{filter}.",
+  "emailCampaignsSentAudienceTitle": "Zielgruppe zum Zeitpunkt des Versands",
+  "emailCampaignsSentCampaignTitle": "Kampagne",
+  "emailCampaignsSentCompletedAt": "Abgeschlossen",
+  "emailCampaignsSentCompletedAtPending": "Noch nicht",
+  "emailCampaignsSentContentTitle": "Inhalt",
+  "emailCampaignsSentDeliveryRecipientCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} Empfänger",
+        "countPlural=other": "{formattedCount} Empfänger"
+      }
+    }
+  ],
+  "emailCampaignsSentDeliveryTitle": "Zustellung",
+  "emailCampaignsSentDeliveryUnconfirmedNote": "Unbestätigte Empfänger haben die E-Mail möglicherweise bereits: Der Anbieter hat ihren Stapel nie bestätigt. Der erneute Versand an nicht erreichte Empfänger überspringt sie, sofern Sie nicht auswählen, dass sie die E-Mail ebenfalls erhalten sollen.",
+  "emailCampaignsSentDuplicate": "Duplizieren",
+  "emailCampaignsSentDuplicateFailed": "Die Kampagne konnte nicht dupliziert werden.",
+  "emailCampaignsSentDuplicating": "Wird dupliziert …",
+  "emailCampaignsSentEmailNoPreview": "Keine Vorschau verfügbar.",
+  "emailCampaignsSentEmailRenderFailed": "Die E-Mail konnte nicht dargestellt werden.",
+  "emailCampaignsSentEyebrow": "E-Mail-Kampagne",
+  "emailCampaignsSentFailedNotice": "Bei einigen Empfängern ist die Zustellung fehlgeschlagen. Der erneute Versand an nicht erreichte Empfänger sendet die E-Mail nur an Empfänger, die sie nicht erhalten haben.",
+  "emailCampaignsSentIncludeUnconfirmed": "Auch erneut an unbestätigte Empfänger senden (sie erhalten die E-Mail eventuell doppelt)",
+  "emailCampaignsSentNoSendRecorded": "Für diese Kampagne wurde kein Versand erfasst.",
+  "emailCampaignsSentPurpose": "Zweck",
+  "emailCampaignsSentRecipientsCustomerColumn": "Kunde",
+  "emailCampaignsSentRecipientsEmpty": "Bei diesem Versand wurden keine Empfänger festgeschrieben.",
+  "emailCampaignsSentRecipientsLanguageColumn": "Sprache",
+  "emailCampaignsSentRecipientsLanguageSince": "{language} · seit {statusUpdatedAt}",
+  "emailCampaignsSentRecipientsSkipReasonColumn": "Grund (übersprungen)",
+  "emailCampaignsSentRecipientsSkipped": "Übersprungen: {reason}",
+  "emailCampaignsSentRecipientsStatusColumn": "Status",
+  "emailCampaignsSentRecipientsStatusSinceColumn": "Status seit",
+  "emailCampaignsSentRecipientsTableLabel": "Empfänger der Kampagne",
+  "emailCampaignsSentRecipientsTitle": "Empfänger",
+  "emailCampaignsSentRetry": "Unzugestellte erneut senden",
+  "emailCampaignsSentRetryFailed": "Die E-Mail konnte nicht erneut an die nicht erreichten Empfänger gesendet werden.",
+  "emailCampaignsSentRetryStarted": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Die E-Mail wird erneut an {formattedCount} nicht erreichten Empfänger gesendet.",
+        "countPlural=other": "Die E-Mail wird erneut an {formattedCount} nicht erreichte Empfänger gesendet."
+      }
+    }
+  ],
+  "emailCampaignsSentRetrying": "Wird erneut gesendet …",
+  "emailCampaignsSentSendingNotice": "Die Zustellung läuft. Die Status der Empfänger werden aktualisiert, sobald der E-Mail-Anbieter sie meldet.",
+  "emailCampaignsSentSentAt": "Gesendet",
+  "emailCampaignsSentSentAtNotRecorded": "Nicht erfasst",
+  "emailCampaignsSentSkipReasonConsentWithdrawn": "Marketing-Einwilligung widerrufen",
+  "emailCampaignsSentSkipReasonDeletedCustomer": "Kunde gelöscht",
+  "emailCampaignsSentSkipReasonInvalidEmail": "Ungültige E-Mail-Adresse",
+  "emailCampaignsSentSkipReasonMissingEmail": "E-Mail-Adresse fehlt",
+  "emailCampaignsSentSkipReasonMissingFromDotypos": "Nicht mehr in Dotypos",
+  "emailCampaignsSentSkipReasonOutsideTestDomain": "Außerhalb der Test-E-Mail-Domain",
+  "emailCampaignsSentStatus": "Status",
+  "emailCampaignsTestSendAdd": "Hinzufügen",
+  "emailCampaignsTestSendAddRecipientLabel": "Testempfänger hinzufügen",
+  "emailCampaignsTestSendAdminInboxAlways": "Das Postfach der Administration erhält Test-E-Mails immer.",
+  "emailCampaignsTestSendAdminInboxNote": "(Postfach der Administration, immer enthalten)",
+  "emailCampaignsTestSendCancel": "Abbrechen",
+  "emailCampaignsTestSendCodeExpires": "Der Bestätigungscode läuft am {expiresAt} ab.",
+  "emailCampaignsTestSendContentMissing": "Geben Sie vor dem Testversand einen Betreff und einen E-Mail-Text in mindestens einer Sprache ein.",
+  "emailCampaignsTestSendDescription": "Test-E-Mails enthalten den Bestätigungscode, den Sie beim Senden der Kampagne eingeben. Eine neue Test-E-Mail ersetzt den vorherigen Code.",
+  "emailCampaignsTestSendDone": "Fertig",
+  "emailCampaignsTestSendFailed": "Die Test-E-Mail konnte nicht gesendet werden. Überprüfen Sie die Adressen und versuchen Sie es erneut.",
+  "emailCampaignsTestSendPerLanguage": "Jede Adresse erhält pro Sprache eine [TEST]-E-Mail: {languages}.",
+  "emailCampaignsTestSendRecipientDuplicate": "Diese Adresse ist bereits enthalten.",
+  "emailCampaignsTestSendRecipientInvalid": "Geben Sie eine gültige E-Mail-Adresse ein.",
+  "emailCampaignsTestSendRecipientRequired": "Geben Sie eine E-Mail-Adresse ein.",
+  "emailCampaignsTestSendRecipients": "Empfänger",
+  "emailCampaignsTestSendRecipientsLabel": "Testempfänger",
+  "emailCampaignsTestSendRemoveRecipient": "{email} entfernen",
+  "emailCampaignsTestSendSent": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} Test-E-Mail gesendet ({languages}).",
+        "countPlural=other": "{formattedCount} Test-E-Mails gesendet ({languages})."
+      }
+    }
+  ],
+  "emailCampaignsTestSendSubmit": "Test senden",
+  "emailCampaignsTestSendSubmitting": "Wird gesendet …",
+  "emailCampaignsTestSendTitle": "Test-E-Mail senden",
+  "emailCampaignsTestSendUnsavedChanges": "Speichern Sie zuerst die Änderungen. Der Test verwendet die gespeicherte Kampagne, daher würde sein Code Ihre ungespeicherten Änderungen nicht bestätigen.",
+  "emailCampaignsActionTimedOut": "Der Server hat nicht rechtzeitig geantwortet. Versuchen Sie es erneut.",
+  "emailCampaignsDeliveryMismatch": "Diese Aktion funktioniert nur bei einmaligen Kampagnen, und diese Kampagne wird automatisch gesendet.",
+  "emailCampaignsActionFailedUnexpectedly": "Auf dem Server ist etwas schiefgelaufen. Versuchen Sie es erneut.",
+  "emailCampaignsAudienceInUseByDrafts": "Diese Zielgruppe wird von Kampagnenentwürfen verwendet und kann daher nur archiviert werden. Ordnen Sie die Entwürfe einer anderen Zielgruppe zu, bevor Sie diese Zielgruppe löschen.",
+  "emailCampaignsComposerEnglishFallbackMissing": "Ohne englische Inhalte erhalten deutsch- und ukrainischsprachige Empfänger, für deren Sprache Inhalte fehlen, die tschechische Fassung.",
+  "emailCampaignsSendingFailureTestRecipientsInvalid": "Eine der Adressen ist keine gültige E-Mail-Adresse. Überprüfen Sie die Adressen und versuchen Sie es erneut.",
+  "emailCampaignsSendingFailureRecipientsOutsideTestDomain": "Außerhalb der Produktion können Kampagnen-E-Mails nur an Adressen mit @{domain} gesendet werden, und einige Empfänger gehören nicht dazu. Es wurde nichts gesendet.",
+  "emailCampaignsSendingFailureRecipientsUnavailable": "Die Empfänger konnten nicht ermittelt werden, weil Dotypos oder die Datenbank nicht erreichbar ist. Es wurde nichts gesendet und der Code ist weiterhin gültig; versuchen Sie es in Kürze erneut.",
+  "emailCampaignsSendingFailureEmailSetupMissing": "Kampagnen-E-Mails sind in diesem Deployment nicht eingerichtet. Bitten Sie das Entwicklungsteam, die Umgebungsvariablen für Kampagnen-E-Mails zu prüfen."
+}

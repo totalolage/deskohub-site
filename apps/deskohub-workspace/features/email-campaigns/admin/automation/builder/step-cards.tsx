@@ -304,7 +304,7 @@ export function SendStepCard({
             >
               <dt className="font-semibold text-[0.7rem] text-navy-blue/55 uppercase tracking-[0.12em]">
                 {m.emailAutomationFlowSendSubjectLabel(
-                  { language: campaignLocaleName(contentLocale, locale) },
+                  { language: campaignLocaleName(contentLocale) },
                   { locale }
                 )}
               </dt>

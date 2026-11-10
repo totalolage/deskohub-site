@@ -8,7 +8,7 @@ import {
   signInCallbackReturnParam,
 } from "@/features/account/routes";
 import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
-import { m } from "@/features/i18n";
+import { baseLocale, defaultPhoneRegion, m } from "@/features/i18n";
 import { checkoutContactQueryParam } from "@/features/reservation/reservation-checkout-contact";
 import {
   findAuthUserIdByEmail,
@@ -645,8 +645,12 @@ export const assertSavedCheckoutProfile = ({
     "saved profile name does not match the typed contact"
   );
   assert(
-    Option.getOrNull(parsePhoneNumber(profile.phone ?? "")) ===
-      Option.getOrNull(parsePhoneNumber(contact.phone)),
+    Option.getOrNull(
+      parsePhoneNumber(profile.phone ?? "", defaultPhoneRegion(baseLocale))
+    ) ===
+      Option.getOrNull(
+        parsePhoneNumber(contact.phone, defaultPhoneRegion(baseLocale))
+      ),
     "saved profile phone does not match the typed contact"
   );
   assert(

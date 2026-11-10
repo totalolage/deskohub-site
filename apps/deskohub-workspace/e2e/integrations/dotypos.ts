@@ -16,6 +16,7 @@ import type {
   DiscountGroup,
   Reservation,
 } from "@deskohub/dotypos/generated";
+import { baseLocale } from "@deskohub/i18n/locale-registry";
 import { parsePhoneNumber } from "@deskohub/phone-number";
 import { Effect, Layer, Logger, Option, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
@@ -24,6 +25,7 @@ import {
   workspaceMeetingRoomReservationTableTag,
   workspaceOfficeReservationTableTag,
 } from "@/features/checkout/backend/reservation/workspace-table-selection";
+import { defaultPhoneRegion } from "@/features/i18n/phone-region";
 import { getOfficeReservationSeatCapacity } from "@/features/office/backend/office-reservation-capacity";
 import type { DatasourceConfig } from "../config";
 import {
@@ -489,7 +491,9 @@ export const prepareDotyposCustomerDiscount = (
       {
         ...customerName,
         email: data.email,
-        phone: Option.getOrUndefined(parsePhoneNumber(data.phone)),
+        phone: Option.getOrUndefined(
+          parsePhoneNumber(data.phone, defaultPhoneRegion(baseLocale))
+        ),
       },
       { lookupFields: ["email"] }
     );

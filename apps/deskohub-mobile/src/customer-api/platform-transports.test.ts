@@ -42,6 +42,7 @@ const account = {
   kind: "deletion-pending",
   email: testEmailAddress("customer"),
   deletion: "pending",
+  locale: null,
 };
 
 const run = <A, E>(

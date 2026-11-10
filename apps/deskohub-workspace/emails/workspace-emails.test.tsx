@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "react-email";
 import type { Locale } from "@/features/i18n";
-import { staffEmailLocale } from "@/shared/backend/email/staff-email-locale";
+import { staffLocale } from "@/shared/backend/staff-locale";
 import {
   contactBusinessPreviewProps,
   contactConfirmationPreviewProps,
@@ -89,7 +89,7 @@ describe("contact emails", () => {
       <ContactBusinessEmail {...contactBusinessPreviewProps} />
     );
 
-    expect(html).toContain(`lang="${staffEmailLocale}"`);
+    expect(html).toContain(`lang="${staffLocale}"`);
     expect(html).toContain(contactBusinessPreviewProps.email);
   });
 
@@ -153,7 +153,7 @@ describe("invoice delivery email", () => {
       />
     );
 
-    expect(html).toContain(`lang="${staffEmailLocale}"`);
+    expect(html).toContain(`lang="${staffLocale}"`);
     expect(html).toContain(invoiceDeliveryPreviewProps.invoiceNumber);
   });
 

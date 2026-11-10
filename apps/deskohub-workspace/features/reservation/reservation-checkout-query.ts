@@ -8,11 +8,31 @@ import {
 import type { ReservationCustomerMode } from "@/features/reservation/reservation-existing-customer";
 import { getSearchParam, type SupportedSearchParams } from "@/shared/utils";
 
-const queryCustomerSchemas = {
-  name: Schema.toStandardSchemaV1(reservationCustomerNameSchema),
-  email: Schema.toStandardSchemaV1(reservationCustomerEmailSchema),
-  phone: Schema.toStandardSchemaV1(reservationCustomerPhoneSchema),
-};
+const queryCustomerNameSchema = Schema.toStandardSchemaV1(
+  reservationCustomerNameSchema
+);
+const queryCustomerEmailSchema = Schema.toStandardSchemaV1(
+  reservationCustomerEmailSchema
+);
+
+/** The contact a link prefills, its phone read in `defaultPhoneRegion`. */
+const queryCustomerSchemas = (defaultPhoneRegion: string) => ({
+  name: queryCustomerNameSchema,
+  email: queryCustomerEmailSchema,
+  phone: Schema.toStandardSchemaV1(
+    reservationCustomerPhoneSchema(defaultPhoneRegion)
+  ),
+});
+
+type ReservationCustomerQueryParam = keyof ReturnType<
+  typeof queryCustomerSchemas
+>;
+
+const reservationCustomerQueryParams = [
+  "name",
+  "email",
+  "phone",
+] as const satisfies readonly ReservationCustomerQueryParam[];
 
 export const getTrimmedSearchParam = (
   searchParams: SupportedSearchParams,
@@ -36,7 +56,7 @@ export type ReservationSelectionSearchParams = Readonly<
 >;
 
 type ReservationContactQueryParam =
-  | keyof typeof queryCustomerSchemas
+  | ReservationCustomerQueryParam
   | typeof reservationCustomerQueryParam;
 
 /** Whether a URL names any of the given selection parameters. */
@@ -62,12 +82,19 @@ export const setReservationSelectionSearchParams = (
   }
 };
 
+/**
+ * The valid contact fields a link prefills. A phone without a country calling
+ * code is read in `defaultPhoneRegion`, the page locale's.
+ */
 export const decodeReservationCheckoutCustomer = (
-  searchParams: SupportedSearchParams
-): { [Key in keyof typeof queryCustomerSchemas]?: string } =>
+  searchParams: SupportedSearchParams,
+  defaultPhoneRegion: string
+): { [Key in ReservationCustomerQueryParam]?: string } =>
   Record.filter(
-    Record.map(queryCustomerSchemas, (schema, key): string | undefined =>
-      decodeStandardSchema(schema, getTrimmedSearchParam(searchParams, key))
+    Record.map(
+      queryCustomerSchemas(defaultPhoneRegion),
+      (schema, key): string | undefined =>
+        decodeStandardSchema(schema, getTrimmedSearchParam(searchParams, key))
     ),
     Predicate.isNotUndefined
   );
@@ -98,7 +125,7 @@ export const getReservationCustomerQueryMode = (
     getTrimmedSearchParam(searchParams, reservationCustomerQueryParam)
   ) ??
   (prefillsContact &&
-  Record.keys(queryCustomerSchemas).some(
+  reservationCustomerQueryParams.some(
     (key) => getTrimmedSearchParam(searchParams, key) !== undefined
   )
     ? "contact"

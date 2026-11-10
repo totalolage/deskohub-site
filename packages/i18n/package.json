@@ -17,7 +17,8 @@
     "./effect": "./src/effect.ts",
     "./action": "./src/action.ts",
     "./currency": "./src/currency.ts",
-    "./request-locale": "./src/request-locale.ts"
+    "./request-locale": "./src/request-locale.ts",
+    "./locale-registry": "./src/locale-registry.ts"
   },
   "dependencies": {
     "effect": "4.0.0-beta.85"

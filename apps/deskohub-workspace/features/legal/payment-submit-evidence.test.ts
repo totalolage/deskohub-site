@@ -11,9 +11,9 @@ import {
 } from "./payment-submit-evidence";
 
 const termsHash =
-  "94c5ab326bd014146ce95e7408885c33fe563821877ad507f8dd512ef4388b1a";
+  "d56d9e83196b802aee01393512cff46d0fef6e01449c72b229db535b0bf095c6";
 const operatingRulesHash =
-  "e1d0be9cf7391fbcbd96a11b5bc8a4ef527abec495e323a16f67e10b3b6a64af";
+  "05cefdd98d32159cfce228b230931f9cc257643d90f83f327589732476c8ba56";
 const acceptedAt = "2026-10-29T10:00:00Z";
 
 // The records checkout built by hand before the builder took them over.

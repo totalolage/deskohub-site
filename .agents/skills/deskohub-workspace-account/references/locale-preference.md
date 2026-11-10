@@ -32,6 +32,10 @@ and the hooks in `auth-server.ts`.
   `updateLocalePreference` Server Action as `save`. It saves under the account
   lock with the deletion-marker recheck, then navigates to the current URL in
   the new locale with a document navigation, even when the save fails.
+- The app saves it with the customer API's `PUT /account/locale`
+  (`updateLocale`), through `CustomerLocalePreference`, the same guarded
+  `saveAccountLocalePreference` under the request's authentication. It
+  writes no cookie and navigates nowhere; the app applies the language itself.
 - The action writes no cookie. Next treats a cookie write in a Server Action
   as a revalidation: the save's response re-renders the referring page under
   its old locale, and the client applies it while the document navigation
@@ -55,6 +59,9 @@ and the hooks in `auth-server.ts`.
   (`features/account/backend/saved-locale-preference.ts`) takes it from that
   session, so a deletion-pending account keeps its preference. Never read the
   `locale` column yourself on a request path.
+- `loadAccountState` keeps the session's preference as the
+  `localePreference` session setting; the customer API answers it as
+  `locale` on every signed-in account state, null when there is none.
 - Every failure resolves to no preference, so the guest chain serves the page.
   Only an unavailable session read logs `account.locale-preference.read`.
 - `pageLocalePreference`

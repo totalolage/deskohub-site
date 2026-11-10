@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "dependencies": {
     "@deskohub/cloudinary": "workspace:*",
+    "@deskohub/i18n": "workspace:*",
     "next-cloudinary": "^6.16.0"
   },
   "peerDependencies": {

@@ -84,6 +84,10 @@ describe("referral benefit identity", () => {
             {},
             { locale: "en-US" }
           ),
+          staffLabel: m.checkoutSummaryItemReferralInvitationDiscount(
+            {},
+            { locale: "cs-CZ" }
+          ),
           adjustment: { kind: "percentage", basisPoints: 1_500 },
         },
         provenance: {
@@ -121,6 +125,10 @@ describe("referral benefit identity", () => {
           label: m.checkoutSummaryItemReferralDiscount(
             { count: "2" },
             { locale: "en-US" }
+          ),
+          staffLabel: m.checkoutSummaryItemReferralDiscount(
+            { count: "2" },
+            { locale: "cs-CZ" }
           ),
           adjustment: { kind: "fixed", amount: currencyCZK(1_950) },
         },
@@ -428,6 +436,10 @@ describe("pricing the referral phase", () => {
               label: m.checkoutSummaryItemReferralDiscount(
                 { count: "1" },
                 { locale: "en-US" }
+              ),
+              staffLabel: m.checkoutSummaryItemReferralDiscount(
+                { count: "1" },
+                { locale: "cs-CZ" }
               ),
               adjustment: { kind: "fixed", amount: currencyCZK(850) },
             },

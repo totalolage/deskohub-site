@@ -1,3 +1,4 @@
+import type { SupportedLocale } from "@deskohub/i18n/locale-registry";
 import { Data, Option, Schema, SchemaGetter } from "effect";
 import {
   type EmailCustomerField,
@@ -512,16 +513,22 @@ type ValueScope = {
 };
 
 /**
- * Every problem that keeps `draft` from publication with the current
- * `currentLocales`, each with its place. Saving a draft never needs zero
- * problems; publication does. Definitions nothing references are never
- * checked: they don't block and publication drops unfinished ones.
+ * The one language publication requires a translation in. Every locale's
+ * fallback chain reaches it, so a recipient in any language gets a
+ * translation; every other language is optional and used when present.
+ */
+export const requiredEmailLocale = "cs-CZ" satisfies SupportedLocale;
+
+/**
+ * Every problem that keeps `draft` from publication, each with its place.
+ * Saving a draft never needs zero problems; publication does. Definitions
+ * nothing references are never checked: they don't block and publication
+ * drops unfinished ones.
  */
 export const emailDraftProblems = (
-  draft: EmailDraft,
-  currentLocales: readonly string[]
+  draft: EmailDraft
 ): readonly EmailDocumentProblem[] => {
-  const problems = draftContentProblems(draft, currentLocales);
+  const problems = draftContentProblems(draft);
   if (problems.length > 0) return problems;
   return Option.isSome(
     Schema.decodeUnknownOption(EmailDocument)(publicationCandidate(draft))
@@ -532,12 +539,9 @@ export const emailDraftProblems = (
 
 /**
  * Problems in a stable order: document identity, value definitions, each
- * component, languages, then each translation.
+ * component, the required language, then each translation.
  */
-function draftContentProblems(
-  draft: EmailDraft,
-  currentLocales: readonly string[]
-): EmailDocumentProblem[] {
+function draftContentProblems(draft: EmailDraft): EmailDocumentProblem[] {
   const structure = draft.structure ?? [];
   const repeatedIds = repeatedComponentIds(structure);
   const duplicateIds = new Set(repeatedIds);
@@ -553,9 +557,9 @@ function draftContentProblems(
     ...structure.flatMap((component, index) =>
       componentProblems(component, index, duplicateIds, values)
     ),
-    ...currentLocales
-      .filter((locale) => !Object.hasOwn(translations, locale))
-      .map((locale) => P.LanguageMissing({ locale })),
+    ...(Object.hasOwn(translations, requiredEmailLocale)
+      ? []
+      : [P.LanguageMissing({ locale: requiredEmailLocale })]),
     ...Object.entries(translations).flatMap(([locale, translation]) =>
       translationProblems(structure, { locale, translation, values })
     ),
@@ -927,69 +931,61 @@ const isMalformedField = (field: readonly string[] | undefined): boolean =>
 
 /** English descriptions of every problem that blocks publishing `document`. */
 export const emailPublicationProblems = (
-  document: EmailDocument,
-  currentLocales: readonly string[]
+  document: EmailDocument
 ): readonly string[] =>
-  emailDraftProblems(document, currentLocales).map(englishEmailDocumentProblem);
+  emailDraftProblems(document).map(englishEmailDocumentProblem);
 
 /**
- * Decodes a stored draft into the version publication creates. Call with the
- * application's current locale registry at every explicit publication.
- * Unused unfinished definitions are dropped first; every remaining problem
- * from `emailDraftProblems` blocks.
+ * Decodes a stored draft into the version publication creates, at every
+ * explicit publication. Unused unfinished definitions are dropped first;
+ * every remaining problem from `emailDraftProblems` blocks.
  */
-export const emailDocumentForPublication = (
-  currentLocales: readonly string[]
-) =>
-  EmailDraft.pipe(
-    Schema.decodeTo(EmailDocument, {
-      // The strict document schema validates the pruned draft's shape next.
-      decode: SchemaGetter.transform(
-        (draft) =>
-          publicationCandidate(draft) as unknown as typeof EmailDocument.Encoded
-      ),
-      encode: SchemaGetter.transform(
-        (document) => document as unknown as EmailDraft
-      ),
+export const EmailDocumentForPublication = EmailDraft.pipe(
+  Schema.decodeTo(EmailDocument, {
+    // The strict document schema validates the pruned draft's shape next.
+    decode: SchemaGetter.transform(
+      (draft) =>
+        publicationCandidate(draft) as unknown as typeof EmailDocument.Encoded
+    ),
+    encode: SchemaGetter.transform(
+      (document) => document as unknown as EmailDraft
+    ),
+  })
+)
+  .check(
+    Schema.makeFilter((document) => emailDraftProblems(document).length === 0, {
+      description:
+        "A Czech (cs-CZ) translation, nonempty subjects and body, unique names and component ids, valid localized text, destinations and typed value references are required; other languages are optional.",
     })
   )
-    .check(
-      Schema.makeFilter(
-        (document) => emailDraftProblems(document, currentLocales).length === 0,
-        {
-          description:
-            "Every current language, nonempty subjects and body, unique names and component ids, valid localized text, destinations and typed value references are required.",
-        }
-      )
-    )
-    .pipe(
-      Schema.decodeTo(Schema.toType(EmailDocument), {
-        decode: SchemaGetter.transform((document) => ({
-          ...document,
-          values: document.values.map((definition) => {
-            if (definition.source.kind !== "customer") return definition;
-            const shape = selectedEmailCustomerShape(definition.source);
-            const selected = emailCustomerFieldAtPath(
-              emailCustomerFieldCatalogue,
-              definition.source.path,
-              { inheritPresence: false }
-            );
-            const sortShape =
-              definition.source.sort && selected?.kind === "list"
-                ? emailCustomerFieldAtPath(
-                    selected.element,
-                    definition.source.sort.path
-                  )
-                : undefined;
-            return shape
-              ? {
-                  ...definition,
-                  customerShape: shape,
-                  ...(sortShape ? { customerSortShape: sortShape } : {}),
-                }
-              : definition;
-          }),
-        })),
-        encode: SchemaGetter.transform((document) => document),
-      })
-    );
+  .pipe(
+    Schema.decodeTo(Schema.toType(EmailDocument), {
+      decode: SchemaGetter.transform((document) => ({
+        ...document,
+        values: document.values.map((definition) => {
+          if (definition.source.kind !== "customer") return definition;
+          const shape = selectedEmailCustomerShape(definition.source);
+          const selected = emailCustomerFieldAtPath(
+            emailCustomerFieldCatalogue,
+            definition.source.path,
+            { inheritPresence: false }
+          );
+          const sortShape =
+            definition.source.sort && selected?.kind === "list"
+              ? emailCustomerFieldAtPath(
+                  selected.element,
+                  definition.source.sort.path
+                )
+              : undefined;
+          return shape
+            ? {
+                ...definition,
+                customerShape: shape,
+                ...(sortShape ? { customerSortShape: sortShape } : {}),
+              }
+            : definition;
+        }),
+      })),
+      encode: SchemaGetter.transform((document) => document),
+    })
+  );

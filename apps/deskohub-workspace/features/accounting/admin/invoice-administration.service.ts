@@ -64,6 +64,7 @@ import {
 } from "@/features/administration/administration-href";
 import { unnamedCustomerDisplayName } from "@/features/administration/customer-name";
 import { getAdministrationPagination } from "@/features/administration/listing";
+import { baseLocale, defaultPhoneRegion, type Locale } from "@/features/i18n";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import {
   defaultWorkspaceCurrencyCode,
@@ -143,7 +144,7 @@ export type InvoiceAdministrationListItem = {
 };
 
 export type InvoiceAdministrationDetail = InvoiceAdministrationListItem & {
-  readonly locale: "cs-CZ" | "en-US";
+  readonly locale: Locale;
   readonly serviceDate: string | null;
   readonly dueDate: string | null;
   readonly paidOn: string | null;
@@ -579,7 +580,13 @@ const toDotyposDetails = (
   firstName: details.firstName ?? "",
   lastName: details.lastName ?? "",
   email: details.email,
-  phone: Option.getOrUndefined(parsePhoneNumber(details.phone ?? "")),
+  // Not a visitor's input: the phone is the Dotypos customer's stored one or
+  // what an administrator enters for the business's own customer, so a number
+  // without a country calling code is a national one of the business's
+  // market, the base locale's region, whatever the Admin's language.
+  phone: Option.getOrUndefined(
+    parsePhoneNumber(details.phone ?? "", defaultPhoneRegion(baseLocale))
+  ),
   addressLine1: details.address.line1,
   addressLine2: details.address.line2 ?? "",
   city: details.address.city,

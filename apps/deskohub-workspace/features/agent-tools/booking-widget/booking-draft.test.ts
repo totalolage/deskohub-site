@@ -22,13 +22,16 @@ const draft = (change: Partial<BookingDraft> = {}): BookingDraft => ({
 });
 
 describe("getBookingLocale", () => {
-  test("prefers the agent's locale, then a Czech host, then English", () => {
+  test("prefers the agent's locale, then the host's language, then English", () => {
     expect(getBookingLocale({ requested: "en-US", hostLocale: "cs-CZ" })).toBe(
       "en-US"
     );
     expect(getBookingLocale({ hostLocale: "cs" })).toBe("cs-CZ");
     expect(getBookingLocale({ hostLocale: "CS-cz" })).toBe("cs-CZ");
-    expect(getBookingLocale({ hostLocale: "de-DE" })).toBe("en-US");
+    expect(getBookingLocale({ hostLocale: "en-GB" })).toBe("en-US");
+    expect(getBookingLocale({ hostLocale: "cs_CZ" })).toBe("cs-CZ");
+    expect(getBookingLocale({ hostLocale: "csb" })).toBe("en-US");
+    expect(getBookingLocale({ hostLocale: "fr-FR" })).toBe("en-US");
     expect(getBookingLocale({})).toBe("en-US");
   });
 });

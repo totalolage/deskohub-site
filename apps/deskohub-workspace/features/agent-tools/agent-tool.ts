@@ -1,10 +1,11 @@
+import { baseLocale, supportedLocales } from "@deskohub/i18n/locale-registry";
 import type {
   StandardJSONSchemaV1,
   StandardSchemaV1,
 } from "@standard-schema/spec";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import type { CustomerAgentScope } from "@/features/account";
-import { defaultLocale, type Locale, locales } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { getFirstInvalidFieldPath } from "@/shared/utils/schema-issue";
 import type { AgentToolAccountBudget } from "./agent-tool-call-budget";
 import {
@@ -120,17 +121,16 @@ export class CallableAgentTools extends Context.Service<
 
 /** The optional `locale` every tool accepts; messages default to English. */
 export const agentToolLocaleField = Schema.optionalKey(
-  Schema.Literals(locales).annotate({
-    description:
-      "Language of messages and product names in the result. Defaults to en-US.",
+  Schema.Literals(supportedLocales).annotate({
+    description: `Language of messages and product names in the result. Defaults to ${baseLocale}.`,
   })
 );
 
 export const getAgentToolLocale = (input: { readonly locale?: Locale }) =>
-  input.locale ?? defaultLocale;
+  input.locale ?? baseLocale;
 
 const agentToolLocaleInputSchema = Schema.Struct({
-  locale: Schema.optionalKey(Schema.Literals(locales)),
+  locale: Schema.optionalKey(Schema.Literals(supportedLocales)),
 });
 
 /**
@@ -139,7 +139,7 @@ const agentToolLocaleInputSchema = Schema.Struct({
  */
 export const getRequestedAgentToolLocale = (args: Schema.Json): Locale =>
   Option.match(Schema.decodeUnknownOption(agentToolLocaleInputSchema)(args), {
-    onNone: () => defaultLocale,
+    onNone: () => baseLocale,
     onSome: getAgentToolLocale,
   });
 

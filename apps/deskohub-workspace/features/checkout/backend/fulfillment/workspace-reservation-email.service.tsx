@@ -59,6 +59,7 @@ import {
   internalWorkspaceEmailSubject,
   workspaceEmailRecipient,
 } from "@/shared/backend/email/workspace-email-recipients";
+import { staffLocale } from "@/shared/backend/staff-locale";
 import {
   getWorkspaceCanonicalUrl,
   workspaceFormattedAddress,
@@ -117,7 +118,6 @@ const workspaceNetworkQrContentId = "workspace-wifi-qr";
 const workspaceLocationMapUrl = getWorkspaceCanonicalUrl(
   workspaceLocationMapImagePath
 );
-const internalNotificationLocale: Locale = "cs-CZ";
 
 // The author confirmation is sent once per reservation; fulfillment retries
 // and customer delivery recovery reuse this key, so the provider collapses
@@ -233,7 +233,7 @@ const createInternalReservationSubject = (
   internalWorkspaceEmailSubject(
     m.checkoutEmailInternalPaidReservationSubject(
       { orderId: reservation.id },
-      { locale: internalNotificationLocale }
+      { locale: staffLocale }
     )
   );
 
@@ -535,20 +535,20 @@ const createInternalReservationEmail = (
   <ReservationNotificationEmail
     body={m.checkoutEmailInternalPaidReservationBody(
       {},
-      { locale: internalNotificationLocale }
+      { locale: staffLocale }
     )}
     details={createInternalReservationDetails(
       reservation,
       reservation.customer,
-      internalNotificationLocale
+      staffLocale
     )}
     heading={m.checkoutEmailInternalPaidReservationHeading(
       {},
-      { locale: internalNotificationLocale }
+      { locale: staffLocale }
     )}
     preview={m.checkoutEmailInternalPaidReservationSubject(
       { orderId: reservation.id },
-      { locale: internalNotificationLocale }
+      { locale: staffLocale }
     )}
   />
 );

@@ -15,6 +15,7 @@ export const accountSectionOrder = [
   "referrals",
   "complete",
   "profile",
+  "language",
   "security",
   "assistants",
   "billing",
@@ -28,6 +29,7 @@ export const accountSectionHref = {
   referrals: "/account/referrals",
   complete: "/account/complete",
   profile: "/account/profile",
+  language: "/account/language",
   security: "/account/security",
   assistants: "/account/assistants",
   billing: "/account/billing",
@@ -61,6 +63,9 @@ const sectionAvailable: Record<
   referrals: (account) => account.kind === "linked" && account.referralsEnabled,
   complete: (account) => account.kind === "completion-required",
   profile: (account) => account.kind === "linked",
+  // The language is a sign-in setting, not profile data; the API refuses it
+  // only while deletion is pending.
+  language: (account) => account.kind !== "deletion-pending",
   billing: (account) => account.kind === "linked",
   // Sign-in methods and assistants need only the session; the API leaves
   // them out while the release withholds passkeys or deletion is pending.
