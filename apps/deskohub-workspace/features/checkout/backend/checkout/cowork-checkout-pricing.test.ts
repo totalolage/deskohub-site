@@ -328,6 +328,51 @@ describe("cowork checkout pricing", () => {
       );
     });
 
+    test("affirms a still-available advertised code with its submitted-code metadata", async () => {
+      const codeQuote = discountQuoteCodec.make({
+        ...advertisementQuote,
+        discounts: [...advertisementQuote.discounts, codeApplication],
+        totalDiscount: money(21_000),
+        discountedSubtotal: money(14_000),
+      });
+      const advertisedQuote = await Effect.runPromise(
+        buildCoworkReservationQuote(reservation, { discountQuote: codeQuote })
+      );
+
+      const result = await runWithDiscounts(
+        Effect.gen(function* () {
+          const pricing = yield* coworkCheckoutPricing;
+          return yield* pricing.affirmAdvertisement({
+            advertisement: {
+              locale: "en-US",
+              reservation: advertisedReservation,
+              quote: advertisedQuote,
+              submittedCode,
+              submittedCodeDiscountId: codeDiscountId,
+            },
+            reservation,
+            locale: "en-US",
+            bookedAt,
+          });
+        }),
+        DiscountServiceMock({
+          affirmAdvertisement: () => Effect.succeed(affirmedAdvertisement),
+          previewDiscountCode: () =>
+            Effect.succeed({ application: codeApplication, quote: codeQuote }),
+        })
+      );
+
+      expect(result).toMatchObject({
+        status: "affirmed",
+        priced: {
+          submittedCode,
+          submittedCodeDiscountId: codeDiscountId,
+          advertisedQuote,
+          discountQuote: { discounts: codeQuote.discounts },
+        },
+      });
+    });
+
     test("omits a code from discovery when its provider is unavailable", async () => {
       const result = await runWithDiscounts(
         Effect.gen(function* () {
