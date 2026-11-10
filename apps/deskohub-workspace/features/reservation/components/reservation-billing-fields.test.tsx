@@ -68,9 +68,8 @@ const ValidatedHarness = ({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(() => undefined)}>
+      <form aria-label="Billing" onSubmit={form.handleSubmit(() => undefined)}>
         <ReservationBillingFields locale={locale} />
-        <button type="submit">Submit</button>
       </form>
     </Form>
   );
@@ -166,7 +165,8 @@ describe("ReservationBillingFields", () => {
         />
       );
 
-      fireEvent.click(view.getByRole("button", { name: "Submit" }));
+      // The required inputs would block a native submit; the resolver decides.
+      fireEvent.submit(view.getByRole("form"));
 
       expect(
         await view.findAllByText(
@@ -196,7 +196,8 @@ describe("ReservationBillingFields", () => {
         />
       );
 
-      fireEvent.click(view.getByRole("button", { name: "Submit" }));
+      // The required inputs would block a native submit; the resolver decides.
+      fireEvent.submit(view.getByRole("form"));
 
       expect(
         await view.findByText(
