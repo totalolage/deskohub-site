@@ -17,7 +17,10 @@ import {
 } from "@deskohub/email-resend";
 import { Config, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { campaignEmailKind } from "@/features/email-campaigns/campaign-email-kind";
+import {
+  campaignEmailKind,
+  campaignTestEmailCategory,
+} from "@/features/email-campaigns/campaign-email-kind";
 import { makeEmailFallbackAnalyticsObserver } from "@/shared/backend/analytics/email-fallback-analytics-observer";
 import { ServerAnalytics } from "@/shared/backend/analytics/server-analytics.service";
 import { makePostHogDeliveryTrackingObserver } from "@/shared/backend/email/posthog-delivery-tracking-observer";
@@ -37,12 +40,14 @@ const EmailConfigLayer = makeEmailConfigLayer(
 const workspaceMarketingEmailKinds = [campaignEmailKind];
 
 /**
- * Categories the Workspace sends as marketing mail. Every other message is
- * transactional.
+ * Categories the Workspace sends as marketing mail: campaign deliveries and
+ * campaign test emails, so a test goes the way the real send will. Every
+ * other message is transactional.
  */
-export const workspaceMarketingCategories: ReadonlySet<string> = new Set(
-  workspaceMarketingEmailKinds.map(({ category }) => category)
-);
+export const workspaceMarketingCategories: ReadonlySet<string> = new Set([
+  ...workspaceMarketingEmailKinds.map(({ category }) => category),
+  campaignTestEmailCategory,
+]);
 
 /**
  * The Workspace's provider chains. Transactional mail goes only through
@@ -72,8 +77,9 @@ export const workspaceEmailProviders = (providers: {
 
 /**
  * The PostHog distinct id of campaign mail to a recipient without a consented
- * customer account, so PostHog never keys a person by the recipient's
- * address. Engagement events of all such recipients share this one person.
+ * customer account, campaign test emails included, so PostHog never keys a
+ * person by the recipient's address. Engagement events of all such
+ * recipients share this one person.
  */
 export const workspaceEmailSystemIdentity = "workspace-email-system";
 

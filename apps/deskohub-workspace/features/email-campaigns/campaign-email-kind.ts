@@ -19,3 +19,10 @@ export const campaignEmailKind: EmailKind<CampaignEmailRecipient> = {
   category: "email-campaign",
   metadata: Schema.toStandardSchemaV1(CampaignEmailMetadata),
 };
+
+/**
+ * The `category` tag of a campaign test email, which goes to an admin inbox
+ * and isn't a delivery: it carries no recipient metadata, and no
+ * delivery-report handler applies its reports.
+ */
+export const campaignTestEmailCategory = "email-campaign-test";

@@ -51,7 +51,7 @@ const {
   workspaceEmailSystemIdentity,
   workspaceMarketingCategories,
 } = await import("./email.config");
-const { campaignEmailKind } = await import(
+const { campaignEmailKind, campaignTestEmailCategory } = await import(
   "@/features/email-campaigns/campaign-email-kind"
 );
 const { makeRecordingWorkspaceDatabase } = await import(
@@ -272,16 +272,19 @@ describe("WorkspaceEmailLayer", () => {
     interface PostHogRequest {
       readonly url: string;
       readonly distinctId: string | undefined;
+      readonly templateKey: string | undefined;
     }
     const postHogAnswering = (status: number, answer: PostHogAnswer) => {
       const requests: PostHogRequest[] = [];
       const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-        const sent: { readonly distinct_id?: string } = JSON.parse(
-          await new Response(init?.body).text()
-        );
+        const sent: {
+          readonly distinct_id?: string;
+          readonly template_key?: string;
+        } = JSON.parse(await new Response(init?.body).text());
         requests.push({
           url: input instanceof Request ? input.url : String(input),
           distinctId: sent.distinct_id,
+          templateKey: sent.template_key,
         });
         return Response.json(answer, { status });
       }) as typeof globalThis.fetch;
@@ -296,47 +299,57 @@ describe("WorkspaceEmailLayer", () => {
       tags: [campaignEmailKind.category],
     };
 
-    test("sends campaign mail through PostHog's app host under the system identity", async () => {
-      const posthog = postHogAnswering(202, {
-        message_id: "0197a5e1-1b52-7c4e-9f5a-2d3b4c5d6e7f",
-      });
-      const result = await runWorkspaceEmail(send(campaignMessage), "re_test", {
-        config,
-        fetch: posthog.fetch,
+    describe.each([
+      ["campaign deliveries", campaignEmailKind.category],
+      ["campaign test emails", campaignTestEmailCategory],
+    ])("%s", (_, category) => {
+      const categoryMessage = { ...message(realRecipient), tags: [category] };
+
+      test("go through PostHog's app host under the system identity, tracked for status polls", async () => {
+        const posthog = postHogAnswering(202, {
+          message_id: "0197a5e1-1b52-7c4e-9f5a-2d3b4c5d6e7f",
+        });
+        const result = await runWorkspaceEmail(
+          send(categoryMessage),
+          "re_test",
+          { config, fetch: posthog.fetch }
+        );
+
+        expect(result._tag).toBe("Success");
+        if (result._tag === "Success") {
+          expect(result.success.provider).toBe("posthog");
+        }
+        expect(posthog.requests).toHaveLength(1);
+        expect(new URL(posthog.requests[0]?.url ?? "").origin).toBe(
+          "https://eu.posthog.com"
+        );
+        expect(posthog.requests[0]?.distinctId).toBe(
+          workspaceEmailSystemIdentity
+        );
+        expect(posthog.requests[0]?.templateKey).toBe(category);
+        expect(resendSend).not.toHaveBeenCalled();
+        expect(postHogDeliveryInserts()).toHaveLength(1);
       });
 
-      expect(result._tag).toBe("Success");
-      if (result._tag === "Success") {
-        expect(result.success.provider).toBe("posthog");
-      }
-      expect(posthog.requests).toHaveLength(1);
-      expect(new URL(posthog.requests[0]?.url ?? "").origin).toBe(
-        "https://eu.posthog.com"
-      );
-      expect(posthog.requests[0]?.distinctId).toBe(
-        workspaceEmailSystemIdentity
-      );
-      expect(resendSend).not.toHaveBeenCalled();
-      expect(postHogDeliveryInserts()).toHaveLength(1);
-    });
+      test("fall back to Resend when PostHog refuses to send", async () => {
+        const posthog = postHogAnswering(401, {
+          type: "authentication_error",
+          code: "authentication_failed",
+        });
+        const result = await runWorkspaceEmail(
+          send(categoryMessage),
+          "re_test",
+          { config, fetch: posthog.fetch }
+        );
 
-    test("falls back to Resend when PostHog refuses to send", async () => {
-      const posthog = postHogAnswering(401, {
-        type: "authentication_error",
-        code: "authentication_failed",
+        expect(posthog.requests).toHaveLength(1);
+        expect(result._tag).toBe("Success");
+        if (result._tag === "Success") {
+          expect(result.success.provider).toBe("resend");
+        }
+        expect(resendSend).toHaveBeenCalledTimes(1);
+        expect(postHogDeliveryInserts()).toEqual([]);
       });
-      const result = await runWorkspaceEmail(send(campaignMessage), "re_test", {
-        config,
-        fetch: posthog.fetch,
-      });
-
-      expect(posthog.requests).toHaveLength(1);
-      expect(result._tag).toBe("Success");
-      if (result._tag === "Success") {
-        expect(result.success.provider).toBe("resend");
-      }
-      expect(resendSend).toHaveBeenCalledTimes(1);
-      expect(postHogDeliveryInserts()).toEqual([]);
     });
 
     test("keeps campaign mail PostHog may still send off Resend", async () => {
@@ -407,10 +420,11 @@ describe("workspaceEmailProviders", () => {
   const names = (chain: ReadonlyArray<EmailProvider>) =>
     chain.map((provider) => provider.name);
 
-  test("campaign deliveries are the marketing stream", () => {
-    expect(workspaceMarketingCategories.has(campaignEmailKind.category)).toBe(
-      true
-    );
+  test("campaign deliveries and campaign test emails are the marketing stream", () => {
+    expect([...workspaceMarketingCategories]).toEqual([
+      campaignEmailKind.category,
+      campaignTestEmailCategory,
+    ]);
   });
 
   test("transactional mail only ever goes through Resend; marketing tries PostHog first", () => {

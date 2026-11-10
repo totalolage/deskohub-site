@@ -20,7 +20,7 @@ mock.module("resend", () => ({
 }));
 
 const { makeWorkspaceEmailLayer } = await import("./email.config");
-const { campaignEmailKind } = await import(
+const { campaignEmailKind, campaignTestEmailCategory } = await import(
   "@/features/email-campaigns/campaign-email-kind"
 );
 const { campaignSendIdSchema } = await import(
@@ -46,6 +46,15 @@ const campaignDelivery = (): EmailMessage => ({
     dotyposCustomerId,
     deploymentEnvironment: "preview",
   }),
+});
+
+/** A campaign test email, as the admin send-test action sends one. */
+const campaignTestEmail = (): EmailMessage => ({
+  from: { email: testEmailAddress("campaigns") },
+  to: { email: resendSimulatorAddress("delivered", "ada") },
+  subject: "[TEST] Autumn news",
+  text: "Hello",
+  tags: [campaignTestEmailCategory],
 });
 
 /** PostHog's answer: an accepted message id, or a refusal code. */
@@ -82,21 +91,21 @@ describe.skipIf(!testDatabase)(
     );
 
     /**
-     * Sends a campaign delivery through the Workspace email layer, wrapped in
-     * `around` as a caller would, the way campaign delivery composes the
-     * layer: the email layer and the caller over the same database layer.
+     * Sends `message`, a campaign delivery unless given, through the
+     * Workspace email layer, wrapped in `around` as a caller would, the way
+     * campaign delivery composes the layer: the email layer and the caller
+     * over the same database layer.
      */
     const sendCampaignDelivery = (
       fetch: typeof globalThis.fetch,
       around: <A, E, R>(
         send: Effect.Effect<A, E, R>
-      ) => Effect.Effect<A, E, R | WorkspaceDatabase> = (send) => send
+      ) => Effect.Effect<A, E, R | WorkspaceDatabase> = (send) => send,
+      message: EmailMessage = campaignDelivery()
     ) =>
       Effect.runPromise(
         around(
-          Effect.flatMap(EmailServiceTag, (email) =>
-            email.send(campaignDelivery())
-          )
+          Effect.flatMap(EmailServiceTag, (email) => email.send(message))
         ).pipe(
           Effect.provide(
             makeWorkspaceEmailLayer(databasePerBuild).pipe(
@@ -143,6 +152,25 @@ describe.skipIf(!testDatabase)(
             campaignSendId,
             dotyposCustomerId,
           },
+          status: "queued",
+        },
+      ]);
+    });
+
+    test("tracks a campaign test email PostHog accepted, with only its category", async () => {
+      const messageId = crypto.randomUUID();
+
+      const sent = await sendCampaignDelivery(
+        postHogAnswering(202, { message_id: messageId }),
+        undefined,
+        campaignTestEmail()
+      );
+
+      expect(sent).toMatchObject({ provider: "posthog", id: messageId });
+      expect(await trackedDelivery(messageId)).toEqual([
+        {
+          category: campaignTestEmailCategory,
+          tags: { category: campaignTestEmailCategory },
           status: "queued",
         },
       ]);

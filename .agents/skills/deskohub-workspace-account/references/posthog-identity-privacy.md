@@ -497,8 +497,9 @@ blanks the row and marks it deleted on the next sync.
 
 ## Campaign email through PostHog
 
-Campaign (marketing) email goes to PostHog's transactional email API (EU
-Cloud, the production project) first and Resend second, per message, which
+Campaign (marketing) email, campaign test emails included, goes to PostHog's
+transactional email API (EU Cloud, the production project) first and Resend
+second, per message, which
 makes PostHog an email processor as well as the analytics one.
 Transactional email (magic links, reservations, invoices, contact form,
 Boardgame Bar) goes only to Resend. Delivery rules are in the
@@ -532,7 +533,7 @@ The processor and transfer rows are in
   gate as `ReservationAnalyticsPerson`, in `CampaignRecipientAnalyticsIdentity`
   (`features/email-campaigns/backend/campaign-recipient-analytics-identity.service.ts`;
   live accounts only, and an unreadable account or consent gives no
-  identity). Consent is re-read right before every send, replays included. Otherwise the message carries no identity and the
+  identity). Consent is re-read right before every send, replays included. A campaign test email never has one. Otherwise the message carries no identity and the
   PostHog provider sends its one fixed system identity (`systemIdentity`;
   Workspace: `workspace-email-system`, `workspaceEmailSystemIdentity` in
   `shared/backend/config/email.config.ts`).

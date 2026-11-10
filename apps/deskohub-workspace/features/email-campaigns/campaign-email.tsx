@@ -14,14 +14,14 @@ import type {
   CampaignTemplateKey,
 } from "./body/campaign-content";
 import { campaignTemplates } from "./body/campaign-templates";
-import { campaignEmailKind } from "./campaign-email-kind";
+import {
+  campaignEmailKind,
+  campaignTestEmailCategory,
+} from "./campaign-email-kind";
 import type {
   CampaignConfirmationCode,
   CampaignSendId,
 } from "./campaign-identifiers";
-
-/** Resend `category` tag of campaign test emails, which aren't deliveries. */
-const campaignTestEmailCategory = "email-campaign-test";
 
 const testSubjectPrefix = "[TEST]";
 

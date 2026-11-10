@@ -26,6 +26,7 @@ import {
   type PostHogEmailDeliveryStatus,
   postHogEmailDeliveries,
 } from "@/db/schema/posthog-email-deliveries";
+import { campaignTestEmailCategory } from "@/features/email-campaigns/campaign-email-kind";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type DeliveryReport,
@@ -439,6 +440,24 @@ describe.skipIf(!database)("PostHog email delivery polling", () => {
       expect(await readDelivery(id)).toMatchObject({
         status: "delivered",
         settledAt: start,
+      });
+    });
+
+    test("settles a delivery of a kind no handler claims, such as a campaign test email", async () => {
+      const id = await insertDelivery({
+        tags: { category: campaignTestEmailCategory },
+        reads: [found("bounced")],
+      });
+
+      expect(await pollAt("schedule", start)).toMatchObject({ settled: 1 });
+
+      expect(reports).toEqual([]);
+      expect(await readDelivery(id)).toMatchObject({
+        status: "bounced",
+        settledAt: start,
+      });
+      expect(await pollAt("schedule", minutesAfter(15))).toMatchObject({
+        polled: 0,
       });
     });
 

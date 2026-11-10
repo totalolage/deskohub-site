@@ -108,8 +108,8 @@ in-app. Re-check this table whenever a provider, plan, or region changes.
   Workspace. A campaign recipient keeps only its provider message ID and
   delivery status.
 - Transactional email (magic links, reservations, invoices, contact form,
-  Boardgame Bar) goes only to Resend. Only campaign email reaches PostHog's
-  transactional email API; keep it that way unless the privacy notice's
+  Boardgame Bar) goes only to Resend. Only campaign email, campaign test emails
+  included, reaches PostHog's transactional email API; keep it that way unless the privacy notice's
   recipient list changes with it.
 - Neon preview branches copy production data at the branch point, and later
   production deletions don't reach existing branches. The allowed contents,

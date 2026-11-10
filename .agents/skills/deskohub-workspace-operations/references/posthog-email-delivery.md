@@ -1,8 +1,8 @@
 # PostHog campaign email delivery
 
-Workspace sends campaign (marketing) email through PostHog's transactional
-email API first and Resend second, per message; transactional email stays on
-Resend. Delivery rules are in the `deskohub-workspace-domain` skill's
+Workspace sends campaign (marketing) email, campaign test emails included,
+through PostHog's transactional email API first and Resend second, per
+message; transactional email stays on Resend. Delivery rules are in the `deskohub-workspace-domain` skill's
 `references/email-campaigns.md`, the provider packages and chains in the
 `deskohub-email` skill, and what PostHog receives in the
 `deskohub-workspace-account` skill's `references/posthog-identity-privacy.md`.
@@ -38,6 +38,11 @@ Resend. Delivery rules are in the `deskohub-workspace-domain` skill's
   the metadata keys the email kind's schema declares
   (`emailDeliveryReportTags` in `shared/backend/email/email-kind.ts`), never
   other metadata.
+- A campaign test email (`email-campaign-test`) is tracked the same way, but
+  its row keeps only `category`: it has no campaign recipient, and no
+  delivery-report handler claims the category. Its final status settles the
+  row as an ignored `unhandled_email_kind` report, as its Resend reports are
+  ignored.
 - PostHog's per-message status API (`queued`, `sent`, `failed`, `delivered`,
   `bounced`, `complained`) is the source of truth, and it keeps a message
   for 30 days. Engagement events only trigger a read.

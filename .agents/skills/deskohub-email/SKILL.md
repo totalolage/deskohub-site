@@ -61,14 +61,14 @@ category) is in the app's `marketingCategories`, otherwise `transactional`.
 
 | App | Composition | Transactional | Marketing |
 | --- | --- | --- | --- |
-| Workspace | `apps/deskohub-workspace/shared/backend/config/email.config.ts` (`workspaceEmailProviders`, `makeWorkspaceEmailLayer`, `WorkspaceEmailLayer`), recipient routed | Resend | PostHog, then Resend, for category `email-campaign`; Resend alone without `POSTHOG_EMAIL_SECRET_KEY` |
+| Workspace | `apps/deskohub-workspace/shared/backend/config/email.config.ts` (`workspaceEmailProviders`, `makeWorkspaceEmailLayer`, `WorkspaceEmailLayer`), recipient routed | Resend | PostHog, then Resend, for categories `email-campaign` and `email-campaign-test`; Resend alone without `POSTHOG_EMAIL_SECRET_KEY` |
 | Boardgame Bar | `apps/deskohub-boardgame-bar/shared/backend/config/email.config.ts` (`boardgameProviderChain`) | Resend or Console (`EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_TEST_MODE`, stage) | none |
 
 Without a Resend key, Workspace sends everything to Console. The marketing
 stream is the category, not the campaign purpose: operational-purpose
-campaigns share `email-campaign` and also go to PostHog, while campaign
-test sends (`email-campaign-test`) are transactional and go through Resend
-alone. Without `POSTHOG_EMAIL_SECRET_KEY`, in any environment including
+campaigns share `email-campaign` and also go to PostHog, and campaign test
+sends (`email-campaign-test`) are marketing too, so a test goes the way the
+real send will (owner decision, 2026-11-10). Without `POSTHOG_EMAIL_SECRET_KEY`, in any environment including
 production before PostHog email is set up, the marketing chain is Resend
 alone. PostHog stays off
 the transactional stream by decision: it receives recipients and bodies, so adding it
