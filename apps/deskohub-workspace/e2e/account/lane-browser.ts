@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import type { Download, Page } from "@playwright/test";
 import { Effect } from "effect";
 import type { AccountSection } from "@/features/account/sections";
@@ -27,6 +28,7 @@ import {
 } from "../referrals/referral-cookie";
 import {
   type AccountDataExportDelivery,
+  type AccountDataExportDownload,
   type AccountDataExportRefusal,
   readAccountDataExportArchiveShape,
 } from "./account-data-export";
@@ -282,9 +284,10 @@ export type WorkspaceE2EAccountLaneBrowser = WorkspaceE2EAccountBrowser & {
   ) => Effect.Effect<boolean, WorkspaceE2EError>;
   /**
    * Starts the account data export from the legal page's hydrated control
-   * and reports the export response at `path`, read in memory, and the
-   * download and state the control settled on. The archive is never written
-   * anywhere: the browser's copy of the download is deleted at once.
+   * and reports the status and headers of the export response at `path`,
+   * the archive the browser downloaded, and the state the control settled
+   * on. The archive is read in memory and never written anywhere else: the
+   * browser's copy of the download is deleted at once.
    */
   readonly downloadAccountDataExport: (
     path: string
@@ -968,7 +971,21 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
  * click and last as long as a slow export may take, and the browser's copy
  * of the download is deleted however the step ends. A failed response starts
  * no download, so only a successful one waits for it.
+ *
+ * The archive is read from the downloaded file, never from the response:
+ * Chromium keeps no copy of a streamed body, as a deployed function sends it,
+ * once the page consumed it, so `response.body()` comes back empty.
  */
+/** The saved file's name and the shape of the archive it holds. */
+const readDownloadedExport = async (
+  download: Download
+): Promise<AccountDataExportDownload> => ({
+  archive: readAccountDataExportArchiveShape(
+    await readFile(await download.path())
+  ),
+  filename: download.suggestedFilename(),
+});
+
 const downloadAccountDataExportFromPage = async (
   page: Page,
   path: string,
@@ -996,11 +1013,8 @@ const downloadAccountDataExportFromPage = async (
         .click({ timeout: timeouts.browserAction }),
     ]);
     const headers = await response.allHeaders();
-    const archive = response.ok()
-      ? readAccountDataExportArchiveShape(await response.body())
-      : ({ kind: "unreadable" } as const);
     observed = response.ok() ? await downloaded : undefined;
-    const downloadFilename = observed?.suggestedFilename();
+    const download = observed && (await readDownloadedExport(observed));
     await page
       .locator(settledAccountDataExportSelector)
       .waitFor({ state: "attached", timeout: timeouts.uiTransition })
@@ -1011,9 +1025,8 @@ const downloadAccountDataExportFromPage = async (
         .getAttribute("data-state", { timeout: timeouts.browserAction })
         .catch(() => null)) ?? undefined;
     return {
-      archive,
       controlState,
-      downloadFilename,
+      download,
       headers: {
         cacheControl: headers["cache-control"],
         contentDisposition: headers["content-disposition"],

@@ -55,12 +55,16 @@ const privateHeaders = {
  * download link named from its Content-Disposition, and settles the block on
  * delivered, or on error for anything else. Loading the page signs the
  * browser in; `?fail=1` makes the export fail, `?delayMs=` delays its
- * response, and `?hidden=1` hides the action so it cannot be clicked.
+ * response, `?streamed=1` streams its body in chunks, `?unsaved=1` makes the
+ * control skip the save, and `?hidden=1` hides the action so it cannot be
+ * clicked.
  */
 const legalPage = (url: URL) => {
   const fail = url.searchParams.get("fail") === "1";
   const delayMs = Number(url.searchParams.get("delayMs") ?? "0");
   const hidden = url.searchParams.get("hidden") === "1" ? " hidden" : "";
+  const streamed = url.searchParams.get("streamed") === "1";
+  const unsaved = url.searchParams.get("unsaved") === "1";
   return new Response(
     `<!doctype html><html><head><meta charset="utf-8"></head><body>
     <section data-slot="account-data-export" data-state="idle">
@@ -71,6 +75,7 @@ const legalPage = (url: URL) => {
       document.cookie = "${signedInCookie}; path=/";
       document.cookie = "export-fail=${fail ? "1" : "0"}; path=/";
       document.cookie = "export-delay=${delayMs}; path=/";
+      document.cookie = "export-streamed=${streamed ? "1" : "0"}; path=/";
       const block = document.querySelector('[data-slot="account-data-export"]');
       const action = document.querySelector('[data-slot="account-data-export-action"]');
       action.__reactProps$test = { onClick: () => {} };
@@ -87,7 +92,7 @@ const legalPage = (url: URL) => {
           const link = document.createElement("a");
           link.href = URL.createObjectURL(await response.blob());
           link.download = name;
-          link.click();
+          if (!${unsaved}) link.click();
           block.dataset.state = "delivered";
         } catch {
           block.dataset.state = "error";
@@ -97,6 +102,20 @@ const legalPage = (url: URL) => {
     { headers: { "content-type": "text/html; charset=utf-8" } }
   );
 };
+
+/**
+ * The archive as a body sent in several chunks, the way a deployed function
+ * streams it. Chromium then keeps no copy of the body for Playwright's
+ * `response.body()` once the page consumed it, so only the download holds it.
+ */
+const streamedArchive = () =>
+  new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let start = 0; start < archive.length; start += 64)
+        controller.enqueue(archive.slice(start, start + 64));
+      controller.close();
+    },
+  });
 
 /** The export route: the signed-in browser's archive, else a private 404. */
 const exportRoute = async (request: Request) => {
@@ -110,7 +129,8 @@ const exportRoute = async (request: Request) => {
       headers: privateHeaders,
       status: 500,
     });
-  return new Response(archive, {
+  const streamed = cookie.includes("export-streamed=1");
+  return new Response(streamed ? streamedArchive() : archive, {
     headers: {
       ...privateHeaders,
       "content-disposition": `attachment; filename="${filename}"`,
@@ -144,6 +164,8 @@ const config = {
     browserAction: 2000,
     browserNavigation: 3000,
     browserSessionClose: 1000,
+    // Bounds how long a missing download is waited for.
+    datasource: 4000,
     uiTransition: 2000,
   },
 };
@@ -211,7 +233,7 @@ test.skipIf(!chromiumAvailable)(
     const value = result.value;
     if (!value) throw new Error("the step returned nothing");
     expect(findAccountDataExportDeliveryProblem(value.delivery)).toBeNull();
-    expect(value.delivery.downloadFilename).toBe(filename);
+    expect(value.delivery.download?.filename).toBe(filename);
     expect(findSignedOutAccountDataExportProblem(value.refusal)).toBeNull();
     // The visitor's own browser closed before the request returned, and the
     // lane's browser kept its sign-in.
@@ -233,9 +255,8 @@ test.skipIf(!chromiumAvailable)(
 
     expect(result.succeeded).toBe(true);
     expect(result.value).toMatchObject({
-      archive: { kind: "unreadable" },
       controlState: "error",
-      downloadFilename: undefined,
+      download: undefined,
       status: 500,
     });
     expect(
@@ -244,6 +265,44 @@ test.skipIf(!chromiumAvailable)(
     // The download wait lasts as long as a slow export may take, so a
     // failed export must not wait for it.
     expect(Date.now() - started).toBeLessThan(10_000);
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "reads the archive from the download when the browser keeps no copy of the streamed response body",
+  async () => {
+    const result = await runLaneStep((laneBrowser) =>
+      Effect.gen(function* () {
+        yield* laneBrowser.open(`${origin}/en-US/account/legal?streamed=1`);
+        return yield* laneBrowser.downloadAccountDataExport(exportPath);
+      })
+    );
+
+    expect(result.failures).toEqual([]);
+    const delivery = result.value;
+    if (!delivery) throw new Error("the step returned nothing");
+    expect(findAccountDataExportDeliveryProblem(delivery)).toBeNull();
+    expect(delivery.download?.archive).toMatchObject({ kind: "readable" });
+  }
+);
+
+test.skipIf(!chromiumAvailable)(
+  "reports an export the control never saved as a missing download",
+  async () => {
+    const result = await runLaneStep((laneBrowser) =>
+      Effect.gen(function* () {
+        yield* laneBrowser.open(`${origin}/en-US/account/legal?unsaved=1`);
+        return yield* laneBrowser.downloadAccountDataExport(exportPath);
+      })
+    );
+
+    expect(result.failures).toEqual([]);
+    const delivery = result.value;
+    if (!delivery) throw new Error("the step returned nothing");
+    expect(delivery).toMatchObject({ download: undefined, status: 200 });
+    expect(findAccountDataExportDeliveryProblem(delivery)).toBe(
+      "the control started no browser download of the export"
+    );
   }
 );
 

@@ -20,11 +20,20 @@ export type AccountDataExportDelivery = {
     readonly contentType: string | undefined;
     readonly referrerPolicy: string | undefined;
   };
-  readonly archive: AccountDataExportArchiveShape;
-  /** The suggested file name of the download the control started, if any. */
-  readonly downloadFilename: string | undefined;
+  /** The browser download the control started, if any. */
+  readonly download: AccountDataExportDownload | undefined;
   /** The control's `data-state` once it stopped pending. */
   readonly controlState: string | undefined;
+};
+
+/**
+ * The file the browser saved from the control: its suggested name and the
+ * shape of the archive read from the saved file, which is what a customer
+ * receives.
+ */
+export type AccountDataExportDownload = {
+  readonly filename: string;
+  readonly archive: AccountDataExportArchiveShape;
 };
 
 export type AccountDataExportArchiveShape =
@@ -90,15 +99,15 @@ export const readAccountDataExportArchiveShape = (
 
 /**
  * Why a delivered export breaks its contract, as a code-owned sentence, or
- * `null` when it holds: a private, dated ZIP attachment whose entries are
- * exactly the export sections and the manifest, a manifest at the current
- * schema version, and a browser download of that file that left the control
- * delivered.
+ * `null` when it holds: a private, dated ZIP attachment that the browser
+ * downloaded under its attachment name, whose entries are exactly the export
+ * sections and the manifest, with a manifest at the current schema version,
+ * and that left the control delivered.
  */
 export const findAccountDataExportDeliveryProblem = (
   delivery: AccountDataExportDelivery
 ): string | null => {
-  const { archive, headers } = delivery;
+  const { download, headers } = delivery;
   if (delivery.status !== 200)
     return `the export responded with status ${delivery.status}`;
   if (headers.contentType !== "application/zip")
@@ -112,8 +121,10 @@ export const findAccountDataExportDeliveryProblem = (
     return "the export response was not private and uncached";
   if (headers.referrerPolicy !== "no-referrer")
     return "the export response did not suppress the referrer";
+  if (!download) return "the control started no browser download of the export";
+  const { archive } = download;
   if (archive.kind === "unreadable")
-    return "the export body was not a readable ZIP archive";
+    return "the downloaded export was not a readable ZIP archive";
   const missing = expectedEntryNames.filter(
     (name) => !archive.entryNames.includes(name)
   );
@@ -126,7 +137,7 @@ export const findAccountDataExportDeliveryProblem = (
     return `the export archive has ${unexpected} entries outside the export sections`;
   if (archive.schemaVersion !== accountDataExportSchemaVersion)
     return "the export manifest does not carry the current schema version";
-  if (delivery.downloadFilename !== filename)
+  if (download.filename !== filename)
     return "the control did not save the export under its attachment name";
   if (delivery.controlState !== "delivered") {
     const state =

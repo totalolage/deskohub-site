@@ -1156,17 +1156,19 @@ const syntheticAccountDataExportFilename = `deskohub-account-data-${fixedNow.toI
 const syntheticAccountDataExportDelivery = (
   external: FakeAccountExternalState
 ): AccountDataExportDelivery => ({
-  archive: readAccountDataExportArchiveShape(
-    zipSync(
-      Object.fromEntries(
-        Object.entries(external.accountDataExportEntries).map(
-          ([name, text]) => [name, strToU8(text)]
+  controlState: "delivered",
+  download: {
+    archive: readAccountDataExportArchiveShape(
+      zipSync(
+        Object.fromEntries(
+          Object.entries(external.accountDataExportEntries).map(
+            ([name, text]) => [name, strToU8(text)]
+          )
         )
       )
-    )
-  ),
-  controlState: "delivered",
-  downloadFilename: syntheticAccountDataExportFilename,
+    ),
+    filename: syntheticAccountDataExportFilename,
+  },
   headers: {
     cacheControl: "private, no-store",
     contentDisposition: `attachment; filename="${syntheticAccountDataExportFilename}"`,
@@ -2043,9 +2045,8 @@ class FakeBrowser {
       !this.external.linksByUserId.has(user.id)
     ) {
       return {
-        archive: { kind: "unreadable" },
         controlState: "error",
-        downloadFilename: undefined,
+        download: undefined,
         headers: {
           cacheControl: "private, no-store",
           contentDisposition: undefined,

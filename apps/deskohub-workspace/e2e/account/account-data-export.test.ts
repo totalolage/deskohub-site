@@ -33,9 +33,11 @@ const filename = "deskohub-account-data-2026-11-09.zip";
 const delivered = (
   overrides: Partial<AccountDataExportDelivery> = {}
 ): AccountDataExportDelivery => ({
-  archive: readAccountDataExportArchiveShape(archive(completeEntries())),
   controlState: "delivered",
-  downloadFilename: filename,
+  download: {
+    archive: readAccountDataExportArchiveShape(archive(completeEntries())),
+    filename,
+  },
   headers: {
     cacheControl: "private, no-store",
     contentDisposition: `attachment; filename="${filename}"`,
@@ -45,6 +47,17 @@ const delivered = (
   status: 200,
   ...overrides,
 });
+
+/** A delivery whose download holds an archive of `entries`. */
+const downloaded = (
+  entries: Readonly<Record<string, string>>
+): AccountDataExportDelivery =>
+  delivered({
+    download: {
+      archive: readAccountDataExportArchiveShape(archive(entries)),
+      filename,
+    },
+  });
 
 const withHeaders = (
   headers: Partial<AccountDataExportDelivery["headers"]>
@@ -105,41 +118,37 @@ describe("findAccountDataExportDeliveryProblem", () => {
     ],
     ["a cacheable response", withHeaders({ cacheControl: "no-store" })],
     ["a kept referrer", withHeaders({ referrerPolicy: undefined })],
-    ["an unreadable body", delivered({ archive: { kind: "unreadable" } })],
+    [
+      "an unreadable download",
+      delivered({ download: { archive: { kind: "unreadable" }, filename } }),
+    ],
     [
       "a missing section",
-      delivered({
-        archive: readAccountDataExportArchiveShape(
-          archive(
-            Object.fromEntries(Object.entries(completeEntries()).slice(1))
-          )
-        ),
-      }),
+      downloaded(
+        Object.fromEntries(Object.entries(completeEntries()).slice(1))
+      ),
     ],
     [
       "an entry outside the sections",
-      delivered({
-        archive: readAccountDataExportArchiveShape(
-          archive({ ...completeEntries(), "sessions.json": "[]" })
-        ),
-      }),
+      downloaded({ ...completeEntries(), "sessions.json": "[]" }),
     ],
     [
       "another schema version",
-      delivered({
-        archive: readAccountDataExportArchiveShape(
-          archive(
-            completeEntries({
-              schemaVersion: accountDataExportSchemaVersion + 1,
-            })
-          )
-        ),
-      }),
+      downloaded(
+        completeEntries({ schemaVersion: accountDataExportSchemaVersion + 1 })
+      ),
     ],
-    ["no browser download", delivered({ downloadFilename: undefined })],
+    ["no browser download", delivered({ download: undefined })],
     [
       "a download under another name",
-      delivered({ downloadFilename: "export.zip" }),
+      delivered({
+        download: {
+          archive: readAccountDataExportArchiveShape(
+            archive(completeEntries())
+          ),
+          filename: "export.zip",
+        },
+      }),
     ],
     ["an error state", delivered({ controlState: "error" })],
     ["a vanished control", delivered({ controlState: undefined })],
@@ -149,22 +158,17 @@ describe("findAccountDataExportDeliveryProblem", () => {
 
   test("names missing sections but only counts unexpected entries", () => {
     const [first] = sectionPaths;
-    const missing = delivered({
-      archive: readAccountDataExportArchiveShape(
-        archive(
-          Object.fromEntries(
-            Object.entries(completeEntries()).filter(([name]) => name !== first)
-          )
-        )
-      ),
-    });
+    const missing = downloaded(
+      Object.fromEntries(
+        Object.entries(completeEntries()).filter(([name]) => name !== first)
+      )
+    );
     expect(findAccountDataExportDeliveryProblem(missing)).toContain(
       String(first)
     );
-    const extra = delivered({
-      archive: readAccountDataExportArchiveShape(
-        archive({ ...completeEntries(), "synthetic-secret-name.json": "[]" })
-      ),
+    const extra = downloaded({
+      ...completeEntries(),
+      "synthetic-secret-name.json": "[]",
     });
     expect(findAccountDataExportDeliveryProblem(extra)).not.toContain(
       "synthetic-secret-name"
