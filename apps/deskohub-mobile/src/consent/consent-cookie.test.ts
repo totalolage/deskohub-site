@@ -86,12 +86,14 @@ describe("consentCookieAssignment", () => {
     cookieString: string,
     categories: readonly ("necessary" | "analytics" | "marketing")[],
     hostname = "workspace.deskohub.cz",
-    secure = true
+    secure = true,
+    decidedAt = now.toISOString()
   ) =>
     consentCookieAssignment({
       cookieString,
       categories,
       now,
+      decidedAt,
       hostname,
       secure,
       languageCode: "cs-CZ",
@@ -120,6 +122,20 @@ describe("consentCookieAssignment", () => {
     expect(readConsentCookie(assignment.split("; ")[0] ?? "")).toEqual(
       decided("necessary", "analytics")
     );
+  });
+
+  test("dates the save at an account decision's instant", () => {
+    const record = recordOf(
+      assign(
+        "",
+        ["necessary"],
+        "workspace.deskohub.cz",
+        true,
+        "2026-11-06T08:30:00.123Z"
+      )
+    );
+    expect(record.lastConsentTimestamp).toBe("2026-11-06T08:30:00.123Z");
+    expect(record.expirationTime).toBe(Date.parse("2027-05-08T10:00:00.000Z"));
   });
 
   test("uses the library's cookie attributes", () => {

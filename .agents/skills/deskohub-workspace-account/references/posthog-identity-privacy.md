@@ -95,6 +95,23 @@ consent storage and events are in the `deskohub-mobile` skill
   (`AccountAnalyticsConsentMirror` calling `recordDeviceAnalyticsConsent`),
   and in Pay-state preparation. A customer agent's booking carries no device
   choice and mirrors nothing.
+- The native app reaches the ledger through the customer HTTP API's
+  `account` group. `POST /api/customer/account/analytics-consent`
+  (`syncAnalyticsConsent`) sends the app's own choice (`analytics`, the
+  device's `decidedAt`) or null, and the app locale.
+  `syncAppAnalyticsConsent` (`analytics-consent-mirror.ts`) mirrors a choice
+  with source `app_mirror` under the web's mirror rules, then answers
+  `withdraw` (the web's cross-device withdrawal: the app accepts analytics and
+  didn't outrank the account's withdrawal), `grant` (the web's silent grant:
+  the app holds no choice and the current decision is a current-notice
+  grant), or `unchanged`. `GET`/`PUT /api/customer/account/analytics-preference`
+  read and save the analytics preference through `readAnalyticsPreference` and
+  `saveAnalyticsPreference`, so the app's opt-out also requests
+  anonymisation. Answered instants are truncated to the millisecond, so the
+  app's stored copy never outranks the decision it copies and syncing it back
+  appends nothing. A pending account deletion answers 409
+  `CustomerAccountLinkRequired` (`deletion-pending`); a ledger failure answers
+  503, never "off".
 - The ledger's rows never reach PostHog. The author's current decision
   decides whether lifecycle events are person-linked
   ([lifecycle events](#reservation-and-payment-lifecycle-events)), and an

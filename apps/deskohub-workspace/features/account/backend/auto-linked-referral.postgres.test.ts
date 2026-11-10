@@ -20,6 +20,7 @@ import { canonicalPromotionCodeSchema } from "@/features/discounts/persistence-c
 import { ReferralService } from "@/features/referrals";
 import { parseReferralCode } from "@/features/referrals/client";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
+import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
@@ -27,14 +28,12 @@ import {
   customerAccountIdSchema,
 } from "../customer-account";
 import { acceptAutoLinkedReferral } from "./auto-linked-referral";
+import { CurrentCustomerAccount } from "./current-customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import {
-  type CustomerAccountResolutionDependencies,
-  resolveCustomerAccountLink,
-} from "./customer-account-resolver.service";
 import { CustomerAccountSections } from "./customer-account-sections";
 import { CustomerAuthentication } from "./customer-authentication.service";
 import { testSessionProfile } from "./customer-authentication.test-utils";
+import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const uniqueId = () => crypto.randomUUID();
@@ -149,25 +148,38 @@ const signIn = (input: {
     Layer.provide(Layer.mergeAll(authenticationLayer, linksLayer, lockLayer))
   );
 
-  return Effect.gen(function* () {
-    const links = yield* CustomerAccountLinkRepository;
-    const sections = yield* CustomerAccountSections;
-    const dependencies: CustomerAccountResolutionDependencies = {
-      currentUser: () => Effect.succeed(session),
-      findLink: links.find,
-      isReviewAccount: () => Effect.succeed(false),
-      classify: () =>
-        Effect.succeed({
-          kind: "matched",
-          state: "active",
-          customerId: input.existingCustomerId,
-        }),
-      claimLink: links.claim,
-      reactivate: () => Effect.void,
-      withActiveAccount: sections.withActiveAccount,
-    };
+  const currentAccountLayer = CurrentCustomerAccount.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        authenticationLayer,
+        NoReviewAccounts,
+        linksLayer,
+        sectionsLayer,
+        Layer.mock(CustomerDotyposAdapter, {
+          classifyExactEmailCustomers: () =>
+            Effect.succeed({
+              kind: "matched",
+              state: "active",
+              customerId: input.existingCustomerId,
+            }),
+          reactivateCustomer: () => Effect.void,
+        })
+      )
+    )
+  );
 
-    const resolution = yield* resolveCustomerAccountLink(dependencies);
+  return Effect.gen(function* () {
+    const standing = yield* Effect.flatMap(
+      CurrentCustomerAccount,
+      (currentAccount) => currentAccount.resolve
+    ).pipe(Effect.provide(currentAccountLayer));
+    if (standing.kind !== "linked") {
+      return yield* Effect.die(`resolved as ${standing.kind}`);
+    }
+    const resolution = {
+      account: standing.account,
+      autoLinked: standing.autoLinked,
+    };
     yield* acceptAutoLinkedReferral(
       resolution,
       parseReferralCode(input.code)

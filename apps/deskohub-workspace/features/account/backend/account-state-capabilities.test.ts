@@ -59,6 +59,9 @@ const { CustomerPasskeys } = await import(
 const { CustomerAccountContactService } = await import(
   "@/features/account/backend/customer-account-contact.service"
 );
+const { CurrentCustomerAccount } = await import(
+  "@/features/account/backend/current-customer-account"
+);
 const { CustomerAccountResolver } = await import(
   "@/features/account/backend/customer-account-resolver.service"
 );
@@ -100,9 +103,16 @@ const services = {
       }))
     ) as never,
   }),
-  resolver: Layer.mock(CustomerAccountResolver, {
-    resolveLink: requestName.pipe(
+  currentAccount: Layer.mock(CurrentCustomerAccount, {
+    resolve: requestName.pipe(
       Effect.map((name) => ({
+        kind: "linked",
+        session: {
+          accountId: `account-${name}`,
+          email: testEmailAddress(name),
+          deletionRequested: false,
+        },
+        reviewMarker: "absent",
         account: {
           accountId: `account-${name}`,
           dotyposCustomerId: `customer-${name}`,
@@ -111,6 +121,7 @@ const services = {
       }))
     ) as never,
   }),
+  resolver: Layer.mock(CustomerAccountResolver, {}),
   profile: Layer.mock(CustomerProfileService, {
     load: () =>
       Effect.succeed({

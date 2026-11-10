@@ -106,6 +106,12 @@ export const isCustomerAccountAccessDenial = (
   error: CustomerAccountAccessError
 ) => error.reason !== "unavailable" || error.cause?.code === "account.review";
 
+/** Why only support can link the account to its Dotypos customer. */
+export type CustomerAccountSupportReason = Extract<
+  CustomerAccountLinkFailure,
+  "ambiguous" | "unusable" | "claimed"
+>;
+
 const supportLinkReasons: ReadonlySet<CustomerAccountLinkFailure> =
   new Set<CustomerAccountLinkFailure>(["ambiguous", "unusable", "claimed"]);
 
@@ -115,7 +121,9 @@ const supportLinkReasons: ReadonlySet<CustomerAccountLinkFailure> =
  */
 export const isCustomerAccountSupportRequired = (
   error: CustomerAccountAccessError
-) =>
+): error is CustomerAccountAccessError & {
+  readonly linkReason: CustomerAccountSupportReason;
+} =>
   error.reason === "link-required" &&
   error.linkReason !== undefined &&
   supportLinkReasons.has(error.linkReason);

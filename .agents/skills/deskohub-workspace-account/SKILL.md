@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-account
-description: Workspace customer account, Better Auth, magic link, sign-in, session, auth persistence, customer account link, durable customer account, customer_accounts, deleted-account tombstone, reservation author storage, profile, avatar, account deletion, account data export, reservation history, /account/legal preferences, account analytics preference, analytics opt-out, saved language preference, signed-in locale, auth retention or PII, PostHog identity, OAuth server, MCP authorization, customer HTTP API, /api/customer, AI agent or assistant connection, consent page, CIMD, access token, well-known discovery, data transfers outside the EU, third-country transfer, DPF, SCC, provider region, email processor.
+description: Workspace customer account, current customer account standing, CurrentCustomerAccount, Better Auth, magic link, sign-in, session, auth persistence, customer account link, durable customer account, customer_accounts, deleted-account tombstone, reservation author storage, profile, avatar, account deletion, account data export, reservation history, /account/legal preferences, account analytics preference, analytics opt-out, saved language preference, signed-in locale, auth retention or PII, PostHog identity, OAuth server, MCP authorization, customer HTTP API, /api/customer, AI agent or assistant connection, consent page, CIMD, access token, well-known discovery, data transfers outside the EU, third-country transfer, DPF, SCC, provider region, email processor.
 ---
 
 # Workspace customer accounts
@@ -56,7 +56,7 @@ Paths are relative to `apps/deskohub-workspace` unless they start with
   `HeldCustomerAccount` in its requirements, never a name suffix. Under
   `withOptionalAccount`, read the contact with
   `CustomerAccountContactService.current` and never resolve through
-  `CustomerAccountResolver`.
+  `CustomerAccountResolver` or `CurrentCustomerAccount.resolve`.
 - Keep Drizzle as the only migration authority. Never run Better Auth runtime
   migrations.
 - Prefer Better Auth, Effect, and Next built-in APIs over hand-rolled
@@ -76,7 +76,7 @@ Paths are relative to `apps/deskohub-workspace` unless they start with
 Read the reference that matches your change before editing:
 
 - [Account domain and routes](references/account-domain-and-routes.md):
-  customer resolution, link claims, the durable customer account and
+  account standing (`CurrentCustomerAccount`), customer resolution, link claims, the durable customer account and
   reservation authors, the public error contract, account pages
   and modals, the `/account/legal` preferences (account analytics
   preference, opt-out, cross-device withdrawal), header sign-in state,

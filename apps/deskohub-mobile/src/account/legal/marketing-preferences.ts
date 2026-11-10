@@ -2,8 +2,8 @@ import type {
   CustomerMarketingPreferences,
   SaveCustomerMarketingPreferences,
 } from "@deskohub/workspace-customer-api";
-import { type Cause, Effect, Match, Option } from "effect";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { type Cause, Effect, Match } from "effect";
+import type { AsyncResult } from "effect/unstable/reactivity";
 import { CustomerApi } from "../../customer-api/customer-api.service";
 import { customerDataRuntime } from "../../customer-api/customer-data-runtime";
 import {
@@ -17,6 +17,12 @@ import {
   viewErrorOf,
 } from "../../customer-api/customer-view-error";
 import type { AppLocale } from "../../i18n/app-locale";
+import {
+  type PreferenceSaveFeedback,
+  type PreferenceSwitchState,
+  preferenceSaveFeedback,
+  preferenceSwitchState,
+} from "./preference-switch";
 
 /**
  * The signed-in account's marketing consent (GET
@@ -73,25 +79,17 @@ export const saveMarketingPreferenceAtom = customerDataRuntime.fn(
 );
 
 /** What the marketing switch tells the customer about the last save. */
-export type MarketingSaveFeedback =
-  | { readonly kind: "saving" }
-  | { readonly kind: "saved" }
+export type MarketingSaveFeedback = PreferenceSaveFeedback<
   /** The shown state was outdated; the current one is shown to review. */
   | { readonly kind: "stale" }
   /** The save may have applied; the state read again is shown. */
   | { readonly kind: "unconfirmed" }
-  | { readonly kind: "failed"; readonly error: CustomerViewError };
+  | { readonly kind: "failed"; readonly error: CustomerViewError }
+>;
 
-export interface MarketingSwitchView {
-  /** Whether the switch shows consent as given. */
-  readonly granted: boolean;
-  /** Whether the switch takes input. */
-  readonly enabled: boolean;
+export interface MarketingSwitchView extends PreferenceSwitchState {
   readonly feedback: MarketingSaveFeedback | undefined;
 }
-
-const isGranted = (status: CustomerMarketingPreferences["status"]) =>
-  status === "active";
 
 const failureFeedback = (
   cause: Cause.Cause<CustomerRequestFailure>
@@ -102,22 +100,9 @@ const failureFeedback = (
     Match.orElse((error) => ({ kind: "failed", error }) as const)
   );
 
-// What the last finished save tells the customer, if anything.
-const settledFeedback = (
-  save: AsyncResult.AsyncResult<void, CustomerRequestFailure>
-): MarketingSaveFeedback | undefined =>
-  AsyncResult.match(save, {
-    onInitial: () => undefined,
-    onSuccess: () => ({ kind: "saved" }),
-    onFailure: ({ cause }) => failureFeedback(cause),
-  });
-
 /**
- * What the marketing switch shows: the saved state, or the customer's
- * choice while it is being saved and, after a save, until a read of the
- * saved state succeeds, so the switch neither flips back in between nor
- * falls back to the old state when that read fails. It takes input only
- * while it shows a current read, whose context a save must echo.
+ * What the marketing switch shows (`preferenceSwitchState`). It takes input
+ * only while it shows a current read, whose context a save must echo.
  */
 export const marketingSwitchView = ({
   preferences,
@@ -132,18 +117,17 @@ export const marketingSwitchView = ({
   /** The value the customer last chose, if any. */
   readonly requested: boolean | undefined;
 }): MarketingSwitchView => {
-  const saved = Option.exists(AsyncResult.value(preferences), (current) =>
-    isGranted(current.status)
-  );
-  const saving = save.waiting;
-  const current = AsyncResult.isSuccess(preferences) && !preferences.waiting;
-  const awaitingSavedState = AsyncResult.isSuccess(save) && !current;
+  const shown = preferenceSwitchState({
+    preference: preferences,
+    save,
+    requested,
+    isGranted: (current) => current.status === "active",
+  });
   return {
-    granted:
-      (saving || awaitingSavedState) && requested !== undefined
-        ? requested
-        : saved,
-    enabled: !saving && current,
-    feedback: saving ? { kind: "saving" } : settledFeedback(save),
+    ...shown,
+    feedback: preferenceSaveFeedback(
+      { save, shown, requested },
+      failureFeedback
+    ),
   };
 };

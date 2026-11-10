@@ -11,12 +11,12 @@ import {
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { acceptAutoLinkedReferral } from "@/features/account/backend/auto-linked-referral";
-import { accountReferralOverview } from "@/features/account/backend/current-referral-overview";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import {
-  type CustomerAccountSession,
-  CustomerAuthentication,
-} from "@/features/account/backend/customer-authentication.service";
+  CurrentCustomerAccount,
+  type CustomerAccountStanding,
+} from "@/features/account/backend/current-customer-account";
+import { accountReferralOverview } from "@/features/account/backend/current-referral-overview";
+import type { CustomerAccountSession } from "@/features/account/backend/customer-authentication.service";
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import {
@@ -31,13 +31,9 @@ import type {
   CustomerReservationHistory,
   ProfileCompletionReferralOutcome,
 } from "@/features/account/contracts";
-import {
-  type CustomerAccountAccessError,
-  type CustomerAccountId,
-  customerAccountUnavailable,
-  isCustomerAccountSupportRequired,
-  isCustomerProfileMissing,
-  type LinkedCustomerAccount,
+import type {
+  CustomerAccountId,
+  LinkedCustomerAccount,
 } from "@/features/account/customer-account";
 import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import type { AccountPasskeySettings } from "@/features/account/passkeys";
@@ -47,12 +43,17 @@ import type { ReferralCode } from "@/features/referrals/client";
 import type { ReferralAccountOverview } from "@/features/referrals/contracts";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
-import { ReviewAccounts } from "@/features/review-accounts";
 import {
   catchRecoverableCause,
   failuresAsDefects,
   isRecoverableCause,
 } from "@/shared/backend/workspace-effect";
+
+/** The standing the account state resolves: never `unlinked`. */
+type ResolvedStanding = Exclude<
+  CustomerAccountStanding,
+  { readonly kind: "unlinked" }
+>;
 
 /**
  * Sign-in methods and connected assistants need only the session, so every
@@ -167,9 +168,7 @@ type NoHistory = { readonly shown?: undefined; readonly history?: undefined };
 
 type LoadedAccount = WithHistoryScope<CustomerAccountState>;
 
-type LoadedContent = WithHistoryScope<
-  SignedInAccountContent | { readonly kind: "unauthenticated" }
->;
+type LoadedContent = WithHistoryScope<SignedInAccountContent>;
 
 /** The fixed, non-PII codes of the sections that degrade without blocking. */
 type AccountSectionFailureCode =
@@ -181,7 +180,6 @@ type AccountSectionFailureCode =
   | "account.referrals.unavailable"
   | "account.remembered-referral.unavailable"
   | "account.reservation-history.unavailable"
-  | "account.review.unavailable"
   | "account.signup-referral.unavailable";
 
 /**
@@ -250,32 +248,47 @@ const loadAccount: Effect.Effect<
   never,
   AccountStateCapabilities
 > = Effect.gen(function* () {
-  const session = yield* Effect.flatMap(
-    CustomerAuthentication,
-    (authentication) => authentication.currentUser
+  const standing = yield* Effect.flatMap(
+    CurrentCustomerAccount,
+    (currentAccount) => currentAccount.resolve
   ).pipe(
+    // Interruption and Next.js control flow reach the caller, with any typed
+    // failure beside them as a defect.
+    Effect.catchCause((cause) =>
+      Effect.failCause(
+        isRecoverableCause(cause) ? cause : failuresAsDefects(cause)
+      )
+    ),
     Effect.tapError((error) =>
       Effect.logError("Account authentication failed", { error })
     ),
     Effect.result,
     withOperation("account.profile")
   );
-  if (Result.isFailure(session)) return { state: { kind: "unavailable" } };
+  if (Result.isFailure(standing)) return { state: { kind: "unavailable" } };
 
-  const user = session.success;
-  if (!user) return { state: { kind: "unauthenticated" } };
-  const reviewAccount = yield* readReviewAccount(user);
-  const loaded: LoadedContent = user.deletionRequested
-    ? { state: { kind: "deletion-pending", email: user.email } }
-    : yield* loadSignedInAccount(user, reviewAccount);
+  const current = standing.success;
+  if (current.kind === "signed-out") {
+    return { state: { kind: "unauthenticated" } };
+  }
+  if (current.kind === "unverified") {
+    yield* Effect.logError("Account authentication failed").pipe(
+      Effect.annotateLogs({ reason: "unverified-email" }),
+      withOperation("account.profile")
+    );
+    return { state: { kind: "unavailable" } };
+  }
+
+  const { session } = current;
+  const reviewAccount = isReviewAccount(current);
+  const loaded = yield* loadSignedInAccount(current);
   const content = loaded.state;
-  if (content.kind === "unauthenticated") return { state: content };
   const { passkeys, assistants } = yield* Effect.all(
     {
       // A review account signs in with its password only.
       passkeys:
         reviewAccount === false
-          ? loadPasskeySettings(user.accountId)
+          ? loadPasskeySettings(session.accountId)
           : Effect.succeed(undefined),
       assistants:
         content.kind === "deletion-pending"
@@ -288,9 +301,34 @@ const loadAccount: Effect.Effect<
     deletion: accountDeletion(content, reviewAccount),
     ...(passkeys && { passkeys }),
     ...(assistants !== undefined && { assistants }),
-    ...(user.localePreference && { localePreference: user.localePreference }),
+    ...(session.localePreference && {
+      localePreference: session.localePreference,
+    }),
   });
 });
+
+/**
+ * Whether the standing's account is an app-directory review account, or
+ * `undefined` when its marker couldn't be read. An unknown account loads as
+ * an ordinary one, whose resolution then refuses a review account, but gets
+ * no sign-in methods section and, without a profile, no deletion.
+ */
+const isReviewAccount = (
+  standing: Exclude<
+    ResolvedStanding,
+    { readonly kind: "signed-out" | "unverified" }
+  >
+): boolean | undefined => {
+  if (standing.kind === "review") return true;
+  switch (standing.reviewMarker) {
+    case "present":
+      return true;
+    case "absent":
+      return false;
+    case "unreadable":
+      return undefined;
+  }
+};
 
 /**
  * Adds the session's settings to a signed-in state. They never change its
@@ -513,20 +551,6 @@ const authoredHistory = (user: CustomerAccountSession) =>
   }) as const;
 
 /**
- * Whether the session's account is an app-directory review account, or
- * `undefined` when the marker couldn't be read. An unknown account loads as
- * an ordinary one, whose resolution then refuses a review account, but gets
- * no sign-in methods section and, without a profile, no deletion.
- */
-const readReviewAccount = (user: CustomerAccountSession) =>
-  Effect.flatMap(ReviewAccounts, (accounts) =>
-    accounts.isReviewAccount(user.accountId)
-  ).pipe(
-    degradable("account.review.unavailable", () => undefined),
-    withOperation("account.review")
-  );
-
-/**
  * The customer's referral summary and share link. An unavailable summary
  * degrades to the referral screen's unavailable state.
  */
@@ -558,15 +582,23 @@ const findAvailableReferralCode = (code: ReferralCode) =>
  * of this runs: no prefill, acceptance, retry, or settlement check.
  */
 const loadSignedInAccount = Effect.fn(function* (
-  user: CustomerAccountSession,
-  reviewAccount: boolean | undefined
+  standing: Exclude<
+    ResolvedStanding,
+    { readonly kind: "signed-out" | "unverified" }
+  >
 ) {
-  // A review account never resolves to a Dotypos profile.
-  if (reviewAccount) {
+  const { session } = standing;
+  if (standing.kind === "deletion-pending") {
     return {
-      state: { kind: "review-account", email: user.email },
+      state: { kind: "deletion-pending", email: session.email },
+    } satisfies LoadedContent;
+  }
+  // A review account never resolves to a Dotypos profile.
+  if (standing.kind === "review") {
+    return {
+      state: { kind: "review-account", email: session.email },
       shown: "always",
-      history: { accountId: user.accountId },
+      history: { accountId: session.accountId },
     } satisfies LoadedContent;
   }
   const referralsEnabled = yield* referralsReleased;
@@ -577,102 +609,69 @@ const loadSignedInAccount = Effect.fn(function* (
     degradable("account.remembered-referral.unavailable", () => undefined),
     withOperation("account.remembered-referral")
   );
-  const resolution = yield* Effect.flatMap(
-    CustomerAccountResolver,
-    (resolver) => resolver.resolveLink
-  ).pipe(
-    // A resolver that couldn't be built reads as the unavailable lock.
-    Effect.catchCause((cause) => {
-      if (!isRecoverableCause(cause)) {
-        return Effect.failCause(failuresAsDefects(cause));
+  switch (standing.kind) {
+    case "linked": {
+      // Resolution has released the account lock that acceptance takes.
+      if (referralsEnabled) {
+        yield* replayBuildFailure(ReferralService).pipe(
+          Effect.andThen(
+            acceptAutoLinkedReferral(standing, rememberedReferralCode)
+          ),
+          Effect.catchCause(() =>
+            logDegradedAccountSection("account.auto-link.referral.unavailable")
+          ),
+          withOperation("account.auto-link.referral")
+        );
       }
-      return Cause.hasFails(cause)
-        ? Effect.failCause(cause)
-        : Effect.fail(customerAccountUnavailable("account-link.lock"));
-    }),
-    Effect.tapError((error) =>
-      Effect.logError("Account resolution failed", { error })
-    ),
-    Effect.result,
-    withOperation("account.resolve")
-  );
-  if (Result.isSuccess(resolution)) {
-    // Resolution has released the account lock that acceptance takes.
-    if (referralsEnabled) {
-      yield* replayBuildFailure(ReferralService).pipe(
-        Effect.andThen(
-          acceptAutoLinkedReferral(resolution.success, rememberedReferralCode)
-        ),
-        Effect.catchCause(() =>
-          logDegradedAccountSection("account.auto-link.referral.unavailable")
-        ),
-        withOperation("account.auto-link.referral")
+      return yield* loadLinkedAccount(
+        session,
+        standing.account,
+        referralsEnabled
       );
     }
-    return yield* loadLinkedAccount(
-      user,
-      resolution.success.account,
-      referralsEnabled
-    );
+    case "profile-missing": {
+      const availableReferralCode =
+        rememberedReferralCode === undefined
+          ? undefined
+          : yield* findAvailableReferralCode(rememberedReferralCode);
+      // An account may book for someone else before it completes its own
+      // profile; the history then holds only what it authored.
+      return {
+        state: {
+          kind: "completion-required",
+          email: session.email,
+          referralsEnabled,
+          ...(availableReferralCode && { referralCode: availableReferralCode }),
+        },
+        ...authoredHistory(session),
+      } satisfies LoadedContent;
+    }
+    // The account may still have booked for others meanwhile.
+    case "support-required":
+      return {
+        state: { kind: "support-required", email: session.email },
+        ...authoredHistory(session),
+      } satisfies LoadedContent;
+    case "unavailable": {
+      const { failure } = standing;
+      yield* Effect.logError("Account resolution failed", {
+        error: failure,
+      }).pipe(withOperation("account.resolve"));
+      // A recheck under the lock that found the email unverified or a
+      // pending deletion shows no reservations.
+      if (
+        failure.reason === "link-required" ||
+        failure.reason === "unverified-email"
+      ) {
+        return {
+          state: { kind: "support-required", email: session.email },
+        } satisfies LoadedContent;
+      }
+      return {
+        state: { kind: "authenticated-unavailable", email: session.email },
+      } satisfies LoadedContent;
+    }
   }
-
-  return yield* loadUnlinkedAccount(
-    user,
-    resolution.failure,
-    rememberedReferralCode,
-    referralsEnabled
-  );
-});
-
-/**
- * The state of a signed-in account whose resolution found no usable linked
- * profile: sign-up completion, a support state, or an unavailable account.
- */
-const loadUnlinkedAccount = Effect.fn(function* (
-  user: CustomerAccountSession,
-  failure: CustomerAccountAccessError,
-  rememberedReferralCode: ReferralCode | undefined,
-  referralsEnabled: boolean
-) {
-  if (failure.reason === "unauthenticated") {
-    return { state: { kind: "unauthenticated" } } satisfies LoadedContent;
-  }
-  if (isCustomerProfileMissing(failure)) {
-    const availableReferralCode =
-      rememberedReferralCode === undefined
-        ? undefined
-        : yield* findAvailableReferralCode(rememberedReferralCode);
-    // An account may book for someone else before it completes its own
-    // profile; the history then holds only what it authored.
-    return {
-      state: {
-        kind: "completion-required",
-        email: user.email,
-        referralsEnabled,
-        ...(availableReferralCode && { referralCode: availableReferralCode }),
-      },
-      ...authoredHistory(user),
-    } satisfies LoadedContent;
-  }
-  // The account may still have booked for others meanwhile.
-  if (isCustomerAccountSupportRequired(failure)) {
-    return {
-      state: { kind: "support-required", email: user.email },
-      ...authoredHistory(user),
-    } satisfies LoadedContent;
-  }
-  // An unverified email or a pending deletion shows no reservations.
-  if (
-    failure.reason === "link-required" ||
-    failure.reason === "unverified-email"
-  ) {
-    return {
-      state: { kind: "support-required", email: user.email },
-    } satisfies LoadedContent;
-  }
-  return {
-    state: { kind: "authenticated-unavailable", email: user.email },
-  } satisfies LoadedContent;
 });
 
 /**
