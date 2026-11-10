@@ -5,16 +5,18 @@ import type { WorkspaceDatabase } from "@/db/database.service";
 import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingManagementService } from "@/features/legal/backend/marketing-management.service";
+import { CampaignBatchDelivery } from "./campaign-batch-delivery.service";
 import { CampaignDeliveryService } from "./campaign-delivery.service";
 import type { CampaignEmailConfig } from "./campaign-email.config";
 import { CampaignRecipientAnalyticsIdentity } from "./campaign-recipient-analytics-identity.service";
 import { CampaignUnsubscribeService } from "./campaign-unsubscribe.service";
 
 /**
- * The campaign delivery service on the Dotypos, email provider and sender
- * configuration a test supplies, with real unsubscribe links and recipient
- * analytics identities read through `analyticsConsent` (the real ledger
- * unless the test supplies one). The test provides the Workspace database.
+ * The campaign batch protocol and the one-off delivery service on the
+ * Dotypos, email provider and sender configuration a test supplies, with
+ * real unsubscribe links and recipient analytics identities read through
+ * `analyticsConsent` (the real ledger unless the test supplies one). The
+ * test provides the Workspace database.
  */
 export const campaignDeliveryTestLayer = <E, R>(
   dependencies: Layer.Layer<
@@ -27,8 +29,8 @@ export const campaignDeliveryTestLayer = <E, R>(
     never,
     WorkspaceDatabase
   > = AnalyticsConsentLedger.Default
-) =>
-  CampaignDeliveryService.Default.pipe(
+) => {
+  const batches = CampaignBatchDelivery.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
         dependencies,
@@ -46,3 +48,5 @@ export const campaignDeliveryTestLayer = <E, R>(
       )
     )
   );
+  return CampaignDeliveryService.Default.pipe(Layer.provideMerge(batches));
+};
