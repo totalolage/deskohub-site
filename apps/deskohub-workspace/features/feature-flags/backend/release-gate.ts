@@ -174,7 +174,7 @@ export const closeUnavailableRelease =
  * logging the failure once with the flag keys. The provider cause stays out
  * of the log.
  */
-export const failUnavailableRelease =
+const failUnavailableRelease =
   (flags: ReadonlyArray<PostHogFeatureFlagKey>) =>
   <A, E, R>(
     evaluation: Effect.Effect<A, E, R>
