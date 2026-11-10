@@ -2,11 +2,13 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Deferred, Effect, Layer } from "effect";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import {
   type CurrentLinkedAccount,
   CustomerAccountContactService,
 } from "@/features/account/backend/customer-account-contact.service";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import type { CustomerAccountSession } from "@/features/account/backend/customer-authentication.service";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import {
   CustomerAccountAccessError,
   customerAccountIdSchema,
@@ -23,7 +25,7 @@ import {
   getMeetingRoomAvailabilityQuery,
   type WorkspaceAvailability,
 } from "@/features/reservation/workspace-availability";
-import { ReviewAccounts } from "@/features/review-accounts";
+import { getReviewAccountContact } from "@/features/review-accounts";
 import { CustomerLastReservationService } from "./customer-last-reservation.service";
 import {
   AvailabilityQueryInvalid,
@@ -181,27 +183,29 @@ describe("loadLinkedExistingCustomer", () => {
 
 describe("loadReservationCheckoutAccount", () => {
   // The page loader provides the services' live layers itself, so the test
-  // swaps them for fakes that read the current scenario.
-  let currentAccount: CustomerAccountContactService["Service"]["currentAccount"];
+  // swaps them for fakes that read the current scenario. The standing table
+  // test covers how the standing is read; these cover checkout's policy.
+  let peek: CurrentCustomerAccount["Service"]["peek"];
+  let resolve: CurrentCustomerAccount["Service"]["resolve"];
   let linkedContact: CustomerAccountContactService["Service"]["linkedContact"];
-  let resolve: CustomerAccountResolver["Service"]["resolve"];
+  const resolveCalls = mock(() => undefined);
 
+  const originalCurrentAccountLive = CurrentCustomerAccount.Live;
   const originalContactsLive = CustomerAccountContactService.Live;
-  const originalResolverLive = CustomerAccountResolver.Live;
   const originalLastReservationsLive = CustomerLastReservationService.Live;
   const originalMarketingConsentsLive = MarketingConsentLedger.Live;
-  const originalReviewAccountsLive = ReviewAccounts.Live;
 
+  CurrentCustomerAccount.Live = Layer.mock(CurrentCustomerAccount, {
+    peek: Effect.suspend(() => peek),
+    resolve: Effect.suspend(() => {
+      resolveCalls();
+      return resolve;
+    }),
+  });
   CustomerAccountContactService.Live = Layer.mock(
     CustomerAccountContactService,
-    {
-      currentAccount: Effect.suspend(() => currentAccount),
-      linkedContact: (linked) => linkedContact(linked),
-    }
+    { linkedContact: (linked) => linkedContact(linked) }
   );
-  CustomerAccountResolver.Live = Layer.mock(CustomerAccountResolver, {
-    resolve: Effect.suspend(() => resolve),
-  });
   CustomerLastReservationService.Live = Layer.mock(
     CustomerLastReservationService,
     { load: () => Effect.succeed(null) }
@@ -209,152 +213,251 @@ describe("loadReservationCheckoutAccount", () => {
   MarketingConsentLedger.Live = Layer.mock(MarketingConsentLedger, {
     status: () => Effect.succeed("absent"),
   });
-  ReviewAccounts.Live = Layer.mock(ReviewAccounts, {
-    isReviewAccount: () => Effect.succeed(false),
-  });
+
+  const session = {
+    accountId: account.accountId,
+    email: account.email,
+    deletionRequested: false,
+    ...testSessionProfile,
+  } satisfies CustomerAccountSession;
+
+  const linkedStanding = (reviewMarker: "absent" | "unreadable") =>
+    ({
+      kind: "linked",
+      session,
+      reviewMarker,
+      account: {
+        accountId: account.accountId,
+        dotyposCustomerId: account.dotyposCustomerId,
+      },
+      autoLinked: false,
+    }) as const;
+  const unlinked = (reviewMarker: "absent" | "unreadable") =>
+    ({ kind: "unlinked", session, reviewMarker }) as const;
+  const unavailable = (failure: CustomerAccountAccessError) =>
+    ({
+      kind: "unavailable",
+      session,
+      reviewMarker: "absent",
+      failure,
+    }) as const;
+  const linkRequired = (linkReason: CustomerAccountAccessError["linkReason"]) =>
+    new CustomerAccountAccessError({ reason: "link-required", linkReason });
+  const accessError = (reason: CustomerAccountAccessError["reason"]) =>
+    new CustomerAccountAccessError({ reason });
+
+  const linkedCustomer = {
+    status: "linked",
+    customer: {
+      contact: {
+        name: "Ada Lovelace",
+        email: testEmailAddressForAda,
+        phone: "+420 777 777 777",
+      },
+      hasMarketingConsent: false,
+    },
+  } as const;
+  const profileMissing = {
+    status: "profile-missing",
+    email: testEmailAddressForAda,
+  } as const;
 
   beforeEach(() => {
-    currentAccount = Effect.succeed({ status: "linked", ...account });
+    peek = Effect.succeed(linkedStanding("absent"));
+    resolve = Effect.die("resolve is not expected in this scenario");
     linkedContact = mock(() => Effect.succeed(contact));
-    resolve = Effect.fail(
-      new CustomerAccountAccessError({
-        reason: "link-required",
-        linkReason: "not-found",
-      })
-    );
+    resolveCalls.mockClear();
   });
 
   afterAll(() => {
+    CurrentCustomerAccount.Live = originalCurrentAccountLive;
     CustomerAccountContactService.Live = originalContactsLive;
-    CustomerAccountResolver.Live = originalResolverLive;
     CustomerLastReservationService.Live = originalLastReservationsLive;
     MarketingConsentLedger.Live = originalMarketingConsentsLive;
-    ReviewAccounts.Live = originalReviewAccountsLive;
-  });
-
-  test("reads a signed-out visitor without loading a profile", async () => {
-    currentAccount = Effect.succeed({ status: "signed-out" });
-
-    expect(await loadReservationCheckoutAccount("cowork")).toEqual({
-      status: "signed-out",
-    });
-    expect(linkedContact).not.toHaveBeenCalled();
-  });
-
-  test("asks an unlinked account for its profile under its login email", async () => {
-    currentAccount = Effect.succeed({
-      status: "unlinked",
-      accountId: account.accountId,
-      email: account.email,
-    });
-
-    expect(await loadReservationCheckoutAccount("cowork")).toEqual({
-      status: "profile-missing",
-      email: testEmailAddressForAda,
-    });
-    expect(linkedContact).not.toHaveBeenCalled();
-  });
-
-  test("links an unlinked account to its exact-email customer and books with the saved profile", async () => {
-    currentAccount = Effect.succeed({
-      status: "unlinked",
-      accountId: account.accountId,
-      email: account.email,
-    });
-    resolve = Effect.succeed({
-      accountId: account.accountId,
-      dotyposCustomerId: account.dotyposCustomerId,
-    });
-
-    expect(await loadReservationCheckoutAccount("cowork")).toEqual({
-      status: "linked",
-      customer: {
-        contact: {
-          name: "Ada Lovelace",
-          email: testEmailAddressForAda,
-          phone: "+420 777 777 777",
-        },
-        hasMarketingConsent: false,
-      },
-    });
-    expect(linkedContact).toHaveBeenCalledWith(account);
   });
 
   test.each([
-    ["ambiguous", { status: "support-required" }],
-    ["unusable", { status: "support-required" }],
-    ["claimed", { status: "support-required" }],
-    ["deletion-requested", { status: "signed-out" }],
+    ["signed out", { kind: "signed-out" }, { status: "signed-out" }],
+    [
+      "awaiting deletion",
+      { kind: "deletion-pending", session, reviewMarker: "absent" },
+      { status: "signed-out" },
+    ],
+    [
+      "awaiting deletion with a review marker",
+      { kind: "deletion-pending", session, reviewMarker: "present" },
+      { status: "signed-out" },
+    ],
+    ["unverified", { kind: "unverified" }, { status: "unavailable" }],
+    [
+      "a review account",
+      { kind: "review", session },
+      {
+        status: "review-account",
+        contact: getReviewAccountContact(testEmailAddressForAda),
+      },
+    ],
+    [
+      "unlinked with an unreadable review marker",
+      unlinked("unreadable"),
+      { status: "unavailable" },
+    ],
+    [
+      "unable to read its link",
+      unavailable(customerAccountUnavailable("account-link.read")),
+      { status: "unavailable" },
+    ],
   ] as const)(
-    "reads an unlinked account whose resolution is %s without a profile form",
-    async (linkReason, expected) => {
-      currentAccount = Effect.succeed({
-        status: "unlinked",
-        accountId: account.accountId,
-        email: account.email,
-      });
-      resolve = Effect.fail(
-        new CustomerAccountAccessError({ reason: "link-required", linkReason })
-      );
+    "reads an account that is %s without resolving or loading a profile",
+    async (_label, standing, expected) => {
+      peek = Effect.succeed(standing);
 
       expect(await loadReservationCheckoutAccount("cowork")).toEqual(expected);
+      expect(resolveCalls).not.toHaveBeenCalled();
       expect(linkedContact).not.toHaveBeenCalled();
     }
   );
 
-  test("books a linked account as its customer by default", async () => {
-    expect(await loadReservationCheckoutAccount("cowork")).toEqual({
-      status: "linked",
-      customer: {
-        contact: {
-          name: "Ada Lovelace",
-          email: testEmailAddressForAda,
-          phone: "+420 777 777 777",
-        },
-        hasMarketingConsent: false,
-      },
-    });
-    expect(linkedContact).toHaveBeenCalledWith(
-      expect.objectContaining(account)
-    );
-  });
+  test.each([
+    ["not configured", "not-configured", { status: "signed-out" }],
+    ["unavailable", "unavailable", { status: "unavailable" }],
+    ["undecodable", "unauthenticated", { status: "unavailable" }],
+  ] as const)(
+    "reads a session read that is %s without resolving",
+    async (_label, reason, expected) => {
+      peek = Effect.fail(accessError(reason));
+
+      expect(await loadReservationCheckoutAccount("cowork")).toEqual(expected);
+      expect(resolveCalls).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each(["absent", "unreadable"] as const)(
+    "books a linked account whose review marker is %s as its customer without resolving",
+    async (reviewMarker) => {
+      peek = Effect.succeed(linkedStanding(reviewMarker));
+
+      expect(await loadReservationCheckoutAccount("cowork")).toEqual(
+        linkedCustomer
+      );
+      expect(linkedContact).toHaveBeenCalledWith(account);
+      expect(resolveCalls).not.toHaveBeenCalled();
+    }
+  );
 
   test("asks a linked account whose profile cannot book for its profile", async () => {
     linkedContact = () => Effect.succeed(null);
 
+    expect(await loadReservationCheckoutAccount("cowork")).toEqual(
+      profileMissing
+    );
+  });
+
+  test("reads the account as unavailable when the linked profile cannot be read", async () => {
+    linkedContact = () =>
+      Effect.fail(customerAccountUnavailable("account-link.read"));
+
     expect(await loadReservationCheckoutAccount("cowork")).toEqual({
-      status: "profile-missing",
-      email: testEmailAddressForAda,
+      status: "unavailable",
     });
+  });
+
+  test("links an unlinked account to its exact-email customer and books with the saved profile", async () => {
+    peek = Effect.succeed(unlinked("absent"));
+    resolve = Effect.succeed({ ...linkedStanding("absent"), autoLinked: true });
+
+    expect(await loadReservationCheckoutAccount("cowork")).toEqual(
+      linkedCustomer
+    );
+    expect(resolveCalls).toHaveBeenCalledTimes(1);
+    expect(linkedContact).toHaveBeenCalledWith(account);
   });
 
   test.each([
-    ["the account", "currentAccount"],
-    ["the linked profile", "linkedContact"],
+    [
+      "has no Dotypos profile",
+      Effect.succeed({
+        kind: "profile-missing",
+        session,
+        reviewMarker: "absent",
+      }),
+      profileMissing,
+    ],
+    ...(["ambiguous", "unusable", "claimed"] as const).map(
+      (reason) =>
+        [
+          `needs support (${reason})`,
+          Effect.succeed({
+            kind: "support-required",
+            reason,
+            session,
+            reviewMarker: "absent",
+          }),
+          { status: "support-required" },
+        ] as const
+    ),
+    [
+      "signed out since the first read",
+      Effect.succeed({ kind: "signed-out" }),
+      { status: "signed-out" },
+    ],
+    [
+      "awaiting deletion since the first read",
+      Effect.succeed({
+        kind: "deletion-pending",
+        session,
+        reviewMarker: "absent",
+      }),
+      { status: "signed-out" },
+    ],
+    [
+      "unverified since the first read",
+      Effect.succeed({ kind: "unverified" }),
+      { status: "unavailable" },
+    ],
+    [
+      "refused under the lock as awaiting deletion",
+      Effect.succeed(unavailable(linkRequired("deletion-requested"))),
+      { status: "signed-out" },
+    ],
+    [
+      "refused under the lock as unverified",
+      Effect.succeed(unavailable(accessError("unverified-email"))),
+      { status: "unavailable" },
+    ],
+    [
+      "unable to take the account lock",
+      Effect.succeed(
+        unavailable(customerAccountUnavailable("account-link.lock"))
+      ),
+      { status: "unavailable" },
+    ],
+    [
+      "undecodable on the second session read",
+      Effect.fail(accessError("unauthenticated")),
+      { status: "signed-out" },
+    ],
+    [
+      "unreadable on the second session read",
+      Effect.fail(accessError("unavailable")),
+      { status: "unavailable" },
+    ],
+    [
+      "not configured on the second session read",
+      Effect.fail(accessError("not-configured")),
+      { status: "signed-out" },
+    ],
   ] as const)(
-    "reads the account as unavailable when %s cannot be read",
-    async (_label, failing) => {
-      const failure = Effect.fail(
-        customerAccountUnavailable("account-link.read")
-      );
-      if (failing === "currentAccount") currentAccount = failure;
-      else linkedContact = () => failure;
+    "reads an unlinked account whose resolution %s",
+    async (_label, resolution, expected) => {
+      peek = Effect.succeed(unlinked("absent"));
+      resolve = resolution;
 
-      expect(await loadReservationCheckoutAccount("cowork")).toEqual({
-        status: "unavailable",
-      });
+      expect(await loadReservationCheckoutAccount("cowork")).toEqual(expected);
+      expect(resolveCalls).toHaveBeenCalledTimes(1);
+      expect(linkedContact).not.toHaveBeenCalled();
     }
   );
-
-  test("reads every visitor as signed out without account configuration", async () => {
-    currentAccount = Effect.fail(
-      new CustomerAccountAccessError({ reason: "not-configured" })
-    );
-
-    expect(await loadReservationCheckoutAccount("cowork")).toEqual({
-      status: "signed-out",
-    });
-  });
 });
 
 describe("remembered reservation option availability", () => {

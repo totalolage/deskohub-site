@@ -85,7 +85,9 @@ const checkoutAccountFor = Effect.fnUntraced(function* <
   switch (standing.kind) {
     case "signed-out":
     case "deletion-pending":
-      return { status: "signed-out" } satisfies ReservationCheckoutAccount<Kind>;
+      return {
+        status: "signed-out",
+      } satisfies ReservationCheckoutAccount<Kind>;
     case "unverified":
       // As the session read reports it, so the page logs it as before.
       return yield* new CustomerAccountAccessError({
@@ -99,7 +101,9 @@ const checkoutAccountFor = Effect.fnUntraced(function* <
     case "unlinked":
       // Only an unreadable review marker leaves an account unlinked here:
       // without knowing it isn't a review account, checkout can't link it.
-      return { status: "unavailable" } satisfies ReservationCheckoutAccount<Kind>;
+      return {
+        status: "unavailable",
+      } satisfies ReservationCheckoutAccount<Kind>;
     case "linked":
       return yield* loadLinkedCheckoutAccount(
         { ...standing.account, email: standing.session.email },
@@ -133,10 +137,11 @@ const signedOut = { kind: "signed-out" } as const;
 const resolveUnlinkedAccount = CurrentCustomerAccount.pipe(
   Effect.flatMap((current) => current.resolve),
   Effect.catchIf(endedSinceRead, () => Effect.succeed(signedOut)),
-  Effect.map((standing): CheckoutStanding =>
-    standing.kind === "unavailable" && endedSinceRead(standing.failure)
-      ? signedOut
-      : standing
+  Effect.map(
+    (standing): CheckoutStanding =>
+      standing.kind === "unavailable" && endedSinceRead(standing.failure)
+        ? signedOut
+        : standing
   )
 );
 
