@@ -66,8 +66,9 @@ export const loadingIndicatorFill = (
 
 /**
  * The accessibility props of the indicator's outer view: a busy progress bar
- * named `label`, or, without a label, hidden from assistive tech together
- * with everything inside it.
+ * named `label`, one element for assistive tech (iOS reads a view only when
+ * it is `accessible`), or, without a label, hidden from assistive tech
+ * together with everything inside it.
  */
 export const loadingIndicatorSemantics = (label: string | undefined) =>
   label === undefined
@@ -76,6 +77,7 @@ export const loadingIndicatorSemantics = (label: string | undefined) =>
         importantForAccessibility: "no-hide-descendants",
       } as const)
     : ({
+        accessible: true,
         role: "progressbar",
         "aria-label": label,
         "aria-busy": true,

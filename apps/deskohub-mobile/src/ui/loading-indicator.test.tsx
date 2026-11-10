@@ -110,11 +110,13 @@ describe("LoadingIndicator and reduced motion", () => {
     for (const spy of spies.splice(0)) spy.mockRestore();
   });
 
-  const mount = () => {
+  const mount = async () => {
     const Probe = () =>
       find(LoadingIndicator({ size: "section", tone: "white" }), LottieView) ??
       null;
-    return render(<Probe />);
+    await render(<Probe />);
+    // The preference query answers on a later turn; let the probe take it.
+    await act(async () => undefined);
   };
 
   test("plays once motion is known to be allowed", async () => {
@@ -127,6 +129,15 @@ describe("LoadingIndicator and reduced motion", () => {
     reduced = true;
     await mount();
     expect(autoPlay.at(-1)).toBe(false);
+  });
+
+  test("starts playing when reduced motion turns off", async () => {
+    reduced = true;
+    await mount();
+
+    await act(async () => changed(false));
+
+    expect(autoPlay.at(-1)).toBe(true);
   });
 
   test("goes back to the still logo when reduced motion turns on", async () => {

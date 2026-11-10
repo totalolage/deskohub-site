@@ -55,6 +55,7 @@ describe("loadingIndicatorFill", () => {
 describe("loadingIndicatorSemantics", () => {
   test("names a labelled indicator as a busy progress bar", () => {
     expect(loadingIndicatorSemantics("label")).toEqual({
+      accessible: true,
       role: "progressbar",
       "aria-label": "label",
       "aria-busy": true,
