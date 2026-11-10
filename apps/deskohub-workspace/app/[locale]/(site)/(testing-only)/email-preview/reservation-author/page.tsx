@@ -31,6 +31,7 @@ async function ReservationAuthorEmailPreviewContent() {
       createWorkspaceReservationEmailPreviewReservation(locale);
 
     return createReservationAuthorEmailPreviewHtml({
+      locale,
       statusUrl: `https://workspace.deskohub.cz/${locale}/reservation/status/${reservation.id}`,
       reservation,
     }).pipe(
