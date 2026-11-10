@@ -1877,6 +1877,94 @@ describe.skipIf(!testDatabase)(
       });
     });
 
+    test("shows staff each discount's staff label, or the guest label on rows recorded before staff labels", async () => {
+      const label = "discount-labels";
+      const reservationId = await insertReservation({
+        customerId: makeCustomerId(label),
+        fulfillmentState: "fulfilled",
+        label,
+        reservationState: "confirmed",
+      });
+      const attemptId = paymentAttemptIdSchema.make(
+        `attempt-${label}-${runId}`
+      );
+      await Effect.runPromise(
+        testDatabase.db.insert(paymentAttempts).values({
+          id: attemptId,
+          workspaceReservationId: reservationId,
+          provider: "nexi",
+          providerOrderId: NexiOrderIdSchema.make(`order-${label}-${runId}`),
+          state: "paid",
+          refundState: "not_required",
+          amountValue: 26_000,
+          amountExponent: 2,
+          currency: "CZK",
+        })
+      );
+      const application = (input: {
+        readonly sequence: number;
+        readonly label: string;
+        readonly staffLabel: string | null;
+        readonly subtotalBeforeValue: number;
+      }) => ({
+        paymentAttemptId: attemptId,
+        workspaceReservationId: reservationId,
+        sequence: input.sequence,
+        publicDiscountId: discountIdSchema.make(
+          `${label}-${input.sequence}-${runId}`
+        ),
+        label: input.label,
+        staffLabel: input.staffLabel,
+        adjustment: { kind: "percentage", basisPoints: 1000 },
+        productIdentity: { kind: "cowork" },
+        subtotalBeforeValue: input.subtotalBeforeValue,
+        subtotalBeforeExponent: 2,
+        subtotalBeforeCurrency: "CZK",
+        appliedAmountValue: 1_000,
+        appliedAmountExponent: 2,
+        appliedAmountCurrency: "CZK",
+        subtotalAfterValue: input.subtotalBeforeValue - 1_000,
+        subtotalAfterExponent: 2,
+        subtotalAfterCurrency: "CZK",
+        provenance: { source: "synthetic" },
+      });
+      const staffLabelled = application({
+        sequence: 0,
+        label: "Synthetic sale",
+        staffLabel: "Syntetická akce",
+        subtotalBeforeValue: 28_000,
+      });
+      const recordedBeforeStaffLabels = application({
+        sequence: 1,
+        label: "Synthetic code",
+        staffLabel: null,
+        subtotalBeforeValue: 27_000,
+      });
+      await Effect.runPromise(
+        testDatabase.db
+          .insert(discountApplications)
+          .values([staffLabelled, recordedBeforeStaffLabels])
+      );
+
+      const detail = await run(
+        (administration) => administration.loadReservation(reservationId),
+        {
+          getReservation: () =>
+            Effect.succeed(
+              Option.some({
+                customer: null,
+                reservation: liveBooking(label, makeCustomerId(label)),
+              })
+            ),
+        }
+      );
+
+      expect(detail?.discounts.map((discount) => discount.label)).toEqual([
+        staffLabelled.staffLabel,
+        recordedBeforeStaffLabels.label,
+      ]);
+    });
+
     test("pages a customer's reservations, most recently updated first", async () => {
       const customerId = makeCustomerId("reservation-pages");
       const latest = Temporal.Instant.from("2026-10-20T10:00:00Z");

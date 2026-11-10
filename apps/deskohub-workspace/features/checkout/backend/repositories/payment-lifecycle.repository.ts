@@ -1677,6 +1677,7 @@ const persistDiscountApplications = Effect.fn(
           sequence,
           publicDiscountId: application.discount.id,
           label: application.discount.label,
+          staffLabel: application.discount.staffLabel ?? null,
           adjustment: application.discount.adjustment,
           productIdentity: input.commitment.product,
           subtotalBeforeValue: application.subtotalBefore.value,
