@@ -16,7 +16,7 @@ import {
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
-import { DotyposHoldRelease } from "../holds/dotypos-hold-release.service";
+import { UnpaidHoldRelease } from "../holds/unpaid-hold-release.service";
 import {
   LatePaymentRecoveryRepository,
   LatePaymentRecoveryStateError,
@@ -176,7 +176,7 @@ const makeRecoveryHarness = (options: {
     dotyposCustomerId: "dotypos-customer-id",
   } as never;
   const layer = LatePaymentRecoveryService.Default.pipe(
-    Layer.provide(DotyposHoldRelease.Default),
+    Layer.provide(UnpaidHoldRelease.Default),
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(LatePaymentRecoveryRepository, {
@@ -247,6 +247,7 @@ const makeRecoveryHarness = (options: {
 const coworkReservation = {
   id: "reservation-id",
   activePaymentAttemptId: "attempt-id",
+  dotyposReservationId: "dotypos-reservation-id",
   dotyposCustomerId: "dotypos-customer-id",
   reservationDetails: { kind: "cowork", entryTier: "basic", coffee: true },
 };

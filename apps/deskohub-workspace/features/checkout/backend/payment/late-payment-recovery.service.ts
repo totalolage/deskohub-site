@@ -35,7 +35,7 @@ import {
   temporalInstantToDate,
 } from "@/shared/utils/temporal";
 import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
-import { DotyposHoldRelease } from "../holds/dotypos-hold-release.service";
+import { UnpaidHoldRelease } from "../holds/unpaid-hold-release.service";
 import {
   isReusableHold,
   LatePaymentRecoveryRepository,
@@ -198,30 +198,6 @@ const ensureAvailable = (
     })
   );
 
-/**
- * Local states whose original Dotypos hold may still exist and must be
- * released before the reservation is created again.
- */
-const releasableReservationStates: ReadonlySet<string> = new Set([
-  "held",
-  "hold_expired",
-  "cancellation_failed",
-  "cancelling",
-]);
-
-/**
- * A `cancelling` row untouched for this long belongs to an interrupted run, so
- * recovery may finish that cancellation instead of waiting indefinitely.
- */
-const staleHoldCancellationAfter = Temporal.Duration.from({ minutes: 10 });
-
-/** A fresh `cancelling` row belongs to a workflow that is still running. */
-const isHoldCancellationFresh = (reservation: WorkspaceReservation) =>
-  Temporal.Instant.compare(
-    reservation.updatedAt,
-    Temporal.Now.instant().subtract(staleHoldCancellationAfter)
-  ) > 0;
-
 /** Why an original hold Dotypos neither holds NEW nor cancelled needs review. */
 const unreleasableOriginalHoldFailureCode = (
   status: DotyposReservation["status"]
@@ -272,7 +248,7 @@ export class LatePaymentRecoveryService extends Context.Service<
       const snapshots = yield* AccountingDocumentSnapshotRepository;
       const availability = yield* WorkspaceAvailabilityService;
       const dotypos = yield* DotyposService;
-      const holdRelease = yield* DotyposHoldRelease;
+      const holdRelease = yield* UnpaidHoldRelease;
       const tableAssignments = yield* WorkspaceTableAssignmentService;
       const fulfillment = yield* ReservationFulfillment;
 
@@ -327,53 +303,6 @@ export class LatePaymentRecoveryService extends Context.Service<
           failureCode,
         }).pipe(Effect.as("review_required" as const));
 
-      // Claims the hold cancellation unless this run resumes a stale one,
-      // cancels a NEW hold in Dotypos, and records the local cancellation.
-      const cancelOriginalHold = Effect.fnUntraced(function* (input: {
-        readonly paymentAttemptId: PaymentAttemptId;
-        readonly reservation: WorkspaceReservation;
-        readonly originalDotyposReservationId: DotyposReservationId;
-        readonly resumesStaleCancellation: boolean;
-        readonly status: "NEW" | "CANCELLED";
-      }) {
-        const { reservation } = input;
-        if (!input.resumesStaleCancellation) {
-          const claimed = yield* reservations.claimCancellation(reservation.id);
-          if (!claimed) {
-            return yield* retryLater(
-              input.paymentAttemptId,
-              "Late-payment recovery could not claim the original hold cancellation."
-            );
-          }
-        }
-        // releaseOriginalHold read the live status before the claim.
-        if (input.status === "NEW") {
-          yield* holdRelease.release({
-            reservationId: reservation.id,
-            dotyposReservationId: input.originalDotyposReservationId,
-            liveStatus: "unchecked",
-            failureCode: "dotypos_cancel_failed",
-          });
-        }
-        yield* reservations
-          .markCancelled({
-            id: reservation.id,
-            cancelledAt: Temporal.Now.instant(),
-          })
-          .pipe(
-            Effect.catchTag(
-              "WorkspaceReservationStateError",
-              Effect.fn(function* (cause) {
-                // A concurrent cleanup may have finished the same cancellation.
-                const current = yield* reservations.findById(reservation.id);
-                if (current?.reservationState !== "cancelled") {
-                  return yield* cause;
-                }
-              })
-            )
-          );
-      });
-
       /**
        * Cancels the original Dotypos hold and records the local cancellation so
        * the reservation can only continue through normal reservation creation.
@@ -385,43 +314,39 @@ export class LatePaymentRecoveryService extends Context.Service<
       )(function* (input: {
         readonly paymentAttemptId: PaymentAttemptId;
         readonly reservation: WorkspaceReservation;
-        readonly originalDotyposReservationId: DotyposReservationId;
       }) {
-        const { reservation } = input;
-        if (reservation.reservationState === "cancelled") {
-          return "released" as const;
-        }
-        if (!releasableReservationStates.has(reservation.reservationState)) {
-          return yield* reviewRecovery(
-            input,
-            "late_payment_reservation_state_unexpected"
-          );
-        }
-        const resumesStaleCancellation =
-          reservation.reservationState === "cancelling";
-        if (resumesStaleCancellation && isHoldCancellationFresh(reservation)) {
+        const outcome = yield* holdRelease.release({
+          reason: "late_payment",
+          reservationId: input.reservation.id,
+        });
+        if (outcome === "in_progress") {
           return yield* retryLater(
             input.paymentAttemptId,
             "Late-payment recovery is waiting for hold cancellation."
           );
         }
-
-        const status = yield* dotypos.getReservationStatus(
-          input.originalDotyposReservationId
-        );
-        if (status !== "NEW" && status !== "CANCELLED") {
-          return yield* reviewRecovery(
-            input,
-            unreleasableOriginalHoldFailureCode(status)
+        if (outcome === "unclaimed") {
+          return yield* retryLater(
+            input.paymentAttemptId,
+            "Late-payment recovery could not claim the original hold cancellation."
           );
         }
-
-        yield* cancelOriginalHold({
-          ...input,
-          resumesStaleCancellation,
-          status,
-        });
-        return "released" as const;
+        if (
+          outcome === "already_released" ||
+          Predicate.hasProperty(outcome, "released")
+        ) {
+          return "released" as const;
+        }
+        if (Predicate.hasProperty(outcome, "refused")) {
+          return yield* reviewRecovery(
+            input,
+            unreleasableOriginalHoldFailureCode(outcome.refused)
+          );
+        }
+        return yield* reviewRecovery(
+          input,
+          "late_payment_reservation_state_unexpected"
+        );
       });
 
       const findRecreatedReservation = Effect.fnUntraced(function* (input: {
@@ -718,24 +643,13 @@ export class LatePaymentRecoveryService extends Context.Service<
         let newerReservation = yield* recoveries.hasNewerActiveReservation(
           reservation.id
         );
-        // Release from the current row: a concurrent cleanup may have moved
-        // it since this run loaded it.
-        const release = Effect.fn("latePaymentRecovery.releaseCurrentHold")(
-          function* () {
-            const current = yield* reservations.findById(reservation.id);
-            if (!current) {
-              return yield* Effect.die(
-                "Late-payment recovery reservation disappeared before release."
-              );
-            }
-            return yield* releaseOriginalHold({
-              paymentAttemptId: claimed.paymentAttemptId,
-              reservation: current,
-              originalDotyposReservationId:
-                claimed.originalDotyposReservationId,
-            });
-          }
-        );
+        // The release reads the current row: a concurrent cleanup may have
+        // moved it since this run loaded it.
+        const release = () =>
+          releaseOriginalHold({
+            paymentAttemptId: claimed.paymentAttemptId,
+            reservation,
+          });
 
         // Only a hold that never passed its deadline was never offered to
         // other customers as free inventory, so only it skips the normal

@@ -6,3 +6,4 @@ export {
   reservationHoldCleanupRedelivery,
   reservationHoldCleanupTopic,
 } from "./reservation-hold-cleanup-queue.service";
+export { UnpaidHoldRelease } from "./unpaid-hold-release.service";
