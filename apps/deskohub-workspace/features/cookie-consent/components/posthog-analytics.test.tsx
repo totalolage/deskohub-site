@@ -1623,79 +1623,79 @@ describe("PostHogAnalytics", () => {
     view.unmount();
   });
 
-  test.each([
-    "preview",
-    "development",
-  ] as const)("never requests remote feature flags in %s", async (posthogEnvironment) => {
-    const { PostHogAnalytics, PostHogProvider } = await import(
-      `./posthog-analytics?no-remote-flags-${posthogEnvironment}`
-    );
-    const AnalyticsBoundary = ({
-      analyticsAccepted,
-    }: {
-      readonly analyticsAccepted: boolean;
-    }) => (
-      <PostHogProvider>
-        <PostHogAnalytics
-          analyticsAccepted={analyticsAccepted}
-          featureFlagOverrides={{ discount_codes: true }}
-          posthogEnvironment={posthogEnvironment}
-        />
-      </PostHogProvider>
-    );
+  test.each(["preview", "development"] as const)(
+    "never requests remote feature flags in %s",
+    async (posthogEnvironment) => {
+      const { PostHogAnalytics, PostHogProvider } = await import(
+        `./posthog-analytics?no-remote-flags-${posthogEnvironment}`
+      );
+      const AnalyticsBoundary = ({
+        analyticsAccepted,
+      }: {
+        readonly analyticsAccepted: boolean;
+      }) => (
+        <PostHogProvider>
+          <PostHogAnalytics
+            analyticsAccepted={analyticsAccepted}
+            featureFlagOverrides={{ discount_codes: true }}
+            posthogEnvironment={posthogEnvironment}
+          />
+        </PostHogProvider>
+      );
 
-    setConsentCookie(["necessary", "analytics"]);
-    const view = render(<AnalyticsBoundary analyticsAccepted />);
-    await act(async () => {
-      publishAnalyticsAccountIdentity({ status: "anonymous" });
-    });
-    expect(initConfig?.advanced_disable_feature_flags).toBe(true);
-    expect(overrideFeatureFlags).toHaveBeenLastCalledWith({
-      flags: { discount_codes: true },
-    });
-
-    await act(async () => {
-      publishAnalyticsAccountIdentity({
-        accountId: "account-a",
-        status: "authenticated",
+      setConsentCookie(["necessary", "analytics"]);
+      const view = render(<AnalyticsBoundary analyticsAccepted />);
+      await act(async () => {
+        publishAnalyticsAccountIdentity({ status: "anonymous" });
       });
-    });
-    expect(identify).toHaveBeenLastCalledWith("workspace-account:account-a");
-
-    setConsentCookie(["necessary"]);
-    await act(async () => {
-      view.rerender(<AnalyticsBoundary analyticsAccepted={false} />);
-    });
-    setConsentCookie(["necessary", "analytics"]);
-    await act(async () => {
-      view.rerender(<AnalyticsBoundary analyticsAccepted />);
-    });
-    await act(async () => {
-      publishAnalyticsAccountIdentity({
-        accountId: "account-b",
-        status: "authenticated",
+      expect(initConfig?.advanced_disable_feature_flags).toBe(true);
+      expect(overrideFeatureFlags).toHaveBeenLastCalledWith({
+        flags: { discount_codes: true },
       });
-    });
 
-    expect(identify).toHaveBeenLastCalledWith("workspace-account:account-b");
-    expect(capturedEvents.map(({ event }) => event)).toContain("$pageview");
-    // Delivery resumed for both accounts, each time with flags still disabled.
-    expect(
-      setConfig.mock.calls.filter(
-        ([config]) =>
-          config.advanced_disable_feature_flags === true &&
-          config.tracing_headers?.[0] === window.location.hostname
-      ).length
-    ).toBeGreaterThanOrEqual(2);
-    expect(
-      setConfig.mock.calls.some(
-        ([config]) => config.advanced_disable_feature_flags === false
-      )
-    ).toBe(false);
-    expect(reloadFeatureFlags).not.toHaveBeenCalled();
+      await act(async () => {
+        publishAnalyticsAccountIdentity({
+          accountId: "account-a",
+          status: "authenticated",
+        });
+      });
+      expect(identify).toHaveBeenLastCalledWith("workspace-account:account-a");
 
-    view.unmount();
-  });
+      setConsentCookie(["necessary"]);
+      await act(async () => {
+        view.rerender(<AnalyticsBoundary analyticsAccepted={false} />);
+      });
+      setConsentCookie(["necessary", "analytics"]);
+      await act(async () => {
+        view.rerender(<AnalyticsBoundary analyticsAccepted />);
+      });
+      await act(async () => {
+        publishAnalyticsAccountIdentity({
+          accountId: "account-b",
+          status: "authenticated",
+        });
+      });
+
+      expect(identify).toHaveBeenLastCalledWith("workspace-account:account-b");
+      expect(capturedEvents.map(({ event }) => event)).toContain("$pageview");
+      // Delivery resumed for both accounts, each time with flags still disabled.
+      expect(
+        setConfig.mock.calls.filter(
+          ([config]) =>
+            config.advanced_disable_feature_flags === true &&
+            config.tracing_headers?.[0] === window.location.hostname
+        ).length
+      ).toBeGreaterThanOrEqual(2);
+      expect(
+        setConfig.mock.calls.some(
+          ([config]) => config.advanced_disable_feature_flags === false
+        )
+      ).toBe(false);
+      expect(reloadFeatureFlags).not.toHaveBeenCalled();
+
+      view.unmount();
+    }
+  );
 
   test("applies changed flag overrides without restarting identity or pageviews", async () => {
     const { PostHogAnalytics, PostHogProvider } = await import(
