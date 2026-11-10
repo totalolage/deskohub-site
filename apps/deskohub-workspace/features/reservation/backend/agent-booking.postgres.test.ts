@@ -22,6 +22,10 @@ import { makeOptionalAccountActivityGuard } from "@/features/account/backend/cus
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { recordCheckoutAnalytics } from "@/features/checkout/backend/analytics/checkout-analytics.service.mock";
+import {
+  buildAdvertisedPriceState,
+  sealAdvertisedPriceState,
+} from "@/features/checkout/backend/checkout";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
@@ -75,14 +79,11 @@ const meetingRoom = (reservationDate: string) =>
     endsAt: instantStringSchema.make(`${reservationDate}T12:00:00Z`),
   }) as const satisfies SelectedReservation;
 
-/** The advertised price token the agent tool quotes for a meeting room. */
-const advertisedPriceToken = async (
-  reservationDate: string,
-  locale: Locale
-) => {
-  const { buildAdvertisedPriceState, sealAdvertisedPriceState } = await import(
-    "@/features/checkout/backend/checkout"
-  );
+/**
+ * The advertised price token the agent tool quotes for a meeting room,
+ * sealed on the clock the booking runs on.
+ */
+const advertisedPriceToken = (reservationDate: string, locale: Locale) => {
   const advertised = Schema.decodeUnknownSync(
     meetingRoomAdvertisedPriceReservationSchema
   )({
@@ -94,22 +95,23 @@ const advertisedPriceToken = async (
       lastServiceDate: reservationDate,
     },
   });
-  const quote = Effect.runSync(
-    getMeetingRoomReservationQuote(advertised.details)
-  );
-  return Effect.runPromise(
-    buildAdvertisedPriceState({
-      kind: "meeting-room",
-      locale,
-      reservation: advertised,
-      quote: {
-        ...quote,
-        fingerprint: getReservationQuoteFingerprint(advertised.details, quote),
-      },
-    }).pipe(
-      Effect.flatMap(sealAdvertisedPriceState),
-      Effect.provide(TestSealedStateKeys)
-    )
+  return getMeetingRoomReservationQuote(advertised.details).pipe(
+    Effect.flatMap((quote) =>
+      buildAdvertisedPriceState({
+        kind: "meeting-room",
+        locale,
+        reservation: advertised,
+        quote: {
+          ...quote,
+          fingerprint: getReservationQuoteFingerprint(
+            advertised.details,
+            quote
+          ),
+        },
+      })
+    ),
+    Effect.flatMap(sealAdvertisedPriceState),
+    Effect.provide(TestSealedStateKeys)
   );
 };
 
@@ -259,7 +261,7 @@ describe.skipIf(!database)("prepareAgentPayState on Postgres", () => {
     "https://other-assistant.example/client.json"
   );
 
-  const request = async ({
+  const request = ({
     reservationDate,
     clientId = assistant,
     phone = contact.phone,
@@ -272,19 +274,25 @@ describe.skipIf(!database)("prepareAgentPayState on Postgres", () => {
     readonly marketingConsent?: boolean;
     readonly locale?: Locale;
   }) =>
-    prepareAgentPayState({
-      grant: grantFor(clientId),
-      reservation: meetingRoom(reservationDate),
-      contact: { ...contact, phone },
-      advertisedPriceToken: await advertisedPriceToken(reservationDate, locale),
-      marketingConsent,
-      locale,
-    }).pipe(Effect.provide(booking));
+    advertisedPriceToken(reservationDate, locale).pipe(
+      Effect.flatMap((token) =>
+        prepareAgentPayState({
+          grant: grantFor(clientId),
+          reservation: meetingRoom(reservationDate),
+          contact: { ...contact, phone },
+          advertisedPriceToken: token,
+          marketingConsent,
+          locale,
+        })
+      ),
+      Effect.provide(booking)
+    );
 
-  const book = async (
+  /** Books a request with the clock at an instant, now by default. */
+  const book = (
     input: Parameters<typeof request>[0],
     at = Temporal.Now.instant()
-  ) => (await request(input)).pipe(atInstant(at), Effect.runPromise);
+  ) => request(input).pipe(atInstant(at), Effect.runPromise);
 
   const readyOrderId = (prepared: Awaited<ReturnType<typeof book>>) => {
     if (prepared.status === "error") {
@@ -399,9 +407,11 @@ describe.skipIf(!database)("prepareAgentPayState on Postgres", () => {
       phone,
       locale: "de-DE",
     });
-    const czech = await (
-      await request({ reservationDate: "2099-06-19", phone, locale: "cs-CZ" })
-    ).pipe(Effect.result, Effect.runPromise);
+    const czech = await request({
+      reservationDate: "2099-06-19",
+      phone,
+      locale: "cs-CZ",
+    }).pipe(Effect.result, Effect.runPromise);
 
     expect(german.status).toBe("ready");
     expect(Result.isFailure(czech)).toBe(true);
