@@ -97,6 +97,7 @@ const montserratLatinExtended = localFont({
  * as Western digits. Sized by eye: at 100% the headline stroke sits on
  * Sculpin's x-height, where x-height matching (93%) reads small. Static 400
  * and 600 instances; the browser sets medium text in 400 and bold in 600.
+ * Hindi pages' line heights and letter spacing are in app/globals.css.
  */
 const poppinsDevanagari = localFont({
   src: [
@@ -126,41 +127,11 @@ const devanagariSystemFamilies = [
   '"Kohinoor Devanagari"',
 ];
 
-/**
- * Line heights for Devanagari, whose vowel signs stand above the headline
- * stroke and below the letters: Tailwind's text-size and leading tokens,
- * raised to 1.6 for headings and 1.7–1.75 for running text. `leading-none`
- * stays, as it sets single-line labels. Letter spacing, which would break
- * words apart, is reset for Hindi pages in app/globals.css.
- */
-const devanagariLineHeights = {
-  lineHeight: "1.7",
-  "--text-xs--line-height": "1.7",
-  "--text-sm--line-height": "1.7",
-  "--text-base--line-height": "1.7",
-  "--text-lg--line-height": "1.7",
-  "--text-xl--line-height": "1.6",
-  "--text-2xl--line-height": "1.6",
-  "--text-3xl--line-height": "1.6",
-  "--text-4xl--line-height": "1.6",
-  "--text-5xl--line-height": "1.6",
-  "--text-6xl--line-height": "1.6",
-  "--text-7xl--line-height": "1.6",
-  "--text-8xl--line-height": "1.6",
-  "--text-9xl--line-height": "1.6",
-  "--leading-tight": "1.6",
-  "--leading-snug": "1.6",
-  "--leading-normal": "1.7",
-  "--leading-relaxed": "1.75",
-} as const;
-
 type ScriptTypography = {
   /** Families that set the page's text ahead of the brand face. */
   readonly textFaces?: readonly string[];
   /** Families after the brand face, ahead of its metric-matched fallback. */
   readonly companions?: readonly string[];
-  /** Line heights the page's root sets. */
-  readonly lineHeights?: Readonly<Record<string, string>>;
 };
 
 const scriptTypography: Readonly<Record<LocaleScript, ScriptTypography>> = {
@@ -177,7 +148,6 @@ const scriptTypography: Readonly<Record<LocaleScript, ScriptTypography>> = {
       poppinsDevanagari.style.fontFamily,
       ...devanagariSystemFamilies,
     ],
-    lineHeights: devanagariLineHeights,
   },
 };
 
@@ -185,20 +155,16 @@ const scriptTypography: Readonly<Record<LocaleScript, ScriptTypography>> = {
  * The style a locale's root element sets for its script: `--font-text`, the
  * stack the site's text font tokens read, built around `brandFamilies` (the
  * brand font's family list as next/font gives it, the face first and its
- * metric-matched fallback after), and the script's line heights. Undefined
- * when the brand face sets the script on its own.
+ * metric-matched fallback after). Undefined when the brand face sets the
+ * script on its own.
  */
-export const getLocaleTypographyStyle = (
+export const getLocaleFontStyle = (
   locale: Locale,
   brandFamilies: string
 ): CSSProperties | undefined => {
-  const {
-    textFaces = [],
-    companions = [],
-    lineHeights,
-  } = scriptTypography[getLocaleDefinition(locale).script];
-  if (textFaces.length === 0 && companions.length === 0 && !lineHeights)
-    return undefined;
+  const { textFaces = [], companions = [] } =
+    scriptTypography[getLocaleDefinition(locale).script];
+  if (textFaces.length === 0 && companions.length === 0) return undefined;
   const [brandFace, ...brandFallbacks] = brandFamilies.split(", ");
   return {
     "--font-text": [
@@ -207,6 +173,5 @@ export const getLocaleTypographyStyle = (
       ...companions,
       ...brandFallbacks,
     ].join(", "),
-    ...lineHeights,
   } as CSSProperties;
 };

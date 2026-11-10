@@ -101,10 +101,43 @@ footer[id] {
   scroll-margin-top: var(--anchor-scroll-offset);
 }
 
-/* Devanagari joins a word's letters along its headline stroke, so letter
-   spacing breaks words apart. Unlayered, it overrides the tracking
-   utilities on Hindi pages; features/i18n/locale-fonts.ts sets Devanagari's
-   fonts and line heights. */
-:root:lang(hi) * {
+/* Hindi pages. Devanagari's vowel signs stand above the headline stroke and
+   below the letters, so its lines need 1.6 (headings) to 1.75 (running
+   text): Tailwind's text-size and leading tokens are raised, and so is any
+   arbitrary leading-[…] value, which reads no token. leading-none stays, as
+   it sets single-line labels. Devanagari also joins a word's letters along
+   the headline stroke, so letter spacing would break words apart. The rules
+   are unlayered, so they override the utilities; the brand wordmark keeps
+   its own metrics. features/i18n/locale-fonts.ts sets Hindi's fonts. */
+:root:lang(hi) {
+  line-height: 1.7;
+  --text-xs--line-height: 1.7;
+  --text-sm--line-height: 1.7;
+  --text-base--line-height: 1.7;
+  --text-lg--line-height: 1.7;
+  --text-xl--line-height: 1.6;
+  --text-2xl--line-height: 1.6;
+  --text-3xl--line-height: 1.6;
+  --text-4xl--line-height: 1.6;
+  --text-5xl--line-height: 1.6;
+  --text-6xl--line-height: 1.6;
+  --text-7xl--line-height: 1.6;
+  --text-8xl--line-height: 1.6;
+  --text-9xl--line-height: 1.6;
+  --leading-tight: 1.6;
+  --leading-snug: 1.6;
+  --leading-normal: 1.7;
+  --leading-relaxed: 1.75;
+}
+
+:root:lang(hi) [class*="leading-["]:not(.font-wordmark) {
+  line-height: 1.7;
+}
+
+:root:lang(hi) :is(h1, h2, h3, h4, h5, h6)[class*="leading-["] {
+  line-height: 1.6;
+}
+
+:root:lang(hi) :not(.font-wordmark) {
   letter-spacing: normal;
 }

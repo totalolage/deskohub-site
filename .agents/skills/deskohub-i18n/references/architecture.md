@@ -9,7 +9,7 @@ Paths starting with `features/`, `app/`, `db/`, `shared/` or `e2e/`, and the fil
 - `tag`: the BCP 47 tag that identifies the locale in URLs, cookies, and storage.
 - `language` and `region`: the subtags. A browser or device language matches on `language`.
 - `nativeName`: the language picker label.
-- `direction` and `script` (`latin`, `latin-vietnamese`, `cyrillic`, `devanagari`). `script` drives the fonts and line heights for scripts the brand font can't set (`features/i18n/locale-fonts.ts`); Vietnamese is Latin but has its own value because the brand font lacks its stacked diacritics.
+- `direction` and `script` (`latin`, `latin-vietnamese`, `cyrillic`, `devanagari`). `script` drives the fonts for scripts the brand font can't set (`features/i18n/locale-fonts.ts`; Hindi's line metrics are in `app/globals.css`); Vietnamese is Latin but has its own value because the brand font lacks its stacked diacritics.
 - `fallbackChain`: the locales whose authored content stands in, in order, when content in this locale is missing.
 - `nexiLanguage`: the language of the Nexi hosted payment page.
 - `phoneRegion`: the region used to read a phone number that has no country calling code.
