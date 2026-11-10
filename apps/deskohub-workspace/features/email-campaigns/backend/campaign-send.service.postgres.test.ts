@@ -577,7 +577,11 @@ describe.skipIf(!testDatabase)(
         purpose: "marketing",
         status: "failed",
         recipients: [
-          { dotyposCustomerId: customerId("retry-once"), status: "failed" },
+          {
+            dotyposCustomerId: customerId("retry-once"),
+            status: "failed",
+            failureCode: "recipient_suppressed",
+          },
         ],
       });
       automatedCampaignIds.push(campaignId);
@@ -608,6 +612,13 @@ describe.skipIf(!testDatabase)(
         { once: true, delivery_attempt: 2, status: "pending" },
         { once: false, delivery_attempt: 1, status: "failed" },
       ]);
+      // The retry starts the recipient over, so the last attempt's refusal
+      // no longer describes it.
+      const { rows } = await testDatabase.pool.query(
+        "select status, failure_code from email_campaign_recipients where send_id = $1",
+        [sendId]
+      );
+      expect(rows).toEqual([{ status: "pending", failure_code: null }]);
     });
 
     test("refuses to retry an automated campaign's sends", async () => {

@@ -31,7 +31,6 @@ import {
   CampaignReadOnly,
 } from "../errors";
 import { onceCampaignSend } from "./campaign-send-selection";
-import { recipientFailureCode } from "./recipient-failure-code";
 
 /** The recipients and audience snapshot a confirmed send freezes. */
 export type CampaignSendFreeze = {
@@ -160,7 +159,7 @@ const retry = Effect.fn("OnceCampaignLifecycle.retry")(function* (input: {
     .set({
       deliveryAttempt: send!.deliveryAttempt,
       status: "pending",
-      ...recipientFailureCode(undefined),
+      failureCode: null,
       statusUpdatedAt: now,
     })
     .where(

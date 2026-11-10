@@ -88,7 +88,6 @@ import type { CampaignDeliveryAttempt } from "./campaign-send-queue.service";
 import { sendAutomationVersion } from "./campaign-send-selection";
 import { CampaignUnsubscribeService } from "./campaign-unsubscribe.service";
 import { OnceCampaignLifecycle } from "./once-campaign-lifecycle";
-import { recipientFailureCode } from "./recipient-failure-code";
 
 /**
  * A new batch starts only this long into a run. Every batch is persisted
@@ -767,7 +766,7 @@ export class CampaignDeliveryService extends Context.Service<
           .update(emailCampaignRecipients)
           .set({
             status: input.status,
-            ...recipientFailureCode(input.failureCode),
+            failureCode: input.failureCode ?? null,
             statusUpdatedAt: input.now,
           })
           .where(
@@ -822,7 +821,7 @@ export class CampaignDeliveryService extends Context.Service<
           .set({
             providerMessageId: input.providerMessageId,
             status: sql`case when ${inArray(emailCampaignRecipients.status, undeliveredRecipientStatuses)} then 'sent' else ${emailCampaignRecipients.status} end`,
-            ...recipientFailureCode(undefined),
+            failureCode: null,
             statusUpdatedAt: input.now,
           })
           .where(

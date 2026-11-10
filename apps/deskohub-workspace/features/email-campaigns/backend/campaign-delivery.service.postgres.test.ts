@@ -401,7 +401,7 @@ describe.skipIf(!testDatabase)(
 
     const stored = async (sendId: string) => {
       const { rows: recipients } = await testDatabase.pool.query(
-        "select dotypos_customer_id, status, skip_reason, provider_message_id from email_campaign_recipients where send_id = $1 order by dotypos_customer_id",
+        "select dotypos_customer_id, status, skip_reason, provider_message_id, failure_code from email_campaign_recipients where send_id = $1 order by dotypos_customer_id",
         [sendId]
       );
       const {
@@ -497,7 +497,7 @@ describe.skipIf(!testDatabase)(
       status: "failed",
       provider: "posthog",
       timestamp: new Date(),
-      error: new NetworkError({ message: "Timed out" }),
+      error: new NetworkError({ message: "Timed out", code: "timeout" }),
     });
     const lostRequest = () => new NetworkError({ message: "Timed out" });
 
@@ -672,19 +672,16 @@ describe.skipIf(!testDatabase)(
         Object.fromEntries(
           recipients.map((row) => [
             row.dotypos_customer_id,
-            [row.status, row.provider_message_id],
+            [row.status, row.provider_message_id, row.failure_code],
           ])
         )
       ).toEqual({
-        [sent]: ["sent", `posthog-${run}-each`],
+        [sent]: ["sent", `posthog-${run}-each`, null],
+        [refused]: ["failed", null, "recipient_suppressed"],
         // No provider answered for this one, so it may have been mailed:
         // only a retry that includes unconfirmed recipients resends it.
-        [refused]: ["failed", null],
-        [unknown]: ["unconfirmed", null],
+        [unknown]: ["unconfirmed", null, "timeout"],
       });
-      // seam: replaced at integration — with S4's `failure_code` column,
-      // also expect refused → "recipient_suppressed" and unknown → the
-      // NetworkError's code.
       expect(batches.map((batch) => batch.status)).toEqual(["accepted"]);
       expect(campaign.status).toBe("failed");
     });
