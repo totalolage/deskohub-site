@@ -9,7 +9,7 @@ import { TestClock } from "effect/testing";
 import type { PostHogFeatureFlagKey } from "../generated/contract";
 import {
   type ConstantFeatureFlagValues,
-  featureFlagFallbackMaxAge,
+  featureFlagSnapshotMaxAge,
   makeFeatureFlagClassifier,
 } from "./feature-flag-classification";
 
@@ -75,7 +75,7 @@ const runAt = <A>(elapsed: Duration.Input, classify: Effect.Effect<A>) =>
 const noOverrides: ConstantFeatureFlagValues = {};
 
 const pastSnapshotLimit = (millis: number) =>
-  Duration.millis(Duration.toMillis(featureFlagFallbackMaxAge) + millis);
+  Duration.millis(Duration.toMillis(featureFlagSnapshotMaxAge) + millis);
 
 describe("makeFeatureFlagClassifier", () => {
   test("classifies the contract flags PostHog reports as constant", async () => {
@@ -112,7 +112,7 @@ describe("makeFeatureFlagClassifier", () => {
     });
   });
 
-  test("drops the last complete classification once it's past the age limit", async () => {
+  test("keeps the last complete classification however long PostHog stays unavailable", async () => {
     const classify = makeFeatureFlagClassifier({ snapshot });
 
     const classification = await runAt(
@@ -127,7 +127,10 @@ describe("makeFeatureFlagClassifier", () => {
       })
     );
 
-    expect(classification).toEqual({ source: "none", values: {} });
+    expect(classification).toEqual({
+      source: "last-known",
+      values: { meeting_room_page: true, office_page: false },
+    });
   });
 
   test("rejects a snapshot read further in the future than clock skew allows", async () => {
@@ -156,7 +159,7 @@ describe("makeFeatureFlagClassifier", () => {
     const classify = makeFeatureFlagClassifier({ snapshot });
 
     const classification = await runAt(
-      featureFlagFallbackMaxAge,
+      featureFlagSnapshotMaxAge,
       classify({ definitions: listFailure, overrides: noOverrides })
     );
 

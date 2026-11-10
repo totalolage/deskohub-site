@@ -14,13 +14,10 @@ import {
   postHogFeatureFlags,
 } from "../generated/contract";
 
-/**
- * How old a fallback classification, the last-known one or the generated
- * snapshot, may be and still stand in for PostHog.
- */
-export const featureFlagFallbackMaxAge = Duration.days(7);
+/** How old a generated snapshot may be and still stand in for PostHog. */
+export const featureFlagSnapshotMaxAge = Duration.days(7);
 
-/** How far ahead of this clock a fallback's read instant may be. */
+/** How far ahead of this clock a snapshot's read instant may be. */
 const clockSkewAllowance = Duration.minutes(5);
 
 /** The flags whose value is the same for every request. */
@@ -47,8 +44,8 @@ export interface FeatureFlagClassification {
 /**
  * Classifies the contract flags from PostHog's definitions. When PostHog
  * can't list them, it keeps the last complete answer this process received,
- * else the generated snapshot, each while it's at most
- * `featureFlagFallbackMaxAge` old. Overrides win over every source.
+ * however old, else the generated snapshot while it's at most
+ * `featureFlagSnapshotMaxAge` old. Overrides win over every source.
  */
 export const makeFeatureFlagClassifier = ({
   snapshot,
@@ -57,17 +54,15 @@ export const makeFeatureFlagClassifier = ({
     | PostHogFeatureFlagSnapshot<PostHogFeatureFlagKey>
     | undefined;
 }) => {
-  let lastKnown:
-    | { readonly constants: ConstantFeatureFlagValues; readonly readAt: number }
-    | undefined;
+  let lastKnown: ConstantFeatureFlagValues | undefined;
   let reportedUnusableSnapshot = false;
 
   const fallback = Effect.gen(function* () {
-    const now = yield* Clock.currentTimeMillis;
-    if (lastKnown && isFresh(lastKnown.readAt, now)) {
-      return { source: "last-known", constants: lastKnown.constants } as const;
+    if (lastKnown) {
+      return { source: "last-known", constants: lastKnown } as const;
     }
 
+    const now = yield* Clock.currentTimeMillis;
     if (snapshot && isFresh(Date.parse(snapshot.generatedAt), now)) {
       return {
         source: "snapshot",
@@ -105,13 +100,9 @@ export const makeFeatureFlagClassifier = ({
         )
       ),
       Effect.tap((constants) =>
-        Clock.currentTimeMillis.pipe(
-          Effect.tap((readAt) =>
-            Effect.sync(() => {
-              lastKnown = { constants, readAt };
-            })
-          )
-        )
+        Effect.sync(() => {
+          lastKnown = constants;
+        })
       ),
       Effect.map((constants) => ({ source: "live", constants }) as const),
       Effect.catch((error) =>
@@ -134,7 +125,7 @@ const isFresh = (readAt: number, now: number) => {
   const age = now - readAt;
   return (
     age >= -Duration.toMillis(clockSkewAllowance) &&
-    age <= Duration.toMillis(featureFlagFallbackMaxAge)
+    age <= Duration.toMillis(featureFlagSnapshotMaxAge)
   );
 };
 

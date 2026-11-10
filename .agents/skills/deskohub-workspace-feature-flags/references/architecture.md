@@ -17,7 +17,7 @@ The sync writes the contract when it changed and the snapshot every time. The ta
 `generated/flag-snapshot.ts` records, for every contract key, the constant value `getConstantEnabledValue` gave it (`null` when it depends on the request) and `generatedAt`, the instant the definitions were read. Never edit it by hand.
 
 - `feature-flags:snapshot` (`sync-posthog-feature-flags.ts --build`) runs before `build:compile`. On Vercel it rewrites the snapshot for the committed contract's keys from live definitions, so a deployment's snapshot is as old as the deployment. Outside Vercel it does nothing, so local builds don't dirty the checkout. A missing key or a failed list keeps the committed snapshot with a warning; the build never fails on it.
-- The runtime uses the snapshot only while it's at most 7 days old (`featureFlagFallbackMaxAge` in `backend/feature-flag-classification.ts`), and not when it's dated more than a few minutes in the future. A deployment older than that loses the fallback, because flags may have changed since; it then behaves as if no snapshot existed.
+- The runtime uses the snapshot only while it's at most 7 days old (`featureFlagSnapshotMaxAge` in `backend/feature-flag-classification.ts`), and not when it's dated more than a few minutes in the future. A deployment older than that loses the fallback, because flags may have changed since; it then behaves as if no snapshot existed.
 
 ## Runtime evaluation
 
@@ -30,7 +30,7 @@ The sync writes the contract when it changed and the snapshot every time. The ta
 `makeFeatureFlagClassifier` (`backend/feature-flag-classification.ts`) picks the source of the constants on each refresh of the shared classification:
 
 1. `live`: the definitions PostHog listed now. The process remembers them.
-2. `last-known`: when the list fails, the last live classification this process received, within the same 7-day limit. The failure logs one warning per refresh, not per request. This memory is best-effort per loaded module and instance: cold starts, prerender workers and separate bundles start without it.
+2. `last-known`: when the list fails, the last live classification this process received, however old; the instance's lifetime bounds it. The failure logs one warning per refresh, not per request. This memory is best-effort per loaded module and instance: cold starts, prerender workers and separate bundles start without it.
 3. `snapshot`: when the process never got a live answer, the generated snapshot while it's within its age limit.
 4. `none`: otherwise only the overrides are constant, and every other flag is request-dependent. A stale or missing snapshot logs one warning per process.
 
