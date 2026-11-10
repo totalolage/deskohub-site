@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-account
-description: Workspace customer account, Better Auth, magic link, sign-in, session, auth persistence, customer account link, durable customer account, customer_accounts, deleted-account tombstone, reservation author storage, profile, avatar, account deletion, reservation history, /account/legal preferences, account analytics preference, analytics opt-out, saved language preference, signed-in locale, auth retention or PII, PostHog identity, OAuth server, MCP authorization, customer HTTP API, /api/customer, AI agent or assistant connection, consent page, CIMD, access token, well-known discovery, data transfers outside the EU, third-country transfer, DPF, SCC, provider region.
+description: Workspace customer account, Better Auth, magic link, sign-in, session, auth persistence, customer account link, durable customer account, customer_accounts, deleted-account tombstone, reservation author storage, profile, avatar, account deletion, reservation history, /account/legal preferences, account analytics preference, analytics opt-out, saved language preference, signed-in locale, auth retention or PII, PostHog identity, OAuth server, MCP authorization, customer HTTP API, /api/customer, AI agent or assistant connection, consent page, CIMD, access token, well-known discovery, data transfers outside the EU, third-country transfer, DPF, SCC, provider region, email processor.
 ---
 
 # Workspace customer accounts
@@ -82,7 +82,8 @@ Read the reference that matches your change before editing:
   consent pages, the token-to-customer adapter, revocation, and cleanup.
 - [Privacy and retention](references/privacy-and-retention.md): what each
   system retains, the transfers-outside-the-EU inventory, Neon preview copies,
-  Resend, Dotypos expiry, and privacy-copy obligations.
+  Resend and PostHog as email processors, Dotypos expiry, and privacy-copy
+  obligations.
 - [Customer HTTP API](references/customer-http-api.md): adding an endpoint
   to `/api/customer` and `@deskohub/workspace-customer-api` (the native app's
   API), its handler group, budget class, origin and client-header checks,
@@ -94,7 +95,8 @@ Read the reference that matches your change before editing:
   staging, promotion, recovery, and deletion ordering.
 - [PostHog identity and privacy](references/posthog-identity-privacy.md):
   analytics consent, identity transitions, event and property limits, flag
-  requests, ingest host isolation, and the Dotypos customer warehouse source.
+  requests, ingest host isolation, the Dotypos customer warehouse source, and
+  campaign email through PostHog (send identity, engagement events).
 
 Upstream docs: [Next.js integration](https://better-auth.com/docs/integrations/next),
 [Drizzle adapter](https://better-auth.com/docs/adapters/drizzle),
