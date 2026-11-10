@@ -92,12 +92,17 @@ The app's client and data layer are in the `deskohub-mobile` skill
   `WorkspaceRouterRequestContext` opens per request in
   `makeWorkspaceCustomerApiLayer`; read them through
   `shared/backend/workspace-request-context.ts`, never from module state.
-- Build service Layers inside the handler, per request, from a Layers service
-  the adapter provides (`CustomerAccountLayers` for account services and
-  release gates, `CustomerReservationLayers` for reservation services). A release gate then decides once per request (its `…ForRun`
-  layer, see the feature-flags skill), and a Layer that can't be built fails
-  only the requests that use it, as unavailable. Tests swap the Layers service
-  for fakes.
+- Build service Layers inside the handler from a Layers service the adapter
+  provides (`CustomerAccountLayers` for account services and release gates,
+  `CustomerBookingCatalogLayers` and `CustomerBookingCheckoutLayers` for
+  booking, `CustomerReservationLayers` for reservation services), so a Layer
+  that can't be built fails only the requests that use it, as unavailable.
+  Provide every set that carries a release gate, directly or nested (pricing's
+  discount gates, a status refresh's seating-map gate), with
+  `providePerRequest`, so its `…ForRun` gate decides for that request alone;
+  see the Effect skill's "Request state in HTTP APIs". Tests swap the Layers
+  service for fakes, and an endpoint that reads a gate has an overlapping
+  test with `answerInEachReleaseCohort`.
 - End every handler in `answerCustomerApiFailure(operation)` or its group's
   equivalent: an account access failure maps to its fixed public error
   (`accountAccessApiFailure`), anything else to 503

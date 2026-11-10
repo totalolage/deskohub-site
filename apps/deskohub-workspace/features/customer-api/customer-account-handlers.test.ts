@@ -48,9 +48,14 @@ import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
+import type { CustomerAccountServiceLayers } from "./customer-account-layers";
 import {
+  accountReleasesOver,
+  answerInEachReleaseCohort,
   type CustomerApiCall,
   customerApiRequest,
+  expectEachCohortAnsweredAlone,
+  inReleaseCohort,
   linkedAccountServices,
   makeCustomerApiTestServer,
   testCustomerEndpointGuards,
@@ -1219,4 +1224,98 @@ describe("requestDeletion", () => {
     expect(response.status).toBe(400);
     expect(deletions).toEqual([]);
   });
+});
+
+describe("overlapping requests in different release cohorts", () => {
+  const referralSummary = {
+    code: "RFL12345",
+    inviteeCount: 0,
+    eligibleInviteeCount: 0,
+    discount: "0",
+    savings: [],
+  };
+  const withReferralSummary = ReferralServiceMock({
+    hasSettledReferral: () => Effect.succeed(false),
+    getAccountSummary: () => Effect.succeed(referralSummary) as never,
+  });
+
+  // Each endpoint whose Layers carry a release gate, with services under
+  // which an open and a closed gate answer differently.
+  const gatedEndpoints: ReadonlyArray<{
+    readonly call: CustomerApiCall;
+    readonly services: CustomerAccountServiceLayers;
+  }> = [
+    {
+      call: { method: "GET", path: "/account" },
+      services: { ...linkedAccountServices, referrals: withReferralSummary },
+    },
+    {
+      call: {
+        method: "POST",
+        path: "/account/profile",
+        body: { firstName: "Grace", referralCode: "NOPE1234" },
+      },
+      services: {
+        ...linkedAccountServices,
+        resolver: Layer.mock(CustomerAccountResolver, {
+          resolve: Effect.fail(profileMissing),
+        }),
+        profile: Layer.mock(CustomerProfileService, {
+          create: () =>
+            Effect.succeed({
+              account: testLinkedAccount,
+              profile: testCustomerProfile,
+              created: true,
+            }),
+        }),
+        referrals: ReferralServiceMock({
+          findAvailableCode: () => Effect.succeed(undefined),
+        }),
+      },
+    },
+    {
+      call: { method: "DELETE", path: "/account/avatar" },
+      services: {
+        ...linkedAccountServices,
+        avatar: Layer.mock(CustomerAvatarService, {
+          remove: () => Effect.void,
+        }),
+      },
+    },
+    {
+      call: { method: "GET", path: "/account/passkeys" },
+      services: linkedAccountServices,
+    },
+    {
+      call: { method: "GET", path: "/account/referrals" },
+      services: { ...linkedAccountServices, referrals: withReferralSummary },
+    },
+    {
+      call: {
+        method: "POST",
+        path: "/account/referrals/signup-acknowledgement",
+      },
+      services: {
+        ...linkedAccountServices,
+        signupIntents: Layer.mock(ReferralSignupIntentRepository, {
+          acknowledge: () => Effect.void,
+        }),
+      },
+    },
+  ];
+
+  for (const { call, services } of gatedEndpoints) {
+    test(`${call.method} ${call.path} answers each request as its own cohort's release gates decide`, async () => {
+      expectEachCohortAnsweredAlone(
+        await answerInEachReleaseCohort({
+          serve: (featureFlags) =>
+            makeCustomerApiTestServer({
+              services,
+              releases: accountReleasesOver(featureFlags),
+            }),
+          send: (cohort) => customerApiRequest(inReleaseCohort(call, cohort)),
+        })
+      );
+    });
+  }
 });

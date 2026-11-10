@@ -5,7 +5,7 @@ import type {
   NexiService as NexiServiceTag,
   PaymentVerificationResult,
 } from "@deskohub/nexi";
-import { Effect, Layer } from "effect";
+import { type Context, Effect, Layer, Logger, References } from "effect";
 import type { CheckoutAnalytics } from "@/features/checkout/backend/analytics/checkout-analytics.service";
 import type { IWorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
@@ -18,6 +18,9 @@ import type { IWebhookEventRepository as WebhookEventRepositoryType } from "../r
 
 type NexiServiceType = typeof NexiServiceTag.Service;
 
+type LogAnnotations = Context.Service.Shape<
+  typeof References.CurrentLogAnnotations
+>;
 const payload = {
   eventId: "event-id",
   securityToken: "security-token",
@@ -770,5 +773,124 @@ describe("NexiWebhookService", () => {
       errorCode: "nexi_webhook_refund_reconciliation_failed",
     });
     expect(markProcessed).not.toHaveBeenCalled();
+  });
+
+  test("annotates its log rows with identifiers, never the payload or records", async () => {
+    const annotations: LogAnnotations[] = [];
+    const captureAnnotations = Logger.make(({ fiber }) => {
+      annotations.push({ ...fiber.getRef(References.CurrentLogAnnotations) });
+    });
+
+    await Effect.runPromise(
+      (
+        await buildWebhookEffect({
+          webhookEvents: {
+            insertReceived: mock(() =>
+              Effect.succeed({ status: "inserted", event: receivedEvent })
+            ),
+            linkPaymentAttempt: mock(() => Effect.void),
+            markProcessed: mock(() => Effect.void),
+            markFailed: mock(() => Effect.void),
+            claimRetry: mock(() => Effect.die("unused")),
+          },
+          paymentAttempts: {
+            findByProviderOrderId: mock(() => Effect.succeed(attempt)),
+          },
+          paymentLifecycle: {
+            createPendingNexiAttempt: mock(() => Effect.die("unused")),
+            attachProviderSession: mock(() => Effect.die("unused")),
+            markPaid: mock(() =>
+              Effect.succeed({
+                attempt: { ...attempt, state: "paid" as const },
+                changed: true,
+                timestamp: Temporal.Now.instant(),
+              })
+            ),
+            markTerminal: mock(() => Effect.die("unused")),
+          },
+          reservations: {
+            findById: mock(() => Effect.succeed(reservation as never)),
+          },
+          nexi: {
+            verifyPaymentOutcome: mock(() => Effect.succeed(verification)),
+          },
+          fulfillment: { run: mock(() => Effect.void) },
+        })
+      ).pipe(
+        Effect.provideService(References.MinimumLogLevel, "All"),
+        Effect.provide(Logger.layer([captureAnnotations]))
+      )
+    );
+
+    expect(annotations.length).toBeGreaterThan(0);
+    for (const row of annotations) {
+      for (const key of [
+        "payload",
+        "envelope",
+        "received",
+        "attempt",
+        "reservation",
+        "verificationInput",
+        "verification",
+      ]) {
+        expect(row).not.toHaveProperty(key);
+      }
+      expect(JSON.stringify(row)).not.toContain(payload.securityToken);
+      expect(JSON.stringify(row)).not.toContain(attempt.providerRedirectUrl);
+    }
+    expect(annotations.at(-1)).toMatchObject({
+      eventId: "event-id",
+      providerOrderId: "provider-order-id",
+      paymentAttemptId: "attempt-id",
+      reservationId: "reservation-id",
+      verificationStatus: "success",
+    });
+  });
+
+  test("keeps the notification's order on its log rows when no attempt matches", async () => {
+    const annotations: LogAnnotations[] = [];
+    const captureAnnotations = Logger.make(({ fiber }) => {
+      annotations.push({ ...fiber.getRef(References.CurrentLogAnnotations) });
+    });
+
+    const exit = await Effect.runPromise(
+      (
+        await buildWebhookEffect({
+          webhookEvents: {
+            insertReceived: mock(() =>
+              Effect.succeed({ status: "inserted", event: receivedEvent })
+            ),
+            linkPaymentAttempt: mock(() => Effect.void),
+            markProcessed: mock(() => Effect.void),
+            markFailed: mock(() => Effect.void),
+            claimRetry: mock(() => Effect.die("unused")),
+          },
+          paymentAttempts: {
+            findByProviderOrderId: mock(() => Effect.succeed(null)),
+          },
+          paymentLifecycle: {
+            createPendingNexiAttempt: mock(() => Effect.die("unused")),
+            attachProviderSession: mock(() => Effect.die("unused")),
+            markPaid: mock(() => Effect.die("unused")),
+            markTerminal: mock(() => Effect.die("unused")),
+          },
+          reservations: { findById: mock(() => Effect.die("unused")) },
+          nexi: { verifyPaymentOutcome: mock(() => Effect.die("unused")) },
+          fulfillment: { run: mock(() => Effect.die("unused")) },
+        })
+      ).pipe(
+        Effect.exit,
+        Effect.provideService(References.MinimumLogLevel, "All"),
+        Effect.provide(Logger.layer([captureAnnotations]))
+      )
+    );
+
+    expect(exit._tag).toBe("Failure");
+    const lastRow = annotations.at(-1);
+    expect(lastRow).toMatchObject({
+      eventId: "event-id",
+      providerOrderId: "provider-order-id",
+    });
+    expect(lastRow?.paymentAttemptId).toBeUndefined();
   });
 });
