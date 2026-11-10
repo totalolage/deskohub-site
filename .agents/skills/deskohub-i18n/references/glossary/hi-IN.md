@@ -36,7 +36,7 @@ Gender: m./f.; pl. = plural form. “Forbidden” lists wrong or competing forms
 | ID(s) | Czech | English | Hindi | Notes / forbidden alternatives |
 |---|---|---|---|---|
 | P01, P02 | coworking; cowork | coworking; cowork | **कोवर्किंग** (m.) | CTA “Rezervovat cowork” → “कोवर्किंग बुक करें”. Forbidden: “को-वर्किंग”, “सह-कार्य”, Latin “cowork” in Hindi text. |
-| P03 | open space / otevřený prostor; Open-space místo | open space | **ओपन स्पेस** (m.); “ओपन स्पेस में सीट” | Product title “Sdílené místo” (EN “Open Space”) → “साझा स्पेस में सीट”. Forbidden: “खुला स्थान” (= an empty plot). |
+| P03 | open space / otevřený prostor; Open-space místo | open space | **ओपन स्पेस** (m.); “ओपन स्पेस में सीट” | Product title “Sdílené místo” (EN “Open Space”) → **“साझा सीट”** everywhere (titles, CTAs, prose); “sdílený stůl” → “साझा डेस्क”. Forbidden: “खुला स्थान” (= an empty plot), “साझा स्पेस में सीट”. |
 | P04, P05 | zasedací místnost; zasedačka | meeting room | **मीटिंग रूम** (m.) | One word for both (Key decisions). CTA “मीटिंग रूम बुक करें”. Forbidden: “बैठक कक्ष”, “कॉन्फ़्रेंस हॉल”, “सभाकक्ष”. |
 | P06, P07 | kancelář; soukromá kancelář | office; private office | **ऑफ़िस** (m.); **निजी ऑफ़िस** | Forbidden: “दफ़्तर” (dated), “कार्यालय” (government office), “प्राइवेट ऑफ़िस” (mixing). |
 | P08 | pracovní stanice | workstation | **वर्कस्टेशन** (m.) | The Profi desk with monitors. Keep it distinct from “सीट” and “डेस्क”. Forbidden: “कार्य-स्टेशन”. |
@@ -186,7 +186,7 @@ Gender: m./f.; pl. = plural form. “Forbidden” lists wrong or competing forms
 | ID(s) | Czech | English | Hindi | Notes / forbidden alternatives |
 |---|---|---|---|---|
 | M01, M02 | aktualizace; restartovat | update; restart | **अपडेट** (m.); **रीस्टार्ट करें** | `update_ready_restart` “रीस्टार्ट करें”. Forbidden: “अद्यतन”, “पुनः आरंभ”. |
-| M03 | vrátit se do aplikace | return to the app | **ऐप पर वापस जाना** | `signin_returning_to_app` “ऐप पर वापस जा रहे हैं…”. |
+| M03 | vrátit se do aplikace | return to the app | **ऐप पर वापस जाना** | `signin_returning_to_app` “आपको ऐप पर वापस ले जा रहे हैं…” (the verb agrees with “हम”, not the reader). |
 
 ### A · Administration
 
@@ -241,7 +241,7 @@ Gender: m./f.; pl. = plural form. “Forbidden” lists wrong or competing forms
 | L17 | odstoupení od smlouvy | withdrawal from the contract | **अनुबंध से हटना**; “अनुबंध से हटने का अधिकार” | Consumer withdrawal right. Forbidden: “अनुबंध समाप्ति” (= termination), “रद्दीकरण”. |
 | L18 | vady a reklamace | defects and complaints | **दोष और शिकायतें** | GTC §12. Forbidden: “खराबी”. |
 | L19 | mimosoudní řešení spotřebitelských sporů | alternative consumer dispute resolution | **उपभोक्ता विवादों का न्यायालय के बाहर समाधान** | Czech ADR body stays in Czech with an optional gloss. |
-| L20 | občanský zákoník / zákon č. 89/2012 Sb. | Civil Code / Act No. 89/2012 Coll. | **zákon č. 89/2012 Sb., občanský zákoník** + once “(चेक गणराज्य का नागरिक संहिता, अधिनियम सं. 89/2012 Sb.)” | Never cite Indian law. |
+| L20 | občanský zákoník / zákon č. 89/2012 Sb. | Civil Code / Act No. 89/2012 Coll. | **zákon č. 89/2012 Sb., občanský zákoník** + once “(चेक गणराज्य की नागरिक संहिता, अधिनियम सं. 89/2012 Sb.)” (संहिता is feminine) | Never cite Indian law. |
 | L21 | obchodní rejstřík | Commercial Register | **वाणिज्यिक रजिस्टर** (m.) | “Městský soud v Praze (प्राग नगर न्यायालय) द्वारा रखे गए वाणिज्यिक रजिस्टर में पंजीकृत, oddíl C, vložka 442830”. Forbidden: “ROC”, “कंपनी रजिस्ट्रार”. |
 | L23 | Správce osobních údajů | Controller | **व्यक्तिगत डेटा नियंत्रक** (m.) | GDPR term. Forbidden: “डेटा फ़िड्यूशियरी” (Indian DPDP Act term). |
 | L25, L26, L27 | právní základ; doba uchování; předávání mimo EU | legal basis; retention period; transfers outside the EU | **कानूनी आधार**; **संग्रहण अवधि**; **EU के बाहर हस्तांतरण** | Privacy §4/§5/§7 headings. Forbidden: “ट्रांसफ़र”. |
@@ -311,14 +311,14 @@ Renders: 1 घंटा · 2 घंटे · 1.5 घंटे. Days: “{dayCoun
 | Key(s) | Risk | Rule |
 |---|---|---|
 | All 11 customer plural keys (`accountReferralsHowBenchmark`, `reservationMeetingRoomDurationHours`, `reservationOfficeBasePriceLabel`, `reservationOfficeSeatCountOption`, `checkoutSummaryItemOfficeAccess`, `checkoutSummaryItemOfficeSeatCount`, `checkoutSummaryItemOfficeDayCount`, `reservationValidationOfficeMaximumDuration`, `accountReservationSeats`, `bookingWidgetDayCountRange`, `bookingWidgetSeatCountRange`) and the administration plural keys | Czech has one/few/many/other | Exactly `one` and `other`; drop `few` and `many`. |
-| `bookingWidgetDayCountRange`, `bookingWidgetSeatCountRange` | Czech `one` = “Zvol 1 den.” for max = 1; Hindi `one` also fires for 0 | One case-neutral text in both variants: “दिनों की संख्या: 1 से {max} तक।” / “सीटों की संख्या: 1 से {max} तक।” |
+| `bookingWidgetDayCountRange`, `bookingWidgetSeatCountRange` | Czech `one` = “Zvol 1 den.” for max = 1; Hindi `one` also fires for 0 | `other`: “दिनों की संख्या: 1 से {max} तक।” / “सीटों की संख्या: 1 से {max} तक।”; `one` follows Czech without `{max}`: “1 दिन चुनें।” / “1 सीट चुनें।” (placeholders stay identical to each Czech variant). |
 | `accountHelpBody` + `accountHelpContact` | `{contact}` is the linked clause “kontaktuj nás” | Translate together: “अगर आपको अपने खाते या बुकिंग में मदद चाहिए, तो {contact}।” + “हमसे संपर्क करें”. |
 | `accountReferralsHowCompound` | `{duration}` is `Intl` output (“30 दिन”) | “पिछले {duration} में हमें विज़िट करने वाले हर आमंत्रित व्यक्ति के लिए आपको {discount} की अतिरिक्त छूट मिलती है। छूटें जुड़ती जाती हैं!” |
 | `checkoutSummaryItemMeetingRoom`, `pricingMeetingRoomProduct`, `reservationValidationMeetingRoomDuration` | `{duration}` / `{durations}` hold phrases | “मीटिंग रूम – {duration}”, “… इनमें से एक होनी चाहिए: {durations}।” |
 | `reservationAvailabilityUnavailable` | `{tier}` in a genitive slot | “{date} को चुने गए सेटअप में {tier} प्लान उपलब्ध नहीं है। कोई दूसरा विकल्प या तारीख़ आज़माएँ – या अगर आपने वर्कस्टेशन चुना है, तो दूसरा मॉनिटर सेटअप!” |
 | `checkoutSummaryDiscountDetailsTrigger`, `pricingReserveLabel`, `checkoutEmailAuthorHeading` | `{product}` / `{customer}` | Label + colon: “छूट दिखाएँ: {product}”, “बुक करें: {product}”, “बुक किया गया: {product}। किसके लिए: {customer}”. |
 | `accountReservationBookedBy`, `accountReservationBookedFor`, `accountProfileScreenMemberFallback`, `accountProfileReferralCodeHint` | Gender marking | “बुक करने वाले: {name}”, “किसके लिए: {name}”, “Workspace प्रोफ़ाइल”, “क्या आपके पास किसी दूसरे Workspace ग्राहक का रेफ़रल कोड है? उसे यहाँ दर्ज करें…”. |
-| `checkoutPayConsent`, `checkoutPaymentRetryConsent` | First-person declaration carrying the withdrawal waiver; tag link texts are document titles; leading space inside `<earlyPerformance>` | “मैं <terms>सामान्य नियम और शर्तें</terms> और <operatingRules>परिसर नियमावली</operatingRules> से सहमत हूँ।<earlyPerformance> चूँकि सेवा अनुबंध से हटने की वैधानिक अवधि के भीतर शुरू होती है, मेरा स्पष्ट अनुरोध है कि सेवा बुक किए गए समय पर दी जाए, और मुझे जानकारी है कि सेवा पूरी तरह दिए जाने के बाद अनुबंध से हटने का मेरा अधिकार समाप्त हो जाता है।</earlyPerformance>”. First-person verbs are gendered in Hindi (“करता/करती हूँ”), so the waiver uses noun constructions (“मेरा अनुरोध है”, “मुझे जानकारी है”); “सहमत हूँ” is gender-neutral. Keep the leading space inside the tag. Native-speaker check required. |
+| `checkoutPayConsent`, `checkoutPaymentRetryConsent` | First-person declaration carrying the withdrawal waiver; tag link texts are document titles; leading space inside `<earlyPerformance>` | “मैं इन दस्तावेज़ों से सहमत हूँ: <terms>सामान्य नियम और शर्तें</terms>, <operatingRules>परिसर नियमावली</operatingRules>।<earlyPerformance> चूँकि सेवा अनुबंध से हटने की वैधानिक अवधि के भीतर शुरू होती है, मेरा स्पष्ट अनुरोध है कि सेवा बुक किए गए समय पर दी जाए, और मुझे जानकारी है कि सेवा पूरी तरह दिए जाने के बाद अनुबंध से हटने का मेरा अधिकार समाप्त हो जाता है।</earlyPerformance>”. First-person verbs are gendered in Hindi (“करता/करती हूँ”), so the waiver uses noun constructions (“मेरा अनुरोध है”, “मुझे जानकारी है”); “सहमत हूँ” is gender-neutral. Keep the leading space inside the tag. Native-speaker check required. |
 | `checkoutPayOrderAndPayButton`, `checkoutPayOrderAndPayAmountButton` | Legal button wording | “ऑर्डर करें और भुगतान करें”, “ऑर्डर करें और {amount} का भुगतान करें”. |
 | `marketingPreferencesFormRowDescription`, `ttrpgRoom*` bar keys, `landingFaqItemThreeAnswer` | Czech inflects *Deskohubu*, *Deskohub Baru* | “Deskohub को आपको … भेजने की अनुमति देते हैं” → neutral: “आप Deskohub को … भेजने की सहमति देते हैं”; “Deskohub बार के माहौल में”. |
 | `checkoutPayProviderHandoff`, `checkoutStatusPendingLead` | Nexi in an oblique slot | “Nexi के सुरक्षित भुगतान पेज पर”, “Nexi का भुगतान टैब”. |
@@ -330,6 +330,44 @@ Renders: 1 घंटा · 2 घंटे · 1.5 घंटे. Days: “{dayCoun
 | `faqQuestionOffices`, `faqQuestionOpeningHours`, `faqQuestionSales` | Visitor asks the venue (Czech *vy*) | “क्या आपके यहाँ निजी ऑफ़िस हैं?” — *आप* here addresses the venue. |
 | `checkoutStatus*ContactMessage` | Pre-filled email from the customer to the venue | First person, “नमस्ते”, polite; keep `{reservationDetails}` on its own line; avoid gendered first-person verbs (“मैं … चाहता/चाहती हूँ” → “मेरा अनुरोध है कि …”). |
 | Font coverage (all surfaces) | Devanagari glyphs, conjuncts and matras may be missing in the web and mobile fonts, falling back mid-word, and line height may clip vowel signs | Registry/fonts stream: check on the preview before sign-off. |
+
+## Terms settled during translation
+
+Recurring terms the translation slices chose that the tables above don't cover. They are binding like the rest of this file.
+
+| Czech | English | Hindi | Notes |
+|---|---|---|---|
+| blokace rezervace; držíme | reservation hold; held | **होल्ड** (f.); “बुकिंग की अस्थायी होल्ड”, “होल्ड पर” | Also a discount claim held by a pending checkout (“होल्ड पर”). Never आरक्षण. |
+| zámek (Igloohome) | (smart) lock | **लॉक** (m.) | Forbidden: “ताला”. |
+| přístupový odkaz; přístupová stránka | access link; access page | **प्रवेश लिंक**; **बुकिंग का प्रवेश पेज** | Button “प्रवेश कोड दिखाएँ”. |
+| přístupový údaj (provider) | credential | **क्रेडेंशियल** (m.); CLI “साइन-इन क्रेडेंशियल” | Assistant access credentials in legal: “पहुँच क्रेडेंशियल”. |
+| vrácení peněz | refund | **धनवापसी** (f.); verb “भुगतान वापस करना” | Not निरस्तीकरण (A12 void). |
+| obnova | recovery | **बहाली** (f.); “बहाल करना” | |
+| párování / sladění | reconciliation | **मिलान** (m.) | |
+| tabulka (data grid) | table | **तालिका** (f.) | **टेबल** stays the physical / Dotypos table. |
+| produkt | product | **प्रोडक्ट** (m.) | Legal documents may say “उत्पाद”. |
+| provozní (purpose) | operational | **संचालन संबंधी** | Customer email footer: “सेवा संदेश”. Admin nav “Provoz” = “संचालन”. |
+| koncept | draft | **ड्राफ़्ट** (m.) | |
+| verze | version | **वर्ज़न** (m.) | Forbidden: “वर्शन”. |
+| obrázek; fotka | image; photo | **इमेज** (f.); **फ़ोटो** (f.) | Forbidden: “तस्वीर”. |
+| doplňky | add-ons | **ऐड-ऑन** (m.) | |
+| recenzní účet; recenzent | (app-store) review account; reviewer | **रिव्यू खाता**; **समीक्षक** | Manual payment review stays “समीक्षा”. |
+| odhlásit odběr | unsubscribe | **सदस्यता छोड़ना** (link “सदस्यता छोड़ें”) | Forbidden: “अनसब्सक्राइब”. |
+| událost (automation, Google Calendar) | event | **इवेंट** (m.) | Hosted events (akce) stay **कार्यक्रम** (D07). |
+| scénář; plán; plánovač | flow; schedule; planner | **वर्कफ़्लो**; **शेड्यूल**; **शेड्यूलर** | |
+| uplatnit (kód) | redeem / apply a code | **इस्तेमाल करना** (claim); **लागू करना** (a discount applies) | |
+| preference (marketing) | preference | **सेटिंग** (f.) | Cookie category “प्राथमिकता कुकीज़”. |
+| spravovat | manage | **मैनेज करना** | |
+| připojit / odpojit (asistenta) | connect / disconnect | **कनेक्ट करना** / **डिस्कनेक्ट करना**; “कनेक्ट किए गए असिस्टेंट” | |
+| Nebezpečná zóna | danger zone | **जोखिम क्षेत्र** | |
+| Globální sleva | global discount | **सभी बुकिंग पर छूट** | |
+| deaktivovat (profil); přihlašování | deactivate; sign-in methods | **निष्क्रिय करना**; **साइन-इन के तरीके** | |
+| jednorázový odkaz | single-use link | **एक बार इस्तेमाल होने वाला लिंक** | |
+| d / h / min / s (countdown) | — | **दि. / घं. / मि. / से.** | Only where Czech abbreviates. |
+| jazyk (in sentences) | language | “**चेक भाषा**”, “अंग्रेज़ी भाषा” | Bare names (चेक, अंग्रेज़ी, जर्मन, यूक्रेनी, स्लोवाक) in lists and labels; “चेक” alone can read as “cheque” in prose. |
+| ustanovení; odpovědnost; škoda / újma | provision; liability; damage / harm | **प्रावधान**; **उत्तरदायित्व**; **क्षति** / **हानि** | Legal documents. |
+| sídlo; provozovna (legal); doručovací adresa | registered office; establishment; delivery address | **पंजीकृत कार्यालय**; **प्रतिष्ठान**; **पत्राचार का पता** | Legal documents; the venue in UI stays “स्थान” (P18). |
+| oprávněný zájem | legitimate interest | **वैध हित** | Privacy policy. |
 
 ## Notes for the owner
 

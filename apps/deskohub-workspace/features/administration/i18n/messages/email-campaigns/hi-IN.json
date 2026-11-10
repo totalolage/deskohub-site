@@ -52,8 +52,8 @@
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "परिचालन अभियान email",
-        "countPlural=other": "परिचालन अभियान email"
+        "countPlural=one": "संचालन संबंधी अभियान email",
+        "countPlural=other": "संचालन संबंधी अभियान email"
       }
     }
   ],
@@ -85,7 +85,7 @@
   "emailCampaignsAudienceCampaignEmailCountPurposeAny": "कोई भी",
   "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "अभियान का उद्देश्य",
   "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "मार्केटिंग",
-  "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "परिचालन",
+  "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "संचालन संबंधी",
   "emailCampaignsAudienceCampaignEmailCountSourceAny": "कोई भी अभियान",
   "emailCampaignsAudienceCampaignEmailCountSourceEmpty": "कोई अभियान मेल नहीं खाता।",
   "emailCampaignsAudienceCampaignEmailCountSourceLabel": "अभियान",
@@ -306,14 +306,14 @@
       }
     }
   ],
-  "emailCampaignsAudienceProductAddCondition": "उत्पाद की शर्त जोड़ें",
-  "emailCampaignsAudienceProductAny": "कोई भी उत्पाद",
+  "emailCampaignsAudienceProductAddCondition": "प्रोडक्ट की शर्त जोड़ें",
+  "emailCampaignsAudienceProductAny": "कोई भी प्रोडक्ट",
   "emailCampaignsAudienceProductChoose": "चुनें",
   "emailCampaignsAudienceProductChooseValueError": "कम से कम एक मान चुनें।",
   "emailCampaignsAudienceProductFamilyCowork": "कोवर्किंग",
   "emailCampaignsAudienceProductFamilyMeetingRoom": "मीटिंग रूम",
   "emailCampaignsAudienceProductFamilyOffice": "ऑफ़िस",
-  "emailCampaignsAudienceProductLabel": "उत्पाद",
+  "emailCampaignsAudienceProductLabel": "प्रोडक्ट",
   "emailCampaignsAudienceProductPropertyCoffee": "कॉफ़ी",
   "emailCampaignsAudienceProductPropertyDays": "दिनों की संख्या",
   "emailCampaignsAudienceProductPropertyMonitor": "मॉनिटर सेटअप",
@@ -323,7 +323,7 @@
   "emailCampaignsAudienceProductRemoveCondition": "शर्त हटाएँ: {property}",
   "emailCampaignsAudienceProductRemoveValue": "{value} ({property}) हटाएँ",
   "emailCampaignsAudienceProductRetired": "(अब बिक्री में नहीं)",
-  "emailCampaignsAudienceProductSelectLabel": "बुकिंग का उत्पाद",
+  "emailCampaignsAudienceProductSelectLabel": "बुकिंग का प्रोडक्ट",
   "emailCampaignsAudienceProductUnitDays": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
@@ -905,7 +905,7 @@
   ],
   "emailCampaignsBadgeDeliveryAutomated": "स्वचालित",
   "emailCampaignsBadgePurposeMarketing": "मार्केटिंग",
-  "emailCampaignsBadgePurposeOperational": "परिचालन",
+  "emailCampaignsBadgePurposeOperational": "संचालन संबंधी",
   "emailCampaignsBadgeRecipientStatusBounced": "बाउंस हुआ",
   "emailCampaignsBadgeRecipientStatusComplained": "स्पैम बताया गया",
   "emailCampaignsBadgeRecipientStatusDelivered": "डिलीवर हुआ",
@@ -958,9 +958,9 @@
   "emailCampaignsComposerPreheaderLabel": "प्रीव्यू टेक्स्ट",
   "emailCampaignsComposerPurposeLabel": "उद्देश्य",
   "emailCampaignsComposerPurposeMarketing": "मार्केटिंग",
-  "emailCampaignsComposerPurposeMarketingDescription": "केवल वे ग्राहक, जिन्होंने मार्केटिंग संदेशों के लिए सहमति दी है। हर email में अनसब्सक्राइब करने का लिंक होता है।",
-  "emailCampaignsComposerPurposeOperational": "परिचालन",
-  "emailCampaignsComposerPurposeOperationalDescription": "सभी मेल खाने वाले ग्राहकों के लिए परिचालन सूचना। फ़ुटर में बताया जाता है कि उन्हें यह email क्यों मिल रहा है।",
+  "emailCampaignsComposerPurposeMarketingDescription": "केवल वे ग्राहक, जिन्होंने मार्केटिंग संदेशों के लिए सहमति दी है। हर email में सदस्यता छोड़ने का लिंक होता है।",
+  "emailCampaignsComposerPurposeOperational": "संचालन संबंधी",
+  "emailCampaignsComposerPurposeOperationalDescription": "सभी मेल खाने वाले ग्राहकों के लिए संचालन संबंधी सूचना। फ़ुटर में बताया जाता है कि उन्हें यह email क्यों मिल रहा है।",
   "emailCampaignsComposerSaveAudienceArchived": "चुनी गई ऑडियंस संग्रहित है। कोई दूसरी ऑडियंस चुनें।",
   "emailCampaignsComposerSaveAudienceFilterUnavailable": "चुनी गई ऑडियंस ऐसे फ़िल्टर इस्तेमाल करती है, जो केवल ऑटोमेशन की शर्तों में इस्तेमाल हो सकते हैं। कोई दूसरी ऑडियंस चुनें।",
   "emailCampaignsComposerSaveAudienceNotFound": "चुनी गई ऑडियंस अब मौजूद नहीं है।",

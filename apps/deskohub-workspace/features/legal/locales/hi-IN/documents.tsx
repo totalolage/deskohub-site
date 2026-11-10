@@ -815,6 +815,6 @@ const legalDocuments = {
 
 export const translation = {
   translationNotice:
-    "यह चेक मूल पाठ का अनुवाद है। इस अनुवाद और चेक संस्करण के बीच किसी भी विरोधाभास की स्थिति में चेक संस्करण ही मान्य होगा।",
+    "यह चेक भाषा के मूल पाठ का अनुवाद है। इस अनुवाद और चेक भाषा के पाठ के बीच किसी भी विरोधाभास की स्थिति में चेक भाषा का पाठ ही मान्य होगा।",
   documents: legalDocuments,
 } satisfies LegalDocumentTranslation;

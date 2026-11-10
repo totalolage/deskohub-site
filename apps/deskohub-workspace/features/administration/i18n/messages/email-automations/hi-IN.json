@@ -28,7 +28,7 @@
   "emailAutomationsTriggerReservationFinished": "बुकिंग की समाप्ति",
   "emailAutomationsTriggerReservationStarted": "बुकिंग की शुरुआत",
   "emailAutomationsTriggerSchedule": "शेड्यूल के अनुसार",
-  "emailAutomationsVersionLive": "वर्शन {version} {date} से चल रहा है",
+  "emailAutomationsVersionLive": "वर्ज़न {version} {date} से चल रहा है",
   "emailAutomationsListDeliveryFilter": "भेजने का तरीका",
   "emailAutomationsListDeliveryAll": "सभी अभियान",
   "emailAutomationsListDeliveryOnce": "एक बार वाले",

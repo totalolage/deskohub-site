@@ -109,7 +109,7 @@
   "emailAutomationFlowStatusArchived": "यह ऑटोमेशन संग्रहित है, इसलिए इसका वर्कफ़्लो केवल देखा जा सकता है।",
   "emailAutomationFlowStatusEmpty": "इस ऑटोमेशन का अभी कोई वर्कफ़्लो नहीं है। ट्रिगर चुनें और सहेजें।",
   "emailAutomationFlowStatusPending": "सहेजा गया। बदलाव नए रन पर लागू हों, इसके लिए <link>प्रीव्यू देखें और सक्रिय करें</link>।",
-  "emailAutomationFlowStatusPublished": "लाइव वर्शन से मेल खाता है।",
+  "emailAutomationFlowStatusPublished": "लाइव वर्ज़न से मेल खाता है।",
   "emailAutomationFlowStatusUnsaved": "बिना सहेजे बदलाव",
   "emailAutomationFlowStepDelete": "चरण हटाएँ",
   "emailAutomationFlowStepEyebrow": [
