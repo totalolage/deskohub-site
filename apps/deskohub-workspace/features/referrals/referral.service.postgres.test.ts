@@ -2357,7 +2357,8 @@ describe.skipIf(!testDatabase)(
 
     test.each([
       { read: "find", operations: ["summary", "acceptance"] },
-      { read: "findActivityState", operations: ["summary", "acceptance"] },
+      // The summary reads the account's state only in its section's recheck.
+      { read: "findActivityState", operations: ["acceptance"] },
     ] as const)(
       "reports a failed $read as a database outage, never as an unavailable account, and writes nothing",
       async ({ read, operations }) => {
@@ -2411,8 +2412,8 @@ describe.skipIf(!testDatabase)(
         const context = await createVerdictContext();
         const unreachable = await connectUnreachableWorkspaceDatabase();
         try {
-          // The identity check reads the account's state before the section;
-          // the section's own recheck reads it again under the lock.
+          // The summary reads the account's state only in the section's
+          // recheck, under the lock.
           const sectionDown = makeAccountPrerequisiteLayer({
             authentication: signedInAuthentication(context.invitee.accountId),
             ...(failing === "lock"
@@ -2421,7 +2422,6 @@ describe.skipIf(!testDatabase)(
                   failingAt: {
                     reads: ["findActivityState"],
                     unreachable: await unreachableAccountLinks(unreachable),
-                    afterHealthyReads: 1,
                   },
                 }),
           });
