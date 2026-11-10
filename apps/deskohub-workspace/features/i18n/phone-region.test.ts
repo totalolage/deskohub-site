@@ -19,6 +19,8 @@ describe("defaultPhoneRegion", () => {
     ["de-DE", "DE"],
     ["uk-UA", "UA"],
     ["sk-SK", "SK"],
+    ["vi-VN", "VN"],
+    ["hi-IN", "IN"],
   ] as const)("reads a national number in %s as %s", (locale, region) => {
     expect(defaultPhoneRegion(locale)).toBe(region);
   });

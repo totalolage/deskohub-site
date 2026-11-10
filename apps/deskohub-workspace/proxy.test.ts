@@ -584,6 +584,8 @@ describe("locale negotiation", () => {
       ["de-AT,de;q=0.9", "/de-DE/faq"],
       ["sk-SK,sk;q=0.9", "/sk-SK/faq"],
       ["uk,ru;q=0.8", "/uk-UA/faq"],
+      ["vi-VN,vi;q=0.9", "/vi-VN/faq"],
+      ["hi,en;q=0.8", "/hi-IN/faq"],
     ]) {
       expect(
         await localeRedirect("https://workspace.example/faq", {
@@ -622,6 +624,8 @@ describe("locale negotiation", () => {
       ["/de-de/faq", "/de-DE/faq"],
       ["/sk/faq", "/sk-SK/faq"],
       ["/UK/faq", "/uk-UA/faq"],
+      ["/vi/faq", "/vi-VN/faq"],
+      ["/hi/faq", "/hi-IN/faq"],
     ]) {
       // The URL alone decides, whatever the visitor's language or cookie.
       expect(
