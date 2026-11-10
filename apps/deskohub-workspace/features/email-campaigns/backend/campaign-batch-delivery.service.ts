@@ -183,7 +183,7 @@ export const BatchRequest = Data.taggedEnum<BatchRequest>();
  * only an admin retry that includes unconfirmed recipients resends it.
  * Both carry the last provider's error code, when it gave one.
  */
-export type RecipientOutcome =
+type RecipientOutcome =
   | { readonly status: "sent"; readonly providerMessageId: string }
   | {
       readonly status: "failed" | "unconfirmed";
@@ -1010,10 +1010,10 @@ export class CampaignBatchDelivery extends Context.Service<
           Layer.provide(AnalyticsConsentLedger.Default)
         ),
         WorkspaceDotyposLayer,
-        WorkspaceEmailLayer,
-        WorkspaceDatabase.Default
+        WorkspaceEmailLayer
       )
-    )
+    ),
+    Layer.provide(WorkspaceDatabase.Default)
   );
 }
 
