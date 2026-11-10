@@ -44,6 +44,8 @@ const singleLocaleAudienceMessages = {
   "de-DE": m.emailCampaignsComposerSingleLocaleAudienceGerman,
   "uk-UA": m.emailCampaignsComposerSingleLocaleAudienceUkrainian,
   "sk-SK": m.emailCampaignsComposerSingleLocaleAudienceSlovak,
+  "vi-VN": m.emailCampaignsComposerSingleLocaleAudienceVietnamese,
+  "hi-IN": m.emailCampaignsComposerSingleLocaleAudienceHindi,
 } as const satisfies Record<Locale, (...args: never) => string>;
 
 const hiddenContentMessages = {
@@ -52,6 +54,8 @@ const hiddenContentMessages = {
   "de-DE": m.emailCampaignsComposerHiddenContentGerman,
   "uk-UA": m.emailCampaignsComposerHiddenContentUkrainian,
   "sk-SK": m.emailCampaignsComposerHiddenContentSlovak,
+  "vi-VN": m.emailCampaignsComposerHiddenContentVietnamese,
+  "hi-IN": m.emailCampaignsComposerHiddenContentHindi,
 } as const satisfies Record<Locale, (...args: never) => string>;
 
 /**

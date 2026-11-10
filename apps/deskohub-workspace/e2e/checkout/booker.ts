@@ -35,6 +35,8 @@ const signedOutCaseIds = [
   "locale-smoke-de-de",
   "locale-smoke-uk-ua",
   "locale-smoke-sk-sk",
+  "locale-smoke-vi-vn",
+  "locale-smoke-hi-in",
   "reservation-url-state-cowork",
   "reservation-url-state-meeting-room",
   "reservation-url-state-office",

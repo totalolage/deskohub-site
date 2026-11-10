@@ -1,13 +1,13 @@
 ---
 name: deskohub-workspace-feature-flags
-description: Workspace PostHog feature flags, release gates, generated flag contract, feature-flag sync, flag overrides, POSTHOG_FEATURE_FLAG_OVERRIDES, rollout status, @deskohub/posthog package.
+description: Workspace PostHog feature flags, release gates, generated flag contract, feature-flag sync, flag overrides, POSTHOG_FEATURE_FLAG_OVERRIDES, rollout status, flag-snapshot.ts, flag classification fallback, Could not list PostHog feature flags, @deskohub/posthog package.
 ---
 
 # Deskohub Workspace feature flags
 
 Read the reference for the task:
 
-- Evaluation, constant-flag classification, deployment-scoped overrides, contract sync, or rollout inspection: [references/architecture.md](references/architecture.md).
+- Evaluation, production-only remote evaluation, constant-flag classification and its last-known and snapshot fallbacks, deployment-scoped and per-PR overrides, contract and snapshot sync, or rollout inspection: [references/architecture.md](references/architecture.md).
 - Changes to `@deskohub/posthog`, its generated API client, or its typed feature-flag adapters: [references/posthog-package.md](references/posthog-package.md).
 
 ## Always apply
@@ -19,15 +19,18 @@ Read the reference for the task:
 - For a boolean release gate, only `true` is enabled. Explicit `false` is the ordinary off state; don't log it as an error. An omitted value means PostHog didn't evaluate the flag, for example because it's inactive: fail the gate closed and log the flag as unavailable.
 - When a release gate applies to one reservation family, dispatch exhaustively by `kind` so other families never evaluate the lookup.
 - Keep the one PostHog React provider in `app/[locale]/layout.tsx`. Don't add page- or feature-local providers. Consent-aware initialization and analytics rendering may suspend inside it so consent state doesn't gate cacheable navigation shells.
+- Only production evaluates flags remotely, on the server, in the browser, and in the mobile app. Elsewhere a flag is on only when its classification makes it constant on or an override turns it on; enable one for a PR with a branch-scoped Preview override ([references/architecture.md](references/architecture.md), Remote evaluation only in production).
 - Keep PostHog origins role-specific: `POSTHOG_API_HOST` is the server-only management and query origin, `POSTHOG_INGEST_HOST` is the direct server SDK and OTLP origin, and `NEXT_PUBLIC_POSTHOG_HOST` is the browser ingest proxy. Server clients never go through the public proxy.
 
 ## Page release gates
 
 Give a page gate one decision per request with `releaseGateForRequest` (`backend/release-gate.server.ts`): its React-cached `isOpen` serves Server Components, and its `layer` hands the same decision to Effect consumers, so metadata, page content, and nested loaders such as advertised prices agree. `features/office/backend/office-release-gate.server.ts` is the pattern. `whenRunFails` decides what a run failure outside the gate's policy, such as a runtime that can't start, means: `close` serves a closed gate, `reject` rejects as `runWorkspaceEffect` does. Office, meeting-room, passkey, and sign-in-code gates reject; changing that changes their outage behaviour and needs the developer's decision.
 
-React `cache` doesn't memoize inside a Server Action or route handler. There, provide the gate's request `layer` or `Gate.Live`, each decided once per build, and have helpers read the provided gate, never re-evaluate. `WorkspaceFeatureFlagService` can't run in `proxy.ts`: its classification is a `"use cache"` function, which the proxy doesn't support.
+`isOpen` answers a flag that is the same for every visitor from `loadGlobalRelease` without the request, and awaits `connection()` before a per-visitor evaluation. Any other per-visitor PostHog evaluation reachable from a render, such as the discount gates behind the home sale banner (`features/discounts/active-public-sales.server.ts`), also awaits `connection()` first. A prerender, including Next's runtime prerender for runtime prefetches and cached navigations, where `headers()` and `cookies()` resolve, must never reach `posthog-node`: it reads `Date.now()` before its request, which Next logs as "encountered the unstable value Date.now() while prerendering" and which aborts the runtime prerender (#1187). `release-gate.server.test.ts` and `active-public-sales.server.test.ts` guard this. Only production evaluates remotely, so a local or preview run never reaches `posthog-node` and can't reproduce it; those tests run the remote path with a fake client.
 
-An HttpApi handler, such as the customer HTTP API, runs outside Next.js request scope: provide the gate's `releaseGateForRun(gate, policy)` layer (the `…ForRun` exports beside each gate, such as `ReferralReleaseGateForRun`), built once per request inside the handler with the gate's own run-failure policy. Its `Live` still reads flag definitions through Next.js's data cache, so the handler must run in the Next.js server.
+React `cache` doesn't memoize inside a Server Action or route handler. There, provide the gate's request `layer` or `Gate.Live`, each decided once per build, and have helpers read the provided gate, never re-evaluate. Every gate of a request still reads one shared remote evaluation, so a decision taken again never costs another PostHog request ([references/architecture.md](references/architecture.md), One remote evaluation per request). `WorkspaceFeatureFlagService` can't run in `proxy.ts`: its classification is a `"use cache"` function, which the proxy doesn't support.
+
+An HttpApi handler, such as the customer HTTP API, runs outside Next.js request scope: provide the gate's `releaseGateForRun(gate, policy)` layer (the `…ForRun` exports beside each gate, such as `ReferralReleaseGateForRun`), built once per request inside the handler with the gate's own run-failure policy. The gates provided in one build share one `WorkspaceFeatureFlagService`, so a queue or cron run outside any request also makes at most one remote evaluation. Its `Live` still reads flag definitions through Next.js's data cache, so the handler must run in the Next.js server.
 
 A gate may read the request subject. On a Cache Components page, evaluate it inside the Suspense boundary after `connection()`, never in the component that builds the static shell; a shell-level read makes the route dynamic and breaks `instant = true`. Also check the gate in `generateMetadata`, so crawlers and a constant-off flag get a real 404 while browsers get the streamed not-found boundary.
 

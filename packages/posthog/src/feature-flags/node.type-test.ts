@@ -92,14 +92,10 @@ const subject = {
   sendFeatureFlagEvents: true,
 } as const;
 
-void service.isEnabled({ key: "meeting_room_page", subject });
 void service.evaluateFlags({
   options: { flagKeys: ["meeting_room_page"] },
   subject,
 });
-
-// @ts-expect-error The generated contract rejects unknown flag keys.
-void service.isEnabled({ key: "seasonal_menu", subject });
 
 void service.evaluateFlags({
   options: {

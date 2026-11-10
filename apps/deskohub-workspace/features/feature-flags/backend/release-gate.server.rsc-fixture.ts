@@ -14,6 +14,16 @@ mock.module(
   () => import("next/dist/api/navigation.react-server")
 );
 
+// PostHog decides the flag per visitor, and the render is at request time.
+mock.module("./global-release.server", () => ({
+  loadGlobalRelease: () => Promise.resolve("undecided"),
+}));
+const nextServer = await import("next/server");
+mock.module("next/server", () => ({
+  ...nextServer,
+  connection: () => Promise.resolve(),
+}));
+
 const { releaseGateForRequest } = await import("./release-gate.server");
 
 let open = false;

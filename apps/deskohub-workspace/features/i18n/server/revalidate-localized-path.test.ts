@@ -25,7 +25,9 @@ test("revalidates the page in every locale", async () => {
     "/cs-CZ/admin/invoices/invoice-id",
     "/de-DE/admin/invoices/invoice-id",
     "/en-US/admin/invoices/invoice-id",
+    "/hi-IN/admin/invoices/invoice-id",
     "/sk-SK/admin/invoices/invoice-id",
     "/uk-UA/admin/invoices/invoice-id",
+    "/vi-VN/admin/invoices/invoice-id",
   ]);
 });

@@ -65,7 +65,7 @@ import {
   getStoredWorkspaceReservationDetails,
   type WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
-import type { ReservationPurpose } from "@/features/reservation/reservation-billing";
+import type { ReservationPurpose } from "@/features/reservation/reservation-purpose";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { MissingDotyposId } from "@/shared/backend/missing-dotypos-id";
 import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";

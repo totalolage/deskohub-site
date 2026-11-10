@@ -38,16 +38,11 @@ const legalDocumentKeys = [
 
 // The legal pages print their date in each locale's long form; English uses
 // the day-first form.
-const dateFormatLocale = {
-  "en-US": "en-GB",
-  "cs-CZ": "cs-CZ",
-  "de-DE": "de-DE",
-  "uk-UA": "uk-UA",
-  "sk-SK": "sk-SK",
-} as const satisfies Record<Locale, string>;
+const dateFormatLocale = (locale: Locale) =>
+  locale === "en-US" ? "en-GB" : locale;
 
 const longDate = (isoDate: string, locale: Locale) =>
-  new Intl.DateTimeFormat(dateFormatLocale[locale], {
+  new Intl.DateTimeFormat(dateFormatLocale(locale), {
     day: "numeric",
     month: "long",
     year: "numeric",

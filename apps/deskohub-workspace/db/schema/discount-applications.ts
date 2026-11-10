@@ -51,7 +51,13 @@ export const discountApplications = pgTable(
       .references(() => workspaceReservations.id),
     sequence: integer("sequence").notNull(),
     publicDiscountId: text("public_discount_id").notNull().$type<DiscountId>(),
+    /** The label in the checkout locale, as the customer saw it. */
     label: text("label").notNull(),
+    /**
+     * The label in `staffLocale` for staff-facing views. Applications
+     * recorded before it existed hold null; staff then read `label`.
+     */
+    staffLabel: text("staff_label"),
     adjustment: jsonb("adjustment").notNull().$type<unknown>(),
     productIdentity: jsonb("product_identity").notNull().$type<unknown>(),
     subtotalBeforeValue: integer("subtotal_before_value").notNull(),
@@ -82,6 +88,10 @@ export const discountApplications = pgTable(
     check(
       "discount_applications_identity_check",
       sql`btrim(${t.publicDiscountId}) <> '' and btrim(${t.label}) <> ''`
+    ),
+    check(
+      "discount_applications_staff_label_check",
+      sql`${t.staffLabel} is null or btrim(${t.staffLabel}) <> ''`
     ),
     check(
       "discount_applications_money_values_check",

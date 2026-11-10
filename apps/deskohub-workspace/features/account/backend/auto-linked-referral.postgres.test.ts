@@ -20,6 +20,7 @@ import { canonicalPromotionCodeSchema } from "@/features/discounts/persistence-c
 import { ReferralService } from "@/features/referrals";
 import { parseReferralCode } from "@/features/referrals/client";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
+import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
@@ -27,13 +28,12 @@ import {
   customerAccountIdSchema,
 } from "../customer-account";
 import { acceptAutoLinkedReferral } from "./auto-linked-referral";
+import { CurrentCustomerAccount } from "./current-customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import {
-  type CustomerAccountResolutionDependencies,
-  resolveCustomerAccountLink,
-} from "./customer-account-resolver.service";
+import { CustomerAccountSections } from "./customer-account-sections";
 import { CustomerAuthentication } from "./customer-authentication.service";
 import { testSessionProfile } from "./customer-authentication.test-utils";
+import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const uniqueId = () => crypto.randomUUID();
@@ -133,33 +133,53 @@ const signIn = (input: {
   );
   const lockLayer = WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool);
   const linksLayer = CustomerAccountLinkRepository.Default.pipe(
-    Layer.provide(Layer.mergeAll(databaseLayer, lockLayer))
+    Layer.provide(databaseLayer)
+  );
+  const session = {
+    accountId: input.accountId,
+    email: testEmailAddress(input.accountId),
+    deletionRequested: false,
+    ...testSessionProfile,
+  };
+  const authenticationLayer = Layer.succeed(CustomerAuthentication, {
+    currentUser: Effect.succeed(session),
+  });
+  const sectionsLayer = CustomerAccountSections.Default.pipe(
+    Layer.provide(Layer.mergeAll(authenticationLayer, linksLayer, lockLayer))
+  );
+
+  const currentAccountLayer = CurrentCustomerAccount.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        authenticationLayer,
+        NoReviewAccounts,
+        linksLayer,
+        sectionsLayer,
+        Layer.mock(CustomerDotyposAdapter, {
+          classifyExactEmailCustomers: () =>
+            Effect.succeed({
+              kind: "matched",
+              state: "active",
+              customerId: input.existingCustomerId,
+            }),
+          reactivateCustomer: () => Effect.void,
+        })
+      )
+    )
   );
 
   return Effect.gen(function* () {
-    const links = yield* CustomerAccountLinkRepository;
-    const dependencies: CustomerAccountResolutionDependencies = {
-      currentUser: () =>
-        Effect.succeed({
-          accountId: input.accountId,
-          email: testEmailAddress(input.accountId),
-          deletionRequested: false,
-          ...testSessionProfile,
-        }),
-      findLink: links.find,
-      isReviewAccount: () => Effect.succeed(false),
-      classify: () =>
-        Effect.succeed({
-          kind: "matched",
-          state: "active",
-          customerId: input.existingCustomerId,
-        }),
-      claimLink: links.claim,
-      reactivate: () => Effect.void,
-      withAccountLock: links.withAccountLock,
+    const standing = yield* Effect.flatMap(
+      CurrentCustomerAccount,
+      (currentAccount) => currentAccount.resolve
+    ).pipe(Effect.provide(currentAccountLayer));
+    if (standing.kind !== "linked") {
+      return yield* Effect.die(`resolved as ${standing.kind}`);
+    }
+    const resolution = {
+      account: standing.account,
+      autoLinked: standing.autoLinked,
     };
-
-    const resolution = yield* resolveCustomerAccountLink(dependencies);
     yield* acceptAutoLinkedReferral(
       resolution,
       parseReferralCode(input.code)
@@ -172,9 +192,8 @@ const signIn = (input: {
               databaseLayer,
               lockLayer,
               linksLayer,
-              Layer.succeed(CustomerAuthentication, {
-                currentUser: dependencies.currentUser(),
-              }),
+              authenticationLayer,
+              sectionsLayer,
               Layer.mock(DotyposService, {
                 listReservations: () =>
                   Effect.succeed(input.reservations ?? []),
@@ -186,7 +205,7 @@ const signIn = (input: {
     );
     return resolution;
   }).pipe(
-    Effect.provide(linksLayer),
+    Effect.provide(Layer.mergeAll(linksLayer, sectionsLayer)),
     // Recording under the resolver's account lock would wait on that lock
     // forever; the timeout turns such a regression into a failure.
     Effect.timeout("10 seconds"),

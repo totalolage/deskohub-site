@@ -24,6 +24,12 @@ export interface AnalyticsClient {
   readonly reloadFeatureFlags: () => Promise<void>;
   /** A flag's value, or `undefined` until flags have loaded. */
   readonly getFeatureFlag: (flag: string) => boolean | string | undefined;
+  /**
+   * Pauses (`true`) or resumes every request the client sends, its own
+   * flushes included. Queued events wait in its queue meanwhile; resuming
+   * sends them.
+   */
+  readonly holdNetwork: (held: boolean) => void;
   /** Calls the listener whenever flags load. Returns the unsubscribe function. */
   readonly onFeatureFlags: (listener: () => void) => () => void;
   /**
@@ -37,6 +43,11 @@ export interface AnalyticsClient {
 export interface AnalyticsClientOptions {
   readonly apiKey: string;
   readonly host: string;
+  /**
+   * Whether the client may request flags from PostHog. Only production does:
+   * other builds share production's project and its flag-request quota.
+   */
+  readonly remoteFeatureFlags: boolean;
   /** Properties sent with every event the client captures. */
   readonly superProperties: AnalyticsProperties;
 }

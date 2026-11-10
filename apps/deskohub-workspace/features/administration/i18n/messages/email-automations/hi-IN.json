@@ -1,0 +1,49 @@
+{
+  "emailAutomationsEyebrow": "स्वचालित अभियान",
+  "emailAutomationsFrequencyBannerBody": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "यह शेड्यूल प्रति घंटे अधिकतम {count} बार शुरू होता है। हर शुरुआत पूरी ऑडियंस का मूल्यांकन करती है, इसलिए जाँच लें कि यह आवृत्ति जानबूझकर रखी गई है।",
+        "countPlural=other": "यह शेड्यूल प्रति घंटे अधिकतम {count} बार शुरू होता है। हर शुरुआत पूरी ऑडियंस का मूल्यांकन करती है, इसलिए जाँच लें कि यह आवृत्ति जानबूझकर रखी गई है।"
+      }
+    }
+  ],
+  "emailAutomationsFrequencyBannerTitle": "शुरुआतें शायद बहुत बार हो रही हैं",
+  "emailAutomationsNeverActivated": "अभी तक सक्रिय नहीं किया गया",
+  "emailAutomationsPendingChanges": "अप्रकाशित बदलाव",
+  "emailAutomationsSectionEmail": "Email",
+  "emailAutomationsSectionFlow": "वर्कफ़्लो",
+  "emailAutomationsSectionPreview": "प्रीव्यू और सक्रियण",
+  "emailAutomationsSectionRuns": "रन लॉग",
+  "emailAutomationsSectionsLabel": "स्वचालित अभियान के भाग",
+  "emailAutomationsStatusActive": "सक्रिय",
+  "emailAutomationsStatusArchived": "संग्रहित",
+  "emailAutomationsStatusDraft": "ड्राफ़्ट",
+  "emailAutomationsStatusPaused": "रोका गया",
+  "emailAutomationsTriggerAccountCreated": "खाता बनना",
+  "emailAutomationsTriggerReservationBooked": "बुकिंग की पुष्टि",
+  "emailAutomationsTriggerReservationCancelled": "बुकिंग का रद्दीकरण",
+  "emailAutomationsTriggerReservationFinished": "बुकिंग की समाप्ति",
+  "emailAutomationsTriggerReservationStarted": "बुकिंग की शुरुआत",
+  "emailAutomationsTriggerSchedule": "शेड्यूल के अनुसार",
+  "emailAutomationsVersionLive": "वर्ज़न {version} {date} से चल रहा है",
+  "emailAutomationsListDeliveryFilter": "भेजने का तरीका",
+  "emailAutomationsListDeliveryAll": "सभी अभियान",
+  "emailAutomationsListDeliveryOnce": "एक बार वाले",
+  "emailAutomationsListDeliveryAutomated": "स्वचालित",
+  "emailAutomationsComposerDeliveryLabel": "भेजने का तरीका",
+  "emailAutomationsComposerDeliveryOnce": "एक बार भेजें",
+  "emailAutomationsComposerDeliveryOnceDescription": "ऑडियंस को एक email, जो टेस्ट email भेजने के बाद भेजा जाता है।",
+  "emailAutomationsComposerDeliveryAutomated": "स्वचालित रूप से",
+  "emailAutomationsComposerDeliveryAutomatedDescription": "वर्कफ़्लो यह email हर उस ग्राहक को भेजता है जो शर्तें पूरी करता है।",
+  "emailAutomationsComposerDeliveryHint": "अभियान बनाने के बाद इसे बदला नहीं जा सकता।",
+  "emailAutomationsComposerNewDescription": "Email लिखें और फिर अभियान बनाएँ, ताकि उसे भेजने वाला वर्कफ़्लो तैयार किया जा सके।",
+  "emailAutomationsComposerAudienceLabel": "ऑडियंस (शेड्यूल के लिए प्रवेश समूह, इवेंट के लिए प्रवेश की शर्त)",
+  "emailAutomationsComposerAudiencePlaceholder": "ऑडियंस चुनें",
+  "emailAutomationsEmailSave": "बदलाव सहेजें",
+  "emailAutomationsEmailUnpublishedNote": "यहाँ किए गए बदलाव तब तक प्रकाशित नहीं होते, जब तक आप प्रीव्यू में उनकी जाँच करके उन्हें सक्रिय नहीं करते। जो रन पहले से चल रहे हैं, वे उसी email के साथ जारी रहते हैं जिससे वे शुरू हुए थे।",
+  "emailAutomationsEmailArchivedNote": "यह अभियान संग्रहित है, इसलिए इसका email और ऑडियंस अब बदले नहीं जा सकते।",
+  "emailAutomationsEmailSaveArchived": "यह अभियान संग्रहित है, इसलिए इसका email अब संपादित नहीं किया जा सकता।"
+}

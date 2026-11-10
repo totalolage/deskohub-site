@@ -1,89 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { AnalyticsConsentStatus } from "../consent/analytics-consent";
 import { type AnalyticsRuntime, createAnalytics } from "./analytics";
-import type {
-  AnalyticsClient,
-  AnalyticsClientOptions,
-} from "./analytics-client";
 import type { AnalyticsSettings } from "./analytics-settings";
-
-type Call = readonly [string, ...unknown[]];
-
-const createFakeClient = (
-  options: AnalyticsClientOptions,
-  restoredDistinctId: string | null,
-  holdLoading: boolean
-) => {
-  const calls: Call[] = [];
-  const flagListeners = new Set<() => void>();
-  let flags: Record<string, boolean | string> | undefined;
-  let finishShutdown: () => void = () => {};
-  let finishLoading: () => void = () => {};
-  let failLoading: () => void = () => {};
-  const flagReloads: {
-    readonly resolve: () => void;
-    readonly reject: (error: Error) => void;
-  }[] = [];
-  const loading = new Promise<void>((resolve, reject) => {
-    finishLoading = resolve;
-    failLoading = () => reject(new Error("storage"));
-  });
-  if (!holdLoading) finishLoading();
-  const client: AnalyticsClient = {
-    ready: () => loading,
-    identifiedAs: () => restoredDistinctId,
-    capture: (event, properties) => calls.push(["capture", event, properties]),
-    screen: (name) => calls.push(["screen", name]),
-    identify: (distinctId) => calls.push(["identify", distinctId]),
-    setPersonProperties: (properties) =>
-      calls.push(["setPersonProperties", properties]),
-    reset: () => calls.push(["reset"]),
-    reloadFeatureFlags: () => {
-      calls.push(["reloadFeatureFlags"]);
-      return new Promise<void>((resolve, reject) => {
-        flagReloads.push({ resolve, reject });
-      });
-    },
-    getFeatureFlag: (flag) => flags?.[flag],
-    onFeatureFlags: (listener) => {
-      flagListeners.add(listener);
-      return () => flagListeners.delete(listener);
-    },
-    shutDown: () => {
-      calls.push(["shutDown"]);
-      return new Promise<void>((resolve) => {
-        finishShutdown = resolve;
-      });
-    },
-  };
-  return {
-    client,
-    options,
-    calls,
-    /** The SDK stores flag values and notifies, as any flags response does. */
-    loadFlags: (next: Record<string, boolean | string>) => {
-      flags = next;
-      for (const listener of flagListeners) listener();
-    },
-    /** Settles the `index`th reload the controller asked for. */
-    finishFlagReload: (
-      index: number,
-      next: Record<string, boolean | string>
-    ) => {
-      flags = next;
-      for (const listener of flagListeners) listener();
-      flagReloads[index]?.resolve();
-    },
-    failFlagReload: (index: number) =>
-      flagReloads[index]?.reject(new Error("flags")),
-    finishShutdown: () => finishShutdown(),
-    finishLoading: () => finishLoading(),
-    failLoading: () => failLoading(),
-    flagListenerCount: () => flagListeners.size,
-  };
-};
-
-type FakeClient = ReturnType<typeof createFakeClient>;
+import {
+  type FakeAnalyticsClient,
+  makeFakeAnalyticsClient,
+} from "./testing/fake-analytics-client";
 
 const settings: AnalyticsSettings = {
   apiKey: "phc_test",
@@ -97,6 +19,8 @@ const setup = ({
   otherSdk = false,
   restoredDistinctId = null,
   holdLoading = false,
+  accountCheck = false,
+  failedStoredStateClears = 0,
 }: {
   readonly consent?: AnalyticsConsentStatus;
   readonly runtimeSettings?: AnalyticsSettings | null;
@@ -105,16 +29,29 @@ const setup = ({
   readonly restoredDistinctId?: string | null;
   /** Keeps each client loading until the test finishes it. */
   readonly holdLoading?: boolean;
+  /** Holds signed-in delivery until the test settles the account's check. */
+  readonly accountCheck?: boolean;
+  /** How many attempts to clear the stored state fail before one succeeds. */
+  readonly failedStoredStateClears?: number;
 } = {}) => {
   const analytics = createAnalytics();
-  const clients: FakeClient[] = [];
+  const clients: FakeAnalyticsClient[] = [];
   const warnings: string[] = [];
   let status = consent;
   const consentListeners = new Set<() => void>();
+  const checkListeners = new Set<() => void>();
+  const checkedAccounts = new Set<string>();
+  let storedStateClears = 0;
+  // A client restores this identity until a clear succeeds.
+  let storedDistinctId = restoredDistinctId;
   const runtime: AnalyticsRuntime = {
     settings: runtimeSettings,
     createClient: (options) => {
-      const fake = createFakeClient(options, restoredDistinctId, holdLoading);
+      const fake = makeFakeAnalyticsClient(
+        options,
+        storedDistinctId,
+        holdLoading
+      );
       clients.push(fake);
       return fake.client;
     },
@@ -126,7 +63,28 @@ const setup = ({
         return () => consentListeners.delete(listener);
       },
     },
+    ...(accountCheck
+      ? {
+          accountCheck: {
+            holds: (accountId) => !checkedAccounts.has(accountId),
+            subscribe: (listener) => {
+              checkListeners.add(listener);
+              return () => checkListeners.delete(listener);
+            },
+          },
+        }
+      : {}),
+    clearStoredState: async () => {
+      storedStateClears++;
+      if (storedStateClears <= failedStoredStateClears) {
+        throw new Error("storage");
+      }
+      storedDistinctId = null;
+    },
     warn: (message) => warnings.push(message),
+  };
+  const notifyCheck = () => {
+    for (const listener of checkListeners) listener();
   };
   return {
     analytics,
@@ -137,6 +95,17 @@ const setup = ({
       status = next;
       for (const listener of consentListeners) listener();
     },
+    /** The account's consent check finished. */
+    settleCheck: (accountId: string) => {
+      checkedAccounts.add(accountId);
+      notifyCheck();
+    },
+    /** The app returned to the foreground: every account is checked again. */
+    recheck: () => {
+      checkedAccounts.clear();
+      notifyCheck();
+    },
+    storedStateClears: () => storedStateClears,
   };
 };
 
@@ -192,6 +161,7 @@ describe("client construction", () => {
     expect(app.clients[0]?.options).toEqual({
       apiKey: "phc_test",
       host: "https://t.example.test",
+      remoteFeatureFlags: false,
       superProperties: { "deployment.environment.name": "preview" },
     });
   });
@@ -201,8 +171,30 @@ describe("client construction", () => {
     app.connect();
     app.analytics.setIdentity({ kind: "anonymous" });
     await settle();
+    expect(app.clients[0]?.options.remoteFeatureFlags).toBe(true);
     expect(app.clients[0]?.calls).toEqual([["reloadFeatureFlags"]]);
   });
+
+  test.each(["preview", "development"] as const)(
+    "requests no remote flags in %s",
+    async (environment) => {
+      const app = setup({
+        runtimeSettings: { ...settings, environment },
+        restoredDistinctId: "workspace-account:account-a",
+      });
+      app.connect();
+      app.analytics.setIdentity({ kind: "anonymous" });
+      await settle();
+      app.analytics.setIdentity(account("account-b"));
+      await settle();
+      const [client] = app.clients;
+      expect(client?.options.remoteFeatureFlags).toBe(false);
+      expect(client?.calls.map(([name]) => name)).toContain("identify");
+      expect(client?.calls.map(([name]) => name)).not.toContain(
+        "reloadFeatureFlags"
+      );
+    }
+  );
 
   test("refuses to start beside another PostHog SDK in the page", async () => {
     const app = setup({ otherSdk: true });
@@ -477,7 +469,6 @@ describe("identity", () => {
     await settle();
     expect(app.clients[0]?.calls).toEqual([
       ["setPersonProperties", { $internal_or_test_user: true }],
-      ["reloadFeatureFlags"],
     ]);
   });
 
@@ -666,5 +657,240 @@ describe("feature flags", () => {
     app.clients[0]?.loadFlags({ seating_map: true });
     app.analytics.setIdentity({ kind: "pending" });
     expect(app.analytics.featureFlag("seating_map")).toBeUndefined();
+  });
+});
+
+describe("account consent hold", () => {
+  test("starts no client for a held account until its check settles", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity(account("acc_1"));
+    app.analytics.screen("/reservations");
+    app.analytics.capture({ name: "access PIN viewed" });
+    await settle();
+    expect(app.clients).toHaveLength(0);
+    expect(app.analytics.featureFlag("flag")).toBeUndefined();
+
+    app.settleCheck("acc_1");
+    await settle();
+    expect(app.clients[0]?.calls).toEqual([
+      ["identify", "workspace-account:acc_1"],
+      ["reloadFeatureFlags"],
+      ["screen", "/reservations"],
+      ["capture", "access PIN viewed", undefined],
+    ]);
+  });
+
+  test("discards what was held when the check withdraws, and clears stored state", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity(account("acc_1"));
+    app.analytics.capture({ name: "sign-in completed", awaitsAccount: true });
+    app.analytics.screen("/account");
+
+    app.setConsent("denied");
+    app.settleCheck("acc_1");
+    await settle();
+
+    expect(app.clients).toHaveLength(0);
+    expect(app.storedStateClears()).toBe(1);
+    app.setConsent("granted");
+    await settle();
+    expect(app.clients[0]?.calls).toEqual([
+      ["identify", "workspace-account:acc_1"],
+      ["reloadFeatureFlags"],
+    ]);
+  });
+
+  test("pauses an identified client on a recheck and resumes on settle", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity(account("acc_1"));
+    app.settleCheck("acc_1");
+    await settle();
+    const client = app.clients[0];
+    client?.finishFlagReload(0, { flag: "on" });
+    await settle();
+
+    app.recheck();
+    expect(client?.networkHeld()).toBe(true);
+    app.analytics.capture({ name: "access PIN viewed" });
+    app.analytics.screen("/account");
+    // The paused client already belongs to the account: its flags stay.
+    expect(app.analytics.featureFlag("flag")).toBe("on");
+    expect(client?.calls.filter(([name]) => name === "capture")).toEqual([]);
+
+    app.settleCheck("acc_1");
+    expect(client?.networkHeld()).toBe(false);
+    expect(client?.calls.slice(-3)).toEqual([
+      ["holdNetwork", false],
+      ["capture", "access PIN viewed", undefined],
+      ["screen", "/account"],
+    ]);
+  });
+
+  test("shuts a paused client down without sending what waited", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity(account("acc_1"));
+    app.settleCheck("acc_1");
+    await settle();
+    const client = app.clients[0];
+
+    app.recheck();
+    app.analytics.capture({ name: "access PIN viewed" });
+    app.setConsent("denied");
+    app.settleCheck("acc_1");
+    client?.finishShutdown();
+    await settle();
+
+    expect(client?.calls).toEqual([
+      ["identify", "workspace-account:acc_1"],
+      ["reloadFeatureFlags"],
+      ["holdNetwork", true],
+      ["shutDown"],
+    ]);
+    expect(app.clients).toHaveLength(1);
+  });
+
+  test("holds an anonymous client's identify on sign-in until the check settles", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+    const client = app.clients[0];
+    client?.finishFlagReload(0, { flag: "anonymous" });
+    await settle();
+
+    app.analytics.setIdentity(account("acc_1"));
+    app.analytics.capture({ name: "sign-in completed", awaitsAccount: true });
+    expect(client?.networkHeld()).toBe(true);
+    expect(app.analytics.featureFlag("flag")).toBeUndefined();
+    expect(client?.calls.some(([name]) => name === "identify")).toBe(false);
+
+    app.settleCheck("acc_1");
+    expect(client?.calls.slice(-4)).toEqual([
+      ["holdNetwork", false],
+      ["identify", "workspace-account:acc_1"],
+      ["reloadFeatureFlags"],
+      ["capture", "sign-in completed", undefined],
+    ]);
+  });
+
+  test("never holds anonymous delivery", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    app.analytics.capture({ name: "booking started" });
+    await settle();
+    expect(app.clients[0]?.calls).toEqual([
+      ["reloadFeatureFlags"],
+      ["capture", "booking started", undefined],
+    ]);
+  });
+
+  test("a check of another account releases nothing", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity(account("acc_2"));
+    app.settleCheck("acc_1");
+    await settle();
+    expect(app.clients).toHaveLength(0);
+  });
+});
+
+describe("stored state", () => {
+  test("clears it once on a refusal while no client runs", async () => {
+    const app = setup({ consent: "denied" });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    app.analytics.capture({ name: "booking started" });
+    await settle();
+    expect(app.storedStateClears()).toBe(1);
+  });
+
+  test("leaves an undecided device's storage alone", async () => {
+    const app = setup({ consent: "undecided" });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+    expect(app.storedStateClears()).toBe(0);
+  });
+
+  test("relies on shutdown to clear a running client's state", async () => {
+    const app = setup();
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+    app.setConsent("denied");
+    app.clients[0]?.finishShutdown();
+    await settle();
+    expect(app.storedStateClears()).toBe(0);
+  });
+
+  test("retries a failed clear before a later grant starts a client", async () => {
+    const app = setup({
+      consent: "denied",
+      restoredDistinctId: "workspace-account:acc_old",
+      failedStoredStateClears: 1,
+    });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+    expect(app.storedStateClears()).toBe(1);
+
+    app.setConsent("granted");
+    app.analytics.capture({ name: "booking started" });
+    expect(app.clients).toHaveLength(0);
+
+    await settle();
+    expect(app.storedStateClears()).toBe(2);
+    // Built only once the clear succeeded, so nothing of the old identity
+    // remains to be reset or reused.
+    expect(app.clients).toHaveLength(1);
+    expect(app.clients[0]?.calls).toEqual([
+      ["reloadFeatureFlags"],
+      ["capture", "booking started", undefined],
+    ]);
+  });
+
+  test("keeps analytics off for a grant while clearing keeps failing", async () => {
+    const app = setup({
+      consent: "denied",
+      restoredDistinctId: "workspace-account:acc_old",
+      failedStoredStateClears: 2,
+    });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+
+    app.setConsent("granted");
+    app.analytics.capture({ name: "booking started" });
+    await settle();
+    app.analytics.capture({ name: "booking submitted" });
+    await settle();
+    expect(app.storedStateClears()).toBe(2);
+    expect(app.clients).toHaveLength(0);
+
+    app.setConsent("denied");
+    await settle();
+    app.setConsent("granted");
+    await settle();
+    expect(app.storedStateClears()).toBe(3);
+    expect(app.clients[0]?.calls).toEqual([["reloadFeatureFlags"]]);
+  });
+
+  test("clears it before a grant when the withdrawn client's shutdown fails", async () => {
+    const app = setup();
+    app.connect();
+    app.analytics.setIdentity(account("acc_1"));
+    await settle();
+    app.setConsent("denied");
+    app.setConsent("granted");
+
+    app.clients[0]?.failShutdown();
+    await settle();
+    expect(app.storedStateClears()).toBe(1);
+    expect(app.clients).toHaveLength(2);
   });
 });

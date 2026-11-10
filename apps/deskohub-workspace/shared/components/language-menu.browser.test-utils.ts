@@ -11,6 +11,8 @@ const languageMenuOrder = [
   "de-DE",
   "uk-UA",
   "sk-SK",
+  "vi-VN",
+  "hi-IN",
 ] as const satisfies readonly Locale[];
 
 const waitForFocus = async (page: Page, target: Locator) => {

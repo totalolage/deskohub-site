@@ -38,7 +38,7 @@ The PIN appears once in the creation result and is never stored or retrievable. 
 
 Reading reservation and customer views does not refresh payment state, retry fulfillment, cancel a reservation, or repair an external record. Mutations belong to explicit operator workflows such as cancelling an eligible reservation, recovering reservation access, maintaining discounts, codes, sales, customer discount groups, or administration sessions. Cancellation may send the customer a localized email, preserves successful settlement facts, and atomically marks a paid Nexi attempt as needing a refund without issuing one; zero-total internal payments do not require a refund.
 
-Discount definitions are managed through the code or sale that uses them. Creating a code may create its benefit at the same time. Historical applications and redemptions remain immutable.
+Discount definitions are managed through the code or sale that uses them. Creating a code may create its benefit at the same time. Historical applications and redemptions remain immutable. A reservation's applied discounts are named in Czech, the staff language, whatever language the customer booked in; a discount applied before staff names were recorded shows the name the customer saw.
 
 ## Information ownership
 

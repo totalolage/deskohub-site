@@ -155,6 +155,26 @@ describe("selectLatestAndroidRelease", () => {
     );
   });
 
+  // The `/android` page reads it with `Date.parse` (see
+  // `getAndroidReleaseFacts`), so a value that function can't read is skipped.
+  test("skips a release whose publish time isn't an ISO instant with an offset", () => {
+    for (const published_at of [
+      "2026-11-07T09:30:00",
+      "2026-11-07T09:30:00Z[UTC]",
+      "Sat, 07 Nov 2026 09:30:00 GMT",
+      "not a date",
+    ]) {
+      expect(
+        selectLatestAndroidRelease([
+          githubMobileRelease("2.0.0", { published_at }),
+          githubMobileRelease("1.10.0"),
+        ])
+      ).toEqual(
+        Option.some(expect.objectContaining({ versionName: "1.10.0" }))
+      );
+    }
+  });
+
   test("falls back to the highest usable release when a newer one is unusable", () => {
     expect(
       selectLatestAndroidRelease([

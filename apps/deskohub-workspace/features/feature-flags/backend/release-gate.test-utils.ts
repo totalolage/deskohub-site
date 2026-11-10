@@ -21,6 +21,7 @@ export const releaseGateOverFlags = <Self>(
   },
   featureFlags: Layer.Layer<WorkspaceFeatureFlagService>
 ): ReleaseGateClass<Self> => ({
+  flag: gate.flag,
   isOpen: gate.isOpen,
   fromDecision: gate.fromDecision,
   fromEvaluation: gate.fromEvaluation,

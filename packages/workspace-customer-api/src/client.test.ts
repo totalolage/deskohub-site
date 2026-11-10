@@ -14,6 +14,7 @@ import {
 import {
   CustomerAccountLinkRequired,
   type CustomerAccountState,
+  type CustomerAnalyticsConsentSync,
 } from "./customer-account-api";
 import { CustomerAuthRejected } from "./customer-auth-api";
 import { CustomerLocale } from "./customer-locale";
@@ -69,7 +70,7 @@ const deletionPending: CustomerAccountState = {
 };
 
 /** A saved locale a later release may serve, which this contract doesn't. */
-const laterLocale = "vi-VN";
+const laterLocale = "fr-FR";
 
 describe("makeWorkspaceCustomerApiClient", () => {
   test("sends the client header to the customer API path and decodes the account", async () => {
@@ -150,6 +151,77 @@ describe("makeWorkspaceCustomerApiClient", () => {
     expect(await run(update, signedOut.client)).toEqual(
       Result.fail(new CustomerSessionRequired({}))
     );
+  });
+
+  test("sends the app's analytics choice and decodes the account decision it takes", async () => {
+    const withdrawal: CustomerAnalyticsConsentSync = {
+      kind: "withdraw",
+      decidedAt: "2026-11-05T10:00:00.123Z",
+    };
+    const { client, requests } = recordingClient(() => json(withdrawal));
+    const payload = {
+      choice: { analytics: true, decidedAt: "2026-11-02T09:30:00.000Z" },
+      locale: "cs-CZ",
+    } as const;
+
+    const result = await run(
+      Effect.flatMap(makeWorkspaceCustomerApiClient({ baseUrl }), (api) =>
+        api.account.syncAnalyticsConsent({ payload })
+      ),
+      client
+    );
+
+    expect(result).toEqual(Result.succeed(withdrawal));
+    expect(requests.map(({ method, url }) => ({ method, url }))).toEqual([
+      {
+        method: "POST",
+        url: `${baseUrl}/api/customer/account/analytics-consent`,
+      },
+    ]);
+    expect(await requests[0]?.json()).toEqual(payload);
+  });
+
+  test("refuses to send an analytics choice whose date names no instant", async () => {
+    const { client, requests } = recordingClient(() =>
+      json({ kind: "unchanged" })
+    );
+
+    const result = await run(
+      Effect.flatMap(makeWorkspaceCustomerApiClient({ baseUrl }), (api) =>
+        api.account.syncAnalyticsConsent({
+          payload: {
+            choice: { analytics: true, decidedAt: "2026-11-02" },
+            locale: "cs-CZ",
+          },
+        })
+      ),
+      client
+    );
+
+    expect(Result.isFailure(result)).toBe(true);
+    expect(requests).toEqual([]);
+  });
+
+  test("saves the analytics preference and decodes the decision's instant", async () => {
+    const saved = { granted: false, decidedAt: "2026-11-05T10:00:00.123Z" };
+    const { client, requests } = recordingClient(() => json(saved));
+
+    const result = await run(
+      Effect.flatMap(makeWorkspaceCustomerApiClient({ baseUrl }), (api) =>
+        api.account.saveAnalyticsPreference({
+          payload: { granted: false, locale: "en-US" },
+        })
+      ),
+      client
+    );
+
+    expect(result).toEqual(Result.succeed(saved));
+    expect(requests.map(({ method, url }) => ({ method, url }))).toEqual([
+      {
+        method: "PUT",
+        url: `${baseUrl}/api/customer/account/analytics-preference`,
+      },
+    ]);
   });
 
   test("decodes an invoice PDF as its bytes, and an unissued invoice as its tagged error", async () => {

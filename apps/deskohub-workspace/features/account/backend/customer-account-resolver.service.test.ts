@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { DotyposUncertain } from "@deskohub/dotypos";
-import { testEmailAddress } from "@deskohub/test-email";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Cause, Effect } from "effect";
 import { SqlError } from "effect/unstable/sql";
@@ -11,14 +10,18 @@ import {
 import {
   type CustomerAccountResolutionDependencies,
   resolveCustomerAccount,
-  resolveCustomerAccountLink,
 } from "./customer-account-resolver.service";
+import { CustomerAccountSections } from "./customer-account-sections";
+import {
+  sectionAccountId as accountId,
+  type CustomerAccountSectionsFixture,
+  makeCustomerAccountSections,
+  sectionAccountEmail as verifiedEmail,
+} from "./customer-account-sections.test-utils";
 import type { CustomerAccountSession } from "./customer-authentication.service";
 import { testSessionProfile } from "./customer-authentication.test-utils";
 
-const accountId = customerAccountIdSchema.make("auth-user-1");
 const otherAccountId = customerAccountIdSchema.make("auth-user-2");
-const verifiedEmail = testEmailAddress("ada");
 
 const session = (
   overrides: Partial<CustomerAccountSession> = {}
@@ -33,7 +36,8 @@ const session = (
 const makeDependencies = (
   overrides: {
     readonly session?: CustomerAccountSession | null;
-    readonly lockedSession?: CustomerAccountSession | null;
+    /** What the section rechecks under the lock; the pre-lock session by default. */
+    readonly held?: CustomerAccountSectionsFixture;
     readonly link?: string | null;
     readonly matches?: ReturnType<typeof matches>;
     readonly claimResult?: "linked" | "claimed";
@@ -41,17 +45,19 @@ const makeDependencies = (
     readonly reactivation?: "succeeds" | "fails";
   } & Partial<CustomerAccountResolutionDependencies> = {}
 ) => {
-  const calls: string[] = [];
   const initial =
     overrides.session !== undefined ? overrides.session : session();
-  const inLock =
-    overrides.lockedSession !== undefined ? overrides.lockedSession : initial;
-  let currentUserCalls = 0;
+  // The section records its lock and recheck events into the same list, so
+  // the resolution steps' order relative to the lock is observable.
+  const sections = makeCustomerAccountSections(
+    overrides.held ?? { session: initial }
+  );
+  const calls = sections.events;
+  const { withActiveAccount } = Effect.runSync(
+    Effect.service(CustomerAccountSections).pipe(Effect.provide(sections.layer))
+  );
   const dependencies: CustomerAccountResolutionDependencies = {
-    currentUser: () => {
-      currentUserCalls += 1;
-      return Effect.succeed(currentUserCalls === 1 ? initial : inLock);
-    },
+    currentUser: () => Effect.succeed(initial),
     findLink: () => {
       calls.push("find-link");
       return Effect.succeed(overrides.link ?? null);
@@ -84,13 +90,7 @@ const makeDependencies = (
           )
         : Effect.succeed(undefined);
     },
-    withAccountLock: (_accountId, effect) => {
-      calls.push("lock-acquire");
-      return Effect.void.pipe(
-        Effect.andThen(effect),
-        Effect.ensuring(Effect.sync(() => calls.push("lock-release")))
-      );
-    },
+    withActiveAccount,
     ...overrides,
   };
   return { dependencies, calls };
@@ -172,7 +172,13 @@ describe("CustomerAccountResolver", () => {
         dotyposCustomerId: "60111",
       });
     }
-    expect(calls).toEqual(["lock-acquire", "find-link", "lock-release"]);
+    expect(calls).toEqual([
+      "account-lock-acquired",
+      "account-session",
+      "account-activity",
+      "find-link",
+      "account-lock-released",
+    ]);
   });
 
   test("links a unique active exact-email profile", async () => {
@@ -191,11 +197,13 @@ describe("CustomerAccountResolver", () => {
       expect(outcome.success.dotyposCustomerId).toBe("60111");
     }
     expect(calls).toEqual([
-      "lock-acquire",
+      "account-lock-acquired",
+      "account-session",
+      "account-activity",
       "find-link",
       "classify",
       "claim",
-      "lock-release",
+      "account-lock-released",
     ]);
   });
 
@@ -260,10 +268,12 @@ describe("CustomerAccountResolver", () => {
 
     await expectAccessError(outcome, "link-required", "unusable");
     expect(calls).toEqual([
-      "lock-acquire",
+      "account-lock-acquired",
+      "account-session",
+      "account-activity",
       "find-link",
       "classify",
-      "lock-release",
+      "account-lock-released",
     ]);
   });
 
@@ -304,64 +314,44 @@ describe("CustomerAccountResolver", () => {
 
   test("rereads authority inside the lock and rejects a switched account", async () => {
     const { dependencies, calls } = makeDependencies({
-      lockedSession: session({ accountId: otherAccountId }),
+      held: { session: { accountId: otherAccountId } },
     });
 
     const outcome = await runResolution(dependencies);
 
     await expectAccessError(outcome, "unauthenticated");
-    expect(calls).toEqual(["lock-acquire", "lock-release"]);
+    expect(calls).toEqual([
+      "account-lock-acquired",
+      "account-session",
+      "account-lock-released",
+    ]);
   });
 
   test("rereads the deletion marker inside the lock", async () => {
     const { dependencies, calls } = makeDependencies({
-      lockedSession: session({ deletionRequested: true }),
+      held: { session: {}, activityState: "deletion-requested" },
     });
 
     const outcome = await runResolution(dependencies);
 
     await expectAccessError(outcome, "link-required", "deletion-requested");
-    expect(calls).toEqual(["lock-acquire", "lock-release"]);
+    expect(calls).toEqual([
+      "account-lock-acquired",
+      "account-session",
+      "account-activity",
+      "account-lock-released",
+    ]);
   });
 
-  test("reports an auto-link only when this resolution claimed an existing profile", async () => {
-    const resolveLink = (dependencies: CustomerAccountResolutionDependencies) =>
-      Effect.runPromise(resolveCustomerAccountLink(dependencies));
+  test("rejects an account whose row is gone by the time the lock is held", async () => {
+    const { dependencies, calls } = makeDependencies({
+      held: { session: {}, activityState: "missing" },
+    });
 
-    await expect(
-      resolveLink(makeDependencies({ link: "60111" }).dependencies)
-    ).resolves.toEqual({
-      account: { accountId, dotyposCustomerId: "60111" },
-      autoLinked: false,
-    });
-    await expect(
-      resolveLink(
-        makeDependencies({
-          matches: matches({
-            kind: "matched",
-            state: "active",
-            customerId: "60111",
-          }),
-        }).dependencies
-      )
-    ).resolves.toEqual({
-      account: { accountId, dotyposCustomerId: "60111" },
-      autoLinked: true,
-    });
-    await expect(
-      resolveLink(
-        makeDependencies({
-          matches: matches({
-            kind: "matched",
-            state: "expired",
-            customerId: "60222",
-          }),
-        }).dependencies
-      )
-    ).resolves.toEqual({
-      account: { accountId, dotyposCustomerId: "60222" },
-      autoLinked: true,
-    });
+    const outcome = await runResolution(dependencies);
+
+    await expectAccessError(outcome, "unauthenticated");
+    expect(calls).not.toContain("find-link");
   });
 
   test("reports a failed link read as the fixed link-read unavailability", async () => {
@@ -374,7 +364,7 @@ describe("CustomerAccountResolver", () => {
 
   test("reports a failed lock acquisition as the fixed lock unavailability", async () => {
     const { dependencies } = makeDependencies({
-      withAccountLock: () => Effect.fail(sqlFailure()),
+      held: { session: {}, lockUnavailable: true },
     });
 
     expectUnavailable(await runResolution(dependencies), "account-link.lock");
