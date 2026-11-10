@@ -17,12 +17,8 @@ import {
   type ScalarProperty,
   type VectorProperty,
 } from "./lottie";
-import {
-  dieBase,
-  type LoadingDieMotion,
-  loadingDiePose,
-  loadingDieTiming,
-} from "./motion";
+import { dieBase, loadingDiePose } from "./motion";
+import { type LoadingDieMotion, loadingDieTiming } from "./timing";
 
 /** Frames between path keys; players interpolate linearly in between. */
 export const keySpacing = 2;

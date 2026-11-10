@@ -20,9 +20,9 @@ import {
   type LoadingDieLottie,
   type SolidFill,
 } from "./lottie";
-import type { LoadingDieMotion } from "./motion";
+import type { LoadingDieMotion } from "./timing";
 
-export { type LoadingDieMotion, loadingDieTiming } from "./motion";
+export { type LoadingDieMotion, loadingDieTiming } from "./timing";
 
 /** Fill of the die's faces: the brand gradient from the colour logo, or one solid `#rrggbb` colour. */
 export type LoadingDieFill =

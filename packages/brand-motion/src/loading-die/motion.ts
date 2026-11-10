@@ -6,14 +6,7 @@ import {
   type Rotation,
   vertexAxes,
 } from "./geometry";
-
-/** How the die moves: the full tumble with a hop and a squash on landing, or rolling in place next to text. */
-export type LoadingDieMotion = "tumble" | "inPlace";
-
-export const loadingDieTiming: {
-  readonly framesPerSecond: number;
-  readonly frameCount: number;
-} = { framesPerSecond: 60, frameCount: 96 };
+import { type LoadingDieMotion, loadingDieTiming } from "./timing";
 
 /** The point the hop lifts and the squash scales about: the die's base, in logo units. */
 export const dieBase: Point = [logoCentre[0], 272];

@@ -9,12 +9,8 @@ import {
   serializeLoadingDieDocument,
 } from "./loading-die-document";
 import type { LoadingDieLottie } from "./lottie";
-import {
-  dieBase,
-  type LoadingDieMotion,
-  loadingDiePose,
-  loadingDieTiming,
-} from "./motion";
+import { dieBase, loadingDiePose } from "./motion";
+import { type LoadingDieMotion, loadingDieTiming } from "./timing";
 
 /**
  * The committed documents are generated. Regenerate them with

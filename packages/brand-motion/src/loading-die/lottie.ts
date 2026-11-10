@@ -228,7 +228,11 @@ export const sampleShape = (
         ]
       )[0];
 
-/** Checks the top-level shape of a committed loading die document read as JSON. */
+/**
+ * Confirms the layer structure the runtime reads from a committed document.
+ * The documents are generated and checked by loading-die-document.test.ts,
+ * so this is a guard at the JSON import, not a full validation.
+ */
 export const isLoadingDieLottie = (
   value: unknown
 ): value is LoadingDieLottie => {
