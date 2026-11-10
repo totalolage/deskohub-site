@@ -1,11 +1,24 @@
 import { getCodes } from "country-list";
 import { Schema } from "effect";
 import validator from "validator";
-import { m } from "@/features/i18n";
+
+/**
+ * The billing identity rules a customer can break, carried as each check's
+ * message. They name the rule, not its copy: this module also backs the
+ * database schema and E2E diagnostics, which run without compiled messages,
+ * so the form that shows an issue localizes it.
+ */
+export const billingIdentityIssue = {
+  required: "billing-identity.required",
+  countryInvalid: "billing-identity.country-invalid",
+  postalCodeInvalid: "billing-identity.postal-code-invalid",
+} as const;
+export type BillingIdentityIssue =
+  (typeof billingIdentityIssue)[keyof typeof billingIdentityIssue];
 
 const billingTextSchema = (maximumLength: number) =>
   Schema.Trim.check(
-    Schema.isNonEmpty({ message: m.reservationBillingFieldRequired() }),
+    Schema.isNonEmpty({ message: billingIdentityIssue.required }),
     Schema.isMaxLength(maximumLength)
   );
 
@@ -29,7 +42,7 @@ const postalCodeLocaleSet = new Set<string>(validator.isPostalCodeLocales);
 
 const invoiceCountryCodeSchema = billingTextSchema(2).check(
   Schema.makeFilter((country) => invoiceCountryCodeSet.has(country), {
-    message: m.reservationBillingCountryInvalid(),
+    message: billingIdentityIssue.countryInvalid,
   })
 );
 
@@ -49,7 +62,7 @@ export const invoiceBuyerAddressSchema = Schema.Struct({
       ? true
       : {
           path: ["postalCode"],
-          issue: m.reservationBillingPostalCodeInvalid(),
+          issue: billingIdentityIssue.postalCodeInvalid,
         }
   )
 );

@@ -1,9 +1,13 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import { Schema } from "effect";
 import { useForm, useWatch } from "react-hook-form";
-import { m } from "@/features/i18n";
+import { type Locale, locales, m } from "@/features/i18n";
 import {
   defaultReservationBillingSelection,
+  emptyBusinessBillingSelection,
   type ReservationBillingSelectionInput,
+  reservationBillingSelectionInputSchema,
 } from "@/features/reservation/reservation-billing";
 import { Form } from "@/shared/components/ui/form";
 import {
@@ -30,6 +34,44 @@ const Harness = () => {
     <Form {...form}>
       <ReservationBillingFields locale={locale} />
       <output data-testid="billing-value">{JSON.stringify(billing)}</output>
+    </Form>
+  );
+};
+
+const validatedBillingSchema = Schema.Struct({
+  billing: reservationBillingSelectionInputSchema,
+});
+
+const businessBilling = (
+  address: Partial<typeof emptyBusinessBillingSelection.buyer.address>
+): ReservationBillingSelectionInput => ({
+  ...emptyBusinessBillingSelection,
+  buyer: {
+    ...emptyBusinessBillingSelection.buyer,
+    address: { ...emptyBusinessBillingSelection.buyer.address, ...address },
+  },
+});
+
+const ValidatedHarness = ({
+  billing,
+  locale,
+}: {
+  readonly billing: ReservationBillingSelectionInput;
+  readonly locale: Locale;
+}) => {
+  const form = useForm<{ billing: ReservationBillingSelectionInput }>({
+    resolver: effectSchemaResolver(validatedBillingSchema, undefined, {
+      raw: true,
+    }),
+    defaultValues: { billing },
+  });
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(() => undefined)}>
+        <ReservationBillingFields locale={locale} />
+        <button type="submit">Submit</button>
+      </form>
     </Form>
   );
 };
@@ -109,4 +151,58 @@ describe("ReservationBillingFields", () => {
         .required
     ).toBe(false);
   });
+
+  test.each(locales)(
+    "shows billing identity errors in the %s form's language",
+    async (formLocale) => {
+      const view = render(
+        <ValidatedHarness
+          billing={businessBilling({
+            line1: "Street 1",
+            city: "City",
+            postalCode: "x",
+          })}
+          locale={formLocale}
+        />
+      );
+
+      fireEvent.click(view.getByRole("button", { name: "Submit" }));
+
+      expect(
+        await view.findAllByText(
+          m.reservationBillingFieldRequired({}, { locale: formLocale })
+        )
+      ).toHaveLength(2);
+      expect(
+        view.getByText(
+          m.reservationBillingPostalCodeInvalid({}, { locale: formLocale })
+        )
+      ).toBeTruthy();
+    }
+  );
+
+  test.each(locales)(
+    "shows an unknown invoice country in the %s form's language",
+    async (formLocale) => {
+      const view = render(
+        <ValidatedHarness
+          billing={businessBilling({
+            line1: "Street 1",
+            city: "City",
+            postalCode: "1",
+            country: "XX",
+          })}
+          locale={formLocale}
+        />
+      );
+
+      fireEvent.click(view.getByRole("button", { name: "Submit" }));
+
+      expect(
+        await view.findByText(
+          m.reservationBillingCountryInvalid({}, { locale: formLocale })
+        )
+      ).toBeTruthy();
+    }
+  );
 });

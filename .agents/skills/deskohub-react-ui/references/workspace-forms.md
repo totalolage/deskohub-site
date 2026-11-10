@@ -8,5 +8,6 @@
 - Let React Hook Form or the submission action own pending state. Add separate state only for a distinct workflow outcome. A synchronous duplicate-submit guard needs a regression test.
 - Reset hydrated forms in the action completion callback. Use an effect only to sync an external source with no completion callback, such as a native action result arriving after hydration, and cover it with a regression test.
 - Declare parameterless schemas and default values as module constants. Use a schema factory only when it takes caller input, such as a locale.
+- A domain schema that also loads outside rendering, such as from `db/schema` or an E2E script, must not call `m.*`. Give its checks rule names as messages (`billingIdentityIssue` in `features/accounting/billing-identity.ts`) and localize them where the field renders, through `FormMessage`'s `formatError` with the form's locale.
 - Don't memoize a schema or resolver without a demonstrated identity or performance need.
 - Run Effect Schema directly for server validation. Convert to Standard Schema V1 only where the consuming API requires it, such as the safe-action, environment, or query boundary.

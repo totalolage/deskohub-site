@@ -139,6 +139,7 @@
     },
     {
       "includes": [
+        "apps/deskohub-workspace/scripts/workspace-e2e-account-state.ts",
         "apps/deskohub-workspace/scripts/workspace-e2e-capacity.ts",
         "apps/deskohub-workspace/scripts/workspace-e2e-stale-cleanup.ts",
         "apps/deskohub-workspace/e2e/integrations/**"
