@@ -29,7 +29,7 @@ import {
   type ProfileCompletionReferralOutcome,
   WorkspaceCustomerApi,
 } from "@deskohub/workspace-customer-api";
-import { Effect, Layer, Schema, Stream } from "effect";
+import { Clock, Effect, Layer, Schema, Stream } from "effect";
 import {
   HttpClient,
   HttpClientError,
@@ -452,6 +452,20 @@ const serverLayer = (workspace: FakeWorkspace) => {
                   })
                 )
           )
+        )
+        // The app doesn't call the analytics consent endpoints yet: the
+        // account never decided, and a save answers the current instant.
+        .handle("syncAnalyticsConsent", () =>
+          Effect.succeed({ kind: "unchanged" as const })
+        )
+        .handle("getAnalyticsPreference", () =>
+          Effect.succeed({ granted: false })
+        )
+        .handle("saveAnalyticsPreference", ({ payload: { granted } }) =>
+          Effect.map(Clock.currentTimeMillis, (now) => ({
+            granted,
+            decidedAt: new Date(now).toISOString(),
+          }))
         )
         .handle("getReferrals", () =>
           Effect.flatMap(linkedAccount, (current) =>
