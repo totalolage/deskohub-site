@@ -18,8 +18,8 @@ import type {
   CustomerAgentGrant,
 } from "@/features/account";
 import { customerAgentClientIdSchema } from "@/features/account/backend/auth/customer-agent-authorization.service";
-import { makeCustomerAccountSections } from "@/features/account/backend/customer-account-sections.test-utils";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
+import { makeCustomerAccountSections } from "@/features/account/backend/customer-account-sections.test-utils";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { recordCheckoutAnalytics } from "@/features/checkout/backend/analytics/checkout-analytics.service.mock";
 import {
@@ -202,8 +202,7 @@ describe.skipIf(!database)("prepareAgentPayState on Postgres", () => {
       }),
   });
   const services = Layer.mergeAll(
-    makeCustomerAccountSections({ session: {}, activityState: "active" })
-      .layer,
+    makeCustomerAccountSections({ session: {}, activityState: "active" }).layer,
     Layer.mergeAll(
       WorkspaceReservationRepository.Default,
       ReviewAccounts.Default,
