@@ -6,6 +6,7 @@ import { parsePhoneNumber } from "@deskohub/phone-number";
 import { Effect, Option } from "effect";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
+  getAccountDataExportPath,
   getAccountSectionPath,
   getAccountSignInPath,
 } from "@/features/account/routes";
@@ -32,6 +33,10 @@ import {
   workspaceE2EPollIntervalMs,
   workspaceE2ETimeouts,
 } from "../timeouts";
+import {
+  findAccountDataExportDeliveryProblem,
+  findSignedOutAccountDataExportProblem,
+} from "./account-data-export";
 import {
   assertNoAuthRows,
   countAccountPasskeys,
@@ -146,6 +151,11 @@ const caseTimeout = workspaceE2ETimeouts.accountCase;
  * server-rendered reservation content races a bare uiTransition budget.
  */
 const accountPageLoadTimeout = browserTimeout + datasourceTimeout;
+/**
+ * The control's hydration, the export's response and download, and the
+ * control settling, each bounded by its own wait.
+ */
+const accountDataExportDownloadTimeout = 2 * uiTransition + datasourceTimeout;
 
 /**
  * The deployed deletion gate treats a session as stale after ten minutes;
@@ -1274,6 +1284,59 @@ export const makeWorkspaceE2EAccountCases = ({
               );
             }),
             accountPageLoadTimeout
+          )
+        );
+      })
+    ),
+    // The linked main account, signed in and holding the provider
+    // reservations the transitions case left, exports its data from the
+    // legal page; a signed-out visitor gets nothing.
+    makeCase(
+      "account-data-export",
+      Effect.fn("account-data-export")(function* ({ runStep }) {
+        const exportPath = getAccountDataExportPath(config.locale);
+        yield* runStep(
+          step(
+            "open-legal-section",
+            openPage(
+              new URL(
+                getAccountSectionPath(config.locale, "legal"),
+                config.baseUrl
+              ).toString()
+            ),
+            navigationTimeout
+          )
+        );
+        const delivery = yield* runStep(
+          step(
+            "download-account-data-export",
+            laneBrowser.downloadAccountDataExport(exportPath),
+            accountDataExportDownloadTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "assert-account-data-export",
+            Effect.sync(() => {
+              const problem = findAccountDataExportDeliveryProblem(delivery);
+              assert(problem === null, problem ?? "");
+            })
+          )
+        );
+        const refusal = yield* runStep(
+          step(
+            "refuse-signed-out-account-data-export",
+            laneBrowser.requestAccountDataExportSignedOut(exportPath),
+            navigationTimeout + workspaceE2ETimeouts.browserSessionClose
+          )
+        );
+        yield* runStep(
+          step(
+            "assert-signed-out-refusal",
+            Effect.sync(() => {
+              const problem = findSignedOutAccountDataExportProblem(refusal);
+              assert(problem === null, problem ?? "");
+            })
           )
         );
       })

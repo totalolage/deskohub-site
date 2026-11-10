@@ -2,6 +2,12 @@ import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
 import type { Customer } from "@deskohub/dotypos/generated";
 import { Effect, Exit, Layer, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { strToU8, zipSync } from "fflate";
+import {
+  accountDataExportManifestPath,
+  accountDataExportSchemaVersion,
+  accountDataExportSections,
+} from "@/features/account/account-data-export-sections";
 import {
   encodeAuthCallbackReturn,
   getAccountSectionPath,
@@ -19,6 +25,11 @@ import { formatWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { E2EDatabase } from "../integrations/database.service";
 import { makeE2ETelemetryMock } from "../services/telemetry.mock";
 import { workspaceE2ETimeouts } from "../timeouts";
+import {
+  type AccountDataExportDelivery,
+  type AccountDataExportRefusal,
+  readAccountDataExportArchiveShape,
+} from "./account-data-export";
 import { accountSectionLandmarks } from "./account-sections";
 import {
   type WorkspaceE2EAccountCaseId,
@@ -375,6 +386,26 @@ class FakeAccountExternalState {
     readonly acceptedBRecipient: string,
     readonly referralOwnerRecipient: string
   ) {}
+
+  /** Archives the export route served to the signed-in lane browser. */
+  accountDataExports = 0;
+  /** Export paths a signed-out visitor's own browser requested. */
+  readonly signedOutExportRequests: string[] = [];
+  /** What the export route answers a signed-out visitor. */
+  signedOutExportRefusal: AccountDataExportRefusal = {
+    bodyLength: 0,
+    cacheControl: "private, no-store",
+    status: 404,
+  };
+  /** The archive entries the export route serves, by name. */
+  accountDataExportEntries: Readonly<Record<string, string>> = {
+    ...Object.fromEntries(
+      accountDataExportSections.map(({ path }) => [path, "[]"])
+    ),
+    [accountDataExportManifestPath]: JSON.stringify({
+      schemaVersion: accountDataExportSchemaVersion,
+    }),
+  };
 
   recordBrowserAction(action: FakeBrowserAction) {
     this.browserActions.push(action);
@@ -1115,6 +1146,37 @@ class FakeAccountExternalState {
 
 const fakeLocalePath = new RegExp(`^/(${locales.join("|")})(?=/|$)`);
 
+const syntheticAccountDataExportPath = "/en-US/account/data-export";
+const syntheticAccountDataExportActionSelector =
+  '[data-slot="account-data-export-action"]';
+const syntheticAccountDataExportFilename = `deskohub-account-data-${fixedNow.toISOString().slice(0, 10)}.zip`;
+
+/** The export the route serves for the lane's linked account. */
+const syntheticAccountDataExportDelivery = (
+  external: FakeAccountExternalState
+): AccountDataExportDelivery => ({
+  controlState: "delivered",
+  download: {
+    archive: readAccountDataExportArchiveShape(
+      zipSync(
+        Object.fromEntries(
+          Object.entries(external.accountDataExportEntries).map(
+            ([name, text]) => [name, strToU8(text)]
+          )
+        )
+      )
+    ),
+    filename: syntheticAccountDataExportFilename,
+  },
+  headers: {
+    cacheControl: "private, no-store",
+    contentDisposition: `attachment; filename="${syntheticAccountDataExportFilename}"`,
+    contentType: "application/zip",
+    referrerPolicy: "no-referrer",
+  },
+  status: 200,
+});
+
 class FakeBrowser {
   private currentUrl = "";
   private localeCookie: Locale | undefined;
@@ -1398,6 +1460,13 @@ class FakeBrowser {
       this.currentUrl = url;
       this.pageText = locale === "cs-CZ" ? czechFaqTitle : englishFaqTitle;
       this.heading = this.pageText;
+      this.formReady = false;
+      return;
+    }
+    // The legal page is public; its export control decides who may export.
+    if (locale !== undefined && suffix === "/account/legal") {
+      this.currentUrl = url;
+      this.pageText = "Legal";
       this.formReady = false;
       return;
     }
@@ -1952,6 +2021,44 @@ class FakeBrowser {
     return this.currentUrl;
   }
 
+  /**
+   * The legal page's export control: the signed-in, linked account that has
+   * not asked for deletion receives its archive, anyone else the control's
+   * error after a private 404.
+   */
+  downloadAccountDataExport(path: string): AccountDataExportDelivery {
+    if (new URL(this.currentUrl).pathname !== "/en-US/account/legal") {
+      throw new Error("the export control was used off the legal page");
+    }
+    this.external.recordBrowserAction({
+      kind: "click",
+      selectorOrDestination: syntheticAccountDataExportActionSelector,
+    });
+    const userId = this.external.currentAuthUserId;
+    const user = userId ? this.external.usersById.get(userId) : undefined;
+    if (
+      path !== syntheticAccountDataExportPath ||
+      !this.signedIn() ||
+      !user ||
+      user.deletionRequestedAt !== null ||
+      !this.external.linksByUserId.has(user.id)
+    ) {
+      return {
+        controlState: "error",
+        download: undefined,
+        headers: {
+          cacheControl: "private, no-store",
+          contentDisposition: undefined,
+          contentType: undefined,
+          referrerPolicy: "no-referrer",
+        },
+        status: 404,
+      };
+    }
+    this.external.accountDataExports += 1;
+    return syntheticAccountDataExportDelivery(this.external);
+  }
+
   text() {
     return this.pageText;
   }
@@ -2286,6 +2393,13 @@ const makeScenario = (
       Effect.sync(() => browser.waitForSelectedLanguage(locale)),
     waitForSnapshot: (_description, matches) =>
       Effect.sync(() => browser.waitForSnapshot(matches)),
+    downloadAccountDataExport: (path) =>
+      Effect.sync(() => browser.downloadAccountDataExport(path)),
+    requestAccountDataExportSignedOut: (path) =>
+      Effect.sync(() => {
+        external.signedOutExportRequests.push(path);
+        return external.signedOutExportRefusal;
+      }),
   };
   const passkeys: WorkspaceE2EAccountPasskeys = {
     confirmDeletionWithPasskey: Effect.sync(() =>
@@ -2549,6 +2663,12 @@ test("executes every account lane case within the magic-link ledger", async () =
     ...workspaceE2EAccountCaseIds,
   ]);
   expect(operationsByCase).toEqual(workspaceE2EAccountMagicLinkLedger);
+  // The linked account exported its data once, between the reservation
+  // transitions and the deletion, and a signed-out visitor was refused.
+  expect(scenario.external.accountDataExports).toBe(1);
+  expect(scenario.external.signedOutExportRequests).toEqual([
+    "/en-US/account/data-export",
+  ]);
   // The reauthentication sign-in landed on the fixture-saved Czech site, and
   // English (US) was restored before the deletion; the Czech cross-browser
   // sign-in saved Čeština, which the fixture restored to English (US); the
@@ -3160,4 +3280,89 @@ test("rejects a Czech save that the saved preference does not keep", async () =>
 
   expect(Exit.isFailure(exit)).toBe(true);
   expect(stepIds.at(-1)).toBe("choose-czech-language");
+});
+
+const runAccountDataExportCase = async (
+  configure: (scenario: ReturnType<typeof makeScenario>) => void = () =>
+    undefined
+) => {
+  setSystemTime(fixedNow);
+  const { makeWorkspaceE2EAccountCases } = await import("./cases");
+  const scenario = makeScenario();
+  // The transitions case leaves the linked main account signed in.
+  seedLanguageAccount(scenario.external);
+  scenario.browser.startAt(`${baseUrl}/en-US/account`);
+  configure(scenario);
+  const selected = await buildCase(
+    makeWorkspaceE2EAccountCases,
+    "account-data-export",
+    scenario
+  );
+  const stepIds: string[] = [];
+  return {
+    run: () => executeCase(selected, scenario, stepIds),
+    scenario,
+    stepIds,
+  };
+};
+
+test("exports the linked account's data from the legal page and refuses a signed-out visitor", async () => {
+  const { run, scenario, stepIds } = await runAccountDataExportCase();
+
+  await run();
+
+  expect(stepIds).toEqual([
+    "open-legal-section",
+    "download-account-data-export",
+    "assert-account-data-export",
+    "refuse-signed-out-account-data-export",
+    "assert-signed-out-refusal",
+  ]);
+  expect(scenario.external.accountDataExports).toBe(1);
+  expect(scenario.external.signedOutExportRequests).toEqual([
+    "/en-US/account/data-export",
+  ]);
+  // The lane's session survives: no sign-out, no sign-in, no link.
+  expect(scenario.browser.sessionMatches(scenario.external.mainRecipient)).toBe(
+    true
+  );
+  expect(scenario.operations).toEqual([]);
+});
+
+test("fails the export case when the archive holds an entry outside the sections", async () => {
+  const { run, scenario } = await runAccountDataExportCase(({ external }) => {
+    external.accountDataExportEntries = {
+      ...external.accountDataExportEntries,
+      "sessions.json": "[]",
+    };
+  });
+
+  await expect(run()).rejects.toThrow(
+    "the export archive has 1 entries outside the export sections"
+  );
+  expect(scenario.external.signedOutExportRequests).toEqual([]);
+});
+
+test("fails the export case when a signed-out visitor receives the export", async () => {
+  const { run } = await runAccountDataExportCase(({ external }) => {
+    external.signedOutExportRefusal = {
+      bodyLength: 512,
+      cacheControl: "private, no-store",
+      status: 200,
+    };
+  });
+
+  await expect(run()).rejects.toThrow(
+    "the signed-out export responded with status 200"
+  );
+});
+
+test("fails the export case for an account that asked for deletion", async () => {
+  const { run } = await runAccountDataExportCase(({ external }) => {
+    const user = external.usersById.get("auth-original");
+    if (!user) throw new Error("the seeded account is missing");
+    user.deletionRequestedAt = fixedNow;
+  });
+
+  await expect(run()).rejects.toThrow("the export responded with status 404");
 });

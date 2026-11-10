@@ -7,6 +7,7 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "@/features/account/backend/customer-authentication.service";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import {
   customerAccountIdSchema,
   customerAccountUnavailable,
@@ -20,7 +21,11 @@ const actor = {
     testEmailAddress("administrator-authorization")
   ),
 };
-const session: CustomerAccountSession = { ...actor, deletionRequested: false };
+const session: CustomerAccountSession = {
+  ...actor,
+  deletionRequested: false,
+  ...testSessionProfile,
+};
 
 let currentUser: CustomerAuthentication["Service"]["currentUser"] =
   Effect.succeed(session);

@@ -13,6 +13,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { act, cleanup, render } from "@testing-library/react";
 import { Effect, Layer, Option } from "effect";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
 import { resolveSilentAnalyticsGrant } from "@/features/legal/backend/analytics-consent-mirror";
@@ -289,6 +290,7 @@ describe("silent grant", () => {
                   currentUser: Effect.succeed({
                     accountId,
                     deletionRequested: false,
+                    ...testSessionProfile,
                     email: testEmailAddress("silent-grant"),
                   }),
                 })
