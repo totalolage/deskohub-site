@@ -7,8 +7,19 @@ export interface LoggedDatabaseQuery {
 }
 
 /**
- * Runs an effect and records what the Workspace database query logger emits
- * for each statement, after censorship, beside the effect's exit.
+ * Runs an effect at the Debug minimum log level, where the Workspace database
+ * query logger attaches each statement's SQL text and censored parameters.
+ * Above Debug, as in production, a query row carries its parameter count only.
+ */
+export const withDatabaseQueryDetail = <A, E, R>(
+  effect: Effect.Effect<A, E, R>
+): Effect.Effect<A, E, R> =>
+  Effect.provideService(effect, References.MinimumLogLevel, "Debug");
+
+/**
+ * Runs an effect with query detail (`withDatabaseQueryDetail`) and records
+ * what the Workspace database query logger emits for each statement, after
+ * censorship, beside the effect's exit.
  */
 export const captureDatabaseQueryLogsWithExit = <A, E, R>(
   effect: Effect.Effect<A, E, R>
@@ -36,6 +47,7 @@ export const captureDatabaseQueryLogsWithExit = <A, E, R>(
 
     return effect.pipe(
       Effect.exit,
+      withDatabaseQueryDetail,
       Effect.provide(Logger.layer([captureLogger])),
       Effect.map((exit) => ({ logs: logged, exit }))
     );
