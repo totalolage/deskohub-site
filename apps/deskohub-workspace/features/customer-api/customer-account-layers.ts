@@ -53,15 +53,19 @@ export type CustomerAccountServiceLayers = Omit<
 
 interface ICustomerAccountLayers {
   readonly services: CustomerAccountServiceLayers;
-  /** The release gates, built once per request. */
+  /**
+   * The release gates, each decided once per build, so an endpoint that
+   * reads one builds it per request.
+   */
   readonly releases: AccountReleaseLayers;
 }
 
 /**
- * The account Layers each customer API request builds its operation from.
- * An endpoint provides them per request, inside the request's Workspace
- * request context, so a release gate decides once per request and a Layer
- * that can't be built fails only the requests that use it, as unavailable.
+ * The account Layers each customer API request builds its operation from,
+ * inside the request's Workspace request context, so a Layer that can't be
+ * built fails only the requests that use it, as unavailable. An endpoint
+ * whose Layers carry a release gate provides them with `providePerRequest`,
+ * so the gate decides once for its request alone.
  */
 export class CustomerAccountLayers extends Context.Service<
   CustomerAccountLayers,

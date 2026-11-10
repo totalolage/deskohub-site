@@ -38,6 +38,12 @@ import { CheckoutService } from "@/features/checkout/backend/checkout";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { CheckoutStatusService } from "@/features/checkout/backend/checkout/checkout-status.service";
 import { ReservationSupersessionService } from "@/features/checkout/backend/checkout/reservation-supersession.service";
+import {
+  featureFlagsByRequestCohort,
+  releaseGateForRunOverFlags,
+  testReleaseCohortHeader,
+} from "@/features/feature-flags/backend/release-cohorts.test-utils";
+import type { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend/workspace-feature-flag.service";
 import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
@@ -56,6 +62,7 @@ import {
 } from "@/shared/backend/request-budget/memory-request-budget.test-utils";
 import { toWorkspaceWebHandler } from "@/shared/backend/workspace-effect";
 import { continueMutationsAfterDisconnect } from "@/shared/backend/workspace-http-api-route";
+import { makeMeetingPoint } from "@/shared/testing/overlapping-requests.test-utils";
 import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import {
   CustomerAccountLayers,
@@ -294,6 +301,111 @@ const closedReleases: AccountReleaseLayers = {
   referralRelease: ReferralReleaseGate.fromDecision(false),
   passkeyRelease: PasskeyReleaseGate.fromDecision(false),
   avatarRelease: AccountAvatarReleaseGate.fromDecision(false),
+};
+
+/**
+ * The account release gates, each decided once per build over
+ * `featureFlags`, as `runAccountReleaseLayers` decides them over PostHog.
+ */
+export const accountReleasesOver = (
+  featureFlags: Layer.Layer<WorkspaceFeatureFlagService>
+): AccountReleaseLayers => ({
+  referralRelease: releaseGateForRunOverFlags(
+    ReferralReleaseGate,
+    featureFlags
+  ),
+  passkeyRelease: releaseGateForRunOverFlags(PasskeyReleaseGate, featureFlags),
+  avatarRelease: releaseGateForRunOverFlags(
+    AccountAvatarReleaseGate,
+    featureFlags
+  ),
+});
+
+/** The release cohorts a request can be in: every flag on, or every flag off. */
+const releaseCohorts = ["open", "closed"] as const;
+type ReleaseCohort = (typeof releaseCohorts)[number];
+
+/** The call in `cohort`'s release cohort. */
+export const inReleaseCohort = (
+  call: CustomerApiCall,
+  cohort: ReleaseCohort
+): CustomerApiCall => ({
+  ...call,
+  headers: { ...call.headers, [testReleaseCohortHeader]: cohort },
+});
+
+/** The status and JSON body of a response; `null` for an empty body. */
+const statusAndBody = async (response: Response) => {
+  const body = await response.text();
+  return { status: response.status, body: body ? JSON.parse(body) : null };
+};
+
+/** What `answerInEachReleaseCohort` found. */
+type CohortAnswers<A> = {
+  readonly alone: Readonly<Record<ReleaseCohort, A>>;
+  readonly overlapping: Readonly<Record<ReleaseCohort, A>>;
+  /** Per flag evaluation, how many overlapping requests made it. */
+  readonly arrivals: Readonly<Record<string, number>>;
+};
+
+/**
+ * Answers the request `send` makes for each release cohort twice: alone, on
+ * its own server, and overlapping the other cohort's request on one server,
+ * where each request evaluates every flag while the other evaluates it too.
+ * `serve` makes a server whose release gates are decided over the feature
+ * flags it's given, which decide by each request's own cohort. `answer`
+ * reads what a test compares from a response, by default its status and
+ * JSON body.
+ */
+export const answerInEachReleaseCohort = async <A = unknown>({
+  serve,
+  send,
+  answer = statusAndBody as (response: Response) => Promise<A>,
+}: {
+  readonly serve: (featureFlags: Layer.Layer<WorkspaceFeatureFlagService>) => {
+    readonly handle: (request: Request) => Promise<Response>;
+  };
+  readonly send: (cohort: ReleaseCohort) => Request;
+  readonly answer?: (response: Response) => Promise<A>;
+}): Promise<CohortAnswers<A>> => {
+  const alone: Partial<Record<ReleaseCohort, A>> = {};
+  for (const cohort of releaseCohorts) {
+    const server = serve(featureFlagsByRequestCohort(makeMeetingPoint(1)));
+    alone[cohort] = await answer(await server.handle(send(cohort)));
+  }
+  const meetingPoint = makeMeetingPoint(releaseCohorts.length);
+  const server = serve(featureFlagsByRequestCohort(meetingPoint));
+  const overlapping = Object.fromEntries(
+    await Promise.all(
+      releaseCohorts.map(async (cohort) => [
+        cohort,
+        await answer(await server.handle(send(cohort))),
+      ])
+    )
+  ) as Record<ReleaseCohort, A>;
+  return {
+    alone: alone as Record<ReleaseCohort, A>,
+    overlapping,
+    arrivals: meetingPoint.arrivals(),
+  };
+};
+
+/**
+ * Checks what `answerInEachReleaseCohort` found: the cohorts answer
+ * differently alone, each overlapping request answers as its cohort does
+ * alone, and both requests evaluated every flag either evaluated.
+ */
+export const expectEachCohortAnsweredAlone = <A>({
+  alone,
+  overlapping,
+  arrivals,
+}: CohortAnswers<A>) => {
+  expect(alone.open).not.toEqual(alone.closed);
+  expect(overlapping).toEqual(alone);
+  expect(Object.keys(arrivals).length).toBeGreaterThan(0);
+  for (const evaluations of Object.values(arrivals)) {
+    expect(evaluations).toBe(releaseCohorts.length);
+  }
 };
 
 /** A customer API endpoint call, as a test sends it. */

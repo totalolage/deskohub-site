@@ -18,7 +18,10 @@ const liveCatalogLayers = {
   availability: WorkspaceAvailabilityLoaderLive,
   /** Seals the quote a checkout starts from. */
   sealedStateKeys: SealedStateKeys.Default,
-  /** The release gates, each decided once per request. */
+  /**
+   * The release gates, each decided once per build, so an endpoint that
+   * reads one builds it per request.
+   */
   releases: {
     office: OfficeReleaseGateForRun,
     referral: ReferralReleaseGateForRun,
@@ -30,9 +33,10 @@ export type CustomerBookingCatalogLayerSet = typeof liveCatalogLayers;
 
 /**
  * The booking catalog Layers each customer API request builds its read from,
- * inside the request's Workspace request context, so a release gate decides
- * once per request and a Layer that can't be built fails only the requests
- * that use it, as unavailable.
+ * inside the request's Workspace request context, so a Layer that can't be
+ * built fails only the requests that use it, as unavailable. A read that
+ * carries a release gate, directly or under pricing's discounts, builds them
+ * with `providePerRequest`, so the gate decides once for its request alone.
  */
 export class CustomerBookingCatalogLayers extends Context.Service<
   CustomerBookingCatalogLayers,

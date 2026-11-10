@@ -52,6 +52,7 @@ import {
 } from "@/features/legal/backend/marketing-preferences.service";
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
+import { providePerRequest } from "@/shared/backend/provide-per-request";
 import {
   parseInstant,
   temporalInstantToIsoString,
@@ -78,8 +79,10 @@ const readProfileCompletion = readProfileSave(CustomerProfileCompletionSave);
 
 /**
  * The account group's handlers. Each endpoint builds its operation's Layers
- * per request from `CustomerAccountLayers` and answers every failure with
- * the contract's fixed public errors.
+ * from `CustomerAccountLayers` and answers every failure with the
+ * contract's fixed public errors. An endpoint whose Layers carry a release
+ * gate builds them with `providePerRequest`, so the gate decides for its
+ * request alone; the others keep nothing for a request.
  */
 export const CustomerAccountApiHandlers = HttpApiBuilder.group(
   WorkspaceCustomerApi,
@@ -136,7 +139,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
       handlers
         .handle("getAccount", ({ headers }) =>
           loadAccountState.pipe(
-            Effect.provide(
+            providePerRequest(
               accountStateCapabilitiesForRun(
                 { referralCode: headers[customerReferralCodeHeader] },
                 { ...services, authentication },
@@ -149,7 +152,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
         .handle("updateProfile", ({ payload }) =>
           readProfileUpdate(payload).pipe(
             Effect.flatMap(updateCurrentCustomerProfile),
-            Effect.provide(profileSaving),
+            providePerRequest(profileSaving),
             answerCustomerApiFailure("customerApi.updateProfile")
           )
         )
@@ -171,7 +174,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
         .handle("completeProfile", ({ headers, payload }) =>
           readProfileCompletion(payload).pipe(
             Effect.flatMap(completeCurrentCustomerProfile),
-            Effect.provide(
+            providePerRequest(
               profileCompletion(headers[customerReferralCodeHeader])
             ),
             answerCustomerApiFailure("customerApi.completeProfile")
@@ -180,7 +183,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
         .handle("uploadAvatar", yield* customerAvatarUploadHandler)
         .handle("removeAvatar", () =>
           removeCurrentCustomerAvatar().pipe(
-            Effect.provide(
+            providePerRequest(
               Layer.mergeAll(
                 authentication,
                 services.resolver,
@@ -206,7 +209,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
         )
         .handle("listPasskeys", () =>
           listCurrentCustomerPasskeys.pipe(
-            Effect.provide(
+            providePerRequest(
               Layer.mergeAll(
                 authentication,
                 services.passkeys,
@@ -304,7 +307,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
         )
         .handle("getReferrals", () =>
           currentReferralOverview().pipe(
-            Effect.provide(
+            providePerRequest(
               Layer.mergeAll(
                 authentication,
                 services.resolver,
@@ -316,7 +319,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
         )
         .handle("acknowledgeSignupReferral", () =>
           acknowledgeCurrentSignupReferral().pipe(
-            Effect.provide(
+            providePerRequest(
               Layer.mergeAll(
                 authentication,
                 services.resolver,
