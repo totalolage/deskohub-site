@@ -1,9 +1,9 @@
 {
-  "accessCodesPageTitle": "Create an access code",
-  "accessCodesFormLoading": "Loading the access-code form",
-  "accessCodesFormName": "Create an access code",
-  "accessCodesNameLabel": "Name",
-  "accessCodesNameRequired": "Enter a name for this access code.",
+  "accessCodesPageTitle": "Tạo mã ra vào",
+  "accessCodesFormLoading": "Đang tải biểu mẫu mã ra vào",
+  "accessCodesFormName": "Tạo mã ra vào",
+  "accessCodesNameLabel": "Tên",
+  "accessCodesNameRequired": "Vui lòng nhập tên cho mã ra vào này.",
   "accessCodesNameTooLong": [
     {
       "declarations": [
@@ -13,19 +13,19 @@
       ],
       "selectors": ["maximumPlural"],
       "match": {
-        "maximumPlural=other": "Use at most {formattedMaximum} characters."
+        "maximumPlural=other": "Vui lòng dùng tối đa {formattedMaximum} ký tự."
       }
     }
   ],
-  "accessCodesWindowLegend": "Access window ({timeZone})",
-  "accessCodesStartsLabel": "Starts",
-  "accessCodesStartsTimeLabel": "Start time",
-  "accessCodesStartRequired": "Choose a start time.",
-  "accessCodesStartInvalid": "Choose a valid start time on the whole hour.",
-  "accessCodesEndsLabel": "Ends",
-  "accessCodesEndsTimeLabel": "End time",
-  "accessCodesEndRequired": "Choose an end time.",
-  "accessCodesEndInvalid": "Choose a valid end time on the whole hour.",
+  "accessCodesWindowLegend": "Khung giờ ra vào ({timeZone})",
+  "accessCodesStartsLabel": "Bắt đầu",
+  "accessCodesStartsTimeLabel": "Giờ bắt đầu",
+  "accessCodesStartRequired": "Vui lòng chọn giờ bắt đầu.",
+  "accessCodesStartInvalid": "Vui lòng chọn giờ bắt đầu hợp lệ, tròn giờ.",
+  "accessCodesEndsLabel": "Kết thúc",
+  "accessCodesEndsTimeLabel": "Giờ kết thúc",
+  "accessCodesEndRequired": "Vui lòng chọn giờ kết thúc.",
+  "accessCodesEndInvalid": "Vui lòng chọn giờ kết thúc hợp lệ, tròn giờ.",
   "accessCodesWindowDurationInvalid": [
     {
       "declarations": [
@@ -37,36 +37,36 @@
       ],
       "selectors": ["maximumPlural"],
       "match": {
-        "maximumPlural=other": "The end must be {formattedMinimum} to {formattedMaximum} hours after the start."
+        "maximumPlural=other": "Thời điểm kết thúc phải cách thời điểm bắt đầu từ {formattedMinimum} đến {formattedMaximum} giờ."
       }
     }
   ],
-  "accessCodesDurationSummary": "Duration: {duration}",
-  "accessCodesSubmit": "Create access code",
-  "accessCodesSubmitting": "Creating…",
-  "accessCodesPinShownOnceWarning": "This PIN is shown only once and cannot be retrieved later. Copy it somewhere safe before leaving this page.",
-  "accessCodesCopyCode": "Copy code",
-  "accessCodesCopied": "Copied",
-  "accessCodesResultName": "Access code",
-  "accessCodesResultValidFrom": "Valid from",
-  "accessCodesResultValidUntil": "Valid until",
-  "accessCodesResultDuration": "Duration",
-  "accessCodesCreateAnother": "Create another access code",
-  "accessCodesAlreadyCreated": "This access code was already created. Its PIN was shown only once at creation and cannot be displayed again.",
-  "accessCodesAmbiguousNotice": "The provider did not confirm whether this access code exists. This attempt is closed; it will not be retried automatically.",
-  "accessCodesCleanupRequiredNotice": "A previous attempt for this window is still ambiguous. Its possible credential must be resolved at the lock before another code is created.",
-  "accessCodesCleanupInstructions": "Before creating another code for this window, check the lock in the Igloohome app over Bluetooth and remove “{name}” if it is there.",
-  "accessCodesCleanupFormName": "Confirm the lock is clean",
-  "accessCodesCleanupConfirmationLabel": "I removed the named access code at the lock, or verified that it is absent.",
-  "accessCodesCleanupConfirmationRequired": "Confirm the lock check before you continue.",
-  "accessCodesStartOver": "Start over",
-  "accessCodesFailureRejected": "The provider rejected this access code. Adjust the details and try again.",
-  "accessCodesFailureInProgress": "This access code is already being created. Wait a moment and try again.",
-  "accessCodesFailureUnavailable": "Access-code creation is temporarily unavailable. Try again in a few minutes.",
-  "accessCodesFailureReconciled": "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code. Submit again to create the access code.",
-  "accessCodesCreateFailed": "The access code could not be created. Try again.",
-  "accessCodesServerUnreachable": "The server could not be reached. This attempt is kept, so you can safely try again.",
-  "accessCodesActionTimedOut": "The server took too long to respond. Try again.",
-  "accessCodesActionFailedUnexpectedly": "Something went wrong on the server. Try again.",
-  "accessCodesAuthenticationRequired": "Administrator authentication is required."
+  "accessCodesDurationSummary": "Thời lượng: {duration}",
+  "accessCodesSubmit": "Tạo mã ra vào",
+  "accessCodesSubmitting": "Đang tạo…",
+  "accessCodesPinShownOnceWarning": "Mã PIN này chỉ hiển thị một lần và không thể lấy lại sau đó. Vui lòng lưu mã ở nơi an toàn trước khi rời trang.",
+  "accessCodesCopyCode": "Sao chép mã",
+  "accessCodesCopied": "Đã sao chép",
+  "accessCodesResultName": "Mã ra vào",
+  "accessCodesResultValidFrom": "Hiệu lực từ",
+  "accessCodesResultValidUntil": "Hiệu lực đến",
+  "accessCodesResultDuration": "Thời lượng",
+  "accessCodesCreateAnother": "Tạo mã ra vào khác",
+  "accessCodesAlreadyCreated": "Mã ra vào này đã được tạo. Mã PIN của mã chỉ hiển thị một lần khi tạo và không thể hiển thị lại.",
+  "accessCodesAmbiguousNotice": "Nhà cung cấp chưa xác nhận mã ra vào này có tồn tại hay không. Lần thử này đã đóng và sẽ không tự động thử lại.",
+  "accessCodesCleanupRequiredNotice": "Kết quả của lần thử trước cho khung giờ này vẫn chưa rõ. Trước khi tạo mã khác, cần xử lý thông tin ra vào có thể còn tồn tại đó ngay trên khóa.",
+  "accessCodesCleanupInstructions": "Trước khi tạo mã khác cho khung giờ này, vui lòng kiểm tra khóa trong ứng dụng Igloohome qua Bluetooth và xóa “{name}” nếu mã này có trên khóa.",
+  "accessCodesCleanupFormName": "Xác nhận đã kiểm tra khóa",
+  "accessCodesCleanupConfirmationLabel": "Tôi xác nhận mã ra vào nêu trên đã được xóa khỏi khóa hoặc không có trên khóa.",
+  "accessCodesCleanupConfirmationRequired": "Vui lòng xác nhận đã kiểm tra khóa trước khi tiếp tục.",
+  "accessCodesStartOver": "Bắt đầu lại",
+  "accessCodesFailureRejected": "Nhà cung cấp đã từ chối mã ra vào này. Vui lòng điều chỉnh thông tin và thử lại.",
+  "accessCodesFailureInProgress": "Mã ra vào này đang được tạo. Vui lòng đợi một lát rồi thử lại.",
+  "accessCodesFailureUnavailable": "Tạm thời không thể tạo mã ra vào. Vui lòng thử lại sau vài phút.",
+  "accessCodesFailureReconciled": "Xác nhận kiểm tra khóa đã được ghi nhận cho lần thử chưa rõ kết quả trước đó; lần thử đó không tạo mã ra vào nào. Vui lòng gửi lại biểu mẫu để tạo mã ra vào.",
+  "accessCodesCreateFailed": "Không thể tạo mã ra vào. Vui lòng thử lại.",
+  "accessCodesServerUnreachable": "Không thể kết nối với máy chủ. Lần thử này vẫn được giữ lại, vì vậy có thể thử lại một cách an toàn.",
+  "accessCodesActionTimedOut": "Máy chủ không phản hồi kịp thời. Vui lòng thử lại.",
+  "accessCodesActionFailedUnexpectedly": "Đã xảy ra lỗi trên máy chủ. Vui lòng thử lại.",
+  "accessCodesAuthenticationRequired": "Yêu cầu quản trị viên đăng nhập."
 }

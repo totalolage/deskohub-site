@@ -1,153 +1,153 @@
 {
-  "emailAutomationFlowCampaignSourceThis": "this campaign",
-  "emailAutomationFlowPeriodTriggerWindow": "within … of the trigger",
-  "emailAutomationFlowPeriodTriggerWindowCountLabel": "{subject}: how many units from the trigger",
+  "emailAutomationFlowCampaignSourceThis": "chiến dịch này",
+  "emailAutomationFlowPeriodTriggerWindow": "trong vòng … tính từ sự kiện kích hoạt",
+  "emailAutomationFlowPeriodTriggerWindowCountLabel": "{subject}: bao nhiêu đơn vị tính từ sự kiện kích hoạt",
   "emailAutomationFlowPeriodTriggerWindowSide": [
     {
       "declarations": ["input side"],
       "selectors": ["side"],
       "match": {
-        "side=before": "before the trigger",
-        "side=*": "after the trigger"
+        "side=before": "trước sự kiện kích hoạt",
+        "side=*": "sau sự kiện kích hoạt"
       }
     }
   ],
-  "emailAutomationFlowPeriodTriggerWindowSideLabel": "{subject}: before or after the trigger",
-  "emailAutomationFlowPeriodWithin": "within",
-  "emailAutomationFlowSavedAudienceEmpty": "No audience matches.",
-  "emailAutomationFlowSavedAudienceLiveNote": "Uses the audience as it is when a run reaches this step, so edits to the audience apply to live runs straight away.",
-  "emailAutomationFlowSavedAudienceMenuLabel": "Saved audience",
-  "emailAutomationFlowSavedAudienceMenuSection": "Saved audiences",
+  "emailAutomationFlowPeriodTriggerWindowSideLabel": "{subject}: trước hay sau sự kiện kích hoạt",
+  "emailAutomationFlowPeriodWithin": "trong vòng",
+  "emailAutomationFlowSavedAudienceEmpty": "Không có nhóm người nhận nào khớp.",
+  "emailAutomationFlowSavedAudienceLiveNote": "Dùng nhóm người nhận theo trạng thái tại thời điểm lượt chạy đến bước này, nên mọi chỉnh sửa nhóm người nhận áp dụng ngay cho các lượt chạy đang diễn ra.",
+  "emailAutomationFlowSavedAudienceMenuLabel": "Nhóm người nhận đã lưu",
+  "emailAutomationFlowSavedAudienceMenuSection": "Nhóm người nhận đã lưu",
   "emailAutomationFlowSavedAudienceOperator": [
     {
       "declarations": ["input operator"],
       "selectors": ["operator"],
       "match": {
-        "operator=in": "is in saved audience",
-        "operator=*": "is not in saved audience"
+        "operator=in": "thuộc nhóm người nhận đã lưu",
+        "operator=*": "không thuộc nhóm người nhận đã lưu"
       }
     }
   ],
-  "emailAutomationFlowSavedAudienceOperatorLabel": "Saved audience membership",
-  "emailAutomationFlowSavedAudiencePickerLabel": "Saved audience",
-  "emailAutomationFlowSavedAudiencePickerPlaceholder": "Choose an audience",
-  "emailAutomationFlowSavedAudienceRequired": "Choose a saved audience.",
-  "emailAutomationFlowSavedAudienceSearch": "Search audiences",
-  "emailAutomationFlowSavedAudienceUnknown": "Deleted audience",
-  "emailAutomationFlowArchived": "This automation is archived, so its flow can't change.",
-  "emailAutomationFlowCalendarAddPart": "Add part",
-  "emailAutomationFlowCalendarLastDay": "Last day",
-  "emailAutomationFlowCalendarMinuteAdd": "Add minute",
-  "emailAutomationFlowCalendarMinuteOther": "Other minute",
-  "emailAutomationFlowCalendarNeverOccurs": "This combination never happens in the next eight years. Change one of its parts.",
-  "emailAutomationFlowCalendarNextFires": "Next fires (Prague time)",
+  "emailAutomationFlowSavedAudienceOperatorLabel": "Thành viên của nhóm người nhận đã lưu",
+  "emailAutomationFlowSavedAudiencePickerLabel": "Nhóm người nhận đã lưu",
+  "emailAutomationFlowSavedAudiencePickerPlaceholder": "Chọn nhóm người nhận",
+  "emailAutomationFlowSavedAudienceRequired": "Vui lòng chọn nhóm người nhận đã lưu.",
+  "emailAutomationFlowSavedAudienceSearch": "Tìm nhóm người nhận",
+  "emailAutomationFlowSavedAudienceUnknown": "Nhóm người nhận đã xóa",
+  "emailAutomationFlowArchived": "Chiến dịch tự động này đã được lưu trữ, nên không thể thay đổi kịch bản.",
+  "emailAutomationFlowCalendarAddPart": "Thêm phần",
+  "emailAutomationFlowCalendarLastDay": "Ngày cuối cùng",
+  "emailAutomationFlowCalendarMinuteAdd": "Thêm phút",
+  "emailAutomationFlowCalendarMinuteOther": "Phút khác",
+  "emailAutomationFlowCalendarNeverOccurs": "Tổ hợp này sẽ không xảy ra trong tám năm tới. Vui lòng thay đổi một trong các phần của tổ hợp.",
+  "emailAutomationFlowCalendarNextFires": "Các lần khởi chạy sắp tới (giờ Praha)",
   "emailAutomationFlowCalendarOccurrence": [
     {
       "declarations": ["input occurrence"],
       "selectors": ["occurrence"],
       "match": {
-        "occurrence=1": "1st",
-        "occurrence=2": "2nd",
-        "occurrence=3": "3rd",
-        "occurrence=4": "4th",
-        "occurrence=5": "5th",
-        "occurrence=*": "last"
+        "occurrence=1": "lần 1",
+        "occurrence=2": "lần 2",
+        "occurrence=3": "lần 3",
+        "occurrence=4": "lần 4",
+        "occurrence=5": "lần 5",
+        "occurrence=*": "lần cuối"
       }
     }
   ],
-  "emailAutomationFlowCalendarOccurrenceAdd": "Add weekday",
-  "emailAutomationFlowCalendarOccurrenceLabel": "Which one in the month",
-  "emailAutomationFlowCalendarOccurrenceRemove": "Remove this weekday",
-  "emailAutomationFlowCalendarOccurrenceWeekdayLabel": "Weekday",
+  "emailAutomationFlowCalendarOccurrenceAdd": "Thêm ngày trong tuần",
+  "emailAutomationFlowCalendarOccurrenceLabel": "Lần thứ mấy trong tháng",
+  "emailAutomationFlowCalendarOccurrenceRemove": "Gỡ ngày trong tuần này",
+  "emailAutomationFlowCalendarOccurrenceWeekdayLabel": "Ngày trong tuần",
   "emailAutomationFlowCalendarPart": [
     {
       "declarations": ["input part"],
       "selectors": ["part"],
       "match": {
-        "part=minutes": "Minute of the hour",
-        "part=hours": "Hour of the day",
-        "part=weekdays": "Day of the week",
-        "part=daysOfMonth": "Day of the month",
-        "part=weekdayOccurrences": "Weekday of the month",
-        "part=weeksOfYear": "Week of the year",
-        "part=*": "Month of the year"
+        "part=minutes": "Phút trong giờ",
+        "part=hours": "Giờ trong ngày",
+        "part=weekdays": "Ngày trong tuần",
+        "part=daysOfMonth": "Ngày trong tháng",
+        "part=weekdayOccurrences": "Ngày trong tuần của tháng",
+        "part=weeksOfYear": "Tuần trong năm",
+        "part=*": "Tháng trong năm"
       }
     }
   ],
-  "emailAutomationFlowCalendarPartLabel": "Calendar part",
-  "emailAutomationFlowCalendarPreviewUnavailable": "The description isn't available right now. Try again in a moment.",
-  "emailAutomationFlowCalendarRemovePart": "Remove {part}",
-  "emailAutomationFlowCalendarRemoveValue": "Remove {value}",
-  "emailAutomationFlowCalendarWeekAdd": "Add week",
-  "emailAutomationFlowCalendarWeekOther": "Week number",
-  "emailAutomationFlowCalendarWeekValue": "Week {week}",
-  "emailAutomationFlowConditionDescription": "The run continues only for customers who match at that moment. For everyone else it ends here.",
-  "emailAutomationFlowConditionTitle": "Check the customer",
-  "emailAutomationFlowDiscard": "Discard",
-  "emailAutomationFlowEventAccountCreatedDescription": "A new customer creates a Workspace account.",
-  "emailAutomationFlowEventBookedDescription": "A customer's reservation is confirmed in Workspace.",
-  "emailAutomationFlowEventCancelledDescription": "A customer cancels a reservation in Workspace.",
-  "emailAutomationFlowEventFinishedDescription": "The end time of a customer's reservation has passed.",
-  "emailAutomationFlowEventKindLabel": "Which event starts a run",
-  "emailAutomationFlowEventProductHint": "Leave it on any product to start a run for every reservation.",
-  "emailAutomationFlowEventStartedDescription": "The start time of a customer's reservation has passed.",
-  "emailAutomationFlowInsertCondition": "Condition",
-  "emailAutomationFlowInsertConditionDescription": "Check the customer at that moment.",
-  "emailAutomationFlowInsertLabel": "Add a step as step {position}",
-  "emailAutomationFlowInsertWait": "Wait",
-  "emailAutomationFlowInsertWaitDescription": "For a duration or until a time.",
-  "emailAutomationFlowSave": "Save flow",
-  "emailAutomationFlowSaveFailed": "The flow couldn't be saved. Try again in a moment.",
-  "emailAutomationFlowSaveInvalid": "The flow can't be saved like this. Check the highlighted steps.",
-  "emailAutomationFlowScheduleMinutesNotAllowed": "Schedules can start only at {minutes} past the hour. Choose one of these minutes.",
-  "emailAutomationFlowSaving": "Saving…",
-  "emailAutomationFlowSendDescription": "Sends this campaign's email and ends the run.",
-  "emailAutomationFlowSendEditEmail": "Edit the email",
-  "emailAutomationFlowSendSubjectLabel": "Subject in {language}",
-  "emailAutomationFlowSendSubjectMissing": "No content in this language yet",
-  "emailAutomationFlowSendTitle": "Send the email",
-  "emailAutomationFlowStatusArchived": "This automation is archived, so its flow is read-only.",
-  "emailAutomationFlowStatusEmpty": "This automation has no flow yet. Choose its trigger, then save.",
-  "emailAutomationFlowStatusPending": "Saved. <link>Preview and activate</link> to publish these changes to new runs.",
-  "emailAutomationFlowStatusPublished": "Matches the live version.",
-  "emailAutomationFlowStatusUnsaved": "Unsaved changes",
-  "emailAutomationFlowStepDelete": "Delete step",
+  "emailAutomationFlowCalendarPartLabel": "Phần lịch",
+  "emailAutomationFlowCalendarPreviewUnavailable": "Hiện không có mô tả. Vui lòng thử lại sau ít phút.",
+  "emailAutomationFlowCalendarRemovePart": "Gỡ: {part}",
+  "emailAutomationFlowCalendarRemoveValue": "Gỡ {value}",
+  "emailAutomationFlowCalendarWeekAdd": "Thêm tuần",
+  "emailAutomationFlowCalendarWeekOther": "Số tuần",
+  "emailAutomationFlowCalendarWeekValue": "Tuần {week}",
+  "emailAutomationFlowConditionDescription": "Lượt chạy chỉ tiếp tục với những khách hàng khớp điều kiện tại thời điểm đó. Với những khách hàng khác, lượt chạy kết thúc ở đây.",
+  "emailAutomationFlowConditionTitle": "Kiểm tra khách hàng",
+  "emailAutomationFlowDiscard": "Bỏ thay đổi",
+  "emailAutomationFlowEventAccountCreatedDescription": "Khách hàng mới tạo tài khoản tại Workspace.",
+  "emailAutomationFlowEventBookedDescription": "Đặt chỗ của khách hàng được xác nhận tại Workspace.",
+  "emailAutomationFlowEventCancelledDescription": "Khách hàng hủy đặt chỗ tại Workspace.",
+  "emailAutomationFlowEventFinishedDescription": "Đã qua thời điểm kết thúc đặt chỗ của khách hàng.",
+  "emailAutomationFlowEventKindLabel": "Sự kiện nào bắt đầu lượt chạy",
+  "emailAutomationFlowEventProductHint": "Nếu giữ lựa chọn sản phẩm bất kỳ, lượt chạy sẽ bắt đầu với mọi đặt chỗ.",
+  "emailAutomationFlowEventStartedDescription": "Đã qua thời điểm bắt đầu đặt chỗ của khách hàng.",
+  "emailAutomationFlowInsertCondition": "Điều kiện",
+  "emailAutomationFlowInsertConditionDescription": "Kiểm tra khách hàng tại thời điểm đó.",
+  "emailAutomationFlowInsertLabel": "Thêm bước ở vị trí bước {position}",
+  "emailAutomationFlowInsertWait": "Chờ",
+  "emailAutomationFlowInsertWaitDescription": "Trong một khoảng thời gian hoặc đến một thời điểm nhất định.",
+  "emailAutomationFlowSave": "Lưu kịch bản",
+  "emailAutomationFlowSaveFailed": "Không thể lưu kịch bản. Vui lòng thử lại sau ít phút.",
+  "emailAutomationFlowSaveInvalid": "Không thể lưu kịch bản ở dạng này. Vui lòng kiểm tra các bước được đánh dấu.",
+  "emailAutomationFlowScheduleMinutesNotAllowed": "Lịch chỉ có thể bắt đầu vào phút {minutes} của mỗi giờ. Vui lòng chọn một trong các phút này.",
+  "emailAutomationFlowSaving": "Đang lưu…",
+  "emailAutomationFlowSendDescription": "Gửi email của chiến dịch này và kết thúc lượt chạy.",
+  "emailAutomationFlowSendEditEmail": "Chỉnh sửa email",
+  "emailAutomationFlowSendSubjectLabel": "Tiêu đề – {language}",
+  "emailAutomationFlowSendSubjectMissing": "Ngôn ngữ này chưa có nội dung",
+  "emailAutomationFlowSendTitle": "Gửi email",
+  "emailAutomationFlowStatusArchived": "Chiến dịch tự động này đã được lưu trữ, nên kịch bản chỉ có thể xem.",
+  "emailAutomationFlowStatusEmpty": "Chiến dịch tự động này chưa có kịch bản. Vui lòng chọn sự kiện kích hoạt rồi lưu.",
+  "emailAutomationFlowStatusPending": "Đã lưu. Vui lòng <link>xem trước và kích hoạt</link> để các thay đổi áp dụng cho lượt chạy mới.",
+  "emailAutomationFlowStatusPublished": "Khớp với phiên bản đang chạy.",
+  "emailAutomationFlowStatusUnsaved": "Thay đổi chưa lưu",
+  "emailAutomationFlowStepDelete": "Xóa bước",
   "emailAutomationFlowStepEyebrow": [
     {
       "declarations": ["input number", "input kind"],
       "selectors": ["kind"],
       "match": {
-        "kind=condition": "Step {number} · Condition",
-        "kind=wait": "Step {number} · Wait",
-        "kind=*": "Step {number} · Send"
+        "kind=condition": "Bước {number} · Điều kiện",
+        "kind=wait": "Bước {number} · Chờ",
+        "kind=*": "Bước {number} · Gửi"
       }
     }
   ],
-  "emailAutomationFlowStepMenuLabel": "Actions for {step}",
-  "emailAutomationFlowStepMoveDown": "Move down",
-  "emailAutomationFlowStepMoveUp": "Move up",
-  "emailAutomationFlowTriggerChooseDescription": "A run starts for a customer on each fire of a schedule, or each time they cause an event.",
-  "emailAutomationFlowTriggerChooseTitle": "Choose what starts this automation",
-  "emailAutomationFlowTriggerEyebrow": "Trigger",
-  "emailAutomationFlowTriggerFamilyEvent": "Event",
-  "emailAutomationFlowTriggerFamilyEventDescription": "When a customer books, cancels, starts or finishes a reservation, or creates an account.",
-  "emailAutomationFlowTriggerFamilyLabel": "What starts a run",
-  "emailAutomationFlowTriggerFamilySchedule": "Schedule",
-  "emailAutomationFlowTriggerFamilyScheduleDescription": "At set times, for everyone in the campaign's audience.",
-  "emailAutomationFlowTriggerRequired": "Choose what starts this automation.",
-  "emailAutomationFlowWaitCountError": "Enter a whole number from 1 to 9,999.",
-  "emailAutomationFlowWaitCountLabel": "How long to wait",
-  "emailAutomationFlowWaitFor": "Wait for",
-  "emailAutomationFlowWaitModeCalendar": "Until a time",
-  "emailAutomationFlowWaitModeDuration": "For a duration",
-  "emailAutomationFlowWaitModeLabel": "How the step waits",
-  "emailAutomationFlowWaitTitle": "Wait",
+  "emailAutomationFlowStepMenuLabel": "Thao tác cho {step}",
+  "emailAutomationFlowStepMoveDown": "Chuyển xuống",
+  "emailAutomationFlowStepMoveUp": "Chuyển lên",
+  "emailAutomationFlowTriggerChooseDescription": "Lượt chạy bắt đầu cho một khách hàng ở mỗi lần khởi chạy của lịch, hoặc mỗi khi khách hàng tạo ra một sự kiện.",
+  "emailAutomationFlowTriggerChooseTitle": "Chọn điều gì khởi chạy chiến dịch tự động này",
+  "emailAutomationFlowTriggerEyebrow": "Sự kiện kích hoạt",
+  "emailAutomationFlowTriggerFamilyEvent": "Sự kiện",
+  "emailAutomationFlowTriggerFamilyEventDescription": "Khi khách hàng đặt chỗ, hủy, bắt đầu hoặc kết thúc đặt chỗ, hoặc tạo tài khoản.",
+  "emailAutomationFlowTriggerFamilyLabel": "Điều gì bắt đầu lượt chạy",
+  "emailAutomationFlowTriggerFamilySchedule": "Lịch",
+  "emailAutomationFlowTriggerFamilyScheduleDescription": "Vào các thời điểm đã đặt, cho mọi người trong nhóm người nhận của chiến dịch.",
+  "emailAutomationFlowTriggerRequired": "Vui lòng chọn điều gì khởi chạy chiến dịch tự động này.",
+  "emailAutomationFlowWaitCountError": "Vui lòng nhập số nguyên từ 1 đến 9.999.",
+  "emailAutomationFlowWaitCountLabel": "Chờ trong bao lâu",
+  "emailAutomationFlowWaitFor": "Chờ",
+  "emailAutomationFlowWaitModeCalendar": "Đến một thời điểm",
+  "emailAutomationFlowWaitModeDuration": "Trong một khoảng thời gian",
+  "emailAutomationFlowWaitModeLabel": "Cách bước này chờ",
+  "emailAutomationFlowWaitTitle": "Chờ",
   "emailAutomationFlowWaitUnitDay": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=other": "days"
+        "countPlural=other": "ngày"
       }
     }
   ],
@@ -156,17 +156,17 @@
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=other": "hours"
+        "countPlural=other": "giờ"
       }
     }
   ],
-  "emailAutomationFlowWaitUnitLabel": "Unit of time",
+  "emailAutomationFlowWaitUnitLabel": "Đơn vị thời gian",
   "emailAutomationFlowWaitUnitMinute": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=other": "minutes"
+        "countPlural=other": "phút"
       }
     }
   ],
@@ -175,7 +175,7 @@
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=other": "months"
+        "countPlural=other": "tháng"
       }
     }
   ],
@@ -184,7 +184,7 @@
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=other": "weeks"
+        "countPlural=other": "tuần"
       }
     }
   ]
