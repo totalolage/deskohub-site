@@ -6,6 +6,7 @@ import { AppLocaleProvider } from "../i18n/locale-context";
 import { clientRoot } from "../testing/client-root";
 import { eventually } from "../testing/eventually";
 import { Button, LiveMessage } from "../ui/controls";
+import { LoadingIndicator } from "../ui/loading-indicator";
 import { find, findAll } from "../ui/testing/element-tree";
 import { AuthCallbackCompletions } from "./auth-callback-completions.service";
 import { AuthCrypto } from "./auth-crypto.service";
@@ -149,8 +150,8 @@ const reauthenticationCompletedAsBob = async () => {
   };
 };
 
-/** Draws the screen and waits until its completion has finished. */
-const drawScreen = async () => {
+/** Draws the screen and returns what it shows last, while it completes. */
+const mountScreen = async () => {
   let tree: ReactNode = null;
   const Probe = () => {
     tree = AuthCallbackScreen();
@@ -161,16 +162,26 @@ const drawScreen = async () => {
       <Probe />
     </AppLocaleProvider>
   );
+  return () => tree;
+};
+
+/** The props of the screen's loading indicator, if it shows one. */
+const indicatorIn = (tree: ReactNode) => find(tree, LoadingIndicator)?.props;
+
+/** Draws the screen and waits until its completion has finished. */
+const drawScreen = async () => {
+  const tree = await mountScreen();
   const alert = () =>
-    findAll(tree, LiveMessage).find(({ props }) => props.role === "alert")
+    findAll(tree(), LiveMessage).find(({ props }) => props.role === "alert")
       ?.props.message;
   // The completion runs on the auth runtime; let it finish and re-render.
   await act(() => Effect.runPromise(eventually(() => alert() !== undefined)));
   return {
     alert,
+    indicator: () => indicatorIn(tree()),
     pressButton: () =>
       act(async () => {
-        const button = find(tree, Button);
+        const button = find(tree(), Button);
         if (button === undefined) throw new Error("No button.");
         button.props.onPress();
       }),
@@ -214,6 +225,27 @@ describe("AuthCallbackScreen", () => {
     await screen.pressButton();
 
     expect(navigation).toEqual(["replace:/"]);
+  });
+
+  test("shows the brand die above its status while the sign-in completes", async () => {
+    params = (await reauthenticationCompletedAsBob()).params;
+    // The completion never answers, so the screen stays in progress.
+    runtime = {
+      runPromiseExit: () => new Promise(() => undefined),
+    } as unknown as AuthTaskRuntime<ScreenServices>;
+
+    const shown = await mountScreen();
+
+    expect(indicatorIn(shown())).toEqual({ size: "screen", tone: "brand" });
+  });
+
+  test("takes the die away once the callback failed", async () => {
+    runtime = launchApp().app;
+    params = { error: "access_denied" };
+
+    const screen = await drawScreen();
+
+    expect(screen.indicator()).toBeUndefined();
   });
 
   test("sends a signed-out app back to sign-in after a refused callback", async () => {

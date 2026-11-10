@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createElement, type ReactNode } from "react";
 import { AccessibilityInfo, Platform } from "react-native";
 import { clientRoot } from "../testing/client-root";
-import { ErrorState, RefreshingIndicator } from "./async-states";
-import { elementTree, findAll, hostTree } from "./testing/element-tree";
+import { theme } from "../theme";
+import { ErrorState, LoadingState, RefreshingIndicator } from "./async-states";
+import { LoadingIndicator } from "./loading-indicator";
+import { elementTree, find, findAll, hostTree } from "./testing/element-tree";
 
 /** The component's live region: its only Text with a role. */
 const liveRegion = <Props,>(
@@ -13,6 +15,28 @@ const liveRegion = <Props,>(
   findAll(hostTree(elementTree(component, props)), "Text").find(
     (text) => text.props.role !== undefined
   )?.props;
+
+describe("loading indicators", () => {
+  test("the first load shows a labelled white die in place of the section", () => {
+    expect(
+      find(elementTree(LoadingState, { label: "loading" }), LoadingIndicator)
+        ?.props
+    ).toEqual({ size: "section", tone: "white", label: "loading" });
+  });
+
+  test("a refresh shows a muted inline die that its status line announces", () => {
+    const indicator = (refreshing: boolean) =>
+      find(
+        elementTree(RefreshingIndicator, { refreshing, label: "refreshing" }),
+        LoadingIndicator
+      )?.props;
+    expect(indicator(true)).toEqual({
+      size: "inline",
+      tone: { color: theme.colors.textMuted },
+    });
+    expect(indicator(false)).toBeUndefined();
+  });
+});
 
 // React Native's Text doesn't map `aria-live` to Android's live region, so
 // each region declares `accessibilityLiveRegion` as well.
