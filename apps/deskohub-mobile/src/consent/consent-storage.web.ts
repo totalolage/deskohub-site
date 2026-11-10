@@ -1,4 +1,3 @@
-import { readLaunchLocale } from "../i18n/launch-locale";
 import type { ConsentStorage } from "./analytics-consent";
 import { consentCookieAssignment, readConsentCookie } from "./consent-cookie";
 
@@ -9,15 +8,16 @@ import { consentCookieAssignment, readConsentCookie } from "./consent-cookie";
  */
 export const consentStorage = {
   read: () => readConsentCookie(document.cookie),
-  write: async (categories) => {
+  write: async ({ categories, decidedAt, locale }) => {
     // biome-ignore lint/suspicious/noDocumentCookie: the site's consent library reads this cookie, so the app writes the same one.
     document.cookie = consentCookieAssignment({
       cookieString: document.cookie,
       categories,
       now: new Date(),
+      decidedAt,
       hostname: window.location.hostname,
       secure: window.location.protocol === "https:",
-      languageCode: readLaunchLocale(),
+      languageCode: locale,
       createConsentId: () => crypto.randomUUID(),
     });
   },

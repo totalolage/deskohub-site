@@ -81,13 +81,16 @@ const nonEmptyString = (value: unknown): value is string =>
 /**
  * The `document.cookie` assignment that saves a consent answer in
  * vanilla-cookieconsent's format. It keeps the earlier record's consent ID,
- * first-consent time, revision and other fields, and writes the cookie with
- * the library's attributes so it replaces the site's copy.
+ * first-consent time, revision and other fields, dates the save at
+ * `decidedAt` (an account decision keeps the account's instant, as the
+ * site's own copy does), and writes the cookie with the library's attributes
+ * so it replaces the site's copy.
  */
 export const consentCookieAssignment = ({
   cookieString,
   categories,
   now,
+  decidedAt,
   hostname,
   secure,
   languageCode,
@@ -96,6 +99,8 @@ export const consentCookieAssignment = ({
   readonly cookieString: string;
   readonly categories: readonly ConsentCategory[];
   readonly now: Date;
+  /** When the choice was made, as an ISO 8601 instant. */
+  readonly decidedAt: string;
   readonly hostname: string;
   readonly secure: boolean;
   readonly languageCode: string;
@@ -118,7 +123,7 @@ export const consentCookieAssignment = ({
     consentTimestamp: nonEmptyString(earlier?.consentTimestamp)
       ? earlier.consentTimestamp
       : now.toISOString(),
-    lastConsentTimestamp: now.toISOString(),
+    lastConsentTimestamp: decidedAt,
     expirationTime: expires.getTime(),
   };
   const attributes = [

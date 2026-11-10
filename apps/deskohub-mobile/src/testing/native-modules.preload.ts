@@ -25,6 +25,7 @@ mock.module("react-native", () => ({
   Pressable: "Pressable",
   RefreshControl: "RefreshControl",
   ScrollView: "ScrollView",
+  Switch: "Switch",
   Text: "Text",
   TextInput: "TextInput",
   View: "View",
@@ -109,6 +110,7 @@ mock.module("expo-network", () => ({
 
 mock.module("expo-web-browser", () => ({
   openAuthSessionAsync: async () => ({ type: "cancel" }),
+  openBrowserAsync: async () => ({ type: "opened" }),
   getCustomTabsSupportingBrowsersAsync: async () => ({
     browserPackages: [],
     servicePackages: [],
@@ -116,5 +118,24 @@ mock.module("expo-web-browser", () => ({
   // Like Expo on Android, where a Custom Tab can't be closed.
   dismissAuthSession: () => {
     throw new Error("WebBrowser.dismissAuthSession is unavailable");
+  },
+}));
+
+// The app's consent answer loads from here and reads the device language.
+// Tests provide their own consent; these keep its module graph loadable.
+mock.module("expo-localization", () => ({
+  getLocales: () => [{ languageTag: "en-US" }],
+}));
+
+const asyncStorageItems = new Map<string, string>();
+mock.module("@react-native-async-storage/async-storage", () => ({
+  default: {
+    getItem: async (key: string) => asyncStorageItems.get(key) ?? null,
+    setItem: async (key: string, value: string) => {
+      asyncStorageItems.set(key, value);
+    },
+    multiRemove: async (keys: readonly string[]) => {
+      for (const key of keys) asyncStorageItems.delete(key);
+    },
   },
 }));

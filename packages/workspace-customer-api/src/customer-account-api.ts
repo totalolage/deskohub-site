@@ -405,6 +405,86 @@ export const SaveCustomerMarketingPreferences = Schema.Struct({
 export type SaveCustomerMarketingPreferences =
   typeof SaveCustomerMarketingPreferences.Type;
 
+/**
+ * An instant the client sends: an ISO 8601 date and time with seconds, an
+ * optional fraction, and `Z` or a `±hh:mm` offset.
+ */
+const isoInstantInput = Schema.String.check(
+  Schema.isPattern(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/
+  )
+).annotate({ description: "ISO 8601 instant with an offset." });
+
+/**
+ * The app's own analytics choice on this device: whether it accepts
+ * analytics, and when the customer made it.
+ */
+export const CustomerAnalyticsChoice = Schema.Struct({
+  analytics: Schema.Boolean,
+  decidedAt: isoInstantInput,
+}).annotate({ identifier: "CustomerAnalyticsChoice" });
+export type CustomerAnalyticsChoice = typeof CustomerAnalyticsChoice.Type;
+
+export const SyncCustomerAnalyticsConsent = Schema.Struct({
+  /** The app's own choice; null while the customer hasn't made one on it. */
+  choice: Schema.NullOr(CustomerAnalyticsChoice),
+  /** The language the app shows its privacy notice in. */
+  locale: CustomerLocale,
+}).annotate({
+  identifier: "SyncCustomerAnalyticsConsent",
+  parseOptions: customerInputParseOptions,
+});
+export type SyncCustomerAnalyticsConsent =
+  typeof SyncCustomerAnalyticsConsent.Type;
+
+/**
+ * The account's analytics decision the app takes over its own choice, which
+ * it stores as its choice dated `decidedAt`. `withdraw`: the account withdrew
+ * analytics after the app's accepting choice. `grant`: the app holds no
+ * choice and the account granted analytics under the current privacy
+ * notice; the app accepts analytics without asking. `unchanged`: the app
+ * keeps its own choice, or keeps asking.
+ */
+export const CustomerAnalyticsConsentSync = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("unchanged") }),
+  Schema.Struct({ kind: Schema.Literal("withdraw"), decidedAt: isoInstant }),
+  Schema.Struct({ kind: Schema.Literal("grant"), decidedAt: isoInstant }),
+]).annotate({ identifier: "CustomerAnalyticsConsentSync" });
+export type CustomerAnalyticsConsentSync =
+  typeof CustomerAnalyticsConsentSync.Type;
+
+/**
+ * The signed-in account's analytics preference: granted when its current
+ * decision is a grant, under any privacy notice.
+ */
+export const CustomerAnalyticsPreference = Schema.Struct({
+  granted: Schema.Boolean,
+}).annotate({ identifier: "CustomerAnalyticsPreference" });
+export type CustomerAnalyticsPreference =
+  typeof CustomerAnalyticsPreference.Type;
+
+export const SaveCustomerAnalyticsPreference = Schema.Struct({
+  granted: Schema.Boolean,
+  /** The language the client showed the privacy notice in. */
+  locale: CustomerLocale,
+}).annotate({
+  identifier: "SaveCustomerAnalyticsPreference",
+  parseOptions: customerInputParseOptions,
+});
+export type SaveCustomerAnalyticsPreference =
+  typeof SaveCustomerAnalyticsPreference.Type;
+
+/**
+ * The analytics decision the account just made, which the app stores as its
+ * own choice dated `decidedAt`.
+ */
+export const CustomerAnalyticsPreferenceSaved = Schema.Struct({
+  granted: Schema.Boolean,
+  decidedAt: isoInstant,
+}).annotate({ identifier: "CustomerAnalyticsPreferenceSaved" });
+export type CustomerAnalyticsPreferenceSaved =
+  typeof CustomerAnalyticsPreferenceSaved.Type;
+
 export const RequestCustomerAccountDeletion = Schema.Struct({
   confirmed: Schema.Literal(true),
 }).annotate({
@@ -529,6 +609,35 @@ export const CustomerAccountApi = HttpApiGroup.make("account")
       success: HttpApiSchema.NoContent,
       error: [
         CustomerMarketingPreferencesRejected.schema,
+        CustomerAccountLinkRequired.schema,
+        CustomerServiceUnavailable.schema,
+      ],
+    })
+  )
+  .add(
+    HttpApiEndpoint.post("syncAnalyticsConsent", "/analytics-consent", {
+      payload: SyncCustomerAnalyticsConsent,
+      success: CustomerAnalyticsConsentSync,
+      error: [
+        CustomerAccountLinkRequired.schema,
+        CustomerServiceUnavailable.schema,
+      ],
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("getAnalyticsPreference", "/analytics-preference", {
+      success: CustomerAnalyticsPreference,
+      error: [
+        CustomerAccountLinkRequired.schema,
+        CustomerServiceUnavailable.schema,
+      ],
+    })
+  )
+  .add(
+    HttpApiEndpoint.put("saveAnalyticsPreference", "/analytics-preference", {
+      payload: SaveCustomerAnalyticsPreference,
+      success: CustomerAnalyticsPreferenceSaved,
+      error: [
         CustomerAccountLinkRequired.schema,
         CustomerServiceUnavailable.schema,
       ],
