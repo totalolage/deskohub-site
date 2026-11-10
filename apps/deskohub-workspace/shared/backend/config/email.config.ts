@@ -81,13 +81,20 @@ const configuredPostHogEmailProvider = Effect.gen(function* () {
     Option.filter((key) => key !== "")
   );
   const host = yield* Config.option(Config.string("POSTHOG_API_HOST"));
-  return Option.isSome(secretKey) && Option.isSome(host)
-    ? makePostHogEmailProvider({
-        secretKey: Redacted.make(secretKey.value),
-        host: host.value,
-        systemIdentity: workspaceEmailSystemIdentity,
-      })
-    : undefined;
+  if (Option.isNone(secretKey)) return undefined;
+  if (Option.isNone(host)) {
+    // The validated env requires the host; without it, keep mail flowing
+    // through Resend rather than failing every send.
+    yield* Effect.logWarning(
+      "PostHog email is off: POSTHOG_EMAIL_SECRET_KEY is set without POSTHOG_API_HOST"
+    );
+    return undefined;
+  }
+  return makePostHogEmailProvider({
+    secretKey: Redacted.make(secretKey.value),
+    host: host.value,
+    systemIdentity: workspaceEmailSystemIdentity,
+  });
 });
 
 const WorkspaceEmailProvidersLayer = Layer.effect(

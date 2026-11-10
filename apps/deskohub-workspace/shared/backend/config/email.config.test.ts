@@ -326,6 +326,28 @@ describe("WorkspaceEmailLayer", () => {
       expect(resendSend).toHaveBeenCalledTimes(1);
     });
 
+    test("keeps campaign mail PostHog may still send off Resend", async () => {
+      const posthog = postHogAnswering(409, {
+        type: "conflict",
+        code: "idempotency_key_in_flight",
+      });
+      const result = await runWorkspaceEmail(
+        send({ ...campaignMessage, idempotencyKey: "campaign-batch-1:0" }),
+        "re_test",
+        { config, fetch: posthog.fetch }
+      );
+
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure).toMatchObject({
+          _tag: "NetworkError",
+          failureKind: "unknown-outcome",
+        });
+      }
+      expect(posthog.requests.length).toBeGreaterThan(0);
+      expect(resendSend).not.toHaveBeenCalled();
+    });
+
     test("never sends transactional mail through PostHog", async () => {
       const posthog = postHogAnswering(202, {
         message_id: "0197a5e1-1b52-7c4e-9f5a-2d3b4c5d6e7f",
