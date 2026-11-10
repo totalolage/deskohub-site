@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { afterAll, describe, expect, test } from "bun:test";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { Cause, Effect, Exit, Layer } from "effect";
+import { SqlError } from "effect/unstable/sql";
 import { redirect } from "next/navigation";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
@@ -99,6 +100,8 @@ describe.skipIf(!suiteDatabase)(
       readonly match?: ExactEmailCustomerMatch;
       readonly reactivation?: Effect.Effect<void, never>;
       readonly reviewAccounts?: Layer.Layer<ReviewAccounts>;
+      /** Stands in for the link repository the standing reads directly. */
+      readonly links?: Layer.Layer<CustomerAccountLinkRepository>;
       /** Stands in for the account sections the standing resolves in. */
       readonly sections?: Layer.Layer<CustomerAccountSections>;
     }) => {
@@ -146,7 +149,7 @@ describe.skipIf(!suiteDatabase)(
             authentication,
             options.reviewAccounts ??
               ReviewAccounts.Default.pipe(Layer.provide(suiteDatabase.layer)),
-            links,
+            options.links ?? links,
             sections,
             dotypos
           )
@@ -374,6 +377,36 @@ describe.skipIf(!suiteDatabase)(
         });
         expect(calls.classify).toEqual([]);
         expect(await storedLink(account.accountId)).toBeNull();
+      });
+
+      test("peek reports a failed link read as unavailable without its cause", async () => {
+        const account = await seedAccount();
+        const session = sessionOf(account);
+        const { layer } = makeCurrentAccount({
+          sessions: [session],
+          links: Layer.mock(CustomerAccountLinkRepository, {
+            find: () =>
+              Effect.fail(
+                new SqlError.SqlError({
+                  reason: new SqlError.UnknownError({
+                    cause: new Error("synthetic connection refused"),
+                    message: "synthetic connection refused",
+                    operation: "connect",
+                  }),
+                })
+              ),
+          }),
+        });
+
+        const standing = await peek(layer);
+
+        expect(standing).toEqual({
+          kind: "unavailable",
+          session,
+          reviewMarker: "absent",
+          failure: customerAccountUnavailable("account-link.read"),
+        });
+        expect(JSON.stringify(standing)).not.toContain("synthetic");
       });
 
       test("peek never enters the account section", async () => {

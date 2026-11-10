@@ -2,24 +2,28 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { type DotyposCustomerId, DotyposUnavailable } from "@deskohub/dotypos";
-import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Exit, Layer } from "effect";
 import { redirect } from "next/navigation";
-import { CustomerAccountContactService } from "@/features/account";
-import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { testLinkedAccount } from "@/features/account/backend/account-operations.test-utils";
+import {
+  type PeekedStanding,
+  peeking,
+  type TestPeekedStandingLabel,
+  testPeekedStandingLabels,
+  testPeekedStandings,
+} from "@/features/account/backend/current-customer-account.test-utils";
+import {
+  type CustomerAccountAccessError,
+  customerAccountUnavailable,
+} from "@/features/account/customer-account";
 import { canonicalPromotionCodeSchema } from "@/features/discounts/contracts";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
-import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { parseReferralCode } from "./client";
 import { ReferralError } from "./contracts";
 import type { IReferralService } from "./referral.service";
 import { ReferralServiceMock } from "./referral.service.mock";
 import { ReferralReleaseGate } from "./referral-release-gate";
 import { RememberedReferral } from "./remembered-referral.service";
-
-type CurrentAccount = Effect.Success<
-  CustomerAccountContactService["Service"]["currentAccount"]
->;
 
 const booker = dotyposCustomerIdSchema.make("60111");
 const friend = dotyposCustomerIdSchema.make("60222");
@@ -30,20 +34,17 @@ const sharedReferralCode = (() => {
   return code;
 })();
 const typedCode = canonicalPromotionCodeSchema.make("RFLTYPED1");
-const accountId = customerAccountIdSchema.make("account-1");
-const email = reservationCustomerEmailSchema.make(testEmailAddress("booker"));
 
-const linkedAs = (dotyposCustomerId: DotyposCustomerId): CurrentAccount => ({
-  status: "linked",
-  accountId,
-  dotyposCustomerId,
-  email,
+/** The session's account linked to `dotyposCustomerId`. */
+const linkedAs = (dotyposCustomerId: DotyposCustomerId): PeekedStanding => ({
+  ...testPeekedStandings.linked,
+  account: { ...testLinkedAccount, dotyposCustomerId },
 });
 
 /**
  * Runs `use` against the in-memory adapter: a browser sending `cookie`, the
- * referral release decision, the session's account, and the customers whose
- * referral is settled.
+ * referral release decision, the session's account standing (signed out
+ * unless given), and the customers whose referral is settled.
  */
 const run = async <A, E>(
   use: (remembered: RememberedReferral["Service"]) => Effect.Effect<A, E>,
@@ -51,7 +52,7 @@ const run = async <A, E>(
     readonly cookie?: string;
     readonly released?: boolean;
     readonly writable?: boolean;
-    readonly account?: CurrentAccount;
+    readonly account?: PeekedStanding | CustomerAccountAccessError;
     readonly settled?: readonly DotyposCustomerId[];
     readonly referrals?: Partial<IReferralService>;
     /** A client application sends `cookie` as its code instead of a browser. */
@@ -60,7 +61,7 @@ const run = async <A, E>(
 ) => {
   const cookie = { value: options.cookie };
   const settledChecks: DotyposCustomerId[] = [];
-  const sessionReads = { count: 0 };
+  const standingReads = { peeks: 0 };
   const exit = await Effect.runPromiseExit(
     Effect.flatMap(RememberedReferral, use).pipe(
       Effect.provide(
@@ -81,19 +82,17 @@ const run = async <A, E>(
                   }),
                 ...options.referrals,
               }),
-              Layer.mock(CustomerAccountContactService, {
-                currentAccount: Effect.sync(() => {
-                  sessionReads.count += 1;
-                  return options.account ?? { status: "signed-out" };
-                }),
-              })
+              peeking(
+                options.account ?? testPeekedStandings["signed out"],
+                standingReads
+              )
             )
           )
         )
       )
     )
   );
-  return { exit, cookie: cookie.value, settledChecks, sessionReads };
+  return { exit, cookie: cookie.value, settledChecks, standingReads };
 };
 
 const value = <A, E>(exit: Exit.Exit<A, E>) => {
@@ -272,7 +271,7 @@ describe("RememberedReferral.forgetIfSettled", () => {
     expect(Exit.isSuccess(result.exit)).toBe(true);
     expect(result.cookie).toBeUndefined();
     expect(result.settledChecks).toEqual([booker]);
-    expect(result.sessionReads.count).toBe(0);
+    expect(result.standingReads.peeks).toBe(0);
   });
 
   test("keeps the code while a linked account's referral is open", async () => {
@@ -296,7 +295,7 @@ describe("RememberedReferral.forgetIfSettled", () => {
       );
       expect(result.cookie).toBe(options.cookie);
       expect(result.settledChecks).toEqual([]);
-      expect(result.sessionReads.count).toBe(0);
+      expect(result.standingReads.peeks).toBe(0);
     }
   });
 
@@ -325,12 +324,72 @@ describe("RememberedReferral.forgetIfSettled", () => {
     expect(forgets.cookie).toBeUndefined();
   });
 
+  // An order's booker policy, one row per standing `peek` reports, for a
+  // paid order whose signed-in booker's own referral is still open: the
+  // cookie stays unless the order stands in for a signed-out booker.
+  const forgetsForPaidOrder: Record<
+    TestPeekedStandingLabel,
+    {
+      readonly forgets: boolean;
+      readonly checks: readonly DotyposCustomerId[];
+    }
+  > = {
+    "signed out": { forgets: true, checks: [] },
+    // A failed read keeps the code.
+    unverified: { forgets: false, checks: [] },
+    "awaiting deletion": { forgets: true, checks: [] },
+    "awaiting deletion, review marker present": { forgets: true, checks: [] },
+    "awaiting deletion, review marker unreadable": {
+      forgets: true,
+      checks: [],
+    },
+    "review account": { forgets: false, checks: [] },
+    unlinked: { forgets: false, checks: [] },
+    "unlinked, review marker unreadable": { forgets: false, checks: [] },
+    linked: { forgets: false, checks: [testLinkedAccount.dotyposCustomerId] },
+    "linked, review marker unreadable": {
+      forgets: false,
+      checks: [testLinkedAccount.dotyposCustomerId],
+    },
+    "link unavailable": { forgets: false, checks: [] },
+  };
+
+  test.each(testPeekedStandingLabels)(
+    "settles a paid order of the standing %s by its own booker policy",
+    async (label) => {
+      const result = await run(
+        (remembered) =>
+          remembered.forgetIfSettled({ kind: "order", paid: true }),
+        { cookie: sharedCode, account: testPeekedStandings[label] }
+      );
+      const row = forgetsForPaidOrder[label];
+
+      expect(result.exit).toEqual(Exit.void);
+      expect(result.cookie).toBe(row.forgets ? undefined : sharedCode);
+      expect(result.settledChecks).toEqual([...row.checks]);
+      expect(result.standingReads.peeks).toBe(1);
+    }
+  );
+
+  test("keeps the code when the session can't be read", async () => {
+    const result = await run(
+      (remembered) => remembered.forgetIfSettled({ kind: "order", paid: true }),
+      {
+        cookie: sharedCode,
+        account: customerAccountUnavailable("authentication.session"),
+      }
+    );
+
+    expect(result.cookie).toBe(sharedCode);
+    expect(result.settledChecks).toEqual([]);
+  });
+
   test("keeps the code of an account without a profile", async () => {
     const result = await run(
       (remembered) => remembered.forgetIfSettled({ kind: "order", paid: true }),
       {
         cookie: sharedCode,
-        account: { status: "unlinked", accountId, email },
+        account: testPeekedStandings.unlinked,
       }
     );
     expect(result.cookie).toBe(sharedCode);
@@ -546,6 +605,6 @@ describe("RememberedReferral.fromClient", () => {
     );
     expect(Exit.isSuccess(result.exit)).toBe(true);
     expect(result.settledChecks).toEqual([]);
-    expect(result.sessionReads.count).toBe(0);
+    expect(result.standingReads.peeks).toBe(0);
   });
 });
