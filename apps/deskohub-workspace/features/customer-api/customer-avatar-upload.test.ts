@@ -9,6 +9,7 @@ import { Effect, Layer } from "effect";
 import { NextRequest } from "next/server";
 import { testLinkedAccount } from "@/features/account/backend/account-operations.test-utils";
 import { AccountAvatarReleaseGate } from "@/features/account/backend/account-release-gates";
+import type { AccountReleaseLayers } from "@/features/account/backend/account-state-capabilities";
 import {
   CustomerAvatarProviderError,
   CustomerAvatarService,
@@ -17,8 +18,12 @@ import type { CustomerAvatarUpload } from "@/features/account/backend/customer-a
 import { CustomerAvatarRejectedError } from "@/features/account/backend/customer-avatar-normalization";
 import { defineWorkspaceHttpApiRoute } from "@/shared/backend/workspace-http-api-route";
 import {
+  accountReleasesOver,
+  answerInEachReleaseCohort,
   type CustomerApiCall,
   customerApiRequest,
+  expectEachCohortAnsweredAlone,
+  inReleaseCohort,
   linkedAccountServices,
   makeCustomerApiTestServer,
   testCustomerEndpointGuards,
@@ -59,8 +64,8 @@ const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
 const storedAvatar = { url: "https://media.test/avatar.webp", version: 4 };
 
 /** The upload request with this multipart body. */
-const avatarRequest = (body: BodyInit) => {
-  const request = customerApiRequest(uploadAvatar);
+const avatarRequest = (body: BodyInit, call = uploadAvatar) => {
+  const request = customerApiRequest(call);
   return new Request(request.url, {
     method: request.method,
     headers: request.headers,
@@ -118,14 +123,18 @@ const customerApiRoute = (handle: (request: Request) => Promise<Response>) =>
 
 /**
  * A server whose session's account is linked, with avatars released unless
- * `released` is false, and an avatar service that records each upload and
- * answers with `result`.
+ * `released` is false or decided otherwise by `releases`, and an avatar
+ * service that records each upload and answers with `result`.
  */
 const avatarServer = ({
   released = true,
+  releases = {
+    avatarRelease: AccountAvatarReleaseGate.fromDecision(released),
+  },
   result = Effect.succeed(storedAvatar),
 }: {
   readonly released?: boolean;
+  readonly releases?: Partial<AccountReleaseLayers>;
   readonly result?: Effect.Effect<
     typeof storedAvatar,
     CustomerAvatarRejectedError | CustomerAvatarProviderError
@@ -143,9 +152,7 @@ const avatarServer = ({
           }),
       }),
     },
-    releases: {
-      avatarRelease: AccountAvatarReleaseGate.fromDecision(released),
-    },
+    releases,
   });
   return { ...api, uploads };
 };
@@ -426,5 +433,21 @@ describe("uploadAvatar", () => {
 
     await expectRejected(response, "file-too-large");
     expect(api.uploads).toEqual([]);
+  });
+});
+
+describe("overlapping uploads in different release cohorts", () => {
+  test("admits each upload as its own cohort's avatar release decides", async () => {
+    expectEachCohortAnsweredAlone(
+      await answerInEachReleaseCohort({
+        serve: (featureFlags) =>
+          avatarServer({ releases: accountReleasesOver(featureFlags) }),
+        send: (cohort) =>
+          avatarRequest(
+            bodyOf(...filePart(customerAvatarFileField, pngBytes), closing),
+            inReleaseCohort(uploadAvatar, cohort)
+          ),
+      })
+    );
   });
 });

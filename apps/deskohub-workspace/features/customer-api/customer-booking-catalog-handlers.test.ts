@@ -18,10 +18,13 @@ import {
   discountIdSchema,
 } from "@/features/discounts/contracts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
+import { DiscountReleaseGateService } from "@/features/discounts/discount-release-gate.service";
 import {
   DiscountAffirmationUnavailableError,
   DiscountProviderError,
 } from "@/features/discounts/errors";
+import { releaseGateForRunOverFlags } from "@/features/feature-flags/backend/release-gate.test-utils";
+import type { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend/workspace-feature-flag.service";
 import { getPaymentSubmitLegalDocuments } from "@/features/legal/payment-submit-evidence";
 import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
@@ -41,8 +44,11 @@ import {
   plainDateStringSchema,
 } from "@/shared/utils/temporal";
 import {
+  answerInEachReleaseCohort,
   type CustomerApiCall,
   customerApiRequest,
+  expectEachCohortAnsweredAlone,
+  inReleaseCohort,
   makeCustomerApiTestServer,
   testCustomerEndpointGuards,
 } from "./customer-api.test-utils";
@@ -794,5 +800,84 @@ describe("listLegalDocuments", () => {
     );
 
     expect(response.status).toBe(400);
+  });
+});
+
+describe("overlapping requests in different release cohorts", () => {
+  /**
+   * The catalog with every release gate decided over `featureFlags`: the
+   * office's and the referral program's, and the discount gates under
+   * pricing, which run a 10 % sale while calendar sales are released.
+   */
+  const catalogDecidedOver = (
+    featureFlags: Layer.Layer<WorkspaceFeatureFlagService>
+  ): Partial<CustomerBookingCatalogLayerSet> => ({
+    pricing: CheckoutPricingService.Default.pipe(
+      Layer.provide(
+        Layer.unwrap(
+          Effect.map(DiscountReleaseGateService, (gates) =>
+            DiscountServiceMock({
+              discoverAdvertisedDiscounts: ((
+                input: DiscountAdvertisementInput
+              ) =>
+                gates
+                  .evaluate({ operation: "discover_advertised_discounts" })
+                  .pipe(
+                    Effect.flatMap(({ calendarSales }) =>
+                      calendarSales ? tenPercentSale(input) : noSale(input)
+                    )
+                  )) as never,
+            })
+          )
+        ).pipe(
+          Layer.provide(DiscountReleaseGateService.Default),
+          Layer.provide(featureFlags)
+        )
+      )
+    ),
+    inventory: emptyInventory,
+    releases: {
+      office: releaseGateForRunOverFlags(OfficeReleaseGate, featureFlags),
+      referral: releaseGateForRunOverFlags(ReferralReleaseGate, featureFlags),
+    },
+  });
+
+  const serve = (featureFlags: Layer.Layer<WorkspaceFeatureFlagService>) =>
+    makeCustomerApiTestServer({
+      bookingCatalog: catalogDecidedOver(featureFlags),
+    });
+
+  test("lists the offerings and their sale prices each request's own cohort sees", async () => {
+    const listOfferings: CustomerApiCall = {
+      method: "GET",
+      path: "/booking/offerings?locale=en-US",
+    };
+
+    expectEachCohortAnsweredAlone(
+      await answerInEachReleaseCohort({
+        serve,
+        send: (cohort) =>
+          customerApiRequest(inReleaseCohort(listOfferings, cohort)),
+      })
+    );
+  });
+
+  test("quotes each request's selection with the sale its own cohort sees", async () => {
+    const getQuote: CustomerApiCall = {
+      method: "GET",
+      path: `/booking/quote?locale=en-US&family=meeting-room&duration=hour:1&startTime=10:00&date=${workspaceDateFromToday(2)}`,
+    };
+
+    expectEachCohortAnsweredAlone(
+      await answerInEachReleaseCohort({
+        serve,
+        send: (cohort) => customerApiRequest(inReleaseCohort(getQuote, cohort)),
+        // The quote's time and signed token differ between any two quotes.
+        answer: async (response) => {
+          const { total, regularPrice, discount } = await response.json();
+          return { status: response.status, total, regularPrice, discount };
+        },
+      })
+    );
   });
 });
