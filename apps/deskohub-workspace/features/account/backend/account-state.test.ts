@@ -1,3 +1,4 @@
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
@@ -9,9 +10,13 @@ import {
 } from "@/features/account/backend/account-release-gates";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
-import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import {
+  type CustomerAccountSession,
+  CustomerAuthentication,
+} from "@/features/account/backend/customer-authentication.service";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import {
@@ -26,6 +31,7 @@ import {
 } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
+import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import { loadAccountState } from "./account-state";
 import {
@@ -37,28 +43,43 @@ const email = testEmailAddress("ada");
 const accountId = "auth-account-1" as CustomerAccountId;
 const linkedCustomer = "60111";
 
-let currentUser: Effect.Effect<
-  {
-    readonly accountId: CustomerAccountId;
-    readonly email: string;
-    readonly deletionRequested: boolean;
-  } | null,
-  unknown
+const session = {
+  accountId,
+  email: reservationCustomerEmailSchema.make(email),
+  deletionRequested: false,
+  ...testSessionProfile,
+} satisfies CustomerAccountSession;
+
+type ResolvedStanding = Effect.Success<
+  CurrentCustomerAccount["Service"]["resolve"]
 >;
-let resolution: Effect.Effect<
-  {
-    readonly account: {
-      readonly accountId: CustomerAccountId;
-      readonly dotyposCustomerId: string;
-    };
-    readonly autoLinked: boolean;
-  },
-  CustomerAccountAccessError
->;
+
+/** The account's standing for `account`'s session, with no review marker. */
+const signedIn = <Kind extends "profile-missing" | "deletion-pending">(
+  kind: Kind,
+  account: CustomerAccountSession = session
+) =>
+  Effect.succeed({ kind, session: account, reviewMarker: "absent" as const });
+
+const linked = (
+  autoLinked: boolean,
+  account: CustomerAccountSession = session
+) =>
+  Effect.succeed({
+    kind: "linked" as const,
+    session: account,
+    reviewMarker: "absent" as const,
+    account: {
+      accountId,
+      dotyposCustomerId: linkedCustomer as DotyposCustomerId,
+    },
+    autoLinked,
+  });
+
+let currentStanding: Effect.Effect<ResolvedStanding, unknown>;
 let profile: Effect.Effect<unknown, unknown>;
 let avatar: Effect.Effect<unknown, unknown>;
 let referralSummary: Effect.Effect<unknown, unknown>;
-let reviewAccount: boolean;
 let settled: boolean;
 let clientReferralCode: string | undefined;
 let calls: string[];
@@ -87,10 +108,10 @@ const record =
 const capabilities = () =>
   accountStateCapabilities({
     authentication: Layer.mock(CustomerAuthentication, {
-      currentUser: Effect.suspend(() => currentUser) as never,
+      currentUser: Effect.succeed(session),
     }),
-    resolver: Layer.mock(CustomerAccountResolver, {
-      resolveLink: Effect.suspend(() => resolution) as never,
+    currentAccount: Layer.mock(CurrentCustomerAccount, {
+      resolve: Effect.suspend(() => currentStanding) as never,
     }),
     profile: Layer.mock(CustomerProfileService, {
       load: () => profile as never,
@@ -105,7 +126,7 @@ const capabilities = () =>
       list: record("assistants")(Effect.succeed([])),
     }),
     reviewAccounts: ReviewAccountsMock({
-      isReviewAccount: () => Effect.succeed(reviewAccount),
+      isReviewAccount: () => Effect.succeed(false),
     }),
     referrals: ReferralServiceMock({
       getAccountSummary: () => record("summary")(referralSummary) as never,
@@ -167,23 +188,11 @@ const linkedProfile = {
   billing: null,
 };
 
-const failure = (reason: string, linkReason?: string) =>
-  Effect.fail(new CustomerAccountAccessError({ reason, linkReason } as never));
-
 beforeEach(() => {
-  currentUser = Effect.succeed({
-    accountId,
-    email,
-    deletionRequested: false,
-  });
-  resolution = Effect.succeed({
-    account: { accountId, dotyposCustomerId: linkedCustomer },
-    autoLinked: false,
-  });
+  currentStanding = linked(false);
   profile = Effect.succeed(linkedProfile);
   avatar = Effect.succeed(null);
   referralSummary = Effect.succeed(summary);
-  reviewAccount = false;
   settled = false;
   clientReferralCode = undefined;
   calls = [];
@@ -212,7 +221,7 @@ describe("loadAccountState", () => {
   });
 
   test("offers completion with the client's usable referral code, without history", async () => {
-    resolution = failure("link-required", "not-found");
+    currentStanding = signedIn("profile-missing");
     clientReferralCode = " rfl12345 ";
 
     const state = await load();
@@ -229,8 +238,8 @@ describe("loadAccountState", () => {
     expect(calls).toContain("find RFL12345");
   });
 
-  test("loads a review account and every support state without history", async () => {
-    reviewAccount = true;
+  test("loads a review account and a support state without history", async () => {
+    currentStanding = Effect.succeed({ kind: "review", session });
     await expect(load()).resolves.toEqual({
       kind: "review-account",
       email,
@@ -238,35 +247,31 @@ describe("loadAccountState", () => {
       assistants: [],
     });
 
-    reviewAccount = false;
-    for (const reason of ["support-required", "unverified-email"]) {
-      resolution =
-        reason === "support-required"
-          ? failure("link-required", "ambiguous")
-          : failure(reason);
-      const state = await load();
-      expect(state.kind).toBe("support-required");
-      expect(state).not.toHaveProperty("history");
-    }
+    currentStanding = Effect.succeed({
+      kind: "support-required",
+      reason: "ambiguous",
+      session,
+      reviewMarker: "absent",
+    });
+    const state = await load();
+    expect(state.kind).toBe("support-required");
+    expect(state).not.toHaveProperty("history");
   });
 
   test("carries the session's saved locale preference in every signed-in state", async () => {
-    currentUser = Effect.succeed({
-      accountId,
-      email,
-      deletionRequested: false,
+    const withLocale = {
+      ...session,
       localePreference: "de-DE",
-    });
+    } satisfies CustomerAccountSession;
+    currentStanding = linked(false, withLocale);
     await expect(load()).resolves.toMatchObject({
       kind: "linked",
       localePreference: "de-DE",
     });
 
-    currentUser = Effect.succeed({
-      accountId,
-      email,
+    currentStanding = signedIn("deletion-pending", {
+      ...withLocale,
       deletionRequested: true,
-      localePreference: "de-DE",
     });
     await expect(load()).resolves.toMatchObject({
       kind: "deletion-pending",
@@ -275,10 +280,12 @@ describe("loadAccountState", () => {
   });
 
   test("is unavailable when the session can't be read, and unauthenticated without one", async () => {
-    currentUser = Effect.fail(new Error("auth down"));
+    currentStanding = Effect.fail(
+      new CustomerAccountAccessError({ reason: "unavailable" })
+    );
     expect((await loadWithWarnings()).state).toEqual({ kind: "unavailable" });
 
-    currentUser = Effect.succeed(null);
+    currentStanding = Effect.succeed({ kind: "signed-out" });
     await expect(load()).resolves.toEqual({ kind: "unauthenticated" });
     expect(calls).toEqual([]);
   });
@@ -338,10 +345,7 @@ describe("loadAccountState", () => {
   });
 
   test("records the client's referral code when this load auto-linked an existing customer", async () => {
-    resolution = Effect.succeed({
-      account: { accountId, dotyposCustomerId: linkedCustomer },
-      autoLinked: true,
-    });
+    currentStanding = linked(true);
     clientReferralCode = "RFL12345";
     settled = true;
 
@@ -362,10 +366,7 @@ describe("loadAccountState", () => {
   });
 
   test("withholds every referral read and write when the gate's run fails", async () => {
-    resolution = Effect.succeed({
-      account: { accountId, dotyposCustomerId: linkedCustomer },
-      autoLinked: true,
-    });
+    currentStanding = linked(true);
     clientReferralCode = "RFL12345";
     layerOverrides = {
       referralRelease: releaseGateForRun(

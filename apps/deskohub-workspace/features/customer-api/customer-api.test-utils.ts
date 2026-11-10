@@ -18,6 +18,7 @@ import { CustomerAgentConnections } from "@/features/account/backend/auth/custom
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { CustomerRequestOrigins } from "@/features/account/backend/auth/customer-request-origins.service";
 import { CustomerAccountDeletionEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import {
@@ -202,6 +203,7 @@ export const makeCustomerApiTestServer = (
 };
 
 const unusedAccountServices: CustomerAccountServiceLayers = {
+  currentAccount: Layer.mock(CurrentCustomerAccount, {}),
   resolver: Layer.mock(CustomerAccountResolver, {}),
   profile: Layer.mock(CustomerProfileService, {}),
   avatar: Layer.mock(CustomerAvatarService, {}),
@@ -243,12 +245,39 @@ export const testCustomerProfile: CustomerProfile = {
  */
 export const linkedAccountServices: CustomerAccountServiceLayers = {
   ...unusedAccountServices,
+  // The request's session, linked to `testLinkedAccount`'s customer unless
+  // it is signed out or awaiting deletion.
+  currentAccount: Layer.effect(
+    CurrentCustomerAccount,
+    Effect.gen(function* () {
+      const authentication = yield* CustomerAuthentication;
+      return CurrentCustomerAccount.of({
+        resolve: authentication.currentUser.pipe(
+          Effect.map((session) => {
+            if (session === null) return { kind: "signed-out" } as const;
+            if (session.deletionRequested) {
+              return {
+                kind: "deletion-pending",
+                session,
+                reviewMarker: "absent",
+              } as const;
+            }
+            return {
+              kind: "linked",
+              session,
+              reviewMarker: "absent",
+              account: testLinkedAccount,
+              autoLinked: false,
+            } as const;
+          })
+        ),
+        peek: Effect.die("peek is not faked"),
+        requireActive: Effect.die("requireActive is not faked"),
+      });
+    })
+  ),
   resolver: Layer.mock(CustomerAccountResolver, {
     resolve: Effect.succeed(testLinkedAccount),
-    resolveLink: Effect.succeed({
-      account: testLinkedAccount,
-      autoLinked: false,
-    }),
   }),
   profile: Layer.mock(CustomerProfileService, {
     load: () => Effect.succeed(testCustomerProfile),

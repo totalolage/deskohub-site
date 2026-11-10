@@ -164,30 +164,24 @@ export const resolveHeldCustomerAccountLink = Effect.fn(
   } satisfies CustomerAccountLinkResolution;
 });
 
-export const resolveCustomerAccount = (
-  dependencies: CustomerAccountResolutionDependencies
-): Effect.Effect<LinkedCustomerAccount, CustomerAccountAccessError> =>
-  resolveCustomerAccountLink(dependencies).pipe(
-    Effect.map((resolution) => resolution.account)
-  );
-
 /**
  * Resolves the signed-in account's link. The session read before the lock
  * fails fast; the section then rechecks the session and the account under
  * the lock before the held steps run.
  */
-export const resolveCustomerAccountLink = (
+export const resolveCustomerAccount = (
   dependencies: CustomerAccountResolutionDependencies
-): Effect.Effect<CustomerAccountLinkResolution, CustomerAccountAccessError> =>
+): Effect.Effect<LinkedCustomerAccount, CustomerAccountAccessError> =>
   Effect.gen(function* () {
     const user = yield* dependencies.currentUser();
     const identity = yield* requireVerifiedIdentity(user);
 
-    return yield* dependencies.withActiveAccount(
+    const resolution = yield* dependencies.withActiveAccount(
       identity.accountId,
       resolveHeldCustomerAccountLink(dependencies),
       { recheck: "session" }
     );
+    return resolution.account;
   });
 
 const resolutionDependencies: Effect.Effect<
@@ -231,14 +225,6 @@ interface ICustomerAccountResolver {
     LinkedCustomerAccount,
     CustomerAccountAccessError
   >;
-  /**
-   * Resolution that also reports whether this visit auto-linked the account,
-   * which only the account page acts on.
-   */
-  readonly resolveLink: Effect.Effect<
-    CustomerAccountLinkResolution,
-    CustomerAccountAccessError
-  >;
 }
 
 export class CustomerAccountResolver extends Context.Service<
@@ -251,7 +237,6 @@ export class CustomerAccountResolver extends Context.Service<
       resolutionDependencies,
       (dependencies): ICustomerAccountResolver => ({
         resolve: resolveCustomerAccount(dependencies),
-        resolveLink: resolveCustomerAccountLink(dependencies),
       })
     )
   );
