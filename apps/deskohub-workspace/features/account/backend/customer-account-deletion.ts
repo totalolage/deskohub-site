@@ -27,13 +27,13 @@ import {
  * A shared app-directory review account can't be deleted: later review rounds
  * sign in with the same credentials.
  */
-export class ReviewAccountDeletionRefusedError extends Data.TaggedError(
+class ReviewAccountDeletionRefusedError extends Data.TaggedError(
   "ReviewAccountDeletionRefusedError"
 )<Record<never, never>> {
   override readonly message = "A review account can't be deleted.";
 }
 
-export type CustomerAccountDeletionError =
+type CustomerAccountDeletionError =
   | ReviewAccountDeletionRefusedError
   | CustomerAccountAccessError
   | CustomerAccountLinkError

@@ -35,9 +35,9 @@ export class HeldCustomerAccount extends Context.Service<
  * - `present`: the account exists; a deletion marker is tolerated. Only
  *   deletion uses it, because it writes that marker and must stay retryable.
  */
-export type CustomerAccountRecheck = "session" | "active" | "present";
+type CustomerAccountRecheck = "session" | "active" | "present";
 
-export type CustomerAccountSectionOptions = {
+type CustomerAccountSectionOptions = {
   /** Defaults to `session`. */
   readonly recheck?: CustomerAccountRecheck;
 };
@@ -46,7 +46,7 @@ export type CustomerAccountSectionOptions = {
  * Work for the signed-in account, or for an anonymous visitor when the
  * account is null, so the state it creates can name its author.
  */
-export type OptionalAccountSection<A, E, R> = (
+type OptionalAccountSection<A, E, R> = (
   accountId: CustomerAccountId | null
 ) => Effect.Effect<A, E, R>;
 
