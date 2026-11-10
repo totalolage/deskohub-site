@@ -59,5 +59,7 @@ counts as no consent.
   applies, and marks test and non-production accounts internal.
 - `analytics/feature-flags.ts`: `useFeatureFlagEnabled(flag, fallback)`
   returns the fallback until the identity's flags load, without consent, and
-  after withdrawal. Flags reload when the identity changes. Flag definitions
+  after withdrawal. In production, flags reload when the identity changes;
+  other environments never request flags (`allowsRemoteFeatureFlags`), so
+  reads keep the fallback. Flag definitions
   live in the Workspace (`deskohub-workspace-feature-flags` skill).

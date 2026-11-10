@@ -40,11 +40,13 @@ const evaluateFlags = mock(() =>
 const isEnabled = mock(() =>
   Effect.fail(new Error("Unexpected SDK evaluation"))
 );
-const getCurrentPostHogFeatureFlagSubject = mock(() =>
+const getCurrentFeatureFlagAudience = mock(() =>
   Effect.fail(new Error("Unexpected request subject lookup"))
 );
 
+const management = await import("@deskohub/posthog/feature-flags/management");
 mock.module("@deskohub/posthog/feature-flags/management", () => ({
+  ...management,
   loadPostHogFeatureFlagDefinitions,
 }));
 mock.module("@/env", () => ({ env }));
@@ -56,7 +58,7 @@ mock.module("@/features/feature-flags/backend/node", () => ({
   nodeFeatureFlags: { evaluateFlags, isEnabled },
 }));
 mock.module("@/features/feature-flags/backend/subject", () => ({
-  getCurrentPostHogFeatureFlagSubject,
+  getCurrentFeatureFlagAudience,
   workspaceReleaseSubject: {
     distinctId: "synthetic-release",
     sendFeatureFlagEvents: false,
@@ -88,7 +90,7 @@ const readFlag = () =>
 const expectNoRequestDependentEvaluation = () => {
   expect(evaluateFlags).not.toHaveBeenCalled();
   expect(isEnabled).not.toHaveBeenCalled();
-  expect(getCurrentPostHogFeatureFlagSubject).not.toHaveBeenCalled();
+  expect(getCurrentFeatureFlagAudience).not.toHaveBeenCalled();
 };
 
 describe("WorkspaceFeatureFlagService prerender evaluation", () => {
@@ -103,7 +105,7 @@ describe("WorkspaceFeatureFlagService prerender evaluation", () => {
     nextCache.clear();
     evaluateFlags.mockClear();
     isEnabled.mockClear();
-    getCurrentPostHogFeatureFlagSubject.mockClear();
+    getCurrentFeatureFlagAudience.mockClear();
   });
 
   test.each([true, false])(
