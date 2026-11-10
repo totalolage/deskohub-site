@@ -15,16 +15,7 @@ import {
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { EffectLogger } from "drizzle-orm/effect-postgres";
-import {
-  Cause,
-  type Context,
-  Data,
-  Effect,
-  Layer,
-  Logger,
-  References,
-} from "effect";
+import { Cause, Data, Effect, Logger, References } from "effect";
 import { SqlError } from "effect/unstable/sql";
 import { createTracingLive } from "../observability/telemetry-sinks";
 
@@ -32,10 +23,6 @@ const syntheticEmail = testEmailAddress("synthetic");
 const adaEmail = testEmailAddress("ada");
 const privateEmail = testEmailAddress("private");
 const exampleHost = "example.com";
-
-type LogAnnotations = Context.Service.Shape<
-  typeof References.CurrentLogAnnotations
->;
 
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 import {
@@ -46,7 +33,6 @@ import {
   createCensoredOtelSpanExporter,
   isSensitiveLogKey,
 } from "./censorship";
-import { DatabaseQueryLoggerLive } from "./database-query-logger";
 
 class CustomValue {
   constructor(readonly secret: string) {}
@@ -398,7 +384,7 @@ describe("censorLogValue", () => {
     ]);
   });
 
-  test("projects Drizzle query errors with a censored cause", () => {
+  test("projects Drizzle query errors to their tag, parameter count, and censored cause", () => {
     const error = new EffectDrizzleQueryError({
       query:
         "select * from customers where id = $1 and email = /* deskohub:sensitive */ $2",
@@ -409,18 +395,18 @@ describe("censorLogValue", () => {
     const censored = censorLogValue({ cause: error });
     const serialized = JSON.stringify(censored);
 
-    expect(censored).toMatchObject({
+    expect(censored).toEqual({
       cause: {
         _tag: "EffectDrizzleQueryError",
-        query:
-          "select * from customers where id = $1 and email = /* deskohub:sensitive */ $2",
-        params: ["visible", CENSORED_LOG_VALUE],
-        cause: {
+        parameterCount: 2,
+        cause: expect.objectContaining({
           errorType: "Error",
           message: CENSORED_LOG_VALUE,
-        },
+        }),
       },
     });
+    expect(serialized).not.toContain("from customers");
+    expect(serialized).not.toContain("visible");
     expect(serialized).not.toContain(privateEmail);
     expect(serialized).not.toContain("Failed query");
   });
@@ -951,46 +937,6 @@ describe("censorLoggerOptions", () => {
     expect(annotations.sessionToken).toBe("session-secret");
   });
 
-  test("database query logging retains only selectively censored parameters", async () => {
-    let capturedAnnotations: LogAnnotations = {};
-    const captureLogger = Logger.make((options) => {
-      capturedAnnotations = options.fiber.getRef(
-        References.CurrentLogAnnotations
-      );
-    });
-
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const logger = yield* EffectLogger;
-        yield* logger.logQuery("select $1, $2, $3", [
-          "visible",
-          { email: privateEmail, sessionDuration: 123 },
-          42,
-          undefined,
-          10n,
-        ]);
-      }).pipe(
-        Effect.provide(
-          Layer.merge(DatabaseQueryLoggerLive, Logger.layer([captureLogger]))
-        )
-      )
-    );
-
-    expect(capturedAnnotations).toEqual({
-      params: [
-        '"visible"',
-        `{"email":"${CENSORED_LOG_VALUE}","sessionDuration":123}`,
-        "42",
-        "undefined",
-        "10",
-      ],
-      parameterCount: 5,
-      query: "select $1, $2, $3",
-    });
-    expect(JSON.stringify(capturedAnnotations)).toContain("visible");
-    expect(JSON.stringify(capturedAnnotations)).not.toContain(privateEmail);
-  });
-
   test("censors Drizzle failures stored in the logger cause", () => {
     const privateValue = testEmailAddress("private");
     const error = new EffectDrizzleQueryError({
@@ -1012,8 +958,10 @@ describe("censorLoggerOptions", () => {
 
     const serialized = JSON.stringify(censorLoggerOptions(options).cause);
 
-    expect(serialized).toContain("safe-customer-id");
+    expect(serialized).toContain("EffectDrizzleQueryError");
     expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain("from customers");
+    expect(serialized).not.toContain("safe-customer-id");
     expect(serialized).not.toContain(privateValue);
     expect(serialized).not.toContain("driver echoed");
     expect(serialized).not.toContain("Failed query");
@@ -1043,9 +991,11 @@ describe("censorLoggerOptions", () => {
 
     const serialized = JSON.stringify(censorLoggerOptions(options).cause);
 
-    expect(serialized).toContain("safe-attempt-id");
-    expect(serialized).toContain("aes256");
+    expect(serialized).toContain("EffectDrizzleQueryError");
     expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain("pgp_sym_encrypt");
+    expect(serialized).not.toContain("safe-attempt-id");
+    expect(serialized).not.toContain("aes256");
     expect(serialized).not.toContain(privateValue);
     expect(serialized).not.toContain("accounting storage failed");
     expect(serialized).not.toContain("driver echoed");
@@ -1175,8 +1125,10 @@ describe("createCensoredOtelLogger", () => {
     await provider.forceFlush();
 
     const serialized = JSON.stringify(exporter.getFinishedLogRecords()[0]);
-    expect(serialized).toContain("safe-customer-id");
+    expect(serialized).toContain("EffectDrizzleQueryError");
     expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain("from customers");
+    expect(serialized).not.toContain("safe-customer-id");
     expect(serialized).not.toContain(privateEmail);
     expect(serialized).not.toContain("Failed query");
     await provider.shutdown();
@@ -1503,8 +1455,7 @@ describe("censorLogValue structure", () => {
     expect(censored[1]).toBe(censored[0]);
     expect(censored[0]).toMatchObject({
       _tag: "EffectDrizzleQueryError",
-      query: "select $1",
-      params: ["visible"],
+      parameterCount: 1,
     });
   });
 });

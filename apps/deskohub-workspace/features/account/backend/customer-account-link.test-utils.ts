@@ -16,9 +16,7 @@ export const unreachableAccountLinks = (
     Effect.service(CustomerAccountLinkRepository).pipe(
       Effect.provide(
         CustomerAccountLinkRepository.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(unreachable.database, unreachable.advisoryLock)
-          )
+          Layer.provide(unreachable.database)
         )
       )
     )
@@ -31,7 +29,7 @@ export const unreachableAccountLinks = (
  * many times, so a later read of the same fact fails.
  */
 export const accountLinksFailingAt = (
-  reads: readonly ("find" | "findActivityState" | "withAccountLock")[],
+  reads: readonly ("find" | "findActivityState")[],
   repositories: {
     readonly healthy: Layer.Layer<CustomerAccountLinkRepository>;
     readonly unreachable: AccountLinks;
@@ -43,7 +41,7 @@ export const accountLinksFailingAt = (
     Effect.map(CustomerAccountLinkRepository, (healthy): AccountLinks => {
       const { unreachable } = repositories;
       const healthyReads = repositories.afterHealthyReads ?? 0;
-      const calls = { find: 0, findActivityState: 0, withAccountLock: 0 };
+      const calls = { find: 0, findActivityState: 0 };
       const fails = (read: (typeof reads)[number]) =>
         reads.includes(read) && calls[read]++ >= healthyReads;
       return {
@@ -55,11 +53,6 @@ export const accountLinksFailingAt = (
             ? unreachable
             : healthy
           ).findActivityState(accountId),
-        withAccountLock: (accountId, effect) =>
-          (fails("withAccountLock") ? unreachable : healthy).withAccountLock(
-            accountId,
-            effect
-          ),
       };
     })
   ).pipe(Layer.provide(repositories.healthy));

@@ -17,6 +17,7 @@ import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { PaymentAttemptState, WebhookEvent } from "@/db/schema";
 import {
+  reservationLogFields,
   type WorkspaceReservation,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -29,6 +30,7 @@ import { LatePaymentRecoveryRepository } from "../repositories/late-payment-reco
 import {
   type PaymentAttempt,
   PaymentAttemptRepository,
+  paymentAttemptLogFields,
 } from "../repositories/payment-attempt.repository";
 import { PaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import { PaymentRefundRepository } from "../repositories/payment-refund.repository";
@@ -40,6 +42,7 @@ import {
 import { LatePaymentRecoveryQueueService } from "./late-payment-recovery-queue.service";
 import { getNexiCurrencyOverride } from "./nexi-currency";
 import { PaymentRefundService } from "./payment-refund.service";
+import { paymentVerificationLogFields } from "./payment-verification-log-fields";
 import {
   isVerifiableNexiPaymentAttempt,
   type VerifiableNexiPaymentAttempt,
@@ -152,7 +155,14 @@ const failOnVerificationMismatch = Effect.fn(
       })
     );
   },
-  (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
+  (effect, input) =>
+    effect.pipe(
+      Effect.annotateLogs({
+        eventId: input.eventId,
+        providerOrderId: input.orderId,
+        ...paymentVerificationLogFields(input.verification),
+      })
+    )
 );
 
 /** The provider event and order every processing failure names. */
@@ -320,10 +330,13 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
         );
         const providerOrderId = envelope.operation.orderId;
         const { eventId } = deriveNexiWebhookEventIdentity(envelope);
+        // Identifiers only: the envelope carries the security token.
         yield* Effect.annotateLogsScoped({
-          envelope,
           eventId,
           providerOrderId,
+          operationId: envelope.operation.operationId,
+          operationType: envelope.operation.operationType,
+          operationResult: envelope.operation.operationResult,
         });
         yield* Effect.logInfo("Nexi webhook notification decoded");
 
@@ -348,7 +361,11 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
               })
             )
           );
-        yield* Effect.annotateLogsScoped({ received });
+        yield* Effect.annotateLogsScoped({
+          webhookEventId: received.event.id,
+          webhookEventInsertStatus: received.status,
+          webhookEventState: received.event.state,
+        });
         yield* Effect.logInfo("Nexi webhook event recorded");
         return received;
       });
@@ -413,7 +430,10 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
               })
             )
           );
-        yield* Effect.annotateLogsScoped({ attempt });
+        yield* Effect.annotateLogsScoped({
+          ...paymentAttemptLogFields(attempt),
+          providerOrderId,
+        });
         yield* Effect.logDebug("Nexi webhook payment attempt lookup completed");
 
         if (!attempt) {
@@ -464,7 +484,7 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
               })
             )
           );
-        yield* Effect.annotateLogsScoped({ reservation });
+        yield* Effect.annotateLogsScoped(reservationLogFields(reservation));
         yield* Effect.logDebug(
           "Nexi webhook workspace reservation lookup completed"
         );
@@ -574,7 +594,11 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
           currency: getNexiCurrencyOverride() ?? currency,
           securityToken: attempt.securityToken,
         };
-        yield* Effect.annotateLogsScoped({ verificationInput });
+        // Never the input itself: it carries the attempt's security token.
+        yield* Effect.annotateLogsScoped({
+          correlationId: verificationInput.correlationId,
+          amount: verificationInput.amount,
+        });
         yield* Effect.logInfo("Nexi webhook payment verification started");
 
         const verification = yield* nexi
@@ -585,7 +609,9 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
               message: "Nexi provider verification failed.",
             })
           );
-        yield* Effect.annotateLogsScoped({ verification });
+        yield* Effect.annotateLogsScoped(
+          paymentVerificationLogFields(verification)
+        );
         yield* Effect.logInfo("Nexi webhook payment verification completed");
 
         yield* failOnVerificationMismatch({
@@ -757,7 +783,8 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
       return NexiWebhookService.of({
         processNotification: Effect.fn("nexiWebhook.processNotification")(
           function* (payload) {
-            yield* Effect.annotateLogsScoped({ payload });
+            // The raw payload stays out of the logs: the decoded identifiers
+            // annotate every row once they are known.
             yield* Effect.logInfo("Nexi webhook processing started");
 
             const { envelope, notification } =

@@ -19,7 +19,9 @@ import { AccessibilityInfo, Platform } from "react-native";
 import { analytics } from "../../analytics/analytics";
 import { AppLocaleProvider } from "../../i18n/locale-context";
 import { clientRoot } from "../../testing/client-root";
+import { theme } from "../../theme";
 import { LiveMessage } from "../../ui/controls";
+import { LoadingIndicator } from "../../ui/loading-indicator";
 import { find, type HostProps, hostTree } from "../../ui/testing/element-tree";
 import { PasskeyCeremonies, type PasskeyCeremonyApi } from "./passkey-ceremony";
 import { PasskeyNotSupported, PasskeyRejected } from "./passkey-failure";
@@ -86,6 +88,8 @@ const draw = async <Props,>(
         if (typeof onPress !== "function") throw new Error("No button.");
         onPress();
       }),
+    /** The props of the loading indicator in the button, if it shows one. */
+    indicator: () => find(tree, LoadingIndicator)?.props,
     /** The control's live region, as its only `LiveMessage` draws it. */
     region: () => {
       expect(regions).toHaveLength(1);
@@ -249,5 +253,40 @@ describe("PasskeySignInOption", () => {
 
     expect(option.region()?.accessibilityLiveRegion).toBe("assertive");
     expect(announced).toEqual([]);
+  });
+});
+
+// The button's busy state and label say it is working, so its die is hidden.
+describe("the pending passkey buttons", () => {
+  const idle = ceremonies;
+  afterEach(() => {
+    ceremonies = idle;
+  });
+
+  test("adding a passkey shows an accent inline die while it runs", async () => {
+    ceremonies = { ...ceremonies, addPasskey: () => Effect.never };
+    const action = await draw(AddPasskeyAction, {
+      onReauthenticationRequired: () => undefined,
+    });
+    expect(action.indicator()).toBeUndefined();
+
+    await action.press();
+
+    expect(action.indicator()).toEqual({
+      size: "inline",
+      tone: { color: theme.colors.accent },
+    });
+  });
+
+  test("signing in with a passkey shows a navy inline die while it runs", async () => {
+    ceremonies = { ...ceremonies, signIn: Effect.never };
+    const option = await draw(PasskeySignInOption, {
+      onSignedIn: () => undefined,
+    });
+    expect(option.indicator()).toBeUndefined();
+
+    await option.press();
+
+    expect(option.indicator()).toEqual({ size: "inline", tone: "navy" });
   });
 });

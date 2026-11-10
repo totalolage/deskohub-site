@@ -12,11 +12,13 @@ import type { DatabaseQueryError } from "@/db/sql-constraint";
 import { WorkspaceLocks } from "@/db/workspace-locks";
 import { isAccountActive } from "@/features/account/backend/customer-account-activity";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
+import { CustomerAccountSections } from "@/features/account/backend/customer-account-sections";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
-import type { LinkedCustomerAccount } from "@/features/account/customer-account";
 import {
+  CustomerAccountAccessError,
   type CustomerAccountId,
   customerAccountIdSchema,
+  type LinkedCustomerAccount,
 } from "@/features/account/customer-account";
 import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import {
@@ -32,6 +34,7 @@ import { parseReferralCode, type ReferralCode } from "./client";
 import {
   type CheckoutReferralEvaluation,
   type ReferralAcceptance,
+  ReferralAccountCheckUnavailable,
   type ReferralAccountOutage,
   type ReferralAccountSummary,
   ReferralAuthenticationUnavailable,
@@ -59,9 +62,10 @@ import {
  * program, and with a `ReferralOutage` when the referral store or Dotypos
  * could not be read, which says nothing about the code or the customer. The
  * signed-in account's operations also fail with
- * `ReferralAuthenticationUnavailable` when its session could not be read;
- * `account_unavailable` means the account itself is gone, awaits deletion, or
- * is no longer linked to that customer.
+ * `ReferralAuthenticationUnavailable` when its session could not be read, and
+ * the summary with `ReferralAccountCheckUnavailable` when its account lock or
+ * deletion state could not be read; `account_unavailable` means the account
+ * itself is gone, awaits deletion, or is no longer linked to that customer.
  */
 export interface IReferralService {
   readonly getAccountSummary: (input: {
@@ -135,6 +139,34 @@ export interface IReferralService {
 const fail = (
   reason: ConstructorParameters<typeof ReferralError>[0]["reason"]
 ) => new ReferralError({ reason });
+
+/**
+ * The account section's failure as a verdict on the account or an outage. No
+ * session or account, or one that awaits deletion, is `account_unavailable`;
+ * a lock or account read that failed says nothing about the account.
+ */
+const accountSectionFailure = (
+  error: CustomerAccountAccessError
+): ReferralError | ReferralAccountCheckUnavailable =>
+  Match.value(error.reason).pipe(
+    Match.when(
+      Match.is(
+        "unauthenticated",
+        "link-required",
+        "unverified-email",
+        "not-configured"
+      ),
+      () => fail("account_unavailable")
+    ),
+    Match.when(
+      "unavailable",
+      () =>
+        new ReferralAccountCheckUnavailable(
+          error.cause ? { code: error.cause.code } : {}
+        )
+    ),
+    Match.exhaustive
+  );
 
 /** A stored account link's ID; a malformed one is a defect, not a referral outcome. */
 const decodeLinkedAccountId = (accountId: string) =>
@@ -213,6 +245,7 @@ export class ReferralService extends Context.Service<
       const standing = yield* makeReferralStandingReads;
       const authentication = yield* CustomerAuthentication;
       const accountLinks = yield* CustomerAccountLinkRepository;
+      const sections = yield* CustomerAccountSections;
       const releaseGate = yield* ReferralReleaseGate;
 
       /** The account exists and awaits no deletion. */
@@ -275,14 +308,30 @@ export class ReferralService extends Context.Service<
         } satisfies LinkedCustomerAccount;
       });
 
-      const withActiveCurrentAccount = <A, E, R>(
+      /**
+       * Runs `effect` in the account's section, which rechecks under the lock
+       * that the account exists and awaits no deletion. A gone or deleting
+       * account is `account_unavailable`; a lock or deletion state that
+       * couldn't be read is an outage. The work's own failures are referral
+       * outcomes, so only the section's access error is mapped.
+       */
+      const withActiveCurrentAccount = <
+        A,
+        E extends ReferralError | ReferralAccountOutage,
+        R,
+      >(
         identity: LinkedCustomerAccount,
         effect: Effect.Effect<A, E, R>
       ) =>
-        accountLinks.withAccountLock(
-          identity.accountId,
-          requireActiveAccount(identity.accountId).pipe(Effect.andThen(effect))
-        );
+        sections
+          .withActiveAccount(identity.accountId, effect, { recheck: "active" })
+          .pipe(
+            Effect.mapError((error) =>
+              error instanceof CustomerAccountAccessError
+                ? accountSectionFailure(error)
+                : error
+            )
+          );
 
       const findCodeKind = Effect.fn("ReferralService.findCodeKind")(
         (code: ReferralCode) =>
@@ -909,7 +958,8 @@ export class ReferralService extends Context.Service<
         WorkspaceDatabaseAdvisoryLock.Default,
         WorkspaceDotyposLayer,
         CustomerAuthentication.Default,
-        CustomerAccountLinkRepository.Live
+        CustomerAccountLinkRepository.Live,
+        CustomerAccountSections.Live
       )
     )
   );

@@ -20,7 +20,8 @@
       "!**/features/i18n/paraglide",
       "!**/features/administration/i18n/paraglide",
       "!**/db/migrations/**/snapshot.json",
-      "!**/administration-wire-contract.golden.json"
+      "!**/administration-wire-contract.golden.json",
+      "!**/loading-die-*.lottie.json"
     ]
   },
   "formatter": {

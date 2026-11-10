@@ -4,7 +4,10 @@ import type {
   AnalyticsProperties,
   CreateAnalyticsClient,
 } from "./analytics-client";
-import type { AnalyticsSettings } from "./analytics-settings";
+import {
+  type AnalyticsSettings,
+  allowsRemoteFeatureFlags,
+} from "./analytics-settings";
 import {
   type AnalyticsIdentity,
   type AppliedDistinctId,
@@ -218,8 +221,12 @@ export const createAnalytics = (): AnalyticsController => {
     }
     // A new client's stored flags may not match its stored identity, since
     // identify() persists the new ID before the new flags arrive, so it waits
-    // for its own load too.
-    if (steps.length > 0 || adopting) {
+    // for its own load too. Outside production flags never load, so flag
+    // reads keep their fallback.
+    const loadsFlags =
+      runtime?.settings != null &&
+      allowsRemoteFeatureFlags(runtime.settings.environment);
+    if (loadsFlags && (steps.length > 0 || adopting)) {
       flagsCurrent = false;
       loadFlagsForAppliedIdentity(target);
     }
@@ -274,6 +281,7 @@ export const createAnalytics = (): AnalyticsController => {
     const created = owner.createClient({
       apiKey: settings.apiKey,
       host: settings.host,
+      remoteFeatureFlags: allowsRemoteFeatureFlags(settings.environment),
       superProperties: {
         "deployment.environment.name": settings.environment,
       },

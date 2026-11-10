@@ -1,6 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
-import type { FeatureFlagResult, FlagEvaluationOptions } from "posthog-node";
 import { PostHogDistinctId } from "../identifiers";
 import { definePostHogFeatureFlags } from "./contract";
 
@@ -22,19 +21,6 @@ const getAllFlagsAndPayloads = mock((_distinctId: string, _options?: unknown) =>
     },
   })
 );
-const getFeatureFlagResult = mock(
-  (
-    _key: string,
-    _distinctId: string,
-    _options?: FlagEvaluationOptions
-  ): Promise<FeatureFlagResult | undefined> =>
-    Promise.resolve<FeatureFlagResult>({
-      enabled: true,
-      key: "meeting_room_page",
-      payload: undefined,
-      variant: undefined,
-    })
-);
 const shutdown = mock(() => Promise.resolve());
 const createClient = mock((_projectToken: string, _options: unknown) => {});
 const overrideFeatureFlags = mock((_overrides: unknown) => {});
@@ -46,7 +32,6 @@ mock.module("posthog-node", () => ({
     return {
       evaluateFlags,
       getAllFlagsAndPayloads,
-      getFeatureFlagResult,
       overrideFeatureFlags,
       shutdown,
     };
@@ -142,7 +127,6 @@ describe("makePostHogNodeFeatureFlagService", () => {
     createClient.mockClear();
     evaluateFlags.mockClear();
     getAllFlagsAndPayloads.mockClear();
-    getFeatureFlagResult.mockClear();
     shutdown.mockClear();
     overrideFeatureFlags.mockClear();
     const featureFlags = makePostHogNodeFeatureFlagService(contract, {
@@ -153,18 +137,18 @@ describe("makePostHogNodeFeatureFlagService", () => {
     expect(createClient).not.toHaveBeenCalled();
     expect(overrideFeatureFlags).not.toHaveBeenCalled();
 
-    const firstEvaluation = await Effect.runPromise(
-      featureFlags.isEnabled({
-        key: "meeting_room_page",
+    await Effect.runPromise(
+      featureFlags.evaluateFlags({
+        options: { flagKeys: ["meeting_room_page"] },
         subject: {
           distinctId: visitorId,
           sendFeatureFlagEvents: true,
         },
       })
     );
-    const secondEvaluation = await Effect.runPromise(
-      featureFlags.isEnabled({
-        key: "meeting_room_page",
+    await Effect.runPromise(
+      featureFlags.evaluateFlags({
+        options: { flagKeys: ["meeting_room_page"] },
         subject: {
           distinctId: anotherVisitorId,
           sendFeatureFlagEvents: false,
@@ -172,28 +156,16 @@ describe("makePostHogNodeFeatureFlagService", () => {
       })
     );
 
-    expect(firstEvaluation).toBeTrue();
-    expect(secondEvaluation).toBeTrue();
     expect(createClient).toHaveBeenCalledTimes(1);
     expect(overrideFeatureFlags).not.toHaveBeenCalled();
-    expect(getFeatureFlagResult).toHaveBeenNthCalledWith(
-      1,
-      "meeting_room_page",
-      "visitor-id",
-      {
-        disableGeoip: true,
-        sendFeatureFlagEvents: true,
-      }
-    );
-    expect(getFeatureFlagResult).toHaveBeenNthCalledWith(
-      2,
-      "meeting_room_page",
-      "another-visitor-id",
-      {
-        disableGeoip: true,
-        sendFeatureFlagEvents: false,
-      }
-    );
+    expect(evaluateFlags).toHaveBeenCalledWith("visitor-id", {
+      disableGeoip: true,
+      flagKeys: ["meeting_room_page"],
+    });
+    expect(getAllFlagsAndPayloads).toHaveBeenCalledWith("another-visitor-id", {
+      disableGeoip: true,
+      flagKeys: ["meeting_room_page"],
+    });
     expect(shutdown).not.toHaveBeenCalled();
 
     await Effect.runPromise(featureFlags.shutdown);
@@ -201,40 +173,10 @@ describe("makePostHogNodeFeatureFlagService", () => {
     expect(shutdown).toHaveBeenCalledTimes(1);
   });
 
-  test("reports an absent SDK result through the Effect error channel", async () => {
-    const {
-      makePostHogNodeFeatureFlagService,
-      PostHogFeatureFlagEvaluationError,
-    } = await import("./node");
-    getFeatureFlagResult.mockResolvedValueOnce(undefined);
-    const featureFlags = makePostHogNodeFeatureFlagService(contract, {
-      projectToken: "phc_test",
-    });
-
-    const error = await Effect.runPromise(
-      featureFlags
-        .isEnabled({
-          key: "meeting_room_page",
-          subject: {
-            distinctId: visitorId,
-            sendFeatureFlagEvents: true,
-          },
-        })
-        .pipe(Effect.flip)
-    );
-
-    expect(error).toBeInstanceOf(PostHogFeatureFlagEvaluationError);
-    expect(error.message).toBe("Could not evaluate the PostHog feature flag.");
-    expect(error.cause).toBeUndefined();
-
-    await Effect.runPromise(featureFlags.shutdown);
-  });
-
   test("applies fixed overrides once when the lazy SDK client is created", async () => {
     const { makePostHogNodeFeatureFlagService } = await import("./node");
     createClient.mockClear();
     evaluateFlags.mockClear();
-    getFeatureFlagResult.mockClear();
     overrideFeatureFlags.mockClear();
     const featureFlags = makePostHogNodeFeatureFlagService(contract, {
       featureFlagOverrides: {
@@ -264,8 +206,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
       })
     );
     await Effect.runPromise(
-      featureFlags.isEnabled({
-        key: "meeting_room_page",
+      featureFlags.evaluateFlags({
         subject: {
           distinctId: anotherVisitorId,
           sendFeatureFlagEvents: false,
@@ -295,8 +236,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
 
     const error = await Effect.runPromise(
       featureFlags
-        .isEnabled({
-          key: "meeting_room_page",
+        .evaluateFlags({
           subject: {
             distinctId: visitorId,
             sendFeatureFlagEvents: true,
