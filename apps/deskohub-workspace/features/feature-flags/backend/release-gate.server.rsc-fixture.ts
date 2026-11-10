@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
-import { Deferred, Effect, Logger } from "effect";
+import { Deferred, Effect, Layer, Logger } from "effect";
 import { renderServerComponents } from "@/shared/testing/react-server-render.test-utils";
 import { ReleaseGateUnavailableError } from "./release-gate";
 import {
@@ -51,8 +51,7 @@ const isOpenInOwnRun = () =>
 const decisionInOwnRun = () =>
   Effect.runPromise(
     TestReleaseGate.decision.pipe(
-      Effect.provide(request.layer),
-      Effect.provide(Logger.layer([]))
+      Effect.provide(Layer.mergeAll(request.layer, Logger.layer([])))
     )
   );
 
@@ -81,8 +80,7 @@ const undecidedRequest = releaseGateForRequest(
 const undecidedInOwnRun = () =>
   Effect.runPromise(
     TestReleaseGate.decision.pipe(
-      Effect.provide(undecidedRequest.layer),
-      Effect.provide(Logger.layer([]))
+      Effect.provide(Layer.mergeAll(undecidedRequest.layer, Logger.layer([])))
     )
   );
 

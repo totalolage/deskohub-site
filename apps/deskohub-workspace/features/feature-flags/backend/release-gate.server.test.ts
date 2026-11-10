@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, spyOn, test } from "bun:test";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
-import { Effect, Logger } from "effect";
+import { Effect, Layer, Logger } from "effect";
 import { runReactServerFixture } from "@/shared/testing/react-server-fixture.test-utils";
 import { ReleaseGateUnavailableError } from "./release-gate";
 import type { ReleaseGateRequestOptions } from "./release-gate.server";
@@ -71,8 +71,7 @@ const decideStoredOutput = async (
       request.decision(),
       Effect.runPromise(
         TestReleaseGate.decision.pipe(
-          Effect.provide(request.layer),
-          Effect.provide(Logger.layer([]))
+          Effect.provide(Layer.mergeAll(request.layer, Logger.layer([])))
         )
       ),
       request.isOpen(),

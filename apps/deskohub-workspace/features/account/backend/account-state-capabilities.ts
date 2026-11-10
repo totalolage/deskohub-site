@@ -232,11 +232,13 @@ export const accountStateCapabilities = (
     layers.passkeyRelease.pipe(
       unavailableUntilUsed(PasskeyReleaseGate, (failure) => ({
         isOpen: failure,
+        decision: failure,
       }))
     ),
     layers.avatarRelease.pipe(
       unavailableUntilUsed(AccountAvatarReleaseGate, (failure) => ({
         isOpen: failure,
+        decision: failure,
       }))
     )
   ).pipe(Layer.provideMerge(layers.referralRelease));
