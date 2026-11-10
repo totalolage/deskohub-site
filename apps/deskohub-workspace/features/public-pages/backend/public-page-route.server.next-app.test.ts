@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
+import { testEmailAddress } from "@deskohub/test-email";
 import { withNextAppFixture } from "@/shared/testing/next-app-fixture.test-utils";
 import { postHogFeatureFlags } from "../../feature-flags/generated/contract";
 
@@ -12,7 +13,7 @@ let definitionList: "meeting-room-off" | "unavailable" = "meeting-room-off";
 const synthetic = {
   id: 1,
   uuid: "00000000-0000-4000-8000-000000000001",
-  email: "feature-flags@example.test",
+  email: testEmailAddress("feature-flags"),
   hedgehog_config: null,
 };
 const definition = (key: string, index: number) => ({
