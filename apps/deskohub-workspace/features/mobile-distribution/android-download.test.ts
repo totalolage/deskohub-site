@@ -60,8 +60,8 @@ const asPrerendered = <A>(render: () => A): A => {
   }
 };
 
-// The `/android` page and its Markdown variant are prerendered with the
-// latest release, outside any cache scope.
+// The `/android` page renders the latest release while it prerenders,
+// outside any cache scope.
 test("formats a release's facts without reading the current time", () => {
   const facts = asPrerendered(() => getAndroidReleaseFacts(release, "cs-CZ"));
 
