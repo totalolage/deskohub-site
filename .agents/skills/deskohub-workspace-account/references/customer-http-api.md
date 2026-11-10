@@ -92,12 +92,17 @@ The app's client and data layer are in the `deskohub-mobile` skill
   `WorkspaceRouterRequestContext` opens per request in
   `makeWorkspaceCustomerApiLayer`; read them through
   `shared/backend/workspace-request-context.ts`, never from module state.
-- Build service Layers inside the handler, per request, from a Layers service
-  the adapter provides (`CustomerAccountLayers` for account services and
-  release gates, `CustomerReservationLayers` for reservation services). A release gate then decides once per request (its `…ForRun`
-  layer, see the feature-flags skill), and a Layer that can't be built fails
-  only the requests that use it, as unavailable. Tests swap the Layers service
-  for fakes.
+- Build service Layers inside the handler from a Layers service the adapter
+  provides (`CustomerAccountLayers` for account services and release gates,
+  `CustomerBookingCatalogLayers` and `CustomerBookingCheckoutLayers` for
+  booking, `CustomerReservationLayers` for reservation services), so a Layer
+  that can't be built fails only the requests that use it, as unavailable.
+  Provide every set that carries a release gate, directly or nested (pricing's
+  discount gates, a status refresh's seating-map gate), with
+  `providePerRequest`, so its `…ForRun` gate decides for that request alone;
+  see the Effect skill's "Request state in HTTP APIs". Tests swap the Layers
+  service for fakes, and an endpoint that reads a gate has an overlapping
+  test with `answerInEachReleaseCohort`.
 - End every handler in `answerCustomerApiFailure(operation)` or its group's
   equivalent: an account access failure maps to its fixed public error
   (`accountAccessApiFailure`), anything else to 503
@@ -237,7 +242,7 @@ Wiring: each request builds its operations from
 closes over the request's referral and office gates (their `…ForRun`
 layers) and its `CustomerReferralUpdates`, so the selection, the shared
 operation and the referral record share one decision per gate; preparation
-receives the gates through `payStatePreparationServicesWith`. Each operation
+provides the gates to `ReservationBooking.Live`. Each operation
 builds its own services when it runs: acceptance builds only the sealing
 keys, and services that can't be built answer 503. A checkout state the
 server fails to seal or sign also answers 503, never `expired`: only the

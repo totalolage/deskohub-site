@@ -83,7 +83,7 @@ Preview E2E shares the Cloudinary quota with production, and decorative provider
 - Callers treat no images as "no photos". The homepage hides its carousel, room pages render without photos, and the gallery page shows its empty state. Instant navigation accepts a resolved, visible `#hero-gallery` or no carousel, never a busy or half-rendered one.
 - A missing site banner with a "Something went wrong." page is an app error-boundary failure, not a navigation race. Confirm with the deployment's Vercel request logs for `/en-US`.
 - Account deletion deletes the avatar prefix through the Cloudinary Admin API after expiring the Dotypos profile. A rate limit shows as a retryable deletion with "could not expire your customer profile" copy; read the logged cause `_tag` (`Cloudinary asset prefix delete failed`), not the copy, before you blame Dotypos.
-- Provider failure logs omit the HTTP code. Confirm a quota burst by querying PostHog logs for `Cloudinary search page failed` across all `service.version` values around the failure. If other previews caused it, rerun after the hourly window resets instead of changing the flow.
+- Provider failure logs omit the HTTP code. Confirm a quota burst by searching the deployment's Vercel runtime logs for `Cloudinary search page failed` around the failure, and the other recent preview deployments' logs when the burst looks shared. Preview deployments do not export logs to PostHog unless `POSTHOG_LOGS_EXPORT=always` is set for their branch, so production is the only environment whose PostHog logs you can query by default. If other previews caused it, rerun after the hourly window resets instead of changing the flow.
 
 ### WebKit Temporal runtime never hydrates
 
