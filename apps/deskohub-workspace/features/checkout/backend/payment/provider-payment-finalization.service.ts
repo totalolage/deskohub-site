@@ -13,7 +13,7 @@ import {
 import {
   Context,
   Data,
-  type Duration,
+  Duration,
   Effect,
   Layer,
   Match,
@@ -66,7 +66,7 @@ export class ProviderPaymentDeferral extends Data.TaggedClass(
   readonly abandonmentCutoff: Temporal.Instant;
 }> {}
 
-type ProviderPaymentFinalizationResult =
+export type ProviderPaymentFinalizationResult =
   | "abandoned"
   | ProviderPaymentDeferral
   | "not_found"
@@ -77,6 +77,39 @@ type ProviderPaymentFinalizationResult =
   | "pending"
   | "paid"
   | "terminal";
+
+/**
+ * A finalization result for log annotations: its outcome, and the
+ * abandonment cutoff of a deferral.
+ */
+export const providerPaymentFinalizationLogFields = (
+  result: ProviderPaymentFinalizationResult
+) =>
+  result instanceof ProviderPaymentDeferral
+    ? {
+        providerFinalizationResult: "deferred",
+        abandonmentCutoff: result.abandonmentCutoff.toString(),
+      }
+    : { providerFinalizationResult: result, abandonmentCutoff: undefined };
+
+/**
+ * A finalization request for log annotations: the ids it names, when it
+ * checks for abandonment, and its verification deadline in milliseconds.
+ */
+const providerPaymentFinalizationInputLogFields = (
+  input: Parameters<
+    IProviderPaymentFinalizationService["finalizePendingProviderPayment"]
+  >[0]
+) => ({
+  orderId: input.orderId,
+  paymentAttemptId: input.paymentAttemptId,
+  webhookEventId: input.webhookEventId,
+  abandonmentCheckedAt: input.abandonmentCheckedAt?.toString(),
+  verificationDeadlineMillis:
+    input.verificationDeadline === undefined
+      ? undefined
+      : Duration.toMillis(input.verificationDeadline),
+});
 
 export interface IProviderPaymentFinalizationService {
   readonly finalizePendingProviderPayment: (input: {
@@ -543,10 +576,8 @@ function makeProviderPaymentFinalizationServiceLayer(
 
         const metadata = getNexiPaymentMetadata(verification);
         yield* Effect.annotateLogsScoped({
-          providerMetadata: {
-            providerOperationId: metadata.providerOperationId,
-            providerStatus: metadata.providerStatus,
-          },
+          providerOperationId: metadata.providerOperationId,
+          providerStatus: metadata.providerStatus,
         });
         yield* Effect.logDebug(
           "Payment finalization provider metadata resolved"
@@ -566,7 +597,6 @@ function makeProviderPaymentFinalizationServiceLayer(
           "providerPaymentFinalization.finalizePendingProviderPayment"
         )(
           function* (input) {
-            yield* Effect.annotateLogsScoped({ input });
             yield* Effect.logInfo("Provider payment finalization started");
 
             const reservation = yield* loadReservation(input.orderId);
@@ -620,7 +650,9 @@ function makeProviderPaymentFinalizationServiceLayer(
                   result,
                 })
               ),
-              Effect.annotateLogs({ input })
+              Effect.annotateLogs(
+                providerPaymentFinalizationInputLogFields(input)
+              )
             )
         ),
       });

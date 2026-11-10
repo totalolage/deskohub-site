@@ -58,7 +58,7 @@ export class GoogleCalendarWorkspaceLimitationsService extends Context.Service<
         "GoogleCalendarWorkspaceLimitationsService.listLimitations"
       )(
         function* (query: GoogleCalendarEventQuery) {
-          yield* Effect.annotateLogsScoped({ query });
+          yield* Effect.annotateLogsScoped(query);
           yield* Effect.logInfo(
             "Google Calendar workspace limitations load started"
           );

@@ -536,14 +536,13 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           readonly returnTarget: PaymentReturnTarget | undefined;
         }) {
           yield* Effect.annotateLogsScoped({
-            providerSessionInput: {
-              workspaceReservationId: input.workspaceReservationId,
-              correlationId: input.correlationId,
-              checkoutSessionId: input.checkoutSessionId,
-              locale: input.locale,
-              total: input.total,
-              hasCustomer: true,
-            },
+            reservationId: input.workspaceReservationId,
+            correlationId: input.correlationId,
+            checkoutSessionId: input.checkoutSessionId,
+            locale: input.locale,
+            totalValue: input.total.value,
+            totalCurrency: input.total.currency,
+            hasCustomer: true,
           });
           yield* Effect.logInfo("Checkout provider session start requested");
 
@@ -575,7 +574,10 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
             input.workspaceReservationId,
             "cancelled"
           );
-          yield* Effect.annotateLogsScoped({ nexiAmount });
+          yield* Effect.annotateLogsScoped({
+            nexiAmount: nexiAmount.amount,
+            nexiCurrency: nexiAmount.currency,
+          });
           yield* Effect.logDebug("Checkout provider session inputs prepared");
 
           yield* ensureReservationHasNotEnded(input.reservation);
@@ -1028,11 +1030,12 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           freshSummary
         );
         yield* Effect.annotateLogsScoped({
-          changedKeys,
+          changedSectionKeys: changedKeys.sectionKeys.join(","),
+          changedItemKeys: changedKeys.itemKeys.join(","),
           acceptedQuoteFingerprint: state.quote.fingerprint,
-          acceptedTotal: state.acceptedTotal,
+          acceptedTotalValue: state.acceptedTotal.value,
           freshQuoteFingerprint: prepared.quote.fingerprint,
-          freshTotal: freshSummary.total,
+          freshTotalValue: freshSummary.total.value,
         });
         yield* Effect.logInfo(
           "Hosted payment checkout returned pricing_changed"

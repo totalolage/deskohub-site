@@ -5,6 +5,7 @@ import {
 } from "@deskohub/email/backend/service";
 import type { EmailMessage } from "@deskohub/email/types/email.types";
 import { Context, Effect, Layer } from "effect";
+import { contactSubmissionLogFields } from "@/features/contact/schemas/contact";
 import { type Locale, m } from "@/features/i18n";
 import {
   internalWorkspaceEmailRecipientFor,
@@ -52,7 +53,10 @@ export class ContactService extends Context.Service<
       return ContactService.of({
         submit: Effect.fn("ContactService.submit")(
           function* (data, locale) {
-            yield* Effect.annotateLogsScoped({ data, locale });
+            yield* Effect.annotateLogsScoped({
+              locale,
+              ...contactSubmissionLogFields(data),
+            });
             yield* Effect.logInfo("Workspace contact submission started");
 
             const submission: ContactSubmission = {
@@ -60,7 +64,6 @@ export class ContactService extends Context.Service<
               submittedAt: new Date().toISOString(),
               locale,
             };
-            yield* Effect.annotateLogsScoped({ submission });
             yield* Effect.logInfo("Workspace contact submission prepared");
 
             const businessEmail = yield* renderContactBusinessEmail(
@@ -84,7 +87,6 @@ export class ContactService extends Context.Service<
                 submittedAt: submission.submittedAt,
               },
             };
-            yield* Effect.annotateLogsScoped({ businessEmailMessage });
             yield* Effect.logInfo(
               "Workspace contact business email send started"
             );
@@ -121,7 +123,6 @@ export class ContactService extends Context.Service<
                 text: confirmationEmail.text,
                 tags: ["workspace-contact-confirmation"],
               };
-              yield* Effect.annotateLogsScoped({ confirmationMessage });
               yield* Effect.logInfo(
                 "Workspace contact confirmation email send started"
               );

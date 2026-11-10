@@ -159,7 +159,13 @@ export class PaymentRefundService extends Context.Service<
             yield* Effect.logInfo("Nexi reports no successful refund yet");
             return "no_refund" as const;
           }
-          yield* Effect.annotateLogsScoped({ refund });
+          yield* Effect.annotateLogsScoped({
+            refundAmount: refund.amount,
+            refundOperationCount: refund.operationIds.length,
+            ...(refund.lastRefundedAt && {
+              lastRefundedAt: refund.lastRefundedAt,
+            }),
+          });
 
           const recordedAt = Temporal.Now.instant();
           const result = yield* refunds.recordRefund({

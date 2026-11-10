@@ -4,6 +4,7 @@ export { processLatePaymentRecoveryMessage } from "./late-payment-recovery-queue
 export {
   NexiWebhookProcessingError,
   NexiWebhookService,
+  nexiWebhookResultLogFields,
 } from "./nexi-webhook.service";
 export { nexiWebhookRefusal } from "./nexi-webhook-disposition";
 export {

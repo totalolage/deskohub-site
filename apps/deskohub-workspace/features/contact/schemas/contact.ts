@@ -92,3 +92,15 @@ export const contactDefaultValues: ContactFormValues = {
   phone: "",
   message: "",
 };
+
+/**
+ * A contact submission for log annotations: whether it gave a phone and how
+ * long its message is. The name, email, phone and message stay off every row
+ * the annotation reaches.
+ */
+export const contactSubmissionLogFields = (
+  values: Pick<ContactFormValues, "phone" | "message">
+) => ({
+  hasPhone: Boolean(values.phone),
+  messageLength: values.message.length,
+});

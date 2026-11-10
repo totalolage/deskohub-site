@@ -43,7 +43,10 @@ import { nexiRequestTimeout } from "@/shared/backend/config/nexi.config";
 import type { Money } from "@/shared/money/money";
 import { currentInstant } from "@/shared/utils/temporal";
 import { LatePaymentVerificationService } from "../payment/late-payment-verification.service";
-import { ProviderPaymentFinalizationService } from "../payment/provider-payment-finalization.service";
+import {
+  ProviderPaymentFinalizationService,
+  providerPaymentFinalizationLogFields,
+} from "../payment/provider-payment-finalization.service";
 import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
 import {
   type PaymentAttempt,
@@ -791,7 +794,9 @@ const implementation = Effect.gen(function* () {
           orderId: input.orderId,
           verificationDeadline: refreshVerificationBudget,
         });
-        yield* Effect.annotateLogsScoped({ result });
+        yield* Effect.annotateLogsScoped(
+          providerPaymentFinalizationLogFields(result)
+        );
         yield* Effect.logInfo("Checkout status refresh finalization completed");
 
         if (result === "not_pending") {
