@@ -523,6 +523,7 @@ describe.skipIf(!testDatabase)("AnalyticsConsentLedger", () => {
       "hydration_mirror",
       "backfill",
       "preference",
+      "app_mirror",
     ]) {
       await insert({ source });
     }
