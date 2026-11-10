@@ -16,10 +16,12 @@ import {
   type AnalyticsConsentMirrorRecord,
 } from "./analytics-consent-ledger";
 import {
+  type DeviceAnalyticsChoice,
   mirrorDeviceAnalyticsConsent,
   recordBannerAnalyticsConsent,
   recordSignedInDeviceAnalyticsConsent,
   resolveSilentAnalyticsGrant,
+  syncAppAnalyticsConsent,
 } from "./analytics-consent-mirror";
 
 const accountId = customerAccountIdSchema.make("analytics-mirror-account");
@@ -461,5 +463,174 @@ describe("resolveSilentAnalyticsGrant", () => {
     expect(
       await resolve("theme=dark", { accountId, deletionRequested: true })
     ).toBeUndefined();
+  });
+});
+
+describe("syncAppAnalyticsConsent", () => {
+  const signedIn = { accountId, deletionRequested: false };
+
+  /** The app's own choice, made at the instant in the locale. */
+  const appChoice = (
+    decision: "grant" | "withdraw",
+    at: string | undefined,
+    locale: "cs-CZ" | "en-US" = "en-US"
+  ): Option.Option<DeviceAnalyticsChoice> =>
+    Option.some({
+      decision,
+      locale,
+      decidedAt: Option.map(Option.fromUndefinedOr(at), (instant) =>
+        Temporal.Instant.from(instant)
+      ),
+    });
+
+  /** The account's current decision, made at the instant. */
+  const current = (
+    overrides: Partial<NonNullable<Option.Option.Value<CurrentDecision>>>
+  ): CurrentDecision =>
+    Option.some({
+      decision: "grant",
+      documentHash: getLegalDocumentVersion("cs-CZ", "privacy-policy"),
+      locale: "cs-CZ",
+      decidedAt: Temporal.Instant.from("2026-11-05T10:00:00.123456Z"),
+      source: "preference",
+      ...overrides,
+    });
+
+  const sync = (
+    choice: Option.Option<DeviceAnalyticsChoice>,
+    session: {
+      readonly accountId: CustomerAccountId;
+      readonly deletionRequested: boolean;
+    } | null = signedIn
+  ) =>
+    run(
+      syncAppAnalyticsConsent({ choice }).pipe(
+        Effect.map(
+          Option.map(({ decision, decidedAt }) => ({
+            decision,
+            decidedAt: String(decidedAt),
+          }))
+        ),
+        Effect.map(Option.getOrUndefined),
+        Effect.provide(
+          Layer.succeed(CustomerAuthentication, {
+            currentUser: Effect.succeed(
+              session && { ...session, email: testEmailAddress("app-sync") }
+            ),
+          })
+        )
+      )
+    );
+
+  test("mirrors the app's choice as an app mirror, dated when the app made it, in the app's locale", async () => {
+    await sync(appChoice("grant", "2026-11-02T09:30:00.000Z"));
+    await sync(appChoice("withdraw", undefined, "cs-CZ"));
+
+    expect(mirroredRecords()).toEqual([
+      {
+        accountId,
+        decision: "grant",
+        locale: "en-US",
+        source: "app_mirror",
+        decidedAt: "2026-11-02T09:30:00Z",
+      },
+      {
+        accountId,
+        decision: "withdraw",
+        locale: "cs-CZ",
+        source: "app_mirror",
+        decidedAt: undefined,
+      },
+    ]);
+    expect(recorded).toEqual([]);
+  });
+
+  test("an accepting app the ledger didn't take over the account's withdrawal takes the withdrawal, at its instant", async () => {
+    currentDecision = current({ decision: "withdraw" });
+    mirrorTakes = false;
+
+    expect(await sync(appChoice("grant", "2026-11-02T09:30:00.000Z"))).toEqual({
+      decision: "withdraw",
+      decidedAt: "2026-11-05T10:00:00.123456Z",
+    });
+  });
+
+  test("an app choice the ledger took, a declining app, or an account grant takes nothing", async () => {
+    currentDecision = current({ decision: "withdraw" });
+    mirrorTakes = true;
+    expect(
+      await sync(appChoice("grant", "2026-11-06T09:30:00.000Z"))
+    ).toBeUndefined();
+
+    mirrorTakes = false;
+    expect(
+      await sync(appChoice("withdraw", "2026-11-02T09:30:00.000Z"))
+    ).toBeUndefined();
+
+    currentDecision = current({});
+    expect(
+      await sync(appChoice("withdraw", "2026-11-02T09:30:00.000Z"))
+    ).toBeUndefined();
+    expect(
+      await sync(appChoice("grant", "2026-11-02T09:30:00.000Z"))
+    ).toBeUndefined();
+  });
+
+  test("an app without a choice takes the account's grant for the current notice, mirroring nothing", async () => {
+    currentDecision = current({});
+
+    expect(await sync(Option.none())).toEqual({
+      decision: "grant",
+      decidedAt: "2026-11-05T10:00:00.123456Z",
+    });
+    expect(mirrored).toEqual([]);
+    expect(recorded).toEqual([]);
+  });
+
+  test("an app without a choice takes nothing from a withdrawal, a grant for an earlier notice, or no decision", async () => {
+    for (const decision of [
+      current({ decision: "withdraw" }),
+      current({ documentHash: "an-earlier-privacy-notice" }),
+      Option.none(),
+    ]) {
+      currentDecision = decision;
+      expect(await sync(Option.none())).toBeUndefined();
+    }
+    expect(mirrored).toEqual([]);
+  });
+
+  test("fails as an account access failure when signed out or while the account is being deleted, recording nothing", async () => {
+    currentDecision = current({ decision: "withdraw" });
+    const failureOf = (
+      session: {
+        readonly accountId: CustomerAccountId;
+        readonly deletionRequested: boolean;
+      } | null
+    ) =>
+      run(
+        syncAppAnalyticsConsent({
+          choice: appChoice("grant", "2026-11-02T09:30:00.000Z"),
+        }).pipe(
+          Effect.flip,
+          Effect.map(({ reason, linkReason }) => ({ reason, linkReason })),
+          Effect.provide(
+            Layer.succeed(CustomerAuthentication, {
+              currentUser: Effect.succeed(
+                session && { ...session, email: testEmailAddress("app-sync") }
+              ),
+            })
+          )
+        )
+      );
+
+    expect(await failureOf(null)).toEqual({
+      reason: "unauthenticated",
+      linkReason: undefined,
+    });
+    expect(await failureOf({ accountId, deletionRequested: true })).toEqual({
+      reason: "link-required",
+      linkReason: "deletion-requested",
+    });
+    expect(mirrored).toEqual([]);
   });
 });
