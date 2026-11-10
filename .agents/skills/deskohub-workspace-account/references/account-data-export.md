@@ -41,7 +41,9 @@ service's own dependencies, and `/account/legal` offers the download through
 `getAccountDataExportAvailability`
 (`features/account/account-data-export-availability.server.ts`), which runs
 the same Effect: `true` on success, `false` on a refusal, an unreadable
-authority, or an authority that can't be built. The page passes it to
+authority, or any other failure (`runWorkspaceEffectOrElse`, so a defect or
+an authority or runtime that can't be built hides the control rather than
+failing the page). The page passes it to
 `LegalScreen` as `accountDataExportAvailable`, so the control appears for
 exactly the sessions the route serves; never gate it on another read such as
 the analytics preference. Like the route, the read resolves the account, so

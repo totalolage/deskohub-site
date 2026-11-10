@@ -56,6 +56,12 @@ describe("getAccountDataExportAvailability", () => {
     expect(await availability()).toBe(false);
   });
 
+  test("offers no export when reading the account authority dies", async () => {
+    sources = { ...sources, resolve: Effect.die("synthetic authority defect") };
+
+    expect(await availability()).toBe(false);
+  });
+
   test("offers no export when the account authority can't be built", async () => {
     const unbuildable = Layer.mergeAll(
       fakeAccountDataExportSources(() => sources, reads),

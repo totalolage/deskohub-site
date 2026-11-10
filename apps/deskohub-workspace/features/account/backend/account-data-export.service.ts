@@ -289,7 +289,11 @@ export class AccountDataExportService extends Context.Service<
     this,
     Effect.gen(function* () {
       const limits = yield* AccountDataExportLimits;
-      const authority = yield* Effect.context<AccountDataExportAuthority>();
+      const authority = Context.pick(
+        CustomerAccountResolver,
+        CustomerAuthentication,
+        CustomerAccountLinkRepository
+      )(yield* Effect.context<AccountDataExportAuthority>());
       const dotypos = yield* CustomerDotyposAdapter;
       const workspaceReservations = yield* WorkspaceReservationRepository;
       const bookedReservations = yield* CustomerBookedReservations;
