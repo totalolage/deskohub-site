@@ -16,6 +16,9 @@ mock.module("@/features/legal/content", () => ({
 const { getWorkspaceE2EMarketingDocumentHash } = await import(
   "./marketing-document-hash"
 );
+const { getLegalDocumentVersion, hashLegalDocument } = await import(
+  "@/features/legal/document-version"
+);
 
 // Installs a synthetic runtime body on an already typed document, so stub
 // objects and malformed shapes reach the helper without type assertions.
@@ -41,21 +44,29 @@ const withSyntheticBody = (body: readonly unknown[], run: () => void) => {
 
 const stub = (fields: Record<string, unknown>): unknown => fields;
 
+// The production hash of the en-US document with its first section's body
+// replaced by already-canonical text.
 const expectedHashFor = (body: readonly string[]) => {
   const document = getRealLegalDocument("en-US", "marketing-communications");
-  const canonical = JSON.stringify({
-    title: document.title,
-    lead: document.lead,
-    updatedAt: document.updatedAt,
-    sections: [{ heading: document.sections[0]?.heading, body }],
+  return hashLegalDocument({
+    ...document,
+    sections: [
+      {
+        heading: document.sections[0]?.heading ?? "Synthetic section",
+        body: [...body],
+      },
+    ],
   });
-  return import("node:crypto").then(({ createHash }) =>
-    createHash("sha256").update(canonical).digest("hex")
-  );
 };
 
 describe("getWorkspaceE2EMarketingDocumentHash", () => {
-  test("normalizes Playwright JSX stubs into real fragments", async () => {
+  test("equals the version the app records for the en-US document", () => {
+    expect(getWorkspaceE2EMarketingDocumentHash()).toBe(
+      getLegalDocumentVersion("en-US", "marketing-communications")
+    );
+  });
+
+  test("normalizes Playwright JSX stubs into real fragments", () => {
     const fragmentStub = stub({
       __pw_type: "jsx",
       type: { __pw_jsx_fragment: true },
@@ -76,10 +87,10 @@ describe("getWorkspaceE2EMarketingDocumentHash", () => {
     withSyntheticBody([fragmentStub], () => {
       hash = getWorkspaceE2EMarketingDocumentHash();
     });
-    expect(hash).toBe(await expectedHashFor(["linktext"]));
+    expect(hash).toBe(expectedHashFor(["linktext"]));
   });
 
-  test("real elements with stub children are cloned, never rendered", async () => {
+  test("real elements with stub children are cloned, never rendered", () => {
     const StubHost = (_props: { readonly children?: unknown }): null => null;
     const stubChild = stub({
       __pw_type: "jsx",
@@ -96,10 +107,10 @@ describe("getWorkspaceE2EMarketingDocumentHash", () => {
     withSyntheticBody([realParent], () => {
       hash = getWorkspaceE2EMarketingDocumentHash();
     });
-    expect(hash).toBe(await expectedHashFor(["inner"]));
+    expect(hash).toBe(expectedHashFor(["inner"]));
   });
 
-  test("component functions inside stubs are never executed", async () => {
+  test("component functions inside stubs are never executed", () => {
     const neverCalled = () => {
       throw new Error("component function must not run");
     };
@@ -113,7 +124,7 @@ describe("getWorkspaceE2EMarketingDocumentHash", () => {
     withSyntheticBody([componentStub], () => {
       hash = getWorkspaceE2EMarketingDocumentHash();
     });
-    expect(hash).toBe(await expectedHashFor(["safe"]));
+    expect(hash).toBe(expectedHashFor(["safe"]));
   });
 
   test("malformed stubs fail with the fixed non-sensitive message", () => {

@@ -4,6 +4,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
+import { m } from "@/features/i18n";
 import { plainDateStringSchema } from "@/shared/utils/temporal";
 import { canonicalPromotionCodeSchema } from "./contracts";
 import type { DiscountDefinition } from "./discount-definition";
@@ -233,6 +234,7 @@ describe("PromotionCodeProvider", () => {
       discount: {
         id: discountId,
         label: "Summer database sale",
+        staffLabel: "Letní databázová sleva",
         adjustment: { kind: "percentage", basisPoints: 5000 },
       },
       provenance: {
@@ -274,6 +276,7 @@ describe("PromotionCodeProvider", () => {
     expect(result[0]).toMatchObject({
       discount: {
         label: "Voucher",
+        staffLabel: m.checkoutVoucherLabel({}, { locale: "cs-CZ" }),
         adjustment: {
           kind: "fixed",
           amount: { value: 6_000, exponent: 2, currency: "CZK" },

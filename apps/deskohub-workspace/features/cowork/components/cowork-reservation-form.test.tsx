@@ -42,7 +42,7 @@ import {
   workspaceProductTierCardMessages,
 } from "@/features/checkout/product-catalog.i18n";
 import { discountIdSchema } from "@/features/discounts/contracts";
-import { m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import {
   continueAndSubmitReservation,
   mockReservationCheckoutStep,
@@ -2395,6 +2395,76 @@ describe("CoworkReservationForm advertised pricing", () => {
         process.env.TZ = originalTimeZone;
       }
     }
+  });
+
+  describe("CoworkReservationForm phone region", () => {
+    beforeEach(() => {
+      workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
+      globalThis.fetch = mock((request: RequestInfo | URL) => {
+        const url = String(request);
+        if (url.startsWith("/api/workspace/availability")) {
+          return Promise.resolve(jsonResponse(availabilityResponse));
+        }
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      }) as typeof fetch;
+    });
+
+    const submitWithPhone = async (locale: Locale, phone: string) => {
+      const view = renderForm({
+        locale,
+        initialValues: {
+          ...coworkReservationDefaultValues,
+          entryTier: "open-space",
+          date: "2099-07-30",
+          name: "Ada Lovelace",
+          email: testEmailAddressForAda,
+          phone,
+        },
+      });
+      const continueButton = view.getByRole("button", {
+        name: m.checkoutContinueButton({}, { locale }),
+      }) as HTMLButtonElement;
+      await waitFor(
+        () => {
+          expect(continueButton.hasAttribute("disabled")).toBe(false);
+        },
+        { timeout: 5000 }
+      );
+      await continueAndSubmitReservation(continueButton);
+      return view;
+    };
+
+    const phoneInput = (view: ReturnType<typeof renderForm>) =>
+      view.container.querySelector<HTMLInputElement>('input[name="phone"]');
+
+    test.each([
+      ["de-DE", "0151 23456789"],
+      ["uk-UA", "050 123 4567"],
+      ["cs-CZ", "777 123 456"],
+      ["de-DE", "+420 777 123 456"],
+    ] as const)("submits a phone typed in %s as %s", async (locale, phone) => {
+      await submitWithPhone(locale, phone);
+
+      await waitFor(() => {
+        expect(executeAsync).toHaveBeenCalledTimes(1);
+      });
+      expect(executeAsync.mock.calls[0]?.[0]).toMatchObject({
+        locale,
+        reservation: { phone },
+      });
+    });
+
+    test.each([
+      ["cs-CZ", "0151 23456789"],
+      ["cs-CZ", "050 123 4567"],
+    ] as const)("rejects a phone typed in %s as %s", async (locale, phone) => {
+      const view = await submitWithPhone(locale, phone);
+
+      await waitFor(() => {
+        expect(phoneInput(view)?.getAttribute("aria-invalid")).toBe("true");
+      });
+      expect(executeAsync).not.toHaveBeenCalled();
+    });
   });
 });
 

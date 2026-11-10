@@ -1,11 +1,15 @@
 import { m } from "@/features/administration/i18n";
+import {
+  type DiscountLabels,
+  discountLabelFor,
+} from "@/features/discounts/discount-label";
 import type { StoredDiscountId } from "@/features/discounts/persistence-contracts";
 import type { Locale } from "@/features/i18n";
 import type { AdminCalendarSale } from "./discount-administration.service";
 
 type CalendarSaleAssociation = AdminCalendarSale["association"];
 type CalendarSaleDiscount = {
-  readonly labels: Readonly<Record<Locale, string>>;
+  readonly labels: DiscountLabels;
 };
 
 /** A Calendar event status in the operator's locale; unknown values show as sent. */
@@ -41,6 +45,9 @@ export const getCalendarSaleDiscountLabel = (
   association: Extract<CalendarSaleAssociation, { kind: "associated" }>,
   discountsById: ReadonlyMap<StoredDiscountId, CalendarSaleDiscount>,
   locale: Locale
-) =>
-  discountsById.get(association.discountId)?.labels[locale] ??
-  association.discountLabel;
+) => {
+  const discount = discountsById.get(association.discountId);
+  return discount
+    ? discountLabelFor(discount.labels, locale)
+    : association.discountLabel;
+};

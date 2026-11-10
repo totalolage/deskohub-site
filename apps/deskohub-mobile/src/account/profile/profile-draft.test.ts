@@ -78,11 +78,11 @@ describe("profileDraftOf", () => {
   });
 
   test("shows a stored phone number in international format", () => {
-    const stored = Option.getOrThrow(parsePhoneNumber("600 000 001"));
+    const stored = Option.getOrThrow(parsePhoneNumber("600 000 001", "CZ"));
     const draft = profileDraftOf({ ...sampleProfile, phone: stored });
     expect(draft.phone).toBe(formatPhoneNumber(stored));
     expect(draft.phone).not.toBe(stored);
-    expect(parsePhoneNumber(draft.phone)).toEqual(Option.some(stored));
+    expect(parsePhoneNumber(draft.phone, "CZ")).toEqual(Option.some(stored));
   });
 
   test.each(["not a phone", "tel. 600 000 001"])(
@@ -95,7 +95,7 @@ describe("profileDraftOf", () => {
   );
 
   test("counts the stored number as unchanged however it was typed", () => {
-    const stored = Option.getOrThrow(parsePhoneNumber("600 000 001"));
+    const stored = Option.getOrThrow(parsePhoneNumber("600 000 001", "CZ"));
     const saved = profileDraftOf({ ...sampleProfile, phone: stored });
     expect(sameDraft({ ...saved, phone: "600000001" }, saved)).toBe(true);
     expect(sameDraft({ ...saved, phone: stored }, saved)).toBe(true);

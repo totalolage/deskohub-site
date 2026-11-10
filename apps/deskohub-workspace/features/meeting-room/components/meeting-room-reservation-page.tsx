@@ -26,13 +26,16 @@ export const meetingRoomReservationPage = createReservationPage({
   // An ended reservation can't reopen the form.
   restore: (
     reservation,
-    searchParams
+    searchParams,
+    { locale }
   ): ReservationPageRestoration<MeetingRoomReservationInput> => {
     const values = getMeetingRoomReservationDefaultValues(reservation);
     return values
       ? {
           kind: "restored",
-          values: meetingRoomSelectionLink.restore(values, searchParams),
+          values: meetingRoomSelectionLink.restore(values, searchParams, {
+            locale,
+          }),
         }
       : { kind: "ended" };
   },
@@ -42,12 +45,15 @@ export const meetingRoomReservationPage = createReservationPage({
    */
   read: Effect.fn("meetingRoomReservationPage.read")(function* (
     searchParams,
-    { lastReservation }
+    { lastReservation, locale }
   ) {
-    const queryValues = meetingRoomSelectionLink.read(searchParams);
+    const queryValues = meetingRoomSelectionLink.read(searchParams, {
+      locale,
+    });
     if (!lastReservation) return queryValues;
 
     const rememberedValues = meetingRoomSelectionLink.read(searchParams, {
+      locale,
       lastReservation,
     });
     if (rememberedValues.duration === queryValues.duration) {

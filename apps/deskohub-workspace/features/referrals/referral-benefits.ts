@@ -19,6 +19,7 @@ import type {
   DiscountProvenance,
 } from "@/features/discounts/provider";
 import { type Locale, m } from "@/features/i18n";
+import { staffLocale } from "@/shared/backend/staff-locale";
 import { type Money, moneyEquals } from "@/shared/money/money";
 import { haveSameJsonEncoding } from "@/shared/utils/json-equal";
 import { referralInvitationDiscountBasisPoints } from "./program";
@@ -75,6 +76,7 @@ export const makeReferralInvitationCandidate = (input: {
   discount: {
     id: getReferralBenefitIds(input.dotyposCustomerId).invitation,
     label: getReferralInvitationLabel(input.locale),
+    staffLabel: getReferralInvitationLabel(staffLocale),
     adjustment: {
       kind: "percentage" as const,
       basisPoints: referralInvitationDiscountBasisPoints,
@@ -122,6 +124,10 @@ export const makeReferralReferrerCandidate = (input: {
       label: m.checkoutSummaryItemReferralDiscount(
         { count: count.toString() },
         { locale: input.locale }
+      ),
+      staffLabel: m.checkoutSummaryItemReferralDiscount(
+        { count: count.toString() },
+        { locale: staffLocale }
       ),
       adjustment: { kind: "fixed" as const, amount },
     },

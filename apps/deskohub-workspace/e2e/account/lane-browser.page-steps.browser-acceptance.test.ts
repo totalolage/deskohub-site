@@ -17,6 +17,7 @@ import {
   runBrowserStep,
 } from "../case-runner.browser.test-utils";
 import type { WorkspaceE2EError } from "../errors";
+import { languageMenuMarkup } from "../language-menu.test-utils";
 import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
@@ -95,8 +96,7 @@ const server = Bun.serve({
         const other = url.pathname === "/en-US" ? "/cs-CZ" : "/en-US";
         const target = url.searchParams.get("target") ?? other;
         return html(`<p>Home ${url.pathname}</p>
-          <nav data-locale-switcher><a href="${target}">${other}</a></nav>
-          ${hydrate ? `<script>${reactProps("[data-locale-switcher] a", ["onClick"])}</script>` : ""}`);
+          ${languageMenuMarkup({ hydrated: hydrate, links: [{ href: target, label: other }] })}`);
       }
       case "/cs-CZ/auth/callback":
         return html(`<p>Callback failed</p>
@@ -379,7 +379,7 @@ const failingSteps: ReadonlyArray<
       ),
   ],
   [
-    "a locale link that is not hydrated",
+    "a language menu trigger that is not hydrated",
     "timeout",
     (laneBrowser) =>
       Effect.andThen(

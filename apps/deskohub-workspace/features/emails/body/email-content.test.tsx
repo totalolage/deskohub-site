@@ -174,10 +174,9 @@ describe("renderEmailContent", () => {
       expect(
         failureOf(rendered("cs-CZ", emailFixtureValues, document))
       ).toMatchObject({ _tag: "EmailLanguageMissing", locale: "cs-CZ" });
-      expect(failureOf(rendered("de-DE"))).toMatchObject({
-        _tag: "EmailLanguageMissing",
-        locale: "de-DE",
-      });
+      expect(
+        failureOf(rendered("de-DE", emailFixtureValues, document))
+      ).toMatchObject({ _tag: "EmailLanguageMissing", locale: "de-DE" });
     });
   });
 
@@ -204,15 +203,15 @@ describe("renderEmailContent", () => {
       ...encoded,
       translations: {
         ...encoded.translations,
-        "de-DE": encoded.translations["en-US"],
+        "fr-FR": encoded.translations["en-US"],
       },
     });
 
     expect(
-      failureOf(rendered("de-DE", emailFixtureValues, document))
+      failureOf(rendered("fr-FR", emailFixtureValues, document))
     ).toMatchObject({
       _tag: "EmailLanguageMissing",
-      locale: "de-DE",
+      locale: "fr-FR",
     });
   });
 

@@ -4,7 +4,10 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Console, Effect } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
-import { campaignLocaleFlag } from "../campaigns/campaign-input";
+import {
+  campaignLocaleFlag,
+  campaignLocaleShortNames,
+} from "../campaigns/campaign-input";
 import { runAuthenticatedCommand } from "../command-runtime";
 import { decodeJsonInput } from "../json-input";
 
@@ -31,7 +34,9 @@ const calendarDescribeCommand = Command.make(
     ),
     locale: campaignLocaleFlag("locale").pipe(
       Flag.withDefault("en-US" as const),
-      Flag.withDescription("Language of the description: cs or en")
+      Flag.withDescription(
+        `Language of the description: ${campaignLocaleShortNames}`
+      )
     ),
   },
   ({ expression, locale, wait }) =>

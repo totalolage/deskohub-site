@@ -3,11 +3,10 @@ import { createElement } from "react";
 import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
 import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
 import { publicSiteShareImage } from "@/features/public-pages/page-metadata";
+import { nextFontLocal } from "@/shared/testing/next-font-local.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
-mock.module("next/font/local", () => ({
-  default: () => ({ variable: "--font-sculpin" }),
-}));
+mock.module("next/font/local", () => nextFontLocal);
 
 // Outside a Next.js render there is no cache to configure.
 const nextCache = await import("next/cache");
@@ -143,6 +142,22 @@ describe("localized route layout", () => {
 
     expect(head?.type).toBe("head");
     expect(first?.type).toBe(TemporalLoader);
+  });
+
+  test("leads the brand font with a companion only where the script needs one", async () => {
+    const { default: LocaleLayout } = await import("./layout");
+    type Element = { props: { style?: Record<string, string> } };
+    const render = async (locale: string) =>
+      (await LocaleLayout({
+        children: page,
+        params: Promise.resolve({ locale }),
+      })) as Element;
+
+    expect((await render("cs-CZ")).props.style).toBeUndefined();
+    expect((await render("uk-UA")).props.style).toEqual({
+      "--font-sculpin":
+        "'../../assets/fonts/Sculpin/regular.woff2', '../../assets/fonts/Montserrat/cyrillic.woff2'",
+    });
   });
 
   test("rejects an unknown locale", async () => {

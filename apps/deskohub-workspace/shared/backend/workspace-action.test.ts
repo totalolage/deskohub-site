@@ -98,6 +98,28 @@ describe("Workspace actions", () => {
     });
   });
 
+  test("validates input with the schema for the action's locale", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.locale-schema",
+        schema: (locale: Locale) =>
+          Schema.toStandardSchemaV1(Schema.Literal(locale)),
+      },
+      (input, context) => Effect.succeed({ input, locale: context.locale })
+    );
+
+    for (const locale of ["de-DE", "cs-CZ"] as const) {
+      actionRequestHeaders = { referer: `https://deskohub.test/${locale}` };
+      await expect(action(locale)).resolves.toEqual({
+        data: { input: locale, locale },
+      });
+      await expect(
+        action(locale === "de-DE" ? "cs-CZ" : "de-DE")
+      ).resolves.toMatchObject({ validationErrors: expect.any(Object) });
+    }
+  });
+
   test("preserves nested validation errors for the client", async () => {
     const { defineWorkspaceAction } = await import("./workspace-action");
     const action = defineWorkspaceAction(

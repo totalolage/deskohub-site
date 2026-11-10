@@ -111,6 +111,23 @@ describe("processContactSubmission", () => {
     }
   });
 
+  test("reads a phone without a country calling code in the locale's region", async () => {
+    const germanMobile = { ...data, phone: "0151 23456789" };
+
+    const german = await execute(germanMobile, "de-DE");
+    expect(await Effect.runPromise(german.effect)).not.toMatchObject({
+      status: "error",
+    });
+    expect(german.submit).toHaveBeenCalledTimes(1);
+
+    const czech = await execute(germanMobile, "cs-CZ");
+    expect(await Effect.runPromise(czech.effect)).toMatchObject({
+      status: "error",
+      fieldErrors: { phone: expect.any(String) },
+    });
+    expect(czech.submit).not.toHaveBeenCalled();
+  });
+
   test("maps detected bots to the automated-request response", async () => {
     const { BotDetectedError } = await import(
       "@/shared/backend/bot-protection/bot-protection.service"

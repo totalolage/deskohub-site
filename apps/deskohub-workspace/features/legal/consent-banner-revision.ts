@@ -12,18 +12,22 @@ type ConsentBannerDocument = (typeof consentBannerDocuments)[number];
 
 /**
  * The published version (`getLegalDocumentVersion`) of each document the
- * banner is bound to. A copy, so the server's consent cookie readers, which
- * every request loads, never load the legal texts or React; a test fails
- * with the current versions whenever either document changes in any locale.
+ * banner is bound to, per locale whose legal documents are published. A copy,
+ * so the server's consent cookie readers, which every request loads, never
+ * load the legal texts or React; a test fails with the current versions
+ * whenever either document changes in any locale.
+ *
+ * Recording a new locale's versions here changes the banner revision, which
+ * reopens the cookie banner for every visitor.
  */
 export const consentBannerDocumentVersions: Readonly<
-  Record<Locale, Readonly<Record<ConsentBannerDocument, string>>>
+  Partial<Record<Locale, Readonly<Record<ConsentBannerDocument, string>>>>
 > = {
   "en-US": {
     "privacy-policy":
-      "d783addd2d40a3221f65c18a560d29c9caf2eadbe677315b9e204c1b08d3c357",
+      "53e796ba06229ee4d8e9500c3045178a27113df99b1d708dd59c11a3134fb7e5",
     "cookie-policy":
-      "b5b9dbefd033c1e03fadf088aadab6e2081a518f4d09d9a4f3bc833dae1a5b07",
+      "476c15e027bde0e04823024f02842b5652456a9721680f0efd0dabf9d494fd03",
   },
   "cs-CZ": {
     "privacy-policy":
@@ -31,12 +35,30 @@ export const consentBannerDocumentVersions: Readonly<
     "cookie-policy":
       "9e1622d98ffc2f8879400494842ee8e2ee3f096a5e023636388c65c220dc3801",
   },
+  "de-DE": {
+    "privacy-policy":
+      "d219cb484f33adc57361b289f7f4c009420caef00b51894d73aff55af2c85c0f",
+    "cookie-policy":
+      "6812034325d23d8f848a4fb64f09d8aa014d62cc7d3addc45759c1fb075fc486",
+  },
+  "uk-UA": {
+    "privacy-policy":
+      "f4fa60c6d8dff580e3cd048c64badeeb1f390344fc2f48d1fb90e5440e910daa",
+    "cookie-policy":
+      "08480393eeeadb3cbc83b2cdd9be368d03eb1f96a2156c4d5cf064ee7c656d00",
+  },
+  "sk-SK": {
+    "privacy-policy":
+      "7e12903683052ab508bbbb50228988cf06dacc872431f21506f8b6a4c8e5f3fb",
+    "cookie-policy":
+      "d9cc345892616de3c3b05e7e1f7e505a7947738423b2ee4276d0757f3d4dbfaf",
+  },
 };
 
 const publishedVersionOf = (
   locale: Locale,
   documentKey: ConsentBannerDocument
-) => consentBannerDocumentVersions[locale][documentKey];
+): string | undefined => consentBannerDocumentVersions[locale]?.[documentKey];
 
 /**
  * The cookie banner revision of the privacy notice and cookie policy in every
@@ -50,10 +72,14 @@ export function getConsentBannerRevision(
   versionOf: (
     locale: Locale,
     documentKey: ConsentBannerDocument
-  ) => string = publishedVersionOf
+  ) => string | undefined = publishedVersionOf
 ): number {
+  // Only locales with recorded versions count, in registry order.
   const versions = locales.flatMap((locale) =>
-    consentBannerDocuments.map((documentKey) => versionOf(locale, documentKey))
+    consentBannerDocuments.flatMap((documentKey) => {
+      const version = versionOf(locale, documentKey);
+      return version === undefined ? [] : [version];
+    })
   );
   const digest = createHash("sha256").update(versions.join("\n")).digest("hex");
   // 48 bits stay well inside Number.MAX_SAFE_INTEGER.

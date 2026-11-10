@@ -198,9 +198,27 @@ components:
           pattern: "^[0-9]+$"
         language:
           type: string
+          description: ISO 639-2 language of the hosted payment page, from Nexi's language encoding table.
           enum:
-            - CZE
+            - ITA
             - ENG
+            - SPA
+            - FRA
+            - DEU
+            - RUS
+            - POR
+            - JPN
+            - ARA
+            - ZHA
+            - ELL
+            - SLV
+            - CZE
+            - SLK
+            - HUN
+            - RON
+            - POL
+            - HRV
+            - BOS
         resultUrl:
           type: string
           format: uri

@@ -1,10 +1,5 @@
 import type { CustomerProfile } from "@deskohub/workspace-customer-api";
-import {
-  RegistryContext,
-  useAtom,
-  useAtomSet,
-  useAtomValue,
-} from "@effect/atom-react";
+import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { Atom } from "effect/unstable/reactivity";
 import {
@@ -13,8 +8,9 @@ import {
   usePreventRemove,
   useRoute,
 } from "expo-router";
-import { useContext, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TextInputInstance } from "react-native";
+import { useSettledResultReset } from "../../customer-api/settled-result-reset";
 import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
 import { ConfirmDialog } from "../../ui/confirm-dialog";
@@ -61,23 +57,6 @@ export function useProfileForm(profile: CustomerProfile) {
     discard: () => setEdits(Option.none()),
     save: () => save(draft),
   };
-}
-
-/**
- * Forgets a settled save or completion when the screen goes, so the next
- * visit starts without the last message. One still running keeps going: the
- * server may apply it, and its account read must still happen.
- */
-export function useSettledResultReset(
-  atom: Atom.Writable<{ readonly waiting: boolean }, typeof Atom.Reset>
-) {
-  const registry = useContext(RegistryContext);
-  useEffect(
-    () => () => {
-      if (!registry.get(atom).waiting) registry.set(atom, Atom.Reset);
-    },
-    [registry, atom]
-  );
 }
 
 /**

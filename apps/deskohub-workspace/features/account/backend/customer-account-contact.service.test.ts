@@ -193,6 +193,26 @@ describe("CustomerAccountContactService.current", () => {
     }
   );
 
+  test.each([
+    // What the Workspace writes: kept, it reads the same in every locale.
+    ["in E.164 form", "+420777777777", "+420777777777"],
+    // Entered without a country calling code, such as at the till: read in
+    // the base locale's region and offered with one, so a de-DE checkout
+    // doesn't read it as a German number.
+    ["as a national number", "777 777 777", "+420 777 777 777"],
+    ["with an international prefix", "00420777777777", "+420 777 777 777"],
+  ] as const)(
+    "offers a stored phone written %s in a form every locale reads alike",
+    async (_label, phone, offered) => {
+      const { outcome } = await runCurrent({ profile: profile({ phone }) });
+
+      expect(outcome).toMatchObject({
+        _tag: "Success",
+        success: { phone: offered },
+      });
+    }
+  );
+
   test("maps a link read failure to an unavailable account error", async () => {
     const { outcome, load } = await runCurrent({
       find: mock(() => Effect.fail(new Error("database unavailable"))),

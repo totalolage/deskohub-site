@@ -72,20 +72,20 @@ export const getWorkspaceMeetingRoomProductKey = ({
 }: WorkspaceMeetingRoomProductIdentity): WorkspaceMeetingRoomProductKey =>
   `${kind}:${getMeetingRoomReservationDurationKey(duration)}`;
 
-const meetingRoomReservationOrderBaseSchema = Schema.Struct({
-  ...reservationCustomerSchema.fields,
-  billing: reservationBillingSelectionInputSchema,
-  duration: meetingRoomReservationDurationSchema,
-  reservationDate: plainDateStringSchema,
-  startsAt: reservationTimestampInputSchema,
-  endsAt: reservationTimestampInputSchema,
-  earlySetup: Schema.optionalKey(Schema.Boolean),
-});
-
-export const meetingRoomReservationOrderInputSchema = Schema.Struct({
-  kind: Schema.Literal(meetingRoomReservationKind),
-  ...meetingRoomReservationOrderBaseSchema.fields,
-});
+/** A meeting-room order a customer submits, phone read in `defaultPhoneRegion`. */
+export const meetingRoomReservationOrderInputSchema = (
+  defaultPhoneRegion: string
+) =>
+  Schema.Struct({
+    kind: Schema.Literal(meetingRoomReservationKind),
+    ...reservationCustomerSchema(defaultPhoneRegion).fields,
+    billing: reservationBillingSelectionInputSchema,
+    duration: meetingRoomReservationDurationSchema,
+    reservationDate: plainDateStringSchema,
+    startsAt: reservationTimestampInputSchema,
+    endsAt: reservationTimestampInputSchema,
+    earlySetup: Schema.optionalKey(Schema.Boolean),
+  });
 
 export const normalizedMeetingRoomReservationOrderSchema =
   droppingRetiredReservationCustomerMessage(
@@ -101,8 +101,9 @@ export const normalizedMeetingRoomReservationOrderSchema =
     })
   );
 
-export type MeetingRoomReservationOrderInput =
-  typeof meetingRoomReservationOrderInputSchema.Type;
+export type MeetingRoomReservationOrderInput = ReturnType<
+  typeof meetingRoomReservationOrderInputSchema
+>["Type"];
 export type NormalizedMeetingRoomReservationOrder =
   typeof normalizedMeetingRoomReservationOrderSchema.Type;
 
@@ -371,17 +372,22 @@ const decodeMeetingRoomReservationOrder = Effect.fn(
   );
 });
 
-const decodeMeetingRoomReservationOrderInput = Schema.decodeUnknownSync(
-  meetingRoomReservationOrderInputSchema
-);
-
-export const meetingRoomReservationOrderSchema =
-  meetingRoomReservationOrderInputSchema.pipe(
+/**
+ * A meeting-room order a customer submits, normalized, phone read in
+ * `defaultPhoneRegion`.
+ */
+export const meetingRoomReservationOrderSchema = (
+  defaultPhoneRegion: string
+) => {
+  const inputSchema =
+    meetingRoomReservationOrderInputSchema(defaultPhoneRegion);
+  return inputSchema.pipe(
     Schema.decodeTo(normalizedMeetingRoomReservationOrderSchema, {
       decode: SchemaGetter.transformOrFail(decodeMeetingRoomReservationOrder),
-      encode: SchemaGetter.transform(decodeMeetingRoomReservationOrderInput),
+      encode: SchemaGetter.transform(Schema.decodeUnknownSync(inputSchema)),
     })
   );
+};
 
 export const meetingRoomStartDateTimeSchema = Schema.String.check(
   Schema.isNonEmpty({
@@ -396,17 +402,16 @@ export const meetingRoomStartDateTimeSchema = Schema.String.check(
   )
 );
 
-const meetingRoomReservationBaseSchema = Schema.Struct({
-  ...reservationCustomerSchema.fields,
-  billing: reservationBillingSelectionInputSchema,
-  startDateTime: meetingRoomStartDateTimeSchema,
-  duration: meetingRoomReservationDurationKeySchema,
-  earlySetup: Schema.Boolean,
-  marketingConsent: Schema.Boolean,
-});
-
-export const meetingRoomReservationSchema =
-  meetingRoomReservationBaseSchema.check(
+/** The meeting-room reservation form, phone read in `defaultPhoneRegion`. */
+export const meetingRoomReservationSchema = (defaultPhoneRegion: string) =>
+  Schema.Struct({
+    ...reservationCustomerSchema(defaultPhoneRegion).fields,
+    billing: reservationBillingSelectionInputSchema,
+    startDateTime: meetingRoomStartDateTimeSchema,
+    duration: meetingRoomReservationDurationKeySchema,
+    earlySetup: Schema.Boolean,
+    marketingConsent: Schema.Boolean,
+  }).check(
     Schema.makeFilter((reservation) => {
       const interval = getMeetingRoomReservationInterval(
         reservation.startDateTime,
@@ -436,10 +441,12 @@ export const meetingRoomReservationSchema =
     })
   );
 
-export type MeetingRoomReservationInput =
-  typeof meetingRoomReservationSchema.Encoded;
-export type MeetingRoomReservationData =
-  typeof meetingRoomReservationSchema.Type;
+export type MeetingRoomReservationInput = ReturnType<
+  typeof meetingRoomReservationSchema
+>["Encoded"];
+export type MeetingRoomReservationData = ReturnType<
+  typeof meetingRoomReservationSchema
+>["Type"];
 
 export const meetingRoomReservationDefaultValues: MeetingRoomReservationInput =
   {

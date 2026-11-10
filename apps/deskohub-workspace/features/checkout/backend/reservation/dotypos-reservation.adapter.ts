@@ -8,17 +8,19 @@ import {
   type Reservation,
 } from "@deskohub/dotypos";
 import { Effect, Match } from "effect";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceMeetingRoomDurationLabel,
   getWorkspaceMeetingRoomProductTitle,
   getWorkspaceOfficeProductTitle,
+  getWorkspaceProductMonitorTitle,
+  getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { getMeetingRoomSetupStart } from "@/features/reservation/meeting-room-early-setup";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { getReservationDate } from "@/features/reservation/reservation-interval";
 import type { ReservationIntervalValidationError } from "@/features/reservation/reservation-interval-domain";
+import { staffLocale } from "@/shared/backend/staff-locale";
 import { formatMoney, moneyWithValue } from "@/shared/money/money";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
@@ -119,6 +121,35 @@ export const createWorkspaceDotyposReservation: (
     )
 );
 
+/**
+ * The note line naming the payment order. Late-payment recovery finds the
+ * Dotypos reservations a payment order created by it.
+ */
+const formatPaymentOrderLine = (paymentOrderId: WorkspaceReservationId) =>
+  `Platební objednávka: ${paymentOrderId}`;
+
+/** Notes written before staff notes were Czech name the order in English. */
+const formatLegacyPaymentOrderLine = (paymentOrderId: WorkspaceReservationId) =>
+  `Payment order: ${paymentOrderId}`;
+
+/** Whether a Dotypos reservation note names the given payment order. */
+export const noteNamesPaymentOrder = (
+  note: string | null | undefined,
+  paymentOrderId: WorkspaceReservationId
+) => {
+  const lines = note?.split("\n") ?? [];
+
+  return (
+    lines.includes(formatPaymentOrderLine(paymentOrderId)) ||
+    lines.includes(formatLegacyPaymentOrderLine(paymentOrderId))
+  );
+};
+
+/**
+ * The note staff read on the Dotypos reservation. It is written in the staff
+ * locale whatever the checkout locale; the checkout locale stays on the
+ * reservation's checkout details.
+ */
 export const formatWorkspaceReservationNote = (
   input: Pick<
     CreateWorkspaceDotyposReservationInput,
@@ -129,32 +160,35 @@ export const formatWorkspaceReservationNote = (
   const { productLabel, reservationRows } = Match.value(reservation).pipe(
     Match.discriminatorsExhaustive("kind")({
       cowork: (coworkReservation) => ({
-        productLabel: getWorkspaceProductByTier(coworkReservation.entryTier)
-          .label,
+        productLabel: getWorkspaceProductTierTitle(
+          coworkReservation.entryTier,
+          staffLocale
+        ),
         reservationRows: [
-          `Date: ${coworkReservation.date}`,
-          `Coffee: ${coworkReservation.coffee ? "yes" : "no"}`,
+          `Datum: ${coworkReservation.date}`,
+          `Káva: ${coworkReservation.coffee ? "ano" : "ne"}`,
           coworkReservation.monitorOption
-            ? `Monitor: ${coworkReservation.monitorOption}`
+            ? `Monitor: ${getWorkspaceProductMonitorTitle(
+                coworkReservation.monitorOption,
+                staffLocale
+              )}`
             : null,
         ],
       }),
       "meeting-room": (meetingRoomReservation) => ({
-        productLabel: getWorkspaceMeetingRoomProductTitle(
-          checkoutDetails.locale
-        ),
+        productLabel: getWorkspaceMeetingRoomProductTitle(staffLocale),
         reservationRows: [
-          `Date: ${getReservationDate({
+          `Datum: ${getReservationDate({
             interval: meetingRoomReservation,
             timeZone: workspaceSiteConstants.location.timeZone,
           })}`,
-          `Time: ${meetingRoomReservation.startsAt}-${meetingRoomReservation.endsAt}`,
-          `Duration: ${getWorkspaceMeetingRoomDurationLabel(
+          `Čas: ${meetingRoomReservation.startsAt}-${meetingRoomReservation.endsAt}`,
+          `Délka: ${getWorkspaceMeetingRoomDurationLabel(
             meetingRoomReservation.duration,
-            checkoutDetails.locale
+            staffLocale
           )}`,
           meetingRoomReservation.earlySetup === true
-            ? `Setup from: ${getMeetingRoomSetupStart(
+            ? `Příprava od: ${getMeetingRoomSetupStart(
                 Temporal.Instant.from(meetingRoomReservation.startsAt)
               )
                 .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
@@ -164,28 +198,25 @@ export const formatWorkspaceReservationNote = (
         ],
       }),
       office: (officeReservation) => ({
-        productLabel: getWorkspaceOfficeProductTitle(checkoutDetails.locale),
+        productLabel: getWorkspaceOfficeProductTitle(staffLocale),
         reservationRows: [
-          `Dates: ${officeReservation.startsOn}-${officeReservation.endsOn}`,
-          `Seats: ${officeReservation.seats}`,
+          `Termín: ${officeReservation.startsOn}-${officeReservation.endsOn}`,
+          `Počet míst: ${officeReservation.seats}`,
         ],
       }),
     })
   );
   const lines = [
-    "Deskohub workspace post-payment reservation",
-    `Payment order: ${input.paymentOrderId}`,
-    `Product: ${productLabel}`,
+    "Rezervace z Deskohub Workspace po zaplacení",
+    formatPaymentOrderLine(input.paymentOrderId),
+    `Produkt: ${productLabel}`,
     ...reservationRows,
-    `Price: ${formatMoney(
-      checkoutDetails.payment.expectedPrice,
-      checkoutDetails.locale
-    )}`,
+    `Cena: ${formatMoney(checkoutDetails.payment.expectedPrice, staffLocale)}`,
     ...checkoutDetails.payment.discounts.map(
       ({ amount, discount }) =>
-        `Discount: ${discount.label} (${formatMoney(
+        `Sleva: ${discount.staffLabel ?? discount.label} (${formatMoney(
           moneyWithValue(-amount.value, amount),
-          checkoutDetails.locale
+          staffLocale
         )})`
     ),
   ];

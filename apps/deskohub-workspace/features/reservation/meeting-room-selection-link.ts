@@ -1,5 +1,6 @@
 import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Schema } from "effect";
+import { defaultPhoneRegion, type Locale } from "@/features/i18n";
 import {
   type MeetingRoomReservationInput,
   meetingRoomReservationDefaultValues,
@@ -40,7 +41,8 @@ type MeetingRoomSelection = Partial<
 
 /**
  * The meeting-room reservation page's link. A link without a start opens the
- * page on the earliest start for its duration.
+ * page on the earliest start for its duration. A linked phone is read in the
+ * page `locale`'s default region.
  */
 export const meetingRoomSelectionLink = defineSelectionLink({
   kind: "meeting-room",
@@ -48,12 +50,14 @@ export const meetingRoomSelectionLink = defineSelectionLink({
   read: (
     searchParams: SupportedSearchParams,
     {
+      locale,
       now = Temporal.Now.instant(),
       lastReservation,
     }: {
+      readonly locale: Locale;
       readonly now?: Temporal.Instant;
       readonly lastReservation?: CustomerLastReservationForKind<"meeting-room">;
-    } = {}
+    }
   ): MeetingRoomReservationInput => {
     const durationKey = decodeStandardSchema(
       queryMeetingRoomDurationKeySchema,
@@ -84,7 +88,10 @@ export const meetingRoomSelectionLink = defineSelectionLink({
 
     return {
       ...meetingRoomReservationDefaultValues,
-      ...decodeReservationCheckoutCustomer(searchParams),
+      ...decodeReservationCheckoutCustomer(
+        searchParams,
+        defaultPhoneRegion(locale)
+      ),
       duration: getMeetingRoomReservationDurationKey(duration),
       startDateTime: startDateTimeOrEarliest,
       earlySetup:

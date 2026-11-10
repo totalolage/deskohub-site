@@ -28,7 +28,7 @@ import openSpaceArtwork from "@/features/cowork/assets/open-space.png";
 import reservedDeskArtwork from "@/features/cowork/assets/reserved-desk.png";
 import reservedDeskWorkstationArtwork from "@/features/cowork/assets/reserved-desk-workstation.png";
 import type { CanonicalPromotionCode } from "@/features/discounts";
-import { type Locale, m } from "@/features/i18n";
+import { defaultPhoneRegion, type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
 import { ReservationFormDateInput } from "@/features/reservation/components/reservation-date-input";
@@ -150,9 +150,11 @@ export function CoworkReservationForm({
     initialValues ??
     (initialReservation
       ? getCoworkReservationDefaultValues(initialReservation)
-      : coworkSelectionLink.read(searchParams));
+      : coworkSelectionLink.read(searchParams, { locale }));
   const form = useForm<CoworkReservationInput, unknown, CoworkReservationData>({
-    resolver: effectSchemaResolver(coworkReservationSchema),
+    resolver: effectSchemaResolver(
+      coworkReservationSchema(defaultPhoneRegion(locale))
+    ),
     defaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -199,7 +201,7 @@ export function CoworkReservationForm({
       selection={{
         kind: coworkSelectionLink.kind,
         fromSearchParams: (searchParams) =>
-          coworkSelectionLink.readSelection(searchParams),
+          coworkSelectionLink.readSelection(searchParams, { locale }),
       }}
     >
       <FormField

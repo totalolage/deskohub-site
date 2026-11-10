@@ -203,7 +203,7 @@ function TestSendReceiptAlert({
         {m.emailCampaignsTestSendSent(
           {
             count: receipt.recipients.length * receipt.locales.length,
-            languages: describeCampaignLocales(receipt.locales, locale),
+            languages: describeCampaignLocales(receipt.locales),
           },
           { locale }
         )}
@@ -241,7 +241,7 @@ function TestSendContentLanguages({
         mapping={{
           languages: (
             <span className="font-semibold text-navy-blue">
-              {describeCampaignLocales(contentLocales, locale)}
+              {describeCampaignLocales(contentLocales)}
             </span>
           ),
         }}

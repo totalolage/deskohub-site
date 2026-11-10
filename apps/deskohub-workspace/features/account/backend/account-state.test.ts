@@ -250,6 +250,30 @@ describe("loadAccountState", () => {
     }
   });
 
+  test("carries the session's saved locale preference in every signed-in state", async () => {
+    currentUser = Effect.succeed({
+      accountId,
+      email,
+      deletionRequested: false,
+      localePreference: "de-DE",
+    });
+    await expect(load()).resolves.toMatchObject({
+      kind: "linked",
+      localePreference: "de-DE",
+    });
+
+    currentUser = Effect.succeed({
+      accountId,
+      email,
+      deletionRequested: true,
+      localePreference: "de-DE",
+    });
+    await expect(load()).resolves.toMatchObject({
+      kind: "deletion-pending",
+      localePreference: "de-DE",
+    });
+  });
+
   test("is unavailable when the session can't be read, and unauthenticated without one", async () => {
     currentUser = Effect.fail(new Error("auth down"));
     expect((await loadWithWarnings()).state).toEqual({ kind: "unavailable" });
