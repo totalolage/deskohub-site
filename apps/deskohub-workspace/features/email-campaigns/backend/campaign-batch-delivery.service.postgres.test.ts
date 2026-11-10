@@ -656,6 +656,58 @@ describe.skipIf(!database)(
           });
         });
 
+        test("a requested batch whose payload changed for one of its recipients is never resent: every recipient in it becomes unconfirmed", async () => {
+          const harness = makeBatchDeliveryHarness(database);
+          const changed = customerId(`${kind}-changed-email`);
+          const unchanged = customerId(`${kind}-unchanged-email`);
+          const { campaignId, send } = await harness.seedSend({
+            kind,
+            purpose: "operational",
+            recipients: [deliverProfile(changed), deliverProfile(unchanged)],
+          });
+          (kind === "one-off" ? campaignIds : automatedCampaignIds).push(
+            campaignId
+          );
+          const persisted = await harness.persist({
+            kind,
+            send,
+            recipients: [changed, unchanged].map((dotyposCustomerId) => ({
+              dotyposCustomerId,
+              locale: "cs-CZ" as const,
+            })),
+          });
+          expect(persisted.batch.dotyposCustomerIds).toEqual([
+            changed,
+            unchanged,
+          ]);
+          harness.provider.respondWith(() => "accept-lost");
+          expect(failureTagOf(await harness.requestFirst(persisted))).toBe(
+            "CampaignDeliveryIncomplete"
+          );
+
+          harness.setProfiles([
+            deliverProfile(changed, {
+              email: testEmailAddress(`${changed}-new`),
+            }),
+            deliverProfile(unchanged),
+          ]);
+          harness.provider.respondWith(() => "accept");
+          const outcome = await harness.replay(persisted);
+
+          expect(outcome).toMatchObject({
+            value: { _tag: "Unconfirmed", reason: "payload-changed" },
+          });
+          expect(harness.provider.requests()).toHaveLength(1);
+          await harness.settle(persisted.batch, outcomeOf(outcome));
+          expect(await statusesOf(send.sendId)).toEqual({
+            recipients: {
+              [changed]: "unconfirmed",
+              [unchanged]: "unconfirmed",
+            },
+            batches: ["unconfirmed"],
+          });
+        });
+
         test("a replay past its key's window is Unconfirmed without a request, before the caller is asked to admit it", async () => {
           const { harness, id, send, persist } = await setUp({
             label: "expired",
