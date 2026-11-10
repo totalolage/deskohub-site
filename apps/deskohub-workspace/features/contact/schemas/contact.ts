@@ -98,9 +98,10 @@ export const contactDefaultValues: ContactFormValues = {
  * long its message is. The name, email, phone and message stay off every row
  * the annotation reaches.
  */
-export const contactSubmissionLogFields = (
-  values: { readonly phone?: string; readonly message: string }
-) => ({
+export const contactSubmissionLogFields = (values: {
+  readonly phone?: string;
+  readonly message: string;
+}) => ({
   hasPhone: Boolean(values.phone),
   messageLength: values.message.length,
 });
