@@ -27,7 +27,7 @@ describe("customer request budget classes", () => {
       )
       .toSorted();
 
-    expect(contractEndpoints()).toHaveLength(25);
+    expect(contractEndpoints()).toHaveLength(28);
     expect(classified).toEqual(contractEndpoints());
   });
 
@@ -35,6 +35,9 @@ describe("customer request budget classes", () => {
     expect(customerRequestBudgetClasses.account).toMatchObject({
       listPasskeys: "workspace-only",
       listAssistantConnections: "workspace-only",
+      syncAnalyticsConsent: "workspace-only",
+      getAnalyticsPreference: "workspace-only",
+      saveAnalyticsPreference: "workspace-only",
     });
     expect(customerRequestBudgetClasses.booking).toMatchObject({
       listLegalDocuments: "workspace-only",

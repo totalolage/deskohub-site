@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { customerReferralCodeHeader } from "@deskohub/workspace-customer-api";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import {
   testCustomerSession,
   testLinkedAccount,
@@ -11,6 +11,7 @@ import {
   AccountAvatarReleaseGate,
   PasskeyReleaseGate,
 } from "@/features/account/backend/account-release-gates";
+import { AnalyticsPersonAnonymisation } from "@/features/account/backend/analytics-person-anonymisation";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import {
@@ -27,11 +28,18 @@ import type {
   CustomerProfileInput,
   CustomerProfileSave,
 } from "@/features/account/contracts";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import {
   CustomerAccountAccessError,
   customerAccountUnavailable,
   type LinkedCustomerAccount,
 } from "@/features/account/customer-account";
+import {
+  type AnalyticsConsentDecisionRecord,
+  AnalyticsConsentLedger,
+  type AnalyticsConsentMirrorRecord,
+  AnalyticsConsentUnavailable,
+} from "@/features/legal/backend/analytics-consent-ledger";
 import {
   MarketingConsentLedger,
   type MarketingConsentRecord,
@@ -39,6 +47,7 @@ import {
 } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
 import { getAccountMarketingManagementContext } from "@/features/legal/backend/marketing-preferences-authority";
+import { getLegalDocumentVersion } from "@/features/legal/document-version";
 import type { MarketingConsentStatus } from "@/features/legal/marketing-consent-status";
 import { ReferralServiceMock } from "@/features/referrals/referral.service.mock";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
@@ -994,5 +1003,361 @@ describe("requestDeletion", () => {
 
     expect(response.status).toBe(400);
     expect(deletions).toEqual([]);
+  });
+});
+
+type CurrentAnalyticsDecision = Effect.Success<
+  ReturnType<AnalyticsConsentLedger["Service"]["currentDecision"]>
+>;
+
+/** The account's current analytics decision, by default a current-notice grant. */
+const currentAnalyticsDecision = (
+  overrides: Partial<
+    NonNullable<Option.Option.Value<CurrentAnalyticsDecision>>
+  > = {}
+): CurrentAnalyticsDecision =>
+  Option.some({
+    decision: "grant",
+    documentHash: getLegalDocumentVersion("cs-CZ", "privacy-policy"),
+    locale: "cs-CZ",
+    decidedAt: Temporal.Instant.from("2026-11-05T10:00:00.123456Z"),
+    source: "preference",
+    ...overrides,
+  });
+
+/**
+ * Account services over an analytics consent ledger whose current decision
+ * is `current`, that takes a mirrored choice when `mirrorTakes`, records
+ * decisions at `recordedAt`, and fails every call when `unavailable`; and an
+ * anonymisation that records the accounts it is requested for.
+ */
+const analyticsConsentServices = ({
+  current = Option.none(),
+  mirrorTakes = true,
+  unavailable = false,
+}: {
+  readonly current?: CurrentAnalyticsDecision;
+  readonly mirrorTakes?: boolean;
+  readonly unavailable?: boolean;
+} = {}) => {
+  const mirrored: AnalyticsConsentMirrorRecord[] = [];
+  const recorded: AnalyticsConsentDecisionRecord[] = [];
+  const anonymised: CustomerAccountId[] = [];
+  const recordedAt = Temporal.Instant.from("2026-11-08T10:00:00.123456Z");
+  const ledgerDown = Effect.fail(
+    new AnalyticsConsentUnavailable({ cause: new Error("ledger down") })
+  );
+  const services = {
+    analyticsConsentLedger: Layer.succeed(AnalyticsConsentLedger, {
+      mirror: (input) =>
+        unavailable
+          ? ledgerDown
+          : Effect.sync(() => {
+              mirrored.push(input);
+              return mirrorTakes;
+            }),
+      record: (input) =>
+        unavailable
+          ? ledgerDown
+          : Effect.sync(() => {
+              recorded.push(input);
+              return recordedAt;
+            }),
+      currentDecision: () =>
+        unavailable ? ledgerDown : Effect.succeed(current),
+    }),
+    analyticsPersonAnonymisation: Layer.mock(AnalyticsPersonAnonymisation, {
+      anonymiseWithdrawnAccount: (accountId) =>
+        Effect.sync(() => {
+          anonymised.push(accountId);
+        }),
+    }),
+  };
+  return { mirrored, recorded, anonymised, services };
+};
+
+/** A session whose account's deletion is pending. */
+const deletingSession = { ...testCustomerSession, deletionRequested: true };
+
+const deletionPending = {
+  _tag: "CustomerAccountLinkRequired",
+  reason: "deletion-pending",
+};
+
+describe("syncAnalyticsConsent", () => {
+  const syncAnalyticsConsent = (
+    choice: { readonly analytics: boolean; readonly decidedAt: string } | null
+  ): CustomerApiCall => ({
+    method: "POST",
+    path: "/account/analytics-consent",
+    body: { choice, locale: "en-US" },
+  });
+  const acceptingApp = syncAnalyticsConsent({
+    analytics: true,
+    decidedAt: "2026-11-02T09:30:00.000Z",
+  });
+
+  testCustomerEndpointGuards(acceptingApp);
+
+  test("mirrors the app's choice as an app mirror, dated when the app made it, and answers unchanged", async () => {
+    const { mirrored, services } = analyticsConsentServices();
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(customerApiRequest(acceptingApp));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ kind: "unchanged" });
+    expect(
+      mirrored.map(({ decidedAt, ...record }) => ({
+        ...record,
+        decidedAt: Option.getOrUndefined(Option.map(decidedAt, String)),
+      }))
+    ).toEqual([
+      {
+        accountId: testCustomerSession.accountId,
+        decision: "grant",
+        locale: "en-US",
+        source: "app_mirror",
+        decidedAt: "2026-11-02T09:30:00Z",
+      },
+    ]);
+  });
+
+  test("answers the account's withdrawal the accepting app didn't outrank, at its instant to the millisecond", async () => {
+    const { services } = analyticsConsentServices({
+      current: currentAnalyticsDecision({ decision: "withdraw" }),
+      mirrorTakes: false,
+    });
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(customerApiRequest(acceptingApp));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      kind: "withdraw",
+      decidedAt: "2026-11-05T10:00:00.123Z",
+    });
+  });
+
+  test("answers unchanged to a declining app, whatever the account decided", async () => {
+    const { services } = analyticsConsentServices({
+      current: currentAnalyticsDecision(),
+      mirrorTakes: false,
+    });
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest(
+        syncAnalyticsConsent({
+          analytics: false,
+          decidedAt: "2026-11-02T09:30:00.000Z",
+        })
+      )
+    );
+
+    expect(await response.json()).toEqual({ kind: "unchanged" });
+  });
+
+  test("answers the account's current-notice grant to an app without a choice, mirroring nothing", async () => {
+    const { mirrored, services } = analyticsConsentServices({
+      current: currentAnalyticsDecision(),
+    });
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest(syncAnalyticsConsent(null))
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      kind: "grant",
+      decidedAt: "2026-11-05T10:00:00.123Z",
+    });
+    expect(mirrored).toEqual([]);
+  });
+
+  test("refuses a choice whose date names no instant", async () => {
+    const { mirrored, services } = analyticsConsentServices();
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest(
+        syncAnalyticsConsent({ analytics: true, decidedAt: "yesterday" })
+      )
+    );
+
+    expect(response.status).toBe(400);
+    expect(mirrored).toEqual([]);
+  });
+
+  test("refuses an account whose deletion is pending, mirroring nothing", async () => {
+    const { mirrored, services } = analyticsConsentServices();
+    const api = makeCustomerApiTestServer({
+      session: deletingSession,
+      services,
+    });
+
+    const response = await api.handle(customerApiRequest(acceptingApp));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual(deletionPending);
+    expect(mirrored).toEqual([]);
+  });
+
+  test("answers unavailable when the ledger can't be used", async () => {
+    const { services } = analyticsConsentServices({ unavailable: true });
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(customerApiRequest(acceptingApp));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerServiceUnavailable",
+    });
+  });
+});
+
+describe("getAnalyticsPreference", () => {
+  const getAnalyticsPreference: CustomerApiCall = {
+    method: "GET",
+    path: "/account/analytics-preference",
+  };
+
+  testCustomerEndpointGuards(getAnalyticsPreference);
+
+  test("answers granted for a grant under any notice, and not granted for a withdrawal or no decision", async () => {
+    const granted = async (current: CurrentAnalyticsDecision) => {
+      const { services } = analyticsConsentServices({ current });
+      const response = await makeCustomerApiTestServer({ services }).handle(
+        customerApiRequest(getAnalyticsPreference)
+      );
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+
+    expect(
+      await granted(
+        currentAnalyticsDecision({ documentHash: "an-earlier-privacy-notice" })
+      )
+    ).toEqual({ granted: true });
+    expect(
+      await granted(currentAnalyticsDecision({ decision: "withdraw" }))
+    ).toEqual({ granted: false });
+    expect(await granted(Option.none())).toEqual({ granted: false });
+  });
+
+  test("refuses an account whose deletion is pending", async () => {
+    const { services } = analyticsConsentServices({
+      current: currentAnalyticsDecision(),
+    });
+    const api = makeCustomerApiTestServer({
+      session: deletingSession,
+      services,
+    });
+
+    const response = await api.handle(
+      customerApiRequest(getAnalyticsPreference)
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual(deletionPending);
+  });
+
+  test("answers unavailable, never not granted, when the ledger can't be read", async () => {
+    const { services } = analyticsConsentServices({ unavailable: true });
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest(getAnalyticsPreference)
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerServiceUnavailable",
+    });
+  });
+});
+
+describe("saveAnalyticsPreference", () => {
+  const saveAnalyticsPreference = (granted: boolean): CustomerApiCall => ({
+    method: "PUT",
+    path: "/account/analytics-preference",
+    body: { granted, locale: "en-US" },
+  });
+
+  testCustomerEndpointGuards(saveAnalyticsPreference(false));
+
+  test("records a grant from preferences now and answers its instant to the millisecond", async () => {
+    const { recorded, anonymised, services } = analyticsConsentServices();
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest(saveAnalyticsPreference(true))
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      granted: true,
+      decidedAt: "2026-11-08T10:00:00.123Z",
+    });
+    expect(recorded).toEqual([
+      {
+        accountId: testCustomerSession.accountId,
+        decision: "grant",
+        locale: "en-US",
+        source: "preference",
+      },
+    ]);
+    expect(anonymised).toEqual([]);
+  });
+
+  test("records a withdrawal and requests the anonymisation of the account's PostHog person", async () => {
+    const { recorded, anonymised, services } = analyticsConsentServices();
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest(saveAnalyticsPreference(false))
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      granted: false,
+      decidedAt: "2026-11-08T10:00:00.123Z",
+    });
+    expect(
+      recorded.map(({ decision, source }) => ({ decision, source }))
+    ).toEqual([{ decision: "withdraw", source: "preference" }]);
+    expect(anonymised).toEqual([testCustomerSession.accountId]);
+  });
+
+  test("refuses an account whose deletion is pending, recording nothing", async () => {
+    const { recorded, anonymised, services } = analyticsConsentServices();
+    const api = makeCustomerApiTestServer({
+      session: deletingSession,
+      services,
+    });
+
+    const response = await api.handle(
+      customerApiRequest(saveAnalyticsPreference(false))
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual(deletionPending);
+    expect(recorded).toEqual([]);
+    expect(anonymised).toEqual([]);
+  });
+
+  test("answers unavailable when the decision can't be recorded, requesting no anonymisation", async () => {
+    const { anonymised, services } = analyticsConsentServices({
+      unavailable: true,
+    });
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(
+      customerApiRequest(saveAnalyticsPreference(false))
+    );
+
+    expect(response.status).toBe(503);
+    expect(anonymised).toEqual([]);
   });
 });

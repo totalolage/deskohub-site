@@ -5,7 +5,9 @@ import {
   liveAccountServiceLayers,
   runAccountReleaseLayers,
 } from "@/features/account/backend/account-state-capabilities";
+import { AnalyticsPersonAnonymisation } from "@/features/account/backend/analytics-person-anonymisation";
 import { CustomerAccountDeletionEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
+import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
 
@@ -29,6 +31,16 @@ export type CustomerAccountServiceLayers = Omit<
   >;
   /** Better Auth's delete-user endpoint. */
   readonly accountDeletion: Layer.Layer<CustomerAccountDeletionEndpoint>;
+  /** The ledger of the account's analytics consent decisions. */
+  readonly analyticsConsentLedger: Layer.Layer<
+    AnalyticsConsentLedger,
+    Layer.Error<typeof AnalyticsConsentLedger.Live>
+  >;
+  /** The PostHog person anonymisation an analytics withdrawal requests. */
+  readonly analyticsPersonAnonymisation: Layer.Layer<
+    AnalyticsPersonAnonymisation,
+    Layer.Error<typeof AnalyticsPersonAnonymisation.Live>
+  >;
 };
 
 interface ICustomerAccountLayers {
@@ -53,6 +65,8 @@ export class CustomerAccountLayers extends Context.Service<
       marketingPreferences: MarketingPreferences.AccountScoped,
       consentLedger: MarketingConsentLedger.Live,
       accountDeletion: CustomerAccountDeletionEndpoint.Default,
+      analyticsConsentLedger: AnalyticsConsentLedger.Live,
+      analyticsPersonAnonymisation: AnalyticsPersonAnonymisation.Live,
     },
     releases: runAccountReleaseLayers,
   });

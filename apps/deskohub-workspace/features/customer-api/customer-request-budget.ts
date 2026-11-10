@@ -79,6 +79,11 @@ export const customerRequestBudgetClasses = {
     acknowledgeSignupReferral: "dotypos-mutation",
     // Deletion expires the Dotypos customer.
     requestDeletion: "dotypos-mutation",
+    // The analytics consent ledger and Better Auth; a withdrawal's PostHog
+    // person anonymisation runs after the response and never calls Dotypos.
+    syncAnalyticsConsent: "workspace-only",
+    getAnalyticsPreference: "workspace-only",
+    saveAnalyticsPreference: "workspace-only",
   },
   reservations: {
     // Reservation details are read live from Dotypos; the status refresh
