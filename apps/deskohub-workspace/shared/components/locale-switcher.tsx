@@ -18,7 +18,10 @@ import {
   locales,
   withLocalePrefixAndSearch,
 } from "@/features/i18n";
-import { languageNames } from "@/features/i18n/language-labels";
+import {
+  languageNameStyle,
+  languageNames,
+} from "@/features/i18n/language-labels";
 import { Button } from "@/shared/components/ui/button";
 import {
   DropdownMenu,
@@ -196,7 +199,9 @@ function LanguageMenuWithLinks({
                   !isCurrent && "invisible"
                 )}
               />
-              <span lang={locale}>{languageNames[locale]}</span>
+              <span lang={locale} style={languageNameStyle(locale)}>
+                {languageNames[locale]}
+              </span>
             </>
           );
           return isCurrent ? (
@@ -274,6 +279,7 @@ function LanguageLinkList({
             {locale === currentLocale || !getLocaleHref ? (
               <span
                 lang={locale}
+                style={languageNameStyle(locale)}
                 aria-current={locale === currentLocale ? "true" : undefined}
                 className={cn(
                   locale === currentLocale && "font-semibold text-white"
@@ -286,6 +292,7 @@ function LanguageLinkList({
                 href={getLocaleHref(locale)}
                 hrefLang={locale}
                 lang={locale}
+                style={languageNameStyle(locale)}
                 onClick={(event) => selectLocale?.(locale, event)}
                 className="transition-colors hover:text-sunset-yellow"
               >

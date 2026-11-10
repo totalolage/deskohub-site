@@ -4027,7 +4027,7 @@
       },
       "CustomerLocale": {
         "type": "string",
-        "enum": ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK"]
+        "enum": ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK", "vi-VN", "hi-IN"]
       },
       "CustomerLocaleUpdate": {
         "type": "object",

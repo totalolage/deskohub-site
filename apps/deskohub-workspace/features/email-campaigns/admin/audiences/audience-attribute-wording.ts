@@ -218,6 +218,8 @@ const audienceLocaleNames = {
   "de-DE": m.emailCampaignsAudienceLocaleNameGerman,
   "uk-UA": m.emailCampaignsAudienceLocaleNameUkrainian,
   "sk-SK": m.emailCampaignsAudienceLocaleNameSlovak,
+  "vi-VN": m.emailCampaignsAudienceLocaleNameVietnamese,
+  "hi-IN": m.emailCampaignsAudienceLocaleNameHindi,
 } as const satisfies Record<Locale, AudienceMessage>;
 
 /**

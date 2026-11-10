@@ -60,6 +60,8 @@ const openGraphLocales = {
   "de-DE": "de_DE",
   "uk-UA": "uk_UA",
   "sk-SK": "sk_SK",
+  "vi-VN": "vi_VN",
+  "hi-IN": "hi_IN",
 } as const;
 
 const pageMetadata = (pathname: (typeof publicPages)[number]["pathname"]) =>
@@ -93,6 +95,8 @@ describe("public page metadata", () => {
             "de-DE": `https://workspace.deskohub.cz/de-DE${suffix}`,
             "uk-UA": `https://workspace.deskohub.cz/uk-UA${suffix}`,
             "sk-SK": `https://workspace.deskohub.cz/sk-SK${suffix}`,
+            "vi-VN": `https://workspace.deskohub.cz/vi-VN${suffix}`,
+            "hi-IN": `https://workspace.deskohub.cz/hi-IN${suffix}`,
             "x-default": `https://workspace.deskohub.cz${pathname}`,
           },
         });

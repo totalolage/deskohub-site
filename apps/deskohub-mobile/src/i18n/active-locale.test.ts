@@ -42,7 +42,7 @@ describe("activeLocale without a choice in the app", () => {
   test("is the launch locale for a saved locale the app doesn't ship", () => {
     const session = toAuthSessionState({
       data: {
-        user: { id: "ada", email: testEmailAddress("ada"), locale: "vi-VN" },
+        user: { id: "ada", email: testEmailAddress("ada"), locale: "fr-FR" },
         session: { createdAt: signedInAt },
       },
       isPending: false,

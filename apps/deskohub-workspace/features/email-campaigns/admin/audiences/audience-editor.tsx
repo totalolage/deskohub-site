@@ -63,6 +63,8 @@ const singleLocaleNotes = {
   "de-DE": m.emailCampaignsAudienceEditorSingleLocaleGerman,
   "uk-UA": m.emailCampaignsAudienceEditorSingleLocaleUkrainian,
   "sk-SK": m.emailCampaignsAudienceEditorSingleLocaleSlovak,
+  "vi-VN": m.emailCampaignsAudienceEditorSingleLocaleVietnamese,
+  "hi-IN": m.emailCampaignsAudienceEditorSingleLocaleHindi,
 } as const satisfies Record<Locale, (...args: never) => string>;
 
 type Feedback = {

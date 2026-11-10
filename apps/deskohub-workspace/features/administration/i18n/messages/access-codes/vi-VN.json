@@ -1,0 +1,72 @@
+{
+  "accessCodesPageTitle": "Tạo mã ra vào",
+  "accessCodesFormLoading": "Đang tải biểu mẫu mã ra vào",
+  "accessCodesFormName": "Tạo mã ra vào",
+  "accessCodesNameLabel": "Tên",
+  "accessCodesNameRequired": "Vui lòng nhập tên cho mã ra vào này.",
+  "accessCodesNameTooLong": [
+    {
+      "declarations": [
+        "input maximum",
+        "local maximumPlural = maximum: plural",
+        "local formattedMaximum = maximum: number"
+      ],
+      "selectors": ["maximumPlural"],
+      "match": {
+        "maximumPlural=other": "Vui lòng dùng tối đa {formattedMaximum} ký tự."
+      }
+    }
+  ],
+  "accessCodesWindowLegend": "Khung giờ ra vào ({timeZone})",
+  "accessCodesStartsLabel": "Bắt đầu",
+  "accessCodesStartsTimeLabel": "Giờ bắt đầu",
+  "accessCodesStartRequired": "Vui lòng chọn giờ bắt đầu.",
+  "accessCodesStartInvalid": "Vui lòng chọn giờ bắt đầu hợp lệ, tròn giờ.",
+  "accessCodesEndsLabel": "Kết thúc",
+  "accessCodesEndsTimeLabel": "Giờ kết thúc",
+  "accessCodesEndRequired": "Vui lòng chọn giờ kết thúc.",
+  "accessCodesEndInvalid": "Vui lòng chọn giờ kết thúc hợp lệ, tròn giờ.",
+  "accessCodesWindowDurationInvalid": [
+    {
+      "declarations": [
+        "input minimum",
+        "input maximum",
+        "local maximumPlural = maximum: plural",
+        "local formattedMinimum = minimum: number",
+        "local formattedMaximum = maximum: number"
+      ],
+      "selectors": ["maximumPlural"],
+      "match": {
+        "maximumPlural=other": "Thời điểm kết thúc phải cách thời điểm bắt đầu từ {formattedMinimum} đến {formattedMaximum} giờ."
+      }
+    }
+  ],
+  "accessCodesDurationSummary": "Thời lượng: {duration}",
+  "accessCodesSubmit": "Tạo mã ra vào",
+  "accessCodesSubmitting": "Đang tạo…",
+  "accessCodesPinShownOnceWarning": "Mã PIN này chỉ hiển thị một lần và không thể lấy lại sau đó. Vui lòng lưu mã ở nơi an toàn trước khi rời trang.",
+  "accessCodesCopyCode": "Sao chép mã",
+  "accessCodesCopied": "Đã sao chép",
+  "accessCodesResultName": "Mã ra vào",
+  "accessCodesResultValidFrom": "Hiệu lực từ",
+  "accessCodesResultValidUntil": "Hiệu lực đến",
+  "accessCodesResultDuration": "Thời lượng",
+  "accessCodesCreateAnother": "Tạo mã ra vào khác",
+  "accessCodesAlreadyCreated": "Mã ra vào này đã được tạo. Mã PIN của mã chỉ hiển thị một lần khi tạo và không thể hiển thị lại.",
+  "accessCodesAmbiguousNotice": "Nhà cung cấp chưa xác nhận mã ra vào này có tồn tại hay không. Lần thử này đã đóng và sẽ không tự động thử lại.",
+  "accessCodesCleanupRequiredNotice": "Kết quả của lần thử trước cho khung giờ này vẫn chưa rõ. Trước khi tạo mã khác, cần xử lý thông tin ra vào có thể còn tồn tại đó ngay trên khóa.",
+  "accessCodesCleanupInstructions": "Trước khi tạo mã khác cho khung giờ này, vui lòng kiểm tra khóa trong ứng dụng Igloohome qua Bluetooth và xóa “{name}” nếu mã này có trên khóa.",
+  "accessCodesCleanupFormName": "Xác nhận đã kiểm tra khóa",
+  "accessCodesCleanupConfirmationLabel": "Tôi xác nhận mã ra vào nêu trên đã được xóa khỏi khóa hoặc không có trên khóa.",
+  "accessCodesCleanupConfirmationRequired": "Vui lòng xác nhận đã kiểm tra khóa trước khi tiếp tục.",
+  "accessCodesStartOver": "Bắt đầu lại",
+  "accessCodesFailureRejected": "Nhà cung cấp đã từ chối mã ra vào này. Vui lòng điều chỉnh thông tin và thử lại.",
+  "accessCodesFailureInProgress": "Mã ra vào này đang được tạo. Vui lòng đợi một lát rồi thử lại.",
+  "accessCodesFailureUnavailable": "Tạm thời không thể tạo mã ra vào. Vui lòng thử lại sau vài phút.",
+  "accessCodesFailureReconciled": "Xác nhận kiểm tra khóa đã được ghi nhận cho lần thử chưa rõ kết quả trước đó; lần thử đó không tạo mã ra vào nào. Vui lòng gửi lại biểu mẫu để tạo mã ra vào.",
+  "accessCodesCreateFailed": "Không thể tạo mã ra vào. Vui lòng thử lại.",
+  "accessCodesServerUnreachable": "Không thể kết nối với máy chủ. Lần thử này vẫn được giữ lại, vì vậy có thể thử lại một cách an toàn.",
+  "accessCodesActionTimedOut": "Máy chủ không phản hồi kịp thời. Vui lòng thử lại.",
+  "accessCodesActionFailedUnexpectedly": "Đã xảy ra lỗi trên máy chủ. Vui lòng thử lại.",
+  "accessCodesAuthenticationRequired": "Yêu cầu quản trị viên đăng nhập."
+}

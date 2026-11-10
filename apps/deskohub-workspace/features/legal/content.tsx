@@ -12,8 +12,10 @@ import { governingLegalLocale } from "./legal-translation-dates";
 import { legalDocuments as czech } from "./locales/cs-CZ/documents";
 import { translation as german } from "./locales/de-DE/documents";
 import { translation as english } from "./locales/en-US/documents";
+import { translation as hindi } from "./locales/hi-IN/documents";
 import { translation as slovak } from "./locales/sk-SK/documents";
 import { translation as ukrainian } from "./locales/uk-UA/documents";
+import { translation as vietnamese } from "./locales/vi-VN/documents";
 
 export type LegalDocumentContent = LegalDocumentSummary &
   LegalDocumentBody & {
@@ -26,6 +28,8 @@ const translations = {
   "de-DE": german,
   "uk-UA": ukrainian,
   "sk-SK": slovak,
+  "vi-VN": vietnamese,
+  "hi-IN": hindi,
 } satisfies Record<
   Exclude<Locale, typeof governingLegalLocale>,
   LegalDocumentTranslation

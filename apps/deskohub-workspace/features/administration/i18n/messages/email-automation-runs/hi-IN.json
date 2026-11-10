@@ -1,0 +1,291 @@
+{
+  "emailAutomationRunsStepLabel": "चरण {position} · {step}",
+  "emailAutomationRunsStepById": "चरण “{stepId}”",
+  "emailAutomationRunsStepCondition": "शर्त",
+  "emailAutomationRunsStepSend": "Email भेजें",
+  "emailAutomationRunsStepWaitUntil": "{target} तक प्रतीक्षा करें",
+  "emailAutomationRunsStepWaitMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} मिनट प्रतीक्षा करें",
+        "countPlural=other": "{formattedCount} मिनट प्रतीक्षा करें"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} घंटा प्रतीक्षा करें",
+        "countPlural=other": "{formattedCount} घंटे प्रतीक्षा करें"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} दिन प्रतीक्षा करें",
+        "countPlural=other": "{formattedCount} दिन प्रतीक्षा करें"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitWeeks": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} सप्ताह प्रतीक्षा करें",
+        "countPlural=other": "{formattedCount} सप्ताह प्रतीक्षा करें"
+      }
+    }
+  ],
+  "emailAutomationRunsStepWaitMonths": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} महीना प्रतीक्षा करें",
+        "countPlural=other": "{formattedCount} महीने प्रतीक्षा करें"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} मिनट",
+        "countPlural=other": "{formattedCount} मिनट"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} घंटा",
+        "countPlural=other": "{formattedCount} घंटे"
+      }
+    }
+  ],
+  "emailAutomationRunsDurationDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} दिन",
+        "countPlural=other": "{formattedCount} दिन"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeJustNow": "अभी-अभी",
+  "emailAutomationRunsAgeMinutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} मिनट पहले",
+        "countPlural=other": "{formattedCount} मिनट पहले"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeHours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} घंटा पहले",
+        "countPlural=other": "{formattedCount} घंटे पहले"
+      }
+    }
+  ],
+  "emailAutomationRunsAgeDays": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} दिन पहले",
+        "countPlural=other": "{formattedCount} दिन पहले"
+      }
+    }
+  ],
+  "emailAutomationRunsHealthRunning": "ऑटोमेशन इंजन चल रहा है · अंतिम शेड्यूलिंग {lastPlanned}",
+  "emailAutomationRunsHealthBehind": "ऑटोमेशन इंजन पर ध्यान देना ज़रूरी है · अंतिम शेड्यूलिंग {lastPlanned}",
+  "emailAutomationRunsHealthNotPlannedYet": "अभी तक नहीं",
+  "emailAutomationRunsHealthUnavailable": "ऑटोमेशन इंजन की स्थिति अभी लोड नहीं की जा सकती।",
+  "emailAutomationRunsHealthWarningTitle": "ऑटोमेशन इंजन पीछे चल रहा है। सभी स्वचालित अभियानों के रन देर से शुरू हो सकते हैं या देर से email भेज सकते हैं।",
+  "emailAutomationRunsHealthCampaignTitle": "इस अभियान का शेड्यूल अभी व्यस्त है।",
+  "emailAutomationRunsHealthPlannerStale": "शेड्यूलर पिछली बार {age} चला था।",
+  "emailAutomationRunsHealthPlannerNeverRan": "शेड्यूलर अभी तक नहीं चला है।",
+  "emailAutomationRunsHealthSweepLagging": "बुकिंग की शुरुआत और समाप्ति का पता {duration} की देरी से चल रहा है।",
+  "emailAutomationRunsHealthSweepLaggingUnknown": "बुकिंग की शुरुआत और समाप्ति का पता देरी से चल रहा है।",
+  "emailAutomationRunsHealthReconcileStalled": "बुकिंग की शुरुआत और समाप्ति की हर घंटे होने वाली जाँच {duration} पीछे है।",
+  "emailAutomationRunsHealthReconcileStalledUnknown": "बुकिंग की शुरुआत और समाप्ति की हर घंटे होने वाली जाँच नहीं चल रही है।",
+  "emailAutomationRunsHealthEventBacklog": "ग्राहकों के इवेंट प्रोसेस होने की प्रतीक्षा में हैं; सबसे पुराना इवेंट {date} का है।",
+  "emailAutomationRunsHealthEventBacklogUnknown": "ग्राहकों के इवेंट प्रोसेस होने की प्रतीक्षा में हैं।",
+  "emailAutomationRunsHealthUnitBacklog": "निर्धारित काम शुरू होने की प्रतीक्षा में है; सबसे पुराना काम {date} से प्रतीक्षा कर रहा है।",
+  "emailAutomationRunsHealthUnitBacklogUnknown": "निर्धारित काम शुरू होने की प्रतीक्षा में है।",
+  "emailAutomationRunsHealthScheduleLagging": "शेड्यूल वाले अभियान देर से शुरू हो रहे हैं।",
+  "emailAutomationRunsHealthFallingBehind": "शेड्यूल वाला कोई अभियान एक शुरुआत को प्रोसेस करने में अगली शुरुआत तक के समय से ज़्यादा समय ले रहा है।",
+  "emailAutomationRunsHealthUnrecognized": "ऑटोमेशन इंजन ऐसी चेतावनी दे रहा है जिसे यह पेज नहीं पहचानता: {code}।",
+  "emailAutomationRunsHealthCampaignScheduleLag": "इस अभियान का शेड्यूल {duration} पीछे है।",
+  "emailAutomationRunsHealthCampaignEnteringFire": "यह अभियान {date} की शुरुआत के लिए रन बना रहा है: {total} में से {done} भाग पूरे हुए।",
+  "emailAutomationRunsHealthCampaignFallingBehind": "इस अभियान की पिछली शुरुआत की अवधि {duration} रही, जो अगली शुरुआत तक के {interval} से ज़्यादा है।",
+  "emailAutomationRunsHealthCampaignFallingBehindUnknown": "इस अभियान की पिछली शुरुआत की अवधि {duration} रही, जो अगली शुरुआत तक के समय से ज़्यादा है।",
+  "emailAutomationRunsCountsTitle": "स्थिति के अनुसार रन",
+  "emailAutomationRunsCountsScopeAll": "सभी वर्ज़न",
+  "emailAutomationRunsCountsScopeVersion": "वर्ज़न {versionNumber}",
+  "emailAutomationRunsCountsWaiting": "प्रतीक्षा में",
+  "emailAutomationRunsCountsSendingNow": "अभी भेजे जा रहे हैं",
+  "emailAutomationRunsCountsSent": "भेजे गए",
+  "emailAutomationRunsCountsFailed": "विफल",
+  "emailAutomationRunsCountsSkipped": "छोड़े गए",
+  "emailAutomationRunsCountsArchived": "संग्रहित करने से समाप्त",
+  "emailAutomationRunsOutcomeSent": "भेजा गया",
+  "emailAutomationRunsOutcomeUnconfirmed": "शायद भेजा गया",
+  "emailAutomationRunsOutcomeConditionFailed": "शर्त पर समाप्त",
+  "emailAutomationRunsOutcomeSkipped": "छोड़ा गया",
+  "emailAutomationRunsOutcomeSkippedBecause": "छोड़ा गया · {reason}",
+  "emailAutomationRunsOutcomeFailed": "विफल",
+  "emailAutomationRunsOutcomeFailedBecause": "विफल · {reason}",
+  "emailAutomationRunsOutcomeWithdrawn": "ट्रिगर वापस लिया गया",
+  "emailAutomationRunsOutcomeArchived": "संग्रहित करने से समाप्त",
+  "emailAutomationRunsSkipOutsideTestDomain": "टेस्ट प्राप्तकर्ता नहीं",
+  "emailAutomationRunsSkipConsentWithdrawn": "सहमति वापस ली गई",
+  "emailAutomationRunsSkipMissingEmail": "email पता नहीं है",
+  "emailAutomationRunsSkipInvalidEmail": "email पता अमान्य है",
+  "emailAutomationRunsSkipDeletedCustomer": "ग्राहक हटाया गया",
+  "emailAutomationRunsSkipMissingFromDotypos": "ग्राहक Dotypos में नहीं है",
+  "emailAutomationRunsFailureDeliveryRefused": "डिलीवरी अस्वीकार की गई",
+  "emailAutomationRunsFailureEvaluationUnavailable": "मूल्यांकन उपलब्ध नहीं",
+  "emailAutomationRunsStatusWaitingUntil": "{date} तक प्रतीक्षा में",
+  "emailAutomationRunsStatusInProgress": "जारी है",
+  "emailAutomationRunsStatusSending": "भेजा जा रहा है",
+  "emailAutomationRunsStateActive": "जारी है",
+  "emailAutomationRunsStateSending": "भेजा जा रहा है",
+  "emailAutomationRunsStateEnded": "समाप्त",
+  "emailAutomationRunsFilterState": "स्थिति",
+  "emailAutomationRunsFilterStateAny": "कोई भी स्थिति",
+  "emailAutomationRunsFilterOutcome": "परिणाम",
+  "emailAutomationRunsFilterOutcomeAny": "कोई भी परिणाम",
+  "emailAutomationRunsFilterSkipReason": "छोड़ने का कारण",
+  "emailAutomationRunsFilterSkipReasonAny": "कोई भी कारण",
+  "emailAutomationRunsFilterStep": "चरण",
+  "emailAutomationRunsFilterStepAny": "कोई भी चरण",
+  "emailAutomationRunsFilterVersion": "वर्ज़न",
+  "emailAutomationRunsFilterVersionAll": "सभी वर्ज़न",
+  "emailAutomationRunsFilterCustomer": "ग्राहक",
+  "emailAutomationRunsFilterCustomerPlaceholder": "Dotypos में ग्राहक ID",
+  "emailAutomationRunsFilterApply": "रन दिखाएँ",
+  "emailAutomationRunsFilterClear": "फ़िल्टर हटाएँ",
+  "emailAutomationRunsVersion": "वर्ज़न {versionNumber}",
+  "emailAutomationRunsVersionLive": "वर्ज़न {versionNumber} (सक्रिय)",
+  "emailAutomationRunsListControls": "रन सूची के नियंत्रण",
+  "emailAutomationRunsListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "इस पेज पर {formattedCount} रन",
+        "countPlural=other": "इस पेज पर {formattedCount} रन"
+      }
+    }
+  ],
+  "emailAutomationRunsListEmpty": "अभी तक कोई रन नहीं है। ऑटोमेशन सक्रिय होने और उसका ट्रिगर शुरू होने पर रन यहाँ दिखेंगे।",
+  "emailAutomationRunsListEmptyFiltered": "इन फ़िल्टर से कोई रन मेल नहीं खाता।",
+  "emailAutomationRunsColumnStarted": "शुरुआत",
+  "emailAutomationRunsColumnCustomer": "ग्राहक",
+  "emailAutomationRunsCustomerProfileNotFound": "Dotypos में नहीं मिला",
+  "emailAutomationRunsCustomerProfileUnavailable": "प्रोफ़ाइल उपलब्ध नहीं",
+  "emailAutomationRunsCustomerContactsUnavailable": "ग्राहकों के नाम अभी Dotypos से लोड नहीं किए जा सकते, इसलिए रन में ग्राहक ID दिखाई जा रही हैं।",
+  "emailAutomationRunsColumnTrigger": "ट्रिगर",
+  "emailAutomationRunsColumnStep": "चरण",
+  "emailAutomationRunsColumnStatus": "स्थिति",
+  "emailAutomationRunsColumnEnded": "समाप्ति",
+  "emailAutomationRunsColumnVersion": "वर्ज़न",
+  "emailAutomationRunsPagination": "रन सूची के पेज",
+  "emailAutomationRunsFirstPage": "पहला पेज",
+  "emailAutomationRunsNextPage": "अगला पेज",
+  "emailAutomationRunsLoadFailed": "रन लॉग लोड नहीं किया जा सका। थोड़ी देर बाद फिर से कोशिश करें।",
+  "emailAutomationRunsCursorInvalid": "पेज का यह लिंक अब मान्य नहीं है। पहले पेज से फिर से शुरू करें।",
+  "emailAutomationRunsBackToList": "सभी रन",
+  "emailAutomationRunsRunTitle": "रन",
+  "emailAutomationRunsTriggeredAt": "{trigger} · {date}",
+  "emailAutomationRunsCurrentStep": "मौजूदा चरण",
+  "emailAutomationRunsEndedAtStep": "किस चरण पर समाप्त हुआ",
+  "emailAutomationRunsNotEnded": "अभी समाप्त नहीं हुआ",
+  "emailAutomationRunsTimelineTitle": "टाइमलाइन",
+  "emailAutomationRunsTimelineLabel": "रन की टाइमलाइन",
+  "emailAutomationRunsEventStarted": "रन शुरू हुआ",
+  "emailAutomationRunsEventConditionPassed": "शर्त पूरी हुई",
+  "emailAutomationRunsEventConditionFailed": "शर्त पूरी नहीं हुई; रन यहीं समाप्त हुआ",
+  "emailAutomationRunsEventConditionFailedClause": "पूरी नहीं हुई: {clause}",
+  "emailAutomationRunsEventWaiting": "{date} तक प्रतीक्षा में",
+  "emailAutomationRunsEventWoke": "प्रतीक्षा समाप्त हुई",
+  "emailAutomationRunsEventDeferred": "ट्रिगर करने वाली विज़िट अभी शुरू नहीं हुई है; {date} को फिर से जाँच होगी",
+  "emailAutomationRunsEventSendQueued": "Email भेजने के लिए कतार में रखा गया",
+  "emailAutomationRunsEventSent": "Email भेजा गया",
+  "emailAutomationRunsEventUnconfirmed": "Email शायद भेजा गया",
+  "emailAutomationRunsEventUnconfirmedDetail": "Email सेवा ने डिलीवरी की पुष्टि नहीं की, इसलिए रन इसे दोबारा नहीं भेजेगा।",
+  "emailAutomationRunsEventWithdrawnDetail": "रन के प्रतीक्षा करते समय ट्रिगर करने वाली बुकिंग रद्द कर दी गई।",
+  "emailAutomationRunsEventArchivedDetail": "रन के चलते समय अभियान संग्रहित कर दिया गया।",
+  "emailAutomationRunsEventUnknown": "दर्ज किया गया इवेंट “{kind}”",
+  "emailAutomationRunsConditionClause": "शर्त का भाग {position}",
+  "emailAutomationRunsConditionInAudience": "सहेजी गई ऑडियंस “{audience}” में शामिल ग्राहक",
+  "emailAutomationRunsConditionNotInAudience": "सहेजी गई ऑडियंस “{audience}” से बाहर के ग्राहक",
+  "emailAutomationRunsConditionAudienceUnknown": "हटाई गई ऑडियंस"
+}

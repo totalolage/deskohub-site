@@ -70,7 +70,7 @@ const deletionPending: CustomerAccountState = {
 };
 
 /** A saved locale a later release may serve, which this contract doesn't. */
-const laterLocale = "vi-VN";
+const laterLocale = "fr-FR";
 
 describe("makeWorkspaceCustomerApiClient", () => {
   test("sends the client header to the customer API path and decodes the account", async () => {
