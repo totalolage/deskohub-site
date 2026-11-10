@@ -323,10 +323,13 @@ describe("LatePaymentRecoveryService with an expired or released hold", () => {
     const result = await harness.recover();
 
     expect(result).toMatchObject({ _tag: "Success", success: "recovered" });
+    // Availability checks the occupied interval of an early-setup booking.
     expect(harness.spies.ensureAvailable).toHaveBeenCalledWith(
       expect.objectContaining({
-        startsAt: "2099-02-03T07:45:00Z",
+        kind: "meeting-room",
+        startsAt: "2099-02-03T08:00:00Z",
         endsAt: "2099-02-03T12:00:00Z",
+        earlySetup: true,
       })
     );
     expect(harness.spies.createReservation).toHaveBeenCalledWith(

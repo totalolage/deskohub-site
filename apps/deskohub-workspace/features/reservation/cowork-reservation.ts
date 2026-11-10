@@ -595,7 +595,7 @@ export const coworkReservationOrderSchema = (defaultPhoneRegion: string) => {
 };
 
 // Public order issuance only produces the current offers.
-export const normalizedCurrentCoworkReservationOrderSchema = Schema.Union([
+const normalizedCurrentCoworkReservationOrderSchema = Schema.Union([
   normalizedOpenSpaceCoworkReservationOrderSchema,
   normalizedReservedDeskCoworkReservationOrderSchema,
 ]);

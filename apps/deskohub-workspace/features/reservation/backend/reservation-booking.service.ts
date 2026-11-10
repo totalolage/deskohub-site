@@ -22,10 +22,14 @@ import type { CustomerAccountSession } from "@/features/account/backend/customer
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { CheckoutAnalytics } from "@/features/checkout/backend/analytics";
 import {
+  type AdvertisementAffirmation,
   buildCheckoutPayPath,
   buildSignedPayState,
   CheckoutPricingService,
+  openSubmittedAdvertisedPriceState,
   type PayStateLinkOptions,
+  type PreparedCustomerQuote,
+  type PriceVerdict,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/checkout";
 import {
@@ -46,7 +50,7 @@ import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-c
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
-import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
+import { getCheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import { defaultPhoneRegion, type Locale, m } from "@/features/i18n";
 import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
@@ -63,24 +67,6 @@ import {
   RememberedReferral,
   type RememberedReferralForBooking,
 } from "@/features/referrals/remembered-referral.service";
-import {
-  getPreparedCoworkCheckoutDetails,
-  type PreparedCoworkAdvertisement,
-  type PreparedCoworkPayState,
-  prepareCoworkAdvertisement,
-} from "@/features/reservation/actions/prepare-cowork-pay-state";
-import {
-  getPreparedMeetingRoomCheckoutDetails,
-  type PreparedMeetingRoomAdvertisement,
-  type PreparedMeetingRoomPayState,
-  prepareMeetingRoomAdvertisement,
-} from "@/features/reservation/actions/prepare-meeting-room-pay-state";
-import {
-  getPreparedOfficeCheckoutDetails,
-  type PreparedOfficeAdvertisement,
-  type PreparedOfficePayState,
-  prepareOfficeAdvertisement,
-} from "@/features/reservation/actions/prepare-office-pay-state";
 import type { PreparePayStateInput } from "@/features/reservation/actions/prepare-pay-state.schema";
 import {
   AgentBookingPaymentInProgressError,
@@ -243,28 +229,26 @@ const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
 );
 const emptyLegalEvidence = decodeLegalEvidenceMap({});
 
-type PreparedAdvertisement =
-  | PreparedCoworkAdvertisement
-  | PreparedMeetingRoomAdvertisement
-  | PreparedOfficeAdvertisement;
+type PreparedAdvertisement = PriceVerdict<AdvertisementAffirmation>;
 
 const prepareAdvertisement = Effect.fn("preparePayState.prepareAdvertisement")(
-  (
+  function* (
     // Advertising prices the selection; it never reads the consent label.
     input: Omit<PayStateSubmission, "marketingConsentSource"> & {
       readonly bookedAt: Temporal.Instant;
     }
-  ) =>
-    Match.value(input.reservation).pipe(
-      Match.discriminatorsExhaustive("kind")({
-        cowork: (reservation) =>
-          prepareCoworkAdvertisement({ ...input, reservation }),
-        "meeting-room": (reservation) =>
-          prepareMeetingRoomAdvertisement({ ...input, reservation }),
-        office: (reservation) =>
-          prepareOfficeAdvertisement({ ...input, reservation }),
-      })
-    )
+  ) {
+    const advertisement = yield* openSubmittedAdvertisedPriceState(
+      input.advertisedPriceToken
+    );
+    const pricing = yield* CheckoutPricingService;
+    return yield* pricing.affirmAdvertisement({
+      advertisement,
+      reservation: input.reservation,
+      locale: input.locale,
+      bookedAt: input.bookedAt,
+    });
+  }
 );
 
 const quotePreparedReservation = Effect.fn(
@@ -282,14 +266,15 @@ const quotePreparedReservation = Effect.fn(
       ? {}
       : { referralCode: input.referralCode };
 
+  const advertised = input.advertisement.priced;
   const prepared = yield* pricing.quoteForCustomer({
-    ...input.advertisement,
+    ...advertised,
     dotyposCustomerId: input.dotyposCustomerId,
     locale: input.locale,
-    affirmedAdvertisement: input.advertisement.discountQuote,
+    affirmedAdvertisement: advertised.discountQuote,
     ...referral,
   });
-  const advertisedSummary = Match.value(input.advertisement).pipe(
+  const advertisedSummary = Match.value(advertised).pipe(
     Match.discriminatorsExhaustive("kind")({
       cowork: (advertisement) =>
         getCoworkCheckoutSummary(
@@ -315,7 +300,8 @@ const quotePreparedReservation = Effect.fn(
     })
   );
   const changedKeys =
-    input.advertisement.changedKeys || prepared.advertisedPriceChanged
+    input.advertisement.status === "pricing_changed" ||
+    prepared.advertisedPriceChanged
       ? getCheckoutSummaryChangedKeys(advertisedSummary, preparedSummary)
       : undefined;
 
@@ -323,31 +309,15 @@ const quotePreparedReservation = Effect.fn(
     ...prepared,
     ...referral,
     requestedDiscountCode:
-      input.advertisement.requestedDiscountCode ?? input.referralCodePrefill,
+      advertised.requestedDiscountCode ?? input.referralCodePrefill,
     changedKeys,
   };
 });
 
-type PreparedPayState =
-  | PreparedCoworkPayState
-  | PreparedMeetingRoomPayState
-  | PreparedOfficePayState;
-
-const getReservationCheckoutDetails = (input: {
-  readonly locale: Locale;
-  readonly prepared: PreparedPayState;
-  readonly legalEvidence: CheckoutDetails["legal"];
-}): CheckoutDetails =>
-  Match.value(input.prepared).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      cowork: (prepared) =>
-        getPreparedCoworkCheckoutDetails({ ...input, prepared }),
-      "meeting-room": (prepared) =>
-        getPreparedMeetingRoomCheckoutDetails({ ...input, prepared }),
-      office: (prepared) =>
-        getPreparedOfficeCheckoutDetails({ ...input, prepared }),
-    })
-  );
+type PreparedPayState = PreparedCustomerQuote & {
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
+  readonly referralCode?: CanonicalPromotionCode;
+};
 
 const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
   function* (input: {
@@ -545,8 +515,8 @@ const prepareReviewSandboxHold = Effect.fn(
     agentClientId: Option.getOrUndefined(
       Option.map(bookingAgent, (agent) => agent.clientId)
     ),
-    reservation: advertisement.reservation,
-    total: advertisement.advertisedQuote.payment.expectedPrice,
+    reservation: advertisement.priced.reservation,
+    total: advertisement.priced.advertisedQuote.payment.expectedPrice,
     bookedAt,
   });
 });
@@ -792,19 +762,15 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
         const referralCustomerFor = (pricedFor: DotyposCustomerId) =>
           accountReferral === undefined ? undefined : pricedFor;
 
+        const reservation = accountCustomer
+          ? { ...input.reservation, ...accountCustomer.contact }
+          : input.reservation;
         const advertiseAt = (at: Temporal.Instant) =>
-          prepareAdvertisement({
-            ...input,
-            ...(accountCustomer && {
-              reservation: { ...input.reservation, ...accountCustomer.contact },
-            }),
-            bookedAt: at,
-          });
+          prepareAdvertisement({ ...input, reservation, bookedAt: at });
         // Submission locks the price: calendar sales are evaluated at this
         // booking moment here and at every later checkout re-check.
         const bookedAt = yield* currentInstant;
         const advertisement = yield* advertiseAt(bookedAt);
-        const reservation = advertisement.reservation;
 
         const checkoutSessionKeys = yield* deriveCheckoutSessionKeys(
           input.checkoutSessionId
@@ -987,9 +953,9 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
               onSome: (agent) => ({ agent }),
             }),
           },
-          checkoutDetails: getReservationCheckoutDetails({
+          checkoutDetails: getCheckoutDetails({
             locale: input.locale,
-            prepared,
+            priced: prepared,
             legalEvidence: emptyLegalEvidence,
           }),
         });

@@ -39,9 +39,6 @@ import {
 } from "@/features/checkout/checkout-identifiers";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import type { Locale } from "@/features/i18n";
-import { ensureCoworkPayStateAvailable } from "@/features/reservation/actions/prepare-cowork-pay-state";
-import { ensureMeetingRoomPayStateAvailable } from "@/features/reservation/actions/prepare-meeting-room-pay-state";
-import { ensureOfficePayStateAvailable } from "@/features/reservation/actions/prepare-office-pay-state";
 import type { PreparePayStateInput } from "@/features/reservation/actions/prepare-pay-state.schema";
 import {
   AgentBookingPaymentInProgressError,
@@ -648,30 +645,6 @@ class CheckoutAttemptUnavailableError extends Data.TaggedError(
   readonly reservation: WorkspaceReservation;
 }> {}
 
-const ensureReservationAvailable = (input: {
-  readonly availability: typeof WorkspaceAvailabilityService.Service;
-  readonly reservation: PreparePayStateInput["reservation"];
-}) =>
-  Match.value(input.reservation).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      cowork: (reservation) =>
-        ensureCoworkPayStateAvailable({
-          availability: input.availability,
-          reservation,
-        }),
-      "meeting-room": (reservation) =>
-        ensureMeetingRoomPayStateAvailable({
-          availability: input.availability,
-          reservation,
-        }),
-      office: (reservation) =>
-        ensureOfficePayStateAvailable({
-          availability: input.availability,
-          reservation,
-        }),
-    })
-  );
-
 /**
  * Cancels the Dotypos hold of a reservation claimed for supersession. A hold
  * Dotypos no longer keeps pending is never cancelled. A failed cancellation
@@ -903,10 +876,7 @@ const supersedeSessionReservation = Effect.fnUntraced(function* (input: {
   }
 
   const cancelledAt = Temporal.Now.instant();
-  return yield* ensureReservationAvailable({
-    availability,
-    reservation: request.reservation,
-  }).pipe(
+  return yield* availability.ensureAvailable(request.reservation).pipe(
     Effect.andThen(
       reservations.completeSupersessionAndCreateDraft({
         cancelledReservationId: claimed.id,
@@ -991,10 +961,7 @@ const createSessionDraft = Effect.fnUntraced(function* (input: {
 }) {
   const { reservations, availability } = input.services;
   const { checkoutSessionId, checkoutAttemptKeys, request } = input;
-  yield* ensureReservationAvailable({
-    availability,
-    reservation: request.reservation,
-  });
+  yield* availability.ensureAvailable(request.reservation);
   const reservationDraft = yield* reservations.createDraft({
     ...request.draft,
     checkoutSessionKey: input.checkoutSessionKey,

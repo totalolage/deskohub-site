@@ -35,6 +35,7 @@ import {
   type SealedStateSealOptions,
   type SealedStateTokenError,
 } from "@/shared/backend/sealed-state";
+import { AdvertisedPriceMismatchError } from "./advertised-price-mismatch";
 import {
   getSubmittedCodeMetadata,
   type PayStateSubmittedCodeMetadata,
@@ -183,14 +184,6 @@ class AdvertisedPriceStateTokenError extends Data.TaggedError(
       Match.exhaustive
     );
 }
-
-export class AdvertisedPriceMismatchError extends Data.TaggedError(
-  "AdvertisedPriceMismatchError"
-)<{
-  readonly reason: "invalid_token" | "input_mismatch";
-  readonly message: string;
-  readonly cause?: unknown;
-}> {}
 
 export const buildAdvertisedPriceState = Effect.fn(
   "advertisedPriceState.build"

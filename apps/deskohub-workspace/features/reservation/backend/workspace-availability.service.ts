@@ -9,14 +9,24 @@ import {
   type InvalidDotyposTableSeats,
 } from "@/features/checkout/backend/reservation";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
-import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
+import {
+  type CoworkReservationDetails,
+  getCoworkReservationIntervalInput,
+} from "@/features/reservation/cowork-reservation";
 import { getMeetingRoomOccupiedInterval } from "@/features/reservation/meeting-room-early-setup";
+import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import { getMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getMeetingRoomDayLastServiceDate,
   getMeetingRoomDayStartTimes,
   type MeetingRoomStartTime,
 } from "@/features/reservation/meeting-room-reservation-time";
+import {
+  getOfficeReservationIntervalInput,
+  type OfficeReservationDetails,
+} from "@/features/reservation/office-reservation";
+import type { ReservationIntervalValidationError } from "@/features/reservation/reservation-interval-domain";
+import { normalizeReservationIntervalFields } from "@/features/reservation/reservation-interval-normalization";
 import {
   coworkReservationKind,
   meetingRoomReservationKind,
@@ -107,6 +117,18 @@ type WorkspaceAvailabilityEnsureQuery =
   | MeetingRoomWorkspaceAvailabilityEnsureQuery
   | OfficeWorkspaceAvailabilityEnsureQuery;
 
+/** The facts of a reservation, of any family, that decide its availability. */
+export type AvailabilityReservation =
+  | Pick<
+      CoworkReservationDetails,
+      "kind" | "date" | "entryTier" | "monitorOption"
+    >
+  | Pick<
+      MeetingRoomReservationDetails,
+      "kind" | "startsAt" | "endsAt" | "earlySetup"
+    >
+  | Pick<OfficeReservationDetails, "kind" | "startsOn" | "endsOn" | "seats">;
+
 export interface IWorkspaceAvailabilityService {
   /**
    * Advisory availability for showing options. Tables, active reservations,
@@ -125,10 +147,19 @@ export interface IWorkspaceAvailabilityService {
   readonly getMeetingRoomStartTimes: (
     input: MeetingRoomStartTimesRequest
   ) => Effect.Effect<MeetingRoomStartTimes, AvailabilityError>;
-  /** Fails unless the reservation is available in live provider data. */
+  /**
+   * Fails unless the reservation is available in live provider data. A
+   * meeting room needs its occupied interval, including any early setup; an
+   * office needs every Prague day it spans.
+   */
   readonly ensureAvailable: (
-    query: WorkspaceAvailabilityEnsureQuery
-  ) => Effect.Effect<void, AvailabilityError | WorkspaceTableUnavailableError>;
+    reservation: AvailabilityReservation
+  ) => Effect.Effect<
+    void,
+    | AvailabilityError
+    | WorkspaceTableUnavailableError
+    | ReservationIntervalValidationError
+  >;
 }
 
 export type WorkspaceAvailabilityOccupancyExclusion = {
@@ -336,7 +367,8 @@ const implementation = Effect.gen(function* () {
   );
 
   const ensureAvailable = Effect.fn("workspaceAvailability.ensureAvailable")(
-    function* (query: WorkspaceAvailabilityEnsureQuery) {
+    function* (reservation: AvailabilityReservation) {
+      const query = yield* getAvailabilityEnsureQuery(reservation);
       yield* Effect.annotateLogsScoped({ query });
       yield* Effect.logInfo("Workspace availability assurance started");
 
@@ -521,6 +553,38 @@ export class WorkspaceAvailabilityService extends Context.Service<
     )
   );
 }
+
+/** The occupancy query that decides whether a reservation is available. */
+const getAvailabilityEnsureQuery = (reservation: AvailabilityReservation) =>
+  Match.value(reservation).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: (cowork) =>
+        Effect.succeed<WorkspaceAvailabilityEnsureQuery>({
+          kind: cowork.kind,
+          date: cowork.date,
+          entryTier: cowork.entryTier,
+          monitorOption: cowork.monitorOption,
+        }),
+      "meeting-room": (meetingRoom) =>
+        Effect.succeed<WorkspaceAvailabilityEnsureQuery>({
+          kind: meetingRoom.kind,
+          ...getMeetingRoomOccupiedInterval(meetingRoom),
+        }),
+      office: (office) =>
+        normalizeReservationIntervalFields(
+          getOfficeReservationIntervalInput(office),
+          workspaceSiteConstants.location.timeZone
+        ).pipe(
+          Effect.map(
+            (interval): WorkspaceAvailabilityEnsureQuery => ({
+              kind: office.kind,
+              ...interval,
+              seats: office.seats,
+            })
+          )
+        ),
+    })
+  );
 
 /**
  * Availability for log annotations: counts for its lists, since the date

@@ -5,16 +5,13 @@ import {
   type DotyposReservationId,
   DotyposService,
 } from "@deskohub/dotypos";
-import { Context, Data, Effect, Layer, Match, Predicate } from "effect";
+import { Context, Data, Effect, Layer, Predicate } from "effect";
 import type { LatePaymentRecovery } from "@/db/schema";
 import type { AccountingDocumentSnapshot } from "@/features/accounting/accounting-document-snapshot";
 import { AccountingDocumentSnapshotRepository } from "@/features/accounting/backend/accounting-document-snapshot.repository";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
-import { ensureCoworkPayStateAvailable } from "@/features/reservation/actions/prepare-cowork-pay-state";
-import { ensureMeetingRoomPayStateAvailable } from "@/features/reservation/actions/prepare-meeting-room-pay-state";
-import { ensureOfficePayStateAvailable } from "@/features/reservation/actions/prepare-office-pay-state";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
   type WorkspaceReservation,
@@ -176,27 +173,6 @@ const reconstructReservation = (
   }
   return null;
 };
-
-const ensureAvailable = (
-  availability: typeof WorkspaceAvailabilityService.Service,
-  reservation: WorkspaceTableAssignmentReservation
-) =>
-  Match.value(reservation).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      cowork: (cowork) =>
-        ensureCoworkPayStateAvailable({
-          availability,
-          reservation: cowork,
-        }),
-      "meeting-room": (meetingRoom) =>
-        ensureMeetingRoomPayStateAvailable({
-          availability,
-          reservation: meetingRoom,
-        }),
-      office: (office) =>
-        ensureOfficePayStateAvailable({ availability, reservation: office }),
-    })
-  );
 
 /** Why an original hold Dotypos neither holds NEW nor cancelled needs review. */
 const unreleasableOriginalHoldFailureCode = (
@@ -412,30 +388,29 @@ export class LatePaymentRecoveryService extends Context.Service<
           };
         }
         const { reservation, recreated } = input;
-        const created = yield* ensureAvailable(
-          availability,
-          recreated.reservation
-        ).pipe(
-          Effect.andThen(
-            createWorkspaceDotyposReservation({
-              paymentOrderId: reservation.id,
-              dotyposCustomerId: reservation.dotyposCustomerId,
-              checkoutDetails: recreated.checkoutDetails,
-              reservation: recreated.reservation,
-              status: "CONFIRMED",
+        const created = yield* availability
+          .ensureAvailable(recreated.reservation)
+          .pipe(
+            Effect.andThen(
+              createWorkspaceDotyposReservation({
+                paymentOrderId: reservation.id,
+                dotyposCustomerId: reservation.dotyposCustomerId,
+                checkoutDetails: recreated.checkoutDetails,
+                reservation: recreated.reservation,
+                status: "CONFIRMED",
+              })
+            ),
+            Effect.provideService(DotyposService, dotypos),
+            Effect.provideService(
+              WorkspaceTableAssignmentService,
+              tableAssignments
+            ),
+            Effect.map((replacement) => replacement.id),
+            Effect.catchTags({
+              WorkspaceTableUnavailableError: () => Effect.succeed(null),
+              TableAssignmentUnavailableError: () => Effect.succeed(null),
             })
-          ),
-          Effect.provideService(DotyposService, dotypos),
-          Effect.provideService(
-            WorkspaceTableAssignmentService,
-            tableAssignments
-          ),
-          Effect.map((replacement) => replacement.id),
-          Effect.catchTags({
-            WorkspaceTableUnavailableError: () => Effect.succeed(null),
-            TableAssignmentUnavailableError: () => Effect.succeed(null),
-          })
-        );
+          );
         return created === null
           ? null
           : { replacementId: created, replacementState: "confirmed" as const };
