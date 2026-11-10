@@ -38,10 +38,16 @@ export const releaseGateForRun = <Self>(
     // feature-flag service and with it one evaluation of the run's flags.
     Effect.contextWith((context: Context.Context<Scope.Scope>) =>
       cached(
-        Layer.buildWithMemoMap(
-          gate.Live,
-          Layer.CurrentMemoMap.getOrCreate(context),
-          Context.get(context, Scope.Scope)
+        // Suspended because constructing a layer's build already claims its
+        // memoized dependencies in the memo map, which only running it
+        // releases: claimed eagerly, an unread gate would leave every later
+        // gate of the run waiting on their shared feature-flag service.
+        Effect.suspend(() =>
+          Layer.buildWithMemoMap(
+            gate.Live,
+            Layer.CurrentMemoMap.getOrCreate(context),
+            Context.get(context, Scope.Scope)
+          )
         ).pipe(
           Effect.flatMap((services) =>
             gate.isOpen.pipe(Effect.provideContext(services))
