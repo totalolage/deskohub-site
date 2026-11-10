@@ -124,6 +124,32 @@ describe("locale registry", () => {
     });
   });
 
+  test("records Vietnamese and Hindi", () => {
+    // Nexi's hosted page has neither, so their readers pay in English.
+    expect(getLocaleDefinition("vi-VN")).toEqual({
+      tag: "vi-VN",
+      language: "vi",
+      region: "VN",
+      nativeName: "Tiếng Việt",
+      direction: "ltr",
+      script: "latin-vietnamese",
+      fallbackChain: ["en-US", "cs-CZ"],
+      nexiLanguage: "eng",
+      phoneRegion: "VN",
+    });
+    expect(getLocaleDefinition("hi-IN")).toEqual({
+      tag: "hi-IN",
+      language: "hi",
+      region: "IN",
+      nativeName: "हिन्दी",
+      direction: "ltr",
+      script: "devanagari",
+      fallbackChain: ["en-US", "cs-CZ"],
+      nexiLanguage: "eng",
+      phoneRegion: "IN",
+    });
+  });
+
   test("lists the served locales in registry order", () => {
     expect([...supportedLocales]).toEqual([
       "en-US",
@@ -131,6 +157,8 @@ describe("locale registry", () => {
       "de-DE",
       "uk-UA",
       "sk-SK",
+      "vi-VN",
+      "hi-IN",
     ]);
   });
 });
@@ -156,6 +184,8 @@ describe("matchSupportedLocale", () => {
     expect(matchSupportedLocale("de-AT")).toBe("de-DE");
     expect(matchSupportedLocale("sk")).toBe("sk-SK");
     expect(matchSupportedLocale("uk")).toBe("uk-UA");
+    expect(matchSupportedLocale("vi")).toBe("vi-VN");
+    expect(matchSupportedLocale("hi-IN")).toBe("hi-IN");
   });
 
   test("matches nothing for a language Deskohub doesn't serve", () => {

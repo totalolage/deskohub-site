@@ -152,5 +152,46 @@ export const fixtureDraft: EmailDraftFormValues = {
         "paragraph-2-text": [{ _tag: "Text", text: "Dovidenia" }],
       },
     },
+    "vi-VN": {
+      subject: [
+        { _tag: "Text", text: "Xin chào " },
+        { _tag: "Value", name: "customer_name" },
+      ],
+      preheader: [{ _tag: "Text", text: "Một tin tức tổng hợp" }],
+      texts: {
+        "heading-1-text": [{ _tag: "Text", text: "Chào mừng bạn trở lại" }],
+        "paragraph-1-text": [
+          { _tag: "Text", text: "Xin chào " },
+          { _tag: "Value", name: "customer_name" },
+          { _tag: "Text", text: ", hãy xem " },
+          {
+            _tag: "Text",
+            text: "không gian của chúng tôi",
+            bold: true,
+            link: "link-1",
+          },
+        ],
+        "offer-1-label": [{ _tag: "Text", text: "Nhận ưu đãi" }],
+        "paragraph-2-text": [{ _tag: "Text", text: "Hẹn gặp lại" }],
+      },
+    },
+    "hi-IN": {
+      subject: [
+        { _tag: "Text", text: "नमस्ते " },
+        { _tag: "Value", name: "customer_name" },
+      ],
+      preheader: [{ _tag: "Text", text: "एक कृत्रिम खबर" }],
+      texts: {
+        "heading-1-text": [{ _tag: "Text", text: "वापसी पर स्वागत है" }],
+        "paragraph-1-text": [
+          { _tag: "Text", text: "नमस्ते " },
+          { _tag: "Value", name: "customer_name" },
+          { _tag: "Text", text: ", देखिए " },
+          { _tag: "Text", text: "हमारी जगहें", bold: true, link: "link-1" },
+        ],
+        "offer-1-label": [{ _tag: "Text", text: "ऑफ़र पाएँ" }],
+        "paragraph-2-text": [{ _tag: "Text", text: "फिर मिलेंगे" }],
+      },
+    },
   } satisfies Record<Locale, EmailDraftTranslation>,
 };

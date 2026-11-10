@@ -205,7 +205,7 @@
   "emailsEditorBlockSortDescending": "Giảm dần",
   "emailsEditorBlockLimit": "Hiển thị tối đa",
   "emailsEditorBlockLimitHint": "Nếu để trống, tất cả các mục sẽ được hiển thị.",
-  "emailsEditorEnglishFallbackMissing": "Nếu không có bản dịch tiếng Anh, người nhận tiếng Đức và tiếng Ukraina chưa có bản dịch riêng sẽ nhận bản tiếng Séc.",
+  "emailsEditorEnglishFallbackMissing": "Nếu không có bản dịch tiếng Anh, người nhận có ngôn ngữ chưa có bản dịch riêng và được thay thế bằng tiếng Anh sẽ nhận bản tiếng Séc.",
   "emailsEditorProblemValuePath": "Vui lòng chọn trường khách hàng.",
   "emailsEditorProblemValueSort": "Vui lòng chọn cả trường sắp xếp và chiều sắp xếp.",
   "emailsEditorProblemValueDiscount": "Vui lòng chọn mức giảm giá.",

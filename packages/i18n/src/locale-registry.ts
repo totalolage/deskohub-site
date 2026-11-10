@@ -5,8 +5,16 @@
  * projects list the same tags, which their drift tests check.
  */
 
-/** The writing system a locale's text is set in, which picks font subsets. */
-export type LocaleScript = "latin" | "cyrillic" | "devanagari";
+/**
+ * The writing system a locale's text is set in, which picks its fonts.
+ * Vietnamese is Latin, but its stacked diacritics need a font that covers
+ * them all, so it is its own script here.
+ */
+export type LocaleScript =
+  | "latin"
+  | "latin-vietnamese"
+  | "cyrillic"
+  | "devanagari";
 
 /** The direction a locale's text runs. */
 export type LocaleDirection = "ltr" | "rtl";
@@ -99,6 +107,30 @@ const localeEntries = defineLocaleRegistry([
     fallbackChain: ["cs-CZ", "en-US"],
     nexiLanguage: "slk",
     phoneRegion: "SK",
+  },
+  {
+    tag: "vi-VN",
+    language: "vi",
+    region: "VN",
+    nativeName: "Tiếng Việt",
+    direction: "ltr",
+    script: "latin-vietnamese",
+    fallbackChain: ["en-US", "cs-CZ"],
+    // Nexi's hosted page offers no Vietnamese.
+    nexiLanguage: "eng",
+    phoneRegion: "VN",
+  },
+  {
+    tag: "hi-IN",
+    language: "hi",
+    region: "IN",
+    nativeName: "हिन्दी",
+    direction: "ltr",
+    script: "devanagari",
+    fallbackChain: ["en-US", "cs-CZ"],
+    // Nexi's hosted page offers no Hindi.
+    nexiLanguage: "eng",
+    phoneRegion: "IN",
   },
 ]);
 

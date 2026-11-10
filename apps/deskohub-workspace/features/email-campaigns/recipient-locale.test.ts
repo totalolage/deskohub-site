@@ -160,12 +160,16 @@ describe("campaignContentForRecipient", () => {
   const german = variant("Hallo");
   const ukrainian = variant("Pryvit");
   const slovak = variant("Ahoj SK");
+  const vietnamese = variant("Xin chao");
+  const hindi = variant("Namaste");
   const everyLocale: CampaignLocalizedContent = {
     "cs-CZ": czech,
     "en-US": english,
     "de-DE": german,
     "uk-UA": ukrainian,
     "sk-SK": slovak,
+    "vi-VN": vietnamese,
+    "hi-IN": hindi,
   };
   const chosenLocale = (
     content: CampaignLocalizedContent,

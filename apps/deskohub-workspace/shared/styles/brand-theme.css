@@ -4,12 +4,16 @@
 @import "@deskohub/brand-tokens/brand-theme.css";
 
 @theme inline {
-  --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
+  --font-heading: var(--font-text, var(--font-sculpin)), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
     sans-serif;
-  --font-subheading: var(--font-sculpin), "Avenir Next", "Segoe UI",
+  --font-subheading: var(--font-text, var(--font-sculpin)), "Avenir Next", "Segoe UI",
     "Helvetica Neue", Arial, sans-serif;
-  --font-body: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue",
+  --font-body: var(--font-text, var(--font-sculpin)), "Avenir Next", "Segoe UI", "Helvetica Neue",
     Arial, sans-serif;
+  /* The brand wordmark stays in Sculpin when a locale sets its text in
+     another face (features/i18n/locale-fonts.ts). */
+  --font-wordmark: var(--font-sculpin), "Avenir Next", "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
   --color-navy-blue: var(--brand-navy-blue);
   --color-silver: var(--brand-silver);
   --color-sunset-yellow: var(--brand-sunset-yellow);

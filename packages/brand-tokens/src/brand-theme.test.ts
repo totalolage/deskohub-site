@@ -42,7 +42,7 @@ describe("brand-theme.css", () => {
     expect(variables["--brand-navy-blue"]).toBe("#00024f");
     expect(variables["--radius"]).toBe("0.65rem");
     expect(variables["--font-body"]).toBe(
-      'var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif'
+      'var(--font-text, var(--font-sculpin)), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif'
     );
     expect(variables["--font-body-weight"]).toBe("400");
   });

@@ -191,7 +191,7 @@ describe("Better Auth schema", () => {
     );
     expect(check).toBeDefined();
     expect(new PgDialect().sqlToQuery(check!.value).sql).toBe(
-      `"auth"."user"."locale" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK')`
+      `"auth"."user"."locale" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK', 'vi-VN', 'hi-IN')`
     );
   });
 

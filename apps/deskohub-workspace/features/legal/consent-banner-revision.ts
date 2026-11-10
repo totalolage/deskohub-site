@@ -53,6 +53,18 @@ export const consentBannerDocumentVersions: Readonly<
     "cookie-policy":
       "d9cc345892616de3c3b05e7e1f7e505a7947738423b2ee4276d0757f3d4dbfaf",
   },
+  "vi-VN": {
+    "privacy-policy":
+      "88fa88987d34b33157ee6d978ebdac75060a31c580895baa90111b428f30252e",
+    "cookie-policy":
+      "966c866ce16bf0e1327d539550c070d25cbc65442d782a9e7e5ed802847ddacb",
+  },
+  "hi-IN": {
+    "privacy-policy":
+      "96c9748563cf96b8d2c3eef717dfd9e9537cf3cfbe848b874707e4ef00439729",
+    "cookie-policy":
+      "f53be88e680711562f7f1c1dd4be83af3ec80dd7274a86c268c26ad8ffd24f32",
+  },
 };
 
 const publishedVersionOf = (

@@ -1,8 +1,10 @@
 import type { Locale } from "@/features/i18n";
 import { translationDate as german } from "./locales/de-DE/translation-date";
 import { translationDate as english } from "./locales/en-US/translation-date";
+import { translationDate as hindi } from "./locales/hi-IN/translation-date";
 import { translationDate as slovak } from "./locales/sk-SK/translation-date";
 import { translationDate as ukrainian } from "./locales/uk-UA/translation-date";
+import { translationDate as vietnamese } from "./locales/vi-VN/translation-date";
 
 // Page metadata and the sitemap read these dates without a document body, so
 // this module holds plain strings and no rendering.
@@ -24,6 +26,8 @@ export const legalTranslationDates = {
   "de-DE": german,
   "uk-UA": ukrainian,
   "sk-SK": slovak,
+  "vi-VN": vietnamese,
+  "hi-IN": hindi,
 } as const satisfies Record<
   Exclude<Locale, typeof governingLegalLocale>,
   LegalTranslationDate
