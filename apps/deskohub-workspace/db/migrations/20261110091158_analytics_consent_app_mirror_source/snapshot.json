@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "042a8566-6104-49d1-adb1-ef0a3f2a21bf",
+  "id": "5bc24335-0dbb-4556-8568-04b4cc5e5815",
   "prevIds": [
-    "8395f596-dcb1-4129-b1d8-2511ecefdd4e"
+    "e28c07b4-c991-476b-8012-4d80c58d1352"
   ],
   "ddl": [
     {
@@ -16559,7 +16559,7 @@
       "table": "account_analytics_consent_decisions"
     },
     {
-      "value": "\"locale\" in ('en-US', 'cs-CZ')",
+      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK')",
       "name": "account_analytics_consent_decisions_locale_check",
       "entityType": "checks",
       "schema": "public",
@@ -16860,7 +16860,7 @@
       "table": "customer_marketing_consents"
     },
     {
-      "value": "\"locale\" in ('en-US', 'cs-CZ')",
+      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK')",
       "name": "customer_marketing_consents_locale_check",
       "entityType": "checks",
       "schema": "public",
@@ -17231,7 +17231,7 @@
       "table": "email_campaign_delivery_batches"
     },
     {
-      "value": "\"locale\" in ('en-US', 'cs-CZ')",
+      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK')",
       "name": "email_campaign_recipients_locale_check",
       "entityType": "checks",
       "schema": "public",
@@ -18008,7 +18008,7 @@
       "table": "workspace_reservations"
     },
     {
-      "value": "\"locale\" in ('en-US', 'cs-CZ')",
+      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK')",
       "name": "workspace_reservations_locale_check",
       "entityType": "checks",
       "schema": "public",
@@ -18078,7 +18078,7 @@
       "table": "workspace_reservations"
     },
     {
-      "value": "\"locale\" in ('en-US', 'cs-CZ')",
+      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK')",
       "name": "user_locale_check",
       "entityType": "checks",
       "schema": "auth",
