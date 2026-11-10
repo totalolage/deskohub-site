@@ -351,4 +351,114 @@ describe("ReservationHoldCleanupScheduleService", () => {
       checkedAt: retryNow,
     });
   });
+
+  test("acknowledges a hold Dotypos kept and redelivers one whose status can't be read", async () => {
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
+    const { UnpaidHoldRelease } = await import("./unpaid-hold-release.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "../payment/provider-payment-finalization.service"
+    );
+    const { PaymentLifecycleRepository } = await import(
+      "../repositories/payment-lifecycle.repository"
+    );
+    const {
+      processReservationHoldCleanupScheduleMessage,
+      reservationHoldCleanupRedelivery,
+    } = await import("./reservation-hold-cleanup-queue.service");
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { silentCheckoutAnalytics } = await import(
+      "../analytics/checkout-analytics.service.mock"
+    );
+    const { CheckoutAnalytics } = await import(
+      "../analytics/checkout-analytics.service"
+    );
+    const { DotyposService, DotyposUnavailable } = await import(
+      "@deskohub/dotypos"
+    );
+    const { QueueRedelivery } = await import(
+      "@/shared/backend/queue/queue-consumer"
+    );
+
+    const deliver = (
+      getReservationStatus: () => Effect.Effect<unknown, unknown>
+    ) => {
+      const cancelReservation = mock(() => Effect.void);
+      const markCancellationFailed = mock(() => Effect.void);
+      const delivery = processReservationHoldCleanupScheduleMessage(
+        duePayload,
+        dueNow
+      ).pipe(
+        Effect.provide(
+          ReservationHoldCleanupService.Default.pipe(
+            Layer.provide(UnpaidHoldRelease.Default),
+            Layer.provideMerge(
+              Layer.mergeAll(
+                Layer.mock(WorkspaceReservationRepository, {
+                  findById: mock(() => Effect.succeed(makeReservation())),
+                  claimCancellation: mock(() =>
+                    Effect.succeed(
+                      makeReservation({ reservationState: "cancelling" })
+                    )
+                  ),
+                  markCancellationFailed,
+                } as never),
+                Layer.mock(ProviderPaymentFinalizationService, {}),
+                Layer.mock(PaymentLifecycleRepository, {}),
+                Layer.mock(CheckoutAnalytics, silentCheckoutAnalytics),
+                Layer.mock(DotyposService, {
+                  getReservationStatus: mock(getReservationStatus),
+                  cancelReservation,
+                } as never)
+              )
+            )
+          )
+        ),
+        Effect.result,
+        Effect.runPromise
+      );
+      return { delivery, cancelReservation, markCancellationFailed };
+    };
+
+    const kept = deliver(() => Effect.succeed("CONFIRMED"));
+    expect(await kept.delivery).toMatchObject({
+      _tag: "Success",
+      success: "skipped",
+    });
+    expect(kept.cancelReservation).not.toHaveBeenCalled();
+    expect(kept.markCancellationFailed).toHaveBeenCalledWith({
+      id: "order-id",
+      failureCode: "dotypos_cancel_failed",
+    });
+
+    const statusUnavailable = new DotyposUnavailable({
+      operation: "getReservationStatus",
+      reason: "server",
+    });
+    const unreadable = deliver(() => Effect.fail(statusUnavailable));
+    const result = await unreadable.delivery;
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ReservationHoldCleanupScheduleError",
+        cause: {
+          _tag: "ReservationHoldCleanupError",
+          cause: statusUnavailable,
+        },
+      },
+    });
+    expect(
+      reservationHoldCleanupRedelivery(
+        result._tag === "Failure" ? result.failure : undefined
+      )
+    ).toEqual(QueueRedelivery.Default());
+    expect(unreadable.cancelReservation).not.toHaveBeenCalled();
+    expect(unreadable.markCancellationFailed).toHaveBeenCalledWith({
+      id: "order-id",
+      failureCode: "dotypos_cancel_failed",
+    });
+  });
 });

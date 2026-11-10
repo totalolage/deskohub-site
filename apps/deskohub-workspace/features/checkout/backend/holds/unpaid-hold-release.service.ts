@@ -106,7 +106,6 @@ type ReleaseFailureCode =
  * How one reason releases a hold after its claim (see `claimHold`).
  *
  * `liveStatus`, what the live Dotypos status must be:
- * - `unchecked`: cancel without reading it.
  * - `require_new`: read it after the claim; cancel `NEW`, take `CANCELLED` as
  *   released, refuse anything else.
  * - `read_before_claim`: the late-payment claim read it before claiming and
@@ -121,14 +120,14 @@ type ReleaseFailureCode =
  * - `fails`: the refusal fails the release.
  */
 interface ReleasePolicy {
-  readonly liveStatus: "unchecked" | "require_new" | "read_before_claim";
+  readonly liveStatus: "require_new" | "read_before_claim";
   readonly failureCode: ReleaseFailureCode;
   readonly markerRefused: "state_changed" | "confirm_cancelled" | "fails";
 }
 
 const releasePolicies = {
   hold_expired: {
-    liveStatus: "unchecked",
+    liveStatus: "require_new",
     failureCode: "dotypos_cancel_failed",
     markerRefused: "state_changed",
   },
