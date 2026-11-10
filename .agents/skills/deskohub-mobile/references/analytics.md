@@ -22,14 +22,63 @@ browser SDK; this page covers what differs in the app. Paths are relative to
 - In the web bundle, `analytics/other-posthog-sdk.ts` keeps app analytics off
   when the page already runs the site's `posthog-js`, so events are never
   captured twice.
+- A refusal with no running client clears the SDK's stored state
+  (`clearPostHogStoredState`: the two AsyncStorage keys posthog-react-native
+  4.83.0 uses; recheck them on an SDK upgrade), so a withdrawn identity or
+  queued event never returns with the next client.
 
 ## Consent
 
 `consent/` uses the site's categories (necessary, analytics, marketing,
-preferences). Native keeps one AsyncStorage record; the web bundle reads and
-writes the site's `cc_cookie` on the shared origin and rereads it when the page
-regains focus. No choice yet shows the prompt; a malformed or unreadable record
-counts as no consent.
+preferences). Native keeps one AsyncStorage record (`categories`, `decidedAt`,
+`locale`); the web bundle reads and writes the site's `cc_cookie` on the
+shared origin and rereads it when the page regains focus. No choice yet shows
+the prompt; a malformed or unreadable record, or one without a valid
+`decidedAt`, counts as no consent. `decidedAt` is kept exactly as stored,
+because an account decision stored with the account's instant must be sent
+back byte-identical.
+
+### Account sync (native only)
+
+The privacy reference's ledger section covers the server side.
+
+- `consent/account-consent-sync.ts`: while the signed-in account's screens
+  are mounted (`AccountConsentSyncRoot` in `app/(account)/_layout.tsx`), the
+  app sends its choice (`analytics`, stored `decidedAt`, stored `locale` or
+  the app's) or `null` to `syncAnalyticsConsent`. Triggers: the account
+  registry mounting (session restore, sign-in, which also mirrors a choice
+  made while signed out), a customer answer or the first storage read, and
+  every return to the foreground (`platform/app-foreground.ts`). A newer
+  sync interrupts an older one.
+- It applies `withdraw` only over a choice that accepted analytics and
+  `grant` only where there was no choice (analytics on, other optional
+  categories off), both dated at the answered instant, and only when the
+  device's choice and the signed-in account are unchanged since the request.
+  A failure changes nothing and shows nothing; the next trigger retries.
+- The hold (`consent/account-consent-check.ts`): a signed-in account is held
+  until its check settles, from session start and again from each
+  foreground `AppState` event (set synchronously, before the SDK's own
+  flush). While held the controller starts no client, identifies nothing and
+  keeps captures and screens in its outbox, and an identified client's
+  network is paused (`holdNetwork`), so its queued events and its
+  app-state flushes wait. A withdrawal applied meanwhile discards all of it;
+  a settled or failed check releases it. The consent prompt waits for the
+  session's first check. Not covered: requests already in flight, the SDK's
+  flush when the app leaves the foreground, and `$feature_flag_called` events
+  `getFeatureFlag` queues while a foreground hold pauses an identified
+  client (they wait with the network and a withdrawal drops them).
+- The web bundle doesn't sync, hold or gate the prompt: its consent is the
+  site's cookie, which the site mirrors at sign-in and on each signed-in page
+  and withdraws there.
+
+### Analytics preference
+
+The Legal screen (`account/legal/analytics-preference.ts`) shows a linked
+account's preference (`getAnalyticsPreference`) and saves it
+(`saveAnalyticsPreference`, app locale). The saved `{granted, decidedAt}`
+becomes this device's choice in either direction, unless the choice or the
+account changed during the save (the web preference row's rule). A failed
+read shows "unavailable", never "off".
 
 ## Events, identity and flags
 
@@ -55,7 +104,8 @@ counts as no consent.
   launches (rollback, emergency launch, new APK) never record it.
 - Identity is `workspace-account:<accountId>`, the site's identifier, so app
   and site events join one person. It stays pending until the stored session
-  is restored, resets on sign-out or account switch before the new identity
+  is restored (and, on native, until the account sync's hold releases it),
+  resets on sign-out or account switch before the new identity
   applies, and marks test and non-production accounts internal.
 - `analytics/feature-flags.ts`: `useFeatureFlagEnabled(flag, fallback)`
   returns the fallback until the identity's flags load, without consent, and
