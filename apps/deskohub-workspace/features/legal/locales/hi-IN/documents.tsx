@@ -7,173 +7,172 @@ import type {
 import { companyAddress, companyName, contactEmail } from "../operator-details";
 
 const commercialRegisterDisclosure =
-  "Commercial register details are available in the linked official company extract.";
+  "वाणिज्यिक रजिस्टर में पंजीकरण से संबंधित जानकारी कंपनी के लिंक किए गए आधिकारिक रजिस्टर उद्धरण में उपलब्ध है।";
 
 const termsAndConditionsSections: LegalSection[] = [
   {
-    heading: "1. Introductory Provisions",
+    heading: "1. प्रारंभिक प्रावधान",
     body: [
       <>
-        1.1 These General Terms and Conditions (hereinafter referred to as
-        "GTC") govern the mutual rights and obligations of the contracting
-        parties arising in connection with the provision of services by{" "}
-        {companyName}, ID No.:{" "}
-        {workspaceSiteConstants.company.identificationNumber}, with its
-        registered office at Turnovská 430/10, Prague 8, registered in the
-        Commercial Register maintained by the Municipal Court in Prague
-        (hereinafter referred to as the "Provider"), and the client (hereinafter
-        referred to as the "Client").
+        1.1 ये सामान्य नियम और शर्तें (आगे “नियम और शर्तें”) कंपनी {companyName}, IČO
+        (कंपनी पंजीकरण संख्या):{" "}
+        {workspaceSiteConstants.company.identificationNumber}, जिसका पंजीकृत
+        कार्यालय Turnovská 430/10, Praha 8 में है और जो Městský soud v Praze (प्राग
+        नगर न्यायालय) द्वारा रखे गए वाणिज्यिक रजिस्टर में पंजीकृत है (आगे “सेवा प्रदाता”,
+        संक्षेप में “प्रदाता”), तथा ग्राहक (आगे “ग्राहक”) के बीच सेवाएँ प्रदान किए जाने के संबंध
+        में उत्पन्न होने वाले, अनुबंध के पक्षों के पारस्परिक अधिकारों और दायित्वों को नियंत्रित
+        करती हैं।
       </>,
-      "1.2 These GTC apply to coworking entries, online bookings of the meeting room and private office, and individually agreed short-term use of premises for events.",
-      "1.3 The provisions of these GTC are an integral part of every contract concluded between the Provider and the Client.",
-      "1.4 Legal relationships not regulated by these GTC are governed by the laws of the Czech Republic, in particular Act No. 89/2012 Coll., the Civil Code.",
-      "1.5 If the Client is a Consumer, these GTC do not limit rights that cannot be waived under mandatory law.",
+      "1.2 ये नियम और शर्तें कोवर्किंग प्रवेश, मीटिंग रूम और निजी ऑफ़िस की ऑनलाइन बुकिंग, तथा व्यक्तिगत रूप से तय किए गए कार्यक्रमों के लिए परिसर के अल्पकालिक उपयोग पर लागू होती हैं।",
+      "1.3 इन नियम और शर्तों के प्रावधान प्रदाता और ग्राहक के बीच किए गए प्रत्येक अनुबंध का अभिन्न अंग हैं।",
+      "1.4 जो कानूनी संबंध इन नियम और शर्तों द्वारा नियंत्रित नहीं हैं, वे चेक गणराज्य की कानूनी व्यवस्था, विशेष रूप से zákon č. 89/2012 Sb., občanský zákoník (चेक गणराज्य की नागरिक संहिता, अधिनियम सं. 89/2012 Sb.) द्वारा नियंत्रित होते हैं।",
+      "1.5 यदि ग्राहक उपभोक्ता है, तो ये नियम और शर्तें उन अधिकारों को सीमित नहीं करतीं जिन्हें वह अनिवार्य कानूनी प्रावधानों के अनुसार त्याग नहीं सकता।",
     ],
   },
   {
-    heading: "2. Definition of Terms",
+    heading: "2. शब्दों की परिभाषाएँ",
     body: [
-      "2.1 Client means a natural or legal person who uses the Provider's services.",
-      "2.2 Consumer means a Client acting outside the scope of their business activity.",
-      "2.3 Premises means the coworking spaces, meeting room, private office, and event spaces operated by the Provider.",
-      "2.4 Services means time-limited use of the selected Premises and the related services stated in the order.",
-      "2.5 Tariff means the specific scope of coworking services and the conditions for their use according to the Provider's current Price List.",
-      "2.6 Access PIN Code means the current code enabling entry into the Provider's premises.",
-      "2.7 Booking means an order for a specific coworking entry, a meeting-room time slot, or a private-office date range, day count, and seat count.",
+      "2.1 “ग्राहक” से तात्पर्य ऐसे प्राकृतिक या विधिक व्यक्ति से है जो प्रदाता की सेवाओं का उपयोग करता है।",
+      "2.2 “उपभोक्ता” से तात्पर्य ऐसे ग्राहक से है जो अपनी व्यावसायिक गतिविधि के दायरे से बाहर कार्य करता है।",
+      "2.3 “परिसर” से तात्पर्य प्रदाता द्वारा संचालित कोवर्किंग स्पेस, मीटिंग रूम, निजी ऑफ़िस और कार्यक्रम स्थलों से है।",
+      "2.4 “सेवाएँ” से तात्पर्य चुने गए परिसर के समय-सीमित उपयोग की सुविधा और ऑर्डर में बताई गई संबंधित सेवाओं से है।",
+      "2.5 “प्लान” से तात्पर्य कोवर्किंग सेवाओं के उस विशिष्ट दायरे और उनके उपयोग की शर्तों से है, जो प्रदाता की वर्तमान “मूल्य सूची” (वेबसाइट का “कीमतें” पेज) के अनुसार निर्धारित हैं।",
+      "2.6 “प्रवेश PIN कोड” से तात्पर्य उस वर्तमान कोड से है जिससे प्रदाता के परिसर में प्रवेश संभव होता है।",
+      "2.7 “बुकिंग” से तात्पर्य किसी विशिष्ट कोवर्किंग प्रवेश, मीटिंग रूम के किसी समय, या निजी ऑफ़िस में तारीख़ों, दिनों की संख्या और सीटों की संख्या के ऑर्डर से है।",
     ],
   },
   {
-    heading: "3. Subject of the Contract",
+    heading: "3. अनुबंध का विषय",
     body: [
-      "3.1 The Provider provides the Client with coworking services consisting of temporarily enabling the use of a shared workspace in the Provider's premises, within the scope of the selected tariff. Shared workspace means a non-exclusively designated workstation or part of the coworking space intended for routine work, without a guarantee of a specific desk or seat, unless expressly stated otherwise for a specific tariff.",
-      "3.2 A meeting-room Booking entitles the Client to exclusive use of the selected room for the confirmed time and duration of one hour, four hours, or one Prague calendar day. A whole-day Booking runs from midnight on the selected day to midnight on the following day in the Europe/Prague time zone.",
-      "3.3 A private-office Booking entitles the Client to exclusive use of the office for the confirmed number of seats throughout the selected calendar days. Each day runs from midnight to the following midnight in the Europe/Prague time zone, and the last date stated in the confirmation is included in the Booking.",
-      "3.4 The specific capacity, equipment, price, time, and scope of a Booking are stated on the reservation page and in the order summary. The Client must not exceed the confirmed capacity and is responsible for guests and any other persons to whom the Client grants access.",
-      "3.5 The Provider also enables short-term use of premises for events, always under an individual agreement.",
-      "3.6 The Services grant a limited right to use the designated Premises and related services; they do not create a tenancy, registered office, establishment, or other real-property interest. Without a separate written agreement, the Client must not use the Premises' address as a registered office, business address, establishment, or mailing address.",
+      "3.1 प्रदाता ग्राहक को कोवर्किंग सेवाएँ प्रदान करता है, जिनमें चुने गए प्लान के दायरे में प्रदाता के परिसर में साझा कार्यस्थल के अस्थायी उपयोग की सुविधा शामिल है। “साझा कार्यस्थल” से तात्पर्य बिना अनन्य अधिकार के निर्धारित काम करने की जगह या कोवर्किंग स्पेस के उस हिस्से से है जो सामान्य काम के लिए है, और जिसमें किसी विशिष्ट डेस्क या सीट की गारंटी नहीं होती, जब तक कि किसी विशिष्ट प्लान के लिए स्पष्ट रूप से अन्यथा न बताया गया हो।",
+      "3.2 मीटिंग रूम की बुकिंग ग्राहक को चुने गए कमरे के अनन्य उपयोग का अधिकार देती है, जो पुष्टि किए गए समय पर एक घंटे, चार घंटे या प्राग के एक कैलेंडर दिन की अवधि के लिए होता है। पूरे दिन की बुकिंग Europe/Prague समय क्षेत्र में चुने गए दिन की मध्यरात्रि से अगले दिन की मध्यरात्रि तक चलती है।",
+      "3.3 निजी ऑफ़िस की बुकिंग ग्राहक को चुने गए पूरे कैलेंडर दिनों के दौरान, पुष्टि की गई सीटों की संख्या के साथ, ऑफ़िस के अनन्य उपयोग का अधिकार देती है। प्रत्येक दिन Europe/Prague समय क्षेत्र में मध्यरात्रि से अगली मध्यरात्रि तक चलता है, और पुष्टि में बताया गया अंतिम दिन बुकिंग में शामिल है।",
+      "3.4 बुकिंग की विशिष्ट क्षमता, सुविधाएँ, मूल्य, समय और दायरा बुकिंग पेज और ऑर्डर सारांश में बताए जाते हैं। ग्राहक पुष्टि की गई क्षमता से अधिक लोगों को नहीं ला सकता, और वह अपने मेहमानों तथा उन अन्य व्यक्तियों के लिए उत्तरदायी है जिन्हें वह प्रवेश की अनुमति देता है।",
+      "3.5 प्रदाता ग्राहक को कार्यक्रम आयोजित करने के उद्देश्य से परिसर के अल्पकालिक उपयोग की सुविधा भी देता है, जो हमेशा व्यक्तिगत समझौते के आधार पर होती है।",
+      "3.6 सेवाएँ निर्धारित परिसर और संबंधित सेवाओं के उपयोग का अल्पकालिक अधिकार हैं; इनसे परिसर पर किरायेदारी का अधिकार, पंजीकृत कार्यालय, प्रतिष्ठान या कोई अन्य संपत्ति संबंधी अधिकार उत्पन्न नहीं होता। ग्राहक अलग लिखित समझौते के बिना परिसर के पते का उपयोग पंजीकृत कार्यालय, व्यवसाय के स्थान, प्रतिष्ठान या पत्राचार के पते के रूप में नहीं कर सकता।",
     ],
   },
   {
-    heading: "4. Conclusion of the Contract",
+    heading: "4. अनुबंध का संपन्न होना",
     body: [
-      "4.1 Service information on the website is an invitation to place an order. Before submitting the order, the Client reviews the selected Service, time, scope, final price, and contact or billing details and actively accepts these GTC and the House Rules.",
-      '4.2 By selecting the "Order and pay" button, the Client submits a binding order with an obligation to pay the stated final price. The contract is concluded when the Provider sends confirmation after successful payment or, for an order with a zero final price, confirmation that the order has been completed. The confirmation contains the agreed Booking details and a secure link to its status and access information.',
-      "4.3 Until the contract is concluded, capacity is held only temporarily. The Provider may reject an order in particular because of unavailability, an obvious pricing error, suspected fraud, or failure to meet the Booking conditions; any payment received will then be refunded without undue delay.",
-      "4.4 Requests for coffee, a particular workstation, monitor, equipment, or other extras are subject to availability and are binding only if stated in the confirmation.",
-      "4.5 A contract for an individually arranged event space is concluded when the Client accepts the Provider's specific offer.",
+      "4.1 वेबसाइट पर सेवाओं के बारे में दी गई जानकारी ऑर्डर देने का आमंत्रण है। ऑर्डर भेजने से पहले ग्राहक चुनी गई सेवा, समय, दायरा, अंतिम मूल्य और संपर्क या बिलिंग विवरण की जाँच करता है, और इन नियम और शर्तों तथा परिसर नियमावली को सक्रिय रूप से स्वीकार करता है।",
+      "4.2 “ऑर्डर करें और भुगतान करें” बटन पर क्लिक करके ग्राहक बताए गए अंतिम मूल्य का भुगतान करने के दायित्व के साथ एक बाध्यकारी ऑर्डर भेजता है। अनुबंध सफल भुगतान के बाद प्रदाता की पुष्टि प्राप्त होने पर, या शून्य अंतिम मूल्य वाले ऑर्डर के मामले में उसके पूरा होने की पुष्टि प्राप्त होने पर, संपन्न होता है। पुष्टि में बुकिंग का तय किया गया विवरण, तथा उसकी स्थिति और प्रवेश संबंधी जानकारी का सुरक्षित लिंक होता है।",
+      "4.3 अनुबंध संपन्न होने तक यह केवल क्षमता को अस्थायी रूप से रोके रखना है। प्रदाता विशेष रूप से अनुपलब्धता, मूल्य में स्पष्ट त्रुटि, धोखाधड़ी के संदेह या बुकिंग की शर्तें पूरी न होने की स्थिति में ऑर्डर अस्वीकार कर सकता है; ऐसे मामले में वह प्राप्त भुगतान बिना अनुचित देरी के लौटा देगा।",
+      "4.4 कॉफ़ी, किसी विशिष्ट काम करने की जगह, मॉनिटर, सुविधाओं या अन्य अतिरिक्त चीज़ों से संबंधित अनुरोध उपलब्धता पर निर्भर हैं, और केवल तभी बाध्यकारी हैं जब वे पुष्टि में बताए गए हों।",
+      "4.5 व्यक्तिगत रूप से तय किए गए कार्यक्रम के लिए परिसर का अनुबंध ग्राहक द्वारा प्रदाता के विशिष्ट प्रस्ताव को स्वीकार किए जाने पर संपन्न होता है।",
     ],
   },
   {
-    heading: "5. Price and Payment Conditions",
+    heading: "5. मूल्य और भुगतान की शर्तें",
     body: [
-      "5.1 The Provider is not a payer of Value Added Tax (VAT). All prices are final.",
-      "5.2 The final price shown in the order summary immediately before submission is decisive. The price is payable before the Service is provided using the offered payment method.",
-      "5.3 The private-office price is calculated for each selected day as the daily office price plus the daily price for each confirmed seat. The meeting-room price corresponds to the selected one-hour, four-hour, or whole-day product.",
-      "5.4 A discount applies only if shown in the order summary. If the price or an applicable discount changes before payment starts, the Provider will show a new summary and obtain the Client's renewed confirmation.",
-      "5.5 The price of an individually arranged event space is stated in the offer according to the nature of the event.",
+      "5.1 प्रदाता VAT के लिए पंजीकृत नहीं है। सभी मूल्य अंतिम हैं।",
+      "5.2 ऑर्डर भेजे जाने से ठीक पहले ऑर्डर सारांश में दिखाया गया अंतिम मूल्य निर्णायक है। मूल्य सेवा प्रदान किए जाने से पहले, उपलब्ध कराए गए भुगतान के तरीके से देय है।",
+      "5.3 निजी ऑफ़िस के मूल्य की गणना प्रत्येक चुने गए दिन के लिए ऑफ़िस के दैनिक मूल्य और प्रत्येक पुष्टि की गई सीट के दैनिक मूल्य के योग के रूप में की जाती है। मीटिंग रूम का मूल्य चुने गए एक घंटे, चार घंटे या पूरे दिन के उत्पाद के अनुसार होता है।",
+      "5.4 छूट केवल तभी लागू होती है जब वह ऑर्डर सारांश में दिखाई गई हो। यदि भुगतान शुरू होने से पहले मूल्य या लागू होने वाली छूट बदल जाती है, तो प्रदाता नया सारांश दिखाएगा और ग्राहक से नई पुष्टि माँगेगा।",
+      "5.5 व्यक्तिगत रूप से तय किए गए कार्यक्रम के लिए परिसर का मूल्य कार्यक्रम की प्रकृति के अनुसार प्रस्ताव में निर्धारित किया जाता है।",
     ],
   },
   {
-    heading: "6. Availability and Booking Changes",
+    heading: "6. उपलब्धता और बुकिंग में परिवर्तन",
     body: [
-      "6.1 Availability is confirmed only for the time, scope, capacity, and product stated in the confirmation. A change of date, time, duration, day count, seat count, or product requires a new Booking or the Provider's express confirmation.",
-      "6.2 A Booking may not be transferred or resold without the Provider's prior consent.",
-      "6.3 The Provider may change the range, prices, and content of Services for future orders. A change does not affect an already concluded contract.",
-      "6.4 If the Provider cannot supply a confirmed Service, it will, depending on the circumstances, offer a comparable replacement time or space, a proportionate price reduction, or a refund for the part not provided. This does not affect the Client's other statutory rights.",
+      "6.1 उपलब्धता की पुष्टि केवल पुष्टि में बताए गए समय, दायरे, क्षमता और उत्पाद के लिए होती है। तारीख़, समय, अवधि, दिनों की संख्या, सीटों की संख्या या उत्पाद में परिवर्तन के लिए नई बुकिंग या प्रदाता की स्पष्ट पुष्टि आवश्यक है।",
+      "6.2 बुकिंग को प्रदाता की पूर्व सहमति के बिना हस्तांतरित नहीं किया जा सकता और न ही आगे बेचा जा सकता है।",
+      "6.3 प्रदाता भविष्य के ऑर्डर के लिए प्रस्तावित सेवाओं, मूल्यों और सेवाओं की सामग्री में परिवर्तन कर सकता है। इस परिवर्तन का पहले से संपन्न अनुबंध पर कोई प्रभाव नहीं पड़ता।",
+      "6.4 यदि प्रदाता पुष्टि की गई सेवा प्रदान नहीं कर सकता, तो वह परिस्थितियों के अनुसार ग्राहक को तुलनीय वैकल्पिक समय या स्थान, या उचित छूट प्रदान करेगा, अथवा सेवा के प्रदान न किए गए भाग का मूल्य लौटा देगा। इससे ग्राहक के अन्य वैधानिक अधिकार प्रभावित नहीं होते।",
     ],
   },
   {
-    heading: "7. Access and Use of Services",
+    heading: "7. पहुँच और सेवाओं का उपयोग",
     body: [
-      "7.1 The confirmation email contains a secure link to the Booking access page. Once a Booking is paid, confirmed locally and by live verification, and an Access PIN Code has been issued, the protected page displays that PIN together with the exact programmed validity bounds of the code. Acceptance of the code is determined solely by the lock system's programmed AlgoPIN bounds; the application does not impose its own display clock. The PIN is not included directly in the confirmation email.",
-      "7.2 The Provider may change the Access PIN Code; the Client must use the code currently displayed on the Booking access page. Displaying the PIN does not extend the confirmed use of the Premises and creates no right to enter outside the confirmed time or into other premises. The Premises may be used only during the confirmed Booking time.",
-      "7.3 The Client may disclose the PIN Code only to people authorized to attend the Booking, must protect it from everyone else, and is responsible for its use by the Client's guests. Suspected misuse must be reported to the Provider without delay.",
-      "7.4 The Client and guests must observe the capacity, Booking purpose, confirmed time, and House Rules. The Client must ensure that guests leave the Premises by the end of the Booking.",
+      "7.1 पुष्टि वाले email में बुकिंग के प्रवेश पेज का सुरक्षित लिंक होता है। जैसे ही बुकिंग का भुगतान हो जाता है, उसकी पुष्टि हो जाती है, रीयल-टाइम में उसकी जाँच हो जाती है और उसके लिए प्रवेश PIN कोड जारी हो जाता है, सुरक्षित पेज यह PIN, कोड की वैधता की सटीक प्रोग्राम की गई सीमाओं के साथ दिखाता है। लॉकिंग सिस्टम कोड को कब स्वीकार करता है, यह केवल AlgoPIN की प्रोग्राम की गई सीमाओं से तय होता है; ऐप अपनी अलग घड़ी लागू नहीं करते। PIN सीधे पुष्टि वाले email में शामिल नहीं होता।",
+      "7.2 प्रदाता प्रवेश PIN बदल सकता है; ग्राहक वही कोड उपयोग करेगा जो उस समय बुकिंग के प्रवेश पेज पर दिखाया गया हो। PIN कोड दिखाए जाने से परिसर के उपयोग की पुष्टि की गई अवधि नहीं बढ़ती, और न ही इस अवधि के बाहर या अन्य स्थानों में प्रवेश का अधिकार मिलता है। परिसर का उपयोग केवल बुकिंग की पुष्टि की गई अवधि में ही संभव है।",
+      "7.3 ग्राहक PIN कोड केवल उन व्यक्तियों को बता सकता है जो उसकी बुकिंग में भाग लेने के अधिकारी हैं; उसे यह कोड अन्य व्यक्तियों से सुरक्षित रखना होगा, और अपने मेहमानों द्वारा इसके उपयोग के लिए वह उत्तरदायी है। दुरुपयोग का संदेह होने पर वह तुरंत प्रदाता को सूचित करेगा।",
+      "7.4 ग्राहक और उसके मेहमान क्षमता, बुकिंग के उद्देश्य, पुष्टि किए गए समय और परिसर नियमावली का पालन करने के लिए बाध्य हैं। ग्राहक यह सुनिश्चित करेगा कि मेहमान बुकिंग समाप्त होने तक परिसर छोड़ दें।",
     ],
   },
   {
-    heading: "8. Booking Cancellation",
+    heading: "8. बुकिंग का रद्दीकरण",
     body: [
       <>
-        8.1 The Client may request cancellation by email to{" "}
+        8.1 ग्राहक बुकिंग रद्द करने का अनुरोध इस email पते पर भेज सकता है:{" "}
         <a
           className="text-burned-orange underline underline-offset-4"
           href={`mailto:${contactEmail}`}
         >
           {contactEmail}
         </a>
-        . The Provider will process the request under the conditions shown in
-        the order summary or individual offer and under mandatory law.
+        । प्रदाता इस अनुरोध पर ऑर्डर सारांश या व्यक्तिगत प्रस्ताव में बताई गई शर्तों के
+        अनुसार, तथा अनिवार्य कानूनी प्रावधानों के अनुसार कार्रवाई करेगा।
       </>,
-      "8.2 Unless the order summary or individual offer states otherwise, cancellation alone does not create a separate contractual right to a refund. This does not affect rights arising from defective performance, a Consumer's statutory withdrawal right, or a failure by the Provider to supply the Service.",
-      "8.3 Individually arranged events are cancelled under the conditions of the specific offer.",
-      "8.4 The Client is not entitled to a refund merely because the Premises were not used, the Client arrived late, or the Client left early, unless the refund conditions under this article or mandatory law are met.",
+      "8.2 यदि ऑर्डर सारांश या व्यक्तिगत प्रस्ताव में अन्यथा न बताया गया हो, तो केवल रद्दीकरण से मूल्य वापसी का कोई विशेष संविदात्मक दावा उत्पन्न नहीं होता। इससे दोषपूर्ण निष्पादन से उत्पन्न अधिकार, उपभोक्ता का अनुबंध से हटने का वैधानिक अधिकार, और वह स्थिति प्रभावित नहीं होती जिसमें प्रदाता ने सेवा प्रदान नहीं की।",
+      "8.3 व्यक्तिगत रूप से तय किए गए कार्यक्रम विशिष्ट प्रस्ताव की शर्तों के अनुसार रद्द किए जाते हैं।",
+      "8.4 ग्राहक केवल इस कारण से मूल्य वापसी का हकदार नहीं है कि उसने परिसर का उपयोग नहीं किया, देर से पहुँचा या जल्दी चला गया, जब तक कि इस अनुच्छेद या किसी अनिवार्य कानूनी प्रावधान के अनुसार वापसी की शर्तें पूरी न होती हों।",
     ],
   },
   {
-    heading: "9. Consumer Right of Withdrawal",
+    heading: "9. उपभोक्ता का अनुबंध से हटने का अधिकार",
     body: [
-      "9.1 A Consumer may withdraw from a contract concluded online without giving a reason within 14 days after the contract is concluded, unless the right is excluded by law or has already expired in the particular case.",
-      "9.2 If the Service is to begin before the period expires, as part of confirming the order the Consumer expressly requests that the Provider begin performance before the period ends and acknowledges that the withdrawal right expires after the Service has been fully performed. If the Consumer withdraws after performance begins but before it is complete, the Consumer pays a proportionate part of the price for performance already supplied, provided the statutory conditions are met.",
+      "9.1 उपभोक्ता ऑनलाइन किए गए अनुबंध से, उसके संपन्न होने के 14 दिनों के भीतर, बिना कारण बताए हट सकता है, जब तक कि किसी विशिष्ट मामले में अनुबंध से हटने का अधिकार कानून द्वारा अपवर्जित न हो या पहले ही समाप्त न हो चुका हो।",
+      "9.2 यदि सेवा इस अवधि की समाप्ति से पहले शुरू होनी है, तो उपभोक्ता ऑर्डर की पुष्टि के दौरान स्पष्ट रूप से अनुरोध करता है कि प्रदाता इस अवधि की समाप्ति से पहले सेवा देना शुरू करे, और यह स्वीकार करता है कि सेवा पूरी तरह प्रदान किए जाने के बाद अनुबंध से हटने का अधिकार समाप्त हो जाता है। यदि वह सेवा शुरू होने के बाद, किंतु उसके पूरी तरह प्रदान किए जाने से पहले अनुबंध से हटता है, तो वैधानिक शर्तें पूरी होने पर वह पहले से प्रदान की गई सेवा के लिए मूल्य के आनुपातिक भाग का भुगतान करेगा।",
       <>
-        9.3 Withdrawal may be sent as an unequivocal statement to the Provider's
-        registered-office address or by email to{" "}
+        9.3 अनुबंध से हटने की सूचना एक स्पष्ट घोषणा के रूप में प्रदाता के पंजीकृत कार्यालय के पते
+        पर या email द्वारा इस पते पर भेजी जा सकती है:{" "}
         <a
           className="text-burned-orange underline underline-offset-4"
           href={`mailto:${contactEmail}`}
         >
           {contactEmail}
         </a>
-        . The deadline is met if the notice is sent before it expires.
+        । यदि सूचना अवधि समाप्त होने से पहले भेज दी जाती है, तो अवधि का पालन हुआ माना
+        जाता है।
       </>,
-      "9.4 Following a valid withdrawal, the Provider will reimburse payments received without undue delay and no later than 14 days, using the same payment method unless the parties agree otherwise without additional cost to the Consumer.",
-      "9.5 Model notice: “I hereby give notice that I withdraw from my contract for the following Service: [description and Booking number], ordered on [date]. Consumer name: [complete]. Consumer address: [complete]. Date: [complete]. Signature only if submitted on paper.” Use of the model is optional.",
-      "9.6 The rights in this article apply only to a Consumer and operate alongside any more favorable cancellation terms stated in the order summary or individual offer.",
+      "9.4 वैध रूप से अनुबंध से हटने के बाद प्रदाता प्राप्त धनराशि बिना अनुचित देरी के, अधिकतम 14 दिनों के भीतर, उसी तरीके से लौटाएगा जिससे वह प्राप्त हुई थी, जब तक कि पक्ष किसी अन्य तरीके पर सहमत न हों जिससे उपभोक्ता पर कोई अतिरिक्त लागत न आए।",
+      "9.5 सूचना का नमूना: “इसके द्वारा मेरी ओर से इस सेवा के अनुबंध से हटने की सूचना दी जाती है: [बुकिंग का विवरण और संख्या], जिसका ऑर्डर [दिनांक] को दिया गया था। उपभोक्ता का पहला नाम और उपनाम: [भरें]। उपभोक्ता का पता: [भरें]। दिनांक: [भरें]। हस्ताक्षर केवल कागज़ पर भेजी गई सूचना के मामले में।” नमूने का उपयोग अनिवार्य नहीं है।",
+      "9.6 इस अनुच्छेद के अंतर्गत अधिकार केवल उपभोक्ता को प्राप्त हैं, और ये ऑर्डर सारांश या व्यक्तिगत प्रस्ताव में बताई गई किसी भी अधिक अनुकूल रद्दीकरण शर्तों के अतिरिक्त लागू होते हैं।",
     ],
   },
   {
-    heading: "10. Use Rules and Client Responsibility",
+    heading: "10. उपयोग के नियम और ग्राहक का उत्तरदायित्व",
     body: [
-      "10.1 The Client must use the Premises properly, only for the confirmed purpose, and in accordance with these GTC, the House Rules, safety instructions, and applicable law.",
-      "10.2 The Client is responsible for guests and for damage caused by the Client's or guests' breach of duty. Normal wear and tear is not damage. Damage or a defect must be reported without undue delay.",
-      "10.3 The Provider may proportionately restrict or end a Service for a serious or repeated breach of the GTC or House Rules, exceeding capacity, dangerous or illegal conduct, or misuse of access. This does not affect the Client's rights if the measure was not justified.",
+      "10.1 ग्राहक परिसर का उपयोग उचित ढंग से, केवल पुष्टि किए गए उद्देश्य के लिए, और इन नियम और शर्तों, परिसर नियमावली, सुरक्षा निर्देशों तथा कानूनी प्रावधानों के अनुसार करने के लिए बाध्य है।",
+      "10.2 ग्राहक अपने मेहमानों के आचरण के लिए, और उस क्षति के लिए उत्तरदायी है जो वह या उसके मेहमान किसी दायित्व का उल्लंघन करके पहुँचाते हैं। सामान्य टूट-फूट को क्षति नहीं माना जाता। ग्राहक किसी क्षति या दोष की सूचना बिना अनुचित देरी के देगा।",
+      "10.3 नियम और शर्तों या परिसर नियमावली के गंभीर या बार-बार उल्लंघन, क्षमता से अधिक लोगों की उपस्थिति, ख़तरनाक या गैरकानूनी आचरण, या प्रवेश के दुरुपयोग की स्थिति में प्रदाता सेवा को उचित रूप से सीमित या समाप्त कर सकता है। यदि यह उपाय न्यायोचित नहीं था, तो इससे ग्राहक के अधिकार प्रभावित नहीं होते।",
     ],
   },
   {
-    heading: "11. Provider Liability",
+    heading: "11. प्रदाता का उत्तरदायित्व",
     body: [
-      "11.1 The Provider is responsible for properly supplying the confirmed Service and for harm to the extent required by law. Nothing in these GTC excludes or limits liability that cannot validly be excluded or a Consumer's statutory rights.",
-      "11.2 The Client is responsible for the Client's business activities, data, and items brought into the Premises. The Provider is liable for loss of or damage to an item only to the extent required by law; the Client should therefore not leave items unattended and should secure them appropriately.",
-      "11.3 The Provider is not liable for an obstacle beyond its control that it could not reasonably foresee or prevent. If such an obstacle or temporary unavailability prevents a material part of the confirmed Service from being supplied, Article 6.4 applies.",
-      "11.4 To the maximum extent permitted by law, the Provider is not liable to a Client who is not a Consumer for indirect loss, loss of profit, or loss of data unless caused intentionally or by gross negligence.",
+      "11.1 प्रदाता पुष्टि की गई सेवा को उचित रूप से प्रदान करने के लिए, और कानूनी प्रावधानों द्वारा निर्धारित सीमा तक हानि के लिए उत्तरदायी है। इन नियम और शर्तों में कुछ भी ऐसे उत्तरदायित्व को अपवर्जित या सीमित नहीं करता जिसे वैध रूप से अपवर्जित नहीं किया जा सकता, और न ही उपभोक्ता के वैधानिक अधिकारों को।",
+      "11.2 ग्राहक अपनी व्यावसायिक गतिविधि, अपने डेटा और परिसर में लाई गई अपनी वस्तुओं के लिए उत्तरदायी है। प्रदाता किसी वस्तु के खोने या क्षतिग्रस्त होने के लिए केवल कानूनी प्रावधानों द्वारा निर्धारित सीमा तक उत्तरदायी है; इसलिए ग्राहक अपनी वस्तुओं को बिना निगरानी के नहीं छोड़ता और उन्हें उचित रूप से सुरक्षित रखता है।",
+      "11.3 प्रदाता ऐसी बाधा के लिए उत्तरदायी नहीं है जो उसकी इच्छा से स्वतंत्र रूप से उत्पन्न हुई हो और जिसका वह उचित रूप से न तो पूर्वानुमान लगा सकता था और न ही उसे टाल सकता था। यदि ऐसी बाधा या अस्थायी अनुपलब्धता इस प्रकार बनी रहती है कि पुष्टि की गई सेवा का एक महत्वपूर्ण भाग प्रदान नहीं किया जा सकता, तो अनुच्छेद 6.4 के अनुसार कार्रवाई की जाती है।",
+      "11.4 ऐसे ग्राहक के प्रति, जो उपभोक्ता नहीं है, प्रदाता कानून द्वारा अनुमत अधिकतम सीमा तक अप्रत्यक्ष हानि, लाभ की हानि या डेटा की हानि के लिए उत्तरदायी नहीं है, जब तक कि उसने यह हानि जानबूझकर या घोर लापरवाही से न पहुँचाई हो।",
     ],
   },
   {
-    heading: "12. Defects and Complaints",
+    heading: "12. दोष और शिकायतें",
     body: [
-      "12.1 The Client must report a Service defect without undue delay so that it can be remedied and provide at least contact details, the Booking number, a description of the defect, and the requested resolution.",
+      "12.1 ग्राहक सेवा में किसी दोष की सूचना बिना अनुचित देरी के देगा, ताकि उसे ठीक किया जा सके, और कम से कम अपना संपर्क विवरण, बुकिंग संख्या, दोष का विवरण और निपटान का अपेक्षित तरीका बताएगा।",
       <>
-        12.2 A complaint may be made at the establishment, at the Provider's
-        address, or by email to{" "}
+        12.2 शिकायत प्रदाता के स्थान पर, प्रदाता के पते पर या email द्वारा इस पते पर दर्ज
+        की जा सकती है:{" "}
         <a
           className="text-burned-orange underline underline-offset-4"
           href={`mailto:${contactEmail}`}
         >
           {contactEmail}
         </a>
-        . The Provider will give a Consumer written confirmation of receipt and
-        resolution.
+        । प्रदाता उपभोक्ता को शिकायत की प्राप्ति और उसके निपटान की पुष्टि जारी करेगा।
       </>,
-      "12.3 The Provider will decide a Consumer complaint immediately or, in a complex case, within three business days, and resolve it, including remedying the defect, without undue delay and no later than 30 days unless a longer period is agreed with the Consumer.",
-      "12.4 Depending on the defect, the Client may request a remedy, replacement performance, a proportionate price reduction, or withdrawal from the contract if the statutory conditions are met.",
+      "12.3 प्रदाता उपभोक्ता की शिकायत पर तुरंत निर्णय लेगा, जटिल मामलों में तीन कार्य दिवसों के भीतर; वह दोष दूर करने सहित शिकायत का निपटान बिना अनुचित देरी के, अधिकतम 30 दिनों के भीतर करेगा, जब तक कि उपभोक्ता के साथ इससे लंबी अवधि पर सहमति न हुई हो।",
+      "12.4 दोष की प्रकृति के अनुसार ग्राहक सुधार, प्रतिस्थापन सेवा या उचित छूट की माँग कर सकता है, या वैधानिक शर्तें पूरी होने पर अनुबंध से हट सकता है।",
     ],
   },
   {
-    heading: "13. Alternative Consumer Dispute Resolution",
+    heading: "13. उपभोक्ता विवादों का न्यायालय के बाहर समाधान",
     body: [
-      "13.1 If a consumer dispute arising from a Service contract cannot be resolved directly, the Consumer may submit it to the Czech Trade Inspection Authority, Central Inspectorate – ADR Department, Gorazdova 1969/24, 120 00 Prague 2.",
+      "13.1 यदि प्रदाता और उपभोक्ता के बीच सेवाएँ प्रदान करने के अनुबंध से कोई ऐसा विवाद उत्पन्न होता है जिसे सीधे हल नहीं किया जा सकता, तो उपभोक्ता न्यायालय के बाहर विवाद समाधान के लिए Česká obchodní inspekce (चेक व्यापार निरीक्षणालय), Ústřední inspektorát – oddělení ADR, Gorazdova 1969/24, 120 00 Praha 2 के समक्ष आवेदन कर सकता है।",
       <>
-        13.2 Information and the electronic form are available at{" "}
+        13.2 जानकारी और इलेक्ट्रॉनिक फ़ॉर्म यहाँ उपलब्ध हैं:{" "}
         <a
           className="text-burned-orange underline underline-offset-4"
           href="https://coi.gov.cz/informace-o-adr/"
@@ -182,117 +181,117 @@ const termsAndConditionsSections: LegalSection[] = [
         >
           coi.gov.cz/informace-o-adr/
         </a>
-        . The Consumer must submit the claim no later than one year after first
-        asserting the right with the Provider.
+        । उपभोक्ता को यह आवेदन उस दिन से अधिकतम एक वर्ष के भीतर दाखिल करना होगा, जिस
+        दिन उसने प्रदाता के समक्ष पहली बार अपने अधिकार का दावा किया था।
       </>,
     ],
   },
   {
-    heading: "14. Special Provisions for Events",
+    heading: "14. कार्यक्रमों के लिए विशेष प्रावधान",
     body: [
-      "14.1 The Client is responsible for an individually arranged event and its participants.",
-      "14.2 The Provider may end an event for a breach of law, the specific offer, these GTC, or the House Rules.",
+      "14.1 ग्राहक व्यक्तिगत रूप से तय किए गए कार्यक्रम के संचालन, और उसमें भाग लेने वाले व्यक्तियों के लिए उत्तरदायी है।",
+      "14.2 कानूनी प्रावधानों, विशिष्ट प्रस्ताव, इन नियम और शर्तों या परिसर नियमावली के उल्लंघन की स्थिति में प्रदाता कार्यक्रम को समाप्त करने का अधिकारी है।",
     ],
   },
   {
-    heading: "15. Final Provisions",
+    heading: "15. अंतिम प्रावधान",
     body: [
-      "15.1 The Provider may amend these GTC for contracts concluded after a new version takes effect. An already concluded Booking is governed by the version accepted at checkout unless a later amendment is more favorable to the Client or the Client expressly accepts it.",
-      "15.2 An individual agreement takes precedence over these GTC. If one provision is invalid or ineffective, the remaining provisions are unaffected.",
-      "15.3 These GTC become effective on August 12, 2026.",
+      "15.1 प्रदाता इन नियम और शर्तों में ऐसे अनुबंधों के लिए परिवर्तन कर सकता है जो नए संस्करण के प्रभावी होने के बाद किए जाते हैं। पहले से की गई बुकिंग पर वह संस्करण लागू होता है जिसे ग्राहक ने ऑर्डर करते समय स्वीकार किया था, जब तक कि बाद का परिवर्तन ग्राहक के लिए अधिक अनुकूल न हो या ग्राहक उसे स्पष्ट रूप से स्वीकार न करे।",
+      "15.2 कोई भिन्न व्यक्तिगत समझौता इन नियम और शर्तों पर प्राथमिकता रखता है। किसी एक प्रावधान की अमान्यता या अप्रभाविता का अन्य प्रावधानों पर कोई प्रभाव नहीं पड़ता।",
+      "15.3 ये नियम और शर्तें 12 अगस्त 2026 से प्रभावी हैं।",
     ],
   },
 ];
 
 const operatingRulesSections: LegalSection[] = [
   {
-    heading: "1. Introductory Provisions",
+    heading: "1. प्रारंभिक प्रावधान",
     body: [
       <>
-        1.1 These House Rules (hereinafter referred to as the "House Rules")
-        govern the rules of conduct and the use of coworking spaces, the meeting
-        room, the private office, and event spaces operated by {companyName}, ID
-        No.: {workspaceSiteConstants.company.identificationNumber}, with its
-        registered office at Turnovská 430/10, Prague 8 (hereinafter referred to
-        as the "Operator").
+        1.1 यह परिसर नियमावली (आगे “परिसर नियमावली”) कंपनी {companyName}, IČO
+        (कंपनी पंजीकरण संख्या):{" "}
+        {workspaceSiteConstants.company.identificationNumber}, जिसका पंजीकृत
+        कार्यालय Turnovská 430/10, Praha 8 में है (आगे “संचालक”), द्वारा संचालित कोवर्किंग
+        स्पेस, मीटिंग रूम, निजी ऑफ़िस और कार्यक्रम स्थलों में आचरण और उनके उपयोग के नियमों को
+        निर्धारित करती है।
       </>,
-      '1.2 These House Rules are binding for all persons located on the Operator\'s premises (hereinafter referred to as the "User").',
-      "1.3 A Client who makes a Booking must ensure that guests and everyone granted access are familiar with and comply with these House Rules.",
+      "1.2 यह परिसर नियमावली संचालक के परिसर में मौजूद सभी व्यक्तियों (आगे “उपयोगकर्ता”) के लिए बाध्यकारी है।",
+      "1.3 जिस ग्राहक ने बुकिंग की है, वह यह सुनिश्चित करेगा कि उसके मेहमान और वे अन्य व्यक्ति भी, जिन्हें वह प्रवेश की अनुमति देता है, परिसर नियमावली से परिचित हों और उसका पालन करें।",
     ],
   },
   {
-    heading: "2. Basic Rules of Conduct",
+    heading: "2. आचरण के मूल नियम",
     body: [
-      "2.1 The User is obliged to behave considerately and with respect toward other persons within the premises.",
-      "2.2 In shared and common areas, a User must maintain a level of quiet corresponding to normal, quiet conversation. In a meeting room or private office, noise must be contained within the booked space.",
-      "2.3 A User must not excessively disturb other users or restrict their use of the premises. The Client is responsible for guests' conduct.",
+      "2.1 उपयोगकर्ता परिसर में अन्य व्यक्तियों के प्रति विचारशील और सम्मानजनक व्यवहार करने के लिए बाध्य है।",
+      "2.2 साझा और सामान्य स्थानों में उपयोगकर्ता सामान्य धीमी बातचीत के अनुरूप शांति बनाए रखता है। मीटिंग रूम या निजी ऑफ़िस में वह शोर को बुक किए गए स्थान के भीतर ही सीमित रखता है।",
+      "2.3 उपयोगकर्ता अपने आचरण से अन्य उपयोगकर्ताओं को अत्यधिक परेशान नहीं कर सकता और न ही परिसर के उनके उपयोग में बाधा डाल सकता है। ग्राहक अपने मेहमानों के व्यवहार के लिए उत्तरदायी है।",
     ],
   },
   {
-    heading: "3. Prohibitions on the Premises",
+    heading: "3. परिसर में निषेध",
     body: [
-      "3.1 The following are prohibited on the premises:",
-      "a) smoking, including the use of electronic cigarettes;",
-      "b) using narcotic or psychotropic substances;",
-      "c) entering the premises under the influence of alcohol or other addictive substances to an extent that limits the ability for safe behavior;",
-      "d) performing activities in violation of legal regulations;",
-      "e) damaging the equipment or facilities of the premises;",
-      "f) harassing other users with inappropriate or aggressive behavior;",
-      "g) exceeding confirmed capacity or transferring or reselling a Booking to an unauthorized person;",
-      "h) using the Premises' address as a registered office, business address, establishment, or mailing address without a written agreement.",
+      "3.1 परिसर में निम्नलिखित निषिद्ध है:",
+      "a) धूम्रपान करना, जिसमें इलेक्ट्रॉनिक सिगरेट का उपयोग भी शामिल है,",
+      "b) नशीले या मनःप्रभावी पदार्थों का सेवन करना,",
+      "c) शराब या अन्य नशीले पदार्थों के प्रभाव में ऐसी स्थिति में परिसर में प्रवेश करना जिससे सुरक्षित व्यवहार करने की क्षमता सीमित हो,",
+      "d) कानूनी प्रावधानों के विपरीत गतिविधियाँ करना,",
+      "e) परिसर की सुविधाओं या उपकरणों को नुकसान पहुँचाना,",
+      "f) अनुचित या आक्रामक व्यवहार से अन्य उपयोगकर्ताओं को परेशान करना,",
+      "g) पुष्टि की गई क्षमता से अधिक लोगों को लाना, या बुकिंग किसी अनधिकृत व्यक्ति को सौंपना या आगे बेचना,",
+      "h) लिखित समझौते के बिना परिसर के पते का उपयोग पंजीकृत कार्यालय, व्यवसाय के स्थान, प्रतिष्ठान या पत्राचार के पते के रूप में करना।",
     ],
   },
   {
-    heading: "4. Use of the Premises",
+    heading: "4. परिसर का उपयोग",
     body: [
-      "4.1 The User is obliged to use the premises exclusively for purposes corresponding to their nature and designation.",
-      "4.2 A meeting room or private office may be used only during the confirmed time and within the confirmed capacity. Users must leave it with all their belongings by the end of the Booking.",
-      "4.3 The User must maintain order and cleanliness and return the used space and shared equipment to an appropriate condition after use.",
-      "4.4 Without the Operator's consent, a User must not move equipment, make alterations, install devices, or interfere with technical systems.",
-      "4.5 A User must operate audiovisual, conferencing, and other equipment according to instructions and report a defect without undue delay. Equipment must be safely switched off after the Booking where appropriate.",
+      "4.1 उपयोगकर्ता परिसर का उपयोग केवल उन्हीं उद्देश्यों के लिए करने के लिए बाध्य है जो उसकी प्रकृति और निर्धारित उपयोग के अनुरूप हों।",
+      "4.2 मीटिंग रूम और निजी ऑफ़िस का उपयोग केवल पुष्टि की गई अवधि में और पुष्टि की गई क्षमता के भीतर ही किया जा सकता है। उपयोगकर्ता बुकिंग समाप्त होने तक अपने सामान सहित उन्हें छोड़ देंगे।",
+      "4.3 उपयोगकर्ता व्यवस्था और स्वच्छता बनाए रखने के लिए, और उपयोग समाप्त होने के बाद उपयोग की गई जगह और साझा सुविधाओं को उचित स्थिति में छोड़ने के लिए बाध्य है।",
+      "4.4 उपयोगकर्ता संचालक की सहमति के बिना सुविधाओं को इधर-उधर नहीं कर सकता, कोई बदलाव नहीं कर सकता, उपकरण स्थापित नहीं कर सकता और न ही तकनीकी लाइनों में हस्तक्षेप कर सकता है।",
+      "4.5 उपयोगकर्ता ऑडियो-विज़ुअल, कॉन्फ़्रेंस और अन्य उपकरणों का उपयोग निर्देशों के अनुसार करता है और किसी दोष की सूचना बिना अनुचित देरी के देता है। बुकिंग समाप्त होने के बाद, यदि उपकरण की प्रकृति ऐसी हो, तो वह उसे सुरक्षित रूप से बंद कर देता है।",
     ],
   },
   {
-    heading: "5. Refreshments",
+    heading: "5. जलपान",
     body: [
-      "5.1 The User is obliged to use refreshments reasonably and with regard to other users.",
-      "5.2 The User must not abuse refreshments or waste them without justification.",
+      "5.1 उपयोगकर्ता जलपान का उपयोग उचित मात्रा में और अन्य उपयोगकर्ताओं का ध्यान रखते हुए करने के लिए बाध्य है।",
+      "5.2 उपयोगकर्ता जलपान का दुरुपयोग नहीं कर सकता और न ही उसे अनावश्यक रूप से बर्बाद कर सकता है।",
     ],
   },
   {
-    heading: "6. Safety",
+    heading: "6. सुरक्षा",
     body: [
-      "6.1 The User is obliged to look out for their own safety and the safety of other persons.",
-      "6.2 The User must not block escape routes or otherwise jeopardize the safe operation of the premises.",
-      "6.3 The User is obliged to notify the Operator of any dangerous situation or defect without undue delay.",
-      "6.4 The Client may disclose an Access PIN Code only to people authorized to attend the Booking. Users must protect it from disclosure to or observation by an unauthorized person and take particular care when entering it.",
-      "6.5 Displaying the PIN on the Booking access page neither limits nor extends the authorized use of the Premises; acceptance of the code is determined solely by the lock system. Users may enter and remain only during the confirmed Booking time.",
-      "6.6 Doors and other secured entrances must not be left open. Suspected code misuse or entry by an unauthorized person must be reported to the Operator without delay.",
-      "6.7 The Client must ensure guests arrive and leave safely and must not grant them access outside the confirmed time or to other premises.",
-      "6.8 The Operator or its authorized representative may enter a booked space when necessary for an emergency, safety, damage prevention, or essential maintenance and will inform the Client in advance where circumstances allow.",
+      "6.1 उपयोगकर्ता अपनी और अन्य व्यक्तियों की सुरक्षा का ध्यान रखने के लिए बाध्य है।",
+      "6.2 उपयोगकर्ता आपातकालीन निकास मार्गों को अवरुद्ध नहीं कर सकता और न ही किसी अन्य तरीके से परिसर के सुरक्षित संचालन को ख़तरे में डाल सकता है।",
+      "6.3 उपयोगकर्ता किसी ख़तरनाक स्थिति या दोष के उत्पन्न होने पर बिना अनुचित देरी के संचालक को सचेत करने के लिए बाध्य है।",
+      "6.4 ग्राहक प्रवेश PIN कोड केवल उन व्यक्तियों को बता सकता है जो उसकी बुकिंग में भाग लेने के अधिकारी हैं। उपयोगकर्ता इसे किसी अनधिकृत व्यक्ति के सामने प्रकट होने या उसके द्वारा देख लिए जाने से बचाते हैं, और इसे दर्ज करते समय विशेष सावधानी बरतते हैं।",
+      "6.5 बुकिंग के प्रवेश पेज पर PIN कोड दिखाए जाने से परिसर के अधिकृत उपयोग की अवधि किसी भी तरह सीमित या विस्तारित नहीं होती; कोड स्वीकार किया जाएगा या नहीं, यह केवल लॉकिंग सिस्टम तय करता है। उपयोगकर्ता केवल बुकिंग की पुष्टि की गई अवधि में ही परिसर में प्रवेश कर सकते हैं और वहाँ रह सकते हैं।",
+      "6.6 दरवाज़े या अन्य सुरक्षित प्रवेश द्वार खुले नहीं छोड़े जा सकते। कोड के दुरुपयोग या किसी अनधिकृत व्यक्ति के प्रवेश का संदेह होने पर उपयोगकर्ता तुरंत संचालक को सूचित करेगा।",
+      "6.7 ग्राहक अपने मेहमानों के सुरक्षित आगमन और प्रस्थान को सुनिश्चित करेगा, और उन्हें पुष्टि की गई अवधि के बाहर या उन स्थानों के अलावा, जिनका वह अधिकृत रूप से उपयोग कर रहा है, अन्य स्थानों में प्रवेश की अनुमति नहीं दे सकता।",
+      "6.8 संचालक या उसके द्वारा अधिकृत व्यक्ति आपात स्थिति, सुरक्षा, क्षति को रोकने या आवश्यक रखरखाव के कारण आवश्यक होने पर बुक किए गए स्थान में प्रवेश कर सकता है; यदि परिस्थितियाँ अनुमति दें, तो वह ग्राहक को पहले से सूचित करेगा।",
     ],
   },
   {
-    heading: "7. Liability for Damage",
+    heading: "7. क्षति के लिए उत्तरदायित्व",
     body: [
-      "7.1 The User is liable for damage they cause to the Operator's property or the property of third parties.",
-      "7.2 The Client is also responsible for damage caused by guests. Normal wear and tear is not damage.",
-      "7.3 A User must immediately report damage, a lost key or access device, or a defect to the Operator.",
+      "7.1 उपयोगकर्ता संचालक या तीसरे पक्ष की संपत्ति को पहुँचाई गई क्षति के लिए उत्तरदायी है।",
+      "7.2 ग्राहक अपने मेहमानों द्वारा पहुँचाई गई क्षति के लिए भी उत्तरदायी है। सामान्य टूट-फूट को क्षति नहीं माना जाता।",
+      "7.3 उपयोगकर्ता किसी क्षति, चाबी या प्रवेश के साधन के खोने, और किसी दोष की सूचना तुरंत संचालक को देने के लिए बाध्य है।",
     ],
   },
   {
-    heading: "8. Violation of House Rules",
+    heading: "8. परिसर नियमावली का उल्लंघन",
     body: [
-      "8.1 In the event of a violation of these House Rules, the Operator is entitled to take appropriate measures to ensure order and the protection of other users.",
-      "8.2 Measures may include a request to remedy the breach, restricting access, removing a User from the premises, or ending a Booking where proportionate to the nature and seriousness of the breach.",
-      "8.3 Where possible and the breach is not serious or dangerous, the Operator will give a reasonable opportunity to remedy it before ending a Booking.",
+      "8.1 इस परिसर नियमावली के उल्लंघन की स्थिति में संचालक व्यवस्था बनाए रखने और अन्य उपयोगकर्ताओं की सुरक्षा के लिए उचित उपाय करने का अधिकारी है।",
+      "8.2 इन उपायों में विशेष रूप से सुधार के लिए कहना, पहुँच सीमित करना, उपयोगकर्ता को परिसर से बाहर करना या बुकिंग समाप्त करना शामिल हो सकता है, यदि यह उल्लंघन की प्रकृति और गंभीरता के अनुपात में हो।",
+      "8.3 यदि संभव हो और उल्लंघन न तो गंभीर हो और न ही ख़तरनाक, तो संचालक बुकिंग समाप्त करने से पहले सुधार का उचित अवसर देगा।",
     ],
   },
   {
-    heading: "9. Final Provisions",
+    heading: "9. अंतिम प्रावधान",
     body: [
-      "9.1 The Operator may amend these House Rules for future Bookings. A confirmed Booking is governed by the version accepted at checkout unless an immediate measure is necessary for safety or under mandatory law.",
-      "9.2 These House Rules become effective on August 12, 2026.",
+      "9.1 संचालक भविष्य की बुकिंग के लिए इस परिसर नियमावली में परिवर्तन कर सकता है। पहले से पुष्टि की गई बुकिंग के लिए वह संस्करण निर्णायक है जिसे ऑर्डर करते समय स्वीकार किया गया था, जब तक कि सुरक्षा या किसी अनिवार्य कानूनी प्रावधान के कारण तत्काल उपाय आवश्यक न हों।",
+      "9.2 यह परिसर नियमावली 12 अगस्त 2026 से प्रभावी है।",
     ],
   },
 ];
@@ -302,361 +301,339 @@ const legalDocuments = {
     updatedAt: "8 नवंबर 2026",
     sections: [
       {
-        heading: "1. Controller",
+        heading: "1. नियंत्रक",
         body: [
           <>
-            The controller of your personal data is {companyName}, ID No.{" "}
-            {workspaceSiteConstants.company.identificationNumber}, with
-            establishment address at {companyAddress} and establishment ID{" "}
-            {workspaceSiteConstants.company.establishmentId}.
+            {companyName}, IČO (कंपनी पंजीकरण संख्या){" "}
+            {workspaceSiteConstants.company.identificationNumber}, जिसके स्थान का
+            पता {companyAddress} है और स्थान की पहचान संख्या (ID provozovny){" "}
+            {workspaceSiteConstants.company.establishmentId} है, आपके व्यक्तिगत डेटा
+            के संबंध में “व्यक्तिगत डेटा नियंत्रक” है।
           </>,
           commercialRegisterDisclosure,
           <>
-            If you have any privacy-related request, contact us at{" "}
+            व्यक्तिगत डेटा की सुरक्षा से संबंधित प्रश्नों के लिए हमें इस पते पर लिखें:{" "}
             <a
               className="text-burned-orange underline underline-offset-4"
               href={`mailto:${contactEmail}`}
             >
               {contactEmail}
             </a>
-            .
+            ।
           </>,
         ],
       },
       {
-        heading: "2. What data we process",
+        heading: "2. हम किस डेटा का प्रसंस्करण करते हैं",
         body: [
           <>
-            We process the data you provide through our public website,
-            especially contact details and message content sent through the
-            contact form, plus reservation details: your name, email, phone
-            number, selected reservation family and product, date or date range,
-            start time, duration, seat count, and any coworking refreshment,
-            monitor, or workstation preferences.
+            हम उस डेटा का प्रसंस्करण करते हैं जो सार्वजनिक वेबसाइट के माध्यम से आपसे हमें प्राप्त
+            होता है, विशेष रूप से संपर्क फ़ॉर्म के माध्यम से भेजे गए संदेश का संपर्क विवरण और
+            सामग्री, तथा बुकिंग से संबंधित डेटा: नाम, email, फ़ोन नंबर, बुकिंग की चुनी गई
+            उत्पाद श्रेणी और उत्पाद, तारीख़ या तारीख़ों की अवधि, शुरू होने का समय, अवधि,
+            सीटों की संख्या, और जलपान, मॉनिटर या वर्कस्टेशन से संबंधित कोवर्किंग
+            प्राथमिकताएँ, यदि कोई हों।
           </>,
           <>
-            When you continue to checkout, we also process the quoted and paid
-            amount, currency, applied discounts, payment and reservation
-            identifiers and status, which terms you accepted and when, whether
-            access was issued, and any optional billing details you request us
-            to use for an accounting document. We do not receive your complete
-            payment-card details from the payment provider.
+            ऑर्डर की ओर आगे बढ़ने पर हम प्रस्तावित और भुगतान की गई राशि, मुद्रा, लागू की
+            गई छूट, भुगतान और बुकिंग के पहचानकर्ता और उनकी स्थिति, आपने कौन-सी शर्तें कब
+            स्वीकार कीं, क्या प्रवेश जारी किया गया, और वे वैकल्पिक बिलिंग विवरण भी प्रसंस्कृत
+            करते हैं जिन्हें लेखा दस्तावेज़ पर उपयोग करने का अनुरोध आपने किया है। भुगतान प्रदाता
+            से हमें आपके पेमेंट कार्ड का पूरा विवरण प्राप्त नहीं होता।
           </>,
           <>
-            If you create a customer account, we process your verified email
-            address, your profile details, and the sign-in data needed to keep
-            the account secure. We never ask for a password.
+            यदि आपने ग्राहक खाता बनाया है, तो हम आपके पुष्टि किए गए email पते, प्रोफ़ाइल
+            विवरण और खाते की सुरक्षा के लिए आवश्यक साइन-इन डेटा का प्रसंस्करण करते हैं। हम
+            आपसे कभी पासवर्ड नहीं माँगते।
           </>,
           <>
-            If you connect an AI assistant, such as ChatGPT or Claude, to your
-            customer account, we process which assistant it is, the permissions
-            you gave it and when, and the access credentials it uses. When the
-            assistant starts a reservation for you, we record which assistant
-            started it.
+            यदि आपने अपने ग्राहक खाते से कोई AI असिस्टेंट, जैसे ChatGPT या Claude, कनेक्ट
+            किया है, तो हम इस बात से संबंधित डेटा का प्रसंस्करण करते हैं कि वह कौन-सा
+            असिस्टेंट है, आपने उसे कौन-सी अनुमतियाँ कब दीं, और असिस्टेंट किन पहुँच क्रेडेंशियल का
+            उपयोग करता है। जब असिस्टेंट आपकी ओर से कोई बुकिंग शुरू करता है, तो हम उस बुकिंग
+            के साथ यह दर्ज करते हैं कि उसे किस असिस्टेंट ने शुरू किया।
           </>,
           <>
-            To run the website and prevent spam and abuse, we may also briefly
-            process technical data such as your IP address and browser
-            information.
+            वेबसाइट के संचालन और स्पैम तथा दुरुपयोग से सुरक्षा के लिए हम थोड़े समय के लिए
+            तकनीकी डेटा, जैसे आपका IP पता और ब्राउज़र से संबंधित डेटा, का भी प्रसंस्करण कर
+            सकते हैं।
           </>,
           <>
-            To understand how search engines and AI assistants use the website,
-            we sort requests into broad traffic categories based on browser
-            information. We tell our analytics provider only the category, the
-            name of a recognized assistant or search engine, the page and
-            language, which form a blocked automated request tried to use, and,
-            for our booking tools for AI assistants, which tool was used and
-            whether it worked. We send nothing that identifies you, and this
-            does not depend on analytics consent. We also add the category and
-            the name of a recognized assistant to the reservation and payment
-            records described in section 3.
+            यह समझने के लिए कि सर्च इंजन और AI असिस्टेंट वेबसाइट का उपयोग कैसे करते हैं, हम
+            ब्राउज़र से संबंधित डेटा के आधार पर अनुरोधों को ट्रैफ़िक की सामान्य श्रेणियों में बाँटते
+            हैं। एनालिटिक्स सेवा प्रदाता को हम केवल यह श्रेणी, पहचाने गए असिस्टेंट या सर्च
+            इंजन का नाम, पेज और भाषा, वह फ़ॉर्म जिसका उपयोग करने का प्रयास किसी अवरुद्ध
+            स्वचालित अनुरोध ने किया था, और AI असिस्टेंट के लिए हमारे बुकिंग टूल के मामले में यह
+            बताते हैं कि कौन-सा टूल उपयोग हुआ और क्या वह सफल रहा। हम ऐसा कुछ भी नहीं भेजते
+            जिससे आपकी पहचान हो सके, और यह मापन एनालिटिक्स के लिए सहमति पर निर्भर नहीं
+            है। यह श्रेणी और पहचाने गए असिस्टेंट का नाम हम बिंदु 3 में वर्णित बुकिंग और भुगतान
+            के रिकॉर्ड के साथ भी जोड़ते हैं।
           </>,
           <>
-            If you consent to analytics cookies or similar technologies, we and
-            our analytics service providers may process website usage and
-            campaign measurement data, such as pageviews, browser and device
-            information, IP-derived technical data, event types, and standard
-            campaign parameters from links. With your analytics consent, we also
-            add the records of your reservations and payments described in
-            section 3 to your account's analytics profile.
+            यदि आपने एनालिटिक्स कुकीज़ या इसी तरह की तकनीकों के लिए सहमति दी है, तो हम
+            और एनालिटिक्स सेवा प्रदाता वेबसाइट के उपयोग और अभियानों के मापन से संबंधित डेटा
+            का प्रसंस्करण कर सकते हैं, जैसे पेज व्यू, ब्राउज़र और डिवाइस की जानकारी, IP पते से
+            प्राप्त तकनीकी डेटा, इवेंट के प्रकार और लिंक में मौजूद मानक अभियान पैरामीटर।
+            आपकी एनालिटिक्स सहमति होने पर हम बिंदु 3 में वर्णित आपकी बुकिंग और भुगतान के
+            रिकॉर्ड को आपके खाते की एनालिटिक्स प्रोफ़ाइल से भी जोड़ते हैं।
           </>,
           <>
-            If you separately opt in to future marketing communications, we also
-            process your name, email address, preferred language, consent time,
-            and the version of the marketing notice you accepted. We also record
-            where you gave consent, for example in the reservation form, in your
-            account, or through an assistant, and keep your choice with your
-            customer record.
+            यदि आपने अलग से भविष्य के मार्केटिंग संदेशों की सदस्यता ली है, तो हम आपके नाम,
+            email पते, पसंदीदा भाषा, सहमति के समय और आपके द्वारा स्वीकार की गई मार्केटिंग
+            सूचना के संस्करण का भी प्रसंस्करण करते हैं। हम यह भी दर्ज करते हैं कि आपने सहमति
+            कहाँ दी, जैसे बुकिंग फ़ॉर्म में, अपने खाते में या किसी असिस्टेंट के माध्यम से, और आपके
+            चुनाव को आपके ग्राहक रिकॉर्ड के साथ सुरक्षित रखते हैं।
           </>,
         ],
       },
       {
-        heading: "3. Why we process the data",
+        heading: "3. हम डेटा का उपयोग किस उद्देश्य से करते हैं",
         body: [
           <>
-            We use submitted contact, reservation, order, and payment data to
-            check availability, prepare and confirm a Booking, hold capacity,
-            collect or verify payment, issue access, send confirmations, provide
-            requested accounting documents, handle cancellation or complaints,
-            prevent duplicate or fraudulent orders, and support the Booking when
-            you contact us.
+            संपर्क, बुकिंग, ऑर्डर और भुगतान से संबंधित डेटा का उपयोग हम उपलब्धता की जाँच
+            करने, बुकिंग तैयार करने और उसकी पुष्टि करने, क्षमता को अस्थायी रूप से रोके रखने,
+            भुगतान प्राप्त करने या उसकी जाँच करने, प्रवेश जारी करने, पुष्टि भेजने, अनुरोधित
+            लेखा दस्तावेज़ जारी करने, रद्दीकरण या शिकायत का निपटान करने, दोहरे या
+            धोखाधड़ी वाले ऑर्डर को रोकने, और आपके संपर्क करने पर बुकिंग से संबंधित सहायता देने
+            के लिए करते हैं।
           </>,
           <>
-            We use customer account data to authenticate you, let you manage
-            your profile, and connect the account with reservations made using
-            the same verified email address.
+            ग्राहक खाते के डेटा का उपयोग हम आपकी पहचान की पुष्टि करने, आपकी प्रोफ़ाइल का
+            प्रबंधन करने, और खाते को उसी पुष्टि किए गए email पते से की गई बुकिंग से जोड़ने के
+            लिए करते हैं।
           </>,
           <>
-            If you connect an AI assistant, we use the connection so that, on
-            your instructions, it can look up our offers, start a reservation
-            that you then confirm and pay for on our website, and show you your
-            reservations.
+            यदि आपने कोई AI असिस्टेंट कनेक्ट किया है, तो हम उसके कनेक्शन का उपयोग इसलिए
+            करते हैं ताकि वह आपके निर्देशों के अनुसार हमारे उपलब्ध विकल्प खोज सके, ऐसी बुकिंग
+            शुरू कर सके जिसकी पुष्टि और भुगतान बाद में आप हमारी वेबसाइट पर करें, और आपको
+            आपकी बुकिंग दिखा सके।
           </>,
           <>
-            We do not use reservation or enquiry data for marketing unless you
-            separately consent to receive marketing communication.
+            जब तक आपने इसके लिए अलग से सहमति न दी हो, हम बुकिंग या पूछताछ के डेटा का
+            उपयोग मार्केटिंग के लिए नहीं करते।
           </>,
           <>
-            When you give that optional consent, we may use your email address
-            for future Deskohub Workspace marketing and community
-            communications. We do not share your contact details with another
-            business for its own marketing.
+            यदि आपने यह वैकल्पिक सहमति दी है, तो हम आपके email पते का उपयोग Deskohub
+            Workspace के भविष्य के मार्केटिंग और समुदाय संबंधी संदेशों के लिए कर सकते हैं। हम
+            आपका संपर्क विवरण किसी अन्य कंपनी को उसकी अपनी मार्केटिंग के लिए नहीं देते।
           </>,
           <>
-            With your analytics consent, we use analytics and external
-            measurement services to understand site usage, reservation
-            submission performance, and campaign effectiveness. These
-            measurements don't include what you enter in the reservation form.
+            आपकी एनालिटिक्स सहमति होने पर हम एनालिटिक्स और बाहरी मापन सेवाओं का उपयोग
+            करते हैं, ताकि वेबसाइट के उपयोग, बुकिंग भेजे जाने के प्रदर्शन और अभियानों की
+            प्रभावशीलता को समझ सकें। इस मापन में बुकिंग फ़ॉर्म में आपके द्वारा दर्ज किया गया
+            डेटा शामिल नहीं होता।
           </>,
           <>
-            Whether or not you give analytics consent, we also send our
-            analytics provider a record of each reservation and payment step,
-            such as a started, completed, failed, or abandoned payment and its
-            amount. We use these records to measure how reservations and
-            payments go and to spot payment problems. They are linked to your
-            reservation and, with your analytics consent, to your account's
-            analytics profile. They don't include your name or contact details.
+            एनालिटिक्स सहमति से स्वतंत्र रूप से हम एनालिटिक्स सेवा प्रदाता को बुकिंग और
+            भुगतान के अलग-अलग चरणों का रिकॉर्ड भी भेजते हैं, जैसे शुरू किया गया, पूरा हुआ,
+            असफल या अधूरा छोड़ा गया भुगतान और उसकी राशि। इन रिकॉर्ड का उपयोग हम बुकिंग
+            और भुगतान की प्रगति मापने और भुगतान से जुड़ी समस्याओं का पता लगाने के लिए करते
+            हैं। ये रिकॉर्ड आपकी बुकिंग से जुड़े होते हैं, और आपकी एनालिटिक्स सहमति होने पर आपके
+            खाते की एनालिटिक्स प्रोफ़ाइल से भी। इनमें आपका नाम या संपर्क विवरण शामिल नहीं
+            होता।
           </>,
           <>
-            We also send selected customer data from our booking system Dotypos
-            to our analytics provider to understand how customers use our
-            services and how that relates to their activity on the website: the
-            customer identifier, name, company name, email, phone, address,
-            birthday, discount group, loyalty points, customer tags, and when
-            the customer record was created, last changed, or deleted. Notes and
-            other customer data stay in Dotypos. For a signed-in customer who
-            gave analytics consent, the customer identifier links this data to
-            their website analytics.
+            हम अपने बुकिंग सिस्टम Dotypos से चुना गया ग्राहक डेटा भी अपने एनालिटिक्स
+            प्रदाता को भेजते हैं, ताकि यह समझ सकें कि ग्राहक हमारी सेवाओं का उपयोग कैसे करते
+            हैं और इसका वेबसाइट पर उनकी गतिविधि से क्या संबंध है: ग्राहक पहचानकर्ता, नाम,
+            कंपनी का नाम, email, फ़ोन, पता, जन्म तिथि, छूट समूह, लॉयल्टी पॉइंट, ग्राहक
+            टैग, और यह जानकारी कि ग्राहक रिकॉर्ड कब बनाया गया, आख़िरी बार कब बदला
+            गया या कब हटाया गया। नोट्स और अन्य ग्राहक डेटा Dotypos में ही रहते हैं। साइन
+            इन किए हुए ऐसे ग्राहक के मामले में, जिसने एनालिटिक्स सहमति दी है, ग्राहक
+            पहचानकर्ता इस डेटा को उसकी वेबसाइट एनालिटिक्स से जोड़ता है।
           </>,
         ],
       },
       {
-        heading: "4. Legal basis",
+        heading: "4. कानूनी आधार",
         body: [
           <>
-            Before a contract is concluded, we process reservation data to take
-            steps at your request. After conclusion, we process it to perform
-            the contract, including payment, access, support, cancellation, and
-            complaints. We process accounting and transaction records where
-            necessary to comply with legal obligations.
+            अनुबंध संपन्न होने से पहले हम बुकिंग डेटा का प्रसंस्करण आपके अनुरोध पर कदम उठाने के
+            लिए करते हैं। अनुबंध संपन्न होने के बाद हम इसका प्रसंस्करण अनुबंध के निष्पादन के लिए
+            करते हैं, जिसमें भुगतान, प्रवेश, सहायता, रद्दीकरण और शिकायतें शामिल हैं। लेखा और
+            लेन-देन के रिकॉर्ड का प्रसंस्करण हम कानूनी दायित्वों को पूरा करने के लिए भी करते
+            हैं।
           </>,
           <>
-            Account authentication, profile management, and the reservation
-            history are processed to provide the account service you request
-            and, where applicable, to perform or prepare the related reservation
-            contract. Account security, session integrity, and abuse prevention
-            are based on our legitimate interests.
+            खाते में साइन-इन, प्रोफ़ाइल प्रबंधन और बुकिंग इतिहास का प्रसंस्करण हम इसलिए करते
+            हैं ताकि आपके द्वारा अनुरोधित खाता सेवा प्रदान कर सकें, और परिस्थितियों के अनुसार
+            संबंधित बुकिंग अनुबंध का निष्पादन या उसकी तैयारी भी कर सकें। खाते की सुरक्षा,
+            सत्रों की अखंडता और दुरुपयोग से सुरक्षा हमारे वैध हितों पर आधारित हैं।
           </>,
           <>
-            Connecting an AI assistant and handling its requests is processed to
-            provide the account service you request and, where applicable, to
-            prepare the related reservation contract at your request.
+            AI असिस्टेंट के कनेक्शन और उसके अनुरोधों के निपटान का प्रसंस्करण हम इसलिए करते हैं
+            ताकि आपके द्वारा अनुरोधित खाता सेवा प्रदान कर सकें, और परिस्थितियों के अनुसार
+            आपके अनुरोध पर संबंधित बुकिंग अनुबंध तैयार कर सकें।
           </>,
           <>
-            For website security, abuse and fraud prevention, reliable payment
-            and reservation evidence, and the establishment, exercise, or
-            defense of legal claims, we rely on our legitimate interests where
-            those interests are not overridden by your rights.
+            वेबसाइट की सुरक्षा, दुरुपयोग और धोखाधड़ी की रोकथाम, भुगतान और बुकिंग के
+            विश्वसनीय प्रमाण, तथा कानूनी दावों की स्थापना, प्रयोग या बचाव के लिए हम अपने
+            वैध हितों पर निर्भर करते हैं, बशर्ते आपके अधिकार उन पर भारी न पड़ते हों।
           </>,
           <>
-            Optional non-essential cookies are processed only on the basis of
-            your consent. Analytics of your website use and campaign measurement
-            are based on consent, which you can withdraw or change at any time
-            via cookie settings.
+            वैकल्पिक कुकीज़ का प्रसंस्करण हम केवल आपकी सहमति के आधार पर करते हैं। वेबसाइट के
+            आपके उपयोग की एनालिटिक्स और अभियानों का मापन उस सहमति पर आधारित है, जिसे
+            कुकी सेटिंग में किसी भी समय वापस लिया या बदला जा सकता है।
           </>,
           <>
-            Measuring automated traffic by category is based on our legitimate
-            interest in operating the website and improving it for search
-            engines and AI assistants. It uses no data that identifies you.
+            स्वचालित ट्रैफ़िक का श्रेणियों के अनुसार मापन वेबसाइट के संचालन, और सर्च इंजन तथा
+            AI असिस्टेंट के लिए उसे बेहतर बनाने के हमारे वैध हित पर आधारित है। इसमें ऐसे किसी
+            डेटा का उपयोग नहीं होता जिससे आपकी पहचान हो सके।
           </>,
           <>
-            Recording reservation and payment steps is based on our legitimate
-            interest in measuring how reservations and payments go and spotting
-            failed or abandoned payments, where that interest is not overridden
-            by your rights. You can object to this processing at any time.
-            Linking these records to your account's analytics profile is based
-            on your analytics consent.
+            बुकिंग और भुगतान के चरणों को दर्ज करना बुकिंग और भुगतान की प्रगति को मापने तथा
+            असफल या अधूरे छोड़े गए भुगतानों का पता लगाने के हमारे वैध हित पर आधारित है,
+            बशर्ते आपके अधिकार उस पर भारी न पड़ते हों। आपको इस प्रसंस्करण पर किसी भी समय
+            आपत्ति करने का अधिकार है। इन रिकॉर्ड को आपके खाते की एनालिटिक्स प्रोफ़ाइल से
+            जोड़ना आपकी एनालिटिक्स सहमति पर आधारित है।
           </>,
           <>
-            Sending customer data from our booking system to our analytics
-            provider is based on our legitimate interest in understanding and
-            improving our services, where that interest is not overridden by
-            your rights. You can object to this processing at any time.
+            हमारे बुकिंग सिस्टम से ग्राहक डेटा एनालिटिक्स प्रदाता को भेजना हमारी सेवाओं को
+            समझने और उन्हें बेहतर बनाने के हमारे वैध हित पर आधारित है, बशर्ते आपके अधिकार उस
+            पर भारी न पड़ते हों। आपको इस प्रसंस्करण पर किसी भी समय आपत्ति करने का अधिकार
+            है।
           </>,
           <>
-            Future marketing communications are based on your separate consent.
-            Giving this consent is voluntary and is not a condition of making or
-            paying for a reservation.
+            भविष्य के मार्केटिंग संदेश आपकी अलग सहमति पर आधारित हैं। सहमति देना स्वैच्छिक है,
+            और यह बुकिंग बनाने या उसका भुगतान करने की शर्त नहीं है।
           </>,
         ],
       },
       {
-        heading: "5. Retention period",
+        heading: "5. संग्रहण अवधि",
         body: [
           <>
-            We keep unsuccessful enquiries and abandoned reservation data only
-            for as long as needed to handle the request, recover an incomplete
-            checkout, prevent abuse, or protect legal claims. For completed
-            Bookings, we retain the transaction, accounting, legal-acceptance,
-            and complaint records for the periods required by applicable law or
-            reasonably necessary to establish, exercise, or defend legal claims.
-            Technical abuse-prevention signals are short-lived.
+            असफल पूछताछ और अधूरी छोड़ी गई बुकिंग का डेटा हम केवल उतने समय तक रखते हैं जितना
+            अनुरोध के निपटान, अधूरे ऑर्डर को फिर से शुरू करने, दुरुपयोग की रोकथाम या कानूनी
+            दावों की सुरक्षा के लिए आवश्यक हो। पूरी हो चुकी बुकिंग के लेन-देन, लेखा, शिकायत
+            और कानूनी रिकॉर्ड हम उतने समय तक रखते हैं जितना कानूनी प्रावधानों द्वारा
+            अपेक्षित हो या कानूनी दावों की स्थापना, प्रयोग या बचाव के लिए उचित रूप से
+            आवश्यक हो। दुरुपयोग से सुरक्षा के लिए तकनीकी संकेत अल्पकालिक होते हैं।
           </>,
           <>
-            We keep the customer account while it is active; sign-in sessions
-            and links expire automatically and are deleted regularly. Deleting
-            the account deletes your login and sign-in data and deactivates the
-            linked customer profile. Reservation, payment, accounting,
-            fraud-prevention, and legal evidence records are not erased with the
-            login account and remain only for the applicable service, statutory,
-            or legitimate retention period.
+            ग्राहक खाते को हम तब तक रखते हैं जब तक उसका उपयोग होता है; साइन-इन सत्र और
+            लिंक अपने-आप समाप्त हो जाते हैं और हम उन्हें नियमित रूप से हटाते हैं। खाता हटाए
+            जाने पर हम आपका साइन-इन डेटा हटा देते हैं और जुड़ी हुई ग्राहक प्रोफ़ाइल को
+            निष्क्रिय कर देते हैं। बुकिंग, भुगतान और लेखा रिकॉर्ड, तथा धोखाधड़ी की रोकथाम या
+            कानूनी साक्ष्य के लिए आवश्यक रिकॉर्ड साइन-इन खाते के साथ नहीं हटाए जाते, और
+            केवल संबंधित संविदात्मक, वैधानिक या वैध संग्रहण अवधि तक ही रखे जाते हैं।
           </>,
           <>
-            A connected assistant's access credentials expire automatically and
-            are deleted regularly. The connection and the permissions you gave
-            last until you disconnect the assistant in Connected assistants in
-            your account or delete your account. Disconnecting the assistant or
-            deleting your account ends the connection and its permissions right
-            away: the assistant's access credentials stop working immediately
-            and are deleted. The record of which assistant started a reservation
-            stays with that reservation.
+            कनेक्ट किए गए असिस्टेंट के पहुँच क्रेडेंशियल अपने-आप समाप्त हो जाते हैं और हम उन्हें
+            नियमित रूप से हटाते हैं। कनेक्शन और दी गई अनुमतियाँ तब तक बनी रहती हैं जब तक
+            असिस्टेंट को आपके खाते के “कनेक्ट किए गए असिस्टेंट” सेक्शन में डिस्कनेक्ट न किया जाए
+            या खाता हटाया न जाए। असिस्टेंट को डिस्कनेक्ट करने या खाता हटाने पर कनेक्शन और
+            अनुमतियाँ तुरंत समाप्त हो जाती हैं: असिस्टेंट के पहुँच क्रेडेंशियल तुरंत काम करना बंद कर
+            देते हैं और हटा दिए जाते हैं। किस असिस्टेंट ने बुकिंग शुरू की थी, यह जानकारी बुकिंग के
+            रिकॉर्ड के साथ बनी रहती है।
           </>,
           <>
-            Analytics and campaign measurement data, including customer data
-            sent to our analytics provider, is retained according to the
-            applicable analytics and technical provider settings and only as
-            long as necessary for the stated measurement purposes.
+            एनालिटिक्स डेटा और अभियानों के मापन का डेटा, जिसमें एनालिटिक्स प्रदाता को भेजा
+            गया ग्राहक डेटा भी शामिल है, हम संबंधित एनालिटिक्स और तकनीकी प्रदाताओं की
+            सेटिंग के अनुसार, और केवल बताए गए मापन उद्देश्यों के लिए आवश्यक अवधि तक रखते हैं।
           </>,
           <>
-            We keep the record of your marketing consent, including any
-            withdrawal, with your customer record so that we can show what you
-            chose.
+            आपकी मार्केटिंग सहमति का रिकॉर्ड, उसे वापस लिए जाने सहित, हम आपके ग्राहक
+            रिकॉर्ड के साथ रखते हैं, ताकि यह प्रमाणित कर सकें कि आपने क्या निर्णय लिया था।
           </>,
         ],
       },
       {
-        heading: "6. Recipients",
+        heading: "6. प्राप्तकर्ता",
         body: [
           <>
-            Your data may be accessed by our internal workspace team and, as
-            necessary for their role, by providers of website hosting,
-            reservation and customer management, payment processing, email
-            delivery, accounting-document generation, security, analytics,
-            external measurement, and other technical services. Payment data is
-            sent to the payment provider only to create and verify the
-            transaction. We use appropriate contractual, organizational, and
-            technical safeguards for provider access.
+            डेटा तक हमारी आंतरिक Workspace टीम की पहुँच हो सकती है, और उनकी भूमिका के
+            लिए आवश्यक सीमा तक होस्टिंग, बुकिंग और ग्राहक सिस्टम, भुगतान प्रसंस्करण, email
+            डिलीवरी, लेखा दस्तावेज़ तैयार करने, सुरक्षा, एनालिटिक्स, बाहरी मापन और अन्य
+            तकनीकी सेवाओं के प्रदाताओं की भी। भुगतान डेटा हम भुगतान प्रदाता को केवल लेन-देन
+            बनाने और उसकी जाँच के लिए भेजते हैं। प्रदाताओं की पहुँच के लिए हम उचित संविदात्मक,
+            संगठनात्मक और तकनीकी सुरक्षा उपायों का उपयोग करते हैं।
+          </>,
+          <>ग्राहक प्रोफ़ाइल और बुकिंग हम अपने बुकिंग सिस्टम Dotypos में रखते हैं।</>,
+          <>
+            यदि आपने कोई AI असिस्टेंट कनेक्ट किया है, तो वह आपके अनुरोध पर जो जानकारी
+            प्राप्त करता है, जैसे हमारे उपलब्ध विकल्प और आपकी बुकिंग, उसे हम इस असिस्टेंट के
+            प्रदाता को देते हैं, जो आपके द्वारा चुने गए प्राप्तकर्ता के रूप में अपनी शर्तों के
+            अनुसार उसका उपयोग करता है। यह प्रदाता यूरोपीय संघ के बाहर, उदाहरण के लिए
+            संयुक्त राज्य अमेरिका में, स्थित हो सकता है, और आपका डेटा वहाँ इसलिए पहुँचता है
+            क्योंकि आपने इसका अनुरोध किया है।
           </>,
           <>
-            Customer profiles and reservations are kept in our booking system,
-            Dotypos.
-          </>,
-          <>
-            If you connect an AI assistant, what it retrieves at your request,
-            such as our offers and your reservations, goes to that assistant's
-            provider, which handles it under its own terms as a recipient you
-            chose. That provider may be outside the European Union, for example
-            in the United States, and your data goes there because you asked for
-            it.
-          </>,
-          <>
-            If we send marketing communications in the future, our email
-            delivery provider may process the contact and delivery information
-            needed to send them on our behalf.
+            यदि हम भविष्य में मार्केटिंग संदेश भेजते हैं, तो हमारा email सेवा प्रदाता हमारी ओर
+            से उन्हें भेजने के लिए आवश्यक संपर्क और डिलीवरी डेटा का प्रसंस्करण कर सकता है।
           </>,
         ],
       },
       {
-        heading: "7. Transfers outside the EU",
+        heading: "7. EU के बाहर हस्तांतरण",
         body: [
           <>
-            Some of our providers, or companies working for them, are outside
-            the European Union, so your data may be processed there. In the
-            United States, we use only companies certified under the EU–US Data
-            Privacy Framework or bound by the European Commission's standard
-            contractual clauses. The map on our website comes from a provider in
-            the United Kingdom. The European Commission has decided that the
-            United Kingdom, and US companies certified under the framework,
-            protect personal data adequately. To learn more about these
-            transfers or get a copy of the safeguards, write to us at{" "}
+            हमारे कुछ प्रदाता या उनके लिए काम करने वाली कंपनियाँ यूरोपीय संघ के बाहर स्थित
+            हैं, इसलिए आपके डेटा का प्रसंस्करण वहाँ भी हो सकता है। संयुक्त राज्य अमेरिका में हम
+            केवल उन्हीं कंपनियों का उपयोग करते हैं जो EU–USA डेटा संरक्षण ढाँचे के अंतर्गत
+            प्रमाणित हैं या यूरोपीय आयोग के मानक संविदात्मक खंडों से बंधी हैं। हमारी वेबसाइट
+            पर नक्शा यूनाइटेड किंगडम के एक प्रदाता से लोड होता है। यूरोपीय आयोग ने निर्णय
+            दिया है कि यूनाइटेड किंगडम और इस ढाँचे के अंतर्गत प्रमाणित अमेरिकी कंपनियाँ
+            व्यक्तिगत डेटा की पर्याप्त सुरक्षा सुनिश्चित करती हैं। हस्तांतरण से संबंधित जानकारी
+            या संबंधित सुरक्षा उपायों की प्रति इस पते पर माँगी जा सकती है:{" "}
             <a
               className="text-burned-orange underline underline-offset-4"
               href={`mailto:${contactEmail}`}
             >
               {contactEmail}
             </a>
-            .
+            ।
           </>,
           <>
-            Our door-lock provider is in Singapore, which has no such decision.
-            To give you door access for your reservation, it receives details of
-            your door code, such as when the code is valid. We send them only
-            because they are needed to provide the service you booked.
+            दरवाज़ों के लॉक का हमारा प्रदाता सिंगापुर में स्थित है, जिसके लिए ऐसा कोई निर्णय
+            मौजूद नहीं है। आपकी बुकिंग के दौरान परिसर में प्रवेश के लिए उसे आपके प्रवेश कोड से
+            संबंधित डेटा, जैसे उसकी वैधता की अवधि, प्राप्त होता है। हम यह डेटा केवल इसलिए
+            भेजते हैं क्योंकि यह आपके द्वारा बुक की गई सेवा प्रदान करने के लिए आवश्यक है।
           </>,
         ],
       },
       {
-        heading: "8. Your rights",
+        heading: "8. आपके अधिकार",
         body: [
           <>
-            Under applicable data protection law, you may request access,
-            rectification, erasure, restriction, objection, or data portability
-            where applicable. You may lodge a complaint with the Czech Office
-            for Personal Data Protection at{" "}
+            लागू प्रावधानों के अनुसार आपको अपने डेटा तक पहुँच, उसके सुधार, उसे हटाने, उसके
+            प्रसंस्करण पर प्रतिबंध, आपत्ति दर्ज करने और, जहाँ लागू हो, डेटा पोर्टेबिलिटी का
+            अनुरोध करने का अधिकार है। शिकायत Úřad pro ochranu osobních údajů (चेक
+            गणराज्य का व्यक्तिगत डेटा संरक्षण कार्यालय) के पास यहाँ दर्ज की जा सकती है:{" "}
             <a
               className="text-burned-orange underline underline-offset-4"
-              href="https://uoou.gov.cz/en"
+              href="https://uoou.gov.cz/"
               rel="noreferrer"
               target="_blank"
             >
               uoou.gov.cz
             </a>
-            .
+            ।
           </>,
           <>
-            You can give or withdraw marketing consent at any time on the
-            privacy page in your account, through the link in any marketing
-            email, or by writing to us at{" "}
+            मार्केटिंग संदेशों के लिए सहमति आपके खाते के गोपनीयता पेज पर, किसी भी मार्केटिंग
+            email में दिए गए लिंक से, या इस पते पर लिखकर किसी भी समय दी या वापस ली जा
+            सकती है:{" "}
             <a
               className="text-burned-orange underline underline-offset-4"
               href={`mailto:${contactEmail}`}
             >
               {contactEmail}
             </a>
-            . Withdrawal does not affect processing that took place before it.
+            । सहमति वापस लेने से उससे पहले हुए प्रसंस्करण पर कोई प्रभाव नहीं पड़ता।
           </>,
           <>
-            You can delete the customer account from its profile page. This
-            self-service action deletes the login account but does not replace a
-            broader data-protection request concerning reservations or legally
-            retained records; send those requests to{" "}
+            ग्राहक खाता आपकी प्रोफ़ाइल के पेज पर हटाया जा सकता है। यह स्वयं-सेवा कार्रवाई
+            साइन-इन खाते को हटा देती है, लेकिन बुकिंग या कानूनी रूप से रखे गए रिकॉर्ड से
+            संबंधित, व्यक्तिगत डेटा सुरक्षा के प्रावधानों के अंतर्गत किसी व्यापक अनुरोध का स्थान
+            नहीं लेती; ऐसा अनुरोध इस पते पर भेजें:{" "}
             <a
               className="text-burned-orange underline underline-offset-4"
               href={`mailto:${contactEmail}`}
             >
               {contactEmail}
             </a>
-            .
+            ।
           </>,
         ],
       },
@@ -666,68 +643,68 @@ const legalDocuments = {
     updatedAt: "5 अगस्त 2026",
     sections: [
       {
-        heading: "1. Who may contact you",
+        heading: "1. आपसे कौन संपर्क कर सकता है",
         body: [
           <>
-            For future marketing communications, {companyName} is the sender and
-            controller, ID No.{" "}
-            {workspaceSiteConstants.company.identificationNumber}, at{" "}
-            {companyAddress}.
+            भविष्य के मार्केटिंग संदेशों का प्रेषक और व्यक्तिगत डेटा नियंत्रक है: {companyName},
+            IČO (कंपनी पंजीकरण संख्या){" "}
+            {workspaceSiteConstants.company.identificationNumber}, पता:{" "}
+            {companyAddress}।
           </>,
         ],
       },
       {
-        heading: "2. What you agree to",
+        heading: "2. आपकी सहमति किस बात के लिए है",
         body: [
-          "You agree that we may use your name, email address, and preferred language for future Deskohub Workspace marketing and community communications by email.",
-          "The consent covers marketing by email for our own Deskohub Workspace services. We do not give your contact details to another business for its own marketing.",
-          "The consent belongs to the relevant customer record, not to an email address. If that customer record's email address changes, the consent follows that record. Customer records that use the same email address have separate consent choices.",
+          "आपकी सहमति से हम आपके नाम, email पते और पसंदीदा भाषा का उपयोग Deskohub Workspace के भविष्य के मार्केटिंग और समुदाय संबंधी संदेश email द्वारा भेजने के लिए कर सकते हैं।",
+          "यह सहमति हमारी अपनी Deskohub Workspace सेवाओं की email मार्केटिंग पर लागू होती है। हम आपका संपर्क विवरण किसी अन्य कंपनी को उसकी अपनी मार्केटिंग के लिए नहीं देते।",
+          "सहमति संबंधित ग्राहक रिकॉर्ड से जुड़ी होती है, email पते से नहीं। यदि इस रिकॉर्ड का email पता बदल जाता है, तो सहमति इसी रिकॉर्ड के साथ बनी रहती है। एक ही email पते वाले अलग-अलग ग्राहक रिकॉर्ड की सहमतियाँ अलग-अलग होती हैं।",
         ],
       },
       {
-        heading: "3. Your choice",
+        heading: "3. आपका चुनाव",
         body: [
-          "This consent is voluntary and separate from your reservation. Leaving the marketing checkbox unchecked does not prevent you from making or paying for a reservation.",
-          "Leaving the marketing checkbox unchecked does not withdraw an existing preference.",
-          "We record the time and version of the notice with the relevant customer preference so that we can show what you accepted.",
-          "An anonymous booking can create an initial customer marketing preference only when no preference exists. It cannot overwrite an existing preference.",
+          "सहमति स्वैच्छिक है और बुकिंग से अलग है। मार्केटिंग चेकबॉक्स पर निशान न लगाने से आपको बुकिंग बनाने या उसका भुगतान करने में कोई बाधा नहीं आती।",
+          "मार्केटिंग चेकबॉक्स पर निशान न लगाने से पहले से मौजूद प्राथमिकता वापस नहीं होती।",
+          "हम सहमति को संबंधित ग्राहक रिकॉर्ड के साथ, उसके समय और सूचना के संस्करण सहित, दर्ज करते हैं, ताकि यह प्रमाणित कर सकें कि आपने क्या स्वीकार किया था।",
+          "बिना साइन इन किए की गई बुकिंग ग्राहक की प्रारंभिक मार्केटिंग प्राथमिकता केवल तभी बना सकती है जब कोई प्राथमिकता मौजूद न हो। वह मौजूदा प्राथमिकता को नहीं बदल सकती।",
         ],
       },
       {
-        heading: "4. Managing and withdrawing consent",
+        heading: "4. सहमति का प्रबंधन और उसे वापस लेना",
         body: [
           <>
-            You can opt in to or withdraw consent on the privacy page in your
-            account when you are signed in with a verified account linked to the
-            relevant customer record. A dedicated customer-specific link in a
-            future marketing message can also let you opt in or withdraw. If
-            neither option is available, contact our support team at{" "}
+            यदि आपने संबंधित ग्राहक रिकॉर्ड से जुड़े पुष्टि किए गए खाते से साइन इन किया है, तो
+            सहमति आपके खाते के गोपनीयता पेज पर दी या वापस ली जा सकती है। भविष्य के किसी
+            मार्केटिंग संदेश में किसी विशिष्ट ग्राहक के लिए निर्धारित लिंक से भी सहमति दी या
+            वापस ली जा सकती है। यदि इनमें से कोई भी विकल्प उपलब्ध नहीं है, तो हमारी
+            सहायता टीम से इस पते पर संपर्क करें:{" "}
             <a
               className="text-burned-orange underline underline-offset-4"
               href={`mailto:${contactEmail}`}
             >
               {contactEmail}
             </a>
-            . Withdrawal applies to future marketing and does not affect prior
-            lawful processing.
+            । सहमति वापस लेना भविष्य की मार्केटिंग पर लागू होता है, और इससे पहले हुए वैध
+            प्रसंस्करण पर इसका कोई प्रभाव नहीं पड़ता।
           </>,
         ],
       },
       {
-        heading: "5. Providers and your rights",
+        heading: "5. प्रदाता और आपके अधिकार",
         body: [
           <>
-            If we send marketing communications in the future, our email
-            delivery provider may process the contact and delivery information
-            needed to send them on our behalf. More information about
-            recipients, safeguards, and your data protection rights is in our{" "}
+            यदि हम भविष्य में मार्केटिंग संदेश भेजते हैं, तो हमारा email सेवा प्रदाता हमारी ओर
+            से उन्हें भेजने के लिए आवश्यक संपर्क और डिलीवरी डेटा का प्रसंस्करण कर सकता है।
+            प्राप्तकर्ताओं, सुरक्षा उपायों और आपके अधिकारों के बारे में अधिक जानकारी के लिए
+            देखें:{" "}
             <a
               className="text-burned-orange underline underline-offset-4"
-              href="/en-US/privacy-policy"
+              href="/hi-IN/privacy-policy"
             >
-              Privacy Policy
+              हमारी गोपनीयता नीति
             </a>
-            .
+            ।
           </>,
         ],
       },
@@ -741,94 +718,90 @@ const legalDocuments = {
     updatedAt: "8 नवंबर 2026",
     sections: [
       {
-        heading: "1. What cookies are",
+        heading: "1. कुकीज़ क्या हैं",
         body: [
           <>
-            Cookies are small text files stored in your browser that help a
-            website remember technical choices, improve usability, and
-            understand whether optional features may be enabled.
+            कुकीज़ ब्राउज़र में संग्रहीत छोटी टेक्स्ट फ़ाइलें होती हैं, जो वेबसाइट को तकनीकी
+            विकल्प याद रखने, उपयोग में आसानी बढ़ाने और वैकल्पिक सुविधाओं के चालू होने को
+            नियंत्रित करने में मदद करती हैं।
           </>,
         ],
       },
       {
-        heading: "2. Necessary cookies",
+        heading: "2. आवश्यक कुकीज़",
         body: [
           <>
-            Necessary cookies support core website operation, language handling,
-            security, and storing your cookie consent state. These cookies are
-            always active because the site cannot work reliably without them.
+            आवश्यक कुकीज़ वेबसाइट के बुनियादी संचालन, भाषा के प्रबंधन, सुरक्षा और कुकीज़ के लिए
+            आपकी सहमति की स्थिति को सहेजने में मदद करती हैं। ये कुकीज़ हमेशा सक्रिय रहती हैं,
+            क्योंकि इनके बिना वेबसाइट भरोसेमंद ढंग से काम नहीं कर सकती।
           </>,
           <>
-            When you sign in to your customer account, a strictly necessary
-            session cookie keeps you signed in for up to 30 days. It is set only
-            after you sign in and is removed when you sign out or delete your
-            account.
+            ग्राहक खाते में साइन इन करने के बाद एक आवश्यक सत्र कुकी आपको अधिकतम 30 दिनों
+            तक साइन इन रखती है। यह साइन इन करने के बाद ही सेट होती है, और साइन आउट
+            करने या खाता हटाने पर हटा दी जाती है।
           </>,
           <>
-            When you open a referral link shared by another customer, a strictly
-            necessary cookie remembers its referral code for up to 30 days so
-            the invitation discount you asked for can be applied when you
-            complete your profile or book. A referral link opened later does not
-            replace a code that is already remembered, but a referral code you
-            enter at checkout that is accepted does. The cookie is removed once
-            the referral is recorded or your first booking is paid, and it is
-            not used for tracking.
+            किसी अन्य ग्राहक का रेफ़रल लिंक खोलने पर एक आवश्यक कुकी अधिकतम 30 दिनों तक
+            उसका रेफ़रल कोड याद रखती है, ताकि प्रोफ़ाइल पूरी करते समय या बुकिंग करते समय
+            वह छूट लागू की जा सके जिसका अनुरोध आपने किया है। बाद में खोला गया रेफ़रल लिंक
+            याद रखे गए कोड की जगह नहीं लेता; लेकिन चेकआउट में आपके द्वारा दर्ज किया गया
+            रेफ़रल कोड, यदि वह स्वीकार कर लिया जाता है, उसकी जगह ले लेता है। रेफ़रल दर्ज
+            हो जाने या आपकी पहली बुकिंग का भुगतान हो जाने पर कुकी हटा दी जाती है, और
+            उसका उपयोग ट्रैकिंग के लिए नहीं किया जाता।
           </>,
         ],
       },
       {
-        heading: "3. Preference cookies",
+        heading: "3. प्राथमिकता कुकीज़",
         body: [
           <>
-            Preference cookies remember optional display or interaction settings
-            when such features are enabled on the website.
+            प्राथमिकता कुकीज़ प्रदर्शन या इंटरैक्शन की वैकल्पिक सेटिंग याद रखती हैं, यदि
+            वेबसाइट पर ऐसी सुविधाएँ सक्रिय हों।
           </>,
         ],
       },
       {
-        heading: "4. Analytics and marketing cookies",
+        heading: "4. एनालिटिक्स और मार्केटिंग कुकीज़",
         body: [
           <>
-            Analytics and marketing cookies are optional. If analytics, external
-            measurement, campaign measurement, or similar technical provider
-            tools are used on the site, they are activated only after your
-            consent through the cookie banner or the cookie settings page.
+            एनालिटिक्स और मार्केटिंग कुकीज़ वैकल्पिक हैं। यदि वेबसाइट पर प्रदाताओं के
+            एनालिटिक्स, बाहरी मापन, अभियान या इसी तरह के तकनीकी टूल उपयोग किए जाते
+            हैं, तो वे कुकी बैनर या कुकी सेटिंग पेज के माध्यम से आपकी सहमति के बाद ही सक्रिय
+            होते हैं।
           </>,
           <>
-            Analytics cookies help us understand site usage, reservation
-            submission performance, and campaign effectiveness. Depending on the
-            provider category, the processed data may include pageviews, browser
-            and device information, IP-derived technical data, event types, and
-            standard campaign parameters from URLs: utm_source, utm_medium,
-            utm_campaign, utm_content, and utm_term.
+            एनालिटिक्स कुकीज़ हमें वेबसाइट के उपयोग, बुकिंग भेजे जाने के प्रदर्शन और अभियानों की
+            प्रभावशीलता को समझने में मदद करती हैं। प्रदाता की श्रेणी के अनुसार, प्रसंस्कृत डेटा
+            में पेज व्यू, ब्राउज़र और डिवाइस की जानकारी, IP पते से प्राप्त तकनीकी डेटा, इवेंट
+            के प्रकार और URL में मौजूद मानक अभियान पैरामीटर शामिल हो सकते हैं:
+            utm_source, utm_medium, utm_campaign, utm_content और utm_term।
           </>,
           <>
-            With your analytics consent, we also add the records of your
-            reservations and payments to your account's analytics profile, as
-            described in our{" "}
+            आपकी एनालिटिक्स सहमति होने पर हम आपकी बुकिंग और भुगतान के रिकॉर्ड को आपके
+            खाते की एनालिटिक्स प्रोफ़ाइल से भी जोड़ते हैं, जैसा कि यहाँ बताया गया है:{" "}
             <a
               className="text-burned-orange underline underline-offset-4"
-              href="/en-US/privacy-policy"
+              href="/hi-IN/privacy-policy"
             >
-              Privacy Policy
+              हमारी गोपनीयता नीति
             </a>
-            .
+            ।
           </>,
           <>
-            Reservation submitted conversion events do not include reservation
-            form values or personal details such as name, email, phone, message,
-            reservation dates or times, duration, seat count, selected product,
-            or refreshment, monitor, or workstation choices.
+            बुकिंग भेजे जाने से संबंधित कन्वर्ज़न इवेंट में बुकिंग फ़ॉर्म के मान या व्यक्तिगत डेटा
+            शामिल नहीं होते, जैसे नाम, email, फ़ोन, संदेश, बुकिंग की तारीख़ें या समय, अवधि,
+            सीटों की संख्या, चुना गया उत्पाद, या जलपान, मॉनिटर या वर्कस्टेशन से संबंधित
+            विकल्प।
           </>,
         ],
       },
       {
-        heading: "5. How to manage consent",
+        heading: "5. सहमति का प्रबंधन कैसे करें",
         body: [
           <>
-            You can accept all optional categories, reject non-essential
-            categories, or manage them individually through the cookie banner
-            and the dedicated cookie settings page linked in the footer.
+            कुकी बैनर और फ़ुटर से उपलब्ध अलग कुकी सेटिंग पेज के माध्यम से सभी वैकल्पिक श्रेणियाँ
+            स्वीकार की जा सकती हैं, गैर-आवश्यक श्रेणियाँ अस्वीकार की जा सकती हैं, या उन्हें
+            अलग-अलग प्रबंधित किया जा सकता है।
           </>,
         ],
       },
@@ -842,6 +815,6 @@ const legalDocuments = {
 
 export const translation = {
   translationNotice:
-    "This is a translation of the Czech original. In case of any discrepancy between this translation and the Czech version, the Czech version governs.",
+    "यह चेक भाषा के मूल पाठ का अनुवाद है। इस अनुवाद और चेक भाषा के पाठ के बीच किसी भी विरोधाभास की स्थिति में चेक भाषा का पाठ ही मान्य होगा।",
   documents: legalDocuments,
 } satisfies LegalDocumentTranslation;

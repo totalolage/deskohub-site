@@ -61,9 +61,9 @@ export const consentBannerDocumentVersions: Readonly<
   },
   "hi-IN": {
     "privacy-policy":
-      "96c9748563cf96b8d2c3eef717dfd9e9537cf3cfbe848b874707e4ef00439729",
+      "db35770c2e282d1d15ce49251eebfba87b6d75e6b2b7d838e4882c5c62960c13",
     "cookie-policy":
-      "f53be88e680711562f7f1c1dd4be83af3ec80dd7274a86c268c26ad8ffd24f32",
+      "8a1b1ac6543ec1b2a5d9ab7188e86679699a29fe1910e762bfa8a1a151ed6bad",
   },
 };
 
