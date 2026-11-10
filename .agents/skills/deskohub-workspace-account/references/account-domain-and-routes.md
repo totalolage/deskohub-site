@@ -32,7 +32,15 @@
     never a signup referral.
   - `requireActive` is the verified session of an account not awaiting
     deletion, or `unauthenticated`, `unverified-email`, or `link-required`
-    with `deletion-requested`.
+    with `deletion-requested`. Use it wherever a session read is followed
+    directly by the deletion refusal; never pair a session read with
+    `requireVerifiedIdentity` yourself (the module exports it only for
+    standing fakes in tests). `requireVerifiedSession` (`verified-customer-session.ts`) admits a
+    pending deletion; it stays for account deletion (a pending deletion may
+    retry), the locale preference (refused under the lock by the section's
+    recheck), and avatar mutations (the release gate decides before the
+    deletion refusal). Moving those to `requireActive` changes their
+    outcomes.
   - Callers map outcomes differently on purpose. The account state
     (`loadAccountState`) shows `unverified` and a failed session read as
     `unavailable`, an `unavailable` whose failure is the recheck's
@@ -66,7 +74,8 @@
     `unreadable` marker fails `account-link.read`. The customer API provides
     the standing over the request's authentication
     (`CustomerReservationLayers.currentAccount`, and the account services'
-    `currentAccount` for the remembered referral); agents get it from
+    `currentAccount` for every account, marketing, referral, avatar and
+    analytics consent endpoint); agents get it from
     `customerAgentAccountServices`.
   - The account state reads it through `AccountStateCapabilities`. When its
     link capabilities can't be built, `accountStateCapabilities` substitutes
@@ -75,13 +84,26 @@
   - The table test (`current-customer-account.postgres.test.ts`) covers every
     kind over test Postgres and a Dotypos fake. Caller tests fake the
     standing: the read-only readers' policy tests run every label of
-    `testPeekedStandings` through `peeking`
-    (`current-customer-account.test-utils.ts`).
-- `CustomerAccountResolver.resolve` is the replaceable identity-to-customer
-  capability for the callers that haven't moved to `CurrentCustomerAccount`
-  yet. It returns only `CustomerAccountId` and `DotyposCustomerId`.
-- Require the authoritative current session and a verified email, then resolve
-  in this order:
+    `testPeekedStandings` through `peeking`, and the resolving callers'
+    every label of `testResolvedStandings` through `answeringStanding`
+    (`current-customer-account.test-utils.ts`). `requiringActiveOver` gives a
+    reader that only requires an active session the real `requireActive`
+    over its fake authentication.
+- `requireLinkedCustomerAccount` (`backend/linked-customer-account.ts`) is the
+  one projection for callers whose policy is "the linked account or the
+  refusal": a match over `resolve` that returns the `LinkedCustomerAccount`
+  or `linkedAccountFailure(standing)`, the exact access error each standing
+  stood for before the standing existed (`review` is
+  `customerAccountUnavailable("account.review")`). Avatar mutations, the
+  signup referral acknowledgement, the referral overview, invoices, the data
+  export authority, reservation ownership, and marketing preferences use it;
+  profile saving matches `linked` and `profile-missing` itself and refuses
+  the rest with `linkedAccountFailure`. Don't copy the match into a caller,
+  and don't give the projection reads of its own.
+  `linked-customer-account.test.ts` proves every resolved standing's value.
+- The held steps (`resolveHeldCustomerAccountLink`,
+  `backend/held-customer-account-link.ts`) resolve in this order, for the
+  account the enclosing section holds:
   1. An existing durable link wins.
   2. One unique active exact-email Dotypos profile gets linked.
   3. One unique expired profile is reactivated first and only then claimed, so

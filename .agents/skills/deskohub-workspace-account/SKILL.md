@@ -57,7 +57,7 @@ Paths are relative to `apps/deskohub-workspace` unless they start with
   `withOptionalAccount`, read the contact with
   `CustomerAccountContactService.current` or the standing with
   `CurrentCustomerAccount.peek`, and never resolve through
-  `CustomerAccountResolver` or `CurrentCustomerAccount.resolve`.
+  `CurrentCustomerAccount.resolve` or `requireLinkedCustomerAccount`.
 - Keep Drizzle as the only migration authority. Never run Better Auth runtime
   migrations.
 - Prefer Better Auth, Effect, and Next built-in APIs over hand-rolled

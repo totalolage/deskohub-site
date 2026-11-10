@@ -25,8 +25,8 @@ covers how it is built.
 ## Authorization
 
 `download` re-authorizes from the authoritative session the way
-`CustomerInvoiceService` does: `CustomerAccountResolver.resolve`, then
-`CustomerAuthentication.currentUser` through `requireVerifiedIdentity` (the
+`CustomerInvoiceService` does: `requireLinkedCustomerAccount`, then
+`CurrentCustomerAccount.requireActive` read again after resolution (the
 identity section comes from this session, so its account must be the resolved
 one), then `requireAccountActivity`. `isCustomerAccountAccessDenial` sorts the
 `CustomerAccountAccessError`: a refusal (signed out, unverified, unlinked,
@@ -35,7 +35,7 @@ review account, deletion pending or done) is
 with code `account.authority`.
 
 That authorization is `authorizeAccountDataExport`, an Effect over
-`AccountDataExportAuthority` (resolver, session, account link;
+`AccountDataExportAuthority` (the account standing and the account link;
 `accountDataExportAuthorityLive` in production). `download` runs it with the
 service's own dependencies, and `/account/legal` offers the download through
 `getAccountDataExportAvailability`
