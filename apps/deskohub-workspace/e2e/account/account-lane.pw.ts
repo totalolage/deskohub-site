@@ -308,6 +308,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         laneBrowser: makeWorkspaceE2EAccountLaneBrowser({
           config: accountLane.config,
           openAssistantSession: accountLane.openAssistantSession,
+          openSeparateSession: accountLane.openSeparateSession,
           openSession: accountLane.openSession,
         }),
         lifecycleHandoff: accountLane.lifecycleHandoff,

@@ -34,6 +34,7 @@ import {
 } from "./customer-account-resolver.service";
 import { CustomerAccountSections } from "./customer-account-sections";
 import { CustomerAuthentication } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const uniqueId = () => crypto.randomUUID();
@@ -139,6 +140,7 @@ const signIn = (input: {
     accountId: input.accountId,
     email: testEmailAddress(input.accountId),
     deletionRequested: false,
+    ...testSessionProfile,
   };
   const authenticationLayer = Layer.succeed(CustomerAuthentication, {
     currentUser: Effect.succeed(session),

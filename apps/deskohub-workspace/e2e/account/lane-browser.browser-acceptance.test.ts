@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { type Browser, chromium } from "@playwright/test";
-import { Effect } from "effect";
+import { Effect, Scope } from "effect";
 import { getAccountSectionPath } from "@/features/account/routes";
 import { sharedReferralCodeRememberedDays } from "@/features/referrals/program";
 import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
@@ -92,20 +92,33 @@ const openLaneSession = (laneBrowser: Browser, id: string) =>
     recordHar: false,
   });
 
-/** The lane browser over the lane's session and its own assistant session. */
+/**
+ * The lane browser over the lane's session, its own assistant session, and
+ * separate sessions, all owned by the caller's Scope.
+ */
 const laneBrowserOver = (
   laneBrowser: Browser,
   openSession: OpenE2EBrowserSession
 ) =>
-  Effect.map(
-    openLaneSession(laneBrowser, `account-lane-assistant-${randomUUID()}`),
-    (openAssistantSession) =>
-      makeWorkspaceE2EAccountLaneBrowser({
-        config,
-        openAssistantSession,
-        openSession,
-      })
-  );
+  Effect.gen(function* () {
+    const laneScope = yield* Effect.scope;
+    const openAssistantSession = yield* openLaneSession(
+      laneBrowser,
+      `account-lane-assistant-${randomUUID()}`
+    );
+    return makeWorkspaceE2EAccountLaneBrowser({
+      config,
+      openAssistantSession,
+      openSeparateSession: (name) =>
+        Effect.flatten(
+          openLaneSession(
+            laneBrowser,
+            `account-lane-${name}-${randomUUID()}`
+          ).pipe(Scope.provide(laneScope))
+        ),
+      openSession,
+    });
+  });
 
 test.skipIf(!chromiumAvailable)("drives the lane's own page", async () => {
   if (!browser) throw new Error("Chromium is not running");

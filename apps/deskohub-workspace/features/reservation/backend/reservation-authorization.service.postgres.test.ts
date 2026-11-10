@@ -15,6 +15,7 @@ import {
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
 import { CustomerAccountSections } from "@/features/account/backend/customer-account-sections";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import { CustomerDotyposAdapter } from "@/features/account/backend/customer-dotypos-adapter.service";
 import {
   type CustomerAccountId,
@@ -148,6 +149,7 @@ const makeAuthorization = (
       accountId: fixture.accountId,
       email: fixture.accountEmail,
       deletionRequested: false,
+      ...testSessionProfile,
     }),
   });
   const resolverLayer = CustomerAccountResolver.Default.pipe(

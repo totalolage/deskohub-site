@@ -20,6 +20,7 @@ import {
   sectionAccountEmail as verifiedEmail,
 } from "./customer-account-sections.test-utils";
 import type { CustomerAccountSession } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 
 const otherAccountId = customerAccountIdSchema.make("auth-user-2");
 
@@ -29,6 +30,7 @@ const session = (
   accountId,
   email: verifiedEmail,
   deletionRequested: false,
+  ...testSessionProfile,
   ...overrides,
 });
 

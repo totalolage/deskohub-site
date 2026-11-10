@@ -13,6 +13,7 @@ import {
 } from "./customer-account-link.repository";
 import { CustomerAccountSections } from "./customer-account-sections";
 import { CustomerAuthentication } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 
 export const sectionAccountId = customerAccountIdSchema.make(
   "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01"
@@ -64,6 +65,7 @@ export const makeCustomerAccountSections = (
           accountId: fixture.session.accountId ?? sectionAccountId,
           email: sectionAccountEmail,
           deletionRequested: fixture.session.deletionRequested ?? false,
+          ...testSessionProfile,
         };
   const activityState: CustomerAccountActivityState = (() => {
     if (fixture.activityState === "missing") return { kind: "missing" };

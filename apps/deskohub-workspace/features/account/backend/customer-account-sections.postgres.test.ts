@@ -25,6 +25,7 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 
 const suiteDatabase = await createWorkspacePostgresSuiteDatabase(
   "customer_account_sections"
@@ -98,6 +99,7 @@ describe.skipIf(!suiteDatabase)(
       accountId: account.accountId,
       email: reservationCustomerEmailSchema.make(account.email),
       deletionRequested: false,
+      ...testSessionProfile,
     });
 
     /** An account ID with no login row. */
@@ -414,6 +416,7 @@ describe.skipIf(!suiteDatabase)(
               testEmailAddress(`missing-${accountId}`)
             ),
             deletionRequested: false,
+            ...testSessionProfile,
           }).layer,
           accountId,
           "session",

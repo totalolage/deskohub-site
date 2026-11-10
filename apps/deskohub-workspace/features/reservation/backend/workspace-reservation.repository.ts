@@ -35,6 +35,11 @@ import type {
 import type { ReservationPurpose } from "@/features/reservation/reservation-billing";
 import { reservationAccessProvisioningStaleAfterMilliseconds } from "@/features/reservation-access";
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
+import {
+  type ReadLimitExceededError,
+  readLimitSentinel,
+  requireWithinReadLimit,
+} from "@/shared/backend/read-limit";
 import { supersedableReservationPaymentStates } from "./reservation-supersession";
 import {
   StoredReservationDetails,
@@ -300,7 +305,51 @@ export interface IWorkspaceReservationRepository {
   readonly selectExpiredHoldDotyposReservationIds: (input: {
     readonly now: Temporal.Instant;
   }) => Effect.Effect<readonly DotyposReservationId[], EffectDrizzleQueryError>;
+  /**
+   * The Workspace reservations made for one Dotypos customer, oldest first,
+   * as the customer may read them. Only rows whose reservation customer is
+   * `dotyposCustomerId` are read: a reservation the customer's account
+   * authored for another customer belongs to that customer and is excluded,
+   * whoever authored a row is irrelevant, and the author is not returned.
+   * Checkout keys, payment-return targets, hold and failure bookkeeping, and
+   * agent identifiers are never read. Fails with `ReadLimitExceededError`,
+   * returning nothing, when the customer has more than `limit` rows, and with
+   * `WorkspaceReservationDetailsMalformedError` when a row's stored product
+   * document is malformed.
+   */
+  readonly listForCustomer: (input: {
+    readonly dotyposCustomerId: DotyposCustomerId;
+    readonly limit: number;
+  }) => Effect.Effect<
+    readonly CustomerReservationRecord[],
+    | EffectDrizzleQueryError
+    | WorkspaceReservationDetailsMalformedError
+    | ReadLimitExceededError
+  >;
 }
+
+/**
+ * What a customer may read about one Workspace reservation made for them:
+ * its lifecycle and the product they chose. `product` is the stored product
+ * document, decoded strictly.
+ */
+export type CustomerReservationRecord = Pick<
+  WorkspaceReservationRow,
+  | "id"
+  | "dotyposReservationId"
+  | "reservationPurpose"
+  | "reservationState"
+  | "paymentState"
+  | "fulfillmentState"
+  | "locale"
+  | "reservationCreatedAt"
+  | "reservationConfirmedAt"
+  | "reservationCancelledAt"
+  | "paidAt"
+  | "fulfilledAt"
+> & {
+  readonly product: StoredWorkspaceReservationDetails;
+};
 
 export const ensureUpdated = (
   updated: readonly Pick<WorkspaceReservation, "id">[],
@@ -1339,6 +1388,56 @@ export class WorkspaceReservationRepository extends Context.Service<
             dotyposReservationId ? [dotyposReservationId] : []
           );
         }),
+        listForCustomer: Effect.fn("workspaceReservations.listForCustomer")(
+          function* (input) {
+            const rows = yield* db
+              .select({
+                id: workspaceReservations.id,
+                dotyposReservationId:
+                  workspaceReservations.dotyposReservationId,
+                reservationPurpose: workspaceReservations.reservationPurpose,
+                reservationState: workspaceReservations.reservationState,
+                paymentState: workspaceReservations.paymentState,
+                fulfillmentState: workspaceReservations.fulfillmentState,
+                locale: workspaceReservations.locale,
+                reservationDetails: workspaceReservations.reservationDetails,
+                reservationCreatedAt:
+                  workspaceReservations.reservationCreatedAt,
+                reservationConfirmedAt:
+                  workspaceReservations.reservationConfirmedAt,
+                reservationCancelledAt:
+                  workspaceReservations.reservationCancelledAt,
+                paidAt: workspaceReservations.paidAt,
+                fulfilledAt: workspaceReservations.fulfilledAt,
+              })
+              .from(workspaceReservations)
+              .where(
+                eq(
+                  workspaceReservations.dotyposCustomerId,
+                  input.dotyposCustomerId
+                )
+              )
+              .orderBy(
+                asc(workspaceReservations.createdAt),
+                asc(workspaceReservations.id)
+              )
+              .limit(readLimitSentinel(input.limit))
+              .pipe(retryDatabaseRead);
+            const bounded = yield* requireWithinReadLimit(rows, input.limit);
+            const decoded = yield* StoredReservationDetails.decodeRows(bounded);
+            return decoded.map(
+              ({
+                reservationDetails,
+                ...record
+              }): CustomerReservationRecord => ({
+                ...record,
+                product: reservationDetails,
+              })
+            );
+          },
+          (effect, { dotyposCustomerId, limit }) =>
+            effect.pipe(Effect.annotateLogs({ dotyposCustomerId, limit }))
+        ),
       } satisfies IWorkspaceReservationRepository;
     })
   );
