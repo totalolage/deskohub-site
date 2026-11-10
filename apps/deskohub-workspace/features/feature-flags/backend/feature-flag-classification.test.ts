@@ -9,7 +9,7 @@ import { TestClock } from "effect/testing";
 import type { PostHogFeatureFlagKey } from "../generated/contract";
 import {
   type ConstantFeatureFlagValues,
-  featureFlagSnapshotMaxAge,
+  featureFlagFallbackMaxAge,
   makeFeatureFlagClassifier,
 } from "./feature-flag-classification";
 
@@ -75,7 +75,7 @@ const runAt = <A>(elapsed: Duration.Input, classify: Effect.Effect<A>) =>
 const noOverrides: ConstantFeatureFlagValues = {};
 
 const pastSnapshotLimit = (millis: number) =>
-  Duration.millis(Duration.toMillis(featureFlagSnapshotMaxAge) + millis);
+  Duration.millis(Duration.toMillis(featureFlagFallbackMaxAge) + millis);
 
 describe("makeFeatureFlagClassifier", () => {
   test("classifies the contract flags PostHog reports as constant", async () => {
@@ -112,11 +112,51 @@ describe("makeFeatureFlagClassifier", () => {
     });
   });
 
+  test("drops the last complete classification once it's past the age limit", async () => {
+    const classify = makeFeatureFlagClassifier({ snapshot });
+
+    const classification = await runAt(
+      "0 millis",
+      Effect.gen(function* () {
+        yield* classify({ definitions: live, overrides: noOverrides });
+        yield* TestClock.adjust(pastSnapshotLimit(1));
+        return yield* classify({
+          definitions: listFailure,
+          overrides: noOverrides,
+        });
+      })
+    );
+
+    expect(classification).toEqual({ source: "none", values: {} });
+  });
+
+  test("rejects a snapshot read further in the future than clock skew allows", async () => {
+    const classify = makeFeatureFlagClassifier({ snapshot });
+
+    const [withinSkew, beyondSkew] = await runAt(
+      "-4 minutes",
+      Effect.gen(function* () {
+        const near = yield* classify({
+          definitions: listFailure,
+          overrides: noOverrides,
+        });
+        yield* TestClock.setTime(snapshotTime - Duration.toMillis("6 minutes"));
+        const far = yield* classify({
+          definitions: listFailure,
+          overrides: noOverrides,
+        });
+        return [near.source, far.source];
+      })
+    );
+
+    expect([withinSkew, beyondSkew]).toEqual(["snapshot", "none"]);
+  });
+
   test("uses a fresh snapshot when PostHog never answered", async () => {
     const classify = makeFeatureFlagClassifier({ snapshot });
 
     const classification = await runAt(
-      featureFlagSnapshotMaxAge,
+      featureFlagFallbackMaxAge,
       classify({ definitions: listFailure, overrides: noOverrides })
     );
 
