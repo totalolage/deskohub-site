@@ -4,6 +4,7 @@ import "@/shared/testing/workspace-test-env";
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
   type DotyposReservationId,
+  DotyposReservationIdSchema,
   type DotyposReservationStatus,
   DotyposService,
   DotyposUnavailable,
@@ -139,6 +140,16 @@ describe.skipIf(!postgresDatabase)(
 
     const heldHold = () => newReservation({ stage: { reservation: "held" } });
 
+    /** A late payment's release of the hold the reservation names. */
+    const latePayment = (hold: {
+      readonly id: WorkspaceReservationId;
+      readonly dotyposReservationId: DotyposReservationId | null;
+    }): UnpaidHoldReleaseRequest => ({
+      reason: "late_payment",
+      reservationId: hold.id,
+      originalDotyposReservationId: hold.dotyposReservationId!,
+    });
+
     describe("for an expired hold", () => {
       const holdExpiredAt = Temporal.Instant.from("2026-07-01T08:00:00Z");
 
@@ -263,10 +274,7 @@ describe.skipIf(!postgresDatabase)(
         const hold = await heldHold();
         const dotypos = makeDotypos(hold.id, "NEW");
 
-        const outcome = await release(
-          { reason: "late_payment", reservationId: hold.id },
-          dotypos
-        );
+        const outcome = await release(latePayment(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Success",
@@ -289,10 +297,7 @@ describe.skipIf(!postgresDatabase)(
         });
         const dotypos = makeDotypos(hold.id, "CANCELLED");
 
-        const outcome = await release(
-          { reason: "late_payment", reservationId: hold.id },
-          dotypos
-        );
+        const outcome = await release(latePayment(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Success",
@@ -308,10 +313,7 @@ describe.skipIf(!postgresDatabase)(
         const hold = await heldHold();
         const dotypos = makeDotypos(hold.id, "CONFIRMED");
 
-        const outcome = await release(
-          { reason: "late_payment", reservationId: hold.id },
-          dotypos
-        );
+        const outcome = await release(latePayment(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Success",
@@ -331,10 +333,7 @@ describe.skipIf(!postgresDatabase)(
           Effect.fail(dotyposUnavailable("getReservationStatus"))
         );
 
-        const outcome = await release(
-          { reason: "late_payment", reservationId: hold.id },
-          dotypos
-        );
+        const outcome = await release(latePayment(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Failure",
@@ -354,10 +353,7 @@ describe.skipIf(!postgresDatabase)(
           Effect.fail(dotyposUnavailable("cancelReservation"))
         );
 
-        const outcome = await release(
-          { reason: "late_payment", reservationId: hold.id },
-          dotypos
-        );
+        const outcome = await release(latePayment(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Failure",
@@ -375,10 +371,7 @@ describe.skipIf(!postgresDatabase)(
         });
         const dotypos = makeDotypos(hold.id);
 
-        const outcome = await release(
-          { reason: "late_payment", reservationId: hold.id },
-          dotypos
-        );
+        const outcome = await release(latePayment(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Success",
@@ -397,10 +390,7 @@ describe.skipIf(!postgresDatabase)(
         });
         const dotypos = makeDotypos(hold.id);
 
-        const outcome = await release(
-          { reason: "late_payment", reservationId: hold.id },
-          dotypos
-        );
+        const outcome = await release(latePayment(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Success",
@@ -419,10 +409,7 @@ describe.skipIf(!postgresDatabase)(
         });
         const dotypos = makeDotypos(hold.id);
 
-        const outcome = await release(
-          { reason: "late_payment", reservationId: hold.id },
-          dotypos
-        );
+        const outcome = await release(latePayment(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Success",
@@ -437,10 +424,7 @@ describe.skipIf(!postgresDatabase)(
         });
         const dotypos = makeDotypos(hold.id);
 
-        const outcome = await release(
-          { reason: "late_payment", reservationId: hold.id },
-          dotypos
-        );
+        const outcome = await release(latePayment(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Success",
@@ -459,10 +443,7 @@ describe.skipIf(!postgresDatabase)(
           ).pipe(Effect.orDie, Effect.as("NEW" as const))
         );
 
-        const outcome = await release(
-          { reason: "late_payment", reservationId: hold.id },
-          dotypos
-        );
+        const outcome = await release(latePayment(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Success",
@@ -484,16 +465,55 @@ describe.skipIf(!postgresDatabase)(
           ).pipe(Effect.orDie)
         );
 
-        const outcome = await release(
-          { reason: "late_payment", reservationId: hold.id },
-          dotypos
-        );
+        const outcome = await release(latePayment(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Success",
           success: "already_released",
         });
         expect((await rowOf(hold.id)).reservationState).toBe("cancelled");
+      });
+
+      test("releases the original hold after another recovery settled a replacement on the reservation", async () => {
+        // Another recovery resumed a held replacement and settled it: the
+        // reservation now names the replacement's hold and is paid.
+        const settled = await newReservation({
+          stage: { reservation: "held", payment: "paid" },
+        });
+        const replacementId = settled.dotyposReservationId!;
+        const originalDotyposReservationId = DotyposReservationIdSchema.make(
+          `original-hold-${crypto.randomUUID()}`
+        );
+        const dotypos = makeDotypos(settled.id);
+        dotypos.getReservationStatus.mockImplementation((id) =>
+          Effect.succeed(id === replacementId ? "CONFIRMED" : "CANCELLED")
+        );
+
+        const outcome = await release(
+          {
+            reason: "late_payment",
+            reservationId: settled.id,
+            originalDotyposReservationId,
+          },
+          dotypos
+        );
+
+        // The original hold reads cancelled, and the paid reservation can't
+        // be claimed, so the stale run leaves both holds alone.
+        expect(outcome).toMatchObject({
+          _tag: "Success",
+          success: "unclaimed",
+        });
+        expect(dotypos.getReservationStatus.mock.calls).toEqual([
+          [originalDotyposReservationId],
+        ]);
+        expect(dotypos.cancelReservation).not.toHaveBeenCalled();
+        expect(await rowOf(settled.id)).toMatchObject({
+          reservationState: "held",
+          paymentState: "paid",
+          dotyposReservationId: replacementId,
+          updatedAt: settled.updatedAt,
+        });
       });
 
       test("fails when another run left the claimed hold in another state", async () => {
@@ -508,10 +528,7 @@ describe.skipIf(!postgresDatabase)(
           ).pipe(Effect.orDie)
         );
 
-        const outcome = await release(
-          { reason: "late_payment", reservationId: hold.id },
-          dotypos
-        );
+        const outcome = await release(latePayment(hold), dotypos);
 
         expect(outcome).toMatchObject({
           _tag: "Failure",

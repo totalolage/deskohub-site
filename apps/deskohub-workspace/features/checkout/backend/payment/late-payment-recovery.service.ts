@@ -314,10 +314,12 @@ export class LatePaymentRecoveryService extends Context.Service<
       )(function* (input: {
         readonly paymentAttemptId: PaymentAttemptId;
         readonly reservation: WorkspaceReservation;
+        readonly originalDotyposReservationId: DotyposReservationId;
       }) {
         const outcome = yield* holdRelease.release({
           reason: "late_payment",
           reservationId: input.reservation.id,
+          originalDotyposReservationId: input.originalDotyposReservationId,
         });
         if (outcome === "in_progress") {
           return yield* retryLater(
@@ -649,6 +651,7 @@ export class LatePaymentRecoveryService extends Context.Service<
           releaseOriginalHold({
             paymentAttemptId: claimed.paymentAttemptId,
             reservation,
+            originalDotyposReservationId: claimed.originalDotyposReservationId,
           });
 
         // Only a hold that never passed its deadline was never offered to

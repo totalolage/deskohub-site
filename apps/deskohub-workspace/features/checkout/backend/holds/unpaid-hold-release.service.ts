@@ -39,7 +39,17 @@ export type UnpaidHoldReleaseRequest =
       readonly holdExpiredAt?: Temporal.Instant;
     }
   | {
-      readonly reason: "late_payment" | "agent_rotated";
+      readonly reason: "late_payment";
+      readonly reservationId: WorkspaceReservationId;
+      /**
+       * The Dotypos hold the late payment was for, as its recovery recorded
+       * it. Released even when another recovery has since written a
+       * replacement's hold on the reservation.
+       */
+      readonly originalDotyposReservationId: DotyposReservationId;
+    }
+  | {
+      readonly reason: "agent_rotated";
       readonly reservationId: WorkspaceReservationId;
     };
 
@@ -93,24 +103,15 @@ type ReleaseFailureCode =
   | "checkout_supersession_cancel_failed";
 
 /**
- * How one reason releases a hold.
- *
- * `claim`:
- * - `resume_claimed`: claim the cancellation, or take over a `cancelling`
- *   reservation another run claimed; release only an unpaid one with a
- *   Dotypos reservation.
- * - `resume_stale`: from the current reservation, release a cancelled one as
- *   done, wait out a fresh `cancelling` one, take over a stale one, and claim
- *   the cancellation otherwise.
- * - `supersession`: claim a `held` reservation whose payment may be
- *   superseded.
+ * How one reason releases a hold after its claim (see `claimHold`).
  *
  * `liveStatus`, what the live Dotypos status must be:
  * - `unchecked`: cancel without reading it.
  * - `require_new`: read it after the claim; cancel `NEW`, take `CANCELLED` as
  *   released, refuse anything else.
- * - `read_before_claim`: read it before the claim; refuse anything but `NEW`
- *   and `CANCELLED` without touching the reservation, and cancel only `NEW`.
+ * - `read_before_claim`: the late-payment claim read it before claiming and
+ *   refused anything but `NEW` and `CANCELLED` without touching the
+ *   reservation; cancel only `NEW`.
  *
  * `markerRefused`, what a cancelled marker the reservation's state refuses
  * means:
@@ -119,35 +120,24 @@ type ReleaseFailureCode =
  *   reservation reads `cancelled`; the refusal fails the release otherwise.
  * - `fails`: the refusal fails the release.
  */
-type ReleasePolicy = {
+interface ReleasePolicy {
+  readonly liveStatus: "unchecked" | "require_new" | "read_before_claim";
   readonly failureCode: ReleaseFailureCode;
   readonly markerRefused: "state_changed" | "confirm_cancelled" | "fails";
-} & (
-  | {
-      readonly claim: "resume_claimed" | "supersession";
-      readonly liveStatus: "unchecked" | "require_new";
-    }
-  | {
-      readonly claim: "resume_stale";
-      readonly liveStatus: "read_before_claim";
-    }
-);
+}
 
 const releasePolicies = {
   hold_expired: {
-    claim: "resume_claimed",
     liveStatus: "unchecked",
     failureCode: "dotypos_cancel_failed",
     markerRefused: "state_changed",
   },
   late_payment: {
-    claim: "resume_stale",
     liveStatus: "read_before_claim",
     failureCode: "dotypos_cancel_failed",
     markerRefused: "confirm_cancelled",
   },
   agent_rotated: {
-    claim: "supersession",
     liveStatus: "require_new",
     failureCode: "checkout_supersession_cancel_failed",
     markerRefused: "fails",
@@ -167,7 +157,7 @@ const releasableReservationStates: ReadonlySet<string> = new Set([
 
 /**
  * A `cancelling` reservation untouched for this long belongs to an
- * interrupted run, so a `resume_stale` release may finish it instead of
+ * interrupted run, so a late-payment release may finish it instead of
  * waiting indefinitely.
  */
 const staleHoldCancellationAfter = Temporal.Duration.from({ minutes: 10 });
@@ -257,6 +247,7 @@ export class UnpaidHoldRelease extends Context.Service<
         } satisfies ClaimedHold;
       });
 
+      // Claims a `held` reservation whose payment may be superseded.
       const claimSupersession = Effect.fnUntraced(function* (
         reservationId: WorkspaceReservationId
       ): Effect.fn.Return<ClaimResult, UnpaidHoldReleaseError> {
@@ -272,12 +263,16 @@ export class UnpaidHoldRelease extends Context.Service<
         } satisfies ClaimedHold;
       });
 
-      // Reads the live status before the claim, so a hold Dotypos no longer
-      // keeps pending leaves the reservation untouched.
-      const claimResumingStale = Effect.fnUntraced(function* (
-        reservationId: WorkspaceReservationId
-      ): Effect.fn.Return<ClaimResult, UnpaidHoldReleaseError> {
-        const reservation = yield* reservations.findById(reservationId);
+      // From the current reservation, releases a cancelled one as done, waits
+      // out a fresh `cancelling` one, takes over a stale one, and claims the
+      // cancellation otherwise. Reads the original hold's live status before
+      // the claim, so a hold Dotypos no longer keeps pending leaves the
+      // reservation untouched.
+      const claimResumingStale = Effect.fnUntraced(function* (request: {
+        readonly reservationId: WorkspaceReservationId;
+        readonly originalDotyposReservationId: DotyposReservationId;
+      }): Effect.fn.Return<ClaimResult, UnpaidHoldReleaseError> {
+        const reservation = yield* reservations.findById(request.reservationId);
         if (!reservation) {
           return yield* Effect.die(
             "Unpaid hold release reservation disappeared before release."
@@ -286,12 +281,7 @@ export class UnpaidHoldRelease extends Context.Service<
         if (reservation.reservationState === "cancelled") {
           return "already_released" as const;
         }
-        if (
-          !(
-            releasableReservationStates.has(reservation.reservationState) &&
-            reservation.dotyposReservationId
-          )
-        ) {
+        if (!releasableReservationStates.has(reservation.reservationState)) {
           return "unreleasable" as const;
         }
         const resumesStaleCancellation =
@@ -301,7 +291,7 @@ export class UnpaidHoldRelease extends Context.Service<
         }
 
         const status = yield* dotypos.getReservationStatus(
-          reservation.dotyposReservationId
+          request.originalDotyposReservationId
         );
         if (status !== "NEW" && status !== "CANCELLED") {
           return { refused: status } satisfies RefusedHold;
@@ -314,21 +304,24 @@ export class UnpaidHoldRelease extends Context.Service<
         }
         return {
           reservation,
-          dotyposReservationId: reservation.dotyposReservationId,
+          dotyposReservationId: request.originalDotyposReservationId,
           statusBeforeClaim: status,
         } satisfies ClaimedHold;
       });
 
-      const claimHold = {
-        resume_claimed: claimResumingClaimed,
-        resume_stale: claimResumingStale,
-        supersession: claimSupersession,
-      } satisfies Record<
-        ReleasePolicy["claim"],
-        (
-          reservationId: WorkspaceReservationId
-        ) => Effect.Effect<ClaimResult, UnpaidHoldReleaseError>
-      >;
+      // Each reason's claim. Hold cleanup and agent rotated holds release the
+      // Dotypos hold on the row they claimed; late payment releases the
+      // original hold its recovery recorded.
+      const claimHold = (request: UnpaidHoldReleaseRequest) => {
+        switch (request.reason) {
+          case "hold_expired":
+            return claimResumingClaimed(request.reservationId);
+          case "late_payment":
+            return claimResumingStale(request);
+          case "agent_rotated":
+            return claimSupersession(request.reservationId);
+        }
+      };
 
       // Releases the claimed hold in Dotypos: a refusal when its live status
       // keeps it there, nothing when it may be marked cancelled.
@@ -395,7 +388,7 @@ export class UnpaidHoldRelease extends Context.Service<
         release: Effect.fn("unpaidHoldRelease.release")(function* (request) {
           yield* Effect.annotateCurrentSpan({ reason: request.reason });
           const policy: ReleasePolicy = releasePolicies[request.reason];
-          const claimed = yield* claimHold[policy.claim](request.reservationId);
+          const claimed = yield* claimHold(request);
           if (!isClaimedHold(claimed)) return claimed;
           const refused = yield* releaseDotyposHold(policy, claimed);
           if (refused) return refused;

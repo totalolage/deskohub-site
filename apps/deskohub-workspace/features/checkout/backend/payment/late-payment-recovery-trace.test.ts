@@ -86,7 +86,6 @@ const recoveryRow = {
 const coworkRow = {
   id: "reservation-id",
   activePaymentAttemptId: "attempt-id",
-  dotyposReservationId: "dotypos-reservation-id",
   dotyposCustomerId: "dotypos-customer-id",
   failureCode: null,
   reservationDetails: { kind: "cowork", entryTier: "basic", coffee: true },
@@ -268,6 +267,7 @@ const recover = async (scenario: Scenario) => {
   );
   return {
     outcome: outcomeOf(exit),
+    cause: Exit.isFailure(exit) ? exit.cause : undefined,
     trace: trace.entries,
     calls,
   };
@@ -681,13 +681,12 @@ describe("LatePaymentRecoveryService.recover original hold reuse", () => {
   });
 
   test("dies when the reservation disappears before release", async () => {
-    const { outcome, trace } = await recover({
+    const { cause, trace } = await recover({
       findByIdSequence: [expiredHeld, null],
     });
 
-    expect(outcome).toBe(
-      "die: Unpaid hold release reservation disappeared before release."
-    );
+    expect(cause && Cause.hasDies(cause)).toBe(true);
+    expect(cause && Cause.hasFails(cause)).toBe(false);
     expect(trace).toMatchInlineSnapshot(`
       [
         "span latePaymentRecovery.recover",

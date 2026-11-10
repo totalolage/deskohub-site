@@ -149,7 +149,11 @@ const cancelOrderHold = async (
     ),
     Effect.runPromise
   );
-  return { outcome: outcomeOf(exit), trace: trace.entries };
+  return {
+    outcome: outcomeOf(exit),
+    failure: Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined,
+    trace: trace.entries,
+  };
 };
 
 /** The success value, or the failure's message. */
@@ -476,13 +480,17 @@ describe("ReservationHoldCleanupService.cancelOrderHold trace", () => {
   });
 
   test("fails when the cancellation can't be claimed", async () => {
-    const { outcome, trace } = await cancelOrderHold(
+    const dbDown = new Error("db down");
+    const { failure, trace } = await cancelOrderHold(
       cancellingCollaborators({
-        reservations: { claimCancellation: fail(new Error("db down")) },
+        reservations: { claimCancellation: fail(dbDown) },
       })
     );
 
-    expect(outcome).toBe("Reservation hold could not be released.");
+    expect(failure).toMatchObject({
+      _tag: "ReservationHoldCleanupError",
+      cause: dbDown,
+    });
     expect(trace).toMatchInlineSnapshot(`
       [
         "span reservationHoldCleanup.cancelOrderHold",
@@ -555,15 +563,19 @@ describe("ReservationHoldCleanupService.cancelOrderHold trace", () => {
   });
 
   test("fails when an already claimed cancellation can't be reloaded", async () => {
-    const findById = mock(fail(new Error("db down")));
+    const dbDown = new Error("db down");
+    const findById = mock(fail(dbDown));
     findById.mockImplementationOnce(succeed(null));
-    const { outcome, trace } = await cancelOrderHold(
+    const { failure, trace } = await cancelOrderHold(
       cancellingCollaborators({
         reservations: { findById, claimCancellation: succeed(null) },
       })
     );
 
-    expect(outcome).toBe("Reservation hold could not be released.");
+    expect(failure).toMatchObject({
+      _tag: "ReservationHoldCleanupError",
+      cause: dbDown,
+    });
     expect(trace).toMatchInlineSnapshot(`
       [
         "span reservationHoldCleanup.cancelOrderHold",
@@ -695,13 +707,17 @@ describe("ReservationHoldCleanupService.cancelOrderHold trace", () => {
   });
 
   test("fails when the cancelled marker can't be stored", async () => {
-    const { outcome, trace } = await cancelOrderHold(
+    const dbDown = new Error("db down");
+    const { failure, trace } = await cancelOrderHold(
       cancellingCollaborators({
-        reservations: { markCancelled: fail(new Error("db down")) },
+        reservations: { markCancelled: fail(dbDown) },
       })
     );
 
-    expect(outcome).toBe("Reservation hold could not be released.");
+    expect(failure).toMatchObject({
+      _tag: "ReservationHoldCleanupError",
+      cause: dbDown,
+    });
     expect(trace).toMatchInlineSnapshot(`
       [
         "span reservationHoldCleanup.cancelOrderHold",

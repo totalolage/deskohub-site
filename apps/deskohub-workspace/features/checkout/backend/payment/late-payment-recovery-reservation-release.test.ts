@@ -247,7 +247,6 @@ const makeRecoveryHarness = (options: {
 const coworkReservation = {
   id: "reservation-id",
   activePaymentAttemptId: "attempt-id",
-  dotyposReservationId: "dotypos-reservation-id",
   dotyposCustomerId: "dotypos-customer-id",
   reservationDetails: { kind: "cowork", entryTier: "basic", coffee: true },
 };
