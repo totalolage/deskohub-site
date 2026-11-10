@@ -152,9 +152,10 @@ consent storage and events are in the `deskohub-mobile` skill
   after analytics consent; contact PII may not. Once the account identity is
   ready, `requestAnalyticsDotyposCustomerId` loads the account's existing
   Dotypos customer ID from `GET /api/account/customer-link`
-  (`features/account/backend/account-customer-link.ts`). That route checks the
-  authoritative session, reads the link without claiming one, reports none for
-  an account awaiting deletion, and returns only the two IDs. The identity
+  (`features/account/backend/account-customer-link.ts`). That route peeks at
+  the session's standing (`CurrentCustomerAccount.peek`), so it reads the
+  stored link without claiming one, reports none for an account awaiting
+  deletion, and returns only the two IDs. The identity
   controller then sets the `dotypos_customer_id` person property
   (`setPersonProperties`) once per SDK identity, including on a restored
   session. An account without a customer sends nothing. A known link is kept

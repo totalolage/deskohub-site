@@ -49,13 +49,31 @@
     `withOptionalAccount`, after the booking's own review check, and
     completes a missing profile itself. Each booking channel provides
     `CurrentCustomerAccount` with its own authentication.
+  - The read-only readers only peek, each with its own mapping: the booking
+    contact (`CustomerAccountContactService.current`), the reservation
+    history account (`currentReservationHistoryAccount`), the remembered
+    referral's order booker, the status page's signed-out check
+    (`isStatusViewerSignedOut`), and `GET /api/account/customer-link`
+    (`accountCustomerLinkFor`). `deletion-pending` reads as no account (the
+    route still answers the account ID with no customer, the status page as
+    signed out), `unverified` fails as the session read's `unverified-email`
+    (the status page reads any failure as not signed out), and `unavailable`
+    fails with its failure. Only the booking contact consults the review
+    marker: `review` books with the synthetic contact, and `unlinked` with an
+    `unreadable` marker fails `account-link.read`. The customer API provides
+    the standing over the request's authentication
+    (`CustomerReservationLayers.currentAccount`, and the account services'
+    `currentAccount` for the remembered referral); agents get it from
+    `customerAgentAccountServices`.
   - The account state reads it through `AccountStateCapabilities`. When its
     link capabilities can't be built, `accountStateCapabilities` substitutes
     `CurrentCustomerAccount.LinksUnavailable`, so the session's sections
     still load.
   - The table test (`current-customer-account.postgres.test.ts`) covers every
-    kind over test Postgres and a Dotypos fake. Page and checkout tests fake
-    the standing.
+    kind over test Postgres and a Dotypos fake. Caller tests fake the
+    standing: the read-only readers' policy tests run every label of
+    `testPeekedStandings` through `peeking`
+    (`current-customer-account.test-utils.ts`).
 - `CustomerAccountResolver.resolve` is the replaceable identity-to-customer
   capability for the callers that haven't moved to `CurrentCustomerAccount`
   yet. It returns only `CustomerAccountId` and `DotyposCustomerId`.
