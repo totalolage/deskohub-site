@@ -16,12 +16,6 @@ import { workspaceSiteConstants } from "@/shared/utils";
 const { brand } = workspaceSiteConstants;
 const { address } = workspaceSiteConstants.location;
 
-/**
- * @deprecated Use `Locale` from `@/features/i18n`. Kept only until the
- * reservation and campaign templates take `Locale` directly.
- */
-export type WorkspaceEmailLocale = Locale;
-
 type WorkspaceEmailLayoutProps = {
   readonly children: ReactNode;
   /** Content below the address line, such as a campaign footer. */

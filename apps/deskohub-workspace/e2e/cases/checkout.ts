@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
+import { meetingRoomEmailDetails } from "@/emails/_components/reservation-email-details";
 import { renderWorkspaceEmailDetailsText } from "@/emails/workspace-email-detail";
-import { createWorkspaceMeetingRoomEmailDetailRows } from "@/features/checkout/backend/fulfillment/workspace-meeting-room-email-details";
 import { isMeetingRoomWholeDayReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   formatReservationDisplayDate,
@@ -809,30 +809,8 @@ export const assertWholeDayMeetingRoomEmailPreviews = ({
         };
       }
     );
-    const customerRows = createWorkspaceMeetingRoomEmailDetailRows(
-      reservation,
-      "en-US",
-      {
-        reservationLabel: "Reservation",
-        reservationTitle: "Meeting Room",
-        dateLabel: "Reservation date",
-        timeLabel: "Reservation time",
-        setupLabel: "Setup from",
-        wholeDay: "whole day",
-      }
-    );
-    const internalRows = createWorkspaceMeetingRoomEmailDetailRows(
-      reservation,
-      "cs-CZ",
-      {
-        reservationLabel: "Rezervace",
-        reservationTitle: "Zasedací místnost",
-        dateLabel: "Datum rezervace",
-        timeLabel: "Čas rezervace",
-        setupLabel: "Příprava od",
-        wholeDay: "celý den",
-      }
-    );
+    const customerRows = meetingRoomEmailDetails(reservation, "en-US");
+    const internalRows = meetingRoomEmailDetails(reservation, "cs-CZ");
     const customerText =
       renderWorkspaceEmailDetailsText(customerRows).join("\n");
     const internalText =

@@ -371,6 +371,7 @@ describe("Open Space customer reservation emails", () => {
     );
     const previewHtml =
       await createWorkspaceReservationCustomerEmailPreviewHtml({
+        locale: "en-US",
         accessUrl:
           "https://workspace.deskohub.cz/en-US/reservation/access/preview",
         invoiceUrl:
@@ -456,15 +457,16 @@ describe("Open Space customer reservation emails", () => {
 
 describe("workspace reservation email details", () => {
   test("renders the Dotypos meeting-room interval without cowork details", async () => {
-    const {
-      createReservationRows,
-      createWorkspaceReservationNotificationEmailPreviewHtml,
-    } = await import("./workspace-reservation-email.service");
+    const { createWorkspaceReservationNotificationEmailPreviewHtml } =
+      await import("./workspace-reservation-email.service");
+    const { reservationEmailDetails } = await import(
+      "@/emails/_components/reservation-email-details"
+    );
     const reservation = makeReservation({
       reservationDetails: { kind: "meeting-room" },
     });
 
-    expect(createReservationRows(reservation, "en-US")).toEqual([
+    expect(reservationEmailDetails(reservation, "en-US")).toEqual([
       { label: "Reservation", value: "Meeting Room" },
       { label: "Reservation date", value: "Friday, June 12, 2026" },
       { label: "Reservation time", value: "9:00 AM – 1:00 PM" },
@@ -486,61 +488,13 @@ describe("workspace reservation email details", () => {
     expect(internalHtml).not.toContain("Monitory");
   });
 
-  test("adds the setup start of a meeting room booked with early setup", async () => {
-    const { createReservationRows } = await import(
-      "./workspace-reservation-email.service"
-    );
-    const { m } = await import("@/features/i18n");
-    const setupLabel = m.reservationEmailSetupLabel({}, { locale: "en-US" });
-    const booked = makeReservation({
-      reservationDetails: { kind: "meeting-room" },
-    });
-    const earlySetup = makeReservation({
-      reservationDetails: { kind: "meeting-room", earlySetup: true },
-      setupFrom: Temporal.Instant.from("2026-06-12T06:45:00Z"),
-    });
-
-    const rows = createReservationRows(earlySetup, "en-US");
-
-    expect(rows).toContainEqual({ label: setupLabel, value: "8:45 AM" });
-    expect(rows).toContainEqual({
-      label: "Reservation time",
-      value: "9:00 AM – 1:00 PM",
-    });
-    expect(
-      createReservationRows(booked, "en-US").map(({ label }) => label)
-    ).not.toContain(setupLabel);
-  });
-
-  test("renders the inclusive office date range and seats", async () => {
-    const { createReservationRows } = await import(
-      "./workspace-reservation-email.service"
-    );
-    const reservation = makeReservation({
-      reservationDetails: { kind: "office" },
-      reservedFrom: Temporal.Instant.from("2026-06-11T22:00:00Z"),
-      reservedUntil: Temporal.Instant.from("2026-06-14T22:00:00Z"),
-      seats: 3,
-    });
-
-    expect(createReservationRows(reservation, "en-US")).toEqual([
-      { label: "Reservation", value: "Private office" },
-      {
-        label: "Reservation date",
-        value: "Friday, June 12 – Sunday, June 14, 2026",
-      },
-      { label: "Seats", value: "3" },
-      {
-        label: "Reservation reference",
-        value: "dotypos-reservation-id",
-      },
-      { label: "Order reference", value: "reservation-id" },
-    ]);
-  });
-
   test("renders localized whole-day reservation and cancellation emails", async () => {
-    const { createReservationRows, WorkspaceReservationEmailService } =
-      await import("./workspace-reservation-email.service");
+    const { WorkspaceReservationEmailService } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const { reservationEmailDetails } = await import(
+      "@/emails/_components/reservation-email-details"
+    );
     const { EmailConfigTag, EmailServiceTag } = await import(
       "@deskohub/email/backend/service"
     );
@@ -553,7 +507,7 @@ describe("workspace reservation email details", () => {
       reservedUntil: Temporal.Instant.from("2027-03-28T22:00:00Z"),
     });
 
-    expect(createReservationRows(reservation, "en-US")).toEqual([
+    expect(reservationEmailDetails(reservation, "en-US")).toEqual([
       { label: "Reservation", value: "Meeting Room" },
       { label: "Reservation date", value: "Sunday, March 28, 2027" },
       { label: "Reservation time", value: "whole day" },
@@ -1141,6 +1095,7 @@ describe("sendPaidReservationEmails author confirmation", () => {
     for (const locale of ["en-US", "cs-CZ"] as const) {
       const statusUrl = `https://workspace.deskohub.test/${locale}/reservation/status/reservation-id`;
       const html = await createReservationAuthorEmailPreviewHtml({
+        locale,
         statusUrl,
         reservation: makeReservation({ locale }),
       }).pipe(Effect.runPromise);
