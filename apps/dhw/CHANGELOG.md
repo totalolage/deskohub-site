@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.36.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.35.0...dhw-v1.36.0) (2026-11-10)
+
+
+### Features
+
+* **dhw:** accept Vietnamese and Hindi campaign locales ([63cc517](https://github.com/totalolage/deskohub-site/commit/63cc51784b2a84957e5854d671bca9dacc047628)), closes [#1098](https://github.com/totalolage/deskohub-site/issues/1098)
+
 ## [1.35.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.34.0...dhw-v1.35.0) (2026-11-10)
 
 
