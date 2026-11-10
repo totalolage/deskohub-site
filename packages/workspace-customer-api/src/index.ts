@@ -6,6 +6,10 @@ export {
   CustomerAccountLinkRequired,
   CustomerAccountState,
   CustomerAgentConnection,
+  CustomerAnalyticsChoice,
+  CustomerAnalyticsConsentSync,
+  CustomerAnalyticsPreference,
+  CustomerAnalyticsPreferenceSaved,
   CustomerAvatar,
   CustomerAvatarPresentation,
   CustomerAvatarRejected,
@@ -25,7 +29,9 @@ export {
   ReferralAccountOverview,
   ReferralAccountSummary,
   RequestCustomerAccountDeletion,
+  SaveCustomerAnalyticsPreference,
   SaveCustomerMarketingPreferences,
+  SyncCustomerAnalyticsConsent,
 } from "./customer-account-api";
 export {
   CustomerAuthApi,
