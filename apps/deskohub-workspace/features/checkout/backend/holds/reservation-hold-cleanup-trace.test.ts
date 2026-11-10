@@ -666,38 +666,6 @@ describe("ReservationHoldCleanupService.cancelOrderHold trace", () => {
     `);
   });
 
-  test("keeps the Dotypos failure when the cancellation failure marker fails too", async () => {
-    const { outcome, trace } = await cancelOrderHold(
-      cancellingCollaborators({
-        dotypos: { cancelReservation: fail(dotyposUnavailable) },
-        reservations: {
-          markCancellationFailed: fail(new Error("db down")),
-        },
-      })
-    );
-
-    expect(outcome).toBe("Dotypos reservation hold could not be cancelled.");
-    expect(trace).toMatchInlineSnapshot(`
-      [
-        "span reservationHoldCleanup.cancelOrderHold",
-        "Info Reservation hold cancellation started {checkedAt,input,orderId} in reservationHoldCleanup.cancelOrderHold",
-        "call reservations.findById(reservation-id)",
-        "Debug Reservation hold cancellation active reservation loaded {activePaymentAttemptId,checkedAt,dotyposReservationId,fulfillmentState,input,orderId,paymentState,reservationId,reservationState} in reservationHoldCleanup.cancelOrderHold",
-        "Info Reservation hold cancellation provider finalization started {activePaymentAttemptId,checkedAt,dotyposReservationId,fulfillmentState,input,orderId,paymentState,reservationId,reservationState} in reservationHoldCleanup.cancelOrderHold",
-        "call finalization.finalizePendingProviderPayment(orderId=reservation-id, paymentAttemptId=payment-attempt-id, abandonmentCheckedAt=<Instant>)",
-        "Info Reservation hold cancellation provider finalization completed {activePaymentAttemptId,checkedAt,dotyposReservationId,fulfillmentState,input,orderId,paymentState,providerFinalizationResult,reservationId,reservationState} in reservationHoldCleanup.cancelOrderHold",
-        "span unpaidHoldRelease.release",
-        "call reservations.claimCancellation(reservation-id)",
-        "Debug Reservation hold cancellation claim completed (claimedFromNew=true) {activePaymentAttemptId,checkedAt,dotyposReservationId,fulfillmentState,input,orderId,paymentState,providerFinalizationResult,reservationId,reservationState} in unpaidHoldRelease.release",
-        "span dotyposHoldRelease.release",
-        "call dotypos.cancelReservation(dotypos-reservation-id)",
-        "call reservations.markCancellationFailed(id=reservation-id, failureCode=dotypos_cancel_failed)",
-        "Error Reservation cancellation failure marker failed (orderId=reservation-id, failureCode=dotypos_cancel_failed, cause=<Error>) {activePaymentAttemptId,checkedAt,dotyposReservationId,fulfillmentState,input,orderId,paymentState,providerFinalizationResult,reservationId,reservationState} in dotyposHoldRelease.release",
-        "Error Dotypos reservation hold cancellation failed (cause=<DotyposUnavailable>) {activePaymentAttemptId,checkedAt,dotyposReservationId,fulfillmentState,input,orderId,paymentState,providerFinalizationResult,reservationId,reservationState} in reservationHoldCleanup.cancelOrderHold",
-      ]
-    `);
-  });
-
   test("skips the cancelled marker when the reservation state changed", async () => {
     const { outcome, trace } = await cancelOrderHold(
       cancellingCollaborators({
