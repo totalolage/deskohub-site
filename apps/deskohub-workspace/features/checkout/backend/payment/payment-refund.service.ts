@@ -175,12 +175,18 @@ export class PaymentRefundService extends Context.Service<
             recordedAt,
           });
           yield* Effect.annotateLogsScoped({ result });
+          // The operation ids go on the result row only, not every row.
+          const withRefundOperations = Effect.annotateLogs({
+            refundOperationIds: refund.operationIds.join(","),
+          });
           if (result === "not_applicable") {
             yield* Effect.logWarning(
               "Nexi refund found for an attempt that cannot record it"
-            );
+            ).pipe(withRefundOperations);
           } else {
-            yield* Effect.logInfo("Nexi refund reconciled");
+            yield* Effect.logInfo("Nexi refund reconciled").pipe(
+              withRefundOperations
+            );
           }
           return result;
         },

@@ -84,16 +84,25 @@ export const defineWorkspaceCron = <Input, Summary, E>(
     return Effect.gen(function* () {
       if (job.input) {
         const input = job.input();
-        yield* Effect.annotateLogsScoped({ input });
-        yield* Effect.logInfo("Cron job started");
-        return yield* job.run(input);
+        // The input goes on the start and completion rows, not every row of
+        // the run.
+        yield* Effect.logInfo("Cron job started").pipe(
+          Effect.annotateLogs({ input })
+        );
+        const result = yield* job.run(input);
+        yield* Effect.logInfo("Cron job completed").pipe(
+          Effect.annotateLogs({ input, result })
+        );
+        return result;
       }
 
       yield* Effect.logInfo("Cron job started");
-      return yield* job.run();
+      const result = yield* job.run();
+      yield* Effect.logInfo("Cron job completed").pipe(
+        Effect.annotateLogs({ result })
+      );
+      return result;
     }).pipe(
-      Effect.tap((result) => Effect.annotateLogsScoped({ result })),
-      Effect.tap(() => Effect.logInfo("Cron job completed")),
       Effect.map((result) => NextResponse.json(result)),
       Effect.scoped,
       Effect.mapError(WorkspaceRouteFailure.internal(job.failureMessage))

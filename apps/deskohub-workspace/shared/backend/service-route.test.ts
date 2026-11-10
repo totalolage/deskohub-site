@@ -133,6 +133,28 @@ describe("Workspace cron routes", () => {
     expect(parseLogged(completed?.attributes?.result)).toEqual({ swept: 3 });
   });
 
+  test("keeps the input off the rows its job logs", async () => {
+    const GET = defineWorkspaceCron({
+      operation: "test.cron.job-rows",
+      failureMessage: "Test job failed",
+      input: () => ({ limit: 25 }),
+      run: () => Effect.logInfo("Test job row").pipe(Effect.as({ swept: 0 })),
+    });
+
+    await GET(cronRequest(`Bearer ${cronSecret}`));
+
+    const rows = workspaceLogs
+      .records()
+      .filter(
+        ({ attributes }) => attributes?.operation === "test.cron.job-rows"
+      );
+    expect(rows).toHaveLength(3);
+    const [started, jobRow, completed] = rows;
+    expect(started?.attributes).toHaveProperty("input");
+    expect(jobRow?.attributes).not.toHaveProperty("input");
+    expect(completed?.attributes).toHaveProperty("input");
+  });
+
   test("runs a job without input", async () => {
     const GET = defineWorkspaceCron({
       operation: "test.cron.no-input",
