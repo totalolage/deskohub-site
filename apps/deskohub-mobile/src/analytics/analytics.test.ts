@@ -1,95 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { AnalyticsConsentStatus } from "../consent/analytics-consent";
 import { type AnalyticsRuntime, createAnalytics } from "./analytics";
-import type {
-  AnalyticsClient,
-  AnalyticsClientOptions,
-} from "./analytics-client";
 import type { AnalyticsSettings } from "./analytics-settings";
-
-type Call = readonly [string, ...unknown[]];
-
-const createFakeClient = (
-  options: AnalyticsClientOptions,
-  restoredDistinctId: string | null,
-  holdLoading: boolean
-) => {
-  const calls: Call[] = [];
-  const flagListeners = new Set<() => void>();
-  let flags: Record<string, boolean | string> | undefined;
-  let networkHeld = false;
-  let finishShutdown: () => void = () => {};
-  let finishLoading: () => void = () => {};
-  let failLoading: () => void = () => {};
-  const flagReloads: {
-    readonly resolve: () => void;
-    readonly reject: (error: Error) => void;
-  }[] = [];
-  const loading = new Promise<void>((resolve, reject) => {
-    finishLoading = resolve;
-    failLoading = () => reject(new Error("storage"));
-  });
-  if (!holdLoading) finishLoading();
-  const client: AnalyticsClient = {
-    ready: () => loading,
-    identifiedAs: () => restoredDistinctId,
-    capture: (event, properties) => calls.push(["capture", event, properties]),
-    screen: (name) => calls.push(["screen", name]),
-    identify: (distinctId) => calls.push(["identify", distinctId]),
-    setPersonProperties: (properties) =>
-      calls.push(["setPersonProperties", properties]),
-    reset: () => calls.push(["reset"]),
-    reloadFeatureFlags: () => {
-      calls.push(["reloadFeatureFlags"]);
-      return new Promise<void>((resolve, reject) => {
-        flagReloads.push({ resolve, reject });
-      });
-    },
-    getFeatureFlag: (flag) => flags?.[flag],
-    holdNetwork: (held) => {
-      if (networkHeld !== held) calls.push(["holdNetwork", held]);
-      networkHeld = held;
-    },
-    onFeatureFlags: (listener) => {
-      flagListeners.add(listener);
-      return () => flagListeners.delete(listener);
-    },
-    shutDown: () => {
-      calls.push(["shutDown"]);
-      return new Promise<void>((resolve) => {
-        finishShutdown = resolve;
-      });
-    },
-  };
-  return {
-    client,
-    options,
-    calls,
-    /** The SDK stores flag values and notifies, as any flags response does. */
-    loadFlags: (next: Record<string, boolean | string>) => {
-      flags = next;
-      for (const listener of flagListeners) listener();
-    },
-    /** Settles the `index`th reload the controller asked for. */
-    finishFlagReload: (
-      index: number,
-      next: Record<string, boolean | string>
-    ) => {
-      flags = next;
-      for (const listener of flagListeners) listener();
-      flagReloads[index]?.resolve();
-    },
-    failFlagReload: (index: number) =>
-      flagReloads[index]?.reject(new Error("flags")),
-    finishShutdown: () => finishShutdown(),
-    finishLoading: () => finishLoading(),
-    failLoading: () => failLoading(),
-    flagListenerCount: () => flagListeners.size,
-    networkHeld: () => networkHeld,
-  };
-};
-
-type FakeClient = ReturnType<typeof createFakeClient>;
+import {
+  type FakeAnalyticsClient,
+  makeFakeAnalyticsClient,
+} from "./testing/fake-analytics-client";
 
 const settings: AnalyticsSettings = {
   apiKey: "phc_test",
@@ -116,7 +32,7 @@ const setup = ({
   readonly accountCheck?: boolean;
 } = {}) => {
   const analytics = createAnalytics();
-  const clients: FakeClient[] = [];
+  const clients: FakeAnalyticsClient[] = [];
   const warnings: string[] = [];
   let status = consent;
   const consentListeners = new Set<() => void>();
@@ -126,7 +42,11 @@ const setup = ({
   const runtime: AnalyticsRuntime = {
     settings: runtimeSettings,
     createClient: (options) => {
-      const fake = createFakeClient(options, restoredDistinctId, holdLoading);
+      const fake = makeFakeAnalyticsClient(
+        options,
+        restoredDistinctId,
+        holdLoading
+      );
       clients.push(fake);
       return fake.client;
     },

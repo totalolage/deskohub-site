@@ -119,6 +119,11 @@ export class FakeWorkspace {
    * before it answers, as when the device changes meanwhile.
    */
   onAnalyticsConsentRequest: (() => void) | undefined;
+  /**
+   * Awaited before an analytics consent sync answers, as a slow response;
+   * the answer is the account's decision once it settles.
+   */
+  analyticsSyncDelay: Promise<void> | undefined;
   private readonly outcomes = new Map<EndpointName, FakeRequestOutcome[]>();
 
   constructor(data: FakeWorkspaceData = sampleWorkspaceData("linked")) {
@@ -509,8 +514,14 @@ const serverLayer = (workspace: FakeWorkspace) => {
           Effect.sync(() => {
             workspace.analyticsSyncs.push(payload);
             workspace.onAnalyticsConsentRequest?.();
-            return syncAnalyticsConsent(workspace, payload);
-          })
+          }).pipe(
+            Effect.andThen(
+              Effect.promise(
+                () => workspace.analyticsSyncDelay ?? Promise.resolve()
+              )
+            ),
+            Effect.map(() => syncAnalyticsConsent(workspace, payload))
+          )
         )
         .handle("getAnalyticsPreference", () =>
           Effect.sync(() => ({
