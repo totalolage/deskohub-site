@@ -1,5 +1,9 @@
-import { Context, Effect, Layer, Redacted, Schema } from "effect";
-import { FetchHttpClient, HttpClient } from "effect/unstable/http";
+import { Context, Effect, Layer, Predicate, Redacted, Schema } from "effect";
+import {
+  FetchHttpClient,
+  HttpClient,
+  HttpClientError,
+} from "effect/unstable/http";
 import type { FeatureFlag } from "../generated/effect.gen";
 import type { PostHogProjectId } from "../identifiers";
 import { makePostHogManagementClient } from "../management-client";
@@ -145,6 +149,7 @@ export const listPostHogFeatureFlagDefinitions = (
             new PostHogFeatureFlagError({
               message: "Could not list PostHog feature flags.",
               cause,
+              ...describeListFailure(cause),
             })
         ),
         Effect.timeoutOrElse({
@@ -153,6 +158,7 @@ export const listPostHogFeatureFlagDefinitions = (
             Effect.fail(
               new PostHogFeatureFlagError({
                 message: "PostHog feature flag request timed out.",
+                failureCode: "Timeout",
               })
             ),
         })
@@ -181,6 +187,26 @@ export const listPostHogFeatureFlagDefinitions = (
       }
     }
   });
+
+/**
+ * The status and failed step of a page request, which logs keep while they
+ * redact the provider's error text.
+ */
+const describeListFailure = (
+  cause: unknown
+): Pick<PostHogFeatureFlagError, "failureCode" | "httpStatus"> => {
+  if (!HttpClientError.isHttpClientError(cause)) {
+    return Predicate.isTagged(cause, "SchemaError")
+      ? { failureCode: "SchemaError" }
+      : {};
+  }
+
+  const httpStatus = cause.response?.status;
+  return {
+    failureCode: cause.reason._tag,
+    ...(httpStatus === undefined ? {} : { httpStatus }),
+  };
+};
 
 const toPostHogFeatureFlagDefinition = (featureFlag: FeatureFlagSummary) =>
   Effect.gen(function* () {
@@ -281,3 +307,12 @@ const releasesToEveryone = (group: FeatureFlagReleaseGroup) =>
   group.aggregation_group_type_index == null &&
   (group.properties?.length ?? 0) === 0 &&
   releasesToAllMatched(group);
+
+export { PostHogFeatureFlagError } from "./errors";
+
+/** The log fields that classify a flag failure without its provider text. */
+export const postHogFeatureFlagFailureLogFields = ({
+  cause,
+  failureCode,
+  httpStatus,
+}: PostHogFeatureFlagError) => ({ cause, failureCode, httpStatus });

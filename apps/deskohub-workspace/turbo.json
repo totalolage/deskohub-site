@@ -34,7 +34,8 @@
         "i18n:compile",
         "booking-widget:build",
         "temporal-polyfill:build",
-        "mobile-web-app:build"
+        "mobile-web-app:build",
+        "feature-flags:snapshot"
       ],
       "passThroughEnv": ["BETTER_AUTH_SECRETS", "REVIEW_ACCOUNT_CREDENTIALS"]
     },
@@ -74,7 +75,20 @@
     "feature-flags:sync": {
       "cache": false,
       "env": ["POSTHOG_API_HOST", "POSTHOG_API_KEY", "POSTHOG_PROJECT_ID"],
-      "outputs": ["features/feature-flags/generated/contract.ts"]
+      "outputs": [
+        "features/feature-flags/generated/contract.ts",
+        "features/feature-flags/generated/flag-snapshot.ts"
+      ]
+    },
+    "feature-flags:snapshot": {
+      "cache": false,
+      "env": [
+        "POSTHOG_API_HOST",
+        "POSTHOG_API_KEY",
+        "POSTHOG_PROJECT_ID",
+        "VERCEL"
+      ],
+      "outputs": ["features/feature-flags/generated/flag-snapshot.ts"]
     },
     "db:generate": {
       "cache": false,

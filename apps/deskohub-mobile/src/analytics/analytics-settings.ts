@@ -23,6 +23,14 @@ export const classifyDeploymentEnvironment = ({
   return isDevelopmentBuild ? "development" : "preview";
 };
 
+/**
+ * Whether a build may request feature flags from PostHog. Previews, E2E runs
+ * and development builds share production's project and its flag-request
+ * quota, so only production does, as on the site.
+ */
+export const allowsRemoteFeatureFlags = (environment: DeploymentEnvironment) =>
+  environment === "production";
+
 export interface AnalyticsSettings {
   readonly apiKey: string;
   readonly host: string;

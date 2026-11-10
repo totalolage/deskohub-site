@@ -1,7 +1,10 @@
 import type { DotyposReadFailure } from "@deskohub/dotypos";
 import { Data } from "effect";
 import type { DatabaseQueryError } from "@/db/sql-constraint";
-import type { CustomerSessionReadDiagnostic } from "@/features/account/customer-account";
+import type {
+  CustomerAccountFailureCode,
+  CustomerSessionReadDiagnostic,
+} from "@/features/account/customer-account";
 import type { Money } from "@/shared/money/money";
 import type { ReferralCode } from "./client";
 
@@ -102,7 +105,20 @@ export class ReferralAuthenticationUnavailable extends Data.TaggedError(
   readonly diagnostic?: CustomerSessionReadDiagnostic;
 }> {}
 
+/**
+ * The signed-in account could not be checked under its lock: the lock or the
+ * account's deletion state could not be read. `code` names which. Like an
+ * outage, it says nothing about the code or the customer, and a later attempt
+ * can succeed.
+ */
+export class ReferralAccountCheckUnavailable extends Data.TaggedError(
+  "ReferralAccountCheckUnavailable"
+)<{
+  readonly code?: CustomerAccountFailureCode;
+}> {}
+
 /** How an operation for the signed-in account fails without a verdict. */
 export type ReferralAccountOutage =
   | ReferralOutage
-  | ReferralAuthenticationUnavailable;
+  | ReferralAuthenticationUnavailable
+  | ReferralAccountCheckUnavailable;

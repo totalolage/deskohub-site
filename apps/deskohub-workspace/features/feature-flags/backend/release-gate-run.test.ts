@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/analytics-posthog/feature-flags/node";
-import { type Context, Effect, Exit, Logger, References } from "effect";
+import { type Context, Effect, Exit, Layer, Logger, References } from "effect";
+import { ReleaseGate } from "./release-gate";
 import {
+  releaseGateOverFlags,
   TestReleaseGate,
   testReleaseGateEvaluating,
 } from "./release-gate.test-utils";
@@ -9,6 +11,14 @@ import {
   type ReleaseGateRunPolicy,
   releaseGateForRun,
 } from "./release-gate-run";
+import type { WorkspaceFeatureFlagService } from "./workspace-feature-flag.service";
+import { WorkspaceFeatureFlagServiceMock } from "./workspace-feature-flag.service.mock";
+
+/** A second gate, merged after `TestReleaseGate` into one run. */
+class LaterTestReleaseGate extends ReleaseGate<LaterTestReleaseGate>()(
+  "@deskohub-workspace/feature-flags/LaterTestReleaseGate",
+  "webmcp_site_tools"
+) {}
 
 type LogRecord = {
   readonly level: string;
@@ -173,6 +183,74 @@ describe("releaseGateForRun", () => {
 
     expect(exits).toEqual([Exit.die(defect)]);
     expect(logs).toEqual([]);
+  });
+
+  describe("over one feature-flag service for the run's gates", () => {
+    /**
+     * Two gates of one run over a shared provider that is built as the
+     * production one is, an unwrapped layer the run's build memoizes, counting
+     * the provider's builds.
+     */
+    const runGates = (
+      provider: Effect.Effect<Layer.Layer<WorkspaceFeatureFlagService>>
+    ) => {
+      let builds = 0;
+      const featureFlags = Layer.unwrap(
+        Effect.suspend(() => {
+          builds += 1;
+          return provider;
+        })
+      );
+      const layer = Layer.mergeAll(
+        releaseGateForRun(
+          releaseGateOverFlags(TestReleaseGate, featureFlags),
+          rejecting
+        ),
+        releaseGateForRun(
+          releaseGateOverFlags(LaterTestReleaseGate, featureFlags),
+          rejecting
+        )
+      );
+      return { layer, builds: () => builds };
+    };
+    const opening = Effect.succeed(
+      WorkspaceFeatureFlagServiceMock({ isEnabled: () => Effect.succeed(true) })
+    );
+
+    test("decides a later gate the run reads alone", async () => {
+      const run = runGates(opening);
+
+      const open = await Effect.runPromise(
+        LaterTestReleaseGate.isOpen.pipe(Effect.provide(run.layer))
+      );
+
+      expect(open).toBe(true);
+      expect(run.builds()).toBe(1);
+    });
+
+    test("builds the service once for every gate the run reads", async () => {
+      const run = runGates(opening);
+
+      const decisions = await Effect.runPromise(
+        Effect.all([LaterTestReleaseGate.isOpen, TestReleaseGate.isOpen]).pipe(
+          Effect.provide(run.layer)
+        )
+      );
+
+      expect(decisions).toEqual([true, true]);
+      expect(run.builds()).toBe(1);
+    });
+
+    test("fails a later gate the run reads alone when the service can't be built", async () => {
+      const defect = new Error("flag provider import failure");
+      const run = runGates(Effect.die(defect));
+
+      const exit = await Effect.runPromiseExit(
+        LaterTestReleaseGate.isOpen.pipe(Effect.provide(run.layer))
+      );
+
+      expect(exit).toEqual(Exit.die(defect));
+    });
   });
 
   test("lets interruption through even when a run failure closes", async () => {

@@ -68,7 +68,7 @@ const fakes = (options: RunOptions, records: Records) =>
           records.writes.push({ kind: "update", input: profileInput });
           return savedProfile;
         }),
-      create: (_accountId, _email, profileInput, signupReferral) =>
+      create: (_accountId, profileInput, signupReferral) =>
         Effect.sync(() => {
           records.writes.push({
             kind: "create",

@@ -49,13 +49,13 @@ export class WorkspaceFeatureFlagService extends Context.Service<
           getGlobalWorkspaceFeatureFlagValue,
           getGlobalWorkspaceFeatureFlagValues,
         },
-        { nodeFeatureFlags },
-        { getCurrentPostHogFeatureFlagSubject },
+        { evaluateRequestFlags, isFlagEnabled, makeRunEvaluations },
       ] = await Promise.all([
         import("./feature-flag-evaluation-mode.server"),
-        import("./node"),
-        import("./subject"),
+        import("./request-flag-evaluation.server"),
       ]);
+      // One remote evaluation per request, or per build outside any request.
+      const requestFlags = evaluateRequestFlags(makeRunEvaluations());
 
       return WorkspaceFeatureFlagService.from({
         evaluateFlags: Effect.fn("WorkspaceFeatureFlagService.evaluateFlags")(
@@ -70,11 +70,7 @@ export class WorkspaceFeatureFlagService extends Context.Service<
                   globalValues
                 ): ReturnType<IWorkspaceFeatureFlagService["evaluateFlags"]> =>
                   globalValues === undefined
-                    ? getCurrentPostHogFeatureFlagSubject().pipe(
-                        Effect.flatMap((subject) =>
-                          nodeFeatureFlags.evaluateFlags({ options, subject })
-                        )
-                      )
+                    ? requestFlags
                     : Effect.succeed({ getFlag: (key) => globalValues[key] })
               )
             )
@@ -83,10 +79,8 @@ export class WorkspaceFeatureFlagService extends Context.Service<
           Effect.promise(() => getGlobalWorkspaceFeatureFlagValue(key)).pipe(
             Effect.flatMap((globalValue) =>
               globalValue === undefined
-                ? getCurrentPostHogFeatureFlagSubject().pipe(
-                    Effect.flatMap((subject) =>
-                      nodeFeatureFlags.isEnabled({ key, subject })
-                    )
+                ? requestFlags.pipe(
+                    Effect.flatMap((flags) => isFlagEnabled(flags, key))
                   )
                 : Effect.succeed(globalValue)
             )

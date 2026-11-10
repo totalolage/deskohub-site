@@ -12,7 +12,7 @@ import {
 import { parsePhoneNumber } from "@deskohub/phone-number";
 import { Context, Data, Effect, Layer, Match, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { OptionalAccountActivityGuard } from "@/features/account";
+import { CustomerAccountSections } from "@/features/account";
 import {
   type AccountingDocumentSnapshot,
   makeAccountingDocumentSnapshot,
@@ -240,7 +240,7 @@ export class CheckoutService extends Context.Service<
   static Default = makeCheckoutServiceLayer(this);
 
   static Live = this.Default.pipe(
-    Layer.provide(OptionalAccountActivityGuard.Live),
+    Layer.provide(CustomerAccountSections.Live),
     Layer.provide(ReservationFulfillment.Live),
     Layer.provide(PayableReservationService.Default),
     Layer.provide(LegalEvidenceEventRepository.Default),
@@ -461,7 +461,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
       const checkoutAnalytics = yield* CheckoutAnalytics;
       const pricing = yield* CheckoutPricingService;
       const payableReservations = yield* PayableReservationService;
-      const accountActivity = yield* OptionalAccountActivityGuard;
+      const accountSections = yield* CustomerAccountSections;
       const provideSealedStateKeys = Effect.provideService(
         SealedStateKeys,
         yield* SealedStateKeys
@@ -1173,8 +1173,8 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
             // deletion cannot interleave with the reservation update,
             // legal evidence, or payment start. Idempotent recovery
             // paths above stay reachable without the lock.
-            return yield* accountActivity
-              .guardStateCreation(
+            return yield* accountSections
+              .withOptionalAccount(
                 Effect.fn(function* () {
                   yield* reservations.updateReservationDetails({
                     id: reservation.id,
