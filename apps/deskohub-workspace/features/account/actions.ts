@@ -77,12 +77,16 @@ const rememberedReferralLayer = RememberedReferral.Cookies.pipe(
  * locale cookie on that page's response. The action leaves cookies alone: a
  * cookie write makes Next re-render the referring page, still under the old
  * locale, while the document navigation is leaving it. The Dotypos profile is
- * never touched.
+ * never touched. The sections read the session through the authentication
+ * the action provides.
  */
 const saveLocalePreference = (accountId: CustomerAccountId, locale: Locale) =>
   saveAccountLocalePreference(accountId, locale).pipe(
     Effect.provide(
-      Layer.mergeAll(WorkspaceDatabase.Default, CustomerAccountSections.Live)
+      Layer.mergeAll(
+        WorkspaceDatabase.Default,
+        CustomerAccountSections.ForProvidedAuthentication
+      )
     )
   );
 

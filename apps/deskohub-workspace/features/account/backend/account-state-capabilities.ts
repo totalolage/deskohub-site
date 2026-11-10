@@ -51,9 +51,11 @@ export type AccountStateLayers = {
     Layer.Error<typeof CurrentCustomerAccount.ForProvidedAuthentication>,
     CustomerAuthentication
   >;
+  /** The profile service, its sections reading the session through `authentication`. */
   readonly profile: Layer.Layer<
     CustomerProfileService,
-    Layer.Error<typeof CustomerProfileService.Live>
+    Layer.Error<typeof CustomerProfileService.ForProvidedAuthentication>,
+    CustomerAuthentication
   >;
   readonly avatar: Layer.Layer<
     CustomerAvatarService,
@@ -92,7 +94,7 @@ export type AccountServiceLayers = Omit<
 export const liveAccountServiceLayers: AccountServiceLayers = {
   authentication: CustomerAuthentication.Default,
   currentAccount: CurrentCustomerAccount.ForProvidedAuthentication,
-  profile: CustomerProfileService.Live,
+  profile: CustomerProfileService.ForProvidedAuthentication,
   avatar: CustomerAvatarService.Live,
   passkeys: CustomerPasskeys.Default,
   assistants: CustomerAgentConnections.Default,
@@ -191,6 +193,7 @@ export const accountStateCapabilities = (
       Layer.provide(layers.authentication)
     ),
     layers.profile.pipe(
+      Layer.provide(layers.authentication),
       unavailableUntilUsed(CustomerProfileService, (failure) => ({
         load: () => failure,
         update: () => failure,

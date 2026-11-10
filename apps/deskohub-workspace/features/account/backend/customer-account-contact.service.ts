@@ -217,20 +217,21 @@ export class CustomerAccountContactService extends Context.Service<
   );
 
   /**
-   * The service reading the customer through this authentication, such as
-   * an agent's access token instead of the browser session.
+   * The service reading the customer through the `CustomerAuthentication`
+   * the caller provides, over the same standing and profile service those
+   * services build.
    */
-  static withAuthentication = <E, R>(
-    authentication: Layer.Layer<CustomerAuthentication, E, R>
-  ) =>
-    this.Default.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          CurrentCustomerAccount.withAuthentication(authentication),
-          CustomerProfileService.withAuthentication(authentication)
-        )
+  static ForProvidedAuthentication = this.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        CurrentCustomerAccount.ForProvidedAuthentication,
+        CustomerProfileService.ForProvidedAuthentication
       )
-    );
+    )
+  );
 
-  static Live = this.withAuthentication(CustomerAuthentication.Default);
+  /** The service reading the browser session. */
+  static Live = this.ForProvidedAuthentication.pipe(
+    Layer.provide(CustomerAuthentication.Default)
+  );
 }

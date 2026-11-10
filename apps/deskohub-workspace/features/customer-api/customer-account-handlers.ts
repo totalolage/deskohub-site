@@ -82,10 +82,12 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
       CustomerAuthentication,
       yield* CustomerAuthentication
     );
-    // The session's account standing, read through that authentication.
+    // The session's account standing and profile service, read through that
+    // authentication.
     const currentAccount = services.currentAccount.pipe(
       Layer.provide(authentication)
     );
+    const profile = services.profile.pipe(Layer.provide(authentication));
 
     /**
      * What a profile save reads: the session, its account's Dotypos
@@ -95,7 +97,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
     const profileServices = Layer.mergeAll(
       authentication,
       currentAccount,
-      services.profile,
+      profile,
       services.referrals,
       services.signupIntents
     );

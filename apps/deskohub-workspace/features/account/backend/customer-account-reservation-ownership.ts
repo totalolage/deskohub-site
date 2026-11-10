@@ -7,7 +7,6 @@ import type {
 import { CurrentCustomerAccount } from "./current-customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import { CustomerAuthentication } from "./customer-authentication.service";
 import { requireLinkedCustomerAccount } from "./linked-customer-account";
 
 interface ICustomerAccountReservationOwnership {
@@ -59,20 +58,16 @@ export class CustomerAccountReservationOwnership extends Context.Service<
   );
 
   /**
-   * The service reading the customer through this authentication, such as
-   * an agent's access token instead of the browser session.
+   * The service reading the customer through the `CustomerAuthentication`
+   * the caller provides, over the same standing `CurrentCustomerAccount`
+   * builds.
    */
-  static withAuthentication = <E, R>(
-    authentication: Layer.Layer<CustomerAuthentication, E, R>
-  ) =>
-    this.Default.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          CurrentCustomerAccount.withAuthentication(authentication),
-          CustomerAccountLinkRepository.Live
-        )
+  static ForProvidedAuthentication = this.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        CurrentCustomerAccount.ForProvidedAuthentication,
+        CustomerAccountLinkRepository.Live
       )
-    );
-
-  static Live = this.withAuthentication(CustomerAuthentication.Default);
+    )
+  );
 }

@@ -56,13 +56,12 @@ const orderId = workspaceReservationIdSchema.make(
 
 /**
  * Authorization that lets the session's own account see `orderId`, read
- * through the authentication the handler hands it.
+ * through the authentication the handler provides.
  */
 const ownOrderAuthorization = (
   authorized: boolean
-): CustomerReservationServiceLayers["authorization"] => {
-  return (authentication) =>
-    Layer.effect(
+): CustomerReservationServiceLayers["authorization"] =>
+  Layer.effect(
       ReservationAuthorizationService,
       Effect.map(CustomerAuthentication, (session) => {
         const isAuthorized = (input: ReservationAuthorizationInput) =>
@@ -77,8 +76,7 @@ const ownOrderAuthorization = (
           );
         return { isAuthorized, authorize: isAuthorized };
       })
-    ).pipe(Layer.provide(authentication));
-};
+    );
 
 describe("listReservations", () => {
   const listReservations: CustomerApiCall = {
@@ -138,8 +136,7 @@ describe("listReservations", () => {
         })
     );
     const reservations: Partial<CustomerReservationServiceLayers> = {
-      currentAccount: () =>
-        peeking(options.standing ?? testPeekedStandings.linked),
+      currentAccount: peeking(options.standing ?? testPeekedStandings.linked),
       history: Layer.mock(CustomerReservationHistoryService, { load }),
     };
     return { load, reservations };

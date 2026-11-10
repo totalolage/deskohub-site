@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { Cause, Context, Effect, Exit, Layer, Option } from "effect";
+import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import {
   sealSyntheticPayStateToken,
   syntheticChangedKeys,
@@ -17,7 +18,8 @@ import { CustomerReferralUpdates } from "./customer-referral-updates";
 
 /**
  * Runs `use` against the live operations, built for a request whose gates
- * are closed and whose client sent no referral code. Only what an operation
+ * are closed, whose client sent no referral code, and whose session the
+ * operations below never read. Only what an operation
  * builds when it runs is live, so the operations below reach no database,
  * Dotypos or Nexi.
  */
@@ -32,6 +34,7 @@ const runOperations = <A, E>(
         CustomerCheckoutOperations.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
+              Layer.mock(CustomerAuthentication, {}),
               CustomerReferralUpdates.fromClient(undefined),
               ReferralReleaseGate.fromDecision(false),
               OfficeReleaseGate.fromDecision(false)

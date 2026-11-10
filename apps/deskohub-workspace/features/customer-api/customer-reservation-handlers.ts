@@ -59,7 +59,12 @@ export const CustomerReservationsApiHandlers = HttpApiBuilder.group(
       CustomerAuthentication,
       yield* CustomerAuthentication
     );
-    const authorization = reservations.authorization(authentication);
+    const authorization = reservations.authorization.pipe(
+      Layer.provide(authentication)
+    );
+    const currentAccount = reservations.currentAccount.pipe(
+      Layer.provide(authentication)
+    );
 
     return (
       handlers
@@ -72,12 +77,7 @@ export const CustomerReservationsApiHandlers = HttpApiBuilder.group(
                 histories.load(account)
               )
             ),
-            Effect.provide(
-              Layer.mergeAll(
-                reservations.currentAccount(authentication),
-                reservations.history
-              )
-            ),
+            Effect.provide(Layer.mergeAll(currentAccount, reservations.history)),
             answerCustomerApiFailure("customerApi.listReservations"),
             Effect.flatMap(answerReservationHistory)
           )

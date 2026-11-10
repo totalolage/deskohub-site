@@ -14,6 +14,7 @@ import {
 } from "@/features/account";
 import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import {
   type DiscountAdvertisementInput,
@@ -244,6 +245,7 @@ type CustomerAgentAccountFakes = {
   readonly currentAccount?: Layer.PartialEffectful<
     CurrentCustomerAccount["Service"]
   >;
+  readonly profile?: Layer.PartialEffectful<CustomerProfileService["Service"]>;
   readonly ownership?: Layer.PartialEffectful<
     CustomerAccountReservationOwnership["Service"]
   >;
@@ -260,8 +262,14 @@ export const inMemoryCustomerAgentCallServices = (
 ) =>
   Layer.succeed(CustomerAgentCallServices, {
     forCaller: ({ grant }) => {
-      const { authentication, sections, contact, currentAccount, ownership } =
-        fakes(grant);
+      const {
+        authentication,
+        sections,
+        contact,
+        currentAccount,
+        profile,
+        ownership,
+      } = fakes(grant);
 
       return Layer.mergeAll(
         Layer.succeed(CurrentCustomerAgentGrant, grant),
@@ -269,6 +277,7 @@ export const inMemoryCustomerAgentCallServices = (
         Layer.mock(CustomerAccountSections, sections ?? {}),
         Layer.mock(CustomerAccountContactService, contact ?? {}),
         Layer.mock(CurrentCustomerAccount, currentAccount ?? {}),
+        Layer.mock(CustomerProfileService, profile ?? {}),
         Layer.mock(CustomerAccountReservationOwnership, ownership ?? {})
       );
     },

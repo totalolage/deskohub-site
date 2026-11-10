@@ -230,23 +230,21 @@ export class ReservationAuthorizationService extends Context.Service<
   );
 
   /**
-   * The service deciding for the account `authentication` reads, such as
-   * the customer API's session.
+   * The service deciding for the account the `CustomerAuthentication` the
+   * caller provides reads, such as the customer API's session.
    */
-  static withAuthentication = <E, R>(
-    authentication: Layer.Layer<CustomerAuthentication, E, R>
-  ) =>
-    this.Default.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          CustomerAccountReservationOwnership.withAuthentication(
-            authentication
-          ),
-          WorkspaceReservationRepository.Live,
-          ReviewSandbox.Live
-        )
+  static ForProvidedAuthentication = this.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        CustomerAccountReservationOwnership.ForProvidedAuthentication,
+        WorkspaceReservationRepository.Live,
+        ReviewSandbox.Live
       )
-    );
+    )
+  );
 
-  static Live = this.withAuthentication(CustomerAuthentication.Default);
+  /** The service deciding for the browser session's account. */
+  static Live = this.ForProvidedAuthentication.pipe(
+    Layer.provide(CustomerAuthentication.Default)
+  );
 }

@@ -234,9 +234,9 @@ const unusedAccountServices: CustomerAccountServiceLayers = {
 };
 
 const unusedReservationServices: CustomerReservationServiceLayers = {
-  currentAccount: () => Layer.mock(CurrentCustomerAccount, {}),
+  currentAccount: Layer.mock(CurrentCustomerAccount, {}),
   history: Layer.mock(CustomerReservationHistoryService, {}),
-  authorization: () => Layer.mock(ReservationAuthorizationService, {}),
+  authorization: Layer.mock(ReservationAuthorizationService, {}),
   checkoutStatus: Layer.mock(CheckoutStatusService, {}),
   access: () => Layer.mock(ReservationAccessService, {}),
   invoice: () => Layer.mock(ReservationInvoicePdfService, {}),

@@ -96,10 +96,9 @@ const mapAvatarActionError =
  * never hides a session, release or account refusal.
  */
 const avatarAdmissionLayer = Layer.mergeAll(
-  CustomerAuthentication.Default,
   AccountAvatarReleaseGate.Live,
-  CurrentCustomerAccount.Live
-);
+  CurrentCustomerAccount.ForProvidedAuthentication
+).pipe(Layer.provideMerge(CustomerAuthentication.Default));
 
 /**
  * Uploads the submitted file as the signed-in customer's avatar and

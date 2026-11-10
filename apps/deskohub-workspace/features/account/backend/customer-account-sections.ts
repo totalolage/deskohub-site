@@ -217,15 +217,10 @@ export class CustomerAccountSections extends Context.Service<
     )
   );
 
-  /**
-   * The sections reading the session through this authentication, such as
-   * an agent's access token instead of the browser session.
-   */
-  static withAuthentication = <E, R>(
-    authentication: Layer.Layer<CustomerAuthentication, E, R>
-  ) => this.ForProvidedAuthentication.pipe(Layer.provide(authentication));
-
-  static Live = this.withAuthentication(CustomerAuthentication.Default);
+  /** The sections reading the browser session. */
+  static Live = this.ForProvidedAuthentication.pipe(
+    Layer.provide(CustomerAuthentication.Default)
+  );
 }
 
 class SectionFailure<E> extends Data.TaggedError(

@@ -957,10 +957,9 @@ export class ReferralService extends Context.Service<
         WorkspaceDatabase.Default,
         WorkspaceDatabaseAdvisoryLock.Default,
         WorkspaceDotyposLayer,
-        CustomerAuthentication.Default,
         CustomerAccountLinkRepository.Live,
-        CustomerAccountSections.Live
-      )
+        CustomerAccountSections.ForProvidedAuthentication
+      ).pipe(Layer.provideMerge(CustomerAuthentication.Default))
     )
   );
 }
