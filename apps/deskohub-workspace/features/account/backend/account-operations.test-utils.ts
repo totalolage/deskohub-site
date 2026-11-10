@@ -12,12 +12,14 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 
 /** The verified session the account operation tests sign in with. */
 export const testCustomerSession: CustomerAccountSession = {
   accountId: customerAccountIdSchema.make("operations-test-account"),
   email: reservationCustomerEmailSchema.make(testEmailAddress("ada")),
   deletionRequested: false,
+  ...testSessionProfile,
 };
 
 /** The session account, linked to its Dotypos customer. */

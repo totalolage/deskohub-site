@@ -273,6 +273,93 @@
         }
       }
     },
+    "/api/customer/account/locale": {
+      "put": {
+        "tags": ["account"],
+        "operationId": "account.updateLocale",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerLocaleUpdated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerLocaleUpdated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerLocaleUpdate"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
     "/api/customer/account/avatar": {
       "put": {
         "tags": ["account"],
@@ -3202,9 +3289,20 @@
                     "type": "null"
                   }
                 ]
+              },
+              "locale": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The account's saved locale tag, or null when none is saved. Clients ignore tags they don't support."
               }
             },
-            "required": ["kind", "email", "deletion"],
+            "required": ["kind", "email", "deletion", "locale"],
             "additionalProperties": false
           },
           {
@@ -3271,6 +3369,17 @@
                   }
                 ]
               },
+              "locale": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The account's saved locale tag, or null when none is saved. Clients ignore tags they don't support."
+              },
               "referralsEnabled": {
                 "type": "boolean"
               },
@@ -3285,7 +3394,13 @@
                 ]
               }
             },
-            "required": ["kind", "email", "deletion", "referralsEnabled"],
+            "required": [
+              "kind",
+              "email",
+              "deletion",
+              "locale",
+              "referralsEnabled"
+            ],
             "additionalProperties": false
           },
           {
@@ -3352,6 +3467,17 @@
                   }
                 ]
               },
+              "locale": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The account's saved locale tag, or null when none is saved. Clients ignore tags they don't support."
+              },
               "profile": {
                 "$ref": "#/components/schemas/CustomerProfile"
               },
@@ -3397,6 +3523,7 @@
               "kind",
               "email",
               "deletion",
+              "locale",
               "profile",
               "avatar",
               "referralsEnabled"
@@ -3466,9 +3593,20 @@
                     "type": "null"
                   }
                 ]
+              },
+              "locale": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The account's saved locale tag, or null when none is saved. Clients ignore tags they don't support."
               }
             },
-            "required": ["kind", "email", "deletion"],
+            "required": ["kind", "email", "deletion", "locale"],
             "additionalProperties": false
           },
           {
@@ -3534,9 +3672,20 @@
                     "type": "null"
                   }
                 ]
+              },
+              "locale": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The account's saved locale tag, or null when none is saved. Clients ignore tags they don't support."
               }
             },
-            "required": ["kind", "email", "deletion"],
+            "required": ["kind", "email", "deletion", "locale"],
             "additionalProperties": false
           },
           {
@@ -3602,9 +3751,20 @@
                     "type": "null"
                   }
                 ]
+              },
+              "locale": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The account's saved locale tag, or null when none is saved. Clients ignore tags they don't support."
               }
             },
-            "required": ["kind", "email", "deletion"],
+            "required": ["kind", "email", "deletion", "locale"],
             "additionalProperties": false
           }
         ]
@@ -3863,6 +4023,30 @@
           }
         },
         "required": ["_tag", "reason"],
+        "additionalProperties": false
+      },
+      "CustomerLocale": {
+        "type": "string",
+        "enum": ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK"]
+      },
+      "CustomerLocaleUpdate": {
+        "type": "object",
+        "properties": {
+          "locale": {
+            "$ref": "#/components/schemas/CustomerLocale"
+          }
+        },
+        "required": ["locale"],
+        "additionalProperties": false
+      },
+      "CustomerLocaleUpdated": {
+        "type": "object",
+        "properties": {
+          "locale": {
+            "$ref": "#/components/schemas/CustomerLocale"
+          }
+        },
+        "required": ["locale"],
         "additionalProperties": false
       },
       "CustomerProfileCompletionInput": {
@@ -4170,10 +4354,6 @@
         },
         "required": ["status", "context"],
         "additionalProperties": false
-      },
-      "CustomerLocale": {
-        "type": "string",
-        "enum": ["en-US", "cs-CZ"]
       },
       "SaveCustomerMarketingPreferences": {
         "type": "object",

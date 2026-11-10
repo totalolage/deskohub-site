@@ -196,6 +196,16 @@ const sessionSettingsFields = {
   assistants: Schema.optional(
     Schema.NullOr(Schema.Array(CustomerAgentConnection))
   ),
+  /**
+   * The account's saved language, null when it has none. It is any locale
+   * tag, not only one this contract serves, so a locale added later never
+   * fails an older client's decoding; a client ignores a tag it doesn't
+   * support.
+   */
+  locale: Schema.NullOr(Schema.String).annotate({
+    description:
+      "The account's saved locale tag, or null when none is saved. Clients ignore tags they don't support.",
+  }),
 } as const;
 
 const accountState = <
@@ -264,6 +274,18 @@ const ProfileCompletionPayload = CustomerProfileCompletionInput.annotate({
   identifier: "CustomerProfileCompletionInput",
   parseOptions: customerInputParseOptions,
 });
+
+/** The language to save on the account, as the web language switcher does. */
+const LocaleUpdatePayload = Schema.Struct({ locale: CustomerLocale }).annotate({
+  identifier: "CustomerLocaleUpdate",
+  parseOptions: customerInputParseOptions,
+});
+
+/** The saved language. */
+export const CustomerLocaleUpdated = Schema.Struct({
+  locale: CustomerLocale,
+}).annotate({ identifier: "CustomerLocaleUpdated" });
+export type CustomerLocaleUpdated = typeof CustomerLocaleUpdated.Type;
 
 const RememberedReferralHeaders = Schema.Struct({
   [customerReferralCodeHeader]: Schema.optionalKey(
@@ -472,6 +494,21 @@ export const CustomerAccountApi = HttpApiGroup.make("account")
     HttpApiEndpoint.put("updateProfile", "/profile", {
       payload: ProfileUpdatePayload,
       success: CustomerProfileUpdated,
+      error: [
+        CustomerAccountLinkRequired.schema,
+        CustomerServiceUnavailable.schema,
+      ],
+    })
+  )
+  .add(
+    /**
+     * Saves the account's language, which the account's emails and signed-in
+     * site use. It is the account's own setting, not Dotypos data, so an
+     * account without a Dotypos profile saves it too.
+     */
+    HttpApiEndpoint.put("updateLocale", "/locale", {
+      payload: LocaleUpdatePayload,
+      success: CustomerLocaleUpdated,
       error: [
         CustomerAccountLinkRequired.schema,
         CustomerServiceUnavailable.schema,

@@ -49,6 +49,7 @@ export type AccountReviewTarget =
   | "linked-billing-desktop"
   | "linked-billing-mobile"
   | "linked-legal-desktop"
+  | "legal-export-delivered-desktop"
   | "reservation-customer-account-desktop"
   | "reservation-customer-contact-desktop"
   | "account-marketing-withdrawn-desktop"
@@ -224,6 +225,11 @@ const accountReviewTargetMetadata = {
   },
   "linked-legal-desktop": {
     filename: "linked-legal-desktop.png",
+    path: enAccountSectionPath("legal"),
+    viewport: { height: 1000, width: 1440 },
+  },
+  "legal-export-delivered-desktop": {
+    filename: "legal-export-delivered-desktop.png",
     path: enAccountSectionPath("legal"),
     viewport: { height: 1000, width: 1440 },
   },

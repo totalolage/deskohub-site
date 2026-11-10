@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { createContext, runInContext } from "node:vm";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import {
   type CatalogText,
   classifyChunks,
@@ -220,7 +221,7 @@ describe("administration messages in a production build", () => {
       }
     }
 
-    expect([...found].sort()).toEqual(["cs-CZ", "en-US"]);
+    expect([...found].sort()).toEqual([...supportedLocales].sort());
   });
 
   test("finds customer message text in customer chunks", {

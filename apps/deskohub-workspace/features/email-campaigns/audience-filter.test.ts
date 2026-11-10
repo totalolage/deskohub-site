@@ -586,7 +586,10 @@ describe("audienceLocales", () => {
   test("allows every locale without a locale condition", () => {
     expect([...audienceLocales(group("and", [taggedVip]))].sort()).toEqual([
       "cs-CZ",
+      "de-DE",
       "en-US",
+      "sk-SK",
+      "uk-UA",
     ]);
   });
 
@@ -594,7 +597,7 @@ describe("audienceLocales", () => {
     expect([...audienceLocales(speaks("cs-CZ"))]).toEqual(["cs-CZ"]);
     expect([
       ...audienceLocales({ ...speaks("cs-CZ"), operator: "noneOf" }),
-    ]).toEqual(["en-US"]);
+    ]).toEqual(["en-US", "de-DE", "uk-UA", "sk-SK"]);
   });
 
   test("intersects AND groups and unites OR groups at any depth", () => {
@@ -605,7 +608,7 @@ describe("audienceLocales", () => {
     ]).toEqual(["cs-CZ"]);
     expect(
       [...audienceLocales(group("or", [speaks("cs-CZ"), taggedVip]))].sort()
-    ).toEqual(["cs-CZ", "en-US"]);
+    ).toEqual(["cs-CZ", "de-DE", "en-US", "sk-SK", "uk-UA"]);
     expect([...audienceLocales(group("or", []))]).toEqual([]);
   });
 });

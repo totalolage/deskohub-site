@@ -12,6 +12,7 @@
   "shellMobileNavigationTitle": "Navigace administrace",
   "shellMobileNavigationDescription": "Vyberte stránku administrace.",
   "shellLanguageSwitcherLabel": "Jazyk administrace",
+  "shellLanguageMenuTriggerLabel": "Jazyk administrace: {language}",
   "shellBreadcrumbLabel": "Drobečková navigace",
   "shellBreadcrumbOverview": "Přehled",
   "shellBreadcrumbAccessCodes": "Přístupové kódy",

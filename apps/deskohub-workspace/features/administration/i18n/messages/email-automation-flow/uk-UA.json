@@ -1,0 +1,206 @@
+{
+  "emailAutomationFlowCampaignSourceThis": "цієї кампанії",
+  "emailAutomationFlowPeriodTriggerWindow": "не більше ніж … від події запуску",
+  "emailAutomationFlowPeriodTriggerWindowCountLabel": "{subject}: скільки одиниць від події запуску",
+  "emailAutomationFlowPeriodTriggerWindowSide": [
+    {
+      "declarations": ["input side"],
+      "selectors": ["side"],
+      "match": {
+        "side=before": "до події запуску",
+        "side=*": "після події запуску"
+      }
+    }
+  ],
+  "emailAutomationFlowPeriodTriggerWindowSideLabel": "{subject}: до чи після події запуску",
+  "emailAutomationFlowPeriodWithin": "не більше ніж",
+  "emailAutomationFlowSavedAudienceEmpty": "Жодна аудиторія не відповідає.",
+  "emailAutomationFlowSavedAudienceLiveNote": "Використовується аудиторія в тому вигляді, який вона має, коли виконання доходить до цього кроку, тож зміни аудиторії одразу діють для виконань, що тривають.",
+  "emailAutomationFlowSavedAudienceMenuLabel": "Збережена аудиторія",
+  "emailAutomationFlowSavedAudienceMenuSection": "Збережені аудиторії",
+  "emailAutomationFlowSavedAudienceOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=in": "є у збереженій аудиторії",
+        "operator=*": "немає у збереженій аудиторії"
+      }
+    }
+  ],
+  "emailAutomationFlowSavedAudienceOperatorLabel": "Належність до збереженої аудиторії",
+  "emailAutomationFlowSavedAudiencePickerLabel": "Збережена аудиторія",
+  "emailAutomationFlowSavedAudiencePickerPlaceholder": "Оберіть аудиторію",
+  "emailAutomationFlowSavedAudienceRequired": "Оберіть збережену аудиторію.",
+  "emailAutomationFlowSavedAudienceSearch": "Пошук аудиторій",
+  "emailAutomationFlowSavedAudienceUnknown": "Видалена аудиторія",
+  "emailAutomationFlowArchived": "Цю автоматизацію архівовано, тому її сценарій не можна змінити.",
+  "emailAutomationFlowCalendarAddPart": "Додати частину",
+  "emailAutomationFlowCalendarLastDay": "Останній день",
+  "emailAutomationFlowCalendarMinuteAdd": "Додати хвилину",
+  "emailAutomationFlowCalendarMinuteOther": "Інша хвилина",
+  "emailAutomationFlowCalendarNeverOccurs": "Ця комбінація не настане протягом наступних восьми років. Змініть одну з її частин.",
+  "emailAutomationFlowCalendarNextFires": "Найближчі запуски (празький час)",
+  "emailAutomationFlowCalendarOccurrence": [
+    {
+      "declarations": ["input occurrence"],
+      "selectors": ["occurrence"],
+      "match": {
+        "occurrence=1": "1-й",
+        "occurrence=2": "2-й",
+        "occurrence=3": "3-й",
+        "occurrence=4": "4-й",
+        "occurrence=5": "5-й",
+        "occurrence=*": "останній"
+      }
+    }
+  ],
+  "emailAutomationFlowCalendarOccurrenceAdd": "Додати день тижня",
+  "emailAutomationFlowCalendarOccurrenceLabel": "За ліком у місяці",
+  "emailAutomationFlowCalendarOccurrenceRemove": "Прибрати цей день тижня",
+  "emailAutomationFlowCalendarOccurrenceWeekdayLabel": "День тижня",
+  "emailAutomationFlowCalendarPart": [
+    {
+      "declarations": ["input part"],
+      "selectors": ["part"],
+      "match": {
+        "part=minutes": "Хвилина години",
+        "part=hours": "Година доби",
+        "part=weekdays": "День тижня",
+        "part=daysOfMonth": "День місяця",
+        "part=weekdayOccurrences": "День тижня в місяці",
+        "part=weeksOfYear": "Тиждень року",
+        "part=*": "Місяць року"
+      }
+    }
+  ],
+  "emailAutomationFlowCalendarPartLabel": "Частина календаря",
+  "emailAutomationFlowCalendarPreviewUnavailable": "Опис зараз недоступний. Спробуйте ще раз трохи згодом.",
+  "emailAutomationFlowCalendarRemovePart": "Прибрати: {part}",
+  "emailAutomationFlowCalendarRemoveValue": "Прибрати {value}",
+  "emailAutomationFlowCalendarWeekAdd": "Додати тиждень",
+  "emailAutomationFlowCalendarWeekOther": "Номер тижня",
+  "emailAutomationFlowCalendarWeekValue": "{week}-й тиждень",
+  "emailAutomationFlowConditionDescription": "Виконання триває лише для клієнтів, які відповідають умові в цей момент. Для решти воно завершується тут.",
+  "emailAutomationFlowConditionTitle": "Перевірка клієнта",
+  "emailAutomationFlowDiscard": "Скасувати зміни",
+  "emailAutomationFlowEventAccountCreatedDescription": "Новий клієнт створює обліковий запис у Workspace.",
+  "emailAutomationFlowEventBookedDescription": "Бронювання клієнта підтверджено у Workspace.",
+  "emailAutomationFlowEventCancelledDescription": "Клієнт скасовує бронювання у Workspace.",
+  "emailAutomationFlowEventFinishedDescription": "Час завершення бронювання клієнта минув.",
+  "emailAutomationFlowEventKindLabel": "Яка подія запускає виконання",
+  "emailAutomationFlowEventProductHint": "Якщо залишити будь-який продукт, виконання почнеться для кожного бронювання.",
+  "emailAutomationFlowEventStartedDescription": "Час початку бронювання клієнта минув.",
+  "emailAutomationFlowInsertCondition": "Умова",
+  "emailAutomationFlowInsertConditionDescription": "Перевіряє клієнта в цей момент.",
+  "emailAutomationFlowInsertLabel": "Додати крок на позицію {position}",
+  "emailAutomationFlowInsertWait": "Очікування",
+  "emailAutomationFlowInsertWaitDescription": "Протягом певного часу або до певного моменту.",
+  "emailAutomationFlowSave": "Зберегти сценарій",
+  "emailAutomationFlowSaveFailed": "Не вдалося зберегти сценарій. Спробуйте ще раз трохи згодом.",
+  "emailAutomationFlowSaveInvalid": "Сценарій не можна зберегти в такому вигляді. Перевірте виділені кроки.",
+  "emailAutomationFlowScheduleMinutesNotAllowed": "Розклад може починатися лише о таких хвилинах кожної години: {minutes}. Оберіть одну з цих хвилин.",
+  "emailAutomationFlowSaving": "Збереження…",
+  "emailAutomationFlowSendDescription": "Надсилає лист цієї кампанії й завершує виконання.",
+  "emailAutomationFlowSendEditEmail": "Редагувати лист",
+  "emailAutomationFlowSendSubjectLabel": "Тема — {language}",
+  "emailAutomationFlowSendSubjectMissing": "Цією мовою ще немає вмісту",
+  "emailAutomationFlowSendTitle": "Надсилання листа",
+  "emailAutomationFlowStatusArchived": "Цю автоматизацію архівовано, тому її сценарій доступний лише для перегляду.",
+  "emailAutomationFlowStatusEmpty": "Ця автоматизація ще не має сценарію. Оберіть спосіб запуску та збережіть.",
+  "emailAutomationFlowStatusPending": "Збережено. <link>Перегляньте й активуйте</link>, щоб зміни діяли для нових виконань.",
+  "emailAutomationFlowStatusPublished": "Відповідає активній версії.",
+  "emailAutomationFlowStatusUnsaved": "Незбережені зміни",
+  "emailAutomationFlowStepDelete": "Видалити крок",
+  "emailAutomationFlowStepEyebrow": [
+    {
+      "declarations": ["input number", "input kind"],
+      "selectors": ["kind"],
+      "match": {
+        "kind=condition": "Крок {number} · Умова",
+        "kind=wait": "Крок {number} · Очікування",
+        "kind=*": "Крок {number} · Надсилання"
+      }
+    }
+  ],
+  "emailAutomationFlowStepMenuLabel": "Дії: {step}",
+  "emailAutomationFlowStepMoveDown": "Перемістити нижче",
+  "emailAutomationFlowStepMoveUp": "Перемістити вище",
+  "emailAutomationFlowTriggerChooseDescription": "Виконання починається для клієнта під час кожного запуску розкладу або щоразу, коли клієнт спричиняє подію.",
+  "emailAutomationFlowTriggerChooseTitle": "Оберіть, що запускає цю автоматизацію",
+  "emailAutomationFlowTriggerEyebrow": "Спосіб запуску",
+  "emailAutomationFlowTriggerFamilyEvent": "Подія",
+  "emailAutomationFlowTriggerFamilyEventDescription": "Коли клієнт бронює, скасовує, починає чи завершує бронювання або створює обліковий запис.",
+  "emailAutomationFlowTriggerFamilyLabel": "Що запускає виконання",
+  "emailAutomationFlowTriggerFamilySchedule": "Розклад",
+  "emailAutomationFlowTriggerFamilyScheduleDescription": "У визначений час, для всіх в аудиторії кампанії.",
+  "emailAutomationFlowTriggerRequired": "Оберіть, що запускає цю автоматизацію.",
+  "emailAutomationFlowWaitCountError": "Введіть ціле число від 1 до 9 999.",
+  "emailAutomationFlowWaitCountLabel": "Скільки чекати",
+  "emailAutomationFlowWaitFor": "Чекати",
+  "emailAutomationFlowWaitModeCalendar": "До певного моменту",
+  "emailAutomationFlowWaitModeDuration": "Протягом певного часу",
+  "emailAutomationFlowWaitModeLabel": "Як крок очікує",
+  "emailAutomationFlowWaitTitle": "Очікування",
+  "emailAutomationFlowWaitUnitDay": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "день",
+        "countPlural=few": "дні",
+        "countPlural=many": "днів",
+        "countPlural=other": "дня"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitHour": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "годину",
+        "countPlural=few": "години",
+        "countPlural=many": "годин",
+        "countPlural=other": "години"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitLabel": "Одиниця часу",
+  "emailAutomationFlowWaitUnitMinute": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "хвилину",
+        "countPlural=few": "хвилини",
+        "countPlural=many": "хвилин",
+        "countPlural=other": "хвилини"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitMonth": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "місяць",
+        "countPlural=few": "місяці",
+        "countPlural=many": "місяців",
+        "countPlural=other": "місяця"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitWeek": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "тиждень",
+        "countPlural=few": "тижні",
+        "countPlural=many": "тижнів",
+        "countPlural=other": "тижня"
+      }
+    }
+  ]
+}

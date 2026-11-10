@@ -1,4 +1,5 @@
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { EmailDraft } from "@deskohub/workspace-admin-api";
 import type { ReactNode } from "react";
 import { FormProvider, type UseFormReturn, useForm } from "react-hook-form";
@@ -22,7 +23,7 @@ export function EmailEditorTestHost({
   children,
   defaultValues,
   locale = "en-US",
-  locales = ["cs-CZ", "en-US"],
+  locales = supportedLocales,
   onForm,
 }: {
   readonly children: ReactNode;

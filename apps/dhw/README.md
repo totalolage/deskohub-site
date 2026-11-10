@@ -19,7 +19,7 @@ Operators may read:
 - customers, their Workspace reservation history, and their reservations per day over the last year;
 - discount definitions, codes, scheduled sales, and the Dotypos discount groups;
 - invoice creation defaults, and a rendered preview of an invoice before it's created;
-- email campaigns, their per-locale texts, current recipients, and delivery status;
+- email campaigns, their per-locale texts in Czech, English, German, Ukrainian, and Slovak, current recipients, and delivery status;
 - saved campaign audiences and email templates, including rendered template previews, and the inbox that receives test emails;
 - automated campaigns: their flow, activation readiness, dry runs, published versions, runs with their timelines and counts, and the automation engine's health;
 - descriptions and next starts of calendar expressions;

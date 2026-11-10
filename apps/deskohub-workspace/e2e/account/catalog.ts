@@ -8,6 +8,7 @@ export const workspaceE2EAccountCaseIds = [
   "account-magic-link-delivery",
   "account-profile-completion",
   "account-reservation-transitions",
+  "account-data-export",
   "account-deletion-marker-reauth",
   "account-session-lifecycle",
   "account-deletion-and-reactivation",
@@ -41,6 +42,9 @@ export const workspaceE2EAccountMagicLinkLedger = {
   "account-magic-link-delivery": ["verify"],
   "account-profile-completion": [],
   "account-reservation-transitions": [],
+  // Reuses the linked main account's session; the signed-out request opens
+  // no sign-in.
+  "account-data-export": [],
   "account-deletion-marker-reauth": ["send"],
   // The reauthentication sign-in, which must land on the pending account's
   // saved Czech site from its English callback.

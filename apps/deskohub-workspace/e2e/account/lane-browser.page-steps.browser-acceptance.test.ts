@@ -17,6 +17,7 @@ import {
   runBrowserStep,
 } from "../case-runner.browser.test-utils";
 import type { WorkspaceE2EError } from "../errors";
+import { languageMenuMarkup } from "../language-menu.test-utils";
 import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
@@ -95,8 +96,7 @@ const server = Bun.serve({
         const other = url.pathname === "/en-US" ? "/cs-CZ" : "/en-US";
         const target = url.searchParams.get("target") ?? other;
         return html(`<p>Home ${url.pathname}</p>
-          <nav data-locale-switcher><a href="${target}">${other}</a></nav>
-          ${hydrate ? `<script>${reactProps("[data-locale-switcher] a", ["onClick"])}</script>` : ""}`);
+          ${languageMenuMarkup({ hydrated: hydrate, links: [{ href: target, label: other }] })}`);
       }
       case "/cs-CZ/auth/callback":
         return html(`<p>Callback failed</p>
@@ -143,11 +143,12 @@ const config = {
 type LaneBrowser = WorkspaceE2EAccountLaneBrowser;
 
 /**
- * The lane's two sessions in `laneBrowser`, owned by the caller's Scope and
- * each opened on its first use, as the account lane opens them.
+ * The lane's sessions in `laneBrowser`, owned by the caller's Scope and each
+ * opened on its first use, as the account lane opens them.
  */
 const openLaneSessions = (laneBrowser: Browser) =>
   Effect.gen(function* () {
+    const laneScope = yield* Effect.scope;
     const id = `account-lane-${randomUUID()}`;
     const openOnFirstUse = (sessionId: string) =>
       E2EBrowserSession.openOnFirstUse({
@@ -157,12 +158,17 @@ const openLaneSessions = (laneBrowser: Browser) =>
       });
     return {
       openAssistantSession: yield* openOnFirstUse(`${id}-assistant`),
+      openSeparateSession: (name: string) =>
+        Effect.flatten(
+          openOnFirstUse(`${id}-${name}`).pipe(Scope.provide(laneScope))
+        ),
       openSession: yield* openOnFirstUse(id),
     };
   });
 
 const laneBrowserFor = (sessions: {
   readonly openAssistantSession: OpenE2EBrowserSession;
+  readonly openSeparateSession: (name: string) => OpenE2EBrowserSession;
   readonly openSession: OpenE2EBrowserSession;
 }) => makeWorkspaceE2EAccountLaneBrowser({ config, ...sessions });
 
@@ -179,7 +185,13 @@ const runLaneStep = <A>(
       Effect.flatMap(
         Effect.cached(openSeparateSession("assistant")),
         (openAssistantSession) =>
-          drive(laneBrowserFor({ openAssistantSession, openSession }))
+          drive(
+            laneBrowserFor({
+              openAssistantSession,
+              openSeparateSession,
+              openSession,
+            })
+          )
       ),
     prepare: () => Effect.void,
     stepTimeoutMs: options.stepTimeoutMs ?? 15_000,
@@ -367,7 +379,7 @@ const failingSteps: ReadonlyArray<
       ),
   ],
   [
-    "a locale link that is not hydrated",
+    "a language menu trigger that is not hydrated",
     "timeout",
     (laneBrowser) =>
       Effect.andThen(

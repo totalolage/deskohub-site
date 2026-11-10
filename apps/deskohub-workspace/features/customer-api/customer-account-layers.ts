@@ -7,6 +7,8 @@ import {
 } from "@/features/account/backend/account-state-capabilities";
 import { AnalyticsPersonAnonymisation } from "@/features/account/backend/analytics-person-anonymisation";
 import { CustomerAccountDeletionEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
+import type { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { CustomerLocalePreference } from "@/features/account/backend/customer-locale-preference.service";
 import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
@@ -41,6 +43,12 @@ export type CustomerAccountServiceLayers = Omit<
     AnalyticsPersonAnonymisation,
     Layer.Error<typeof AnalyticsPersonAnonymisation.Live>
   >;
+  /** The account's locale preference, under the request's authentication. */
+  readonly localePreference: Layer.Layer<
+    CustomerLocalePreference,
+    Layer.Error<typeof CustomerLocalePreference.Live>,
+    CustomerAuthentication
+  >;
 };
 
 interface ICustomerAccountLayers {
@@ -67,6 +75,7 @@ export class CustomerAccountLayers extends Context.Service<
       accountDeletion: CustomerAccountDeletionEndpoint.Default,
       analyticsConsentLedger: AnalyticsConsentLedger.Live,
       analyticsPersonAnonymisation: AnalyticsPersonAnonymisation.Live,
+      localePreference: CustomerLocalePreference.Live,
     },
     releases: runAccountReleaseLayers,
   });

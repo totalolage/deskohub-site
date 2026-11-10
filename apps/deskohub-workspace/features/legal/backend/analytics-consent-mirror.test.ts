@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
@@ -229,7 +230,11 @@ describe("recordSignedInDeviceAnalyticsConsent", () => {
         Effect.provide(
           Layer.succeed(CustomerAuthentication, {
             currentUser: Effect.succeed(
-              session && { ...session, email: testEmailAddress("mirror") }
+              session && {
+                ...session,
+                ...testSessionProfile,
+                email: testEmailAddress("mirror"),
+              }
             ),
           })
         )
@@ -408,7 +413,11 @@ describe("resolveSilentAnalyticsGrant", () => {
         Effect.provide(
           Layer.succeed(CustomerAuthentication, {
             currentUser: Effect.succeed(
-              session && { ...session, email: testEmailAddress("silent") }
+              session && {
+                ...session,
+                ...testSessionProfile,
+                email: testEmailAddress("silent"),
+              }
             ),
           })
         )

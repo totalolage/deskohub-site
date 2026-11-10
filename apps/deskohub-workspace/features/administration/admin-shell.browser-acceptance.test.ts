@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Browser, chromium, type Locator } from "@playwright/test";
 import { type Locale, locales } from "@/features/i18n";
+import { languageNames } from "@/features/i18n/language-labels";
+import { expectAccessibleLanguageMenu } from "@/shared/components/language-menu.browser.test-utils";
 import { browserModuleStubPlugin } from "@/shared/testing/browser-module-stubs.test-utils";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles.test-utils";
@@ -96,6 +98,12 @@ const openAdminShell = async (
   return page;
 };
 
+const languageMenuTriggerLabel = (locale: Locale) =>
+  m.shellLanguageMenuTriggerLabel(
+    { language: languageNames[locale] },
+    { locale }
+  );
+
 // Scrolls the link into view as far as its scroll containers allow, checks it
 // ends up fully on screen, and follows it.
 const reachAndFollow = async (
@@ -165,8 +173,9 @@ for (const locale of locales) {
         try {
           const header = page.getByRole("banner");
           await header
-            .getByRole("navigation", {
-              name: m.shellLanguageSwitcherLabel({}, { locale }),
+            .getByRole("button", {
+              exact: true,
+              name: languageMenuTriggerLabel(locale),
             })
             .waitFor();
           const pageWidth = await page.evaluate(
@@ -196,4 +205,24 @@ for (const locale of locales) {
       }
     );
   }
+
+  test.skipIf(!chromiumAvailable)(
+    `opens the ${locale} language menu from the keyboard`,
+    async () => {
+      const page = await openAdminShell(locale, mobileViewports[0]);
+      try {
+        await expectAccessibleLanguageMenu(page, {
+          currentLocale: locale,
+          hrefFor: (other) => `/${other}/admin`,
+          region: "header",
+          trigger: page
+            .getByRole("banner")
+            .locator("[data-language-menu-trigger]"),
+          triggerLabel: languageMenuTriggerLabel(locale),
+        });
+      } finally {
+        await page.close();
+      }
+    }
+  );
 }

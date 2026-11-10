@@ -23,6 +23,7 @@ type CanonicalLegalDocument = {
   readonly title: string;
   readonly lead: string;
   readonly updatedAt: string;
+  readonly translationNotice?: string;
   readonly sections: ReadonlyArray<{
     readonly heading: string;
     readonly body: ReadonlyArray<string>;
@@ -42,6 +43,7 @@ describe.each(locales)("legalPageMarkdown in %s", (locale) => {
         canonical.title,
         canonical.lead,
         `${m.legalPageLastUpdatedLabel({}, { locale })}: ${canonical.updatedAt}`,
+        canonical.translationNotice ?? "",
         ...canonical.sections.flatMap(({ heading, body }) => [
           heading,
           ...body,

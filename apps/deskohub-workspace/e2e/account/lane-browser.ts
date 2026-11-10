@@ -1,6 +1,9 @@
+import { readFile } from "node:fs/promises";
+import type { Download, Page } from "@playwright/test";
 import { Effect } from "effect";
 import type { AccountSection } from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
+import { languageNames } from "@/features/i18n/language-labels";
 import { localeCookieName } from "@/features/i18n/routing";
 import {
   openPage,
@@ -25,6 +28,12 @@ import {
   waitForRememberedReferralCode,
 } from "../referrals/referral-cookie";
 import {
+  type AccountDataExportDelivery,
+  type AccountDataExportDownload,
+  type AccountDataExportRefusal,
+  readAccountDataExportArchiveShape,
+} from "./account-data-export";
+import {
   accountSectionLandmarks,
   selectAccountSectionInSession,
 } from "./account-sections";
@@ -44,6 +53,11 @@ const deleteConfirmCheckboxSelector = "#confirm-account-deletion";
 const deleteConfirmSelector = "#delete-account-confirm";
 const deleteReauthSendSelector = "#delete-account-reauth-send";
 const languageTriggerSelector = '[data-slot="select-trigger"]';
+const accountDataExportSelector = '[data-slot="account-data-export"]';
+const accountDataExportActionSelector =
+  '[data-slot="account-data-export-action"]';
+/** The export block once its request has settled either way. */
+const settledAccountDataExportSelector = `${accountDataExportSelector}:is([data-state="delivered"], [data-state="error"])`;
 
 /** The selectors of the account profile and billing fields the lane fills. */
 export const accountProfileFieldSelectors = {
@@ -55,12 +69,6 @@ export const accountProfileFieldSelectors = {
 
 /** An account profile or billing field the lane fills. */
 export type AccountProfileField = keyof typeof accountProfileFieldSelectors;
-
-/** Each site language's option in the profile's language select. */
-const languageOptionLabels: Readonly<Record<Locale, string>> = {
-  "cs-CZ": "Čeština",
-  "en-US": "English (US)",
-};
 
 /** The page steps of one account browser, each on its active page. */
 export type WorkspaceE2EAccountBrowser = {
@@ -269,6 +277,24 @@ export type WorkspaceE2EAccountLaneBrowser = WorkspaceE2EAccountBrowser & {
   readonly hasLocaleCookie: (
     locale: Locale
   ) => Effect.Effect<boolean, WorkspaceE2EError>;
+  /**
+   * Starts the account data export from the legal page's hydrated control
+   * and reports the status and headers of the export response at `path`,
+   * the archive the browser downloaded, and the state the control settled
+   * on. The archive is read in memory and never written anywhere else: the
+   * browser's copy of the download is deleted at once.
+   */
+  readonly downloadAccountDataExport: (
+    path: string
+  ) => Effect.Effect<AccountDataExportDelivery, WorkspaceE2EError>;
+  /**
+   * Requests the export at `path` from a signed-out visitor's own browser,
+   * closed before this returns, so the lane's session and cookies stay as
+   * they were.
+   */
+  readonly requestAccountDataExportSignedOut: (
+    path: string
+  ) => Effect.Effect<AccountDataExportRefusal, WorkspaceE2EError>;
 };
 
 type AccountBrowserConfig = Pick<
@@ -569,10 +595,13 @@ const makeAccountBrowser = (
 export const makeWorkspaceE2EAccountLaneBrowser = ({
   config,
   openAssistantSession,
+  openSeparateSession,
   openSession,
 }: {
   readonly config: AccountBrowserConfig;
   readonly openAssistantSession: OpenE2EBrowserSession;
+  /** Opens another browser session named `name`, in its own context. */
+  readonly openSeparateSession: (name: string) => OpenE2EBrowserSession;
   readonly openSession: OpenE2EBrowserSession;
 }): WorkspaceE2EAccountLaneBrowser => {
   const withLaneSession = <A>(
@@ -670,7 +699,7 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
         laneSession.use("click browser element", (page) =>
           page
             .locator('[role="option"]')
-            .filter({ hasText: languageOptionLabels[locale] })
+            .filter({ hasText: languageNames[locale] })
             .filter({ visible: true })
             .click({ timeout: browserAction })
         )
@@ -863,7 +892,7 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
       waitFor(
         description,
         isOptionSelected,
-        languageOptionLabels[locale],
+        languageNames[locale],
         uiTransition
       ),
     waitForSnapshot: (description, matches, timeoutMs) =>
@@ -873,5 +902,141 @@ export const makeWorkspaceE2EAccountLaneBrowser = ({
         session: openSession,
         timeoutMs,
       }),
+    downloadAccountDataExport: (path) =>
+      Effect.andThen(
+        withLaneSession((laneSession) =>
+          waitForReactHandler(
+            laneSession,
+            accountDataExportActionSelector,
+            "onClick",
+            { timeoutMs: uiTransition }
+          )
+        ),
+        withLaneSession((laneSession) =>
+          laneSession.use("download the account data export", (page) =>
+            downloadAccountDataExportFromPage(page, path, config.timeouts)
+          )
+        )
+      ),
+    requestAccountDataExportSignedOut: (path) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const visitor = yield* Effect.acquireRelease(
+            openSeparateSession("signed-out-visitor"),
+            (session) =>
+              session
+                .close()
+                .pipe(
+                  Effect.timeout(config.timeouts.browserSessionClose),
+                  Effect.ignore
+                ),
+            { interruptible: true }
+          );
+          const url = new URL(path, config.baseUrl).toString();
+          yield* visitor.primePreviewAccess(url, config.bypassSecret, {
+            timeoutMs: config.timeouts.browserNavigation,
+          });
+          return yield* visitor.use(
+            "request the account data export signed out",
+            async (page): Promise<AccountDataExportRefusal> => {
+              const response = await page.request.get(url, {
+                maxRedirects: 0,
+                timeout: config.timeouts.browserNavigation,
+              });
+              try {
+                return {
+                  bodyLength: (await response.body()).length,
+                  cacheControl: response.headers()["cache-control"],
+                  status: response.status(),
+                };
+              } finally {
+                await response.dispose();
+              }
+            }
+          );
+        })
+      ),
   };
+};
+
+/**
+ * Activates the export control and observes the export it fetches: the
+ * response at `path` by its pathname, the download the control starts from
+ * it, and the state the control settles on. Both waits are armed before the
+ * click and last as long as a slow export may take, and the browser's copy
+ * of the download is deleted however the step ends. A failed response starts
+ * no download, so only a successful one waits for it.
+ *
+ * The archive is read from the downloaded file, never from the response:
+ * Chromium keeps no copy of a streamed body, as a deployed function sends it,
+ * once the page consumed it, so `response.body()` comes back empty.
+ */
+/** The saved file's name and the shape of the archive it holds. */
+const readDownloadedExport = async (
+  download: Download
+): Promise<AccountDataExportDownload> => ({
+  archive: readAccountDataExportArchiveShape(
+    await readFile(await download.path())
+  ),
+  filename: download.suggestedFilename(),
+});
+
+const downloadAccountDataExportFromPage = async (
+  page: Page,
+  path: string,
+  timeouts: AccountBrowserConfig["timeouts"]
+): Promise<AccountDataExportDelivery> => {
+  const exportDeadline = timeouts.datasource + timeouts.uiTransition;
+  const responded = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === path,
+    { timeout: timeouts.datasource }
+  );
+  const downloaded = page
+    .waitForEvent("download", { timeout: exportDeadline })
+    .catch(() => undefined);
+  let observed: Download | undefined;
+  try {
+    // Awaiting both together observes the response wait even when the
+    // click fails.
+    const [response] = await Promise.all([
+      responded,
+      page
+        .locator(accountDataExportActionSelector)
+        .filter({ visible: true })
+        .click({ timeout: timeouts.browserAction }),
+    ]);
+    const headers = await response.allHeaders();
+    observed = response.ok() ? await downloaded : undefined;
+    const download = observed && (await readDownloadedExport(observed));
+    await page
+      .locator(settledAccountDataExportSelector)
+      .waitFor({ state: "attached", timeout: timeouts.uiTransition })
+      .catch(() => undefined);
+    const controlState =
+      (await page
+        .locator(accountDataExportSelector)
+        .getAttribute("data-state", { timeout: timeouts.browserAction })
+        .catch(() => null)) ?? undefined;
+    return {
+      controlState,
+      download,
+      headers: {
+        cacheControl: headers["cache-control"],
+        contentDisposition: headers["content-disposition"],
+        contentType: headers["content-type"],
+        referrerPolicy: headers["referrer-policy"],
+      },
+      status: response.status(),
+    };
+  } finally {
+    // An observed download is deleted before the step returns; one that
+    // starts after the step gave up is deleted when it arrives.
+    if (observed) await observed.delete().catch(() => undefined);
+    else
+      void downloaded
+        .then((download) => download?.delete())
+        .catch(() => undefined);
+  }
 };

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import { Data, Effect } from "effect";
 import { CurrentAgentTraffic } from "./workspace-request-context";
 import { defineWorkspaceRoute, WorkspaceRouteFailure } from "./workspace-route";
@@ -152,5 +152,72 @@ describe("Workspace routes", () => {
       () => Effect.succeed(new Response("continued"))
     );
     await expect((await continued(request)).text()).resolves.toBe("continued");
+  });
+  test("answers an unanswered defect with the opted-in fallback", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    const fallback = mock(() => new Response("fallback", { status: 500 }));
+    try {
+      const route = defineWorkspaceRoute(
+        {
+          operation: "test.fallback-defect",
+          cancellation: "continue-after-disconnect",
+          caller: "client",
+          fallback: { failureCode: "test.fallback_defect", response: fallback },
+        },
+        () => Effect.die(new Error("synthetic defect"))
+      );
+
+      const response = await route(new Request("https://deskohub.test"));
+
+      expect(response.status).toBe(500);
+      expect(await response.text()).toBe("fallback");
+      expect(fallback).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("keeps rejecting an unanswered defect without a fallback", async () => {
+    const route = defineWorkspaceRoute(
+      {
+        operation: "test.no-fallback-defect",
+        cancellation: "continue-after-disconnect",
+        caller: "client",
+      },
+      () => Effect.die(new Error("synthetic defect"))
+    );
+
+    await expect(route(new Request("https://deskohub.test"))).rejects.toThrow(
+      "synthetic defect"
+    );
+  });
+
+  test("propagates a client disconnect past the opted-in fallback", async () => {
+    const controller = new AbortController();
+    let markStarted = () => {};
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const fallback = mock(() => new Response("fallback", { status: 500 }));
+    const route = defineWorkspaceRoute(
+      {
+        operation: "test.fallback-interrupt",
+        cancellation: "interrupt-on-disconnect",
+        caller: "client",
+        fallback: {
+          failureCode: "test.fallback_interrupt",
+          response: fallback,
+        },
+      },
+      () => Effect.sync(markStarted).pipe(Effect.andThen(Effect.never))
+    );
+    const result = route(
+      new Request("https://deskohub.test", { signal: controller.signal })
+    );
+    await started;
+    controller.abort();
+
+    await expect(result).rejects.toBeDefined();
+    expect(fallback).not.toHaveBeenCalled();
   });
 });

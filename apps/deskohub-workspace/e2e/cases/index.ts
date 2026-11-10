@@ -39,6 +39,11 @@ import {
 } from "./late-payment-recovery";
 import { assertLocaleSwitcher } from "./locale";
 import {
+  assertLocaleSmoke,
+  localeSmokeCaseId,
+  localeSmokeLocales,
+} from "./locale-smoke";
+import {
   type MeetingRoomE2EPreparation,
   makeMeetingRoomE2ECases,
 } from "./meeting-room";
@@ -113,6 +118,22 @@ export const makeWorkspaceE2ECases = ({
           id: "locale-switch",
           timeoutMs: config.timeouts.localeCase,
         },
+        ...localeSmokeLocales.map(
+          (locale): WorkspaceE2ECase => ({
+            checkoutStates: [],
+            execute: ({ openSession, runStep }) =>
+              assertLocaleSmoke({ config, locale, openSession, runStep }).pipe(
+                Effect.mapError((cause) =>
+                  toWorkspaceE2EError(
+                    `run ${locale} locale smoke e2e case`,
+                    cause
+                  )
+                )
+              ),
+            id: localeSmokeCaseId(locale),
+            timeoutMs: config.timeouts.localeCase,
+          })
+        ),
         {
           checkoutStates: [],
           execute: ({ openSession, runStep }) =>

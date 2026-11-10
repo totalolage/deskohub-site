@@ -25,6 +25,7 @@ import {
   CustomerAuthentication,
 } from "@/features/account/backend/customer-authentication.service";
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
+import { CustomerLocalePreference } from "@/features/account/backend/customer-locale-preference.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
 import type { CustomerProfile } from "@/features/account/contracts";
@@ -208,6 +209,7 @@ const unusedAccountServices: CustomerAccountServiceLayers = {
   accountDeletion: Layer.mock(CustomerAccountDeletionEndpoint, {}),
   analyticsConsentLedger: Layer.mock(AnalyticsConsentLedger, {}),
   analyticsPersonAnonymisation: Layer.mock(AnalyticsPersonAnonymisation, {}),
+  localePreference: Layer.mock(CustomerLocalePreference, {}),
 };
 
 const unusedReservationServices: CustomerReservationServiceLayers = {

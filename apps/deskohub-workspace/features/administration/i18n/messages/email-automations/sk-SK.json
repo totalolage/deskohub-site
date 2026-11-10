@@ -1,0 +1,51 @@
+{
+  "emailAutomationsEyebrow": "Automatická kampaň",
+  "emailAutomationsFrequencyBannerBody": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Tento plán sa spúšťa až {count}-krát za hodinu. Každé spustenie vyhodnotí celé publikum, preto overte, či je táto frekvencia zámerná.",
+        "countPlural=few": "Tento plán sa spúšťa až {count}-krát za hodinu. Každé spustenie vyhodnotí celé publikum, preto overte, či je táto frekvencia zámerná.",
+        "countPlural=many": "Tento plán sa spúšťa až {count}-krát za hodinu. Každé spustenie vyhodnotí celé publikum, preto overte, či je táto frekvencia zámerná.",
+        "countPlural=other": "Tento plán sa spúšťa až {count}-krát za hodinu. Každé spustenie vyhodnotí celé publikum, preto overte, či je táto frekvencia zámerná."
+      }
+    }
+  ],
+  "emailAutomationsFrequencyBannerTitle": "Možno príliš časté spustenia",
+  "emailAutomationsNeverActivated": "Zatiaľ neaktivované",
+  "emailAutomationsPendingChanges": "Nezverejnené zmeny",
+  "emailAutomationsSectionEmail": "E-mail",
+  "emailAutomationsSectionFlow": "Scenár",
+  "emailAutomationsSectionPreview": "Náhľad a aktivácia",
+  "emailAutomationsSectionRuns": "Záznam behov",
+  "emailAutomationsSectionsLabel": "Časti automatickej kampane",
+  "emailAutomationsStatusActive": "Aktívne",
+  "emailAutomationsStatusArchived": "Archivované",
+  "emailAutomationsStatusDraft": "Koncept",
+  "emailAutomationsStatusPaused": "Pozastavené",
+  "emailAutomationsTriggerAccountCreated": "Vytvorenie účtu",
+  "emailAutomationsTriggerReservationBooked": "Potvrdenie rezervácie",
+  "emailAutomationsTriggerReservationCancelled": "Zrušenie rezervácie",
+  "emailAutomationsTriggerReservationFinished": "Koniec rezervácie",
+  "emailAutomationsTriggerReservationStarted": "Začiatok rezervácie",
+  "emailAutomationsTriggerSchedule": "Podľa plánu",
+  "emailAutomationsVersionLive": "Verzia {version} beží od {date}",
+  "emailAutomationsListDeliveryFilter": "Spôsob odoslania",
+  "emailAutomationsListDeliveryAll": "Všetky kampane",
+  "emailAutomationsListDeliveryOnce": "Jednorazové",
+  "emailAutomationsListDeliveryAutomated": "Automatické",
+  "emailAutomationsComposerDeliveryLabel": "Spôsob odoslania",
+  "emailAutomationsComposerDeliveryOnce": "Odoslať raz",
+  "emailAutomationsComposerDeliveryOnceDescription": "Jeden e-mail pre publikum, odoslaný po testovacom odoslaní.",
+  "emailAutomationsComposerDeliveryAutomated": "Automaticky",
+  "emailAutomationsComposerDeliveryAutomatedDescription": "Scenár pošle tento e-mail každému zákazníkovi hneď, ako splní podmienky.",
+  "emailAutomationsComposerDeliveryHint": "Po vytvorení kampane to už nemožno zmeniť.",
+  "emailAutomationsComposerNewDescription": "Napíšte e-mail a potom kampaň vytvorte, aby ste mohli zostaviť scenár, ktorý ho odošle.",
+  "emailAutomationsComposerAudienceLabel": "Publikum (vstupná skupina pri pláne, vstupná podmienka pri udalostiach)",
+  "emailAutomationsComposerAudiencePlaceholder": "Vyberte publikum",
+  "emailAutomationsEmailSave": "Uložiť zmeny",
+  "emailAutomationsEmailUnpublishedNote": "Úpravy tu nie sú zverejnené, kým ich neskontrolujete v náhľade a neaktivujete. Behy, ktoré už prebiehajú, si ponechajú e-mail, s ktorým začali.",
+  "emailAutomationsEmailArchivedNote": "Táto kampaň je archivovaná, takže jej e-mail ani publikum už nemožno zmeniť.",
+  "emailAutomationsEmailSaveArchived": "Táto kampaň je archivovaná, takže jej e-mail už nemožno upraviť."
+}

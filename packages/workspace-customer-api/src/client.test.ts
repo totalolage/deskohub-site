@@ -17,11 +17,12 @@ import {
   type CustomerAnalyticsConsentSync,
 } from "./customer-account-api";
 import { CustomerAuthRejected } from "./customer-auth-api";
+import { CustomerLocale } from "./customer-locale";
 import {
   CustomerInvoiceNotIssued,
   CustomerReservationOrderId,
 } from "./customer-reservations-api";
-import { CustomerSessionRequired } from "./customer-session";
+import { CustomerAccountId, CustomerSessionRequired } from "./customer-session";
 
 const baseUrl = "https://workspace.deskohub.test";
 const customerEmail = testEmailAddress("customer");
@@ -65,7 +66,11 @@ const deletionPending: CustomerAccountState = {
   kind: "deletion-pending",
   email: customerEmail,
   deletion: "pending",
+  locale: null,
 };
+
+/** A saved locale a later release may serve, which this contract doesn't. */
+const laterLocale = "vi-VN";
 
 describe("makeWorkspaceCustomerApiClient", () => {
   test("sends the client header to the customer API path and decodes the account", async () => {
@@ -85,6 +90,21 @@ describe("makeWorkspaceCustomerApiClient", () => {
     expect(requests[0]?.headers.get(customerApiClientHeader.name)).toBe(
       customerApiClientHeader.value
     );
+  });
+
+  test("decodes an account whose saved locale it doesn't serve, keeping the tag", async () => {
+    expect(CustomerLocale.literals).not.toContain(laterLocale);
+    const account = { ...deletionPending, locale: laterLocale };
+    const { client } = recordingClient(() => json(account));
+
+    const result = await run(
+      Effect.flatMap(makeWorkspaceCustomerApiClient({ baseUrl }), (api) =>
+        api.account.getAccount({ headers: {} })
+      ),
+      client
+    );
+
+    expect(result).toEqual(Result.succeed(account));
   });
 
   test("keeps the client header when the caller's transform overwrites it", async () => {
@@ -303,6 +323,35 @@ describe("makeCustomerAuthApiClient", () => {
         client
       )
     ).toEqual(Result.succeed(null));
+  });
+
+  test("decodes a session whose saved locale it doesn't serve, keeping the tag", async () => {
+    expect(CustomerLocale.literals).not.toContain(laterLocale);
+    const accountId = CustomerAccountId.make("account-1");
+    const session = {
+      session: {
+        id: "session-1",
+        userId: accountId,
+        expiresAt: "2026-11-10T00:00:00.000Z",
+      },
+      user: {
+        id: accountId,
+        email: customerEmail,
+        emailVerified: true,
+        name: "",
+        locale: laterLocale,
+      },
+    };
+    const { client } = recordingClient(() => json(session));
+
+    const result = await run(
+      Effect.flatMap(makeCustomerAuthApiClient({ baseUrl }), (auth) =>
+        auth.auth.getSession()
+      ),
+      client
+    );
+
+    expect(result).toEqual(Result.succeed(session));
   });
 
   test("decodes Better Auth's refusals by status, keeping only the fixed code", async () => {

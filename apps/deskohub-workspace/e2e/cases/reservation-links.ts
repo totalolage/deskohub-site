@@ -799,9 +799,14 @@ const appliedDiscountMessage = (locale: Locale) =>
     { locale }
   );
 
+// The label each locale shows: German and Ukrainian read the English label,
+// Slovak the Czech one.
 const zeroTotalDiscountLabels: Record<LinkLocale, string> = {
   "cs-CZ": "E2E sleva 100 %",
   "en-US": "E2E 100% discount",
+  "de-DE": "E2E 100% discount",
+  "uk-UA": "E2E 100% discount",
+  "sk-SK": "E2E sleva 100 %",
 };
 
 const formatZeroTotalAdjustment = (locale: Locale) =>

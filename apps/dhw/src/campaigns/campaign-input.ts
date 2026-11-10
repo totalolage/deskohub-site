@@ -1,4 +1,8 @@
 import {
+  getLocaleDefinition,
+  supportedLocales,
+} from "@deskohub/i18n/locale-registry";
+import {
   type AdministrationCampaignContentType,
   type AdministrationCampaignLocaleContentChangeType,
   type AdministrationCampaignLocaleType,
@@ -11,24 +15,38 @@ import { Flag } from "effect/unstable/cli";
 import { InvalidMutationInputError } from "../command-runtime";
 import { decodeJsonInput, readJsonInputFile } from "../json-input";
 
-/** Short locale names accepted on the command line, mapped to API locales. */
-export const campaignLocaleChoices = [
-  ["cs", "cs-CZ"],
-  ["en", "en-US"],
-  ["cs-CZ", "cs-CZ"],
-  ["en-US", "en-US"],
-] as const satisfies ReadonlyArray<
+const campaignLocaleLanguage = (locale: AdministrationCampaignLocaleType) =>
+  getLocaleDefinition(locale).language;
+
+/**
+ * Locale names accepted on the command line, mapped to API locales: each
+ * supported locale's language subtag (`cs`) and its full tag (`cs-CZ`).
+ */
+export const campaignLocaleChoices: ReadonlyArray<
   readonly [string, AdministrationCampaignLocaleType]
->;
+> = [
+  ...supportedLocales.map(
+    (locale) => [campaignLocaleLanguage(locale), locale] as const
+  ),
+  ...supportedLocales.map((locale) => [locale, locale] as const),
+];
 
 const campaignLocales = new Map<string, AdministrationCampaignLocaleType>(
   campaignLocaleChoices
 );
 
+const listAlternatives = (values: ReadonlyArray<string>) =>
+  new Intl.ListFormat("en", { type: "disjunction" }).format(values);
+
+/** The short locale names, as flag descriptions list them ("en or cs"). */
+export const campaignLocaleShortNames = listAlternatives(
+  supportedLocales.map(campaignLocaleLanguage)
+);
+
 /** File name a locale's body is exported to, such as `cs.md`. */
 export const campaignBodyFileName = (
   locale: AdministrationCampaignLocaleType
-) => `${locale.slice(0, 2)}.md`;
+) => `${campaignLocaleLanguage(locale)}.md`;
 
 export const campaignLocaleFlag = (name: string) =>
   Flag.choiceWithValue(name, campaignLocaleChoices);
@@ -38,7 +56,7 @@ export const localizedFlag = (name: string, description: string, min = 0) =>
   Flag.string(name).pipe(
     Flag.atLeast(min),
     Flag.withDescription(
-      `${description}, as <locale>=<value> where the locale is cs or en; repeat per locale`
+      `${description}, as <locale>=<value> where the locale is ${campaignLocaleShortNames}; repeat per locale`
     )
   );
 
@@ -80,7 +98,7 @@ const parseCampaignLocale = (flag: string, value: string) =>
     onNone: () =>
       Effect.fail(
         new InvalidMutationInputError({
-          message: `--${flag} has an unknown locale "${value}". Use cs, en, cs-CZ, or en-US.`,
+          message: `--${flag} has an unknown locale "${value}". Use ${listAlternatives(campaignLocaleChoices.map(([name]) => name))}.`,
         })
       ),
     onSome: Effect.succeed,

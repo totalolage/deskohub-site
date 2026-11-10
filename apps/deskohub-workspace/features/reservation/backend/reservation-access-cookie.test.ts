@@ -395,7 +395,7 @@ describe("reservation access cookie", () => {
   test("rejects claims that don't match the cookie schema", async () => {
     for (const claims of [
       { ...validClaims, purpose: "reservation-access-token" },
-      { ...validClaims, locale: "de-DE" },
+      { ...validClaims, locale: "fr-FR" },
       { ...validClaims, issuedAtEpochMilliseconds: -1 },
       { ...validClaims, invoiceAccess: true },
     ]) {

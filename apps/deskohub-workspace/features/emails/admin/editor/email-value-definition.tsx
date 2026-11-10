@@ -439,7 +439,7 @@ function EmailValueFallbackInput({
     <div className="space-y-1.5">
       <Label htmlFor={id}>
         {m.emailsEditorValuesFallbackLabel(
-          { language: emailEditorLanguageName(language, locale) },
+          { language: emailEditorLanguageName(language) },
           { locale }
         )}
       </Label>

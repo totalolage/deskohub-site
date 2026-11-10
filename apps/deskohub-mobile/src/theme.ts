@@ -7,7 +7,8 @@ import {
 } from "@deskohub/brand-tokens";
 import { Platform } from "react-native";
 
-const brandFontFamily = Platform.select({
+/** The brand face's family name on this platform. */
+export const brandFontFamily = Platform.select({
   web: brandFontFamilies.web,
   default: brandFontFamilies.native,
 });

@@ -27,12 +27,13 @@ describe("customer request budget classes", () => {
       )
       .toSorted();
 
-    expect(contractEndpoints()).toHaveLength(28);
+    expect(contractEndpoints()).toHaveLength(29);
     expect(classified).toEqual(contractEndpoints());
   });
 
   test("classify the endpoints that never reach Dotypos as workspace-only", () => {
     expect(customerRequestBudgetClasses.account).toMatchObject({
+      updateLocale: "workspace-only",
       listPasskeys: "workspace-only",
       listAssistantConnections: "workspace-only",
       syncAnalyticsConsent: "workspace-only",

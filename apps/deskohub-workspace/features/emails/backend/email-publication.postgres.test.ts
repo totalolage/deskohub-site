@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import type { EmailDraft } from "@deskohub/workspace-admin-api";
 import { ConfigProvider, Effect, Layer } from "effect";
+import { locales } from "@/features/i18n";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { EmailPersistence } from "./email-persistence.service";
 
@@ -29,7 +30,9 @@ const withImage = (source: string): EmailDraft => ({
     { _tag: "Paragraph", id: "intro", textKey: "intro" },
     { _tag: "Image", id: "photo", src: source, altKey: "alt" },
   ],
-  translations: { "cs-CZ": translation, "en-US": translation },
+  translations: Object.fromEntries(
+    locales.map((locale) => [locale, translation])
+  ),
   values: [
     // Unused and unfinished: publication drops it.
     { name: "later", source: { kind: "discount" } },

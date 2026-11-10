@@ -28,6 +28,7 @@ import { currentReferralOverview } from "@/features/account/backend/current-refe
 import { requireVerifiedIdentity } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { removeCurrentCustomerAvatar } from "@/features/account/backend/customer-avatar-mutations";
+import { CustomerLocalePreference } from "@/features/account/backend/customer-locale-preference.service";
 import {
   completeCurrentCustomerProfile,
   updateCurrentCustomerProfile,
@@ -150,6 +151,21 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
             Effect.flatMap(updateCurrentCustomerProfile),
             Effect.provide(profileSaving),
             answerCustomerApiFailure("customerApi.updateProfile")
+          )
+        )
+        // The session's account saves its own language, as the web language
+        // switcher does; it isn't Dotypos data, so no profile is needed.
+        .handle("updateLocale", ({ payload: { locale } }) =>
+          Effect.flatMap(CurrentCustomerSession, ({ accountId }) =>
+            Effect.flatMap(CustomerLocalePreference, (preference) =>
+              preference.save(accountId, locale)
+            )
+          ).pipe(
+            Effect.provide(
+              services.localePreference.pipe(Layer.provide(authentication))
+            ),
+            answerCustomerApiFailure("customerApi.updateLocale"),
+            Effect.as({ locale })
           )
         )
         .handle("completeProfile", ({ headers, payload }) =>
@@ -464,14 +480,16 @@ type SignedInAccountState = Exclude<
 
 /**
  * A signed-in state as the contract carries it. Passkeys are keyed by the
- * session's account, the one the state was read for.
+ * session's account, the one the state was read for, and an account without
+ * a saved locale says so with null.
  */
 const signedIn = (
   session: CustomerSession,
-  { passkeys, ...state }: SignedInAccountState
+  { passkeys, localePreference, ...state }: SignedInAccountState
 ) =>
   Effect.succeed<CustomerAccountState>({
     ...state,
+    locale: localePreference ?? null,
     ...(passkeys && {
       passkeys: { accountId: session.accountId, passkeys: passkeys.passkeys },
     }),

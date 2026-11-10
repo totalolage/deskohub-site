@@ -1,0 +1,51 @@
+{
+  "emailAutomationsEyebrow": "Автоматична кампанія",
+  "emailAutomationsFrequencyBannerBody": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Цей розклад запускається до {count} разу на годину. Кожен запуск перевіряє всю аудиторію, тому переконайтеся, що така частота навмисна.",
+        "countPlural=few": "Цей розклад запускається до {count} разів на годину. Кожен запуск перевіряє всю аудиторію, тому переконайтеся, що така частота навмисна.",
+        "countPlural=many": "Цей розклад запускається до {count} разів на годину. Кожен запуск перевіряє всю аудиторію, тому переконайтеся, що така частота навмисна.",
+        "countPlural=other": "Цей розклад запускається до {count} разу на годину. Кожен запуск перевіряє всю аудиторію, тому переконайтеся, що така частота навмисна."
+      }
+    }
+  ],
+  "emailAutomationsFrequencyBannerTitle": "Можливо, запуски надто часті",
+  "emailAutomationsNeverActivated": "Ще не активовано",
+  "emailAutomationsPendingChanges": "Неопубліковані зміни",
+  "emailAutomationsSectionEmail": "Лист",
+  "emailAutomationsSectionFlow": "Сценарій",
+  "emailAutomationsSectionPreview": "Перегляд і активація",
+  "emailAutomationsSectionRuns": "Журнал виконань",
+  "emailAutomationsSectionsLabel": "Розділи автоматичної кампанії",
+  "emailAutomationsStatusActive": "Активна",
+  "emailAutomationsStatusArchived": "Архівована",
+  "emailAutomationsStatusDraft": "Чернетка",
+  "emailAutomationsStatusPaused": "Призупинена",
+  "emailAutomationsTriggerAccountCreated": "Створення облікового запису",
+  "emailAutomationsTriggerReservationBooked": "Підтвердження бронювання",
+  "emailAutomationsTriggerReservationCancelled": "Скасування бронювання",
+  "emailAutomationsTriggerReservationFinished": "Завершення бронювання",
+  "emailAutomationsTriggerReservationStarted": "Початок бронювання",
+  "emailAutomationsTriggerSchedule": "За розкладом",
+  "emailAutomationsVersionLive": "Версія {version} активна з {date}",
+  "emailAutomationsListDeliveryFilter": "Спосіб надсилання",
+  "emailAutomationsListDeliveryAll": "Усі кампанії",
+  "emailAutomationsListDeliveryOnce": "Одноразові",
+  "emailAutomationsListDeliveryAutomated": "Автоматичні",
+  "emailAutomationsComposerDeliveryLabel": "Спосіб надсилання",
+  "emailAutomationsComposerDeliveryOnce": "Надіслати один раз",
+  "emailAutomationsComposerDeliveryOnceDescription": "Один лист для аудиторії, який надсилається після тестового надсилання.",
+  "emailAutomationsComposerDeliveryAutomated": "Автоматично",
+  "emailAutomationsComposerDeliveryAutomatedDescription": "Сценарій надішле цей лист кожному клієнтові, щойно той виконає умови.",
+  "emailAutomationsComposerDeliveryHint": "Після створення кампанії це вже не можна змінити.",
+  "emailAutomationsComposerNewDescription": "Напишіть лист, а потім створіть кампанію, щоб скласти сценарій, який його надішле.",
+  "emailAutomationsComposerAudienceLabel": "Аудиторія (вхідна група для розкладу, вхідна умова для подій)",
+  "emailAutomationsComposerAudiencePlaceholder": "Оберіть аудиторію",
+  "emailAutomationsEmailSave": "Зберегти зміни",
+  "emailAutomationsEmailUnpublishedNote": "Ці зміни не опубліковано, доки ви не перевірите їх у попередньому перегляді й не активуєте. Виконання, які вже тривають, залишаються з листом, з яким почалися.",
+  "emailAutomationsEmailArchivedNote": "Цю кампанію архівовано, тому її лист і аудиторію вже не можна змінити.",
+  "emailAutomationsEmailSaveArchived": "Цю кампанію архівовано, тому її лист уже не можна редагувати."
+}

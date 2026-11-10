@@ -89,14 +89,14 @@ const normalizeWorkspaceE2EMarketingNode = (node: unknown): ReactNode => {
 /**
  * The single marketing-preferences E2E document hash: the exact shared
  * production canonical JSON over the en-US marketing-communications document
- * with Playwright JSX stubs normalized back into real React nodes.
+ * with Playwright JSX stubs normalized back into real React nodes. Only the
+ * section bodies are replaced; every other field reaches the production
+ * canonicalizer unchanged, so the hash follows what the app hashes.
  */
 export const getWorkspaceE2EMarketingDocumentHash = (): string => {
   const document = getLegalDocument("en-US", "marketing-communications");
   const normalizedDocument = {
-    title: document.title,
-    lead: document.lead,
-    updatedAt: document.updatedAt,
+    ...document,
     sections: document.sections.map((section) => ({
       heading: section.heading,
       body: section.body.map((node) =>

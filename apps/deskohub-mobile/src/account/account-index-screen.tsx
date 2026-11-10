@@ -29,6 +29,7 @@ const sectionLabel = (section: AccountSection, locale: AppLocale) =>
     referrals: m.account_section_referrals,
     complete: m.account_section_complete,
     profile: m.account_section_profile,
+    language: m.account_section_language,
     security: m.account_section_security,
     assistants: m.account_section_assistants,
     billing: m.account_section_billing,

@@ -8,7 +8,7 @@ import { Effect, Match, Option } from "effect";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { openBrowserAsync } from "expo-web-browser";
 import { useContext, useEffect, useState } from "react";
-import { StyleSheet, Switch, Text, View } from "react-native";
+import { StyleSheet, Switch, View } from "react-native";
 import { apiOrigin } from "../../auth/auth-client";
 import { AsyncView } from "../../customer-api/async-view";
 import { accountAtom } from "../../customer-api/customer-data-runtime";
@@ -21,6 +21,7 @@ import { theme } from "../../theme";
 import { LiveMessage } from "../../ui/controls";
 import { ListGroup, ListRow, SectionHeader } from "../../ui/list";
 import { ScrollScreen } from "../../ui/scroll-screen";
+import { Text } from "../../ui/text";
 import {
   type AnalyticsSaveFeedback,
   analyticsPreferenceAtom,

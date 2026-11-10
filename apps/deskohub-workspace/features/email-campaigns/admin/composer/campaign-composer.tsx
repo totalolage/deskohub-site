@@ -10,6 +10,7 @@ import { Form } from "@/shared/components/ui/form";
 import type { CampaignTemplateKey } from "../../body/campaign-content";
 import type { CampaignId } from "../../campaign-identifiers";
 import type { CampaignDelivery } from "../../campaign-states";
+import { campaignFallbackLocale } from "../../recipient-locale";
 import type { AudienceOption } from "../audiences/audience-page-data.server";
 import {
   CampaignContentTabs,
@@ -73,7 +74,9 @@ export function CampaignComposer({
     control: form.control,
     name: ["title", "purpose", "templateKey", "audienceId", "locales"],
   });
-  const [selectedLocale, setSelectedLocale] = useState<Locale>("cs-CZ");
+  const [selectedLocale, setSelectedLocale] = useState<Locale>(
+    campaignFallbackLocale
+  );
   /** Chosen while creating; a saved campaign's delivery never changes. */
   const [newDelivery, setNewDelivery] = useState<CampaignDelivery>("once");
   const delivery = campaign?.delivery ?? newDelivery;

@@ -10,7 +10,7 @@ export const unstable_settings = { anchor: "index" };
 export default function AccountSectionsLayout() {
   const locale = useAppLocale();
   return (
-    <Stack screenOptions={stackScreenOptions}>
+    <Stack screenOptions={stackScreenOptions(locale)}>
       <Stack.Screen
         name="index"
         options={{ title: m.account_tab_account({}, { locale }) }}
@@ -18,6 +18,10 @@ export default function AccountSectionsLayout() {
       <Stack.Screen
         name="profile"
         options={{ title: m.account_section_profile({}, { locale }) }}
+      />
+      <Stack.Screen
+        name="language"
+        options={{ title: m.account_section_language({}, { locale }) }}
       />
       <Stack.Screen
         name="billing"
