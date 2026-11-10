@@ -1,0 +1,1 @@
+ALTER TABLE "account_analytics_consent_decisions" DROP CONSTRAINT "account_analytics_consent_decisions_source_check", ADD CONSTRAINT "account_analytics_consent_decisions_source_check" CHECK ("source" in ('banner', 'sign_in_mirror', 'hydration_mirror', 'backfill', 'preference', 'app_mirror'));

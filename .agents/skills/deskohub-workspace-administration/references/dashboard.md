@@ -22,7 +22,7 @@ The dashboard lives in `apps/deskohub-workspace/app/[locale]/admin` and `feature
 
 The dashboard composes these sources without creating a second customer or reservation store:
 
-- Workspace Postgres decides which reservations belong to Workspace and owns workflow state, milestone timestamps, payment attempts, and applied-discount snapshots.
+- Workspace Postgres decides which reservations belong to Workspace and owns workflow state, milestone timestamps, payment attempts, and applied-discount snapshots. `loadReservation` names each applied discount by its stored `staffLabel`, falling back to the guest `label` on rows recorded before the column existed, so the page, the administration API, and `dhw reservations get --json` show the staff wording while the wire field stays `label`.
 - Dotypos supplies current booking dates and customer contact details. A missing or unavailable Dotypos record never hides a Workspace reservation.
 - Nexi supplies live order and operation details for linked payment attempts. Provider IDs stay visible and link to XPay when Nexi is unavailable.
 - PostHog adds optional lifecycle observations to one reservation's timeline. It never decides current status, and lists never query it.

@@ -13,6 +13,7 @@ import {
   PasskeyReleaseGate,
 } from "@/features/account/backend/account-release-gates";
 import type { AccountReleaseLayers } from "@/features/account/backend/account-state-capabilities";
+import { AnalyticsPersonAnonymisation } from "@/features/account/backend/analytics-person-anonymisation";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { CustomerRequestOrigins } from "@/features/account/backend/auth/customer-request-origins.service";
@@ -44,6 +45,7 @@ import {
   testReleaseCohortHeader,
 } from "@/features/feature-flags/backend/release-cohorts.test-utils";
 import type { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend/workspace-feature-flag.service";
+import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";
 import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
@@ -214,6 +216,8 @@ const unusedAccountServices: CustomerAccountServiceLayers = {
   marketingPreferences: Layer.mock(MarketingPreferences, {}),
   consentLedger: Layer.mock(MarketingConsentLedger, {}),
   accountDeletion: Layer.mock(CustomerAccountDeletionEndpoint, {}),
+  analyticsConsentLedger: Layer.mock(AnalyticsConsentLedger, {}),
+  analyticsPersonAnonymisation: Layer.mock(AnalyticsPersonAnonymisation, {}),
   localePreference: Layer.mock(CustomerLocalePreference, {}),
 };
 

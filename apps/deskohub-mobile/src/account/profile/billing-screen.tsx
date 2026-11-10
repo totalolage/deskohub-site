@@ -52,7 +52,7 @@ function BillingForm({
 }) {
   const locale = useAppLocale();
   const router = useRouter();
-  const form = useProfileForm(account.profile);
+  const form = useProfileForm(account);
   const fields = billingFieldsOf(form.draft.billingKind);
   const { inputs, invalidElsewhere } = useFocusFirstInvalid(form.state, fields);
   const submitting = form.state._tag === "Submitting";

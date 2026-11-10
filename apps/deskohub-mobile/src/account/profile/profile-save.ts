@@ -53,26 +53,40 @@ export const profileEditsAtom = Atom.make(Option.none<ProfileDraft>()).pipe(
   Atom.keepAlive
 );
 
+/**
+ * The saved profile a form edits, and the region its phone is read in: the
+ * phone region of the account's saved language (`accountPhoneRegion`).
+ */
+export interface EditedProfile {
+  readonly profile: CustomerProfile;
+  readonly phoneRegion: string;
+}
+
 /** The draft a form shows: the customer's edits, else the saved profile. */
 export const currentDraft = (
   edits: Option.Option<ProfileDraft>,
-  profile: CustomerProfile
-): ProfileDraft => Option.getOrElse(edits, () => profileDraftOf(profile));
+  { profile, phoneRegion }: EditedProfile
+): ProfileDraft =>
+  Option.getOrElse(edits, () => profileDraftOf(profile, phoneRegion));
 
 /** Whether leaving now would lose changes. */
 export const hasUnsavedChanges = (
   edits: Option.Option<ProfileDraft>,
-  profile: CustomerProfile
+  { profile, phoneRegion }: EditedProfile
 ) =>
-  Option.exists(edits, (draft) => !sameDraft(draft, profileDraftOf(profile)));
+  Option.exists(
+    edits,
+    (draft) =>
+      !sameDraft(draft, profileDraftOf(profile, phoneRegion), phoneRegion)
+  );
 
 /** The draft after a change to some of its fields. */
 export const editedDraft = (
   edits: Option.Option<ProfileDraft>,
-  profile: CustomerProfile,
+  edited: EditedProfile,
   change: Partial<ProfileDraft>
 ): Option.Option<ProfileDraft> =>
-  Option.some({ ...currentDraft(edits, profile), ...change });
+  Option.some({ ...currentDraft(edits, edited), ...change });
 
 // The account as read again after a write; a failed read leaves `None`.
 const rereadAccount = (get: Atom.FnContext) =>
@@ -128,6 +142,12 @@ const waitForReread =
       )
     );
 
+/** What a save submits: the draft and the region its phone is read in. */
+export interface ProfileSave {
+  readonly draft: ProfileDraft;
+  readonly phoneRegion: string;
+}
+
 /**
  * Saves the complete profile (PUT /account/profile) from a draft. Invalid
  * drafts fail with the fields to fix before anything is sent; the account is
@@ -135,8 +155,8 @@ const waitForReread =
  * need linking.
  */
 export const saveProfileAtom = customerDataRuntime
-  .fn((draft: ProfileDraft, get) =>
-    Effect.fromResult(validateProfileDraft(draft)).pipe(
+  .fn(({ draft, phoneRegion }: ProfileSave, get) =>
+    Effect.fromResult(validateProfileDraft(draft, phoneRegion)).pipe(
       Effect.mapError(
         (invalid) => new ProfileDraftRejected<ProfileTextField>({ invalid })
       ),
@@ -164,10 +184,14 @@ export const completionEditsAtom = Atom.make(
   Option.none<CompletionDraft>()
 ).pipe(Atom.keepAlive);
 
-/** What a completion submits: the draft and the code it was prefilled with. */
+/**
+ * What a completion submits: the draft, the code it was prefilled with, and
+ * the region its phone is read in.
+ */
 export interface ProfileCompletion {
   readonly draft: CompletionDraft;
   readonly invitationCode: string | undefined;
+  readonly phoneRegion: string;
 }
 
 /**
@@ -176,8 +200,10 @@ export interface ProfileCompletion {
  * code's outcome when one was submitted.
  */
 export const completeProfileAtom = customerDataRuntime
-  .fn(({ draft, invitationCode }: ProfileCompletion, get) =>
-    Effect.fromResult(validateCompletionDraft(draft, invitationCode)).pipe(
+  .fn(({ draft, invitationCode, phoneRegion }: ProfileCompletion, get) =>
+    Effect.fromResult(
+      validateCompletionDraft(draft, invitationCode, phoneRegion)
+    ).pipe(
       Effect.mapError(
         (invalid) => new ProfileDraftRejected<CompletionTextField>({ invalid })
       ),

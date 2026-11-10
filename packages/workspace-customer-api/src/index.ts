@@ -6,6 +6,10 @@ export {
   CustomerAccountLinkRequired,
   CustomerAccountState,
   CustomerAgentConnection,
+  CustomerAnalyticsChoice,
+  CustomerAnalyticsConsentSync,
+  CustomerAnalyticsPreference,
+  CustomerAnalyticsPreferenceSaved,
   CustomerAvatar,
   CustomerAvatarPresentation,
   CustomerAvatarRejected,
@@ -23,10 +27,14 @@ export {
   customerAvatarMaxUploadBytes,
   customerAvatarMediaTypes,
   Money,
+  profileCompletionSaveOf,
+  profileUpdateSaveOf,
   ReferralAccountOverview,
   ReferralAccountSummary,
   RequestCustomerAccountDeletion,
+  SaveCustomerAnalyticsPreference,
   SaveCustomerMarketingPreferences,
+  SyncCustomerAnalyticsConsent,
 } from "./customer-account-api";
 export {
   CustomerAuthApi,
@@ -93,12 +101,14 @@ export {
 } from "./customer-checkout-summary";
 export { CustomerLocale, customerSignInLocaleHeader } from "./customer-locale";
 export {
+  accountPhoneRegion,
+  accountProfileSchemas,
   CustomerProfile,
   CustomerProfileBilling,
   CustomerProfileCompletionInput,
-  CustomerProfileCompletionSave,
+  type CustomerProfileCompletionSave,
   CustomerProfileInput,
-  CustomerProfileSave,
+  type CustomerProfileSave,
   customerInputParseOptions,
   customerProfileBusinessBillingFields,
   customerProfileSchemas,

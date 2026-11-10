@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { AtomRegistry } from "effect/unstable/reactivity";
+import { accountAtom } from "../../customer-api/customer-data-runtime";
 import { CustomerViewError } from "../../customer-api/customer-view-error";
-import { makeFakeCustomerData } from "../../customer-api/testing/customer-data-test-registry";
+import {
+  makeFakeCustomerData,
+  settle,
+} from "../../customer-api/testing/customer-data-test-registry";
 import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
 import {
@@ -44,6 +48,15 @@ describe("saveLanguageAtom", () => {
     expect(shown).toEqual([{ locale: "uk-UA", sessionChecks: 0 }]);
     expect(data.device.sessionChecks).toBe(1);
     expect(state).toEqual({ status: "idle" });
+  });
+
+  test("reads the account again, whose language the profile forms read a phone in", async () => {
+    const data = makeFakeCustomerData("linked");
+    await settle(data.registry, accountAtom);
+    await choose(data, "de-DE");
+    expect(await settle(data.registry, accountAtom)).toMatchObject({
+      success: { locale: "de-DE" },
+    });
   });
 
   test("saves for an account without a profile", async () => {
