@@ -17,23 +17,13 @@ import {
   makeAppForegroundAtom,
 } from "../platform/app-foreground";
 import {
-  CurrentAccountConsentCheck,
-  createAccountConsentCheck,
-} from "./account-consent-check";
-import {
   followAccountConsent,
   syncAccountAnalyticsConsent,
   syncAccountAnalyticsConsentAtom,
 } from "./account-consent-sync";
-import {
-  type ConsentChoice,
-  type ConsentStorage,
-  createAnalyticsConsent,
-  type StoredConsent,
-} from "./analytics-consent";
-import { DeviceAnalyticsConsent } from "./use-analytics-consent";
+import type { StoredConsent } from "./analytics-consent";
+import { makeFakeDeviceConsent } from "./testing/fake-device-consent";
 
-const now = new Date("2026-11-10T12:00:00.000Z");
 const deviceGrant: StoredConsent = {
   kind: "decided",
   categories: ["necessary", "analytics", "marketing"],
@@ -81,31 +71,14 @@ const setup = ({
   const workspace = FakeWorkspace.forKind("linked");
   workspace.analyticsDecision = decision;
   const accountId = workspace.data.accountId;
-  let saved = stored;
-  const writes: ConsentChoice[] = [];
-  let load: (() => void) | undefined;
-  const storage: ConsentStorage = {
-    read: () =>
-      loadLater
-        ? new Promise<StoredConsent>((resolve) => {
-            load = () => resolve(saved);
-          })
-        : saved,
-    write: async (choice) => {
-      writes.push(choice);
-      saved = { kind: "decided", ...choice };
-    },
-  };
-  const consent = createAnalyticsConsent(storage, () => {}, {
-    now: () => now,
-    locale: () => "en-US",
+  const { consent, check, writes, load, ...device } = makeFakeDeviceConsent({
+    stored,
+    accountId,
+    loadLater,
   });
-  const check = createAccountConsentCheck();
-  check.follow(accountId);
   const layer: Layer.Layer<CustomerDataServices> = Layer.mergeAll(
     fakeCustomerDataLayer({ workspace, device: makeFakeDevice() }),
-    Layer.succeed(DeviceAnalyticsConsent, consent),
-    Layer.succeed(CurrentAccountConsentCheck, check)
+    device.layer
   );
   const registry = makeCustomerDataRegistry(layer);
   const appState = fakeAppState();
@@ -117,7 +90,7 @@ const setup = ({
     check,
     writes,
     appState,
-    load: () => load?.(),
+    load,
     /** Runs one sync to its end, outside any follower. */
     syncOnce: () =>
       Effect.runPromise(
@@ -257,7 +230,7 @@ describe("syncAccountAnalyticsConsent", () => {
 
   test("discards the answer when the device's choice changed meanwhile", async () => {
     const device = setup({ stored: deviceGrant, decision: laterWithdrawal });
-    device.workspace.onAnalyticsSync = () => device.consent.deny();
+    device.workspace.onAnalyticsConsentRequest = () => device.consent.deny();
 
     await device.syncOnce();
 
@@ -270,7 +243,7 @@ describe("syncAccountAnalyticsConsent", () => {
 
   test("discards the answer when another account signed in meanwhile", async () => {
     const device = setup({ stored: deviceGrant, decision: laterWithdrawal });
-    device.workspace.onAnalyticsSync = () =>
+    device.workspace.onAnalyticsConsentRequest = () =>
       device.check.follow("another-account");
 
     await device.syncOnce();

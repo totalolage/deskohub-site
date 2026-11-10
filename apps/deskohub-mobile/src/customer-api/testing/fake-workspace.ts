@@ -114,8 +114,11 @@ export class FakeWorkspace {
   analyticsDecision: FakeAnalyticsDecision | undefined;
   /** What each analytics consent sync sent, in order. */
   readonly analyticsSyncs: SyncCustomerAnalyticsConsent[] = [];
-  /** Runs while a sync is handled, before it answers. */
-  onAnalyticsSync: (() => void) | undefined;
+  /**
+   * Runs while an analytics consent sync or preference save is handled,
+   * before it answers, as when the device changes meanwhile.
+   */
+  onAnalyticsConsentRequest: (() => void) | undefined;
   private readonly outcomes = new Map<EndpointName, FakeRequestOutcome[]>();
 
   constructor(data: FakeWorkspaceData = sampleWorkspaceData("linked")) {
@@ -505,7 +508,7 @@ const serverLayer = (workspace: FakeWorkspace) => {
         .handle("syncAnalyticsConsent", ({ payload }) =>
           Effect.sync(() => {
             workspace.analyticsSyncs.push(payload);
-            workspace.onAnalyticsSync?.();
+            workspace.onAnalyticsConsentRequest?.();
             return syncAnalyticsConsent(workspace, payload);
           })
         )
@@ -517,6 +520,7 @@ const serverLayer = (workspace: FakeWorkspace) => {
         // The decision is made now, answered to the millisecond.
         .handle("saveAnalyticsPreference", ({ payload: { granted } }) =>
           Effect.map(Clock.currentTimeMillis, (now) => {
+            workspace.onAnalyticsConsentRequest?.();
             const decidedAt = new Date(now).toISOString();
             workspace.analyticsDecision = {
               granted,
