@@ -32,8 +32,8 @@ import {
  * The session's identity when it is signed in and its account isn't awaiting
  * deletion: no session fails `unauthenticated`, a deletion marker
  * `link-required` with `deletion-requested`. `requireActive` is this over the
- * session read; it is exported for the few readers that read the session
- * through another seam.
+ * session read; standing fakes in tests reuse it so their `requireActive`
+ * refuses exactly as the module does.
  */
 export const requireVerifiedIdentity = (
   user: CustomerAccountSession | null

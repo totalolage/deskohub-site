@@ -204,7 +204,20 @@ export const makeCustomerApiTestServer = (
 };
 
 const unusedAccountServices: CustomerAccountServiceLayers = {
-  currentAccount: Layer.mock(CurrentCustomerAccount, {}),
+  // Only the active-session check reads the request's session; reading the
+  // account's link fails the test.
+  currentAccount: Layer.effect(
+    CurrentCustomerAccount,
+    Effect.map(CustomerAuthentication, (authentication) =>
+      CurrentCustomerAccount.of({
+        peek: Effect.die("peek is not faked"),
+        resolve: Effect.die("resolve is not faked"),
+        requireActive: authentication.currentUser.pipe(
+          Effect.flatMap(requireVerifiedIdentity)
+        ),
+      })
+    )
+  ),
   profile: Layer.mock(CustomerProfileService, {}),
   avatar: Layer.mock(CustomerAvatarService, {}),
   passkeys: Layer.mock(CustomerPasskeys, {}),
