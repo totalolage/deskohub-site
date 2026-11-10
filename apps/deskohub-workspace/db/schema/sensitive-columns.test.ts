@@ -1,7 +1,8 @@
 /**
- * The database query logger writes every statement's bound parameters at Info
- * level and blanks only those marked sensitive. `sensitiveText` columns mark
- * every value Drizzle binds through the column's encoder. This suite checks
+ * At the Debug log level, as in preview and development, the database query
+ * logger writes every statement's bound parameters and blanks only those
+ * marked sensitive. `sensitiveText` columns mark every value Drizzle binds
+ * through the column's encoder. This suite checks
  * which columns use it; `sensitive-columns.postgres.test.ts` drives each one
  * through the real query logger against Postgres.
  *
