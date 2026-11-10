@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { DotyposRejected } from "@deskohub/dotypos";
+import { DotyposRejected, DotyposService } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
   AdministrationActorEmail,
@@ -40,7 +40,15 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Layer, Logger, Redacted, Result, Schema } from "effect";
+import {
+  Effect,
+  Layer,
+  Logger,
+  Option,
+  Redacted,
+  Result,
+  Schema,
+} from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { HttpApiTest } from "effect/unstable/httpapi";
 import {
@@ -67,6 +75,7 @@ import {
   LegacyAdministratorBackfill,
 } from "@/features/administrators";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { WorkspaceReservationEmailService } from "@/features/checkout/backend/fulfillment/workspace-reservation-email.service";
 import {
   adminCodeClaim,
   adminCustomerCode,
@@ -80,11 +89,17 @@ import {
   DiscountAdminServiceDatesError,
 } from "@/features/discounts/admin/discount-administration.service";
 import { CampaignOperations } from "@/features/email-campaigns/backend/campaign-operations.service";
+import { featureFlagsByCohort } from "@/features/feature-flags/backend/release-gate.test-utils";
 import {
   ReservationProductDetailsBackfill,
   type ReservationProductDetailsBackfillBatch,
 } from "@/features/reservation/backend/reservation-product-details-backfill.service";
+import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { WorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { toWorkspaceWebHandler } from "@/shared/backend/workspace-effect";
+import { makeMeetingPoint } from "@/shared/testing/overlapping-requests.test-utils";
 import { plainDateStringSchema } from "@/shared/utils/temporal";
 import {
   discountMutationRecovery,
@@ -1571,6 +1586,163 @@ describe("customer and reservation administration endpoints", () => {
       message: "Synthetic not_cancellable failure",
     });
     expect(errors[2]).toBeInstanceOf(CliServiceUnavailable);
+  });
+
+  test("cancels overlapping requests' reservations under each request's own seating-map release", async () => {
+    const cohorts = ["open", "closed"] as const;
+    type Cohort = (typeof cohorts)[number];
+    const reservationIdOf = {
+      open: AdministrationWorkspaceReservationId.make(
+        "01980000-0000-7000-8000-0000000000d1"
+      ),
+      closed: AdministrationWorkspaceReservationId.make(
+        "01980000-0000-7000-8000-0000000000d2"
+      ),
+    };
+    // Each bearer acts as its cohort's administrator.
+    const administratorOf = (cohort: Cohort) =>
+      customerAccountIdSchema.make(`administrator-${cohort}`);
+    const authentication = Layer.succeed(AdministrationAuthentication, {
+      bearer: (httpEffect, { credential }) => {
+        const cohort = Redacted.value(credential) as Cohort;
+        return Effect.provideService(httpEffect, CurrentAdministrationCaller, {
+          actor: {
+            accountId: administratorOf(cohort),
+            email: testEmailAddress(`administrator-${cohort}`),
+          },
+          channel: {
+            _tag: "CliSession",
+            sessionId: CliSessionId.make(session.id),
+          },
+        });
+      },
+    });
+    // Every flag is on for the open cohort's administrator.
+    const meetingPoint = makeMeetingPoint(cohorts.length);
+    const featureFlags = featureFlagsByCohort(
+      meetingPoint,
+      Effect.map(Effect.serviceOption(CurrentAdministrationCaller), (caller) =>
+        Option.isSome(caller) &&
+        caller.value.actor.accountId === administratorOf("open")
+          ? "open"
+          : "closed"
+      )
+    );
+    const emails: Array<{ readonly id: string; readonly placement: unknown }> =
+      [];
+    const stored = (id: string) =>
+      ({
+        id,
+        dotyposReservationId: `dotypos-${id}`,
+        fulfillmentState: "fulfilled",
+        reservationState: "confirmed",
+        updatedAt: Temporal.Now.instant(),
+      }) as never;
+    // Places the reservation on the seating map while that's released, as
+    // its live details do.
+    const reservationDetails = Layer.unwrap(
+      Effect.map(SeatingMapReleaseGate, (seatingMap) =>
+        Layer.mock(WorkspaceReservationService, {
+          getReservation: (id) =>
+            Effect.map(
+              seatingMap.isOpen,
+              (open) =>
+                ({
+                  id,
+                  dotyposReservationId: `dotypos-${id}`,
+                  providerStatus: "CONFIRMED",
+                  placement: open ? "seating-map" : "unplaced",
+                }) as never
+            ),
+        })
+      )
+    ).pipe(
+      Layer.provide(SeatingMapReleaseGate.Default),
+      Layer.provide(featureFlags)
+    );
+    const reservations = ReservationAdministrationService.perOperation(
+      ReservationAdministrationService.Default.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(DotyposService, {
+              cancelReservation: () => Effect.void,
+            }),
+            Layer.mock(WorkspaceReservationEmailService, {
+              sendCancellationEmail: ({ reservation }) =>
+                Effect.sync(() => {
+                  emails.push({
+                    id: reservation.id,
+                    placement: reservation.placement,
+                  });
+                }),
+            }),
+            Layer.mock(WorkspaceReservationRepository, {
+              findById: (id) => Effect.succeed(stored(id)),
+              claimAdministrationCancellation: ({ id }) =>
+                Effect.succeed(stored(id)),
+              markAdministrationCancelled: () => Effect.void,
+              markAdministrationCancellationFailed: () => Effect.void,
+            }),
+            reservationDetails
+          )
+        )
+      )
+    );
+    const handle = toWorkspaceWebHandler(
+      makeWorkspaceAdminApiLayer({
+        authentication,
+        sessionAuthentication: UnusedCliSessionAuthentication,
+        clientCompatibility: CliClientCompatibilityLive,
+      }).pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            reservations,
+            ClaimEveryCliMutation,
+            DiscardedAdministrationActionLog,
+            Layer.succeed(CliAuthentication, {} as never),
+            Layer.succeed(CliAuthenticationAdmission, {} as never),
+            UnusedAdministrationService,
+            Layer.succeed(AdministratorRoster, {} as never),
+            Layer.succeed(LegacyAdministratorBackfill, {} as never),
+            Layer.succeed(CampaignOperations, {} as never),
+            UnusedReservationProductDetailsBackfill,
+            UnusedReservationAccessAdministration,
+            UnusedDiscountAdministration,
+            UnusedInvoiceAdministration,
+            UnusedStandaloneAccessCodeAdministration
+          )
+        )
+      )
+    );
+
+    const responses = await Promise.all(
+      cohorts.map((cohort) =>
+        handle(
+          new Request(
+            `https://workspace.deskohub.test/api/v1/cli/reservations/${reservationIdOf[cohort]}/cancellation`,
+            {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${cohort}`,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({
+                accessGrantUpdatedAt: null,
+                providerCredentialRemoved: false,
+                sendCancellationEmail: true,
+              }),
+            }
+          )
+        )
+      )
+    );
+
+    expect(responses.map(({ status }) => status)).toEqual([200, 200]);
+    expect(emails.toSorted((a, b) => a.id.localeCompare(b.id))).toEqual([
+      { id: reservationIdOf.open, placement: "seating-map" },
+      { id: reservationIdOf.closed, placement: "unplaced" },
+    ]);
+    expect(Object.values(meetingPoint.arrivals())).toEqual([cohorts.length]);
   });
 });
 

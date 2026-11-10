@@ -17,6 +17,7 @@ import {
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
+import { servicePerOperation } from "@/shared/backend/service-per-operation";
 import {
   ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS,
   canCancelReservation,
@@ -295,24 +296,41 @@ export class ReservationAdministrationService extends Context.Service<
     })
   );
 
-  static Live = this.Default.pipe(
-    Layer.provide(
-      Layer.provideMerge(
-        WorkspaceReservationEmailService.Default,
+  /**
+   * The service whose every operation runs on its own instance of
+   * `implementation`, built for that operation over what its run or request
+   * already built. An administration API builds its services once per
+   * process, so state an instance keeps for its request, such as the
+   * seating-map release decision its reservation details read, would
+   * otherwise reach every later request.
+   */
+  static perOperation = (
+    implementation: Layer.Layer<ReservationAdministrationService>
+  ) => servicePerOperation(this, { cancel: true }, implementation);
+
+  // A configuration that can't be read fails the operation as a defect, as
+  // it failed the API's build before each operation built its own instance.
+  static Live = this.perOperation(
+    this.Default.pipe(
+      Layer.provide(
         Layer.provideMerge(
+          WorkspaceReservationEmailService.Default,
           Layer.provideMerge(
-            WorkspaceEmailLayer,
-            WorkspaceCheckoutNetworkDetailsService.Default
-          ),
-          CustomerEmailLocaleService.Live
+            Layer.provideMerge(
+              WorkspaceEmailLayer,
+              WorkspaceCheckoutNetworkDetailsService.Default
+            ),
+            CustomerEmailLocaleService.Live
+          )
         )
-      )
-    ),
-    Layer.provide(WorkspaceReservationService.Default),
-    Layer.provide(WorkspaceReservationRepository.Default),
-    Layer.provide(WorkspaceDatabase.Default),
-    Layer.provide(WorkspaceDotyposLayer),
-    Layer.provide(SeatingMapReleaseGate.Live)
+      ),
+      Layer.provide(WorkspaceReservationService.Default),
+      Layer.provide(WorkspaceReservationRepository.Default),
+      Layer.provide(WorkspaceDatabase.Default),
+      Layer.provide(WorkspaceDotyposLayer),
+      Layer.provide(SeatingMapReleaseGate.Live),
+      Layer.orDie
+    )
   );
 }
 
