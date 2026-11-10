@@ -89,7 +89,7 @@ const reservationData = Schema.decodeUnknownSync(
 });
 
 const meetingRoomReservationData = Schema.decodeUnknownSync(
-  reservationOrderSchema
+  reservationOrderSchema("CZ")
 )({
   kind: "meeting-room",
   duration: { unit: "hour", amount: 4 },
@@ -337,7 +337,7 @@ const buildStartedWholeDayReservation = () => {
   const today = Temporal.Now.zonedDateTimeISO(
     workspaceSiteConstants.location.timeZone
   ).toPlainDate();
-  const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
+  const reservation = Schema.decodeUnknownSync(reservationOrderSchema("CZ"))({
     kind: "meeting-room",
     duration: { unit: "day", amount: 1 },
     reservationDate: today.toString(),
@@ -921,6 +921,41 @@ describe("CheckoutService", () => {
     const [[recorded]] = harness.recordLegalEvidence.mock.calls;
     expect(recorded?.[1]).not.toHaveProperty("evidence.acknowledgements");
     expect(harness.createHostedPaymentPage).toHaveBeenCalled();
+  });
+
+  test("prefills Nexi with a de-DE Pay state's phone read in Germany", async () => {
+    const germanReservation = normalizedCoworkReservationOrderSchema.make({
+      ...reservationData,
+      phone: "0151 23456789",
+      date: Temporal.Now.zonedDateTimeISO(
+        workspaceSiteConstants.location.timeZone
+      )
+        .toPlainDate()
+        .add({ days: 1 })
+        .toString(),
+    });
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-german-phone",
+      locale: "de-DE",
+      payStateToken: buildPayStateToken({
+        orderId: "reservation-german-phone",
+        locale: "de-DE",
+        reservation: germanReservation,
+      }),
+    });
+
+    await Effect.runPromise(harness.effect);
+
+    expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: expect.objectContaining({
+          mobilePhone: {
+            countryCallingCode: "49",
+            nationalNumber: "15123456789",
+          },
+        }),
+      })
+    );
   });
 
   test("creates the attempt before attaching the hosted payment page", async () => {
@@ -2481,6 +2516,48 @@ describe("CheckoutService", () => {
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
+  test("pays an in-flight checkout signed before staff labels without pricing_changed, recording the affirmed staff label", async () => {
+    const orderId = "reservation-before-staff-label";
+    const acceptedQuote = buildCoworkReservationQuote(reservationData, {
+      discountQuote: discountedQuote,
+    });
+    const affirm = mock(() =>
+      Effect.succeed({
+        quote: buildCoworkReservationQuote(reservationData, {
+          discountQuote: {
+            ...discountedQuote,
+            discounts: [
+              {
+                ...application,
+                discount: {
+                  ...application.discount,
+                  staffLabel: "Letní sleva",
+                },
+              },
+            ],
+          },
+        }),
+        commitment: emptyCommitment,
+      })
+    );
+    const harness = await createCheckoutHarness({
+      orderId,
+      acceptedQuote,
+      affirm,
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(acceptedQuote.payment.discounts[0]?.discount).not.toHaveProperty(
+      "staffLabel"
+    );
+    expect(result.status).toBe("redirect");
+    expect(
+      harness.createPendingNexiAttempt.mock.calls[0]?.[0].accountingSnapshot
+        .quote.payment.discounts[0]?.discount
+    ).toEqual({ ...application.discount, staffLabel: "Letní sleva" });
+  });
+
   test("treats a translated-label edit as a quote change while retaining the accepted snapshot", async () => {
     const editedApplication = {
       ...application,
@@ -2732,8 +2809,8 @@ describe("CheckoutService", () => {
     expect(events).toEqual(["note-updated", "provider-created"]);
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
     const note = harness.updateReservation.mock.calls[0]?.[0]?.note;
-    expect(note).toContain("Discount: Letni sleva 50 % (");
-    expect(note).toContain("-CZK\u00a0205");
+    expect(note).toContain("Sleva: Letni sleva 50 % (");
+    expect(note).toContain("-205\u00a0Kč");
     expect(note).not.toContain("public-summer-sale");
     expect(note).not.toContain("private-provider-namespace");
     expect(note).not.toContain("private-provider-reference");

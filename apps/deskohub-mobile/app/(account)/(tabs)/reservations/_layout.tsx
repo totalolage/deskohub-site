@@ -10,7 +10,7 @@ export const unstable_settings = { anchor: "index" };
 export default function ReservationsLayout() {
   const locale = useAppLocale();
   return (
-    <Stack screenOptions={stackScreenOptions}>
+    <Stack screenOptions={stackScreenOptions(locale)}>
       <Stack.Screen
         name="index"
         options={{ title: m.account_section_reservations({}, { locale }) }}

@@ -240,13 +240,13 @@ export const loadRestoredReservation = Effect.fn(
 
 /**
  * Opens the contact details a signed-out customer typed before verifying the
- * email. An expired or foreign token leaves the form as it would otherwise
- * open.
+ * email, for the page in `locale`. An expired or foreign token leaves the form
+ * as it would otherwise open.
  */
-const loadCheckoutContact = (token: string | undefined) =>
+const loadCheckoutContact = (token: string | undefined, locale: Locale) =>
   token
     ? checkoutContactReturnState
-        .open(token)
+        .open(token, locale)
         .pipe(
           Effect.provide(SealedStateKeys.Default),
           Effect.option,
@@ -328,7 +328,8 @@ async function ReservationPageRequestContent<
           definition.kind
         ).pipe(runWorkspaceEffect(`reservation.${definition.kind}.load-state`)),
         loadCheckoutContact(
-          getSearchParam(resolvedSearchParams, checkoutContactQueryParam)
+          getSearchParam(resolvedSearchParams, checkoutContactQueryParam),
+          locale
         ).pipe(
           runWorkspaceEffect(`reservation.${definition.kind}.load-contact`)
         ),

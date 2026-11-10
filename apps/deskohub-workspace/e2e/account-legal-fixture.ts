@@ -10,6 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import {
   type BrowserContext,
   type BrowserContextOptions,
@@ -17,7 +18,6 @@ import {
 } from "@playwright/test";
 import postcss from "postcss";
 import loadPostCssConfig from "postcss-load-config";
-import type { Locale } from "@/features/i18n";
 import {
   allocateLoopbackPort,
   waitForOwnedLoopbackServer,
@@ -29,10 +29,6 @@ const accountFixtureReadyPath = "/en-US/account-legal-fixture-ready";
 const appRoot = resolve(import.meta.dir, "..");
 const globalsCssPath = resolve(appRoot, "app/globals.css");
 export const accountFixtureAuthHeader = "x-deskohub-account-fixture";
-const supportedLocales = [
-  "en-US",
-  "cs-CZ",
-] as const satisfies readonly Locale[];
 
 export type Viewport = {
   readonly width: number;
@@ -87,7 +83,7 @@ import "../globals.css";
 export const instant = false;
 
 export function generateStaticParams() {
-  return [{ locale: "en-US" }, { locale: "cs-CZ" }];
+  return ${JSON.stringify(supportedLocales.map((locale) => ({ locale })))};
 }
 
 type LocaleLayoutProps = {
@@ -133,6 +129,7 @@ export default function ConsentWaypointPage() {
 
 const fixtureSiteHeaderConfig = (contactHrefExpression: string) => `
 import { isCustomerSignedIn } from "@/features/account/server/customer-session.server";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import type { Locale } from "@/features/i18n";
 
 export type SiteHeaderAccountEntry = {
@@ -189,7 +186,7 @@ export async function getSiteHeaderConfig(locale: Locale) {
     closeNavigationMenuLabel: "Close navigation menu",
     contactHref: ${contactHrefExpression},
     contactLabel: "Contact",
-    languageSwitcherLabel: "Language",
+    languageMenuTriggerLabel: "Language",
     links,
     mobilePrimaryNavigationLabel: "Mobile primary navigation",
     openNavigationMenuLabel: "Open navigation menu",
@@ -241,6 +238,7 @@ export async function areReferralsEnabled(): Promise<boolean> {
 `;
 
 const fixtureMarketingPreferences = `
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import type { Locale } from "@/features/i18n";
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 
@@ -386,6 +384,7 @@ export async function getAccountDataExportAvailability() {
 
 const fixtureAccountPage = `
 import { AccountSignInRedirect } from "@/features/account/components/account-sign-in-redirect";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import type { Locale } from "@/features/i18n";
 import { FixtureAccountDraft } from "./account-draft";
 
@@ -417,6 +416,7 @@ const fixtureAccountDraft = `
 "use client";
 
 import { useState, useTransition } from "react";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import type { Locale } from "@/features/i18n";
 import { revalidateFixtureAccount } from "./account-actions";
 
@@ -458,6 +458,7 @@ const fixtureAccountActions = `
 
 import { revalidatePath } from "next/cache";
 import { getAccountPath } from "@/features/account/routes";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import type { Locale } from "@/features/i18n";
 
 export async function revalidateFixtureAccount(locale: Locale) {

@@ -46,7 +46,7 @@ import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-o
 import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
-import { type Locale, m } from "@/features/i18n";
+import { defaultPhoneRegion, type Locale, m } from "@/features/i18n";
 import { AnalyticsConsentLedger } from "@/features/legal/backend/analytics-consent-ledger";
 import { mirrorDeviceAnalyticsConsent } from "@/features/legal/backend/analytics-consent-mirror";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
@@ -448,7 +448,10 @@ const resolveAccountCustomer = Effect.fn(
           ? Effect.fail(new AgentBookingProfileRequiredError({}))
           : contacts.completeProfileUnderHeldLock(
               unlinked,
-              getReservationCustomerProfile(input.reservation)
+              getReservationCustomerProfile(
+                input.reservation,
+                defaultPhoneRegion(input.locale)
+              )
             ),
       linked: (linked) => contacts.linkedContact(linked),
     })
@@ -607,14 +610,16 @@ const splitReferralForBooking = (referral: RememberedReferralForBooking) => ({
 
 /**
  * The Dotypos customer a reservation books: the account's linked customer,
- * else the one the submitted contact finds or creates.
+ * else the one the submitted contact finds or creates, its phone read in the
+ * region of the `locale` the submission was validated in.
  */
 const resolveBookedCustomerId = Effect.fnUntraced(function* (
   accountCustomer: AccountCustomer,
   reservation: Pick<
     PreparePayStateInput["reservation"],
     "name" | "email" | "phone"
-  >
+  >,
+  locale: Locale
 ) {
   const dotypos = yield* DotyposService;
   return (
@@ -624,7 +629,9 @@ const resolveBookedCustomerId = Effect.fnUntraced(function* (
         {
           ...splitCustomerName(reservation.name),
           email: reservation.email,
-          phone: Option.getOrUndefined(parsePhoneNumber(reservation.phone)),
+          phone: Option.getOrUndefined(
+            parsePhoneNumber(reservation.phone, defaultPhoneRegion(locale))
+          ),
         },
         { lookupFields: ["email"] }
       )
@@ -805,7 +812,8 @@ const prepareSubmission = Effect.fn("prepareWorkspacePayState.submission")(
 
         const dotyposCustomerId = yield* resolveBookedCustomerId(
           accountCustomer,
-          reservation
+          reservation,
+          input.locale
         );
         yield* Effect.annotateLogsScoped({ dotyposCustomerId });
         yield* Effect.logDebug(

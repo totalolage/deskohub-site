@@ -339,14 +339,14 @@ test("renames a value and sets its fallback per language", async () => {
       m.emailsEditorValuesFallbackLabel({ language }, { locale })
     );
   await type(fallback("English"), "friend");
-  await type(fallback("Czech"), "příteli");
+  await type(fallback("Čeština"), "příteli");
   expect(values()?.[0]).toEqual({
     name: "greeting",
     source: { kind: "customer", path: [] },
     fallback: { "en-US": "friend", "cs-CZ": "příteli" },
   });
   await type(fallback("English"), "");
-  await type(fallback("Czech"), "");
+  await type(fallback("Čeština"), "");
   expect(values()?.[0]).toEqual({
     name: "greeting",
     source: { kind: "customer", path: [] },

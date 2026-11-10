@@ -46,4 +46,20 @@ describe("getCanonicalLegalDocument", () => {
       "array item",
     ]);
   });
+
+  test("includes a translation's notice, and leaves the key out of the governing text", () => {
+    const document = { title: "t", lead: "l", updatedAt: "u", sections: [] };
+    const translated: { readonly translationNotice?: string } = JSON.parse(
+      getCanonicalLegalDocument({ ...document, translationNotice: "n" })
+    );
+    const governing: object = JSON.parse(getCanonicalLegalDocument(document));
+
+    expect(translated.translationNotice).toBe("n");
+    expect(Object.keys(governing)).toEqual([
+      "title",
+      "lead",
+      "updatedAt",
+      "sections",
+    ]);
+  });
 });

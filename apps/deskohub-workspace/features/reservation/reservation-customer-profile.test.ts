@@ -17,10 +17,13 @@ const contact = { name: "Ada Lovelace", phone: "+420 777 777 777" };
 describe("getReservationCustomerProfile", () => {
   test("splits the contact name and reads the phone number", () => {
     expect(
-      getReservationCustomerProfile({
-        name: "  Ada   King Lovelace ",
-        phone: "+420 777 777 777",
-      })
+      getReservationCustomerProfile(
+        {
+          name: "  Ada   King Lovelace ",
+          phone: "+420 777 777 777",
+        },
+        "CZ"
+      )
     ).toEqual({
       firstName: "Ada",
       lastName: "King Lovelace",
@@ -28,11 +31,26 @@ describe("getReservationCustomerProfile", () => {
     });
   });
 
+  test.each([
+    ["DE", "0151 23456789", "+4915123456789"],
+    ["UA", "050 123 4567", "+380501234567"],
+    ["CZ", "777 123 456", "+420777123456"],
+    ["DE", "+420 777 123 456", "+420777123456"],
+  ] as const)("reads the phone in region %s: %s", (region, phone, saved) => {
+    expect(
+      getReservationCustomerProfile({ name: "Ada Lovelace", phone }, region)
+        .phone
+    ).toBe(saved);
+  });
+
   test("leaves out the last name of a single-word name", () => {
-    const profile = getReservationCustomerProfile({
-      name: "Ada",
-      phone: "+420 777 777 777",
-    });
+    const profile = getReservationCustomerProfile(
+      {
+        name: "Ada",
+        phone: "+420 777 777 777",
+      },
+      "CZ"
+    );
 
     expect(profile.firstName).toBe("Ada");
     expect(profile.lastName).toBeUndefined();
@@ -45,23 +63,29 @@ describe("getReservationCustomerProfile", () => {
       billing({ purpose: "personal", invoice: "none" }),
     ],
   ] as const)("saves no billing when it is %s", (_label, selection) => {
-    const profile = getReservationCustomerProfile({
-      ...contact,
-      ...(selection && { billing: selection }),
-    });
+    const profile = getReservationCustomerProfile(
+      {
+        ...contact,
+        ...(selection && { billing: selection }),
+      },
+      "CZ"
+    );
 
     expect(profile).not.toHaveProperty("billing");
   });
 
   test("saves a requested invoice's address as personal billing", () => {
-    const profile = getReservationCustomerProfile({
-      ...contact,
-      billing: billing({
-        purpose: "personal",
-        invoice: "requested",
-        address: { ...address, line2: "Floor 2" },
-      }),
-    });
+    const profile = getReservationCustomerProfile(
+      {
+        ...contact,
+        billing: billing({
+          purpose: "personal",
+          invoice: "requested",
+          address: { ...address, line2: "Floor 2" },
+        }),
+      },
+      "CZ"
+    );
 
     expect(profile.billing).toEqual({
       kind: "personal",
@@ -74,29 +98,39 @@ describe("getReservationCustomerProfile", () => {
   });
 
   test("leaves out a missing second address line", () => {
-    const profile = getReservationCustomerProfile({
-      ...contact,
-      billing: billing({ purpose: "personal", invoice: "requested", address }),
-    });
+    const profile = getReservationCustomerProfile(
+      {
+        ...contact,
+        billing: billing({
+          purpose: "personal",
+          invoice: "requested",
+          address,
+        }),
+      },
+      "CZ"
+    );
 
     expect(profile.billing).not.toHaveProperty("addressLine2");
   });
 
   test("saves a required invoice's buyer as business billing", () => {
-    const profile = getReservationCustomerProfile({
-      ...contact,
-      billing: billing({
-        purpose: "business",
-        invoice: "required",
-        buyer: {
-          kind: "business",
-          legalName: "Analytical Engines s.r.o.",
-          companyId: "27074358",
-          vatId: "CZ27074358",
-          address,
-        },
-      }),
-    });
+    const profile = getReservationCustomerProfile(
+      {
+        ...contact,
+        billing: billing({
+          purpose: "business",
+          invoice: "required",
+          buyer: {
+            kind: "business",
+            legalName: "Analytical Engines s.r.o.",
+            companyId: "27074358",
+            vatId: "CZ27074358",
+            address,
+          },
+        }),
+      },
+      "CZ"
+    );
 
     expect(profile.billing).toEqual({
       kind: "business",
@@ -111,19 +145,22 @@ describe("getReservationCustomerProfile", () => {
   });
 
   test("leaves out a business buyer's missing VAT ID", () => {
-    const profile = getReservationCustomerProfile({
-      ...contact,
-      billing: billing({
-        purpose: "business",
-        invoice: "required",
-        buyer: {
-          kind: "business",
-          legalName: "Analytical Engines s.r.o.",
-          companyId: "27074358",
-          address,
-        },
-      }),
-    });
+    const profile = getReservationCustomerProfile(
+      {
+        ...contact,
+        billing: billing({
+          purpose: "business",
+          invoice: "required",
+          buyer: {
+            kind: "business",
+            legalName: "Analytical Engines s.r.o.",
+            companyId: "27074358",
+            address,
+          },
+        }),
+      },
+      "CZ"
+    );
 
     expect(profile.billing).toMatchObject({
       kind: "business",

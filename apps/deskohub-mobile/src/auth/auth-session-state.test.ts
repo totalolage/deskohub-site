@@ -47,6 +47,28 @@ describe("toAuthSessionState", () => {
   });
 });
 
+describe("toAuthSessionState locale", () => {
+  test("keeps the account's saved locale when the app supports it", () => {
+    expect(
+      toAuthSessionState({
+        data: { user: { ...user, locale: "de-DE" }, session: session.session },
+        isPending: false,
+      })
+    ).toEqual({ status: "signed-in", user, signedInAt, locale: "de-DE" });
+  });
+
+  test("has no locale when none is saved or the app doesn't support it", () => {
+    for (const locale of [null, undefined, "fr-FR", "de", ""]) {
+      const state = toAuthSessionState({
+        data: { user: { ...user, locale }, session: session.session },
+        isPending: false,
+      });
+      expect(state).toEqual({ status: "signed-in", user, signedInAt });
+      expect(state.status === "signed-in" && "locale" in state).toBe(false);
+    }
+  });
+});
+
 describe("isFreshSignIn", () => {
   test("leaves a minute of the server's ten for the next request", () => {
     const now = signedInAt.getTime();

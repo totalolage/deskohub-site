@@ -156,6 +156,9 @@
   "emailCampaignsAudienceEditorSaving": "Saving…",
   "emailCampaignsAudienceEditorSingleLocaleCzech": "Every recipient speaks Czech, so campaigns for this audience need Czech content only.",
   "emailCampaignsAudienceEditorSingleLocaleEnglish": "Every recipient speaks English, so campaigns for this audience need English content only.",
+  "emailCampaignsAudienceEditorSingleLocaleGerman": "Every recipient speaks German, so campaigns for this audience need German content only.",
+  "emailCampaignsAudienceEditorSingleLocaleSlovak": "Every recipient speaks Slovak, so campaigns for this audience need Slovak content only.",
+  "emailCampaignsAudienceEditorSingleLocaleUkrainian": "Every recipient speaks Ukrainian, so campaigns for this audience need Ukrainian content only.",
   "emailCampaignsAudienceEditorSummary": "{summary}.",
   "emailCampaignsAudienceEditorSummaryHeading": "In plain English",
   "emailCampaignsAudienceEditorTitleLabel": "Title",
@@ -219,6 +222,9 @@
   "emailCampaignsAudienceLocaleLabel": "Locale",
   "emailCampaignsAudienceLocaleNameCzech": "Czech",
   "emailCampaignsAudienceLocaleNameEnglish": "English",
+  "emailCampaignsAudienceLocaleNameGerman": "German",
+  "emailCampaignsAudienceLocaleNameSlovak": "Slovak",
+  "emailCampaignsAudienceLocaleNameUkrainian": "Ukrainian",
   "emailCampaignsAudienceLocaleOptionCzech": "Czech (cs-CZ)",
   "emailCampaignsAudienceLocaleOptionEnglish": "English (en-US)",
   "emailCampaignsAudienceLocaleSummaryAnyOf": "speak {values}",
@@ -659,7 +665,51 @@
     }
   ],
   "emailCampaignsCalendarLastDayOfMonth": "last day",
-  "emailCampaignsCalendarLastOccurrence": "last {weekday}",
+  "emailCampaignsCalendarLastOccurrence": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "last Monday",
+        "weekday=tuesday": "last Tuesday",
+        "weekday=wednesday": "last Wednesday",
+        "weekday=thursday": "last Thursday",
+        "weekday=friday": "last Friday",
+        "weekday=saturday": "last Saturday",
+        "weekday=*": "last Sunday"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceQualifier": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "last Monday",
+        "weekday=tuesday": "last Tuesday",
+        "weekday=wednesday": "last Wednesday",
+        "weekday=thursday": "last Thursday",
+        "weekday=friday": "last Friday",
+        "weekday=saturday": "last Saturday",
+        "weekday=*": "last Sunday"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceWait": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "last Monday",
+        "weekday=tuesday": "last Tuesday",
+        "weekday=wednesday": "last Wednesday",
+        "weekday=thursday": "last Thursday",
+        "weekday=friday": "last Friday",
+        "weekday=saturday": "last Saturday",
+        "weekday=*": "last Sunday"
+      }
+    }
+  ],
   "emailCampaignsCalendarMinute": ":{minute}",
   "emailCampaignsCalendarMonthInName": [
     {
@@ -789,7 +839,7 @@
       "declarations": ["input kind", "input subject", "input qualifier"],
       "selectors": ["kind"],
       "match": {
-        "kind=weekday": "{subject} {qualifier}",
+        "kind=weekday": "{subject} that is {qualifier}",
         "kind=*": "{subject} that is {qualifier}"
       }
     }
@@ -813,6 +863,21 @@
     }
   ],
   "emailCampaignsCalendarWeekdayName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "Monday",
+        "weekday=tuesday": "Tuesday",
+        "weekday=wednesday": "Wednesday",
+        "weekday=thursday": "Thursday",
+        "weekday=friday": "Friday",
+        "weekday=saturday": "Saturday",
+        "weekday=*": "Sunday"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayQualifierName": [
     {
       "declarations": ["input weekday"],
       "selectors": ["weekday"],
@@ -912,9 +977,12 @@
   "emailCampaignsComposerCreateDraft": "Create draft",
   "emailCampaignsComposerDraftDescription": "Draft. Save your changes, then send a test to get the confirmation code for the real send.",
   "emailCampaignsComposerEyebrow": "Email campaign",
-  "emailCampaignsComposerFallbackLocaleHint": "Czech is required: recipients without content in their language get it.",
+  "emailCampaignsComposerFallbackLocaleHint": "Czech is required as the last fallback. German and Ukrainian recipients without content in their language get English first, when it exists.",
   "emailCampaignsComposerHiddenContentCzech": "Czech content is hidden for this audience and won't be saved.",
   "emailCampaignsComposerHiddenContentEnglish": "English content is hidden for this audience and won't be saved.",
+  "emailCampaignsComposerHiddenContentGerman": "German content is hidden for this audience and won't be saved.",
+  "emailCampaignsComposerHiddenContentSlovak": "Slovak content is hidden for this audience and won't be saved.",
+  "emailCampaignsComposerHiddenContentUkrainian": "Ukrainian content is hidden for this audience and won't be saved.",
   "emailCampaignsComposerLocaleIssues": "{count} to fix",
   "emailCampaignsComposerLocaleOptional": "Optional",
   "emailCampaignsComposerLocaleReady": "Ready",
@@ -941,6 +1009,9 @@
   "emailCampaignsComposerSaving": "Saving…",
   "emailCampaignsComposerSingleLocaleAudienceCzech": "The audience only includes Czech speakers.",
   "emailCampaignsComposerSingleLocaleAudienceEnglish": "The audience only includes English speakers.",
+  "emailCampaignsComposerSingleLocaleAudienceGerman": "The audience only includes German speakers.",
+  "emailCampaignsComposerSingleLocaleAudienceSlovak": "The audience only includes Slovak speakers.",
+  "emailCampaignsComposerSingleLocaleAudienceUkrainian": "The audience only includes Ukrainian speakers.",
   "emailCampaignsComposerSubjectLabel": "Subject",
   "emailCampaignsComposerSubjectMissing": "Add a subject.",
   "emailCampaignsComposerTemplateLabel": "Template",
@@ -992,6 +1063,9 @@
   "emailCampaignsEmailPreviewLanguage": "Preview language",
   "emailCampaignsEmailPreviewMissingContentCzech": "Add Czech content to see the email.",
   "emailCampaignsEmailPreviewMissingContentEnglish": "Add English content to see the email.",
+  "emailCampaignsEmailPreviewMissingContentGerman": "Add German content to see the email.",
+  "emailCampaignsEmailPreviewMissingContentSlovak": "Add Slovak content to see the email.",
+  "emailCampaignsEmailPreviewMissingContentUkrainian": "Add Ukrainian content to see the email.",
   "emailCampaignsEmailPreviewNoPreheader": "No preview text",
   "emailCampaignsEmailPreviewNoSubject": "No subject",
   "emailCampaignsEmailPreviewRenderFailed": "The preview could not be rendered.",
@@ -1096,7 +1170,7 @@
   "emailCampaignsSendingFailureContentMissing": "Add a subject and body in at least one language first.",
   "emailCampaignsSendingFailureDeliveryQueueFailed": "Delivery couldn't be queued, so the campaign is marked Failed. Retry undelivered recipients in a moment.",
   "emailCampaignsSendingFailureEmailDeliveryFailed": "The email provider didn't accept the test email. Try again in a moment.",
-  "emailCampaignsSendingFailureFallbackContentMissing": "Customers without content in their language get the Czech version, so add Czech content, or restrict the audience to one language this campaign has. Nothing was sent.",
+  "emailCampaignsSendingFailureFallbackContentMissing": "Czech content is the last fallback for customers without content in their language, so add Czech content, or restrict the audience to one language this campaign has. Nothing was sent.",
   "emailCampaignsSendingFailureNoRecipients": "The audience has no reachable recipients right now, so nothing was sent.",
   "emailCampaignsSendingFailureNotRetryable": "Only a failed campaign can retry undelivered recipients.",
   "emailCampaignsSendingFailureSigningKeyInvalid": "Confirmation codes can't be issued because the signing secret is misconfigured. Ask a developer to check BETTER_AUTH_SECRETS.",
@@ -1214,6 +1288,7 @@
   "emailCampaignsDeliveryMismatch": "This action works only for one-off campaigns, and this campaign sends automatically.",
   "emailCampaignsActionFailedUnexpectedly": "Something went wrong on the server. Try again.",
   "emailCampaignsAudienceInUseByDrafts": "Draft campaigns use this audience, so it can only be archived. Move those drafts to another audience before deleting it.",
+  "emailCampaignsComposerEnglishFallbackMissing": "Without English content, German and Ukrainian recipients without content in their language get the Czech version.",
   "emailCampaignsSendingFailureTestRecipientsInvalid": "One of the addresses isn't a valid email address. Check them and try again.",
   "emailCampaignsSendingFailureRecipientsOutsideTestDomain": "Outside production, campaign email can only go to @{domain} addresses, and some recipients are outside it. Nothing was sent.",
   "emailCampaignsSendingFailureRecipientsUnavailable": "Recipients couldn't be resolved because Dotypos or the database is unavailable. Nothing was sent and the code still works; try again in a moment.",

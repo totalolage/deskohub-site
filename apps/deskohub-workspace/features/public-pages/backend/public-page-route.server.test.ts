@@ -54,7 +54,13 @@ const { publicPageMetadata, requirePublishedPublicPage } = await import(
 
 const notFound = "NEXT_HTTP_ERROR_FALLBACK;404";
 
-const openGraphLocales = { "en-US": "en_US", "cs-CZ": "cs_CZ" } as const;
+const openGraphLocales = {
+  "en-US": "en_US",
+  "cs-CZ": "cs_CZ",
+  "de-DE": "de_DE",
+  "uk-UA": "uk_UA",
+  "sk-SK": "sk_SK",
+} as const;
 
 const pageMetadata = (pathname: (typeof publicPages)[number]["pathname"]) =>
   publicPageMetadata(pathname)();
@@ -84,6 +90,9 @@ describe("public page metadata", () => {
           languages: {
             "en-US": `https://workspace.deskohub.cz/en-US${suffix}`,
             "cs-CZ": `https://workspace.deskohub.cz/cs-CZ${suffix}`,
+            "de-DE": `https://workspace.deskohub.cz/de-DE${suffix}`,
+            "uk-UA": `https://workspace.deskohub.cz/uk-UA${suffix}`,
+            "sk-SK": `https://workspace.deskohub.cz/sk-SK${suffix}`,
             "x-default": `https://workspace.deskohub.cz${pathname}`,
           },
         });

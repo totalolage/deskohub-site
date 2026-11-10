@@ -1,7 +1,7 @@
 import { staffEmailSubject } from "@deskohub/email/backend/email-routing";
 import { Heading } from "react-email";
 import { m } from "@/features/i18n";
-import { staffEmailLocale } from "@/shared/backend/email/staff-email-locale";
+import { staffLocale } from "@/shared/backend/staff-locale";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { MultilineEmailText } from "./_components/multiline-email-text";
 import {
@@ -30,7 +30,7 @@ export const contactBusinessEmailSubject = ({
   environment,
 }: Pick<ContactBusinessEmailProps, "name" | "environment">) =>
   staffEmailSubject(
-    m.contactEmailBusinessSubject({ name }, { locale: staffEmailLocale }),
+    m.contactEmailBusinessSubject({ name }, { locale: staffLocale }),
     environment
   );
 
@@ -39,24 +39,24 @@ export function ContactBusinessEmail(props: ContactBusinessEmailProps) {
   const { name, email, phone, message, submittedAt } = props;
   const details: WorkspaceEmailDetail[] = [
     {
-      label: m.contactEmailNameLabel({}, { locale: staffEmailLocale }),
+      label: m.contactEmailNameLabel({}, { locale: staffLocale }),
       value: name,
     },
     {
-      label: m.contactEmailEmailLabel({}, { locale: staffEmailLocale }),
+      label: m.contactEmailEmailLabel({}, { locale: staffLocale }),
       value: email,
     },
     ...(phone
       ? [
           {
-            label: m.contactEmailPhoneLabel({}, { locale: staffEmailLocale }),
+            label: m.contactEmailPhoneLabel({}, { locale: staffLocale }),
             value: phone,
           },
         ]
       : []),
     {
-      label: m.contactEmailSubmittedAtLabel({}, { locale: staffEmailLocale }),
-      value: new Date(submittedAt).toLocaleString(staffEmailLocale, {
+      label: m.contactEmailSubmittedAtLabel({}, { locale: staffLocale }),
+      value: new Date(submittedAt).toLocaleString(staffLocale, {
         dateStyle: "full",
         timeStyle: "short",
         timeZone: workspaceSiteConstants.location.timeZone,
@@ -66,18 +66,18 @@ export function ContactBusinessEmail(props: ContactBusinessEmailProps) {
 
   return (
     <WorkspaceEmailLayout
-      locale={staffEmailLocale}
+      locale={staffLocale}
       preview={contactBusinessEmailSubject(props)}
     >
       <WorkspaceEmailHeading>
-        {m.contactEmailBusinessHeading({}, { locale: staffEmailLocale })}
+        {m.contactEmailBusinessHeading({}, { locale: staffLocale })}
       </WorkspaceEmailHeading>
       <WorkspaceEmailDetails details={details} />
       <Heading
         as="h2"
         className="m-0 mt-7 text-[18px] font-bold leading-[26px] text-navy"
       >
-        {m.contactEmailMessageHeading({}, { locale: staffEmailLocale })}
+        {m.contactEmailMessageHeading({}, { locale: staffLocale })}
       </Heading>
       <WorkspaceEmailPanel>
         <MultilineEmailText value={message} />

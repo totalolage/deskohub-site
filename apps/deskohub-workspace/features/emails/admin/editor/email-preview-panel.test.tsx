@@ -1,6 +1,9 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { useEffect } from "react";
 import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
+import { languageNames } from "@/features/i18n/language-labels";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -40,7 +43,12 @@ const deferredRenderer = () => {
   return { requests, renderPreview };
 };
 
-let showLanguage: (language: "cs-CZ" | "en-US") => void = () => {};
+// The editor opens the first Workspace language; the tests switch to another.
+const [opening] = supportedLocales;
+const other = supportedLocales[1];
+if (!other) throw new Error("The preview tests need two Workspace languages.");
+
+let showLanguage: (language: Locale) => void = () => {};
 function LanguageSwitch() {
   const { setActiveLocale } = useEmailEditor();
   useEffect(() => {
@@ -67,8 +75,6 @@ const renderPanel = (
 
 const frameTitle = (language: string) =>
   m.emailsEditorPreviewFrameTitle({ language }, { locale });
-const czech = m.emailsEditorLanguageCzech({}, { locale });
-const english = m.emailsEditorLanguageEnglish({}, { locale });
 const status = (view: ReturnType<typeof renderPanel>) =>
   view.getByRole("status").textContent;
 
@@ -76,25 +82,25 @@ test("drops an answer whose language was left before it arrived", async () => {
   const renderer = deferredRenderer();
   const view = renderPanel(renderer.renderPreview);
   await waitFor(() => expect(renderer.requests).toHaveLength(1));
-  // Czech was asked for; switching to English outdates it at once.
-  act(() => showLanguage("en-US"));
+  // The opening language was asked for; switching outdates it at once.
+  act(() => showLanguage(other));
   await act(async () =>
     renderer.requests[0]?.resolve({
-      data: { subject: "Czech subject", html: "<p>Czech body</p>" },
+      data: { subject: "Opening subject", html: "<p>Opening body</p>" },
     })
   );
-  const englishFrame = view.getByTitle(frameTitle(english));
-  expect(englishFrame.getAttribute("srcdoc")).toBe("");
+  const otherFrame = view.getByTitle(frameTitle(languageNames[other]));
+  expect(otherFrame.getAttribute("srcdoc")).toBe("");
   expect(status(view)).toBe(m.emailsEditorPreviewUpdating({}, { locale }));
 
   await waitFor(() => expect(renderer.requests).toHaveLength(2));
-  expect(renderer.requests[1]?.locale).toBe("en-US");
+  expect(renderer.requests[1]?.locale).toBe(other);
   await act(async () =>
     renderer.requests[1]?.resolve({
-      data: { subject: "English subject", html: "<p>English body</p>" },
+      data: { subject: "Other subject", html: "<p>Other body</p>" },
     })
   );
-  expect(englishFrame.getAttribute("srcdoc")).toBe("<p>English body</p>");
+  expect(otherFrame.getAttribute("srcdoc")).toBe("<p>Other body</p>");
   expect(status(view)).toBe(m.emailsEditorPreviewUpdated({}, { locale }));
 });
 
@@ -103,7 +109,7 @@ test("drops an answer to a draft edited since, in the same language", async () =
   const view = renderPanel(renderer.renderPreview);
   await waitFor(() => expect(renderer.requests).toHaveLength(1));
   act(() =>
-    form.setValue("translations.cs-CZ.subject", [
+    form.setValue(`translations.${opening}.subject`, [
       { _tag: "Text", text: "Edited" },
     ])
   );
@@ -112,7 +118,9 @@ test("drops an answer to a draft edited since, in the same language", async () =
       data: { subject: "Before the edit", html: "<p>Before the edit</p>" },
     })
   );
-  expect(view.getByTitle(frameTitle(czech)).getAttribute("srcdoc")).toBe("");
+  expect(
+    view.getByTitle(frameTitle(languageNames[opening])).getAttribute("srcdoc")
+  ).toBe("");
   expect(status(view)).toBe(m.emailsEditorPreviewUpdating({}, { locale }));
   await waitFor(() => expect(renderer.requests).toHaveLength(2));
 });
@@ -123,25 +131,29 @@ test("a failure clears the earlier picture and shows the server's message", asyn
   await waitFor(() => expect(renderer.requests).toHaveLength(1));
   await act(async () =>
     renderer.requests[0]?.resolve({
-      data: { subject: "Czech subject", html: "<p>Czech body</p>" },
+      data: { subject: "Opening subject", html: "<p>Opening body</p>" },
     })
   );
-  const czechFrame = view.getByTitle(frameTitle(czech));
-  expect(czechFrame.getAttribute("srcdoc")).toBe("<p>Czech body</p>");
+  const openingFrame = view.getByTitle(frameTitle(languageNames[opening]));
+  expect(openingFrame.getAttribute("srcdoc")).toBe("<p>Opening body</p>");
 
-  act(() => showLanguage("en-US"));
+  act(() => showLanguage(other));
   await waitFor(() => expect(renderer.requests).toHaveLength(2));
   const serverError = m.emailsActionFailedUnexpectedly({}, { locale });
   await act(async () => renderer.requests[1]?.resolve({ serverError }));
   expect(view.getByRole("alert").textContent).toBe(serverError);
-  expect(view.getByTitle(frameTitle(english)).getAttribute("srcdoc")).toBe("");
+  expect(
+    view.getByTitle(frameTitle(languageNames[other])).getAttribute("srcdoc")
+  ).toBe("");
   expect(status(view)).toBe("");
 
-  act(() => showLanguage("cs-CZ"));
+  act(() => showLanguage(opening));
   await waitFor(() => expect(renderer.requests).toHaveLength(3));
   await act(async () => renderer.requests[2]?.reject(new Error("offline")));
   expect(view.getByRole("alert").textContent).toBe(
     m.emailsEditorPreviewFailed({}, { locale })
   );
-  expect(view.getByTitle(frameTitle(czech)).getAttribute("srcdoc")).toBe("");
+  expect(
+    view.getByTitle(frameTitle(languageNames[opening])).getAttribute("srcdoc")
+  ).toBe("");
 });

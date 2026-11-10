@@ -1,3 +1,4 @@
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import {
   App,
   applyDocumentTheme,
@@ -5,7 +6,7 @@ import {
   type McpUiHostContext,
 } from "@modelcontextprotocol/ext-apps";
 import { Context, Data, Deferred, Effect, Layer, Option, Schema } from "effect";
-import { type Locale, locales } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import {
   type AgentToolErrorResult,
   agentToolErrorResultSchema,
@@ -81,7 +82,7 @@ export class BookingHost extends Context.Service<
 const viewInfo = { name: "dh-workspace-booking", version: "1.0.0" };
 
 const toolInputSchema = Schema.Struct({
-  locale: Schema.optionalKey(Schema.Literals(locales)),
+  locale: Schema.optionalKey(Schema.Literals(supportedLocales)),
 });
 
 /**

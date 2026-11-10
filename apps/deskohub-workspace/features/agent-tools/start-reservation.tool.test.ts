@@ -306,6 +306,25 @@ describe("start_reservation", () => {
     }
   );
 
+  test("reads the profile phone in the region of the call's locale", async () => {
+    contact = {
+      name: "Ada Agent",
+      email: testEmailAddress("start-reservation"),
+      phone: "0151 23456789",
+    };
+
+    const german = await start({ ...cowork(), locale: "de-DE" });
+    const czech = await start({ ...cowork(), locale: "cs-CZ" });
+
+    expect(german).toMatchObject({ _tag: "Success" });
+    expect(czech).toMatchObject({ _tag: "Failure" });
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]?.input).toMatchObject({
+      locale: "de-DE",
+      reservation: { phone: "0151 23456789" },
+    });
+  });
+
   test("reports a changed price with the Pay link", async () => {
     prepared = { status: "pricing_changed" };
 

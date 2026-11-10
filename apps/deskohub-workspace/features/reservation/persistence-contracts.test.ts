@@ -23,7 +23,7 @@ const customer = {
   phone: "+420777777777",
 } as const;
 
-const decodeOrder = Schema.decodeUnknownSync(reservationOrderSchema);
+const decodeOrder = Schema.decodeUnknownSync(reservationOrderSchema("CZ"));
 // The repository decodes stored snapshots with these options.
 const decodeStoredDetails = Schema.decodeUnknownSync(
   storedWorkspaceReservationDetailsSchema,
@@ -31,7 +31,9 @@ const decodeStoredDetails = Schema.decodeUnknownSync(
 );
 
 /** What checkout persists for an order, as the repository reads it back. */
-const storedDetailsFor = (order: typeof reservationOrderSchema.Encoded) => {
+const storedDetailsFor = (
+  order: ReturnType<typeof reservationOrderSchema>["Encoded"]
+) => {
   const stored = getStoredWorkspaceReservationDetails(decodeOrder(order));
   expect(decodeStoredDetails(stored)).toEqual(stored);
   return stored;

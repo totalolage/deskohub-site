@@ -1,13 +1,11 @@
-import type {
-  CustomerBookingSelection,
-  CustomerLocale,
-} from "@deskohub/workspace-customer-api";
+import type { CustomerBookingSelection } from "@deskohub/workspace-customer-api";
+import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
 import type { CheckoutRetryKind } from "../checkout/booking-problem";
 import type { SummaryLineView } from "../ui/price-summary";
 
 /** What went wrong that the customer can retry, as one sentence. */
-export const retryMessage = (kind: CheckoutRetryKind, locale: CustomerLocale) =>
+export const retryMessage = (kind: CheckoutRetryKind, locale: AppLocale) =>
   ({
     service_unavailable: () =>
       m.booking_checkout_retry_service_unavailable({}, { locale }),
@@ -23,7 +21,7 @@ export const retryMessage = (kind: CheckoutRetryKind, locale: CustomerLocale) =>
 /** The booked product's name, as the site's summary names it. */
 export const productLabel = (
   selection: CustomerBookingSelection,
-  locale: CustomerLocale
+  locale: AppLocale
 ) => {
   switch (selection.family) {
     case "cowork":
@@ -42,7 +40,7 @@ export const productLabel = (
  * server priced, which is the booked selection's, so it's named from that.
  */
 export const summaryLineLabel =
-  (selection: CustomerBookingSelection, locale: CustomerLocale) =>
+  (selection: CustomerBookingSelection, locale: AppLocale) =>
   (line: SummaryLineView): string => {
     const { kind } = line;
     switch (kind._tag) {

@@ -16,6 +16,7 @@ import {
   EmailPersistence,
   EmailRecipientPersistence,
 } from "@/features/emails/backend";
+import { locales } from "@/features/i18n";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   CustomerValueMissing,
@@ -185,7 +186,7 @@ describe.skipIf(!database)(
       templateKey: "workspace",
       structure: [{ _tag: "Paragraph", id: "intro", textKey: "intro" }],
       translations: Object.fromEntries(
-        (input.locales ?? ["en-US", "cs-CZ"]).map((locale) => [
+        (input.locales ?? locales).map((locale) => [
           locale,
           {
             subject: [{ _tag: "Text", text: "Synthetic offer" }],
@@ -485,7 +486,7 @@ describe.skipIf(!database)(
       const { version } = await publishEmail(
         draftFor({ discountId: await seedDiscount() })
       );
-      const input = await recipientFor(version, { locale: "de-DE" });
+      const input = await recipientFor(version, { locale: "fr-FR" });
       const skipped = await prepare(input);
       expect(skipped).toMatchObject({
         _tag: "Skipped",
@@ -861,7 +862,7 @@ describe.skipIf(!database)(
         Effect.flatMap(EmailValueSamples, (samples) =>
           samples.sample({
             document: version.document,
-            locale: "de-DE",
+            locale: "fr-FR",
             recipient: { _tag: "Synthetic" },
           })
         )

@@ -6,7 +6,7 @@ import { stackScreenOptions } from "../../../src/ui/navigation";
 export default function BookLayout() {
   const locale = useAppLocale();
   return (
-    <Stack screenOptions={stackScreenOptions}>
+    <Stack screenOptions={stackScreenOptions(locale)}>
       <Stack.Screen
         name="index"
         options={{ title: m.booking_stack_title({}, { locale }) }}

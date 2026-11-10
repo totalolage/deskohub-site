@@ -1,3 +1,4 @@
+import { getLocaleDefinition } from "@deskohub/i18n/locale-registry";
 import {
   Context,
   DateTime,
@@ -22,7 +23,6 @@ import type {
   GetNexiOrderInput,
   ListNexiOperationsInput,
   ListNexiOrdersInput,
-  Locale,
   NexiOperation,
   NexiOrder,
   NexiOrderId,
@@ -32,6 +32,7 @@ import type {
 } from "../types";
 import { NexiOperationIdSchema, NexiOrderIdSchema } from "../types";
 import { NexiGeneratedClient } from "./api";
+import { toHostedPageLanguage } from "./hosted-page-language";
 import { nexiRetryPolicy } from "./request-policy";
 
 const DEFAULT_PAYMENT_SERVICE = "CARDS";
@@ -67,11 +68,6 @@ const decodeNexiOperationId = decodeProviderIdentifier(
   NexiOperationIdSchema,
   "NexiService.decodeOperationId"
 );
-
-const localeToNexiLanguage: Record<Locale, "CZE" | "ENG"> = {
-  "cs-CZ": "CZE",
-  "en-US": "ENG",
-};
 
 const failureOperationResults = new Set([
   "DECLINED",
@@ -145,7 +141,9 @@ const makeNexiService = Effect.gen(function* () {
         },
         paymentSession: {
           amount: input.amount,
-          language: localeToNexiLanguage[input.locale],
+          language: toHostedPageLanguage(
+            getLocaleDefinition(input.locale).nexiLanguage
+          ),
           resultUrl: input.resultUrl,
           cancelUrl: input.cancelUrl,
           notificationUrl: input.notificationUrl,

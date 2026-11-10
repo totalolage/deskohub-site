@@ -17,6 +17,7 @@ import {
 import { ConfirmDialog } from "@/features/administration/confirm-dialog";
 import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
+import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -59,7 +60,10 @@ const audienceListHref = administrationHref("/[locale]/admin/email-audiences");
 const singleLocaleNotes = {
   "cs-CZ": m.emailCampaignsAudienceEditorSingleLocaleCzech,
   "en-US": m.emailCampaignsAudienceEditorSingleLocaleEnglish,
-} as const;
+  "de-DE": m.emailCampaignsAudienceEditorSingleLocaleGerman,
+  "uk-UA": m.emailCampaignsAudienceEditorSingleLocaleUkrainian,
+  "sk-SK": m.emailCampaignsAudienceEditorSingleLocaleSlovak,
+} as const satisfies Record<Locale, (...args: never) => string>;
 
 type Feedback = {
   readonly kind: "success" | "error";
