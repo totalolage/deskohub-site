@@ -208,9 +208,71 @@ export const prepareReservationForm = ({
     field.dispatchEvent(new Event("change", { bubbles: true }));
   };
   const visibleCalendarDates = () =>
-    [...document.querySelectorAll("[data-day]")]
-      .map((day) => day.getAttribute("data-day") ?? "")
-      .join("|");
+    [...document.querySelectorAll("[data-day]")].map(
+      (day) => day.getAttribute("data-day") ?? ""
+    );
+  /**
+   * Finds `desiredDate`'s enabled day button in the open calendar, paging
+   * toward its month at most five times. The calendar opens on the selected
+   * date's month, so the desired date may lie before or after it. The middle
+   * rendered day belongs to the shown month; outside days only pad its ends.
+   */
+  const findCalendarDateButton = async (
+    desiredDate: string,
+    label: string,
+    waitTimeoutMs: number
+  ) => {
+    const findSelectableDateButton = () => {
+      const candidate = document.querySelector(
+        `[data-day="${desiredDate}"] button:not(:disabled)`
+      );
+      return candidate instanceof HTMLButtonElement ? candidate : undefined;
+    };
+    const desiredMonth = desiredDate.slice(0, 7);
+    let dateButton: HTMLButtonElement | undefined;
+    for (let month = 0; month < 5; month += 1) {
+      let pageButton: HTMLButtonElement | undefined;
+      await waitUntil(
+        () => {
+          dateButton = findSelectableDateButton();
+          if (dateButton instanceof HTMLButtonElement) return true;
+          const dates = visibleCalendarDates();
+          const shownMonth = dates[Math.floor(dates.length / 2)]?.slice(0, 7);
+          if (!shownMonth || shownMonth === desiredMonth) return false;
+          const candidate = document.querySelector(
+            desiredMonth < shownMonth
+              ? 'button[aria-label="Go to the Previous Month"]'
+              : 'button[aria-label="Go to the Next Month"]'
+          );
+          if (candidate instanceof HTMLButtonElement && !candidate.disabled) {
+            pageButton = candidate;
+            return true;
+          }
+          return false;
+        },
+        `${label} is outside the selectable calendar`,
+        waitTimeoutMs
+      );
+      if (dateButton instanceof HTMLButtonElement) return dateButton;
+
+      const previousDates = visibleCalendarDates().join("|");
+      pageButton?.click();
+      await waitUntil(
+        () => {
+          dateButton = findSelectableDateButton();
+          const renderedDates = visibleCalendarDates().join("|");
+          return (
+            dateButton instanceof HTMLButtonElement ||
+            (renderedDates.length > 0 && renderedDates !== previousDates)
+          );
+        },
+        `${label} calendar did not advance`,
+        waitTimeoutMs
+      );
+    }
+    if (dateButton instanceof HTMLButtonElement) return dateButton;
+    throw new Error(`${label} was not found in the calendar`);
+  };
   // The form's one action button: Continue on the selection step, the submit
   // button on the contact step. Both report availability and price loading
   // through the same data attributes.
@@ -306,56 +368,11 @@ export const prepareReservationForm = ({
       });
       try {
         dateTrigger.click();
-        const findSelectableDateButton = () => {
-          const candidate = document.querySelector(
-            `[data-day="${desiredDate}"] button:not(:disabled)`
-          );
-          return candidate instanceof HTMLButtonElement ? candidate : undefined;
-        };
-        let dateButton: HTMLButtonElement | undefined;
-        for (let month = 0; month < 5; month += 1) {
-          let nextMonth: HTMLButtonElement | undefined;
-          await waitUntil(
-            () => {
-              dateButton = findSelectableDateButton();
-              if (dateButton instanceof HTMLButtonElement) return true;
-              const candidate = document.querySelector(
-                'button[aria-label="Go to the Next Month"]'
-              );
-              if (
-                candidate instanceof HTMLButtonElement &&
-                !candidate.disabled
-              ) {
-                nextMonth = candidate;
-                return true;
-              }
-              return false;
-            },
-            "cowork reservation date is outside the selectable calendar",
-            waitTimeoutMs
-          );
-          if (dateButton instanceof HTMLButtonElement) break;
-
-          const previousDates = visibleCalendarDates();
-          nextMonth?.click();
-          await waitUntil(
-            () => {
-              dateButton = findSelectableDateButton();
-              const renderedDates = visibleCalendarDates();
-              return (
-                dateButton instanceof HTMLButtonElement ||
-                (renderedDates.length > 0 && renderedDates !== previousDates)
-              );
-            },
-            "cowork reservation calendar did not advance",
-            waitTimeoutMs
-          );
-        }
-        if (!(dateButton instanceof HTMLButtonElement)) {
-          throw new Error(
-            "cowork reservation date was not found in the calendar"
-          );
-        }
+        const dateButton = await findCalendarDateButton(
+          desiredDate,
+          "cowork reservation date",
+          waitTimeoutMs
+        );
         dateButton.click();
         await waitUntil(
           () => dateInput.value === desiredDate,
@@ -452,52 +469,11 @@ export const prepareReservationForm = ({
     );
     dateTrigger?.click();
 
-    const findSelectableDateButton = () => {
-      const candidate = document.querySelector(
-        `[data-day="${expected.date}"] button:not(:disabled)`
-      );
-      return candidate instanceof HTMLButtonElement ? candidate : undefined;
-    };
-
-    let dateButton: HTMLButtonElement | undefined;
-    for (let month = 0; month < 5; month += 1) {
-      let nextMonth: HTMLButtonElement | undefined;
-      await waitUntil(
-        () => {
-          dateButton = findSelectableDateButton();
-          if (dateButton instanceof HTMLButtonElement) return true;
-          const candidate = document.querySelector(
-            'button[aria-label="Go to the Next Month"]'
-          );
-          if (candidate instanceof HTMLButtonElement && !candidate.disabled) {
-            nextMonth = candidate;
-            return true;
-          }
-          return false;
-        },
-        "meeting-room date is outside the selectable calendar",
-        waitTimeoutMs
-      );
-      if (dateButton instanceof HTMLButtonElement) break;
-
-      const previousDates = visibleCalendarDates();
-      nextMonth?.click();
-      await waitUntil(
-        () => {
-          dateButton = findSelectableDateButton();
-          const renderedDates = visibleCalendarDates();
-          return (
-            dateButton instanceof HTMLButtonElement ||
-            (renderedDates.length > 0 && renderedDates !== previousDates)
-          );
-        },
-        "meeting-room calendar did not advance",
-        waitTimeoutMs
-      );
-    }
-    if (!(dateButton instanceof HTMLButtonElement)) {
-      throw new Error("meeting-room date was not found in the calendar");
-    }
+    const dateButton = await findCalendarDateButton(
+      expected.date,
+      "meeting-room date",
+      waitTimeoutMs
+    );
     dateButton.click();
     await waitUntil(
       () => {
@@ -628,51 +604,11 @@ export const prepareReservationForm = ({
       );
       trigger?.click();
 
-      const findSelectableDateButton = () => {
-        const candidate = document.querySelector(
-          `[data-day="${desiredDate}"] button:not(:disabled)`
-        );
-        return candidate instanceof HTMLButtonElement ? candidate : undefined;
-      };
-      let dateButton: HTMLButtonElement | undefined;
-      for (let month = 0; month < 5; month += 1) {
-        let nextMonth: HTMLButtonElement | undefined;
-        await waitUntil(
-          () => {
-            dateButton = findSelectableDateButton();
-            if (dateButton instanceof HTMLButtonElement) return true;
-            const candidate = document.querySelector(
-              'button[aria-label="Go to the Next Month"]'
-            );
-            if (candidate instanceof HTMLButtonElement && !candidate.disabled) {
-              nextMonth = candidate;
-              return true;
-            }
-            return false;
-          },
-          `${label} is outside the selectable calendar`,
-          waitTimeoutMs
-        );
-        if (dateButton instanceof HTMLButtonElement) break;
-
-        const previousDates = visibleCalendarDates();
-        nextMonth?.click();
-        await waitUntil(
-          () => {
-            dateButton = findSelectableDateButton();
-            const renderedDates = visibleCalendarDates();
-            return (
-              dateButton instanceof HTMLButtonElement ||
-              (renderedDates.length > 0 && renderedDates !== previousDates)
-            );
-          },
-          `${label} calendar did not advance`,
-          waitTimeoutMs
-        );
-      }
-      if (!(dateButton instanceof HTMLButtonElement)) {
-        throw new Error(`${label} was not found in the calendar`);
-      }
+      const dateButton = await findCalendarDateButton(
+        desiredDate,
+        label,
+        waitTimeoutMs
+      );
       dateButton.click();
       await waitUntil(
         () => hidden.value === desiredDate,
