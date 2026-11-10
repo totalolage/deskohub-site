@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { CustomerAccountState } from "@deskohub/workspace-customer-api";
+import {
+  accountPhoneRegion,
+  type CustomerAccountState,
+  type CustomerProfile,
+} from "@deskohub/workspace-customer-api";
 import { Effect, Option } from "effect";
 import {
   type AsyncResult,
@@ -20,6 +24,7 @@ import {
   completeProfileAtom,
   completionEditsAtom,
   currentDraft,
+  type EditedProfile,
   editedDraft,
   hasUnsavedChanges,
   invitationCodeOf,
@@ -27,6 +32,14 @@ import {
   profileSubmitState,
   saveProfileAtom,
 } from "./profile-save";
+
+/** The phone region of an account without a saved language: Czech. */
+const phoneRegion = accountPhoneRegion(null);
+
+const edited = (profile: CustomerProfile): EditedProfile => ({
+  profile,
+  phoneRegion,
+});
 
 const submit = async <A, E, W>(
   registry: AtomRegistry.AtomRegistry,
@@ -56,26 +69,28 @@ const linkedProfileOf = (account: CustomerAccountState) => {
 
 describe("unsaved changes", () => {
   test("an untouched form follows the saved profile", () => {
-    expect(currentDraft(Option.none(), sampleProfile)).toEqual(
-      profileDraftOf(sampleProfile)
+    expect(currentDraft(Option.none(), edited(sampleProfile))).toEqual(
+      profileDraftOf(sampleProfile, phoneRegion)
     );
-    expect(hasUnsavedChanges(Option.none(), sampleProfile)).toBe(false);
+    expect(hasUnsavedChanges(Option.none(), edited(sampleProfile))).toBe(false);
   });
 
   test("a change counts as unsaved until it matches the saved profile again", () => {
-    const edits = editedDraft(Option.none(), sampleProfile, {
+    const edits = editedDraft(Option.none(), edited(sampleProfile), {
       city: "Elsewhere",
     });
-    expect(hasUnsavedChanges(edits, sampleProfile)).toBe(true);
-    const reverted = editedDraft(edits, sampleProfile, { city: "Sampletown" });
-    expect(hasUnsavedChanges(reverted, sampleProfile)).toBe(false);
+    expect(hasUnsavedChanges(edits, edited(sampleProfile))).toBe(true);
+    const reverted = editedDraft(edits, edited(sampleProfile), {
+      city: "Sampletown",
+    });
+    expect(hasUnsavedChanges(reverted, edited(sampleProfile))).toBe(false);
   });
 
   test("a change keeps every other field of the draft", () => {
-    const edits = editedDraft(Option.none(), sampleProfile, {
+    const edits = editedDraft(Option.none(), edited(sampleProfile), {
       firstName: "Al",
     });
-    expect(currentDraft(edits, sampleProfile)).toEqual({
+    expect(currentDraft(edits, edited(sampleProfile))).toEqual({
       ...profileDraftOf(sampleProfile),
       firstName: "Al",
     });
@@ -89,7 +104,10 @@ describe("saveProfileAtom", () => {
     const draft = { ...profileDraftOf(sampleProfile), firstName: "Alexa" };
     registry.set(profileEditsAtom, Option.some(draft));
 
-    const state = await submit(registry, saveProfileAtom, draft);
+    const state = await submit(registry, saveProfileAtom, {
+      draft,
+      phoneRegion,
+    });
 
     expect(state._tag).toBe("Done");
     // The Workspace stores the entered phone as its phone number.
@@ -115,7 +133,7 @@ describe("saveProfileAtom", () => {
       city: "Othertown",
     };
 
-    await submit(registry, saveProfileAtom, draft);
+    await submit(registry, saveProfileAtom, { draft, phoneRegion });
 
     expect(linkedProfileOf(storedAccount(workspace))).toMatchObject({
       firstName: "Alex",
@@ -130,8 +148,11 @@ describe("saveProfileAtom", () => {
     await settle(registry, accountAtom);
 
     const state = await submit(registry, saveProfileAtom, {
-      ...profileDraftOf(sampleProfile),
-      firstName: "",
+      draft: {
+        ...profileDraftOf(sampleProfile),
+        firstName: "",
+      },
+      phoneRegion,
     });
 
     expect(state).toMatchObject({
@@ -152,7 +173,10 @@ describe("saveProfileAtom", () => {
     const draft = { ...profileDraftOf(sampleProfile), firstName: "Alexa " };
     registry.set(profileEditsAtom, Option.some(draft));
 
-    const state = await submit(registry, saveProfileAtom, draft);
+    const state = await submit(registry, saveProfileAtom, {
+      draft,
+      phoneRegion,
+    });
 
     expect(state).toMatchObject({
       _tag: "Failed",
@@ -169,7 +193,10 @@ describe("saveProfileAtom", () => {
     const edits = registry.get(profileEditsAtom);
     expect(edits).toEqual(Option.some(draft));
     expect(
-      hasUnsavedChanges(edits, linkedProfileOf(storedAccount(workspace)))
+      hasUnsavedChanges(
+        edits,
+        edited(linkedProfileOf(storedAccount(workspace)))
+      )
     ).toBe(true);
   });
 
@@ -185,12 +212,12 @@ describe("saveProfileAtom", () => {
     };
     registry.set(profileEditsAtom, Option.some(draft));
 
-    await submit(registry, saveProfileAtom, draft);
+    await submit(registry, saveProfileAtom, { draft, phoneRegion });
 
     expect(
       hasUnsavedChanges(
         registry.get(profileEditsAtom),
-        linkedProfileOf(storedAccount(workspace))
+        edited(linkedProfileOf(storedAccount(workspace)))
       )
     ).toBe(false);
   });
@@ -203,14 +230,14 @@ describe("saveProfileAtom", () => {
     const draft = { ...profileDraftOf(sampleProfile), phone: "600 000 001" };
     registry.set(profileEditsAtom, Option.some(draft));
 
-    await submit(registry, saveProfileAtom, draft);
+    await submit(registry, saveProfileAtom, { draft, phoneRegion });
 
     const stored = linkedProfileOf(storedAccount(workspace));
     expect(stored.phone).toBe("+420600000001");
     expect(registry.get(profileEditsAtom)).toEqual(Option.some(draft));
-    expect(hasUnsavedChanges(registry.get(profileEditsAtom), stored)).toBe(
-      false
-    );
+    expect(
+      hasUnsavedChanges(registry.get(profileEditsAtom), edited(stored))
+    ).toBe(false);
   });
 
   test("a refused save keeps the edits and reads nothing again", async () => {
@@ -220,7 +247,10 @@ describe("saveProfileAtom", () => {
     const draft = { ...profileDraftOf(sampleProfile), city: "Othertown" };
     registry.set(profileEditsAtom, Option.some(draft));
 
-    const state = await submit(registry, saveProfileAtom, draft);
+    const state = await submit(registry, saveProfileAtom, {
+      draft,
+      phoneRegion,
+    });
 
     expect(state).toMatchObject({
       _tag: "Failed",
@@ -236,11 +266,10 @@ describe("saveProfileAtom", () => {
     const supportRequired = makeFakeCustomerData("support-required").workspace;
     workspace.setAccount(storedAccount(supportRequired));
 
-    const state = await submit(
-      registry,
-      saveProfileAtom,
-      profileDraftOf(sampleProfile)
-    );
+    const state = await submit(registry, saveProfileAtom, {
+      draft: profileDraftOf(sampleProfile, phoneRegion),
+      phoneRegion,
+    });
 
     expect(state).toMatchObject({
       _tag: "Failed",
@@ -257,6 +286,29 @@ describe("saveProfileAtom", () => {
   });
 });
 
+describe("saveProfileAtom for an account with a saved language", () => {
+  test("saves a phone read in the phone region of its language", async () => {
+    const { registry, workspace } = makeFakeCustomerData("linked");
+    workspace.setAccount({ ...storedAccount(workspace), locale: "de-DE" });
+    await settle(registry, accountAtom);
+    const german = accountPhoneRegion("de-DE");
+    const draft = {
+      ...profileDraftOf(sampleProfile, german),
+      phone: "0151 23456789",
+    };
+
+    const state = await submit(registry, saveProfileAtom, {
+      draft,
+      phoneRegion: german,
+    });
+
+    expect(state).toMatchObject({ _tag: "Done" });
+    expect(linkedProfileOf(storedAccount(workspace)).phone).toBe(
+      "+4915123456789"
+    );
+  });
+});
+
 describe("completeProfileAtom", () => {
   const completion = (referralCode: string) => ({
     draft: {
@@ -265,6 +317,7 @@ describe("completeProfileAtom", () => {
       referralCode,
     },
     invitationCode: undefined,
+    phoneRegion,
   });
 
   test("creates the profile, reports the referral outcome and links the account", async () => {

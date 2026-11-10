@@ -1,15 +1,23 @@
 import { describe, expect, test } from "bun:test";
+import {
+  getLocaleDefinition,
+  supportedLocales,
+} from "@deskohub/i18n/locale-registry";
 import { Option, Schema } from "effect";
 import {
+  accountPhoneRegion,
+  accountProfileSchemas,
+  CustomerProfileCompletionInput,
   CustomerProfileInput,
-  CustomerProfileSave,
   customerInputParseOptions,
   customerProfileSchemas,
 } from "./customer-profile";
 
 const profileWithPhone = (phone: string) => ({ firstName: "Jana", phone });
 
-const savedPhone = (schema: typeof CustomerProfileSave, phone: string) =>
+type ProfileSchemas = ReturnType<typeof customerProfileSchemas>;
+
+const savedPhone = (schema: ProfileSchemas["save"], phone: string) =>
   Schema.decodeOption(schema)(
     profileWithPhone(phone),
     customerInputParseOptions
@@ -18,8 +26,10 @@ const savedPhone = (schema: typeof CustomerProfileSave, phone: string) =>
     Option.getOrNull
   );
 
-const acceptsInput = (schema: typeof CustomerProfileInput, phone: string) =>
-  Schema.is(schema)(profileWithPhone(phone));
+const acceptsInput = (
+  schema: ProfileSchemas["input"] | typeof CustomerProfileInput,
+  phone: string
+) => Schema.is(schema)(profileWithPhone(phone));
 
 describe("customerProfileSchemas", () => {
   test.each([
@@ -62,12 +72,40 @@ describe("customerProfileSchemas", () => {
   });
 });
 
-describe("the customer API profile schemas", () => {
-  test("read a phone without a country calling code as Czech", () => {
-    expect(acceptsInput(CustomerProfileInput, "777 123 456")).toBe(true);
-    expect(acceptsInput(CustomerProfileInput, "0151 23456789")).toBe(false);
-    expect<string | null>(savedPhone(CustomerProfileSave, "777 123 456")).toBe(
+describe("the customer API profile input", () => {
+  test("carries a phone a served locale's region reads, for the account's region to read", () => {
+    for (const schema of [CustomerProfileInput, CustomerProfileCompletionInput])
+      for (const entered of ["0151 23456789", "777 123 456", "+1 202 555 0143"])
+        expect(acceptsInput(schema, entered)).toBe(true);
+  });
+
+  test("refuses a phone without a phone number in any served region", () => {
+    for (const schema of [CustomerProfileInput, CustomerProfileCompletionInput])
+      expect(acceptsInput(schema, "call me maybe")).toBe(false);
+  });
+});
+
+describe("accountProfileSchemas", () => {
+  test("reads a phone in the phone region of the account's saved language", () => {
+    for (const locale of supportedLocales)
+      expect(accountPhoneRegion(locale)).toBe(
+        getLocaleDefinition(locale).phoneRegion
+      );
+    expect<string | null>(
+      savedPhone(accountProfileSchemas("de-DE").save, "0151 23456789")
+    ).toBe("+4915123456789");
+  });
+
+  test("reads a phone as Czech for an account without a saved language", () => {
+    const schemas = accountProfileSchemas(null);
+    expect(acceptsInput(schemas.input, "777 123 456")).toBe(true);
+    expect(acceptsInput(schemas.input, "0151 23456789")).toBe(false);
+    expect<string | null>(savedPhone(schemas.save, "777 123 456")).toBe(
       "+420777123456"
     );
+  });
+
+  test("reads a phone as Czech for a language this build doesn't serve", () => {
+    expect(accountPhoneRegion("xx-XX")).toBe(accountPhoneRegion(null));
   });
 });

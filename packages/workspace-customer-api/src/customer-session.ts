@@ -1,5 +1,6 @@
 import { Context, Schema } from "effect";
 import { HttpApiMiddleware, HttpApiSchema } from "effect/unstable/httpapi";
+import type { CustomerLocale } from "./customer-locale";
 
 /**
  * The header every customer API request carries. A browser can't send a
@@ -33,6 +34,8 @@ export type CustomerAccountId = typeof CustomerAccountId.Type;
 export type CustomerSession = {
   readonly accountId: CustomerAccountId;
   readonly email: string;
+  /** The account's saved language; null when it has none. */
+  readonly locale: CustomerLocale | null;
 };
 
 export class CurrentCustomerSession extends Context.Service<
