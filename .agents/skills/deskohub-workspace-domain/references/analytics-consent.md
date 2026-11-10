@@ -19,7 +19,8 @@ stays the place where the choice is made; the account copies it.
   `sign_in_mirror`, `hydration_mirror` (a signed-in session used on a device:
   page hydration or an authenticated action that reads the cookie, such as
   Pay-state preparation), `backfill` (the one-off seeding of earlier
-  consent), and `preference` (account preferences).
+  consent), `preference` (account preferences), and `app_mirror` (the native
+  app's own choice, dated when the app made it).
 - **Silent grant**: applying the account's grant to a signed-in device that
   holds no consent cookie at all, when the current decision is a grant under
   the current privacy notice of the decision's locale: the cookie accepts
