@@ -4,20 +4,44 @@ import type { CreateAnalyticsClient } from "./analytics-client";
 import { failedFlagReload, type StoredFlagResponse } from "./flag-reload";
 
 /**
- * A PostHog client that can be retired: once retired it sends nothing, and
- * once its cleared storage is saved it writes nothing more. The SDK keeps an
- * AppState listener and pending flag requests alive after shutdown, and
- * saves its whole storage blob on each write, so a retired client could
- * otherwise send late requests or overwrite a newer client's storage.
+ * The AsyncStorage keys posthog-react-native 4.83.0 keeps all its state in
+ * with `persistence: "file"` (`EVENTS_STORAGE_FILE` and `LOGS_STORAGE_FILE`
+ * in its `storage.ts`): identity, super properties, flags and queued events.
+ * Recheck them when upgrading the SDK.
+ */
+const postHogStorageKeys = [".posthog-rn.json", ".posthog-rn-logs.json"];
+
+/**
+ * Removes what earlier PostHog clients stored, so a withdrawn identity or
+ * queued event can't come back with the next client. Only while no client
+ * runs: a live client would write its copy back.
+ */
+export const clearPostHogStoredState = (): Promise<void> =>
+  AsyncStorage.multiRemove(postHogStorageKeys);
+
+/**
+ * A PostHog client that can be held and retired. While held it sends
+ * nothing: a request fails as a network failure, which keeps queued events
+ * queued. Once retired it sends nothing, and once its cleared storage is
+ * saved it writes nothing more. The SDK keeps an AppState listener and
+ * pending flag requests alive after shutdown, and saves its whole storage
+ * blob on each write, so a retired client could otherwise send late requests
+ * or overwrite a newer client's storage.
  */
 class RetirablePostHog extends PostHog {
   networkRetired = false;
+  networkHeld = false;
 
   override fetch(
     ...[url, options]: Parameters<PostHog["fetch"]>
   ): ReturnType<PostHog["fetch"]> {
     if (this.networkRetired) {
       return Promise.reject(new Error("Analytics was withdrawn."));
+    }
+    if (this.networkHeld) {
+      return Promise.reject(
+        new Error("Analytics waits for the account's consent check.")
+      );
     }
     return super.fetch(url, options);
   }
@@ -90,6 +114,12 @@ export const createPostHogClient: CreateAnalyticsClient = ({
       if (failure !== undefined) throw new Error(failure);
     },
     getFeatureFlag: (flag) => posthog.getFeatureFlag(flag),
+    holdNetwork: (held) => {
+      if (posthog.networkHeld === held) return;
+      posthog.networkHeld = held;
+      // Sends what waited in the queue; a failure leaves it queued.
+      if (!held) void posthog.flush().catch(() => undefined);
+    },
     onFeatureFlags: (listener) => posthog.onFeatureFlags(() => listener()),
     shutDown: async () => {
       // Flushes ignore the opt-out, so stop sending at once, before any

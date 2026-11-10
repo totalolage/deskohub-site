@@ -29,9 +29,11 @@ import {
   type ProfileCompletionReferralOutcome,
   profileCompletionSaveOf,
   profileUpdateSaveOf,
+  type SaveCustomerAnalyticsPreference,
+  type SyncCustomerAnalyticsConsent,
   WorkspaceCustomerApi,
 } from "@deskohub/workspace-customer-api";
-import { Effect, Layer, Stream } from "effect";
+import { Clock, Effect, Layer, Stream } from "effect";
 import {
   HttpClient,
   HttpClientError,
@@ -108,6 +110,25 @@ export class FakeWorkspace {
   deletionOutcome: CustomerAccountDeletionResult["status"] = "deleted";
   /** Endpoint names in the order requests reached them. */
   readonly calls: EndpointName[] = [];
+  /**
+   * The account's current analytics decision, if it made one; `notice` says
+   * whether a grant was given under the current privacy notice.
+   */
+  analyticsDecision: FakeAnalyticsDecision | undefined;
+  /** What each analytics consent sync sent, in order. */
+  readonly analyticsSyncs: SyncCustomerAnalyticsConsent[] = [];
+  /** What each analytics preference save sent, in order. */
+  readonly analyticsPreferenceSaves: SaveCustomerAnalyticsPreference[] = [];
+  /**
+   * Runs while an analytics consent sync or preference save is handled,
+   * before it answers, as when the device changes meanwhile.
+   */
+  onAnalyticsConsentRequest: (() => void) | undefined;
+  /**
+   * Awaited before an analytics consent sync answers, as a slow response;
+   * the answer is the account's decision once it settles.
+   */
+  analyticsSyncDelay: Promise<void> | undefined;
   private readonly outcomes = new Map<EndpointName, FakeRequestOutcome[]>();
 
   constructor(data: FakeWorkspaceData = sampleWorkspaceData("linked")) {
@@ -170,6 +191,45 @@ export class FakeWorkspace {
     return this.avatarRejections.shift();
   }
 }
+
+/** The account's analytics decision as the fake Workspace keeps it. */
+export interface FakeAnalyticsDecision {
+  readonly granted: boolean;
+  readonly decidedAt: string;
+  readonly notice: "current" | "earlier";
+}
+
+/**
+ * The Workspace's sync rules in brief: a device choice newer than the
+ * account's decision becomes it; the answer is the account's withdrawal over
+ * an accepting choice it didn't take, or its current-notice grant for a
+ * device without a choice.
+ */
+const syncAnalyticsConsent = (
+  workspace: FakeWorkspace,
+  { choice }: SyncCustomerAnalyticsConsent
+) => {
+  const current = workspace.analyticsDecision;
+  if (choice === null) {
+    return current?.granted && current.notice === "current"
+      ? { kind: "grant" as const, decidedAt: current.decidedAt }
+      : { kind: "unchanged" as const };
+  }
+  const mirrored =
+    current === undefined ||
+    Date.parse(choice.decidedAt) > Date.parse(current.decidedAt);
+  if (mirrored) {
+    workspace.analyticsDecision = {
+      granted: choice.analytics,
+      decidedAt: new Date(Date.parse(choice.decidedAt)).toISOString(),
+      notice: "current",
+    };
+    return { kind: "unchanged" as const };
+  }
+  return choice.analytics && !current.granted
+    ? { kind: "withdraw" as const, decidedAt: current.decidedAt }
+    : { kind: "unchanged" as const };
+};
 
 /** One part of an avatar upload body, as the fake Workspace read it. */
 export type FakeAvatarUploadPart =
@@ -463,6 +523,39 @@ const serverLayer = (workspace: FakeWorkspace) => {
                   })
                 )
           )
+        )
+        .handle("syncAnalyticsConsent", ({ payload }) =>
+          Effect.sync(() => {
+            workspace.analyticsSyncs.push(payload);
+            workspace.onAnalyticsConsentRequest?.();
+          }).pipe(
+            Effect.andThen(
+              Effect.promise(
+                () => workspace.analyticsSyncDelay ?? Promise.resolve()
+              )
+            ),
+            Effect.map(() => syncAnalyticsConsent(workspace, payload))
+          )
+        )
+        .handle("getAnalyticsPreference", () =>
+          Effect.sync(() => ({
+            granted: workspace.analyticsDecision?.granted ?? false,
+          }))
+        )
+        // The decision is made now, answered to the millisecond.
+        .handle("saveAnalyticsPreference", ({ payload }) =>
+          Effect.map(Clock.currentTimeMillis, (now) => {
+            const { granted } = payload;
+            workspace.analyticsPreferenceSaves.push(payload);
+            workspace.onAnalyticsConsentRequest?.();
+            const decidedAt = new Date(now).toISOString();
+            workspace.analyticsDecision = {
+              granted,
+              decidedAt,
+              notice: "current",
+            };
+            return { granted, decidedAt };
+          })
         )
         .handle("getReferrals", () =>
           Effect.flatMap(linkedAccount, (current) =>

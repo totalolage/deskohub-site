@@ -865,6 +865,255 @@
         }
       }
     },
+    "/api/customer/account/analytics-consent": {
+      "post": {
+        "tags": ["account"],
+        "operationId": "account.syncAnalyticsConsent",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerAnalyticsConsentSync",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAnalyticsConsentSync"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncCustomerAnalyticsConsent"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/customer/account/analytics-preference": {
+      "get": {
+        "tags": ["account"],
+        "operationId": "account.getAnalyticsPreference",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerAnalyticsPreference",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAnalyticsPreference"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["account"],
+        "operationId": "account.saveAnalyticsPreference",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "CustomerAnalyticsPreferenceSaved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAnalyticsPreferenceSaved"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "CustomerSessionRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSessionRequired"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CustomerRequestRejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRequestRejected"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CustomerAccountLinkRequired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAccountLinkRequired"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "CustomerRateLimited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRateLimited"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CustomerServiceUnavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CustomerServiceUnavailable"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveCustomerAnalyticsPreference"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
     "/api/customer/account/referrals": {
       "get": {
         "tags": ["account"],
@@ -3778,7 +4027,7 @@
       },
       "CustomerLocale": {
         "type": "string",
-        "enum": ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK"]
+        "enum": ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK", "vi-VN", "hi-IN"]
       },
       "CustomerLocaleUpdate": {
         "type": "object",
@@ -4144,6 +4393,127 @@
           }
         },
         "required": ["_tag", "reason"],
+        "additionalProperties": false
+      },
+      "CustomerAnalyticsChoice": {
+        "type": "object",
+        "properties": {
+          "analytics": {
+            "type": "boolean"
+          },
+          "decidedAt": {
+            "type": "string",
+            "allOf": [
+              {
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$",
+                "description": "ISO 8601 instant with an offset."
+              }
+            ]
+          }
+        },
+        "required": ["analytics", "decidedAt"],
+        "additionalProperties": false
+      },
+      "SyncCustomerAnalyticsConsent": {
+        "type": "object",
+        "properties": {
+          "choice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerAnalyticsChoice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "locale": {
+            "$ref": "#/components/schemas/CustomerLocale"
+          }
+        },
+        "required": ["choice", "locale"],
+        "additionalProperties": false
+      },
+      "CustomerAnalyticsConsentSync": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["unchanged"]
+              }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["withdraw"]
+              },
+              "decidedAt": {
+                "type": "string",
+                "description": "ISO 8601 instant."
+              }
+            },
+            "required": ["kind", "decidedAt"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["grant"]
+              },
+              "decidedAt": {
+                "type": "string",
+                "description": "ISO 8601 instant."
+              }
+            },
+            "required": ["kind", "decidedAt"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CustomerAnalyticsPreference": {
+        "type": "object",
+        "properties": {
+          "granted": {
+            "type": "boolean"
+          }
+        },
+        "required": ["granted"],
+        "additionalProperties": false
+      },
+      "SaveCustomerAnalyticsPreference": {
+        "type": "object",
+        "properties": {
+          "granted": {
+            "type": "boolean"
+          },
+          "locale": {
+            "$ref": "#/components/schemas/CustomerLocale"
+          }
+        },
+        "required": ["granted", "locale"],
+        "additionalProperties": false
+      },
+      "CustomerAnalyticsPreferenceSaved": {
+        "type": "object",
+        "properties": {
+          "granted": {
+            "type": "boolean"
+          },
+          "decidedAt": {
+            "type": "string",
+            "description": "ISO 8601 instant."
+          }
+        },
+        "required": ["granted", "decidedAt"],
         "additionalProperties": false
       },
       "RequestCustomerAccountDeletion": {

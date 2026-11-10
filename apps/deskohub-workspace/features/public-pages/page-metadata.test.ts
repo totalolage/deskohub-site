@@ -39,6 +39,8 @@ describe("createPublicPageMetadata", () => {
           "de-DE": "https://workspace.deskohub.cz/de-DE/faq",
           "uk-UA": "https://workspace.deskohub.cz/uk-UA/faq",
           "sk-SK": "https://workspace.deskohub.cz/sk-SK/faq",
+          "vi-VN": "https://workspace.deskohub.cz/vi-VN/faq",
+          "hi-IN": "https://workspace.deskohub.cz/hi-IN/faq",
           "x-default": "https://workspace.deskohub.cz/faq",
         },
       },
@@ -49,7 +51,7 @@ describe("createPublicPageMetadata", () => {
         url: "https://workspace.deskohub.cz/cs-CZ/faq",
         siteName: workspaceSiteConstants.brand.name,
         locale: "cs_CZ",
-        alternateLocale: ["en_US", "de_DE", "uk_UA", "sk_SK"],
+        alternateLocale: ["en_US", "de_DE", "uk_UA", "sk_SK", "vi_VN", "hi_IN"],
         images: [publicSiteShareImage],
       },
       twitter: { card: "summary_large_image" },
@@ -65,7 +67,7 @@ describe("createPublicPageMetadata", () => {
 
     expect(openGraph).toMatchObject({
       locale: "en_US",
-      alternateLocale: ["cs_CZ", "de_DE", "uk_UA", "sk_SK"],
+      alternateLocale: ["cs_CZ", "de_DE", "uk_UA", "sk_SK", "vi_VN", "hi_IN"],
       url: "https://workspace.deskohub.cz/en-US",
     });
   });

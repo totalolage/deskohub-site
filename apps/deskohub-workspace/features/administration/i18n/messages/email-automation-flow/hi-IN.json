@@ -1,0 +1,196 @@
+{
+  "emailAutomationFlowCampaignSourceThis": "यह अभियान",
+  "emailAutomationFlowPeriodTriggerWindow": "ट्रिगर इवेंट से … के भीतर",
+  "emailAutomationFlowPeriodTriggerWindowCountLabel": "{subject}: ट्रिगर इवेंट से कितनी इकाइयाँ",
+  "emailAutomationFlowPeriodTriggerWindowSide": [
+    {
+      "declarations": ["input side"],
+      "selectors": ["side"],
+      "match": {
+        "side=before": "ट्रिगर इवेंट से पहले",
+        "side=*": "ट्रिगर इवेंट के बाद"
+      }
+    }
+  ],
+  "emailAutomationFlowPeriodTriggerWindowSideLabel": "{subject}: ट्रिगर इवेंट से पहले या उसके बाद",
+  "emailAutomationFlowPeriodWithin": "इस अवधि के भीतर:",
+  "emailAutomationFlowSavedAudienceEmpty": "कोई ऑडियंस मेल नहीं खाती।",
+  "emailAutomationFlowSavedAudienceLiveNote": "जब कोई रन इस चरण तक पहुँचता है, उस समय ऑडियंस जैसी होती है, वैसी ही इस्तेमाल होती है। इसलिए ऑडियंस में किए गए बदलाव चल रहे रन पर तुरंत लागू होते हैं।",
+  "emailAutomationFlowSavedAudienceMenuLabel": "सहेजी गई ऑडियंस",
+  "emailAutomationFlowSavedAudienceMenuSection": "सहेजी गई ऑडियंस",
+  "emailAutomationFlowSavedAudienceOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=in": "सहेजी गई ऑडियंस में है",
+        "operator=*": "सहेजी गई ऑडियंस में नहीं है"
+      }
+    }
+  ],
+  "emailAutomationFlowSavedAudienceOperatorLabel": "सहेजी गई ऑडियंस में सदस्यता",
+  "emailAutomationFlowSavedAudiencePickerLabel": "सहेजी गई ऑडियंस",
+  "emailAutomationFlowSavedAudiencePickerPlaceholder": "ऑडियंस चुनें",
+  "emailAutomationFlowSavedAudienceRequired": "सहेजी गई ऑडियंस चुनें।",
+  "emailAutomationFlowSavedAudienceSearch": "ऑडियंस खोजें",
+  "emailAutomationFlowSavedAudienceUnknown": "हटाई गई ऑडियंस",
+  "emailAutomationFlowArchived": "यह ऑटोमेशन संग्रहित है, इसलिए इसका वर्कफ़्लो बदला नहीं जा सकता।",
+  "emailAutomationFlowCalendarAddPart": "भाग जोड़ें",
+  "emailAutomationFlowCalendarLastDay": "आखिरी दिन",
+  "emailAutomationFlowCalendarMinuteAdd": "मिनट जोड़ें",
+  "emailAutomationFlowCalendarMinuteOther": "दूसरा मिनट",
+  "emailAutomationFlowCalendarNeverOccurs": "यह संयोजन अगले आठ वर्षों में कभी नहीं आता। इसका कोई एक भाग बदलें।",
+  "emailAutomationFlowCalendarNextFires": "अगली शुरुआतें (प्राग का समय)",
+  "emailAutomationFlowCalendarOccurrence": [
+    {
+      "declarations": ["input occurrence"],
+      "selectors": ["occurrence"],
+      "match": {
+        "occurrence=1": "पहला",
+        "occurrence=2": "दूसरा",
+        "occurrence=3": "तीसरा",
+        "occurrence=4": "चौथा",
+        "occurrence=5": "पाँचवाँ",
+        "occurrence=*": "आखिरी"
+      }
+    }
+  ],
+  "emailAutomationFlowCalendarOccurrenceAdd": "सप्ताह का दिन जोड़ें",
+  "emailAutomationFlowCalendarOccurrenceLabel": "महीने में कौन-सा",
+  "emailAutomationFlowCalendarOccurrenceRemove": "सप्ताह का यह दिन हटाएँ",
+  "emailAutomationFlowCalendarOccurrenceWeekdayLabel": "सप्ताह का दिन",
+  "emailAutomationFlowCalendarPart": [
+    {
+      "declarations": ["input part"],
+      "selectors": ["part"],
+      "match": {
+        "part=minutes": "घंटे का मिनट",
+        "part=hours": "दिन का घंटा",
+        "part=weekdays": "सप्ताह का दिन",
+        "part=daysOfMonth": "महीने का दिन",
+        "part=weekdayOccurrences": "महीने में सप्ताह का दिन",
+        "part=weeksOfYear": "साल का सप्ताह",
+        "part=*": "साल का महीना"
+      }
+    }
+  ],
+  "emailAutomationFlowCalendarPartLabel": "कैलेंडर का भाग",
+  "emailAutomationFlowCalendarPreviewUnavailable": "विवरण अभी उपलब्ध नहीं है। थोड़ी देर बाद फिर से कोशिश करें।",
+  "emailAutomationFlowCalendarRemovePart": "हटाएँ: {part}",
+  "emailAutomationFlowCalendarRemoveValue": "{value} हटाएँ",
+  "emailAutomationFlowCalendarWeekAdd": "सप्ताह जोड़ें",
+  "emailAutomationFlowCalendarWeekOther": "सप्ताह की संख्या",
+  "emailAutomationFlowCalendarWeekValue": "सप्ताह {week}",
+  "emailAutomationFlowConditionDescription": "रन केवल उन ग्राहकों के लिए जारी रहता है जो उस समय शर्त पूरी करते हैं। बाकी सभी के लिए यह यहीं समाप्त हो जाता है।",
+  "emailAutomationFlowConditionTitle": "ग्राहक की जाँच",
+  "emailAutomationFlowDiscard": "छोड़ें",
+  "emailAutomationFlowEventAccountCreatedDescription": "कोई नया ग्राहक Workspace में खाता बनाता है।",
+  "emailAutomationFlowEventBookedDescription": "Workspace में ग्राहक की बुकिंग की पुष्टि हो जाती है।",
+  "emailAutomationFlowEventCancelledDescription": "ग्राहक Workspace में बुकिंग रद्द करता है।",
+  "emailAutomationFlowEventFinishedDescription": "ग्राहक की बुकिंग का समाप्ति समय बीत चुका है।",
+  "emailAutomationFlowEventKindLabel": "कौन-सा इवेंट रन शुरू करता है",
+  "emailAutomationFlowEventProductHint": "प्रोडक्ट को “कोई भी प्रोडक्ट” पर छोड़ने से हर बुकिंग पर रन शुरू होगा।",
+  "emailAutomationFlowEventStartedDescription": "ग्राहक की बुकिंग का शुरुआती समय बीत चुका है।",
+  "emailAutomationFlowInsertCondition": "शर्त",
+  "emailAutomationFlowInsertConditionDescription": "उस समय ग्राहक की जाँच करता है।",
+  "emailAutomationFlowInsertLabel": "चरण {position} के रूप में चरण जोड़ें",
+  "emailAutomationFlowInsertWait": "प्रतीक्षा",
+  "emailAutomationFlowInsertWaitDescription": "तय अवधि तक या तय समय तक।",
+  "emailAutomationFlowSave": "वर्कफ़्लो सहेजें",
+  "emailAutomationFlowSaveFailed": "वर्कफ़्लो सहेजा नहीं जा सका। थोड़ी देर बाद फिर से कोशिश करें।",
+  "emailAutomationFlowSaveInvalid": "वर्कफ़्लो इस रूप में सहेजा नहीं जा सकता। हाइलाइट किए गए चरण जाँचें।",
+  "emailAutomationFlowScheduleMinutesNotAllowed": "शेड्यूल हर घंटे केवल इन मिनटों पर शुरू हो सकता है: {minutes}। इनमें से कोई एक मिनट चुनें।",
+  "emailAutomationFlowSaving": "सहेजा जा रहा है…",
+  "emailAutomationFlowSendDescription": "इस अभियान का email भेजता है और रन समाप्त करता है।",
+  "emailAutomationFlowSendEditEmail": "Email संपादित करें",
+  "emailAutomationFlowSendSubjectLabel": "विषय – {language}",
+  "emailAutomationFlowSendSubjectMissing": "इस भाषा में अभी कोई सामग्री नहीं है",
+  "emailAutomationFlowSendTitle": "Email भेजना",
+  "emailAutomationFlowStatusArchived": "यह ऑटोमेशन संग्रहित है, इसलिए इसका वर्कफ़्लो केवल देखा जा सकता है।",
+  "emailAutomationFlowStatusEmpty": "इस ऑटोमेशन का अभी कोई वर्कफ़्लो नहीं है। ट्रिगर चुनें और सहेजें।",
+  "emailAutomationFlowStatusPending": "सहेजा गया। बदलाव नए रन पर लागू हों, इसके लिए <link>प्रीव्यू देखें और सक्रिय करें</link>।",
+  "emailAutomationFlowStatusPublished": "लाइव वर्ज़न से मेल खाता है।",
+  "emailAutomationFlowStatusUnsaved": "बिना सहेजे बदलाव",
+  "emailAutomationFlowStepDelete": "चरण हटाएँ",
+  "emailAutomationFlowStepEyebrow": [
+    {
+      "declarations": ["input number", "input kind"],
+      "selectors": ["kind"],
+      "match": {
+        "kind=condition": "चरण {number} · शर्त",
+        "kind=wait": "चरण {number} · प्रतीक्षा",
+        "kind=*": "चरण {number} · भेजना"
+      }
+    }
+  ],
+  "emailAutomationFlowStepMenuLabel": "{step} के लिए कार्रवाइयाँ",
+  "emailAutomationFlowStepMoveDown": "नीचे ले जाएँ",
+  "emailAutomationFlowStepMoveUp": "ऊपर ले जाएँ",
+  "emailAutomationFlowTriggerChooseDescription": "किसी ग्राहक के लिए रन शेड्यूल की हर शुरुआत पर शुरू होता है, या हर बार तब, जब ग्राहक की किसी गतिविधि से इवेंट होता है।",
+  "emailAutomationFlowTriggerChooseTitle": "चुनें कि यह ऑटोमेशन किससे शुरू होता है",
+  "emailAutomationFlowTriggerEyebrow": "ट्रिगर",
+  "emailAutomationFlowTriggerFamilyEvent": "इवेंट",
+  "emailAutomationFlowTriggerFamilyEventDescription": "जब ग्राहक बुकिंग करता है, उसे रद्द करता है, बुकिंग शुरू या समाप्त होती है, या ग्राहक खाता बनाता है।",
+  "emailAutomationFlowTriggerFamilyLabel": "रन किससे शुरू होता है",
+  "emailAutomationFlowTriggerFamilySchedule": "शेड्यूल",
+  "emailAutomationFlowTriggerFamilyScheduleDescription": "तय समय पर, अभियान की ऑडियंस में शामिल सभी के लिए।",
+  "emailAutomationFlowTriggerRequired": "चुनें कि यह ऑटोमेशन किससे शुरू होता है।",
+  "emailAutomationFlowWaitCountError": "1 से 9,999 तक की कोई पूर्ण संख्या दर्ज करें।",
+  "emailAutomationFlowWaitCountLabel": "कितनी देर प्रतीक्षा करनी है",
+  "emailAutomationFlowWaitFor": "प्रतीक्षा करें",
+  "emailAutomationFlowWaitModeCalendar": "तय समय तक",
+  "emailAutomationFlowWaitModeDuration": "तय अवधि तक",
+  "emailAutomationFlowWaitModeLabel": "चरण कैसे प्रतीक्षा करता है",
+  "emailAutomationFlowWaitTitle": "प्रतीक्षा",
+  "emailAutomationFlowWaitUnitDay": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "दिन",
+        "countPlural=other": "दिन"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitHour": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "घंटा",
+        "countPlural=other": "घंटे"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitLabel": "समय की इकाई",
+  "emailAutomationFlowWaitUnitMinute": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "मिनट",
+        "countPlural=other": "मिनट"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitMonth": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "महीना",
+        "countPlural=other": "महीने"
+      }
+    }
+  ],
+  "emailAutomationFlowWaitUnitWeek": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "सप्ताह",
+        "countPlural=other": "सप्ताह"
+      }
+    }
+  ]
+}

@@ -16,6 +16,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { customerMarketingConsents } from "@/db/schema";
 import type { Locale } from "@/features/i18n";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import { makeAutomatedCampaignSend } from "../automation/backend/automated-campaign-send";
 import type {
   CampaignLocalizedContent,
   CampaignPurpose,
@@ -261,17 +262,17 @@ describe.skipIf(!testDatabase)(
 
         await Effect.runPromise(
           Effect.gen(function* () {
-            const delivery = yield* CampaignDeliveryService;
+            const sends = yield* makeAutomatedCampaignSend;
             const { transaction } = yield* WorkspaceDatabase;
             yield* transaction(
-              delivery.persistAutomatedBatch({
+              sends.persistBatch({
                 sendId,
                 recipients,
                 profiles: read,
                 at: Temporal.Now.instant(),
               })
             );
-            yield* delivery.submitAutomatedSend({
+            yield* sends.submit({
               sendId,
               profiles: Option.some(read),
             });

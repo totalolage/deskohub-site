@@ -17,6 +17,7 @@ export const clientRoot = ({
   readonly keepFetch?: boolean;
 } = {}) => {
   let root: Root;
+  let container: HTMLElement;
   const fetchGlobals = {
     AbortController,
     AbortSignal,
@@ -33,7 +34,8 @@ export const clientRoot = ({
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
     const { createRoot } = await import("react-dom/client");
-    root = createRoot(document.createElement("div"));
+    container = document.createElement("div");
+    root = createRoot(container);
   });
   afterAll(async () => {
     await act(async () => root.unmount());
@@ -42,5 +44,7 @@ export const clientRoot = ({
   return {
     render: (element: Parameters<Root["render"]>[0]) =>
       act(async () => root.render(element)),
+    /** The element the root renders into. */
+    container: () => container,
   };
 };

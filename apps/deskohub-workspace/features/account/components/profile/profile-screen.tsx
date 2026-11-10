@@ -1,6 +1,5 @@
 "use client";
 
-import { getLocaleDefinition } from "@deskohub/i18n/locale-registry";
 import { Check } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 import { updateLocalePreference } from "@/features/account/actions";
@@ -10,6 +9,10 @@ import {
   switchLocale,
 } from "@/features/account/switch-locale";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
+import {
+  languageNameStyle,
+  languageNames,
+} from "@/features/i18n/language-labels";
 import { Label } from "@/shared/components/ui/label";
 import {
   Select,
@@ -136,7 +139,12 @@ export function ProfileScreen({
           <SelectContent>
             {locales.map((optionLocale) => (
               <SelectItem key={optionLocale} value={optionLocale}>
-                {getLocaleDefinition(optionLocale).nativeName}
+                <span
+                  lang={optionLocale}
+                  style={languageNameStyle(optionLocale)}
+                >
+                  {languageNames[optionLocale]}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>

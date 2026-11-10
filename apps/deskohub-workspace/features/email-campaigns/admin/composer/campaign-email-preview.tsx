@@ -25,6 +25,8 @@ const missingContentMessages = {
   "de-DE": m.emailCampaignsEmailPreviewMissingContentGerman,
   "uk-UA": m.emailCampaignsEmailPreviewMissingContentUkrainian,
   "sk-SK": m.emailCampaignsEmailPreviewMissingContentSlovak,
+  "vi-VN": m.emailCampaignsEmailPreviewMissingContentVietnamese,
+  "hi-IN": m.emailCampaignsEmailPreviewMissingContentHindi,
 } as const satisfies Record<Locale, (...args: never) => string>;
 
 const previewFailureCopy: CampaignOperationFailureCopy = {
