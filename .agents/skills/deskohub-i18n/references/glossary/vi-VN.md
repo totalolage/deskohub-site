@@ -38,7 +38,7 @@ Columns: concept ID(s) | Czech | English | Vietnamese | Notes and forbidden alte
 | ID(s) | Czech | English | Vietnamese | Notes / forbidden alternatives |
 |---|---|---|---|---|
 | P01, P02 | coworking, cowork | coworking, cowork | **coworking** (*không gian coworking*, *chỗ ngồi coworking*) | The loan is the everyday word in Vietnam. One concept, one word: Czech *cowork* in CTAs also becomes *coworking*: `landingHeroPrimaryCta` → *Đặt chỗ coworking*. ✗ *cowork* alone, ✗ *làm việc chung* as the product name (fine in a description). |
-| P03 | open space / otevřený prostor | open space | **không gian mở** | `reservationTierBasicBulletDesk` "Open-space místo" → *Chỗ ngồi trong không gian mở*. ✗ *open space* in prose. |
+| P03 | open space / otevřený prostor; sdílené místo | open space; shared desk | **không gian mở**; the product **chỗ ngồi chung** | The open-space desk product (`reservationOpenSpaceTitle`, Czech *sdílené místo*) is *Chỗ ngồi chung* on every surface. Tier bullets that describe the space keep *không gian mở*: `reservationTierBasicBulletDesk` "Open-space místo" → *Chỗ ngồi trong không gian mở*. ✗ *chỗ ngồi dùng chung*, ✗ *open space* in prose. |
 | P04, P05 | zasedací místnost, zasedačka | meeting room | **phòng họp** | Vietnamese has no formal/colloquial pair, so both become *phòng họp*: `landingHeroMeetingRoomCta` → *Đặt phòng họp*. ✗ *phòng hội nghị* (conference hall), ✗ *meeting room*. |
 | P06, P07 | kancelář; soukromá kancelář | office; private office | **văn phòng**; **văn phòng riêng** | ✗ *văn phòng tư nhân* (reads as "private-sector office"), ✗ *phòng làm việc riêng*. |
 | P08 | pracovní stanice | workstation | **trạm làm việc** | The Profi tier desk with monitors. Keep it distinct from P09. ✗ *máy trạm* (a computer). |
@@ -69,7 +69,7 @@ Columns: concept ID(s) | Czech | English | Vietnamese | Notes and forbidden alte
 | R03 | rezervační | booking (adj.) | **đặt chỗ** after the noun | *biểu mẫu đặt chỗ*, *liên kết đặt chỗ*, `reservationSuccessMessage` "Rezervační poptávka" → *Yêu cầu đặt chỗ*. |
 | R04, A10 | objednávka; objednávky | order; orders | **đơn hàng** | Order ID: *mã đơn hàng*. ✗ *đơn đặt hàng* in labels (too long). |
 | R05 | objednat a zaplatit | order and pay | **Đặt và thanh toán**; with amount **Đặt và thanh toán ({amount})** | Final checkout button (`checkoutPayOrderAndPayButton`, `checkoutPayOrderAndPayAmountButton`). Czech law (§ 1826a OZ, Art. 8(2) Directive 2011/83/EU) requires wording that makes the payment obligation unambiguous; *thanh toán* in the button states it, as the Czech does. ✗ *Tiếp tục*, ✗ *Gửi*, ✗ *Đặt chỗ* alone. |
-| R06 | poptávka | inquiry | **yêu cầu** (*gửi yêu cầu*) | Contact-form request for offices and events. `landingFooterContactTitle` → *Gửi yêu cầu*. ✗ *đơn hỏi giá*. |
+| R06 | poptávka | inquiry | **yêu cầu** (*gửi yêu cầu*) | Contact-form request for offices and events: *gửi yêu cầu cho công ty*. ✗ *đơn hỏi giá*. |
 | R07, R08 | termín; datum | date / time slot; date | **thời gian** / **khung giờ** (slot); **ngày** | A date or slot, not a deadline. ✗ *hạn chót*, ✗ *thời hạn*. |
 | R09, R10 | začátek; konec | start; end | **Bắt đầu**; **Kết thúc** | Labels. |
 | R11 | délka | duration | **thời lượng** | `reservationMeetingRoomDurationLabel` → *Thời lượng*. ✗ *độ dài*. |
@@ -89,7 +89,7 @@ Columns: concept ID(s) | Czech | English | Vietnamese | Notes and forbidden alte
 | K04, K05 | platební karta; platební metoda | payment card; payment method | **thẻ thanh toán**; **phương thức thanh toán** | |
 | K06, K07 | platební brána; platební odkaz | payment gateway; payment link | **cổng thanh toán**; **liên kết thanh toán** | ✗ *link* in prose. |
 | K08 | Nexi | Nexi | **Nexi** | *trang thanh toán bảo mật của Nexi*. |
-| K09, K10, K11 | cena; základní cena; ceník | price; base price; price list | **giá**; **giá gốc**; **bảng giá** | ✗ *chi phí* for price. Legal L11. |
+| K09, K10, K11 | cena; základní cena / původní cena; ceník | price; base price / original price; price list | **giá**; **giá gốc**; **bảng giá** | *giá gốc* covers both the base price and the struck-through original price (`checkoutSummaryOriginalPrice`). ✗ *giá ban đầu*, ✗ *chi phí* for price. Legal L11. |
 | K12, K13, K14 | částka; celkem; měna | amount; total; currency | **số tiền**; **tổng cộng**; **tiền tệ** | |
 | K15 | Kč | CZK | **CZK** | Prose that names the currency writes *CZK* (`pricingIntro`, `accountBillingCurrency` → *Tiền tệ: CZK*). ✗ *Kč*, ✗ *koruna Séc* in UI, ✗ any VND or EUR conversion. |
 | K16, K17 | faktura; fakturační údaje | invoice; billing details | **hóa đơn**; **thông tin xuất hóa đơn** | The only tax document. ✗ *biên lai* (receipt), ✗ *hoá đơn*. |
@@ -187,7 +187,7 @@ Columns: concept ID(s) | Czech | English | Vietnamese | Notes and forbidden alte
 | A23 | variabilní symbol | variable symbol | **mã thanh toán (variabilní symbol)** | A Czech bank payment reference with no Vietnamese equivalent: gloss it once per screen, then *mã thanh toán*. |
 | A24, A28 | kampaň; automatizace / automatická kampaň | campaign; automation / automated campaign | **chiến dịch** (*chiến dịch email*); **tự động hóa** / **chiến dịch tự động** | |
 | A25, A26, A27 | okruh příjemců; uložené publikum; příjemce | audience; saved audience; recipient | **nhóm người nhận**; **nhóm người nhận đã lưu**; **người nhận** | One concept, one word for A25 and A26. ✗ *khán giả*, ✗ *đối tượng* for audience. |
-| A29, A30, A31, A32, A33 | zkušební běh; běh; spuštění; spouštěcí událost; krok | dry run; run; fire; trigger; step | **chạy thử**; **lượt chạy**; **lần kích hoạt**; **sự kiện kích hoạt**; **bước** | |
+| A29, A30, A31, A32, A33 | zkušební běh; běh; spuštění; spouštěcí událost; krok | dry run; run; fire; trigger; step | **chạy thử**; **lượt chạy**; **lần khởi chạy**; **sự kiện kích hoạt**; **bước** | **kích hoạt** alone is reserved for activating an automation or a version (*aktivace*); a scheduled fire is *lần khởi chạy*. The step sequence of an automation (flow) is **kịch bản**; a heading inside an editor is **đầu đề**, never *tiêu đề* (email subject, A39). |
 | A34, A35, A36, A37 | podmínka; vlastnost zákazníka; slevová skupina; štítky v Dotyposu | condition; customer attribute; discount group; Dotypos tags | **điều kiện**; **thuộc tính khách hàng**; **nhóm giảm giá**; **nhãn trong Dotypos** | Dotypos uninflected. |
 | A38, A39, A40, A41, A42, A43, A44 | potvrzovací kód; předmět; text náhledu; šablona; účel; překlad; zveřejnění | confirmation code; subject; preheader; template; purpose; translation; publishing | **mã xác nhận**; **tiêu đề**; **dòng xem trước**; **mẫu**; **mục đích**; **bản dịch**; **xuất bản** | Subject: *Tiêu đề email* when it could be confused with a page title. |
 | A45, A46 | archivovat; smazat | archive; delete | **lưu trữ**; **xóa** | ✗ *xoá*. |
@@ -252,3 +252,20 @@ Customer catalog (`apps/deskohub-workspace/features/i18n/messages/cs-CZ.json`) u
 | `contactPhonePlaceholder`, `contactEmailPlaceholder`, `accountSignInEmailPlaceholder` | Real-looking contact data | Phone *+84 900 000 000*; email *lan@example.com*. Never reuse the Czech values. |
 | `checkoutPayProviderHandoff` | Browser tab word | *…trang thanh toán bảo mật của Nexi sẽ mở trong thẻ mới…* |
 | Language names (`*LocaleName*`, `*Czech`, `*English`, …) | Language vs country | *tiếng Séc*, *tiếng Anh*, *tiếng Đức*, *tiếng Ukraina*, *tiếng Slovakia*, *tiếng Việt*, *tiếng Hindi*; capitalise only at the start of a label (*Tiếng Việt*). |
+
+## Terms fixed during the first translation (2026-11-10)
+
+Terms without a concept ID that the catalogs use consistently. Keep them when editing nearby copy.
+
+| Czech | English | Vietnamese | Where |
+|---|---|---|---|
+| přístupový odkaz | access link (to the door-PIN page) | **liên kết truy cập** | customer checkout and emails |
+| preferenční cookies | preference cookies | **cookie ghi nhớ tùy chọn** | cookie dialog; plain *cookie tùy chọn* would read as "optional cookies" |
+| autorizace; zachycení (capture); storno | authorization; capture; void | **cấp phép**; **thu tiền**; **hủy giao dịch (void)** | administration payment operations |
+| párování (orders); párování (door access) | reconciliation | **đối soát** (orders); **đối chiếu** (door access) | administration; Czech uses two words |
+| odebrat (from an audience or list) vs smazat | remove vs delete | **gỡ** vs **xóa** | administration |
+| scénář / průběh automatizace | automation flow | **kịch bản** | email automations |
+| nadpis (editor block) | heading | **đầu đề** | email editor; never *tiêu đề* (subject) |
+| spouštěč | trigger (event or schedule) | **sự kiện kích hoạt** | email automations |
+| nabídka (an offer block in an email, a deal) | offer | **ưu đãi** | email editor block, marketing consent; P19 keeps *lựa chọn* / *dịch vụ* for "what we offer" |
+| formát data | date-input format | **DD/MM/YYYY** kept as written | `reservationDateInputFormat`: Vietnamese letters would be ambiguous (*N* = ngày and năm) |
