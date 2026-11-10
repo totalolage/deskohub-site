@@ -1,24 +1,19 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { theme } from "../theme";
 import { Button } from "./controls";
 import { useLiveRegionAnnouncement } from "./live-announcement";
+import { LoadingIndicator } from "./loading-indicator";
 import { Text } from "./text";
 
 /**
- * Fills the screen while its content first loads. The spinner carries
+ * Fills the screen while its content first loads. The indicator carries
  * `label` for assistive tech; there is no visible loading copy.
  */
 export function LoadingState({ label }: { readonly label: string }) {
   return (
     <View style={styles.centered}>
-      <ActivityIndicator
-        role="progressbar"
-        aria-label={label}
-        aria-busy
-        size="large"
-        color={theme.colors.accent}
-      />
+      <LoadingIndicator size="section" tone="white" label={label} />
     </View>
   );
 }
@@ -66,7 +61,7 @@ export function ErrorState({
 
 /**
  * A quiet line shown while content already on screen is refreshed in the
- * background. It stays mounted as a status region and shows the spinner and
+ * background. It stays mounted as a status region and shows the indicator and
  * `label` only while `refreshing`.
  */
 export function RefreshingIndicator({
@@ -81,10 +76,9 @@ export function RefreshingIndicator({
   return (
     <View style={styles.refreshing}>
       {refreshing && (
-        <ActivityIndicator
-          aria-hidden
-          size="small"
-          color={theme.colors.textMuted}
+        <LoadingIndicator
+          size="inline"
+          tone={{ color: theme.colors.textMuted }}
         />
       )}
       <Text

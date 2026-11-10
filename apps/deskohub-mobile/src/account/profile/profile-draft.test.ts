@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { formatPhoneNumber, parsePhoneNumber } from "@deskohub/phone-number";
-import type { CustomerProfile } from "@deskohub/workspace-customer-api";
+import {
+  accountPhoneRegion,
+  type CustomerProfile,
+} from "@deskohub/workspace-customer-api";
 import { Option, Result } from "effect";
 import { sampleProfile } from "../../customer-api/testing/sample-fixtures";
 import {
@@ -13,6 +16,9 @@ import {
   validateCompletionDraft,
   validateProfileDraft,
 } from "./profile-draft";
+
+/** The phone region of an account without a saved language: Czech. */
+const phoneRegion = accountPhoneRegion(null);
 
 const personalProfile: CustomerProfile = {
   firstName: "Jordan",
@@ -32,19 +38,19 @@ const personalProfile: CustomerProfile = {
 };
 
 const validDraft = (draft: Partial<ProfileDraft> = {}): ProfileDraft => ({
-  ...profileDraftOf(sampleProfile),
+  ...profileDraftOf(sampleProfile, phoneRegion),
   ...draft,
 });
 
 const invalidFields = (draft: ProfileDraft) =>
-  Result.match(validateProfileDraft(draft), {
+  Result.match(validateProfileDraft(draft, phoneRegion), {
     onSuccess: () => undefined,
     onFailure: (invalid) => invalid,
   });
 
 describe("profileDraftOf", () => {
   test("keeps every stored business field", () => {
-    expect(profileDraftOf(sampleProfile)).toEqual({
+    expect(profileDraftOf(sampleProfile, phoneRegion)).toEqual({
       firstName: "Alex",
       lastName: "Sample",
       phone: "+420 600 000 000",
@@ -61,7 +67,7 @@ describe("profileDraftOf", () => {
   });
 
   test("reads personal billing and empty stored values", () => {
-    expect(profileDraftOf(personalProfile)).toMatchObject({
+    expect(profileDraftOf(personalProfile, phoneRegion)).toMatchObject({
       firstName: "Jordan",
       lastName: "",
       phone: "",
@@ -73,13 +79,17 @@ describe("profileDraftOf", () => {
 
   test("reads a profile without billing as no billing details", () => {
     expect(
-      profileDraftOf({ ...personalProfile, billing: null }).billingKind
+      profileDraftOf({ ...personalProfile, billing: null }, phoneRegion)
+        .billingKind
     ).toBe("none");
   });
 
   test("shows a stored phone number in international format", () => {
     const stored = Option.getOrThrow(parsePhoneNumber("600 000 001", "CZ"));
-    const draft = profileDraftOf({ ...sampleProfile, phone: stored });
+    const draft = profileDraftOf(
+      { ...sampleProfile, phone: stored },
+      phoneRegion
+    );
     expect(draft.phone).toBe(formatPhoneNumber(stored));
     expect(draft.phone).not.toBe(stored);
     expect(parsePhoneNumber(draft.phone, "CZ")).toEqual(Option.some(stored));
@@ -88,27 +98,36 @@ describe("profileDraftOf", () => {
   test.each(["not a phone", "tel. 600 000 001"])(
     "shows stored text that isn't just a phone number as stored: %p",
     (stored) => {
-      expect(profileDraftOf({ ...sampleProfile, phone: stored }).phone).toBe(
-        stored
-      );
+      expect(
+        profileDraftOf({ ...sampleProfile, phone: stored }, phoneRegion).phone
+      ).toBe(stored);
     }
   );
 
   test("counts the stored number as unchanged however it was typed", () => {
     const stored = Option.getOrThrow(parsePhoneNumber("600 000 001", "CZ"));
-    const saved = profileDraftOf({ ...sampleProfile, phone: stored });
-    expect(sameDraft({ ...saved, phone: "600000001" }, saved)).toBe(true);
-    expect(sameDraft({ ...saved, phone: stored }, saved)).toBe(true);
+    const saved = profileDraftOf(
+      { ...sampleProfile, phone: stored },
+      phoneRegion
+    );
+    expect(
+      sameDraft({ ...saved, phone: "600000001" }, saved, phoneRegion)
+    ).toBe(true);
+    expect(sameDraft({ ...saved, phone: stored }, saved, phoneRegion)).toBe(
+      true
+    );
   });
 });
 
 describe("validateProfileDraft", () => {
-  test("submits the complete stored profile unchanged", () => {
-    expect(validateProfileDraft(validDraft())).toEqual(
+  test("submits the complete stored profile, its phone as the number", () => {
+    expect<Result.Result<unknown, unknown>>(
+      validateProfileDraft(validDraft(), phoneRegion)
+    ).toEqual(
       Result.succeed({
         firstName: "Alex",
         lastName: "Sample",
-        phone: "+420 600 000 000",
+        phone: "+420600000000",
         billing: {
           kind: "business",
           companyName: "Sample Studio s.r.o.",
@@ -126,7 +145,7 @@ describe("validateProfileDraft", () => {
 
   test("editing only the name keeps every billing field", () => {
     const input = Result.getOrThrow(
-      validateProfileDraft(validDraft({ firstName: "Alexa" }))
+      validateProfileDraft(validDraft({ firstName: "Alexa" }), phoneRegion)
     );
     expect(input.firstName).toBe("Alexa");
     expect(input.billing).toMatchObject({
@@ -135,17 +154,17 @@ describe("validateProfileDraft", () => {
       vatId: "CZ00000000",
       city: "Sampletown",
     });
-    expect(input.phone).toBe("+420 600 000 000");
+    expect<string | undefined>(input.phone).toBe("+420600000000");
   });
 
   test("editing only billing keeps the name and phone", () => {
     const input = Result.getOrThrow(
-      validateProfileDraft(validDraft({ city: "Othertown" }))
+      validateProfileDraft(validDraft({ city: "Othertown" }), phoneRegion)
     );
     expect(input).toMatchObject({
       firstName: "Alex",
       lastName: "Sample",
-      phone: "+420 600 000 000",
+      phone: "+420600000000",
     });
     expect(input.billing?.city).toBe("Othertown");
   });
@@ -153,7 +172,8 @@ describe("validateProfileDraft", () => {
   test("trims entered text and leaves blank optional text out", () => {
     const input = Result.getOrThrow(
       validateProfileDraft(
-        validDraft({ firstName: "  Alex ", lastName: "   ", phone: "" })
+        validDraft({ firstName: "  Alex ", lastName: "   ", phone: "" }),
+        phoneRegion
       )
     );
     expect(input.firstName).toBe("Alex");
@@ -163,14 +183,14 @@ describe("validateProfileDraft", () => {
 
   test("no billing details sends no billing", () => {
     const input = Result.getOrThrow(
-      validateProfileDraft(validDraft({ billingKind: "none" }))
+      validateProfileDraft(validDraft({ billingKind: "none" }), phoneRegion)
     );
     expect(input.billing).toBeUndefined();
   });
 
   test("personal billing sends no company fields", () => {
     const input = Result.getOrThrow(
-      validateProfileDraft(validDraft({ billingKind: "personal" }))
+      validateProfileDraft(validDraft({ billingKind: "personal" }), phoneRegion)
     );
     expect(input.billing).toEqual({
       kind: "personal",
@@ -217,7 +237,8 @@ describe("validateProfileDraft", () => {
     expect(
       Result.isSuccess(
         validateProfileDraft(
-          validDraft({ billingKind: "personal", companyName: "" })
+          validDraft({ billingKind: "personal", companyName: "" }),
+          phoneRegion
         )
       )
     ).toBe(true);
@@ -231,7 +252,7 @@ describe("validateCompletionDraft", () => {
       firstName: "Jordan",
     };
     expect(
-      Result.getOrThrow(validateCompletionDraft(draft, "FRIEND-1"))
+      Result.getOrThrow(validateCompletionDraft(draft, "FRIEND-1", phoneRegion))
     ).toMatchObject({
       firstName: "Jordan",
       referralCode: "FRIEND-1",
@@ -241,7 +262,9 @@ describe("validateCompletionDraft", () => {
 
   test("an emptied referral code is left out", () => {
     const draft = { ...completionDraftOf(undefined), firstName: "Jordan" };
-    const input = Result.getOrThrow(validateCompletionDraft(draft, undefined));
+    const input = Result.getOrThrow(
+      validateCompletionDraft(draft, undefined, phoneRegion)
+    );
     expect(input.referralCode).toBeUndefined();
     expect(input.prefilledReferralCode).toBeUndefined();
   });
@@ -255,7 +278,7 @@ describe("validateCompletionDraft", () => {
       country: "CZE",
     };
     expect(
-      Result.match(validateCompletionDraft(draft, undefined), {
+      Result.match(validateCompletionDraft(draft, undefined, phoneRegion), {
         onSuccess: () => undefined,
         onFailure: (invalid) => invalid,
       })
@@ -266,26 +289,70 @@ describe("validateCompletionDraft", () => {
   });
 });
 
+describe("an account with a saved language", () => {
+  const german = accountPhoneRegion("de-DE");
+  const nationalNumber = "0151 23456789";
+
+  test("submits a phone without a country calling code as its region's number", () => {
+    const draft = validDraft({ phone: nationalNumber });
+    expect<Result.Result<string | undefined, unknown>>(
+      Result.map(validateProfileDraft(draft, german), ({ phone }) => phone)
+    ).toEqual(Result.succeed("+4915123456789"));
+    expect(
+      Result.isSuccess(
+        validateCompletionDraft(
+          { ...draft, referralCode: "" },
+          undefined,
+          german
+        )
+      )
+    ).toBe(true);
+    expect(invalidFields(draft)?.fields).toEqual({ phone: "invalid-phone" });
+  });
+
+  test("counts its stored number as unchanged as typed in that region", () => {
+    const saved = profileDraftOf(
+      { ...sampleProfile, phone: "+4915123456789" },
+      german
+    );
+    expect(sameDraft({ ...saved, phone: nationalNumber }, saved, german)).toBe(
+      true
+    );
+  });
+});
+
 describe("drafts", () => {
   test("compares by value", () => {
-    expect(sameDraft(validDraft(), validDraft())).toBe(true);
-    expect(sameDraft(validDraft(), validDraft({ zip: "111 11" }))).toBe(false);
+    expect(sameDraft(validDraft(), validDraft(), phoneRegion)).toBe(true);
+    expect(
+      sameDraft(validDraft(), validDraft({ zip: "111 11" }), phoneRegion)
+    ).toBe(false);
   });
 
   test("a phone counts as the number the Workspace stores for it", () => {
     const stored = validDraft({ phone: "+420600000000" });
-    expect(sameDraft(validDraft({ phone: "600 000 000" }), stored)).toBe(true);
-    expect(sameDraft(validDraft({ phone: "+420 600 000 000" }), stored)).toBe(
-      true
+    expect(
+      sameDraft(validDraft({ phone: "600 000 000" }), stored, phoneRegion)
+    ).toBe(true);
+    expect(
+      sameDraft(validDraft({ phone: "+420 600 000 000" }), stored, phoneRegion)
+    ).toBe(true);
+    expect(
+      sameDraft(validDraft({ phone: "600 000 001" }), stored, phoneRegion)
+    ).toBe(false);
+    expect(sameDraft(validDraft({ phone: "" }), stored, phoneRegion)).toBe(
+      false
     );
-    expect(sameDraft(validDraft({ phone: "600 000 001" }), stored)).toBe(false);
-    expect(sameDraft(validDraft({ phone: "" }), stored)).toBe(false);
   });
 
   test("a phone without a number compares as entered", () => {
     const stored = validDraft({ phone: "legacy" });
-    expect(sameDraft(validDraft({ phone: "legacy" }), stored)).toBe(true);
-    expect(sameDraft(validDraft({ phone: "other" }), stored)).toBe(false);
+    expect(
+      sameDraft(validDraft({ phone: "legacy" }), stored, phoneRegion)
+    ).toBe(true);
+    expect(sameDraft(validDraft({ phone: "other" }), stored, phoneRegion)).toBe(
+      false
+    );
   });
 
   test("each billing choice shows its own fields", () => {

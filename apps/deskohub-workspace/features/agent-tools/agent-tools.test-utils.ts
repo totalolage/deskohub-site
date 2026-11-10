@@ -6,12 +6,11 @@ import {
   DotyposTableSchema,
 } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
-import { TestClock } from "effect/testing";
 import {
   CustomerAccountContactService,
   CustomerAccountReservationOwnership,
+  CustomerAccountSections,
   type CustomerAgentGrant,
-  OptionalAccountActivityGuard,
 } from "@/features/account";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
@@ -82,15 +81,6 @@ export const workspaceInstantToday = (time: string) =>
       plainTime: Temporal.PlainTime.from(time),
     })
     .toInstant();
-
-/** Runs an Effect with the clock fixed at an instant. */
-export const atInstant =
-  (instant: Temporal.Instant) =>
-  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    TestClock.setTime(instant.epochMilliseconds).pipe(
-      Effect.andThen(effect),
-      Effect.provide(TestClock.layer())
-    );
 
 /** A confirmed booking of a table for a whole Prague date. */
 export const makeTestOccupancy = (input: {
@@ -244,8 +234,8 @@ type CustomerAgentAccountFakes = {
   readonly authentication?: Layer.PartialEffectful<
     CustomerAuthentication["Service"]
   >;
-  readonly activity?: Layer.PartialEffectful<
-    OptionalAccountActivityGuard["Service"]
+  readonly sections?: Layer.PartialEffectful<
+    CustomerAccountSections["Service"]
   >;
   readonly contact?: Layer.PartialEffectful<
     CustomerAccountContactService["Service"]
@@ -266,12 +256,12 @@ export const inMemoryCustomerAgentCallServices = (
 ) =>
   Layer.succeed(CustomerAgentCallServices, {
     forCaller: ({ grant }) => {
-      const { authentication, activity, contact, ownership } = fakes(grant);
+      const { authentication, sections, contact, ownership } = fakes(grant);
 
       return Layer.mergeAll(
         Layer.succeed(CurrentCustomerAgentGrant, grant),
         Layer.mock(CustomerAuthentication, authentication ?? {}),
-        Layer.mock(OptionalAccountActivityGuard, activity ?? {}),
+        Layer.mock(CustomerAccountSections, sections ?? {}),
         Layer.mock(CustomerAccountContactService, contact ?? {}),
         Layer.mock(CustomerAccountReservationOwnership, ownership ?? {})
       );

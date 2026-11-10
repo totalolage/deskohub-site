@@ -2,12 +2,12 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
-import { Context, Effect, Layer, Logger, Result } from "effect";
+import { Context, Effect, Layer, Logger } from "effect";
 import {
   type IWorkspaceFeatureFlagService,
   WorkspaceFeatureFlagService,
 } from "@/features/feature-flags/backend";
-import { ReleaseGateUnavailableError } from "@/features/feature-flags/backend/release-gate";
+import type { GlobalRelease } from "@/features/feature-flags/backend/global-release";
 import { DiscountReleaseGateService } from "./discount-release-gate.service";
 
 type LogRecord = {
@@ -22,7 +22,16 @@ const logger = Logger.make((options) => {
     message: options.message[0],
   });
 });
-const connection = mock(() => Promise.resolve());
+// Resolves once the render reaches request time; a prerender never does.
+let requestStarts: Promise<void> = Promise.resolve();
+const connection = mock(() => requestStarts);
+// The `calendar_sales` release for every visitor; PostHog decides an
+// undecided one per visitor.
+let calendarSalesRelease: GlobalRelease = "undecided";
+const loadGlobalRelease = mock(() => Promise.resolve(calendarSalesRelease));
+mock.module("@/features/feature-flags/backend/global-release.server", () => ({
+  loadGlobalRelease,
+}));
 const discoverActiveSales = mock(() =>
   Effect.die("provider should not be called")
 );
@@ -51,18 +60,16 @@ const { getActivePublicSales } = await import("./active-public-sales.server");
 const originalGatesLive = DiscountReleaseGateService.Live;
 
 const installFeatureFlags = (
-  decision: IWorkspaceFeatureFlagService["decision"]
+  evaluateFlags: IWorkspaceFeatureFlagService["evaluateFlags"]
 ) => {
   Object.assign(DiscountReleaseGateService, {
     Live: DiscountReleaseGateService.Default.pipe(
       Layer.provide(
         Layer.succeed(WorkspaceFeatureFlagService, {
-          // The banner can be stored in the home page's shell, so it reads
-          // the gates' decision for stored output only.
-          decision,
-          evaluateFlags: () => Effect.die("evaluateFlags should not be called"),
+          evaluateFlags,
           isEnabled: () => Effect.die("isEnabled should not be called"),
           constantValue: () => Effect.die("constantValue should not be called"),
+          decision: () => Effect.die("decision should not be called"),
         })
       )
     ),
@@ -80,51 +87,70 @@ afterAll(() => {
 });
 
 afterEach(() => {
+  requestStarts = Promise.resolve();
+  calendarSalesRelease = "undecided";
+  loadGlobalRelease.mockClear();
   connection.mockClear();
   discoverActiveSales.mockClear();
   logRecords.length = 0;
 });
 
-const activeSales = () =>
-  Effect.runPromise(
-    getActivePublicSales({ locale: "en-US" }).pipe(
-      Effect.provide(Logger.layer([logger])),
-      Effect.result
-    )
-  );
-
 describe("getActivePublicSales", () => {
-  test("fails without request or provider work while PostHog can't decide the gates, and logs it", async () => {
-    const decision = mock(() => Effect.fail(evaluationError()));
-    installFeatureFlags(decision);
+  test("answers no sales without the request while calendar sales are off for everyone", async () => {
+    calendarSalesRelease = "off";
+    const evaluateFlags = mock(() =>
+      Effect.die("evaluateFlags should not be called")
+    );
+    installFeatureFlags(evaluateFlags);
 
-    const result = await activeSales();
+    await expect(
+      Effect.runPromise(getActivePublicSales({ locale: "en-US" }))
+    ).resolves.toEqual([]);
 
-    expect(Result.isFailure(result)).toBe(true);
-    if (Result.isFailure(result)) {
-      expect(result.failure).toBeInstanceOf(ReleaseGateUnavailableError);
-      expect(result.failure.flags).toEqual([
-        "calendar_sales",
-        "customer_discounts",
-        "discount_codes",
-      ]);
-    }
-    expect(decision).toHaveBeenCalledWith("calendar_sales");
+    expect(loadGlobalRelease).toHaveBeenCalledWith("calendar_sales");
     expect(connection).not.toHaveBeenCalled();
+    expect(evaluateFlags).not.toHaveBeenCalled();
+    expect(discoverActiveSales).not.toHaveBeenCalled();
+  });
+
+  test("asks PostHog about the visitor only at request time", async () => {
+    // posthog-node reads the clock before its request, which Next.js reports
+    // as an error while prerendering (#1187).
+    const { promise: requestTime, resolve: startRequest } =
+      Promise.withResolvers<void>();
+    requestStarts = requestTime;
+    const evaluateFlags = mock(() => Effect.fail(evaluationError()));
+    installFeatureFlags(evaluateFlags);
+
+    const sales = Effect.runPromise(getActivePublicSales({ locale: "en-US" }));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(connection).toHaveBeenCalledTimes(1);
+    expect(evaluateFlags).not.toHaveBeenCalled();
+
+    startRequest();
+    await expect(sales).resolves.toEqual([]);
+    expect(evaluateFlags).toHaveBeenCalledTimes(1);
+  });
+
+  test("fails closed without provider work and logs evaluation failures", async () => {
+    const evaluateFlags = mock(() => Effect.fail(evaluationError()));
+    installFeatureFlags(evaluateFlags);
+
+    await expect(
+      Effect.runPromise(
+        getActivePublicSales({ locale: "en-US" }).pipe(
+          Effect.provide(Logger.layer([logger]))
+        )
+      )
+    ).resolves.toEqual([]);
+
+    expect(evaluateFlags).toHaveBeenCalledWith({
+      flagKeys: ["calendar_sales", "customer_discounts", "discount_codes"],
+    });
     expect(discoverActiveSales).not.toHaveBeenCalled();
     expect(logRecords).toContainEqual({
       level: "Warn",
-      message: "Release gate unavailable; the read fails",
+      message: "Release gate unavailable; it stays closed",
     });
-  });
-
-  test("answers no sales without request or provider work while the sale gate is off", async () => {
-    installFeatureFlags((key) => Effect.succeed(key !== "calendar_sales"));
-
-    const result = await activeSales();
-
-    expect(result).toEqual(Result.succeed([]));
-    expect(connection).not.toHaveBeenCalled();
-    expect(discoverActiveSales).not.toHaveBeenCalled();
   });
 });

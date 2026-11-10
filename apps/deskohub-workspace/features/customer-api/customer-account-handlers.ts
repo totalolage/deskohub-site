@@ -5,16 +5,19 @@ import {
   CurrentCustomerSession,
   type CustomerAccountState,
   type CustomerAgentConnection,
+  type CustomerAnalyticsConsentSync,
+  type CustomerAnalyticsPreference,
+  type CustomerAnalyticsPreferenceSaved,
   CustomerMarketingPreferencesRejected,
-  CustomerProfileCompletionSave,
-  CustomerProfileSave,
   CustomerServiceUnavailable,
   type CustomerSession,
   CustomerSessionRequired,
   customerReferralCodeHeader,
+  profileCompletionSaveOf,
+  profileUpdateSaveOf,
   WorkspaceCustomerApi,
 } from "@deskohub/workspace-customer-api";
-import { Effect, Layer, Match, Schema } from "effect";
+import { Effect, Layer, Match, Option } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { loadAccountState } from "@/features/account/backend/account-state";
 import { accountStateCapabilitiesForRun } from "@/features/account/backend/account-state-capabilities";
@@ -22,6 +25,7 @@ import { CustomerAgentConnections } from "@/features/account/backend/auth/custom
 import { requestCurrentAccountDeletion } from "@/features/account/backend/current-account-deletion";
 import { listCurrentCustomerPasskeys } from "@/features/account/backend/current-customer-passkeys";
 import { currentReferralOverview } from "@/features/account/backend/current-referral-overview";
+import { requireVerifiedIdentity } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { removeCurrentCustomerAvatar } from "@/features/account/backend/customer-avatar-mutations";
 import { CustomerLocalePreference } from "@/features/account/backend/customer-locale-preference.service";
@@ -30,14 +34,29 @@ import {
   updateCurrentCustomerProfile,
 } from "@/features/account/backend/customer-profile-saving";
 import { acknowledgeCurrentSignupReferral } from "@/features/account/backend/signup-referral";
+import { CustomerAccountAccessError } from "@/features/account/customer-account";
 import type { CustomerAgentConnection as AgentConnectionRecord } from "@/features/account/customer-agent-connections";
 import type { AccountPasskey as AccountPasskeyRecord } from "@/features/account/passkeys";
+import {
+  type AccountAnalyticsDecisionForDevice,
+  type DeviceAnalyticsChoice,
+  syncAppAnalyticsConsent,
+} from "@/features/legal/backend/analytics-consent-mirror";
+import {
+  readAnalyticsPreference,
+  saveAnalyticsPreference,
+} from "@/features/legal/backend/analytics-consent-preference";
 import {
   MarketingPreferences,
   MarketingPreferencesMutationError,
 } from "@/features/legal/backend/marketing-preferences.service";
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
+import { providePerRequest } from "@/shared/backend/provide-per-request";
+import {
+  parseInstant,
+  temporalInstantToIsoString,
+} from "@/shared/utils/temporal";
 import { CustomerAccountLayers } from "./customer-account-layers";
 import {
   answerCustomerApiFailure,
@@ -47,21 +66,11 @@ import {
 import { customerAvatarUploadHandler } from "./customer-avatar-upload";
 
 /**
- * The save a profile payload asks for, its entered phone decoded to the phone
- * number it holds. The payload already passed the same rules, so a failure
- * here is a defect, not a client error.
- */
-const readProfileSave = <S extends Schema.Top>(schema: S) => {
-  const decode = Schema.decodeEffect(schema);
-  return (payload: S["Encoded"]) => decode(payload).pipe(Effect.orDie);
-};
-const readProfileUpdate = readProfileSave(CustomerProfileSave);
-const readProfileCompletion = readProfileSave(CustomerProfileCompletionSave);
-
-/**
  * The account group's handlers. Each endpoint builds its operation's Layers
- * per request from `CustomerAccountLayers` and answers every failure with
- * the contract's fixed public errors.
+ * from `CustomerAccountLayers` and answers every failure with the
+ * contract's fixed public errors. An endpoint whose Layers carry a release
+ * gate builds them with `providePerRequest`, so the gate decides for its
+ * request alone; the others keep nothing for a request.
  */
 export const CustomerAccountApiHandlers = HttpApiBuilder.group(
   WorkspaceCustomerApi,
@@ -108,11 +117,17 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
       services.consentLedger
     );
 
+    /** The analytics consent ledger under the signed-in account's authority. */
+    const analyticsConsent = Layer.mergeAll(
+      authentication,
+      services.analyticsConsentLedger
+    );
+
     return (
       handlers
         .handle("getAccount", ({ headers }) =>
           loadAccountState.pipe(
-            Effect.provide(
+            providePerRequest(
               accountStateCapabilitiesForRun(
                 { referralCode: headers[customerReferralCodeHeader] },
                 { ...services, authentication },
@@ -123,9 +138,9 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
           )
         )
         .handle("updateProfile", ({ payload }) =>
-          readProfileUpdate(payload).pipe(
+          profileUpdateSaveOf(payload).pipe(
             Effect.flatMap(updateCurrentCustomerProfile),
-            Effect.provide(profileSaving),
+            providePerRequest(profileSaving),
             answerCustomerApiFailure("customerApi.updateProfile")
           )
         )
@@ -145,9 +160,9 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
           )
         )
         .handle("completeProfile", ({ headers, payload }) =>
-          readProfileCompletion(payload).pipe(
+          profileCompletionSaveOf(payload).pipe(
             Effect.flatMap(completeCurrentCustomerProfile),
-            Effect.provide(
+            providePerRequest(
               profileCompletion(headers[customerReferralCodeHeader])
             ),
             answerCustomerApiFailure("customerApi.completeProfile")
@@ -156,7 +171,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
         .handle("uploadAvatar", yield* customerAvatarUploadHandler)
         .handle("removeAvatar", () =>
           removeCurrentCustomerAvatar().pipe(
-            Effect.provide(
+            providePerRequest(
               Layer.mergeAll(
                 authentication,
                 services.resolver,
@@ -182,7 +197,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
         )
         .handle("listPasskeys", () =>
           listCurrentCustomerPasskeys.pipe(
-            Effect.provide(
+            providePerRequest(
               Layer.mergeAll(
                 authentication,
                 services.passkeys,
@@ -226,9 +241,61 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
               Effect.flatMap(answerMarketingPreferencesSave)
             )
         )
+        .handle("syncAnalyticsConsent", ({ payload: { choice, locale } }) =>
+          syncAppAnalyticsConsent({
+            // A date that names no instant leaves the choice undated, as
+            // a consent cookie without a valid timestamp does.
+            choice: Option.map(
+              Option.fromNullishOr(choice),
+              (made): DeviceAnalyticsChoice => ({
+                decision: made.analytics ? "grant" : "withdraw",
+                locale,
+                decidedAt: parseInstant(made.decidedAt),
+              })
+            ),
+          }).pipe(
+            Effect.provide(analyticsConsent),
+            answerCustomerApiFailure("customerApi.syncAnalyticsConsent"),
+            Effect.map(answerAnalyticsConsentSync)
+          )
+        )
+        .handle("getAnalyticsPreference", () =>
+          readAnalyticsPreference().pipe(
+            Effect.flatMap((state) =>
+              state.status === "available"
+                ? Effect.succeed<CustomerAnalyticsPreference>({
+                    granted: state.granted,
+                  })
+                : signedOutAnalyticsAccount
+            ),
+            Effect.provide(analyticsConsent),
+            answerCustomerApiFailure("customerApi.getAnalyticsPreference")
+          )
+        )
+        .handle("saveAnalyticsPreference", ({ payload: { granted, locale } }) =>
+          saveAnalyticsPreference({ granted, locale }).pipe(
+            Effect.flatMap(
+              Option.match({
+                onNone: () => signedOutAnalyticsAccount,
+                onSome: ({ decidedAt }) =>
+                  Effect.succeed<CustomerAnalyticsPreferenceSaved>({
+                    granted,
+                    decidedAt: temporalInstantToIsoString(decidedAt),
+                  }),
+              })
+            ),
+            Effect.provide(
+              Layer.mergeAll(
+                analyticsConsent,
+                services.analyticsPersonAnonymisation
+              )
+            ),
+            answerCustomerApiFailure("customerApi.saveAnalyticsPreference")
+          )
+        )
         .handle("getReferrals", () =>
           currentReferralOverview().pipe(
-            Effect.provide(
+            providePerRequest(
               Layer.mergeAll(
                 authentication,
                 services.resolver,
@@ -240,7 +307,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
         )
         .handle("acknowledgeSignupReferral", () =>
           acknowledgeCurrentSignupReferral().pipe(
-            Effect.provide(
+            providePerRequest(
               Layer.mergeAll(
                 authentication,
                 services.resolver,
@@ -339,6 +406,38 @@ const answerMarketingPreferencesSave = (save: MarketingPreferencesSave) =>
     ),
     Match.exhaustive
   );
+
+/**
+ * The account's analytics decision the app takes, dated at its instant
+ * truncated to the millisecond, so the app's copy never outranks the
+ * decision it copies and syncing it back appends nothing.
+ */
+const answerAnalyticsConsentSync = (
+  decision: Option.Option<AccountAnalyticsDecisionForDevice>
+): CustomerAnalyticsConsentSync =>
+  Option.match(decision, {
+    onNone: () => ({ kind: "unchanged" }),
+    onSome: ({ decision, decidedAt }) => ({
+      kind: decision,
+      decidedAt: temporalInstantToIsoString(decidedAt),
+    }),
+  });
+
+/**
+ * Why an analytics consent operation found no signed-in account although
+ * the session middleware read one: the session ended since, or the
+ * account's deletion is pending, which reading the session again tells
+ * apart.
+ */
+const signedOutAnalyticsAccount = Effect.flatMap(
+  CustomerAuthentication,
+  ({ currentUser }) => currentUser
+).pipe(
+  Effect.flatMap(requireVerifiedIdentity),
+  Effect.andThen(
+    Effect.fail(new CustomerAccountAccessError({ reason: "unauthenticated" }))
+  )
+);
 
 type LoadedAccountState = Effect.Success<typeof loadAccountState>;
 

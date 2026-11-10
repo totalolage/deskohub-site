@@ -67,6 +67,7 @@ import {
 } from "./account-data-export.service";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import { CustomerAccountResolver } from "./customer-account-resolver.service";
+import { CustomerAccountSections } from "./customer-account-sections";
 import { signedInAuthentication } from "./customer-authentication.test-utils";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 
@@ -270,6 +271,8 @@ const seedDiscountApplication = async (
         sequence,
         publicDiscountId,
         label: "Synthetic discount",
+        // Staff-facing only: the customer's export keeps the guest label.
+        staffLabel: sensitive("staff-label"),
         adjustment: { internal: sensitive("adjustment") },
         productIdentity: { internal: sensitive("product-identity") },
         provenance: { internal: sensitive("provenance") },
@@ -526,6 +529,7 @@ const exportService = (
   );
   return AccountDataExportService.Default.pipe(
     Layer.provide(CustomerAccountResolver.Default),
+    Layer.provide(CustomerAccountSections.Default),
     Layer.provide(
       Layer.mergeAll(
         session,

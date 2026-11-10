@@ -13,7 +13,12 @@ import {
 } from "../customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import { resolveCustomerAccountLinkUnderHeldLock } from "./customer-account-resolver.service";
+import { resolveHeldCustomerAccountLink } from "./customer-account-resolver.service";
+import {
+  CustomerAccountSections,
+  HeldCustomerAccount,
+} from "./customer-account-sections";
+import { CustomerAuthentication } from "./customer-authentication.service";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 
 const readLinkedProfile = (
@@ -48,24 +53,16 @@ interface ICustomerProfileService {
     input: CustomerProfileSave
   ) => Effect.Effect<CustomerProfile, CustomerAccountAccessError>;
   /**
+   * Creates or finds the account's Dotypos customer for its login email,
+   * holding the account's section. Inside a section that already holds the
+   * account, such as checkout state creation, it runs under that hold.
    * The signup referral is stored with the link only when this call creates
-   * it; recording it is left to the caller once the account lock is released.
+   * it; recording it is left to the caller once the section is released.
    */
   readonly create: (
     accountId: CustomerAccountId,
-    verifiedEmail: string,
     input: CustomerProfileSave,
     signupReferral?: ReferralSignupIntent
-  ) => Effect.Effect<CustomerProfileCreation, CustomerAccountAccessError>;
-  /**
-   * `create` for a caller that already holds the account lock, such as
-   * checkout state creation under the account activity guard. The lock isn't
-   * reentrant, so `create` would wait on the caller forever.
-   */
-  readonly createUnderHeldLock: (
-    accountId: CustomerAccountId,
-    verifiedEmail: string,
-    input: CustomerProfileSave
   ) => Effect.Effect<CustomerProfileCreation, CustomerAccountAccessError>;
 }
 
@@ -77,9 +74,10 @@ export class CustomerProfileService extends Context.Service<
     this,
     Effect.gen(function* () {
       const links = yield* CustomerAccountLinkRepository;
+      const sections = yield* CustomerAccountSections;
       const dotypos = yield* CustomerDotyposAdapter;
       const reviewAccounts = yield* ReviewAccounts;
-      const lockedResolution = {
+      const heldResolution = {
         findLink: links.find,
         isReviewAccount: reviewAccounts.isReviewAccount,
         classify: dotypos.classifyExactEmailCustomers,
@@ -98,148 +96,134 @@ export class CustomerProfileService extends Context.Service<
 
       const update = Effect.fn("CustomerProfileService.update")(
         (account: LinkedCustomerAccount, input: CustomerProfileSave) =>
-          links
-            .withAccountLock(
-              account.accountId,
-              Effect.gen(function* () {
-                yield* requireAccountActivity(links, account.accountId);
-                yield* dotypos
-                  .updateCustomerProfile(account.dotyposCustomerId, input)
-                  .pipe(
-                    Effect.mapError(
-                      mapCustomerAccountFailure("dotypos.customer-lookup")
-                    )
-                  );
-                return yield* readLinkedProfile(
-                  dotypos,
-                  account.dotyposCustomerId
+          sections.withActiveAccount(
+            account.accountId,
+            Effect.gen(function* () {
+              yield* dotypos
+                .updateCustomerProfile(account.dotyposCustomerId, input)
+                .pipe(
+                  Effect.mapError(
+                    mapCustomerAccountFailure("dotypos.customer-lookup")
+                  )
                 );
-              })
-            )
-            .pipe(
-              Effect.mapError(mapCustomerAccountFailure("account-link.lock"))
-            )
+              return yield* readLinkedProfile(
+                dotypos,
+                account.dotyposCustomerId
+              );
+            }),
+            { recheck: "active" }
+          )
       );
 
-      const createUnderHeldLock = Effect.fn(
-        "CustomerProfileService.createUnderHeldLock"
-      )(function* (
-        accountId: CustomerAccountId,
-        verifiedEmail: string,
-        input: CustomerProfileSave,
-        signupReferral?: ReferralSignupIntent
-      ) {
-        yield* Effect.logDebug("Account profile create lock scope entered");
-        yield* requireAccountActivity(links, accountId);
+      const createHeld = Effect.fn("CustomerProfileService.createHeld")(
+        function* (
+          input: CustomerProfileSave,
+          signupReferral?: ReferralSignupIntent
+        ) {
+          const { accountId, email } = yield* HeldCustomerAccount;
 
-        // Resolve before creating, so a returning customer's exact-email
-        // profile, or the one an earlier attempt created before its link
-        // write failed, is linked instead of duplicated.
-        const resolution = yield* resolveCustomerAccountLinkUnderHeldLock(
-          lockedResolution,
-          { accountId, email: verifiedEmail },
-          signupReferral
-        ).pipe(
-          Effect.catchIf(isCustomerProfileMissing, () => Effect.succeed(null))
-        );
-        if (resolution) {
-          const profile = yield* readLinkedProfile(
-            dotypos,
-            resolution.account.dotyposCustomerId
+          // Resolve before creating, so a returning customer's exact-email
+          // profile, or the one an earlier attempt created before its link
+          // write failed, is linked instead of duplicated.
+          const resolution = yield* resolveHeldCustomerAccountLink(
+            heldResolution,
+            signupReferral
+          ).pipe(
+            Effect.catchIf(isCustomerProfileMissing, () => Effect.succeed(null))
           );
-          // Under the account lock only this call can have claimed the link.
-          return {
-            account: resolution.account,
-            profile,
-            created: resolution.autoLinked,
-          } satisfies CustomerProfileCreation;
-        }
+          if (resolution) {
+            const profile = yield* readLinkedProfile(
+              dotypos,
+              resolution.account.dotyposCustomerId
+            );
+            // Holding the account, only this call can have claimed the link.
+            return {
+              account: resolution.account,
+              profile,
+              created: resolution.autoLinked,
+            } satisfies CustomerProfileCreation;
+          }
 
-        const created = yield* dotypos
-          .createCustomerProfile({
-            email: verifiedEmail,
-            profile: input,
-          })
-          .pipe(
-            Effect.mapError(
-              mapCustomerAccountFailure("dotypos.customer-lookup")
-            )
-          );
+          const created = yield* dotypos
+            .createCustomerProfile({ email, profile: input })
+            .pipe(
+              Effect.mapError(
+                mapCustomerAccountFailure("dotypos.customer-lookup")
+              )
+            );
 
-        const claimed = yield* links
-          .claim(accountId, created.customerId, signupReferral)
-          .pipe(
-            Effect.mapError(mapCustomerAccountFailure("account-link.claim"))
-          );
-        if (claimed.kind === "claimed") {
-          return yield* new CustomerAccountAccessError({
-            reason: "link-required",
-            linkReason: "claimed",
-          });
-        }
+          const claimed = yield* links
+            .claim(accountId, created.customerId, signupReferral)
+            .pipe(
+              Effect.mapError(mapCustomerAccountFailure("account-link.claim"))
+            );
+          if (claimed.kind === "claimed") {
+            return yield* new CustomerAccountAccessError({
+              reason: "link-required",
+              linkReason: "claimed",
+            });
+          }
 
-        const account = {
-          accountId,
-          dotyposCustomerId: claimed.customerId,
-        };
-        if (claimed.customerId === created.customerId) {
+          const account = {
+            accountId,
+            dotyposCustomerId: claimed.customerId,
+          };
+          if (claimed.customerId === created.customerId) {
+            return {
+              account,
+              profile: created.profile,
+              created: claimed.created,
+            } satisfies CustomerProfileCreation;
+          }
+
+          const profile = yield* readLinkedProfile(dotypos, claimed.customerId);
           return {
             account,
-            profile: created.profile,
+            profile,
             created: claimed.created,
           } satisfies CustomerProfileCreation;
         }
-
-        const profile = yield* readLinkedProfile(dotypos, claimed.customerId);
-        return {
-          account,
-          profile,
-          created: claimed.created,
-        } satisfies CustomerProfileCreation;
-      });
+      );
 
       const create = Effect.fn("CustomerProfileService.create")(
         (
           accountId: CustomerAccountId,
-          verifiedEmail: string,
           input: CustomerProfileSave,
           signupReferral?: ReferralSignupIntent
         ) =>
-          links
-            .withAccountLock(
-              accountId,
-              createUnderHeldLock(
-                accountId,
-                verifiedEmail,
-                input,
-                signupReferral
-              )
-            )
-            .pipe(
-              Effect.mapError(mapCustomerAccountFailure("account-link.lock")),
-              Effect.tap(() =>
-                Effect.logDebug("Account profile create lock scope passed")
-              )
-            )
+          sections.withActiveAccount(
+            accountId,
+            createHeld(input, signupReferral),
+            { recheck: "active" }
+          )
       );
 
       return {
         create,
-        createUnderHeldLock: (accountId, verifiedEmail, input) =>
-          createUnderHeldLock(accountId, verifiedEmail, input),
         load,
         update,
       } satisfies ICustomerProfileService;
     })
   );
 
-  static Live = this.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        CustomerAccountLinkRepository.Live,
-        CustomerDotyposAdapter.Live,
-        ReviewAccounts.Live
+  /**
+   * The service whose sections read the session through this
+   * authentication, such as an agent's access token instead of the browser
+   * session.
+   */
+  static withAuthentication = <E, R>(
+    authentication: Layer.Layer<CustomerAuthentication, E, R>
+  ) =>
+    this.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          CustomerAccountLinkRepository.Live,
+          CustomerAccountSections.withAuthentication(authentication),
+          CustomerDotyposAdapter.Live,
+          ReviewAccounts.Live
+        )
       )
-    )
-  );
+    );
+
+  static Live = this.withAuthentication(CustomerAuthentication.Default);
 }

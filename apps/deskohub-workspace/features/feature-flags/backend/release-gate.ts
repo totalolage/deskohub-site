@@ -56,8 +56,8 @@ export const ReleaseGate =
     flag: PostHogFeatureFlagKey
   ) =>
     class Gate extends Context.Service<Self, IReleaseGate>()(identifier) {
-      /** The flags the gate reads. */
-      static readonly flags: ReadonlyArray<PostHogFeatureFlagKey> = [flag];
+      /** The flag that decides the gate. */
+      static readonly flag = flag;
 
       /** The provided gate's fail-closed answer. */
       static readonly isOpen: Effect.Effect<boolean, never, Self> =
@@ -130,7 +130,7 @@ export const ReleaseGate =
 
 /** The class `ReleaseGate` declares for a feature's gate. */
 export interface ReleaseGateClass<Self> {
-  readonly flags: ReadonlyArray<PostHogFeatureFlagKey>;
+  readonly flag: PostHogFeatureFlagKey;
   readonly isOpen: Effect.Effect<boolean, never, Self>;
   readonly decision: Effect.Effect<boolean, ReleaseGateUnavailableError, Self>;
   readonly Live: Layer.Layer<Self>;

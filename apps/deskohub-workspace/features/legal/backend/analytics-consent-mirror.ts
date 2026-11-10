@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Effect, Option } from "effect";
+import { requireVerifiedIdentity } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { isLocale, type Locale } from "@/features/i18n";
@@ -31,6 +32,28 @@ export type DeviceAnalyticsConsent = {
 };
 
 /**
+ * A device's own analytics choice, whatever holds it: the web's consent
+ * cookie or the native app's stored consent.
+ */
+export type DeviceAnalyticsChoice = {
+  readonly decision: AnalyticsConsentDecision;
+  /** The locale of the privacy notice the choice was made under. */
+  readonly locale: Locale;
+  /** When the device made it; none when the device holds no valid date. */
+  readonly decidedAt: Option.Option<Temporal.Instant>;
+};
+
+/**
+ * The account's decision a device takes over its own choice, at the
+ * instant the account made it, so the device's copy never outranks a later
+ * decision.
+ */
+export type AccountAnalyticsDecisionForDevice = {
+  readonly decision: AnalyticsConsentDecision;
+  readonly decidedAt: Temporal.Instant;
+};
+
+/**
  * The device's banner choice. A cookie saved under an earlier banner
  * revision, before the current privacy notice or cookie policy, holds none:
  * the banner asks again, so it is never taken as a decision under the
@@ -55,6 +78,36 @@ const noticeLocaleOf = (choice: ConsentCookieChoice, fallback: Locale) =>
     () => fallback
   );
 
+/** The analytics choice the request's consent cookie holds, dated at its last save. */
+const cookieAnalyticsChoiceOf = (
+  device: DeviceAnalyticsConsent
+): Option.Option<DeviceAnalyticsChoice> =>
+  Option.map(deviceChoiceOf(device.cookieHeader), (choice) => ({
+    decision: decisionOf(choice),
+    locale: noticeLocaleOf(choice, device.locale),
+    decidedAt: choice.lastConsentAt,
+  }));
+
+/**
+ * Copies the device's choice into the account's ledger, dated when the
+ * device made it, unless the account made a decision at that moment or
+ * later. Reports whether the ledger took the choice.
+ */
+const mirrorDeviceChoice = Effect.fn("AnalyticsConsent.mirrorDeviceChoice")(
+  function* ({
+    accountId,
+    choice,
+    source,
+  }: {
+    readonly accountId: CustomerAccountId;
+    readonly choice: DeviceAnalyticsChoice;
+    readonly source: AnalyticsConsentMirrorSource;
+  }) {
+    const ledger = yield* AnalyticsConsentLedger;
+    return yield* ledger.mirror({ accountId, ...choice, source });
+  }
+);
+
 /**
  * Copies the device's banner choice into the account's ledger, dated at the
  * cookie's last save, unless the account made a decision at that moment or
@@ -68,16 +121,13 @@ export const mirrorDeviceAnalyticsConsent = Effect.fn(
     readonly source: AnalyticsConsentMirrorSource;
   }
 ) {
-  const choice = deviceChoiceOf(input.cookieHeader);
+  const choice = cookieAnalyticsChoiceOf(input);
   if (Option.isNone(choice)) return false;
 
-  const ledger = yield* AnalyticsConsentLedger;
-  return yield* ledger.mirror({
+  return yield* mirrorDeviceChoice({
     accountId: input.accountId,
-    decision: decisionOf(choice.value),
-    locale: noticeLocaleOf(choice.value, input.locale),
+    choice: choice.value,
     source: input.source,
-    decidedAt: choice.value.lastConsentAt,
   });
 });
 
@@ -89,14 +139,14 @@ export const mirrorDeviceAnalyticsConsent = Effect.fn(
 export const recordBannerAnalyticsConsent = Effect.fn(
   "AnalyticsConsent.recordBannerSave"
 )(function* (input: DeviceAnalyticsConsent) {
-  const choice = deviceChoiceOf(input.cookieHeader);
+  const choice = cookieAnalyticsChoiceOf(input);
   if (Option.isNone(choice)) return false;
 
   const ledger = yield* AnalyticsConsentLedger;
   yield* ledger.record({
     accountId: input.accountId,
-    decision: decisionOf(choice.value),
-    locale: noticeLocaleOf(choice.value, input.locale),
+    decision: choice.value.decision,
+    locale: choice.value.locale,
     source: "banner",
   });
   return true;
@@ -127,6 +177,18 @@ const currentNoticeGrantInstant = (
   );
 
 /**
+ * The account's grant a device holding no choice at all takes without asking
+ * (a silent grant), as the instant the account gave it: when the account's
+ * current decision is a grant for the current privacy notice.
+ */
+const silentGrantInstant = Effect.fn("AnalyticsConsent.silentGrantInstant")(
+  function* (accountId: CustomerAccountId) {
+    const ledger = yield* AnalyticsConsentLedger;
+    return currentNoticeGrantInstant(yield* ledger.currentDecision(accountId));
+  }
+);
+
+/**
  * The signed-in account's grant the request's device takes without asking (a
  * silent grant), as the instant the account gave it: when the device holds
  * no consent cookie at all and the account's current decision is a grant for
@@ -149,35 +211,31 @@ export const resolveSilentAnalyticsGrant = Effect.fn(
     return Option.none();
   }
 
-  const ledger = yield* AnalyticsConsentLedger;
-  return currentNoticeGrantInstant(
-    yield* ledger.currentDecision(session.accountId)
-  );
+  return yield* silentGrantInstant(session.accountId);
 });
 
 /**
- * The account's withdrawal the device must take: when the device's saved
- * choice accepts analytics and the account's current decision is a
- * withdrawal the choice didn't outrank, as the ledger's ordering rule
- * decided when it mirrored the choice. A grant is never propagated to a
- * device that holds a choice.
+ * The account's withdrawal the device must take: when the device's choice
+ * accepts analytics and the account's current decision is a withdrawal the
+ * choice didn't outrank, as the ledger's ordering rule decided when it
+ * mirrored the choice. A grant is never propagated to a device that holds a
+ * choice.
  */
 const withdrawalToPropagate = Effect.fn(
   "AnalyticsConsent.withdrawalToPropagate"
-)(function* (device: DeviceAnalyticsConsent, mirrored: boolean) {
-  const choice = deviceChoiceOf(device.cookieHeader);
-  if (
-    mirrored ||
-    Option.isNone(choice) ||
-    decisionOf(choice.value) !== "grant"
-  ) {
+)(function* (
+  accountId: CustomerAccountId,
+  choice: Option.Option<DeviceAnalyticsChoice>,
+  mirrored: boolean
+) {
+  if (mirrored || Option.isNone(choice) || choice.value.decision !== "grant") {
     return Option.none();
   }
 
   const ledger = yield* AnalyticsConsentLedger;
   return Option.map(
     Option.filter(
-      yield* ledger.currentDecision(device.accountId),
+      yield* ledger.currentDecision(accountId),
       (current) => current.decision === "withdraw"
     ),
     (withdrawal) => withdrawal.decidedAt
@@ -223,5 +281,57 @@ export const recordSignedInDeviceAnalyticsConsent = Effect.fn(
     ...device,
     source: "hydration_mirror",
   });
-  return yield* withdrawalToPropagate(device, mirrored);
+  return yield* withdrawalToPropagate(
+    device.accountId,
+    cookieAnalyticsChoiceOf(device),
+    mirrored
+  );
 });
+
+/**
+ * Syncs the native app's own analytics choice with the signed-in account,
+ * under the web's rules. A choice is mirrored into the ledger with source
+ * `app_mirror`, dated when the app made it, so the most recent decision
+ * wins. Returns the account's decision the app takes over its own: its
+ * withdrawal when the app's choice accepts analytics and didn't outrank it,
+ * as on the web's hydration; its grant for the current privacy notice when
+ * the app holds no choice yet, as a web device without a consent cookie
+ * takes it silently; else none. A grant is never returned to an app that
+ * holds a choice. Fails as an account access failure when no one is signed
+ * in or the account is being deleted, which records nothing.
+ */
+export const syncAppAnalyticsConsent = Effect.fn("AnalyticsConsent.syncApp")(
+  function* ({
+    choice,
+  }: {
+    readonly choice: Option.Option<DeviceAnalyticsChoice>;
+  }) {
+    const authentication = yield* CustomerAuthentication;
+    const { accountId } = yield* authentication.currentUser.pipe(
+      Effect.flatMap(requireVerifiedIdentity)
+    );
+
+    if (Option.isNone(choice)) {
+      return Option.map(
+        yield* silentGrantInstant(accountId),
+        (decidedAt): AccountAnalyticsDecisionForDevice => ({
+          decision: "grant",
+          decidedAt,
+        })
+      );
+    }
+
+    const mirrored = yield* mirrorDeviceChoice({
+      accountId,
+      choice: choice.value,
+      source: "app_mirror",
+    });
+    return Option.map(
+      yield* withdrawalToPropagate(accountId, choice, mirrored),
+      (decidedAt): AccountAnalyticsDecisionForDevice => ({
+        decision: "withdraw",
+        decidedAt,
+      })
+    );
+  }
+);

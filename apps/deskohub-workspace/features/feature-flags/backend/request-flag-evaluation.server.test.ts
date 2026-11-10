@@ -17,6 +17,7 @@ import {
 } from "effect";
 import type { DeploymentEnvironment } from "@/shared/deployment/deployment-stage";
 import { savedConsentCookieValue } from "@/shared/testing/consent-cookie.test-utils";
+import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
 import {
   POSTHOG_DISTINCT_ID_COOKIE,
   POSTHOG_SESSION_ID_COOKIE,
@@ -25,6 +26,7 @@ import {
   type PostHogFeatureFlagKey,
   postHogFeatureFlags,
 } from "../generated/contract";
+import { classifiedConstancy } from "./feature-flag-constancy.test-utils";
 import type { ReleaseGateClass } from "./release-gate";
 
 type FlagValues = Partial<Record<PostHogFeatureFlagKey, boolean>>;
@@ -47,6 +49,9 @@ let remoteAnswer: Effect.Effect<
 > = Effect.succeed({});
 // The headers object Next's request store hands out for the current request.
 let nextRequestHeaders = new Headers();
+// Resolves once the render reaches request time; a prerender, Next's runtime
+// prerender for runtime prefetches included, never does.
+let requestStarts: Promise<void> = Promise.resolve();
 
 const remoteEvaluations: {
   readonly distinctId: string;
@@ -75,6 +80,8 @@ mock.module("./node", () => ({
 mock.module("./feature-flag-evaluation-mode.server", () => ({
   getGlobalWorkspaceFeatureFlagValue: (key: PostHogFeatureFlagKey) =>
     Promise.resolve(constants[key]),
+  getWorkspaceFeatureFlagConstancy: (key: PostHogFeatureFlagKey) =>
+    Promise.resolve(classifiedConstancy(constants[key])),
   getGlobalWorkspaceFeatureFlagValues: (
     keys: readonly PostHogFeatureFlagKey[]
   ) =>
@@ -93,6 +100,13 @@ mock.module("./remote-evaluation-policy.server", () => ({
   remoteEvaluationPolicyFor,
   readRemoteEvaluationPolicy: () =>
     remoteEvaluationPolicyFor(deploymentEnvironment),
+}));
+// The real global release reads the classification through `"use cache"`.
+mock.module("next/cache", () => recordNextCache().module);
+const nextServer = await import("next/server");
+mock.module("next/server", () => ({
+  ...nextServer,
+  connection: () => requestStarts,
 }));
 mock.module("next/headers", () => ({
   headers: async () => nextRequestHeaders,
@@ -253,6 +267,7 @@ beforeEach(() => {
   deploymentEnvironment = "production";
   remoteAnswer = Effect.succeed({});
   nextRequestHeaders = new Headers();
+  requestStarts = Promise.resolve();
   remoteEvaluations.length = 0;
 });
 
@@ -565,6 +580,27 @@ describe("remote evaluation outside production", () => {
 });
 
 describe("remote evaluation in production", () => {
+  test("a prerender decides constant gates and leaves PostHog to request time", async () => {
+    // posthog-node reads the clock before its request, which Next.js reports
+    // as an error while prerendering (#1187).
+    constants = { referrals: true, meeting_room_page: false };
+    remoteAnswer = Effect.succeed({ office_page: true });
+    nextRequestHeaders = visitorHeaders("prerendered-visitor");
+    const { promise: requestTime, resolve: startRequest } =
+      Promise.withResolvers<void>();
+    requestStarts = requestTime;
+
+    const office = decideForRequest(OfficeGate);
+    await expect(decideForRequest(ReferralGate)).resolves.toBe(true);
+    await expect(decideForRequest(MeetingRoomGate)).resolves.toBe(false);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(remoteEvaluations).toEqual([]);
+
+    startRequest();
+    await expect(office).resolves.toBe(true);
+    expect(remoteEvaluations).toHaveLength(1);
+  });
+
   test("a landing render evaluates every undecided flag in one batched call", async () => {
     constants = { referrals: true, meeting_room_page: true };
     remoteAnswer = Effect.succeed({ office_page: true, calendar_sales: true });

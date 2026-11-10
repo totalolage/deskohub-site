@@ -1,0 +1,2 @@
+ALTER TABLE "discount_applications" ADD COLUMN "staff_label" text;--> statement-breakpoint
+ALTER TABLE "discount_applications" ADD CONSTRAINT "discount_applications_staff_label_check" CHECK ("staff_label" is null or btrim("staff_label") <> '');

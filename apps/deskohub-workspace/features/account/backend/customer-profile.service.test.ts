@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { SqlError } from "effect/unstable/sql";
 import { NoReviewAccounts } from "@/features/review-accounts/backend/review-accounts.repository.mock";
-import {
-  type CustomerAccountAccessError,
-  customerAccountIdSchema,
-} from "../customer-account";
+import type { CustomerAccountAccessError } from "../customer-account";
 import type { CustomerAccountActivityState } from "./customer-account-link.repository";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import { CustomerAccountSections } from "./customer-account-sections";
+import {
+  makeCustomerAccountSections,
+  sectionAccountId,
+  sectionAccountEmail as verifiedEmail,
+} from "./customer-account-sections.test-utils";
 import {
   CustomerDotyposAdapter,
   type ExactEmailCustomerMatch,
@@ -16,11 +18,9 @@ import {
 import { CustomerProfileService } from "./customer-profile.service";
 
 const account = {
-  accountId: customerAccountIdSchema.make("auth-user-1"),
+  accountId: sectionAccountId,
   dotyposCustomerId: "60111",
 };
-
-const verifiedEmail = testEmailAddress("ada");
 
 const linkedProfile = {
   firstName: "Ada",
@@ -37,7 +37,10 @@ const createdProfile = {
 };
 
 const makeLayers = (fakes: {
-  readonly accountState?: CustomerAccountActivityState;
+  /** The account's authoritative state, read by the section and by `load`. */
+  readonly accountState?: "active" | "deletion-requested" | "missing";
+  /** Fails taking the account lock. */
+  readonly lockUnavailable?: boolean;
   readonly link?: string | null;
   readonly profile?: typeof linkedProfile | null;
   readonly createdCustomerId?: string;
@@ -52,16 +55,27 @@ const makeLayers = (fakes: {
   /** How many link writes fail before they succeed. */
   readonly claimFailures?: number;
 }) => {
-  const calls: string[] = [];
+  // The section records its lock and recheck events into the same list, so
+  // each step's order relative to the lock is observable.
+  const sections = makeCustomerAccountSections({
+    activityState: fakes.accountState ?? "active",
+    lockUnavailable: fakes.lockUnavailable,
+  });
+  const calls = sections.events;
   const claimedCustomerIds: string[] = [];
   let remainingClaimFailures = fakes.claimFailures ?? 0;
   const readCustomerIds: string[] = [];
   const updatePayloads: unknown[] = [];
   const createInputs: unknown[] = [];
-  const state: CustomerAccountActivityState = fakes.accountState ?? {
-    kind: "active",
-    deletionRequestedAt: null,
-  };
+  const state: CustomerAccountActivityState =
+    fakes.accountState === "missing"
+      ? { kind: "missing" }
+      : {
+          kind: "active",
+          email: verifiedEmail,
+          deletionRequestedAt:
+            fakes.accountState === "deletion-requested" ? new Date() : null,
+        };
 
   const links = Layer.mock(CustomerAccountLinkRepository, {
     findActivityState: () => {
@@ -95,13 +109,6 @@ const makeLayers = (fakes: {
               customerId: fakes.claimedCustomerId ?? customerId,
               created: fakes.claimedCustomerId === undefined,
             } as const)
-      );
-    },
-    withAccountLock: (_accountId, effect) => {
-      calls.push("lock-acquire");
-      return Effect.void.pipe(
-        Effect.andThen(effect),
-        Effect.ensuring(Effect.sync(() => calls.push("lock-release")))
       );
     },
   } satisfies Partial<CustomerAccountLinkRepository["Service"]>);
@@ -145,7 +152,8 @@ const makeLayers = (fakes: {
   } satisfies Partial<CustomerDotyposAdapter["Service"]>);
 
   const service = CustomerProfileService.Default.pipe(
-    Layer.provide(Layer.mergeAll(links, dotypos, NoReviewAccounts))
+    Layer.provide(Layer.mergeAll(links, dotypos, NoReviewAccounts)),
+    Layer.provideMerge(sections.layer)
   );
   return {
     service,
@@ -161,7 +169,7 @@ const runProfile = <A, E>(
   layers: ReturnType<typeof makeLayers>,
   run: (
     service: CustomerProfileService["Service"]
-  ) => Effect.Effect<A, E, never>
+  ) => Effect.Effect<A, E, CustomerAccountSections>
 ) =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -179,9 +187,7 @@ describe("CustomerProfileService", () => {
     );
     expect(profile.firstName).toBe("Ada");
 
-    const blockedLayers = makeLayers({
-      accountState: { kind: "active", deletionRequestedAt: new Date() },
-    });
+    const blockedLayers = makeLayers({ accountState: "deletion-requested" });
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
         const service = yield* CustomerProfileService;
@@ -198,7 +204,7 @@ describe("CustomerProfileService", () => {
   });
 
   test("stops already-authorized work when the auth account row is gone", async () => {
-    const layers = makeLayers({ accountState: { kind: "missing" } });
+    const layers = makeLayers({ accountState: "missing" });
 
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
@@ -233,17 +239,38 @@ describe("CustomerProfileService", () => {
       })
     );
 
-    expect(layers.calls[0]).toBe("lock-acquire");
-    expect(layers.calls).toContain("update-profile");
-    expect(layers.calls[layers.calls.length - 1]).toBe("lock-release");
+    expect(layers.calls).toEqual([
+      "account-lock-acquired",
+      "account-activity",
+      "update-profile",
+      "read-profile",
+      "account-lock-released",
+    ]);
     expect(layers.updatePayloads[0]).toMatchObject({ firstName: "Grace" });
+  });
+
+  test("reports an update whose account lock can't be taken as the fixed lock unavailability", async () => {
+    const layers = makeLayers({ lockUnavailable: true });
+
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* CustomerProfileService;
+        return yield* service.update(account, { firstName: "Grace" });
+      }).pipe(Effect.provide(layers.service), Effect.result)
+    );
+
+    expect(outcome).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "unavailable", cause: { code: "account-link.lock" } },
+    });
+    expect(layers.calls).not.toContain("update-profile");
   });
 
   test("creates the Dotypos profile with the verified email and claims the link without a provider read", async () => {
     const layers = makeLayers({ createdCustomerId: "60999" });
 
     const creation = await runProfile(layers, (service) =>
-      service.create(account.accountId, verifiedEmail, { firstName: "Nova" })
+      service.create(account.accountId, { firstName: "Nova" })
     );
 
     expect(creation).toEqual({
@@ -263,22 +290,34 @@ describe("CustomerProfileService", () => {
     const layers = makeLayers({ createdCustomerId: "60999" });
 
     await runProfile(layers, (service) =>
-      service.create(account.accountId, verifiedEmail, { firstName: "Nova" })
+      service.create(account.accountId, { firstName: "Nova" })
     );
 
-    expect(layers.calls[0]).toBe("lock-acquire");
-    expect(layers.calls).toContain("create-profile");
-    expect(layers.calls[layers.calls.length - 1]).toBe("lock-release");
+    expect(layers.calls).toEqual([
+      "account-lock-acquired",
+      "account-activity",
+      "find-link",
+      "classify-email",
+      "create-profile",
+      "claim",
+      "account-lock-released",
+    ]);
   });
 
-  test("creates the profile under a held lock without taking the account lock", async () => {
+  test("creates the profile under an enclosing section's hold without a second lock or recheck", async () => {
     const layers = makeLayers({ createdCustomerId: "60999" });
 
     const creation = await runProfile(layers, (service) =>
-      service.createUnderHeldLock(account.accountId, verifiedEmail, {
-        firstName: "Nova",
-        phone: "+420601111222",
-      })
+      Effect.flatMap(Effect.service(CustomerAccountSections), (sections) =>
+        sections.withActiveAccount(
+          account.accountId,
+          service.create(account.accountId, {
+            firstName: "Nova",
+            phone: "+420601111222",
+          }),
+          { recheck: "active" }
+        )
+      )
     );
 
     expect(creation).toEqual({
@@ -293,27 +332,23 @@ describe("CustomerProfileService", () => {
       },
     ]);
     expect(layers.calls).toEqual([
-      "deletion-state",
+      "account-lock-acquired",
+      "account-activity",
       "find-link",
       "classify-email",
       "create-profile",
       "claim",
+      "account-lock-released",
     ]);
   });
 
-  test("stops creating under a held lock once the account has requested deletion", async () => {
-    const layers = makeLayers({
-      accountState: { kind: "active", deletionRequestedAt: new Date() },
-    });
+  test("stops creating once the account has requested deletion", async () => {
+    const layers = makeLayers({ accountState: "deletion-requested" });
 
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
         const service = yield* CustomerProfileService;
-        return yield* service.createUnderHeldLock(
-          account.accountId,
-          verifiedEmail,
-          { firstName: "Nova" }
-        );
+        return yield* service.create(account.accountId, { firstName: "Nova" });
       }).pipe(Effect.provide(layers.service), Effect.result)
     );
 
@@ -321,8 +356,11 @@ describe("CustomerProfileService", () => {
       _tag: "Failure",
       failure: { reason: "link-required", linkReason: "deletion-requested" },
     });
-    expect(layers.calls).not.toContain("create-profile");
-    expect(layers.calls).not.toContain("lock-acquire");
+    expect(layers.calls).toEqual([
+      "account-lock-acquired",
+      "account-activity",
+      "account-lock-released",
+    ]);
   });
 
   test("returns the support state when another account claimed the new profile", async () => {
@@ -334,7 +372,7 @@ describe("CustomerProfileService", () => {
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
         const service = yield* CustomerProfileService;
-        return yield* service.create(account.accountId, verifiedEmail, {
+        return yield* service.create(account.accountId, {
           firstName: "Ada",
         });
       }).pipe(Effect.provide(layers.service), Effect.result)
@@ -352,7 +390,7 @@ describe("CustomerProfileService", () => {
     const layers = makeLayers({ link: "60111" });
 
     const creation = await runProfile(layers, (service) =>
-      service.create(account.accountId, verifiedEmail, { firstName: "Ada" })
+      service.create(account.accountId, { firstName: "Ada" })
     );
 
     expect(creation.profile.firstName).toBe("Ada");
@@ -373,7 +411,7 @@ describe("CustomerProfileService", () => {
     });
 
     const creation = await runProfile(layers, (service) =>
-      service.create(account.accountId, verifiedEmail, { firstName: "Ada" })
+      service.create(account.accountId, { firstName: "Ada" })
     );
 
     expect(creation).toEqual({
@@ -396,7 +434,7 @@ describe("CustomerProfileService", () => {
       });
 
       const creation = await runProfile(layers, (service) =>
-        service.createUnderHeldLock(account.accountId, verifiedEmail, {
+        service.create(account.accountId, {
           firstName: "Nova",
         })
       );
@@ -407,7 +445,13 @@ describe("CustomerProfileService", () => {
         profile: linkedProfile,
         created: true,
       });
-      expect(layers.calls).toEqual(["deletion-state", "find-link", ...steps]);
+      expect(layers.calls).toEqual([
+        "account-lock-acquired",
+        "account-activity",
+        "find-link",
+        ...steps,
+        "account-lock-released",
+      ]);
       expect(layers.createInputs).toEqual([]);
       expect(layers.updatePayloads).toEqual([]);
     }
@@ -419,7 +463,7 @@ describe("CustomerProfileService", () => {
       Effect.runPromise(
         Effect.gen(function* () {
           const service = yield* CustomerProfileService;
-          return yield* service.create(account.accountId, verifiedEmail, {
+          return yield* service.create(account.accountId, {
             firstName: "Nova",
           });
         }).pipe(Effect.provide(layers.service), Effect.result)
@@ -448,11 +492,9 @@ describe("CustomerProfileService", () => {
       const outcome = await Effect.runPromise(
         Effect.gen(function* () {
           const service = yield* CustomerProfileService;
-          return yield* service.createUnderHeldLock(
-            account.accountId,
-            verifiedEmail,
-            { firstName: "Nova" }
-          );
+          return yield* service.create(account.accountId, {
+            firstName: "Nova",
+          });
         }).pipe(Effect.provide(layers.service), Effect.result)
       );
 
@@ -474,11 +516,7 @@ describe("CustomerProfileService", () => {
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
         const service = yield* CustomerProfileService;
-        return yield* service.createUnderHeldLock(
-          account.accountId,
-          verifiedEmail,
-          { firstName: "Nova" }
-        );
+        return yield* service.create(account.accountId, { firstName: "Nova" });
       }).pipe(Effect.provide(layers.service), Effect.result)
     );
 

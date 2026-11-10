@@ -6,6 +6,7 @@ import type { AppLocale } from "../i18n/app-locale";
 import { useAppLocale } from "../i18n/locale-context";
 import { m } from "../i18n/messages";
 import { BodyText, Button, LiveMessage, Screen } from "../ui/controls";
+import { LoadingIndicator } from "../ui/loading-indicator";
 import { type AuthCallback, withSignInMethod } from "./auth-callback";
 import { capturedAuthCallback } from "./auth-location.web";
 import type { NativeHandoffRequest } from "./native-handoff-request";
@@ -184,6 +185,8 @@ export function AuthCallbackScreen() {
           onPress={() => router.replace("/sign-in")}
         />
       )}
+      {/* The status message below says what's under way. */}
+      {status !== undefined && <LoadingIndicator size="screen" tone="brand" />}
       <LiveMessage role="status" message={status} />
       <LiveMessage
         role="alert"

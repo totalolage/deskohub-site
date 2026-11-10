@@ -24,6 +24,7 @@ import {
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import {
+  reservationLogFields,
   type WorkspaceReservation,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -42,12 +43,14 @@ import {
   type NexiPaymentAttempt,
   type PaymentAttempt,
   PaymentAttemptRepository,
+  paymentAttemptLogFields,
 } from "../repositories/payment-attempt.repository";
 import {
   PaymentLifecycleRepository,
   type PaymentLifecycleRepositoryError,
 } from "../repositories/payment-lifecycle.repository";
 import { getNexiCurrencyOverride } from "./nexi-currency";
+import { paymentVerificationLogFields } from "./payment-verification-log-fields";
 import {
   isVerifiableNexiPaymentAttempt,
   type VerifiableNexiPaymentAttempt,
@@ -313,7 +316,10 @@ function makeProviderPaymentFinalizationServiceLayer(
           ),
           Effect.orElseSucceed(() => null)
         );
-        yield* Effect.annotateLogsScoped({ attempt });
+        yield* Effect.annotateLogsScoped({
+          ...paymentAttemptLogFields(attempt),
+          paymentAttemptId,
+        });
         yield* Effect.logDebug("Payment finalization attempt lookup completed");
         return attempt;
       });
@@ -368,7 +374,9 @@ function makeProviderPaymentFinalizationServiceLayer(
             Effect.orElseSucceed(() => undefined)
           );
 
-        yield* Effect.annotateLogsScoped({ verification });
+        yield* Effect.annotateLogsScoped(
+          paymentVerificationLogFields(verification)
+        );
         yield* Effect.logInfo(
           "Payment finalization provider verification completed"
         );
@@ -564,7 +572,10 @@ function makeProviderPaymentFinalizationServiceLayer(
             const reservation = yield* loadReservation(input.orderId);
             const paymentAttemptId =
               input.paymentAttemptId ?? reservation?.activePaymentAttemptId;
-            yield* Effect.annotateLogsScoped({ reservation, paymentAttemptId });
+            yield* Effect.annotateLogsScoped({
+              ...reservationLogFields(reservation),
+              paymentAttemptId,
+            });
             yield* Effect.logDebug(
               "Payment finalization reservation lookup completed"
             );

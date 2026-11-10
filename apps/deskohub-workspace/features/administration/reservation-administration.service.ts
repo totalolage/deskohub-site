@@ -5,6 +5,7 @@ import { CustomerEmailLocaleService } from "@/features/account";
 import { WorkspaceCheckoutNetworkDetailsService } from "@/features/checkout/backend/fulfillment/network-details.service";
 import { WorkspaceReservationEmailService } from "@/features/checkout/backend/fulfillment/workspace-reservation-email.service";
 import { administrationForcedPaymentCancellationFailureCode } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
+import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend/workspace-feature-flag.service";
 import { SeatingMapReleaseGate } from "@/features/reservation/backend/seating-map-release-gate";
 import {
   type WorkspaceReservation,
@@ -17,6 +18,7 @@ import {
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceEmailLayer } from "@/shared/backend/config/email.config";
+import { servicePerOperation } from "@/shared/backend/service-per-operation";
 import {
   ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS,
   canCancelReservation,
@@ -295,24 +297,50 @@ export class ReservationAdministrationService extends Context.Service<
     })
   );
 
-  static Live = this.Default.pipe(
-    Layer.provide(
-      Layer.provideMerge(
-        WorkspaceReservationEmailService.Default,
-        Layer.provideMerge(
-          Layer.provideMerge(
-            WorkspaceEmailLayer,
-            WorkspaceCheckoutNetworkDetailsService.Default
-          ),
-          CustomerEmailLocaleService.Live
-        )
+  /**
+   * The service as an administration API serves it. An administration API
+   * builds its services once per process, so each cancellation builds its
+   * own seating-map release decision and the reservation details read over
+   * it, which would otherwise reach every later request. `shared` holds no
+   * request state: it builds once with the returned Layer, and every
+   * cancellation takes that instance.
+   */
+  static perOperationOver = <E, R>(
+    shared: Layer.Layer<
+      | DotyposService
+      | WorkspaceFeatureFlagService
+      | WorkspaceReservationEmailService
+      | WorkspaceReservationRepository,
+      E,
+      R
+    >
+  ) =>
+    servicePerOperation(
+      this,
+      { cancel: true },
+      this.Default.pipe(
+        Layer.provide(WorkspaceReservationService.Default),
+        Layer.provide(SeatingMapReleaseGate.Default)
       )
-    ),
-    Layer.provide(WorkspaceReservationService.Default),
-    Layer.provide(WorkspaceReservationRepository.Default),
-    Layer.provide(WorkspaceDatabase.Default),
-    Layer.provide(WorkspaceDotyposLayer),
-    Layer.provide(SeatingMapReleaseGate.Live)
+    ).pipe(Layer.provide(shared));
+
+  static Live = this.perOperationOver(
+    Layer.mergeAll(
+      WorkspaceReservationEmailService.Default.pipe(
+        Layer.provide(
+          Layer.provideMerge(
+            Layer.provideMerge(
+              WorkspaceEmailLayer,
+              WorkspaceCheckoutNetworkDetailsService.Default
+            ),
+            CustomerEmailLocaleService.Live
+          )
+        )
+      ),
+      WorkspaceReservationRepository.Default,
+      WorkspaceDotyposLayer,
+      WorkspaceFeatureFlagService.Default
+    ).pipe(Layer.provide(WorkspaceDatabase.Default))
   );
 }
 

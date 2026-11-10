@@ -21,6 +21,7 @@ import {
   emailCampaignSends,
   emailCampaigns,
 } from "@/db/schema";
+import type { Locale } from "@/features/i18n";
 import type { AudienceFilter } from "../audience-filter";
 import type { AutomationVersionId } from "../automation/automation-identifiers";
 import type {
@@ -86,6 +87,8 @@ export const audienceConditionFlowFixture = (
 
 type SeededRecipient = {
   readonly dotyposCustomerId: DotyposCustomerId;
+  /** Czech when absent. */
+  readonly locale?: Locale;
   readonly deliveryAttempt?: number;
   readonly status?: CampaignRecipientStatus;
   readonly providerMessageId?: string;
@@ -95,6 +98,8 @@ type SeededRecipient = {
 const insertSend = async (
   db: WorkspaceDatabaseClient,
   input: {
+    /** A fixed send ID; generated when absent. */
+    readonly sendId?: CampaignSendId;
     readonly campaignId: CampaignId;
     readonly automationVersionId?: AutomationVersionId;
     readonly purpose: CampaignPurpose;
@@ -107,6 +112,7 @@ const insertSend = async (
     db
       .insert(emailCampaignSends)
       .values({
+        id: input.sendId,
         campaignId: input.campaignId,
         automationVersionId: input.automationVersionId,
         audienceFilter: everyoneFilter,
@@ -127,7 +133,7 @@ const insertSend = async (
           skipReason:
             recipient.status === "skipped" ? ("missing-email" as const) : null,
           sendId: send!.id,
-          locale: "cs-CZ" as const,
+          locale: recipient.locale ?? "cs-CZ",
         }))
       )
     );
@@ -142,13 +148,15 @@ const insertSend = async (
 export const seedCampaignSend = async (
   db: WorkspaceDatabaseClient,
   input: {
+    readonly sendId?: CampaignSendId;
     readonly purpose: CampaignPurpose;
     readonly status?: CampaignStatus;
     readonly deliveryAttempt?: number;
+    readonly content?: CampaignLocalizedContent;
     readonly recipients: readonly SeededRecipient[];
   }
 ) => {
-  const content = campaignContentFixture();
+  const content = input.content ?? campaignContentFixture();
   const [campaign] = await Effect.runPromise(
     db
       .insert(emailCampaigns)
@@ -211,13 +219,16 @@ export const seedAutomationVersion = async (
     readonly purpose: CampaignPurpose;
     readonly versionNumber?: number;
     readonly text?: string;
+    /** Replaces the content `text` builds. */
+    readonly content?: CampaignLocalizedContent;
     readonly trigger?: AutomationTrigger;
     readonly audienceFilter?: AudienceFilter;
     readonly activatedAt?: Temporal.Instant;
     readonly flow?: unknown;
   }
 ) => {
-  const content = campaignContentFixture(input.text ?? "Verze");
+  const content =
+    input.content ?? campaignContentFixture(input.text ?? "Verze");
   const [version] = await Effect.runPromise(
     db
       .insert(emailCampaignAutomationVersions)
@@ -286,6 +297,7 @@ export const seedAutomation = async (
 export const seedAutomatedSend = (
   db: WorkspaceDatabaseClient,
   input: {
+    readonly sendId?: CampaignSendId;
     readonly campaignId: CampaignId;
     readonly versionId: AutomationVersionId;
     readonly purpose: CampaignPurpose;

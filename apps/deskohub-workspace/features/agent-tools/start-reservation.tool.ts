@@ -2,17 +2,10 @@ import { Duration, Effect, Match, Schema } from "effect";
 import { CustomerAccountContactService } from "@/features/account";
 import { buildAdvertisedPrice } from "@/features/checkout/backend/checkout/advertised-price.server";
 import { type Locale, m } from "@/features/i18n";
-import { prepareWorkspacePayState } from "@/features/reservation/actions/prepare-pay-state";
-import {
-  type PreparePayStateInput,
-  preparePayStateInputSchema,
-} from "@/features/reservation/actions/prepare-pay-state.schema";
-import { BookingAgent } from "@/features/reservation/backend/booking-agent";
+import { prepareAgentPayState } from "@/features/reservation/backend/agent-booking";
 import type { QuoteSelection } from "@/features/reservation/backend/booking-selection";
-import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import { currentInstant } from "@/shared/utils/temporal";
-import { deriveAgentCheckoutIdentifiers } from "./agent-checkout-identifiers";
 import {
   agentToolLocaleField,
   defineSignedInAgentTool,
@@ -83,27 +76,25 @@ export const startReservationTool = defineSignedInAgentTool({
       Effect.bind("grant", () => CurrentCustomerAgentGrant),
       Effect.bind("quoted", resolveQuoteSelection),
       Effect.bind("selection", withEarlySetup),
-      Effect.let("identifiers", ({ grant, selection }) =>
-        deriveAgentCheckoutIdentifiers({
-          grant,
-          reservation: selection.reservation,
-        })
-      ),
       Effect.bind("contact", () => readBookingContact),
       Effect.bind("advertised", ({ selection }) =>
         buildAdvertisedPrice(selection.request).pipe(
           Effect.mapError(AgentToolError.unavailable("reservation_unavailable"))
         )
       ),
-      Effect.bind("submission", toSubmission),
-      Effect.bind("prepared", ({ grant, identifiers, submission }) =>
-        prepareWorkspacePayState(submission).pipe(
-          Effect.provideService(BookingAgent, {
-            clientId: grant.clientId,
-            selectionKey: identifiers.selectionKey,
-          }),
-          Effect.mapError(toStartReservationError)
-        )
+      Effect.bind(
+        "prepared",
+        ({ input, locale, grant, selection, contact, advertised }) =>
+          prepareAgentPayState({
+            grant,
+            reservation: selection.reservation,
+            contact,
+            advertisedPriceToken: advertised.advertisedPriceToken,
+            // Absent or false records nothing and withdraws nothing; the
+            // booking operation labels a grant with the agent channel.
+            marketingConsent: input.marketing_consent === true,
+            locale,
+          }).pipe(Effect.mapError(toStartReservationError))
       ),
       Effect.flatMap(toStartReservationResult)
     )
@@ -146,43 +137,8 @@ const readBookingContact = CustomerAccountContactService.pipe(
   )
 );
 
-const toSubmission = ({
-  input,
-  locale,
-  identifiers,
-  selection,
-  contact,
-  advertised,
-}: {
-  readonly input: StartReservationInput;
-  readonly locale: Locale;
-  readonly identifiers: ReturnType<typeof deriveAgentCheckoutIdentifiers>;
-  readonly selection: QuoteSelection;
-  readonly contact: Effect.Success<typeof readBookingContact>;
-  readonly advertised: Effect.Success<ReturnType<typeof buildAdvertisedPrice>>;
-}): Effect.Effect<PreparePayStateInput, AgentToolError> =>
-  Schema.decodeUnknownEffect(preparePayStateInputSchema)({
-    locale,
-    checkoutSessionId: identifiers.checkoutSessionId,
-    checkoutAttemptId: identifiers.checkoutAttemptId,
-    advertisedPriceToken: advertised.advertisedPriceToken,
-    // Absent or false records nothing and withdraws nothing; the booking
-    // operation labels a grant with the agent channel.
-    ...(input.marketing_consent === true && { marketingConsent: true }),
-    customer: "account",
-    reservation: {
-      ...selection.reservation,
-      name: contact.name,
-      email: contact.email,
-      phone: contact.phone,
-      billing: defaultReservationBillingSelection,
-    },
-  }).pipe(
-    Effect.mapError(AgentToolError.unavailable("reservation_unavailable"))
-  );
-
 const toStartReservationError = (
-  error: Effect.Error<ReturnType<typeof prepareWorkspacePayState>>
+  error: Effect.Error<ReturnType<typeof prepareAgentPayState>>
 ) =>
   Match.value(error).pipe(
     Match.tag("WorkspaceTableUnavailableError", (cause) =>
@@ -218,9 +174,7 @@ const toStartReservationResult = ({
   readonly input: StartReservationInput;
   readonly locale: Locale;
   readonly advertised: Effect.Success<ReturnType<typeof buildAdvertisedPrice>>;
-  readonly prepared: Effect.Success<
-    ReturnType<typeof prepareWorkspacePayState>
-  >;
+  readonly prepared: Effect.Success<ReturnType<typeof prepareAgentPayState>>;
 }) =>
   Match.value(prepared).pipe(
     Match.discriminatorsExhaustive("status")({

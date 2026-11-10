@@ -9,40 +9,28 @@ import type {
   CustomerAgentScope,
 } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
-import type { PreparePayStateInput } from "@/features/reservation/actions/prepare-pay-state.schema";
+import type { prepareAgentPayState as PrepareAgentPayState } from "@/features/reservation/backend/agent-booking";
+import { atInstant } from "@/shared/testing/workspace-test-clock.test-utils";
 
 type Prepared =
   | { readonly status: "ready" | "pricing_changed" }
   | { readonly status: "error" }
   | { readonly fail: { readonly _tag: string } };
 
-/** What the booking operation saw: its input and the agent it ran for. */
-const submissions: {
-  readonly input: PreparePayStateInput;
-  readonly agentClientId: string | undefined;
-  readonly selectionKey: string | undefined;
-}[] = [];
+/** Each booking request the tool made through the agent entry point. */
+const requests: Parameters<typeof PrepareAgentPayState>[0][] = [];
 let prepared: Prepared = { status: "ready" };
 
-const { AgentBookingPaymentInProgressError, BookingAgent } = await import(
+const { AgentBookingPaymentInProgressError } = await import(
   "@/features/reservation/backend/booking-agent"
 );
-const preparePayStateModule = await import(
-  "@/features/reservation/actions/prepare-pay-state"
+const agentBookingModule = await import(
+  "@/features/reservation/backend/agent-booking"
 );
-mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
-  ...preparePayStateModule,
-  prepareWorkspacePayState: (input: PreparePayStateInput) =>
-    Effect.serviceOption(BookingAgent).pipe(
-      Effect.tap((agent) =>
-        Effect.sync(() =>
-          submissions.push({
-            input,
-            agentClientId: Option.getOrUndefined(agent)?.clientId,
-            selectionKey: Option.getOrUndefined(agent)?.selectionKey,
-          })
-        )
-      ),
+mock.module("@/features/reservation/backend/agent-booking", () => ({
+  ...agentBookingModule,
+  prepareAgentPayState: (request: Parameters<typeof PrepareAgentPayState>[0]) =>
+    Effect.sync(() => requests.push(request)).pipe(
       Effect.flatMap(() =>
         "fail" in prepared
           ? Effect.fail(prepared.fail)
@@ -52,7 +40,7 @@ mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
                 : {
                     status: prepared.status,
                     orderId: "order-1",
-                    redirectUrl: `/${input.locale}/checkout/pay?payState=sealed&orderId=order-1`,
+                    redirectUrl: `/${request.locale}/checkout/pay?payState=sealed&orderId=order-1`,
                     expiresAt: "2099-01-01T10:10:00.000Z",
                     affectedProductKeys: [],
                   }
@@ -69,11 +57,9 @@ type Contact = {
 let contact: Contact;
 
 const {
-  atInstant,
   inMemoryCustomerAgentCallServices,
   makeAgentToolTestServices,
   workspaceDateFromToday,
-  workspaceInstantToday,
 } = await import("./agent-tools.test-utils");
 const { startReservationTool } = await import("./start-reservation.tool");
 
@@ -122,9 +108,14 @@ const cowork = (days = 2) => ({
 class WorkspaceTableUnavailableError extends Data.TaggedError(
   "WorkspaceTableUnavailableError"
 )<Record<string, never>> {}
+
+class SchemaError extends Data.TaggedError("SchemaError")<
+  Record<string, never>
+> {}
+
 describe("start_reservation", () => {
   beforeEach(() => {
-    submissions.length = 0;
+    requests.length = 0;
     prepared = { status: "ready" };
     contact = {
       name: "Ada Agent",
@@ -149,78 +140,43 @@ describe("start_reservation", () => {
         price_changed: false,
       },
     });
-    expect(submissions).toHaveLength(1);
-    const [{ input, agentClientId }] = submissions as [
-      (typeof submissions)[number],
-    ];
-    expect(agentClientId).toBe(assistant);
-    expect(input).toMatchObject({
-      locale: "en-US",
-      customer: "account",
-      advertisedPriceToken: expect.any(String),
-      reservation: {
-        kind: "cowork",
-        entryTier: "open-space",
-        date: workspaceDateFromToday(2),
-        coffee: false,
-        name: "Ada Agent",
-        email: testEmailAddress("start-reservation"),
-        billing: { purpose: "personal", invoice: "none" },
+    expect(requests).toMatchObject([
+      {
+        grant: grantFor(assistant),
+        reservation: {
+          kind: "cowork",
+          entryTier: "open-space",
+          date: workspaceDateFromToday(2),
+          coffee: false,
+        },
+        contact: {
+          name: "Ada Agent",
+          email: testEmailAddress("start-reservation"),
+          phone: "+420 777 123 456",
+        },
+        advertisedPriceToken: expect.any(String),
+        marketingConsent: false,
+        locale: "en-US",
       },
-    });
+    ]);
   });
 
-  test("reuses the checkout attempt for an identical repeat and keeps one session per client", async () => {
-    const now = Temporal.Now.instant();
+  test("passes a repeated selection the same way and another selection as its own", async () => {
+    await start(cowork());
+    await start(cowork());
+    await start(cowork(3));
+    await start(cowork(), { clientId: "https://other.example/c.json" });
 
-    await start(cowork(), { now });
-    await start(cowork(), { now: now.add({ seconds: 30 }) });
-    await start(cowork(3), { now });
-    await start(cowork(), { now, clientId: "https://other.example/c.json" });
-
-    const [first, repeat, otherSelection, otherClient] = submissions.map(
-      ({ input }) => input
+    // Each call seals its own advertised price token.
+    const [first, repeat, otherSelection, otherClient] = requests.map(
+      ({ advertisedPriceToken: _, ...request }) => request
     );
-    expect(repeat?.checkoutSessionId).toBe(first?.checkoutSessionId);
-    expect(repeat?.checkoutAttemptId).toBe(first?.checkoutAttemptId);
-    // A different selection supersedes the client's hold in its session.
-    expect(otherSelection?.checkoutSessionId).toBe(first?.checkoutSessionId);
-    expect(otherSelection?.checkoutAttemptId).not.toBe(
-      first?.checkoutAttemptId
+    expect(repeat).toEqual(first as never);
+    expect(otherSelection?.reservation).not.toEqual(first?.reservation);
+    expect(otherClient?.grant.clientId).toBe(
+      "https://other.example/c.json" as CustomerAgentClientId
     );
-    expect(otherClient?.checkoutSessionId).not.toBe(first?.checkoutSessionId);
-  });
-
-  test("keeps the same session and attempt across the old 10-minute boundary", async () => {
-    const selection = cowork(2);
-    // Today, as the booking window follows the real date; Prague's whole-hour
-    // offset keeps these on either side of a UTC 10-minute boundary.
-    const beforeBoundary = workspaceInstantToday("14:09:59");
-    const afterBoundary = workspaceInstantToday("14:10:01");
-
-    await start(selection, { now: beforeBoundary });
-    await start(selection, { now: afterBoundary });
-
-    expect(submissions).toHaveLength(2);
-    const [first, later] = submissions.map(({ input }) => input);
-    expect(later?.checkoutSessionId).toBe(first?.checkoutSessionId);
-    expect(later?.checkoutAttemptId).toBe(first?.checkoutAttemptId);
-  });
-
-  test("derives one selection key for identical calls and another for a different selection", async () => {
-    const now = workspaceInstantToday("14:09:59");
-    const selection = cowork(2);
-
-    await start(selection, { now });
-    await start(selection, { now: now.add({ seconds: 2 }) });
-    await start(cowork(3), { now });
-
-    expect(submissions).toHaveLength(3);
-    const [first, repeat, otherSelection] = submissions.map(
-      ({ selectionKey }) => selectionKey
-    );
-    expect(repeat).toBe(first);
-    expect(otherSelection).not.toBe(first);
+    expect(otherClient?.reservation).toEqual(first?.reservation as never);
   });
 
   test("books a meeting room with early setup at the same price under its own selection", async () => {
@@ -235,24 +191,21 @@ describe("start_reservation", () => {
     const declined = await start({ ...meetingRoom, early_setup: false });
     const early = await start({ ...meetingRoom, early_setup: true });
 
-    expect(submissions).toHaveLength(3);
-    const [plainSubmission, declinedSubmission, earlySubmission] =
-      submissions as [
-        (typeof submissions)[number],
-        (typeof submissions)[number],
-        (typeof submissions)[number],
-      ];
-    expect(plainSubmission.input.reservation).not.toHaveProperty("earlySetup");
-    expect(declinedSubmission.input.reservation).not.toHaveProperty(
-      "earlySetup"
-    );
-    expect(declinedSubmission.selectionKey).toBe(plainSubmission.selectionKey);
-    // The booked time stays; only the flag is added.
-    expect(earlySubmission.input.reservation).toEqual({
-      ...plainSubmission.input.reservation,
+    expect(requests).toHaveLength(3);
+    const [plainRequest, declinedRequest, earlyRequest] = requests as [
+      (typeof requests)[number],
+      (typeof requests)[number],
+      (typeof requests)[number],
+    ];
+    expect(plainRequest.reservation).not.toHaveProperty("earlySetup");
+    // Declining books the same selection, so the same request.
+    expect(declinedRequest.reservation).toEqual(plainRequest.reservation);
+    // The booked time stays; only the flag is added, which makes it another
+    // selection.
+    expect(earlyRequest.reservation).toEqual({
+      ...plainRequest.reservation,
       earlySetup: true,
-    });
-    expect(earlySubmission.selectionKey).not.toBe(plainSubmission.selectionKey);
+    } as never);
     const totals = [plain, declined, early].map((result) =>
       result._tag === "Success" ? result.success.total : undefined
     );
@@ -267,19 +220,19 @@ describe("start_reservation", () => {
       _tag: "Failure",
       failure: { details: { code: "invalid_input", field: "early_setup" } },
     });
-    expect(submissions).toHaveLength(0);
+    expect(requests).toHaveLength(0);
   });
 
-  test("records marketing consent only when the customer asked for it", async () => {
+  test("asks for marketing consent only when the customer asked for it", async () => {
     await start(cowork());
     await start({ ...cowork(), marketing_consent: false });
     await start({ ...cowork(), marketing_consent: true });
 
-    const [absent, declined, granted] = submissions.map(({ input }) => input);
-    expect(absent).not.toHaveProperty("marketingConsent");
-    expect(declined).not.toHaveProperty("marketingConsent");
-    expect(granted?.marketingConsent).toBe(true);
-    expect(granted).not.toHaveProperty("marketingConsentSource");
+    expect(requests.map(({ marketingConsent }) => marketingConsent)).toEqual([
+      false,
+      false,
+      true,
+    ]);
   });
 
   test.each([
@@ -299,27 +252,16 @@ describe("start_reservation", () => {
         _tag: "Failure",
         failure: { details: { code: "profile_incomplete" } },
       });
-      expect(submissions).toEqual([]);
+      expect(requests).toEqual([]);
     }
   );
 
-  test("reads the profile phone in the region of the call's locale", async () => {
-    contact = {
-      name: "Ada Agent",
-      email: testEmailAddress("start-reservation"),
-      phone: "0151 23456789",
-    };
+  test("books in the call's locale", async () => {
+    await start({ ...cowork(), locale: "de-DE" });
 
-    const german = await start({ ...cowork(), locale: "de-DE" });
-    const czech = await start({ ...cowork(), locale: "cs-CZ" });
-
-    expect(german).toMatchObject({ _tag: "Success" });
-    expect(czech).toMatchObject({ _tag: "Failure" });
-    expect(submissions).toHaveLength(1);
-    expect(submissions[0]?.input).toMatchObject({
-      locale: "de-DE",
-      reservation: { phone: "0151 23456789" },
-    });
+    expect(requests).toMatchObject([
+      { locale: "de-DE", contact: { phone: "+420 777 123 456" } },
+    ]);
   });
 
   test("reports a changed price with the Pay link", async () => {
@@ -354,6 +296,15 @@ describe("start_reservation", () => {
     });
   });
 
+  test("maps a submission the booking can't accept to an unavailable reservation", async () => {
+    prepared = { fail: new SchemaError({}) };
+
+    expect(await start(cowork())).toMatchObject({
+      _tag: "Failure",
+      failure: { details: { code: "reservation_unavailable" } },
+    });
+  });
+
   test("maps a lost hold claim to a conflict", async () => {
     prepared = { status: "error" };
 
@@ -376,6 +327,6 @@ describe("start_reservation", () => {
       _tag: "Failure",
       failure: { details: { code: "service_unavailable" } },
     });
-    expect(submissions).toEqual([]);
+    expect(requests).toEqual([]);
   });
 });

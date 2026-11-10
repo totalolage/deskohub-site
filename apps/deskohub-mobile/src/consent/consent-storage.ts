@@ -10,9 +10,6 @@ import {
 export const consentStorage = {
   read: async () =>
     parseConsentRecord(await AsyncStorage.getItem(consentRecordKey)),
-  write: (categories) =>
-    AsyncStorage.setItem(
-      consentRecordKey,
-      serializeConsentRecord(categories, new Date())
-    ),
+  write: (choice) =>
+    AsyncStorage.setItem(consentRecordKey, serializeConsentRecord(choice)),
 } satisfies ConsentStorage;

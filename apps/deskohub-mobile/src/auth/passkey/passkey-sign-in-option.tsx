@@ -1,10 +1,11 @@
 import { useEffect } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { trackSignInStarted } from "../../analytics/events";
 import { useAppLocale } from "../../i18n/locale-context";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
 import { LiveMessage } from "../../ui/controls";
+import { LoadingIndicator } from "../../ui/loading-indicator";
 import { Text } from "../../ui/text";
 import { passkeySignInFailureMessage } from "./passkey-failure-message";
 import { usePasskeyCeremony } from "./use-passkey-ceremony";
@@ -56,7 +57,7 @@ export function PasskeySignInOption({
         onPress={start}
         style={({ pressed }) => [styles.button, pressed && styles.pressed]}
       >
-        {pending && <ActivityIndicator color={theme.colors.background} />}
+        {pending && <LoadingIndicator size="inline" tone="navy" />}
         <Text style={styles.label}>{m.passkey_sign_in({}, { locale })}</Text>
       </Pressable>
       {/* Kept mounted so assistive tech announces each change. */}

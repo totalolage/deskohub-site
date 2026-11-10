@@ -31,6 +31,7 @@ import {
 } from "@/db/schema";
 import { WorkspaceLockSections } from "@/db/workspace-locks";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
+import { CustomerAccountSections } from "@/features/account/backend/customer-account-sections";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { signedInAuthentication } from "@/features/account/backend/customer-authentication.test-utils";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
@@ -164,8 +165,13 @@ const makeReferralService = async (input?: {
     input?.pool ?? testDatabase!.pool
   );
   const accountLinksLayer = CustomerAccountLinkRepository.Default.pipe(
-    Layer.provide(Layer.mergeAll(databaseLayer, lockLayer))
+    Layer.provide(databaseLayer)
   );
+  const authenticationLayer = input?.identity
+    ? signedInAuthentication(input.identity.accountId)
+    : Layer.succeed(CustomerAuthentication, {
+        currentUser: Effect.die("Identity is not used by quote lookup"),
+      });
 
   return Effect.runPromise(
     Effect.gen(function* () {
@@ -179,13 +185,16 @@ const makeReferralService = async (input?: {
               databaseLayer,
               lockLayer,
               accountLinksLayer,
-              input?.identity
-                ? signedInAuthentication(input.identity.accountId)
-                : Layer.succeed(CustomerAuthentication, {
-                    currentUser: Effect.die(
-                      "Identity is not used by quote lookup"
-                    ),
-                  }),
+              authenticationLayer,
+              CustomerAccountSections.Default.pipe(
+                Layer.provide(
+                  Layer.mergeAll(
+                    authenticationLayer,
+                    accountLinksLayer,
+                    lockLayer
+                  )
+                )
+              ),
               Layer.mock(DotyposService, {
                 listReservations:
                   input?.listReservations ?? (() => Effect.succeed([])),
@@ -1369,6 +1378,7 @@ describe.skipIf(!testDatabase)(
             providerReference: occurrenceReference,
           }),
           label: "Calendar sale",
+          staffLabel: "Kalendářová akce",
           adjustment: { kind: "percentage", basisPoints: 2_000 },
         },
         provenance: {
@@ -1409,6 +1419,8 @@ describe.skipIf(!testDatabase)(
               id: discountApplications.id,
               sequence: discountApplications.sequence,
               publicDiscountId: discountApplications.publicDiscountId,
+              label: discountApplications.label,
+              staffLabel: discountApplications.staffLabel,
               subtotalBefore: discountApplications.subtotalBeforeValue,
               applied: discountApplications.appliedAmountValue,
             })
@@ -1439,6 +1451,14 @@ describe.skipIf(!testDatabase)(
           subtotalBefore: 28_000,
           applied: 4_200,
         });
+        // Each row keeps the guest label; the staff label is stored only
+        // when the accepted application carries one.
+        expect(sale).toMatchObject({
+          label: calendarSale.discount.label,
+          staffLabel: calendarSale.discount.staffLabel,
+        });
+        expect(invitation?.label).toEqual(expect.any(String));
+        expect(invitation?.staffLabel).toBeNull();
         expect(attempt.amount.value).toBe(23_800);
         const [claim] = (
           await testDatabase!.pool.query(

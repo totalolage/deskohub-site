@@ -2,8 +2,6 @@ import { cached } from "@deskohub/next-effect/cached";
 import { Context, Effect, Layer } from "effect";
 import {
   closeUnavailableRelease,
-  failUnavailableRelease,
-  type ReleaseGateUnavailableError,
   releaseFromValue,
 } from "@/features/feature-flags/backend/release-gate";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend/workspace-feature-flag.service";
@@ -33,14 +31,6 @@ export interface IDiscountReleaseGateService {
   readonly evaluate: (input: {
     readonly operation: DiscountReleaseGateOperation;
   }) => Effect.Effect<DiscountReleaseGates>;
-  /**
-   * The same gates for output that can be stored, such as a static shell:
-   * a flag PostHog can't decide fails instead of closing its gate, so the
-   * stored output keeps its last good version.
-   */
-  readonly decision: (input: {
-    readonly operation: DiscountReleaseGateOperation;
-  }) => Effect.Effect<DiscountReleaseGates, ReleaseGateUnavailableError>;
 }
 
 const discountFlags = [
@@ -78,48 +68,21 @@ const decideDiscountReleaseGates = WorkspaceFeatureFlagService.pipe(
   closeUnavailableRelease(discountFlags, discountReleaseGatesDisabled)
 );
 
-const decideStoredDiscountReleaseGates = WorkspaceFeatureFlagService.pipe(
-  Effect.flatMap((featureFlags) =>
-    Effect.all({
-      calendarSales: featureFlags.decision("calendar_sales"),
-      customerDiscounts: featureFlags.decision("customer_discounts"),
-      discountCodes: featureFlags.decision("discount_codes"),
-    })
-  ),
-  failUnavailableRelease(discountFlags)
-);
-
-// One decision of each kind per server render, whichever run or layer asks
-// first.
+// One decision per server render, whichever run or layer asks first.
 const requestDiscountReleaseGates = shareWithinRequest(
   decideDiscountReleaseGates
 );
-const requestStoredDiscountReleaseGates = shareWithinRequest(
-  decideStoredDiscountReleaseGates
-);
 
-const annotateOperation =
-  (operation: DiscountReleaseGateOperation) =>
-  <A, E, R>(decision: Effect.Effect<A, E, R>) =>
+const gatesFromDecision = (
+  decision: Effect.Effect<DiscountReleaseGates>
+): IDiscountReleaseGateService => ({
+  evaluate: Effect.fn("DiscountReleaseGateService.evaluate")((input) =>
     decision.pipe(
       Effect.annotateLogs({
         discountBoundary: "release_gate",
-        discountOperation: operation,
+        discountOperation: input.operation,
       })
-    );
-
-const gatesFromDecision = (
-  evaluation: Effect.Effect<DiscountReleaseGates>,
-  decision: Effect.Effect<
-    DiscountReleaseGates,
-    ReleaseGateUnavailableError
-  > = evaluation
-): IDiscountReleaseGateService => ({
-  evaluate: Effect.fn("DiscountReleaseGateService.evaluate")((input) =>
-    evaluation.pipe(annotateOperation(input.operation))
-  ),
-  decision: Effect.fn("DiscountReleaseGateService.decision")((input) =>
-    decision.pipe(annotateOperation(input.operation))
+    )
   ),
 });
 
@@ -138,22 +101,13 @@ export class DiscountReleaseGateService extends Context.Service<
     this,
     WorkspaceFeatureFlagService.pipe(
       Effect.flatMap((featureFlags) =>
-        Effect.all([
-          cached(
-            requestDiscountReleaseGates.pipe(
-              Effect.provideService(WorkspaceFeatureFlagService, featureFlags)
-            )
-          ),
-          cached(
-            requestStoredDiscountReleaseGates.pipe(
-              Effect.provideService(WorkspaceFeatureFlagService, featureFlags)
-            )
-          ),
-        ])
+        cached(
+          requestDiscountReleaseGates.pipe(
+            Effect.provideService(WorkspaceFeatureFlagService, featureFlags)
+          )
+        )
       ),
-      Effect.map(([evaluation, decision]) =>
-        gatesFromDecision(evaluation, decision)
-      )
+      Effect.map(gatesFromDecision)
     )
   );
 

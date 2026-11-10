@@ -18,6 +18,10 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { Data, Effect, Layer } from "effect";
 import { createCensoredOtelSpanExporter } from "../logging/censorship";
+import {
+  isPostHogLogsExportEnabled,
+  type PostHogLogsExport,
+} from "./telemetry-policy";
 
 /**
  * Builders for the Workspace's telemetry sinks: its service identity, the
@@ -80,13 +84,26 @@ interface PostHogSinkOptions extends TelemetryIdentity {
   readonly posthogProjectToken?: string;
 }
 
-/** The provider that batches log records into `exporter` under `identity`. */
-const createWorkspaceLoggerProvider = (
+/**
+ * The longest attribute value a Workspace log record exports; the SDK cuts
+ * longer strings to this length. Annotations that carried whole inventory
+ * record arrays made single PostHog log rows of 25 KB and more.
+ */
+const logAttributeValueLengthLimit = 4_096;
+
+/**
+ * The provider that batches log records into `exporter` under `identity`,
+ * with attribute values bounded. Tests pass the SDK's in-memory exporter.
+ */
+export const createWorkspaceLoggerProvider = (
   exporter: LogRecordExporter,
   identity: TelemetryIdentity
 ) =>
   new LoggerProvider({
     resource: identityResource(identity),
+    logRecordLimits: {
+      attributeValueLengthLimit: logAttributeValueLengthLimit,
+    },
     processors: [
       new BatchLogRecordProcessor({
         exporter,
@@ -95,16 +112,29 @@ const createWorkspaceLoggerProvider = (
     ],
   });
 
+interface PostHogLogSinkOptions extends PostHogSinkOptions {
+  readonly logsExport?: PostHogLogsExport;
+}
+
 /**
  * The provider that exports log records to PostHog, or undefined without a
- * project token.
+ * project token or when `logsExport` leaves the deployment's logs out.
  */
 export function createPostHogLoggerProvider({
+  logsExport,
   posthogHost,
   posthogProjectToken,
   ...identity
-}: PostHogSinkOptions) {
+}: PostHogLogSinkOptions) {
   if (!posthogProjectToken) return undefined;
+  if (
+    !isPostHogLogsExportEnabled({
+      deploymentEnvironment: identity.deploymentEnvironment,
+      logsExport,
+    })
+  ) {
+    return undefined;
+  }
   if (!posthogHost) {
     throw new Error(
       "POSTHOG_INGEST_HOST is required when PostHog logging is enabled"

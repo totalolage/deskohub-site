@@ -2,12 +2,18 @@ import "server-only";
 
 import { cached } from "@deskohub/next-effect/cached";
 import { Effect, Layer, Result } from "effect";
+import { connection } from "next/server";
 import { cache } from "react";
 import {
   runWorkspaceEffect,
   runWorkspaceEffectOrElse,
 } from "@/shared/backend/workspace-effect";
-import type { ReleaseGateClass } from "./release-gate";
+import { getWorkspaceFeatureFlagConstancy } from "./feature-flag-evaluation-mode.server";
+import { loadGlobalRelease } from "./global-release.server";
+import type {
+  ReleaseGateClass,
+  ReleaseGateUnavailableError,
+} from "./release-gate";
 
 export type ReleaseGateRequestOptions =
   | {
@@ -34,6 +40,10 @@ export interface ReleaseGateRequest<Self> {
    * doesn't memoize in a Server Action or route handler, where every call
    * decides again, but from the flags `WorkspaceFeatureFlagService`
    * evaluated once for the request.
+   *
+   * A flag that is the same for every visitor is decided without the
+   * request. A flag PostHog decides per visitor is evaluated only at request
+   * time, after `connection()`.
    */
   readonly isOpen: () => Promise<boolean>;
   /**
@@ -42,6 +52,12 @@ export interface ReleaseGateRequest<Self> {
    * and loaders of one render share it. It rejects with
    * `ReleaseGateUnavailableError` while PostHog can't decide the flag, so a
    * regeneration fails and keeps the last good copy.
+   *
+   * A flag that is the same for every visitor is decided without the
+   * request, so prerendered shells keep the decision. A flag PostHog decides
+   * per visitor is evaluated only at request time, after `connection()`.
+   * Without any classification of the flags, it rejects at once, without
+   * the request.
    */
   readonly decision: () => Promise<boolean>;
   /**
@@ -74,14 +90,37 @@ export const releaseGateForRequest = <Self>(
             : runWorkspaceEffect(options.operation)
         )
     );
-  const isOpenResult = decide(gate.isOpen);
-  const decisionResult = decide(gate.decision);
   const answer = <E>(result: Result.Result<boolean, E>) =>
     Result.match(result, {
       onSuccess: (open) => open,
       onFailure: (error) => Promise.reject(error),
     });
-  const isOpen = () => isOpenResult().then(answer);
+  const isOpenForVisitor = decide(gate.isOpen);
+  const decisionForVisitor = decide(gate.decision);
+  // A flag that is the same for every visitor answers without the request.
+  // PostHog decides any other flag per visitor, over the network: request
+  // work. A prerender, a runtime prefetch included, stops at `connection()`
+  // instead of asking PostHog, whose client reads the clock while
+  // prerendering.
+  const isOpen = cache(async (): Promise<boolean> => {
+    const release = await loadGlobalRelease(gate.flag);
+    if (release !== "undecided") return release === "on";
+    await connection();
+    return isOpenForVisitor().then(answer);
+  });
+  const decisionResult = cache(
+    async (): Promise<Result.Result<boolean, ReleaseGateUnavailableError>> => {
+      const release = await loadGlobalRelease(gate.flag);
+      if (release !== "undecided") return Result.succeed(release === "on");
+      // Without a classification nothing tells a per-visitor flag from a
+      // constant one, and the stored read fails without the request. It
+      // fails before `connection()`, so a regeneration fails and keeps the
+      // last good copy instead of postponing the read.
+      const constancy = await getWorkspaceFeatureFlagConstancy(gate.flag);
+      if (constancy.kind !== "unclassified") await connection();
+      return decisionForVisitor();
+    }
+  );
   const decision = () => decisionResult().then(answer);
   return {
     isOpen,
