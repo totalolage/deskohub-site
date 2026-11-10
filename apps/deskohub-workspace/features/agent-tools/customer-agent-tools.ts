@@ -6,7 +6,7 @@ import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate
 import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
-import { payStatePreparationServices } from "@/features/reservation/backend/pay-state-preparation-services";
+import { ReservationBooking } from "@/features/reservation/backend/reservation-booking.service";
 import { SharedReservationRecordsLive } from "@/features/reservation/backend/reservation-records-cache.server";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -23,11 +23,11 @@ import { ReviewSandbox } from "@/features/review-accounts";
 export const CustomerAgentToolsLive = Layer.mergeAll(
   WorkspaceAvailabilityService.Live,
   SharedAvailabilityInventoryLive,
-  CheckoutPricingService.Live.pipe(
-    Layer.provideMerge(ReferralReleaseGateRequest)
+  Layer.mergeAll(CheckoutPricingService.Live, ReservationBooking.Live).pipe(
+    Layer.provideMerge(
+      Layer.mergeAll(ReferralReleaseGateRequest, OfficeReleaseGate.Live)
+    )
   ),
-  OfficeReleaseGate.Live,
-  payStatePreparationServices,
   RememberedReferral.none,
   WorkspaceReservationRepository.Live,
   CheckoutStatusService.withRecords(SharedReservationRecordsLive),

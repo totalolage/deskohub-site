@@ -17,8 +17,10 @@ import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate
 import { ReferralService } from "@/features/referrals";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
-import { payStatePreparationServicesWith } from "@/features/reservation/backend/pay-state-preparation-services";
-import { prepareWorkspacePayState } from "@/features/reservation/backend/reservation-booking.service";
+import {
+  prepareWorkspacePayState,
+  ReservationBooking,
+} from "@/features/reservation/backend/reservation-booking.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { SealedStateKeys } from "@/shared/backend/sealed-state-keys.service";
 import {
@@ -117,11 +119,13 @@ export class CustomerCheckoutOperations extends Context.Service<
       const preparation = remembered.pipe(
         Layer.provideMerge(
           Layer.mergeAll(
-            payStatePreparationServicesWith(releases),
+            ReservationBooking.Live,
+            ReferralService.Live,
             OptionalAccountActivityGuard.Live,
             CustomerAccountContactService.Live
           )
         ),
+        Layer.provideMerge(Layer.mergeAll(releases.referral, releases.office)),
         Layer.provide(WorkspaceDatabase.Default)
       );
 

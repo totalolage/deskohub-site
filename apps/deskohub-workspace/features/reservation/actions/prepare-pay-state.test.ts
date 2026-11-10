@@ -397,9 +397,10 @@ const accountAuthorityFixture = async (
  * then the shared booking operation, with the form's public messages.
  */
 const loadReservationFormPreparation = async () => {
-  const { prepareWorkspacePayState } = await import(
-    "@/features/reservation/backend/reservation-booking.service"
-  );
+  const { prepareOverProvidedServices: prepareWorkspacePayState } =
+    await import(
+      "@/features/reservation/backend/reservation-booking.test-utils"
+    );
   const { toReservationFormError, verifyReservationFormHuman } = await import(
     "./prepare-pay-state-form"
   );
@@ -478,9 +479,10 @@ const runReusableReservationScenario = async (input: {
   readonly serverCaller?: boolean;
 }) => {
   const prepareFromReservationForm = await loadReservationFormPreparation();
-  const { prepareWorkspacePayState } = await import(
-    "@/features/reservation/backend/reservation-booking.service"
-  );
+  const { prepareOverProvidedServices: prepareWorkspacePayState } =
+    await import(
+      "@/features/reservation/backend/reservation-booking.test-utils"
+    );
   const { BookingAgent } = await import(
     "@/features/reservation/backend/booking-agent"
   );
