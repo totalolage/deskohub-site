@@ -21,6 +21,9 @@ export const legalPageMarkdown = (
     markdownParagraph(
       `${m.legalPageLastUpdatedLabel({}, { locale })}: ${document.updatedAt}`
     ),
+    ...(document.translationNotice === undefined
+      ? []
+      : [markdownParagraph(document.translationNotice)]),
     ...document.sections.flatMap((section) => [
       markdownHeading(2, section.heading),
       ...section.body.map((paragraph) =>

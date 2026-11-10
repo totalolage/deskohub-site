@@ -26,6 +26,7 @@ import { campaignAudiencesCommand } from "./campaign-audiences.command";
 import {
   campaignBodyFileName,
   campaignLocaleFlag,
+  campaignLocaleShortNames,
   localizedFlag,
   makeCampaignContent,
   makeCampaignContentPatch,
@@ -292,12 +293,14 @@ const campaignsUpdateCommand = Command.make(
     clearOperationalReason: campaignLocaleFlag("clear-operational-reason").pipe(
       Flag.atLeast(0),
       Flag.withDescription(
-        "Restore the default footer reason line of a locale: cs or en"
+        `Restore the default footer reason line of a locale: ${campaignLocaleShortNames}`
       )
     ),
     removeLocale: campaignLocaleFlag("remove-locale").pipe(
       Flag.atLeast(0),
-      Flag.withDescription("Remove a locale's content: cs or en")
+      Flag.withDescription(
+        `Remove a locale's content: ${campaignLocaleShortNames}`
+      )
     ),
   },
   ({

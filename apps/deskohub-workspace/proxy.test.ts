@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
 import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { NextRequest } from "next/server";
-import { localeCookieName } from "@/features/i18n/routing";
+import { localeCookieName, locales } from "@/features/i18n/routing";
 import { indexNowKeyPathname } from "@/features/public-pages";
 import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
 import { getReservationAccessCookieName } from "@/features/reservation/backend/reservation-access-cookie";
@@ -11,6 +11,10 @@ import { workspaceReservationIdSchema } from "@/features/reservation/persistence
 import { reservationAccessTokenQueryParam } from "@/features/reservation/reservation-access-token";
 import { runCommand } from "@/scripts/shared/command";
 import type { AgentPageRequest } from "@/shared/backend/agent-traffic/agent-page-request";
+
+const localizedSignInPathname = new RegExp(
+  `^/(?:${locales.join("|")})/auth/sign-in$`
+);
 
 let administrationAccessResult:
   | "administrator"
@@ -319,7 +323,7 @@ describe("administration route boundary", () => {
 
       expect(response.status).toBe(307);
       expect(new URL(response.headers.get("location")!).pathname).toMatch(
-        /^\/(?:en-US|cs-CZ)\/auth\/sign-in$/
+        localizedSignInPathname
       );
       expectPrivateAdministrationResponse(response);
     }
@@ -340,7 +344,7 @@ describe("administration route boundary", () => {
 
       expect(response.status).toBe(307);
       expect(new URL(response.headers.get("location")!).pathname).toMatch(
-        /^\/(?:en-US|cs-CZ)\/auth\/sign-in$/
+        localizedSignInPathname
       );
       expectPrivateAdministrationResponse(response);
     }
@@ -575,17 +579,34 @@ describe("locale negotiation", () => {
     }
   });
 
-  test("opens Czech for Slovak readers and English for unserved languages", async () => {
-    expect(
-      await localeRedirect("https://workspace.example/faq", {
-        "accept-language": "sk-SK,sk;q=0.9",
-      })
-    ).toEqual({ status: 307, location: "https://workspace.example/cs-CZ/faq" });
-    expect(
-      await localeRedirect("https://workspace.example/faq", {
-        "accept-language": "de-DE,de;q=0.9",
-      })
-    ).toEqual({ status: 307, location: "https://workspace.example/en-US/faq" });
+  test("opens the locale of a language the site serves", async () => {
+    for (const [acceptLanguage, localized] of [
+      ["de-AT,de;q=0.9", "/de-DE/faq"],
+      ["sk-SK,sk;q=0.9", "/sk-SK/faq"],
+      ["uk,ru;q=0.8", "/uk-UA/faq"],
+    ]) {
+      expect(
+        await localeRedirect("https://workspace.example/faq", {
+          "accept-language": acceptLanguage,
+        })
+      ).toEqual({
+        status: 307,
+        location: `https://workspace.example${localized}`,
+      });
+    }
+  });
+
+  test("opens English for languages the site doesn't serve", async () => {
+    for (const acceptLanguage of ["ru-RU,ru;q=0.9", "fr-FR,fr;q=0.9"]) {
+      expect(
+        await localeRedirect("https://workspace.example/faq", {
+          "accept-language": acceptLanguage,
+        })
+      ).toEqual({
+        status: 307,
+        location: "https://workspace.example/en-US/faq",
+      });
+    }
   });
 
   test("moves a loosely spelled locale prefix permanently to the exact locale", async () => {
@@ -595,9 +616,12 @@ describe("locale negotiation", () => {
       ["/cs-cz/pricing", "/cs-CZ/pricing"],
       ["/en/faq", "/en-US/faq"],
       ["/CS/faq", "/cs-CZ/faq"],
-      ["/sk/faq", "/cs-CZ/faq"],
+      ["/En/faq", "/en-US/faq"],
       ["/en/account", "/en-US/account"],
       ["/cs/admin", "/cs-CZ/admin"],
+      ["/de-de/faq", "/de-DE/faq"],
+      ["/sk/faq", "/sk-SK/faq"],
+      ["/UK/faq", "/uk-UA/faq"],
     ]) {
       // The URL alone decides, whatever the visitor's language or cookie.
       expect(
@@ -607,6 +631,18 @@ describe("locale negotiation", () => {
         })
       ).toEqual({ status: 308, location: `https://workspace.example${exact}` });
     }
+  });
+
+  test("leaves a bare language segment the site doesn't serve as a path", async () => {
+    // French has no locale, so `/fr` is not a misspelled locale prefix.
+    expect(
+      await localeRedirect("https://workspace.example/fr/faq", {
+        "accept-language": "ru",
+      })
+    ).toEqual({
+      status: 307,
+      location: "https://workspace.example/en-US/fr/faq",
+    });
   });
 
   test("keeps a credential-bearing link's exact-locale redirect private", async () => {
@@ -720,6 +756,7 @@ describe("dotted paths under a locale prefix", () => {
       ["/CS-cz/x.txt", "/cs-CZ/x.txt"],
       ["/en-us/x.html", "/en-US/x.html"],
       ["/EN-US/a/b.php?x=1", "/en-US/a/b.php?x=1"],
+      ["/de-de/x.html", "/de-DE/x.html"],
     ]) {
       const response = await proxy(
         new NextRequest(`https://workspace.example${path}`)
@@ -732,13 +769,13 @@ describe("dotted paths under a locale prefix", () => {
     }
   });
 
-  // Under a prefix that names no locale (`/de-de`), the `afterFiles` rewrite
+  // Under a prefix that names no locale (`/fr-fr`), the `afterFiles` rewrite
   // in `next.config.mjs` then gives the path the locale redirect.
   test("go on untouched under an exact locale or a prefix that names none", async () => {
     for (const path of [
       "/cs-CZ/nope.html",
       "/en-US/a/b.php",
-      "/de-de/x.html",
+      "/fr-fr/x.html",
       "/xx-YY/a.txt",
     ]) {
       const response = await proxy(

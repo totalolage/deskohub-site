@@ -82,8 +82,8 @@ describe("marketing preferences access route", () => {
   test("validates the locale before writing state", async () => {
     const response = await invoke(
       "GET",
-      `/sk-SK/marketing-preferences/access?token=${validToken}`,
-      "sk-SK"
+      `/fr-FR/marketing-preferences/access?token=${validToken}`,
+      "fr-FR"
     );
 
     expect(response.status).toBe(404);

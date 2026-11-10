@@ -22,6 +22,7 @@ import {
   CustomerAvatarProviderError,
   CustomerAvatarService,
 } from "@/features/account/backend/customer-avatar.service";
+import { CustomerLocalePreference } from "@/features/account/backend/customer-locale-preference.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import type {
   CustomerProfileInput,
@@ -77,7 +78,31 @@ describe("getAccount", () => {
       profile: testCustomerProfile,
       avatar: { kind: "hidden" },
       referralsEnabled: false,
+      locale: null,
     });
+  });
+
+  test("carries the account's saved locale in every signed-in state", async () => {
+    const savedLocale = { ...testCustomerSession, localePreference: "de-DE" };
+    const linked = makeCustomerApiTestServer({
+      session: savedLocale,
+      services: linkedAccountServices,
+    });
+    const deletionPending = makeCustomerApiTestServer({
+      session: { ...savedLocale, deletionRequested: true },
+      services: linkedAccountServices,
+    });
+
+    const answers = await Promise.all(
+      [linked, deletionPending].map(async (api) =>
+        (await api.handle(customerApiRequest(getAccount))).json()
+      )
+    );
+
+    expect(answers).toMatchObject([
+      { kind: "linked", locale: "de-DE" },
+      { kind: "deletion-pending", locale: "de-DE" },
+    ]);
   });
 
   test("tells the client its remembered referral code is settled", async () => {
@@ -132,6 +157,110 @@ describe("getAccount", () => {
     expect(await response.json()).toMatchObject({
       kind: "authenticated-unavailable",
       email: testCustomerSession.email,
+    });
+  });
+});
+
+describe("updateLocale", () => {
+  const updateLocale: CustomerApiCall = {
+    method: "PUT",
+    path: "/account/locale",
+    body: { locale: "de-DE" },
+  };
+
+  type LocaleSave = {
+    readonly accountId: string;
+    readonly locale: string;
+  };
+
+  /**
+   * Account services with no Dotypos customer, recording every locale save
+   * or failing each with `failure`.
+   */
+  const recordingSaves = (failure?: CustomerAccountAccessError) => {
+    const saves: LocaleSave[] = [];
+    const services = {
+      localePreference: Layer.mock(CustomerLocalePreference, {
+        save: (accountId, locale) =>
+          failure
+            ? Effect.fail(failure)
+            : Effect.sync(() => {
+                saves.push({ accountId, locale });
+              }),
+      }),
+    };
+    return { saves, services };
+  };
+
+  testCustomerEndpointGuards(updateLocale);
+
+  test("saves the locale on the session's account, without a Dotypos customer, and echoes it", async () => {
+    const { saves, services } = recordingSaves();
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(customerApiRequest(updateLocale));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ locale: "de-DE" });
+    expect(saves).toEqual([
+      { accountId: testCustomerSession.accountId, locale: "de-DE" },
+    ]);
+  });
+
+  test("refuses a locale the Workspace doesn't serve, and any other field", async () => {
+    const { saves, services } = recordingSaves();
+    const api = makeCustomerApiTestServer({ services });
+
+    const responses = await Promise.all(
+      [{ locale: "fr-FR" }, { locale: "de-DE", region: "AT" }, {}].map((body) =>
+        api.handle(customerApiRequest({ ...updateLocale, body }))
+      )
+    );
+
+    expect(responses.map(({ status }) => status)).toEqual([400, 400, 400]);
+    expect(saves).toEqual([]);
+  });
+
+  test("refuses an account whose deletion is pending", async () => {
+    const { services } = recordingSaves(
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      })
+    );
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(customerApiRequest(updateLocale));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerAccountLinkRequired",
+      reason: "deletion-pending",
+    });
+  });
+
+  test("asks to sign in again when the session ended before the save", async () => {
+    const { services } = recordingSaves(
+      new CustomerAccountAccessError({ reason: "unauthenticated" })
+    );
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(customerApiRequest(updateLocale));
+
+    expect(response.status).toBe(401);
+  });
+
+  test("answers unavailable, without the cause, when the save fails", async () => {
+    const { services } = recordingSaves(
+      customerAccountUnavailable("account-locale-preference.write")
+    );
+    const api = makeCustomerApiTestServer({ services });
+
+    const response = await api.handle(customerApiRequest(updateLocale));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      _tag: "CustomerServiceUnavailable",
     });
   });
 });

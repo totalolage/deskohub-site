@@ -1,3 +1,7 @@
+import {
+  baseLocale,
+  matchSupportedLocale,
+} from "@deskohub/i18n/locale-registry";
 import { Schema, SchemaGetter } from "effect";
 import {
   workspaceCoworkCurrentTiers,
@@ -28,8 +32,8 @@ export interface BookingStart {
 
 /**
  * The view's language: the agent's `locale` argument, then the host's
- * language (from its context, else ChatGPT's bridge), where any Czech locale
- * picks Czech, then English.
+ * language (from its context, else ChatGPT's bridge), matched by its language
+ * subtag, then English.
  */
 export const getBookingLocale = ({
   requested,
@@ -37,8 +41,7 @@ export const getBookingLocale = ({
 }: {
   readonly requested?: Locale;
   readonly hostLocale?: string;
-}): Locale =>
-  requested ?? (hostLocale?.toLowerCase().startsWith("cs") ? "cs-CZ" : "en-US");
+}): Locale => requested ?? matchSupportedLocale(hostLocale ?? "") ?? baseLocale;
 
 /** The families the offerings include, in the order they're listed. */
 export const getBookingFamilies = (

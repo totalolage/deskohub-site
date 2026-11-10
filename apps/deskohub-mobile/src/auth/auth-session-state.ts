@@ -1,4 +1,6 @@
+import { isSupportedLocale } from "@deskohub/i18n/locale-registry";
 import { Option } from "effect";
+import type { AppLocale } from "../i18n/app-locale";
 
 /** The signed-in customer as the app needs it. */
 export interface AuthUser {
@@ -18,13 +20,21 @@ export type AuthSessionState =
       readonly status: "signed-in";
       readonly user: AuthUser;
       readonly signedInAt: Date;
+      /**
+       * The language the account saved, when the app is translated into it.
+       * Absent when the account saved none or one this app version lacks.
+       */
+      readonly locale?: AppLocale;
     };
 
 /** The part of Better Auth's `useSession()` result the state reads. */
 export interface SessionSnapshot {
   readonly data:
     | {
-        readonly user: AuthUser;
+        readonly user: AuthUser & {
+          /** The server sends any saved tag, also ones newer than the app. */
+          readonly locale?: string | null | undefined;
+        };
         readonly session: { readonly createdAt: Date | string };
       }
     | null
@@ -37,10 +47,14 @@ export const toAuthSessionState = ({
   isPending,
 }: SessionSnapshot): AuthSessionState => {
   if (data !== null && data !== undefined) {
+    const { locale } = data.user;
     return {
       status: "signed-in",
       user: { id: data.user.id, email: data.user.email },
       signedInAt: new Date(data.session.createdAt),
+      ...(typeof locale === "string" && isSupportedLocale(locale)
+        ? { locale }
+        : {}),
     };
   }
   return isPending ? { status: "restoring" } : { status: "signed-out" };

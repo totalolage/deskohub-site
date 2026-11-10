@@ -12,6 +12,7 @@
   "shellMobileNavigationTitle": "Administration navigation",
   "shellMobileNavigationDescription": "Choose an administration page.",
   "shellLanguageSwitcherLabel": "Administration language",
+  "shellLanguageMenuTriggerLabel": "Administration language: {language}",
   "shellBreadcrumbLabel": "Breadcrumb",
   "shellBreadcrumbOverview": "Overview",
   "shellBreadcrumbAccessCodes": "Access codes",

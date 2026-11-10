@@ -1,33 +1,33 @@
-import { resolvePreferredLocale } from "@deskohub/i18n/core";
-import { baseLocale, isLocale, locales } from "./paraglide/runtime.js";
+import {
+  matchSupportedLocale,
+  unservedLanguageLocale,
+} from "@deskohub/i18n/locale-registry";
+import { isLocale, type Locale, locales } from "./paraglide/runtime.js";
 
-export type AppLocale = "cs-CZ" | "en-US";
+/**
+ * A locale the app is translated into. Paraglide generates it from the Inlang
+ * project, whose locales are the registry's (`locale-registry.typecheck.ts`).
+ */
+export type AppLocale = Locale;
 
-// Paraglide's project settings own the locale list; `satisfies` fails the
-// typecheck when they gain a locale this union lacks.
-export const appLocales = locales satisfies ReadonlyArray<AppLocale>;
-const defaultAppLocale = baseLocale satisfies AppLocale;
-
-const appLocaleByLanguage = {
-  cs: "cs-CZ",
-  en: "en-US",
-} as const satisfies Record<string, AppLocale>;
+/** Every app locale, in the registry's order. */
+export const appLocales = locales;
 
 /**
  * Picks the app locale for the device's preferred language tags, best first.
- * A tag without a region falls back to its language's locale; with no
- * supported tag the app uses its base locale.
+ * The first tag whose language Deskohub serves wins, whatever its region
+ * (`de-AT` reads German); with none the app uses the locale for unserved
+ * languages.
  */
 export const resolveAppLocale = (
   languageTags: ReadonlyArray<string>
-): AppLocale =>
-  resolvePreferredLocale({
-    // Device tags carry no weights, so in Accept-Language form their order
-    // stays the preference order.
-    headerValue: languageTags.join(","),
-    locales: appLocales,
-    preferredLanguageToLocale: appLocaleByLanguage,
-  }) ?? defaultAppLocale;
+): AppLocale => {
+  for (const languageTag of languageTags) {
+    const locale = matchSupportedLocale(languageTag);
+    if (locale !== undefined) return locale;
+  }
+  return unservedLanguageLocale;
+};
 
 /** Whether a value names a locale the app supports. */
 export const isAppLocale = (value: unknown): value is AppLocale =>

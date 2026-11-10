@@ -7,6 +7,10 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import {
+  getLocaleDefinition,
+  supportedLocales,
+} from "@deskohub/i18n/locale-registry";
 import { testEmailAddress } from "@deskohub/test-email";
 import { AdministrationInvoiceCreateInput } from "@deskohub/workspace-admin-api";
 import { Schema } from "effect";
@@ -48,7 +52,7 @@ registerWorkspaceComponentTestEnv();
 // React DOM, which @testing-library/react and the form load, must load after
 // the happy-dom registration to handle input events; the Radix dialog portal
 // also needs the registered document.
-const { act, cleanup, fireEvent, render, waitFor } = await import(
+const { act, cleanup, fireEvent, render, waitFor, within } = await import(
   "@testing-library/react"
 );
 const {
@@ -418,6 +422,29 @@ test("keeps a typed decimal comma as the decimal point", () => {
 
   fireEvent.input(price, { target: { value: "99,9" } });
   expect(price.value).toBe("99.9");
+});
+
+test("offers every Workspace language for the invoice, named in itself", () => {
+  mockPreviewAction();
+  const view = renderInvoiceCreationForm({ locale: "cs-CZ" });
+  const options = within(view.getByLabelText("Jazyk")).getAllByRole("option");
+  expect(
+    options.map((option) => [option.getAttribute("value"), option.textContent])
+  ).toEqual(
+    supportedLocales.map((option) => [
+      option,
+      getLocaleDefinition(option).nativeName,
+    ])
+  );
+});
+
+test("refuses an invoice language Workspace does not serve", async () => {
+  const result = await validateFormSchema(
+    formValues({ locale: "zz-ZZ" as Locale })
+  );
+  expect("issues" in result && JSON.stringify(result.issues)).toContain(
+    "locale"
+  );
 });
 
 test("shows Czech copy and validation feedback on a Czech route", async () => {

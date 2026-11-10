@@ -13,7 +13,7 @@ describe("getNexiHostedPaymentCustomer", () => {
         id: "dotypos-customer-id",
         name: "Ada Lovelace",
         email: testEmailAddressForAda,
-        phone: parsePhoneNumber("+420 777 777 777"),
+        phone: parsePhoneNumber("+420 777 777 777", "CZ"),
       })
     ).toEqual({
       id: "dotypos-customer-id",

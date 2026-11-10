@@ -10,7 +10,12 @@ import {
   getAccountSectionPath,
   getAccountSignInPath,
 } from "@/features/account/routes";
-import { type Locale, m } from "@/features/i18n";
+import {
+  baseLocale,
+  defaultPhoneRegion,
+  type Locale,
+  m,
+} from "@/features/i18n";
 import { getReservationStartPath } from "@/features/reservation/routes";
 import { maskEmailAddress } from "@/shared/utils";
 import { normalizeBrowserText } from "../browser";
@@ -1165,9 +1170,17 @@ export const makeWorkspaceE2EAccountCases = ({
                 "the optional last name did not reach the provider profile"
               );
               assert(
-                Option.getOrNull(parsePhoneNumber(customer.phone ?? "")) ===
+                Option.getOrNull(
+                  parsePhoneNumber(
+                    customer.phone ?? "",
+                    defaultPhoneRegion(baseLocale)
+                  )
+                ) ===
                   Option.getOrNull(
-                    parsePhoneNumber(workspaceE2EAccountProfileFixture.phone)
+                    parsePhoneNumber(
+                      workspaceE2EAccountProfileFixture.phone,
+                      defaultPhoneRegion(baseLocale)
+                    )
                   ),
                 "the optional phone did not reach the provider profile"
               );

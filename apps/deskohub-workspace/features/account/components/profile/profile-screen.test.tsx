@@ -47,10 +47,7 @@ registerWorkspaceComponentTestEnv();
 
 const adaAddress = testEmailAddress("ada");
 
-const czechOption = m.accountProfileScreenLanguageOptionCs(
-  {},
-  { locale: "en-US" }
-);
+const czechOption = "Čeština";
 
 const profileFields = (
   <>

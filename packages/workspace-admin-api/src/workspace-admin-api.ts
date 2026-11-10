@@ -1,3 +1,4 @@
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { Temporal } from "@js-temporal/polyfill";
 import { Context, Effect, Option, Schema } from "effect";
 import {
@@ -830,7 +831,7 @@ export const AdministrationInvoiceCreateInput = Schema.Struct({
   /** Chosen by the caller, so a retried creation names the same invoice. */
   invoiceId: AdministrationInvoiceId.annotateKey({ changeKey: true }),
   customer: AdministrationInvoiceCustomerInput,
-  locale: Schema.Literals(["cs-CZ", "en-US"]),
+  locale: Schema.Literals(supportedLocales),
   serviceDate: administrationCalendarDate,
   payment: Schema.Union([
     Schema.Struct({
@@ -967,7 +968,7 @@ const AdministrationInvoiceBuyer = Schema.Union([
 
 export const AdministrationInvoiceDetail = Schema.Struct({
   ...AdministrationInvoiceListItem.fields,
-  locale: Schema.Literals(["cs-CZ", "en-US"]),
+  locale: Schema.Literals(supportedLocales),
   serviceDate: Schema.NullOr(administrationCalendarDate),
   dueDate: Schema.NullOr(administrationCalendarDate),
   paidOn: Schema.NullOr(administrationCalendarDate),

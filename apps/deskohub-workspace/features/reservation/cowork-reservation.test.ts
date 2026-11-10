@@ -20,10 +20,10 @@ import {
 } from "./reservation-interval";
 
 const safeParseCoworkReservation = Schema.decodeUnknownResult(
-  coworkReservationSchema
+  coworkReservationSchema("CZ")
 );
 const safeParseCoworkReservationOrder = Schema.decodeUnknownResult(
-  coworkCurrentReservationOrderSchema
+  coworkCurrentReservationOrderSchema("CZ")
 );
 
 describe("cowork reservation schema", () => {

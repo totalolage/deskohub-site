@@ -1,8 +1,9 @@
 import type { CustomerLocale } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { theme } from "../../theme";
+import { Text } from "../../ui/text";
 import type { DateChoice } from "../selection/booking-selection";
 import {
   addMonthsToMonth,

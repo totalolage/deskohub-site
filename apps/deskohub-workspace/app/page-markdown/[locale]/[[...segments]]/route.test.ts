@@ -154,7 +154,7 @@ describe("public page Markdown route", () => {
     ["en-US", ["admin"]],
     ["en-US", ["logo"]],
     ["en-US", ["testing"]],
-    ["de-DE", ["contact"]],
+    ["fr-FR", ["contact"]],
   ])(
     "has no Markdown for %s %p, which is not a public page",
     async (locale, segments) => {

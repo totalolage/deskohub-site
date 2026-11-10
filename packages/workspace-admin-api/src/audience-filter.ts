@@ -221,6 +221,9 @@ export const audienceAttributeCatalogue = defineAudienceAttributeCatalogue({
       options: {
         "cs-CZ": { label: "Czech (cs-CZ)", name: "Czech" },
         "en-US": { label: "English (en-US)", name: "English" },
+        "de-DE": { label: "German (de-DE)", name: "German" },
+        "uk-UA": { label: "Ukrainian (uk-UA)", name: "Ukrainian" },
+        "sk-SK": { label: "Slovak (sk-SK)", name: "Slovak" },
       },
     }),
     operators: ["anyOf", "noneOf"],

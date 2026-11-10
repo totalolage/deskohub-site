@@ -16,7 +16,8 @@ import {
   signInCallbackReturnParam,
 } from "@/features/account/routes";
 import type { AccountSection } from "@/features/account/sections";
-import { m } from "@/features/i18n";
+import { isLocale, type Locale, locales, m } from "@/features/i18n";
+import { languageNames } from "@/features/i18n/language-labels";
 import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../case-runner";
 import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -87,8 +88,8 @@ const signInEmailSelector = "#account-sign-in-email";
 const signInSubmitSelector = "#account-sign-in-submit";
 const signOutSelector = "#account-sign-out";
 const languageTriggerSelector = '[data-slot="select-trigger"]';
-const languageOptionCsSelector = '[role="option"]:has-text("Čeština")';
-const languageOptionEnSelector = '[role="option"]:has-text("English (US)")';
+const languageOptionCsSelector = `[role="option"]:has-text("${languageNames["cs-CZ"]}")`;
+const languageOptionEnSelector = `[role="option"]:has-text("${languageNames["en-US"]}")`;
 const englishLanguageLabel = "Preferred language";
 const czechLanguageLabel = "Preferovaný jazyk";
 const englishFaqTitle = "Frequently Asked Questions";
@@ -224,7 +225,7 @@ type ConsumeResult = {
 
 /** The page a sign-in email was requested from, which its link returns to. */
 type FakeSignInOrigin = {
-  readonly locale: FakeLocale;
+  readonly locale: Locale;
   readonly returnTo?: string;
 };
 
@@ -235,7 +236,7 @@ const readFakeCallback = (link: string) => {
     "https://callback.invalid"
   );
   const locale = fakeLocalePath.exec(callback.pathname)?.[1] as
-    | FakeLocale
+    | Locale
     | undefined;
   if (locale === undefined) throw new Error("the synthetic link has no locale");
   return {
@@ -248,7 +249,7 @@ const readFakeCallback = (link: string) => {
 };
 
 /** The accepted inbox notice as the sign-in card renders it. */
-const fakeAcceptedInboxText = (locale: FakeLocale) =>
+const fakeAcceptedInboxText = (locale: Locale) =>
   [
     m.accountSignInAcceptedTitle({}, { locale }),
     m.accountSignInAcceptedBody({}, { locale }),
@@ -257,7 +258,7 @@ const fakeAcceptedInboxText = (locale: FakeLocale) =>
   ].join(" ");
 
 /** The rejected-link card, with its request-a-new-link action. */
-const fakeCallbackFailedText = (locale: FakeLocale) =>
+const fakeCallbackFailedText = (locale: Locale) =>
   [
     m.accountCallbackFailedTitle({}, { locale }),
     m.accountCallbackFailedBody({}, { locale }),
@@ -310,8 +311,8 @@ class FakeAccountExternalState {
     readonly stage: string;
     readonly url: string;
   }> = [];
-  readonly languageSaves: Array<"cs-CZ" | "en-US"> = [];
-  readonly switcherSaves: Array<"cs-CZ" | "en-US"> = [];
+  readonly languageSaves: Array<Locale> = [];
+  readonly switcherSaves: Array<Locale> = [];
   readonly languageReviews: Array<{
     readonly stage: string;
     readonly url: string;
@@ -342,7 +343,7 @@ class FakeAccountExternalState {
    * locale, so the synthetic account restores English (US) on every sign-in
    * until a save changes it.
    */
-  localePreference: "cs-CZ" | "en-US" = "en-US";
+  localePreference: Locale = "en-US";
 
   currentAuthUserId: string | undefined;
   historyReady = false;
@@ -352,7 +353,7 @@ class FakeAccountExternalState {
     readonly id: string;
     status: "CANCELLED" | "CONFIRMED";
   }> = [];
-  readonly fixtureLocaleWrites: Array<"cs-CZ" | "en-US"> = [];
+  readonly fixtureLocaleWrites: Array<Locale> = [];
   lastDestination = "";
   staleSession = false;
   deletionDialog = false;
@@ -625,7 +626,7 @@ class FakeAccountExternalState {
     this.historyReady = true;
   }
 
-  setLocalePreference(userId: string, locale: "cs-CZ" | "en-US") {
+  setLocalePreference(userId: string, locale: Locale) {
     this.requireUser(userId);
     this.fixtureLocaleWrites.push(locale);
     this.localePreference = locale;
@@ -770,7 +771,7 @@ class FakeAccountExternalState {
     this.events.push({ customerId, type: "unlink", userId: accountId });
   }
 
-  saveLocalePreference(locale: "cs-CZ" | "en-US") {
+  saveLocalePreference(locale: Locale) {
     this.languageSaves.push(locale);
     this.localePreference = locale;
   }
@@ -1143,9 +1144,7 @@ class FakeAccountExternalState {
   }
 }
 
-type FakeLocale = "cs-CZ" | "en-US";
-
-const fakeLocalePath = /^\/(cs-CZ|en-US)(?=\/|$)/;
+const fakeLocalePath = new RegExp(`^/(${locales.join("|")})(?=/|$)`);
 
 const syntheticAccountDataExportPath = "/en-US/account/data-export";
 const syntheticAccountDataExportActionSelector =
@@ -1180,7 +1179,7 @@ const syntheticAccountDataExportDelivery = (
 
 class FakeBrowser {
   private currentUrl = "";
-  private localeCookie: FakeLocale | undefined;
+  private localeCookie: Locale | undefined;
   private pageText = "";
   /** The `textContent` of the profile language control's label. */
   private languageControlLabel: string | null = null;
@@ -1224,7 +1223,7 @@ class FakeBrowser {
    * The select value is the page locale. Re-picking it fires no
    * onValueChange, exactly as the real Radix Select behaves.
    */
-  private get languageValue(): "cs-CZ" | "en-US" {
+  private get languageValue(): Locale {
     return this.pageLocale();
   }
 
@@ -1234,9 +1233,9 @@ class FakeBrowser {
     return userId !== undefined && this.external.usersById.has(userId);
   }
 
-  private pageLocale(): FakeLocale {
+  private pageLocale(): Locale {
     const locale = fakeLocalePath.exec(new URL(this.currentUrl).pathname)?.[1];
-    if (locale !== "cs-CZ" && locale !== "en-US") {
+    if (locale === undefined || !isLocale(locale)) {
       throw new Error("the synthetic page has no locale");
     }
     return locale;
@@ -1247,7 +1246,7 @@ class FakeBrowser {
    * its saved preference, a guest keeps the URL locale, and the locale cookie
    * follows the resolved locale either way.
    */
-  private resolveLocale(pathLocale: FakeLocale): FakeLocale {
+  private resolveLocale(pathLocale: Locale): Locale {
     const resolved =
       this.signedIn() && this.external.preferenceRedirects
         ? this.external.localePreference
@@ -1256,13 +1255,13 @@ class FakeBrowser {
     return resolved;
   }
 
-  private withLocale(url: string, locale: FakeLocale): string {
+  private withLocale(url: string, locale: Locale): string {
     const parsed = new URL(url);
     parsed.pathname = parsed.pathname.replace(fakeLocalePath, `/${locale}`);
     return parsed.toString();
   }
 
-  private profileLabel(locale: FakeLocale) {
+  private profileLabel(locale: Locale) {
     return locale === "cs-CZ" ? czechLanguageLabel : englishLanguageLabel;
   }
 
@@ -1373,7 +1372,7 @@ class FakeBrowser {
     this.languageControlLabel = null;
     this.heading = null;
     const pathLocale = fakeLocalePath.exec(new URL(requested).pathname)?.[1] as
-      | FakeLocale
+      | Locale
       | undefined;
     const url =
       pathLocale === undefined
@@ -1502,7 +1501,7 @@ class FakeBrowser {
       }
       const destinationLocale = (fakeLocalePath.exec(
         new URL(landing).pathname
-      )?.[1] ?? "en-US") as FakeLocale;
+      )?.[1] ?? "en-US") as Locale;
       const landingLocale = result.failed
         ? destinationLocale
         : this.resolveLocale(destinationLocale);
@@ -1519,19 +1518,19 @@ class FakeBrowser {
   }
 
   /** The only fake page copy the lane reads in both locales. */
-  private localizedText(text: string, locale: FakeLocale) {
+  private localizedText(text: string, locale: Locale) {
     return locale === "cs-CZ" && text === deletionPendingTitle
       ? czechDeletionPendingTitle
       : text;
   }
 
-  private pageLocaleOf(url: string): FakeLocale {
-    return fakeLocalePath.exec(new URL(url).pathname)?.[1] as FakeLocale;
+  private pageLocaleOf(url: string): Locale {
+    return fakeLocalePath.exec(new URL(url).pathname)?.[1] as Locale;
   }
 
   /** Native activation of a header language switcher link. */
   /** Activates the header's link to the locale. */
-  switchLocale(locale: FakeLocale) {
+  switchLocale(locale: Locale) {
     this.external.recordBrowserAction({
       kind: "press",
       selectorOrDestination: `[data-locale-switcher] a[href^="/${locale}"]`,
@@ -1621,7 +1620,7 @@ class FakeBrowser {
   }
 
   /** Follows the failed-callback card's request-a-new-link action. */
-  requestNewLinkAfterFailedCallback(locale: FakeLocale) {
+  requestNewLinkAfterFailedCallback(locale: Locale) {
     const action = m.accountCallbackFailedAction({}, { locale });
     this.external.recordBrowserAction({
       kind: "click",
@@ -1838,11 +1837,11 @@ class FakeBrowser {
     return this.nativeValidationBlocked;
   }
 
-  setLocaleCookie(locale: FakeLocale) {
+  setLocaleCookie(locale: Locale) {
     this.localeCookie = locale;
   }
 
-  hasLocaleCookie(locale: FakeLocale) {
+  hasLocaleCookie(locale: Locale) {
     return this.localeCookie === locale;
   }
 
@@ -1959,7 +1958,7 @@ class FakeBrowser {
     }
   }
 
-  waitForSelectedLanguage(locale: FakeLocale) {
+  waitForSelectedLanguage(locale: Locale) {
     if (!this.languageListboxOpen) {
       throw new Error("the selected language check ran without a listbox");
     }
@@ -2145,7 +2144,7 @@ mock.module("./auth-rows", () => ({
     Effect.sync(() =>
       requireExternal().removeAccountLink(accountId, customerId)
     ),
-  setAccountLocalePreference: (userId: string, locale: "cs-CZ" | "en-US") =>
+  setAccountLocalePreference: (userId: string, locale: Locale) =>
     Effect.sync(() => requireExternal().setLocalePreference(userId, locale)),
   setDeletionRequestedAt: (userId: string, value: Date | null) =>
     Effect.sync(() => requireExternal().setDeletionMarker(userId, value)),

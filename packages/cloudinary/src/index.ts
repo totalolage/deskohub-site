@@ -19,6 +19,7 @@ export {
   type CloudinaryPublicId,
   CloudinaryPublicIdSchema,
   CloudinarySearchResponseSchema,
+  type LocalizedContextField,
   type SearchOptions,
   SearchOptionsSchema,
 } from "./schema";

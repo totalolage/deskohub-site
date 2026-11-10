@@ -1,3 +1,4 @@
+import { isPhoneNumber } from "@deskohub/phone-number";
 import { Data, Effect, Match, Schema } from "effect";
 import type { CheckoutSummary } from "@/features/checkout/checkout-summary";
 import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
@@ -5,6 +6,7 @@ import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summ
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { payStateTokenQueryParam } from "@/features/checkout/pay-state-token-query";
 import type { AppliedDiscount } from "@/features/discounts";
+import { defaultPhoneRegion } from "@/features/i18n";
 import {
   makeLegacySealedState,
   type SealedStateIssueOptions,
@@ -44,6 +46,16 @@ export const signedPayStateSchema = Schema.Union([
           path: ["submittedCodeDiscountId"],
           issue:
             "submitted code and submitted code discount id must occur together",
+        }
+    ),
+    // The normalized reservation carries no locale; the Pay state does, so it
+    // re-checks the phone in that locale's region. A token whose phone fails
+    // today's rule doesn't open.
+    Schema.makeFilter(
+      ({ locale, reservation }) =>
+        isPhoneNumber(reservation.phone, defaultPhoneRegion(locale)) || {
+          path: ["reservation", "phone"],
+          issue: "reservation phone must be valid in the locale's region",
         }
     )
   )

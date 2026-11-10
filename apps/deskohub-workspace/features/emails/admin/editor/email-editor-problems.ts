@@ -1,4 +1,8 @@
 import {
+  getLocaleDefinition,
+  isSupportedLocale,
+} from "@deskohub/i18n/locale-registry";
+import {
   type EmailContentLocation,
   type EmailDocumentProblem,
   type EmailDraft,
@@ -27,18 +31,13 @@ export type EmailEditorProblem = {
   readonly place: string;
 };
 
-const languageNames = {
-  "en-US": m.emailsEditorLanguageEnglish,
-  "cs-CZ": m.emailsEditorLanguageCzech,
-} as const satisfies Record<Locale, typeof m.emailsEditorLanguageEnglish>;
-
-/** A Workspace language's name in the administrator's language. */
-export const emailEditorLanguageName = (
-  language: string,
-  locale: Locale
-): string =>
-  Object.hasOwn(languageNames, language)
-    ? languageNames[language as Locale]({}, { locale })
+/**
+ * A language's name in itself, or the code of a language Workspace no longer
+ * serves.
+ */
+export const emailEditorLanguageName = (language: string): string =>
+  isSupportedLocale(language)
+    ? getLocaleDefinition(language).nativeName
     : language;
 
 const componentSettingMessages = {
@@ -105,8 +104,8 @@ type Placed = Pick<EmailEditorProblem, "fieldId" | "locale" | "place">;
 
 /**
  * Words every problem in `draft` for the administrator in `locale` and
- * places it on its field: the publication problems for `currentLocales`,
- * then images publication would refuse.
+ * places it on its field: the publication problems, then images
+ * publication would refuse. `currentLocales` are the languages with a tab.
  */
 export const emailEditorProblems = ({
   draft,
@@ -125,7 +124,6 @@ export const emailEditorProblems = ({
   const decoded = draft as EmailDraft;
   const structure = draft.structure ?? [];
   const values = draft.values ?? [];
-  const language = (code: string) => emailEditorLanguageName(code, locale);
   const blockNumber = (componentId: string | undefined) =>
     structure.findIndex((component) => component.id === componentId) + 1;
   const valueIndex = (name: string) =>
@@ -189,7 +187,7 @@ export const emailEditorProblems = ({
           fieldId: emailEditorFieldIds.translation(code, "subject"),
           locale: code,
           place: m.emailsEditorPlaceSubject(
-            { language: language(code) },
+            { language: emailEditorLanguageName(code) },
             { locale }
           ),
         };
@@ -198,7 +196,7 @@ export const emailEditorProblems = ({
           fieldId: emailEditorFieldIds.translation(code, "preheader"),
           locale: code,
           place: m.emailsEditorPlacePreheader(
-            { language: language(code) },
+            { language: emailEditorLanguageName(code) },
             { locale }
           ),
         };
@@ -207,7 +205,7 @@ export const emailEditorProblems = ({
           fieldId: emailEditorFieldIds.translation(code, "operationalReason"),
           locale: code,
           place: m.emailsEditorPlaceOperationalReason(
-            { language: language(code) },
+            { language: emailEditorLanguageName(code) },
             { locale }
           ),
         };
@@ -216,7 +214,10 @@ export const emailEditorProblems = ({
           fieldId: emailEditorFieldIds.text(code, at.textKey ?? ""),
           locale: code,
           place: m.emailsEditorPlaceBlockText(
-            { number: blockNumber(at.componentId), language: language(code) },
+            {
+              number: blockNumber(at.componentId),
+              language: emailEditorLanguageName(code),
+            },
             { locale }
           ),
         };
@@ -376,7 +377,7 @@ export const emailEditorProblems = ({
   });
 
   return [
-    ...emailDraftProblems(decoded, currentLocales).map(placed),
+    ...emailDraftProblems(decoded).map(placed),
     ...disallowedEmailImages(
       decoded,
       Option.fromNullishOr(imageCloudName),
@@ -384,6 +385,16 @@ export const emailEditorProblems = ({
     ).map(image),
   ];
 };
+
+/**
+ * Whether the draft has no English translation, so recipients whose
+ * fallback chain tries English before Czech (German and Ukrainian ones)
+ * without a translation of their own get the Czech one. It never blocks
+ * publication.
+ */
+export const emailEnglishFallbackMissing = (
+  draft: EmailDraftFormValues
+): boolean => !Object.hasOwn(draft.translations ?? {}, "en-US");
 
 /**
  * Languages the draft has a translation in that the Workspace no longer
