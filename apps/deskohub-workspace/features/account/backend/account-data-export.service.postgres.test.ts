@@ -270,6 +270,8 @@ const seedDiscountApplication = async (
         sequence,
         publicDiscountId,
         label: "Synthetic discount",
+        // Staff-facing only: the customer's export keeps the guest label.
+        staffLabel: sensitive("staff-label"),
         adjustment: { internal: sensitive("adjustment") },
         productIdentity: { internal: sensitive("product-identity") },
         provenance: { internal: sensitive("provenance") },
