@@ -23,7 +23,7 @@ import {
   DiscountAffirmationUnavailableError,
   DiscountProviderError,
 } from "@/features/discounts/errors";
-import { releaseGateForRunOverFlags } from "@/features/feature-flags/backend/release-gate.test-utils";
+import { releaseGateForRunOverFlags } from "@/features/feature-flags/backend/release-cohorts.test-utils";
 import type { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend/workspace-feature-flag.service";
 import { getPaymentSubmitLegalDocuments } from "@/features/legal/payment-submit-evidence";
 import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";

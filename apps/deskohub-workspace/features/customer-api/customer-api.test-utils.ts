@@ -40,7 +40,7 @@ import {
   featureFlagsByRequestCohort,
   releaseGateForRunOverFlags,
   testReleaseCohortHeader,
-} from "@/features/feature-flags/backend/release-gate.test-utils";
+} from "@/features/feature-flags/backend/release-cohorts.test-utils";
 import type { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend/workspace-feature-flag.service";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingPreferences } from "@/features/legal/backend/marketing-preferences.service";

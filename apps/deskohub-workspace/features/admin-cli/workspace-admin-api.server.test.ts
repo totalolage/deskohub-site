@@ -89,7 +89,7 @@ import {
   DiscountAdminServiceDatesError,
 } from "@/features/discounts/admin/discount-administration.service";
 import { CampaignOperations } from "@/features/email-campaigns/backend/campaign-operations.service";
-import { featureFlagsByCohort } from "@/features/feature-flags/backend/release-gate.test-utils";
+import { featureFlagsByCohort } from "@/features/feature-flags/backend/release-cohorts.test-utils";
 import {
   ReservationProductDetailsBackfill,
   type ReservationProductDetailsBackfillBatch,
