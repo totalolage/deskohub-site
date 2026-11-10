@@ -2,13 +2,13 @@ import { Duration, Effect, Match, Schema } from "effect";
 import { CustomerAccountContactService } from "@/features/account";
 import { buildAdvertisedPrice } from "@/features/checkout/backend/checkout/advertised-price.server";
 import { type Locale, m } from "@/features/i18n";
-import { prepareWorkspacePayState } from "@/features/reservation/actions/prepare-pay-state";
 import {
   type PreparePayStateInput,
   preparePayStateInputSchema,
 } from "@/features/reservation/actions/prepare-pay-state.schema";
 import { BookingAgent } from "@/features/reservation/backend/booking-agent";
 import type { QuoteSelection } from "@/features/reservation/backend/booking-selection";
+import { prepareWorkspacePayState } from "@/features/reservation/backend/reservation-booking.service";
 import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import { currentInstant } from "@/shared/utils/temporal";

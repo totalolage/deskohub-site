@@ -13,6 +13,7 @@ import {
   customerAccountIdSchema,
 } from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import { CustomerAccountSections } from "./customer-account-sections";
 import {
   type CustomerAccountSession,
   CustomerAuthentication,
@@ -38,16 +39,11 @@ const makeRepositoryLayer = () => {
     WorkspaceDatabase.make(testDatabase!.db)
   );
 
-  // The link repository must see the disposable test database and the test
-  // advisory-lock pool too: `CustomerAccountLinkRepository.Live` would drag
-  // in the application `WorkspaceDatabase.Default`/lock defaults instead.
+  // The section must see the disposable test database and its advisory-lock
+  // pool: `CustomerAccountSections.Live` would drag in the application
+  // `WorkspaceDatabase.Default`/lock defaults instead.
   const testLinkRepository = CustomerAccountLinkRepository.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        testDatabaseLayer,
-        WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool)
-      )
-    )
+    Layer.provide(testDatabaseLayer)
   );
 
   const testAuthenticationLayer = Layer.succeed(
@@ -72,8 +68,15 @@ const makeRepositoryLayer = () => {
   return {
     layer: Layer.mergeAll(
       testDatabaseLayer,
-      testLinkRepository,
-      testAuthenticationLayer
+      CustomerAccountSections.Default.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            testLinkRepository,
+            testAuthenticationLayer,
+            WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool)
+          )
+        )
+      )
     ),
     setSessionAccount,
   };

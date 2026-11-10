@@ -37,11 +37,12 @@ export const elementTree = <Props>(
 /**
  * `node` with every function component replaced by the tree it returns, so
  * a test reads a composite's host elements down to its leaves. Each
- * component runs as in `elementTree`.
+ * component runs as in `elementTree`. A class component, such as a native
+ * player, stays a leaf: it can't be called as a function.
  */
 export const hostTree = (node: ReactNode): ReactNode => {
   if (!isValidElement<HostProps>(node)) return node;
-  if (typeof node.type === "function") {
+  if (typeof node.type === "function" && !isClassComponent(node.type)) {
     return hostTree(
       elementTree(node.type as (props: HostProps) => ReactNode, node.props)
     );
@@ -54,6 +55,10 @@ export const hostTree = (node: ReactNode): ReactNode => {
         ...(Children.map(node.props.children, hostTree) ?? [])
       );
 };
+
+const isClassComponent = (type: JSXElementConstructor<never>): boolean =>
+  (type.prototype as { isReactComponent?: unknown } | undefined)
+    ?.isReactComponent !== undefined;
 
 /** A host element's text: its string and number children, joined. */
 export const textOf = (element: ReactElement<HostProps>): string =>

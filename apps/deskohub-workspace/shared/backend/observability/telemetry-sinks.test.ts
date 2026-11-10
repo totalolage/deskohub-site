@@ -23,7 +23,9 @@ import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 import { createCensoredOtelLogger } from "../logging/censorship";
 import {
   createIdentifiedTracingLive,
+  createPostHogLoggerProvider,
   createPostHogTracerProvider,
+  createWorkspaceLoggerProvider,
   createWorkspaceTracerProvider,
   flushLoggerProvider,
   workspaceOTelRegistration,
@@ -310,5 +312,90 @@ describe("createPostHogTracerProvider", () => {
 
     expect(provider?.getTracer("workspace-test")).toBeDefined();
     await provider?.shutdown();
+  });
+});
+
+describe("createPostHogLoggerProvider", () => {
+  const posthogHost = "https://ingest.posthog.example";
+  const posthogProjectToken = "synthetic-project-token";
+
+  test("exports nothing outside production by default, even without a host", () => {
+    for (const deploymentEnvironment of ["preview", "development", undefined]) {
+      expect(
+        createPostHogLoggerProvider({
+          deploymentEnvironment,
+          posthogProjectToken,
+        })
+      ).toBeUndefined();
+    }
+  });
+
+  test("exports nothing without a project token", () => {
+    expect(
+      createPostHogLoggerProvider({
+        deploymentEnvironment: "production",
+        logsExport: "always",
+        posthogHost,
+      })
+    ).toBeUndefined();
+  });
+
+  test("exports production logs by default", async () => {
+    const provider = createPostHogLoggerProvider({
+      deploymentEnvironment: "production",
+      posthogHost,
+      posthogProjectToken,
+    });
+
+    expect(provider).toBeInstanceOf(LoggerProvider);
+    await provider?.shutdown();
+  });
+
+  test("exports logs from any environment that opts in", async () => {
+    const provider = createPostHogLoggerProvider({
+      deploymentEnvironment: "preview",
+      logsExport: "always",
+      posthogHost,
+      posthogProjectToken,
+    });
+
+    expect(provider).toBeInstanceOf(LoggerProvider);
+    await provider?.shutdown();
+  });
+
+  test("requires the ingest host and environment once export is on", () => {
+    expect(() =>
+      createPostHogLoggerProvider({
+        deploymentEnvironment: "production",
+        posthogProjectToken,
+      })
+    ).toThrow("POSTHOG_INGEST_HOST");
+    expect(() =>
+      createPostHogLoggerProvider({
+        logsExport: "always",
+        posthogHost,
+        posthogProjectToken,
+      })
+    ).toThrow("VERCEL_ENV");
+  });
+});
+
+describe("createWorkspaceLoggerProvider", () => {
+  test("truncates attribute values longer than 4096 characters before export", async () => {
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = createWorkspaceLoggerProvider(exporter, {
+      serviceName: "workspace-test",
+    });
+
+    provider.getLogger("test").emit({
+      attributes: { long: "x".repeat(5_000), short: "kept" },
+      body: "bounded",
+    });
+    await provider.forceFlush();
+
+    const [record] = exporter.getFinishedLogRecords();
+    expect(String(record?.attributes.long)).toHaveLength(4_096);
+    expect(record?.attributes.short).toBe("kept");
+    await provider.shutdown();
   });
 });

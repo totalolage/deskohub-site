@@ -1,7 +1,6 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
-import type { SqlError } from "effect/unstable/sql";
 import type { ReferralSignupIntent } from "@/features/referrals/signup-intent.repository";
 import { ReviewAccounts } from "@/features/review-accounts";
 import {
@@ -16,6 +15,10 @@ import {
   type CustomerAccountLinkError,
   CustomerAccountLinkRepository,
 } from "./customer-account-link.repository";
+import {
+  CustomerAccountSections,
+  HeldCustomerAccount,
+} from "./customer-account-sections";
 import {
   type CustomerAccountSession,
   CustomerAuthentication,
@@ -74,10 +77,7 @@ export type CustomerAccountResolutionDependencies = {
   readonly reactivate: (
     customerId: DotyposCustomerId
   ) => Effect.Effect<void, DotyposCustomerError>;
-  readonly withAccountLock: <A, E, R>(
-    accountId: CustomerAccountId,
-    effect: Effect.Effect<A, E, R>
-  ) => Effect.Effect<A, E | SqlError.SqlError, R>;
+  readonly withActiveAccount: CustomerAccountSections["Service"]["withActiveAccount"];
 };
 
 /**
@@ -92,23 +92,22 @@ export type CustomerAccountLinkResolution = {
 };
 
 /**
- * Resolution steps for a verified identity whose account lock the caller
- * already holds: an existing link wins, then one usable exact-email Dotypos
- * customer is reactivated if expired and claimed. No match fails with
- * `not-found`, which leaves profile creation to the caller; every other
- * outcome is the support state. A signup referral is written with the link
- * only when this claim creates it.
+ * Resolution steps for the account the enclosing section holds: an existing
+ * link wins, then one usable exact-email Dotypos customer is reactivated if
+ * expired and claimed. No match fails with `not-found`, which leaves profile
+ * creation to the caller; every other outcome is the support state. A signup
+ * referral is written with the link only when this claim creates it.
  */
-export const resolveCustomerAccountLinkUnderHeldLock = Effect.fn(
-  "account.resolveCustomerAccountLinkUnderHeldLock"
+export const resolveHeldCustomerAccountLink = Effect.fn(
+  "account.resolveHeldCustomerAccountLink"
 )(function* (
   dependencies: Pick<
     CustomerAccountResolutionDependencies,
     "findLink" | "isReviewAccount" | "classify" | "claimLink" | "reactivate"
   >,
-  identity: { readonly accountId: CustomerAccountId; readonly email: string },
   signupReferral?: ReferralSignupIntent
 ) {
+  const identity = yield* HeldCustomerAccount;
   const existingCustomerId = yield* dependencies
     .findLink(identity.accountId)
     .pipe(Effect.mapError(mapCustomerAccountFailure("account-link.read")));
@@ -172,6 +171,11 @@ export const resolveCustomerAccount = (
     Effect.map((resolution) => resolution.account)
   );
 
+/**
+ * Resolves the signed-in account's link. The session read before the lock
+ * fails fast; the section then rechecks the session and the account under
+ * the lock before the held steps run.
+ */
 export const resolveCustomerAccountLink = (
   dependencies: CustomerAccountResolutionDependencies
 ): Effect.Effect<CustomerAccountLinkResolution, CustomerAccountAccessError> =>
@@ -179,23 +183,11 @@ export const resolveCustomerAccountLink = (
     const user = yield* dependencies.currentUser();
     const identity = yield* requireVerifiedIdentity(user);
 
-    return yield* dependencies
-      .withAccountLock(
-        identity.accountId,
-        Effect.gen(function* () {
-          const lockedUser = yield* dependencies.currentUser();
-          if (!lockedUser || lockedUser.accountId !== identity.accountId) {
-            return yield* accessError("unauthenticated");
-          }
-          const lockedIdentity = yield* requireVerifiedIdentity(lockedUser);
-
-          return yield* resolveCustomerAccountLinkUnderHeldLock(
-            dependencies,
-            lockedIdentity
-          );
-        })
-      )
-      .pipe(Effect.mapError(mapCustomerAccountFailure("account-link.lock")));
+    return yield* dependencies.withActiveAccount(
+      identity.accountId,
+      resolveHeldCustomerAccountLink(dependencies),
+      { recheck: "session" }
+    );
   });
 
 const resolutionDependencies: Effect.Effect<
@@ -203,11 +195,13 @@ const resolutionDependencies: Effect.Effect<
   never,
   | CustomerAuthentication
   | CustomerAccountLinkRepository
+  | CustomerAccountSections
   | CustomerDotyposAdapter
   | ReviewAccounts
 > = Effect.gen(function* () {
   const authentication = yield* CustomerAuthentication;
   const links = yield* CustomerAccountLinkRepository;
+  const sections = yield* CustomerAccountSections;
   const dotypos = yield* CustomerDotyposAdapter;
   const reviewAccounts = yield* ReviewAccounts;
   return {
@@ -217,7 +211,7 @@ const resolutionDependencies: Effect.Effect<
     classify: dotypos.classifyExactEmailCustomers,
     claimLink: links.claim,
     reactivate: dotypos.reactivateCustomer,
-    withAccountLock: links.withAccountLock,
+    withActiveAccount: sections.withActiveAccount,
   };
 });
 
@@ -227,6 +221,7 @@ const resolutionDependenciesWith = <E, R>(
   Layer.mergeAll(
     authentication,
     CustomerAccountLinkRepository.Live,
+    CustomerAccountSections.withAuthentication(authentication),
     CustomerDotyposAdapter.Live,
     ReviewAccounts.Live
   );

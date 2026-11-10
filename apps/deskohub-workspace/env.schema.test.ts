@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Predicate } from "effect";
+import { LogLevel, Predicate } from "effect";
 import { workspaceClientEnvSchema } from "./client-env.schema";
 import { createWorkspaceEnv } from "./env";
 import {
@@ -191,6 +191,41 @@ describe("workspace environment schemas", () => {
     ).toBeUndefined();
     expect(invalidVariables({ OPENAI_APPS_CHALLENGE_TOKEN: " \n" })).toEqual([
       "OPENAI_APPS_CHALLENGE_TOKEN",
+    ]);
+  });
+
+  test("leaves PostHog log export to its default unless a deployment opts in", () => {
+    expect(
+      createWorkspaceEnv(
+        workspaceRuntimeEnv({ POSTHOG_LOGS_EXPORT: undefined })
+      ).POSTHOG_LOGS_EXPORT
+    ).toBeUndefined();
+    for (const logsExport of ["production-only", "always"] as const) {
+      expect(
+        createWorkspaceEnv(
+          workspaceRuntimeEnv({ POSTHOG_LOGS_EXPORT: logsExport })
+        ).POSTHOG_LOGS_EXPORT
+      ).toBe(logsExport);
+    }
+    expect(invalidVariables({ POSTHOG_LOGS_EXPORT: "preview" })).toEqual([
+      "POSTHOG_LOGS_EXPORT",
+    ]);
+  });
+
+  test("accepts Effect log level names as the Workspace log level", () => {
+    expect(
+      createWorkspaceEnv(
+        workspaceRuntimeEnv({ WORKSPACE_LOG_LEVEL: undefined })
+      ).WORKSPACE_LOG_LEVEL
+    ).toBeUndefined();
+    for (const level of LogLevel.values) {
+      expect(
+        createWorkspaceEnv(workspaceRuntimeEnv({ WORKSPACE_LOG_LEVEL: level }))
+          .WORKSPACE_LOG_LEVEL
+      ).toBe(level);
+    }
+    expect(invalidVariables({ WORKSPACE_LOG_LEVEL: "verbose" })).toEqual([
+      "WORKSPACE_LOG_LEVEL",
     ]);
   });
 

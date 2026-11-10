@@ -17,6 +17,7 @@ import {
   type CustomerAvatarUpload,
   uploadAccountAvatar,
 } from "@/features/account/backend/customer-avatar-mutations";
+import { providePerRequest } from "@/shared/backend/provide-per-request";
 import { CustomerAccountLayers } from "./customer-account-layers";
 import {
   answerCustomerApiFailure,
@@ -59,7 +60,8 @@ export const customerAvatarUploadHandler = Effect.gen(function* () {
       );
       return yield* answerAvatarUpload(outcome);
     },
-    Effect.provide(admission),
+    // The avatar release decides for this request alone.
+    providePerRequest(admission),
     Effect.catchTags(
       {
         CustomerAvatarRejected: (rejection) => Effect.fail(rejection),

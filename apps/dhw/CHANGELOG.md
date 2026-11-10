@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.35.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.34.0...dhw-v1.35.0) (2026-11-10)
+
+
+### Features
+
+* **dhw:** accept German, Ukrainian and Slovak campaign locales ([45eeabb](https://github.com/totalolage/deskohub-site/commit/45eeabb3f49a713f16225d608cca4f356906163b)), closes [#1091](https://github.com/totalolage/deskohub-site/issues/1091)
+
 ## [1.34.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.33.0...dhw-v1.34.0) (2026-11-09)
 
 

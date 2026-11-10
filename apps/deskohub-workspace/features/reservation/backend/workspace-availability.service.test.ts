@@ -682,6 +682,52 @@ describe("WorkspaceAvailabilityService", () => {
     expect(availability.meetingRoomUnavailable).toBe(true);
   });
 
+  test("logs inventory counts instead of inventory records", async () => {
+    const logs: CapturedLog[] = [];
+    await getAvailability({
+      date: testDate,
+      entryTier: "reserved-desk",
+      monitorOption: "2x27-qhd",
+      reservations: [
+        makeReservation({ tableId: "basic-1", status: "NEW" }),
+        makeReservation({
+          id: "expired-dotypos-reservation-id",
+          tableId: "profi-27-qhd",
+          status: "NEW",
+        }),
+      ],
+      expiredHoldDotyposReservationIds: ["expired-dotypos-reservation-id"],
+      limitations: [
+        WorkspaceCalendarLimitation.FullyOccupied({
+          date: nextTestDate,
+          sourceEventId: "calendar-next-full",
+        }),
+      ],
+      logs,
+    });
+
+    const inventoryLogs = logs.filter(
+      ({ annotations }) => "tableCount" in annotations
+    );
+    expect(inventoryLogs).toHaveLength(1);
+    const [{ annotations }] = inventoryLogs as [CapturedLog];
+    expect(annotations).toMatchObject({
+      activeReservationCount: 1,
+      dateCount: 1,
+      limitationCount: 1,
+      reservationCount: 2,
+      tableCount: defaultTables.length,
+    });
+    expect(annotations).not.toHaveProperty("tables");
+    expect(annotations).not.toHaveProperty("reservations");
+    expect(annotations).not.toHaveProperty("limitations");
+    for (const { annotations } of logs) {
+      for (const value of Object.values(annotations)) {
+        expect(Array.isArray(value)).toBe(false);
+      }
+    }
+  });
+
   test("loads a meeting-room check from the previous date through every date a start on its date can occupy", async () => {
     const intervals: DotyposReservationInterval[] = [];
     const availability = await getAvailability({

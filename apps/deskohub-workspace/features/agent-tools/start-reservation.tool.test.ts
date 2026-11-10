@@ -28,38 +28,41 @@ const { AgentBookingPaymentInProgressError, BookingAgent } = await import(
   "@/features/reservation/backend/booking-agent"
 );
 const preparePayStateModule = await import(
-  "@/features/reservation/actions/prepare-pay-state"
+  "@/features/reservation/backend/reservation-booking.service"
 );
-mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
-  ...preparePayStateModule,
-  prepareWorkspacePayState: (input: PreparePayStateInput) =>
-    Effect.serviceOption(BookingAgent).pipe(
-      Effect.tap((agent) =>
-        Effect.sync(() =>
-          submissions.push({
-            input,
-            agentClientId: Option.getOrUndefined(agent)?.clientId,
-            selectionKey: Option.getOrUndefined(agent)?.selectionKey,
-          })
+mock.module(
+  "@/features/reservation/backend/reservation-booking.service",
+  () => ({
+    ...preparePayStateModule,
+    prepareWorkspacePayState: (input: PreparePayStateInput) =>
+      Effect.serviceOption(BookingAgent).pipe(
+        Effect.tap((agent) =>
+          Effect.sync(() =>
+            submissions.push({
+              input,
+              agentClientId: Option.getOrUndefined(agent)?.clientId,
+              selectionKey: Option.getOrUndefined(agent)?.selectionKey,
+            })
+          )
+        ),
+        Effect.flatMap(() =>
+          "fail" in prepared
+            ? Effect.fail(prepared.fail)
+            : Effect.succeed(
+                prepared.status === "error"
+                  ? { status: "error" as const, message: "Conflict" }
+                  : {
+                      status: prepared.status,
+                      orderId: "order-1",
+                      redirectUrl: `/${input.locale}/checkout/pay?payState=sealed&orderId=order-1`,
+                      expiresAt: "2099-01-01T10:10:00.000Z",
+                      affectedProductKeys: [],
+                    }
+              )
         )
       ),
-      Effect.flatMap(() =>
-        "fail" in prepared
-          ? Effect.fail(prepared.fail)
-          : Effect.succeed(
-              prepared.status === "error"
-                ? { status: "error" as const, message: "Conflict" }
-                : {
-                    status: prepared.status,
-                    orderId: "order-1",
-                    redirectUrl: `/${input.locale}/checkout/pay?payState=sealed&orderId=order-1`,
-                    expiresAt: "2099-01-01T10:10:00.000Z",
-                    affectedProductKeys: [],
-                  }
-            )
-      )
-    ),
-}));
+  })
+);
 
 type Contact = {
   readonly name: string;

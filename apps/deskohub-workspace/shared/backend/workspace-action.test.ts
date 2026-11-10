@@ -11,13 +11,14 @@ import {
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { context, trace } from "@opentelemetry/api";
+import { SeverityNumber } from "@opentelemetry/api-logs";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import {
   BasicTracerProvider,
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
-import { Duration, Effect, Schema } from "effect";
+import { Duration, Effect, type LogLevel, References, Schema } from "effect";
 import { redirect } from "next/navigation";
 import { m as administrationMessages } from "@/features/administration/i18n";
 import { type Locale, m } from "@/features/i18n";
@@ -763,6 +764,120 @@ describe("Workspace actions", () => {
         serverError: expect.any(String),
       });
       expect(consoleFailureLogs("test.log-early-failure")).toHaveLength(1);
+    });
+  });
+
+  describe("lifecycle logging", () => {
+    const loggedInput = testEmailAddress("action-input");
+    /** The minimum log level the runtime root provides to this test's runs. */
+    let runtimeMinimumLogLevel: LogLevel.LogLevel | undefined;
+    let runSpy: { mockRestore: () => void } | undefined;
+
+    beforeAll(async () => {
+      const workspaceEffect = await import("./workspace-effect");
+      const { runWorkspaceEffect } = workspaceEffect;
+      // The runtime is built once per process, so each run gets the level
+      // this test sets in place of the runtime root's.
+      runSpy = spyOn(workspaceEffect, "runWorkspaceEffect").mockImplementation(
+        (...runArgs) =>
+          <A, E>(effect: Effect.Effect<A, E>) =>
+            runWorkspaceEffect(...runArgs)(
+              runtimeMinimumLogLevel === undefined
+                ? effect
+                : Effect.provideService(
+                    effect,
+                    References.MinimumLogLevel,
+                    runtimeMinimumLogLevel
+                  )
+            )
+      );
+    });
+    afterAll(() => {
+      runSpy?.mockRestore();
+    });
+    beforeEach(() => {
+      workspaceLogs.reset();
+    });
+    afterEach(() => {
+      runtimeMinimumLogLevel = undefined;
+    });
+
+    const defineLoggedAction = (
+      operation: string,
+      options: { readonly logInput?: boolean } = {}
+    ) =>
+      import("./workspace-action").then(({ defineWorkspaceAction }) =>
+        defineWorkspaceAction(
+          {
+            ...options,
+            operation,
+            schema: Schema.toStandardSchemaV1(Schema.String),
+          },
+          () =>
+            Effect.gen(function* () {
+              return yield* References.MinimumLogLevel;
+            })
+        )
+      );
+    const debugLogs = (operation: string) =>
+      workspaceLogs
+        .records()
+        .filter(
+          ({ attributes, severityNumber }) =>
+            attributes?.operation === operation &&
+            severityNumber === SeverityNumber.DEBUG
+        );
+
+    test.each(["Debug", "Info", "Warn"] as const)(
+      "runs its handler at the runtime's %s minimum level",
+      async (level) => {
+        runtimeMinimumLogLevel = level;
+        const action = await defineLoggedAction("test.runtime-log-level");
+
+        await expect(action("input")).resolves.toEqual({ data: level });
+      }
+    );
+
+    test("logs its start and completion with its input at a Debug minimum level", async () => {
+      runtimeMinimumLogLevel = "Debug";
+      const action = await defineLoggedAction("test.debug-lifecycle");
+
+      await expect(action(loggedInput)).resolves.toEqual({ data: "Debug" });
+      const logs = debugLogs("test.debug-lifecycle");
+      expect(logs).toHaveLength(2);
+      expect(
+        JSON.stringify(logs.map(({ attributes }) => attributes))
+      ).toContain(loggedInput);
+    });
+
+    test("keeps its input off its lifecycle logs when input logging is disabled", async () => {
+      runtimeMinimumLogLevel = "Debug";
+      const action = await defineLoggedAction("test.private-lifecycle", {
+        logInput: false,
+      });
+
+      await expect(action(loggedInput)).resolves.toEqual({ data: "Debug" });
+      const logs = debugLogs("test.private-lifecycle");
+      expect(logs).toHaveLength(2);
+      expect(
+        JSON.stringify(logs.map(({ attributes }) => attributes))
+      ).not.toContain(loggedInput);
+    });
+
+    test("logs no lifecycle rows at an Info minimum level", async () => {
+      runtimeMinimumLogLevel = "Info";
+      const action = await defineLoggedAction("test.info-lifecycle");
+
+      await expect(action(loggedInput)).resolves.toEqual({ data: "Info" });
+      expect(debugLogs("test.info-lifecycle")).toHaveLength(0);
+      const operationLogs = workspaceLogs
+        .records()
+        .filter(
+          ({ attributes }) => attributes?.operation === "test.info-lifecycle"
+        );
+      expect(
+        JSON.stringify(operationLogs.map(({ attributes }) => attributes))
+      ).not.toContain(loggedInput);
     });
   });
 

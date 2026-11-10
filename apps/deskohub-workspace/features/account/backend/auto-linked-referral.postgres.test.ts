@@ -32,6 +32,7 @@ import {
   type CustomerAccountResolutionDependencies,
   resolveCustomerAccountLink,
 } from "./customer-account-resolver.service";
+import { CustomerAccountSections } from "./customer-account-sections";
 import { CustomerAuthentication } from "./customer-authentication.service";
 import { testSessionProfile } from "./customer-authentication.test-utils";
 
@@ -133,19 +134,26 @@ const signIn = (input: {
   );
   const lockLayer = WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool);
   const linksLayer = CustomerAccountLinkRepository.Default.pipe(
-    Layer.provide(Layer.mergeAll(databaseLayer, lockLayer))
+    Layer.provide(databaseLayer)
+  );
+  const session = {
+    accountId: input.accountId,
+    email: testEmailAddress(input.accountId),
+    deletionRequested: false,
+    ...testSessionProfile,
+  };
+  const authenticationLayer = Layer.succeed(CustomerAuthentication, {
+    currentUser: Effect.succeed(session),
+  });
+  const sectionsLayer = CustomerAccountSections.Default.pipe(
+    Layer.provide(Layer.mergeAll(authenticationLayer, linksLayer, lockLayer))
   );
 
   return Effect.gen(function* () {
     const links = yield* CustomerAccountLinkRepository;
+    const sections = yield* CustomerAccountSections;
     const dependencies: CustomerAccountResolutionDependencies = {
-      currentUser: () =>
-        Effect.succeed({
-          accountId: input.accountId,
-          email: testEmailAddress(input.accountId),
-          deletionRequested: false,
-          ...testSessionProfile,
-        }),
+      currentUser: () => Effect.succeed(session),
       findLink: links.find,
       isReviewAccount: () => Effect.succeed(false),
       classify: () =>
@@ -156,7 +164,7 @@ const signIn = (input: {
         }),
       claimLink: links.claim,
       reactivate: () => Effect.void,
-      withAccountLock: links.withAccountLock,
+      withActiveAccount: sections.withActiveAccount,
     };
 
     const resolution = yield* resolveCustomerAccountLink(dependencies);
@@ -172,9 +180,8 @@ const signIn = (input: {
               databaseLayer,
               lockLayer,
               linksLayer,
-              Layer.succeed(CustomerAuthentication, {
-                currentUser: dependencies.currentUser(),
-              }),
+              authenticationLayer,
+              sectionsLayer,
               Layer.mock(DotyposService, {
                 listReservations: () =>
                   Effect.succeed(input.reservations ?? []),
@@ -186,7 +193,7 @@ const signIn = (input: {
     );
     return resolution;
   }).pipe(
-    Effect.provide(linksLayer),
+    Effect.provide(Layer.mergeAll(linksLayer, sectionsLayer)),
     // Recording under the resolver's account lock would wait on that lock
     // forever; the timeout turns such a regression into a failure.
     Effect.timeout("10 seconds"),

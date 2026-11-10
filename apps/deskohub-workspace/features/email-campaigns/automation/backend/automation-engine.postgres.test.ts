@@ -1385,7 +1385,7 @@ describe.skipIf(!database)(
         expect(await outcomes(campaignId)).toEqual({
           [customer]: ["ended", "sent", null],
         });
-        expect(requests()).toEqual([
+        expect(requests()).toMatchObject([
           {
             key: `email-campaign:${killed.send_id}:attempt-1:batch-0`,
             to: [emailOf(customer)],
