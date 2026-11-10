@@ -8,8 +8,8 @@ import { CustomerAccountLinkRepository } from "./customer-account-link.repositor
 import { CustomerAccountSections } from "./customer-account-sections";
 import {
   makeCustomerAccountSections,
-  sectionAccountEmail,
   sectionAccountId,
+  sectionAccountEmail as verifiedEmail,
 } from "./customer-account-sections.test-utils";
 import {
   CustomerDotyposAdapter,
@@ -21,9 +21,6 @@ const account = {
   accountId: sectionAccountId,
   dotyposCustomerId: "60111",
 };
-
-/** The login email the held account carries. */
-const verifiedEmail = sectionAccountEmail;
 
 const linkedProfile = {
   firstName: "Ada",

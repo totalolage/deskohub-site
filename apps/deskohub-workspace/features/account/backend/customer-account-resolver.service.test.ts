@@ -14,16 +14,14 @@ import {
 } from "./customer-account-resolver.service";
 import { CustomerAccountSections } from "./customer-account-sections";
 import {
+  sectionAccountId as accountId,
   type CustomerAccountSectionsFixture,
   makeCustomerAccountSections,
-  sectionAccountEmail,
-  sectionAccountId,
+  sectionAccountEmail as verifiedEmail,
 } from "./customer-account-sections.test-utils";
 import type { CustomerAccountSession } from "./customer-authentication.service";
 
-const accountId = sectionAccountId;
 const otherAccountId = customerAccountIdSchema.make("auth-user-2");
-const verifiedEmail = sectionAccountEmail;
 
 const session = (
   overrides: Partial<CustomerAccountSession> = {}

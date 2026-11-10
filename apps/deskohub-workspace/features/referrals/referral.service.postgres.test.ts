@@ -22,6 +22,7 @@ import {
   accountLinksFailingAt,
   unreachableAccountLinks,
 } from "@/features/account/backend/customer-account-link.test-utils";
+import { CustomerAccountSections } from "@/features/account/backend/customer-account-sections";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import {
   signedInAuthentication,
@@ -148,8 +149,9 @@ const makeReferralLayer = (
   );
   const lockLayer = WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool);
   const accountLinksLayer = CustomerAccountLinkRepository.Default.pipe(
-    Layer.provide(Layer.mergeAll(databaseLayer, lockLayer))
+    Layer.provide(databaseLayer)
   );
+  const authenticationLayer = signedInAuthentication(identity.accountId);
 
   return ReferralService.Default.pipe(
     Layer.provide(
@@ -158,7 +160,12 @@ const makeReferralLayer = (
         databaseLayer,
         lockLayer,
         accountLinksLayer,
-        signedInAuthentication(identity.accountId),
+        authenticationLayer,
+        CustomerAccountSections.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(authenticationLayer, accountLinksLayer, lockLayer)
+          )
+        ),
         Layer.mock(DotyposService, {
           listReservations,
         } as Partial<DotyposService["Service"]>)
@@ -2131,16 +2138,25 @@ describe.skipIf(!testDatabase)(
       try {
         const databaseLayer = unreachable.database;
         const lockLayer = unreachable.advisoryLock;
+        const linksLayer = CustomerAccountLinkRepository.Default.pipe(
+          Layer.provide(databaseLayer)
+        );
+        const authenticationLayer = signedInAuthentication(
+          context.invitee.accountId
+        );
         const storeDown = ReferralService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               ReferralReleaseGate.fromDecision(true),
               databaseLayer,
               lockLayer,
-              CustomerAccountLinkRepository.Default.pipe(
-                Layer.provide(Layer.mergeAll(databaseLayer, lockLayer))
+              linksLayer,
+              authenticationLayer,
+              CustomerAccountSections.Default.pipe(
+                Layer.provide(
+                  Layer.mergeAll(authenticationLayer, linksLayer, lockLayer)
+                )
               ),
-              signedInAuthentication(context.invitee.accountId),
               Layer.mock(DotyposService, {
                 listReservations: () => Effect.succeed([]),
               } as Partial<DotyposService["Service"]>)
@@ -2243,6 +2259,8 @@ const makeAccountPrerequisiteLayer = (input: {
     /** How many times each named read answers before it fails. */
     readonly afterHealthyReads?: number;
   };
+  /** The advisory lock the account section takes; the disposable database's by default. */
+  readonly sectionLock?: Layer.Layer<WorkspaceDatabaseAdvisoryLock>;
 }) => {
   const databaseLayer = Layer.succeed(
     WorkspaceDatabase,
@@ -2250,7 +2268,7 @@ const makeAccountPrerequisiteLayer = (input: {
   );
   const lockLayer = WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool);
   const healthyLinks = CustomerAccountLinkRepository.Default.pipe(
-    Layer.provide(Layer.mergeAll(databaseLayer, lockLayer))
+    Layer.provide(databaseLayer)
   );
   const accountLinks = input.failingAt
     ? accountLinksFailingAt(input.failingAt.reads, {
@@ -2270,6 +2288,15 @@ const makeAccountPrerequisiteLayer = (input: {
         lockLayer,
         accountLinks,
         input.authentication,
+        CustomerAccountSections.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              input.authentication,
+              accountLinks,
+              input.sectionLock ?? lockLayer
+            )
+          )
+        ),
         Layer.mock(DotyposService, {
           listReservations: () => Effect.succeed([]),
         } as Partial<DotyposService["Service"]>)
@@ -2331,7 +2358,6 @@ describe.skipIf(!testDatabase)(
     test.each([
       { read: "find", operations: ["summary", "acceptance"] },
       { read: "findActivityState", operations: ["summary", "acceptance"] },
-      { read: "withAccountLock", operations: ["summary"] },
     ] as const)(
       "reports a failed $read as a database outage, never as an unavailable account, and writes nothing",
       async ({ read, operations }) => {
@@ -2369,6 +2395,53 @@ describe.skipIf(!testDatabase)(
           expect(
             outcomeOf(await acceptAtAccount(context, context.referrer.code))
           ).toBe("accepted");
+        } finally {
+          await unreachable.pool.end();
+          await context.cleanup();
+        }
+      }
+    );
+
+    test.each([
+      { failing: "lock", code: "account-link.lock" },
+      { failing: "recheck", code: "account.deletion-state" },
+    ] as const)(
+      "reports a summary whose account section fails at its $failing as an account check outage, never as an unavailable account",
+      async ({ failing, code }) => {
+        const context = await createVerdictContext();
+        const unreachable = await connectUnreachableWorkspaceDatabase();
+        try {
+          // The identity check reads the account's state before the section;
+          // the section's own recheck reads it again under the lock.
+          const sectionDown = makeAccountPrerequisiteLayer({
+            authentication: signedInAuthentication(context.invitee.accountId),
+            ...(failing === "lock"
+              ? { sectionLock: unreachable.advisoryLock }
+              : {
+                  failingAt: {
+                    reads: ["findActivityState"],
+                    unreachable: await unreachableAccountLinks(unreachable),
+                    afterHealthyReads: 1,
+                  },
+                }),
+          });
+
+          expect(await summarizeAtAccount(context, sectionDown)).toMatchObject({
+            _tag: "Failure",
+            failure: { _tag: "ReferralAccountCheckUnavailable", code },
+          });
+          expect(
+            (
+              await summarizeAtAccount(
+                context,
+                makeAccountPrerequisiteLayer({
+                  authentication: signedInAuthentication(
+                    context.invitee.accountId
+                  ),
+                })
+              )
+            )._tag
+          ).toBe("Success");
         } finally {
           await unreachable.pool.end();
           await context.cleanup();

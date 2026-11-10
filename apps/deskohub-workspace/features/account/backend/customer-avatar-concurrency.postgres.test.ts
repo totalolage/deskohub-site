@@ -23,6 +23,7 @@ import {
 } from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import { waitForAccountAdvisoryLockWait } from "./customer-account-lock.test-utils";
+import { CustomerAccountSections } from "./customer-account-sections";
 import {
   type CustomerAccountSession,
   CustomerAuthentication,
@@ -191,49 +192,45 @@ const insertLink = async (account: string, dotyposCustomerId: string) => {
   );
 };
 
-const makeLayer = () =>
-  testDatabase &&
-  Layer.mergeAll(
+const makeLayer = () => {
+  if (!testDatabase) return undefined;
+  const authentication = Layer.succeed(CustomerAuthentication, {
+    currentUser: Effect.suspend(() =>
+      currentSession === null
+        ? Effect.succeed(null)
+        : Effect.succeed(currentSession)
+    ),
+  });
+  const links = CustomerAccountLinkRepository.Default.pipe(
+    Layer.provide(
+      Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(testDatabase.db))
+    )
+  );
+  const sections = CustomerAccountSections.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        authentication,
+        links,
+        WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase.pool)
+      )
+    )
+  );
+  return Layer.mergeAll(
     CustomerAvatarService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
           CloudinaryLayer,
-          CustomerAccountLinkRepository.Default.pipe(
-            Layer.provide(
-              Layer.mergeAll(
-                Layer.succeed(
-                  WorkspaceDatabase,
-                  WorkspaceDatabase.make(testDatabase.db)
-                ),
-                WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase.pool)
-              )
-            )
-          ),
-          Layer.succeed(CustomerAuthentication, {
-            currentUser: Effect.suspend(() =>
-              currentSession === null
-                ? Effect.succeed(null)
-                : Effect.succeed(currentSession)
-            ),
-          }),
+          sections,
           Layer.succeed(CustomerAvatarSettings, {
             namespace: Option.some("avatars/test"),
           })
         )
       )
     ),
-    CustomerAccountLinkRepository.Default.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          Layer.succeed(
-            WorkspaceDatabase,
-            WorkspaceDatabase.make(testDatabase.db)
-          ),
-          WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase.pool)
-        )
-      )
-    )
+    links,
+    sections
   );
+};
 
 const pngBytes = () =>
   import("sharp").then(({ default: sharp }) =>
@@ -383,6 +380,7 @@ describe.skipIf(!testDatabase)(
         Effect.gen(function* () {
           const avatars = yield* CustomerAvatarService;
           const links = yield* CustomerAccountLinkRepository;
+          const sections = yield* CustomerAccountSections;
 
           uploadEntered = yield* Deferred.make<void>();
           releaseUpload = yield* Deferred.make<void>();
@@ -399,15 +397,16 @@ describe.skipIf(!testDatabase)(
           yield* Deferred.await(uploadEntered);
 
           // Account deletion mirrors the real lifecycle: the marker is
-          // written under the account lock, then the avatar is destroyed
+          // written in the account's section, then the avatar is destroyed
           // before identity removal.
           const deletionFiber = yield* Effect.forkChild(
-            links
-              .withAccountLock(
+            sections
+              .withActiveAccount(
                 account,
                 links
                   .markDeletionRequested(account, new Date())
-                  .pipe(Effect.andThen(avatars.destroy(account)))
+                  .pipe(Effect.andThen(avatars.destroy(account))),
+                { recheck: "present" }
               )
               .pipe(Effect.orDie)
           );

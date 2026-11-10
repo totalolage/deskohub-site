@@ -430,11 +430,7 @@ describe("account actions", () => {
     expect(profileCalls).toEqual([
       {
         op: "create",
-        args: [
-          "@test/account-id",
-          { firstName: "Ada" },
-          codeTarget,
-        ],
+        args: ["@test/account-id", { firstName: "Ada" }, codeTarget],
       },
     ]);
     expect(referralCalls).toEqual([
@@ -750,11 +746,7 @@ describe("account actions", () => {
     expect(profileCalls).toEqual([
       {
         op: "create",
-        args: [
-          "@test/account-id",
-          { firstName: "Ada" },
-          undefined,
-        ],
+        args: ["@test/account-id", { firstName: "Ada" }, undefined],
       },
     ]);
     expect(storedIntent).toBeUndefined();

@@ -50,7 +50,6 @@ const readLink = (input: {
           claim: unused,
           findActivityState: unused,
           markDeletionRequested: unused,
-          withAccountLock: unused,
         })
       )
     ),

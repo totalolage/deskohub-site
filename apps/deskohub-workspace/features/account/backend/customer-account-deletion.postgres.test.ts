@@ -17,11 +17,11 @@ import { AccountingSnapshotKeyService } from "@/features/accounting/backend/acco
 import { InvoiceRepository } from "@/features/accounting/backend/invoice.repository";
 import { manualInvoiceInputSchema } from "@/features/accounting/manual-invoice";
 import { ReviewAccounts } from "@/features/review-accounts";
+import { connectUnreachableWorkspaceDatabase } from "@/shared/testing/unreachable-workspace-database.test-utils";
 import {
   syntheticDotyposCustomerId,
   workspaceFixtures,
 } from "@/shared/testing/workspace-fixtures.test-utils";
-import { connectUnreachableWorkspaceDatabase } from "@/shared/testing/unreachable-workspace-database.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   createWorkspacePostgresSuiteDatabase,

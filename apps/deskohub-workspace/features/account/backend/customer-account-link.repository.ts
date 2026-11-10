@@ -4,11 +4,9 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { customerAccounts } from "@/db/schema";
 import { authUser } from "@/db/schema/auth";
 import { findViolatedConstraint } from "@/db/sql-constraint";
-import { WorkspaceLockSections } from "@/db/workspace-locks";
 import {
   insertReferralSignupIntent,
   type ReferralSignupIntent,
@@ -67,10 +65,6 @@ interface ICustomerAccountLinkRepository {
     accountId: CustomerAccountId,
     requestedAt: Date
   ) => Effect.Effect<void, CustomerAccountLinkError>;
-  readonly withAccountLock: <A, E, R>(
-    accountId: CustomerAccountId,
-    effect: Effect.Effect<A, E, R>
-  ) => Effect.Effect<A, E | SqlError.SqlError, R>;
 }
 
 export class CustomerAccountLinkRepository extends Context.Service<
@@ -81,7 +75,6 @@ export class CustomerAccountLinkRepository extends Context.Service<
     this,
     Effect.gen(function* () {
       const { db, transaction } = yield* WorkspaceDatabase;
-      const advisoryLock = yield* WorkspaceDatabaseAdvisoryLock;
 
       const find = Effect.fn("CustomerAccountLinkRepository.find")(function* (
         accountId: CustomerAccountId
@@ -198,30 +191,16 @@ export class CustomerAccountLinkRepository extends Context.Service<
           .pipe(Effect.asVoid)
       );
 
-      const withAccountLock: ICustomerAccountLinkRepository["withAccountLock"] =
-        (accountId, effect) =>
-          WorkspaceLockSections.customerAccount(accountId)(effect).pipe(
-            Effect.provideService(WorkspaceDatabaseAdvisoryLock, advisoryLock)
-          );
-
       return {
         claim,
         find,
         findActivityState,
         markDeletionRequested,
-        withAccountLock,
       } satisfies ICustomerAccountLinkRepository;
     })
   );
 
-  static Live = this.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        WorkspaceDatabase.Default,
-        WorkspaceDatabaseAdvisoryLock.Default
-      )
-    )
-  );
+  static Live = this.Default.pipe(Layer.provide(WorkspaceDatabase.Default));
 }
 
 /** The claimed customer is already another account's. */

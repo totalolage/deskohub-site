@@ -16,11 +16,9 @@ import { CustomerAccountSections } from "@/features/account/backend/customer-acc
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import {
   CustomerAccountAccessError,
-  type LinkedCustomerAccount,
-} from "@/features/account/customer-account";
-import {
   type CustomerAccountId,
   customerAccountIdSchema,
+  type LinkedCustomerAccount,
 } from "@/features/account/customer-account";
 import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import {
@@ -66,8 +64,8 @@ import {
  * signed-in account's operations also fail with
  * `ReferralAuthenticationUnavailable` when its session could not be read, and
  * the summary with `ReferralAccountCheckUnavailable` when its account lock or
- * deletion state could not be read; `account_unavailable` means the account itself is gone, awaits deletion, or
- * is no longer linked to that customer.
+ * deletion state could not be read; `account_unavailable` means the account
+ * itself is gone, awaits deletion, or is no longer linked to that customer.
  */
 export interface IReferralService {
   readonly getAccountSummary: (input: {
@@ -314,9 +312,14 @@ export class ReferralService extends Context.Service<
        * Runs `effect` in the account's section, which rechecks under the lock
        * that the account exists and awaits no deletion. A gone or deleting
        * account is `account_unavailable`; a lock or deletion state that
-       * couldn't be read is an outage.
+       * couldn't be read is an outage. The work's own failures are referral
+       * outcomes, so only the section's access error is mapped.
        */
-      const withActiveCurrentAccount = <A, E, R>(
+      const withActiveCurrentAccount = <
+        A,
+        E extends ReferralError | ReferralAccountOutage,
+        R,
+      >(
         identity: LinkedCustomerAccount,
         effect: Effect.Effect<A, E, R>
       ) =>
