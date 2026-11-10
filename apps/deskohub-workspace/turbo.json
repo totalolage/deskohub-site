@@ -111,6 +111,7 @@
     "test:dependencies": {
       "dependsOn": [
         "@deskohub/agent-skills#test",
+        "@deskohub/analytics-posthog#test",
         "@deskohub/ares#test",
         "@deskohub/brand-tokens#test",
         "@deskohub/cloudinary#test",
@@ -126,7 +127,6 @@
         "@deskohub/nexi#test",
         "@deskohub/next-effect#test",
         "@deskohub/phone-number#test",
-        "@deskohub/analytics-posthog#test",
         "@deskohub/qr-code#test",
         "@deskohub/secret-comparison#test",
         "@deskohub/standard-schema#test",
