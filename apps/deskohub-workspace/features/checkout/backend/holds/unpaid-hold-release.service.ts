@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import {
   type DotyposReservationId,
   type DotyposReservationStatus,
@@ -24,7 +26,7 @@ import { DotyposHoldRelease } from "./dotypos-hold-release.service";
  * - `agent_rotated`: an agent client's hold left behind in a rotated checkout
  *   session.
  */
-export type UnpaidHoldReleaseReason =
+type UnpaidHoldReleaseReason =
   | "hold_expired"
   | "late_payment"
   | "agent_rotated";
@@ -67,7 +69,7 @@ interface RefusedHold {
  *   the reservation moved to `cancellation_failed`, under
  *   `read_before_claim` it is untouched.
  */
-export type UnpaidHoldReleaseOutcome =
+type UnpaidHoldReleaseOutcome =
   | ReleasedHold
   | "already_released"
   | "in_progress"
@@ -76,7 +78,7 @@ export type UnpaidHoldReleaseOutcome =
   | "state_changed"
   | RefusedHold;
 
-export type UnpaidHoldReleaseError =
+type UnpaidHoldReleaseError =
   | DotyposWriteFailure
   | EffectDrizzleQueryError
   | WorkspaceReservationDetailsMalformedError
