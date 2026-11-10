@@ -138,6 +138,31 @@ const publishedDocuments: ReadonlyArray<{
     documentKey: "cookie-policy",
     version: "d9cc345892616de3c3b05e7e1f7e505a7947738423b2ee4276d0757f3d4dbfaf",
   },
+  {
+    locale: "hi-IN",
+    documentKey: "terms-and-conditions",
+    version: "e2e9d3c1ba9c4ea94164544416d35d3227a58adbbae9e5930478ccd02878e81c",
+  },
+  {
+    locale: "hi-IN",
+    documentKey: "operating-rules",
+    version: "635da5bf566a299b094ae7f8fc86235f9f551361b10d505e0d27f021ea7fbd31",
+  },
+  {
+    locale: "hi-IN",
+    documentKey: "privacy-policy",
+    version: "db35770c2e282d1d15ce49251eebfba87b6d75e6b2b7d838e4882c5c62960c13",
+  },
+  {
+    locale: "hi-IN",
+    documentKey: "marketing-communications",
+    version: "358888b8c2d137d0ecc28ff406e2267ec833f12f641e18c9380d9620f3ca0882",
+  },
+  {
+    locale: "hi-IN",
+    documentKey: "cookie-policy",
+    version: "8a1b1ac6543ec1b2a5d9ab7188e86679699a29fe1910e762bfa8a1a151ed6bad",
+  },
 ];
 
 describe("getLegalDocumentVersion", () => {
