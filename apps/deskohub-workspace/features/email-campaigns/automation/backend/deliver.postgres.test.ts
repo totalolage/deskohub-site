@@ -246,7 +246,7 @@ describe.skipIf(!database)("deliver units on disposable Postgres", () => {
 
     const [unit] = await unitsOf(seeded.campaignId);
     expect(unit).toMatchObject({ status: "done" });
-    expect(engine.resend.requests()).toEqual([
+    expect(engine.resend.requests()).toMatchObject([
       {
         key: `email-campaign:${unit!.send_id}:attempt-1:batch-0`,
         to: expect.arrayContaining([
@@ -549,6 +549,22 @@ describe.skipIf(!database)("deliver units on disposable Postgres", () => {
         [account]: ["ended", "sent", null],
         [booked]: ["ended", "sent", null],
       });
+      // Settling the send leaves the campaign's status to its lifecycle.
+      const {
+        rows: [settled],
+      } = await pool.query(
+        "select c.status, s.completed_at from email_campaign_sends s join email_campaigns c on c.id = s.campaign_id where s.id = $1",
+        [killed!.send_id]
+      );
+      expect(settled.status).toBe(
+        {
+          none: "active",
+          "lost-message": "active",
+          pause: "paused",
+          archive: "archived",
+        }[then]
+      );
+      expect(settled.completed_at).not.toBeNull();
       const keys = engine.resend.requests().map(({ key }) => key);
       const killedKey = `email-campaign:${killed!.send_id}:attempt-1:batch-0`;
       expect(keys.filter((key) => key === killedKey)).toHaveLength(2);

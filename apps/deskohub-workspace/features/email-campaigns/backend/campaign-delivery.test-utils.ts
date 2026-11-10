@@ -3,7 +3,6 @@ import type { EmailServiceTag } from "@deskohub/email";
 import { Layer } from "effect";
 import { MarketingConsentLedger } from "@/features/legal/backend/marketing-consent-ledger";
 import { MarketingManagementService } from "@/features/legal/backend/marketing-management.service";
-import { AutomationRunSettlement } from "../automation/backend/automation-run-settlement.service";
 import { CampaignDeliveryService } from "./campaign-delivery.service";
 import type { CampaignEmailConfig } from "./campaign-email.config";
 import { CampaignUnsubscribeService } from "./campaign-unsubscribe.service";
@@ -24,7 +23,6 @@ export const campaignDeliveryTestLayer = <E, R>(
     Layer.provide(
       Layer.mergeAll(
         dependencies,
-        AutomationRunSettlement.Default,
         CampaignUnsubscribeService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
