@@ -206,26 +206,26 @@ describe("client construction", () => {
     expect(app.clients[0]?.calls).toEqual([["reloadFeatureFlags"]]);
   });
 
-  test.each([
-    "preview",
-    "development",
-  ] as const)("requests no remote flags in %s", async (environment) => {
-    const app = setup({
-      runtimeSettings: { ...settings, environment },
-      restoredDistinctId: "workspace-account:account-a",
-    });
-    app.connect();
-    app.analytics.setIdentity({ kind: "anonymous" });
-    await settle();
-    app.analytics.setIdentity(account("account-b"));
-    await settle();
-    const [client] = app.clients;
-    expect(client?.options.remoteFeatureFlags).toBe(false);
-    expect(client?.calls.map(([name]) => name)).toContain("identify");
-    expect(client?.calls.map(([name]) => name)).not.toContain(
-      "reloadFeatureFlags"
-    );
-  });
+  test.each(["preview", "development"] as const)(
+    "requests no remote flags in %s",
+    async (environment) => {
+      const app = setup({
+        runtimeSettings: { ...settings, environment },
+        restoredDistinctId: "workspace-account:account-a",
+      });
+      app.connect();
+      app.analytics.setIdentity({ kind: "anonymous" });
+      await settle();
+      app.analytics.setIdentity(account("account-b"));
+      await settle();
+      const [client] = app.clients;
+      expect(client?.options.remoteFeatureFlags).toBe(false);
+      expect(client?.calls.map(([name]) => name)).toContain("identify");
+      expect(client?.calls.map(([name]) => name)).not.toContain(
+        "reloadFeatureFlags"
+      );
+    }
+  );
 
   test("refuses to start beside another PostHog SDK in the page", async () => {
     const app = setup({ otherSdk: true });
