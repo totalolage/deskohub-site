@@ -2,6 +2,11 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { type EmailDeliveryId, EmailDeliveryIdSchema } from "@deskohub/email";
+import {
+  type PostHogEmailStatus,
+  PostHogEmailStatusError,
+  type PostHogEmailStatusLookup,
+} from "@deskohub/email-posthog";
 import { eq, inArray } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import {
@@ -36,11 +41,6 @@ import {
   type PostHogEmailDeliveryPollSummary,
   type PostHogEmailDeliveryPollTrigger,
 } from "./posthog-email-delivery-polling";
-import {
-  type PostHogEmailStatus,
-  PostHogEmailStatusError,
-  type PostHogEmailStatusLookup,
-} from "./posthog-email-status-client";
 import { PostHogEmailStatusReader } from "./posthog-email-status-reader";
 
 // A poll claims from the whole table (its per-minute read budget counts every

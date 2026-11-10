@@ -1,6 +1,10 @@
 import "server-only";
 
 import type { EmailDeliveryId } from "@deskohub/email";
+import type {
+  PostHogEmailStatusError,
+  PostHogEmailStatusLookup,
+} from "@deskohub/email-posthog";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Data, Effect, Exit, Match, Option, Ref } from "effect";
 import { currentInstant } from "@/shared/utils/temporal";
@@ -24,10 +28,6 @@ import type {
   PostHogEmailDeliveryPollSummary,
   PostHogEmailDeliveryPollTrigger,
 } from "./posthog-email-delivery-polling";
-import type {
-  PostHogEmailStatusError,
-  PostHogEmailStatusLookup,
-} from "./posthog-email-status-client";
 
 /** Reads PostHog's status of one tracked email. */
 type PostHogEmailStatusRead = (

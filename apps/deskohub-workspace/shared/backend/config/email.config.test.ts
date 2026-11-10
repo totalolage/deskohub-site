@@ -46,16 +46,23 @@ mock.module("resend", () => ({
 }));
 
 const {
-  WorkspaceEmailLayer,
+  makeWorkspaceEmailLayer,
   workspaceEmailProviders,
   workspaceEmailSystemIdentity,
   workspaceMarketingCategories,
 } = await import("./email.config");
 const { campaignEmailKind } = await import(
-  "@/features/email-campaigns/campaign-email"
+  "@/features/email-campaigns/campaign-email-kind"
+);
+const { makeRecordingWorkspaceDatabase } = await import(
+  "@/shared/testing/workspace-recording-database.test-utils"
 );
 
-beforeEach(() => {
+/** Records the statements of the PostHog delivery tracking. */
+let database = await makeRecordingWorkspaceDatabase();
+
+beforeEach(async () => {
+  database = await makeRecordingWorkspaceDatabase();
   resendSend = mock<SendImplementation>(async () => ({
     data: { id: "resend-id" },
   }));
@@ -92,7 +99,7 @@ const runWorkspaceEmail = <A, E>(
   const logMessages: unknown[] = [];
   return Effect.runPromise(
     effect.pipe(
-      Effect.provide(WorkspaceEmailLayer),
+      Effect.provide(makeWorkspaceEmailLayer(database.layer)),
       Effect.provide(
         Logger.layer([
           Logger.make((options) => {
@@ -280,6 +287,10 @@ describe("WorkspaceEmailLayer", () => {
       }) as typeof globalThis.fetch;
       return { fetch, requests };
     };
+    const postHogDeliveryInserts = () =>
+      database.statements.filter(({ sql }) =>
+        /insert into "posthog_email_deliveries"/i.test(sql)
+      );
     const campaignMessage = {
       ...message(realRecipient),
       tags: [campaignEmailKind.category],
@@ -306,6 +317,7 @@ describe("WorkspaceEmailLayer", () => {
         workspaceEmailSystemIdentity
       );
       expect(resendSend).not.toHaveBeenCalled();
+      expect(postHogDeliveryInserts()).toHaveLength(1);
     });
 
     test("falls back to Resend when PostHog refuses to send", async () => {
@@ -324,6 +336,7 @@ describe("WorkspaceEmailLayer", () => {
         expect(result.success.provider).toBe("resend");
       }
       expect(resendSend).toHaveBeenCalledTimes(1);
+      expect(postHogDeliveryInserts()).toEqual([]);
     });
 
     test("keeps campaign mail PostHog may still send off Resend", async () => {

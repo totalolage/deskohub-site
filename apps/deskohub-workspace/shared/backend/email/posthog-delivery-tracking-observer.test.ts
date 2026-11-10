@@ -1,11 +1,11 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import type { EmailSentEvent } from "@deskohub/email";
 import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { Effect, Layer, Logger } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { makeDatabaseClient, makeDatabasePool } from "@/db/database-client";
-import type { EmailSentEvent } from "./email-delivery-observer";
 import { makePostHogDeliveryTrackingObserver } from "./posthog-delivery-tracking-observer";
 
 type LogRecord = {
@@ -33,7 +33,7 @@ const unreachableDatabase = Layer.effect(
 
 const notifySent = (event: Partial<EmailSentEvent>) =>
   Effect.runPromise(
-    makePostHogDeliveryTrackingObserver.pipe(
+    makePostHogDeliveryTrackingObserver([]).pipe(
       Effect.flatMap((observer) =>
         observer.onSent({
           provider: "posthog",

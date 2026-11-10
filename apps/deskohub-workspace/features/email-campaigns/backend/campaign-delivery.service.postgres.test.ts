@@ -28,7 +28,7 @@ import {
   holdPostgresTransaction,
   waitForPostgresLockWaiter,
 } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
-import { campaignEmailKind } from "../campaign-email";
+import { campaignEmailKind } from "../campaign-email-kind";
 import type { CampaignId } from "../campaign-identifiers";
 import type { CampaignDeliveryEvent } from "./campaign-delivery-status.service";
 import {

@@ -8,7 +8,11 @@ import {
   TemporalInstantSchema,
   temporalInstantToIsoString,
 } from "@/shared/utils/temporal";
-import type { EmailDeployment, EmailKind } from "./email-kind";
+import {
+  type EmailKind,
+  emailCategoryTag,
+  emailDeploymentTag,
+} from "./email-kind";
 import { ResendWebhookConfig } from "./resend-webhook.config";
 
 const ResendWebhookEventIdSchema = Schema.NonEmptyString.pipe(
@@ -94,9 +98,6 @@ const tagMap = (tags: ResendTags): ReadonlyMap<string, string> => {
   }
   return new Map(Object.entries(tags));
 };
-
-const categoryTag = "category";
-const deploymentTag = "deploymentEnvironment" satisfies keyof EmailDeployment;
 
 /** The Resend events a delivery report handler can consume. */
 export type DeliveryReportEvent =
@@ -187,7 +188,7 @@ export interface DeliveryReportHandler<R> {
 const otherDeploymentIgnore = (
   report: ProviderDeliveryReport
 ): Option.Option<DeliveryReportOutcome> => {
-  const tagged = report.tags.get(deploymentTag);
+  const tagged = report.tags.get(emailDeploymentTag);
   if (tagged === report.deploymentEnvironment) return Option.none();
   return Option.some(
     ignoredDeliveryReport(
@@ -500,7 +501,7 @@ export const dispatchDeliveryReport = <R>(
   R
 > => {
   const handler = handlers.find(
-    (candidate) => candidate.category === report.tags.get(categoryTag)
+    (candidate) => candidate.category === report.tags.get(emailCategoryTag)
   );
   return handler
     ? handler.receive(report)

@@ -1,11 +1,11 @@
 import type { EmailDeliveryId } from "@deskohub/email";
+import type { PostHogEmailStatus } from "@deskohub/email-posthog";
 import {
   type DeliveryReportEvent,
   deliveryReportEmailId,
   deliveryReportEventId,
   type ProviderDeliveryReport,
 } from "./delivery-reports";
-import type { PostHogEmailStatus } from "./posthog-email-status-client";
 
 const finalStatuses = [
   "delivered",

@@ -1,14 +1,17 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
-import { type EmailDeliveryId, EmailDeliveryIdSchema } from "@deskohub/email";
-import { Effect } from "effect";
+import {
+  type EmailDeliveryId,
+  EmailDeliveryIdSchema,
+  type EmailDeliveryObserver,
+  type EmailSentEvent,
+} from "@deskohub/email";
+import { testEmailAddress } from "@deskohub/test-email";
+import { Effect, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import type {
-  EmailDeliveryObserver,
-  EmailSentEvent,
-} from "./email-delivery-observer";
+import type { EmailKind } from "./email-kind";
 import { makePostHogDeliveryTrackingObserver } from "./posthog-delivery-tracking-observer";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -16,18 +19,26 @@ const testDatabase = await connectWorkspacePostgresTestDatabase();
 const run = crypto.randomUUID().slice(0, 8);
 const sentAt = "2026-11-09T12:00:00.000Z";
 
+/** A kind whose delivery reports read one synthetic reference. */
+const trackedKind: EmailKind<{ readonly syntheticReference: string }> = {
+  category: "synthetic-tracked-kind",
+  metadata: Schema.toStandardSchemaV1(
+    Schema.Struct({ syntheticReference: Schema.NonEmptyString })
+  ),
+};
+
 const sentEvent = (
   deliveryId: EmailDeliveryId,
   overrides: Partial<EmailSentEvent> = {}
 ): EmailSentEvent => ({
   provider: "posthog",
   deliveryId,
-  stream: "transactional",
-  category: "workspace-reservation-customer-access",
-  tags: ["workspace-reservation-customer-access"],
+  stream: "marketing",
+  category: trackedKind.category,
+  tags: [trackedKind.category],
   metadata: {
     deploymentEnvironment: "preview",
-    workspaceReservationId: `reservation-${run}`,
+    syntheticReference: `reference-${run}`,
     attempt: 2,
     retried: true,
     missing: undefined,
@@ -60,7 +71,7 @@ describe.skipIf(!testDatabase)(
       notify: (observer: EmailDeliveryObserver) => Effect.Effect<void>
     ) =>
       Effect.runPromise(
-        makePostHogDeliveryTrackingObserver.pipe(
+        makePostHogDeliveryTrackingObserver([trackedKind]).pipe(
           Effect.flatMap(notify),
           Effect.provide(testDatabase.layer)
         )
@@ -86,11 +97,11 @@ describe.skipIf(!testDatabase)(
       expect(await trackedRows(id)).toEqual([
         {
           message_id: id,
-          category: "workspace-reservation-customer-access",
+          category: trackedKind.category,
           tags: {
-            category: "workspace-reservation-customer-access",
+            category: trackedKind.category,
             deploymentEnvironment: "preview",
-            workspaceReservationId: `reservation-${run}`,
+            syntheticReference: `reference-${run}`,
           },
           status: "queued",
           reason: null,
@@ -119,29 +130,96 @@ describe.skipIf(!testDatabase)(
       expect(await trackedTags(id)).toEqual([{ category: null, tags: {} }]);
     });
 
-    test("keeps metadata Resend's tag characters can't carry", async () => {
-      const id = deliveryId("punctuation");
+    test("keeps no metadata the email's kind doesn't declare, such as a contact's name or address", async () => {
+      const id = deliveryId("personal");
 
       await observe((observer) =>
         observer.onSent(
           sentEvent(id, {
-            metadata: { dotyposReservationStartDate: "2026-11-09T12:00:00Z" },
+            metadata: {
+              deploymentEnvironment: "preview",
+              syntheticReference: `reference-${run}`,
+              contactName: "Ada Example",
+              contactEmail: testEmailAddress("ada"),
+            },
           })
         )
       );
 
       expect(await trackedTags(id)).toEqual([
         {
-          category: "workspace-reservation-customer-access",
+          category: trackedKind.category,
           tags: {
-            category: "workspace-reservation-customer-access",
-            dotyposReservationStartDate: "2026-11-09T12:00:00Z",
+            category: trackedKind.category,
+            deploymentEnvironment: "preview",
+            syntheticReference: `reference-${run}`,
           },
         },
       ]);
     });
 
-    test("lets a category metadata entry win the category tag, as Resend's reports do", async () => {
+    test("keeps declared metadata Resend's tag characters can't carry", async () => {
+      const id = deliveryId("punctuation");
+
+      await observe((observer) =>
+        observer.onSent(
+          sentEvent(id, {
+            metadata: { syntheticReference: "2026-11-09T12:00:00Z" },
+          })
+        )
+      );
+
+      expect(await trackedTags(id)).toEqual([
+        {
+          category: trackedKind.category,
+          tags: {
+            category: trackedKind.category,
+            syntheticReference: "2026-11-09T12:00:00Z",
+          },
+        },
+      ]);
+    });
+
+    test.each([
+      [
+        "of no tracked kind",
+        {
+          category: "synthetic-untracked-kind",
+          tags: ["synthetic-untracked-kind"],
+        },
+      ],
+      ["whose metadata its kind rejects", { category: trackedKind.category }],
+    ])(
+      "keeps only the category and deployment of an email %s",
+      async (label, overrides) => {
+        const id = deliveryId(label.replaceAll(" ", "-"));
+
+        await observe((observer) =>
+          observer.onSent(
+            sentEvent(id, {
+              ...overrides,
+              metadata: {
+                deploymentEnvironment: "preview",
+                syntheticReference: "",
+                contactName: "Ada Example",
+              },
+            })
+          )
+        );
+
+        expect(await trackedTags(id)).toEqual([
+          {
+            category: overrides.category,
+            tags: {
+              category: overrides.category,
+              deploymentEnvironment: "preview",
+            },
+          },
+        ]);
+      }
+    );
+
+    test("keeps the email's own category when its metadata names another", async () => {
       const id = deliveryId("category-metadata");
 
       await observe((observer) =>
@@ -150,8 +228,8 @@ describe.skipIf(!testDatabase)(
 
       expect(await trackedTags(id)).toEqual([
         {
-          category: "workspace-reservation-customer-access",
-          tags: { category: "campaign" },
+          category: trackedKind.category,
+          tags: { category: trackedKind.category },
         },
       ]);
     });

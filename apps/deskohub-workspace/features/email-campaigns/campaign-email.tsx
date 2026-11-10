@@ -1,17 +1,11 @@
-import {
-  type DotyposCustomerId,
-  DotyposCustomerIdSchema,
-} from "@deskohub/dotypos";
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { EmailMessage, EmailRecipient } from "@deskohub/email";
-import { Data, Effect, Match, Schema } from "effect";
+import { Data, Effect, Match } from "effect";
 import { Text } from "react-email";
 import { WorkspaceCampaignFooter } from "@/emails/_components/workspace-campaign-footer";
 import { type Locale, m } from "@/features/i18n";
 import { getRuntimeMarketingPreferencesPlaceholderUrl } from "@/features/legal/marketing-preferences-access-url";
-import {
-  type EmailKind,
-  emailKindTags,
-} from "@/shared/backend/email/email-kind";
+import { emailKindTags } from "@/shared/backend/email/email-kind";
 import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
 import { CampaignBodyContent } from "./body/campaign-body-content";
 import type {
@@ -20,28 +14,11 @@ import type {
   CampaignTemplateKey,
 } from "./body/campaign-content";
 import { campaignTemplates } from "./body/campaign-templates";
-import {
-  type CampaignConfirmationCode,
-  type CampaignSendId,
-  campaignSendIdSchema,
+import { campaignEmailKind } from "./campaign-email-kind";
+import type {
+  CampaignConfirmationCode,
+  CampaignSendId,
 } from "./campaign-identifiers";
-
-const CampaignEmailMetadata = Schema.Struct({
-  campaignSendId: campaignSendIdSchema,
-  dotyposCustomerId: DotyposCustomerIdSchema,
-});
-
-/** The frozen recipient a campaign delivery's tags name. */
-export type CampaignEmailRecipient = typeof CampaignEmailMetadata.Type;
-
-/**
- * A campaign delivery. Its tags name the frozen recipient, so delivery
- * reports find it even before its message ID is stored.
- */
-export const campaignEmailKind: EmailKind<CampaignEmailRecipient> = {
-  category: "email-campaign",
-  metadata: Schema.toStandardSchemaV1(CampaignEmailMetadata),
-};
 
 /** Resend `category` tag of campaign test emails, which aren't deliveries. */
 const campaignTestEmailCategory = "email-campaign-test";

@@ -7,15 +7,22 @@ import {
   EmailServiceTag,
   makeEmailConfigLayer,
 } from "@deskohub/email";
-import { makePostHogEmailProvider } from "@deskohub/email-posthog";
+import {
+  makePostHogEmailProvider,
+  type PostHogEmailConnection,
+} from "@deskohub/email-posthog";
 import {
   deploymentResendRequestTimeouts,
   makeResendEmailProvider,
 } from "@deskohub/email-resend";
-import { Config, Effect, Layer, Option, Redacted } from "effect";
+import { Config, Effect, Layer, Option } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { campaignEmailKind } from "@/features/email-campaigns/campaign-email-kind";
 import { makeEmailFallbackAnalyticsObserver } from "@/shared/backend/analytics/email-fallback-analytics-observer";
 import { ServerAnalytics } from "@/shared/backend/analytics/server-analytics.service";
+import { makePostHogDeliveryTrackingObserver } from "@/shared/backend/email/posthog-delivery-tracking-observer";
 import { workspaceSiteConstants } from "@/shared/utils";
+import { configuredPostHogEmailConnection } from "./posthog-email.config";
 
 export const workspaceDefaultFromAddress = "reservations@workspace.deskohub.cz";
 
@@ -26,13 +33,16 @@ const EmailConfigLayer = makeEmailConfigLayer(
   })
 );
 
+/** The kinds of email the Workspace sends as marketing mail: campaign deliveries. */
+const workspaceMarketingEmailKinds = [campaignEmailKind];
+
 /**
- * Categories the Workspace sends as marketing mail: campaign deliveries
- * (`campaignEmailKind.category`). Every other message is transactional.
+ * Categories the Workspace sends as marketing mail. Every other message is
+ * transactional.
  */
-export const workspaceMarketingCategories: ReadonlySet<string> = new Set([
-  "email-campaign",
-]);
+export const workspaceMarketingCategories: ReadonlySet<string> = new Set(
+  workspaceMarketingEmailKinds.map(({ category }) => category)
+);
 
 /**
  * The Workspace's provider chains. Transactional mail goes only through
@@ -68,72 +78,94 @@ export const workspaceEmailProviders = (providers: {
 export const workspaceEmailSystemIdentity = "workspace-email-system";
 
 /**
- * The PostHog email provider, when `POSTHOG_EMAIL_SECRET_KEY` is set
- * (production). It sends through the `POSTHOG_API_HOST` project. Campaign
- * messages carry the campaign sender, so PostHog sends from the same address
- * as Resend.
+ * The PostHog email provider of the configured connection. Campaign messages
+ * carry the campaign sender, so PostHog sends from the same address as
+ * Resend.
  */
-const configuredPostHogEmailProvider = Effect.gen(function* () {
-  const secretKey = (yield* Config.option(
-    Config.string("POSTHOG_EMAIL_SECRET_KEY")
-  )).pipe(
-    Option.map((key) => key.trim()),
-    Option.filter((key) => key !== "")
-  );
-  const host = yield* Config.option(Config.string("POSTHOG_API_HOST"));
-  if (Option.isNone(secretKey)) return undefined;
-  if (Option.isNone(host)) {
-    // The validated env requires the host; without it, keep mail flowing
-    // through Resend rather than failing every send.
-    yield* Effect.logWarning(
-      "PostHog email is off: POSTHOG_EMAIL_SECRET_KEY is set without POSTHOG_API_HOST"
-    );
-    return undefined;
-  }
-  return makePostHogEmailProvider({
-    secretKey: Redacted.make(secretKey.value),
-    host: host.value,
+const makeWorkspacePostHogEmailProvider = (
+  connection: PostHogEmailConnection
+) =>
+  makePostHogEmailProvider({
+    ...connection,
     systemIdentity: workspaceEmailSystemIdentity,
   });
-});
 
-const WorkspaceEmailProvidersLayer = Layer.effect(
-  EmailProviders,
-  Effect.gen(function* () {
-    const config = yield* EmailConfigTag;
-    const apiKey = config.apiKey?.trim();
-    const resend = apiKey
-      ? makeResendEmailProvider({
-          apiKey,
-          timeouts: yield* deploymentResendRequestTimeouts,
-        })
-      : undefined;
-    const posthog = yield* configuredPostHogEmailProvider;
-    return workspaceEmailProviders({ resend, ...(posthog && { posthog }) });
-  })
-);
+const makeWorkspaceEmailProvidersLayer = (
+  postHog: Option.Option<PostHogEmailConnection>
+) =>
+  Layer.effect(
+    EmailProviders,
+    Effect.gen(function* () {
+      const config = yield* EmailConfigTag;
+      const apiKey = config.apiKey?.trim();
+      const resend = apiKey
+        ? makeResendEmailProvider({
+            apiKey,
+            timeouts: yield* deploymentResendRequestTimeouts,
+          })
+        : undefined;
+      return workspaceEmailProviders({
+        resend,
+        ...Option.match(postHog, {
+          onNone: () => ({}),
+          onSome: (connection) => ({
+            posthog: makeWorkspacePostHogEmailProvider(connection),
+          }),
+        }),
+      });
+    })
+  );
 
 /**
  * Every delivery observer of the Workspace, combined: the fallback analytics
- * observer reports each message one provider failed and the next took over.
+ * observer reports each message one provider failed and the next took over,
+ * and with PostHog configured, the tracking observer records each message
+ * PostHog accepted so its status gets polled. `database` is built only then.
  */
-const WorkspaceEmailDeliveryObserverLayer = Layer.effect(
-  EmailDeliveryObserver,
-  Effect.map(makeEmailFallbackAnalyticsObserver, (fallbackAnalytics) =>
-    EmailDeliveryObserver.all([fallbackAnalytics])
-  )
-).pipe(Layer.provide(ServerAnalytics.Live));
+const makeWorkspaceEmailDeliveryObserverLayer = (
+  postHog: Option.Option<PostHogEmailConnection>,
+  database: Layer.Layer<WorkspaceDatabase>
+) =>
+  Option.isNone(postHog)
+    ? Layer.effect(
+        EmailDeliveryObserver,
+        Effect.map(makeEmailFallbackAnalyticsObserver, (fallbackAnalytics) =>
+          EmailDeliveryObserver.all([fallbackAnalytics])
+        )
+      ).pipe(Layer.provide(ServerAnalytics.Live))
+    : Layer.effect(
+        EmailDeliveryObserver,
+        Effect.all([
+          makeEmailFallbackAnalyticsObserver,
+          makePostHogDeliveryTrackingObserver(workspaceMarketingEmailKinds),
+        ]).pipe(Effect.map(EmailDeliveryObserver.all))
+      ).pipe(Layer.provide([ServerAnalytics.Live, database]));
 
 /**
  * Routes each message by recipient: mail only for `EMAIL_TEST_DOMAIN`
  * recipients goes to Console, everything else through its stream's chain.
+ * Campaign mail goes through PostHog first when `POSTHOG_EMAIL_SECRET_KEY` is
+ * set (production once PostHog email is set up); its deliveries are then
+ * tracked in `database`, which must be the one a caller's transactions use.
  */
-export const WorkspaceEmailLayer = EmailServiceTag.RecipientRouted.pipe(
-  Layer.provide(
-    Layer.mergeAll(
-      WorkspaceEmailProvidersLayer,
-      WorkspaceEmailDeliveryObserverLayer
-    )
-  ),
-  Layer.provideMerge(EmailConfigLayer)
+export const makeWorkspaceEmailLayer = (
+  database: Layer.Layer<WorkspaceDatabase>
+) =>
+  EmailServiceTag.RecipientRouted.pipe(
+    Layer.provide(
+      Layer.unwrap(
+        Effect.map(configuredPostHogEmailConnection, (postHog) =>
+          Layer.mergeAll(
+            makeWorkspaceEmailProvidersLayer(postHog),
+            makeWorkspaceEmailDeliveryObserverLayer(postHog, database)
+          )
+        )
+      )
+    ),
+    Layer.provideMerge(EmailConfigLayer)
+  );
+
+/** The Workspace email service over the deployment's database. */
+export const WorkspaceEmailLayer = makeWorkspaceEmailLayer(
+  WorkspaceDatabase.Default
 );
