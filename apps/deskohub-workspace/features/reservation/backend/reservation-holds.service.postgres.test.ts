@@ -56,7 +56,9 @@ type HoldRequest = Parameters<
   (typeof ReservationHolds)["Service"]["holdForAttempt"]
 >[0];
 
-const reservation = Schema.decodeUnknownSync(reservationOrderIssuanceSchema)({
+const reservation = Schema.decodeUnknownSync(
+  reservationOrderIssuanceSchema("CZ")
+)({
   kind: "cowork",
   entryTier: "open-space",
   date: "2099-06-10",
@@ -69,7 +71,7 @@ const reservation = Schema.decodeUnknownSync(reservationOrderIssuanceSchema)({
 
 /** The same visit with coffee: another selection, so another attempt key. */
 const reservationWithCoffee = Schema.decodeUnknownSync(
-  reservationOrderIssuanceSchema
+  reservationOrderIssuanceSchema("CZ")
 )({ ...reservation, coffee: true });
 
 const checkoutDetails = Schema.decodeUnknownSync(checkoutDetailsSchema)({
