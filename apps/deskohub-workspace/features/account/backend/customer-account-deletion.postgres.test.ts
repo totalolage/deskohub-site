@@ -21,6 +21,7 @@ import {
   syntheticDotyposCustomerId,
   workspaceFixtures,
 } from "@/shared/testing/workspace-fixtures.test-utils";
+import { connectUnreachableWorkspaceDatabase } from "@/shared/testing/unreachable-workspace-database.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   createWorkspacePostgresSuiteDatabase,
@@ -33,6 +34,8 @@ import { CustomerAccountRepository } from "./customer-account.repository";
 import { expireLinkedDotyposProfile } from "./customer-account-deletion";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import { CustomerAccountResolver } from "./customer-account-resolver.service";
+import { CustomerAccountSections } from "./customer-account-sections";
+import { CustomerAuthentication } from "./customer-authentication.service";
 import { CustomerAvatarProviderError } from "./customer-avatar.service";
 import {
   CustomerInvoiceService,
@@ -92,8 +95,20 @@ const readDeletedAt = async (account: CustomerAccountId) => {
   return row === undefined ? undefined : (row.deletedAt?.toString() ?? null);
 };
 
-const makeRepositoryLayer = () =>
-  Layer.mergeAll(
+/** Deletion rechecks only that the account exists, so it reads no session. */
+const unreadSession = Layer.succeed(CustomerAuthentication, {
+  currentUser: Effect.die("account deletion reads no session"),
+});
+
+/**
+ * The repositories and the account sections on the disposable database. The
+ * sections take the account lock through `sectionLock`, the real advisory
+ * lock unless a test makes it unreachable.
+ */
+const makeRepositoryLayer = (
+  sectionLock = WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool)
+) => {
+  const repositories = Layer.mergeAll(
     CustomerAccountLinkRepository.Default,
     CustomerAccountRepository.Default,
     ReviewAccounts.Default
@@ -108,6 +123,13 @@ const makeRepositoryLayer = () =>
       )
     )
   );
+  return Layer.mergeAll(
+    repositories,
+    CustomerAccountSections.Default.pipe(
+      Layer.provide(Layer.mergeAll(repositories, sectionLock, unreadSession))
+    )
+  );
+};
 
 describe.skipIf(!testDatabase)(
   "Customer account deletion on disposable Postgres",
@@ -126,6 +148,7 @@ describe.skipIf(!testDatabase)(
           const links = yield* CustomerAccountLinkRepository;
           const accounts = yield* CustomerAccountRepository;
           const reviewAccounts = yield* ReviewAccounts;
+          const sections = yield* CustomerAccountSections;
           const requestDeletion = expireLinkedDotyposProfile({
             isReviewAccount: reviewAccounts.isReviewAccount,
             markDeletionRequested: links.markDeletionRequested,
@@ -139,7 +162,8 @@ describe.skipIf(!testDatabase)(
               return Effect.void;
             },
             tombstone: accounts.tombstone,
-            withAccountLock: links.withAccountLock,
+            withActiveAccount: sections.withActiveAccount,
+            anonymiseAnalyticsPerson: () => Effect.void,
           });
           return yield* requestDeletion(account);
         }).pipe(Effect.provide(layer))
@@ -175,6 +199,7 @@ describe.skipIf(!testDatabase)(
           const links = yield* CustomerAccountLinkRepository;
           const accounts = yield* CustomerAccountRepository;
           const reviewAccounts = yield* ReviewAccounts;
+          const sections = yield* CustomerAccountSections;
           return yield* expireLinkedDotyposProfile({
             isReviewAccount: reviewAccounts.isReviewAccount,
             markDeletionRequested: links.markDeletionRequested,
@@ -188,7 +213,8 @@ describe.skipIf(!testDatabase)(
               return Effect.void;
             },
             tombstone: accounts.tombstone,
-            withAccountLock: links.withAccountLock,
+            withActiveAccount: sections.withActiveAccount,
+            anonymiseAnalyticsPerson: () => Effect.void,
           })(account).pipe(Effect.flip);
         }).pipe(Effect.provide(layer))
       );
@@ -215,6 +241,7 @@ describe.skipIf(!testDatabase)(
           const links = yield* CustomerAccountLinkRepository;
           const accounts = yield* CustomerAccountRepository;
           const reviewAccounts = yield* ReviewAccounts;
+          const sections = yield* CustomerAccountSections;
           const requestDeletion = expireLinkedDotyposProfile({
             isReviewAccount: reviewAccounts.isReviewAccount,
             markDeletionRequested: links.markDeletionRequested,
@@ -223,7 +250,8 @@ describe.skipIf(!testDatabase)(
             destroyAvatar: () =>
               Effect.fail(new CustomerAvatarProviderError({})),
             tombstone: accounts.tombstone,
-            withAccountLock: links.withAccountLock,
+            withActiveAccount: sections.withActiveAccount,
+            anonymiseAnalyticsPerson: () => Effect.void,
           });
           return yield* Effect.result(requestDeletion(account));
         }).pipe(Effect.provide(layer))
@@ -244,6 +272,78 @@ describe.skipIf(!testDatabase)(
       expect(link.rows).toHaveLength(1);
       expect(link.rows[0]?.dotypos_customer_id).toBe(dotyposCustomerId);
       expect(await readDeletedAt(account)).toBeNull();
+
+      // The retry finds the marker already set and completes the deletion.
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          const accounts = yield* CustomerAccountRepository;
+          const reviewAccounts = yield* ReviewAccounts;
+          const sections = yield* CustomerAccountSections;
+          return yield* expireLinkedDotyposProfile({
+            isReviewAccount: reviewAccounts.isReviewAccount,
+            markDeletionRequested: links.markDeletionRequested,
+            findLink: links.find,
+            expireCustomer,
+            destroyAvatar: () => Effect.void,
+            tombstone: accounts.tombstone,
+            withActiveAccount: sections.withActiveAccount,
+            anonymiseAnalyticsPerson: () => Effect.void,
+          })(account);
+        }).pipe(Effect.provide(layer))
+      );
+      expect(await readDeletedAt(account)).not.toBeNull();
+    });
+
+    test("fails retryably as an unavailable account lock and marks nothing", async () => {
+      const unreachable = await connectUnreachableWorkspaceDatabase();
+      try {
+        const layer = makeRepositoryLayer(unreachable.advisoryLock);
+        const account = customerAccountIdSchema.make(uniqueId());
+        await insertAuthUser(account, testEmailAddress(`del-${account}`));
+        await insertLink(account, syntheticDotyposCustomerId("deletion"));
+        const providerCalls: string[] = [];
+
+        const failure = await Effect.runPromise(
+          Effect.gen(function* () {
+            const links = yield* CustomerAccountLinkRepository;
+            const accounts = yield* CustomerAccountRepository;
+            const reviewAccounts = yield* ReviewAccounts;
+            const sections = yield* CustomerAccountSections;
+            return yield* expireLinkedDotyposProfile({
+              isReviewAccount: reviewAccounts.isReviewAccount,
+              markDeletionRequested: links.markDeletionRequested,
+              findLink: links.find,
+              expireCustomer: (customerId) => {
+                providerCalls.push("expire");
+                return expireCustomer(customerId);
+              },
+              destroyAvatar: () => {
+                providerCalls.push("destroy-avatar");
+                return Effect.void;
+              },
+              tombstone: accounts.tombstone,
+              withActiveAccount: sections.withActiveAccount,
+              anonymiseAnalyticsPerson: () => Effect.void,
+            })(account).pipe(Effect.flip);
+          }).pipe(Effect.provide(layer))
+        );
+
+        expect(failure).toMatchObject({
+          _tag: "CustomerAccountAccessError",
+          reason: "unavailable",
+          cause: { code: "account-link.lock" },
+        });
+        expect(providerCalls).toEqual([]);
+        const marker = await testDatabase!.pool.query(
+          `select deletion_requested_at from auth."user" where id = $1`,
+          [account]
+        );
+        expect(marker.rows).toEqual([{ deletion_requested_at: null }]);
+        expect(await readDeletedAt(account)).toBeNull();
+      } finally {
+        await unreachable.pool.end();
+      }
     });
 
     test("keeps an authored reservation and its author tombstone after the identity is removed", async () => {
@@ -266,6 +366,7 @@ describe.skipIf(!testDatabase)(
             const links = yield* CustomerAccountLinkRepository;
             const accounts = yield* CustomerAccountRepository;
             const reviewAccounts = yield* ReviewAccounts;
+            const sections = yield* CustomerAccountSections;
             return yield* expireLinkedDotyposProfile({
               isReviewAccount: reviewAccounts.isReviewAccount,
               markDeletionRequested: links.markDeletionRequested,
@@ -273,7 +374,8 @@ describe.skipIf(!testDatabase)(
               expireCustomer,
               destroyAvatar: () => Effect.void,
               tombstone: accounts.tombstone,
-              withAccountLock: links.withAccountLock,
+              withActiveAccount: sections.withActiveAccount,
+              anonymiseAnalyticsPerson: () => Effect.void,
             })(account);
           }).pipe(Effect.provide(layer))
         );
@@ -374,7 +476,7 @@ describe.skipIf(!invoiceDatabase)(
           })
         )
       );
-      return Layer.mergeAll(
+      const repositories = Layer.mergeAll(
         CustomerAccountLinkRepository.Default,
         CustomerAccountRepository.Default,
         ReviewAccounts.Default,
@@ -382,6 +484,12 @@ describe.skipIf(!invoiceDatabase)(
           Layer.provide(AccountingDocumentSnapshotRepository.Default)
         )
       ).pipe(Layer.provideMerge(storage));
+      return Layer.mergeAll(
+        repositories,
+        CustomerAccountSections.Default.pipe(
+          Layer.provide(Layer.mergeAll(repositories, unreadSession))
+        )
+      );
     };
 
     test("keeps the customer's issued invoice and denies the deleted account access to it", async () => {
@@ -433,6 +541,7 @@ describe.skipIf(!invoiceDatabase)(
           const links = yield* CustomerAccountLinkRepository;
           const accounts = yield* CustomerAccountRepository;
           const reviewAccounts = yield* ReviewAccounts;
+          const sections = yield* CustomerAccountSections;
           return yield* expireLinkedDotyposProfile({
             isReviewAccount: reviewAccounts.isReviewAccount,
             markDeletionRequested: links.markDeletionRequested,
@@ -440,7 +549,8 @@ describe.skipIf(!invoiceDatabase)(
             expireCustomer,
             destroyAvatar: () => Effect.void,
             tombstone: accounts.tombstone,
-            withAccountLock: links.withAccountLock,
+            withActiveAccount: sections.withActiveAccount,
+            anonymiseAnalyticsPerson: () => Effect.void,
           })(account);
         })
       );

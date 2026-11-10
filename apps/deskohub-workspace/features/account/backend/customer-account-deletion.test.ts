@@ -14,6 +14,11 @@ import {
   type CustomerAccountDeletionDependencies,
   expireLinkedDotyposProfile,
 } from "./customer-account-deletion";
+import { CustomerAccountSections } from "./customer-account-sections";
+import {
+  type CustomerAccountSectionsFixture,
+  makeCustomerAccountSections,
+} from "./customer-account-sections.test-utils";
 import { CustomerAvatarProviderError } from "./customer-avatar.service";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 
@@ -27,9 +32,16 @@ const makeDependencies = (
       CustomerAccountDeletionDependencies["expireCustomer"]
     >;
     readonly avatarOutcome?: Effect.Effect<void, unknown>;
+    readonly account?: CustomerAccountSectionsFixture;
   } & Partial<CustomerAccountDeletionDependencies> = {}
 ) => {
-  const calls: string[] = [];
+  // The real sections, whose lock and recheck events share the call log.
+  const { layer, events: calls } = makeCustomerAccountSections(
+    overrides.account
+  );
+  const sections = Effect.runSync(
+    Effect.service(CustomerAccountSections).pipe(Effect.provide(layer))
+  );
   const dependencies: CustomerAccountDeletionDependencies = {
     isReviewAccount: () => {
       calls.push("review-check");
@@ -63,13 +75,7 @@ const makeDependencies = (
       calls.push("tombstone");
       return Effect.void;
     },
-    withAccountLock: (_key, effect) => {
-      calls.push("lock-acquire");
-      return Effect.void.pipe(
-        Effect.andThen(effect),
-        Effect.ensuring(Effect.sync(() => calls.push("lock-release")))
-      );
-    },
+    withActiveAccount: sections.withActiveAccount,
     anonymiseAnalyticsPerson: () => {
       calls.push("anonymise-analytics-person");
       return Effect.void;
@@ -89,13 +95,14 @@ describe("Customer account deletion", () => {
 
     expect(calls).toEqual([
       "review-check",
-      "lock-acquire",
+      "account-lock-acquired",
+      "account-activity",
       "marker",
       "find-link",
       "expire",
       "destroy-avatar",
       "tombstone",
-      "lock-release",
+      "account-lock-released",
       "anonymise-analytics-person",
     ]);
   });
@@ -131,11 +138,12 @@ describe("Customer account deletion", () => {
     expect(outcome._tag).toBe("Failure");
     expect(calls).toEqual([
       "review-check",
-      "lock-acquire",
+      "account-lock-acquired",
+      "account-activity",
       "marker",
       "find-link",
       "expire",
-      "lock-release",
+      "account-lock-released",
     ]);
   });
 
@@ -199,7 +207,7 @@ describe("Customer account deletion", () => {
 
       expect(outcome._tag).toBe("Success");
       expect(anonymisationRequests).toBe(1);
-      expect(calls.slice(-2)).toEqual(["tombstone", "lock-release"]);
+      expect(calls.slice(-2)).toEqual(["tombstone", "account-lock-released"]);
       expect(JSON.stringify(logged)).toContain(
         "account.deletion.analytics-person-not-scheduled"
       );
@@ -230,14 +238,77 @@ describe("Customer account deletion", () => {
     expect(outcome._tag).toBe("Success");
     expect(calls).toEqual([
       "review-check",
-      "lock-acquire",
+      "account-lock-acquired",
+      "account-activity",
       "marker",
       "find-link",
       "destroy-avatar",
       "tombstone",
-      "lock-release",
+      "account-lock-released",
       "anonymise-analytics-person",
     ]);
+  });
+
+  test("retries with the deletion marker already set", async () => {
+    const { dependencies, calls } = makeDependencies({
+      account: { activityState: "deletion-requested" },
+    });
+
+    const outcome = await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(Effect.result)
+    );
+
+    expect(outcome._tag).toBe("Success");
+    expect(calls).toEqual([
+      "review-check",
+      "account-lock-acquired",
+      "account-activity",
+      "marker",
+      "find-link",
+      "expire",
+      "destroy-avatar",
+      "tombstone",
+      "account-lock-released",
+      "anonymise-analytics-person",
+    ]);
+  });
+
+  test("fails unauthenticated before it marks anything when the account is gone", async () => {
+    const { dependencies, calls } = makeDependencies({
+      account: { activityState: "missing" },
+    });
+
+    const failure = await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(Effect.flip)
+    );
+
+    expect(failure).toMatchObject({
+      _tag: "CustomerAccountAccessError",
+      reason: "unauthenticated",
+    });
+    expect(calls).toEqual([
+      "review-check",
+      "account-lock-acquired",
+      "account-activity",
+      "account-lock-released",
+    ]);
+  });
+
+  test("fails retryably as an unavailable account lock before it marks anything", async () => {
+    const { dependencies, calls } = makeDependencies({
+      account: { lockUnavailable: true },
+    });
+
+    const failure = await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(Effect.flip)
+    );
+
+    expect(failure).toMatchObject({
+      _tag: "CustomerAccountAccessError",
+      reason: "unavailable",
+      cause: { code: "account-link.lock" },
+    });
+    expect(calls).toEqual(["review-check"]);
   });
 
   describe("with the Dotypos adapter", () => {
