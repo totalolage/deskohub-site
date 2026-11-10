@@ -285,6 +285,9 @@ const calculationError = (
 const toPublicDiscount = (discount: Discount): Discount => ({
   id: discount.id,
   label: discount.label,
+  ...(discount.staffLabel !== undefined && {
+    staffLabel: discount.staffLabel,
+  }),
   adjustment: Match.value(discount.adjustment).pipe(
     Match.discriminatorsExhaustive("kind")({
       percentage: (adjustment) => ({

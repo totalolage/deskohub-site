@@ -1,21 +1,23 @@
 import { describe, expect, test } from "bun:test";
+import {
+  getLocaleDefinition,
+  supportedLocales,
+} from "@deskohub/i18n/locale-registry";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Result, Schema } from "effect";
 import {
+  EmailDocumentForPublication,
   type EmailDocumentProblem,
-  emailDocumentForPublication,
   emailDraftProblems,
   emailPublicationProblems,
   englishEmailDocumentProblem,
   referencedEmailValueNames,
+  requiredEmailLocale,
   requiredEmailValueNames,
 } from "./email-publication";
 import { EmailDocument, EmailDraft } from "./emails";
 
-const locales = ["cs-CZ", "en-US"];
-const publish = Schema.decodeUnknownResult(
-  emailDocumentForPublication(locales)
-);
+const publish = Schema.decodeUnknownResult(EmailDocumentForPublication);
 const draft = Schema.decodeUnknownSync(EmailDraft);
 const tags = (problems: readonly EmailDocumentProblem[]) =>
   problems.map((problem) => problem._tag);
@@ -119,7 +121,7 @@ const [, firstName] = richDocument.values as [
 
 describe("rich multilingual structure", () => {
   test("publishes shared formatting, lists, dividers, spacers, image layout and offers", () => {
-    expect(emailDraftProblems(draft(richDocument), locales)).toEqual([]);
+    expect(emailDraftProblems(draft(richDocument))).toEqual([]);
     const published = publish(richDocument);
     expect(Result.isSuccess(published)).toBe(true);
     const document = Result.getOrThrow(published);
@@ -167,8 +169,8 @@ describe("rich multilingual structure", () => {
       },
       values: [],
     };
-    // Today's publication rules, such as https-only destinations and every
-    // current language, never apply to stored versions.
+    // Today's publication rules, such as https-only destinations, never
+    // apply to stored versions.
     expect(Schema.decodeUnknownSync(EmailDocument)(historical)).toEqual(
       historical as never
     );
@@ -186,7 +188,7 @@ describe("rich multilingual structure", () => {
     formatted.translations["en-US"].texts.intro = [
       { _tag: "Text", text: "elsewhere", link: "missing" } as never,
     ];
-    const problems = emailDraftProblems(draft(formatted), locales);
+    const problems = emailDraftProblems(draft(formatted));
     expect(problems).toEqual([
       {
         _tag: "FormattingNotAllowed",
@@ -220,7 +222,7 @@ describe("rich multilingual structure", () => {
     (insecure.structure[1] as { links: Record<string, string> }).links.book =
       "http://workspace.deskohub.test/book";
     (insecure.structure[6] as { href: string }).href = "ftp://deskohub.test/";
-    expect(tags(emailDraftProblems(draft(insecure), locales))).toEqual([
+    expect(tags(emailDraftProblems(draft(insecure)))).toEqual([
       "DestinationInvalid",
       "DestinationInvalid",
     ]);
@@ -273,7 +275,7 @@ describe("drafts and publication", () => {
 
   test("an incomplete draft saves with broken references, missing translations and an unused definition", () => {
     expect(draft(broken)).toEqual(broken as never);
-    const problems = emailDraftProblems(draft(broken), locales);
+    const problems = emailDraftProblems(draft(broken));
     expect(problems).toEqual([
       {
         _tag: "ComponentIncomplete",
@@ -321,7 +323,7 @@ describe("drafts and publication", () => {
       ...broken,
       values: broken.values.filter((value) => value.name !== "first_name"),
     };
-    const problems = emailDraftProblems(draft(removed), locales);
+    const problems = emailDraftProblems(draft(removed));
     expect(
       problems.filter(
         (problem) =>
@@ -366,7 +368,7 @@ describe("drafts and publication", () => {
         },
       },
     };
-    expect(emailDraftProblems(draft(repaired), locales)).toEqual([]);
+    expect(emailDraftProblems(draft(repaired))).toEqual([]);
     const document = Result.getOrThrow(publish(repaired));
     expect(document.values.map((value) => value.name as string)).toEqual([
       "first_name",
@@ -385,7 +387,7 @@ describe("drafts and publication", () => {
         richDocument.values[1],
       ],
     };
-    expect(emailDraftProblems(draft(referenced), locales)).toEqual([
+    expect(emailDraftProblems(draft(referenced))).toEqual([
       { _tag: "ValueIncomplete", index: 0, name: "offer", field: "discountId" },
       { _tag: "ValueIncomplete", index: 0, name: "offer", field: "validDays" },
     ] as never);
@@ -407,7 +409,7 @@ describe("drafts and publication", () => {
         },
       ],
     };
-    expect(emailDraftProblems(draft(stray), locales)).toEqual([]);
+    expect(emailDraftProblems(draft(stray))).toEqual([]);
     const document = Result.getOrThrow(publish(stray));
     expect(document.structure[0]).not.toHaveProperty("width");
     expect(document.values[1]?.source).not.toHaveProperty("discountId");
@@ -429,7 +431,7 @@ describe("drafts and publication", () => {
         { ...spare, fallback: { "en-US": "x" } },
       ],
     };
-    expect(emailDraftProblems(draft(repeated), locales)).toEqual([]);
+    expect(emailDraftProblems(draft(repeated))).toEqual([]);
     const document = Result.getOrThrow(publish(repeated));
     expect(document.values.map((value) => value.name as string)).toEqual([
       "offer",
@@ -498,7 +500,7 @@ describe("drafts and publication", () => {
       },
     ];
     for (const input of cases) {
-      const problems = emailDraftProblems(draft(input), locales);
+      const problems = emailDraftProblems(draft(input));
       expect([input, Result.isSuccess(publish(input))]).toEqual([
         input,
         problems.length === 0,
@@ -517,11 +519,8 @@ describe("publication problems", () => {
     translations: { "cs-CZ": translation, "en-US": translation },
     values: [],
   };
-  const problems = (input: unknown, current: readonly string[] = locales) =>
-    emailPublicationProblems(
-      Schema.decodeUnknownSync(EmailDocument)(input),
-      current
-    );
+  const problems = (input: unknown) =>
+    emailPublicationProblems(Schema.decodeUnknownSync(EmailDocument)(input));
   const bothLanguages = (overrides: object) => ({
     "cs-CZ": { ...translation, ...overrides },
     "en-US": { ...translation, ...overrides },
@@ -562,22 +561,43 @@ describe("publication problems", () => {
     expect(problems(document)).toEqual([]);
   });
 
-  test("reports an empty body, duplicate used names, then missing languages; duplicate ids name the id", () => {
+  test("only Czech is required: every other language is optional", () => {
     expect(
-      problems(
-        {
-          ...document,
-          structure: [],
-          values: [email, email],
-          translations: bothLanguages({ subject: [value("email")] }),
+      problems({ ...document, translations: { "cs-CZ": translation } })
+    ).toEqual([]);
+    expect(
+      problems({ ...document, translations: { "en-US": translation } })
+    ).toEqual(["Missing language: cs-CZ."]);
+    expect(
+      problems({
+        ...document,
+        translations: { "cs-CZ": translation, "de-DE": translation },
+      })
+    ).toEqual([]);
+  });
+
+  test("every locale's fallback chain reaches the required language", () => {
+    for (const locale of supportedLocales) {
+      expect([locale, ...getLocaleDefinition(locale).fallbackChain]).toContain(
+        requiredEmailLocale
+      );
+    }
+  });
+
+  test("reports an empty body, duplicate used names, then a missing Czech translation; duplicate ids name the id", () => {
+    expect(
+      problems({
+        ...document,
+        structure: [],
+        values: [email, email],
+        translations: {
+          "en-US": { ...translation, subject: [value("email")] },
         },
-        ["cs-CZ", "de-DE", "en-US", "sk-SK"]
-      )
+      })
     ).toEqual([
       "Body is empty.",
       "Duplicate value name: email.",
-      "Missing language: de-DE.",
-      "Missing language: sk-SK.",
+      "Missing language: cs-CZ.",
     ]);
     // Unused repeated definitions never block.
     expect(problems({ ...document, values: [email, email] })).toEqual([]);

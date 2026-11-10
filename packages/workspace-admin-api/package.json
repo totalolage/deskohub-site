@@ -13,6 +13,7 @@
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
+    "@deskohub/i18n": "workspace:*",
     "@js-temporal/polyfill": "^0.5.1",
     "effect": "4.0.0-beta.85"
   },

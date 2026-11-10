@@ -21,7 +21,9 @@ import { buildReservationQuote } from "./reservation-quote";
 const buildQuote = (...args: Parameters<typeof buildReservationQuote>) =>
   Effect.runSync(buildReservationQuote(...args));
 
-const decodeReservation = Schema.decodeUnknownSync(reservationOrderSchema);
+const decodeReservation = Schema.decodeUnknownSync(
+  reservationOrderSchema("CZ")
+);
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
 const defaultCustomer = {
   name: "Ada Lovelace",

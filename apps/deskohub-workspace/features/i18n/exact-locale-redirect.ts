@@ -3,8 +3,8 @@ import { NextResponse } from "next/server";
 import { localeConfig, locales } from "./routing";
 
 // A page load whose locale prefix is in another letter case (`/en-us`) or a
-// bare language (`/en`, `/sk`) moves permanently to the exact locale, whoever
-// asks.
+// bare language the site serves (`/en`, `/cs`) moves permanently to the exact
+// locale, whoever asks.
 export const exactLocaleRedirect = (method: string, url: URL) => {
   if (method !== "GET" && method !== "HEAD") return undefined;
   const exactPathname = findExactLocalePathname(

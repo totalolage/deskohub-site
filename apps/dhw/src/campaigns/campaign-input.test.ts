@@ -2,13 +2,20 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  getLocaleDefinition,
+  supportedLocales,
+} from "@deskohub/i18n/locale-registry";
 import type { AudienceFilterType } from "@deskohub/workspace-admin-api";
 import { BunServices } from "@effect/platform-bun";
 import { Effect, Option } from "effect";
 import { InvalidMutationInputError } from "../command-runtime";
 import {
   type ContentChangeFlags,
+  campaignBodyFileName,
+  campaignLocaleChoices,
   makeCampaignContentPatch,
+  parseLocalizedValues,
   readAudienceFilter,
 } from "./campaign-input";
 
@@ -146,5 +153,47 @@ describe("makeCampaignContentPatch", () => {
 
     expect(error).toBeInstanceOf(InvalidMutationInputError);
     expect(error.message).not.toContain("missing-body.md");
+  });
+});
+
+describe("campaign locale names", () => {
+  test("accept each supported locale by its language subtag and its full tag", () => {
+    expect(new Map(campaignLocaleChoices)).toEqual(
+      new Map(
+        supportedLocales.flatMap((locale) => [
+          [getLocaleDefinition(locale).language, locale],
+          [locale, locale],
+        ])
+      )
+    );
+    expect(campaignLocaleChoices).toHaveLength(supportedLocales.length * 2);
+  });
+
+  test("parse every short and full locale name in localized flags", async () => {
+    for (const locale of supportedLocales) {
+      const { language } = getLocaleDefinition(locale);
+      for (const name of [language, locale]) {
+        const values = await Effect.runPromise(
+          parseLocalizedValues("subject", [`${name}=Hello`])
+        );
+        expect([...values]).toEqual([[locale, "Hello"]]);
+      }
+    }
+  });
+
+  test("reject a locale that isn't supported", async () => {
+    const error = await Effect.runPromise(
+      parseLocalizedValues("subject", ["xx=Hello"]).pipe(Effect.flip)
+    );
+
+    expect(error).toBeInstanceOf(InvalidMutationInputError);
+  });
+
+  test("export each locale's body to a file named for its language", () => {
+    for (const locale of supportedLocales) {
+      expect(campaignBodyFileName(locale)).toBe(
+        `${getLocaleDefinition(locale).language}.md`
+      );
+    }
   });
 });

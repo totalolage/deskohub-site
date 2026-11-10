@@ -1,0 +1,74 @@
+{
+  "accessCodesPageTitle": "Zugangscode erstellen",
+  "accessCodesFormLoading": "Formular für den Zugangscode wird geladen",
+  "accessCodesFormName": "Zugangscode erstellen",
+  "accessCodesNameLabel": "Name",
+  "accessCodesNameRequired": "Geben Sie einen Namen für diesen Zugangscode ein.",
+  "accessCodesNameTooLong": [
+    {
+      "declarations": [
+        "input maximum",
+        "local maximumPlural = maximum: plural",
+        "local formattedMaximum = maximum: number"
+      ],
+      "selectors": ["maximumPlural"],
+      "match": {
+        "maximumPlural=one": "Verwenden Sie höchstens {formattedMaximum} Zeichen.",
+        "maximumPlural=other": "Verwenden Sie höchstens {formattedMaximum} Zeichen."
+      }
+    }
+  ],
+  "accessCodesWindowLegend": "Zeitfenster für den Zugang ({timeZone})",
+  "accessCodesStartsLabel": "Beginn",
+  "accessCodesStartsTimeLabel": "Beginn (Uhrzeit)",
+  "accessCodesStartRequired": "Wählen Sie eine Startzeit.",
+  "accessCodesStartInvalid": "Wählen Sie eine gültige Startzeit zur vollen Stunde.",
+  "accessCodesEndsLabel": "Ende",
+  "accessCodesEndsTimeLabel": "Ende (Uhrzeit)",
+  "accessCodesEndRequired": "Wählen Sie eine Endzeit.",
+  "accessCodesEndInvalid": "Wählen Sie eine gültige Endzeit zur vollen Stunde.",
+  "accessCodesWindowDurationInvalid": [
+    {
+      "declarations": [
+        "input minimum",
+        "input maximum",
+        "local maximumPlural = maximum: plural",
+        "local formattedMinimum = minimum: number",
+        "local formattedMaximum = maximum: number"
+      ],
+      "selectors": ["maximumPlural"],
+      "match": {
+        "maximumPlural=one": "Das Ende muss {formattedMinimum} bis {formattedMaximum} Stunde nach dem Beginn liegen.",
+        "maximumPlural=other": "Das Ende muss {formattedMinimum} bis {formattedMaximum} Stunden nach dem Beginn liegen."
+      }
+    }
+  ],
+  "accessCodesDurationSummary": "Dauer: {duration}",
+  "accessCodesSubmit": "Zugangscode erstellen",
+  "accessCodesSubmitting": "Wird erstellt …",
+  "accessCodesPinShownOnceWarning": "Diese PIN wird nur einmal angezeigt und lässt sich später nicht mehr abrufen. Speichern Sie sie an einem sicheren Ort, bevor Sie die Seite verlassen.",
+  "accessCodesCopyCode": "Code kopieren",
+  "accessCodesCopied": "Kopiert",
+  "accessCodesResultName": "Zugangscode",
+  "accessCodesResultValidFrom": "Gültig ab",
+  "accessCodesResultValidUntil": "Gültig bis",
+  "accessCodesResultDuration": "Dauer",
+  "accessCodesCreateAnother": "Weiteren Zugangscode erstellen",
+  "accessCodesAlreadyCreated": "Dieser Zugangscode wurde bereits erstellt. Seine PIN wurde nur einmal bei der Erstellung angezeigt und kann nicht erneut angezeigt werden.",
+  "accessCodesAmbiguousNotice": "Der Anbieter hat nicht bestätigt, ob dieser Zugangscode existiert. Dieser Versuch ist abgeschlossen und wird nicht automatisch wiederholt.",
+  "accessCodesCleanupRequiredNotice": "Das Ergebnis eines früheren Versuchs für dieses Zeitfenster ist weiterhin unklar. Bevor Sie einen weiteren Code erstellen, müssen Sie dessen mögliche Zugangsdaten direkt am Schloss klären.",
+  "accessCodesCleanupInstructions": "Bevor Sie für dieses Zeitfenster einen weiteren Code erstellen, prüfen Sie das Schloss in der Igloohome-App über Bluetooth und entfernen Sie „{name}“, falls dieser Code dort vorhanden ist.",
+  "accessCodesCleanupFormName": "Bestätigung der Schlossprüfung",
+  "accessCodesCleanupConfirmationLabel": "Ich bestätige, dass der genannte Zugangscode vom Schloss entfernt wurde oder nicht auf dem Schloss vorhanden ist.",
+  "accessCodesCleanupConfirmationRequired": "Bestätigen Sie die Schlossprüfung, bevor Sie fortfahren.",
+  "accessCodesStartOver": "Neu beginnen",
+  "accessCodesFailureRejected": "Der Anbieter hat diesen Zugangscode abgelehnt. Passen Sie die Angaben an und versuchen Sie es erneut.",
+  "accessCodesFailureInProgress": "Dieser Zugangscode wird bereits erstellt. Warten Sie einen Moment und versuchen Sie es erneut.",
+  "accessCodesFailureUnavailable": "Das Erstellen von Zugangscodes ist vorübergehend nicht verfügbar. Versuchen Sie es in einigen Minuten erneut.",
+  "accessCodesFailureReconciled": "Ihre Bestätigung der Schlossprüfung wurde für einen früheren unklaren Versuch erfasst, bei dem kein Zugangscode erstellt wurde. Senden Sie das Formular erneut, um den Zugangscode zu erstellen.",
+  "accessCodesCreateFailed": "Der Zugangscode konnte nicht erstellt werden. Versuchen Sie es erneut.",
+  "accessCodesServerUnreachable": "Der Server ist nicht erreichbar. Dieser Versuch bleibt erhalten, Sie können es also gefahrlos erneut versuchen.",
+  "accessCodesActionTimedOut": "Der Server hat nicht rechtzeitig geantwortet. Versuchen Sie es erneut.",
+  "accessCodesActionFailedUnexpectedly": "Auf dem Server ist ein Fehler aufgetreten. Versuchen Sie es erneut.",
+  "accessCodesAuthenticationRequired": "Eine Anmeldung mit Administratorrolle ist erforderlich."
+}

@@ -1,3 +1,4 @@
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { Schema } from "effect";
 
 /**
@@ -5,7 +6,7 @@ import { Schema } from "effect";
  * app can name a locale without the HTTP API definitions the package root
  * builds when it loads.
  */
-export const CustomerLocale = Schema.Literals(["en-US", "cs-CZ"]).annotate({
+export const CustomerLocale = Schema.Literals(supportedLocales).annotate({
   identifier: "CustomerLocale",
 });
 export type CustomerLocale = typeof CustomerLocale.Type;

@@ -428,13 +428,14 @@ export {
 export {
   type EmailComponentText,
   type EmailContentLocation,
+  EmailDocumentForPublication,
   EmailDocumentProblem,
   emailComponentTexts,
-  emailDocumentForPublication,
   emailDraftProblems,
   emailPublicationProblems,
   englishEmailDocumentProblem,
   referencedEmailValueNames,
+  requiredEmailLocale,
   requiredEmailValueNames,
 } from "./email-publication";
 export {

@@ -61,6 +61,7 @@ describe("app route tree", () => {
         "/account/billing",
         "/account/complete",
         "/account/danger",
+        "/account/language",
         "/account/legal",
         "/account/profile",
         "/account/referrals",

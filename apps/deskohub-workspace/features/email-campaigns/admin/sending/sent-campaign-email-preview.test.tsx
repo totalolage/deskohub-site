@@ -56,7 +56,7 @@ test("switches locales and reports an email that couldn't be rendered", () => {
   const view = renderPreview([czechEmail, englishEmail]);
 
   fireEvent.click(
-    view.getByRole("radio", { name: campaignLocaleName("en-US", locale) })
+    view.getByRole("radio", { name: campaignLocaleName("en-US") })
   );
 
   expect(view.getByText(englishEmail.subject)).toBeTruthy();

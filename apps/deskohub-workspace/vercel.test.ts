@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { expect, test } from "bun:test";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { prefixPathnameWithLocale } from "@deskohub/i18n/pathname";
 import { paidFulfillmentTopic } from "@/features/checkout/backend/fulfillment/paid-fulfillment-queue.service";
 import { reservationHoldCleanupTopic } from "@/features/checkout/backend/holds/reservation-hold-cleanup-queue.service";
@@ -37,6 +38,15 @@ test("varies every localized public page on Accept", () => {
   }
 });
 
+// vercel.json must stay literal, so its locale alternation repeats the
+// registry's locales.
+test("varies on Accept under exactly the supported locales", () => {
+  const localeAlternation =
+    varyOnAcceptRoute?.src.match(/^\^\/\(\?:([^)]*)\)/)?.[1];
+
+  expect(localeAlternation?.split("|")).toEqual([...supportedLocales]);
+});
+
 test("leaves other paths out of the Accept variation", () => {
   for (const pathname of [
     "/",
@@ -46,7 +56,7 @@ test("leaves other paths out of the Accept variation", () => {
     "/en-US/account",
     "/cs-CZ/reservation/status",
     "/en-US/faq/extra",
-    "/de-DE/faq",
+    "/fr-FR/faq",
     "/page-markdown/en-US/faq",
     "/api/cron/workspace/reservation-holds",
   ]) {

@@ -1,12 +1,6 @@
 import { Redirect } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import {
-  AccessibilityInfo,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { AccessibilityInfo, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { AppLocale } from "../../src/i18n/app-locale";
 import { useAppLocale } from "../../src/i18n/locale-context";
@@ -15,6 +9,7 @@ import type { SmokeReport } from "../../src/smoke/smoke-case";
 import { runSmokeCases } from "../../src/smoke/smoke-case";
 import { smokeCases } from "../../src/smoke/smoke-cases";
 import { theme } from "../../src/theme";
+import { Text } from "../../src/ui/text";
 
 const formatTotals = (
   { passed, failed, total }: SmokeReport,

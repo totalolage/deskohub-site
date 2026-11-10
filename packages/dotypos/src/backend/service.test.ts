@@ -63,7 +63,8 @@ import {
 } from "./service";
 
 /** A phone number as a caller passes it, read from entered text. */
-const phoneNumber = (text: string) => Option.getOrThrow(parsePhoneNumber(text));
+const phoneNumber = (text: string) =>
+  Option.getOrThrow(parsePhoneNumber(text, "CZ"));
 
 const adaAddress = testEmailAddress("ada");
 const mixedCaseAdaAddress = testEmailAddress("Ada");

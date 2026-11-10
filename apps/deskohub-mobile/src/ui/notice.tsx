@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { theme } from "../theme";
 import { useLiveRegionAnnouncement } from "./live-announcement";
 import {
@@ -6,6 +6,7 @@ import {
   type NoticeTone,
   noticePresentation,
 } from "./notice-presentation";
+import { Text } from "./text";
 
 export type { NoticeTone } from "./notice-presentation";
 

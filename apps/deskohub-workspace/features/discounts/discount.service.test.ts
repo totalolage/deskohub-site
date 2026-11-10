@@ -823,6 +823,56 @@ describe("DiscountService", () => {
     });
   });
 
+  test("keeps an advertised query code whose revalidation differs only in its staff label", async () => {
+    const codeId = discountId("query-code");
+    const code = percentage("query-code", 1000, "code");
+    const providers = Layer.mergeAll(
+      CalendarDiscountProviderMock(),
+      CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
+      PromotionCodeProviderMock({
+        revalidate: () =>
+          Effect.succeed([
+            {
+              ...code,
+              discount: { ...code.discount, staffLabel: "Kódová sleva" },
+            },
+          ]),
+      })
+    );
+    const affirmedAdvertisement = affirmedDiscountAdvertisementQuoteCodec.make({
+      product,
+      discountableSubtotal: money(10_000),
+      discounts: [
+        {
+          discount: code.discount,
+          subtotalBefore: money(10_000),
+          amount: money(1000),
+          subtotalAfter: money(9000),
+        },
+      ],
+      totalDiscount: money(1000),
+      discountedSubtotal: money(9000),
+    });
+
+    const result = await runWithProviders(
+      Effect.gen(function* () {
+        const discounts = yield* DiscountService;
+        return yield* discounts.applyCustomerDiscount({
+          affirmedAdvertisement,
+          dotyposCustomerId: paymentInput.dotyposCustomerId,
+          locale: paymentInput.locale,
+          submittedCode: paymentInput.submittedCode,
+          submittedCodeDiscountId: codeId,
+        });
+      }),
+      providers
+    );
+
+    expect(code.discount).not.toHaveProperty("staffLabel");
+    expect(result.advertisedPriceChanged).toBeFalse();
+    expect(result.submittedCodeDiscountId).toBe(codeId);
+  });
+
   test("keeps a validated query code after the identified customer's discount", async () => {
     const codeId = discountId("query-code");
     const providers = Layer.mergeAll(

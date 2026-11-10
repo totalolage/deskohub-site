@@ -6,7 +6,7 @@ import { Suspense, use, useState } from "react";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import type { Locale } from "@/features/i18n";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
-import { LocaleSwitcher } from "@/shared/components/locale-switcher";
+import { LanguageMenu } from "@/shared/components/locale-switcher";
 import {
   AdministratorEntryButton,
   AdministratorEntryMenuButton,
@@ -30,7 +30,7 @@ type SiteHeaderProps = {
   contactLabel: string;
   contactHref: string;
   closeNavigationMenuLabel: string;
-  languageSwitcherLabel: string;
+  languageMenuTriggerLabel: string;
   mobilePrimaryNavigationLabel: string;
   openNavigationMenuLabel: string;
   primaryNavigationLabel: string;
@@ -56,6 +56,9 @@ function AccountLink({
       active={active}
       asChild
       caps={mobile}
+      // Phones reach the account from the menu, which lists it first, so the
+      // bar keeps room for the language menu.
+      className={mobile ? undefined : "hidden sm:inline-flex"}
       layout={mobile ? "row" : "icon"}
       tone="inverse"
     >
@@ -167,7 +170,7 @@ export function SiteHeader({
   contactLabel,
   contactHref,
   closeNavigationMenuLabel,
-  languageSwitcherLabel,
+  languageMenuTriggerLabel,
   mobilePrimaryNavigationLabel,
   openNavigationMenuLabel,
   primaryNavigationLabel,
@@ -208,7 +211,7 @@ export function SiteHeader({
             tone="inverse"
             size="sm"
             caps
-            className="shrink-0"
+            className="shrink-0 max-[359px]:hidden"
           >
             <Link href={contactHref} onClick={closeMenu}>
               {contactLabel}
@@ -226,17 +229,13 @@ export function SiteHeader({
             <AccountEntryLink entry={account} onClick={closeMenu} />
           )}
 
-          <nav
-            aria-label={languageSwitcherLabel}
-            data-locale-switcher
-            className="hidden rounded-full border border-white/12 bg-white/6 px-4 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72 xl:block xl:max-2xl:px-3 xl:max-2xl:tracking-[0.08em]"
-          >
-            <LocaleSwitcher
-              locale={currentLocale}
-              appearance="stacked"
-              localePreference={localePreference}
-            />
-          </nav>
+          <LanguageMenu
+            locale={currentLocale}
+            triggerLabel={languageMenuTriggerLabel}
+            tone="inverse"
+            sharesBarWithNavigation
+            localePreference={localePreference}
+          />
 
           <Button
             type="button"
@@ -272,6 +271,20 @@ export function SiteHeader({
         )}
       >
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
+          {/* The narrowest phones have no room for it in the bar. */}
+          <Button
+            asChild
+            variant="secondary"
+            tone="inverse"
+            size="sm"
+            caps
+            fullWidth
+            className="min-[360px]:hidden"
+          >
+            <Link href={contactHref} onClick={closeMenu}>
+              {contactLabel}
+            </Link>
+          </Button>
           {administrator !== undefined && (
             <AdministratorEntryMenuButton
               entry={administrator}
@@ -292,18 +305,6 @@ export function SiteHeader({
               />
             ))}
           </nav>
-
-          <div
-            data-locale-switcher
-            className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.14em] text-white/72"
-          >
-            <LocaleSwitcher
-              locale={currentLocale}
-              appearance="inline"
-              localePreference={localePreference}
-              onSwitch={closeMenu}
-            />
-          </div>
         </div>
       </div>
     </header>

@@ -63,6 +63,25 @@ describe("getConsentBannerRevision", () => {
     }
   });
 
+  test("keeps the published revision of every locale's recorded versions", () => {
+    // Saved consent choices carry this revision; changing it reopens the
+    // banner for every visitor.
+    expect(getConsentBannerRevision()).toBe(228722609830924);
+  });
+
+  test("gives a new revision once a locale's versions are recorded", () => {
+    const recordedIn =
+      (recorded: readonly Locale[]) =>
+      (locale: Locale, documentKey: LegalDocumentKey) =>
+        recorded.includes(locale)
+          ? versionsWithEdit()(locale, documentKey)
+          : undefined;
+
+    expect(getConsentBannerRevision(recordedIn(["en-US", "cs-CZ"]))).not.toBe(
+      getConsentBannerRevision(recordedIn(["en-US", "cs-CZ", "de-DE"]))
+    );
+  });
+
   test("the published revision is a positive safe integer, so no cookie saved before the binding matches it", () => {
     const revision = getConsentBannerRevision();
 

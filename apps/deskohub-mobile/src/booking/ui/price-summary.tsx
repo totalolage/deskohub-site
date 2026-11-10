@@ -1,8 +1,10 @@
-import type { CustomerLocale, Money } from "@deskohub/workspace-customer-api";
+import type { Money } from "@deskohub/workspace-customer-api";
 import { Option } from "effect";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import type { AppLocale } from "../../i18n/app-locale";
 import { m } from "../../i18n/messages";
 import { theme } from "../../theme";
+import { Text } from "../../ui/text";
 import { formatMoney } from "./money";
 
 /** What a summary line is, from its key (`CustomerCheckoutSummaryItem.key`). */
@@ -54,7 +56,7 @@ export function PriceSummary({
 }: {
   readonly summary: SummaryView;
   readonly lineLabel: (line: SummaryLineView) => string;
-  readonly locale: CustomerLocale;
+  readonly locale: AppLocale;
 }) {
   const changedLabel = m.booking_checkout_summary_changed({}, { locale });
   return (
@@ -100,7 +102,7 @@ function SummaryLine({
   readonly line: SummaryLineView;
   readonly label: string;
   readonly changedLabel: string;
-  readonly locale: CustomerLocale;
+  readonly locale: AppLocale;
 }) {
   return (
     <View style={[styles.line, line.changed && styles.changed]}>
@@ -142,7 +144,7 @@ function OfficeBreakdown({
   locale,
 }: {
   readonly office: Option.Option.Value<SummaryLineView["office"]>;
-  readonly locale: CustomerLocale;
+  readonly locale: AppLocale;
 }) {
   return (
     <View>

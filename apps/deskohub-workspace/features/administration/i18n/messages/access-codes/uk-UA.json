@@ -1,0 +1,78 @@
+{
+  "accessCodesPageTitle": "Створення коду доступу",
+  "accessCodesFormLoading": "Завантаження форми коду доступу",
+  "accessCodesFormName": "Створення коду доступу",
+  "accessCodesNameLabel": "Назва",
+  "accessCodesNameRequired": "Введіть назву цього коду доступу.",
+  "accessCodesNameTooLong": [
+    {
+      "declarations": [
+        "input maximum",
+        "local maximumPlural = maximum: plural",
+        "local formattedMaximum = maximum: number"
+      ],
+      "selectors": ["maximumPlural"],
+      "match": {
+        "maximumPlural=one": "Використайте щонайбільше {formattedMaximum} символ.",
+        "maximumPlural=few": "Використайте щонайбільше {formattedMaximum} символи.",
+        "maximumPlural=many": "Використайте щонайбільше {formattedMaximum} символів.",
+        "maximumPlural=other": "Використайте щонайбільше {formattedMaximum} символу."
+      }
+    }
+  ],
+  "accessCodesWindowLegend": "Часове вікно доступу ({timeZone})",
+  "accessCodesStartsLabel": "Початок",
+  "accessCodesStartsTimeLabel": "Час початку",
+  "accessCodesStartRequired": "Оберіть час початку.",
+  "accessCodesStartInvalid": "Оберіть правильний час початку — лише повні години.",
+  "accessCodesEndsLabel": "Кінець",
+  "accessCodesEndsTimeLabel": "Час закінчення",
+  "accessCodesEndRequired": "Оберіть час завершення.",
+  "accessCodesEndInvalid": "Оберіть правильний час завершення — лише повні години.",
+  "accessCodesWindowDurationInvalid": [
+    {
+      "declarations": [
+        "input minimum",
+        "input maximum",
+        "local maximumPlural = maximum: plural",
+        "local formattedMinimum = minimum: number",
+        "local formattedMaximum = maximum: number"
+      ],
+      "selectors": ["maximumPlural"],
+      "match": {
+        "maximumPlural=one": "Кінець має бути через {formattedMinimum}–{formattedMaximum} годину після початку.",
+        "maximumPlural=few": "Кінець має бути через {formattedMinimum}–{formattedMaximum} години після початку.",
+        "maximumPlural=many": "Кінець має бути через {formattedMinimum}–{formattedMaximum} годин після початку.",
+        "maximumPlural=other": "Кінець має бути через {formattedMinimum}–{formattedMaximum} години після початку."
+      }
+    }
+  ],
+  "accessCodesDurationSummary": "Тривалість: {duration}",
+  "accessCodesSubmit": "Створити код доступу",
+  "accessCodesSubmitting": "Створення…",
+  "accessCodesPinShownOnceWarning": "Цей PIN буде показано лише один раз, і пізніше ви вже не зможете його отримати. Перш ніж залишити сторінку, збережіть його в безпечному місці.",
+  "accessCodesCopyCode": "Копіювати код",
+  "accessCodesCopied": "Скопійовано",
+  "accessCodesResultName": "Код доступу",
+  "accessCodesResultValidFrom": "Діє з",
+  "accessCodesResultValidUntil": "Діє до",
+  "accessCodesResultDuration": "Тривалість",
+  "accessCodesCreateAnother": "Створити ще один код доступу",
+  "accessCodesAlreadyCreated": "Цей код доступу вже створено. Його PIN було показано лише один раз під час створення, і показати його знову неможливо.",
+  "accessCodesAmbiguousNotice": "Сервіс замка не підтвердив, чи існує цей код доступу. Цю спробу закрито, і автоматично її не буде повторено.",
+  "accessCodesCleanupRequiredNotice": "Результат попередньої спроби для цього часового вікна досі незрозумілий. Перш ніж створити ще один код, потрібно розібратися з можливими даними доступу з цієї спроби безпосередньо на замку.",
+  "accessCodesCleanupInstructions": "Перш ніж створити ще один код для цього часового вікна, перевірте замок у застосунку Igloohome через Bluetooth і, якщо на ньому є «{name}», видаліть цей код.",
+  "accessCodesCleanupFormName": "Підтвердження перевірки замка",
+  "accessCodesCleanupConfirmationLabel": "Підтверджую, що зазначений код доступу видалено із замка або що його на замку немає.",
+  "accessCodesCleanupConfirmationRequired": "Перш ніж продовжити, підтвердьте перевірку замка.",
+  "accessCodesStartOver": "Почати знову",
+  "accessCodesFailureRejected": "Сервіс замка відхилив цей код доступу. Змініть дані й спробуйте ще раз.",
+  "accessCodesFailureInProgress": "Цей код доступу вже створюється. Зачекайте трохи й спробуйте ще раз.",
+  "accessCodesFailureUnavailable": "Створення кодів доступу тимчасово недоступне. Спробуйте ще раз за кілька хвилин.",
+  "accessCodesFailureReconciled": "Ваше підтвердження перевірки замка зафіксовано для попередньої нечіткої спроби, яка не створила жодного коду доступу. Надішліть форму ще раз, і код доступу буде створено.",
+  "accessCodesCreateFailed": "Не вдалося створити код доступу. Спробуйте ще раз.",
+  "accessCodesServerUnreachable": "Не вдалося звʼязатися із сервером. Цю спробу збережено, тож ви можете безпечно спробувати ще раз.",
+  "accessCodesActionTimedOut": "Сервер не відповів вчасно. Спробуйте ще раз.",
+  "accessCodesActionFailedUnexpectedly": "На сервері сталася помилка. Спробуйте ще раз.",
+  "accessCodesAuthenticationRequired": "Потрібен вхід із правами адміністратора."
+}

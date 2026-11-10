@@ -1,0 +1,1335 @@
+{
+  "emailCampaignsAudienceAccountCreatedEver": "мають обліковий запис у Workspace",
+  "emailCampaignsAudienceAccountCreatedInPeriod": "створили обліковий запис у Workspace {period}",
+  "emailCampaignsAudienceAccountCreatedLabel": "Створення облікового запису",
+  "emailCampaignsAudienceAccountCreatedNever": "не мають облікового запису у Workspace",
+  "emailCampaignsAudienceAccountCreatedNoValue": "не відбулося",
+  "emailCampaignsAudienceAccountCreatedNotInPeriod": "мають обліковий запис у Workspace, створений не {period}",
+  "emailCampaignsAudienceArchive": "Архівувати",
+  "emailCampaignsAudienceArchiveConfirm": "Архівувати аудиторію",
+  "emailCampaignsAudienceArchiveDescription": "Нові кампанії більше не зможуть її обрати. Чернетки кампаній, які вже її використовують, збережуть її, а надісланих кампаній це не стосується.",
+  "emailCampaignsAudienceArchiveFailedRetry": "Не вдалося архівувати аудиторію. Спробуйте ще раз.",
+  "emailCampaignsAudienceArchiveTitle": "Архівувати цю аудиторію?",
+  "emailCampaignsAudienceArchiving": "Архівування…",
+  "emailCampaignsAudienceCampaignEmailCountAmount": "отримали {amount}{period}",
+  "emailCampaignsAudienceCampaignEmailCountAny": "отримали принаймні один {single}{period}",
+  "emailCampaignsAudienceCampaignEmailCountCountLabel": "Кількість листів із кампаній",
+  "emailCampaignsAudienceCampaignEmailCountLabel": "Отримані листи з кампаній",
+  "emailCampaignsAudienceCampaignEmailCountLeadText": "листів, які клієнт отримав з",
+  "emailCampaignsAudienceCampaignEmailCountNone": "отримали менше ніж один {single}{period}",
+  "emailCampaignsAudienceCampaignEmailCountNounAny": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "лист із кампанії",
+        "countPlural=few": "листи з кампаній",
+        "countPlural=many": "листів із кампаній",
+        "countPlural=other": "листа з кампаній"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounDeleted": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "лист із видаленої кампанії",
+        "countPlural=few": "листи з видаленої кампанії",
+        "countPlural=many": "листів із видаленої кампанії",
+        "countPlural=other": "листа з видаленої кампанії"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounMarketing": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "маркетинговий лист із кампанії",
+        "countPlural=few": "маркетингові листи з кампаній",
+        "countPlural=many": "маркетингових листів із кампаній",
+        "countPlural=other": "маркетингового листа з кампаній"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounOperational": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "сервісний лист із кампанії",
+        "countPlural=few": "сервісні листи з кампаній",
+        "countPlural=many": "сервісних листів із кампаній",
+        "countPlural=other": "сервісного листа з кампаній"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounSpecific": [
+    {
+      "declarations": [
+        "input count",
+        "input campaign",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "лист із кампанії {campaign}",
+        "countPlural=few": "листи з кампанії {campaign}",
+        "countPlural=many": "листів із кампанії {campaign}",
+        "countPlural=other": "листа з кампанії {campaign}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounThis": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "лист із цієї кампанії",
+        "countPlural=few": "листи з цієї кампанії",
+        "countPlural=many": "листів із цієї кампанії",
+        "countPlural=other": "листа з цієї кампанії"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountPeriodLabel": "Отримані листи",
+  "emailCampaignsAudienceCampaignEmailCountPurposeAny": "будь-яких",
+  "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Призначення кампанії",
+  "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "маркетингових",
+  "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "сервісних",
+  "emailCampaignsAudienceCampaignEmailCountSourceAny": "будь-якої кампанії",
+  "emailCampaignsAudienceCampaignEmailCountSourceEmpty": "Жодна кампанія не відповідає.",
+  "emailCampaignsAudienceCampaignEmailCountSourceLabel": "Кампанія",
+  "emailCampaignsAudienceCampaignEmailCountSourceSearch": "Пошук кампаній",
+  "emailCampaignsAudienceCampaignEmailCountSourceUnknown": "Видалена кампанія",
+  "emailCampaignsAudienceConditionAttributeLabel": "Властивість клієнта",
+  "emailCampaignsAudienceConditionRemove": "Прибрати умову",
+  "emailCampaignsAudienceCountAlwaysMatchesError": "Умова «≥ 0» виконується завжди. Для «принаймні один» використайте «≥ 1» або приберіть умову.",
+  "emailCampaignsAudienceCountComparisonLabel": "{subject}: порівняння",
+  "emailCampaignsAudienceCountIs": "—",
+  "emailCampaignsAudienceCountNeverMatchesError": "Умова «< 0» не виконується ніколи. Для «жодного» використайте «= 0».",
+  "emailCampaignsAudienceCountNumberOf": "Кількість",
+  "emailCampaignsAudienceCountOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=eq": "дорівнює",
+        "operator=ne": "не дорівнює",
+        "operator=lt": "менше ніж",
+        "operator=lte": "не більше ніж",
+        "operator=gt": "більше ніж",
+        "operator=*": "щонайменше"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCountWholeNumberError": "Введіть ціле число, 0 або більше.",
+  "emailCampaignsAudienceDateConditionLabel": "{subject}: умова",
+  "emailCampaignsAudienceDateIn": "—",
+  "emailCampaignsAudienceDateNotIn": "— не",
+  "emailCampaignsAudienceDelete": "Видалити",
+  "emailCampaignsAudienceDeleteConfirm": "Видалити аудиторію",
+  "emailCampaignsAudienceDeleteDescription": "Цю дію не можна скасувати. Надіслані кампанії зберігають власну копію фільтрів. Аудиторію, яку використовують чернетки кампаній, можна лише архівувати.",
+  "emailCampaignsAudienceDeleteFailedRetry": "Не вдалося видалити аудиторію. Спробуйте ще раз.",
+  "emailCampaignsAudienceDeleteTitle": "Видалити цю аудиторію?",
+  "emailCampaignsAudienceDeleting": "Видалення…",
+  "emailCampaignsAudienceDiscountGroupChoose": "Обрати групи",
+  "emailCampaignsAudienceDiscountGroupEmptyError": "Оберіть принаймні одну групу знижок.",
+  "emailCampaignsAudienceDiscountGroupIdAdd": "Додати ID групи знижок",
+  "emailCampaignsAudienceDiscountGroupIdPlaceholder": "ID групи в Dotypos",
+  "emailCampaignsAudienceDiscountGroupIdRemove": "Прибрати ID групи знижок {value}",
+  "emailCampaignsAudienceDiscountGroupLabel": "Група знижок",
+  "emailCampaignsAudienceDiscountGroupRemove": "Прибрати групу знижок {value}",
+  "emailCampaignsAudienceDiscountGroupSummaryAnyOf": "належать до групи знижок {values}",
+  "emailCampaignsAudienceDiscountGroupSummaryNoneOf": "не належать до групи знижок {values}",
+  "emailCampaignsAudienceDiscountGroupUnknown": "Невідома група знижок {id}",
+  "emailCampaignsAudienceDiscountGroupUnnamed": "Група {id}",
+  "emailCampaignsAudienceDotyposTagsAdd": "Додати мітку",
+  "emailCampaignsAudienceDotyposTagsEmptyError": "Додайте принаймні одну мітку.",
+  "emailCampaignsAudienceDotyposTagsLabel": "Мітки в Dotypos",
+  "emailCampaignsAudienceDotyposTagsLead": "Мітки",
+  "emailCampaignsAudienceDotyposTagsPlaceholder": "Додати мітку",
+  "emailCampaignsAudienceDotyposTagsRemove": "Прибрати мітку {value}",
+  "emailCampaignsAudienceDotyposTagsSummaryAllOf": "мають мітки {values}",
+  "emailCampaignsAudienceDotyposTagsSummaryAnyOf": "мають мітку {values}",
+  "emailCampaignsAudienceDotyposTagsSummaryNoneOf": "не мають мітки {values}",
+  "emailCampaignsAudienceEditorArchivedNotice": "Цю аудиторію архівовано. Нові кампанії не можуть її обрати.",
+  "emailCampaignsAudienceEditorCancel": "Скасувати",
+  "emailCampaignsAudienceEditorCreate": "Створити аудиторію",
+  "emailCampaignsAudienceEditorDescription": "Оберіть, кого охопить кампанія. Умови перевіряються лише під час надсилання кампанії, тому чернетки завжди використовують найновішу версію.",
+  "emailCampaignsAudienceEditorEyebrow": "Аудиторія листів",
+  "emailCampaignsAudienceEditorNewTitle": "Нова аудиторія",
+  "emailCampaignsAudienceEditorReachDescription": "Умовам можуть відповідати лише клієнти, яких Workspace уже знає з бронювань, облікових записів або згоди на маркетингові повідомлення. Маркетингові кампанії також пропускають усіх, хто не має дійсної згоди.",
+  "emailCampaignsAudienceEditorReachHeading": "Кого охопить",
+  "emailCampaignsAudienceEditorSave": "Зберегти аудиторію",
+  "emailCampaignsAudienceEditorSaveFailed": "Не вдалося зберегти аудиторію. Перевірте форму та спробуйте ще раз.",
+  "emailCampaignsAudienceEditorSaved": "Аудиторію збережено.",
+  "emailCampaignsAudienceEditorSaving": "Збереження…",
+  "emailCampaignsAudienceEditorSingleLocaleCzech": "Усі одержувачі розмовляють чеською, тому кампаніям для цієї аудиторії потрібен лише чеський вміст.",
+  "emailCampaignsAudienceEditorSingleLocaleEnglish": "Усі одержувачі розмовляють англійською, тому кампаніям для цієї аудиторії потрібен лише англійський вміст.",
+  "emailCampaignsAudienceEditorSingleLocaleGerman": "Усі одержувачі розмовляють німецькою, тому кампаніям для цієї аудиторії потрібен лише німецький вміст.",
+  "emailCampaignsAudienceEditorSingleLocaleSlovak": "Усі одержувачі розмовляють словацькою, тому кампаніям для цієї аудиторії потрібен лише словацький вміст.",
+  "emailCampaignsAudienceEditorSingleLocaleUkrainian": "Усі одержувачі розмовляють українською, тому кампаніям для цієї аудиторії потрібен лише український вміст.",
+  "emailCampaignsAudienceEditorSummary": "{summary}.",
+  "emailCampaignsAudienceEditorSummaryHeading": "Простими словами",
+  "emailCampaignsAudienceEditorTitleLabel": "Назва",
+  "emailCampaignsAudienceEditorTitlePlaceholder": "напр. Чеські клієнти, які відвідали нас цього року",
+  "emailCampaignsAudienceGroupAddCondition": "Додати умову",
+  "emailCampaignsAudienceGroupAddGroup": "Додати групу",
+  "emailCampaignsAudienceGroupCombineLabel": "Як поєднуються умови",
+  "emailCampaignsAudienceGroupEmptyAll": "Умов ще немає, тому відповідає кожен відомий клієнт.",
+  "emailCampaignsAudienceGroupEmptyAny": "Умов ще немає, тому не відповідає ніхто.",
+  "emailCampaignsAudienceGroupJoinAnd": "і",
+  "emailCampaignsAudienceGroupJoinOr": "або",
+  "emailCampaignsAudienceGroupMatchAll": "Виконати всі",
+  "emailCampaignsAudienceGroupMatchAny": "Виконати будь-яку",
+  "emailCampaignsAudienceGroupOfFollowing": "з наведених нижче",
+  "emailCampaignsAudienceGroupOfThisGroup": "з цієї групи",
+  "emailCampaignsAudienceGroupRemove": "Прибрати групу",
+  "emailCampaignsAudienceHasAccountFalse": "Не має",
+  "emailCampaignsAudienceHasAccountLabel": "Обліковий запис у Workspace",
+  "emailCampaignsAudienceHasAccountObject": "обліковий запис у Workspace",
+  "emailCampaignsAudienceHasAccountSummaryFalse": "не мають облікового запису у Workspace",
+  "emailCampaignsAudienceHasAccountSummaryTrue": "мають обліковий запис у Workspace",
+  "emailCampaignsAudienceHasAccountTrue": "Має",
+  "emailCampaignsAudienceFirstVisitEver": "відвідували нас{product}",
+  "emailCampaignsAudienceFirstVisitInPeriod": "уперше відвідали нас{product} {period}",
+  "emailCampaignsAudienceFirstVisitLabel": "Перший візит",
+  "emailCampaignsAudienceFirstVisitNever": "ніколи не відвідували нас{product}",
+  "emailCampaignsAudienceFirstVisitNoValue": "не було",
+  "emailCampaignsAudienceFirstVisitNotInPeriod": "відвідували нас{product}, але вперше не {period}",
+  "emailCampaignsAudienceLastVisitEver": "відвідували нас{product}",
+  "emailCampaignsAudienceLastVisitInPeriod": "востаннє відвідали нас{product} {period}",
+  "emailCampaignsAudienceLastVisitLabel": "Останній візит",
+  "emailCampaignsAudienceLastVisitNever": "ніколи не відвідували нас{product}",
+  "emailCampaignsAudienceLastVisitNoValue": "не було",
+  "emailCampaignsAudienceLastVisitNotInPeriod": "відвідували нас{product}, але востаннє не {period}",
+  "emailCampaignsAudienceListColumnAudience": "Аудиторія",
+  "emailCampaignsAudienceListColumnReach": "Кого охопить",
+  "emailCampaignsAudienceListColumnStatus": "Статус",
+  "emailCampaignsAudienceListColumnUpdated": "Змінено",
+  "emailCampaignsAudienceListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} аудиторія",
+        "countPlural=few": "{formattedCount} аудиторії",
+        "countPlural=many": "{formattedCount} аудиторій",
+        "countPlural=other": "{formattedCount} аудиторії"
+      }
+    }
+  ],
+  "emailCampaignsAudienceListCountLoading": "Завантаження кількості аудиторій",
+  "emailCampaignsAudienceListEmpty": "Аудиторій ще немає. Створіть аудиторію, щоб обрати, кого охопить кампанія.",
+  "emailCampaignsAudienceListLoading": "Завантаження аудиторій",
+  "emailCampaignsAudienceListNew": "Нова аудиторія",
+  "emailCampaignsAudienceListTitle": "Аудиторії листів",
+  "emailCampaignsAudienceListToolbarLabel": "Керування таблицею аудиторій",
+  "emailCampaignsAudienceListUpdated": "Змінено: {date}",
+  "emailCampaignsAudienceLocaleEmptyError": "Оберіть принаймні одну мову.",
+  "emailCampaignsAudienceLocaleLabel": "Мова",
+  "emailCampaignsAudienceLocaleNameCzech": "чеською",
+  "emailCampaignsAudienceLocaleNameEnglish": "англійською",
+  "emailCampaignsAudienceLocaleNameGerman": "німецькою",
+  "emailCampaignsAudienceLocaleNameSlovak": "словацькою",
+  "emailCampaignsAudienceLocaleNameUkrainian": "українською",
+  "emailCampaignsAudienceLocaleOptionCzech": "Чеська (cs-CZ)",
+  "emailCampaignsAudienceLocaleOptionEnglish": "Англійська (en-US)",
+  "emailCampaignsAudienceLocaleSummaryAnyOf": "розмовляють {values}",
+  "emailCampaignsAudienceLocaleSummaryNoneOf": "не розмовляють {values}",
+  "emailCampaignsAudienceNotFound": "Цієї аудиторії більше не існує.",
+  "emailCampaignsAudiencePeriodCountError": "Введіть ціле число, 1 або більше.",
+  "emailCampaignsAudiencePeriodCountLabel": "{subject}: тривалість періоду",
+  "emailCampaignsAudiencePeriodDateError": "Введіть дійсну дату.",
+  "emailCampaignsAudiencePeriodDateLabel": "{subject}: дата",
+  "emailCampaignsAudiencePeriodEndLabel": "{subject}: дата завершення",
+  "emailCampaignsAudiencePeriodKind": [
+    {
+      "declarations": ["input kind"],
+      "selectors": ["kind"],
+      "match": {
+        "kind=AnyTime": "будь-коли",
+        "kind=Past": "будь-коли досі",
+        "kind=Last": "за останні",
+        "kind=Range": "з … до …",
+        "kind=Since": "з",
+        "kind=Onward": "з … і далі",
+        "kind=*": "до"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodLabel": "{subject}: період",
+  "emailCampaignsAudiencePeriodLast": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "за останній",
+        "countPlural=few": "за останні",
+        "countPlural=many": "за останні",
+        "countPlural=other": "за останні"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodOnward": "і далі",
+  "emailCampaignsAudiencePeriodOrderError": "Дата початку не може бути пізнішою за дату завершення.",
+  "emailCampaignsAudiencePeriodStartLabel": "{subject}: дата початку",
+  "emailCampaignsAudiencePeriodTo": "до",
+  "emailCampaignsAudiencePeriodUnitDay": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "день",
+        "countPlural=few": "дні",
+        "countPlural=many": "днів",
+        "countPlural=other": "дня"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitLabel": "{subject}: одиниця періоду",
+  "emailCampaignsAudiencePeriodUnitMonth": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "місяць",
+        "countPlural=few": "місяці",
+        "countPlural=many": "місяців",
+        "countPlural=other": "місяця"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitWeek": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "тиждень",
+        "countPlural=few": "тижні",
+        "countPlural=many": "тижнів",
+        "countPlural=other": "тижня"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitYear": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "рік",
+        "countPlural=few": "роки",
+        "countPlural=many": "років",
+        "countPlural=other": "року"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductAddCondition": "Додати умову продукту",
+  "emailCampaignsAudienceProductAny": "будь-який продукт",
+  "emailCampaignsAudienceProductChoose": "Обрати",
+  "emailCampaignsAudienceProductChooseValueError": "Оберіть принаймні одне значення.",
+  "emailCampaignsAudienceProductFamilyCowork": "Коворкінг",
+  "emailCampaignsAudienceProductFamilyMeetingRoom": "Переговорна кімната",
+  "emailCampaignsAudienceProductFamilyOffice": "Офіс",
+  "emailCampaignsAudienceProductLabel": "Продукт",
+  "emailCampaignsAudienceProductPropertyCoffee": "Кава",
+  "emailCampaignsAudienceProductPropertyDays": "Кількість днів",
+  "emailCampaignsAudienceProductPropertyMonitor": "Конфігурація моніторів",
+  "emailCampaignsAudienceProductPropertyOffer": "Тривалість",
+  "emailCampaignsAudienceProductPropertySeats": "Кількість місць",
+  "emailCampaignsAudienceProductPropertyTier": "Тариф",
+  "emailCampaignsAudienceProductRemoveCondition": "Прибрати умову: {property}",
+  "emailCampaignsAudienceProductRemoveValue": "Прибрати {value} ({property})",
+  "emailCampaignsAudienceProductRetired": "(більше не продається)",
+  "emailCampaignsAudienceProductSelectLabel": "Продукт бронювання",
+  "emailCampaignsAudienceProductUnitDays": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "день",
+        "countPlural=few": "дні",
+        "countPlural=many": "днів",
+        "countPlural=other": "дня"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductUnitSeats": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "місце",
+        "countPlural=few": "місця",
+        "countPlural=many": "місць",
+        "countPlural=other": "місця"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductWith": "з",
+  "emailCampaignsAudienceProductWithout": "без",
+  "emailCampaignsAudienceReservationCountAmount": "мають {amount}{period}",
+  "emailCampaignsAudienceReservationCountAny": "мають принаймні одне {single}{period}",
+  "emailCampaignsAudienceReservationCountBookingPeriod": "з підтвердженням {period}",
+  "emailCampaignsAudienceReservationCountDateBasisBooking": "датою підтвердження",
+  "emailCampaignsAudienceReservationCountDateBasisLabel": "Визначальна дата",
+  "emailCampaignsAudienceReservationCountDateBasisVisit": "датою візиту",
+  "emailCampaignsAudienceReservationCountDateBasisVisitEnd": "завершенням візиту",
+  "emailCampaignsAudienceReservationCountLabel": "Кількість бронювань",
+  "emailCampaignsAudienceReservationCountLeadText": "за",
+  "emailCampaignsAudienceReservationCountNone": "мають менше ніж одне {single}{period}",
+  "emailCampaignsAudienceReservationCountNounBooked": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "підтверджене бронювання{product}",
+        "countPlural=few": "підтверджені бронювання{product}",
+        "countPlural=many": "підтверджених бронювань{product}",
+        "countPlural=other": "підтвердженого бронювання{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounCancelled": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "скасоване бронювання{product}",
+        "countPlural=few": "скасовані бронювання{product}",
+        "countPlural=many": "скасованих бронювань{product}",
+        "countPlural=other": "скасованого бронювання{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounComplete": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "завершене бронювання{product}",
+        "countPlural=few": "завершені бронювання{product}",
+        "countPlural=many": "завершених бронювань{product}",
+        "countPlural=other": "завершеного бронювання{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounInProgress": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "поточне бронювання{product}",
+        "countPlural=few": "поточні бронювання{product}",
+        "countPlural=many": "поточних бронювань{product}",
+        "countPlural=other": "поточного бронювання{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounNeedsRefund": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "бронювання{product}, що очікує повернення коштів",
+        "countPlural=few": "бронювання{product}, що очікують повернення коштів",
+        "countPlural=many": "бронювань{product}, що очікують повернення коштів",
+        "countPlural=other": "бронювання{product}, що очікують повернення коштів"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountPeriodLabel": "Бронювання",
+  "emailCampaignsAudienceReservationCountStatusBooked": "підтверджених бронювань",
+  "emailCampaignsAudienceReservationCountStatusCancelled": "скасованих бронювань",
+  "emailCampaignsAudienceReservationCountStatusComplete": "завершених бронювань",
+  "emailCampaignsAudienceReservationCountStatusInProgress": "поточних бронювань",
+  "emailCampaignsAudienceReservationCountStatusLabel": "Статус бронювання",
+  "emailCampaignsAudienceReservationCountStatusNeedsRefund": "бронювань, що очікують повернення коштів",
+  "emailCampaignsAudienceReservationCountVisitEndPeriod": "із завершенням {period}",
+  "emailCampaignsAudienceReservationCountVisitPeriod": "з візитом {period}",
+  "emailCampaignsAudienceSaveCampaignNotFound": "Не вдалося зберегти аудиторію. Кампанії, листи якої вона враховує, більше не існує. Оберіть іншу кампанію.",
+  "emailCampaignsAudienceSaveFailedCheckFilters": "Не вдалося зберегти аудиторію. Перевірте фільтри та спробуйте ще раз.",
+  "emailCampaignsAudienceSaveFailedRetry": "Не вдалося зберегти аудиторію. Спробуйте ще раз.",
+  "emailCampaignsAudienceSaveFilterUnavailable": "Не вдалося зберегти аудиторію. Періоди відносно події запуску та «ця кампанія» працюють лише в умовах автоматизацій.",
+  "emailCampaignsAudienceSectionAccount": "Обліковий запис",
+  "emailCampaignsAudienceSectionEmails": "Листи",
+  "emailCampaignsAudienceSectionProfile": "Профіль",
+  "emailCampaignsAudienceSectionReservations": "Бронювання",
+  "emailCampaignsAudienceSetMatchLabel": "{subject}: збіг",
+  "emailCampaignsAudienceSetOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=allOf": "усе з",
+        "operator=noneOf": "нічого з",
+        "operator=*": "будь-що з"
+      }
+    }
+  ],
+  "emailCampaignsAudienceStatusActive": "Активна",
+  "emailCampaignsAudienceStatusArchived": "Архівована",
+  "emailCampaignsAudienceSummaryAmount": [
+    {
+      "declarations": [
+        "input operator",
+        "input count",
+        "local formattedCount = count: number",
+        "input noun",
+        "input none"
+      ],
+      "selectors": ["operator"],
+      "match": {
+        "operator=eq": "рівно {formattedCount} {noun}",
+        "operator=ne": "іншу кількість {none}, ніж {formattedCount}",
+        "operator=lt": "менше ніж {formattedCount} {noun}",
+        "operator=lte": "не більше ніж {formattedCount} {noun}",
+        "operator=gt": "більше ніж {formattedCount} {noun}",
+        "operator=*": "щонайменше {formattedCount} {noun}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryAmountPending": "… {none}",
+  "emailCampaignsAudienceSummaryAnd": "{left} і {right}",
+  "emailCampaignsAudienceSummaryCustomersWho": "Клієнти, які {predicate}",
+  "emailCampaignsAudienceSummaryEveryone": "Кожен клієнт, якого знає Workspace",
+  "emailCampaignsAudienceSummaryGap": "…",
+  "emailCampaignsAudienceSummaryGroup": "({filter})",
+  "emailCampaignsAudienceSummaryMatchAnything": "відповідають будь-чому",
+  "emailCampaignsAudienceSummaryMatchNothing": "не відповідають нічому",
+  "emailCampaignsAudienceSummaryNobody": "Ніхто",
+  "emailCampaignsAudienceSummaryOr": "{left} або {right}",
+  "emailCampaignsAudienceSummaryPeriodAnyTime": "будь-коли",
+  "emailCampaignsAudienceSummaryPeriodLastDay": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "за останній {formattedCount} день",
+        "countPlural=few": "за останні {formattedCount} дні",
+        "countPlural=many": "за останні {formattedCount} днів",
+        "countPlural=other": "за останні {formattedCount} дня"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastMonth": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "за останній {formattedCount} місяць",
+        "countPlural=few": "за останні {formattedCount} місяці",
+        "countPlural=many": "за останні {formattedCount} місяців",
+        "countPlural=other": "за останні {formattedCount} місяця"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastWeek": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "за останній {formattedCount} тиждень",
+        "countPlural=few": "за останні {formattedCount} тижні",
+        "countPlural=many": "за останні {formattedCount} тижнів",
+        "countPlural=other": "за останні {formattedCount} тижня"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastYear": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "за останній {formattedCount} рік",
+        "countPlural=few": "за останні {formattedCount} роки",
+        "countPlural=many": "за останні {formattedCount} років",
+        "countPlural=other": "за останні {formattedCount} року"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodOnward": "з {date} і далі",
+  "emailCampaignsAudienceSummaryPeriodPast": "будь-коли досі",
+  "emailCampaignsAudienceSummaryPeriodRange": "з {from} до {to}",
+  "emailCampaignsAudienceSummaryPeriodSince": "з {date} до сьогодні",
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowDay": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "протягом {formattedCount} дня до події запуску",
+        "side=before, countPlural=few": "протягом {formattedCount} днів до події запуску",
+        "side=before, countPlural=many": "протягом {formattedCount} днів до події запуску",
+        "side=before, countPlural=other": "протягом {formattedCount} дня до події запуску",
+        "side=after, countPlural=one": "протягом {formattedCount} дня після події запуску",
+        "side=after, countPlural=few": "протягом {formattedCount} днів після події запуску",
+        "side=after, countPlural=many": "протягом {formattedCount} днів після події запуску",
+        "side=after, countPlural=other": "протягом {formattedCount} дня після події запуску"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowMonth": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "протягом {formattedCount} місяця до події запуску",
+        "side=before, countPlural=few": "протягом {formattedCount} місяців до події запуску",
+        "side=before, countPlural=many": "протягом {formattedCount} місяців до події запуску",
+        "side=before, countPlural=other": "протягом {formattedCount} місяця до події запуску",
+        "side=after, countPlural=one": "протягом {formattedCount} місяця після події запуску",
+        "side=after, countPlural=few": "протягом {formattedCount} місяців після події запуску",
+        "side=after, countPlural=many": "протягом {formattedCount} місяців після події запуску",
+        "side=after, countPlural=other": "протягом {formattedCount} місяця після події запуску"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowWeek": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "протягом {formattedCount} тижня до події запуску",
+        "side=before, countPlural=few": "протягом {formattedCount} тижнів до події запуску",
+        "side=before, countPlural=many": "протягом {formattedCount} тижнів до події запуску",
+        "side=before, countPlural=other": "протягом {formattedCount} тижня до події запуску",
+        "side=after, countPlural=one": "протягом {formattedCount} тижня після події запуску",
+        "side=after, countPlural=few": "протягом {formattedCount} тижнів після події запуску",
+        "side=after, countPlural=many": "протягом {formattedCount} тижнів після події запуску",
+        "side=after, countPlural=other": "протягом {formattedCount} тижня після події запуску"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowYear": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "протягом {formattedCount} року до події запуску",
+        "side=before, countPlural=few": "протягом {formattedCount} років до події запуску",
+        "side=before, countPlural=many": "протягом {formattedCount} років до події запуску",
+        "side=before, countPlural=other": "протягом {formattedCount} року до події запуску",
+        "side=after, countPlural=one": "протягом {formattedCount} року після події запуску",
+        "side=after, countPlural=few": "протягом {formattedCount} років після події запуску",
+        "side=after, countPlural=many": "протягом {formattedCount} років після події запуску",
+        "side=after, countPlural=other": "протягом {formattedCount} року після події запуску"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodUntil": "до {date}",
+  "emailCampaignsAudienceSummaryProduct": "({family})",
+  "emailCampaignsAudienceSummaryProductAnyOf": "{property}: {values}",
+  "emailCampaignsAudienceSummaryProductDisabled": "{property}: ні",
+  "emailCampaignsAudienceSummaryProductEnabled": "{property}: так",
+  "emailCampaignsAudienceSummaryProductNoneOf": "{property}: крім {values}",
+  "emailCampaignsAudienceSummaryProductWith": "({family}, {details})",
+  "emailCampaignsAudienceSummaryQuoted": "«{value}»",
+  "emailCampaignsAudienceTitleRequired": "Введіть назву аудиторії.",
+  "emailCampaignsAudienceTitleTooLong": "Максимальна кількість символів: {max}.",
+  "emailCampaignsAudienceUnarchive": "Відновити з архіву",
+  "emailCampaignsAudienceUnarchiveFailedRetry": "Не вдалося відновити аудиторію з архіву. Спробуйте ще раз.",
+  "emailCampaignsAudienceUnarchiving": "Відновлення…",
+  "emailCampaignsCalendarDayOfMonth": "{day}-го",
+  "emailCampaignsCalendarDaysOfMonth": "{days} числа",
+  "emailCampaignsCalendarEveryDay": "щодня",
+  "emailCampaignsCalendarEveryHour": "щогодини",
+  "emailCampaignsCalendarHourRange": "між {start} і {end}",
+  "emailCampaignsCalendarHourSpan": "{start}–{end}",
+  "emailCampaignsCalendarHourSpans": "у проміжку {spans}",
+  "emailCampaignsCalendarInMonths": "у {months}",
+  "emailCampaignsCalendarInWeeks": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "протягом {weeks} календарного тижня",
+        "countPlural=few": "протягом {weeks} календарних тижнів",
+        "countPlural=many": "протягом {weeks} календарних тижнів",
+        "countPlural=*": "протягом {weeks} календарних тижнів"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastDayOfMonth": "останнього",
+  "emailCampaignsCalendarLastOccurrence": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "в останній понеділок",
+        "weekday=tuesday": "в останній вівторок",
+        "weekday=wednesday": "в останню середу",
+        "weekday=thursday": "в останній четвер",
+        "weekday=friday": "в останню пʼятницю",
+        "weekday=saturday": "в останню суботу",
+        "weekday=*": "в останню неділю"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceQualifier": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "в останній понеділок",
+        "weekday=tuesday": "в останній вівторок",
+        "weekday=wednesday": "в останню середу",
+        "weekday=thursday": "в останній четвер",
+        "weekday=friday": "в останню пʼятницю",
+        "weekday=saturday": "в останню суботу",
+        "weekday=*": "в останню неділю"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceWait": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "останнього понеділка",
+        "weekday=tuesday": "останнього вівторка",
+        "weekday=wednesday": "останньої середи",
+        "weekday=thursday": "останнього четверга",
+        "weekday=friday": "останньої пʼятниці",
+        "weekday=saturday": "останньої суботи",
+        "weekday=*": "останньої неділі"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMinute": "xx:{minute}",
+  "emailCampaignsCalendarMonthInName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "січні",
+        "month=2": "лютому",
+        "month=3": "березні",
+        "month=4": "квітні",
+        "month=5": "травні",
+        "month=6": "червні",
+        "month=7": "липні",
+        "month=8": "серпні",
+        "month=9": "вересні",
+        "month=10": "жовтні",
+        "month=11": "листопаді",
+        "month=*": "грудні"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMonthName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "січня",
+        "month=2": "лютого",
+        "month=3": "березня",
+        "month=4": "квітня",
+        "month=5": "травня",
+        "month=6": "червня",
+        "month=7": "липня",
+        "month=8": "серпня",
+        "month=9": "вересня",
+        "month=10": "жовтня",
+        "month=11": "листопада",
+        "month=*": "грудня"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMonthOfName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "січня",
+        "month=2": "лютого",
+        "month=3": "березня",
+        "month=4": "квітня",
+        "month=5": "травня",
+        "month=6": "червня",
+        "month=7": "липня",
+        "month=8": "серпня",
+        "month=9": "вересня",
+        "month=10": "жовтня",
+        "month=11": "листопада",
+        "month=*": "грудня"
+      }
+    }
+  ],
+  "emailCampaignsCalendarOccurrence": "{weekday} ({occurrence}-й такий день)",
+  "emailCampaignsCalendarOccurrences": "{occurrences}",
+  "emailCampaignsCalendarSchedule": "{description} (празький час)",
+  "emailCampaignsCalendarScheduleDate": "щороку {day} {month}",
+  "emailCampaignsCalendarScheduleMonthStart": "щороку в перший день {months}",
+  "emailCampaignsCalendarScheduleOn": "{subject}",
+  "emailCampaignsCalendarScheduleQualified": "{subject}, але лише {qualifier}",
+  "emailCampaignsCalendarScheduleWeekMonthStart": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "input months",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "щороку в перший день {weeks} календарного тижня, якщо цей день у межах {months}",
+        "countPlural=few": "щороку в перший день {weeks} календарних тижнів, якщо цей день у межах {months}",
+        "countPlural=many": "щороку в перший день {weeks} календарних тижнів, якщо цей день у межах {months}",
+        "countPlural=*": "щороку в перший день {weeks} календарних тижнів, якщо цей день у межах {months}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarScheduleWeekStart": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "щороку на початку {weeks} календарного тижня (у понеділок)",
+        "countPlural=few": "щороку на початку {weeks} календарних тижнів (у понеділок)",
+        "countPlural=many": "щороку на початку {weeks} календарних тижнів (у понеділок)",
+        "countPlural=*": "щороку на початку {weeks} календарних тижнів (у понеділок)"
+      }
+    }
+  ],
+  "emailCampaignsCalendarScopeAnyMonth": "{phrase} місяця",
+  "emailCampaignsCalendarScopeEveryMonth": "{phrase} кожного місяця",
+  "emailCampaignsCalendarScopeMonths": "{phrase} у {months}",
+  "emailCampaignsCalendarScopeQualifier": "{phrase} місяця",
+  "emailCampaignsCalendarTimeAt": "о {times}",
+  "emailCampaignsCalendarTimeEveryHourAt": "щогодини о {minutes}",
+  "emailCampaignsCalendarTimeMinutesPastHours": "у години {hours} щоразу о {minutes}",
+  "emailCampaignsCalendarWait": "Чекає до {target} (празький час); якщо цей час уже настав, продовжує одразу",
+  "emailCampaignsCalendarWaitClockWindow": "часу {windows}",
+  "emailCampaignsCalendarWaitDay": "дня",
+  "emailCampaignsCalendarWaitMonthDay": "дня в {months}",
+  "emailCampaignsCalendarWaitNextMinute": "найближчого моменту {minutes}",
+  "emailCampaignsCalendarWaitQualified": "{subject}, але лише {qualifier}",
+  "emailCampaignsCalendarWaitTime": "часу {time}",
+  "emailCampaignsCalendarWaitWeeks": "{weeks} календарного тижня",
+  "emailCampaignsCalendarWeekNumber": "{week}-го",
+  "emailCampaignsCalendarWeekdayEveryName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "щопонеділка",
+        "weekday=tuesday": "щовівторка",
+        "weekday=wednesday": "щосереди",
+        "weekday=thursday": "щочетверга",
+        "weekday=friday": "щопʼятниці",
+        "weekday=saturday": "щосуботи",
+        "weekday=*": "щонеділі"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "у понеділок",
+        "weekday=tuesday": "у вівторок",
+        "weekday=wednesday": "у середу",
+        "weekday=thursday": "у четвер",
+        "weekday=friday": "у пʼятницю",
+        "weekday=saturday": "у суботу",
+        "weekday=*": "у неділю"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayQualifierName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "у понеділок",
+        "weekday=tuesday": "у вівторок",
+        "weekday=wednesday": "у середу",
+        "weekday=thursday": "у четвер",
+        "weekday=friday": "у пʼятницю",
+        "weekday=saturday": "у суботу",
+        "weekday=*": "у неділю"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayWaitName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "понеділка",
+        "weekday=tuesday": "вівторка",
+        "weekday=wednesday": "середи",
+        "weekday=thursday": "четверга",
+        "weekday=friday": "пʼятниці",
+        "weekday=saturday": "суботи",
+        "weekday=*": "неділі"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysEvery": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "кожного робочого дня",
+        "set=weekend": "кожного вихідного дня",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysWait": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "робочого дня",
+        "set=weekend": "вихідного дня",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysWaitQualified": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "робочого дня",
+        "set=weekend": "вихідного дня",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsBadgeDeliveryAutomated": "Автоматична",
+  "emailCampaignsBadgePurposeMarketing": "Маркетингова",
+  "emailCampaignsBadgePurposeOperational": "Сервісна",
+  "emailCampaignsBadgeRecipientStatusBounced": "Повернуто",
+  "emailCampaignsBadgeRecipientStatusComplained": "Позначено як спам",
+  "emailCampaignsBadgeRecipientStatusDelivered": "Доставлено",
+  "emailCampaignsBadgeRecipientStatusFailed": "Збій",
+  "emailCampaignsBadgeRecipientStatusPending": "Очікує",
+  "emailCampaignsBadgeRecipientStatusSent": "Надіслано",
+  "emailCampaignsBadgeRecipientStatusSkipped": "Пропущено",
+  "emailCampaignsBadgeRecipientStatusUnconfirmed": "Не підтверджено",
+  "emailCampaignsBadgeStatusDraft": "Чернетка",
+  "emailCampaignsBadgeStatusFailed": "Збій",
+  "emailCampaignsBadgeStatusSending": "Надсилається",
+  "emailCampaignsBadgeStatusSent": "Надіслана",
+  "emailCampaignsBodyButtonHrefInvalid": "Кнопка має посилатися на адресу https: або mailto:.",
+  "emailCampaignsBodyButtonLabelLineBreaks": "Текст кнопки може переходити на новий рядок лише через символ нового рядка (LF).",
+  "emailCampaignsBodyButtonLabelMissing": "Кнопка повинна мати текст.",
+  "emailCampaignsBodyImageLayoutInvalid": "Зображення має бути вирівняне ліворуч, по центру або праворуч і мати ширину в цілих пікселях.",
+  "emailCampaignsBodyImageSourceInvalid": "Зображення має походити з облікового запису Deskohub у Cloudinary.",
+  "emailCampaignsBodyLinkHrefInvalid": "Посилання має використовувати адресу https: або mailto:.",
+  "emailCampaignsBodyMissing": "Напишіть текст листа.",
+  "emailCampaignsBodyNotDocument": "Текст листа має бути вузлом типу «doc».",
+  "emailCampaignsBodyStructureInvalid": "Текст листа містить елементи, які листи кампаній не підтримують.",
+  "emailCampaignsComposerAllChangesSaved": "Усі зміни збережено",
+  "emailCampaignsComposerAudienceHint": "Перед надсиланням оберіть, хто отримає кампанію.",
+  "emailCampaignsComposerAudienceLabel": "Аудиторія",
+  "emailCampaignsComposerAudienceNone": "Аудиторію ще не обрано",
+  "emailCampaignsComposerAudiencesEmpty": "У вас ще немає аудиторій. Створіть аудиторію в розділі «Аудиторії».",
+  "emailCampaignsComposerBodyEditorLabel": "Текст листа, {language}",
+  "emailCampaignsComposerBodyLabel": "Текст листа",
+  "emailCampaignsComposerCampaignSection": "Кампанія",
+  "emailCampaignsComposerContentLanguageLabel": "Мова вмісту",
+  "emailCampaignsComposerContentSection": "Вміст",
+  "emailCampaignsComposerCreateDraft": "Створити чернетку",
+  "emailCampaignsComposerDraftDescription": "Чернетка. Збережіть зміни, а потім надішліть тестовий лист — у ньому буде код підтвердження для справжнього надсилання.",
+  "emailCampaignsComposerEyebrow": "Email-кампанія",
+  "emailCampaignsComposerFallbackLocaleHint": "Чеська обовʼязкова як останній резервний варіант. Німецькомовні та україномовні одержувачі без вмісту своєю мовою спершу отримають англійську версію, якщо вона є.",
+  "emailCampaignsComposerHiddenContentCzech": "Чеський вміст для цієї аудиторії приховано, і його не буде збережено.",
+  "emailCampaignsComposerHiddenContentEnglish": "Англійський вміст для цієї аудиторії приховано, і його не буде збережено.",
+  "emailCampaignsComposerHiddenContentGerman": "Німецький вміст для цієї аудиторії приховано, і його не буде збережено.",
+  "emailCampaignsComposerHiddenContentSlovak": "Словацький вміст для цієї аудиторії приховано, і його не буде збережено.",
+  "emailCampaignsComposerHiddenContentUkrainian": "Український вміст для цієї аудиторії приховано, і його не буде збережено.",
+  "emailCampaignsComposerLocaleIssues": "Виправити: {count}",
+  "emailCampaignsComposerLocaleOptional": "Необовʼязково",
+  "emailCampaignsComposerLocaleReady": "Готово",
+  "emailCampaignsComposerLocaleRequired": "Обовʼязково",
+  "emailCampaignsComposerNewDescription": "Напишіть кампанію та створіть чернетку, яку потім можна надіслати як тест.",
+  "emailCampaignsComposerNewTitle": "Нова кампанія",
+  "emailCampaignsComposerOperationalReasonHint": "Чому клієнт отримує цей лист. Якщо залишити поле порожнім, буде використано стандартний текст.",
+  "emailCampaignsComposerOperationalReasonLabel": "Причина (внизу листа)",
+  "emailCampaignsComposerPreheaderHint": "Більшість поштових скриньок показує його після теми.",
+  "emailCampaignsComposerPreheaderLabel": "Текст попереднього перегляду",
+  "emailCampaignsComposerPurposeLabel": "Призначення",
+  "emailCampaignsComposerPurposeMarketing": "Маркетингова",
+  "emailCampaignsComposerPurposeMarketingDescription": "Лише клієнти зі згодою на маркетингові повідомлення. Кожен лист містить посилання для відписки.",
+  "emailCampaignsComposerPurposeOperational": "Сервісна",
+  "emailCampaignsComposerPurposeOperationalDescription": "Сервісні оголошення для всіх відповідних клієнтів. Унизу листа зазначено, чому його отримано.",
+  "emailCampaignsComposerSaveAudienceArchived": "Вибрану аудиторію архівовано. Оберіть іншу.",
+  "emailCampaignsComposerSaveAudienceFilterUnavailable": "Вибрана аудиторія використовує фільтри, доступні лише в умовах автоматизацій. Оберіть іншу.",
+  "emailCampaignsComposerSaveAudienceNotFound": "Вибраної аудиторії більше не існує.",
+  "emailCampaignsComposerSaveCheckFields": "Не вдалося зберегти кампанію. Перевірте заповнені дані.",
+  "emailCampaignsComposerSaveContentInvalid": "Вміст містить помилки. Виправте зазначені проблеми, а потім збережіть кампанію.",
+  "emailCampaignsComposerSaveDraft": "Зберегти чернетку",
+  "emailCampaignsComposerSaveFailed": "Не вдалося зберегти кампанію. Спробуйте ще раз.",
+  "emailCampaignsComposerSaveReadOnly": "Ця кампанія більше не є чернеткою, і її не можна редагувати.",
+  "emailCampaignsComposerSaving": "Збереження…",
+  "emailCampaignsComposerSingleLocaleAudienceCzech": "Аудиторія охоплює лише клієнтів, які розмовляють чеською.",
+  "emailCampaignsComposerSingleLocaleAudienceEnglish": "Аудиторія охоплює лише клієнтів, які розмовляють англійською.",
+  "emailCampaignsComposerSingleLocaleAudienceGerman": "Аудиторія охоплює лише клієнтів, які розмовляють німецькою.",
+  "emailCampaignsComposerSingleLocaleAudienceSlovak": "Аудиторія охоплює лише клієнтів, які розмовляють словацькою.",
+  "emailCampaignsComposerSingleLocaleAudienceUkrainian": "Аудиторія охоплює лише клієнтів, які розмовляють українською.",
+  "emailCampaignsComposerSubjectLabel": "Тема",
+  "emailCampaignsComposerSubjectMissing": "Додайте тему.",
+  "emailCampaignsComposerTemplateLabel": "Шаблон",
+  "emailCampaignsComposerTemplatePreview": "Переглянути шаблон",
+  "emailCampaignsComposerTemplatePreviewFrameTitle": "Шаблон {template} із прикладом вмісту",
+  "emailCampaignsComposerTemplateWorkspaceDescription": "Макет листа Workspace: темно-синя шапка, біла картка з вмістом і нижня частина з адресою.",
+  "emailCampaignsComposerTitleHint": "Назву видно лише в адмініструванні.",
+  "emailCampaignsComposerTitleLabel": "Назва",
+  "emailCampaignsComposerTitlePlaceholder": "Весняні години роботи",
+  "emailCampaignsComposerTitleRequired": "Введіть назву кампанії.",
+  "emailCampaignsComposerUnsavedChanges": "Незбережені зміни",
+  "emailCampaignsComposerUntitledTitle": "Кампанія без назви",
+  "emailCampaignsCtaCancel": "Скасувати",
+  "emailCampaignsCtaDescription": "Помітна кнопка, що веде на сторінку або електронну адресу.",
+  "emailCampaignsCtaEdit": "Редагувати кнопку",
+  "emailCampaignsCtaHrefLabel": "Посилання",
+  "emailCampaignsCtaHrefMissing": "Немає посилання",
+  "emailCampaignsCtaInsert": "Вставити кнопку",
+  "emailCampaignsCtaLabelLabel": "Текст кнопки",
+  "emailCampaignsCtaLabelMissing": "Немає тексту кнопки",
+  "emailCampaignsCtaLabelPlaceholder": "Забронювати стіл",
+  "emailCampaignsCtaLabelRequired": "Введіть текст кнопки.",
+  "emailCampaignsCtaRemove": "Прибрати кнопку",
+  "emailCampaignsCtaUpdate": "Зберегти кнопку",
+  "emailCampaignsDraftDelete": "Видалити чернетку",
+  "emailCampaignsDraftDeleteDescription": "Цю дію не можна скасувати. Чернетку, її вміст і незбережені зміни буде видалено. Надіслані кампанії видалити не можна.",
+  "emailCampaignsDraftDeleteFailed": "Не вдалося видалити кампанію. Спробуйте ще раз.",
+  "emailCampaignsDraftDeleteReadOnly": "Ця кампанія більше не є чернеткою, і її не можна видалити.",
+  "emailCampaignsDraftDeleteTitle": "Видалити цю чернетку?",
+  "emailCampaignsDraftDeleting": "Видалення…",
+  "emailCampaignsDraftNotFound": "Цієї кампанії більше не існує.",
+  "emailCampaignsEditorBold": "Жирний",
+  "emailCampaignsEditorBulletList": "Маркований список",
+  "emailCampaignsEditorDivider": "Роздільник",
+  "emailCampaignsEditorHeading1": "Заголовок 1",
+  "emailCampaignsEditorHeading2": "Заголовок 2",
+  "emailCampaignsEditorHeading3": "Заголовок 3",
+  "emailCampaignsEditorItalic": "Курсив",
+  "emailCampaignsEditorNumberedList": "Нумерований список",
+  "emailCampaignsEditorParagraph": "Абзац",
+  "emailCampaignsEditorPlaceholder": "Напишіть лист. Заголовки, посилання, зображення й кнопки можна додати з панелі інструментів.",
+  "emailCampaignsEditorRedo": "Повторити",
+  "emailCampaignsEditorTextStyle": "Стиль тексту",
+  "emailCampaignsEditorToolbar": "Форматування",
+  "emailCampaignsEditorUndo": "Скасувати дію",
+  "emailCampaignsEmailPreviewFrameTitle": "Попередній перегляд листа, {language}",
+  "emailCampaignsEmailPreviewHeading": "Попередній перегляд",
+  "emailCampaignsEmailPreviewLabel": "Попередній перегляд листа",
+  "emailCampaignsEmailPreviewLanguage": "Мова попереднього перегляду",
+  "emailCampaignsEmailPreviewMissingContentCzech": "Лист зʼявиться, щойно ви додасте чеський вміст.",
+  "emailCampaignsEmailPreviewMissingContentEnglish": "Лист зʼявиться, щойно ви додасте англійський вміст.",
+  "emailCampaignsEmailPreviewMissingContentGerman": "Лист зʼявиться, щойно ви додасте німецький вміст.",
+  "emailCampaignsEmailPreviewMissingContentSlovak": "Лист зʼявиться, щойно ви додасте словацький вміст.",
+  "emailCampaignsEmailPreviewMissingContentUkrainian": "Лист зʼявиться, щойно ви додасте український вміст.",
+  "emailCampaignsEmailPreviewNoPreheader": "Без тексту попереднього перегляду",
+  "emailCampaignsEmailPreviewNoSubject": "Без теми",
+  "emailCampaignsEmailPreviewRenderFailed": "Не вдалося показати попередній перегляд.",
+  "emailCampaignsEmailPreviewRendering": "Створення попереднього перегляду…",
+  "emailCampaignsEmailPreviewUpdating": "Оновлення…",
+  "emailCampaignsImageAlignCenter": "Вирівняти зображення по центру",
+  "emailCampaignsImageAlignLeft": "Вирівняти зображення ліворуч",
+  "emailCampaignsImageAlignRight": "Вирівняти зображення праворуч",
+  "emailCampaignsImageWidth": "Ширина зображення (px)",
+  "emailCampaignsImageWidthHint": "Введіть ціле число від 1 до {maxWidth}. На менших екранах зображення зменшуються.",
+  "emailCampaignsImageShrinking": "Зменшення зображення…",
+  "emailCampaignsImageUploadAnimationTooLarge": "Анімоване зображення може мати не більше ніж {maxMegabytes} МБ і {maxMegapixels} Мп у всіх кадрах разом. Скоротіть або зменште анімацію.",
+  "emailCampaignsImageUploadFailed": "Не вдалося завантажити зображення. Спробуйте ще раз.",
+  "emailCampaignsImageUploadInsert": "Вставити зображення",
+  "emailCampaignsImageUploadUnreadable": "Не вдалося прочитати зображення. Спробуйте інший файл.",
+  "emailCampaignsImageUploading": "Завантаження зображення…",
+  "emailCampaignsLinkAdd": "Додати посилання",
+  "emailCampaignsLinkHrefHint": "Введіть адресу, що починається з https://, або електронну адресу.",
+  "emailCampaignsLinkHrefLabel": "Адреса посилання",
+  "emailCampaignsLinkRemove": "Прибрати посилання",
+  "emailCampaignsLinkToggle": "Посилання",
+  "emailCampaignsLinkUpdate": "Змінити посилання",
+  "emailCampaignsListAudienceColumn": "Аудиторія",
+  "emailCampaignsListCampaignColumn": "Кампанія",
+  "emailCampaignsListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} кампанія",
+        "countPlural=few": "{formattedCount} кампанії",
+        "countPlural=many": "{formattedCount} кампаній",
+        "countPlural=other": "{formattedCount} кампанії"
+      }
+    }
+  ],
+  "emailCampaignsListCountLoading": "Завантаження кількості кампаній",
+  "emailCampaignsListEmpty": "Кампаній ще немає. Створіть першу й напишіть свій перший лист.",
+  "emailCampaignsListLoading": "Завантаження кампаній",
+  "emailCampaignsListNewCampaign": "Нова кампанія",
+  "emailCampaignsListNoAudience": "Без аудиторії",
+  "emailCampaignsListPurposeColumn": "Призначення",
+  "emailCampaignsListStatusColumn": "Статус",
+  "emailCampaignsListTableControls": "Керування таблицею кампаній",
+  "emailCampaignsListTitle": "Email-кампанії",
+  "emailCampaignsListUpdatedAt": "Змінено: {updatedAt}",
+  "emailCampaignsListUpdatedColumn": "Змінено",
+  "emailCampaignsLocaleNameCzech": "Чеська",
+  "emailCampaignsLocaleNameEnglish": "Англійська",
+  "emailCampaignsRecipientPreviewAsOfNow": "Аудиторію визначено станом на цей момент. Під час надсилання її буде визначено знову, а отриманий список зафіксовано.",
+  "emailCampaignsRecipientPreviewAudienceDescription": "{audience}: {filter}.",
+  "emailCampaignsRecipientPreviewBackToCampaign": "Назад до кампанії",
+  "emailCampaignsRecipientPreviewCustomerColumn": "Клієнт",
+  "emailCampaignsRecipientPreviewCustomerInline": "Клієнт {customer}",
+  "emailCampaignsRecipientPreviewEmailColumn": "Електронна пошта",
+  "emailCampaignsRecipientPreviewExcluded": "Виключено",
+  "emailCampaignsRecipientPreviewExcludedCustomers": "Виключені клієнти",
+  "emailCampaignsRecipientPreviewExcludedEmpty": "Жодного відповідного клієнта не виключено.",
+  "emailCampaignsRecipientPreviewExclusionDeletedCustomer": "Видалено в Dotypos",
+  "emailCampaignsRecipientPreviewExclusionInvalidEmail": "Недійсна електронна адреса в Dotypos",
+  "emailCampaignsRecipientPreviewExclusionMissingEmail": "Немає електронної адреси в Dotypos",
+  "emailCampaignsRecipientPreviewExclusionMissingFromDotypos": "Не знайдено в Dotypos",
+  "emailCampaignsRecipientPreviewLanguageColumn": "Мова",
+  "emailCampaignsRecipientPreviewNoAudience": "Ця кампанія ще не має аудиторії. Оберіть її в редакторі кампанії, а потім перегляньте одержувачів.",
+  "emailCampaignsRecipientPreviewReasonColumn": "Причина",
+  "emailCampaignsRecipientPreviewReceivesColumn": "Отримає лист",
+  "emailCampaignsRecipientPreviewReceivesInline": "Отримає: {customer}",
+  "emailCampaignsRecipientPreviewRecipients": "Одержувачі",
+  "emailCampaignsRecipientPreviewRecipientsEmpty": "Зараз аудиторія не охоплює жодного клієнта.",
+  "emailCampaignsRecipientPreviewSharedEmails": "Спільні адреси",
+  "emailCampaignsRecipientPreviewSharedEmailsEmpty": "Жодні два клієнти не мають однакової електронної адреси.",
+  "emailCampaignsRecipientPreviewSharedEmailsNote": "Клієнти з однаковою електронною адресою отримають лише один лист. Його надсилають клієнтові з найновішим бронюванням.",
+  "emailCampaignsRecipientPreviewSharedEmailsTitle": "Спільні електронні адреси",
+  "emailCampaignsRecipientPreviewSkippedColumn": "Пропущені",
+  "emailCampaignsRecipientPreviewSkippedInline": "Пропущені:",
+  "emailCampaignsRecipientPreviewSummary": "Підсумок",
+  "emailCampaignsRecipientPreviewTitle": "Перегляд одержувачів",
+  "emailCampaignsRecipientPreviewTryAgain": "Спробувати ще раз",
+  "emailCampaignsRecipientPreviewUnavailable": "Не вдалося визначити одержувачів, бо Dotypos недоступний. Нічого не змінено.",
+  "emailCampaignsSendConfirmCancel": "Скасувати",
+  "emailCampaignsSendConfirmCodeInvalid": "Введіть код із 8 символів з останнього тестового листа.",
+  "emailCampaignsSendConfirmCodeLabel": "Код підтвердження",
+  "emailCampaignsSendConfirmDescription": "Введіть код підтвердження з останнього тестового листа. Код дійсний 24 години й лише для вмісту, показаного в цьому тесті. Новіший тестовий лист або зміна вмісту замінюють його.",
+  "emailCampaignsSendConfirmFailed": "Не вдалося надіслати кампанію. Спробуйте ще раз.",
+  "emailCampaignsSendConfirmIrreversible": "Надсилання фіксує список одержувачів, і його не можна скасувати.",
+  "emailCampaignsSendConfirmSubmit": "Надіслати кампанію",
+  "emailCampaignsSendConfirmSubmitting": "Надсилання…",
+  "emailCampaignsSendConfirmTitle": "Надіслати цю кампанію",
+  "emailCampaignsSendConfirmUnsavedChanges": "Спершу збережіть зміни й надішліть новий тест. Кампанія надсилає лише збережений вміст.",
+  "emailCampaignsSendPreviewRecipients": "Переглянути одержувачів",
+  "emailCampaignsSendingFailureAudienceMissing": "Перед надсиланням оберіть аудиторію для цієї кампанії.",
+  "emailCampaignsSendingFailureAudienceNotFound": "Аудиторії цієї кампанії більше не існує. Оберіть іншу аудиторію; нічого не надіслано, і код досі дійсний.",
+  "emailCampaignsSendingFailureCampaignNotFound": "Цієї кампанії більше не існує.",
+  "emailCampaignsSendingFailureCampaignReadOnly": "Ця кампанія вже не є чернеткою. Щоб надіслати нову копію, створіть дублікат кампанії.",
+  "emailCampaignsSendingFailureCodeContentChanged": "Кампанія змінилася після цього тестового листа. Надішліть новий тестовий лист і використайте його код.",
+  "emailCampaignsSendingFailureCodeExpired": "Термін дії цього коду минув. Щоб отримати новий код, надішліть новий тестовий лист.",
+  "emailCampaignsSendingFailureCodeSuperseded": "Цей код замінено новішим тестовим листом. Використайте код з останнього тестового листа.",
+  "emailCampaignsSendingFailureCodeTooManyAttempts": "Введено забагато неправильних кодів, тому цей код більше не діє. Щоб отримати новий код, надішліть новий тестовий лист.",
+  "emailCampaignsSendingFailureCodeUnknown": "Цей код не відповідає останньому тестовому листу. Перевірте, чи немає в ньому помилки, і спробуйте ще раз.",
+  "emailCampaignsSendingFailureContentMissing": "Спершу додайте тему й текст принаймні однією мовою.",
+  "emailCampaignsSendingFailureDeliveryQueueFailed": "Не вдалося поставити доставку в чергу, тому кампанію позначено як «Збій». Трохи згодом надішліть її повторно одержувачам, яким її не доставлено.",
+  "emailCampaignsSendingFailureEmailDeliveryFailed": "Поштовий сервіс не прийняв тестовий лист. Спробуйте ще раз трохи згодом.",
+  "emailCampaignsSendingFailureFallbackContentMissing": "Чеський вміст — останній резервний варіант для клієнтів без вмісту своєю мовою, тому додайте чеський вміст або обмежте аудиторію однією з мов, які має кампанія. Нічого не надіслано.",
+  "emailCampaignsSendingFailureNoRecipients": "Зараз аудиторія не має досяжних одержувачів, тому нічого не надіслано.",
+  "emailCampaignsSendingFailureNotRetryable": "Повторно надіслати лист одержувачам, яким його не доставлено, можна лише для кампанії зі статусом «Збій».",
+  "emailCampaignsSendingFailureSigningKeyInvalid": "Не вдається видати коди підтвердження, бо ключ підпису налаштовано неправильно. Зверніться до команди розробки, щоб перевірити BETTER_AUTH_SECRETS.",
+  "emailCampaignsSendingFailureUnauthorized": "Ваш сеанс входу в адміністрування більше не дійсний. Оновіть сторінку та увійдіть знову.",
+  "emailCampaignsSendingFailureUnexpected": "Сталася помилка. Спробуйте ще раз трохи згодом.",
+  "emailCampaignsSentAudience": "Аудиторія",
+  "emailCampaignsSentAudienceDeleted": "Видалена аудиторія",
+  "emailCampaignsSentAudienceFilter": "Фільтр",
+  "emailCampaignsSentAudienceFilterCountedBack": "{filter}; відлік назад від моменту надсилання ({sentAt}).",
+  "emailCampaignsSentAudienceFilterSummary": "{filter}.",
+  "emailCampaignsSentAudienceTitle": "Аудиторія на момент надсилання",
+  "emailCampaignsSentCampaignTitle": "Кампанія",
+  "emailCampaignsSentCompletedAt": "Завершено",
+  "emailCampaignsSentCompletedAtPending": "Ще ні",
+  "emailCampaignsSentContentTitle": "Вміст",
+  "emailCampaignsSentDeliveryRecipientCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} одержувач",
+        "countPlural=few": "{formattedCount} одержувачі",
+        "countPlural=many": "{formattedCount} одержувачів",
+        "countPlural=other": "{formattedCount} одержувача"
+      }
+    }
+  ],
+  "emailCampaignsSentDeliveryTitle": "Доставка",
+  "emailCampaignsSentDeliveryUnconfirmedNote": "Непідтверджені одержувачі, можливо, уже мають лист: поштовий сервіс так і не підтвердив їхній пакет. Повторне надсилання недоставленим їх пропускає, якщо ви не оберете надіслати й їм.",
+  "emailCampaignsSentDuplicate": "Дублювати",
+  "emailCampaignsSentDuplicateFailed": "Не вдалося дублювати кампанію.",
+  "emailCampaignsSentDuplicating": "Дублювання…",
+  "emailCampaignsSentEmailNoPreview": "Попередній перегляд недоступний.",
+  "emailCampaignsSentEmailRenderFailed": "Не вдалося показати лист.",
+  "emailCampaignsSentEyebrow": "Email-кампанія",
+  "emailCampaignsSentFailedNotice": "Деяким одержувачам лист не вдалося доставити. Повторне надсилання недоставленим надішле лист лише тим одержувачам, які його не отримали.",
+  "emailCampaignsSentIncludeUnconfirmed": "Також надіслати повторно непідтвердженим одержувачам (вони можуть отримати лист двічі)",
+  "emailCampaignsSentNoSendRecorded": "Для цієї кампанії не зареєстровано жодного надсилання.",
+  "emailCampaignsSentPurpose": "Призначення",
+  "emailCampaignsSentRecipientsCustomerColumn": "Клієнт",
+  "emailCampaignsSentRecipientsEmpty": "Це надсилання не зафіксувало жодного одержувача.",
+  "emailCampaignsSentRecipientsLanguageColumn": "Мова",
+  "emailCampaignsSentRecipientsLanguageSince": "{language} · з {statusUpdatedAt}",
+  "emailCampaignsSentRecipientsSkipReasonColumn": "Причина пропуску",
+  "emailCampaignsSentRecipientsSkipped": "Пропущено: {reason}",
+  "emailCampaignsSentRecipientsStatusColumn": "Статус",
+  "emailCampaignsSentRecipientsStatusSinceColumn": "Статус із",
+  "emailCampaignsSentRecipientsTableLabel": "Одержувачі кампанії",
+  "emailCampaignsSentRecipientsTitle": "Одержувачі",
+  "emailCampaignsSentRetry": "Повторити надсилання",
+  "emailCampaignsSentRetryFailed": "Не вдалося повторно надіслати лист недоставленим одержувачам.",
+  "emailCampaignsSentRetryStarted": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Повторно надсилаємо лист {formattedCount} одержувачу, якому його не вдалося доставити.",
+        "countPlural=few": "Повторно надсилаємо лист {formattedCount} одержувачам, яким його не вдалося доставити.",
+        "countPlural=many": "Повторно надсилаємо лист {formattedCount} одержувачам, яким його не вдалося доставити.",
+        "countPlural=other": "Повторно надсилаємо лист {formattedCount} одержувачам, яким його не вдалося доставити."
+      }
+    }
+  ],
+  "emailCampaignsSentRetrying": "Повторне надсилання…",
+  "emailCampaignsSentSendingNotice": "Триває доставка. Статуси одержувачів оновлюються відповідно до звітів поштового сервісу.",
+  "emailCampaignsSentSentAt": "Надіслано",
+  "emailCampaignsSentSentAtNotRecorded": "Не зареєстровано",
+  "emailCampaignsSentSkipReasonConsentWithdrawn": "Згоду відкликано",
+  "emailCampaignsSentSkipReasonDeletedCustomer": "Клієнта видалено",
+  "emailCampaignsSentSkipReasonInvalidEmail": "Недійсна електронна адреса",
+  "emailCampaignsSentSkipReasonMissingEmail": "Немає електронної адреси",
+  "emailCampaignsSentSkipReasonMissingFromDotypos": "Більше немає в Dotypos",
+  "emailCampaignsSentSkipReasonOutsideTestDomain": "Поза тестовим поштовим доменом",
+  "emailCampaignsSentStatus": "Статус",
+  "emailCampaignsTestSendAdd": "Додати",
+  "emailCampaignsTestSendAddRecipientLabel": "Додати тестового одержувача",
+  "emailCampaignsTestSendAdminInboxAlways": "Скринька адміністрування завжди отримує тестові листи.",
+  "emailCampaignsTestSendAdminInboxNote": "(скринька адміністрування, завжди включена)",
+  "emailCampaignsTestSendCancel": "Скасувати",
+  "emailCampaignsTestSendCodeExpires": "Термін дії коду підтвердження мине {expiresAt}.",
+  "emailCampaignsTestSendContentMissing": "Перед надсиланням тесту додайте тему й текст принаймні однією мовою.",
+  "emailCampaignsTestSendDescription": "Тестові листи містять код підтвердження, який ви введете під час надсилання кампанії. Новий тестовий лист замінює попередній код.",
+  "emailCampaignsTestSendDone": "Готово",
+  "emailCampaignsTestSendFailed": "Не вдалося надіслати тестовий лист. Перевірте адреси та спробуйте ще раз.",
+  "emailCampaignsTestSendPerLanguage": "Кожна адреса отримає один лист [TEST] кожною мовою: {languages}.",
+  "emailCampaignsTestSendRecipientDuplicate": "Цю адресу вже додано.",
+  "emailCampaignsTestSendRecipientInvalid": "Введіть дійсну електронну адресу.",
+  "emailCampaignsTestSendRecipientRequired": "Введіть електронну адресу.",
+  "emailCampaignsTestSendRecipients": "Одержувачі",
+  "emailCampaignsTestSendRecipientsLabel": "Одержувачі тесту",
+  "emailCampaignsTestSendRemoveRecipient": "Прибрати {email}",
+  "emailCampaignsTestSendSent": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Надіслано {formattedCount} тестовий лист ({languages}).",
+        "countPlural=few": "Надіслано {formattedCount} тестові листи ({languages}).",
+        "countPlural=many": "Надіслано {formattedCount} тестових листів ({languages}).",
+        "countPlural=other": "Надіслано {formattedCount} тестового листа ({languages})."
+      }
+    }
+  ],
+  "emailCampaignsTestSendSubmit": "Надіслати тест",
+  "emailCampaignsTestSendSubmitting": "Надсилання…",
+  "emailCampaignsTestSendTitle": "Надіслати тестовий лист",
+  "emailCampaignsTestSendUnsavedChanges": "Спершу збережіть зміни. Тест використовує збережену кампанію, тому його код не підтвердить ваші незбережені зміни.",
+  "emailCampaignsActionTimedOut": "Сервер не відповів вчасно. Спробуйте ще раз.",
+  "emailCampaignsDeliveryMismatch": "Ця дія працює лише для одноразових кампаній, а ця кампанія надсилається автоматично.",
+  "emailCampaignsActionFailedUnexpectedly": "На сервері сталася помилка. Спробуйте ще раз.",
+  "emailCampaignsAudienceInUseByDrafts": "Цю аудиторію використовують чернетки кампаній, тому її можна лише архівувати. Перш ніж видалити аудиторію, перенесіть чернетки на іншу аудиторію.",
+  "emailCampaignsComposerEnglishFallbackMissing": "Без англійського вмісту німецькомовні та україномовні одержувачі без вмісту своєю мовою отримають чеську версію.",
+  "emailCampaignsSendingFailureTestRecipientsInvalid": "Одна з адрес не є дійсною електронною адресою. Перевірте адреси та спробуйте ще раз.",
+  "emailCampaignsSendingFailureRecipientsOutsideTestDomain": "Поза робочим середовищем листи кампаній можна надсилати лише на адреси @{domain}, а деякі одержувачі до них не належать. Нічого не надіслано.",
+  "emailCampaignsSendingFailureRecipientsUnavailable": "Не вдалося визначити одержувачів, бо Dotypos або база даних недоступні. Нічого не надіслано, і код досі дійсний; спробуйте ще раз трохи згодом.",
+  "emailCampaignsSendingFailureEmailSetupMissing": "Листи кампаній не налаштовано в цьому розгортанні. Зверніться до команди розробки, щоб перевірити змінні середовища для листів кампаній."
+}

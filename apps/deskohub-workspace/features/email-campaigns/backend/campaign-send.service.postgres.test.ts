@@ -650,7 +650,7 @@ describe.skipIf(!testDatabase)(
       ]);
     });
 
-    test("refuses English-only content when the audience can reach Czech fallback recipients", async () => {
+    test("refuses content without Czech, which every fallback chain reaches, unless the audience is one covered locale", async () => {
       const unrestricted = await createDraft({ content: englishOnlyContent });
       const withoutAudience = await createDraft({
         content: englishOnlyContent,
