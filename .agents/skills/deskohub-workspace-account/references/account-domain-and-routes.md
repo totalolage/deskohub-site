@@ -185,7 +185,9 @@ glossary defines the customer account, reservation author, and tombstone.
   modal closed. The dialog makes the background inert, closing it goes back to
   `/account`, and deletion leaves through a document navigation.
 - `/account/legal` shows this device's cookie categories, then, while signed
-  in, the account's analytics preference, then the marketing preferences.
+  in, the account's analytics preference, then the marketing preferences,
+  then the account data export for a session its route would serve (see
+  [account data export](account-data-export.md#authorization)).
   The page reads the preference with `getAnalyticsPreference`
   (`features/legal/analytics-preference.server.ts`): on when the account's
   current decision is a grant under any privacy notice, off for a withdrawal

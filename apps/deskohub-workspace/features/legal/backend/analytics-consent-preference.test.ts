@@ -11,6 +11,7 @@ import {
 } from "effect";
 import { AnalyticsPersonAnonymisation } from "@/features/account/backend/analytics-person-anonymisation";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
@@ -91,7 +92,11 @@ const provide = <A, E>(
         anonymisationLayer,
         Layer.succeed(CustomerAuthentication, {
           currentUser: Effect.succeed(
-            session && { ...session, email: testEmailAddress("preference") }
+            session && {
+              ...session,
+              ...testSessionProfile,
+              email: testEmailAddress("preference"),
+            }
           ),
         })
       )
@@ -222,6 +227,7 @@ describe("saveAnalyticsPreference", () => {
           Layer.succeed(CustomerAuthentication, {
             currentUser: Effect.succeed({
               ...signedIn,
+              ...testSessionProfile,
               email: testEmailAddress("preference"),
             }),
           })

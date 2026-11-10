@@ -131,6 +131,7 @@ function scenario() {
           return Effect.void;
         }),
       withdrawActive: () => Effect.die("not used by preferences"),
+      find: () => Effect.die("not used by preferences"),
     })
   );
   const layer = MarketingPreferences.Default.pipe(

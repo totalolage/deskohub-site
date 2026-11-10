@@ -24,6 +24,7 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 
 const accountId = customerAccountIdSchema.make("acct-avatar-1");
 
@@ -74,6 +75,7 @@ const makeSession = (account: string): CustomerAccountSession => ({
     testEmailAddress("avatar")
   ),
   deletionRequested: false,
+  ...testSessionProfile,
 });
 
 const makeAsset = (publicId: string, version: number, assetId?: string) => ({
