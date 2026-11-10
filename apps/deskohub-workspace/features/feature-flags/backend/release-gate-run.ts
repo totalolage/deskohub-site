@@ -1,5 +1,5 @@
 import { cached } from "@deskohub/next-effect/cached";
-import { Effect, identity, Layer } from "effect";
+import { Context, Effect, identity, Layer, Scope } from "effect";
 import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
 import type { ReleaseGateClass } from "./release-gate";
 
@@ -33,19 +33,30 @@ export const releaseGateForRun = <Self>(
   policy: ReleaseGateRunPolicy
 ): Layer.Layer<Self> =>
   Layer.unwrap(
-    cached(
-      gate.isOpen.pipe(
-        Effect.provide(gate.Live),
-        policy.whenRunFails === "close"
-          ? catchRecoverableCause(() =>
-              Effect.logWarning(
-                "Release gate run failed; it stays closed"
-              ).pipe(
-                Effect.annotateLogs({ failureCode: policy.failureCode }),
-                Effect.as(false)
+    // The gate's `Live` is built, when a consumer first asks, into the memo
+    // map and scope that build this layer, so every gate of the run shares one
+    // feature-flag service and with it one evaluation of the run's flags.
+    Effect.contextWith((context: Context.Context<Scope.Scope>) =>
+      cached(
+        Layer.buildWithMemoMap(
+          gate.Live,
+          Layer.CurrentMemoMap.getOrCreate(context),
+          Context.get(context, Scope.Scope)
+        ).pipe(
+          Effect.flatMap((services) =>
+            gate.isOpen.pipe(Effect.provideContext(services))
+          ),
+          policy.whenRunFails === "close"
+            ? catchRecoverableCause(() =>
+                Effect.logWarning(
+                  "Release gate run failed; it stays closed"
+                ).pipe(
+                  Effect.annotateLogs({ failureCode: policy.failureCode }),
+                  Effect.as(false)
+                )
               )
-            )
-          : identity
+            : identity
+        )
       )
     ).pipe(Effect.map(gate.fromEvaluation))
   );

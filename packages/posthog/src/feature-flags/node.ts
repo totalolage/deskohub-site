@@ -2,7 +2,6 @@ import { Data, Effect } from "effect";
 import {
   type AllFlagsOptions,
   type FeatureFlagEvaluations,
-  type FlagEvaluationOptions,
   PostHog,
   type PostHogOptions,
 } from "posthog-node";
@@ -90,43 +89,6 @@ export const makePostHogNodeFeatureFlagService = <
       )
   );
 
-  const isEnabled = Effect.fn("PostHogNodeFeatureFlags.isEnabled")(
-    <Key extends PostHogFeatureFlagKey<Definitions>>(
-      input: PostHogFeatureFlagCheckInput<Definitions, Key>
-    ) =>
-      getClient().pipe(
-        Effect.flatMap((postHogClient) =>
-          Effect.tryPromise({
-            try: () =>
-              postHogClient.getFeatureFlagResult(
-                input.key,
-                input.subject.distinctId,
-                {
-                  ...config.defaultEvaluationOptions,
-                  ...input.options,
-                  sendFeatureFlagEvents: input.subject.sendFeatureFlagEvents,
-                }
-              ),
-            catch: (cause) =>
-              new PostHogFeatureFlagEvaluationError({
-                message: "Could not evaluate the PostHog feature flag.",
-                cause,
-              }),
-          })
-        ),
-        Effect.flatMap((result) =>
-          result
-            ? Effect.succeed(result.enabled)
-            : Effect.fail(
-                new PostHogFeatureFlagEvaluationError({
-                  message: "Could not evaluate the PostHog feature flag.",
-                  cause: undefined,
-                })
-              )
-        )
-      )
-  );
-
   const shutdown = Effect.suspend(() => {
     const activeClient = client;
     client = undefined;
@@ -140,7 +102,7 @@ export const makePostHogNodeFeatureFlagService = <
       : Effect.void;
   });
 
-  return { evaluateFlags, isEnabled, shutdown };
+  return { evaluateFlags, shutdown };
 };
 
 export type PostHogFeatureFlagEvaluationSnapshot = Pick<
@@ -163,15 +125,6 @@ export type PostHogFeatureFlagEvaluationOptions<Definitions> = Readonly<
 
 export interface PostHogFeatureFlagEvaluationInput<Definitions> {
   readonly options?: PostHogFeatureFlagEvaluationOptions<Definitions>;
-  readonly subject: PostHogFeatureFlagSubject;
-}
-
-export interface PostHogFeatureFlagCheckInput<
-  Definitions,
-  Key extends PostHogFeatureFlagKey<Definitions>,
-> {
-  readonly key: Key;
-  readonly options?: Omit<FlagEvaluationOptions, "sendFeatureFlagEvents">;
   readonly subject: PostHogFeatureFlagSubject;
 }
 

@@ -22,4 +22,5 @@ The React adapter doesn't use `@posthog/react`, which imports the whole browser 
 - The contract includes inactive flags, so code can ship before rollout, and excludes archived and deleted flags.
 - Unknown or cross-application keys fail TypeScript compilation. Variant and payload types come from the owning application's definitions.
 - `makePostHogNodeFeatureFlagService` creates one SDK client lazily and reuses it. Run `shutdown` when a long-lived process exits.
+- The Node service evaluates only in batches: `evaluateFlags` makes one `/flags` request for its flag set. It has no single-flag lookup, so a caller can't make one request per flag.
 - The server subject uses the browser SDK's distinct ID. A shared fallback identity for a global release switch sets `sendFeatureFlagEvents: false` so it doesn't pollute per-user flag analytics.

@@ -22,7 +22,20 @@ The task needs `POSTHOG_API_KEY`, `POSTHOG_API_HOST`, and `POSTHOG_PROJECT_ID`; 
 
 `getConstantEnabledValue` in `packages/posthog/src/feature-flags/definitions.ts` holds these rules.
 
-`isEnabled` returns a constant directly. `constantValue` returns only a constant, as an `Option`, and never reads the request or calls PostHog. `evaluateFlags` returns constants locally only when every requested flag is constant. Otherwise the service evaluates remotely with the consented PostHog visitor identity, or the fixed `deskohub-workspace:global-release` subject (with `sendFeatureFlagEvents: false`) before consent. Avoid needless remote calls: the Node SDK turns failed, timed-out, or quota-limited evaluations into missing flags, not errors. Never infer constancy from an evaluated value.
+`isEnabled` returns a constant directly. `constantValue` returns only a constant, as an `Option`, and never reads the request or calls PostHog. `evaluateFlags` returns constants locally only when every requested flag is constant. Never infer constancy from an evaluated value.
+
+### One remote evaluation per request
+
+Any other read goes through `evaluateRequestFlags` (`backend/request-flag-evaluation.server.ts`). It evaluates every contract flag that is neither constant nor overridden in one `/flags` request, whichever flag was asked for, and answers every later read of the request from that result:
+
+- The subject is the consented PostHog visitor identity, or the fixed `deskohub-workspace:global-release` subject (with `sendFeatureFlagEvents: false`) before consent and for work that serves no visitor (`backend/subject.ts`).
+- The evaluation is shared per request and subject, keyed by the request's headers object: the headers a Server Action, route, or HttpApi boundary captured (`CurrentWorkspaceRequestHeaders`), else Next's request headers, which are one object per request. Server Components, Server Actions, route handlers, and Effect layers of one request share it without React `cache`. A run outside any request (no captured headers and a visitor its boundary resolved, such as a task) shares it per build of `WorkspaceFeatureFlagService.Default`.
+- An incomplete classification (definitions unavailable) adds flags to that one evaluation; it never fans out per gate.
+- A consented visitor's evaluation uses the SDK's `evaluateFlags` snapshot, so reading a flag still records its `$feature_flag_called` event, once per flag and visitor per client. The global subject records none.
+
+The global subject's result is the same for every anonymous visitor while no flag targets persons or groups, so each isolate keeps it in an Effect `Cache` keyed by subject id and sorted flag set: 60 seconds for a complete evaluation, 15 seconds for a failed one or one PostHog left incomplete (the Node SDK turns failed, timed-out, or quota-limited evaluations into missing flags, not errors). Identified visitors never use it. When a flag gains person or group targeting, drop this cache.
+
+`readRemoteEvaluationPolicy` (`backend/remote-evaluation-policy.server.ts`) decides whether a deployment may evaluate remotely at all; it answers `allowed` everywhere today. Under `disabled`, nothing calls PostHog: every flag that would have gone remote reads as `false`, so its gate stays closed, and each such flag is logged once per isolate with code `feature_flags.remote_evaluation_disabled`.
 
 Public pages use this one adaptive path. Cache request-independent provider reads, such as calendar or media data, at their own boundaries. Don't build a parallel global page or separate global and request service layers; when a flag becomes targeted, the same service reads the request subject and Next.js makes the route dynamic.
 
