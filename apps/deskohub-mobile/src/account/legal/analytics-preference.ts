@@ -151,12 +151,18 @@ export const analyticsSwitchView = ({
   readonly save: AsyncResult.AsyncResult<void, CustomerRequestFailure>;
   /** The value the customer last chose, if any. */
   readonly requested: boolean | undefined;
-}): AnalyticsSwitchView => ({
-  ...preferenceSwitchState({
+}): AnalyticsSwitchView => {
+  const shown = preferenceSwitchState({
     preference,
     save,
     requested,
     isGranted: (current) => current.granted,
-  }),
-  feedback: preferenceSaveFeedback(save, failureFeedback),
-});
+  });
+  return {
+    ...shown,
+    feedback: preferenceSaveFeedback(
+      { save, shown, requested },
+      failureFeedback
+    ),
+  };
+};

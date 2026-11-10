@@ -290,6 +290,36 @@ describe("analyticsSwitchView", () => {
     ).toEqual({ kind: "unconfirmed" });
   });
 
+  test("keeps the saved status while a read shows the saved value", () => {
+    expect(
+      analyticsSwitchView({
+        preference: AsyncResult.success({ granted: false }),
+        save: AsyncResult.success(undefined),
+        requested: false,
+      })
+    ).toEqual({ granted: false, enabled: true, feedback: { kind: "saved" } });
+  });
+
+  test("drops the saved status once a later read shows another value", () => {
+    expect(
+      analyticsSwitchView({
+        preference: AsyncResult.success({ granted: false }),
+        save: AsyncResult.success(undefined),
+        requested: true,
+      })
+    ).toEqual({ granted: false, enabled: true, feedback: undefined });
+  });
+
+  test("keeps a failed save's feedback whatever a later read shows", () => {
+    expect(
+      analyticsSwitchView({
+        preference: AsyncResult.success({ granted: true }),
+        save: AsyncResult.failure(Cause.fail(new CustomerWriteUnconfirmed({}))),
+        requested: true,
+      }).feedback
+    ).toEqual({ kind: "unconfirmed" });
+  });
+
   test("takes no input without a current read", () => {
     expect(
       analyticsSwitchView({

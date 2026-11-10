@@ -49,16 +49,31 @@ export type PreferenceSaveFeedback<Failure> =
 
 /**
  * The feedback for the last save: saving while it runs, then saved or the
- * failure's own feedback, and nothing before any save.
+ * failure's own feedback, and nothing before any save. Saved shows only
+ * while the switch shows the value saved: a later read showing another, such
+ * as a change made elsewhere, replaces it.
  */
 export const preferenceSaveFeedback = <E, Failure>(
-  save: AsyncResult.AsyncResult<unknown, E>,
+  {
+    save,
+    shown,
+    requested,
+  }: {
+    readonly save: AsyncResult.AsyncResult<unknown, E>;
+    /** What the switch shows (`preferenceSwitchState`). */
+    readonly shown: PreferenceSwitchState;
+    /** The value the customer last chose, if any. */
+    readonly requested: boolean | undefined;
+  },
   failureFeedback: (cause: Cause.Cause<E>) => Failure
 ): PreferenceSaveFeedback<Failure> | undefined =>
   save.waiting
     ? { kind: "saving" }
     : AsyncResult.match(save, {
         onInitial: () => undefined,
-        onSuccess: () => ({ kind: "saved" }) as const,
+        onSuccess: () =>
+          shown.granted === requested
+            ? ({ kind: "saved" } as const)
+            : undefined,
         onFailure: ({ cause }) => failureFeedback(cause),
       });

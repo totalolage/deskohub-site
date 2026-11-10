@@ -116,12 +116,18 @@ export const marketingSwitchView = ({
   readonly save: AsyncResult.AsyncResult<void, CustomerRequestFailure>;
   /** The value the customer last chose, if any. */
   readonly requested: boolean | undefined;
-}): MarketingSwitchView => ({
-  ...preferenceSwitchState({
+}): MarketingSwitchView => {
+  const shown = preferenceSwitchState({
     preference: preferences,
     save,
     requested,
     isGranted: (current) => current.status === "active",
-  }),
-  feedback: preferenceSaveFeedback(save, failureFeedback),
-});
+  });
+  return {
+    ...shown,
+    feedback: preferenceSaveFeedback(
+      { save, shown, requested },
+      failureFeedback
+    ),
+  };
+};
