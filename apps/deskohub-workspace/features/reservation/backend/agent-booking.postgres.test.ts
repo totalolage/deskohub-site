@@ -18,8 +18,10 @@ import type {
   CustomerAgentGrant,
 } from "@/features/account";
 import { customerAgentClientIdSchema } from "@/features/account/backend/auth/customer-agent-authorization.service";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { makeCustomerAccountSections } from "@/features/account/backend/customer-account-sections.test-utils";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
 import { recordCheckoutAnalytics } from "@/features/checkout/backend/analytics/checkout-analytics.service.mock";
 import {
@@ -47,6 +49,7 @@ import { WithheldReferralService } from "@/features/referrals/referral.service.m
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
+import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { ReviewAccounts, ReviewSandbox } from "@/features/review-accounts";
 import { TestSealedStateKeys } from "@/shared/testing/sealed-state-keys.test-utils";
 import {
@@ -163,13 +166,21 @@ describe.skipIf(!database)("prepareAgentPayState on Postgres", () => {
     ),
   };
 
-  const contacts = Layer.mock(CustomerAccountContactService, {
-    currentAccount: Effect.succeed({
-      status: "linked",
-      accountId,
-      dotyposCustomerId,
-      email: contact.email as never,
+  const currentAccount = Layer.mock(CurrentCustomerAccount, {
+    peek: Effect.succeed({
+      kind: "linked",
+      session: {
+        accountId,
+        email: reservationCustomerEmailSchema.make(contact.email),
+        deletionRequested: false,
+        ...testSessionProfile,
+      },
+      reviewMarker: "absent",
+      account: { accountId, dotyposCustomerId },
+      autoLinked: false,
     }),
+  });
+  const contacts = Layer.mock(CustomerAccountContactService, {
     linkedContact: () =>
       Effect.succeed({ accountId, dotyposCustomerId, ...contact }),
   });
@@ -222,6 +233,7 @@ describe.skipIf(!database)("prepareAgentPayState on Postgres", () => {
     Layer.mock(AnalyticsConsentLedger, {
       mirror: () => Effect.succeed(true),
     }),
+    currentAccount,
     contacts,
     WorkspaceTableAssignmentServiceMock({
       assignTableId: () => Effect.succeed("table-id" as never),

@@ -7,6 +7,7 @@ import {
   CustomerAccountContactService,
   CustomerAccountSections,
 } from "@/features/account";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { ReferralService } from "@/features/referrals";
 import { ReferralReleaseGateRequest } from "@/features/referrals/referral-release-gate.server";
@@ -44,6 +45,7 @@ const preparePayStateAction = defineWorkspaceAction(
               ReservationBooking.Live,
               ReferralService.Live,
               CustomerAccountSections.Live,
+              CurrentCustomerAccount.Live,
               CustomerAccountContactService.Live
             )
           ),

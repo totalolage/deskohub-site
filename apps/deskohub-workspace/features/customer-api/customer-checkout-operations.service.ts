@@ -4,6 +4,7 @@ import {
   CustomerAccountContactService,
   CustomerAccountSections,
 } from "@/features/account";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { applyDiscountCodeToPayState } from "@/features/checkout/actions/apply-discount-code-to-pay-state";
 import {
   acceptPayStatePriceChange,
@@ -122,6 +123,7 @@ export class CustomerCheckoutOperations extends Context.Service<
             ReservationBooking.Live,
             ReferralService.Live,
             CustomerAccountSections.Live,
+            CurrentCustomerAccount.Live,
             CustomerAccountContactService.Live
           )
         ),

@@ -17,6 +17,8 @@ import {
   CustomerAccountContactService,
   CustomerAccountSections,
 } from "@/features/account";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
+import type { CustomerAccountSession } from "@/features/account/backend/customer-authentication.service";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { CheckoutAnalytics } from "@/features/checkout/backend/analytics";
 import {
@@ -112,6 +114,7 @@ export type PayStateSubmission = Omit<
 /** The services each caller provides per request for its own channel. */
 type ChannelServices =
   | CustomerAccountSections
+  | CurrentCustomerAccount
   | CustomerAccountContactService
   | RememberedReferral;
 
@@ -409,25 +412,40 @@ const resolveAccountCustomer = Effect.fn(
   if (input.customer !== "account") return undefined;
 
   const contacts = yield* CustomerAccountContactService;
-  const account = yield* contacts.currentAccount;
-  const contact = yield* Match.value(account).pipe(
-    Match.discriminatorsExhaustive("status")({
+  // The stored link only: booking never claims, reactivates, or asks Dotypos
+  // through this read.
+  const standing = yield* CurrentCustomerAccount.pipe(
+    Effect.flatMap((current) => current.peek)
+  );
+  const completeProfile = ({ session }: { session: CustomerAccountSession }) =>
+    Option.isSome(bookingAgent)
+      ? Effect.fail(new AgentBookingProfileRequiredError({}))
+      : contacts.completeProfile(
+          session,
+          getReservationCustomerProfile(
+            input.reservation,
+            defaultPhoneRegion(input.locale)
+          )
+        );
+  const contact = yield* Match.value(standing).pipe(
+    Match.discriminatorsExhaustive("kind")({
       "signed-out": () => Effect.succeed(null),
-      unlinked: (unlinked) =>
-        Option.isSome(bookingAgent)
-          ? Effect.fail(new AgentBookingProfileRequiredError({}))
-          : contacts.completeProfile(
-              unlinked,
-              getReservationCustomerProfile(
-                input.reservation,
-                defaultPhoneRegion(input.locale)
-              )
-            ),
-      linked: (linked) => contacts.linkedContact(linked),
+      "deletion-pending": () => Effect.succeed(null),
+      unverified: () =>
+        Effect.fail(
+          new CustomerAccountAccessError({ reason: "unverified-email" })
+        ),
+      unlinked: completeProfile,
+      // A review account has no link, so it reads as unlinked; the section
+      // books it in the review sandbox before this read.
+      review: completeProfile,
+      linked: ({ account, session }) =>
+        contacts.linkedContact({ ...account, email: session.email }),
+      unavailable: ({ failure }) => Effect.fail(failure),
     })
   );
   if (!contact) {
-    return yield* account.status === "linked" && Option.isSome(bookingAgent)
+    return yield* standing.kind === "linked" && Option.isSome(bookingAgent)
       ? new AgentBookingProfileRequiredError({})
       : new CustomerAccountAccessError({ reason: "unauthenticated" });
   }

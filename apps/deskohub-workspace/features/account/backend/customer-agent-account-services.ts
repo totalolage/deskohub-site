@@ -1,5 +1,6 @@
 import { Layer } from "effect";
 import { customerAuthenticationForAgent } from "./auth/customer-agent-authorization.service";
+import { CurrentCustomerAccount } from "./current-customer-account";
 import { CustomerAccountContactService } from "./customer-account-contact.service";
 import { CustomerAccountReservationOwnership } from "./customer-account-reservation-ownership";
 import { CustomerAccountSections } from "./customer-account-sections";
@@ -16,6 +17,7 @@ export const customerAgentAccountServices = (accessToken: string) => {
   return Layer.mergeAll(
     authentication,
     CustomerAccountSections.withAuthentication(authentication),
+    CurrentCustomerAccount.withAuthentication(authentication),
     CustomerAccountContactService.withAuthentication(authentication),
     CustomerAccountReservationOwnership.withAuthentication(authentication)
   );

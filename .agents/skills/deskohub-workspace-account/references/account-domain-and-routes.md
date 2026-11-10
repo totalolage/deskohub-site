@@ -35,14 +35,27 @@
     `unavailable`, an `unavailable` whose failure is the recheck's
     `link-required` or `unverified-email` as `support-required` without
     history, and any other `unavailable` as `authenticated-unavailable`.
-    Checkout treats `not-configured` as signed out. Don't merge those
-    mappings into the module.
+    Checkout treats `not-configured` and `deletion-pending` as signed out
+    and `unverified` as unavailable; after resolving, a session gone or a
+    recheck `link-required` is signed out and a recheck `unverified-email`
+    is unavailable. Don't merge those mappings into the module.
+  - Checkout's existing-customer load (`loadCheckoutAccount` in
+    `reservation-existing-customer.server.ts`) peeks first and resolves only
+    an `unlinked` account whose marker is `absent`, so a linked account
+    loads without the account lock. An `unlinked` account with an
+    `unreadable` marker is unavailable there, since it might be a review
+    account. Prepare-pay (`resolveAccountCustomer` in
+    `reservation-booking.service.ts`) only peeks: it runs inside
+    `withOptionalAccount`, after the booking's own review check, and
+    completes a missing profile itself. Each booking channel provides
+    `CurrentCustomerAccount` with its own authentication.
   - The account state reads it through `AccountStateCapabilities`. When its
     link capabilities can't be built, `accountStateCapabilities` substitutes
     `CurrentCustomerAccount.LinksUnavailable`, so the session's sections
     still load.
   - The table test (`current-customer-account.postgres.test.ts`) covers every
-    kind over test Postgres and a Dotypos fake. Page tests fake the standing.
+    kind over test Postgres and a Dotypos fake. Page and checkout tests fake
+    the standing.
 - `CustomerAccountResolver.resolve` is the replaceable identity-to-customer
   capability for the callers that haven't moved to `CurrentCustomerAccount`
   yet. It returns only `CustomerAccountId` and `DotyposCustomerId`.
