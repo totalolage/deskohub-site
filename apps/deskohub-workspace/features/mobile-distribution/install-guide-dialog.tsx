@@ -1,9 +1,9 @@
 "use client";
 
 import Interpolate from "@doist/react-interpolate";
+import { Portal } from "@radix-ui/react-dialog";
 import { Check, Copy } from "lucide-react";
 import { type CSSProperties, useState, useSyncExternalStore } from "react";
-import { createPortal } from "react-dom";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -138,7 +138,7 @@ export function InstallGuideDialog({
           </div>
         </div>
       </DialogContent>
-      {open && arrow && <GuideArrow target={arrow} />}
+      {arrow && <GuideArrow target={arrow} />}
     </Dialog>
   );
 }
@@ -355,53 +355,57 @@ function OpenElsewhere({
 
 /**
  * Points out of the dialog at the browser control past the viewport edge.
- * Portalled to the body because the dialog card is transformed, which would
- * pin a fixed child to the card instead of the viewport.
+ * Portalled outside the dialog card because the card is transformed, which
+ * would pin a fixed child to the card instead of the viewport. The dialog's
+ * own portal renders only while open and never on the server.
  */
 function GuideArrow({ target }: { readonly target: InstallGuideArrow }) {
-  return createPortal(
-    <div
-      aria-hidden
-      className={cn(
-        "pointer-events-none fixed z-[60] size-16 text-chilean-fire duration-300 animate-in fade-in-0",
-        {
-          "bottom-right": "bottom-1 right-2",
-          "bottom-center": "bottom-1 left-1/2 -translate-x-1/2",
-          "top-right": "top-1 right-10",
-        }[target]
-      )}
-    >
-      <svg
+  return (
+    <Portal>
+      <div
         aria-hidden
-        className="install-guide-arrow size-full"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={4}
-        style={
+        className={cn(
+          "pointer-events-none fixed z-[60] size-16 text-chilean-fire duration-300 animate-in fade-in-0",
           {
-            "--nudge-x": target === "bottom-center" ? "0px" : "4px",
-            "--nudge-y": target === "top-right" ? "-6px" : "6px",
-          } as CSSProperties
-        }
-        viewBox="0 0 64 64"
-      >
-        <style>
-          {
-            "@keyframes install-guide-nudge{50%{transform:translate(var(--nudge-x),var(--nudge-y))}}@media (prefers-reduced-motion:no-preference){.install-guide-arrow{animation:install-guide-nudge 1.4s ease-in-out infinite}}"
-          }
-        </style>
-        {
-          {
-            "bottom-right": <path d="M14 8c18 4 32 18 36 44M38 46l12 8 6-14" />,
-            "bottom-center": <path d="M32 6v50M20 44l12 12 12-12" />,
-            "top-right": <path d="M14 56c18-4 32-18 36-44M38 18l12-8 6 14" />,
+            "bottom-right": "bottom-1 right-2",
+            "bottom-center": "bottom-1 left-1/2 -translate-x-1/2",
+            "top-right": "top-1 right-10",
           }[target]
-        }
-      </svg>
-    </div>,
-    document.body
+        )}
+      >
+        <svg
+          aria-hidden
+          className="install-guide-arrow size-full"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={4}
+          style={
+            {
+              "--nudge-x": target === "bottom-center" ? "0px" : "4px",
+              "--nudge-y": target === "top-right" ? "-6px" : "6px",
+            } as CSSProperties
+          }
+          viewBox="0 0 64 64"
+        >
+          <style>
+            {
+              "@keyframes install-guide-nudge{50%{transform:translate(var(--nudge-x),var(--nudge-y))}}@media (prefers-reduced-motion:no-preference){.install-guide-arrow{animation:install-guide-nudge 1.4s ease-in-out infinite}}"
+            }
+          </style>
+          {
+            {
+              "bottom-right": (
+                <path d="M14 8c18 4 32 18 36 44M38 46l12 8 6-14" />
+              ),
+              "bottom-center": <path d="M32 6v50M20 44l12 12 12-12" />,
+              "top-right": <path d="M14 56c18-4 32-18 36-44M38 18l12-8 6 14" />,
+            }[target]
+          }
+        </svg>
+      </div>
+    </Portal>
   );
 }
 
