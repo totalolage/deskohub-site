@@ -371,17 +371,7 @@ export class CurrentCustomerAccount extends Context.Service<
     Layer.effect(
       this,
       standingOver(
-        Effect.gen(function* () {
-          const memoMap = Layer.CurrentMemoMap.getOrCreate(
-            yield* Effect.context<never>()
-          );
-          const built = yield* Layer.buildWithMemoMap(
-            dotypos,
-            memoMap,
-            yield* Effect.scope
-          );
-          return Context.get(built, CustomerDotyposAdapter);
-        })
+        Effect.map(Layer.build(dotypos), Context.get(CustomerDotyposAdapter))
       )
     );
 
