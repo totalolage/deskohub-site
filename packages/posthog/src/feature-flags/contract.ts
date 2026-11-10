@@ -45,3 +45,14 @@ export const definePostHogFeatureFlags = <
 >(
   keys: readonly PostHogFeatureFlagKey<Definitions>[]
 ): PostHogFeatureFlagContract<Definitions> => ({ keys });
+
+/**
+ * Each contract flag's constant value when its definitions were read, as
+ * classified by `getConstantEnabledValue`: `null` when the value depends on
+ * the request.
+ */
+export interface PostHogFeatureFlagSnapshot<Key extends string = string> {
+  /** ISO 8601 instant at which the definitions were read. */
+  readonly generatedAt: string;
+  readonly constantValues: Readonly<Record<Key, boolean | null>>;
+}

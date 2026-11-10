@@ -37,7 +37,7 @@ type NewCustomerProfileCompletion =
 export const completeNewCustomerProfile = Effect.fn(
   "account.completeNewCustomerProfile"
 )(function* (
-  user: { readonly accountId: CustomerAccountId; readonly email: string },
+  user: { readonly accountId: CustomerAccountId },
   input: CustomerProfileSave,
   referral: {
     readonly code: string | undefined;
@@ -53,7 +53,7 @@ export const completeNewCustomerProfile = Effect.fn(
   const intent = request.kind === "intent" ? request.intent : undefined;
 
   const creation = yield* Effect.flatMap(CustomerProfileService, (profile) =>
-    profile.create(user.accountId, user.email, input, intent)
+    profile.create(user.accountId, input, intent)
   );
   if (intent === undefined) {
     return {

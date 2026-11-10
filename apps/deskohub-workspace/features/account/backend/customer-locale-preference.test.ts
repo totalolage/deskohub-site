@@ -1,212 +1,151 @@
-import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Result } from "effect";
+import { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
-import type { CustomerAccountId } from "../customer-account";
-import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import type { Locale } from "@/features/i18n";
+import type {
+  CustomerAccountAccessError,
+  CustomerAccountId,
+} from "../customer-account";
 import {
-  type CustomerAccountSession,
-  CustomerAuthentication,
-} from "./customer-authentication.service";
-import { testSessionProfile } from "./customer-authentication.test-utils";
+  type CustomerAccountSectionsFixture,
+  makeCustomerAccountSections,
+  sectionAccountId,
+} from "./customer-account-sections.test-utils";
 import { saveAccountLocalePreference } from "./customer-locale-preference";
 import { CustomerLocalePreference } from "./customer-locale-preference.service";
 
-type ActivityState =
-  | { readonly kind: "missing" }
-  | {
-      readonly kind: "active";
-      readonly deletionRequestedAt: Date | null;
-    };
-
-const makeTestLayers = (options: {
-  readonly state: ActivityState;
-  readonly lockFails?: boolean;
-  readonly holdLock?: Promise<void>;
-}) => {
-  const updates: {
-    readonly accountId: CustomerAccountId;
-    readonly locale: "cs-CZ" | "en-US";
-  }[] = [];
-  let sessionAccountId: CustomerAccountId | null = accountId;
-  let authReads = 0;
-
-  const linksFindActivityState = (_accountId: CustomerAccountId) =>
-    Effect.succeed(options.state);
-
-  const LinksLayer = Layer.succeed(
-    CustomerAccountLinkRepository,
-    CustomerAccountLinkRepository.of({
-      findActivityState: linksFindActivityState,
-      withAccountLock: <A, E, R>(
-        _accountId: CustomerAccountId,
-        effect: Effect.Effect<A, E, R>
-      ) => {
-        if (options.lockFails)
-          return Effect.fail("lock-failure" as never) as Effect.Effect<A, E, R>;
-        if (options.holdLock)
-          return Effect.flatMap(
-            Effect.promise(() => options.holdLock),
-            () => effect
-          ) as Effect.Effect<A, E, R>;
-        return Effect.suspend(() => effect) as Effect.Effect<A, E, R>;
-      },
-    })
-  );
-
-  const AuthenticationLayer = Layer.succeed(
-    CustomerAuthentication,
-    CustomerAuthentication.of({
-      currentUser: Effect.suspend(() => {
-        authReads += 1;
-        const session: CustomerAccountSession | null =
-          sessionAccountId === null ? null : makeSession(sessionAccountId);
-        return Effect.succeed(session);
-      }),
-    })
-  );
-
+const save = (
+  fixture: CustomerAccountSectionsFixture,
+  options: {
+    readonly writeFails?: boolean;
+    /** Saves through this instead of `saveAccountLocalePreference` itself. */
+    readonly through?: (
+      accountId: CustomerAccountId,
+      locale: Locale
+    ) => Effect.Effect<
+      void,
+      CustomerAccountAccessError,
+      CustomerLocalePreference
+    >;
+  } = {}
+) => {
+  const writes: string[] = [];
+  const sections = makeCustomerAccountSections(fixture);
   const fakeDb = {
     update: () => ({
-      set: (values: { locale: "cs-CZ" | "en-US" }) => ({
+      set: (values: { locale: string }) => ({
         where: () =>
-          Effect.sync(() => {
-            updates.push({ accountId, locale: values.locale });
-          }),
+          options.writeFails
+            ? Effect.fail(
+                new SqlError.SqlError({
+                  reason: new SqlError.ConnectionError({
+                    cause: new Error("write failed"),
+                    message: "write failed",
+                    operation: "execute",
+                  }),
+                })
+              )
+            : Effect.sync(() => {
+                sections.events.push("write");
+                writes.push(values.locale);
+              }),
       }),
     }),
   };
-
-  const DbLayer = Layer.succeed(
-    WorkspaceDatabase,
-    WorkspaceDatabase.make(fakeDb as never)
+  const dependencies = Layer.mergeAll(
+    Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(fakeDb as never)),
+    sections.layer
   );
-
-  const Dependencies = Layer.mergeAll(DbLayer, LinksLayer, AuthenticationLayer);
-
-  return {
-    Dependencies,
-    updates,
-    revokeSession: () => {
-      sessionAccountId = null;
-    },
-    authReads: () => authReads,
-  };
-};
-
-const makeSession = (accountId: CustomerAccountId): CustomerAccountSession => ({
-  accountId,
-  email: testEmailAddress(`pref-${accountId}`),
-  deletionRequested: false,
-  ...testSessionProfile,
-});
-
-const accountId = "pref-account-1" as CustomerAccountId;
-
-describe("saveAccountLocalePreference with mock layers", () => {
-  test("maps a lock failure to the fixed unavailable access error without writing", async () => {
-    const { Dependencies, updates } = makeTestLayers({
-      state: { kind: "active", deletionRequestedAt: null },
-      lockFails: true,
-    });
-
-    const outcome = await Effect.runPromise(
-      saveAccountLocalePreference(accountId, "en-US").pipe(
-        Effect.result,
-        Effect.provide(Dependencies)
-      )
-    );
-
-    expect(outcome._tag).toBe("Failure");
-    if (outcome._tag === "Failure") {
-      const failure = outcome.failure as CustomerAccountAccessErrorLike;
-      expect(failure.reason).toBe("unavailable");
-    }
-    expect(updates).toHaveLength(0);
-  });
-
-  test("rechecks the session under the lock and never writes for a revoked session", async () => {
-    let releaseLock!: () => void;
-    const lockGate = new Promise<void>((resolve) => {
-      releaseLock = resolve;
-    });
-    const { Dependencies, updates, revokeSession, authReads } = makeTestLayers({
-      state: { kind: "active", deletionRequestedAt: null },
-      holdLock: lockGate,
-    });
-
-    const pendingSave = Effect.runPromise(
-      saveAccountLocalePreference(accountId, "en-US").pipe(
-        Effect.result,
-        Effect.provide(Dependencies)
-      )
-    );
-
-    // The saver is parked on the lock gate. Revoke the session before the
-    // lock is released so only the under-lock recheck can observe it.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(updates).toHaveLength(0);
-    revokeSession();
-    releaseLock();
-
-    const outcome = await pendingSave;
-
-    expect(outcome._tag).toBe("Failure");
-    if (outcome._tag === "Failure") {
-      const failure = outcome.failure as CustomerAccountAccessErrorLike;
-      expect(failure.reason).toBe("unauthenticated");
-    }
-    expect(authReads()).toBe(1);
-    expect(updates).toHaveLength(0);
-  });
-});
-
-type CustomerAccountAccessErrorLike = {
-  readonly reason: string;
-  readonly linkReason?: string;
-};
-
-describe("CustomerLocalePreference", () => {
-  const saveThroughService = async (state: ActivityState) => {
-    const { Dependencies, updates } = makeTestLayers({ state });
-    const outcome = await Effect.runPromise(
-      Effect.flatMap(CustomerLocalePreference, (preference) =>
-        preference.save(accountId, "en-US")
-      ).pipe(
-        Effect.result,
-        Effect.provide(
-          CustomerLocalePreference.Default.pipe(Layer.provide(Dependencies))
+  const run = (
+    options.through
+      ? options
+          .through(sectionAccountId, "en-US")
+          .pipe(
+            Effect.provide(
+              CustomerLocalePreference.Default.pipe(Layer.provide(dependencies))
+            )
+          )
+      : saveAccountLocalePreference(sectionAccountId, "en-US").pipe(
+          Effect.provide(dependencies)
         )
-      )
-    );
-    return { outcome, updates };
-  };
+  ).pipe(Effect.result, Effect.runPromise);
+  return { run, writes, events: sections.events };
+};
 
-  test("saves through the guarded write", async () => {
-    const { outcome, updates } = await saveThroughService({
-      kind: "active",
-      deletionRequestedAt: null,
+describe("saveAccountLocalePreference", () => {
+  test("writes after rechecking the session under the account lock", async () => {
+    const { run, writes, events } = save({ session: {} });
+
+    expect(Result.isSuccess(await run)).toBe(true);
+    expect(writes).toEqual(["en-US"]);
+    expect(events).toEqual([
+      "account-lock-acquired",
+      "account-session",
+      "account-activity",
+      "write",
+      "account-lock-released",
+    ]);
+  });
+
+  test("never writes for a session gone by the time the lock is held", async () => {
+    const { run, writes } = save({ session: null });
+
+    const outcome = await run;
+    expect(Result.isFailure(outcome) && outcome.failure.reason).toBe(
+      "unauthenticated"
+    );
+    expect(writes).toEqual([]);
+  });
+
+  test("maps a lock failure to the account lock cause without writing", async () => {
+    const { run, writes } = save({ session: {}, lockUnavailable: true });
+
+    const outcome = await run;
+    expect(Result.isFailure(outcome) && outcome.failure.cause?.code).toBe(
+      "account-link.lock"
+    );
+    expect(writes).toEqual([]);
+  });
+
+  test("maps a failed write to the locale preference write cause", async () => {
+    const { run } = save({ session: {} }, { writeFails: true });
+
+    const outcome = await run;
+    expect(Result.isFailure(outcome) && outcome.failure.cause?.code).toBe(
+      "account-locale-preference.write"
+    );
+  });
+});
+describe("CustomerLocalePreference", () => {
+  const saveThroughService = (fixture: CustomerAccountSectionsFixture) =>
+    save(fixture, {
+      through: (accountId, locale) =>
+        Effect.flatMap(CustomerLocalePreference, (preference) =>
+          preference.save(accountId, locale)
+        ),
     });
 
-    expect(outcome._tag).toBe("Success");
-    expect(updates).toEqual([{ accountId, locale: "en-US" }]);
+  test("saves through the account's section", async () => {
+    const { run, writes } = saveThroughService({ session: {} });
+
+    expect(Result.isSuccess(await run)).toBe(true);
+    expect(writes).toEqual(["en-US"]);
   });
 
   test("refuses a deletion-marked account without writing", async () => {
-    const { outcome, updates } = await saveThroughService({
-      kind: "active",
-      deletionRequestedAt: new Date("2026-11-01T00:00:00Z"),
+    const { run, writes } = saveThroughService({
+      session: {},
+      activityState: "deletion-requested",
     });
 
-    expect(outcome._tag).toBe("Failure");
-    if (outcome._tag === "Failure") {
-      expect(outcome.failure).toMatchObject({
-        reason: "link-required",
-        linkReason: "deletion-requested",
-      });
-    }
-    expect(updates).toEqual([]);
+    const outcome = await run;
+    expect(Result.isFailure(outcome) && outcome.failure).toMatchObject({
+      reason: "link-required",
+      linkReason: "deletion-requested",
+    });
+    expect(writes).toEqual([]);
   });
 });

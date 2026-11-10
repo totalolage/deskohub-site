@@ -9,8 +9,8 @@ import { Effect, Layer, Schema } from "effect";
 import {
   CustomerAccountContactService,
   CustomerAccountReservationOwnership,
+  CustomerAccountSections,
   type CustomerAgentGrant,
-  OptionalAccountActivityGuard,
 } from "@/features/account";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
@@ -234,8 +234,8 @@ type CustomerAgentAccountFakes = {
   readonly authentication?: Layer.PartialEffectful<
     CustomerAuthentication["Service"]
   >;
-  readonly activity?: Layer.PartialEffectful<
-    OptionalAccountActivityGuard["Service"]
+  readonly sections?: Layer.PartialEffectful<
+    CustomerAccountSections["Service"]
   >;
   readonly contact?: Layer.PartialEffectful<
     CustomerAccountContactService["Service"]
@@ -256,12 +256,12 @@ export const inMemoryCustomerAgentCallServices = (
 ) =>
   Layer.succeed(CustomerAgentCallServices, {
     forCaller: ({ grant }) => {
-      const { authentication, activity, contact, ownership } = fakes(grant);
+      const { authentication, sections, contact, ownership } = fakes(grant);
 
       return Layer.mergeAll(
         Layer.succeed(CurrentCustomerAgentGrant, grant),
         Layer.mock(CustomerAuthentication, authentication ?? {}),
-        Layer.mock(OptionalAccountActivityGuard, activity ?? {}),
+        Layer.mock(CustomerAccountSections, sections ?? {}),
         Layer.mock(CustomerAccountContactService, contact ?? {}),
         Layer.mock(CustomerAccountReservationOwnership, ownership ?? {})
       );
