@@ -4,8 +4,10 @@ import { afterAll, describe, expect, mock, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { type EmailMessage, EmailServiceTag } from "@deskohub/email";
 import { resendSimulatorAddress, testEmailAddress } from "@deskohub/test-email";
-import { ConfigProvider, Effect } from "effect";
+import { ConfigProvider, Data, Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { makeDatabaseClient } from "@/db/database-client";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 mock.module("server-only", () => ({}));
@@ -46,9 +48,14 @@ const campaignDelivery = (): EmailMessage => ({
   }),
 });
 
+/** PostHog's answer: an accepted message id, or a refusal code. */
+type PostHogAnswer =
+  | { readonly message_id: string }
+  | { readonly type: string; readonly code: string };
+
 /** PostHog answering every send with `status` and `answer`. */
 const postHogAnswering =
-  (status: number, answer: object): typeof globalThis.fetch =>
+  (status: number, answer: PostHogAnswer): typeof globalThis.fetch =>
   async () =>
     Response.json(answer, { status });
 
@@ -65,12 +72,37 @@ describe.skipIf(!testDatabase)(
       )
     );
 
-    const sendCampaignDelivery = (fetch: typeof globalThis.fetch) =>
+    /**
+     * Like `WorkspaceDatabase.Default`, a layer that makes its own client each
+     * time it is built, so only one shared build gives one client.
+     */
+    const databasePerBuild = Layer.effect(
+      WorkspaceDatabase,
+      Effect.map(makeDatabaseClient(testDatabase.pool), WorkspaceDatabase.make)
+    );
+
+    /**
+     * Sends a campaign delivery through the Workspace email layer, wrapped in
+     * `around` as a caller would, the way campaign delivery composes the
+     * layer: the email layer and the caller over the same database layer.
+     */
+    const sendCampaignDelivery = (
+      fetch: typeof globalThis.fetch,
+      around: <A, E, R>(
+        send: Effect.Effect<A, E, R>
+      ) => Effect.Effect<A, E, R | WorkspaceDatabase> = (send) => send
+    ) =>
       Effect.runPromise(
-        Effect.flatMap(EmailServiceTag, (email) =>
-          email.send(campaignDelivery())
+        around(
+          Effect.flatMap(EmailServiceTag, (email) =>
+            email.send(campaignDelivery())
+          )
         ).pipe(
-          Effect.provide(makeWorkspaceEmailLayer(testDatabase.layer)),
+          Effect.provide(
+            makeWorkspaceEmailLayer(databasePerBuild).pipe(
+              Layer.provideMerge(databasePerBuild)
+            )
+          ),
           Effect.provideService(
             ConfigProvider.ConfigProvider,
             ConfigProvider.fromUnknown({
@@ -114,6 +146,32 @@ describe.skipIf(!testDatabase)(
           status: "queued",
         },
       ]);
+    });
+
+    test("tracks a delivery sent inside a caller's transaction with that transaction", async () => {
+      const committedId = crypto.randomUUID();
+      const inTransaction = <A, E, R>(send: Effect.Effect<A, E, R>) =>
+        Effect.flatMap(WorkspaceDatabase, ({ transaction }) =>
+          transaction(send)
+        );
+
+      await sendCampaignDelivery(
+        postHogAnswering(202, { message_id: committedId }),
+        inTransaction
+      );
+      expect(await trackedDelivery(committedId)).toHaveLength(1);
+
+      const rolledBackId = crypto.randomUUID();
+      class CallerFailed extends Data.TaggedError("CallerFailed") {}
+      await expect(
+        sendCampaignDelivery(
+          postHogAnswering(202, { message_id: rolledBackId }),
+          (send) =>
+            inTransaction(Effect.andThen(send, Effect.fail(new CallerFailed())))
+        )
+      ).rejects.toThrow();
+      deliveryIds.push(rolledBackId);
+      expect(await trackedDelivery(rolledBackId)).toEqual([]);
     });
 
     test("tracks nothing for a campaign delivery Resend took over", async () => {
