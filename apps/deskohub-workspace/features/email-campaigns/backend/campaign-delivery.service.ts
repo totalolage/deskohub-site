@@ -6,8 +6,8 @@ import {
   DotyposService,
 } from "@deskohub/dotypos";
 import {
+  type EmailBatchResult,
   type EmailMessage,
-  type EmailSendError,
   EmailServiceTag,
 } from "@deskohub/email";
 import {
@@ -87,14 +87,8 @@ import { CampaignRecipientAnalyticsIdentity } from "./campaign-recipient-analyti
 import type { CampaignDeliveryAttempt } from "./campaign-send-queue.service";
 import { sendAutomationVersion } from "./campaign-send-selection";
 import { CampaignUnsubscribeService } from "./campaign-unsubscribe.service";
-import {
-  batchRequestOptions,
-  type CampaignEmailMessage,
-  type EmailBatchResult,
-  emailBatchResults,
-  recipientFailureCode,
-} from "./email-batch-results";
 import { OnceCampaignLifecycle } from "./once-campaign-lifecycle";
+import { recipientFailureCode } from "./recipient-failure-code";
 
 /**
  * A new batch starts only this long into a run. Every batch is persisted
@@ -310,11 +304,6 @@ type BatchOutcome =
       readonly failureCode?: string | undefined;
     };
 
-/** The provider's code for an error, when it gave one. */
-const errorCode = (
-  error: EmailSendError & { readonly code?: string | undefined }
-): string | undefined => error.code;
-
 /** An answered batch's outcome from its emails' results, in its order. */
 const answeredOutcome = (
   results: readonly EmailBatchResult[],
@@ -359,14 +348,14 @@ const recipientOutcome = (
           "NetworkError",
           (error): RecipientOutcome => ({
             status: "unconfirmed",
-            failureCode: errorCode(error),
+            failureCode: error.code,
           })
         ),
         Match.tag(
           "EmailServiceError",
           (error): RecipientOutcome => ({
             status: replay ? "unconfirmed" : "failed",
-            failureCode: errorCode(error),
+            failureCode: error.code,
           })
         ),
         Match.exhaustive
@@ -958,7 +947,7 @@ export class CampaignDeliveryService extends Context.Service<
             Arr.zipWith(
               input.messages,
               input.batch.dotyposCustomerIds,
-              (message, dotyposCustomerId): CampaignEmailMessage =>
+              (message, dotyposCustomerId): EmailMessage =>
                 Option.match(
                   Option.fromUndefinedOr(identities.get(dotyposCustomerId)),
                   {
@@ -982,21 +971,14 @@ export class CampaignDeliveryService extends Context.Service<
       ) =>
         withRecipientIdentities(input).pipe(
           Effect.flatMap((messages) =>
-            email.sendBatch(
-              messages,
-              batchRequestOptions({
-                idempotencyKey: campaignDeliveryBatchIdempotencyKey(
-                  input.batch
-                ),
-                // A repeat stays with the provider that may have taken the
-                // earlier request, so no other provider mails it again.
-                replay: input.replay,
-              })
-            )
+            email.sendBatch(messages, {
+              idempotencyKey: campaignDeliveryBatchIdempotencyKey(input.batch),
+              // A repeat stays with the provider that may have taken the
+              // earlier request, so no other provider mails it again.
+              replay: input.replay,
+            })
           ),
-          Effect.map((results) =>
-            answeredOutcome(emailBatchResults(results), input.replay)
-          ),
+          Effect.map((results) => answeredOutcome(results, input.replay)),
           Effect.tap(({ recipients }) =>
             logUnsentEmails(unsentEmails(recipients))
           ),
@@ -1007,7 +989,7 @@ export class CampaignDeliveryService extends Context.Service<
               }).pipe(
                 Effect.as<BatchOutcome>({
                   status: input.replay ? "unconfirmed" : "rejected",
-                  failureCode: errorCode(error),
+                  failureCode: error.code,
                 })
               ),
             NetworkError: () =>

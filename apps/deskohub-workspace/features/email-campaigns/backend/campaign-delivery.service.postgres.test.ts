@@ -11,8 +11,10 @@ import {
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import type {
+  EmailBatchResult,
   EmailMessage,
   EmailSendError,
+  EmailSendFailure,
   EmailSendResult,
 } from "@deskohub/email";
 import { decodeStandardSchema } from "@deskohub/standard-schema";
@@ -29,10 +31,6 @@ import {
 import { campaignEmailKind } from "../campaign-email";
 import type { CampaignId } from "../campaign-identifiers";
 import type { CampaignDeliveryEvent } from "./campaign-delivery-status.service";
-import type {
-  CampaignEmailMessage,
-  EmailSendFailure,
-} from "./email-batch-results";
 import {
   analyticsConsentLedgerOf,
   deleteAutomatedCampaigns,
@@ -126,10 +124,14 @@ mock.module("resend", () => ({
 const {
   EmailConfigTag,
   EmailDeliveryIdSchema,
+  EmailProviders,
   EmailServiceError,
   EmailServiceTag,
   NetworkError,
 } = await import("@deskohub/email");
+const { makeResendEmailProvider, resendRequestTimeouts } = await import(
+  "@deskohub/email-resend"
+);
 const { AnalyticsConsentLedger } = await import(
   "@/features/legal/backend/analytics-consent-ledger"
 );
@@ -221,19 +223,22 @@ describe.skipIf(!testDatabase)(
         ...overrides,
       }) as DotyposCustomer;
 
-    // seam: replaced at integration — S1 removes `EmailServiceTag.Live`; this
-    // becomes `EmailServiceTag.Default` over `EmailProviders` whose chains are
-    // both `[makeResendEmailProvider({ apiKey: "re_test", timeouts:
-    // resendRequestTimeouts.nonProduction })]` (from "@deskohub/email-resend"),
-    // with `marketingCategories: new Set(["email-campaign"])`, and the same
-    // `EmailConfigTag`.
-    const resendEmailLayer = EmailServiceTag.Live.pipe(
+    const resend = makeResendEmailProvider({
+      apiKey: "re_test",
+      timeouts: resendRequestTimeouts.nonProduction,
+    });
+    const resendEmailLayer = EmailServiceTag.Default.pipe(
       Layer.provide(
-        Layer.succeed(EmailConfigTag, {
-          provider: "resend",
-          apiKey: "re_test",
-          defaultFrom: { email: testEmailAddress("campaigns") },
-        })
+        Layer.mergeAll(
+          Layer.succeed(EmailProviders, {
+            transactional: [resend],
+            marketing: [resend],
+            marketingCategories: new Set(["email-campaign"]),
+          }),
+          Layer.succeed(EmailConfigTag, {
+            defaultFrom: { email: testEmailAddress("campaigns") },
+          })
+        )
       )
     );
 
@@ -442,7 +447,7 @@ describe.skipIf(!testDatabase)(
       readonly failRequest?: (request: number) => EmailSendError | undefined;
     }) => {
       const requests: {
-        readonly messages: readonly CampaignEmailMessage[];
+        readonly messages: readonly EmailMessage[];
         readonly idempotencyKey: string;
         readonly replay: boolean;
       }[] = [];
@@ -450,31 +455,22 @@ describe.skipIf(!testDatabase)(
         send: () => Effect.die("campaigns send batches"),
         sendBatch: (messages: readonly EmailMessage[], options) =>
           Effect.suspend(() => {
-            // seam: replaced at integration — `EmailBatchOptions` carries
-            // `replay` itself.
-            const requested: {
-              readonly idempotencyKey: string;
-              readonly replay?: boolean;
-            } = options;
             const request =
               requests.push({
                 messages,
-                idempotencyKey: requested.idempotencyKey,
-                replay: requested.replay ?? false,
+                idempotencyKey: options.idempotencyKey,
+                replay: options.replay ?? false,
               }) - 1;
             const failure = failRequest(request);
             if (failure) return Effect.fail(failure);
-            const results = messages.map((message) =>
-              answer({
-                recipient: String(message.metadata?.dotyposCustomerId),
-                request,
-              })
-            );
-            // seam: replaced at integration — no cast once the service
-            // returns `EmailBatchResult`s.
             return Effect.succeed(
-              // biome-ignore lint/plugin: seam until the service's results carry typed per-message failures.
-              results as unknown as readonly EmailSendResult[]
+              messages.map(
+                (message): EmailBatchResult =>
+                  answer({
+                    recipient: String(message.metadata?.dotyposCustomerId),
+                    request,
+                  })
+              )
             );
           }),
       });
@@ -491,12 +487,10 @@ describe.skipIf(!testDatabase)(
       status: "failed",
       provider: "resend",
       timestamp: new Date(),
-      // seam: replaced at integration — `new EmailServiceError(message,
-      // undefined, "resend", { failureKind: "message", code })`.
-      error: Object.assign(
-        new EmailServiceError(`Refused: ${code}`, undefined, "resend"),
-        { code }
-      ),
+      error: new EmailServiceError(`Refused: ${code}`, undefined, "resend", {
+        failureKind: "message",
+        code,
+      }),
     });
     /** The email's last provider never answered, so it may have sent it. */
     const unanswered = (): EmailSendFailure => ({

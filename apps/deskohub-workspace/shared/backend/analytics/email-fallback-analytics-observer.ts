@@ -1,35 +1,9 @@
 import "server-only";
 
+import type { EmailDeliveryObserver } from "@deskohub/email";
 import { Effect } from "effect";
 import { unclassifiedTraffic } from "@/shared/agent-traffic/agent-traffic";
 import { ServerAnalytics } from "./server-analytics.service";
-
-// seam: replaced at integration — `EmailStream`, `EmailSentEvent`,
-// `EmailFallbackEvent`, and `EmailDeliveryObserver` come from
-// "@deskohub/email"; delete these local copies and import them.
-type EmailStream = "transactional" | "marketing";
-interface EmailSentEvent {
-  readonly provider: string;
-  readonly deliveryId: string;
-  readonly stream: EmailStream;
-  readonly category: string | undefined;
-  readonly tags: readonly string[];
-  readonly idempotencyKey: string | undefined;
-  readonly at: Date;
-}
-export interface EmailFallbackEvent {
-  readonly stream: EmailStream;
-  readonly category: string | undefined;
-  readonly failedProvider: string;
-  readonly nextProvider: string;
-  readonly errorKind: "EmailServiceError" | "NetworkError";
-  readonly errorCode: string | undefined;
-  readonly at: Date;
-}
-interface EmailDeliveryObserver {
-  readonly onSent: (event: EmailSentEvent) => Effect.Effect<void>;
-  readonly onFallback: (event: EmailFallbackEvent) => Effect.Effect<void>;
-}
 
 /**
  * Reports each email that one provider failed and the next provider in its

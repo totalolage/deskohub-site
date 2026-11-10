@@ -1,12 +1,9 @@
 import "@/shared/testing/workspace-test-env";
 
 import { expect, test } from "bun:test";
+import type { EmailFallbackEvent } from "@deskohub/email";
 import { Effect, Logger } from "effect";
-// seam: replaced at integration — import `EmailFallbackEvent` from "@deskohub/email".
-import {
-  type EmailFallbackEvent,
-  makeEmailFallbackAnalyticsObserver,
-} from "./email-fallback-analytics-observer";
+import { makeEmailFallbackAnalyticsObserver } from "./email-fallback-analytics-observer";
 import { recordServerAnalytics } from "./server-analytics.service.mock";
 
 const fallback: EmailFallbackEvent = {

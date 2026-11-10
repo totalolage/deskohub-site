@@ -31,7 +31,7 @@ import {
   CampaignReadOnly,
 } from "../errors";
 import { onceCampaignSend } from "./campaign-send-selection";
-import { recipientFailureCode } from "./email-batch-results";
+import { recipientFailureCode } from "./recipient-failure-code";
 
 /** The recipients and audience snapshot a confirmed send freezes. */
 export type CampaignSendFreeze = {
