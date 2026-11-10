@@ -1,7 +1,10 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
-import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
+import {
+  type DotyposCustomerId,
+  DotyposCustomerIdSchema,
+} from "@deskohub/dotypos";
 import {
   AlgoPinSchema,
   IgloohomeDeviceIdSchema,
@@ -26,6 +29,7 @@ import {
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { recordCustomerEvent } from "@/shared/backend/customer-events/customer-event-outbox";
 import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
+import { ReadLimitExceededError } from "@/shared/backend/read-limit";
 import {
   fixtureReservationAuthorId,
   type ReservationFixtureInput,
@@ -829,6 +833,97 @@ describe.skipIf(!testDatabase)(
         for (const id of [unpaid, superseded, replacement.id]) {
           expect(await readEvents(id)).toEqual([]);
         }
+      });
+    });
+
+    describe("customer reservations", () => {
+      const insertCustomerReservation = async (input: {
+        readonly customer: DotyposCustomerId;
+        readonly createdAt: Temporal.Instant;
+      }) => {
+        const { id } = await Effect.runPromise(
+          workspaceFixtures(testDatabase.db).reservation({
+            stage: { reservation: "confirmed", payment: "paid" },
+            customer: input.customer,
+            at: at(0),
+            overrides: { createdAt: input.createdAt },
+          })
+        );
+        reservationIds.push(id);
+        return id;
+      };
+
+      test("lists only the customer's reservations, oldest first, with the allowlisted fields", async () => {
+        const customer = DotyposCustomerIdSchema.make(crypto.randomUUID());
+        const otherCustomer = DotyposCustomerIdSchema.make(crypto.randomUUID());
+        const later = await insertCustomerReservation({
+          customer,
+          createdAt: at(2),
+        });
+        const earlier = await insertCustomerReservation({
+          customer,
+          createdAt: at(1),
+        });
+        // The same fixture author books for another customer.
+        await insertCustomerReservation({
+          customer: otherCustomer,
+          createdAt: at(0),
+        });
+
+        const records = await run((repository) =>
+          repository.listForCustomer({ dotyposCustomerId: customer, limit: 2 })
+        );
+
+        expect(records.map((record) => record.id)).toEqual([earlier, later]);
+        expect(Object.keys(records[0] ?? {}).toSorted()).toEqual(
+          [
+            "dotyposReservationId",
+            "fulfilledAt",
+            "fulfillmentState",
+            "id",
+            "locale",
+            "paidAt",
+            "paymentState",
+            "product",
+            "reservationCancelledAt",
+            "reservationConfirmedAt",
+            "reservationCreatedAt",
+            "reservationPurpose",
+            "reservationState",
+          ].toSorted()
+        );
+        expect(records[0]?.product.kind).toBe("cowork");
+      });
+
+      test("fails rather than return part of a list over its limit", async () => {
+        const customer = DotyposCustomerIdSchema.make(crypto.randomUUID());
+        await insertCustomerReservation({ customer, createdAt: at(1) });
+        await insertCustomerReservation({ customer, createdAt: at(2) });
+
+        const error = await runFailure((repository) =>
+          repository.listForCustomer({ dotyposCustomerId: customer, limit: 1 })
+        );
+
+        expect(error).toEqual(new ReadLimitExceededError({ limit: 1 }));
+      });
+
+      test("fails on a malformed stored product document", async () => {
+        const customer = DotyposCustomerIdSchema.make(crypto.randomUUID());
+        const id = await insertCustomerReservation({
+          customer,
+          createdAt: at(1),
+        });
+        // Malformed documents only reach the table outside the encoder.
+        await testDatabase.pool.query(
+          "update workspace_reservations set reservation_details = $1::jsonb where id = $2",
+          [JSON.stringify({ kind: "office", seats: 2, unknownField: true }), id]
+        );
+
+        const error = await runFailure((repository) =>
+          repository.listForCustomer({ dotyposCustomerId: customer, limit: 5 })
+        );
+
+        expect(error._tag).toBe("WorkspaceReservationDetailsMalformedError");
       });
     });
   }

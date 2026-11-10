@@ -375,6 +375,15 @@ export async function loadCustomerInvoiceHistory() {
 }
 `;
 
+// The fixture's signed-in session links no customer, so the legal page offers
+// no account data export; this keeps the export service and its database out
+// of the fixture build.
+const fixtureAccountDataExportAvailability = `
+export async function getAccountDataExportAvailability() {
+  return false;
+}
+`;
+
 const fixtureAccountPage = `
 import { AccountSignInRedirect } from "@/features/account/components/account-sign-in-redirect";
 import type { Locale } from "@/features/i18n";
@@ -505,6 +514,8 @@ const writeFixture = async (
     "app/[locale]/layout.tsx": localeLayout(realCookieConsent),
     "fixture/account-release-gates.server.ts": fixtureAccountFeatureFlag,
     "fixture/account-actions.ts": fixtureAccountActions,
+    "fixture/account-data-export-availability.server.ts":
+      fixtureAccountDataExportAvailability,
     "fixture/analytics-preference.server.ts": fixtureAnalyticsPreference,
     "fixture/account-draft.tsx": fixtureAccountDraft,
     "fixture/account-page.tsx": fixtureAccountPage,
@@ -557,6 +568,9 @@ const writeFixture = async (
         ],
         "@/features/account/page-data.server": [
           "./fixture/account-page-data.server.ts",
+        ],
+        "@/features/account/account-data-export-availability.server": [
+          "./fixture/account-data-export-availability.server.ts",
         ],
         "@/features/account/invoice-history.server": [
           "./fixture/invoice-history.server.ts",
