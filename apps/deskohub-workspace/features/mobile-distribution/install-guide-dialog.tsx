@@ -3,7 +3,12 @@
 import Interpolate from "@doist/react-interpolate";
 import { Portal } from "@radix-ui/react-dialog";
 import { Check, Copy } from "lucide-react";
-import { type CSSProperties, useState, useSyncExternalStore } from "react";
+import {
+  type CSSProperties,
+  type RefObject,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -36,11 +41,14 @@ export function InstallGuideDialog({
   open,
   onOpenChange,
   locale,
+  returnFocusTo,
 }: {
   readonly guide: InstallGuide;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly locale: Locale;
+  /** Where focus goes when the guide closes; the guide has no trigger. */
+  readonly returnFocusTo?: RefObject<HTMLElement | null>;
 }) {
   const orientation = useScreenOrientation();
   const arrow = installGuideArrow(guide, orientation);
@@ -55,11 +63,18 @@ export function InstallGuideDialog({
             {
               "bottom-right": "top-4 max-h-[calc(100dvh-7rem)] translate-y-0",
               "bottom-center": "top-4 max-h-[calc(100dvh-7rem)] translate-y-0",
+              // On a short landscape screen the card moves left, clear of
+              // the arrow, and takes the full height.
               "top-right":
-                "top-auto bottom-4 max-h-[calc(100dvh-7rem)] translate-y-0",
+                "top-auto bottom-4 max-h-[calc(100dvh-7rem)] translate-y-0 [@media(max-height:30rem)]:left-4 [@media(max-height:30rem)]:max-h-[calc(100dvh-2rem)] [@media(max-height:30rem)]:translate-x-0",
             }[arrow]
         )}
         locale={locale}
+        onCloseAutoFocus={(event) => {
+          if (!returnFocusTo?.current) return;
+          event.preventDefault();
+          returnFocusTo.current.focus();
+        }}
         onOpenAutoFocus={(event) => {
           // Start at the first step: focusing the first button would scroll
           // a tall guide to its end on a small phone.

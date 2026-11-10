@@ -134,9 +134,6 @@ export function InstallBar({
       promptWebAppInstall();
       return;
     }
-    // Focus first: the guide hands focus back to whatever had it, and iOS
-    // Safari doesn't focus a tapped button.
-    installButton.current?.focus();
     setGuide(
       detectInstallGuide({
         platform,
@@ -203,6 +200,7 @@ export function InstallBar({
           locale={locale}
           onOpenChange={setGuideOpen}
           open={guideOpen}
+          returnFocusTo={installButton}
         />
       )}
     </>
