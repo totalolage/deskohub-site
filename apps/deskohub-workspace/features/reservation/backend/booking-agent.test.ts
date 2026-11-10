@@ -7,14 +7,14 @@ import type {
   CustomerAgentScope,
 } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { instantStringSchema } from "@/shared/utils/temporal";
 import {
   type AgentSelectionKey,
   deriveAgentCheckoutAttemptId,
-} from "@/features/reservation/backend/booking-agent";
-import type { SelectedReservation } from "@/features/reservation/backend/booking-selection";
-import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { instantStringSchema } from "@/shared/utils/temporal";
-import { deriveAgentCheckoutIdentifiers } from "./agent-checkout-identifiers";
+  deriveAgentCheckoutIdentifiers,
+} from "./booking-agent";
+import type { SelectedReservation } from "./booking-selection";
 
 /*
  * Golden vectors for the identifiers of an agent booking request. Live agent
