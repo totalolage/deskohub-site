@@ -1,0 +1,1231 @@
+{
+  "emailCampaignsAudienceAccountCreatedEver": "có tài khoản Workspace",
+  "emailCampaignsAudienceAccountCreatedInPeriod": "đã tạo tài khoản Workspace {period}",
+  "emailCampaignsAudienceAccountCreatedLabel": "Tạo tài khoản",
+  "emailCampaignsAudienceAccountCreatedNever": "không có tài khoản Workspace",
+  "emailCampaignsAudienceAccountCreatedNoValue": "chưa tạo",
+  "emailCampaignsAudienceAccountCreatedNotInPeriod": "có tài khoản Workspace nhưng không tạo {period}",
+  "emailCampaignsAudienceArchive": "Lưu trữ",
+  "emailCampaignsAudienceArchiveConfirm": "Lưu trữ nhóm người nhận",
+  "emailCampaignsAudienceArchiveDescription": "Chiến dịch mới sẽ không thể chọn nhóm này nữa. Các chiến dịch nháp đang dùng nhóm này vẫn giữ nguyên, và các chiến dịch đã gửi không bị ảnh hưởng.",
+  "emailCampaignsAudienceArchiveFailedRetry": "Không thể lưu trữ nhóm người nhận. Vui lòng thử lại.",
+  "emailCampaignsAudienceArchiveTitle": "Lưu trữ nhóm người nhận này?",
+  "emailCampaignsAudienceArchiving": "Đang lưu trữ…",
+  "emailCampaignsAudienceCampaignEmailCountAmount": "đã nhận {amount}{period}",
+  "emailCampaignsAudienceCampaignEmailCountAny": "đã nhận ít nhất một {single}{period}",
+  "emailCampaignsAudienceCampaignEmailCountCountLabel": "Số email chiến dịch",
+  "emailCampaignsAudienceCampaignEmailCountLabel": "Email chiến dịch đã nhận",
+  "emailCampaignsAudienceCampaignEmailCountLeadText": "khách hàng đã nhận từ",
+  "emailCampaignsAudienceCampaignEmailCountNone": "chưa nhận {single} nào{period}",
+  "emailCampaignsAudienceCampaignEmailCountNounAny": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "email chiến dịch"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounDeleted": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "email từ chiến dịch đã xóa"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounMarketing": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "email chiến dịch tiếp thị"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounOperational": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "email chiến dịch vận hành"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounSpecific": [
+    {
+      "declarations": [
+        "input count",
+        "input campaign",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "email từ chiến dịch {campaign}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounThis": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "email từ chiến dịch này"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountPeriodLabel": "Email đã nhận",
+  "emailCampaignsAudienceCampaignEmailCountPurposeAny": "email bất kỳ",
+  "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Mục đích chiến dịch",
+  "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "email tiếp thị",
+  "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "email vận hành",
+  "emailCampaignsAudienceCampaignEmailCountSourceAny": "chiến dịch bất kỳ",
+  "emailCampaignsAudienceCampaignEmailCountSourceEmpty": "Không có chiến dịch phù hợp.",
+  "emailCampaignsAudienceCampaignEmailCountSourceLabel": "Chiến dịch",
+  "emailCampaignsAudienceCampaignEmailCountSourceSearch": "Tìm chiến dịch",
+  "emailCampaignsAudienceCampaignEmailCountSourceUnknown": "Chiến dịch đã xóa",
+  "emailCampaignsAudienceConditionAttributeLabel": "Thuộc tính khách hàng",
+  "emailCampaignsAudienceConditionRemove": "Xóa điều kiện",
+  "emailCampaignsAudienceCountAlwaysMatchesError": "“≥ 0” luôn được đáp ứng. Vui lòng dùng “≥ 1” cho trường hợp ít nhất một, hoặc xóa điều kiện.",
+  "emailCampaignsAudienceCountComparisonLabel": "{subject}: phép so sánh",
+  "emailCampaignsAudienceCountIs": "là",
+  "emailCampaignsAudienceCountNeverMatchesError": "“< 0” không bao giờ được đáp ứng. Vui lòng dùng “= 0” cho trường hợp không có.",
+  "emailCampaignsAudienceCountNumberOf": "Số",
+  "emailCampaignsAudienceCountOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=eq": "bằng",
+        "operator=ne": "khác",
+        "operator=lt": "ít hơn",
+        "operator=lte": "tối đa",
+        "operator=gt": "nhiều hơn",
+        "operator=*": "ít nhất"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCountWholeNumberError": "Vui lòng nhập số nguyên từ 0 trở lên.",
+  "emailCampaignsAudienceDateConditionLabel": "{subject}: điều kiện",
+  "emailCampaignsAudienceDateIn": "là",
+  "emailCampaignsAudienceDateNotIn": "không phải",
+  "emailCampaignsAudienceDelete": "Xóa",
+  "emailCampaignsAudienceDeleteConfirm": "Xóa nhóm người nhận",
+  "emailCampaignsAudienceDeleteDescription": "Không thể hoàn tác thao tác này. Các chiến dịch đã gửi giữ bản sao bộ lọc riêng. Nhóm người nhận đang được chiến dịch nháp sử dụng chỉ có thể lưu trữ.",
+  "emailCampaignsAudienceDeleteFailedRetry": "Không thể xóa nhóm người nhận. Vui lòng thử lại.",
+  "emailCampaignsAudienceDeleteTitle": "Xóa nhóm người nhận này?",
+  "emailCampaignsAudienceDeleting": "Đang xóa…",
+  "emailCampaignsAudienceDiscountGroupChoose": "Chọn nhóm",
+  "emailCampaignsAudienceDiscountGroupEmptyError": "Vui lòng chọn ít nhất một nhóm giảm giá.",
+  "emailCampaignsAudienceDiscountGroupIdAdd": "Thêm ID nhóm giảm giá",
+  "emailCampaignsAudienceDiscountGroupIdPlaceholder": "ID nhóm trong Dotypos",
+  "emailCampaignsAudienceDiscountGroupIdRemove": "Xóa ID nhóm giảm giá {value}",
+  "emailCampaignsAudienceDiscountGroupLabel": "Nhóm giảm giá",
+  "emailCampaignsAudienceDiscountGroupRemove": "Xóa nhóm giảm giá {value}",
+  "emailCampaignsAudienceDiscountGroupSummaryAnyOf": "thuộc nhóm giảm giá {values}",
+  "emailCampaignsAudienceDiscountGroupSummaryNoneOf": "không thuộc nhóm giảm giá {values}",
+  "emailCampaignsAudienceDiscountGroupUnknown": "Nhóm giảm giá không xác định {id}",
+  "emailCampaignsAudienceDiscountGroupUnnamed": "Nhóm {id}",
+  "emailCampaignsAudienceDotyposTagsAdd": "Thêm nhãn",
+  "emailCampaignsAudienceDotyposTagsEmptyError": "Vui lòng thêm ít nhất một nhãn.",
+  "emailCampaignsAudienceDotyposTagsLabel": "Nhãn trong Dotypos",
+  "emailCampaignsAudienceDotyposTagsLead": "Nhãn",
+  "emailCampaignsAudienceDotyposTagsPlaceholder": "Thêm nhãn",
+  "emailCampaignsAudienceDotyposTagsRemove": "Xóa nhãn {value}",
+  "emailCampaignsAudienceDotyposTagsSummaryAllOf": "có các nhãn {values}",
+  "emailCampaignsAudienceDotyposTagsSummaryAnyOf": "có nhãn {values}",
+  "emailCampaignsAudienceDotyposTagsSummaryNoneOf": "không có nhãn {values}",
+  "emailCampaignsAudienceEditorArchivedNotice": "Nhóm người nhận này đã được lưu trữ. Chiến dịch mới không thể chọn nhóm này.",
+  "emailCampaignsAudienceEditorCancel": "Hủy",
+  "emailCampaignsAudienceEditorCreate": "Tạo nhóm người nhận",
+  "emailCampaignsAudienceEditorDescription": "Vui lòng chọn những người chiến dịch sẽ gửi đến. Các điều kiện chỉ được đánh giá khi gửi chiến dịch, nên chiến dịch nháp luôn dùng phiên bản mới nhất.",
+  "emailCampaignsAudienceEditorEyebrow": "Nhóm người nhận email",
+  "emailCampaignsAudienceEditorNewTitle": "Nhóm người nhận mới",
+  "emailCampaignsAudienceEditorReachDescription": "Chỉ những khách hàng mà Workspace đã biết qua đặt chỗ, tài khoản hoặc sự đồng ý nhận thông tin tiếp thị mới có thể đáp ứng các điều kiện. Ngoài ra, chiến dịch tiếp thị bỏ qua bất kỳ ai không có sự đồng ý còn hiệu lực.",
+  "emailCampaignsAudienceEditorReachHeading": "Gửi đến ai",
+  "emailCampaignsAudienceEditorSave": "Lưu nhóm người nhận",
+  "emailCampaignsAudienceEditorSaveFailed": "Không thể lưu nhóm người nhận. Vui lòng kiểm tra biểu mẫu và thử lại.",
+  "emailCampaignsAudienceEditorSaved": "Đã lưu nhóm người nhận.",
+  "emailCampaignsAudienceEditorSaving": "Đang lưu…",
+  "emailCampaignsAudienceEditorSingleLocaleCzech": "Mọi người nhận đều nói tiếng Séc, nên chiến dịch cho nhóm này chỉ cần nội dung tiếng Séc.",
+  "emailCampaignsAudienceEditorSingleLocaleEnglish": "Mọi người nhận đều nói tiếng Anh, nên chiến dịch cho nhóm này chỉ cần nội dung tiếng Anh.",
+  "emailCampaignsAudienceEditorSingleLocaleGerman": "Mọi người nhận đều nói tiếng Đức, nên chiến dịch cho nhóm này chỉ cần nội dung tiếng Đức.",
+  "emailCampaignsAudienceEditorSingleLocaleHindi": "Mọi người nhận đều nói tiếng Hindi, nên chiến dịch cho nhóm này chỉ cần nội dung tiếng Hindi.",
+  "emailCampaignsAudienceEditorSingleLocaleSlovak": "Mọi người nhận đều nói tiếng Slovakia, nên chiến dịch cho nhóm này chỉ cần nội dung tiếng Slovakia.",
+  "emailCampaignsAudienceEditorSingleLocaleUkrainian": "Mọi người nhận đều nói tiếng Ukraina, nên chiến dịch cho nhóm này chỉ cần nội dung tiếng Ukraina.",
+  "emailCampaignsAudienceEditorSingleLocaleVietnamese": "Mọi người nhận đều nói tiếng Việt, nên chiến dịch cho nhóm này chỉ cần nội dung tiếng Việt.",
+  "emailCampaignsAudienceEditorSummary": "{summary}.",
+  "emailCampaignsAudienceEditorSummaryHeading": "Diễn giải dễ hiểu",
+  "emailCampaignsAudienceEditorTitleLabel": "Tên",
+  "emailCampaignsAudienceEditorTitlePlaceholder": "ví dụ: Khách hàng Séc đã đến trong năm nay",
+  "emailCampaignsAudienceGroupAddCondition": "Thêm điều kiện",
+  "emailCampaignsAudienceGroupAddGroup": "Thêm nhóm",
+  "emailCampaignsAudienceGroupCombineLabel": "Cách kết hợp các điều kiện",
+  "emailCampaignsAudienceGroupEmptyAll": "Chưa có điều kiện nào, nên mọi khách hàng đã biết đều đáp ứng.",
+  "emailCampaignsAudienceGroupEmptyAny": "Chưa có điều kiện nào, nên không ai đáp ứng.",
+  "emailCampaignsAudienceGroupJoinAnd": "và",
+  "emailCampaignsAudienceGroupJoinOr": "hoặc",
+  "emailCampaignsAudienceGroupMatchAll": "Đáp ứng tất cả",
+  "emailCampaignsAudienceGroupMatchAny": "Đáp ứng bất kỳ",
+  "emailCampaignsAudienceGroupOfFollowing": "điều kiện sau đây",
+  "emailCampaignsAudienceGroupOfThisGroup": "điều kiện trong nhóm này",
+  "emailCampaignsAudienceGroupRemove": "Xóa nhóm",
+  "emailCampaignsAudienceHasAccountFalse": "Không có",
+  "emailCampaignsAudienceHasAccountLabel": "Tài khoản Workspace",
+  "emailCampaignsAudienceHasAccountObject": "tài khoản Workspace",
+  "emailCampaignsAudienceHasAccountSummaryFalse": "không có tài khoản Workspace",
+  "emailCampaignsAudienceHasAccountSummaryTrue": "có tài khoản Workspace",
+  "emailCampaignsAudienceHasAccountTrue": "Có",
+  "emailCampaignsAudienceFirstVisitEver": "đã từng đến{product}",
+  "emailCampaignsAudienceFirstVisitInPeriod": "lần đầu đến{product} {period}",
+  "emailCampaignsAudienceFirstVisitLabel": "Lần đến đầu tiên",
+  "emailCampaignsAudienceFirstVisitNever": "chưa từng đến{product}",
+  "emailCampaignsAudienceFirstVisitNoValue": "chưa từng đến",
+  "emailCampaignsAudienceFirstVisitNotInPeriod": "đã từng đến{product}, nhưng lần đầu không phải {period}",
+  "emailCampaignsAudienceLastVisitEver": "đã từng đến{product}",
+  "emailCampaignsAudienceLastVisitInPeriod": "lần gần nhất đến{product} {period}",
+  "emailCampaignsAudienceLastVisitLabel": "Lần đến gần nhất",
+  "emailCampaignsAudienceLastVisitNever": "chưa từng đến{product}",
+  "emailCampaignsAudienceLastVisitNoValue": "chưa từng đến",
+  "emailCampaignsAudienceLastVisitNotInPeriod": "đã từng đến{product}, nhưng lần gần nhất không phải {period}",
+  "emailCampaignsAudienceListColumnAudience": "Nhóm người nhận",
+  "emailCampaignsAudienceListColumnReach": "Gửi đến ai",
+  "emailCampaignsAudienceListColumnStatus": "Trạng thái",
+  "emailCampaignsAudienceListColumnUpdated": "Cập nhật",
+  "emailCampaignsAudienceListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "{formattedCount} nhóm người nhận"
+      }
+    }
+  ],
+  "emailCampaignsAudienceListCountLoading": "Đang tải số nhóm người nhận",
+  "emailCampaignsAudienceListEmpty": "Chưa có nhóm người nhận nào. Vui lòng tạo một nhóm để chọn những người chiến dịch sẽ gửi đến.",
+  "emailCampaignsAudienceListLoading": "Đang tải nhóm người nhận",
+  "emailCampaignsAudienceListNew": "Nhóm người nhận mới",
+  "emailCampaignsAudienceListTitle": "Nhóm người nhận email",
+  "emailCampaignsAudienceListToolbarLabel": "Điều khiển bảng nhóm người nhận",
+  "emailCampaignsAudienceListUpdated": "Cập nhật {date}",
+  "emailCampaignsAudienceLocaleEmptyError": "Vui lòng chọn ít nhất một ngôn ngữ.",
+  "emailCampaignsAudienceLocaleLabel": "Ngôn ngữ",
+  "emailCampaignsAudienceLocaleNameCzech": "tiếng Séc",
+  "emailCampaignsAudienceLocaleNameEnglish": "tiếng Anh",
+  "emailCampaignsAudienceLocaleNameGerman": "tiếng Đức",
+  "emailCampaignsAudienceLocaleNameHindi": "tiếng Hindi",
+  "emailCampaignsAudienceLocaleNameSlovak": "tiếng Slovakia",
+  "emailCampaignsAudienceLocaleNameUkrainian": "tiếng Ukraina",
+  "emailCampaignsAudienceLocaleNameVietnamese": "tiếng Việt",
+  "emailCampaignsAudienceLocaleOptionCzech": "Tiếng Séc (cs-CZ)",
+  "emailCampaignsAudienceLocaleOptionEnglish": "Tiếng Anh (en-US)",
+  "emailCampaignsAudienceLocaleSummaryAnyOf": "nói {values}",
+  "emailCampaignsAudienceLocaleSummaryNoneOf": "không nói {values}",
+  "emailCampaignsAudienceNotFound": "Nhóm người nhận này không còn tồn tại.",
+  "emailCampaignsAudiencePeriodCountError": "Vui lòng nhập số nguyên từ 1 trở lên.",
+  "emailCampaignsAudiencePeriodCountLabel": "{subject}: số đơn vị thời gian",
+  "emailCampaignsAudiencePeriodDateError": "Vui lòng nhập ngày hợp lệ.",
+  "emailCampaignsAudiencePeriodDateLabel": "{subject}: ngày",
+  "emailCampaignsAudiencePeriodEndLabel": "{subject}: ngày kết thúc",
+  "emailCampaignsAudiencePeriodKind": [
+    {
+      "declarations": ["input kind"],
+      "selectors": ["kind"],
+      "match": {
+        "kind=AnyTime": "bất cứ lúc nào",
+        "kind=Past": "bất cứ lúc nào cho đến nay",
+        "kind=Last": "trong … gần nhất",
+        "kind=Range": "từ … đến …",
+        "kind=Since": "từ",
+        "kind=Onward": "từ … trở đi",
+        "kind=*": "đến"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodLabel": "{subject}: khoảng thời gian",
+  "emailCampaignsAudiencePeriodLast": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "trong"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodOnward": "trở đi",
+  "emailCampaignsAudiencePeriodOrderError": "Ngày bắt đầu không được muộn hơn ngày kết thúc.",
+  "emailCampaignsAudiencePeriodStartLabel": "{subject}: ngày bắt đầu",
+  "emailCampaignsAudiencePeriodTo": "đến",
+  "emailCampaignsAudiencePeriodUnitDay": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "ngày"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitLabel": "{subject}: đơn vị thời gian",
+  "emailCampaignsAudiencePeriodUnitMonth": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "tháng"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitWeek": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "tuần"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitYear": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "năm"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductAddCondition": "Thêm điều kiện sản phẩm",
+  "emailCampaignsAudienceProductAny": "sản phẩm bất kỳ",
+  "emailCampaignsAudienceProductChoose": "Chọn",
+  "emailCampaignsAudienceProductChooseValueError": "Vui lòng chọn ít nhất một giá trị.",
+  "emailCampaignsAudienceProductFamilyCowork": "Coworking",
+  "emailCampaignsAudienceProductFamilyMeetingRoom": "Phòng họp",
+  "emailCampaignsAudienceProductFamilyOffice": "Văn phòng",
+  "emailCampaignsAudienceProductLabel": "Sản phẩm",
+  "emailCampaignsAudienceProductPropertyCoffee": "Cà phê",
+  "emailCampaignsAudienceProductPropertyDays": "Số ngày",
+  "emailCampaignsAudienceProductPropertyMonitor": "Cấu hình màn hình",
+  "emailCampaignsAudienceProductPropertyOffer": "Thời lượng",
+  "emailCampaignsAudienceProductPropertySeats": "Số chỗ",
+  "emailCampaignsAudienceProductPropertyTier": "Gói",
+  "emailCampaignsAudienceProductRemoveCondition": "Xóa điều kiện: {property}",
+  "emailCampaignsAudienceProductRemoveValue": "Xóa {value} ({property})",
+  "emailCampaignsAudienceProductRetired": "(ngừng bán)",
+  "emailCampaignsAudienceProductSelectLabel": "Sản phẩm đặt chỗ",
+  "emailCampaignsAudienceProductUnitDays": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "ngày"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductUnitSeats": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "chỗ"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductWith": "có",
+  "emailCampaignsAudienceProductWithout": "không có",
+  "emailCampaignsAudienceReservationCountAmount": "có {amount}{period}",
+  "emailCampaignsAudienceReservationCountAny": "có ít nhất một {single}{period}",
+  "emailCampaignsAudienceReservationCountBookingPeriod": "được xác nhận {period}",
+  "emailCampaignsAudienceReservationCountDateBasisBooking": "ngày xác nhận",
+  "emailCampaignsAudienceReservationCountDateBasisLabel": "Ngày căn cứ",
+  "emailCampaignsAudienceReservationCountDateBasisVisit": "ngày đến",
+  "emailCampaignsAudienceReservationCountDateBasisVisitEnd": "ngày kết thúc",
+  "emailCampaignsAudienceReservationCountLabel": "Số lượt đặt chỗ",
+  "emailCampaignsAudienceReservationCountLeadText": "theo",
+  "emailCampaignsAudienceReservationCountNone": "không có {single} nào{period}",
+  "emailCampaignsAudienceReservationCountNounBooked": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "lượt đặt chỗ{product} đã xác nhận"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounCancelled": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "lượt đặt chỗ{product} đã hủy"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounComplete": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "lượt đặt chỗ{product} đã hoàn tất"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounInProgress": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "lượt đặt chỗ{product} đang diễn ra"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounNeedsRefund": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "lượt đặt chỗ{product} cần hoàn tiền"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountPeriodLabel": "Đặt chỗ",
+  "emailCampaignsAudienceReservationCountStatusBooked": "lượt đặt chỗ đã xác nhận",
+  "emailCampaignsAudienceReservationCountStatusCancelled": "lượt đặt chỗ đã hủy",
+  "emailCampaignsAudienceReservationCountStatusComplete": "lượt đặt chỗ đã hoàn tất",
+  "emailCampaignsAudienceReservationCountStatusInProgress": "lượt đặt chỗ đang diễn ra",
+  "emailCampaignsAudienceReservationCountStatusLabel": "Trạng thái đặt chỗ",
+  "emailCampaignsAudienceReservationCountStatusNeedsRefund": "lượt đặt chỗ đang chờ hoàn tiền",
+  "emailCampaignsAudienceReservationCountVisitEndPeriod": "kết thúc {period}",
+  "emailCampaignsAudienceReservationCountVisitPeriod": "diễn ra {period}",
+  "emailCampaignsAudienceSaveCampaignNotFound": "Không thể lưu nhóm người nhận. Chiến dịch có email được đếm không còn tồn tại. Vui lòng chọn chiến dịch khác.",
+  "emailCampaignsAudienceSaveFailedCheckFilters": "Không thể lưu nhóm người nhận. Vui lòng kiểm tra bộ lọc và thử lại.",
+  "emailCampaignsAudienceSaveFailedRetry": "Không thể lưu nhóm người nhận. Vui lòng thử lại.",
+  "emailCampaignsAudienceSaveFilterUnavailable": "Không thể lưu nhóm người nhận. Khoảng thời gian tính theo sự kiện kích hoạt và “chiến dịch này” chỉ dùng được trong điều kiện của tự động hóa.",
+  "emailCampaignsAudienceSectionAccount": "Tài khoản",
+  "emailCampaignsAudienceSectionEmails": "Email",
+  "emailCampaignsAudienceSectionProfile": "Hồ sơ",
+  "emailCampaignsAudienceSectionReservations": "Đặt chỗ",
+  "emailCampaignsAudienceSetMatchLabel": "{subject}: cách khớp",
+  "emailCampaignsAudienceSetOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=allOf": "tất cả trong số",
+        "operator=noneOf": "không cái nào trong số",
+        "operator=*": "ít nhất một trong số"
+      }
+    }
+  ],
+  "emailCampaignsAudienceStatusActive": "Đang hoạt động",
+  "emailCampaignsAudienceStatusArchived": "Đã lưu trữ",
+  "emailCampaignsAudienceSummaryAmount": [
+    {
+      "declarations": [
+        "input operator",
+        "input count",
+        "local formattedCount = count: number",
+        "input noun",
+        "input none"
+      ],
+      "selectors": ["operator"],
+      "match": {
+        "operator=eq": "đúng {formattedCount} {noun}",
+        "operator=ne": "số {none} khác {formattedCount}",
+        "operator=lt": "ít hơn {formattedCount} {noun}",
+        "operator=lte": "tối đa {formattedCount} {noun}",
+        "operator=gt": "nhiều hơn {formattedCount} {noun}",
+        "operator=*": "ít nhất {formattedCount} {noun}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryAmountPending": "… {none}",
+  "emailCampaignsAudienceSummaryAnd": "{left} và {right}",
+  "emailCampaignsAudienceSummaryCustomersWho": "Những khách hàng {predicate}",
+  "emailCampaignsAudienceSummaryEveryone": "Mọi khách hàng mà Workspace biết",
+  "emailCampaignsAudienceSummaryGap": "…",
+  "emailCampaignsAudienceSummaryGroup": "({filter})",
+  "emailCampaignsAudienceSummaryMatchAnything": "khớp với mọi điều kiện",
+  "emailCampaignsAudienceSummaryMatchNothing": "không khớp với điều kiện nào",
+  "emailCampaignsAudienceSummaryNobody": "Không ai",
+  "emailCampaignsAudienceSummaryOr": "{left} hoặc {right}",
+  "emailCampaignsAudienceSummaryPeriodAnyTime": "vào bất cứ lúc nào",
+  "emailCampaignsAudienceSummaryPeriodLastDay": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "trong {formattedCount} ngày qua"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastMonth": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "trong {formattedCount} tháng qua"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastWeek": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "trong {formattedCount} tuần qua"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastYear": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "trong {formattedCount} năm qua"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodOnward": "từ {date} trở đi",
+  "emailCampaignsAudienceSummaryPeriodPast": "vào bất cứ lúc nào cho đến nay",
+  "emailCampaignsAudienceSummaryPeriodRange": "từ {from} đến {to}",
+  "emailCampaignsAudienceSummaryPeriodSince": "từ {date} đến nay",
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowDay": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=other": "trong vòng {formattedCount} ngày trước sự kiện kích hoạt",
+        "side=after, countPlural=other": "trong vòng {formattedCount} ngày sau sự kiện kích hoạt"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowMonth": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=other": "trong vòng {formattedCount} tháng trước sự kiện kích hoạt",
+        "side=after, countPlural=other": "trong vòng {formattedCount} tháng sau sự kiện kích hoạt"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowWeek": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=other": "trong vòng {formattedCount} tuần trước sự kiện kích hoạt",
+        "side=after, countPlural=other": "trong vòng {formattedCount} tuần sau sự kiện kích hoạt"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowYear": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=other": "trong vòng {formattedCount} năm trước sự kiện kích hoạt",
+        "side=after, countPlural=other": "trong vòng {formattedCount} năm sau sự kiện kích hoạt"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodUntil": "cho đến {date}",
+  "emailCampaignsAudienceSummaryProduct": "({family})",
+  "emailCampaignsAudienceSummaryProductAnyOf": "{property} {values}",
+  "emailCampaignsAudienceSummaryProductDisabled": "{property}: không",
+  "emailCampaignsAudienceSummaryProductEnabled": "{property}: có",
+  "emailCampaignsAudienceSummaryProductNoneOf": "{property} trừ {values}",
+  "emailCampaignsAudienceSummaryProductWith": "({family}, {details})",
+  "emailCampaignsAudienceSummaryQuoted": "“{value}”",
+  "emailCampaignsAudienceTitleRequired": "Vui lòng nhập tên nhóm người nhận.",
+  "emailCampaignsAudienceTitleTooLong": "Vui lòng dùng tối đa {max} ký tự.",
+  "emailCampaignsAudienceUnarchive": "Khôi phục từ lưu trữ",
+  "emailCampaignsAudienceUnarchiveFailedRetry": "Không thể khôi phục nhóm người nhận từ lưu trữ. Vui lòng thử lại.",
+  "emailCampaignsAudienceUnarchiving": "Đang khôi phục…",
+  "emailCampaignsCalendarDayOfMonth": "ngày {day}",
+  "emailCampaignsCalendarDaysOfMonth": "{days}",
+  "emailCampaignsCalendarEveryDay": "mỗi ngày",
+  "emailCampaignsCalendarEveryHour": "mỗi giờ",
+  "emailCampaignsCalendarHourRange": "từ {start} đến {end}",
+  "emailCampaignsCalendarHourSpan": "{start}–{end}",
+  "emailCampaignsCalendarHourSpans": "trong khung giờ {spans}",
+  "emailCampaignsCalendarInMonths": "trong {months}",
+  "emailCampaignsCalendarInWeeks": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=*": "trong tuần lịch số {weeks}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastDayOfMonth": "ngày cuối cùng",
+  "emailCampaignsCalendarLastOccurrence": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "thứ Hai cuối cùng",
+        "weekday=tuesday": "thứ Ba cuối cùng",
+        "weekday=wednesday": "thứ Tư cuối cùng",
+        "weekday=thursday": "thứ Năm cuối cùng",
+        "weekday=friday": "thứ Sáu cuối cùng",
+        "weekday=saturday": "thứ Bảy cuối cùng",
+        "weekday=*": "Chủ nhật cuối cùng"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceQualifier": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "thứ Hai cuối cùng",
+        "weekday=tuesday": "thứ Ba cuối cùng",
+        "weekday=wednesday": "thứ Tư cuối cùng",
+        "weekday=thursday": "thứ Năm cuối cùng",
+        "weekday=friday": "thứ Sáu cuối cùng",
+        "weekday=saturday": "thứ Bảy cuối cùng",
+        "weekday=*": "Chủ nhật cuối cùng"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceWait": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "thứ Hai cuối cùng",
+        "weekday=tuesday": "thứ Ba cuối cùng",
+        "weekday=wednesday": "thứ Tư cuối cùng",
+        "weekday=thursday": "thứ Năm cuối cùng",
+        "weekday=friday": "thứ Sáu cuối cùng",
+        "weekday=saturday": "thứ Bảy cuối cùng",
+        "weekday=*": "Chủ nhật cuối cùng"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMinute": "xx:{minute}",
+  "emailCampaignsCalendarMonthInName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "tháng 1",
+        "month=2": "tháng 2",
+        "month=3": "tháng 3",
+        "month=4": "tháng 4",
+        "month=5": "tháng 5",
+        "month=6": "tháng 6",
+        "month=7": "tháng 7",
+        "month=8": "tháng 8",
+        "month=9": "tháng 9",
+        "month=10": "tháng 10",
+        "month=11": "tháng 11",
+        "month=*": "tháng 12"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMonthName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "tháng 1",
+        "month=2": "tháng 2",
+        "month=3": "tháng 3",
+        "month=4": "tháng 4",
+        "month=5": "tháng 5",
+        "month=6": "tháng 6",
+        "month=7": "tháng 7",
+        "month=8": "tháng 8",
+        "month=9": "tháng 9",
+        "month=10": "tháng 10",
+        "month=11": "tháng 11",
+        "month=*": "tháng 12"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMonthOfName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "tháng 1",
+        "month=2": "tháng 2",
+        "month=3": "tháng 3",
+        "month=4": "tháng 4",
+        "month=5": "tháng 5",
+        "month=6": "tháng 6",
+        "month=7": "tháng 7",
+        "month=8": "tháng 8",
+        "month=9": "tháng 9",
+        "month=10": "tháng 10",
+        "month=11": "tháng 11",
+        "month=*": "tháng 12"
+      }
+    }
+  ],
+  "emailCampaignsCalendarOccurrence": "{weekday} lần thứ {occurrence}",
+  "emailCampaignsCalendarOccurrences": "{occurrences}",
+  "emailCampaignsCalendarSchedule": "{description} (giờ Praha)",
+  "emailCampaignsCalendarScheduleDate": "hằng năm vào ngày {day} {month}",
+  "emailCampaignsCalendarScheduleMonthStart": "hằng năm vào ngày đầu tiên của {months}",
+  "emailCampaignsCalendarScheduleOn": "vào {subject}",
+  "emailCampaignsCalendarScheduleQualified": "{subject} trùng với {qualifier}",
+  "emailCampaignsCalendarScheduleWeekMonthStart": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "input months",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=*": "hằng năm vào ngày đầu tiên của tuần lịch số {weeks} rơi vào {months}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarScheduleWeekStart": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=*": "hằng năm vào đầu tuần lịch số {weeks} (thứ Hai)"
+      }
+    }
+  ],
+  "emailCampaignsCalendarScopeAnyMonth": "{phrase} trong tháng",
+  "emailCampaignsCalendarScopeEveryMonth": "{phrase} hằng tháng",
+  "emailCampaignsCalendarScopeMonths": "{phrase} trong {months}",
+  "emailCampaignsCalendarScopeQualifier": "{phrase} trong tháng",
+  "emailCampaignsCalendarTimeAt": "lúc {times}",
+  "emailCampaignsCalendarTimeEveryHourAt": "mỗi giờ lúc {minutes}",
+  "emailCampaignsCalendarTimeMinutesPastHours": "vào các giờ {hours} lúc {minutes}",
+  "emailCampaignsCalendarWait": "Chờ đến {target} (giờ Praha); nếu đã đến thời điểm đó thì tiếp tục ngay",
+  "emailCampaignsCalendarWaitClockWindow": "khung giờ {windows}",
+  "emailCampaignsCalendarWaitDay": "một ngày",
+  "emailCampaignsCalendarWaitMonthDay": "một ngày trong {months}",
+  "emailCampaignsCalendarWaitNextMinute": "{minutes} kế tiếp",
+  "emailCampaignsCalendarWaitQualified": "{subject} trùng với {qualifier}",
+  "emailCampaignsCalendarWaitTime": "lúc {time}",
+  "emailCampaignsCalendarWaitWeeks": "tuần lịch số {weeks}",
+  "emailCampaignsCalendarWeekNumber": "{week}",
+  "emailCampaignsCalendarWeekdayEveryName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "mỗi thứ Hai",
+        "weekday=tuesday": "mỗi thứ Ba",
+        "weekday=wednesday": "mỗi thứ Tư",
+        "weekday=thursday": "mỗi thứ Năm",
+        "weekday=friday": "mỗi thứ Sáu",
+        "weekday=saturday": "mỗi thứ Bảy",
+        "weekday=*": "mỗi Chủ nhật"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "thứ Hai",
+        "weekday=tuesday": "thứ Ba",
+        "weekday=wednesday": "thứ Tư",
+        "weekday=thursday": "thứ Năm",
+        "weekday=friday": "thứ Sáu",
+        "weekday=saturday": "thứ Bảy",
+        "weekday=*": "Chủ nhật"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayQualifierName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "thứ Hai",
+        "weekday=tuesday": "thứ Ba",
+        "weekday=wednesday": "thứ Tư",
+        "weekday=thursday": "thứ Năm",
+        "weekday=friday": "thứ Sáu",
+        "weekday=saturday": "thứ Bảy",
+        "weekday=*": "Chủ nhật"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayWaitName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "thứ Hai",
+        "weekday=tuesday": "thứ Ba",
+        "weekday=wednesday": "thứ Tư",
+        "weekday=thursday": "thứ Năm",
+        "weekday=friday": "thứ Sáu",
+        "weekday=saturday": "thứ Bảy",
+        "weekday=*": "Chủ nhật"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysEvery": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "mỗi ngày làm việc",
+        "set=weekend": "mỗi ngày cuối tuần",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysWait": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "một ngày làm việc",
+        "set=weekend": "một ngày cuối tuần",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysWaitQualified": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "một ngày làm việc",
+        "set=weekend": "một ngày cuối tuần",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsBadgeDeliveryAutomated": "Tự động",
+  "emailCampaignsBadgePurposeMarketing": "Tiếp thị",
+  "emailCampaignsBadgePurposeOperational": "Vận hành",
+  "emailCampaignsBadgeRecipientStatusBounced": "Bị trả lại",
+  "emailCampaignsBadgeRecipientStatusComplained": "Bị báo cáo spam",
+  "emailCampaignsBadgeRecipientStatusDelivered": "Đã chuyển phát",
+  "emailCampaignsBadgeRecipientStatusFailed": "Thất bại",
+  "emailCampaignsBadgeRecipientStatusPending": "Đang chờ",
+  "emailCampaignsBadgeRecipientStatusSent": "Đã gửi",
+  "emailCampaignsBadgeRecipientStatusSkipped": "Đã bỏ qua",
+  "emailCampaignsBadgeRecipientStatusUnconfirmed": "Chưa xác nhận",
+  "emailCampaignsBadgeStatusDraft": "Bản nháp",
+  "emailCampaignsBadgeStatusFailed": "Thất bại",
+  "emailCampaignsBadgeStatusSending": "Đang gửi",
+  "emailCampaignsBadgeStatusSent": "Đã gửi",
+  "emailCampaignsBodyButtonHrefInvalid": "Nút phải liên kết đến địa chỉ https: hoặc mailto:.",
+  "emailCampaignsBodyButtonLabelLineBreaks": "Chữ trên nút chỉ được xuống dòng bằng ký tự dòng mới (LF).",
+  "emailCampaignsBodyButtonLabelMissing": "Nút phải có chữ.",
+  "emailCampaignsBodyImageLayoutInvalid": "Hình ảnh phải được căn trái, căn giữa hoặc căn phải và có chiều rộng là số pixel nguyên.",
+  "emailCampaignsBodyImageSourceInvalid": "Hình ảnh phải lấy từ tài khoản Cloudinary của Deskohub.",
+  "emailCampaignsBodyLinkHrefInvalid": "Liên kết phải dùng địa chỉ https: hoặc mailto:.",
+  "emailCampaignsBodyMissing": "Vui lòng soạn nội dung email.",
+  "emailCampaignsBodyNotDocument": "Nội dung email phải có kiểu “doc”.",
+  "emailCampaignsBodyStructureInvalid": "Nội dung email chứa thành phần mà email chiến dịch không hỗ trợ.",
+  "emailCampaignsComposerAllChangesSaved": "Đã lưu mọi thay đổi",
+  "emailCampaignsComposerAudienceHint": "Vui lòng chọn người nhận chiến dịch trước khi gửi.",
+  "emailCampaignsComposerAudienceLabel": "Nhóm người nhận",
+  "emailCampaignsComposerAudienceNone": "Chưa có nhóm người nhận",
+  "emailCampaignsComposerAudiencesEmpty": "Chưa có nhóm người nhận nào. Vui lòng tạo nhóm trong mục Nhóm người nhận.",
+  "emailCampaignsComposerBodyEditorLabel": "Nội dung email, {language}",
+  "emailCampaignsComposerBodyLabel": "Nội dung email",
+  "emailCampaignsComposerCampaignSection": "Chiến dịch",
+  "emailCampaignsComposerContentLanguageLabel": "Ngôn ngữ nội dung",
+  "emailCampaignsComposerContentSection": "Nội dung",
+  "emailCampaignsComposerCreateDraft": "Tạo bản nháp",
+  "emailCampaignsComposerDraftDescription": "Bản nháp. Vui lòng lưu thay đổi rồi gửi email thử để nhận mã xác nhận cho lần gửi thật.",
+  "emailCampaignsComposerEyebrow": "Chiến dịch email",
+  "emailCampaignsComposerFallbackLocaleHint": "Tiếng Séc là bắt buộc vì là phương án dự phòng cuối cùng. Người nhận chưa có nội dung bằng ngôn ngữ của mình sẽ nhận ngôn ngữ gần nhất có nội dung, thường là tiếng Anh.",
+  "emailCampaignsComposerHiddenContentCzech": "Nội dung tiếng Séc bị ẩn đối với nhóm người nhận này và sẽ không được lưu.",
+  "emailCampaignsComposerHiddenContentEnglish": "Nội dung tiếng Anh bị ẩn đối với nhóm người nhận này và sẽ không được lưu.",
+  "emailCampaignsComposerHiddenContentGerman": "Nội dung tiếng Đức bị ẩn đối với nhóm người nhận này và sẽ không được lưu.",
+  "emailCampaignsComposerHiddenContentHindi": "Nội dung tiếng Hindi bị ẩn đối với nhóm người nhận này và sẽ không được lưu.",
+  "emailCampaignsComposerHiddenContentSlovak": "Nội dung tiếng Slovakia bị ẩn đối với nhóm người nhận này và sẽ không được lưu.",
+  "emailCampaignsComposerHiddenContentUkrainian": "Nội dung tiếng Ukraina bị ẩn đối với nhóm người nhận này và sẽ không được lưu.",
+  "emailCampaignsComposerHiddenContentVietnamese": "Nội dung tiếng Việt bị ẩn đối với nhóm người nhận này và sẽ không được lưu.",
+  "emailCampaignsComposerLocaleIssues": "{count} mục cần sửa",
+  "emailCampaignsComposerLocaleOptional": "Không bắt buộc",
+  "emailCampaignsComposerLocaleReady": "Sẵn sàng",
+  "emailCampaignsComposerLocaleRequired": "Bắt buộc",
+  "emailCampaignsComposerNewDescription": "Vui lòng soạn chiến dịch rồi tạo bản nháp để có thể gửi thử.",
+  "emailCampaignsComposerNewTitle": "Chiến dịch mới",
+  "emailCampaignsComposerOperationalReasonHint": "Lý do khách hàng nhận email này. Nếu để trống, nội dung mặc định sẽ được dùng.",
+  "emailCampaignsComposerOperationalReasonLabel": "Lý do ở chân trang",
+  "emailCampaignsComposerPreheaderHint": "Hầu hết hộp thư hiển thị dòng này sau tiêu đề email.",
+  "emailCampaignsComposerPreheaderLabel": "Dòng xem trước",
+  "emailCampaignsComposerPurposeLabel": "Mục đích",
+  "emailCampaignsComposerPurposeMarketing": "Tiếp thị",
+  "emailCampaignsComposerPurposeMarketingDescription": "Chỉ khách hàng đã đồng ý nhận thông tin tiếp thị. Mỗi email đều có liên kết hủy đăng ký.",
+  "emailCampaignsComposerPurposeOperational": "Vận hành",
+  "emailCampaignsComposerPurposeOperationalDescription": "Thông báo vận hành gửi đến mọi khách hàng phù hợp. Chân trang nêu lý do khách hàng nhận email.",
+  "emailCampaignsComposerSaveAudienceArchived": "Nhóm người nhận đã chọn đã được lưu trữ. Vui lòng chọn nhóm khác.",
+  "emailCampaignsComposerSaveAudienceFilterUnavailable": "Nhóm người nhận đã chọn dùng bộ lọc chỉ áp dụng được trong điều kiện của tự động hóa. Vui lòng chọn nhóm khác.",
+  "emailCampaignsComposerSaveAudienceNotFound": "Nhóm người nhận đã chọn không còn tồn tại.",
+  "emailCampaignsComposerSaveCheckFields": "Không thể lưu chiến dịch. Vui lòng kiểm tra các thông tin đã nhập.",
+  "emailCampaignsComposerSaveContentInvalid": "Nội dung có lỗi. Vui lòng sửa các vấn đề được liệt kê rồi lưu chiến dịch.",
+  "emailCampaignsComposerSaveDraft": "Lưu bản nháp",
+  "emailCampaignsComposerSaveFailed": "Không thể lưu chiến dịch. Vui lòng thử lại.",
+  "emailCampaignsComposerSaveReadOnly": "Chiến dịch này không còn là bản nháp và không thể chỉnh sửa.",
+  "emailCampaignsComposerSaving": "Đang lưu…",
+  "emailCampaignsComposerSingleLocaleAudienceCzech": "Nhóm người nhận chỉ gồm khách hàng nói tiếng Séc.",
+  "emailCampaignsComposerSingleLocaleAudienceEnglish": "Nhóm người nhận chỉ gồm khách hàng nói tiếng Anh.",
+  "emailCampaignsComposerSingleLocaleAudienceGerman": "Nhóm người nhận chỉ gồm khách hàng nói tiếng Đức.",
+  "emailCampaignsComposerSingleLocaleAudienceHindi": "Nhóm người nhận chỉ gồm khách hàng nói tiếng Hindi.",
+  "emailCampaignsComposerSingleLocaleAudienceSlovak": "Nhóm người nhận chỉ gồm khách hàng nói tiếng Slovakia.",
+  "emailCampaignsComposerSingleLocaleAudienceUkrainian": "Nhóm người nhận chỉ gồm khách hàng nói tiếng Ukraina.",
+  "emailCampaignsComposerSingleLocaleAudienceVietnamese": "Nhóm người nhận chỉ gồm khách hàng nói tiếng Việt.",
+  "emailCampaignsComposerSubjectLabel": "Tiêu đề email",
+  "emailCampaignsComposerSubjectMissing": "Vui lòng nhập tiêu đề email.",
+  "emailCampaignsComposerTemplateLabel": "Mẫu",
+  "emailCampaignsComposerTemplatePreview": "Xem trước mẫu",
+  "emailCampaignsComposerTemplatePreviewFrameTitle": "Mẫu {template} với nội dung minh họa",
+  "emailCampaignsComposerTemplateWorkspaceDescription": "Bố cục email của Workspace: đầu trang màu xanh tím than, thẻ nội dung màu trắng và chân trang có địa chỉ.",
+  "emailCampaignsComposerTitleHint": "Chỉ quản trị viên mới thấy tên này.",
+  "emailCampaignsComposerTitleLabel": "Tên",
+  "emailCampaignsComposerTitlePlaceholder": "Giờ mở cửa mùa xuân",
+  "emailCampaignsComposerTitleRequired": "Vui lòng nhập tên chiến dịch.",
+  "emailCampaignsComposerUnsavedChanges": "Thay đổi chưa lưu",
+  "emailCampaignsComposerUntitledTitle": "Chiến dịch chưa đặt tên",
+  "emailCampaignsCtaCancel": "Hủy",
+  "emailCampaignsCtaDescription": "Nút nổi bật liên kết đến một trang hoặc địa chỉ email.",
+  "emailCampaignsCtaEdit": "Sửa nút",
+  "emailCampaignsCtaHrefLabel": "Liên kết",
+  "emailCampaignsCtaHrefMissing": "Thiếu liên kết",
+  "emailCampaignsCtaInsert": "Chèn nút",
+  "emailCampaignsCtaLabelLabel": "Chữ trên nút",
+  "emailCampaignsCtaLabelMissing": "Thiếu chữ trên nút",
+  "emailCampaignsCtaLabelPlaceholder": "Đặt chỗ ngồi",
+  "emailCampaignsCtaLabelRequired": "Vui lòng nhập chữ trên nút.",
+  "emailCampaignsCtaRemove": "Xóa nút",
+  "emailCampaignsCtaUpdate": "Lưu nút",
+  "emailCampaignsDraftDelete": "Xóa bản nháp",
+  "emailCampaignsDraftDeleteDescription": "Không thể hoàn tác thao tác này. Bản nháp, nội dung của bản nháp và mọi thay đổi chưa lưu sẽ bị xóa. Không thể xóa chiến dịch đã gửi.",
+  "emailCampaignsDraftDeleteFailed": "Không thể xóa chiến dịch. Vui lòng thử lại.",
+  "emailCampaignsDraftDeleteReadOnly": "Chiến dịch này không còn là bản nháp và không thể xóa.",
+  "emailCampaignsDraftDeleteTitle": "Xóa bản nháp này?",
+  "emailCampaignsDraftDeleting": "Đang xóa…",
+  "emailCampaignsDraftNotFound": "Chiến dịch này không còn tồn tại.",
+  "emailCampaignsEditorBold": "In đậm",
+  "emailCampaignsEditorBulletList": "Danh sách dấu đầu dòng",
+  "emailCampaignsEditorDivider": "Đường phân cách",
+  "emailCampaignsEditorHeading1": "Đầu đề 1",
+  "emailCampaignsEditorHeading2": "Đầu đề 2",
+  "emailCampaignsEditorHeading3": "Đầu đề 3",
+  "emailCampaignsEditorItalic": "In nghiêng",
+  "emailCampaignsEditorNumberedList": "Danh sách đánh số",
+  "emailCampaignsEditorParagraph": "Đoạn văn",
+  "emailCampaignsEditorPlaceholder": "Vui lòng soạn email. Đầu đề, liên kết, hình ảnh và nút có thể thêm từ thanh công cụ.",
+  "emailCampaignsEditorRedo": "Làm lại",
+  "emailCampaignsEditorTextStyle": "Kiểu chữ",
+  "emailCampaignsEditorToolbar": "Định dạng",
+  "emailCampaignsEditorUndo": "Hoàn tác",
+  "emailCampaignsEmailPreviewFrameTitle": "Xem trước email, {language}",
+  "emailCampaignsEmailPreviewHeading": "Xem trước",
+  "emailCampaignsEmailPreviewLabel": "Xem trước email",
+  "emailCampaignsEmailPreviewLanguage": "Ngôn ngữ xem trước",
+  "emailCampaignsEmailPreviewMissingContentCzech": "Vui lòng thêm nội dung tiếng Séc để xem email.",
+  "emailCampaignsEmailPreviewMissingContentEnglish": "Vui lòng thêm nội dung tiếng Anh để xem email.",
+  "emailCampaignsEmailPreviewMissingContentGerman": "Vui lòng thêm nội dung tiếng Đức để xem email.",
+  "emailCampaignsEmailPreviewMissingContentHindi": "Vui lòng thêm nội dung tiếng Hindi để xem email.",
+  "emailCampaignsEmailPreviewMissingContentSlovak": "Vui lòng thêm nội dung tiếng Slovakia để xem email.",
+  "emailCampaignsEmailPreviewMissingContentUkrainian": "Vui lòng thêm nội dung tiếng Ukraina để xem email.",
+  "emailCampaignsEmailPreviewMissingContentVietnamese": "Vui lòng thêm nội dung tiếng Việt để xem email.",
+  "emailCampaignsEmailPreviewNoPreheader": "Không có dòng xem trước",
+  "emailCampaignsEmailPreviewNoSubject": "Không có tiêu đề email",
+  "emailCampaignsEmailPreviewRenderFailed": "Không thể hiển thị bản xem trước.",
+  "emailCampaignsEmailPreviewRendering": "Đang hiển thị bản xem trước…",
+  "emailCampaignsEmailPreviewUpdating": "Đang cập nhật…",
+  "emailCampaignsImageAlignCenter": "Căn giữa hình ảnh",
+  "emailCampaignsImageAlignLeft": "Căn trái hình ảnh",
+  "emailCampaignsImageAlignRight": "Căn phải hình ảnh",
+  "emailCampaignsImageWidth": "Chiều rộng hình ảnh (px)",
+  "emailCampaignsImageWidthHint": "Vui lòng nhập số nguyên từ 1 đến {maxWidth}. Trên màn hình nhỏ hơn, hình ảnh sẽ được thu nhỏ.",
+  "emailCampaignsImageShrinking": "Đang thu nhỏ hình ảnh…",
+  "emailCampaignsImageUploadAnimationTooLarge": "Ảnh động chỉ được có tối đa {maxMegabytes} MB và {maxMegapixels} megapixel cho tất cả khung hình cộng lại. Vui lòng rút ngắn hoặc thu nhỏ ảnh động.",
+  "emailCampaignsImageUploadFailed": "Không thể tải hình ảnh lên. Vui lòng thử lại.",
+  "emailCampaignsImageUploadInsert": "Chèn hình ảnh",
+  "emailCampaignsImageUploadUnreadable": "Không thể đọc hình ảnh. Vui lòng thử tệp khác.",
+  "emailCampaignsImageUploading": "Đang tải hình ảnh lên…",
+  "emailCampaignsLinkAdd": "Thêm liên kết",
+  "emailCampaignsLinkHrefHint": "Vui lòng nhập địa chỉ bắt đầu bằng https:// hoặc địa chỉ email.",
+  "emailCampaignsLinkHrefLabel": "Địa chỉ liên kết",
+  "emailCampaignsLinkRemove": "Xóa liên kết",
+  "emailCampaignsLinkToggle": "Liên kết",
+  "emailCampaignsLinkUpdate": "Sửa liên kết",
+  "emailCampaignsListAudienceColumn": "Nhóm người nhận",
+  "emailCampaignsListCampaignColumn": "Chiến dịch",
+  "emailCampaignsListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "{formattedCount} chiến dịch"
+      }
+    }
+  ],
+  "emailCampaignsListCountLoading": "Đang tải số chiến dịch",
+  "emailCampaignsListEmpty": "Chưa có chiến dịch nào. Vui lòng tạo chiến dịch đầu tiên và soạn email đầu tiên.",
+  "emailCampaignsListLoading": "Đang tải chiến dịch",
+  "emailCampaignsListNewCampaign": "Chiến dịch mới",
+  "emailCampaignsListNoAudience": "Không có nhóm người nhận",
+  "emailCampaignsListPurposeColumn": "Mục đích",
+  "emailCampaignsListStatusColumn": "Trạng thái",
+  "emailCampaignsListTableControls": "Điều khiển bảng chiến dịch",
+  "emailCampaignsListTitle": "Chiến dịch email",
+  "emailCampaignsListUpdatedAt": "Cập nhật {updatedAt}",
+  "emailCampaignsListUpdatedColumn": "Cập nhật",
+  "emailCampaignsLocaleNameCzech": "Tiếng Séc",
+  "emailCampaignsLocaleNameEnglish": "Tiếng Anh",
+  "emailCampaignsRecipientPreviewAsOfNow": "Nhóm người nhận được xác định tại thời điểm này. Khi gửi, nhóm sẽ được xác định lại và danh sách kết quả sẽ được cố định.",
+  "emailCampaignsRecipientPreviewAudienceDescription": "{audience}: {filter}.",
+  "emailCampaignsRecipientPreviewBackToCampaign": "Quay lại chiến dịch",
+  "emailCampaignsRecipientPreviewCustomerColumn": "Khách hàng",
+  "emailCampaignsRecipientPreviewCustomerInline": "Khách hàng {customer}",
+  "emailCampaignsRecipientPreviewEmailColumn": "Email",
+  "emailCampaignsRecipientPreviewExcluded": "Bị loại",
+  "emailCampaignsRecipientPreviewExcludedCustomers": "Khách hàng bị loại",
+  "emailCampaignsRecipientPreviewExcludedEmpty": "Không có khách hàng phù hợp nào bị loại.",
+  "emailCampaignsRecipientPreviewExclusionDeletedCustomer": "Đã bị xóa trong Dotypos",
+  "emailCampaignsRecipientPreviewExclusionInvalidEmail": "Email không hợp lệ trong Dotypos",
+  "emailCampaignsRecipientPreviewExclusionMissingEmail": "Không có email trong Dotypos",
+  "emailCampaignsRecipientPreviewExclusionMissingFromDotypos": "Không tìm thấy trong Dotypos",
+  "emailCampaignsRecipientPreviewLanguageColumn": "Ngôn ngữ",
+  "emailCampaignsRecipientPreviewNoAudience": "Chiến dịch này chưa có nhóm người nhận. Vui lòng chọn nhóm trong trình soạn chiến dịch rồi xem danh sách người nhận.",
+  "emailCampaignsRecipientPreviewReasonColumn": "Lý do",
+  "emailCampaignsRecipientPreviewReceivesColumn": "Nhận email",
+  "emailCampaignsRecipientPreviewReceivesInline": "Nhận email: {customer}",
+  "emailCampaignsRecipientPreviewRecipients": "Người nhận",
+  "emailCampaignsRecipientPreviewRecipientsEmpty": "Nhóm người nhận hiện không bao gồm khách hàng nào.",
+  "emailCampaignsRecipientPreviewSharedEmails": "Email dùng chung",
+  "emailCampaignsRecipientPreviewSharedEmailsEmpty": "Không có hai khách hàng nào dùng chung địa chỉ email.",
+  "emailCampaignsRecipientPreviewSharedEmailsNote": "Khách hàng dùng chung địa chỉ email chỉ nhận một email. Email được gửi đến khách hàng đặt chỗ gần nhất.",
+  "emailCampaignsRecipientPreviewSharedEmailsTitle": "Địa chỉ email dùng chung",
+  "emailCampaignsRecipientPreviewSkippedColumn": "Bị bỏ qua",
+  "emailCampaignsRecipientPreviewSkippedInline": "Bị bỏ qua:",
+  "emailCampaignsRecipientPreviewSummary": "Tóm tắt",
+  "emailCampaignsRecipientPreviewTitle": "Xem trước người nhận",
+  "emailCampaignsRecipientPreviewTryAgain": "Thử lại",
+  "emailCampaignsRecipientPreviewUnavailable": "Không thể xác định người nhận vì Dotypos không khả dụng. Không có gì thay đổi.",
+  "emailCampaignsSendConfirmCancel": "Hủy",
+  "emailCampaignsSendConfirmCodeInvalid": "Vui lòng nhập mã gồm 8 ký tự từ email thử gần nhất.",
+  "emailCampaignsSendConfirmCodeLabel": "Mã xác nhận",
+  "emailCampaignsSendConfirmDescription": "Vui lòng nhập mã xác nhận từ email thử gần nhất. Mã có hiệu lực trong 24 giờ và chỉ áp dụng cho nội dung mà lần gửi thử đó hiển thị. Email thử mới hơn hoặc thay đổi nội dung sẽ thay thế mã này.",
+  "emailCampaignsSendConfirmFailed": "Không thể gửi chiến dịch. Vui lòng thử lại.",
+  "emailCampaignsSendConfirmIrreversible": "Việc gửi sẽ cố định danh sách người nhận và không thể hoàn tác.",
+  "emailCampaignsSendConfirmSubmit": "Gửi chiến dịch",
+  "emailCampaignsSendConfirmSubmitting": "Đang gửi…",
+  "emailCampaignsSendConfirmTitle": "Gửi chiến dịch này",
+  "emailCampaignsSendConfirmUnsavedChanges": "Vui lòng lưu thay đổi và gửi email thử mới trước. Chiến dịch chỉ gửi nội dung đã lưu.",
+  "emailCampaignsSendPreviewRecipients": "Xem trước người nhận",
+  "emailCampaignsSendingFailureAudienceMissing": "Vui lòng chọn nhóm người nhận cho chiến dịch này trước khi gửi.",
+  "emailCampaignsSendingFailureAudienceNotFound": "Nhóm người nhận của chiến dịch này không còn tồn tại. Vui lòng chọn nhóm người nhận khác; chưa có gì được gửi và mã vẫn còn hiệu lực.",
+  "emailCampaignsSendingFailureCampaignNotFound": "Chiến dịch này không còn tồn tại.",
+  "emailCampaignsSendingFailureCampaignReadOnly": "Chiến dịch này không còn là bản nháp. Để gửi một bản sao mới, vui lòng nhân bản chiến dịch.",
+  "emailCampaignsSendingFailureCodeContentChanged": "Chiến dịch đã thay đổi sau email thử đó. Vui lòng gửi email thử mới và dùng mã trong email đó.",
+  "emailCampaignsSendingFailureCodeExpired": "Mã này đã hết hạn. Vui lòng gửi email thử mới để nhận mã mới.",
+  "emailCampaignsSendingFailureCodeSuperseded": "Mã này đã bị thay thế bởi một email thử mới hơn. Vui lòng dùng mã từ email thử gần nhất.",
+  "emailCampaignsSendingFailureCodeTooManyAttempts": "Đã nhập sai mã quá nhiều lần nên mã này không còn dùng được. Vui lòng gửi email thử mới để nhận mã mới.",
+  "emailCampaignsSendingFailureCodeUnknown": "Mã này không khớp với email thử gần nhất. Vui lòng kiểm tra lỗi đánh máy và thử lại.",
+  "emailCampaignsSendingFailureContentMissing": "Vui lòng thêm tiêu đề email và nội dung bằng ít nhất một ngôn ngữ trước.",
+  "emailCampaignsSendingFailureDeliveryQueueFailed": "Không thể đưa việc chuyển phát vào hàng đợi nên chiến dịch được đánh dấu là Thất bại. Vui lòng gửi lại cho người nhận chưa nhận được sau ít phút.",
+  "emailCampaignsSendingFailureEmailDeliveryFailed": "Nhà cung cấp email không chấp nhận email thử. Vui lòng thử lại sau ít phút.",
+  "emailCampaignsSendingFailureFallbackContentMissing": "Nội dung tiếng Séc là phương án dự phòng cuối cùng cho khách hàng không có nội dung bằng ngôn ngữ của họ, vì vậy vui lòng thêm nội dung tiếng Séc hoặc giới hạn nhóm người nhận ở một trong các ngôn ngữ mà chiến dịch đã có. Chưa có gì được gửi.",
+  "emailCampaignsSendingFailureNoRecipients": "Nhóm người nhận hiện không có người nhận nào có thể gửi đến nên chưa có gì được gửi.",
+  "emailCampaignsSendingFailureNotRetryable": "Chỉ chiến dịch thất bại mới có thể gửi lại cho người nhận chưa nhận được.",
+  "emailCampaignsSendingFailureSigningKeyInvalid": "Không thể cấp mã xác nhận vì khóa ký được cấu hình sai. Vui lòng yêu cầu nhà phát triển kiểm tra BETTER_AUTH_SECRETS.",
+  "emailCampaignsSendingFailureUnauthorized": "Phiên đăng nhập trang quản trị không còn hiệu lực. Vui lòng tải lại trang và đăng nhập lại.",
+  "emailCampaignsSendingFailureUnexpected": "Đã xảy ra lỗi. Vui lòng thử lại sau ít phút.",
+  "emailCampaignsSentAudience": "Nhóm người nhận",
+  "emailCampaignsSentAudienceDeleted": "Nhóm người nhận đã xóa",
+  "emailCampaignsSentAudienceFilter": "Bộ lọc",
+  "emailCampaignsSentAudienceFilterCountedBack": "{filter}, tính ngược từ thời điểm gửi ({sentAt}).",
+  "emailCampaignsSentAudienceFilterSummary": "{filter}.",
+  "emailCampaignsSentAudienceTitle": "Nhóm người nhận tại thời điểm gửi",
+  "emailCampaignsSentCampaignTitle": "Chiến dịch",
+  "emailCampaignsSentCompletedAt": "Hoàn tất",
+  "emailCampaignsSentCompletedAtPending": "Chưa",
+  "emailCampaignsSentContentTitle": "Nội dung",
+  "emailCampaignsSentDeliveryRecipientCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "{formattedCount} người nhận"
+      }
+    }
+  ],
+  "emailCampaignsSentDeliveryTitle": "Chuyển phát",
+  "emailCampaignsSentDeliveryUnconfirmedNote": "Người nhận chưa xác nhận có thể đã nhận email: nhà cung cấp chưa bao giờ xác nhận lô gửi của họ. Thao tác gửi lại cho người nhận chưa nhận được sẽ bỏ qua họ, trừ khi chọn gửi lại cả cho họ.",
+  "emailCampaignsSentDuplicate": "Nhân bản",
+  "emailCampaignsSentDuplicateFailed": "Không thể nhân bản chiến dịch.",
+  "emailCampaignsSentDuplicating": "Đang nhân bản…",
+  "emailCampaignsSentEmailNoPreview": "Không có bản xem trước.",
+  "emailCampaignsSentEmailRenderFailed": "Không thể hiển thị email.",
+  "emailCampaignsSentEyebrow": "Chiến dịch email",
+  "emailCampaignsSentFailedNotice": "Việc chuyển phát thất bại với một số người nhận. Thao tác gửi lại cho người nhận chưa nhận được chỉ gửi email đến những người chưa nhận.",
+  "emailCampaignsSentIncludeUnconfirmed": "Gửi lại cả cho người nhận chưa xác nhận (họ có thể nhận hai lần)",
+  "emailCampaignsSentNoSendRecorded": "Không có lần gửi nào được ghi nhận cho chiến dịch này.",
+  "emailCampaignsSentPurpose": "Mục đích",
+  "emailCampaignsSentRecipientsCustomerColumn": "Khách hàng",
+  "emailCampaignsSentRecipientsEmpty": "Lần gửi này không cố định người nhận nào.",
+  "emailCampaignsSentRecipientsLanguageColumn": "Ngôn ngữ",
+  "emailCampaignsSentRecipientsLanguageSince": "{language} · từ {statusUpdatedAt}",
+  "emailCampaignsSentRecipientsSkipReasonColumn": "Lý do bỏ qua",
+  "emailCampaignsSentRecipientsSkipped": "Bị bỏ qua: {reason}",
+  "emailCampaignsSentRecipientsStatusColumn": "Trạng thái",
+  "emailCampaignsSentRecipientsStatusSinceColumn": "Trạng thái từ",
+  "emailCampaignsSentRecipientsTableLabel": "Người nhận chiến dịch",
+  "emailCampaignsSentRecipientsTitle": "Người nhận",
+  "emailCampaignsSentRetry": "Gửi lại cho người chưa nhận",
+  "emailCampaignsSentRetryFailed": "Không thể gửi lại email cho người nhận chưa nhận được.",
+  "emailCampaignsSentRetryStarted": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "Đang gửi lại email cho {formattedCount} người nhận chưa nhận được."
+      }
+    }
+  ],
+  "emailCampaignsSentRetrying": "Đang gửi lại…",
+  "emailCampaignsSentSendingNotice": "Đang chuyển phát. Trạng thái người nhận được cập nhật theo báo cáo của nhà cung cấp email.",
+  "emailCampaignsSentSentAt": "Đã gửi",
+  "emailCampaignsSentSentAtNotRecorded": "Chưa ghi nhận",
+  "emailCampaignsSentSkipReasonConsentWithdrawn": "Đã rút lại sự đồng ý nhận thông tin tiếp thị",
+  "emailCampaignsSentSkipReasonDeletedCustomer": "Khách hàng đã bị xóa",
+  "emailCampaignsSentSkipReasonInvalidEmail": "Địa chỉ email không hợp lệ",
+  "emailCampaignsSentSkipReasonMissingEmail": "Thiếu địa chỉ email",
+  "emailCampaignsSentSkipReasonMissingFromDotypos": "Không còn trong Dotypos",
+  "emailCampaignsSentSkipReasonOutsideTestDomain": "Ngoài tên miền email thử nghiệm",
+  "emailCampaignsSentStatus": "Trạng thái",
+  "emailCampaignsTestSendAdd": "Thêm",
+  "emailCampaignsTestSendAddRecipientLabel": "Thêm người nhận email thử",
+  "emailCampaignsTestSendAdminInboxAlways": "Hộp thư quản trị luôn nhận email thử.",
+  "emailCampaignsTestSendAdminInboxNote": "(hộp thư quản trị, luôn được bao gồm)",
+  "emailCampaignsTestSendCancel": "Hủy",
+  "emailCampaignsTestSendCodeExpires": "Mã xác nhận hết hạn vào {expiresAt}.",
+  "emailCampaignsTestSendContentMissing": "Vui lòng thêm tiêu đề email và nội dung bằng ít nhất một ngôn ngữ trước khi gửi thử.",
+  "emailCampaignsTestSendDescription": "Email thử chứa mã xác nhận cần nhập khi gửi chiến dịch. Email thử mới sẽ thay thế mã trước đó.",
+  "emailCampaignsTestSendDone": "Xong",
+  "emailCampaignsTestSendFailed": "Không thể gửi email thử. Vui lòng kiểm tra các địa chỉ và thử lại.",
+  "emailCampaignsTestSendPerLanguage": "Mỗi địa chỉ nhận một email [TEST] cho mỗi ngôn ngữ: {languages}.",
+  "emailCampaignsTestSendRecipientDuplicate": "Địa chỉ này đã có trong danh sách.",
+  "emailCampaignsTestSendRecipientInvalid": "Vui lòng nhập địa chỉ email hợp lệ.",
+  "emailCampaignsTestSendRecipientRequired": "Vui lòng nhập địa chỉ email.",
+  "emailCampaignsTestSendRecipients": "Người nhận",
+  "emailCampaignsTestSendRecipientsLabel": "Người nhận email thử",
+  "emailCampaignsTestSendRemoveRecipient": "Xóa {email}",
+  "emailCampaignsTestSendSent": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=other": "Đã gửi {formattedCount} email thử ({languages})."
+      }
+    }
+  ],
+  "emailCampaignsTestSendSubmit": "Gửi thử",
+  "emailCampaignsTestSendSubmitting": "Đang gửi…",
+  "emailCampaignsTestSendTitle": "Gửi email thử",
+  "emailCampaignsTestSendUnsavedChanges": "Vui lòng lưu thay đổi trước. Email thử dùng chiến dịch đã lưu, nên mã trong email thử sẽ không xác nhận các chỉnh sửa chưa lưu.",
+  "emailCampaignsActionTimedOut": "Máy chủ không phản hồi kịp thời. Vui lòng thử lại.",
+  "emailCampaignsDeliveryMismatch": "Thao tác này chỉ dùng được cho chiến dịch gửi một lần, còn chiến dịch này được gửi tự động.",
+  "emailCampaignsActionFailedUnexpectedly": "Đã xảy ra lỗi trên máy chủ. Vui lòng thử lại.",
+  "emailCampaignsAudienceInUseByDrafts": "Nhóm người nhận này đang được chiến dịch nháp sử dụng nên chỉ có thể lưu trữ. Vui lòng chuyển các bản nháp đó sang nhóm người nhận khác trước khi xóa nhóm này.",
+  "emailCampaignsComposerEnglishFallbackMissing": "Nếu không có nội dung tiếng Anh, người nhận có ngôn ngữ được thay thế bằng tiếng Anh sẽ nhận phiên bản tiếng Séc.",
+  "emailCampaignsSendingFailureTestRecipientsInvalid": "Một trong các địa chỉ không phải là địa chỉ email hợp lệ. Vui lòng kiểm tra và thử lại.",
+  "emailCampaignsSendingFailureRecipientsOutsideTestDomain": "Ngoài môi trường chính thức, email chiến dịch chỉ có thể gửi đến địa chỉ @{domain}, và một số người nhận không thuộc tên miền này. Chưa có gì được gửi.",
+  "emailCampaignsSendingFailureRecipientsUnavailable": "Không thể xác định người nhận vì Dotypos hoặc cơ sở dữ liệu không khả dụng. Chưa có gì được gửi và mã vẫn còn hiệu lực; vui lòng thử lại sau ít phút.",
+  "emailCampaignsSendingFailureEmailSetupMissing": "Email chiến dịch chưa được cấu hình cho bản triển khai này. Vui lòng yêu cầu nhà phát triển kiểm tra các biến môi trường cho email chiến dịch."
+}

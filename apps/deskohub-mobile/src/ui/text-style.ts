@@ -8,8 +8,10 @@ const setsBrandFace = (locale: AppLocale) =>
 
 /**
  * The family text in `locale` is set in: the brand face, which has only
- * Latin glyphs, for a Latin-script locale; the system font (no family)
- * otherwise.
+ * Latin glyphs and lacks Vietnamese's stacked diacritics, for a Latin-script
+ * locale; the system font (no family) otherwise. The theme's type styles set
+ * no line height, so the system font's own metrics leave room for
+ * Devanagari's marks above and below.
  */
 export const textFontFamily = (locale: AppLocale): string | undefined =>
   setsBrandFace(locale) ? brandFontFamily : undefined;

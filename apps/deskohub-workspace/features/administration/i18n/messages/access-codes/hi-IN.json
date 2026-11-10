@@ -1,0 +1,74 @@
+{
+  "accessCodesPageTitle": "प्रवेश कोड बनाएँ",
+  "accessCodesFormLoading": "प्रवेश कोड का फ़ॉर्म लोड हो रहा है",
+  "accessCodesFormName": "प्रवेश कोड बनाएँ",
+  "accessCodesNameLabel": "नाम",
+  "accessCodesNameRequired": "इस प्रवेश कोड का नाम दर्ज करें।",
+  "accessCodesNameTooLong": [
+    {
+      "declarations": [
+        "input maximum",
+        "local maximumPlural = maximum: plural",
+        "local formattedMaximum = maximum: number"
+      ],
+      "selectors": ["maximumPlural"],
+      "match": {
+        "maximumPlural=one": "अधिकतम {formattedMaximum} अक्षर इस्तेमाल करें।",
+        "maximumPlural=other": "अधिकतम {formattedMaximum} अक्षर इस्तेमाल करें।"
+      }
+    }
+  ],
+  "accessCodesWindowLegend": "पहुँच का समय-अंतराल ({timeZone})",
+  "accessCodesStartsLabel": "शुरुआत",
+  "accessCodesStartsTimeLabel": "शुरुआत का समय",
+  "accessCodesStartRequired": "शुरुआत का समय चुनें।",
+  "accessCodesStartInvalid": "पूरे घंटे पर शुरुआत का मान्य समय चुनें।",
+  "accessCodesEndsLabel": "समाप्ति",
+  "accessCodesEndsTimeLabel": "समाप्ति का समय",
+  "accessCodesEndRequired": "समाप्ति का समय चुनें।",
+  "accessCodesEndInvalid": "पूरे घंटे पर समाप्ति का मान्य समय चुनें।",
+  "accessCodesWindowDurationInvalid": [
+    {
+      "declarations": [
+        "input minimum",
+        "input maximum",
+        "local maximumPlural = maximum: plural",
+        "local formattedMinimum = minimum: number",
+        "local formattedMaximum = maximum: number"
+      ],
+      "selectors": ["maximumPlural"],
+      "match": {
+        "maximumPlural=one": "समाप्ति शुरुआत के {formattedMinimum} से {formattedMaximum} घंटे बाद होनी चाहिए।",
+        "maximumPlural=other": "समाप्ति शुरुआत के {formattedMinimum} से {formattedMaximum} घंटे बाद होनी चाहिए।"
+      }
+    }
+  ],
+  "accessCodesDurationSummary": "अवधि: {duration}",
+  "accessCodesSubmit": "प्रवेश कोड बनाएँ",
+  "accessCodesSubmitting": "बनाया जा रहा है…",
+  "accessCodesPinShownOnceWarning": "यह PIN केवल एक बार दिखाया जाता है और बाद में इसे दोबारा नहीं पाया जा सकता। पेज छोड़ने से पहले इसे किसी सुरक्षित जगह सहेज लें।",
+  "accessCodesCopyCode": "कोड कॉपी करें",
+  "accessCodesCopied": "कॉपी हो गया",
+  "accessCodesResultName": "प्रवेश कोड",
+  "accessCodesResultValidFrom": "मान्यता की शुरुआत",
+  "accessCodesResultValidUntil": "मान्यता की समाप्ति",
+  "accessCodesResultDuration": "अवधि",
+  "accessCodesCreateAnother": "एक और प्रवेश कोड बनाएँ",
+  "accessCodesAlreadyCreated": "यह प्रवेश कोड पहले ही बनाया जा चुका है। इसका PIN बनाते समय केवल एक बार दिखाया गया था और इसे फिर से नहीं दिखाया जा सकता।",
+  "accessCodesAmbiguousNotice": "प्रदाता ने पुष्टि नहीं की कि यह प्रवेश कोड मौजूद है या नहीं। यह प्रयास बंद कर दिया गया है और अपने-आप दोहराया नहीं जाएगा।",
+  "accessCodesCleanupRequiredNotice": "इस समय-अंतराल के लिए पिछले प्रयास का नतीजा अब भी स्पष्ट नहीं है। अगला कोड बनाने से पहले, उस प्रयास से बना हो सकने वाला क्रेडेंशियल सीधे लॉक पर सुलझाना ज़रूरी है।",
+  "accessCodesCleanupInstructions": "इस समय-अंतराल के लिए अगला कोड बनाने से पहले Igloohome ऐप में Bluetooth के ज़रिए लॉक जाँचें, और अगर उस पर “{name}” मौजूद है, तो उसे हटा दें।",
+  "accessCodesCleanupFormName": "लॉक की जाँच की पुष्टि",
+  "accessCodesCleanupConfirmationLabel": "मेरी पुष्टि है कि बताया गया प्रवेश कोड लॉक से हटा दिया गया है या लॉक पर मौजूद नहीं है।",
+  "accessCodesCleanupConfirmationRequired": "आगे बढ़ने से पहले लॉक की जाँच की पुष्टि करें।",
+  "accessCodesStartOver": "फिर से शुरू करें",
+  "accessCodesFailureRejected": "प्रदाता ने यह प्रवेश कोड अस्वीकार कर दिया। विवरण बदलें और फिर से कोशिश करें।",
+  "accessCodesFailureInProgress": "यह प्रवेश कोड पहले से बनाया जा रहा है। थोड़ा इंतज़ार करें और फिर से कोशिश करें।",
+  "accessCodesFailureUnavailable": "प्रवेश कोड बनाना अस्थायी रूप से उपलब्ध नहीं है। कुछ मिनट बाद फिर से कोशिश करें।",
+  "accessCodesFailureReconciled": "लॉक की जाँच की आपकी पुष्टि पिछले अस्पष्ट प्रयास के साथ दर्ज कर ली गई है, जिससे कोई प्रवेश कोड नहीं बना था। फ़ॉर्म फिर से भेजें, तब प्रवेश कोड बन जाएगा।",
+  "accessCodesCreateFailed": "प्रवेश कोड बनाया नहीं जा सका। फिर से कोशिश करें।",
+  "accessCodesServerUnreachable": "सर्वर से संपर्क नहीं हो सका। यह प्रयास सुरक्षित रखा गया है, इसलिए फिर से कोशिश करना सुरक्षित है।",
+  "accessCodesActionTimedOut": "सर्वर ने समय पर जवाब नहीं दिया। फिर से कोशिश करें।",
+  "accessCodesActionFailedUnexpectedly": "सर्वर पर कुछ गड़बड़ हो गई। फिर से कोशिश करें।",
+  "accessCodesAuthenticationRequired": "व्यवस्थापक के रूप में साइन-इन ज़रूरी है।"
+}

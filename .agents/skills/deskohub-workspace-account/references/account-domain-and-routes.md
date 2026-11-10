@@ -2,13 +2,50 @@
 
 ## Customer resolution
 
-- `CustomerAccountResolver` is the replaceable identity-to-customer capability
-  for authenticated route composition and provider-independent tests. Both
-  `resolve` and `resolveLink` return only `CustomerAccountId` and
-  `DotyposCustomerId`; `resolveLink` adds `autoLinked`, true only when this
-  resolution claimed the link to an existing exact-email customer, which the
-  account page uses to record a remembered referral. Keep other callers on
-  `resolve`.
+- `CurrentCustomerAccount` (`features/account/backend/current-customer-account.ts`)
+  reports the current session's standing as facts, and each caller keeps its
+  own policy as a small match over it. Read standing through it, never by
+  ordering the session, review marker, and resolver reads yourself. Kinds:
+  `signed-out`, `unverified`, `deletion-pending`, `review`, `unlinked` (peek
+  only), `profile-missing` and `support-required` (resolve only, with
+  `ambiguous`, `unusable`, or `claimed`), `linked` (with `autoLinked`), and
+  `unavailable` (the session is known but a link, lock, or Dotypos step
+  failed, or the locked recheck refused it; `failure` says which, and a
+  resolve step that dies reads as `account-link.lock`). Signed-in kinds carry
+  the session and `reviewMarker` (`absent` or
+  `unreadable`; `deletion-pending` may also carry `present`). Only a failed
+  session read fails the Effect (`not-configured`, `unavailable`).
+  - Order: session, review marker (an unreadable marker is logged once as
+    `account.review.unavailable` and resolution still runs), deletion marker,
+    review account, then the link.
+  - `peek` reads the stored link only: no claim, reactivation, or Dotypos
+    call.
+  - `resolve` runs the held steps in a `session` account section, so it
+    reuses an enclosing hold of the same account. A recheck under the lock
+    that finds the session gone reports `signed-out`; one that finds the
+    email unverified or a deletion marker reports `unavailable` with that
+    refusal (`unverified` and `deletion-pending` come only from the
+    pre-lock read). It writes only the reactivation and the link claim,
+    never a signup referral.
+  - `requireActive` is the verified session of an account not awaiting
+    deletion, or `unauthenticated`, `unverified-email`, or `link-required`
+    with `deletion-requested`.
+  - Callers map outcomes differently on purpose. The account state
+    (`loadAccountState`) shows `unverified` and a failed session read as
+    `unavailable`, an `unavailable` whose failure is the recheck's
+    `link-required` or `unverified-email` as `support-required` without
+    history, and any other `unavailable` as `authenticated-unavailable`.
+    Checkout treats `not-configured` as signed out. Don't merge those
+    mappings into the module.
+  - The account state reads it through `AccountStateCapabilities`. When its
+    link capabilities can't be built, `accountStateCapabilities` substitutes
+    `CurrentCustomerAccount.LinksUnavailable`, so the session's sections
+    still load.
+  - The table test (`current-customer-account.postgres.test.ts`) covers every
+    kind over test Postgres and a Dotypos fake. Page tests fake the standing.
+- `CustomerAccountResolver.resolve` is the replaceable identity-to-customer
+  capability for the callers that haven't moved to `CurrentCustomerAccount`
+  yet. It returns only `CustomerAccountId` and `DotyposCustomerId`.
 - Require the authoritative current session and a verified email, then resolve
   in this order:
   1. An existing durable link wins.
@@ -90,7 +127,7 @@ glossary defines the customer account, reservation author, and tombstone.
 ## Review accounts
 
 - `customer_accounts.review` marks an app-directory review account; its check forbids a Dotypos customer. `resolveHeldCustomerAccountLink` refuses one (`account.review`) before any Dotypos lookup, so neither resolution nor profile completion links or creates a profile.
-- The account page loads the `review-account` state before resolution: `ReviewAccountCard` replaces profile completion, and the Reservations section shows its sandbox history. The reservation form's `review-account` checkout state books on the account card with `getReviewAccountContact` (synthetic, never stored) and offers no contact entry or consent.
+- `CurrentCustomerAccount` reports a review account before resolution, and the account page loads the `review-account` state from it: `ReviewAccountCard` replaces profile completion, and the Reservations section shows its sandbox history. The reservation form's `review-account` checkout state books on the account card with `getReviewAccountContact` (synthetic, never stored) and offers no contact entry or consent.
 - `CustomerAccountContactService.current` returns that synthetic contact, which is why it returns booking-contact fields without a Dotypos customer.
 
 ## Error contract

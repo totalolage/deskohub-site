@@ -9,7 +9,7 @@ Paths starting with `features/`, `app/`, `db/`, `shared/` or `e2e/`, and the fil
 - `tag`: the BCP 47 tag that identifies the locale in URLs, cookies, and storage.
 - `language` and `region`: the subtags. A browser or device language matches on `language`.
 - `nativeName`: the language picker label.
-- `direction` and `script` (`latin`, `cyrillic`, `devanagari`). `script` drives the font mapping for scripts the default font lacks.
+- `direction` and `script` (`latin`, `latin-vietnamese`, `cyrillic`, `devanagari`). `script` drives the fonts for scripts the brand font can't set (`features/i18n/locale-fonts.ts`; Hindi's line metrics are in `app/globals.css`); Vietnamese is Latin but has its own value because the brand font lacks its stacked diacritics.
 - `fallbackChain`: the locales whose authored content stands in, in order, when content in this locale is missing.
 - `nexiLanguage`: the language of the Nexi hosted payment page.
 - `phoneRegion`: the region used to read a phone number that has no country calling code.
@@ -22,7 +22,7 @@ Workspace code mostly uses the `Locale` type and `locales` list that Paraglide g
 
 - Routing: `features/i18n/routing.ts` maps browser languages through `localeByLanguage`. `features/i18n/locale-resolution.ts` resolves a request's locale in this order: signed-in saved preference, URL, cookie, `Accept-Language`, then the registry defaults. Pages live under `app/[locale]/`.
 - API contracts: `CustomerLocale` (`packages/workspace-customer-api/src/customer-locale.ts`) and `AdministrationCampaignLocale` (`packages/workspace-admin-api/src/campaign-locale-and-purpose.ts`) are literal unions of `supportedLocales`. A new locale therefore changes the golden fixtures (`workspace-customer-api.openapi.golden.json`, `administration-wire-contract.golden.json`). Their tests say how to regenerate the fixtures and what a change means for shipped mobile builds and `dhw` binaries.
-- Mobile app: `apps/deskohub-mobile` serves every registry locale. Its `AppLocale` is the Paraglide type from its own Inlang project, held to the registry by drift guards (below). `src/i18n/app-locale.ts` resolves the device's languages through `matchSupportedLocale`, falling back to `unservedLanguageLocale`; the language setting labels locales with `nativeName`, and text in a non-Latin `script` drops the Latin-only brand face for the system font (`src/ui/text-style.ts`).
+- Mobile app: `apps/deskohub-mobile` serves every registry locale. Its `AppLocale` is the Paraglide type from its own Inlang project, held to the registry by drift guards (below). `src/i18n/app-locale.ts` resolves the device's languages through `matchSupportedLocale`, falling back to `unservedLanguageLocale`; the language setting labels locales with `nativeName`, and text in any `script` other than `latin` drops the Latin-only brand face for the system font (`src/ui/text-style.ts`).
 - Payments: the Nexi service (`packages/nexi/src/backend/service.ts`) opens the hosted payment page in the locale's `nexiLanguage`.
 - Other consumers include the Cloudinary localized context, accounting documents, AI booking tools, discount labels, and the campaign and email editors. List them all with `rg -l 'locale-registry' apps packages`.
 

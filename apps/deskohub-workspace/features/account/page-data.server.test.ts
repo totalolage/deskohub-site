@@ -1,3 +1,4 @@
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
@@ -10,9 +11,13 @@ import {
 } from "@/features/account/backend/account-release-gates";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
-import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import {
+  type CustomerAccountSession,
+  CustomerAuthentication,
+} from "@/features/account/backend/customer-authentication.service";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import {
@@ -22,6 +27,7 @@ import {
 import {
   CustomerAccountAccessError,
   type CustomerAccountId,
+  customerAccountUnavailable,
 } from "@/features/account/customer-account";
 import type { CustomerAgentConnection } from "@/features/account/customer-agent-connections";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
@@ -34,6 +40,7 @@ import { ReferralServiceMock } from "@/features/referrals/referral.service.mock"
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
+import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import { findNextControlFlow } from "@/shared/backend/workspace-effect";
@@ -45,30 +52,88 @@ import { loadAccountPageState } from "./page-data.server";
 
 const customerEmail = testEmailAddress("ada");
 
-let currentUserEffect: Effect.Effect<
-  {
-    readonly accountId: CustomerAccountId;
-    readonly email: string;
-    readonly deletionRequested: boolean;
-  } | null,
-  unknown
->;
-
 const accountId = "auth-account-1" as CustomerAccountId;
 const activeSession = {
   accountId,
-  email: customerEmail,
+  email: reservationCustomerEmailSchema.make(customerEmail),
   deletionRequested: false,
-};
+  ...testSessionProfile,
+} satisfies CustomerAccountSession;
 
-let resolveEffect: Effect.Effect<
-  {
-    readonly account: {
-      readonly accountId: CustomerAccountId;
-      readonly dotyposCustomerId: string;
+type ResolvedStanding = Effect.Success<
+  CurrentCustomerAccount["Service"]["resolve"]
+>;
+
+/** The standing the account's resolution reports, as tests name it. */
+type StandingSpec =
+  | {
+      readonly kind: "linked";
+      readonly customerId: string;
+      readonly autoLinked?: boolean;
+    }
+  | {
+      readonly kind: "support-required";
+      readonly reason: "ambiguous" | "unusable" | "claimed";
+    }
+  | {
+      readonly kind:
+        | "signed-out"
+        | "unverified"
+        | "deletion-pending"
+        | "review"
+        | "profile-missing";
+    }
+  | {
+      readonly kind: "unavailable";
+      /** What failed; the lock by default. */
+      readonly failure?: CustomerAccountAccessError;
     };
-    readonly autoLinked: boolean;
-  },
+
+/** The review marker every signed-in standing reports. */
+let reviewMarker: "absent" | "unreadable";
+
+/**
+ * The fake resolution's standing for the active session, built when the page
+ * reads it, so a test may set `reviewMarker` afterwards.
+ */
+const standing = (
+  spec: StandingSpec
+): Effect.Effect<ResolvedStanding, CustomerAccountAccessError> =>
+  Effect.suspend(() => {
+    const facts = { session: activeSession, reviewMarker };
+    switch (spec.kind) {
+      case "signed-out":
+      case "unverified":
+        return Effect.succeed({ kind: spec.kind });
+      case "review":
+        return Effect.succeed({ kind: "review", session: activeSession });
+      case "deletion-pending":
+      case "profile-missing":
+        return Effect.succeed({ kind: spec.kind, ...facts });
+      case "support-required":
+        return Effect.succeed({ ...spec, ...facts });
+      case "unavailable":
+        return Effect.succeed({
+          kind: "unavailable",
+          failure:
+            spec.failure ?? customerAccountUnavailable("account-link.lock"),
+          ...facts,
+        });
+      case "linked":
+        return Effect.succeed({
+          kind: "linked",
+          account: {
+            accountId,
+            dotyposCustomerId: spec.customerId as DotyposCustomerId,
+          },
+          autoLinked: spec.autoLinked ?? false,
+          ...facts,
+        });
+    }
+  });
+
+let currentStanding: Effect.Effect<
+  ResolvedStanding,
   CustomerAccountAccessError
 >;
 let resolverCalls = 0;
@@ -77,31 +142,6 @@ let profileLoadCalls = 0;
 let historyLoadCalls = 0;
 let historyLoadAccounts: ReservationHistoryAccount[] = [];
 let avatarLookupCalls = 0;
-
-const resolverOutcome = (
-  outcome:
-    | {
-        readonly kind: "success";
-        readonly customerId: string;
-        readonly autoLinked?: boolean;
-      }
-    | {
-        readonly kind: "failure";
-        readonly reason: string;
-        readonly linkReason?: string;
-      }
-): typeof resolveEffect =>
-  outcome.kind === "success"
-    ? Effect.succeed({
-        account: { accountId, dotyposCustomerId: outcome.customerId },
-        autoLinked: outcome.autoLinked ?? false,
-      })
-    : Effect.fail(
-        new CustomerAccountAccessError({
-          reason: outcome.reason,
-          linkReason: outcome.linkReason,
-        } as never)
-      );
 
 const linkedProfile = Effect.succeed({
   firstName: "Ada",
@@ -126,8 +166,6 @@ let historyEffect: Effect.Effect<
   | { readonly kind: "unavailable"; readonly reason: string },
   unknown
 >;
-
-let reviewAccountEffect: Effect.Effect<boolean, unknown>;
 
 let avatarLookupEffect: Effect.Effect<
   { readonly url: string; readonly version?: number } | null,
@@ -227,15 +265,15 @@ const flagEvaluation = WorkspaceFeatureFlagServiceMock({
 const pageLayer = () =>
   accountPageCapabilities({
     authentication: Layer.mock(CustomerAuthentication, {
-      currentUser: Effect.suspend(() => currentUserEffect) as never,
+      currentUser: Effect.succeed(activeSession),
     }),
-    resolver: Layer.mock(CustomerAccountResolver, {
-      resolveLink: Effect.suspend(() => {
+    currentAccount: Layer.mock(CurrentCustomerAccount, {
+      resolve: Effect.suspend(() => {
         resolverCalls += 1;
-        return resolveEffect.pipe(
+        return currentStanding.pipe(
           Effect.ensuring(Effect.sync(() => events.push("resolved")))
         );
-      }) as never,
+      }),
     }),
     profile: Layer.mock(CustomerProfileService, {
       load: () => {
@@ -296,7 +334,10 @@ const pageLayer = () =>
       }) as never,
     }),
     reviewAccounts: ReviewAccountsMock({
-      isReviewAccount: () => reviewAccountEffect as never,
+      isReviewAccount: () =>
+        reviewMarker === "unreadable"
+          ? Effect.fail(new Error("database unavailable") as never)
+          : Effect.succeed(false),
     }),
     signupIntents: Layer.mock(ReferralSignupIntentRepository, {
       find: () =>
@@ -331,8 +372,8 @@ const pageLayer = () =>
 
 describe("loadAccountPageState", () => {
   beforeEach(() => {
-    currentUserEffect = Effect.succeed(activeSession);
-    resolveEffect = resolverOutcome({ kind: "success", customerId: "60111" });
+    reviewMarker = "absent";
+    currentStanding = standing({ kind: "linked", customerId: "60111" });
     resolverCalls = 0;
     profileLoadCalls = 0;
     profileLoadEffect = linkedProfile;
@@ -341,7 +382,6 @@ describe("loadAccountPageState", () => {
     avatarLookupCalls = 0;
     layerOverrides = {};
     avatarLookupEffect = Effect.succeed(null);
-    reviewAccountEffect = Effect.succeed(false);
     referralSummaryEffect = Effect.succeed(referralSummary);
     referralSummaryCalls = [];
     availableReferralCodeEffect = Effect.succeed("RFL12345");
@@ -377,22 +417,8 @@ describe("loadAccountPageState", () => {
     );
   };
 
-  test("returns unauthenticated without customer data or downstream work when no session exists", async () => {
-    currentUserEffect = Effect.succeed(null);
-
-    await expect(loadPageState()).resolves.toEqual({
-      kind: "unauthenticated",
-    });
-    expect(resolverCalls).toBe(0);
-    expect(profileLoadCalls).toBe(0);
-    expect(historyLoadCalls).toBe(0);
-  });
-
-  test("returns unauthenticated without customer data when resolution reports no session", async () => {
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "unauthenticated",
-    });
+  test("returns unauthenticated without customer data or downstream work when signed out", async () => {
+    currentStanding = standing({ kind: "signed-out" });
 
     await expect(loadPageState()).resolves.toEqual({
       kind: "unauthenticated",
@@ -400,14 +426,29 @@ describe("loadAccountPageState", () => {
     expect(resolverCalls).toBe(1);
     expect(profileLoadCalls).toBe(0);
     expect(historyLoadCalls).toBe(0);
+    expect(passkeyListCalls).toBe(0);
+    expect(assistantListCalls).toBe(0);
+  });
+
+  test("is unavailable, with no section read, when the session can't be read or its email is unverified", async () => {
+    passkeysFlag.mockResolvedValue(true);
+    for (const outcome of [
+      Effect.fail(customerAccountUnavailable("authentication.session")),
+      Effect.fail(new CustomerAccountAccessError({ reason: "not-configured" })),
+      standing({ kind: "unverified" }),
+    ]) {
+      currentStanding = outcome;
+
+      await expect(loadPageState()).resolves.toEqual({ kind: "unavailable" });
+    }
+    expect(profileLoadCalls).toBe(0);
+    expect(historyLoadCalls).toBe(0);
+    expect(passkeyListCalls).toBe(0);
+    expect(assistantListCalls).toBe(0);
   });
 
   test("prefills a currently usable remembered referral code on the completion state", async () => {
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "link-required",
-      linkReason: "not-found",
-    });
+    currentStanding = standing({ kind: "profile-missing" });
 
     await expect(loadPageState("RFL12345")).resolves.toEqual({
       kind: "completion-required",
@@ -421,11 +462,7 @@ describe("loadAccountPageState", () => {
   });
 
   test("shows the reservations an account authored before completing its profile", async () => {
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "link-required",
-      linkReason: "not-found",
-    });
+    currentStanding = standing({ kind: "profile-missing" });
     const authored = {
       id: "workspace-reservation-1",
       party: { kind: "booked-for", customerName: "Karla Ukázková" },
@@ -450,11 +487,7 @@ describe("loadAccountPageState", () => {
   });
 
   test("keeps an unreadable authored history as a notice on the completion state", async () => {
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "link-required",
-      linkReason: "not-found",
-    });
+    currentStanding = standing({ kind: "profile-missing" });
     historyEffect = Effect.fail(new Error("dotypos down"));
 
     await expect(loadPageState()).resolves.toMatchObject({
@@ -464,11 +497,7 @@ describe("loadAccountPageState", () => {
   });
 
   test("silently leaves the completion referral empty when the remembered code is not usable", async () => {
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "link-required",
-      linkReason: "not-found",
-    });
+    currentStanding = standing({ kind: "profile-missing" });
 
     availableReferralCodeEffect = Effect.succeed(undefined);
     await expect(loadPageState("RFLGONE1")).resolves.toEqual({
@@ -499,8 +528,8 @@ describe("loadAccountPageState", () => {
   });
 
   test("records the remembered invitation after this sign-in linked an existing customer", async () => {
-    resolveEffect = resolverOutcome({
-      kind: "success",
+    currentStanding = standing({
+      kind: "linked",
       customerId: "60111",
       autoLinked: true,
     });
@@ -614,8 +643,8 @@ describe("loadAccountPageState", () => {
   });
 
   test("records nothing when an auto-linked sign-in has no remembered code", async () => {
-    resolveEffect = resolverOutcome({
-      kind: "success",
+    currentStanding = standing({
+      kind: "linked",
       customerId: "60111",
       autoLinked: true,
     });
@@ -625,8 +654,8 @@ describe("loadAccountPageState", () => {
   });
 
   test("keeps the linked page and logs only a fixed reason when the invitation is not recorded", async () => {
-    resolveEffect = resolverOutcome({
-      kind: "success",
+    currentStanding = standing({
+      kind: "linked",
       customerId: "60111",
       autoLinked: true,
     });
@@ -677,8 +706,8 @@ describe("loadAccountPageState", () => {
   });
 
   test("forgets the remembered code once the linked customer's referral is settled", async () => {
-    resolveEffect = resolverOutcome({
-      kind: "success",
+    currentStanding = standing({
+      kind: "linked",
       customerId: "60111",
       autoLinked: true,
     });
@@ -728,11 +757,10 @@ describe("loadAccountPageState", () => {
     expect(settledReferralCalls).toEqual([]);
   });
 
-  test("renders the support state without a Reservations section for ambiguous, unusable, claimed, and unverified outcomes that authored nothing", async () => {
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "link-required",
-      linkReason: "ambiguous",
+  test("renders the support state without a Reservations section for ambiguous, unusable, and claimed outcomes that authored nothing", async () => {
+    currentStanding = standing({
+      kind: "support-required",
+      reason: "ambiguous",
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
@@ -741,10 +769,9 @@ describe("loadAccountPageState", () => {
       email: customerEmail,
     });
 
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "link-required",
-      linkReason: "unusable",
+    currentStanding = standing({
+      kind: "support-required",
+      reason: "unusable",
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
@@ -753,22 +780,7 @@ describe("loadAccountPageState", () => {
       email: customerEmail,
     });
 
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "link-required",
-      linkReason: "claimed",
-    });
-    await expect(loadPageState()).resolves.toEqual({
-      kind: "support-required",
-      deletion: "offered",
-      assistants: [],
-      email: customerEmail,
-    });
-
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "unverified-email",
-    });
+    currentStanding = standing({ kind: "support-required", reason: "claimed" });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
       deletion: "offered",
@@ -787,12 +799,8 @@ describe("loadAccountPageState", () => {
       groups: { current: [authored], past: [], unavailable: [] },
     });
 
-    for (const linkReason of ["ambiguous", "unusable", "claimed"]) {
-      resolveEffect = resolverOutcome({
-        kind: "failure",
-        reason: "link-required",
-        linkReason,
-      });
+    for (const reason of ["ambiguous", "unusable", "claimed"] as const) {
+      currentStanding = standing({ kind: "support-required", reason });
       await expect(loadPageState()).resolves.toEqual({
         kind: "support-required",
         deletion: "offered",
@@ -812,11 +820,7 @@ describe("loadAccountPageState", () => {
   });
 
   test("keeps an unreadable authored history as a notice on the support state", async () => {
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "link-required",
-      linkReason: "claimed",
-    });
+    currentStanding = standing({ kind: "support-required", reason: "claimed" });
     historyEffect = Effect.fail(new Error("dotypos down"));
 
     await expect(loadPageState()).resolves.toEqual({
@@ -828,7 +832,7 @@ describe("loadAccountPageState", () => {
     });
   });
 
-  test("reads no reservations for an unverified or deletion-requested support state", async () => {
+  test("reads no reservations when the locked recheck finds the email unverified or a pending deletion", async () => {
     historyEffect = Effect.succeed({
       kind: "available",
       groups: {
@@ -838,34 +842,43 @@ describe("loadAccountPageState", () => {
       },
     });
 
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "unverified-email",
-    });
-    await expect(loadPageState()).resolves.toEqual({
-      kind: "support-required",
-      deletion: "offered",
-      assistants: [],
-      email: customerEmail,
-    });
+    for (const failure of [
+      new CustomerAccountAccessError({ reason: "unverified-email" }),
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      }),
+    ]) {
+      currentStanding = standing({ kind: "unavailable", failure });
+      await expect(loadPageState()).resolves.toEqual({
+        kind: "support-required",
+        deletion: "offered",
+        assistants: [],
+        email: customerEmail,
+      });
+    }
+    expect(historyLoadCalls).toBe(0);
+  });
 
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "link-required",
-      linkReason: "deletion-requested",
-    });
-    await expect(loadPageState()).resolves.toEqual({
-      kind: "support-required",
-      deletion: "offered",
-      assistants: [],
-      email: customerEmail,
-    });
+  test("shows the authenticated unavailable state when the link, lock, or Dotypos step fails", async () => {
+    for (const failure of [
+      customerAccountUnavailable("account-link.lock"),
+      customerAccountUnavailable("dotypos.customer-lookup"),
+    ]) {
+      currentStanding = standing({ kind: "unavailable", failure });
+      await expect(loadPageState()).resolves.toEqual({
+        kind: "authenticated-unavailable",
+        deletion: "offered",
+        assistants: [],
+        email: customerEmail,
+      });
+    }
     expect(historyLoadCalls).toBe(0);
   });
 
   test("offers no deletion without a profile when the review marker can't be read", async () => {
-    reviewAccountEffect = Effect.fail(new Error("database unavailable"));
-    resolveEffect = resolverOutcome({ kind: "failure", reason: "unavailable" });
+    reviewMarker = "unreadable";
+    currentStanding = standing({ kind: "unavailable" });
 
     await expect(loadPageState()).resolves.toEqual({
       kind: "authenticated-unavailable",
@@ -874,15 +887,14 @@ describe("loadAccountPageState", () => {
       deletion: "withheld",
     });
 
-    for (const [linkReason, kind] of [
-      ["not-found", "completion-required"],
-      ["ambiguous", "support-required"],
+    for (const [outcome, kind] of [
+      [standing({ kind: "profile-missing" }), "completion-required"],
+      [
+        standing({ kind: "support-required", reason: "ambiguous" }),
+        "support-required",
+      ],
     ] as const) {
-      resolveEffect = resolverOutcome({
-        kind: "failure",
-        reason: "link-required",
-        linkReason,
-      });
+      currentStanding = outcome;
       await expect(loadPageState()).resolves.toMatchObject({
         kind,
         deletion: "withheld",
@@ -891,17 +903,14 @@ describe("loadAccountPageState", () => {
   });
 
   test("keeps deletion for a linked account or a pending deletion when the review marker can't be read", async () => {
-    reviewAccountEffect = Effect.fail(new Error("database unavailable"));
+    reviewMarker = "unreadable";
 
     await expect(loadPageState()).resolves.toMatchObject({
       kind: "linked",
       deletion: "offered",
     });
 
-    currentUserEffect = Effect.succeed({
-      ...activeSession,
-      deletionRequested: true,
-    });
+    currentStanding = standing({ kind: "deletion-pending" });
     await expect(loadPageState()).resolves.toEqual({
       kind: "deletion-pending",
       email: customerEmail,
@@ -910,10 +919,7 @@ describe("loadAccountPageState", () => {
   });
 
   test("renders the retryable deletion state when the durable marker is set", async () => {
-    currentUserEffect = Effect.succeed({
-      ...activeSession,
-      deletionRequested: true,
-    });
+    currentStanding = standing({ kind: "deletion-pending" });
 
     await expect(loadPageState()).resolves.toEqual({
       kind: "deletion-pending",
@@ -1062,20 +1068,15 @@ describe("loadAccountPageState", () => {
       passkeys,
     });
 
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "link-required",
-      linkReason: "not-found",
-    });
+    currentStanding = standing({ kind: "profile-missing" });
     await expect(loadPageState()).resolves.toMatchObject({
       kind: "completion-required",
       passkeys,
     });
 
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "link-required",
-      linkReason: "ambiguous",
+    currentStanding = standing({
+      kind: "support-required",
+      reason: "ambiguous",
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
@@ -1085,18 +1086,13 @@ describe("loadAccountPageState", () => {
       passkeys,
     });
 
-    currentUserEffect = Effect.succeed({
-      ...activeSession,
-      deletionRequested: true,
-    });
-    const resolutionsBeforeDeletion = resolverCalls;
+    currentStanding = standing({ kind: "deletion-pending" });
     await expect(loadPageState()).resolves.toEqual({
       kind: "deletion-pending",
       deletion: "pending",
       email: customerEmail,
       passkeys,
     });
-    expect(resolverCalls).toBe(resolutionsBeforeDeletion);
     expect(passkeyListCalls).toBe(4);
   });
 
@@ -1124,20 +1120,15 @@ describe("loadAccountPageState", () => {
       assistants: [assistant],
     });
 
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "link-required",
-      linkReason: "not-found",
-    });
+    currentStanding = standing({ kind: "profile-missing" });
     await expect(loadPageState()).resolves.toMatchObject({
       kind: "completion-required",
       assistants: [assistant],
     });
 
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "link-required",
-      linkReason: "ambiguous",
+    currentStanding = standing({
+      kind: "support-required",
+      reason: "ambiguous",
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
@@ -1149,10 +1140,7 @@ describe("loadAccountPageState", () => {
 
     // A pending deletion's grants no longer authorize, and deleting the
     // account removes them.
-    currentUserEffect = Effect.succeed({
-      ...activeSession,
-      deletionRequested: true,
-    });
+    currentStanding = standing({ kind: "deletion-pending" });
     await expect(loadPageState()).resolves.toEqual({
       kind: "deletion-pending",
       email: customerEmail,
@@ -1173,10 +1161,7 @@ describe("loadAccountPageState", () => {
 
   test("lists no passkeys once resolution finds no session", async () => {
     passkeysFlag.mockResolvedValue(true);
-    resolveEffect = resolverOutcome({
-      kind: "failure",
-      reason: "unauthenticated",
-    });
+    currentStanding = standing({ kind: "signed-out" });
 
     await expect(loadPageState()).resolves.toEqual({
       kind: "unauthenticated",
@@ -1207,11 +1192,7 @@ describe("loadAccountPageState", () => {
 
     test("offers no completion referral field or prefill", async () => {
       referralsFlag.mockResolvedValue(false);
-      resolveEffect = resolverOutcome({
-        kind: "failure",
-        reason: "link-required",
-        linkReason: "not-found",
-      });
+      currentStanding = standing({ kind: "profile-missing" });
 
       await expect(loadPageState("RFL12345")).resolves.toEqual({
         kind: "completion-required",
@@ -1225,8 +1206,8 @@ describe("loadAccountPageState", () => {
 
     test("skips the auto-link acceptance, signup retry, settlement check, and summary", async () => {
       referralsFlag.mockResolvedValue(false);
-      resolveEffect = resolverOutcome({
-        kind: "success",
+      currentStanding = standing({
+        kind: "linked",
         customerId: "60111",
         autoLinked: true,
       });
@@ -1267,8 +1248,8 @@ describe("loadAccountPageState", () => {
     });
 
     test("decides the referral program once for the whole load", async () => {
-      resolveEffect = resolverOutcome({
-        kind: "success",
+      currentStanding = standing({
+        kind: "linked",
         customerId: "60111",
         autoLinked: true,
       });
@@ -1378,7 +1359,7 @@ describe("loadAccountPageState", () => {
     });
 
     test("degrades a review account's history alone when its capability can't be built", async () => {
-      reviewAccountEffect = Effect.succeed(true);
+      currentStanding = standing({ kind: "review" });
       layerOverrides = { history: unbuildable() };
 
       await expect(loadPageState()).resolves.toEqual({
@@ -1406,8 +1387,8 @@ describe("loadAccountPageState", () => {
       expect(output.join("\n")).toContain("Account profile load failed");
     });
 
-    test("keeps the session's sections when the resolver can't be built", async () => {
-      layerOverrides = { resolver: unbuildable() };
+    test("keeps the session's sections when the standing's links can't be built", async () => {
+      layerOverrides = { currentAccount: unbuildable() };
 
       const { state, output } = await loadWithWarnings("RFL12345");
 
@@ -1425,8 +1406,8 @@ describe("loadAccountPageState", () => {
     });
 
     test("keeps the linked page without referral state when the referral capability can't be built", async () => {
-      resolveEffect = resolverOutcome({
-        kind: "success",
+      currentStanding = standing({
+        kind: "linked",
         customerId: "60111",
         autoLinked: true,
       });
@@ -1473,11 +1454,7 @@ describe("loadAccountPageState", () => {
     });
 
     test("offers profile completion without a prefill when the referral capability can't be built", async () => {
-      resolveEffect = resolverOutcome({
-        kind: "failure",
-        reason: "link-required",
-        linkReason: "not-found",
-      });
+      currentStanding = standing({ kind: "profile-missing" });
       layerOverrides = { referrals: unbuildable() };
 
       const { state, output } = await loadWithWarnings("RFL12345");
@@ -1528,10 +1505,7 @@ describe("loadAccountPageState", () => {
     });
 
     test("keeps a pending deletion whole when the assistants capability can't load", async () => {
-      currentUserEffect = Effect.succeed({
-        ...activeSession,
-        deletionRequested: true,
-      });
+      currentStanding = standing({ kind: "deletion-pending" });
       layerOverrides = { assistants: unloadable() };
 
       await expect(loadPageState()).resolves.toEqual({
@@ -1656,7 +1630,7 @@ describe("loadAccountPageState", () => {
       });
 
       test("keeps the control flow of the resolution", async () => {
-        resolveEffect = Effect.failCause(composite) as never;
+        currentStanding = Effect.failCause(composite) as never;
 
         const exit = await loadExit();
 

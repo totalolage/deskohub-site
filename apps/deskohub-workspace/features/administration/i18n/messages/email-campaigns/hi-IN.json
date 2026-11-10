@@ -1,0 +1,1269 @@
+{
+  "emailCampaignsAudienceAccountCreatedEver": "जिनका Workspace में खाता है",
+  "emailCampaignsAudienceAccountCreatedInPeriod": "जिन्होंने {period} Workspace में खाता बनाया",
+  "emailCampaignsAudienceAccountCreatedLabel": "खाता बनाना",
+  "emailCampaignsAudienceAccountCreatedNever": "जिनका Workspace में खाता नहीं है",
+  "emailCampaignsAudienceAccountCreatedNoValue": "नहीं हुआ",
+  "emailCampaignsAudienceAccountCreatedNotInPeriod": "जिनका Workspace में खाता है, पर वह {period} नहीं बना",
+  "emailCampaignsAudienceArchive": "संग्रहित करें",
+  "emailCampaignsAudienceArchiveConfirm": "ऑडियंस संग्रहित करें",
+  "emailCampaignsAudienceArchiveDescription": "नए अभियान इसे अब नहीं चुन सकेंगे। जो ड्राफ़्ट अभियान इसे पहले से इस्तेमाल करते हैं, उनमें यह बनी रहेगी, और भेजे गए अभियानों पर इसका कोई असर नहीं पड़ेगा।",
+  "emailCampaignsAudienceArchiveFailedRetry": "ऑडियंस संग्रहित नहीं की जा सकी। फिर से कोशिश करें।",
+  "emailCampaignsAudienceArchiveTitle": "इस ऑडियंस को संग्रहित करें?",
+  "emailCampaignsAudienceArchiving": "संग्रहित किया जा रहा है…",
+  "emailCampaignsAudienceCampaignEmailCountAmount": "जिन्हें{period} {amount} मिले",
+  "emailCampaignsAudienceCampaignEmailCountAny": "जिन्हें{period} कम से कम एक {single} मिला",
+  "emailCampaignsAudienceCampaignEmailCountCountLabel": "अभियान email की संख्या",
+  "emailCampaignsAudienceCampaignEmailCountLabel": "मिले अभियान email",
+  "emailCampaignsAudienceCampaignEmailCountLeadText": "email, जो ग्राहक को यहाँ से मिले:",
+  "emailCampaignsAudienceCampaignEmailCountNone": "जिन्हें{period} कोई {single} नहीं मिला",
+  "emailCampaignsAudienceCampaignEmailCountNounAny": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "अभियान email",
+        "countPlural=other": "अभियान email"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounDeleted": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "हटाए गए अभियान का email",
+        "countPlural=other": "हटाए गए अभियान के email"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounMarketing": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "मार्केटिंग अभियान email",
+        "countPlural=other": "मार्केटिंग अभियान email"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounOperational": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "संचालन संबंधी अभियान email",
+        "countPlural=other": "संचालन संबंधी अभियान email"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounSpecific": [
+    {
+      "declarations": [
+        "input count",
+        "input campaign",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "अभियान {campaign} का email",
+        "countPlural=other": "अभियान {campaign} के email"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounThis": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "इस अभियान का email",
+        "countPlural=other": "इस अभियान के email"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountPeriodLabel": "मिले email",
+  "emailCampaignsAudienceCampaignEmailCountPurposeAny": "कोई भी",
+  "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "अभियान का उद्देश्य",
+  "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "मार्केटिंग",
+  "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "संचालन संबंधी",
+  "emailCampaignsAudienceCampaignEmailCountSourceAny": "कोई भी अभियान",
+  "emailCampaignsAudienceCampaignEmailCountSourceEmpty": "कोई अभियान मेल नहीं खाता।",
+  "emailCampaignsAudienceCampaignEmailCountSourceLabel": "अभियान",
+  "emailCampaignsAudienceCampaignEmailCountSourceSearch": "अभियान खोजें",
+  "emailCampaignsAudienceCampaignEmailCountSourceUnknown": "हटाया गया अभियान",
+  "emailCampaignsAudienceConditionAttributeLabel": "ग्राहक गुण",
+  "emailCampaignsAudienceConditionRemove": "शर्त हटाएँ",
+  "emailCampaignsAudienceCountAlwaysMatchesError": "“≥ 0” हमेशा मेल खाता है। कम से कम एक के लिए “≥ 1” इस्तेमाल करें, या शर्त हटाएँ।",
+  "emailCampaignsAudienceCountComparisonLabel": "{subject}: तुलना",
+  "emailCampaignsAudienceCountIs": "है",
+  "emailCampaignsAudienceCountNeverMatchesError": "“< 0” कभी मेल नहीं खाता। शून्य के लिए “= 0” इस्तेमाल करें।",
+  "emailCampaignsAudienceCountNumberOf": "संख्या",
+  "emailCampaignsAudienceCountOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=eq": "बराबर",
+        "operator=ne": "बराबर नहीं",
+        "operator=lt": "इससे कम",
+        "operator=lte": "अधिकतम",
+        "operator=gt": "इससे अधिक",
+        "operator=*": "कम से कम"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCountWholeNumberError": "0 या उससे बड़ी पूर्ण संख्या दर्ज करें।",
+  "emailCampaignsAudienceDateConditionLabel": "{subject}: शर्त",
+  "emailCampaignsAudienceDateIn": "है",
+  "emailCampaignsAudienceDateNotIn": "नहीं है",
+  "emailCampaignsAudienceDelete": "हटाएँ",
+  "emailCampaignsAudienceDeleteConfirm": "ऑडियंस हटाएँ",
+  "emailCampaignsAudienceDeleteDescription": "यह कार्रवाई वापस नहीं ली जा सकती। भेजे गए अभियान फ़िल्टर की अपनी कॉपी रखते हैं। जिस ऑडियंस का इस्तेमाल ड्राफ़्ट अभियान करते हैं, उसे केवल संग्रहित किया जा सकता है।",
+  "emailCampaignsAudienceDeleteFailedRetry": "ऑडियंस हटाई नहीं जा सकी। फिर से कोशिश करें।",
+  "emailCampaignsAudienceDeleteTitle": "इस ऑडियंस को हटाएँ?",
+  "emailCampaignsAudienceDeleting": "हटाया जा रहा है…",
+  "emailCampaignsAudienceDiscountGroupChoose": "समूह चुनें",
+  "emailCampaignsAudienceDiscountGroupEmptyError": "कम से कम एक छूट समूह चुनें।",
+  "emailCampaignsAudienceDiscountGroupIdAdd": "छूट समूह ID जोड़ें",
+  "emailCampaignsAudienceDiscountGroupIdPlaceholder": "Dotypos में समूह ID",
+  "emailCampaignsAudienceDiscountGroupIdRemove": "छूट समूह ID {value} हटाएँ",
+  "emailCampaignsAudienceDiscountGroupLabel": "छूट समूह",
+  "emailCampaignsAudienceDiscountGroupRemove": "छूट समूह {value} हटाएँ",
+  "emailCampaignsAudienceDiscountGroupSummaryAnyOf": "जो छूट समूह {values} में हैं",
+  "emailCampaignsAudienceDiscountGroupSummaryNoneOf": "जो छूट समूह {values} में नहीं हैं",
+  "emailCampaignsAudienceDiscountGroupUnknown": "अज्ञात छूट समूह {id}",
+  "emailCampaignsAudienceDiscountGroupUnnamed": "समूह {id}",
+  "emailCampaignsAudienceDotyposTagsAdd": "टैग जोड़ें",
+  "emailCampaignsAudienceDotyposTagsEmptyError": "कम से कम एक टैग जोड़ें।",
+  "emailCampaignsAudienceDotyposTagsLabel": "Dotypos टैग",
+  "emailCampaignsAudienceDotyposTagsLead": "टैग",
+  "emailCampaignsAudienceDotyposTagsPlaceholder": "टैग जोड़ें",
+  "emailCampaignsAudienceDotyposTagsRemove": "टैग {value} हटाएँ",
+  "emailCampaignsAudienceDotyposTagsSummaryAllOf": "जिन पर टैग {values} लगे हैं",
+  "emailCampaignsAudienceDotyposTagsSummaryAnyOf": "जिन पर टैग {values} लगा है",
+  "emailCampaignsAudienceDotyposTagsSummaryNoneOf": "जिन पर टैग {values} नहीं लगा है",
+  "emailCampaignsAudienceEditorArchivedNotice": "यह ऑडियंस संग्रहित है। नए अभियान इसे नहीं चुन सकते।",
+  "emailCampaignsAudienceEditorCancel": "रद्द करें",
+  "emailCampaignsAudienceEditorCreate": "ऑडियंस बनाएँ",
+  "emailCampaignsAudienceEditorDescription": "चुनें कि अभियान किन तक पहुँचे। शर्तें अभियान भेजे जाने के समय ही जाँची जाती हैं, इसलिए ड्राफ़्ट हमेशा नवीनतम संस्करण इस्तेमाल करते हैं।",
+  "emailCampaignsAudienceEditorEyebrow": "Email ऑडियंस",
+  "emailCampaignsAudienceEditorNewTitle": "नई ऑडियंस",
+  "emailCampaignsAudienceEditorReachDescription": "शर्तों से केवल वे ग्राहक मेल खा सकते हैं, जिन्हें Workspace बुकिंग, खातों या मार्केटिंग संदेशों के लिए सहमति से पहले से जानता है। मार्केटिंग अभियान इसके अलावा हर उस व्यक्ति को छोड़ देते हैं, जिसकी सहमति मान्य नहीं है।",
+  "emailCampaignsAudienceEditorReachHeading": "किन तक पहुँचेगा",
+  "emailCampaignsAudienceEditorSave": "ऑडियंस सहेजें",
+  "emailCampaignsAudienceEditorSaveFailed": "ऑडियंस सहेजी नहीं जा सकी। फ़ॉर्म जाँचें और फिर से कोशिश करें।",
+  "emailCampaignsAudienceEditorSaved": "ऑडियंस सहेजी गई।",
+  "emailCampaignsAudienceEditorSaving": "सहेजा जा रहा है…",
+  "emailCampaignsAudienceEditorSingleLocaleCzech": "सभी प्राप्तकर्ता चेक भाषा बोलते हैं, इसलिए इस ऑडियंस के अभियानों के लिए केवल चेक भाषा की सामग्री चाहिए।",
+  "emailCampaignsAudienceEditorSingleLocaleEnglish": "सभी प्राप्तकर्ता अंग्रेज़ी भाषा बोलते हैं, इसलिए इस ऑडियंस के अभियानों के लिए केवल अंग्रेज़ी भाषा की सामग्री चाहिए।",
+  "emailCampaignsAudienceEditorSingleLocaleGerman": "सभी प्राप्तकर्ता जर्मन भाषा बोलते हैं, इसलिए इस ऑडियंस के अभियानों के लिए केवल जर्मन भाषा की सामग्री चाहिए।",
+  "emailCampaignsAudienceEditorSingleLocaleHindi": "सभी प्राप्तकर्ता हिंदी भाषा बोलते हैं, इसलिए इस ऑडियंस के अभियानों के लिए केवल हिंदी भाषा की सामग्री चाहिए।",
+  "emailCampaignsAudienceEditorSingleLocaleSlovak": "सभी प्राप्तकर्ता स्लोवाक भाषा बोलते हैं, इसलिए इस ऑडियंस के अभियानों के लिए केवल स्लोवाक भाषा की सामग्री चाहिए।",
+  "emailCampaignsAudienceEditorSingleLocaleUkrainian": "सभी प्राप्तकर्ता यूक्रेनी भाषा बोलते हैं, इसलिए इस ऑडियंस के अभियानों के लिए केवल यूक्रेनी भाषा की सामग्री चाहिए।",
+  "emailCampaignsAudienceEditorSingleLocaleVietnamese": "सभी प्राप्तकर्ता वियतनामी भाषा बोलते हैं, इसलिए इस ऑडियंस के अभियानों के लिए केवल वियतनामी भाषा की सामग्री चाहिए।",
+  "emailCampaignsAudienceEditorSummary": "{summary}।",
+  "emailCampaignsAudienceEditorSummaryHeading": "सरल शब्दों में",
+  "emailCampaignsAudienceEditorTitleLabel": "नाम",
+  "emailCampaignsAudienceEditorTitlePlaceholder": "उदाहरण: इस साल आए चेक ग्राहक",
+  "emailCampaignsAudienceGroupAddCondition": "शर्त जोड़ें",
+  "emailCampaignsAudienceGroupAddGroup": "समूह जोड़ें",
+  "emailCampaignsAudienceGroupCombineLabel": "शर्तें कैसे जुड़ती हैं",
+  "emailCampaignsAudienceGroupEmptyAll": "अभी कोई शर्त नहीं है, इसलिए हर ज्ञात ग्राहक इससे मेल खाता है।",
+  "emailCampaignsAudienceGroupEmptyAny": "अभी कोई शर्त नहीं है, इसलिए कोई भी ग्राहक इससे मेल नहीं खाता।",
+  "emailCampaignsAudienceGroupJoinAnd": "और",
+  "emailCampaignsAudienceGroupJoinOr": "या",
+  "emailCampaignsAudienceGroupMatchAll": "सभी शर्तें पूरी हों",
+  "emailCampaignsAudienceGroupMatchAny": "कोई भी शर्त पूरी हो",
+  "emailCampaignsAudienceGroupOfFollowing": "(नीचे दी गई शर्तों में से)",
+  "emailCampaignsAudienceGroupOfThisGroup": "(इस समूह की शर्तों में से)",
+  "emailCampaignsAudienceGroupRemove": "समूह हटाएँ",
+  "emailCampaignsAudienceHasAccountFalse": "नहीं है",
+  "emailCampaignsAudienceHasAccountLabel": "Workspace खाता",
+  "emailCampaignsAudienceHasAccountObject": "Workspace खाता",
+  "emailCampaignsAudienceHasAccountSummaryFalse": "जिनका Workspace में खाता नहीं है",
+  "emailCampaignsAudienceHasAccountSummaryTrue": "जिनका Workspace में खाता है",
+  "emailCampaignsAudienceHasAccountTrue": "है",
+  "emailCampaignsAudienceFirstVisitEver": "जो हमारे यहाँ आ चुके हैं{product}",
+  "emailCampaignsAudienceFirstVisitInPeriod": "जो {period} पहली बार हमारे यहाँ आए{product}",
+  "emailCampaignsAudienceFirstVisitLabel": "पहली विज़िट",
+  "emailCampaignsAudienceFirstVisitNever": "जो कभी हमारे यहाँ नहीं आए{product}",
+  "emailCampaignsAudienceFirstVisitNoValue": "नहीं हुई",
+  "emailCampaignsAudienceFirstVisitNotInPeriod": "जो हमारे यहाँ आ चुके हैं{product}, पर पहली बार {period} नहीं",
+  "emailCampaignsAudienceLastVisitEver": "जो हमारे यहाँ आ चुके हैं{product}",
+  "emailCampaignsAudienceLastVisitInPeriod": "जो {period} आख़िरी बार हमारे यहाँ आए{product}",
+  "emailCampaignsAudienceLastVisitLabel": "आख़िरी विज़िट",
+  "emailCampaignsAudienceLastVisitNever": "जो कभी हमारे यहाँ नहीं आए{product}",
+  "emailCampaignsAudienceLastVisitNoValue": "नहीं हुई",
+  "emailCampaignsAudienceLastVisitNotInPeriod": "जो हमारे यहाँ आ चुके हैं{product}, पर आख़िरी बार {period} नहीं",
+  "emailCampaignsAudienceListColumnAudience": "ऑडियंस",
+  "emailCampaignsAudienceListColumnReach": "किन तक पहुँचेगा",
+  "emailCampaignsAudienceListColumnStatus": "स्थिति",
+  "emailCampaignsAudienceListColumnUpdated": "अपडेट",
+  "emailCampaignsAudienceListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} ऑडियंस",
+        "countPlural=other": "{formattedCount} ऑडियंस"
+      }
+    }
+  ],
+  "emailCampaignsAudienceListCountLoading": "ऑडियंस की संख्या लोड हो रही है",
+  "emailCampaignsAudienceListEmpty": "अभी कोई ऑडियंस नहीं है। ऑडियंस बनाएँ और चुनें कि अभियान किन तक पहुँचे।",
+  "emailCampaignsAudienceListLoading": "ऑडियंस लोड हो रही हैं",
+  "emailCampaignsAudienceListNew": "नई ऑडियंस",
+  "emailCampaignsAudienceListTitle": "Email ऑडियंस",
+  "emailCampaignsAudienceListToolbarLabel": "ऑडियंस तालिका के नियंत्रण",
+  "emailCampaignsAudienceListUpdated": "अपडेट: {date}",
+  "emailCampaignsAudienceLocaleEmptyError": "कम से कम एक भाषा चुनें।",
+  "emailCampaignsAudienceLocaleLabel": "भाषा",
+  "emailCampaignsAudienceLocaleNameCzech": "चेक",
+  "emailCampaignsAudienceLocaleNameEnglish": "अंग्रेज़ी",
+  "emailCampaignsAudienceLocaleNameGerman": "जर्मन",
+  "emailCampaignsAudienceLocaleNameHindi": "हिंदी",
+  "emailCampaignsAudienceLocaleNameSlovak": "स्लोवाक",
+  "emailCampaignsAudienceLocaleNameUkrainian": "यूक्रेनी",
+  "emailCampaignsAudienceLocaleNameVietnamese": "वियतनामी",
+  "emailCampaignsAudienceLocaleOptionCzech": "चेक (cs-CZ)",
+  "emailCampaignsAudienceLocaleOptionEnglish": "अंग्रेज़ी (en-US)",
+  "emailCampaignsAudienceLocaleSummaryAnyOf": "जो {values} बोलते हैं",
+  "emailCampaignsAudienceLocaleSummaryNoneOf": "जो {values} नहीं बोलते",
+  "emailCampaignsAudienceNotFound": "यह ऑडियंस अब मौजूद नहीं है।",
+  "emailCampaignsAudiencePeriodCountError": "1 या उससे बड़ी पूर्ण संख्या दर्ज करें।",
+  "emailCampaignsAudiencePeriodCountLabel": "{subject}: इकाइयों की संख्या",
+  "emailCampaignsAudiencePeriodDateError": "मान्य तारीख़ दर्ज करें।",
+  "emailCampaignsAudiencePeriodDateLabel": "{subject}: तारीख़",
+  "emailCampaignsAudiencePeriodEndLabel": "{subject}: समाप्ति की तारीख़",
+  "emailCampaignsAudiencePeriodKind": [
+    {
+      "declarations": ["input kind"],
+      "selectors": ["kind"],
+      "match": {
+        "kind=AnyTime": "किसी भी समय",
+        "kind=Past": "अब तक किसी भी समय",
+        "kind=Last": "पिछले",
+        "kind=Range": "… से … तक",
+        "kind=Since": "… से अब तक",
+        "kind=Onward": "… से आगे",
+        "kind=*": "… तक"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodLabel": "{subject}: अवधि",
+  "emailCampaignsAudiencePeriodLast": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "पिछले",
+        "countPlural=other": "पिछले"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodOnward": "से आगे",
+  "emailCampaignsAudiencePeriodOrderError": "शुरुआत की तारीख़ समाप्ति की तारीख़ के बाद नहीं हो सकती।",
+  "emailCampaignsAudiencePeriodStartLabel": "{subject}: शुरुआत की तारीख़",
+  "emailCampaignsAudiencePeriodTo": "से",
+  "emailCampaignsAudiencePeriodUnitDay": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "दिन",
+        "countPlural=other": "दिन"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitLabel": "{subject}: अवधि की इकाई",
+  "emailCampaignsAudiencePeriodUnitMonth": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "महीना",
+        "countPlural=other": "महीने"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitWeek": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "हफ़्ता",
+        "countPlural=other": "हफ़्ते"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitYear": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "साल",
+        "countPlural=other": "साल"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductAddCondition": "प्रोडक्ट की शर्त जोड़ें",
+  "emailCampaignsAudienceProductAny": "कोई भी प्रोडक्ट",
+  "emailCampaignsAudienceProductChoose": "चुनें",
+  "emailCampaignsAudienceProductChooseValueError": "कम से कम एक मान चुनें।",
+  "emailCampaignsAudienceProductFamilyCowork": "कोवर्किंग",
+  "emailCampaignsAudienceProductFamilyMeetingRoom": "मीटिंग रूम",
+  "emailCampaignsAudienceProductFamilyOffice": "ऑफ़िस",
+  "emailCampaignsAudienceProductLabel": "प्रोडक्ट",
+  "emailCampaignsAudienceProductPropertyCoffee": "कॉफ़ी",
+  "emailCampaignsAudienceProductPropertyDays": "दिनों की संख्या",
+  "emailCampaignsAudienceProductPropertyMonitor": "मॉनिटर सेटअप",
+  "emailCampaignsAudienceProductPropertyOffer": "अवधि",
+  "emailCampaignsAudienceProductPropertySeats": "सीटों की संख्या",
+  "emailCampaignsAudienceProductPropertyTier": "प्लान",
+  "emailCampaignsAudienceProductRemoveCondition": "शर्त हटाएँ: {property}",
+  "emailCampaignsAudienceProductRemoveValue": "{value} ({property}) हटाएँ",
+  "emailCampaignsAudienceProductRetired": "(अब बिक्री में नहीं)",
+  "emailCampaignsAudienceProductSelectLabel": "बुकिंग का प्रोडक्ट",
+  "emailCampaignsAudienceProductUnitDays": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "दिन",
+        "countPlural=other": "दिन"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductUnitSeats": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "सीट",
+        "countPlural=other": "सीटें"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductWith": "साथ में",
+  "emailCampaignsAudienceProductWithout": "बिना",
+  "emailCampaignsAudienceReservationCountAmount": "जिनकी {amount} हैं{period}",
+  "emailCampaignsAudienceReservationCountAny": "जिनकी कम से कम एक {single} है{period}",
+  "emailCampaignsAudienceReservationCountBookingPeriod": "(पुष्टि: {period})",
+  "emailCampaignsAudienceReservationCountDateBasisBooking": "पुष्टि की तारीख़",
+  "emailCampaignsAudienceReservationCountDateBasisLabel": "निर्णायक तारीख़",
+  "emailCampaignsAudienceReservationCountDateBasisVisit": "विज़िट की तारीख़",
+  "emailCampaignsAudienceReservationCountDateBasisVisitEnd": "विज़िट की समाप्ति",
+  "emailCampaignsAudienceReservationCountLabel": "बुकिंग की संख्या",
+  "emailCampaignsAudienceReservationCountLeadText": "बुकिंग, इस आधार पर:",
+  "emailCampaignsAudienceReservationCountNone": "जिनकी कोई {single} नहीं है{period}",
+  "emailCampaignsAudienceReservationCountNounBooked": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "पुष्ट बुकिंग{product}",
+        "countPlural=other": "पुष्ट बुकिंग{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounCancelled": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "रद्द बुकिंग{product}",
+        "countPlural=other": "रद्द बुकिंग{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounComplete": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "पूरी हो चुकी बुकिंग{product}",
+        "countPlural=other": "पूरी हो चुकी बुकिंग{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounInProgress": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "चल रही बुकिंग{product}",
+        "countPlural=other": "चल रही बुकिंग{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounNeedsRefund": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "धनवापसी के लिए लंबित बुकिंग{product}",
+        "countPlural=other": "धनवापसी के लिए लंबित बुकिंग{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountPeriodLabel": "बुकिंग",
+  "emailCampaignsAudienceReservationCountStatusBooked": "पुष्ट",
+  "emailCampaignsAudienceReservationCountStatusCancelled": "रद्द",
+  "emailCampaignsAudienceReservationCountStatusComplete": "पूरी हो चुकी",
+  "emailCampaignsAudienceReservationCountStatusInProgress": "चल रही",
+  "emailCampaignsAudienceReservationCountStatusLabel": "बुकिंग की स्थिति",
+  "emailCampaignsAudienceReservationCountStatusNeedsRefund": "धनवापसी के लिए लंबित",
+  "emailCampaignsAudienceReservationCountVisitEndPeriod": "(विज़िट की समाप्ति: {period})",
+  "emailCampaignsAudienceReservationCountVisitPeriod": "(विज़िट: {period})",
+  "emailCampaignsAudienceSaveCampaignNotFound": "ऑडियंस सहेजी नहीं जा सकी। जिस अभियान के email यह गिनती है, वह अब मौजूद नहीं है। कोई दूसरा अभियान चुनें।",
+  "emailCampaignsAudienceSaveFailedCheckFilters": "ऑडियंस सहेजी नहीं जा सकी। फ़िल्टर जाँचें और फिर से कोशिश करें।",
+  "emailCampaignsAudienceSaveFailedRetry": "ऑडियंस सहेजी नहीं जा सकी। फिर से कोशिश करें।",
+  "emailCampaignsAudienceSaveFilterUnavailable": "ऑडियंस सहेजी नहीं जा सकी। ट्रिगर इवेंट से जुड़ी अवधियाँ और “यह अभियान” केवल ऑटोमेशन की शर्तों में काम करते हैं।",
+  "emailCampaignsAudienceSectionAccount": "खाता",
+  "emailCampaignsAudienceSectionEmails": "Email",
+  "emailCampaignsAudienceSectionProfile": "प्रोफ़ाइल",
+  "emailCampaignsAudienceSectionReservations": "बुकिंग",
+  "emailCampaignsAudienceSetMatchLabel": "{subject}: मिलान",
+  "emailCampaignsAudienceSetOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=allOf": "ये सभी",
+        "operator=noneOf": "इनमें से कोई नहीं",
+        "operator=*": "इनमें से कम से कम एक"
+      }
+    }
+  ],
+  "emailCampaignsAudienceStatusActive": "सक्रिय",
+  "emailCampaignsAudienceStatusArchived": "संग्रहित",
+  "emailCampaignsAudienceSummaryAmount": [
+    {
+      "declarations": [
+        "input operator",
+        "input count",
+        "local formattedCount = count: number",
+        "input noun",
+        "input none"
+      ],
+      "selectors": ["operator"],
+      "match": {
+        "operator=eq": "ठीक {formattedCount} {noun}",
+        "operator=ne": "{formattedCount} के अलावा किसी भी संख्या में {none}",
+        "operator=lt": "{formattedCount} से कम {noun}",
+        "operator=lte": "अधिकतम {formattedCount} {noun}",
+        "operator=gt": "{formattedCount} से अधिक {noun}",
+        "operator=*": "कम से कम {formattedCount} {noun}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryAmountPending": "… {none}",
+  "emailCampaignsAudienceSummaryAnd": "{left} और {right}",
+  "emailCampaignsAudienceSummaryCustomersWho": "वे ग्राहक {predicate}",
+  "emailCampaignsAudienceSummaryEveryone": "हर ग्राहक, जिसे Workspace जानता है",
+  "emailCampaignsAudienceSummaryGap": "…",
+  "emailCampaignsAudienceSummaryGroup": "({filter})",
+  "emailCampaignsAudienceSummaryMatchAnything": "जो किसी भी चीज़ से मेल खाते हैं",
+  "emailCampaignsAudienceSummaryMatchNothing": "जो किसी भी चीज़ से मेल नहीं खाते",
+  "emailCampaignsAudienceSummaryNobody": "कोई नहीं",
+  "emailCampaignsAudienceSummaryOr": "{left} या {right}",
+  "emailCampaignsAudienceSummaryPeriodAnyTime": "किसी भी समय",
+  "emailCampaignsAudienceSummaryPeriodLastDay": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "पिछले एक दिन में",
+        "countPlural=other": "पिछले {formattedCount} दिनों में"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastMonth": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "पिछले एक महीने में",
+        "countPlural=other": "पिछले {formattedCount} महीनों में"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastWeek": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "पिछले एक हफ़्ते में",
+        "countPlural=other": "पिछले {formattedCount} हफ़्तों में"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastYear": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "पिछले एक साल में",
+        "countPlural=other": "पिछले {formattedCount} सालों में"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodOnward": "{date} से आगे",
+  "emailCampaignsAudienceSummaryPeriodPast": "अब तक किसी भी समय",
+  "emailCampaignsAudienceSummaryPeriodRange": "{from} से {to} तक",
+  "emailCampaignsAudienceSummaryPeriodSince": "{date} से अब तक",
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowDay": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "ट्रिगर इवेंट से पहले {formattedCount} दिन के भीतर",
+        "side=before, countPlural=other": "ट्रिगर इवेंट से पहले {formattedCount} दिनों के भीतर",
+        "side=after, countPlural=one": "ट्रिगर इवेंट के बाद {formattedCount} दिन के भीतर",
+        "side=after, countPlural=other": "ट्रिगर इवेंट के बाद {formattedCount} दिनों के भीतर"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowMonth": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "ट्रिगर इवेंट से पहले {formattedCount} महीने के भीतर",
+        "side=before, countPlural=other": "ट्रिगर इवेंट से पहले {formattedCount} महीनों के भीतर",
+        "side=after, countPlural=one": "ट्रिगर इवेंट के बाद {formattedCount} महीने के भीतर",
+        "side=after, countPlural=other": "ट्रिगर इवेंट के बाद {formattedCount} महीनों के भीतर"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowWeek": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "ट्रिगर इवेंट से पहले {formattedCount} हफ़्ते के भीतर",
+        "side=before, countPlural=other": "ट्रिगर इवेंट से पहले {formattedCount} हफ़्तों के भीतर",
+        "side=after, countPlural=one": "ट्रिगर इवेंट के बाद {formattedCount} हफ़्ते के भीतर",
+        "side=after, countPlural=other": "ट्रिगर इवेंट के बाद {formattedCount} हफ़्तों के भीतर"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodTriggerWindowYear": [
+    {
+      "declarations": [
+        "input side",
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["side", "countPlural"],
+      "match": {
+        "side=before, countPlural=one": "ट्रिगर इवेंट से पहले {formattedCount} साल के भीतर",
+        "side=before, countPlural=other": "ट्रिगर इवेंट से पहले {formattedCount} सालों के भीतर",
+        "side=after, countPlural=one": "ट्रिगर इवेंट के बाद {formattedCount} साल के भीतर",
+        "side=after, countPlural=other": "ट्रिगर इवेंट के बाद {formattedCount} सालों के भीतर"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodUntil": "{date} तक",
+  "emailCampaignsAudienceSummaryProduct": "({family})",
+  "emailCampaignsAudienceSummaryProductAnyOf": "{property} {values}",
+  "emailCampaignsAudienceSummaryProductDisabled": "{property}: नहीं",
+  "emailCampaignsAudienceSummaryProductEnabled": "{property}: हाँ",
+  "emailCampaignsAudienceSummaryProductNoneOf": "{property}, {values} को छोड़कर",
+  "emailCampaignsAudienceSummaryProductWith": "({family}, {details})",
+  "emailCampaignsAudienceSummaryQuoted": "“{value}”",
+  "emailCampaignsAudienceTitleRequired": "ऑडियंस का नाम दर्ज करें।",
+  "emailCampaignsAudienceTitleTooLong": "अधिकतम {max} कैरेक्टर इस्तेमाल करें।",
+  "emailCampaignsAudienceUnarchive": "संग्रह से वापस लाएँ",
+  "emailCampaignsAudienceUnarchiveFailedRetry": "ऑडियंस को संग्रह से वापस नहीं लाया जा सका। फिर से कोशिश करें।",
+  "emailCampaignsAudienceUnarchiving": "वापस लाया जा रहा है…",
+  "emailCampaignsCalendarDayOfMonth": "{day}",
+  "emailCampaignsCalendarDaysOfMonth": "{days} तारीख़",
+  "emailCampaignsCalendarEveryDay": "हर दिन",
+  "emailCampaignsCalendarEveryHour": "हर घंटे",
+  "emailCampaignsCalendarHourRange": "{start} और {end} के बीच",
+  "emailCampaignsCalendarHourSpan": "{start}–{end}",
+  "emailCampaignsCalendarHourSpans": "{spans} के दौरान",
+  "emailCampaignsCalendarInMonths": "{months} में",
+  "emailCampaignsCalendarInWeeks": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "कैलेंडर हफ़्ते {weeks} में",
+        "countPlural=*": "कैलेंडर हफ़्तों {weeks} में"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastDayOfMonth": "आख़िरी",
+  "emailCampaignsCalendarLastOccurrence": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "आख़िरी सोमवार",
+        "weekday=tuesday": "आख़िरी मंगलवार",
+        "weekday=wednesday": "आख़िरी बुधवार",
+        "weekday=thursday": "आख़िरी गुरुवार",
+        "weekday=friday": "आख़िरी शुक्रवार",
+        "weekday=saturday": "आख़िरी शनिवार",
+        "weekday=*": "आख़िरी रविवार"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceQualifier": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "आख़िरी सोमवार",
+        "weekday=tuesday": "आख़िरी मंगलवार",
+        "weekday=wednesday": "आख़िरी बुधवार",
+        "weekday=thursday": "आख़िरी गुरुवार",
+        "weekday=friday": "आख़िरी शुक्रवार",
+        "weekday=saturday": "आख़िरी शनिवार",
+        "weekday=*": "आख़िरी रविवार"
+      }
+    }
+  ],
+  "emailCampaignsCalendarLastOccurrenceWait": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "आख़िरी सोमवार",
+        "weekday=tuesday": "आख़िरी मंगलवार",
+        "weekday=wednesday": "आख़िरी बुधवार",
+        "weekday=thursday": "आख़िरी गुरुवार",
+        "weekday=friday": "आख़िरी शुक्रवार",
+        "weekday=saturday": "आख़िरी शनिवार",
+        "weekday=*": "आख़िरी रविवार"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMinute": "xx:{minute}",
+  "emailCampaignsCalendarMonthInName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "जनवरी",
+        "month=2": "फ़रवरी",
+        "month=3": "मार्च",
+        "month=4": "अप्रैल",
+        "month=5": "मई",
+        "month=6": "जून",
+        "month=7": "जुलाई",
+        "month=8": "अगस्त",
+        "month=9": "सितंबर",
+        "month=10": "अक्टूबर",
+        "month=11": "नवंबर",
+        "month=*": "दिसंबर"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMonthName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "जनवरी",
+        "month=2": "फ़रवरी",
+        "month=3": "मार्च",
+        "month=4": "अप्रैल",
+        "month=5": "मई",
+        "month=6": "जून",
+        "month=7": "जुलाई",
+        "month=8": "अगस्त",
+        "month=9": "सितंबर",
+        "month=10": "अक्टूबर",
+        "month=11": "नवंबर",
+        "month=*": "दिसंबर"
+      }
+    }
+  ],
+  "emailCampaignsCalendarMonthOfName": [
+    {
+      "declarations": ["input month"],
+      "selectors": ["month"],
+      "match": {
+        "month=1": "जनवरी",
+        "month=2": "फ़रवरी",
+        "month=3": "मार्च",
+        "month=4": "अप्रैल",
+        "month=5": "मई",
+        "month=6": "जून",
+        "month=7": "जुलाई",
+        "month=8": "अगस्त",
+        "month=9": "सितंबर",
+        "month=10": "अक्टूबर",
+        "month=11": "नवंबर",
+        "month=*": "दिसंबर"
+      }
+    }
+  ],
+  "emailCampaignsCalendarOccurrence": "{occurrence}वाँ {weekday}",
+  "emailCampaignsCalendarOccurrences": "{occurrences}",
+  "emailCampaignsCalendarSchedule": "{description} (प्राग समय)",
+  "emailCampaignsCalendarScheduleDate": "हर साल {day} {month} को",
+  "emailCampaignsCalendarScheduleMonthStart": "हर साल {months} के पहले दिन",
+  "emailCampaignsCalendarScheduleOn": "{subject} को",
+  "emailCampaignsCalendarScheduleQualified": "{subject} (अगर वह {qualifier} हो)",
+  "emailCampaignsCalendarScheduleWeekMonthStart": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "input months",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "हर साल कैलेंडर हफ़्ते {weeks} के पहले दिन, अगर वह {months} में पड़ता हो",
+        "countPlural=*": "हर साल कैलेंडर हफ़्तों {weeks} के पहले दिन, अगर वह {months} में पड़ता हो"
+      }
+    }
+  ],
+  "emailCampaignsCalendarScheduleWeekStart": [
+    {
+      "declarations": [
+        "input count",
+        "input weeks",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "हर साल कैलेंडर हफ़्ते {weeks} की शुरुआत में (सोमवार को)",
+        "countPlural=*": "हर साल कैलेंडर हफ़्तों {weeks} की शुरुआत में (सोमवार को)"
+      }
+    }
+  ],
+  "emailCampaignsCalendarScopeAnyMonth": "किसी भी महीने में {phrase}",
+  "emailCampaignsCalendarScopeEveryMonth": "हर महीने {phrase}",
+  "emailCampaignsCalendarScopeMonths": "{months} में {phrase}",
+  "emailCampaignsCalendarScopeQualifier": "{phrase}",
+  "emailCampaignsCalendarTimeAt": "{times} बजे",
+  "emailCampaignsCalendarTimeEveryHourAt": "हर घंटे {minutes} पर",
+  "emailCampaignsCalendarTimeMinutesPastHours": "{hours} बजे वाले घंटों में, हर बार {minutes} पर",
+  "emailCampaignsCalendarWait": "{target} तक इंतज़ार करता है (प्राग समय); अगर वह समय पहले ही आ चुका है, तो तुरंत आगे बढ़ता है",
+  "emailCampaignsCalendarWaitClockWindow": "{windows} का समय",
+  "emailCampaignsCalendarWaitDay": "कोई दिन",
+  "emailCampaignsCalendarWaitMonthDay": "{months} का कोई दिन",
+  "emailCampaignsCalendarWaitNextMinute": "अगला {minutes}",
+  "emailCampaignsCalendarWaitQualified": "{subject} (अगर वह {qualifier} हो)",
+  "emailCampaignsCalendarWaitTime": "{time}",
+  "emailCampaignsCalendarWaitWeeks": "कैलेंडर हफ़्ता {weeks}",
+  "emailCampaignsCalendarWeekNumber": "{week}",
+  "emailCampaignsCalendarWeekdayEveryName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "हर सोमवार",
+        "weekday=tuesday": "हर मंगलवार",
+        "weekday=wednesday": "हर बुधवार",
+        "weekday=thursday": "हर गुरुवार",
+        "weekday=friday": "हर शुक्रवार",
+        "weekday=saturday": "हर शनिवार",
+        "weekday=*": "हर रविवार"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "सोमवार",
+        "weekday=tuesday": "मंगलवार",
+        "weekday=wednesday": "बुधवार",
+        "weekday=thursday": "गुरुवार",
+        "weekday=friday": "शुक्रवार",
+        "weekday=saturday": "शनिवार",
+        "weekday=*": "रविवार"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayQualifierName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "सोमवार",
+        "weekday=tuesday": "मंगलवार",
+        "weekday=wednesday": "बुधवार",
+        "weekday=thursday": "गुरुवार",
+        "weekday=friday": "शुक्रवार",
+        "weekday=saturday": "शनिवार",
+        "weekday=*": "रविवार"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdayWaitName": [
+    {
+      "declarations": ["input weekday"],
+      "selectors": ["weekday"],
+      "match": {
+        "weekday=monday": "सोमवार",
+        "weekday=tuesday": "मंगलवार",
+        "weekday=wednesday": "बुधवार",
+        "weekday=thursday": "गुरुवार",
+        "weekday=friday": "शुक्रवार",
+        "weekday=saturday": "शनिवार",
+        "weekday=*": "रविवार"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysEvery": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "हर कार्यदिवस",
+        "set=weekend": "सप्ताहांत का हर दिन",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysWait": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "कोई कार्यदिवस",
+        "set=weekend": "सप्ताहांत का कोई दिन",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsCalendarWeekdaysWaitQualified": [
+    {
+      "declarations": ["input set", "input weekdays"],
+      "selectors": ["set"],
+      "match": {
+        "set=workdays": "कार्यदिवस",
+        "set=weekend": "सप्ताहांत का दिन",
+        "set=*": "{weekdays}"
+      }
+    }
+  ],
+  "emailCampaignsBadgeDeliveryAutomated": "स्वचालित",
+  "emailCampaignsBadgePurposeMarketing": "मार्केटिंग",
+  "emailCampaignsBadgePurposeOperational": "संचालन संबंधी",
+  "emailCampaignsBadgeRecipientStatusBounced": "बाउंस हुआ",
+  "emailCampaignsBadgeRecipientStatusComplained": "स्पैम बताया गया",
+  "emailCampaignsBadgeRecipientStatusDelivered": "डिलीवर हुआ",
+  "emailCampaignsBadgeRecipientStatusFailed": "विफल",
+  "emailCampaignsBadgeRecipientStatusPending": "लंबित",
+  "emailCampaignsBadgeRecipientStatusSent": "भेजा गया",
+  "emailCampaignsBadgeRecipientStatusSkipped": "छोड़ा गया",
+  "emailCampaignsBadgeRecipientStatusUnconfirmed": "पुष्टि नहीं हुई",
+  "emailCampaignsBadgeStatusDraft": "ड्राफ़्ट",
+  "emailCampaignsBadgeStatusFailed": "विफल",
+  "emailCampaignsBadgeStatusSending": "भेजा जा रहा है",
+  "emailCampaignsBadgeStatusSent": "भेजा गया",
+  "emailCampaignsBodyButtonHrefInvalid": "बटन का लिंक https: या mailto: पते पर होना चाहिए।",
+  "emailCampaignsBodyButtonLabelLineBreaks": "बटन के टेक्स्ट में पंक्ति केवल नई पंक्ति वाले कैरेक्टर (LF) से तोड़ी जा सकती है।",
+  "emailCampaignsBodyButtonLabelMissing": "बटन में टेक्स्ट होना चाहिए।",
+  "emailCampaignsBodyImageLayoutInvalid": "इमेज बाएँ, बीच में या दाएँ संरेखित होनी चाहिए और उसकी चौड़ाई पूरे पिक्सेल में होनी चाहिए।",
+  "emailCampaignsBodyImageSourceInvalid": "इमेज Cloudinary में Deskohub के खाते से होनी चाहिए।",
+  "emailCampaignsBodyLinkHrefInvalid": "लिंक में https: या mailto: पता होना चाहिए।",
+  "emailCampaignsBodyMissing": "Email का टेक्स्ट लिखें।",
+  "emailCampaignsBodyNotDocument": "Email का टेक्स्ट “doc” प्रकार का नोड होना चाहिए।",
+  "emailCampaignsBodyStructureInvalid": "Email के टेक्स्ट में ऐसे तत्व हैं, जिन्हें अभियान email सपोर्ट नहीं करते।",
+  "emailCampaignsComposerAllChangesSaved": "सभी बदलाव सहेजे गए",
+  "emailCampaignsComposerAudienceHint": "भेजने से पहले चुनें कि अभियान किसे मिलेगा।",
+  "emailCampaignsComposerAudienceLabel": "ऑडियंस",
+  "emailCampaignsComposerAudienceNone": "अभी कोई ऑडियंस नहीं",
+  "emailCampaignsComposerAudiencesEmpty": "अभी कोई ऑडियंस नहीं है। उसे ऑडियंस सेक्शन में बनाएँ।",
+  "emailCampaignsComposerBodyEditorLabel": "Email का टेक्स्ट, {language}",
+  "emailCampaignsComposerBodyLabel": "Email का टेक्स्ट",
+  "emailCampaignsComposerCampaignSection": "अभियान",
+  "emailCampaignsComposerContentLanguageLabel": "सामग्री की भाषा",
+  "emailCampaignsComposerContentSection": "सामग्री",
+  "emailCampaignsComposerCreateDraft": "ड्राफ़्ट बनाएँ",
+  "emailCampaignsComposerDraftDescription": "ड्राफ़्ट। बदलाव सहेजें, फिर टेस्ट email भेजें; उसमें असली भेजने के लिए पुष्टि कोड मिलेगा।",
+  "emailCampaignsComposerEyebrow": "Email अभियान",
+  "emailCampaignsComposerFallbackLocaleHint": "अंतिम विकल्प के रूप में चेक भाषा ज़रूरी है। जिन प्राप्तकर्ताओं की भाषा में सामग्री नहीं है, उन्हें सामग्री वाली सबसे नज़दीकी भाषा मिलती है, आमतौर पर अंग्रेज़ी।",
+  "emailCampaignsComposerHiddenContentCzech": "चेक भाषा की सामग्री इस ऑडियंस के लिए छिपी है और सहेजी नहीं जाएगी।",
+  "emailCampaignsComposerHiddenContentEnglish": "अंग्रेज़ी भाषा की सामग्री इस ऑडियंस के लिए छिपी है और सहेजी नहीं जाएगी।",
+  "emailCampaignsComposerHiddenContentGerman": "जर्मन भाषा की सामग्री इस ऑडियंस के लिए छिपी है और सहेजी नहीं जाएगी।",
+  "emailCampaignsComposerHiddenContentHindi": "हिंदी भाषा की सामग्री इस ऑडियंस के लिए छिपी है और सहेजी नहीं जाएगी।",
+  "emailCampaignsComposerHiddenContentSlovak": "स्लोवाक भाषा की सामग्री इस ऑडियंस के लिए छिपी है और सहेजी नहीं जाएगी।",
+  "emailCampaignsComposerHiddenContentUkrainian": "यूक्रेनी भाषा की सामग्री इस ऑडियंस के लिए छिपी है और सहेजी नहीं जाएगी।",
+  "emailCampaignsComposerHiddenContentVietnamese": "वियतनामी भाषा की सामग्री इस ऑडियंस के लिए छिपी है और सहेजी नहीं जाएगी।",
+  "emailCampaignsComposerLocaleIssues": "सुधारने के लिए: {count}",
+  "emailCampaignsComposerLocaleOptional": "वैकल्पिक",
+  "emailCampaignsComposerLocaleReady": "तैयार",
+  "emailCampaignsComposerLocaleRequired": "ज़रूरी",
+  "emailCampaignsComposerNewDescription": "अभियान लिखें और ड्राफ़्ट बनाएँ, जिसे फिर टेस्ट के तौर पर भेजा जा सकता है।",
+  "emailCampaignsComposerNewTitle": "नया अभियान",
+  "emailCampaignsComposerOperationalReasonHint": "ग्राहक को यह email क्यों मिल रहा है। फ़ील्ड खाली छोड़ने पर मानक टेक्स्ट इस्तेमाल होगा।",
+  "emailCampaignsComposerOperationalReasonLabel": "फ़ुटर में कारण",
+  "emailCampaignsComposerPreheaderHint": "ज़्यादातर email इनबॉक्स इसे विषय के बाद दिखाते हैं।",
+  "emailCampaignsComposerPreheaderLabel": "प्रीव्यू टेक्स्ट",
+  "emailCampaignsComposerPurposeLabel": "उद्देश्य",
+  "emailCampaignsComposerPurposeMarketing": "मार्केटिंग",
+  "emailCampaignsComposerPurposeMarketingDescription": "केवल वे ग्राहक, जिन्होंने मार्केटिंग संदेशों के लिए सहमति दी है। हर email में सदस्यता छोड़ने का लिंक होता है।",
+  "emailCampaignsComposerPurposeOperational": "संचालन संबंधी",
+  "emailCampaignsComposerPurposeOperationalDescription": "सभी मेल खाने वाले ग्राहकों के लिए संचालन संबंधी सूचना। फ़ुटर में बताया जाता है कि उन्हें यह email क्यों मिल रहा है।",
+  "emailCampaignsComposerSaveAudienceArchived": "चुनी गई ऑडियंस संग्रहित है। कोई दूसरी ऑडियंस चुनें।",
+  "emailCampaignsComposerSaveAudienceFilterUnavailable": "चुनी गई ऑडियंस ऐसे फ़िल्टर इस्तेमाल करती है, जो केवल ऑटोमेशन की शर्तों में इस्तेमाल हो सकते हैं। कोई दूसरी ऑडियंस चुनें।",
+  "emailCampaignsComposerSaveAudienceNotFound": "चुनी गई ऑडियंस अब मौजूद नहीं है।",
+  "emailCampaignsComposerSaveCheckFields": "अभियान सहेजा नहीं जा सका। भरी गई जानकारी जाँचें।",
+  "emailCampaignsComposerSaveContentInvalid": "सामग्री में गलतियाँ हैं। बताई गई समस्याएँ ठीक करें, फिर अभियान सहेजें।",
+  "emailCampaignsComposerSaveDraft": "ड्राफ़्ट सहेजें",
+  "emailCampaignsComposerSaveFailed": "अभियान सहेजा नहीं जा सका। फिर से कोशिश करें।",
+  "emailCampaignsComposerSaveReadOnly": "यह अभियान अब ड्राफ़्ट नहीं है और इसमें बदलाव नहीं किया जा सकता।",
+  "emailCampaignsComposerSaving": "सहेजा जा रहा है…",
+  "emailCampaignsComposerSingleLocaleAudienceCzech": "इस ऑडियंस में केवल चेक भाषा बोलने वाले ग्राहक हैं।",
+  "emailCampaignsComposerSingleLocaleAudienceEnglish": "इस ऑडियंस में केवल अंग्रेज़ी भाषा बोलने वाले ग्राहक हैं।",
+  "emailCampaignsComposerSingleLocaleAudienceGerman": "इस ऑडियंस में केवल जर्मन भाषा बोलने वाले ग्राहक हैं।",
+  "emailCampaignsComposerSingleLocaleAudienceHindi": "इस ऑडियंस में केवल हिंदी भाषा बोलने वाले ग्राहक हैं।",
+  "emailCampaignsComposerSingleLocaleAudienceSlovak": "इस ऑडियंस में केवल स्लोवाक भाषा बोलने वाले ग्राहक हैं।",
+  "emailCampaignsComposerSingleLocaleAudienceUkrainian": "इस ऑडियंस में केवल यूक्रेनी भाषा बोलने वाले ग्राहक हैं।",
+  "emailCampaignsComposerSingleLocaleAudienceVietnamese": "इस ऑडियंस में केवल वियतनामी भाषा बोलने वाले ग्राहक हैं।",
+  "emailCampaignsComposerSubjectLabel": "विषय",
+  "emailCampaignsComposerSubjectMissing": "विषय जोड़ें।",
+  "emailCampaignsComposerTemplateLabel": "टेम्पलेट",
+  "emailCampaignsComposerTemplatePreview": "टेम्पलेट का प्रीव्यू",
+  "emailCampaignsComposerTemplatePreviewFrameTitle": "नमूना सामग्री के साथ टेम्पलेट {template}",
+  "emailCampaignsComposerTemplateWorkspaceDescription": "Workspace का email लेआउट: गहरा नीला हेडर, सामग्री वाला सफ़ेद कार्ड और पते वाला फ़ुटर।",
+  "emailCampaignsComposerTitleHint": "नाम केवल व्यवस्थापकों को दिखता है।",
+  "emailCampaignsComposerTitleLabel": "नाम",
+  "emailCampaignsComposerTitlePlaceholder": "वसंत में खुलने का समय",
+  "emailCampaignsComposerTitleRequired": "अभियान का नाम दर्ज करें।",
+  "emailCampaignsComposerUnsavedChanges": "बिना सहेजे बदलाव",
+  "emailCampaignsComposerUntitledTitle": "बिना नाम का अभियान",
+  "emailCampaignsCtaCancel": "रद्द करें",
+  "emailCampaignsCtaDescription": "एक प्रमुख बटन, जो किसी पेज या email पते का लिंक देता है।",
+  "emailCampaignsCtaEdit": "बटन बदलें",
+  "emailCampaignsCtaHrefLabel": "लिंक",
+  "emailCampaignsCtaHrefMissing": "लिंक नहीं है",
+  "emailCampaignsCtaInsert": "बटन डालें",
+  "emailCampaignsCtaLabelLabel": "बटन का टेक्स्ट",
+  "emailCampaignsCtaLabelMissing": "बटन का टेक्स्ट नहीं है",
+  "emailCampaignsCtaLabelPlaceholder": "डेस्क बुक करें",
+  "emailCampaignsCtaLabelRequired": "बटन का टेक्स्ट दर्ज करें।",
+  "emailCampaignsCtaRemove": "बटन हटाएँ",
+  "emailCampaignsCtaUpdate": "बटन सहेजें",
+  "emailCampaignsDraftDelete": "ड्राफ़्ट हटाएँ",
+  "emailCampaignsDraftDeleteDescription": "यह कार्रवाई वापस नहीं ली जा सकती। ड्राफ़्ट, उसकी सामग्री और बिना सहेजे बदलाव हटा दिए जाएँगे। भेजे गए अभियान हटाए नहीं जा सकते।",
+  "emailCampaignsDraftDeleteFailed": "अभियान हटाया नहीं जा सका। फिर से कोशिश करें।",
+  "emailCampaignsDraftDeleteReadOnly": "यह अभियान अब ड्राफ़्ट नहीं है और इसे हटाया नहीं जा सकता।",
+  "emailCampaignsDraftDeleteTitle": "इस ड्राफ़्ट को हटाएँ?",
+  "emailCampaignsDraftDeleting": "हटाया जा रहा है…",
+  "emailCampaignsDraftNotFound": "यह अभियान अब मौजूद नहीं है।",
+  "emailCampaignsEditorBold": "बोल्ड",
+  "emailCampaignsEditorBulletList": "बुलेट सूची",
+  "emailCampaignsEditorDivider": "विभाजक रेखा",
+  "emailCampaignsEditorHeading1": "शीर्षक 1",
+  "emailCampaignsEditorHeading2": "शीर्षक 2",
+  "emailCampaignsEditorHeading3": "शीर्षक 3",
+  "emailCampaignsEditorItalic": "इटैलिक",
+  "emailCampaignsEditorNumberedList": "क्रमांकित सूची",
+  "emailCampaignsEditorParagraph": "अनुच्छेद",
+  "emailCampaignsEditorPlaceholder": "Email लिखें। शीर्षक, लिंक, इमेज और बटन टूलबार से जोड़ें।",
+  "emailCampaignsEditorRedo": "फिर से करें",
+  "emailCampaignsEditorTextStyle": "टेक्स्ट की शैली",
+  "emailCampaignsEditorToolbar": "फ़ॉर्मैटिंग",
+  "emailCampaignsEditorUndo": "पूर्ववत करें",
+  "emailCampaignsEmailPreviewFrameTitle": "Email का प्रीव्यू, {language}",
+  "emailCampaignsEmailPreviewHeading": "प्रीव्यू",
+  "emailCampaignsEmailPreviewLabel": "Email का प्रीव्यू",
+  "emailCampaignsEmailPreviewLanguage": "प्रीव्यू की भाषा",
+  "emailCampaignsEmailPreviewMissingContentCzech": "Email देखने के लिए चेक भाषा की सामग्री जोड़ें।",
+  "emailCampaignsEmailPreviewMissingContentEnglish": "Email देखने के लिए अंग्रेज़ी भाषा की सामग्री जोड़ें।",
+  "emailCampaignsEmailPreviewMissingContentGerman": "Email देखने के लिए जर्मन भाषा की सामग्री जोड़ें।",
+  "emailCampaignsEmailPreviewMissingContentHindi": "Email देखने के लिए हिंदी भाषा की सामग्री जोड़ें।",
+  "emailCampaignsEmailPreviewMissingContentSlovak": "Email देखने के लिए स्लोवाक भाषा की सामग्री जोड़ें।",
+  "emailCampaignsEmailPreviewMissingContentUkrainian": "Email देखने के लिए यूक्रेनी भाषा की सामग्री जोड़ें।",
+  "emailCampaignsEmailPreviewMissingContentVietnamese": "Email देखने के लिए वियतनामी भाषा की सामग्री जोड़ें।",
+  "emailCampaignsEmailPreviewNoPreheader": "कोई प्रीव्यू टेक्स्ट नहीं",
+  "emailCampaignsEmailPreviewNoSubject": "कोई विषय नहीं",
+  "emailCampaignsEmailPreviewRenderFailed": "प्रीव्यू नहीं बनाया जा सका।",
+  "emailCampaignsEmailPreviewRendering": "प्रीव्यू बनाया जा रहा है…",
+  "emailCampaignsEmailPreviewUpdating": "अपडेट हो रहा है…",
+  "emailCampaignsImageAlignCenter": "इमेज को बीच में रखें",
+  "emailCampaignsImageAlignLeft": "इमेज को बाईं ओर रखें",
+  "emailCampaignsImageAlignRight": "इमेज को दाईं ओर रखें",
+  "emailCampaignsImageWidth": "इमेज की चौड़ाई (px)",
+  "emailCampaignsImageWidthHint": "1 से {maxWidth} तक की पूर्ण संख्या दर्ज करें। छोटी स्क्रीन पर इमेज छोटी हो जाती हैं।",
+  "emailCampaignsImageShrinking": "इमेज छोटी की जा रही है…",
+  "emailCampaignsImageUploadAnimationTooLarge": "एनिमेटेड इमेज अधिकतम {maxMegabytes} MB की हो सकती है और उसके सभी फ़्रेम मिलाकर अधिकतम {maxMegapixels} मेगापिक्सेल हो सकते हैं। एनिमेशन छोटा करें या उसका आकार घटाएँ।",
+  "emailCampaignsImageUploadFailed": "इमेज अपलोड नहीं की जा सकी। फिर से कोशिश करें।",
+  "emailCampaignsImageUploadInsert": "इमेज डालें",
+  "emailCampaignsImageUploadUnreadable": "इमेज पढ़ी नहीं जा सकी। कोई दूसरी फ़ाइल आज़माएँ।",
+  "emailCampaignsImageUploading": "इमेज अपलोड हो रही है…",
+  "emailCampaignsLinkAdd": "लिंक जोड़ें",
+  "emailCampaignsLinkHrefHint": "https:// से शुरू होने वाला पता या कोई email पता दर्ज करें।",
+  "emailCampaignsLinkHrefLabel": "लिंक का पता",
+  "emailCampaignsLinkRemove": "लिंक हटाएँ",
+  "emailCampaignsLinkToggle": "लिंक",
+  "emailCampaignsLinkUpdate": "लिंक बदलें",
+  "emailCampaignsListAudienceColumn": "ऑडियंस",
+  "emailCampaignsListCampaignColumn": "अभियान",
+  "emailCampaignsListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} अभियान",
+        "countPlural=other": "{formattedCount} अभियान"
+      }
+    }
+  ],
+  "emailCampaignsListCountLoading": "अभियानों की संख्या लोड हो रही है",
+  "emailCampaignsListEmpty": "अभी कोई अभियान नहीं है। पहला अभियान बनाएँ और अपना पहला email लिखें।",
+  "emailCampaignsListLoading": "अभियान लोड हो रहे हैं",
+  "emailCampaignsListNewCampaign": "नया अभियान",
+  "emailCampaignsListNoAudience": "कोई ऑडियंस नहीं",
+  "emailCampaignsListPurposeColumn": "उद्देश्य",
+  "emailCampaignsListStatusColumn": "स्थिति",
+  "emailCampaignsListTableControls": "अभियान तालिका के नियंत्रण",
+  "emailCampaignsListTitle": "Email अभियान",
+  "emailCampaignsListUpdatedAt": "अपडेट: {updatedAt}",
+  "emailCampaignsListUpdatedColumn": "अपडेट",
+  "emailCampaignsLocaleNameCzech": "चेक",
+  "emailCampaignsLocaleNameEnglish": "अंग्रेज़ी",
+  "emailCampaignsRecipientPreviewAsOfNow": "ऑडियंस इस समय की स्थिति के अनुसार तय की गई है। भेजते समय इसे फिर से तय किया जाएगा और उससे बनी सूची स्थिर कर दी जाएगी।",
+  "emailCampaignsRecipientPreviewAudienceDescription": "{audience}: {filter}।",
+  "emailCampaignsRecipientPreviewBackToCampaign": "अभियान पर वापस जाएँ",
+  "emailCampaignsRecipientPreviewCustomerColumn": "ग्राहक",
+  "emailCampaignsRecipientPreviewCustomerInline": "ग्राहक {customer}",
+  "emailCampaignsRecipientPreviewEmailColumn": "Email",
+  "emailCampaignsRecipientPreviewExcluded": "बाहर रखा गया",
+  "emailCampaignsRecipientPreviewExcludedCustomers": "बाहर रखे गए ग्राहक",
+  "emailCampaignsRecipientPreviewExcludedEmpty": "मेल खाने वाले किसी ग्राहक को बाहर नहीं रखा गया।",
+  "emailCampaignsRecipientPreviewExclusionDeletedCustomer": "Dotypos में हटाया गया",
+  "emailCampaignsRecipientPreviewExclusionInvalidEmail": "Dotypos में अमान्य email",
+  "emailCampaignsRecipientPreviewExclusionMissingEmail": "Dotypos में email नहीं है",
+  "emailCampaignsRecipientPreviewExclusionMissingFromDotypos": "Dotypos में नहीं मिला",
+  "emailCampaignsRecipientPreviewLanguageColumn": "भाषा",
+  "emailCampaignsRecipientPreviewNoAudience": "इस अभियान की अभी कोई ऑडियंस नहीं है। अभियान एडिटर में ऑडियंस चुनें, फिर उसके प्राप्तकर्ता देखें।",
+  "emailCampaignsRecipientPreviewReasonColumn": "कारण",
+  "emailCampaignsRecipientPreviewReceivesColumn": "Email मिलेगा",
+  "emailCampaignsRecipientPreviewReceivesInline": "इसे मिलेगा: {customer}",
+  "emailCampaignsRecipientPreviewRecipients": "प्राप्तकर्ता",
+  "emailCampaignsRecipientPreviewRecipientsEmpty": "ऑडियंस में अभी कोई ग्राहक नहीं है।",
+  "emailCampaignsRecipientPreviewSharedEmails": "साझा email",
+  "emailCampaignsRecipientPreviewSharedEmailsEmpty": "किन्हीं दो ग्राहकों का email पता एक जैसा नहीं है।",
+  "emailCampaignsRecipientPreviewSharedEmailsNote": "एक ही email पते वाले ग्राहकों को केवल एक email भेजा जाता है। यह उसे मिलता है, जिसने सबसे हाल में बुकिंग की।",
+  "emailCampaignsRecipientPreviewSharedEmailsTitle": "साझा email पते",
+  "emailCampaignsRecipientPreviewSkippedColumn": "छोड़े गए",
+  "emailCampaignsRecipientPreviewSkippedInline": "छोड़े गए:",
+  "emailCampaignsRecipientPreviewSummary": "सारांश",
+  "emailCampaignsRecipientPreviewTitle": "प्राप्तकर्ताओं का प्रीव्यू",
+  "emailCampaignsRecipientPreviewTryAgain": "फिर से कोशिश करें",
+  "emailCampaignsRecipientPreviewUnavailable": "प्राप्तकर्ता तय नहीं किए जा सके, क्योंकि Dotypos उपलब्ध नहीं है। कुछ भी नहीं बदला।",
+  "emailCampaignsSendConfirmCancel": "रद्द करें",
+  "emailCampaignsSendConfirmCodeInvalid": "सबसे नए टेस्ट email से 8 कैरेक्टर का कोड दर्ज करें।",
+  "emailCampaignsSendConfirmCodeLabel": "पुष्टि कोड",
+  "emailCampaignsSendConfirmDescription": "सबसे नए टेस्ट email से पुष्टि कोड दर्ज करें। कोड 24 घंटे तक मान्य है, और केवल उस सामग्री के लिए, जो इस टेस्ट में दिखाई गई थी। नया टेस्ट email या सामग्री में बदलाव इसकी जगह ले लेता है।",
+  "emailCampaignsSendConfirmFailed": "अभियान भेजा नहीं जा सका। फिर से कोशिश करें।",
+  "emailCampaignsSendConfirmIrreversible": "भेजने से प्राप्तकर्ताओं की सूची स्थिर हो जाती है और इसे वापस नहीं लिया जा सकता।",
+  "emailCampaignsSendConfirmSubmit": "अभियान भेजें",
+  "emailCampaignsSendConfirmSubmitting": "भेजा जा रहा है…",
+  "emailCampaignsSendConfirmTitle": "यह अभियान भेजें",
+  "emailCampaignsSendConfirmUnsavedChanges": "पहले बदलाव सहेजें और नया टेस्ट भेजें। अभियान केवल सहेजी गई सामग्री भेजता है।",
+  "emailCampaignsSendPreviewRecipients": "प्राप्तकर्ताओं का प्रीव्यू",
+  "emailCampaignsSendingFailureAudienceMissing": "भेजने से पहले इस अभियान के लिए ऑडियंस चुनें।",
+  "emailCampaignsSendingFailureAudienceNotFound": "इस अभियान की ऑडियंस अब मौजूद नहीं है। कोई दूसरी ऑडियंस चुनें; कुछ भी नहीं भेजा गया और कोड अब भी मान्य है।",
+  "emailCampaignsSendingFailureCampaignNotFound": "यह अभियान अब मौजूद नहीं है।",
+  "emailCampaignsSendingFailureCampaignReadOnly": "यह अभियान अब ड्राफ़्ट नहीं है। नई कॉपी भेजने के लिए अभियान का डुप्लिकेट बनाएँ।",
+  "emailCampaignsSendingFailureCodeContentChanged": "उस टेस्ट email के बाद अभियान बदल गया है। नया टेस्ट email भेजें और उसका कोड इस्तेमाल करें।",
+  "emailCampaignsSendingFailureCodeExpired": "इस कोड की वैधता समाप्त हो गई है। नए कोड के लिए नया टेस्ट email भेजें।",
+  "emailCampaignsSendingFailureCodeSuperseded": "इस कोड की जगह एक नए टेस्ट email ने ले ली है। सबसे नए टेस्ट email का कोड इस्तेमाल करें।",
+  "emailCampaignsSendingFailureCodeTooManyAttempts": "बहुत बार गलत कोड दर्ज किए गए, इसलिए यह कोड अब काम नहीं करता। नए कोड के लिए नया टेस्ट email भेजें।",
+  "emailCampaignsSendingFailureCodeUnknown": "यह कोड सबसे नए टेस्ट email से मेल नहीं खाता। जाँचें कि उसमें टाइपिंग की कोई गलती तो नहीं है, और फिर से कोशिश करें।",
+  "emailCampaignsSendingFailureContentMissing": "पहले कम से कम एक भाषा में विषय और टेक्स्ट जोड़ें।",
+  "emailCampaignsSendingFailureDeliveryQueueFailed": "डिलीवरी को कतार में नहीं डाला जा सका, इसलिए अभियान को “विफल” चिह्नित किया गया है। थोड़ी देर बाद इसे उन प्राप्तकर्ताओं को फिर से भेजें, जिन तक यह नहीं पहुँचा।",
+  "emailCampaignsSendingFailureEmailDeliveryFailed": "Email सेवा प्रदाता ने टेस्ट email स्वीकार नहीं किया। थोड़ी देर बाद फिर से कोशिश करें।",
+  "emailCampaignsSendingFailureFallbackContentMissing": "चेक भाषा की सामग्री उन ग्राहकों के लिए अंतिम विकल्प है, जिनकी भाषा में सामग्री नहीं है, इसलिए चेक भाषा की सामग्री जोड़ें, या ऑडियंस को अभियान में मौजूद किसी एक भाषा तक सीमित करें। कुछ भी नहीं भेजा गया।",
+  "emailCampaignsSendingFailureNoRecipients": "ऑडियंस में अभी कोई ऐसा प्राप्तकर्ता नहीं है, जिस तक email पहुँच सके, इसलिए कुछ भी नहीं भेजा गया।",
+  "emailCampaignsSendingFailureNotRetryable": "जिन प्राप्तकर्ताओं तक email नहीं पहुँचा, उन्हें फिर से केवल विफल अभियान में भेजा जा सकता है।",
+  "emailCampaignsSendingFailureSigningKeyInvalid": "पुष्टि कोड जारी नहीं किए जा सकते, क्योंकि साइनिंग कुंजी गलत तरीके से सेट है। किसी डेवलपर से BETTER_AUTH_SECRETS जाँचने के लिए कहें।",
+  "emailCampaignsSendingFailureUnauthorized": "प्रशासन में आपका साइन-इन अब मान्य नहीं है। पेज फिर से लोड करें और साइन इन करें।",
+  "emailCampaignsSendingFailureUnexpected": "कुछ गड़बड़ हो गई। थोड़ी देर बाद फिर से कोशिश करें।",
+  "emailCampaignsSentAudience": "ऑडियंस",
+  "emailCampaignsSentAudienceDeleted": "हटाई गई ऑडियंस",
+  "emailCampaignsSentAudienceFilter": "फ़िल्टर",
+  "emailCampaignsSentAudienceFilterCountedBack": "{filter}, भेजने के समय ({sentAt}) से पीछे की ओर गिना गया।",
+  "emailCampaignsSentAudienceFilterSummary": "{filter}।",
+  "emailCampaignsSentAudienceTitle": "भेजने के समय की ऑडियंस",
+  "emailCampaignsSentCampaignTitle": "अभियान",
+  "emailCampaignsSentCompletedAt": "पूरा हुआ",
+  "emailCampaignsSentCompletedAtPending": "अभी नहीं",
+  "emailCampaignsSentContentTitle": "सामग्री",
+  "emailCampaignsSentDeliveryRecipientCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} प्राप्तकर्ता",
+        "countPlural=other": "{formattedCount} प्राप्तकर्ता"
+      }
+    }
+  ],
+  "emailCampaignsSentDeliveryTitle": "डिलीवरी",
+  "emailCampaignsSentDeliveryUnconfirmedNote": "जिन प्राप्तकर्ताओं की पुष्टि नहीं हुई, उनके पास email शायद पहले से है: email सेवा प्रदाता ने उनके बैच की कभी पुष्टि नहीं की। जिन तक email नहीं पहुँचा, उन्हें फिर से भेजने पर ये प्राप्तकर्ता छोड़ दिए जाते हैं, जब तक आप इन्हें भी भेजना न चुनें।",
+  "emailCampaignsSentDuplicate": "डुप्लिकेट बनाएँ",
+  "emailCampaignsSentDuplicateFailed": "अभियान का डुप्लिकेट नहीं बनाया जा सका।",
+  "emailCampaignsSentDuplicating": "डुप्लिकेट बनाया जा रहा है…",
+  "emailCampaignsSentEmailNoPreview": "प्रीव्यू उपलब्ध नहीं है।",
+  "emailCampaignsSentEmailRenderFailed": "Email का प्रीव्यू नहीं बनाया जा सका।",
+  "emailCampaignsSentEyebrow": "Email अभियान",
+  "emailCampaignsSentFailedNotice": "कुछ प्राप्तकर्ताओं को डिलीवरी विफल रही। जिन तक email नहीं पहुँचा, उन्हें फिर से भेजने पर email केवल उन्हीं प्राप्तकर्ताओं को भेजा जाता है, जिन्हें यह नहीं मिला।",
+  "emailCampaignsSentIncludeUnconfirmed": "उन प्राप्तकर्ताओं को भी फिर से भेजें, जिनकी पुष्टि नहीं हुई (उन्हें यह दो बार मिल सकता है)",
+  "emailCampaignsSentNoSendRecorded": "इस अभियान के लिए कोई भेजना दर्ज नहीं हुआ।",
+  "emailCampaignsSentPurpose": "उद्देश्य",
+  "emailCampaignsSentRecipientsCustomerColumn": "ग्राहक",
+  "emailCampaignsSentRecipientsEmpty": "इस बार भेजने में कोई प्राप्तकर्ता स्थिर नहीं किया गया।",
+  "emailCampaignsSentRecipientsLanguageColumn": "भाषा",
+  "emailCampaignsSentRecipientsLanguageSince": "{language} · {statusUpdatedAt} से",
+  "emailCampaignsSentRecipientsSkipReasonColumn": "छोड़ने का कारण",
+  "emailCampaignsSentRecipientsSkipped": "छोड़ा गया: {reason}",
+  "emailCampaignsSentRecipientsStatusColumn": "स्थिति",
+  "emailCampaignsSentRecipientsStatusSinceColumn": "स्थिति कब से",
+  "emailCampaignsSentRecipientsTableLabel": "अभियान के प्राप्तकर्ता",
+  "emailCampaignsSentRecipientsTitle": "प्राप्तकर्ता",
+  "emailCampaignsSentRetry": "जिन तक नहीं पहुँचा, उन्हें फिर से भेजें",
+  "emailCampaignsSentRetryFailed": "जिन प्राप्तकर्ताओं तक email नहीं पहुँचा, उन्हें फिर से नहीं भेजा जा सका।",
+  "emailCampaignsSentRetryStarted": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} प्राप्तकर्ता को email फिर से भेजा जा रहा है, जिस तक यह नहीं पहुँच सका था।",
+        "countPlural=other": "{formattedCount} प्राप्तकर्ताओं को email फिर से भेजा जा रहा है, जिन तक यह नहीं पहुँच सका था।"
+      }
+    }
+  ],
+  "emailCampaignsSentRetrying": "फिर से भेजा जा रहा है…",
+  "emailCampaignsSentSendingNotice": "डिलीवरी जारी है। प्राप्तकर्ताओं की स्थिति email सेवा प्रदाता की रिपोर्ट के अनुसार अपडेट होती है।",
+  "emailCampaignsSentSentAt": "भेजा गया",
+  "emailCampaignsSentSentAtNotRecorded": "दर्ज नहीं",
+  "emailCampaignsSentSkipReasonConsentWithdrawn": "मार्केटिंग संदेशों के लिए सहमति वापस ली गई",
+  "emailCampaignsSentSkipReasonDeletedCustomer": "ग्राहक हटाया गया",
+  "emailCampaignsSentSkipReasonInvalidEmail": "अमान्य email पता",
+  "emailCampaignsSentSkipReasonMissingEmail": "email पता नहीं है",
+  "emailCampaignsSentSkipReasonMissingFromDotypos": "अब Dotypos में नहीं है",
+  "emailCampaignsSentSkipReasonOutsideTestDomain": "टेस्ट email डोमेन से बाहर",
+  "emailCampaignsSentStatus": "स्थिति",
+  "emailCampaignsTestSendAdd": "जोड़ें",
+  "emailCampaignsTestSendAddRecipientLabel": "टेस्ट प्राप्तकर्ता जोड़ें",
+  "emailCampaignsTestSendAdminInboxAlways": "प्रशासन के इनबॉक्स को टेस्ट email हमेशा मिलते हैं।",
+  "emailCampaignsTestSendAdminInboxNote": "(प्रशासन का इनबॉक्स, हमेशा शामिल)",
+  "emailCampaignsTestSendCancel": "रद्द करें",
+  "emailCampaignsTestSendCodeExpires": "पुष्टि कोड {expiresAt} तक मान्य है।",
+  "emailCampaignsTestSendContentMissing": "टेस्ट भेजने से पहले कम से कम एक भाषा में विषय और टेक्स्ट जोड़ें।",
+  "emailCampaignsTestSendDescription": "टेस्ट email में पुष्टि कोड होता है, जिसे आप अभियान भेजते समय दर्ज करते हैं। नया टेस्ट email पिछले कोड की जगह ले लेता है।",
+  "emailCampaignsTestSendDone": "हो गया",
+  "emailCampaignsTestSendFailed": "टेस्ट email भेजा नहीं जा सका। पते जाँचें और फिर से कोशिश करें।",
+  "emailCampaignsTestSendPerLanguage": "हर पते पर हर भाषा में एक [TEST] email जाएगा: {languages}।",
+  "emailCampaignsTestSendRecipientDuplicate": "यह पता पहले से शामिल है।",
+  "emailCampaignsTestSendRecipientInvalid": "मान्य email पता दर्ज करें।",
+  "emailCampaignsTestSendRecipientRequired": "Email पता दर्ज करें।",
+  "emailCampaignsTestSendRecipients": "प्राप्तकर्ता",
+  "emailCampaignsTestSendRecipientsLabel": "टेस्ट प्राप्तकर्ता",
+  "emailCampaignsTestSendRemoveRecipient": "{email} हटाएँ",
+  "emailCampaignsTestSendSent": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} टेस्ट email भेजा गया ({languages})।",
+        "countPlural=other": "{formattedCount} टेस्ट email भेजे गए ({languages})।"
+      }
+    }
+  ],
+  "emailCampaignsTestSendSubmit": "टेस्ट भेजें",
+  "emailCampaignsTestSendSubmitting": "भेजा जा रहा है…",
+  "emailCampaignsTestSendTitle": "टेस्ट email भेजें",
+  "emailCampaignsTestSendUnsavedChanges": "पहले बदलाव सहेजें। टेस्ट सहेजे गए अभियान का इस्तेमाल करता है, इसलिए उसका कोड आपके बिना सहेजे बदलावों की पुष्टि नहीं करेगा।",
+  "emailCampaignsActionTimedOut": "सर्वर ने समय पर जवाब नहीं दिया। फिर से कोशिश करें।",
+  "emailCampaignsDeliveryMismatch": "यह कार्रवाई केवल एक बार भेजे जाने वाले अभियानों के लिए है, और यह अभियान अपने आप भेजा जाता है।",
+  "emailCampaignsActionFailedUnexpectedly": "सर्वर पर कुछ गड़बड़ हो गई। फिर से कोशिश करें।",
+  "emailCampaignsAudienceInUseByDrafts": "इस ऑडियंस का इस्तेमाल ड्राफ़्ट अभियान करते हैं, इसलिए इसे केवल संग्रहित किया जा सकता है। इसे हटाने से पहले उन ड्राफ़्ट को किसी दूसरी ऑडियंस पर ले जाएँ।",
+  "emailCampaignsComposerEnglishFallbackMissing": "अंग्रेज़ी भाषा की सामग्री न होने पर, उन प्राप्तकर्ताओं को चेक भाषा का संस्करण मिलेगा जिनकी भाषा के लिए अंग्रेज़ी विकल्प के रूप में इस्तेमाल होती है।",
+  "emailCampaignsSendingFailureTestRecipientsInvalid": "इनमें से एक पता मान्य email पता नहीं है। पते जाँचें और फिर से कोशिश करें।",
+  "emailCampaignsSendingFailureRecipientsOutsideTestDomain": "प्रोडक्शन के बाहर अभियान email केवल @{domain} पतों पर भेजे जा सकते हैं, और कुछ प्राप्तकर्ता इनमें शामिल नहीं हैं। कुछ भी नहीं भेजा गया।",
+  "emailCampaignsSendingFailureRecipientsUnavailable": "प्राप्तकर्ता तय नहीं किए जा सके, क्योंकि Dotypos या डेटाबेस उपलब्ध नहीं है। कुछ भी नहीं भेजा गया और कोड अब भी मान्य है; थोड़ी देर बाद फिर से कोशिश करें।",
+  "emailCampaignsSendingFailureEmailSetupMissing": "इस डिप्लॉयमेंट में अभियान email सेट नहीं हैं। किसी डेवलपर से अभियान email के एनवायरनमेंट वेरिएबल जाँचने के लिए कहें।"
+}

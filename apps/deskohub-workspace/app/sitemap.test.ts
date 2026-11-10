@@ -127,7 +127,16 @@ describe("sitemap.xml", () => {
     for (const entry of entries) {
       const languages = entry.alternates?.languages ?? {};
       expect(Object.keys(languages).toSorted()).toEqual(
-        ["en-US", "cs-CZ", "de-DE", "uk-UA", "sk-SK", "x-default"].toSorted()
+        [
+          "en-US",
+          "cs-CZ",
+          "de-DE",
+          "uk-UA",
+          "sk-SK",
+          "vi-VN",
+          "hi-IN",
+          "x-default",
+        ].toSorted()
       );
       expect(Object.values(languages)).toContain(entry.url);
 

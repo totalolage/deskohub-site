@@ -324,6 +324,8 @@ test("each language tab shows whether its content is missing, incomplete, or rea
     ["optional"],
     ["optional"],
     ["optional"],
+    ["optional"],
+    ["optional"],
   ]);
   cleanup();
 
@@ -348,12 +350,16 @@ test("each language tab shows whether its content is missing, incomplete, or rea
         "de-DE": emptyLocale,
         "uk-UA": emptyLocale,
         "sk-SK": emptyLocale,
+        "vi-VN": emptyLocale,
+        "hi-IN": emptyLocale,
       },
     },
   });
   expect(written.getAllByRole("tab").map(tabStatus).map(shown)).toEqual([
     ["oneIssue"],
     ["ready"],
+    ["optional"],
+    ["optional"],
     ["optional"],
     ["optional"],
     ["optional"],
