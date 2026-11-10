@@ -2209,6 +2209,7 @@ export class AdministrationService extends Context.Service<
               .select({
                 id: discountApplications.id,
                 label: discountApplications.label,
+                staffLabel: discountApplications.staffLabel,
                 appliedAmountValue: discountApplications.appliedAmountValue,
                 appliedAmountExponent:
                   discountApplications.appliedAmountExponent,
@@ -2326,7 +2327,7 @@ export class AdministrationService extends Context.Service<
           orders,
           discounts: applicationRows.map((application) => ({
             id: application.id,
-            label: application.label,
+            label: application.staffLabel ?? application.label,
             amount: {
               value: application.appliedAmountValue,
               exponent: application.appliedAmountExponent,

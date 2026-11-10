@@ -6,7 +6,6 @@ import {
   DotyposTableSchema,
 } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
-import { TestClock } from "effect/testing";
 import {
   CustomerAccountContactService,
   CustomerAccountReservationOwnership,
@@ -82,15 +81,6 @@ export const workspaceInstantToday = (time: string) =>
       plainTime: Temporal.PlainTime.from(time),
     })
     .toInstant();
-
-/** Runs an Effect with the clock fixed at an instant. */
-export const atInstant =
-  (instant: Temporal.Instant) =>
-  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    TestClock.setTime(instant.epochMilliseconds).pipe(
-      Effect.andThen(effect),
-      Effect.provide(TestClock.layer())
-    );
 
 /** A confirmed booking of a table for a whole Prague date. */
 export const makeTestOccupancy = (input: {
