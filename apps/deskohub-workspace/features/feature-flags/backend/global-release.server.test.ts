@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { classifiedConstancy } from "@/features/feature-flags/backend/feature-flag-constancy.test-utils";
 import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
 import { recordNextCache } from "@/shared/testing/next-cache-recorder.test-utils";
 
@@ -21,6 +22,8 @@ mock.module("next/headers", () => ({ ...nextHeaders, headers }));
 // visitor. While `classificationFails`, the classification rejects.
 let constantFlags: Partial<Record<PostHogFeatureFlagKey, boolean>> = {};
 let classificationFails = false;
+// While `unclassified`, PostHog's definitions couldn't be read at all.
+let unclassified = false;
 mock.module(
   "@/features/feature-flags/backend/feature-flag-evaluation-mode.server",
   () => ({
@@ -29,6 +32,14 @@ mock.module(
       classificationFails
         ? Promise.reject(new Error("Classification failed"))
         : Promise.resolve(constantFlags[key]),
+    getWorkspaceFeatureFlagConstancy: (key: PostHogFeatureFlagKey) =>
+      classificationFails
+        ? Promise.reject(new Error("Classification failed"))
+        : Promise.resolve(
+            unclassified
+              ? { kind: "unclassified" }
+              : classifiedConstancy(constantFlags[key])
+          ),
   })
 );
 
@@ -68,6 +79,17 @@ describe("loadGlobalRelease", () => {
       expect(nextCache.calls).toEqual([{ cacheLife: "minutes" }]);
     } finally {
       classificationFails = false;
+    }
+  });
+
+  test("counts a flag no classification decides as undecided, so its gate is read per request", async () => {
+    constantFlags = {};
+    unclassified = true;
+    try {
+      expect(await loadGlobalRelease("referrals")).toBe("undecided");
+      expect(headers).not.toHaveBeenCalled();
+    } finally {
+      unclassified = false;
     }
   });
 });

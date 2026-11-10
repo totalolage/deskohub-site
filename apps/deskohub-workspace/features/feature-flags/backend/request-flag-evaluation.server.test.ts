@@ -26,6 +26,7 @@ import {
   type PostHogFeatureFlagKey,
   postHogFeatureFlags,
 } from "../generated/contract";
+import { classifiedConstancy } from "./feature-flag-constancy.test-utils";
 import type { ReleaseGateClass } from "./release-gate";
 
 type FlagValues = Partial<Record<PostHogFeatureFlagKey, boolean>>;
@@ -79,6 +80,8 @@ mock.module("./node", () => ({
 mock.module("./feature-flag-evaluation-mode.server", () => ({
   getGlobalWorkspaceFeatureFlagValue: (key: PostHogFeatureFlagKey) =>
     Promise.resolve(constants[key]),
+  getWorkspaceFeatureFlagConstancy: (key: PostHogFeatureFlagKey) =>
+    Promise.resolve(classifiedConstancy(constants[key])),
   getGlobalWorkspaceFeatureFlagValues: (
     keys: readonly PostHogFeatureFlagKey[]
   ) =>

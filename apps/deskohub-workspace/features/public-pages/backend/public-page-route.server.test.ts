@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
+import { ReleaseGateUnavailableError } from "@/features/feature-flags/backend/release-gate";
 import { type Locale, locales } from "@/features/i18n";
 import { MeetingRoomPageReleaseGate } from "@/features/meeting-room/backend/meeting-room-page-release-gate";
 import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
@@ -12,6 +13,19 @@ import {
 
 let requestLocale: Locale = "en-US";
 const openGates = new Set<PublicPageReleaseGate>();
+// Gates PostHog can't decide: their decision for stored output fails.
+const unavailableGates = new Set<PublicPageReleaseGate>();
+const decisionOf = (gate: PublicPageReleaseGate) =>
+  Effect.suspend(() =>
+    unavailableGates.has(gate)
+      ? Effect.fail(
+          new ReleaseGateUnavailableError({
+            flags: [],
+            message: "PostHog couldn't decide the release gate.",
+          })
+        )
+      : Effect.succeed(openGates.has(gate))
+  );
 const isMeetingRoomPageEnabled = mock(() =>
   Promise.resolve(openGates.has("meeting-room-page"))
 );
@@ -33,7 +47,8 @@ mock.module(
     isMeetingRoomPageEnabled,
     MeetingRoomPageReleaseGateRequest:
       MeetingRoomPageReleaseGate.fromEvaluation(
-        Effect.promise(isMeetingRoomPageEnabled)
+        Effect.promise(isMeetingRoomPageEnabled),
+        decisionOf("meeting-room-page")
       ),
   })
 );
@@ -44,7 +59,8 @@ mock.module("@/features/office/backend/office-release-gate.server", () => ({
   ...officeFeatureFlag,
   isOfficePageEnabled,
   OfficeReleaseGateRequest: OfficeReleaseGate.fromEvaluation(
-    Effect.promise(isOfficePageEnabled)
+    Effect.promise(isOfficePageEnabled),
+    decisionOf("office-page")
   ),
 }));
 
@@ -70,6 +86,7 @@ const pageMetadata = (pathname: (typeof publicPages)[number]["pathname"]) =>
 beforeEach(() => {
   requestLocale = "en-US";
   openGates.clear();
+  unavailableGates.clear();
   isMeetingRoomPageEnabled.mockClear();
   isOfficePageEnabled.mockClear();
 });
@@ -140,6 +157,18 @@ describe("public page release gates", () => {
         notFound
       );
       await expect(pageMetadata(pathname)).rejects.toThrow(notFound);
+    });
+
+    test(`${pathname} rejects its metadata and body, not as not found, while PostHog can't decide ${releaseGate}`, async () => {
+      openGates.add("meeting-room-page").add("office-page");
+      unavailableGates.add(releaseGate);
+
+      await expect(requirePublishedPublicPage(pathname)).rejects.toBeInstanceOf(
+        ReleaseGateUnavailableError
+      );
+      await expect(pageMetadata(pathname)).rejects.toBeInstanceOf(
+        ReleaseGateUnavailableError
+      );
     });
 
     test(`${pathname} is served while ${releaseGate} is on`, async () => {

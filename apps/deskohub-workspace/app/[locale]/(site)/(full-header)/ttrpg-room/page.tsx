@@ -1,4 +1,3 @@
-import Interpolate from "@doist/react-interpolate";
 import Link from "next/link";
 import { connection } from "next/server";
 import { type ReactNode, Suspense } from "react";
@@ -6,8 +5,8 @@ import { loadVenuePhotos } from "@/features/gallery/backend/load-venue-photos.se
 import { RoomImageCarousel } from "@/features/gallery/components/room-image-carousel";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-release-gate.server";
 import { publicPageMetadata } from "@/features/public-pages/backend/public-page-route.server";
+import { MeetingRoomNote } from "@/features/ttrpg-room/components/meeting-room-note";
 import { getTtrpgRooms } from "@/features/ttrpg-room/ttrpg-rooms";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
@@ -83,27 +82,6 @@ export function TtrpgRoomPage({
         </section>
       </Container>
     </main>
-  );
-}
-
-/** Points the Workspace room's visitors at the meeting room it is, while that page is out. */
-async function MeetingRoomNote({ locale }: { locale: Locale }) {
-  await connection();
-  if (!(await isMeetingRoomPageEnabled())) return null;
-
-  return (
-    <p>
-      <Interpolate
-        string={m.ttrpgRoomMeetingRoomNote({}, { locale })}
-        mapping={{
-          meetingRoom: (content) => (
-            <Link href={`/${locale}/meeting-room`} className={textLink()}>
-              {content}
-            </Link>
-          ),
-        }}
-      />
-    </p>
   );
 }
 

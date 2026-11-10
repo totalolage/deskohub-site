@@ -27,7 +27,9 @@ const PublishedPublicPagesRenderLayer =
 /**
  * Renders the not-found page while production doesn't serve the public
  * page. A gated page calls it in both its metadata and its body, so
- * crawlers get a real 404 and browsers the not-found boundary.
+ * crawlers get a real 404 and browsers the not-found boundary. It rejects
+ * while PostHog can't decide the page's gate, so a regeneration fails and
+ * the last good copy stays; a closed gate is only ever PostHog's answer.
  *
  * A gate may read the request subject: on a Cache Components page, call it
  * inside the Suspense boundary after `connection()`. An ungated page reads
@@ -47,7 +49,8 @@ export async function requirePublishedPublicPage(pathname: PublicPagePathname) {
 /**
  * A public page's `generateMetadata`: its title and description in the
  * request locale, self-canonical and hreflang alternates, and the share
- * card. A gated page's metadata is not found while its gate is off.
+ * card. A gated page's metadata is not found while its gate is off, and
+ * rejects while PostHog can't decide it.
  */
 export const publicPageMetadata =
   (pathname: PublicPagePathname) => async (): Promise<Metadata> =>

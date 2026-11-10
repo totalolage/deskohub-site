@@ -43,6 +43,8 @@ mock.module(
                 .includes(key);
             })
           ),
+        decision: () =>
+          Effect.die("account state is never stored; it reads isOpen"),
         evaluateFlags: () => Effect.die("not used by release gates"),
         constantValue: () => Effect.succeed(Option.none()),
       } as never),

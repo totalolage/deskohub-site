@@ -17,7 +17,7 @@ import {
 export async function getGlobalWorkspaceFeatureFlagValues(
   keys: readonly PostHogFeatureFlagKey[]
 ): Promise<ConstantFeatureFlagValues | undefined> {
-  const values = await classifyWorkspaceFeatureFlags();
+  const { values } = await classifyWorkspaceFeatureFlags();
   if (!keys.every((key) => Object.hasOwn(values, key))) return undefined;
 
   return Object.fromEntries(keys.map((key) => [key, values[key]]));
@@ -26,7 +26,26 @@ export async function getGlobalWorkspaceFeatureFlagValues(
 export async function getGlobalWorkspaceFeatureFlagValue(
   key: PostHogFeatureFlagKey
 ) {
-  return (await classifyWorkspaceFeatureFlags())[key];
+  return (await classifyWorkspaceFeatureFlags()).values[key];
+}
+
+/**
+ * How a flag is decided: one value for every request, per request, or not at
+ * all, because no classification could be read (`none`), so a flag that
+ * isn't overridden can't be told apart from a constant one.
+ */
+export type WorkspaceFeatureFlagConstancy =
+  | { readonly kind: "constant"; readonly value: boolean }
+  | { readonly kind: "per-request" }
+  | { readonly kind: "unclassified" };
+
+export async function getWorkspaceFeatureFlagConstancy(
+  key: PostHogFeatureFlagKey
+): Promise<WorkspaceFeatureFlagConstancy> {
+  const { classified, values } = await classifyWorkspaceFeatureFlags();
+  const value = values[key];
+  if (value !== undefined) return { kind: "constant", value };
+  return classified ? { kind: "per-request" } : { kind: "unclassified" };
 }
 
 /** Remembers this process's last complete classification across refreshes. */
@@ -34,7 +53,17 @@ const classifyFeatureFlags = makeFeatureFlagClassifier({
   snapshot: postHogFeatureFlagSnapshot,
 });
 
-async function classifyWorkspaceFeatureFlags(): Promise<ConstantFeatureFlagValues> {
+/**
+ * The constant flags, and whether any classification backs them. Without
+ * management configuration every flag but the overrides is decided per
+ * request; that counts as classified, since nothing failed.
+ */
+interface WorkspaceFeatureFlagClassification {
+  readonly classified: boolean;
+  readonly values: ConstantFeatureFlagValues;
+}
+
+async function classifyWorkspaceFeatureFlags(): Promise<WorkspaceFeatureFlagClassification> {
   "use cache";
 
   const overrides = postHogRuntimeConfig.featureFlagOverrides ?? {};
@@ -43,10 +72,10 @@ async function classifyWorkspaceFeatureFlags(): Promise<ConstantFeatureFlagValue
   const projectId = env.POSTHOG_PROJECT_ID;
   if (!(apiKey && host && projectId)) {
     cacheLife("publicContent");
-    return overrides;
+    return { classified: true, values: overrides };
   }
 
-  const { values } = await readSharedSnapshot(
+  const { source, values } = await readSharedSnapshot(
     "feature-flags.classify",
     classifyFeatureFlags({
       definitions: Effect.suspend(() =>
@@ -63,5 +92,5 @@ async function classifyWorkspaceFeatureFlags(): Promise<ConstantFeatureFlagValue
     { complete: { lifetime: "publicContent" } }
   );
 
-  return values;
+  return { classified: source !== "none", values };
 }

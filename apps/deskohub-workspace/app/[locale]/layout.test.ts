@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createElement } from "react";
 import { getPublicCatalogOfferings } from "@/features/checkout/public-offerings";
+import { classifiedConstancy } from "@/features/feature-flags/backend/feature-flag-constancy.test-utils";
 import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
 import { publicSiteShareImage } from "@/features/public-pages/page-metadata";
 import { nextFontLocal } from "@/shared/testing/next-font-local.test-utils";
@@ -21,6 +22,8 @@ mock.module(
     getGlobalWorkspaceFeatureFlagValues: () => Promise.resolve(undefined),
     getGlobalWorkspaceFeatureFlagValue: (key: PostHogFeatureFlagKey) =>
       Promise.resolve(constantFlags[key]),
+    getWorkspaceFeatureFlagConstancy: (key: PostHogFeatureFlagKey) =>
+      Promise.resolve(classifiedConstancy(constantFlags[key])),
   })
 );
 
