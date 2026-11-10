@@ -2,25 +2,15 @@
 
 import Interpolate from "@doist/react-interpolate";
 import { usePathname } from "next/navigation";
-import { useSyncExternalStore } from "react";
 import { type Locale, m } from "@/features/i18n";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
 import { androidAppIntentUrl } from "./install-android-app";
 import { type AppInstallDecision, decideAppInstall } from "./install-decision";
 import {
-  browserInstallEnvironment,
-  type InstallEnvironment,
-} from "./install-environment";
-
-const subscribeToInstallEnvironment = (onChange: () => void) =>
-  browserInstallEnvironment()?.subscribe(onChange) ?? (() => undefined);
-const getInstallEnvironment = () => browserInstallEnvironment()?.getSnapshot();
-const getServerInstallEnvironment = (): InstallEnvironment | undefined =>
-  undefined;
-const promptWebAppInstall = () => {
-  void browserInstallEnvironment()?.promptInstall();
-};
+  promptWebAppInstall,
+  useInstallEnvironment,
+} from "./use-install-environment";
 
 /**
  * The site-wide install offer. It renders nothing on the server and during
@@ -33,11 +23,7 @@ export function AppInstallCallToAction({
   readonly locale: Locale;
 }) {
   const pathname = usePathname();
-  const environment = useSyncExternalStore(
-    subscribeToInstallEnvironment,
-    getInstallEnvironment,
-    getServerInstallEnvironment
-  );
+  const environment = useInstallEnvironment();
 
   if (environment?.androidAppInstalled === undefined) return null;
 

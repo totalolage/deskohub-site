@@ -10,6 +10,7 @@ import {
   getPublicPageTitle,
   publicSiteShareImage,
 } from "@/features/public-pages/page-metadata";
+import { siteIcons } from "@/features/public-pages/site-icons";
 import { getSharedWorkspaceSummary } from "@/features/public-pages/workspace-summary";
 import { TemporalLoader } from "@/shared/polyfills/temporal-loader";
 import { workspaceSiteOrigin } from "@/shared/utils";
@@ -61,22 +62,7 @@ export async function generateMetadata({
     openGraph: { images: [publicSiteShareImage] },
     // Installing from any page installs the app served under /app/.
     manifest: "/app/manifest.webmanifest",
-    icons: {
-      icon: [
-        {
-          url: "/favicon.ico",
-          type: "image/x-icon",
-          sizes: "16x16 32x32 48x48",
-        },
-        { url: "/favicon.svg", type: "image/svg+xml" },
-        { url: "/favicon.png", type: "image/png", sizes: "512x512" },
-      ],
-      apple: {
-        url: "/apple-touch-icon.png",
-        type: "image/png",
-        sizes: "180x180",
-      },
-    },
+    icons: siteIcons,
   };
 }
 

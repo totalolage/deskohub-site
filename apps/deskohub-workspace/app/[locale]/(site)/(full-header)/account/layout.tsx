@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { connection } from "next/server";
 import { type ReactNode, Suspense } from "react";
 import { AccountLayoutShell } from "@/features/account/components/account-layout-shell";
@@ -6,8 +7,13 @@ import { arePasskeysEnabled } from "@/features/account/server/account-release-ga
 import { isCustomerSignedIn } from "@/features/account/server/customer-session.server";
 import type { Locale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { homeScreenAppMetadata } from "@/features/mobile-distribution/home-screen-app-metadata";
+import { InstallBar } from "@/features/mobile-distribution/install-bar";
+import { InstallLaunchRedirect } from "@/features/mobile-distribution/install-launch-redirect";
 import { areReferralsEnabled } from "@/features/referrals/referral-release-gate.server";
 import { PageNavigationBoundary } from "@/shared/components/page-navigation-boundary";
+
+export const metadata: Metadata = homeScreenAppMetadata;
 
 type AccountLayoutProps = {
   readonly children: ReactNode;
@@ -38,16 +44,20 @@ async function AccountLayoutContent({
   ]);
 
   return (
-    <AccountLayoutShell
-      locale={locale}
-      passkeysEnabled={passkeysEnabled}
-      referralsEnabled={referralsEnabled}
-      signedIn={signedIn}
-    >
-      <PageNavigationBoundary>
-        {children}
-        {modal}
-      </PageNavigationBoundary>
-    </AccountLayoutShell>
+    <>
+      <AccountLayoutShell
+        locale={locale}
+        passkeysEnabled={passkeysEnabled}
+        referralsEnabled={referralsEnabled}
+        signedIn={signedIn}
+      >
+        <PageNavigationBoundary>
+          {children}
+          {modal}
+        </PageNavigationBoundary>
+      </AccountLayoutShell>
+      <InstallLaunchRedirect />
+      {signedIn && <InstallBar locale={locale} placement="page" />}
+    </>
   );
 }

@@ -7,6 +7,7 @@ import {
   type InstallPlatform,
   type InstallPlatformSignals,
   isStandaloneDisplay,
+  offersInstallPrompt,
 } from "./install-platform";
 
 /** What the browser reports about installing the app, as it is now. */
@@ -16,6 +17,13 @@ export type InstallEnvironment = {
   /** `undefined` while the browser is still looking the app up. */
   readonly androidAppInstalled: boolean | undefined;
   readonly installPromptAvailable: boolean;
+  /**
+   * The browser hands the site an install prompt when the web app can be
+   * installed, so a missing prompt means it can't be, or already is.
+   */
+  readonly installPromptSupported: boolean;
+  /** The browser reported installing the web app while this page was open. */
+  readonly webAppInstalled: boolean;
 };
 
 /**
@@ -86,6 +94,8 @@ export const createInstallEnvironment = (
     }),
     androidAppInstalled: platform === "android" ? undefined : false,
     installPromptAvailable: false,
+    installPromptSupported: offersInstallPrompt(navigator),
+    webAppInstalled: false,
   };
 
   const update = (change: Partial<InstallEnvironment>) => {
@@ -105,7 +115,10 @@ export const createInstallEnvironment = (
     installPrompt = event;
     update({ installPromptAvailable: true });
   });
-  browser.addEventListener("appinstalled", dropInstallPrompt);
+  browser.addEventListener("appinstalled", () => {
+    dropInstallPrompt();
+    if (!snapshot.webAppInstalled) update({ webAppInstalled: true });
+  });
 
   const setAndroidAppInstalled = (androidAppInstalled: boolean) => {
     if (snapshot.androidAppInstalled !== androidAppInstalled) {

@@ -1,5 +1,6 @@
 import { CheckoutStatusRoute } from "@/features/checkout/components/checkout-status-route";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { SignedInInstallBar } from "@/features/mobile-distribution/signed-in-install-bar";
 import { ReservationDetailsModal } from "@/features/reservation/components/reservation-details-modal";
 
 type ReservationStatusModalPageProps = {
@@ -16,6 +17,7 @@ export default function ReservationStatusModalPage({
         searchParams={Promise.resolve({})}
         presentation="modal"
       />
+      <SignedInInstallBar locale={locale} placement="dialog" />
     </ReservationDetailsModal>
   ));
 }

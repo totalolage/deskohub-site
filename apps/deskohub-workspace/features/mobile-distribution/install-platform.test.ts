@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { detectInstallPlatform, isStandaloneDisplay } from "./install-platform";
+import {
+  detectInstallPlatform,
+  isStandaloneDisplay,
+  offersInstallPrompt,
+} from "./install-platform";
 
 const userAgents = {
   androidChrome:
@@ -14,6 +18,8 @@ const userAgents = {
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15",
   windowsChrome:
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+  androidWebView:
+    "Mozilla/5.0 (Linux; Android 15; Pixel 8 Build/AP3A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/141.0.0.0 Mobile Safari/537.36",
   linuxFirefox:
     "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0",
 };
@@ -122,6 +128,81 @@ describe("isStandaloneDisplay", () => {
       isStandaloneDisplay({
         displayModeStandalone: false,
         navigatorStandalone: false,
+      })
+    ).toBe(false);
+  });
+});
+
+describe("offersInstallPrompt", () => {
+  const brands = (...names: string[]) =>
+    names.map((brand) => ({ brand, version: "141" }));
+
+  test("Chromium browsers hand the site an install prompt", () => {
+    for (const userAgentData of [
+      {
+        platform: "Android",
+        mobile: true,
+        brands: brands("Chromium", "Google Chrome"),
+      },
+      {
+        platform: "Android",
+        mobile: true,
+        brands: brands("Chromium", "Samsung Internet"),
+      },
+      {
+        platform: "Windows",
+        mobile: false,
+        brands: brands("Not?A_Brand", "Chromium", "Microsoft Edge"),
+      },
+    ]) {
+      expect(
+        offersInstallPrompt({
+          userAgent: userAgents.androidChrome,
+          userAgentData,
+          maxTouchPoints: 5,
+        })
+      ).toBe(true);
+    }
+  });
+
+  test("browsers without client hints don't", () => {
+    for (const userAgent of [
+      userAgents.androidFirefox,
+      userAgents.iPhoneSafari,
+      userAgents.iPhoneChrome,
+    ]) {
+      expect(offersInstallPrompt({ userAgent, maxTouchPoints: 5 })).toBe(false);
+    }
+    expect(
+      offersInstallPrompt({
+        userAgent: userAgents.androidChrome,
+        userAgentData: { platform: "Android", mobile: true },
+        maxTouchPoints: 5,
+      })
+    ).toBe(false);
+  });
+
+  test("an Android WebView doesn't, by brand or by user agent", () => {
+    expect(
+      offersInstallPrompt({
+        userAgent: userAgents.androidChrome,
+        userAgentData: {
+          platform: "Android",
+          mobile: true,
+          brands: brands("Chromium", "Android WebView"),
+        },
+        maxTouchPoints: 5,
+      })
+    ).toBe(false);
+    expect(
+      offersInstallPrompt({
+        userAgent: userAgents.androidWebView,
+        userAgentData: {
+          platform: "Android",
+          mobile: true,
+          brands: brands("Chromium"),
+        },
+        maxTouchPoints: 5,
       })
     ).toBe(false);
   });
