@@ -99,7 +99,7 @@ export const contactDefaultValues: ContactFormValues = {
  * the annotation reaches.
  */
 export const contactSubmissionLogFields = (
-  values: Pick<ContactFormValues, "phone" | "message">
+  values: { readonly phone?: string; readonly message: string }
 ) => ({
   hasPhone: Boolean(values.phone),
   messageLength: values.message.length,
