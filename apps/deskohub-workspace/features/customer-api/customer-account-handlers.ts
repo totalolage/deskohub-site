@@ -106,7 +106,12 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
      */
     const profileCompletion = (rememberedCode: string | undefined) =>
       RememberedReferral.fromClient(rememberedCode).pipe(
-        Layer.provideMerge(Layer.mergeAll(profileServices, services.contacts)),
+        Layer.provideMerge(
+          Layer.mergeAll(
+            profileServices,
+            services.currentAccount.pipe(Layer.provide(authentication))
+          )
+        ),
         Layer.provideMerge(releases.referralRelease)
       );
 

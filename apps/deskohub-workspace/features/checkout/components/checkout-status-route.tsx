@@ -3,7 +3,7 @@ import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import {
   CheckoutStatusService,
   loadCheckoutStatusPage,
@@ -149,7 +149,7 @@ async function CheckoutStatusContent({
 
 const isSignedOut = () =>
   isStatusViewerSignedOut().pipe(
-    Effect.provide(CustomerAccountContactService.Live),
+    Effect.provide(CurrentCustomerAccount.Live),
     runWorkspaceEffect("checkout.status.viewer")
   );
 

@@ -1,8 +1,6 @@
 import { Context, Layer } from "effect";
-import {
-  CustomerAccountContactService,
-  CustomerReservationHistoryService,
-} from "@/features/account";
+import { CustomerReservationHistoryService } from "@/features/account";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import type { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { ReservationInvoicePdfService } from "@/features/accounting/backend/reservation-invoice-pdf.service";
 import { CheckoutStatusService } from "@/features/checkout/backend/checkout/checkout-status.service";
@@ -19,12 +17,12 @@ type AuthorizationLayerError = Layer.Error<
  * request through.
  */
 export type CustomerReservationServiceLayers = {
-  /** The account's Dotypos link, read without claiming one. */
-  readonly contacts: (
+  /** The account's standing, whose stored link the history peeks. */
+  readonly currentAccount: (
     authentication: Layer.Layer<CustomerAuthentication>
   ) => Layer.Layer<
-    CustomerAccountContactService,
-    Layer.Error<typeof CustomerAccountContactService.Live>
+    CurrentCustomerAccount,
+    Layer.Error<typeof CurrentCustomerAccount.Live>
   >;
   /** The reservation history, read live as the account page reads it. */
   readonly history: Layer.Layer<
@@ -76,7 +74,7 @@ export class CustomerReservationLayers extends Context.Service<
   CustomerReservationServiceLayers
 >()("@deskohub-workspace/customer-api/CustomerReservationLayers") {
   static Live = Layer.succeed(this, {
-    contacts: CustomerAccountContactService.withAuthentication,
+    currentAccount: CurrentCustomerAccount.withAuthentication,
     history: CustomerReservationHistoryService.Live,
     authorization: ReservationAuthorizationService.withAuthentication,
     checkoutStatus: CheckoutStatusService.Live,

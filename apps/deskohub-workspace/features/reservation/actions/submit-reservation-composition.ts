@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { CustomerAccountContactService } from "@/features/account";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { CheckoutService } from "@/features/checkout/backend/checkout";
 import { ReferralService } from "@/features/referrals";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
@@ -10,7 +10,7 @@ const liveLayers = RememberedReferral.Cookies.pipe(
   Layer.provideMerge(
     Layer.mergeAll(
       CheckoutService.Live,
-      CustomerAccountContactService.Live,
+      CurrentCustomerAccount.Live,
       ReferralService.Live
     )
   )

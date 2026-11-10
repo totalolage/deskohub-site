@@ -74,7 +74,7 @@ export const CustomerReservationsApiHandlers = HttpApiBuilder.group(
             ),
             Effect.provide(
               Layer.mergeAll(
-                reservations.contacts(authentication),
+                reservations.currentAccount(authentication),
                 reservations.history
               )
             ),

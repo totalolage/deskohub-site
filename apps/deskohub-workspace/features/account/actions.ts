@@ -9,7 +9,7 @@ import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-b
 import { toAresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
 import { CustomerAccountDeletionEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
 import { requestCurrentAccountDeletion } from "@/features/account/backend/current-account-deletion";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAccountSections } from "@/features/account/backend/customer-account-sections";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
@@ -68,7 +68,7 @@ const profileSavingLayer = Layer.mergeAll(
 /** The browser's remembered referral code, forgotten once settled. */
 const rememberedReferralLayer = RememberedReferral.Cookies.pipe(
   Layer.provide(
-    Layer.mergeAll(ReferralService.Live, CustomerAccountContactService.Live)
+    Layer.mergeAll(ReferralService.Live, CurrentCustomerAccount.Live)
   )
 );
 

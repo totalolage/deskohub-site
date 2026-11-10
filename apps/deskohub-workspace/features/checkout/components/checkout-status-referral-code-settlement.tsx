@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Effect, Layer } from "effect";
-import { CustomerAccountContactService } from "@/features/account";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import {
   type CheckoutStatusKind,
   checkoutStatusTraits,
@@ -44,7 +44,7 @@ export async function CheckoutStatusReferralCodeSettlement({
       RememberedReferral.Cookies.pipe(
         Layer.provide(
           Layer.mergeAll(
-            CustomerAccountContactService.Live,
+            CurrentCustomerAccount.Live,
             ReferralService.Live
           ).pipe(Layer.provideMerge(ReferralReleaseGateRequest))
         )
