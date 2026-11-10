@@ -110,9 +110,9 @@ describe("the status screen before its first read answers", () => {
       expect(progressBars(markup)).toBe(1);
     });
 
-    test(`checks with the labelled brand die at screen size (${visit})`, () => {
+    test(`checks with the labelled brand die at section size (${visit})`, () => {
       expect(pendingIndicator(visit)).toEqual({
-        size: "screen",
+        size: "section",
         tone: "brand",
         label: m.account_loading({}, { locale: "en-US" }),
       });

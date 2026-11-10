@@ -353,7 +353,7 @@ function OrderStatusPending() {
       style={[styles.status, styles.pending, { borderColor: toneColor.info }]}
     >
       <LoadingIndicator
-        size="screen"
+        size="section"
         tone="brand"
         label={m.account_loading({}, { locale })}
       />

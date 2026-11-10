@@ -35,6 +35,9 @@ describe("LoadingIndicator", () => {
       }) as never
     );
     expect(player.loop).toBe(true);
+    // Lottie's hardware path draws the small die without anti-aliasing on
+    // some GPUs; the die's bitmap is small enough to draw in software.
+    expect(player.renderMode).toBe("SOFTWARE");
     expect(player.style).toEqual({ width, height });
     expect((view as HostProps).style).toEqual({ width, height });
   });
@@ -81,11 +84,14 @@ describe("LoadingIndicator and reduced motion", () => {
   let changed: (enabled: boolean) => void = () => undefined;
   const autoPlay: Array<boolean | undefined> = [];
   let resets = 0;
+  // The player commands in the order the indicator sent them.
+  const commands: Array<"play" | "reset"> = [];
   const spies: Array<{ readonly mockRestore: () => void }> = [];
 
   beforeEach(() => {
     autoPlay.length = 0;
     resets = 0;
+    commands.length = 0;
     accessibility.isReduceMotionEnabled = async () => reduced;
     accessibility.addEventListener = (_event, listener) => {
       changed = listener;
@@ -100,6 +106,10 @@ describe("LoadingIndicator and reduced motion", () => {
       }),
       spyOn(LottieView.prototype, "reset").mockImplementation(() => {
         resets += 1;
+        commands.push("reset");
+      }),
+      spyOn(LottieView.prototype, "play").mockImplementation(() => {
+        commands.push("play");
       })
     );
   });
@@ -125,6 +135,14 @@ describe("LoadingIndicator and reduced motion", () => {
     expect(autoPlay.at(-1)).toBe(true);
   });
 
+  // Autoplay applies only when the player loads its document; a player that
+  // loaded while the preference was unknown has to be told to play.
+  test("plays after the still logo it showed while motion was unknown", async () => {
+    reduced = false;
+    await mount();
+    expect(commands.at(-1)).toBe("play");
+  });
+
   test("stays on the still logo while reduced motion is on", async () => {
     reduced = true;
     await mount();
@@ -138,6 +156,7 @@ describe("LoadingIndicator and reduced motion", () => {
     await act(async () => changed(false));
 
     expect(autoPlay.at(-1)).toBe(true);
+    expect(commands.at(-1)).toBe("play");
   });
 
   test("goes back to the still logo when reduced motion turns on", async () => {
