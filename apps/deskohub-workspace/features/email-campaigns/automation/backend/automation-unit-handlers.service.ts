@@ -2,8 +2,8 @@ import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { ReservationActivitySweep } from "@/features/reservation/backend/reservation-activity-sweep.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { CampaignBatchDelivery } from "../../backend/campaign-batch-delivery.service";
 import { CampaignCandidateRepository } from "../../backend/campaign-candidate.repository";
-import { CampaignDeliveryService } from "../../backend/campaign-delivery.service";
 import { CampaignRecipientService } from "../../backend/campaign-recipient.service";
 import type { AutomationWorkUnitKind } from "../automation-work-units";
 import { AutomationConditionEvaluation } from "./automation-condition-evaluation.service";
@@ -72,7 +72,7 @@ export class AutomationUnitHandlers extends Context.Service<
         AutomationEvaluationFacts.Live,
         AutomationConditionEvaluation.Live,
         CampaignCandidateRepository.Live,
-        CampaignDeliveryService.Live,
+        CampaignBatchDelivery.Live,
         AutomationRunSettlement.Default
       )
     )

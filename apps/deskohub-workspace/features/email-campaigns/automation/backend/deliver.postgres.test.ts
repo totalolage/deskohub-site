@@ -583,26 +583,6 @@ describe.skipIf(!database)("deliver units on disposable Postgres", () => {
     }
   );
 
-  test("a persisted batch past the 23-hour replay window ends unconfirmed without a request", async () => {
-    const id = customerId("expired");
-    const engine = await setUp({ customers: [deliverProfile(id)] });
-    const seeded = await seedAutomation({});
-    await seedRuns(seeded, [{ customer: id }]);
-    engine.resend.respondWith(() => "hang");
-    await engine.killDuringRequest(startedAt);
-    engine.resend.respondWith(() => "accept");
-
-    await engine.tick(startedAt.add({ hours: 23, minutes: 1 }));
-
-    expect(outcomesOf(await runsOf(seeded.campaignId))).toEqual({
-      [id]: ["ended", "unconfirmed", null],
-    });
-    expect(engine.resend.requests()).toHaveLength(1);
-    expect((await unitsOf(seeded.campaignId))[0]).toMatchObject({
-      status: "done",
-    });
-  });
-
   test("a lost provider response requeues the unit, which replays its batch under the same key", async () => {
     const id = customerId("lost-response");
     const engine = await setUp({ customers: [deliverProfile(id)] });

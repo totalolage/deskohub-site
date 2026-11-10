@@ -16,6 +16,8 @@ import {
 } from "@deskohub/email/testing";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Exit, Fiber, Layer } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { customerMarketingConsents } from "@/db/schema";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   deliverProfile,
@@ -24,6 +26,12 @@ import {
   seedSendReadyRuns,
 } from "../automation/backend/deliver.test-utils";
 import type { CampaignId, CampaignSendId } from "../campaign-identifiers";
+import {
+  batchSendKinds,
+  failureTagOf,
+  makeBatchDeliveryHarness,
+  outcomeOf,
+} from "./campaign-batch-delivery.test-utils";
 import { CampaignDeliveryService } from "./campaign-delivery.service";
 import { campaignDeliveryTestLayer } from "./campaign-delivery.test-utils";
 import { CampaignEmailConfig } from "./campaign-email.config";
@@ -299,6 +307,14 @@ describe.skipIf(!database)(
             recipients: { [id]: "unconfirmed" },
             batches: ["unconfirmed"],
           });
+          // The run settles its campaign Failed: the batch may be undelivered.
+          const {
+            rows: [campaign],
+          } = await pool.query(
+            "select c.status from email_campaign_sends s join email_campaigns c on c.id = s.campaign_id where s.id = $1",
+            [sendId]
+          );
+          expect(campaign.status).toBe("failed");
         }
       );
 
@@ -473,6 +489,274 @@ describe.skipIf(!database)(
           });
         }
       );
+    });
+
+    /**
+     * The batch protocol itself, through its interface, for each send kind
+     * as its driver calls it: replay, a changed payload and an expired
+     * replay window are tested here once for both drivers.
+     */
+    describe.each(batchSendKinds)(
+      "the batch protocol for a %s send",
+      (kind) => {
+        const setUp = async (input: {
+          readonly label: string;
+          readonly purpose?: "marketing" | "operational";
+        }) => {
+          const harness = makeBatchDeliveryHarness(database);
+          const id = customerId(`${kind}-${input.label}`);
+          const { campaignId, send } = await harness.seedSend({
+            kind,
+            purpose: input.purpose ?? "operational",
+            recipients: [deliverProfile(id)],
+          });
+          (kind === "one-off" ? campaignIds : automatedCampaignIds).push(
+            campaignId
+          );
+          const persist = (
+            before?: Parameters<typeof harness.persist>[0]["before"]
+          ) =>
+            harness.persist({
+              kind,
+              send,
+              recipients: [{ dotyposCustomerId: id, locale: "cs-CZ" }],
+              before,
+            });
+          return { harness, id, send, persist };
+        };
+
+        test("an accepted first request settles its recipients sent", async () => {
+          const { harness, id, send, persist } = await setUp({
+            label: "accept",
+          });
+          const persisted = await persist();
+
+          const outcome = await harness.requestFirst(persisted);
+
+          expect(outcome).toMatchObject({
+            _tag: "Success",
+            value: { _tag: "Accepted" },
+          });
+          expect(harness.provider.requests().map(({ key }) => key)).toEqual([
+            `email-campaign:${send.sendId}:attempt-1:batch-0`,
+          ]);
+          expect(sha256(harness.provider.requests()[0]!.payload)).toBe(
+            persisted.batch.payloadHash
+          );
+          await harness.settle(persisted.batch, outcomeOf(outcome));
+          expect(await statusesOf(send.sendId)).toEqual({
+            recipients: { [id]: "sent" },
+            batches: ["accepted"],
+          });
+        });
+
+        test("a refused first request is Refused first: its recipients fail and the batch is rejected", async () => {
+          const { harness, id, send, persist } = await setUp({
+            label: "refuse",
+          });
+          const persisted = await persist();
+          harness.provider.respondWith(() => "refuse");
+
+          const outcome = await harness.requestFirst(persisted);
+
+          expect(outcome).toMatchObject({
+            value: { _tag: "Refused", request: "first" },
+          });
+          await harness.settle(persisted.batch, outcomeOf(outcome));
+          expect(await statusesOf(send.sendId)).toEqual({
+            recipients: { [id]: "failed" },
+            batches: ["rejected"],
+          });
+        });
+
+        test("an unknown outcome fails after one request, and the replay sends the identical payload under the same key", async () => {
+          const { harness, id, send, persist } = await setUp({
+            label: "unknown",
+          });
+          const persisted = await persist();
+          harness.provider.respondWith(() => "accept-lost");
+
+          const lost = await harness.requestFirst(persisted);
+
+          expect(failureTagOf(lost)).toBe("CampaignDeliveryIncomplete");
+          expect(harness.provider.requests()).toHaveLength(1);
+          expect(
+            (await harness.listRequested(send)).map(
+              ({ batchIndex, dotyposCustomerIds, payloadHash }) => ({
+                batchIndex,
+                dotyposCustomerIds,
+                payloadHash,
+              })
+            )
+          ).toEqual([
+            {
+              batchIndex: persisted.batch.batchIndex,
+              dotyposCustomerIds: persisted.batch.dotyposCustomerIds,
+              payloadHash: persisted.batch.payloadHash,
+            },
+          ]);
+
+          harness.provider.respondWith(() => "accept");
+          const replayed = await harness.replay(persisted);
+
+          expect(replayed).toMatchObject({ value: { _tag: "Accepted" } });
+          const [first, replay] = harness.provider.requests();
+          expect(replay?.key).toBe(first?.key);
+          expect(replay?.payload).toBe(first?.payload);
+          expect(await storedPayloadHashes(send.sendId)).toEqual([
+            sha256(replay!.payload),
+          ]);
+          expect(harness.provider.mailed()).toEqual([testEmailAddress(id)]);
+          await harness.settle(persisted.batch, outcomeOf(replayed));
+          expect(await statusesOf(send.sendId)).toEqual({
+            recipients: { [id]: "sent" },
+            batches: ["accepted"],
+          });
+        });
+
+        test("a refused replay is Refused replay: the earlier request may have been delivered, so it is unconfirmed", async () => {
+          const { harness, id, send, persist } = await setUp({
+            label: "refused-replay",
+          });
+          const persisted = await persist();
+          harness.provider.respondWith(() => "refuse");
+
+          const outcome = await harness.replay(persisted);
+
+          expect(outcome).toMatchObject({
+            value: { _tag: "Refused", request: "replay" },
+          });
+          expect(harness.provider.requests()).toHaveLength(1);
+          await harness.settle(persisted.batch, outcomeOf(outcome));
+          expect(await statusesOf(send.sendId)).toEqual({
+            recipients: { [id]: "unconfirmed" },
+            batches: ["unconfirmed"],
+          });
+        });
+
+        test("a replay whose payload changed is Unconfirmed without a request", async () => {
+          const { harness, id, send, persist } = await setUp({
+            label: "changed",
+          });
+          const persisted = await persist();
+          harness.setProfiles([
+            deliverProfile(id, { email: testEmailAddress(`${id}-new`) }),
+          ]);
+
+          const outcome = await harness.replay(persisted);
+
+          expect(outcome).toMatchObject({
+            value: { _tag: "Unconfirmed", reason: "payload-changed" },
+          });
+          expect(harness.provider.requests()).toEqual([]);
+          await harness.settle(persisted.batch, outcomeOf(outcome));
+          expect(await statusesOf(send.sendId)).toEqual({
+            recipients: { [id]: "unconfirmed" },
+            batches: ["unconfirmed"],
+          });
+        });
+
+        test("a replay past its key's window is Unconfirmed without a request, before the caller is asked to admit it", async () => {
+          const { harness, id, send, persist } = await setUp({
+            label: "expired",
+          });
+          const persisted = await persist();
+          await pool.query(
+            "update email_campaign_delivery_batches set requested_at = now() - interval '23 hours 1 minute' where send_id = $1",
+            [send.sendId]
+          );
+          const expired = {
+            ...persisted,
+            batch: {
+              ...persisted.batch,
+              requestedAt: persisted.batch.requestedAt.subtract({
+                hours: 23,
+                minutes: 1,
+              }),
+            },
+          };
+
+          const outcome = await harness.replay(expired, { admitted: false });
+
+          expect(outcome).toMatchObject({
+            value: { _tag: "Unconfirmed", reason: "key-expired" },
+          });
+          expect(harness.provider.requests()).toEqual([]);
+          await harness.settle(persisted.batch, outcomeOf(outcome));
+          expect(await statusesOf(send.sendId)).toEqual({
+            recipients: { [id]: "unconfirmed" },
+            batches: ["unconfirmed"],
+          });
+        });
+
+        test("a replay within its window the caller doesn't admit requests nothing and stays requested", async () => {
+          const { harness, send, persist } = await setUp({
+            label: "unadmitted",
+          });
+          const persisted = await persist();
+
+          const outcome = await harness.replay(persisted, { admitted: false });
+
+          expect(failureTagOf(outcome)).toBe("CampaignDeliveryIncomplete");
+          expect(harness.provider.requests()).toEqual([]);
+          expect(
+            (await harness.listRequested(send)).map(
+              ({ batchIndex, dotyposCustomerIds, payloadHash }) => ({
+                batchIndex,
+                dotyposCustomerIds,
+                payloadHash,
+              })
+            )
+          ).toEqual([
+            {
+              batchIndex: persisted.batch.batchIndex,
+              dotyposCustomerIds: persisted.batch.dotyposCustomerIds,
+              payloadHash: persisted.batch.payloadHash,
+            },
+          ]);
+        });
+      }
+    );
+
+    // Only a deliver unit prepares inside a transaction (its commit); a
+    // one-off run prepares before its leased transaction opens, so no write
+    // of that transaction can precede its consent read.
+    test("a deliver unit's persist reads the consent written in its transaction", async () => {
+      const harness = makeBatchDeliveryHarness(database);
+      const id = customerId("automated-consent");
+      const { campaignId, send } = await harness.seedSend({
+        kind: "automated",
+        purpose: "marketing",
+        recipients: [deliverProfile(id)],
+      });
+      automatedCampaignIds.push(campaignId);
+
+      try {
+        const persisted = await harness.persist({
+          kind: "automated",
+          send,
+          recipients: [{ dotyposCustomerId: id, locale: "cs-CZ" }],
+          before: Effect.flatMap(WorkspaceDatabase, ({ db: workspace }) =>
+            workspace.insert(customerMarketingConsents).values({
+              dotyposCustomerId: id,
+              documentHash: "hash",
+              locale: "cs-CZ",
+              grantedAt: Temporal.Now.instant(),
+            })
+          ).pipe(Effect.asVoid),
+        });
+
+        expect(persisted.batch.dotyposCustomerIds).toEqual([id]);
+        expect(await statusesOf(send.sendId)).toEqual({
+          recipients: { [id]: "pending" },
+          batches: ["requested"],
+        });
+      } finally {
+        await pool.query(
+          "delete from customer_marketing_consents where dotypos_customer_id = $1",
+          [id]
+        );
+      }
     });
   }
 );
