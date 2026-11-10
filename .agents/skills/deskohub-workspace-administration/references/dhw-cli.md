@@ -1,6 +1,6 @@
 # Administration API and `dhw`
 
-`dhw` (`apps/dhw`) is the native administration CLI. It calls the `/api/v1/cli` Effect HTTP API defined in `packages/workspace-admin-api/src/workspace-admin-api.ts` and served by `apps/deskohub-workspace/features/admin-cli/workspace-admin-api.server.ts`. For commands, arguments, and flags, run `bun apps/dhw/src/main.ts --help` or `<command> --help`.
+`dhw` (`apps/dhw`) is the native administration CLI. It calls the `/api/v1/cli` Effect HTTP API defined in `packages/workspace-admin-api/src/workspace-admin-api.ts` and served by `apps/deskohub-workspace/features/admin-cli/workspace-admin-api.server.ts`. `provideWorkspaceAdminApiServices` builds the domain services once per handler, so they live for the process and hold no request state; a service whose implementation decides something per request, such as `ReservationAdministrationService` over the seating-map release gate, is served per operation with `servicePerOperation` (the Effect skill's "Request state in HTTP APIs"). For commands, arguments, and flags, run `bun apps/dhw/src/main.ts --help` or `<command> --help`.
 
 ## Contract changes
 

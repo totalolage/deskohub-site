@@ -54,8 +54,8 @@ Paths are relative to `apps/deskohub-mobile`.
 
 ## Shared packages
 
-The app's workspace dependencies are `@deskohub/brand-tokens`, `i18n`,
-`phone-number`, `reservation`, `standard-schema`, `test-email` and
+The app's workspace dependencies are `@deskohub/brand-motion`, `brand-tokens`,
+`i18n`, `phone-number`, `reservation`, `standard-schema`, `test-email` and
 `workspace-customer-api`. Before adding another, check it runs without Node or
 Next: the app bundles for Hermes and the browser.
 

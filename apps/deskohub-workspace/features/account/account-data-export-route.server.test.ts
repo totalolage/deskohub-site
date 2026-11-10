@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { unzipSync } from "fflate";
 import { ReadLimitExceededError } from "@/shared/backend/read-limit";
@@ -137,6 +138,7 @@ describe("account data export route", () => {
       {
         activity: Effect.succeed({
           kind: "active",
+          email: testEmailAddress("account-data-export"),
           deletionRequestedAt: new Date("2026-09-01T10:00:00Z"),
         }),
       },

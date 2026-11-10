@@ -110,8 +110,8 @@ const classifyRejection = (
   );
 
 /**
- * Only a verdict settles the stored code. A failed database, Dotypos, or
- * session read says nothing about it, so the intent stays pending for the
+ * Only a verdict settles the stored code. A failed database, Dotypos,
+ * session, or account check says nothing about it, so the intent stays pending for the
  * next load.
  */
 const classifyAcceptanceFailure = Match.type<
@@ -120,6 +120,7 @@ const classifyAcceptanceFailure = Match.type<
   Match.tagsExhaustive({
     ReferralError: ({ reason }) => classifyRejection(reason),
     ReferralAuthenticationUnavailable: () => pending,
+    ReferralAccountCheckUnavailable: () => pending,
     EffectDrizzleQueryError: () => pending,
     SqlError: () => pending,
     DotyposUnavailable: () => pending,

@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import { PostHogProjectId } from "../identifiers";
 import {
   generatePostHogFeatureFlagContract,
   generatePostHogFeatureFlagContractFromDefinitions,
+  generatePostHogFeatureFlagSnapshot,
 } from "./codegen";
 import type { PostHogFeatureFlagDefinition } from "./definitions";
 
@@ -29,76 +31,118 @@ const projectId = PostHogProjectId.make("project");
 describe("generatePostHogFeatureFlagContractFromDefinitions", () => {
   test("uses the same output path as HTTP generation", async () => {
     const httpDefinitions = [...definitions].reverse();
-    const fetch = globalThis.fetch;
-    globalThis.fetch = Object.assign(
-      async () =>
-        new Response(
-          JSON.stringify({
-            count: httpDefinitions.length,
-            next: null,
-            previous: null,
-            results: httpDefinitions.map((definition, index) =>
-              makeFeatureFlagResponse(definition, index + 1)
-            ),
-          }),
-          { headers: { "content-type": "application/json" } }
-        ),
-      { preconnect: fetch.preconnect }
-    );
 
-    try {
-      await withOutputFiles(async (directOutputFile, httpOutputFile) => {
-        await Effect.runPromise(
-          generatePostHogFeatureFlagContractFromDefinitions({
-            definitions: httpDefinitions,
-            outputFile: directOutputFile,
-          })
-        );
-        await Effect.runPromise(
-          generatePostHogFeatureFlagContract({
-            apiKey: "synthetic-api-key",
-            host: new URL("https://posthog.example"),
-            outputFile: httpOutputFile,
-            projectId,
-          })
-        );
+    await withOutputFiles(async (direct, http) => {
+      await Effect.runPromise(
+        generatePostHogFeatureFlagContractFromDefinitions({
+          definitions: httpDefinitions,
+          outputFile: direct.contract,
+          snapshotFile: direct.snapshot,
+        })
+      );
+      await Effect.runPromise(
+        generatePostHogFeatureFlagContract({
+          apiKey: "synthetic-api-key",
+          host: new URL("https://posthog.example"),
+          outputFile: http.contract,
+          projectId,
+          snapshotFile: http.snapshot,
+        }).pipe(respondWith(httpDefinitions))
+      );
 
-        expect(await Bun.file(directOutputFile).text()).toBe(
-          await Bun.file(httpOutputFile).text()
-        );
-      });
-    } finally {
-      globalThis.fetch = fetch;
-    }
+      expect(await Bun.file(direct.contract).text()).toBe(
+        await Bun.file(http.contract).text()
+      );
+      expect(await Bun.file(http.snapshot).exists()).toBeTrue();
+    });
   });
 
   test("reports render errors through the Effect error channel", async () => {
-    await withOutputFiles(async (outputFile) => {
+    await withOutputFiles(async ({ contract, snapshot }) => {
       const result = await Effect.runPromiseExit(
         generatePostHogFeatureFlagContractFromDefinitions({
           definitions: [
             { key: "duplicate", payloads: {}, variants: [] },
             { key: "duplicate", payloads: {}, variants: [] },
           ],
-          outputFile,
+          outputFile: contract,
+          snapshotFile: snapshot,
         })
       );
 
       expect(result._tag).toBe("Failure");
-      expect(await Bun.file(outputFile).exists()).toBeFalse();
+      expect(await Bun.file(contract).exists()).toBeFalse();
+      expect(await Bun.file(snapshot).exists()).toBeFalse();
     });
   });
 });
 
+describe("generatePostHogFeatureFlagSnapshot", () => {
+  test("rewrites only the snapshot, for the given contract keys", async () => {
+    await withOutputFiles(async ({ contract, snapshot }) => {
+      const result = await Effect.runPromise(
+        generatePostHogFeatureFlagSnapshot({
+          apiKey: "synthetic-api-key",
+          host: new URL("https://posthog.example"),
+          keys: ["feature_a", "feature_c"],
+          projectId,
+          snapshotFile: snapshot,
+        }).pipe(respondWith(definitions))
+      );
+
+      expect(result).toEqual({ flagCount: 2 });
+      expect(await Bun.file(contract).exists()).toBeFalse();
+      const source = await Bun.file(snapshot).text();
+      expect(source).toContain('"feature_a": true');
+      expect(source).toContain('"feature_c": null');
+      expect(source).not.toContain("feature_b");
+    });
+  });
+});
+
+/** Answers every PostHog request with one page of `responseDefinitions`. */
+const respondWith = (
+  responseDefinitions: readonly PostHogFeatureFlagDefinition[]
+) =>
+  Effect.provideService(
+    FetchHttpClient.Fetch,
+    Object.assign(
+      async () =>
+        new Response(
+          JSON.stringify({
+            count: responseDefinitions.length,
+            next: null,
+            previous: null,
+            results: responseDefinitions.map((definition, index) =>
+              makeFeatureFlagResponse(definition, index + 1)
+            ),
+          }),
+          { headers: { "content-type": "application/json" } }
+        ),
+      { preconnect: globalThis.fetch.preconnect }
+    )
+  );
+
+interface OutputFiles {
+  readonly contract: string;
+  readonly snapshot: string;
+}
+
 const withOutputFiles = async (
-  callback: (directOutputFile: string, httpOutputFile: string) => Promise<void>
+  callback: (direct: OutputFiles, http: OutputFiles) => Promise<void>
 ) => {
   const directory = mkdtempSync(join(tmpdir(), "posthog-feature-flags-"));
 
   try {
     await callback(
-      join(directory, "direct-contract.ts"),
-      join(directory, "http-contract.ts")
+      {
+        contract: join(directory, "direct-contract.ts"),
+        snapshot: join(directory, "direct-snapshot.ts"),
+      },
+      {
+        contract: join(directory, "http-contract.ts"),
+        snapshot: join(directory, "http-snapshot.ts"),
+      }
     );
   } finally {
     rmSync(directory, { force: true, recursive: true });

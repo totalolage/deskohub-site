@@ -1,16 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { PostHogFeatureFlagError } from "@deskohub/posthog/feature-flags/codegen";
 import { PostHogProjectId } from "@deskohub/posthog/identifiers";
 import { Cause, Effect, Exit, Option } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import type {
   PostHogCliInput,
   PostHogCliOperation,
   ReadPostHogCliJson,
 } from "./sync-posthog-feature-flags";
-import { syncPostHogFeatureFlagsFromCli } from "./sync-posthog-feature-flags";
+import {
+  refreshPostHogFeatureFlagSnapshotForBuild,
+  syncPostHogFeatureFlagsFromCli,
+} from "./sync-posthog-feature-flags";
 
 const projectId = PostHogProjectId.make("204184");
 const workspaceProject = { id: 204184, name: "Deskohub Workspace" };
@@ -96,6 +100,9 @@ const withTempOutput = async (run: (outputFile: string) => Promise<void>) => {
   }
 };
 
+const snapshotFileFor = (outputFile: string) =>
+  join(dirname(outputFile), "flag-snapshot.ts");
+
 const runFailure = async (
   effect: Effect.Effect<unknown, PostHogFeatureFlagError>
 ) => {
@@ -128,6 +135,7 @@ describe("Workspace PostHog feature flag CLI synchronization", () => {
         const result = await Effect.runPromise(
           syncPostHogFeatureFlagsFromCli({
             outputFile,
+            snapshotFile: snapshotFileFor(outputFile),
             projectId,
             readCliJson: reader.readCliJson,
           })
@@ -136,6 +144,9 @@ describe("Workspace PostHog feature flag CLI synchronization", () => {
 
         expect(result).toEqual({ flagCount: 1, status: "updated" });
         expect(contract).toContain('  "accounts",');
+        expect(await Bun.file(snapshotFileFor(outputFile)).text()).toContain(
+          '"accounts": null'
+        );
         expect(contract).toContain("readonly value: boolean;");
         expect(reader.calls).toEqual([
           { operation: "project-get", input: { id: projectId } },
@@ -175,6 +186,7 @@ describe("Workspace PostHog feature flag CLI synchronization", () => {
       await Effect.runPromise(
         syncPostHogFeatureFlagsFromCli({
           outputFile,
+          snapshotFile: snapshotFileFor(outputFile),
           projectId,
           readCliJson: reader.readCliJson,
         })
@@ -225,6 +237,7 @@ describe("Workspace PostHog feature flag CLI synchronization", () => {
       await Effect.runPromise(
         syncPostHogFeatureFlagsFromCli({
           outputFile,
+          snapshotFile: snapshotFileFor(outputFile),
           projectId,
           readCliJson: reader.readCliJson,
         })
@@ -265,6 +278,7 @@ describe("Workspace PostHog feature flag CLI synchronization", () => {
         const error = await runFailure(
           syncPostHogFeatureFlagsFromCli({
             outputFile,
+            snapshotFile: snapshotFileFor(outputFile),
             projectId,
             readCliJson: reader.readCliJson,
           })
@@ -272,6 +286,9 @@ describe("Workspace PostHog feature flag CLI synchronization", () => {
 
         expect(error.cause).toBeUndefined();
         expect(await Bun.file(outputFile).text()).toBe(existingContract);
+        expect(
+          await Bun.file(snapshotFileFor(outputFile)).exists()
+        ).toBeFalse();
       });
     });
   }
@@ -287,6 +304,7 @@ describe("Workspace PostHog feature flag CLI synchronization", () => {
       const error = await runFailure(
         syncPostHogFeatureFlagsFromCli({
           outputFile,
+          snapshotFile: snapshotFileFor(outputFile),
           projectId,
           readCliJson: reader.readCliJson,
         })
@@ -311,6 +329,7 @@ describe("Workspace PostHog feature flag CLI synchronization", () => {
       const error = await runFailure(
         syncPostHogFeatureFlagsFromCli({
           outputFile,
+          snapshotFile: snapshotFileFor(outputFile),
           projectId,
           readCliJson: reader.readCliJson,
         })
@@ -319,5 +338,89 @@ describe("Workspace PostHog feature flag CLI synchronization", () => {
       expect(error.cause).toBeUndefined();
       expect(await Bun.file(outputFile).text()).toBe(existingContract);
     });
+  });
+});
+
+describe("Workspace PostHog feature flag snapshot refresh during the build", () => {
+  const committedSnapshot = "// snapshot committed with the contract\n";
+  const buildEnvironment = {
+    POSTHOG_API_HOST: "https://posthog.example",
+    POSTHOG_API_KEY: "synthetic-api-key",
+    POSTHOG_PROJECT_ID: "204184",
+    VERCEL: "1",
+  };
+
+  const refresh = (
+    snapshotFile: string,
+    environment: Readonly<Record<string, string | undefined>>,
+    respond: () => Response
+  ) =>
+    Effect.runPromise(
+      refreshPostHogFeatureFlagSnapshotForBuild({
+        environment,
+        keys: ["accounts"],
+        snapshotFile,
+      }).pipe(
+        Effect.provideService(
+          FetchHttpClient.Fetch,
+          Object.assign(async () => respond(), {
+            preconnect: globalThis.fetch.preconnect,
+          })
+        )
+      )
+    );
+
+  test("keeps the committed snapshot when PostHog refuses the list", async () => {
+    await withTempOutput(async (outputFile) => {
+      const snapshotFile = snapshotFileFor(outputFile);
+      writeFileSync(snapshotFile, committedSnapshot);
+
+      await refresh(
+        snapshotFile,
+        buildEnvironment,
+        () => new Response(null, { status: 429 })
+      );
+
+      expect(await Bun.file(snapshotFile).text()).toBe(committedSnapshot);
+    });
+  });
+
+  test("keeps the committed snapshot outside Vercel or without the management key", async () => {
+    await withTempOutput(async (outputFile) => {
+      const snapshotFile = snapshotFileFor(outputFile);
+      writeFileSync(snapshotFile, committedSnapshot);
+      const unexpectedRequest = () => {
+        throw new Error("The refresh must not call PostHog.");
+      };
+
+      await refresh(
+        snapshotFile,
+        { ...buildEnvironment, VERCEL: undefined },
+        unexpectedRequest
+      );
+      await refresh(
+        snapshotFile,
+        { ...buildEnvironment, POSTHOG_API_KEY: undefined },
+        unexpectedRequest
+      );
+
+      expect(await Bun.file(snapshotFile).text()).toBe(committedSnapshot);
+    });
+  });
+
+  test("runs before the Vercel build compiles the Workspace", () => {
+    const workspaceTurbo = JSON.parse(
+      readFileSync(resolve(import.meta.dir, "../turbo.json"), "utf8")
+    ) as { tasks: Record<string, { dependsOn?: readonly string[] }> };
+    const workspacePackage = JSON.parse(
+      readFileSync(resolve(import.meta.dir, "../package.json"), "utf8")
+    ) as { scripts: Record<string, string> };
+
+    expect(workspaceTurbo.tasks["build:compile"]?.dependsOn).toContain(
+      "feature-flags:snapshot"
+    );
+    expect(workspacePackage.scripts["feature-flags:snapshot"]).toBe(
+      "bun scripts/sync-posthog-feature-flags.ts --build"
+    );
   });
 });

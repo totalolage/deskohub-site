@@ -24,6 +24,8 @@ import { CustomerAccountRepository } from "../customer-account.repository";
 import { CustomerAccountDeletionService } from "../customer-account-deletion";
 import { CustomerAccountLinkRepository } from "../customer-account-link.repository";
 import { waitForAccountAdvisoryLockWait } from "../customer-account-lock.test-utils";
+import { CustomerAccountSections } from "../customer-account-sections";
+import { CustomerAuthentication } from "../customer-authentication.service";
 import {
   CustomerAvatarProviderError,
   CustomerAvatarService,
@@ -90,21 +92,28 @@ const makeTestDeletionLayers = (
     void,
     CustomerAvatarProviderError | CustomerAvatarUnavailableError
   > = () => Effect.void
-) =>
-  CustomerAccountDeletionService.Default.pipe(
+) => {
+  const database = Layer.succeed(
+    WorkspaceDatabase,
+    WorkspaceDatabase.make(testDatabase!.db)
+  );
+  const links = CustomerAccountLinkRepository.Default.pipe(
+    Layer.provide(database)
+  );
+  return CustomerAccountDeletionService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
+        links,
         Layer.mergeAll(
-          CustomerAccountLinkRepository.Default,
           CustomerAccountRepository.Default,
           ReviewAccounts.Default
-        ).pipe(
+        ).pipe(Layer.provide(database)),
+        // Deletion's section reads no session.
+        CustomerAccountSections.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(
-                WorkspaceDatabase,
-                WorkspaceDatabase.make(testDatabase!.db)
-              ),
+              links,
+              Layer.mock(CustomerAuthentication, {}),
               WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool)
             )
           )
@@ -117,6 +126,7 @@ const makeTestDeletionLayers = (
       )
     )
   );
+};
 
 test("reports auth handler failures without logging provider data", async () => {
   const email = uniqueEmail("verification-failure");

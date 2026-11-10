@@ -9,10 +9,21 @@ import {
 import { ExternalAPIError, NexiService } from "@deskohub/nexi";
 import { testEmailAddress } from "@deskohub/test-email";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Data, Duration, Effect, Layer, Schema } from "effect";
+import {
+  type Context,
+  Data,
+  Duration,
+  Effect,
+  Layer,
+  Logger,
+  References,
+  Schema,
+} from "effect";
 import { env } from "@/env";
-import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
-import { makeOptionalAccountActivityGuard } from "@/features/account/backend/customer-account-activity.test-utils";
+import {
+  type CustomerAccountSectionsFixture,
+  makeCustomerAccountSections,
+} from "@/features/account/backend/customer-account-sections.test-utils";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
@@ -62,6 +73,9 @@ import {
   sealPayState,
 } from "./pay-state";
 
+type LogAnnotations = Context.Service.Shape<
+  typeof References.CurrentLogAnnotations
+>;
 const testEmailAddressForAda = testEmailAddress("ada");
 
 mock.module("server-only", () => ({}));
@@ -527,7 +541,7 @@ type CheckoutHarnessOptions<ReservationOverrides extends object> = {
   readonly completeInternalPayment?: ReturnType<typeof mock>;
   readonly createHostedPaymentPage?: ReturnType<typeof mock>;
   readonly run?: ReturnType<typeof mock>;
-  readonly accountAuthority?: OptionalAccountActivityFixture;
+  readonly accountAuthority?: CustomerAccountSectionsFixture;
   readonly returnTarget?: PaymentReturnTarget;
 };
 
@@ -687,7 +701,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
       }))
     );
 
-  const accountAuthority = makeOptionalAccountActivityGuard(
+  const accountAuthority = makeCustomerAccountSections(
     options.accountAuthority ?? { session: null }
   );
 
@@ -745,7 +759,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
 
   return {
     effect,
-    guardEvents: accountAuthority.events,
+    accountEvents: accountAuthority.events,
     affirm,
     createPendingNexiAttempt,
     completeInternalPayment,
@@ -987,6 +1001,97 @@ describe("CheckoutService", () => {
       redirectUrl: "https://payments.example/hosted",
     });
     expect(events).toEqual(["attempt-created", "provider-created"]);
+  });
+
+  describe("log annotations", () => {
+    const captureAnnotations = <A, E>(effect: Effect.Effect<A, E>) => {
+      const annotations: LogAnnotations[] = [];
+      const logger = Logger.make(({ fiber }) => {
+        annotations.push({
+          ...fiber.getRef(References.CurrentLogAnnotations),
+        });
+      });
+      return Effect.runPromise(
+        effect.pipe(
+          Effect.provideService(References.MinimumLogLevel, "All"),
+          Effect.provide(Logger.layer([logger]))
+        )
+      ).then(() => annotations);
+    };
+
+    const recordKeys = [
+      "attempt",
+      "activePaymentAttempt",
+      "hostedPaymentPage",
+      "quote",
+      "acceptedQuote",
+    ];
+
+    test("name a new attempt by its identifiers, never its record or hosted page", async () => {
+      const harness = await createCheckoutHarness({
+        orderId: "reservation-annotated-attempt",
+        createHostedPaymentPage: mock(() =>
+          Effect.succeed({
+            securityToken: "provider-security-token",
+            hostedPage: "https://payments.example/hosted",
+          })
+        ),
+      });
+      harness.createPendingNexiAttempt.mockImplementation((input) =>
+        Effect.succeed(
+          makeAttempt({
+            id: "attempt-annotated",
+            orderId: input.workspaceReservationId,
+          })
+        )
+      );
+
+      const annotations = await captureAnnotations(harness.effect);
+
+      for (const row of annotations) {
+        for (const key of recordKeys) expect(row).not.toHaveProperty(key);
+        const serialized = JSON.stringify(row);
+        expect(serialized).not.toContain("provider-security-token");
+        expect(serialized).not.toContain("https://payments.example/hosted");
+      }
+      expect(annotations).toContainEqual(
+        expect.objectContaining({
+          paymentAttemptId: "attempt-annotated",
+          paymentAttemptState: "created",
+        })
+      );
+    });
+
+    test("name a reused active attempt by its identifiers, never its record", async () => {
+      const orderId = "reservation-annotated-reuse";
+      const activeAttempt = makeAttempt({
+        id: "active-attempt-annotated",
+        orderId,
+        state: "pending",
+        securityToken: "active-security-token",
+        providerRedirectUrl: "https://payments.example/existing",
+      });
+      const harness = await createCheckoutHarness({
+        orderId,
+        activeAttempt,
+        reservationOverrides: { activePaymentAttemptId: activeAttempt.id },
+      });
+
+      const annotations = await captureAnnotations(harness.effect);
+
+      for (const row of annotations) {
+        for (const key of recordKeys) expect(row).not.toHaveProperty(key);
+        const serialized = JSON.stringify(row);
+        expect(serialized).not.toContain("active-security-token");
+        expect(serialized).not.toContain("https://payments.example/existing");
+      }
+      expect(annotations).toContainEqual(
+        expect.objectContaining({
+          paymentAttemptId: "active-attempt-annotated",
+          paymentAttemptState: "pending",
+        })
+      );
+    });
   });
 
   test("stores the app a new hosted payment returns to before creating it", async () => {
@@ -2938,7 +3043,7 @@ describe("CheckoutService", () => {
     expect(affirm).toHaveBeenCalledTimes(2);
     expect(createPendingNexiAttempt).toHaveBeenCalledTimes(1);
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
-    expect(harness.guardEvents).toEqual([
+    expect(harness.accountEvents).toEqual([
       "account-session",
       "account-lock-acquired",
       "account-activity",
@@ -3025,7 +3130,7 @@ describe("CheckoutService", () => {
     expect(harness.updateReservationDetails).toHaveBeenCalledTimes(1);
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
     expect(harness.reservationRecord.authorAccountId).toBe(author);
-    expect(harness.guardEvents).toEqual([]);
+    expect(harness.accountEvents).toEqual([]);
   });
 
   test("does not make a payer the author of a reservation another account created", async () => {
@@ -3083,7 +3188,7 @@ describe("CheckoutService", () => {
       _tag: "CheckoutError",
       code: "checkout_failed",
     });
-    expect(harness.guardEvents).toEqual([
+    expect(harness.accountEvents).toEqual([
       "account-session",
       "account-lock-acquired",
       "account-activity",
@@ -3109,7 +3214,7 @@ describe("CheckoutService", () => {
       _tag: "CheckoutError",
       code: "checkout_failed",
     });
-    expect(harness.guardEvents).toEqual([
+    expect(harness.accountEvents).toEqual([
       "account-session",
       "account-lock-acquired",
       "account-activity",

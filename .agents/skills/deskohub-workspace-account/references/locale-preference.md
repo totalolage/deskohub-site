@@ -33,9 +33,11 @@ and the hooks in `auth-server.ts`.
   lock with the deletion-marker recheck, then navigates to the current URL in
   the new locale with a document navigation, even when the save fails.
 - The app saves it with the customer API's `PUT /account/locale`
-  (`updateLocale`), through `CustomerLocalePreference`, the same guarded
-  `saveAccountLocalePreference` under the request's authentication. It
-  writes no cookie and navigates nowhere; the app applies the language itself.
+  (`updateLocale`), through `CustomerLocalePreference`: the same
+  `saveAccountLocalePreference` section, over sections that read the
+  request's authentication (`CustomerAccountSections.ForProvidedAuthentication`).
+  It writes no cookie and navigates nowhere; the app applies the language
+  itself.
 - The action writes no cookie. Next treats a cookie write in a Server Action
   as a revalidation: the save's response re-renders the referring page under
   its old locale, and the client applies it while the document navigation

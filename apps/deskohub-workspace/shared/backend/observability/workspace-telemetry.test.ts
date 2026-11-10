@@ -5,11 +5,13 @@ import {
   type LogRecordExporter,
   type ReadableLogRecord,
 } from "@opentelemetry/sdk-logs";
-import { Effect } from "effect";
+import { Effect, References } from "effect";
 
-// A synthetic project token turns PostHog logging on; nothing is exported
-// because no test emits a record through the provider.
+// A synthetic project token and the opt-in turn PostHog logging on in the
+// test process's development environment; nothing is exported because no
+// test emits a record through the provider.
 process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN = "synthetic-project-token";
+process.env.POSTHOG_LOGS_EXPORT = "always";
 process.env.NEXT_PUBLIC_POSTHOG_HOST ??= "https://posthog.example";
 
 type WorkspaceTelemetry = typeof import("./workspace-telemetry");
@@ -35,6 +37,21 @@ describe("workspaceLoggerProvider", () => {
     expect(
       Reflect.get(globalThis, appInstance.workspaceTelemetryHandle)
     ).toEqual({ loggerProvider: provider });
+  });
+});
+
+describe("WorkspaceObservabilityLive", () => {
+  test("sets the minimum log level of the runs it serves", async () => {
+    // The test process runs as a development deployment.
+    const level = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* References.MinimumLogLevel;
+      }).pipe(
+        Effect.provide(instrumentationInstance.WorkspaceObservabilityLive)
+      )
+    );
+
+    expect(level).toBe("Debug");
   });
 });
 

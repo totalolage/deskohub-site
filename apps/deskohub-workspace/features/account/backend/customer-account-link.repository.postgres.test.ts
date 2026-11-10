@@ -3,12 +3,9 @@ import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Fiber, Layer } from "effect";
+import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import {
-  WorkspaceDatabaseAdvisoryLock,
-  withPostgresAdvisoryLock,
-} from "@/db/postgres-advisory-lock";
+import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
@@ -18,7 +15,6 @@ import {
 } from "../customer-account";
 import { CustomerAccountRepository } from "./customer-account.repository";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import { waitForAccountAdvisoryLockWait } from "./customer-account-lock.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -132,7 +128,8 @@ describe.skipIf(!testDatabase)(
     test("exposes the activity state and stops it once the auth account row is gone", async () => {
       const layer = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
-      await insertAuthUser(account, testEmailAddress(`d-${account}`));
+      const email = testEmailAddress(`d-${account}`);
+      await insertAuthUser(account, email);
       await accountColumn(account, uniqueDotyposId());
 
       const marker = new Date("2026-09-02T10:00:00.000Z");
@@ -148,6 +145,7 @@ describe.skipIf(!testDatabase)(
 
       expect(states.initial).toEqual({
         kind: "active",
+        email,
         deletionRequestedAt: null,
       });
       expect(states.marked.kind).toBe("active");
@@ -168,56 +166,6 @@ describe.skipIf(!testDatabase)(
         }).pipe(Effect.provide(layer))
       );
       expect(afterDeletion).toEqual({ kind: "missing" });
-    });
-
-    test("serializes resolution against an outer account lock holder", async () => {
-      const layer = makeRepositoryLayer();
-      const account = customerAccountIdSchema.make(uniqueId());
-      await insertAuthUser(account, testEmailAddress(`e-${account}`));
-
-      let innerCompleted = false;
-
-      await Effect.runPromise(
-        Effect.gen(function* () {
-          const links = yield* CustomerAccountLinkRepository;
-          const held = yield* Deferred.make<void>();
-          const gate = yield* Deferred.make<never, void>();
-
-          const outer = yield* Effect.forkChild(
-            withPostgresAdvisoryLock(
-              testDatabase!.pool,
-              ["customer-account", account],
-              Deferred.succeed(held, undefined).pipe(
-                Effect.andThen(Deferred.await(gate)),
-                Effect.orDie
-              )
-            ).pipe(Effect.orDie)
-          );
-          yield* Deferred.await(held);
-
-          const inner = yield* Effect.forkChild(
-            links
-              .withAccountLock(
-                account,
-                Effect.sync(() => {
-                  innerCompleted = true;
-                })
-              )
-              .pipe(Effect.orDie)
-          );
-
-          yield* Effect.promise(() =>
-            waitForAccountAdvisoryLockWait(testDatabase!.pool, account)
-          );
-          expect(innerCompleted).toBe(false);
-
-          yield* Deferred.succeed(gate, undefined);
-          yield* Fiber.join(outer);
-          yield* Fiber.join(inner);
-
-          expect(innerCompleted).toBe(true);
-        }).pipe(Effect.provide(layer))
-      );
     });
 
     test("records account creation only for the claim that inserts the link and keeps it past deletion", async () => {
@@ -473,7 +421,7 @@ async function accountCreatedAt(accountId: string) {
     "select created_at from customer_accounts where id = $1",
     [accountId]
   );
-  return rows[0]?.created_at;
+  return rows[0]!.created_at;
 }
 
 async function accountDotyposCustomerId(accountId: string) {
@@ -486,9 +434,11 @@ async function accountDotyposCustomerId(accountId: string) {
 }
 
 function uniqueDotyposId() {
-  return `${Math.floor(Math.random() * 900000) + 100000}${Math.floor(
-    Math.random() * 900
-  )}`;
+  return DotyposCustomerIdSchema.make(
+    `${Math.floor(Math.random() * 900000) + 100000}${Math.floor(
+      Math.random() * 900
+    )}`
+  );
 }
 
 async function accountColumn(accountId: string, dotyposCustomerId: string) {

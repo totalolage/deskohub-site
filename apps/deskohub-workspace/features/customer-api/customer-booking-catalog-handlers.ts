@@ -31,6 +31,7 @@ import {
   parseWorkspaceAvailabilityQuery,
   type WorkspaceAvailability,
 } from "@/features/reservation/workspace-availability";
+import { providePerRequest } from "@/shared/backend/provide-per-request";
 import { currentInstant } from "@/shared/utils/temporal";
 import { answerSessionApiFailure } from "./customer-api-failure";
 import { CustomerBookingCatalogLayers } from "./customer-booking-catalog-layers";
@@ -56,10 +57,12 @@ export type CustomerBookingCatalogEndpointName =
   | "listLegalDocuments";
 
 /**
- * Attaches the booking catalog's handlers. Each endpoint builds its read's
- * Layers per request from `CustomerBookingCatalogLayers` and answers a read
- * that fails as unavailable; offerings and availability read the same
- * shared snapshots the booking pages read.
+ * Attaches the booking catalog's handlers. Each endpoint builds its read
+ * from `CustomerBookingCatalogLayers` and answers a read that fails as
+ * unavailable; offerings and availability read the same shared snapshots
+ * the booking pages read. The offerings and the quote read release gates,
+ * so they build their Layers per request with `providePerRequest`;
+ * availability's Layers keep nothing for a request.
  */
 export const handleCustomerBookingCatalog = <R>(
   handlers: HttpApiBuilder.Handlers<
@@ -98,7 +101,7 @@ export const handleCustomerBookingCatalog = <R>(
               offerings: listing.offerings.map(toCustomerOffering),
             })
           ),
-          Effect.provide(offerings),
+          providePerRequest(offerings),
           answerSessionApiFailure("customerApi.listOfferings")
         )
       )
@@ -141,7 +144,7 @@ export const handleCustomerBookingCatalog = <R>(
       )
       .handle("getQuote", ({ query }) =>
         quoteSelection(query).pipe(
-          Effect.provide(quoting),
+          providePerRequest(quoting),
           answerBookingSelectionFailure("customerApi.getQuote")
         )
       )

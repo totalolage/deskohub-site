@@ -5,6 +5,7 @@ import type { AppLocale } from "../i18n/app-locale";
 import { useAppLocale } from "../i18n/locale-context";
 import { m } from "../i18n/messages";
 import { Button, LiveMessage, Screen } from "../ui/controls";
+import { LoadingIndicator } from "../ui/loading-indicator";
 import { type AuthCallback, parseAuthCallbackParams } from "./auth-callback";
 import { nativeAuthRuntime } from "./native-auth-runtime";
 import { completeAuthCallback } from "./native-sign-in";
@@ -73,6 +74,10 @@ export function AuthCallbackScreen() {
 
   return (
     <Screen title={m.signin_title({}, { locale })}>
+      {/* The status message below says what's under way. */}
+      {state.status !== "failed" && (
+        <LoadingIndicator size="screen" tone="brand" />
+      )}
       <LiveMessage
         role="status"
         message={

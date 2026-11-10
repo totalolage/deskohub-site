@@ -11,6 +11,7 @@ import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { Effect, Logger, References } from "effect";
 import { authOptions } from "@/features/account/backend/auth/auth-options";
+import { withDatabaseQueryDetail } from "@/shared/testing/workspace-database-query-log.test-utils";
 import { makeDatabaseClient, makeDatabasePool } from "../../db/database-client";
 import type { E2EBrowserSession } from "../browser-session";
 import { WorkspaceE2EError } from "../errors";
@@ -207,6 +208,7 @@ describe("workspace e2e seeded sessions", () => {
           session: unreachableBrowserSession,
         }).pipe(
           Effect.provideService(E2EDatabase, E2EDatabase.of({ db })),
+          withDatabaseQueryDetail,
           Effect.provide(Logger.layer([capture]))
         )
       );
