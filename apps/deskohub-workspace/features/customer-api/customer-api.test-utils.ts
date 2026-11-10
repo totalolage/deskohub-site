@@ -18,8 +18,10 @@ import { CustomerAgentConnections } from "@/features/account/backend/auth/custom
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { CustomerRequestOrigins } from "@/features/account/backend/auth/customer-request-origins.service";
 import { CustomerAccountDeletionEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
-import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import {
+  CurrentCustomerAccount,
+  requireVerifiedIdentity,
+} from "@/features/account/backend/current-customer-account";
 import {
   type CustomerAccountSession,
   CustomerAuthentication,
@@ -203,7 +205,6 @@ export const makeCustomerApiTestServer = (
 
 const unusedAccountServices: CustomerAccountServiceLayers = {
   currentAccount: Layer.mock(CurrentCustomerAccount, {}),
-  resolver: Layer.mock(CustomerAccountResolver, {}),
   profile: Layer.mock(CustomerProfileService, {}),
   avatar: Layer.mock(CustomerAvatarService, {}),
   passkeys: Layer.mock(CustomerPasskeys, {}),
@@ -236,6 +237,57 @@ export const testCustomerProfile: CustomerProfile = {
   billing: null,
 };
 
+/** A standing `CurrentCustomerAccount.resolve` reports. */
+type ResolvedStanding = Effect.Success<
+  CurrentCustomerAccount["Service"]["resolve"]
+>;
+
+/**
+ * The request session's standing: signed out without a session, awaiting
+ * deletion with its marker, and otherwise `resolved(session)`. `peek` reads
+ * an account resolution would link as unlinked, and `requireActive` reads
+ * the session as the module does.
+ */
+export const currentAccountResolving = (
+  resolved: (session: CustomerAccountSession) => ResolvedStanding
+) =>
+  Layer.effect(
+    CurrentCustomerAccount,
+    Effect.gen(function* () {
+      const authentication = yield* CustomerAuthentication;
+      const resolve = authentication.currentUser.pipe(
+        Effect.map((session): ResolvedStanding => {
+          if (session === null) return { kind: "signed-out" };
+          if (session.deletionRequested) {
+            return {
+              kind: "deletion-pending",
+              session,
+              reviewMarker: "absent",
+            };
+          }
+          return resolved(session);
+        })
+      );
+      return CurrentCustomerAccount.of({
+        resolve,
+        // Peek never consults Dotypos: what resolution would find is unlinked.
+        peek: Effect.map(resolve, (standing) =>
+          standing.kind === "profile-missing" ||
+          standing.kind === "support-required"
+            ? ({
+                kind: "unlinked",
+                session: standing.session,
+                reviewMarker: standing.reviewMarker,
+              } as const)
+            : standing
+        ),
+        requireActive: authentication.currentUser.pipe(
+          Effect.flatMap(requireVerifiedIdentity)
+        ),
+      });
+    })
+  );
+
 /**
  * Account services for the session's account, linked to its Dotypos
  * customer with `testCustomerProfile`, no avatar, passkeys or assistants,
@@ -245,39 +297,13 @@ export const linkedAccountServices: CustomerAccountServiceLayers = {
   ...unusedAccountServices,
   // The request's session, linked to `testLinkedAccount`'s customer unless
   // it is signed out or awaiting deletion.
-  currentAccount: Layer.effect(
-    CurrentCustomerAccount,
-    Effect.gen(function* () {
-      const authentication = yield* CustomerAuthentication;
-      const standing = authentication.currentUser.pipe(
-        Effect.map((session) => {
-          if (session === null) return { kind: "signed-out" } as const;
-          if (session.deletionRequested) {
-            return {
-              kind: "deletion-pending",
-              session,
-              reviewMarker: "absent",
-            } as const;
-          }
-          return {
-            kind: "linked",
-            session,
-            reviewMarker: "absent",
-            account: testLinkedAccount,
-            autoLinked: false,
-          } as const;
-        })
-      );
-      return CurrentCustomerAccount.of({
-        resolve: standing,
-        peek: standing,
-        requireActive: Effect.die("requireActive is not faked"),
-      });
-    })
-  ),
-  resolver: Layer.mock(CustomerAccountResolver, {
-    resolve: Effect.succeed(testLinkedAccount),
-  }),
+  currentAccount: currentAccountResolving((session) => ({
+    kind: "linked",
+    session,
+    reviewMarker: "absent",
+    account: testLinkedAccount,
+    autoLinked: false,
+  })),
   profile: Layer.mock(CustomerProfileService, {
     load: () => Effect.succeed(testCustomerProfile),
     update: () => Effect.succeed(testCustomerProfile),

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Effect, Option } from "effect";
-import { requireVerifiedIdentity } from "@/features/account/backend/customer-account-resolver.service";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { isLocale, type Locale } from "@/features/i18n";
@@ -306,10 +306,8 @@ export const syncAppAnalyticsConsent = Effect.fn("AnalyticsConsent.syncApp")(
   }: {
     readonly choice: Option.Option<DeviceAnalyticsChoice>;
   }) {
-    const authentication = yield* CustomerAuthentication;
-    const { accountId } = yield* authentication.currentUser.pipe(
-      Effect.flatMap(requireVerifiedIdentity)
-    );
+    const current = yield* CurrentCustomerAccount;
+    const { accountId } = yield* current.requireActive;
 
     if (Option.isNone(choice)) {
       return Option.map(

@@ -36,9 +36,13 @@ const operation = "customerApi.uploadAvatar";
  */
 export const customerAvatarUploadHandler = Effect.gen(function* () {
   const { services, releases } = yield* CustomerAccountLayers;
+  const authentication = Layer.succeed(
+    CustomerAuthentication,
+    yield* CustomerAuthentication
+  );
   const admission = Layer.mergeAll(
-    Layer.succeed(CustomerAuthentication, yield* CustomerAuthentication),
-    services.resolver,
+    authentication,
+    services.currentAccount.pipe(Layer.provide(authentication)),
     releases.avatarRelease
   );
 

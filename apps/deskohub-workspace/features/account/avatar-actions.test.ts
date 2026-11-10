@@ -8,7 +8,6 @@ import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backen
 import { m } from "@/features/i18n";
 import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
 import { AccountAvatarReleaseGate } from "./backend/account-release-gates";
-import { CustomerAccountAccessError } from "./customer-account";
 
 const revalidatePath = mock(
   (_path: string, _type?: "layout" | "page") => undefined
@@ -67,34 +66,34 @@ mock.module(
   () => ({ CustomerAuthentication: Authentication })
 );
 
-type Resolution =
+type Standing =
+  | { readonly kind: "signed-out" }
   | {
-      readonly accountId: "@test/account-id";
-      readonly dotyposCustomerId: string;
+      readonly kind: "linked";
+      readonly account: {
+        readonly accountId: "@test/account-id";
+        readonly dotyposCustomerId: string;
+      };
     }
-  | { readonly reason: string; readonly linkReason?: string };
+  | { readonly kind: "deletion-pending" };
 
-let resolve: Effect.Effect<
-  Extract<Resolution, { accountId: string }>,
-  Extract<Resolution, { reason: string }>
->;
+let resolve: Effect.Effect<Standing>;
 let resolverCalls = 0;
-const Resolver = Context.Service<
-  Resolver,
+const Standing = Context.Service<
+  Standing,
   { readonly resolve: typeof resolve }
->()("@test/AvatarActionsResolver");
-Object.assign(Resolver, {
-  Live: Layer.succeed(Resolver, {
+>()("@test/AvatarActionsStanding");
+Object.assign(Standing, {
+  Live: Layer.succeed(Standing, {
     get resolve() {
       resolverCalls += 1;
       return resolve;
     },
   }),
 });
-mock.module(
-  "@/features/account/backend/customer-account-resolver.service",
-  () => ({ CustomerAccountResolver: Resolver })
-);
+mock.module("@/features/account/backend/current-customer-account", () => ({
+  CurrentCustomerAccount: Standing,
+}));
 
 type AvatarUploadInput = {
   readonly accountId: string;
@@ -201,8 +200,8 @@ describe("customer avatar actions", () => {
     currentUser = Effect.succeed(activeSession);
     resolverCalls = 0;
     resolve = Effect.succeed({
-      accountId: "@test/account-id",
-      dotyposCustomerId: "60111",
+      kind: "linked",
+      account: { accountId: "@test/account-id", dotyposCustomerId: "60111" },
     });
   });
 
@@ -272,13 +271,8 @@ describe("customer avatar actions", () => {
     expect(removeCalls).toHaveLength(0);
   });
 
-  test("blocks upload and removal with the deletion-pending error when the resolver reports the marker", async () => {
-    resolve = Effect.fail(
-      new CustomerAccountAccessError({
-        reason: "link-required",
-        linkReason: "deletion-requested",
-      })
-    );
+  test("blocks upload and removal with the deletion-pending error when the standing reports the marker", async () => {
+    resolve = Effect.succeed({ kind: "deletion-pending" });
     const { uploadCustomerAvatar, removeCustomerAvatar } =
       await importActions();
 

@@ -6,6 +6,7 @@ import { asc, eq } from "drizzle-orm";
 import { Clock, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { accountAnalyticsConsentDecisions } from "@/db/schema";
+import { requiringActiveOver } from "@/features/account/backend/current-customer-account.test-utils";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import type { CustomerAccountId } from "@/features/account/customer-account";
@@ -234,13 +235,15 @@ const syncApp = (
       ),
       Effect.map(Option.getOrUndefined),
       Effect.provide(
-        Layer.succeed(CustomerAuthentication, {
-          currentUser: Effect.succeed({
-            accountId,
-            deletionRequested: false,
-            email: testEmailAddress("app-mirror"),
-          }),
-        })
+        requiringActiveOver(
+          Layer.succeed(CustomerAuthentication, {
+            currentUser: Effect.succeed({
+              accountId,
+              deletionRequested: false,
+              email: testEmailAddress("app-mirror"),
+            }),
+          })
+        )
       ),
       Effect.provideService(
         Clock.Clock,

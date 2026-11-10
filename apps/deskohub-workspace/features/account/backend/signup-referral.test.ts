@@ -7,33 +7,31 @@ import { ReferralSignupIntentRepository } from "@/features/referrals/signup-inte
 import type { CustomerAccountId } from "../customer-account";
 import { CustomerAccountAccessError } from "../customer-account";
 import { AccountFeatureWithheldError } from "./account-feature-withheld";
+import { failureOf, testLinkedAccount } from "./account-operations.test-utils";
 import {
-  failureOf,
-  resolvingTo,
-  testLinkedAccount,
-} from "./account-operations.test-utils";
+  answeringStanding,
+  type ResolvedStanding,
+  testResolvedStandings,
+} from "./current-customer-account.test-utils";
 import { acknowledgeCurrentSignupReferral } from "./signup-referral";
 
 /**
  * Runs the acknowledgement under the referral release decision against a
- * resolver answering `resolution`; records every acknowledged account.
+ * standing resolving to `standing`; records every acknowledged account.
  */
 const run = async (options: {
   readonly referralsReleased?: boolean;
-  readonly resolution?: Effect.Effect<
-    typeof testLinkedAccount,
-    CustomerAccountAccessError
-  >;
+  readonly standing?: ResolvedStanding;
 }) => {
   const acknowledged: CustomerAccountId[] = [];
-  const resolutions = { count: 0 };
+  const resolutions = { resolutions: 0, activeReads: 0 };
   const exit = await Effect.runPromiseExit(
     acknowledgeCurrentSignupReferral().pipe(
       Effect.provide(
         Layer.mergeAll(
           ReferralReleaseGate.fromDecision(options.referralsReleased ?? true),
-          resolvingTo(
-            options.resolution ?? Effect.succeed(testLinkedAccount),
+          answeringStanding(
+            { resolve: options.standing ?? testResolvedStandings.linked },
             resolutions
           ),
           Layer.mock(ReferralSignupIntentRepository, {
@@ -57,16 +55,17 @@ describe("acknowledgeCurrentSignupReferral", () => {
     expect(acknowledged).toEqual([testLinkedAccount.accountId]);
   });
 
-  test("passes a resolution failure through and acknowledges nothing", async () => {
-    const deletionPending = new CustomerAccountAccessError({
-      reason: "link-required",
-      linkReason: "deletion-requested",
-    });
+  test("refuses a standing without a linked account with the resolver's failure and acknowledges nothing", async () => {
     const { exit, acknowledged } = await run({
-      resolution: Effect.fail(deletionPending),
+      standing: testResolvedStandings["awaiting deletion"],
     });
 
-    expect(failureOf(exit)).toEqual(deletionPending);
+    expect(failureOf(exit)).toEqual(
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      })
+    );
     expect(acknowledged).toEqual([]);
   });
 
@@ -78,7 +77,7 @@ describe("acknowledgeCurrentSignupReferral", () => {
     expect(failureOf(exit)).toEqual(
       new AccountFeatureWithheldError({ feature: "referrals" })
     );
-    expect(resolutions.count).toBe(0);
+    expect(resolutions.resolutions).toBe(0);
     expect(acknowledged).toEqual([]);
   });
 });

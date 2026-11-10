@@ -3,8 +3,9 @@ import "server-only";
 import { Context, Data, Effect, Layer, Result } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
+  CurrentCustomerAccount,
   CustomerAccountAccessError,
-  CustomerAccountResolver,
+  requireLinkedCustomerAccount,
 } from "@/features/account";
 import type { Locale } from "@/features/i18n";
 import type {
@@ -34,7 +35,7 @@ type SaveMarketingPreferencesInput = {
 };
 
 type ManagementContext = { readonly context: string };
-type AccountPreferences = CustomerAccountResolver | MarketingConsentLedger;
+type AccountPreferences = CurrentCustomerAccount | MarketingConsentLedger;
 type MutationResult<S extends string> =
   | { readonly status: S }
   | MarketingPreferencesRejection;
@@ -116,7 +117,7 @@ export class MarketingPreferences extends Context.Service<
 
   static Live = this.ManagementLive.pipe(
     Layer.provideMerge(
-      Layer.mergeAll(CustomerAccountResolver.Live, MarketingConsentLedger.Live)
+      Layer.mergeAll(CurrentCustomerAccount.Live, MarketingConsentLedger.Live)
     )
   );
 }
@@ -137,9 +138,12 @@ function makeMarketingPreferences(
     // Only read/save need account and ledger capabilities. Keep them on those
     // operations so confirmation/dismissal can run without account configuration.
     const resolveAuthority = (values: MarketingManagementCookieValues) =>
-      Effect.flatMap(CustomerAccountResolver, (account) =>
+      Effect.flatMap(CurrentCustomerAccount, (current) =>
         resolveMarketingPreferencesAuthority(values, {
-          resolveAccount: () => account.resolve,
+          resolveAccount: () =>
+            requireLinkedCustomerAccount.pipe(
+              Effect.provideService(CurrentCustomerAccount, current)
+            ),
           resolveManagementSession: management.resolve,
         })
       ).pipe(
@@ -345,7 +349,7 @@ function readPreferences(
   ) => Effect.Effect<
     MarketingPreferencesAuthority,
     MarketingPreferencesMutationError,
-    CustomerAccountResolver
+    CurrentCustomerAccount
   >,
   unresolvedAuthority: UnresolvedAuthorityRead
 ) {

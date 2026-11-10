@@ -9,8 +9,8 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import {
+  CurrentCustomerAccount,
   CustomerAccountReservationOwnership,
-  CustomerAccountResolver,
 } from "@/features/account";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
 import { CustomerAccountSections } from "@/features/account/backend/customer-account-sections";
@@ -129,7 +129,7 @@ const cleanupFixture = async (
 };
 
 /**
- * Wires the real account resolver over the fixture's signed-in session. An
+ * Wires the real account standing over the fixture's signed-in session. An
  * account without a Dotypos customer id resolves through an exact-email lookup
  * that finds no customer, as for an author who never linked one.
  */
@@ -152,7 +152,7 @@ const makeAuthorization = (
       ...testSessionProfile,
     }),
   });
-  const resolverLayer = CustomerAccountResolver.Default.pipe(
+  const currentAccountLayer = CurrentCustomerAccount.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
         authenticationLayer,
@@ -171,9 +171,7 @@ const makeAuthorization = (
     )
   );
   const ownershipLayer = CustomerAccountReservationOwnership.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(authenticationLayer, resolverLayer, linksLayer)
-    )
+    Layer.provide(Layer.mergeAll(currentAccountLayer, linksLayer))
   );
   const reservationsLayer = WorkspaceReservationRepository.Default.pipe(
     Layer.provide(postgres.layer)

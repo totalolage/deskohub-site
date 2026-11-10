@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer, Option } from "effect";
+import { requiringActiveOver } from "@/features/account/backend/current-customer-account.test-utils";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import {
@@ -513,11 +514,13 @@ describe("syncAppAnalyticsConsent", () => {
         ),
         Effect.map(Option.getOrUndefined),
         Effect.provide(
-          Layer.succeed(CustomerAuthentication, {
-            currentUser: Effect.succeed(
-              session && { ...session, email: testEmailAddress("app-sync") }
-            ),
-          })
+          requiringActiveOver(
+            Layer.succeed(CustomerAuthentication, {
+              currentUser: Effect.succeed(
+                session && { ...session, email: testEmailAddress("app-sync") }
+              ),
+            })
+          )
         )
       )
     );
@@ -614,11 +617,13 @@ describe("syncAppAnalyticsConsent", () => {
           Effect.flip,
           Effect.map(({ reason, linkReason }) => ({ reason, linkReason })),
           Effect.provide(
-            Layer.succeed(CustomerAuthentication, {
-              currentUser: Effect.succeed(
-                session && { ...session, email: testEmailAddress("app-sync") }
-              ),
-            })
+            requiringActiveOver(
+              Layer.succeed(CustomerAuthentication, {
+                currentUser: Effect.succeed(
+                  session && { ...session, email: testEmailAddress("app-sync") }
+                ),
+              })
+            )
           )
         )
       );

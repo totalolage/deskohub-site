@@ -33,8 +33,8 @@ import {
   userIdForEmail,
   verifyMagicLink,
 } from "./backend/auth/auth-handler.test-utils";
+import { CurrentCustomerAccount } from "./backend/current-customer-account";
 import { CustomerAccountLinkRepository } from "./backend/customer-account-link.repository";
-import { CustomerAccountResolver } from "./backend/customer-account-resolver.service";
 import { CustomerAccountSections } from "./backend/customer-account-sections";
 import {
   CustomerAuthentication,
@@ -85,7 +85,7 @@ const makeInvoiceService = (auth: TestAuth) => {
       })
     )
   );
-  const resolver = CustomerAccountResolver.Default.pipe(
+  const currentAccount = CurrentCustomerAccount.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
         requestSession,
@@ -95,7 +95,7 @@ const makeInvoiceService = (auth: TestAuth) => {
     )
   );
   return CustomerInvoiceService.Default.pipe(
-    Layer.provide(resolver),
+    Layer.provide(currentAccount),
     Layer.provide(repositories)
   );
 };

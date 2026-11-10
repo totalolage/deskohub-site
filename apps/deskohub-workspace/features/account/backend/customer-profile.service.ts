@@ -13,13 +13,13 @@ import {
 } from "../customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import { resolveHeldCustomerAccountLink } from "./customer-account-resolver.service";
 import {
   CustomerAccountSections,
   HeldCustomerAccount,
 } from "./customer-account-sections";
 import { CustomerAuthentication } from "./customer-authentication.service";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
+import { resolveHeldCustomerAccountLink } from "./held-customer-account-link";
 
 const readLinkedProfile = (
   dotypos: CustomerDotyposAdapter["Service"],

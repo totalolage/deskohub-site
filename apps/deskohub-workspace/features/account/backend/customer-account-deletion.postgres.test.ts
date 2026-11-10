@@ -30,12 +30,13 @@ import {
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "../customer-account";
+import { CurrentCustomerAccount } from "./current-customer-account";
 import { CustomerAccountRepository } from "./customer-account.repository";
 import { expireLinkedDotyposProfile } from "./customer-account-deletion";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import { CustomerAccountResolver } from "./customer-account-resolver.service";
 import { CustomerAccountSections } from "./customer-account-sections";
 import { CustomerAuthentication } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 import { CustomerAvatarProviderError } from "./customer-avatar.service";
 import {
   CustomerInvoiceService,
@@ -583,8 +584,19 @@ describe.skipIf(!invoiceDatabase)(
 
       // Even a session resolved before the deletion is refused by the
       // account's activity, before any invoice is read.
-      const staleResolution = Layer.mock(CustomerAccountResolver, {
-        resolve: Effect.succeed({ accountId: account, dotyposCustomerId }),
+      const staleResolution = Layer.mock(CurrentCustomerAccount, {
+        resolve: Effect.succeed({
+          kind: "linked",
+          account: { accountId: account, dotyposCustomerId },
+          autoLinked: false,
+          session: {
+            accountId: account,
+            email: testEmailAddress(`del-${account}`),
+            deletionRequested: false,
+            ...testSessionProfile,
+          },
+          reviewMarker: "absent",
+        } as const),
       });
       const denied = await run(
         Effect.flatMap(CustomerInvoiceService, (invoices) =>

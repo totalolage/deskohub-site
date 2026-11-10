@@ -4,14 +4,11 @@ import type {
   CustomerProfileCompletionSave,
   CustomerProfileSave,
 } from "../contracts";
-import {
-  isCustomerProfileMissing,
-  type LinkedCustomerAccount,
-} from "../customer-account";
-import { CustomerAccountResolver } from "./customer-account-resolver.service";
+import type { LinkedCustomerAccount } from "../customer-account";
+import { CurrentCustomerAccount } from "./current-customer-account";
 import { CustomerProfileService } from "./customer-profile.service";
+import { linkedAccountFailure } from "./linked-customer-account";
 import { completeNewCustomerProfile } from "./profile-completion";
-import { requireVerifiedSession } from "./verified-customer-session";
 
 /**
  * Saves the profile of the current session's account: an already-linked
@@ -87,39 +84,28 @@ const noReferral: ProfileCompletionReferral = {
  * updates it. Both paths run under the authoritative session, re-check the
  * deletion marker under the account lock, and never accept an email: the
  * profile input has no email field and the verified login email is read only
- * from the session.
+ * from the session. Every other standing fails the save with
+ * `linkedAccountFailure`.
  */
 const saveCustomerProfile = (
   input: CustomerProfileSave,
   referral: ProfileCompletionReferral
 ) =>
-  Effect.Do.pipe(
-    Effect.bind("user", () => requireVerifiedSession),
-    Effect.bind("resolution", () => resolveSavingAccount),
-    Effect.flatMap(({ user, resolution }) =>
-      Match.value(resolution).pipe(
-        Match.discriminatorsExhaustive("kind")({
-          linked: ({ account }) => updateLinkedProfile(account, input),
-          "profile-missing": () =>
-            completeNewCustomerProfile(user, input, referral),
-        })
-      )
-    )
-  );
-
-/**
- * The session's linked account, or that no Dotypos profile matches it yet.
- * Every other resolution failure fails the save.
- */
-const resolveSavingAccount = Effect.flatMap(
-  CustomerAccountResolver,
-  (resolver) => resolver.resolve
-).pipe(
-  Effect.map((account) => ({ kind: "linked", account }) as const),
-  Effect.catchIf(isCustomerProfileMissing, () =>
-    Effect.succeed({ kind: "profile-missing" } as const)
-  )
-);
+  Effect.gen(function* () {
+    const current = yield* CurrentCustomerAccount;
+    const standing = yield* current.resolve;
+    if (standing.kind === "linked") {
+      return yield* updateLinkedProfile(standing.account, input);
+    }
+    if (standing.kind === "profile-missing") {
+      return yield* completeNewCustomerProfile(
+        standing.session,
+        input,
+        referral
+      );
+    }
+    return yield* linkedAccountFailure(standing);
+  });
 
 const updateLinkedProfile = (
   account: LinkedCustomerAccount,

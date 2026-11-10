@@ -60,17 +60,12 @@ import {
   isCustomerAccountAccessDenial,
   type LinkedCustomerAccount,
 } from "../customer-account";
+import { CurrentCustomerAccount } from "./current-customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import {
-  CustomerAccountResolver,
-  requireVerifiedIdentity,
-} from "./customer-account-resolver.service";
-import {
-  type CustomerAccountSession,
-  CustomerAuthentication,
-} from "./customer-authentication.service";
+import type { CustomerAccountSession } from "./customer-authentication.service";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
+import { requireLinkedCustomerAccount } from "./linked-customer-account";
 
 /**
  * The session has no active account whose data it may export: signed out,
@@ -196,21 +191,19 @@ type AccountDataExportFile = {
 
 /** What decides whether a session may export its account data. */
 export type AccountDataExportAuthority =
-  | CustomerAccountResolver
-  | CustomerAuthentication
+  | CurrentCustomerAccount
   | CustomerAccountLinkRepository;
 
-/** The live authority: the browser session and its account link. */
+/** The live authority: the browser session's standing and its account link. */
 export const accountDataExportAuthorityLive = Layer.mergeAll(
-  CustomerAccountResolver.Live,
-  CustomerAuthentication.Default,
+  CurrentCustomerAccount.Live,
   CustomerAccountLinkRepository.Live
 );
 
 /**
  * The linked account whose data this session may export, and the session it
  * was resolved from. The identity section comes from this session, so it
- * must be the account the resolver linked; the activity re-read stops a
+ * must be the account the standing linked; the activity re-read stops a
  * pending deletion. Every refusal fails with
  * `AccountDataExportUnavailableError`, an unreadable authority with a load
  * failure. The archive download and the legal page's offer of it both
@@ -225,14 +218,13 @@ export const authorizeAccountDataExport: Effect.Effect<
   AccountDataExportUnavailableError | AccountDataExportLoadError,
   AccountDataExportAuthority
 > = Effect.gen(function* () {
-  const account = yield* Effect.flatMap(
-    CustomerAccountResolver,
-    (resolver) => resolver.resolve
-  );
+  const account = yield* requireLinkedCustomerAccount;
+  // Read again after resolution, as the identity section's source: a
+  // session that ended or began awaiting deletion since is refused.
   const session = yield* Effect.flatMap(
-    CustomerAuthentication,
-    (authentication) => authentication.currentUser
-  ).pipe(Effect.flatMap(requireVerifiedIdentity));
+    CurrentCustomerAccount,
+    (current) => current.requireActive
+  );
   if (session.accountId !== account.accountId) {
     return yield* new CustomerAccountAccessError({
       reason: "unauthenticated",
@@ -290,8 +282,7 @@ export class AccountDataExportService extends Context.Service<
     Effect.gen(function* () {
       const limits = yield* AccountDataExportLimits;
       const authority = Context.pick(
-        CustomerAccountResolver,
-        CustomerAuthentication,
+        CurrentCustomerAccount,
         CustomerAccountLinkRepository
       )(yield* Effect.context<AccountDataExportAuthority>());
       const dotypos = yield* CustomerDotyposAdapter;

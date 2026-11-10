@@ -4,13 +4,11 @@ import type {
   CustomerAccountId,
   LinkedCustomerAccount,
 } from "../customer-account";
+import { CurrentCustomerAccount } from "./current-customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import {
-  CustomerAccountResolver,
-  requireVerifiedIdentity,
-} from "./customer-account-resolver.service";
 import { CustomerAuthentication } from "./customer-authentication.service";
+import { requireLinkedCustomerAccount } from "./linked-customer-account";
 
 interface ICustomerAccountReservationOwnership {
   /**
@@ -38,21 +36,20 @@ export class CustomerAccountReservationOwnership extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const authentication = yield* CustomerAuthentication;
-      const resolver = yield* CustomerAccountResolver;
+      const current = yield* CurrentCustomerAccount;
       const links = yield* CustomerAccountLinkRepository;
 
-      const activeAccountId = authentication.currentUser.pipe(
-        Effect.flatMap(requireVerifiedIdentity),
-        Effect.map((identity) => identity.accountId),
+      const activeAccountId = current.requireActive.pipe(
+        Effect.map((session) => session.accountId),
         Effect.tap((accountId) => requireAccountActivity(links, accountId))
       );
 
-      const resolve = Effect.gen(function* () {
-        const account = yield* resolver.resolve;
-        yield* requireAccountActivity(links, account.accountId);
-        return account;
-      });
+      const resolve = requireLinkedCustomerAccount.pipe(
+        Effect.provideService(CurrentCustomerAccount, current),
+        Effect.tap((account) =>
+          requireAccountActivity(links, account.accountId)
+        )
+      );
 
       return {
         activeAccountId,
@@ -71,8 +68,7 @@ export class CustomerAccountReservationOwnership extends Context.Service<
     this.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
-          authentication,
-          CustomerAccountResolver.withAuthentication(authentication),
+          CurrentCustomerAccount.withAuthentication(authentication),
           CustomerAccountLinkRepository.Live
         )
       )

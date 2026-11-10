@@ -23,7 +23,7 @@ import {
   type CustomerAccountDeletionEndpointResult,
 } from "@/features/account/backend/auth/delete-account-endpoint";
 import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import type { CustomerAccountSession } from "@/features/account/backend/customer-authentication.service";
 import {
   CustomerAvatarProviderError,
   CustomerAvatarService,
@@ -38,7 +38,6 @@ import type { CustomerAccountId } from "@/features/account/customer-account";
 import {
   CustomerAccountAccessError,
   customerAccountUnavailable,
-  type LinkedCustomerAccount,
 } from "@/features/account/customer-account";
 import {
   type AnalyticsConsentDecisionRecord,
@@ -63,6 +62,7 @@ import {
   accountReleasesOver,
   answerInEachReleaseCohort,
   type CustomerApiCall,
+  currentAccountResolving,
   customerApiRequest,
   expectEachCohortAnsweredAlone,
   inReleaseCohort,
@@ -73,10 +73,17 @@ import {
 } from "./customer-api.test-utils";
 
 /** An account without a Dotypos customer yet. */
-const profileMissing = new CustomerAccountAccessError({
-  reason: "link-required",
-  linkReason: "not-found",
-});
+/** The session's account, which no Dotypos customer matches yet. */
+const profileMissingStanding = (session: CustomerAccountSession) =>
+  ({ kind: "profile-missing", session, reviewMarker: "absent" }) as const;
+
+/** The session's account, found awaiting deletion. */
+const deletionPendingStanding = (session: CustomerAccountSession) =>
+  ({
+    kind: "deletion-pending",
+    session: { ...session, deletionRequested: true },
+    reviewMarker: "absent",
+  }) as const;
 
 describe("getAccount", () => {
   const getAccount: CustomerApiCall = { method: "GET", path: "/account" };
@@ -427,14 +434,7 @@ describe("updateProfile", () => {
     const api = makeCustomerApiTestServer({
       services: {
         ...services,
-        resolver: Layer.mock(CustomerAccountResolver, {
-          resolve: Effect.fail(
-            new CustomerAccountAccessError({
-              reason: "link-required",
-              linkReason: "deletion-requested",
-            })
-          ),
-        }),
+        currentAccount: currentAccountResolving(deletionPendingStanding),
       },
     });
 
@@ -553,9 +553,7 @@ describe("completeProfile", () => {
     const created: CustomerProfileSave[] = [];
     const services = {
       ...linkedAccountServices,
-      resolver: Layer.mock(CustomerAccountResolver, {
-        resolve: Effect.fail(profileMissing),
-      }),
+      currentAccount: currentAccountResolving(profileMissingStanding),
       profile: Layer.mock(CustomerProfileService, {
         create: (_accountId, profileInput) =>
           Effect.sync(() => {
@@ -664,14 +662,7 @@ describe("completeProfile", () => {
     const api = makeCustomerApiTestServer({
       services: {
         ...services,
-        resolver: Layer.mock(CustomerAccountResolver, {
-          resolve: Effect.fail(
-            new CustomerAccountAccessError({
-              reason: "link-required",
-              linkReason: "deletion-requested",
-            })
-          ),
-        }),
+        currentAccount: currentAccountResolving(deletionPendingStanding),
       },
     });
 
@@ -879,19 +870,16 @@ describe("listAssistantConnections", () => {
 /**
  * The account-scoped marketing preferences the API serves, over a consent
  * ledger that starts with `status` and records each choice, for the
- * session's linked account unless `resolve` answers otherwise.
+ * session's linked account unless `resolved` answers otherwise.
  */
 const marketingServices = ({
   status = "absent",
   ledgerUnavailable = false,
-  resolve = Effect.succeed(testLinkedAccount),
+  resolved,
 }: {
   readonly status?: MarketingConsentStatus;
   readonly ledgerUnavailable?: boolean;
-  readonly resolve?: Effect.Effect<
-    LinkedCustomerAccount,
-    CustomerAccountAccessError
-  >;
+  readonly resolved?: Parameters<typeof currentAccountResolving>[0];
 } = {}) => {
   const records: MarketingConsentRecord[] = [];
   const unavailable = Effect.fail(
@@ -899,7 +887,7 @@ const marketingServices = ({
   );
   const services = {
     ...linkedAccountServices,
-    resolver: Layer.mock(CustomerAccountResolver, { resolve }),
+    ...(resolved && { currentAccount: currentAccountResolving(resolved) }),
     marketingPreferences: MarketingPreferences.AccountScoped,
     consentLedger: Layer.mock(MarketingConsentLedger, {
       status: () => (ledgerUnavailable ? unavailable : Effect.succeed(status)),
@@ -946,7 +934,7 @@ describe("getMarketingPreferences", () => {
 
   test("asks an account without a Dotypos profile to complete it", async () => {
     const api = makeCustomerApiTestServer(
-      marketingServices({ resolve: Effect.fail(profileMissing) })
+      marketingServices({ resolved: profileMissingStanding })
     );
 
     const response = await api.handle(
@@ -1025,7 +1013,7 @@ describe("saveMarketingPreferences", () => {
 
   test("asks an account without a Dotypos profile to complete it", async () => {
     const { records, services } = marketingServices({
-      resolve: Effect.fail(profileMissing),
+      resolved: profileMissingStanding,
     });
     const api = makeCustomerApiTestServer({ services });
 
@@ -1687,9 +1675,7 @@ describe("overlapping requests in different release cohorts", () => {
       },
       services: {
         ...linkedAccountServices,
-        resolver: Layer.mock(CustomerAccountResolver, {
-          resolve: Effect.fail(profileMissing),
-        }),
+        currentAccount: currentAccountResolving(profileMissingStanding),
         profile: Layer.mock(CustomerProfileService, {
           create: () =>
             Effect.succeed({

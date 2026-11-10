@@ -7,11 +7,15 @@ import { AccountFeatureWithheldError } from "./account-feature-withheld";
 import {
   authenticatedAs,
   failureOf,
-  resolvingTo,
   testCustomerSession,
   testLinkedAccount,
 } from "./account-operations.test-utils";
 import { AccountAvatarReleaseGate } from "./account-release-gates";
+import {
+  answeringStanding,
+  type ResolvedStanding,
+  testResolvedStandings,
+} from "./current-customer-account.test-utils";
 import {
   CustomerAvatarProviderError,
   CustomerAvatarService,
@@ -33,6 +37,8 @@ const storedAvatar = { url: "https://media.test/avatar.webp", version: 2 };
 
 type RunOptions = {
   readonly signedIn?: boolean;
+  readonly deletionRequested?: boolean;
+  readonly standing?: ResolvedStanding;
   readonly avatarsReleased?: boolean;
   readonly uploadResult?: Effect.Effect<
     typeof storedAvatar,
@@ -47,7 +53,7 @@ type RunOptions = {
 };
 
 type Records = {
-  readonly resolutions: { count: number };
+  readonly resolutions: { resolutions: number; activeReads: number };
   readonly media: Array<{
     readonly kind: "upload" | "remove";
     readonly accountId: string;
@@ -56,14 +62,24 @@ type Records = {
 };
 
 /**
- * Fakes for the session, the avatar release decision, the resolver and the
+ * Fakes for the session, the avatar release decision, the standing and the
  * media service; they record every resolution and media call.
  */
 const fakes = (options: RunOptions, records: Records) =>
   Layer.mergeAll(
-    authenticatedAs(options.signedIn === false ? null : testCustomerSession),
+    authenticatedAs(
+      options.signedIn === false
+        ? null
+        : {
+            ...testCustomerSession,
+            deletionRequested: options.deletionRequested ?? false,
+          }
+    ),
     AccountAvatarReleaseGate.fromDecision(options.avatarsReleased ?? true),
-    resolvingTo(Effect.succeed(testLinkedAccount), records.resolutions),
+    answeringStanding(
+      { resolve: options.standing ?? testResolvedStandings.linked },
+      records.resolutions
+    ),
     Layer.mock(CustomerAvatarService, {
       upload: (accountId, input) =>
         Effect.suspend(() => {
@@ -82,12 +98,45 @@ const run = async <A, E>(
   mutation: Effect.Effect<A, E, Layer.Success<ReturnType<typeof fakes>>>,
   options: RunOptions = {}
 ) => {
-  const records: Records = { resolutions: { count: 0 }, media: [] };
+  const records: Records = {
+    resolutions: { resolutions: 0, activeReads: 0 },
+    media: [],
+  };
   const exit = await Effect.runPromiseExit(
     mutation.pipe(Effect.provide(fakes(options, records)))
   );
   return { exit, ...records };
 };
+
+describe("admitting an avatar mutation", () => {
+  test("refuses a session awaiting deletion as withheld while avatars are withheld", async () => {
+    const { exit, resolutions, media } = await run(
+      uploadCurrentCustomerAvatar(upload),
+      { deletionRequested: true, avatarsReleased: false }
+    );
+
+    expect(failureOf(exit)).toEqual(
+      new AccountFeatureWithheldError({ feature: "avatars" })
+    );
+    expect(resolutions.resolutions).toBe(0);
+    expect(media).toEqual([]);
+  });
+
+  test("refuses a standing without a linked account with the resolver's failure", async () => {
+    const { exit, media } = await run(uploadCurrentCustomerAvatar(upload), {
+      deletionRequested: true,
+      standing: testResolvedStandings["awaiting deletion"],
+    });
+
+    expect(failureOf(exit)).toEqual(
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      })
+    );
+    expect(media).toEqual([]);
+  });
+});
 
 describe("uploadCurrentCustomerAvatar", () => {
   test("stores the upload for the resolved session account", async () => {
@@ -138,7 +187,7 @@ describe("uploadCurrentCustomerAvatar", () => {
     expect(failureOf(exit)).toEqual(
       new CustomerAccountAccessError({ reason: "unauthenticated" })
     );
-    expect(resolutions.count).toBe(0);
+    expect(resolutions.resolutions).toBe(0);
     expect(media).toEqual([]);
   });
 
@@ -151,7 +200,7 @@ describe("uploadCurrentCustomerAvatar", () => {
     expect(failureOf(exit)).toEqual(
       new AccountFeatureWithheldError({ feature: "avatars" })
     );
-    expect(resolutions.count).toBe(0);
+    expect(resolutions.resolutions).toBe(0);
     expect(media).toEqual([]);
   });
 });
@@ -183,7 +232,7 @@ describe("removeCurrentCustomerAvatar", () => {
     expect(failureOf(exit)).toEqual(
       new AccountFeatureWithheldError({ feature: "avatars" })
     );
-    expect(resolutions.count).toBe(0);
+    expect(resolutions.resolutions).toBe(0);
     expect(media).toEqual([]);
   });
 });

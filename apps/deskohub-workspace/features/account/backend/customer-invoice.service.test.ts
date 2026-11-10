@@ -20,13 +20,16 @@ import {
   CustomerAccountAccessError,
   type CustomerAccountId,
   customerAccountIdSchema,
-  customerAccountUnavailable,
 } from "../customer-account";
+import { CurrentCustomerAccount } from "./current-customer-account";
+import {
+  type ResolvedStanding,
+  testResolvedStandings,
+} from "./current-customer-account.test-utils";
 import {
   type CustomerAccountActivityState,
   CustomerAccountLinkRepository,
 } from "./customer-account-link.repository";
-import { CustomerAccountResolver } from "./customer-account-resolver.service";
 import {
   CustomerInvoiceNotFoundError,
   CustomerInvoiceService,
@@ -66,13 +69,8 @@ const now = Temporal.Instant.from("2026-09-01T22:30:00Z");
 const pragueToday = plainDateStringSchema.make("2026-09-02");
 
 type Fixture = {
-  resolve: Effect.Effect<
-    {
-      readonly accountId: CustomerAccountId;
-      readonly dotyposCustomerId: typeof dotyposCustomerId;
-    },
-    CustomerAccountAccessError
-  >;
+  /** The resolved standing, or the session read's failure. */
+  standing: ResolvedStanding | CustomerAccountAccessError;
   activity: Effect.Effect<CustomerAccountActivityState, SqlError.SqlError>;
   list: Effect.Effect<readonly Invoice[], InvoiceStorageError>;
   find: (
@@ -86,7 +84,10 @@ let events: string[];
 beforeEach(() => {
   events = [];
   fixture = {
-    resolve: Effect.succeed({ accountId, dotyposCustomerId }),
+    standing: {
+      ...testResolvedStandings.linked,
+      account: { accountId, dotyposCustomerId },
+    },
     activity: Effect.succeed({
       kind: "active",
       email: testEmailAddress("owner"),
@@ -102,10 +103,13 @@ const serviceLayer = () =>
   CustomerInvoiceService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        Layer.mock(CustomerAccountResolver, {
+        Layer.mock(CurrentCustomerAccount, {
           resolve: Effect.suspend(() => {
             events.push("resolve");
-            return fixture.resolve;
+            const { standing } = fixture;
+            return standing instanceof CustomerAccountAccessError
+              ? Effect.fail(standing)
+              : Effect.succeed(standing);
           }),
         }),
         Layer.mock(CustomerAccountLinkRepository, {
@@ -149,57 +153,28 @@ const runFailure = <A, E>(
 
 const deniedAuthorities: readonly (readonly [
   string,
-  Pick<Fixture, "resolve"> | Pick<Fixture, "activity">,
+  Pick<Fixture, "standing"> | Pick<Fixture, "activity">,
 ])[] = [
-  [
-    "a signed-out session",
-    {
-      resolve: Effect.fail(
-        new CustomerAccountAccessError({ reason: "unauthenticated" })
-      ),
-    },
-  ],
-  [
-    "an unverified email",
-    {
-      resolve: Effect.fail(
-        new CustomerAccountAccessError({ reason: "unverified-email" })
-      ),
-    },
-  ],
+  ["a signed-out session", { standing: testResolvedStandings["signed out"] }],
+  ["an unverified email", { standing: testResolvedStandings.unverified }],
   [
     "authentication that isn't configured",
     {
-      resolve: Effect.fail(
-        new CustomerAccountAccessError({ reason: "not-configured" })
-      ),
+      standing: new CustomerAccountAccessError({ reason: "not-configured" }),
     },
   ],
   [
     "an account without a Dotypos customer",
-    {
-      resolve: Effect.fail(
-        new CustomerAccountAccessError({
-          reason: "link-required",
-          linkReason: "not-found",
-        })
-      ),
-    },
+    { standing: testResolvedStandings["profile missing"] },
   ],
   [
     "an account whose customers only support can link",
-    {
-      resolve: Effect.fail(
-        new CustomerAccountAccessError({
-          reason: "link-required",
-          linkReason: "ambiguous",
-        })
-      ),
-    },
+    { standing: testResolvedStandings["support required, ambiguous"] },
   ],
+  ["a review account", { standing: testResolvedStandings["review account"] }],
   [
-    "a review account",
-    { resolve: Effect.fail(customerAccountUnavailable("account.review")) },
+    "an account awaiting deletion",
+    { standing: testResolvedStandings["awaiting deletion"] },
   ],
   [
     "an account with deletion pending",
@@ -255,9 +230,7 @@ describe("CustomerInvoiceService.list", () => {
   );
 
   test("fails to load when the session can't be read", async () => {
-    fixture.resolve = Effect.fail(
-      customerAccountUnavailable("account-link.read")
-    );
+    fixture.standing = testResolvedStandings["Dotypos lookup unavailable"];
 
     const error = await runFailure((service) => service.list);
 

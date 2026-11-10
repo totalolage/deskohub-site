@@ -59,9 +59,6 @@ const { CustomerPasskeys } = await import(
 const { CurrentCustomerAccount } = await import(
   "@/features/account/backend/current-customer-account"
 );
-const { CustomerAccountResolver } = await import(
-  "@/features/account/backend/customer-account-resolver.service"
-);
 const { CustomerAuthentication } = await import(
   "@/features/account/backend/customer-authentication.service"
 );
@@ -118,7 +115,6 @@ const services = {
       }))
     ) as never,
   }),
-  resolver: Layer.mock(CustomerAccountResolver, {}),
   profile: Layer.mock(CustomerProfileService, {
     load: () =>
       Effect.succeed({

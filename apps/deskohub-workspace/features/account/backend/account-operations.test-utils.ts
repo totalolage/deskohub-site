@@ -7,7 +7,6 @@ import {
   customerAccountIdSchema,
   type LinkedCustomerAccount,
 } from "../customer-account";
-import { CustomerAccountResolver } from "./customer-account-resolver.service";
 import {
   type CustomerAccountSession,
   CustomerAuthentication,
@@ -37,21 +36,6 @@ export const authenticatedAs = (
     currentUser: options.failure
       ? Effect.fail(options.failure)
       : Effect.succeed(session),
-  });
-
-/**
- * The account resolver answering with `resolution`, counting every
- * resolution in `calls`.
- */
-export const resolvingTo = (
-  resolution: Effect.Effect<LinkedCustomerAccount, CustomerAccountAccessError>,
-  calls: { count: number } = { count: 0 }
-) =>
-  Layer.mock(CustomerAccountResolver, {
-    resolve: Effect.suspend(() => {
-      calls.count += 1;
-      return resolution;
-    }),
   });
 
 /** The error an operation failed with; throws when it succeeded. */

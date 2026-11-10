@@ -17,9 +17,10 @@ import {
   isCustomerAccountAccessDenial,
   type LinkedCustomerAccount,
 } from "../customer-account";
+import { CurrentCustomerAccount } from "./current-customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import { CustomerAccountResolver } from "./customer-account-resolver.service";
+import { requireLinkedCustomerAccount } from "./linked-customer-account";
 
 /**
  * The session has no active account whose invoices it may see: signed out,
@@ -97,14 +98,15 @@ export class CustomerInvoiceService extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
-      const resolver = yield* CustomerAccountResolver;
+      const currentAccount = yield* CurrentCustomerAccount;
       const links = yield* CustomerAccountLinkRepository;
       const invoices = yield* InvoiceRepository;
 
       const authorize: Effect.Effect<
         LinkedCustomerAccount,
         CustomerInvoicesUnavailableError | CustomerInvoicesLoadError
-      > = resolver.resolve.pipe(
+      > = requireLinkedCustomerAccount.pipe(
+        Effect.provideService(CurrentCustomerAccount, currentAccount),
         Effect.tap((account) =>
           requireAccountActivity(links, account.accountId)
         ),
@@ -185,7 +187,7 @@ export class CustomerInvoiceService extends Context.Service<
   static Live = this.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        CustomerAccountResolver.Live,
+        CurrentCustomerAccount.Live,
         CustomerAccountLinkRepository.Live,
         InvoiceRepository.Live
       )

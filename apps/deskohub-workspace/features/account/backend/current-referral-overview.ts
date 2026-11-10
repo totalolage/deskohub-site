@@ -6,7 +6,7 @@ import type { ReferralAccountOverview } from "@/features/referrals/contracts";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import { requireAccountFeature } from "./account-feature-withheld";
-import { CustomerAccountResolver } from "./customer-account-resolver.service";
+import { requireLinkedCustomerAccount } from "./linked-customer-account";
 
 /** The linked account's referral summary and absolute share link. */
 export const accountReferralOverview = (account: LinkedCustomerAccount) =>
@@ -41,9 +41,6 @@ export const currentReferralOverview = Effect.fn(
   "account.currentReferralOverview"
 )(function* () {
   yield* requireAccountFeature("referrals", ReferralReleaseGate.isOpen);
-  const account = yield* Effect.flatMap(
-    CustomerAccountResolver,
-    (resolver) => resolver.resolve
-  );
+  const account = yield* requireLinkedCustomerAccount;
   return yield* accountReferralOverview(account);
 });

@@ -4,9 +4,9 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { Effect, Layer, Result, Schema } from "effect";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import { testCustomerSession } from "@/features/account/backend/account-operations.test-utils";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import {
-  CustomerAccountAccessError,
   customerAccountIdSchema,
   type LinkedCustomerAccount,
 } from "@/features/account/customer-account";
@@ -67,15 +67,21 @@ function scenario() {
   const consents = new Map<typeof customerA, MarketingConsentStatus>();
   const records: MarketingConsentRecord[] = [];
   const dependencies = Layer.mergeAll(
-    Layer.mock(CustomerAccountResolver, {
+    Layer.mock(CurrentCustomerAccount, {
       resolve: Effect.suspend(() => {
         state.accountReads++;
         state.beforeAccount();
-        return state.account
-          ? Effect.succeed(state.account)
-          : Effect.fail(
-              new CustomerAccountAccessError({ reason: "unauthenticated" })
-            );
+        return Effect.succeed(
+          state.account
+            ? ({
+                kind: "linked",
+                account: state.account,
+                autoLinked: false,
+                session: testCustomerSession,
+                reviewMarker: "absent",
+              } as const)
+            : ({ kind: "signed-out" } as const)
+        );
       }),
     }),
     Layer.succeed(MarketingManagementService, {
@@ -140,7 +146,7 @@ function scenario() {
   const run = <A, E>(
     use: (
       preferences: MarketingPreferences["Service"]
-    ) => Effect.Effect<A, E, CustomerAccountResolver | MarketingConsentLedger>
+    ) => Effect.Effect<A, E, CurrentCustomerAccount | MarketingConsentLedger>
   ) =>
     Effect.runPromise(
       Effect.flatMap(MarketingPreferences, use).pipe(Effect.provide(layer))

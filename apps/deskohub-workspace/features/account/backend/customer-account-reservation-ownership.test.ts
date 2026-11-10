@@ -1,47 +1,30 @@
 import { expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
+import { CustomerAccountAccessError } from "../customer-account";
 import {
-  CustomerAccountAccessError,
-  customerAccountIdSchema,
-} from "../customer-account";
+  testCustomerSession,
+  testLinkedAccount,
+} from "./account-operations.test-utils";
+import {
+  answeringStanding,
+  type ResolvedStanding,
+  testResolvedStandingLabels,
+  testResolvedStandings,
+} from "./current-customer-account.test-utils";
 import {
   type CustomerAccountActivityState,
   CustomerAccountLinkRepository,
 } from "./customer-account-link.repository";
 import { CustomerAccountReservationOwnership } from "./customer-account-reservation-ownership";
-import { CustomerAccountResolver } from "./customer-account-resolver.service";
-import {
-  type CustomerAccountSession,
-  CustomerAuthentication,
-} from "./customer-authentication.service";
-import { testSessionProfile } from "./customer-authentication.test-utils";
-
-const account = {
-  accountId: customerAccountIdSchema.make("account-1"),
-  dotyposCustomerId: "customer-1",
-} as const;
-
-const session: CustomerAccountSession = {
-  accountId: account.accountId,
-  email: testEmailAddress("account-1"),
-  deletionRequested: false,
-  ...testSessionProfile,
-};
+import type { CustomerAccountSession } from "./customer-authentication.service";
+import { linkedAccountFailure } from "./linked-customer-account";
 
 const provideOwnership = (options: {
-  readonly resolve?: typeof account | CustomerAccountAccessError;
+  readonly standing?: ResolvedStanding;
+  readonly active?: CustomerAccountSession | CustomerAccountAccessError;
   readonly activity?: CustomerAccountActivityState;
-  readonly session?: CustomerAccountSession | null;
 }) => {
-  const resolver =
-    options.resolve instanceof CustomerAccountAccessError
-      ? Layer.mock(CustomerAccountResolver, {
-          resolve: Effect.fail(options.resolve),
-        })
-      : Layer.mock(CustomerAccountResolver, {
-          resolve: Effect.succeed(options.resolve ?? account),
-        });
   const activity = options.activity ?? {
     kind: "active",
     email: testEmailAddress("owner"),
@@ -51,11 +34,9 @@ const provideOwnership = (options: {
   return CustomerAccountReservationOwnership.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        resolver,
-        Layer.succeed(CustomerAuthentication, {
-          currentUser: Effect.succeed(
-            options.session === undefined ? session : options.session
-          ),
+        answeringStanding({
+          resolve: options.standing ?? testResolvedStandings.linked,
+          requireActive: options.active ?? testCustomerSession,
         }),
         Layer.mock(CustomerAccountLinkRepository, {
           findActivityState: () => Effect.succeed(activity),
@@ -78,8 +59,28 @@ const runActiveAccountId = (options: Parameters<typeof provideOwnership>[0]) =>
   }).pipe(Effect.provide(provideOwnership(options)));
 
 test("rechecks authoritative account activity after resolving the account", async () => {
-  await expect(Effect.runPromise(run({}))).resolves.toEqual(account);
+  await expect(Effect.runPromise(run({}))).resolves.toEqual(testLinkedAccount);
 });
+
+test.each(testResolvedStandingLabels)(
+  "resolves the customer for %s as the resolver did",
+  async (label) => {
+    const standing = testResolvedStandings[label];
+    const outcome = run({ standing }).pipe(Effect.result, Effect.runPromise);
+
+    if (standing.kind === "linked") {
+      expect(await outcome).toMatchObject({
+        _tag: "Success",
+        success: testLinkedAccount,
+      });
+    } else {
+      expect(await outcome).toMatchObject({
+        _tag: "Failure",
+        failure: linkedAccountFailure(standing),
+      });
+    }
+  }
+);
 
 test.each([
   ["missing account", { kind: "missing" } as const, "unauthenticated"],
@@ -102,21 +103,25 @@ test.each([
 test("identifies the active signed-in account without a linked customer", async () => {
   await expect(
     Effect.runPromise(
-      runActiveAccountId({
-        resolve: new CustomerAccountAccessError({
-          reason: "link-required",
-          linkReason: "not-found",
-        }),
-      })
+      runActiveAccountId({ standing: testResolvedStandings["profile missing"] })
     )
-  ).resolves.toBe(account.accountId);
+  ).resolves.toBe(testCustomerSession.accountId);
 });
 
 test.each([
-  ["signed-out session", { session: null }, "unauthenticated"],
+  [
+    "signed-out session",
+    { active: new CustomerAccountAccessError({ reason: "unauthenticated" }) },
+    "unauthenticated",
+  ],
   [
     "session pending deletion",
-    { session: { ...session, deletionRequested: true } },
+    {
+      active: new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      }),
+    },
     "link-required",
   ],
   [

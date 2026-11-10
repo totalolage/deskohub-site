@@ -23,9 +23,9 @@ import { loadAccountState } from "@/features/account/backend/account-state";
 import { accountStateCapabilitiesForRun } from "@/features/account/backend/account-state-capabilities";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { requestCurrentAccountDeletion } from "@/features/account/backend/current-account-deletion";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { listCurrentCustomerPasskeys } from "@/features/account/backend/current-customer-passkeys";
 import { currentReferralOverview } from "@/features/account/backend/current-referral-overview";
-import { requireVerifiedIdentity } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { removeCurrentCustomerAvatar } from "@/features/account/backend/customer-avatar-mutations";
 import { CustomerLocalePreference } from "@/features/account/backend/customer-locale-preference.service";
@@ -82,6 +82,10 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
       CustomerAuthentication,
       yield* CustomerAuthentication
     );
+    // The session's account standing, read through that authentication.
+    const currentAccount = services.currentAccount.pipe(
+      Layer.provide(authentication)
+    );
 
     /**
      * What a profile save reads: the session, its account's Dotypos
@@ -90,7 +94,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
      */
     const profileServices = Layer.mergeAll(
       authentication,
-      services.resolver,
+      currentAccount,
       services.profile,
       services.referrals,
       services.signupIntents
@@ -106,25 +110,21 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
      */
     const profileCompletion = (rememberedCode: string | undefined) =>
       RememberedReferral.fromClient(rememberedCode).pipe(
-        Layer.provideMerge(
-          Layer.mergeAll(
-            profileServices,
-            services.currentAccount.pipe(Layer.provide(authentication))
-          )
-        ),
+        Layer.provideMerge(profileServices),
         Layer.provideMerge(releases.referralRelease)
       );
 
     /** Marketing preferences under the signed-in account's authority. */
     const marketingPreferences = Layer.mergeAll(
       services.marketingPreferences,
-      services.resolver,
+      currentAccount,
       services.consentLedger
     );
 
     /** The analytics consent ledger under the signed-in account's authority. */
     const analyticsConsent = Layer.mergeAll(
       authentication,
+      currentAccount,
       services.analyticsConsentLedger
     );
 
@@ -179,7 +179,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
             providePerRequest(
               Layer.mergeAll(
                 authentication,
-                services.resolver,
+                currentAccount,
                 services.avatar,
                 releases.avatarRelease
               )
@@ -303,7 +303,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
             providePerRequest(
               Layer.mergeAll(
                 authentication,
-                services.resolver,
+                currentAccount,
                 services.referrals
               ).pipe(Layer.provideMerge(releases.referralRelease))
             ),
@@ -315,7 +315,7 @@ export const CustomerAccountApiHandlers = HttpApiBuilder.group(
             providePerRequest(
               Layer.mergeAll(
                 authentication,
-                services.resolver,
+                currentAccount,
                 services.signupIntents,
                 releases.referralRelease
               )
@@ -435,10 +435,9 @@ const answerAnalyticsConsentSync = (
  * apart.
  */
 const signedOutAnalyticsAccount = Effect.flatMap(
-  CustomerAuthentication,
-  ({ currentUser }) => currentUser
+  CurrentCustomerAccount,
+  (current) => current.requireActive
 ).pipe(
-  Effect.flatMap(requireVerifiedIdentity),
   Effect.andThen(
     Effect.fail(new CustomerAccountAccessError({ reason: "unauthenticated" }))
   )

@@ -19,7 +19,11 @@ import {
   RememberedReferral,
 } from "@/features/referrals/remembered-referral.service";
 import { mockWorkspaceActionRequest } from "@/shared/testing/workspace-action-request.test-utils";
-import { CurrentCustomerAccount } from "./backend/current-customer-account";
+import {
+  CurrentCustomerAccount,
+  requireVerifiedIdentity,
+} from "./backend/current-customer-account";
+import type { CustomerAccountSession } from "./backend/customer-authentication.service";
 import { CustomerAccountAccessError } from "./customer-account";
 
 const customerEmail = testEmailAddress("ada");
@@ -101,25 +105,6 @@ let resolve: Effect.Effect<
   Extract<Resolution, { accountId: string }>,
   Extract<Resolution, { reason: string }>
 >;
-type ResolutionEffect = typeof resolve;
-const Resolver = Context.Service<
-  Resolver,
-  { readonly resolve: ResolutionEffect }
->()("@test/ActionsResolver");
-Object.assign(Resolver, {
-  Live: Layer.succeed(Resolver, {
-    get resolve() {
-      return resolve;
-    },
-  }),
-});
-mock.module(
-  "@/features/account/backend/customer-account-resolver.service",
-  () => ({
-    CustomerAccountResolver: Resolver,
-  })
-);
-
 type SignupIntent = {
   readonly promotionCodeId: string;
   readonly referrerDotyposCustomerId: string;
@@ -262,8 +247,62 @@ Object.assign(Referrals, {
 });
 mock.module("@/features/referrals", () => ({ ReferralService: Referrals }));
 
-// Completion supplies its resolved customer, so settlement never reads a session.
-CurrentCustomerAccount.Live = Layer.mock(CurrentCustomerAccount, {});
+/**
+ * The standing the account would report: no session is signed out, and
+ * `resolve`'s answer becomes the standing the projection reads back as that
+ * same answer (see `linked-customer-account.test.ts`).
+ */
+const resolvedStanding = (session: Session) =>
+  resolve.pipe(
+    Effect.map((account) => ({
+      kind: "linked" as const,
+      account,
+      autoLinked: false,
+      session,
+      reviewMarker: "absent" as const,
+    })),
+    Effect.catch((failure) => {
+      const facts = { session, reviewMarker: "absent" as const };
+      if (failure.reason === "unauthenticated") {
+        return Effect.succeed({ kind: "signed-out" as const });
+      }
+      if (failure.reason !== "link-required") {
+        return Effect.succeed({
+          kind: "unavailable" as const,
+          failure,
+          ...facts,
+        });
+      }
+      if (failure.linkReason === "not-found") {
+        return Effect.succeed({ kind: "profile-missing" as const, ...facts });
+      }
+      if (failure.linkReason === "deletion-requested") {
+        return Effect.succeed({ kind: "deletion-pending" as const, ...facts });
+      }
+      return Effect.succeed({
+        kind: "support-required" as const,
+        reason: failure.linkReason,
+        ...facts,
+      });
+    })
+  );
+
+// The standing over the faked session; completion supplies its resolved
+// customer, so settlement never peeks.
+CurrentCustomerAccount.Live = Layer.mock(CurrentCustomerAccount, {
+  resolve: Effect.suspend(() => currentUser).pipe(
+    Effect.flatMap((session) =>
+      session === null
+        ? Effect.succeed({ kind: "signed-out" as const })
+        : resolvedStanding(session)
+    )
+  ),
+  requireActive: Effect.suspend(() => currentUser).pipe(
+    Effect.flatMap((session) =>
+      requireVerifiedIdentity(session as CustomerAccountSession | null)
+    )
+  ),
+} as never);
 // The remembered code lives in the request's referral cookie.
 const rememberedReferralCookie: InMemoryReferralCookie = {
   get value() {

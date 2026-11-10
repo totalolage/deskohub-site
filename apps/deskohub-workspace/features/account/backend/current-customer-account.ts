@@ -7,7 +7,7 @@ import {
   isRecoverableCause,
 } from "@/shared/backend/workspace-effect";
 import {
-  type CustomerAccountAccessError,
+  CustomerAccountAccessError,
   type CustomerAccountId,
   type CustomerAccountSupportReason,
   customerAccountUnavailable,
@@ -17,17 +17,42 @@ import {
   mapCustomerAccountFailure,
 } from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import {
-  type CustomerAccountLinkResolution,
-  requireVerifiedIdentity,
-  resolveHeldCustomerAccountLink,
-} from "./customer-account-resolver.service";
 import { CustomerAccountSections } from "./customer-account-sections";
 import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
+import {
+  type CustomerAccountLinkResolution,
+  resolveHeldCustomerAccountLink,
+} from "./held-customer-account-link";
+
+/**
+ * The session's identity when it is signed in and its account isn't awaiting
+ * deletion: no session fails `unauthenticated`, a deletion marker
+ * `link-required` with `deletion-requested`. `requireActive` is this over the
+ * session read; it is exported for the few readers that read the session
+ * through another seam.
+ */
+export const requireVerifiedIdentity = (
+  user: CustomerAccountSession | null
+): Effect.Effect<CustomerAccountSession, CustomerAccountAccessError> => {
+  if (!user) {
+    return Effect.fail(
+      new CustomerAccountAccessError({ reason: "unauthenticated" })
+    );
+  }
+  if (user.deletionRequested) {
+    return Effect.fail(
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      })
+    );
+  }
+  return Effect.succeed(user);
+};
 
 /**
  * What the app-directory review marker read found for a signed-in account:

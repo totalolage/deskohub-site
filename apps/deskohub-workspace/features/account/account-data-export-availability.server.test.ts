@@ -10,7 +10,7 @@ import {
   fakeAccountDataExportSources,
   syntheticExportSources,
 } from "./backend/account-data-export.test-utils";
-import { CustomerAccountResolver } from "./backend/customer-account-resolver.service";
+import { CurrentCustomerAccount } from "./backend/current-customer-account";
 import { customerAccountUnavailable } from "./customer-account";
 
 let sources: AccountDataExportSources;
@@ -66,7 +66,7 @@ describe("getAccountDataExportAvailability", () => {
     const unbuildable = Layer.mergeAll(
       fakeAccountDataExportSources(() => sources, reads),
       Layer.effect(
-        CustomerAccountResolver,
+        CurrentCustomerAccount,
         Effect.fail(customerAccountUnavailable("authentication.session"))
       )
     );

@@ -9,18 +9,19 @@ import { RememberedReferral } from "@/features/referrals/remembered-referral.ser
 import { ReferralSignupIntentRepository } from "@/features/referrals/signup-intent.repository";
 import type { CustomerProfile, CustomerProfileSave } from "../contracts";
 import { CustomerAccountAccessError } from "../customer-account";
+import { failureOf, testLinkedAccount } from "./account-operations.test-utils";
 import {
-  authenticatedAs,
-  failureOf,
-  resolvingTo,
-  testCustomerSession,
-  testLinkedAccount,
-} from "./account-operations.test-utils";
+  answeringStanding,
+  type ResolvedStanding,
+  testResolvedStandingLabels,
+  testResolvedStandings,
+} from "./current-customer-account.test-utils";
 import { CustomerProfileService } from "./customer-profile.service";
 import {
   completeCurrentCustomerProfile,
   updateCurrentCustomerProfile,
 } from "./customer-profile-saving";
+import { linkedAccountFailure } from "./linked-customer-account";
 
 const input: CustomerProfileSave = { firstName: "Ada", lastName: "Lovelace" };
 const savedProfile: CustomerProfile = {
@@ -29,17 +30,9 @@ const savedProfile: CustomerProfile = {
   phone: null,
   billing: null,
 };
-const profileMissing = new CustomerAccountAccessError({
-  reason: "link-required",
-  linkReason: "not-found",
-});
 
 type RunOptions = {
-  readonly signedIn?: boolean;
-  readonly resolution?: Effect.Effect<
-    typeof testLinkedAccount,
-    CustomerAccountAccessError
-  >;
+  readonly standing?: ResolvedStanding;
   readonly referralsReleased?: boolean;
 };
 
@@ -54,14 +47,15 @@ type Records = {
 };
 
 /**
- * Fakes for the session, the resolver's answer, the referral release
+ * Fakes for the resolved standing, the referral release
  * decision and available codes (none), and the remembered referral. They
  * record every profile write, code lookup and forget request.
  */
 const fakes = (options: RunOptions, records: Records) =>
   Layer.mergeAll(
-    authenticatedAs(options.signedIn === false ? null : testCustomerSession),
-    resolvingTo(options.resolution ?? Effect.succeed(testLinkedAccount)),
+    answeringStanding({
+      resolve: options.standing ?? testResolvedStandings.linked,
+    }),
     Layer.mock(CustomerProfileService, {
       update: (_account, profileInput) =>
         Effect.sync(() => {
@@ -122,7 +116,7 @@ describe("updateCurrentCustomerProfile", () => {
 
   test("creates the customer without a referral when no profile matches", async () => {
     const { exit, writes } = await run(updateCurrentCustomerProfile(input), {
-      resolution: Effect.fail(profileMissing),
+      standing: testResolvedStandings["profile missing"],
     });
 
     expect(exit).toEqual(Exit.succeed({ status: "updated" }));
@@ -133,7 +127,7 @@ describe("updateCurrentCustomerProfile", () => {
 
   test("fails unauthenticated without a session and writes nothing", async () => {
     const { exit, writes } = await run(updateCurrentCustomerProfile(input), {
-      signedIn: false,
+      standing: testResolvedStandings["signed out"],
     });
 
     expect(failureOf(exit)).toEqual(
@@ -143,24 +137,46 @@ describe("updateCurrentCustomerProfile", () => {
   });
 
   test("passes a blocking resolution failure through and writes nothing", async () => {
-    const deletionPending = new CustomerAccountAccessError({
-      reason: "link-required",
-      linkReason: "deletion-requested",
-    });
     const { exit, writes } = await run(updateCurrentCustomerProfile(input), {
-      resolution: Effect.fail(deletionPending),
+      standing: testResolvedStandings["awaiting deletion"],
     });
 
-    expect(failureOf(exit)).toEqual(deletionPending);
+    expect(failureOf(exit)).toEqual(
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      })
+    );
     expect(writes).toEqual([]);
   });
+
+  test.each(testResolvedStandingLabels)(
+    "saves for %s as the resolver's answer decided",
+    async (label) => {
+      const standing = testResolvedStandings[label];
+      const { exit, writes } = await run(updateCurrentCustomerProfile(input), {
+        standing,
+      });
+
+      if (standing.kind === "linked") {
+        expect(writes).toEqual([{ kind: "update", input }]);
+      } else if (standing.kind === "profile-missing") {
+        expect(writes).toEqual([
+          { kind: "create", input, signupReferral: undefined },
+        ]);
+      } else {
+        expect(failureOf(exit)).toEqual(linkedAccountFailure(standing));
+        expect(writes).toEqual([]);
+      }
+    }
+  );
 });
 
 describe("completeCurrentCustomerProfile", () => {
   test("creates the customer and forgets the remembered code once settled", async () => {
     const { exit, writes, forgotten } = await run(
       completeCurrentCustomerProfile(input),
-      { resolution: Effect.fail(profileMissing) }
+      { standing: testResolvedStandings["profile missing"] }
     );
 
     expect(exit).toEqual(Exit.succeed({ status: "completed" }));
@@ -183,7 +199,7 @@ describe("completeCurrentCustomerProfile", () => {
   test("reports an unusable typed code, creates nothing and keeps the remembered code", async () => {
     const { exit, writes, codeLookups, forgotten } = await run(
       completeCurrentCustomerProfile({ ...input, referralCode: "RFL12345" }),
-      { resolution: Effect.fail(profileMissing) }
+      { standing: testResolvedStandings["profile missing"] }
     );
 
     expect(exit).toEqual(Exit.succeed({ status: "referral-code-unavailable" }));
@@ -195,7 +211,10 @@ describe("completeCurrentCustomerProfile", () => {
   test("ignores the entered code without checking it while referrals are withheld", async () => {
     const { exit, writes, codeLookups } = await run(
       completeCurrentCustomerProfile({ ...input, referralCode: "RFL12345" }),
-      { resolution: Effect.fail(profileMissing), referralsReleased: false }
+      {
+        standing: testResolvedStandings["profile missing"],
+        referralsReleased: false,
+      }
     );
 
     expect(exit).toEqual(Exit.succeed({ status: "completed" }));

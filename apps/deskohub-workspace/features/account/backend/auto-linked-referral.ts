@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { ReferralService } from "@/features/referrals";
 import type { ReferralCode } from "@/features/referrals/client";
 import { referralFailureLogFields } from "@/features/referrals/referral-failure";
-import type { CustomerAccountLinkResolution } from "./customer-account-resolver.service";
+import type { CustomerAccountLinkResolution } from "./held-customer-account-link";
 
 /**
  * Records the referral code the customer's browser remembers from a shared

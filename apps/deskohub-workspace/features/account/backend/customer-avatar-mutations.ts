@@ -2,11 +2,11 @@ import { Effect } from "effect";
 import type { LinkedCustomerAccount } from "../customer-account";
 import { requireAccountFeature } from "./account-feature-withheld";
 import { AccountAvatarReleaseGate } from "./account-release-gates";
-import { CustomerAccountResolver } from "./customer-account-resolver.service";
 import {
   type CustomerAvatarRejectionReason,
   CustomerAvatarService,
 } from "./customer-avatar.service";
+import { requireLinkedCustomerAccount } from "./linked-customer-account";
 import { requireVerifiedSession } from "./verified-customer-session";
 
 export type CustomerAvatarView = {
@@ -35,7 +35,7 @@ export type CustomerAvatarMutationResult =
 
 /**
  * Uploads the avatar of the current session's account. The account comes
- * from the authoritative resolver, never from client-supplied state, and the
+ * from the authoritative account standing, never from client-supplied state, and the
  * upload is independent of the profile form. A withheld avatar release
  * refuses before resolution or media work.
  */
@@ -63,14 +63,17 @@ export const removeCurrentCustomerAvatar = Effect.fn(
  * avatar release, and the session's resolved, linked account. A caller that
  * must do its own work between the steps, such as reading the upload only
  * once admitted, runs this and then the media step with its result.
+ *
+ * The release gate sits between the session and the deletion refusal, so a
+ * session awaiting deletion is refused as withheld while the release is
+ * closed; that is why the first step is the verified session, not
+ * `CurrentCustomerAccount.requireActive`.
  */
 export const admitCurrentAvatarMutation = requireVerifiedSession.pipe(
   Effect.andThen(
     requireAccountFeature("avatars", AccountAvatarReleaseGate.isOpen)
   ),
-  Effect.andThen(
-    Effect.flatMap(CustomerAccountResolver, (resolver) => resolver.resolve)
-  ),
+  Effect.andThen(requireLinkedCustomerAccount),
   Effect.withSpan("account.admitCurrentAvatarMutation")
 );
 

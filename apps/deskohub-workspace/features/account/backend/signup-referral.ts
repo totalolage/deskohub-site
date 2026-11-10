@@ -17,7 +17,7 @@ import {
   mapCustomerAccountFailure,
 } from "../customer-account";
 import { requireAccountFeature } from "./account-feature-withheld";
-import { CustomerAccountResolver } from "./customer-account-resolver.service";
+import { requireLinkedCustomerAccount } from "./linked-customer-account";
 
 const applied = { status: "applied" } as const;
 const pending = { status: "pending" } as const;
@@ -215,10 +215,7 @@ export const acknowledgeCurrentSignupReferral = Effect.fn(
   "account.acknowledgeCurrentSignupReferral"
 )(function* () {
   yield* requireAccountFeature("referrals", ReferralReleaseGate.isOpen);
-  const account = yield* Effect.flatMap(
-    CustomerAccountResolver,
-    (resolver) => resolver.resolve
-  );
+  const account = yield* requireLinkedCustomerAccount;
   yield* acknowledgeSignupReferral(account).pipe(
     Effect.mapError(mapCustomerAccountFailure("referral.signup-acknowledge"))
   );

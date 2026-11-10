@@ -1,4 +1,5 @@
 import { Effect, Layer } from "effect";
+import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
 import {
   CustomerAccountAccessError,
   customerAccountUnavailable,
@@ -8,6 +9,10 @@ import {
   testLinkedAccount,
 } from "./account-operations.test-utils";
 import { CurrentCustomerAccount } from "./current-customer-account";
+import type {
+  CustomerAccountSession,
+  CustomerAuthentication,
+} from "./customer-authentication.service";
 
 /** A standing `CurrentCustomerAccount.peek` reports. */
 export type PeekedStanding = Effect.Success<
@@ -81,3 +86,122 @@ export const peeking = (
         : Effect.succeed(standing);
     }),
   });
+
+/** A standing `CurrentCustomerAccount.resolve` reports. */
+export type ResolvedStanding = Effect.Success<
+  CurrentCustomerAccount["Service"]["resolve"]
+>;
+
+const resolvedUnavailable = (failure: CustomerAccountAccessError) =>
+  ({
+    kind: "unavailable",
+    session: testCustomerSession,
+    reviewMarker: "absent",
+    failure,
+  }) as const;
+
+const supportRequired = (reason: "ambiguous" | "unusable" | "claimed") =>
+  ({
+    kind: "support-required",
+    reason,
+    session: testCustomerSession,
+    reviewMarker: "absent",
+  }) as const;
+
+/**
+ * Every standing `resolve` reports for `testCustomerSession`, by label,
+ * including the refusals the locked recheck carries on `unavailable`. A
+ * caller's policy test maps each label to its expected outcome.
+ */
+export const testResolvedStandings = {
+  "signed out": { kind: "signed-out" },
+  unverified: { kind: "unverified" },
+  "awaiting deletion": deletionPending("absent"),
+  "awaiting deletion, review marker present": deletionPending("present"),
+  "awaiting deletion, review marker unreadable": deletionPending("unreadable"),
+  "review account": { kind: "review", session: testCustomerSession },
+  "profile missing": {
+    kind: "profile-missing",
+    session: testCustomerSession,
+    reviewMarker: "absent",
+  },
+  "support required, ambiguous": supportRequired("ambiguous"),
+  "support required, unusable": supportRequired("unusable"),
+  "support required, claimed": supportRequired("claimed"),
+  linked: linked("absent"),
+  "linked, review marker unreadable": linked("unreadable"),
+  "linked by this resolution": { ...linked("absent"), autoLinked: true },
+  "lock unavailable": resolvedUnavailable(
+    customerAccountUnavailable("account-link.lock")
+  ),
+  "Dotypos lookup unavailable": resolvedUnavailable(
+    customerAccountUnavailable("dotypos.customer-lookup")
+  ),
+  "deletion found under the lock": resolvedUnavailable(
+    new CustomerAccountAccessError({
+      reason: "link-required",
+      linkReason: "deletion-requested",
+    })
+  ),
+  "unverified email found under the lock": resolvedUnavailable(
+    new CustomerAccountAccessError({ reason: "unverified-email" })
+  ),
+} satisfies Record<string, ResolvedStanding>;
+
+export type TestResolvedStandingLabel = keyof typeof testResolvedStandings;
+
+/** The labels of `testResolvedStandings`, for `test.each`. */
+export const testResolvedStandingLabels = Object.keys(
+  testResolvedStandings
+) as readonly TestResolvedStandingLabel[];
+
+type Answer<A> = A | CustomerAccountAccessError;
+
+const answer = <A>(value: Answer<A>) =>
+  value instanceof CustomerAccountAccessError
+    ? Effect.fail(value)
+    : Effect.succeed(value);
+
+/**
+ * The standing module answering only the members given, each with its
+ * value or failing with the session read's error, and counting each call;
+ * every other member dies, so a reader that uses another fails the test.
+ */
+export const answeringStanding = (
+  answers: {
+    readonly resolve?: Answer<ResolvedStanding>;
+    readonly requireActive?: Answer<CustomerAccountSession>;
+  },
+  calls: { resolutions: number; activeReads: number } = {
+    resolutions: 0,
+    activeReads: 0,
+  }
+) => {
+  const { resolve, requireActive } = answers;
+  return Layer.mock(CurrentCustomerAccount, {
+    ...(resolve !== undefined && {
+      resolve: Effect.suspend(() => {
+        calls.resolutions += 1;
+        return answer(resolve);
+      }),
+    }),
+    ...(requireActive !== undefined && {
+      requireActive: Effect.suspend(() => {
+        calls.activeReads += 1;
+        return answer(requireActive);
+      }),
+    }),
+  });
+};
+
+/**
+ * The real `requireActive` over `authentication`, for a reader that only
+ * requires an active session; `peek` and `resolve` report links unavailable,
+ * and a review marker read dies.
+ */
+export const requiringActiveOver = <E, R>(
+  authentication: Layer.Layer<CustomerAuthentication, E, R>
+) =>
+  CurrentCustomerAccount.LinksUnavailable.pipe(
+    Layer.provide(Layer.mergeAll(authentication, ReviewAccountsMock({})))
+  );

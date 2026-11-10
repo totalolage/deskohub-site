@@ -20,11 +20,10 @@ import { ReservationAccessRepository } from "@/features/reservation-access/backe
 import {
   CustomerAccountAccessError,
   customerAccountIdSchema,
-  customerAccountUnavailable,
 } from "../customer-account";
+import { CurrentCustomerAccount } from "./current-customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import { CustomerAccountResolver } from "./customer-account-resolver.service";
-import { CustomerAuthentication } from "./customer-authentication.service";
+import type { CustomerAccountSession } from "./customer-authentication.service";
 import { testSessionProfile } from "./customer-authentication.test-utils";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 
@@ -37,8 +36,8 @@ type ReadOf<T, K extends keyof ServiceOf<T>> = ServiceOf<T>[K] extends (
 
 /** What every source answers, in its owner's own types. */
 type OwnerAnswers = {
-  readonly resolve: ReadOf<typeof CustomerAccountResolver, "resolve">;
-  readonly session: ReadOf<typeof CustomerAuthentication, "currentUser">;
+  readonly resolve: ReadOf<typeof CurrentCustomerAccount, "resolve">;
+  readonly session: ReadOf<typeof CurrentCustomerAccount, "requireActive">;
   readonly activity: ReadOf<
     typeof CustomerAccountLinkRepository,
     "findActivityState"
@@ -135,21 +134,29 @@ export const deskDotyposReservationId = DotyposReservationIdSchema.make(
 const at = (instant: string) => Temporal.Instant.from(instant);
 const czk = (value: number) => ({ value, exponent: 2, currency: "CZK" });
 
+const exportSession: CustomerAccountSession = {
+  accountId: exportAccountId,
+  email: testEmailAddress("account-data-export"),
+  deletionRequested: false,
+  ...testSessionProfile,
+};
+
 /**
  * A linked, active, verified account whose customer has one record in every
  * section. Synthetic values only.
  */
 export const syntheticExportSources = (): AccountDataExportSources => ({
   resolve: Effect.succeed({
-    accountId: exportAccountId,
-    dotyposCustomerId: exportCustomerId,
+    kind: "linked",
+    account: {
+      accountId: exportAccountId,
+      dotyposCustomerId: exportCustomerId,
+    },
+    autoLinked: false,
+    session: exportSession,
+    reviewMarker: "absent",
   }),
-  session: Effect.succeed({
-    accountId: exportAccountId,
-    email: testEmailAddress("account-data-export"),
-    deletionRequested: false,
-    ...testSessionProfile,
-  }),
+  session: Effect.succeed(exportSession),
   activity: Effect.succeed({
     kind: "active",
     email: testEmailAddress("account-data-export"),
@@ -278,60 +285,61 @@ export const accountDataExportRefusals: readonly [
 ][] = [
   [
     "signed out",
-    (s) => ({
-      ...s,
-      resolve: Effect.fail(
-        new CustomerAccountAccessError({ reason: "unauthenticated" })
-      ),
-    }),
+    (s) => ({ ...s, resolve: Effect.succeed({ kind: "signed-out" }) }),
   ],
   [
     "unverified email",
-    (s) => ({
-      ...s,
-      resolve: Effect.fail(
-        new CustomerAccountAccessError({ reason: "unverified-email" })
-      ),
-    }),
+    (s) => ({ ...s, resolve: Effect.succeed({ kind: "unverified" }) }),
   ],
   [
     "no linked customer",
     (s) => ({
       ...s,
-      resolve: Effect.fail(
-        new CustomerAccountAccessError({
-          reason: "link-required",
-          linkReason: "not-found",
-        })
-      ),
+      resolve: Effect.succeed({
+        kind: "profile-missing",
+        session: exportSession,
+        reviewMarker: "absent",
+      }),
     }),
   ],
   [
     "a review account",
     (s) => ({
       ...s,
-      resolve: Effect.fail(customerAccountUnavailable("account.review")),
+      resolve: Effect.succeed({ kind: "review", session: exportSession }),
+    }),
+  ],
+  [
+    "a session awaiting deletion",
+    (s) => ({
+      ...s,
+      resolve: Effect.succeed({
+        kind: "deletion-pending",
+        session: { ...exportSession, deletionRequested: true },
+        reviewMarker: "absent",
+      }),
     }),
   ],
   [
     "a session that ended after resolution",
-    (s) => ({ ...s, session: Effect.succeed(null) }),
+    (s) => ({
+      ...s,
+      session: Effect.fail(
+        new CustomerAccountAccessError({ reason: "unauthenticated" })
+      ),
+    }),
   ],
   [
     "a session of another account",
     (s) => ({
       ...s,
       session: s.session.pipe(
-        Effect.map((session) =>
-          session
-            ? {
-                ...session,
-                accountId: customerAccountIdSchema.make(
-                  "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a99"
-                ),
-              }
-            : session
-        )
+        Effect.map((session) => ({
+          ...session,
+          accountId: customerAccountIdSchema.make(
+            "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a99"
+          ),
+        }))
       ),
     }),
   ],
@@ -339,10 +347,11 @@ export const accountDataExportRefusals: readonly [
     "a deletion request on the session",
     (s) => ({
       ...s,
-      session: s.session.pipe(
-        Effect.map((session) =>
-          session ? { ...session, deletionRequested: true } : session
-        )
+      session: Effect.fail(
+        new CustomerAccountAccessError({
+          reason: "link-required",
+          linkReason: "deletion-requested",
+        })
       ),
     }),
   ],
@@ -381,8 +390,10 @@ export const fakeAccountDataExportSources = (
         return sources()[source];
       }) as OwnerAnswers[K];
   return Layer.mergeAll(
-    Layer.mock(CustomerAccountResolver, { resolve: read("resolve")() }),
-    Layer.mock(CustomerAuthentication, { currentUser: read("session")() }),
+    Layer.mock(CurrentCustomerAccount, {
+      resolve: read("resolve")(),
+      requireActive: read("session")(),
+    }),
     Layer.mock(CustomerAccountLinkRepository, {
       findActivityState: read("activity"),
     }),

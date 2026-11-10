@@ -6,7 +6,7 @@ language js(typescript, jsx)
 // `noRestrictedImports` override in biome.json; this keeps Better Auth names
 // and module strings out of the domain modules as well.
 file($name, $body) where {
-  $name <: r".*apps/deskohub-workspace/features/account/(?:customer-account|contracts|index|backend/customer-account-resolver\.service|backend/customer-account-link\.repository|backend/customer-profile\.service|backend/customer-reservation-history\.service|backend/customer-account-deletion)\.ts$",
+  $name <: r".*apps/deskohub-workspace/features/account/(?:customer-account|contracts|index|backend/held-customer-account-link|backend/linked-customer-account|backend/customer-account-link\.repository|backend/customer-profile\.service|backend/customer-reservation-history\.service|backend/customer-account-deletion)\.ts$",
   $body <: r"(?s).*(?:BetterAuth|better-auth).*",
   $body <: contains bubble {
     or {

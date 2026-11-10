@@ -22,6 +22,10 @@ export type CustomerAccountDeletionResult =
  * failure reports a retryable failure and keeps the durable deletion marker
  * and the account untouched. Every outcome is a result; only fixed codes are
  * logged.
+ *
+ * It requires the verified session, not an active account: a session whose
+ * account already awaits deletion, after an earlier attempt failed, must be
+ * able to retry.
  */
 export const requestCurrentAccountDeletion = requireVerifiedSession.pipe(
   Effect.matchEffect({

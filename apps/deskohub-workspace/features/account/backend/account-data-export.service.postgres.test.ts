@@ -65,8 +65,8 @@ import {
   AccountDataExportLimits,
   AccountDataExportService,
 } from "./account-data-export.service";
+import { CurrentCustomerAccount } from "./current-customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import { CustomerAccountResolver } from "./customer-account-resolver.service";
 import { CustomerAccountSections } from "./customer-account-sections";
 import { signedInAuthentication } from "./customer-authentication.test-utils";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
@@ -528,7 +528,7 @@ const exportService = (
     })
   );
   return AccountDataExportService.Default.pipe(
-    Layer.provide(CustomerAccountResolver.Default),
+    Layer.provide(CurrentCustomerAccount.Default),
     Layer.provide(CustomerAccountSections.Default),
     Layer.provide(
       Layer.mergeAll(
