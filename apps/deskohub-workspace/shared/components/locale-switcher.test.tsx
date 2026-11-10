@@ -19,7 +19,10 @@ import {
 } from "@testing-library/react";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import type { Locale } from "@/features/i18n";
-import { languageNames } from "@/features/i18n/language-labels";
+import {
+  languageNameStyle,
+  languageNames,
+} from "@/features/i18n/language-labels";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -232,6 +235,30 @@ describe("LanguageMenu", () => {
     }
   });
 
+  test("sets each language's name in that language's name face", async () => {
+    const { LanguageMenu } = await import("./locale-switcher");
+    currentPathname = "/cs-CZ";
+
+    const view = render(
+      <LanguageMenu locale="cs-CZ" triggerLabel={triggerLabel} tone="light" />
+    );
+    const menu = await openLanguageMenu(view);
+
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => {
+          const name = item.querySelector<HTMLElement>("[lang]");
+          return [name?.lang, name?.style.fontFamily];
+        })
+    ).toEqual(
+      displayOrder.map((locale) => [
+        locale,
+        languageNameStyle(locale)?.fontFamily ?? "",
+      ])
+    );
+  });
+
   test("links each other language to the current page with its query", async () => {
     const { LanguageMenu } = await import("./locale-switcher");
     currentPathname = "/en-US/pricing";
@@ -313,6 +340,27 @@ describe("LanguageLinks", () => {
       expect(link.getAttribute("hrefLang")).toBe(locale);
       expect(link.getAttribute("lang")).toBe(locale);
     }
+  });
+
+  test("sets each language's name in that language's name face", async () => {
+    const { LanguageLinks } = await import("./locale-switcher");
+    currentPathname = "/cs-CZ";
+
+    const view = render(<LanguageLinks locale="cs-CZ" label={linksLabel} />);
+
+    expect(
+      within(view.getByRole("navigation", { name: linksLabel }))
+        .getAllByRole("listitem")
+        .map((item) => {
+          const name = item.querySelector<HTMLElement>("[lang]");
+          return [name?.lang, name?.style.fontFamily];
+        })
+    ).toEqual(
+      displayOrder.map((locale) => [
+        locale,
+        languageNameStyle(locale)?.fontFamily ?? "",
+      ])
+    );
   });
 
   test("links each other language to the current page with its query", async () => {

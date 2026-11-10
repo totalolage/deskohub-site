@@ -4,7 +4,10 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { loadGlobalRelease } from "@/features/feature-flags/backend/global-release.server";
 import { isLocale, locales, m } from "@/features/i18n";
-import { getLocaleFontStyle } from "@/features/i18n/locale-fonts";
+import {
+  getLocaleFontStyle,
+  languageNameFontStyle,
+} from "@/features/i18n/locale-fonts";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   getPublicPageTitle,
@@ -103,8 +106,12 @@ export default async function LocaleLayout({
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   // A script Sculpin can't set, such as Ukrainian Cyrillic, sets its text in
-  // a stack built around Sculpin.
-  const fontStyle = getLocaleFontStyle(locale, sculpin.style.fontFamily);
+  // a stack built around Sculpin. Every page names each language in itself,
+  // so it also carries the faces of the language names in those scripts.
+  const fontStyle = {
+    ...languageNameFontStyle,
+    ...getLocaleFontStyle(locale, sculpin.style.fontFamily),
+  };
 
   return (
     <html

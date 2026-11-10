@@ -1,9 +1,11 @@
 import {
   getLocaleDefinition,
   type LocaleScript,
+  supportedLocales,
 } from "@deskohub/i18n/locale-registry";
 import localFont from "next/font/local";
 import type { CSSProperties } from "react";
+import { languageNameFontProperty } from "./language-labels";
 import type { Locale } from "./paraglide/runtime.js";
 
 /*
@@ -117,6 +119,57 @@ const poppinsDevanagari = localFont({
   ],
 });
 
+/*
+ * Language names: the language menu and links name every language in itself
+ * on every page, so a name in a script the brand face lacks needs its
+ * script's face on other locales' pages too. These faces hold only the
+ * letters of the registry's native names in their script (a few kilobytes,
+ * against tens for the full faces above), so every page can fetch them for
+ * the footer's language links. Regenerate them when a native name changes
+ * (the deskohub-i18n skill's add-a-locale reference has the command);
+ * language-name-fonts.browser-acceptance.test.ts fails on a missing letter.
+ */
+
+/** Montserrat, as Vietnamese pages set "Tiếng Việt". */
+const vietnameseLanguageName = localFont({
+  src: "../../assets/fonts/Montserrat/language-name-vietnamese.woff2",
+  weight: "100 900",
+  style: "normal",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
+  declarations: [{ prop: "size-adjust", value: "98.6%" }],
+});
+
+/** Montserrat's Cyrillic, as Ukrainian pages set "Українська". */
+const cyrillicLanguageName = localFont({
+  src: "../../assets/fonts/Montserrat/language-name-cyrillic.woff2",
+  weight: "100 900",
+  style: "normal",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
+  declarations: [{ prop: "size-adjust", value: "98.6%" }],
+});
+
+/** Poppins' Devanagari, as Hindi pages set "हिन्दी". */
+const devanagariLanguageName = localFont({
+  src: [
+    {
+      path: "../../assets/fonts/Poppins/language-name-devanagari-400.woff2",
+      weight: "400",
+    },
+    {
+      path: "../../assets/fonts/Poppins/language-name-devanagari-600.woff2",
+      weight: "600",
+    },
+  ],
+  style: "normal",
+  display: "swap",
+  preload: false,
+  adjustFontFallback: false,
+});
+
 /**
  * Devanagari letters Poppins lacks (rare and Vedic code points) come from the
  * platform's Devanagari font rather than whatever the browser picks.
@@ -175,3 +228,31 @@ export const getLocaleFontStyle = (
     ].join(", "),
   } as CSSProperties;
 };
+
+const languageNameFaces: Readonly<
+  Record<Exclude<LocaleScript, "latin">, string>
+> = {
+  "latin-vietnamese": vietnameseLanguageName.style.fontFamily,
+  cyrillic: cyrillicLanguageName.style.fontFamily,
+  devanagari: devanagariLanguageName.style.fontFamily,
+};
+
+/**
+ * The style every locale's root element sets so that language names in a
+ * script the brand face lacks keep their script's face on any page: the name
+ * face of each such locale, under the property `languageNameStyle`
+ * (`./language-labels`) reads.
+ */
+export const languageNameFontStyle = Object.fromEntries(
+  supportedLocales.flatMap((locale) => {
+    const { script } = getLocaleDefinition(locale);
+    return script === "latin"
+      ? []
+      : [
+          [
+            languageNameFontProperty(locale),
+            languageNameFaces[script],
+          ] as const,
+        ];
+  })
+) as CSSProperties;
