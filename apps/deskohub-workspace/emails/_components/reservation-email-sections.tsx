@@ -1,27 +1,30 @@
 import { Img, Link, Section, Text } from "react-email";
-import { workspaceLocationMapEmailWidth } from "@/shared/utils";
+import { type Locale, m } from "@/features/i18n";
+import type { CustomerReservationPlacement } from "@/features/reservation/backend/customer-reservation-placement";
+import {
+  getWorkspaceCanonicalUrl,
+  workspaceFormattedAddress,
+  workspaceGoogleDirectionsUrl,
+  workspaceLocationMapEmailWidth,
+  workspaceLocationMapImagePath,
+} from "@/shared/utils";
 import { WorkspaceEmailLabel } from "./workspace-email-content";
 
-export type ReservationEmailTable = {
-  readonly mode: "assigned" | "shared";
-  readonly name: string;
-};
-
-export type ReservationEmailLocation = {
-  readonly address: string;
-  readonly directionsUrl: string;
-  readonly mapImageSrc?: string;
-};
+// The hosted map route serves the same image with long-lived caching, so every
+// generation references stable bytes instead of embedding a fresh OSM fetch.
+const workspaceLocationMapUrl = getWorkspaceCanonicalUrl(
+  workspaceLocationMapImagePath
+);
 
 /** The reservation's primary button, with its table underneath when known. */
 export function ReservationEmailActionPanel({
   action,
   table,
-  labels,
+  locale,
 }: {
   readonly action: { readonly button: string; readonly url: string };
-  readonly table?: ReservationEmailTable;
-  readonly labels: { readonly table: string; readonly tables: string };
+  readonly table?: CustomerReservationPlacement["table"];
+  readonly locale: Locale;
 }) {
   return (
     <Section className="mt-6 overflow-hidden rounded-[22px] border border-[#d8d9e4]">
@@ -41,7 +44,12 @@ export function ReservationEmailActionPanel({
       {table && (
         <Section className="border-t-4 border-aquamarine bg-[#e9fff6] px-5 py-5 text-center">
           <WorkspaceEmailLabel>
-            {{ assigned: labels.table, shared: labels.tables }[table.mode]}
+            {
+              {
+                assigned: m.checkoutEmailTableNumberLabel({}, { locale }),
+                shared: m.checkoutEmailTablesLabel({}, { locale }),
+              }[table.mode]
+            }
           </WorkspaceEmailLabel>
           <Text
             className={
@@ -66,37 +74,35 @@ export function ReservationEmailActionPanel({
 
 /** Where the workspace is, with its map and a directions button. */
 export function ReservationEmailLocationPanel({
-  location,
-  labels,
+  locale,
 }: {
-  readonly location: ReservationEmailLocation;
-  readonly labels: { readonly location: string; readonly directions: string };
+  readonly locale: Locale;
 }) {
   return (
     <Section className="mt-6 overflow-hidden rounded-2xl border border-[#e6ded2] bg-cream">
       <Section className="px-5 py-4">
-        <WorkspaceEmailLabel>{labels.location}</WorkspaceEmailLabel>
+        <WorkspaceEmailLabel>
+          {m.checkoutEmailLocationHeading({}, { locale })}
+        </WorkspaceEmailLabel>
         <Link
           className="mt-2 inline-block text-[17px] font-bold leading-[25px] text-navy no-underline"
-          href={location.directionsUrl}
+          href={workspaceGoogleDirectionsUrl}
         >
-          {location.address}
+          {workspaceFormattedAddress}
         </Link>
       </Section>
-      {location.mapImageSrc && (
-        <Img
-          alt={labels.location}
-          className="block h-auto w-full"
-          src={location.mapImageSrc}
-          width={workspaceLocationMapEmailWidth}
-        />
-      )}
+      <Img
+        alt={m.checkoutEmailLocationHeading({}, { locale })}
+        className="block h-auto w-full"
+        src={workspaceLocationMapUrl}
+        width={workspaceLocationMapEmailWidth}
+      />
       <Section className="px-5 py-5 text-center">
         <Link
           className="inline-block rounded-full bg-navy px-7 py-3 text-[14px] font-bold leading-[20px] text-white no-underline"
-          href={location.directionsUrl}
+          href={workspaceGoogleDirectionsUrl}
         >
-          {labels.directions}
+          {m.checkoutEmailLocationMapLink({}, { locale })}
         </Link>
       </Section>
     </Section>
