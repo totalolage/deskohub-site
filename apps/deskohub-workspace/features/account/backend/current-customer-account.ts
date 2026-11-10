@@ -29,7 +29,7 @@ import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
  * no marker, or a read that failed, which callers treat as their own policy
  * says.
  */
-export type ReviewMarker = "absent" | "unreadable";
+type ReviewMarker = "absent" | "unreadable";
 
 /** The facts every standing past the session and review marker carries. */
 type SignedInFacts = {
