@@ -162,6 +162,8 @@ const publishedDocuments: ReadonlyArray<{
     locale: "vi-VN",
     documentKey: "cookie-policy",
     version: "d1a469bc79c9be640a99e42a1266b825ad10e543c7895526567d9207c4f2dd92",
+  },
+  {
     locale: "hi-IN",
     documentKey: "terms-and-conditions",
     version: "e2e9d3c1ba9c4ea94164544416d35d3227a58adbbae9e5930478ccd02878e81c",
