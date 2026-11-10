@@ -1,7 +1,11 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { Context, Effect, Layer } from "effect";
+import { Cause, Context, Effect, Layer, Option } from "effect";
 import { ReviewAccounts } from "@/features/review-accounts";
-import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
+import {
+  catchRecoverableCause,
+  failuresAsDefects,
+  isRecoverableCause,
+} from "@/shared/backend/workspace-effect";
 import {
   type CustomerAccountAccessError,
   type CustomerAccountId,
@@ -258,20 +262,26 @@ const makeCurrentCustomerAccount = (
             ...facts,
           })
         ),
-        Effect.catch((failure) =>
-          Effect.succeed(resolutionFailure(failure, facts))
-        ),
-        // A resolution step that died reads as the unavailable lock.
-        catchRecoverableCause((cause) =>
-          Effect.logError("Account resolution died", { cause }).pipe(
-            Effect.as(
-              resolutionFailure(
-                customerAccountUnavailable("account-link.lock"),
-                facts
-              )
-            )
-          )
-        )
+        // Interruption and Next.js control flow win over a failure beside
+        // them; a step that died reads as the unavailable lock.
+        Effect.catchCause((cause) => {
+          if (!isRecoverableCause(cause)) {
+            return Effect.failCause(failuresAsDefects(cause));
+          }
+          return Option.match(Cause.findErrorOption(cause), {
+            onSome: (failure) =>
+              Effect.succeed(resolutionFailure(failure, facts)),
+            onNone: () =>
+              Effect.logError("Account resolution died", { cause }).pipe(
+                Effect.as(
+                  resolutionFailure(
+                    customerAccountUnavailable("account-link.lock"),
+                    facts
+                  )
+                )
+              ),
+          });
+        })
       );
     }),
     Effect.withSpan("CurrentCustomerAccount.resolve")

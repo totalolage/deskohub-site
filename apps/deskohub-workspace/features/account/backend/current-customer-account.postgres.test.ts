@@ -2,11 +2,13 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, test } from "bun:test";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
+import { redirect } from "next/navigation";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { ReviewAccountsMock } from "@/features/review-accounts/backend/review-accounts.repository.mock";
+import { findNextControlFlow } from "@/shared/backend/workspace-effect";
 import { workspaceFixtures } from "@/shared/testing/workspace-fixtures.test-utils";
 import { createWorkspacePostgresSuiteDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
@@ -97,6 +99,8 @@ describe.skipIf(!suiteDatabase)(
       readonly match?: ExactEmailCustomerMatch;
       readonly reactivation?: Effect.Effect<void, never>;
       readonly reviewAccounts?: Layer.Layer<ReviewAccounts>;
+      /** Stands in for the account sections the standing resolves in. */
+      readonly sections?: Layer.Layer<CustomerAccountSections>;
     }) => {
       const calls: Calls = { sessionReads: 0, classify: [], reactivate: [] };
       const currentUser = Effect.suspend(() => {
@@ -115,15 +119,17 @@ describe.skipIf(!suiteDatabase)(
       const links = CustomerAccountLinkRepository.Default.pipe(
         Layer.provide(suiteDatabase.layer)
       );
-      const sections = CustomerAccountSections.Default.pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            authentication,
-            links,
-            WorkspaceDatabaseAdvisoryLock.makeLayer(pool)
+      const sections =
+        options.sections ??
+        CustomerAccountSections.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              authentication,
+              links,
+              WorkspaceDatabaseAdvisoryLock.makeLayer(pool)
+            )
           )
-        )
-      );
+        );
       const dotypos = Layer.mock(CustomerDotyposAdapter, {
         classifyExactEmailCustomers: (email) => {
           calls.classify.push(email);
@@ -459,6 +465,41 @@ describe.skipIf(!suiteDatabase)(
         expect(
           resolved.kind === "unavailable" && resolved.failure.cause?.code
         ).toBe("account-link.lock");
+        expect(await storedLink(account.accountId)).toBeNull();
+      });
+
+      test("Next.js control flow beside a resolution failure propagates instead of becoming a standing", async () => {
+        const account = await seedAccount();
+        const redirectError = Effect.runSync(
+          Effect.flip(
+            Effect.try({
+              try: () => redirect("/target"),
+              catch: (thrown) => thrown,
+            })
+          )
+        );
+        const { layer } = makeCurrentAccount({
+          sessions: [sessionOf(account)],
+          sections: Layer.mock(CustomerAccountSections, {
+            withActiveAccount: () =>
+              Effect.failCause(
+                Cause.combine(
+                  Cause.fail(customerAccountUnavailable("account-link.lock")),
+                  Cause.die(redirectError)
+                )
+              ),
+          }),
+        });
+
+        const exit = await Effect.runPromiseExit(
+          currentAccount.pipe(
+            Effect.flatMap((service) => service.resolve),
+            Effect.provide(layer)
+          )
+        );
+        expect(Exit.isFailure(exit) && findNextControlFlow(exit.cause)).toBe(
+          redirectError
+        );
         expect(await storedLink(account.accountId)).toBeNull();
       });
 
