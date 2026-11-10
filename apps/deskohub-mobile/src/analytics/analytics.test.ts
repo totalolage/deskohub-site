@@ -17,6 +17,7 @@ const createFakeClient = (
   const calls: Call[] = [];
   const flagListeners = new Set<() => void>();
   let flags: Record<string, boolean | string> | undefined;
+  let networkHeld = false;
   let finishShutdown: () => void = () => {};
   let finishLoading: () => void = () => {};
   let failLoading: () => void = () => {};
@@ -45,6 +46,10 @@ const createFakeClient = (
       });
     },
     getFeatureFlag: (flag) => flags?.[flag],
+    holdNetwork: (held) => {
+      if (networkHeld !== held) calls.push(["holdNetwork", held]);
+      networkHeld = held;
+    },
     onFeatureFlags: (listener) => {
       flagListeners.add(listener);
       return () => flagListeners.delete(listener);
@@ -80,6 +85,7 @@ const createFakeClient = (
     finishLoading: () => finishLoading(),
     failLoading: () => failLoading(),
     flagListenerCount: () => flagListeners.size,
+    networkHeld: () => networkHeld,
   };
 };
 
@@ -97,6 +103,7 @@ const setup = ({
   otherSdk = false,
   restoredDistinctId = null,
   holdLoading = false,
+  accountCheck = false,
 }: {
   readonly consent?: AnalyticsConsentStatus;
   readonly runtimeSettings?: AnalyticsSettings | null;
@@ -105,12 +112,17 @@ const setup = ({
   readonly restoredDistinctId?: string | null;
   /** Keeps each client loading until the test finishes it. */
   readonly holdLoading?: boolean;
+  /** Holds signed-in delivery until the test settles the account's check. */
+  readonly accountCheck?: boolean;
 } = {}) => {
   const analytics = createAnalytics();
   const clients: FakeClient[] = [];
   const warnings: string[] = [];
   let status = consent;
   const consentListeners = new Set<() => void>();
+  const checkListeners = new Set<() => void>();
+  const checkedAccounts = new Set<string>();
+  let storedStateClears = 0;
   const runtime: AnalyticsRuntime = {
     settings: runtimeSettings,
     createClient: (options) => {
@@ -126,7 +138,24 @@ const setup = ({
         return () => consentListeners.delete(listener);
       },
     },
+    ...(accountCheck
+      ? {
+          accountCheck: {
+            holds: (accountId) => !checkedAccounts.has(accountId),
+            subscribe: (listener) => {
+              checkListeners.add(listener);
+              return () => checkListeners.delete(listener);
+            },
+          },
+        }
+      : {}),
+    clearStoredState: async () => {
+      storedStateClears++;
+    },
     warn: (message) => warnings.push(message),
+  };
+  const notifyCheck = () => {
+    for (const listener of checkListeners) listener();
   };
   return {
     analytics,
@@ -137,6 +166,17 @@ const setup = ({
       status = next;
       for (const listener of consentListeners) listener();
     },
+    /** The account's consent check finished. */
+    settleCheck: (accountId: string) => {
+      checkedAccounts.add(accountId);
+      notifyCheck();
+    },
+    /** The app returned to the foreground: every account is checked again. */
+    recheck: () => {
+      checkedAccounts.clear();
+      notifyCheck();
+    },
+    storedStateClears: () => storedStateClears,
   };
 };
 
@@ -666,5 +706,174 @@ describe("feature flags", () => {
     app.clients[0]?.loadFlags({ seating_map: true });
     app.analytics.setIdentity({ kind: "pending" });
     expect(app.analytics.featureFlag("seating_map")).toBeUndefined();
+  });
+});
+
+describe("account consent hold", () => {
+  test("starts no client for a held account until its check settles", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity(account("acc_1"));
+    app.analytics.screen("/reservations");
+    app.analytics.capture({ name: "access PIN viewed" });
+    await settle();
+    expect(app.clients).toHaveLength(0);
+    expect(app.analytics.featureFlag("flag")).toBeUndefined();
+
+    app.settleCheck("acc_1");
+    await settle();
+    expect(app.clients[0]?.calls).toEqual([
+      ["identify", "workspace-account:acc_1"],
+      ["reloadFeatureFlags"],
+      ["screen", "/reservations"],
+      ["capture", "access PIN viewed", undefined],
+    ]);
+  });
+
+  test("discards what was held when the check withdraws, and clears stored state", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity(account("acc_1"));
+    app.analytics.capture({ name: "sign-in completed", awaitsAccount: true });
+    app.analytics.screen("/account");
+
+    app.setConsent("denied");
+    app.settleCheck("acc_1");
+    await settle();
+
+    expect(app.clients).toHaveLength(0);
+    expect(app.storedStateClears()).toBe(1);
+    app.setConsent("granted");
+    await settle();
+    expect(app.clients[0]?.calls).toEqual([
+      ["identify", "workspace-account:acc_1"],
+      ["reloadFeatureFlags"],
+    ]);
+  });
+
+  test("pauses an identified client on a recheck and resumes on settle", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity(account("acc_1"));
+    app.settleCheck("acc_1");
+    await settle();
+    const client = app.clients[0];
+    client?.finishFlagReload(0, { flag: "on" });
+    await settle();
+
+    app.recheck();
+    expect(client?.networkHeld()).toBe(true);
+    app.analytics.capture({ name: "access PIN viewed" });
+    app.analytics.screen("/account");
+    // The paused client already belongs to the account: its flags stay.
+    expect(app.analytics.featureFlag("flag")).toBe("on");
+    expect(client?.calls.filter(([name]) => name === "capture")).toEqual([]);
+
+    app.settleCheck("acc_1");
+    expect(client?.networkHeld()).toBe(false);
+    expect(client?.calls.slice(-3)).toEqual([
+      ["holdNetwork", false],
+      ["capture", "access PIN viewed", undefined],
+      ["screen", "/account"],
+    ]);
+  });
+
+  test("shuts a paused client down without sending what waited", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity(account("acc_1"));
+    app.settleCheck("acc_1");
+    await settle();
+    const client = app.clients[0];
+
+    app.recheck();
+    app.analytics.capture({ name: "access PIN viewed" });
+    app.setConsent("denied");
+    app.settleCheck("acc_1");
+    client?.finishShutdown();
+    await settle();
+
+    expect(client?.calls).toEqual([
+      ["identify", "workspace-account:acc_1"],
+      ["reloadFeatureFlags"],
+      ["holdNetwork", true],
+      ["shutDown"],
+    ]);
+    expect(app.clients).toHaveLength(1);
+  });
+
+  test("holds an anonymous client's identify on sign-in until the check settles", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+    const client = app.clients[0];
+    client?.finishFlagReload(0, { flag: "anonymous" });
+    await settle();
+
+    app.analytics.setIdentity(account("acc_1"));
+    app.analytics.capture({ name: "sign-in completed", awaitsAccount: true });
+    expect(client?.networkHeld()).toBe(true);
+    expect(app.analytics.featureFlag("flag")).toBeUndefined();
+    expect(client?.calls.some(([name]) => name === "identify")).toBe(false);
+
+    app.settleCheck("acc_1");
+    expect(client?.calls.slice(-4)).toEqual([
+      ["holdNetwork", false],
+      ["identify", "workspace-account:acc_1"],
+      ["reloadFeatureFlags"],
+      ["capture", "sign-in completed", undefined],
+    ]);
+  });
+
+  test("never holds anonymous delivery", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    app.analytics.capture({ name: "booking started" });
+    await settle();
+    expect(app.clients[0]?.calls).toEqual([
+      ["reloadFeatureFlags"],
+      ["capture", "booking started", undefined],
+    ]);
+  });
+
+  test("a check of another account releases nothing", async () => {
+    const app = setup({ accountCheck: true });
+    app.connect();
+    app.analytics.setIdentity(account("acc_2"));
+    app.settleCheck("acc_1");
+    await settle();
+    expect(app.clients).toHaveLength(0);
+  });
+});
+
+describe("stored state", () => {
+  test("clears it once on a refusal while no client runs", async () => {
+    const app = setup({ consent: "denied" });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    app.analytics.capture({ name: "booking started" });
+    await settle();
+    expect(app.storedStateClears()).toBe(1);
+  });
+
+  test("leaves an undecided device's storage alone", async () => {
+    const app = setup({ consent: "undecided" });
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+    expect(app.storedStateClears()).toBe(0);
+  });
+
+  test("relies on shutdown to clear a running client's state", async () => {
+    const app = setup();
+    app.connect();
+    app.analytics.setIdentity({ kind: "anonymous" });
+    await settle();
+    app.setConsent("denied");
+    app.clients[0]?.finishShutdown();
+    await settle();
+    expect(app.storedStateClears()).toBe(0);
   });
 });

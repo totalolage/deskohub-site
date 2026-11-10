@@ -8,6 +8,7 @@ import type { AnalyticsSettings } from "./analytics-settings";
 import {
   type AnalyticsIdentity,
   type AppliedDistinctId,
+  analyticsDistinctId,
   identitySteps,
 } from "./identity";
 
@@ -31,6 +32,12 @@ export interface AnalyticsConsentSource {
   readonly subscribe: (listener: () => void) => () => void;
 }
 
+/** Whether an account's analytics waits for its consent check. */
+export interface AccountConsentHold {
+  readonly holds: (accountId: string) => boolean;
+  readonly subscribe: (listener: () => void) => () => void;
+}
+
 /** What the app attaches at startup; tests attach fakes. */
 export interface AnalyticsRuntime {
   /** `null` when the build has no usable PostHog key and host. */
@@ -39,6 +46,16 @@ export interface AnalyticsRuntime {
   /** True when another PostHog SDK already runs in this page. */
   readonly detectOtherSdk: () => boolean;
   readonly consent: AnalyticsConsentSource;
+  /**
+   * Holds the signed-in account's delivery while its consent is checked
+   * against the account. Absent where the app doesn't check (the web bundle).
+   */
+  readonly accountCheck?: AccountConsentHold;
+  /**
+   * Removes what an earlier client stored (identity, queued events), called
+   * only while no client runs.
+   */
+  readonly clearStoredState: () => Promise<void>;
   readonly warn: (message: string) => void;
 }
 
@@ -71,11 +88,18 @@ const internalOrTestUser = { $internal_or_test_user: true } as const;
  * Builds the analytics controller. The SDK client is constructed only once
  * analytics consent is granted and the identity has settled, because
  * construction already fetches remote config and flags. Withdrawal shuts the
- * client down and drops it; granting again builds a fresh one.
+ * client down and drops it; granting again builds a fresh one. Without a
+ * client, a refusal clears what an earlier client stored, such as when the
+ * account's withdrawal arrives before any client started.
+ *
+ * A signed-in identity also waits while the runtime's account check holds
+ * it: nothing is identified, captured or flushed for the account until the
+ * check releases it, so a withdrawal the check applies discards it all.
  */
 export const createAnalytics = (): AnalyticsController => {
   let runtime: AnalyticsRuntime | undefined;
   let detachConsent: (() => void) | undefined;
+  let detachAccountCheck: (() => void) | undefined;
   let identity: AnalyticsIdentity = { kind: "pending" };
   let client: AnalyticsClient | undefined;
   let detachClientFlags: (() => void) | undefined;
@@ -88,6 +112,12 @@ export const createAnalytics = (): AnalyticsController => {
   /** The client was just adopted and has not had an identity applied yet. */
   let adopting = false;
   let shutdownInProgress: Promise<void> | undefined;
+  /** Stored SDK state being removed; no client starts meanwhile. */
+  let clearing: Promise<void> | undefined;
+  /** No stored SDK state is left since the last client stopped. */
+  let storedStateCleared = false;
+  /** Whether the account's delivery was held at the last reconcile. */
+  let accountHeld = false;
   let outbox: Delivery[] = [];
   let heldForAccount: AnalyticsEvent[] = [];
   /**
@@ -123,7 +153,25 @@ export const createAnalytics = (): AnalyticsController => {
     );
   };
 
-  const ready = () => client !== undefined && identity.kind !== "pending";
+  const holdsAccount = () =>
+    identity.kind === "authenticated" &&
+    runtime?.accountCheck?.holds(identity.accountId) === true;
+
+  /** Whether delivery may go to the identity: settled and not held. */
+  const identityReady = () => identity.kind !== "pending" && !holdsAccount();
+
+  const ready = () => client !== undefined && identityReady();
+
+  // While the account is held, flags stay readable only for a client already
+  // identified as that account (as after returning to the foreground), whose
+  // network the hold pauses.
+  const flagsReadable = () =>
+    client !== undefined &&
+    identity.kind !== "pending" &&
+    flagsCurrent &&
+    (!holdsAccount() ||
+      (identity.kind === "authenticated" &&
+        applied === analyticsDistinctId(identity.accountId)));
 
   const deliver = (target: AnalyticsClient, delivery: Delivery) => {
     if (delivery.kind === "screen") {
@@ -161,9 +209,34 @@ export const createAnalytics = (): AnalyticsController => {
       })
       .finally(() => {
         if (shutdownInProgress === shutdown) shutdownInProgress = undefined;
+        // Shutdown clears the client's stored state.
+        storedStateCleared = true;
         reconcile();
       });
     shutdownInProgress = shutdown;
+  };
+
+  const clearStoredState = (owner: AnalyticsRuntime) => {
+    if (
+      storedStateCleared ||
+      client !== undefined ||
+      starting !== undefined ||
+      shutdownInProgress !== undefined ||
+      clearing !== undefined
+    ) {
+      return;
+    }
+    storedStateCleared = true;
+    const cleared = owner
+      .clearStoredState()
+      .catch((error: unknown) => {
+        owner.warn(`Clearing stored analytics state failed: ${String(error)}`);
+      })
+      .finally(() => {
+        if (clearing === cleared) clearing = undefined;
+        reconcile();
+      });
+    clearing = cleared;
   };
 
   const shutDownClient = () => {
@@ -242,14 +315,25 @@ export const createAnalytics = (): AnalyticsController => {
     if (!consentGranted()) {
       discardPending();
       shutDownClient();
+      // An undecided device never ran a client.
+      if (consentStatus() === "denied") clearStoredState(runtime);
       return;
+    }
+    const held = holdsAccount();
+    // Pauses the SDK's own sending too: events it queued earlier and its
+    // flushes on app-state changes wait for the check.
+    client?.holdNetwork(held);
+    if (held !== accountHeld) {
+      accountHeld = held;
+      notifyFlags();
     }
     const settings = runtime.settings;
     if (settings === null || blockedByOtherSdk || startFailed) return;
     if (
-      identity.kind === "pending" ||
+      !identityReady() ||
       shutdownInProgress !== undefined ||
-      starting !== undefined
+      starting !== undefined ||
+      clearing !== undefined
     ) {
       return;
     }
@@ -271,6 +355,7 @@ export const createAnalytics = (): AnalyticsController => {
   };
 
   const construct = (owner: AnalyticsRuntime, settings: AnalyticsSettings) => {
+    storedStateCleared = false;
     const created = owner.createClient({
       apiKey: settings.apiKey,
       host: settings.host,
@@ -305,15 +390,19 @@ export const createAnalytics = (): AnalyticsController => {
   return {
     connect: (next) => {
       detachConsent?.();
+      detachAccountCheck?.();
       runtime = next;
       blockedByOtherSdk = false;
       startFailed = false;
       detachConsent = next.consent.subscribe(reconcile);
+      detachAccountCheck = next.accountCheck?.subscribe(reconcile);
       reconcile();
       return () => {
         if (runtime !== next) return;
         detachConsent?.();
         detachConsent = undefined;
+        detachAccountCheck?.();
+        detachAccountCheck = undefined;
         discardPending();
         shutDownClient();
         runtime = undefined;
@@ -327,7 +416,7 @@ export const createAnalytics = (): AnalyticsController => {
     capture: (event) => enqueue({ kind: "capture", event }),
     screen: (name) => enqueue({ kind: "screen", name }),
     featureFlag: (flag) =>
-      client !== undefined && identity.kind !== "pending" && flagsCurrent
+      client !== undefined && flagsReadable()
         ? client.getFeatureFlag(flag)
         : undefined,
     subscribeFeatureFlags: (listener) => {
