@@ -323,3 +323,16 @@ export function useVisitorConsent(category: ConsentCategory): boolean {
     () => false
   );
 }
+
+/**
+ * Whether the visitor answered the consent banner under the current
+ * revision, kept current across tabs. False on the server, during hydration
+ * and while the banner is still asking.
+ */
+export function useVisitorConsentAnswered(): boolean {
+  return useSyncExternalStore(
+    visitorConsent.subscribe,
+    visitorConsent.hasChoice,
+    () => false
+  );
+}

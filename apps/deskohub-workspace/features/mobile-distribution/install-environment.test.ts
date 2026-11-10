@@ -215,7 +215,37 @@ describe("createInstallEnvironment", () => {
     browser.dispatchEvent(installPromptEvent("accepted").event);
     browser.dispatchEvent(new Event("appinstalled"));
 
-    expect(environment.getSnapshot().installPromptAvailable).toBe(false);
+    expect(environment.getSnapshot()).toMatchObject({
+      installPromptAvailable: false,
+      webAppInstalled: true,
+    });
+  });
+
+  test("knows which browsers hand the site an install prompt", () => {
+    const chrome = createInstallEnvironment(
+      fakeBrowser({
+        navigator: {
+          userAgent: androidChrome,
+          userAgentData: {
+            platform: "Android",
+            mobile: true,
+            brands: [{ brand: "Chromium" }, { brand: "Google Chrome" }],
+          },
+          maxTouchPoints: 5,
+        },
+      })
+    );
+    const firefox = createInstallEnvironment(
+      fakeBrowser({
+        navigator: { userAgent: linuxFirefox, maxTouchPoints: 0 },
+      })
+    );
+
+    expect(chrome.getSnapshot()).toMatchObject({
+      installPromptSupported: true,
+      webAppInstalled: false,
+    });
+    expect(firefox.getSnapshot().installPromptSupported).toBe(false);
   });
 
   test("has no install prompt in Firefox", () => {

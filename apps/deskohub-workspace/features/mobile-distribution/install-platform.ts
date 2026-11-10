@@ -8,6 +8,7 @@ export type InstallPlatform = "android" | "ios" | "desktop";
 type UserAgentClientHints = {
   readonly platform: string;
   readonly mobile: boolean;
+  readonly brands?: readonly { readonly brand: string }[];
 };
 
 export type InstallPlatformSignals = {
@@ -33,6 +34,27 @@ export const detectInstallPlatform = ({
   if (/\b(iPhone|iPad|iPod)\b/.test(userAgent)) return "ios";
   if (/\bMacintosh\b/.test(userAgent) && maxTouchPoints > 1) return "ios";
   return "desktop";
+};
+
+/**
+ * Whether the browser hands the site an install prompt
+ * (`beforeinstallprompt`) when the web app can be installed. Every Chromium
+ * browser lists a "Chromium" brand in its client hints (Chrome, Edge, Samsung
+ * Internet, Opera, Brave); Firefox and Safari send no client hints. An
+ * Android WebView, which in-app browsers use, also reports Chromium but never
+ * installs anything: it carries an "Android WebView" brand, and older ones
+ * only the `; wv)` user agent marker.
+ */
+export const offersInstallPrompt = ({
+  userAgent,
+  userAgentData,
+}: InstallPlatformSignals): boolean => {
+  const brands = userAgentData?.brands?.map(({ brand }) => brand) ?? [];
+  return (
+    brands.includes("Chromium") &&
+    !brands.includes("Android WebView") &&
+    !/; wv\)/.test(userAgent)
+  );
 };
 
 export type StandaloneDisplaySignals = {

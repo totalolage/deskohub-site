@@ -106,7 +106,7 @@ export function AccountSectionPanel({
       {footer !== undefined && (
         <div
           className={cn(
-            "sticky bottom-0 z-10 mt-8 min-w-0 border-t bg-white pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]",
+            "sticky bottom-[var(--install-bar-space,0px)] z-10 mt-8 min-w-0 border-t bg-white pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]",
             tone.divider
           )}
         >
