@@ -207,7 +207,7 @@
   "emailsEditorBlockSortDescending": "अवरोही",
   "emailsEditorBlockLimit": "अधिकतम इतने दिखाएँ",
   "emailsEditorBlockLimitHint": "फ़ील्ड खाली छोड़ने पर सभी मदें दिखेंगी।",
-  "emailsEditorEnglishFallbackMissing": "अंग्रेज़ी अनुवाद के बिना, जिन जर्मन और यूक्रेनी प्राप्तकर्ताओं के लिए अपनी भाषा का अनुवाद नहीं है, उन्हें चेक अनुवाद मिलता है।",
+  "emailsEditorEnglishFallbackMissing": "अंग्रेज़ी अनुवाद न होने पर, उन प्राप्तकर्ताओं को चेक भाषा का अनुवाद मिलेगा जिनकी भाषा का अपना अनुवाद नहीं है और जिनके लिए अंग्रेज़ी विकल्प के रूप में इस्तेमाल होती है।",
   "emailsEditorProblemValuePath": "ग्राहक फ़ील्ड चुनें।",
   "emailsEditorProblemValueSort": "क्रमबद्ध करने का फ़ील्ड और उसकी दिशा, दोनों चुनें।",
   "emailsEditorProblemValueDiscount": "छूट चुनें।",
