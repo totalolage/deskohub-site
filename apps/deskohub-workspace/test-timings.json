@@ -296,7 +296,6 @@
     "features/account/backend/current-account-deletion.test.ts": 331,
     "features/account/backend/current-customer-passkeys.test.ts": 319,
     "features/account/backend/current-reservation-history-account.test.ts": 233,
-    "features/account/backend/customer-account-activity.test.ts": 929,
     "features/account/backend/customer-account-by-email.postgres.test.ts": 397,
     "features/account/backend/customer-account-contact.service.test.ts": 314,
     "features/account/backend/customer-account-deletion.postgres.test.ts": 1889,

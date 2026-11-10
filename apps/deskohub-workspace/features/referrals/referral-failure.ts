@@ -21,6 +21,11 @@ export const referralFailureLogFields = Match.type<
       outage: "authentication",
       ...(diagnostic && { diagnostic }),
     }),
+    ReferralAccountCheckUnavailable: ({ code }) => ({
+      reason: "outage",
+      outage: "account",
+      ...(code && { code }),
+    }),
     DotyposUnavailable: (failure) => ({
       reason: "outage",
       outage: "dotypos",

@@ -20,6 +20,7 @@
     "i18n:compile": "bun x @inlang/paraglide-js compile --project ./project.inlang --outdir ./features/i18n/paraglide --output-structure locale-modules",
     "i18n:compile:administration": "bun x @inlang/paraglide-js compile --project ./features/administration/i18n/project.inlang --outdir ./features/administration/i18n/paraglide --output-structure locale-modules",
     "feature-flags:sync": "bun scripts/sync-posthog-feature-flags.ts",
+    "feature-flags:snapshot": "bun scripts/sync-posthog-feature-flags.ts --build",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",

@@ -1,15 +1,18 @@
 import type { DotyposCustomer, DotyposCustomerId } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Option } from "effect";
-import type { SqlError } from "effect/unstable/sql";
 import { ReviewAccounts } from "@/features/review-accounts";
 import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
-import type { CustomerAccountId } from "../customer-account";
+import type {
+  CustomerAccountAccessError,
+  CustomerAccountId,
+} from "../customer-account";
 import { AnalyticsPersonAnonymisation } from "./analytics-person-anonymisation";
 import { CustomerAccountRepository } from "./customer-account.repository";
 import {
   type CustomerAccountLinkError,
   CustomerAccountLinkRepository,
 } from "./customer-account-link.repository";
+import { CustomerAccountSections } from "./customer-account-sections";
 import {
   type CustomerAvatarProviderError,
   CustomerAvatarService,
@@ -24,18 +27,35 @@ import {
  * A shared app-directory review account can't be deleted: later review rounds
  * sign in with the same credentials.
  */
-export class ReviewAccountDeletionRefusedError extends Data.TaggedError(
+class ReviewAccountDeletionRefusedError extends Data.TaggedError(
   "ReviewAccountDeletionRefusedError"
 )<Record<never, never>> {
   override readonly message = "A review account can't be deleted.";
 }
 
-export type CustomerAccountDeletionError =
+type CustomerAccountDeletionError =
   | ReviewAccountDeletionRefusedError
+  | CustomerAccountAccessError
   | CustomerAccountLinkError
   | DotyposCustomerError
   | CustomerAvatarProviderError
   | CustomerAvatarUnavailableError;
+
+/**
+ * The fixed, low-cardinality fields a deletion that stays retryable logs.
+ * The failure itself stays out of the log: its message and cause can carry
+ * raw database or provider output.
+ */
+const retryableDeletionLogFields = (
+  failure: CustomerAccountDeletionError
+): Readonly<Record<string, string>> =>
+  failure._tag === "CustomerAccountAccessError"
+    ? {
+        failure: failure._tag,
+        reason: failure.reason,
+        ...(failure.cause && { failureCode: failure.cause.code }),
+      }
+    : { failure: failure._tag };
 
 export type CustomerAccountDeletionDependencies = {
   readonly isReviewAccount: (
@@ -62,10 +82,7 @@ export type CustomerAccountDeletionDependencies = {
     accountId: CustomerAccountId,
     deletedAt: Temporal.Instant
   ) => Effect.Effect<void, CustomerAccountLinkError>;
-  readonly withAccountLock: <A, E, R>(
-    accountId: CustomerAccountId,
-    effect: Effect.Effect<A, E, R>
-  ) => Effect.Effect<A, E | SqlError.SqlError, R>;
+  readonly withActiveAccount: CustomerAccountSections["Service"]["withActiveAccount"];
   /** Schedules deletion of the account's PostHog person; never fails. */
   readonly anonymiseAnalyticsPerson: (
     accountId: CustomerAccountId
@@ -75,9 +92,13 @@ export type CustomerAccountDeletionDependencies = {
 /**
  * Provider-first account deletion. Persisting the durable marker must survive
  * a later retryable provider failure, so the marker is written in its own
- * transaction under the session-level account lock, never in the same
- * transaction as the provider call. A review account is refused before
- * anything changes; its marker never goes away, so the check needs no lock.
+ * transaction inside the account's section, never in the same transaction as
+ * the provider call. The section only requires the account to exist, so a
+ * retry runs with the marker already set; an account that is gone fails
+ * `unauthenticated` before anything changes, and a lock that can't be taken
+ * fails `unavailable`, both retryable to the caller. A review account is
+ * refused before anything changes; its marker never goes away, so the check
+ * needs no lock.
  * Once the account is tombstoned, the deletion of its PostHog person is
  * requested; that request never fails the deletion.
  */
@@ -91,7 +112,7 @@ export const expireLinkedDotyposProfile = (
       return yield* new ReviewAccountDeletionRefusedError();
     }
     yield* dependencies
-      .withAccountLock(
+      .withActiveAccount(
         accountId,
         Effect.gen(function* () {
           yield* dependencies.markDeletionRequested(accountId, new Date());
@@ -121,13 +142,17 @@ export const expireLinkedDotyposProfile = (
           // before Better Auth removes the identity rows, so reservations
           // the account authored keep their author.
           yield* dependencies.tombstone(accountId, Temporal.Now.instant());
-        })
+        }),
+        { recheck: "present" }
       )
       .pipe(
-        Effect.tapError((cause) =>
+        Effect.tapError((failure) =>
           Effect.logWarning(
-            "Customer account deletion: provider cleanup failed; deletion stays retryable.",
-            { code: "account.deletion.retryable", cause }
+            "Customer account deletion did not complete; deletion stays retryable.",
+            {
+              code: "account.deletion.retryable",
+              ...retryableDeletionLogFields(failure),
+            }
           )
         )
       );
@@ -167,6 +192,7 @@ export class CustomerAccountDeletionService extends Context.Service<
       const avatars = yield* CustomerAvatarService;
       const reviewAccounts = yield* ReviewAccounts;
       const analyticsPersons = yield* AnalyticsPersonAnonymisation;
+      const sections = yield* CustomerAccountSections;
 
       const requestDeletion = expireLinkedDotyposProfile({
         isReviewAccount: reviewAccounts.isReviewAccount,
@@ -175,7 +201,7 @@ export class CustomerAccountDeletionService extends Context.Service<
         expireCustomer: dotypos.expireCustomer,
         destroyAvatar: avatars.destroy,
         tombstone: accounts.tombstone,
-        withAccountLock: links.withAccountLock,
+        withActiveAccount: sections.withActiveAccount,
         anonymiseAnalyticsPerson: analyticsPersons.anonymiseDeletedAccount,
       });
 
@@ -191,7 +217,8 @@ export class CustomerAccountDeletionService extends Context.Service<
         CustomerDotyposAdapter.Live,
         CustomerAvatarService.Live,
         ReviewAccounts.Live,
-        AnalyticsPersonAnonymisation.Live
+        AnalyticsPersonAnonymisation.Live,
+        CustomerAccountSections.Live
       )
     )
   );

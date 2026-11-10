@@ -43,6 +43,11 @@ export interface AnalyticsClient {
 export interface AnalyticsClientOptions {
   readonly apiKey: string;
   readonly host: string;
+  /**
+   * Whether the client may request flags from PostHog. Only production does:
+   * other builds share production's project and its flag-request quota.
+   */
+  readonly remoteFeatureFlags: boolean;
   /** Properties sent with every event the client captures. */
   readonly superProperties: AnalyticsProperties;
 }

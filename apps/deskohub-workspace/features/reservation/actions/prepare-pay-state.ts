@@ -5,7 +5,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { env } from "@/env";
 import {
   CustomerAccountContactService,
-  OptionalAccountActivityGuard,
+  CustomerAccountSections,
 } from "@/features/account";
 import { OfficeReleaseGate } from "@/features/office/backend/office-release-gate";
 import { ReferralService } from "@/features/referrals";
@@ -43,7 +43,7 @@ const preparePayStateAction = defineWorkspaceAction(
             Layer.mergeAll(
               ReservationBooking.Live,
               ReferralService.Live,
-              OptionalAccountActivityGuard.Live,
+              CustomerAccountSections.Live,
               CustomerAccountContactService.Live
             )
           ),

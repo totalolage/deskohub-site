@@ -13,6 +13,7 @@ import {
   CustomerAccountResolver,
 } from "@/features/account";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
+import { CustomerAccountSections } from "@/features/account/backend/customer-account-sections";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import { CustomerDotyposAdapter } from "@/features/account/backend/customer-dotypos-adapter.service";
@@ -156,6 +157,11 @@ const makeAuthorization = (
       Layer.mergeAll(
         authenticationLayer,
         linksLayer,
+        CustomerAccountSections.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(authenticationLayer, linksLayer, databaseLayer)
+          )
+        ),
         Layer.mock(CustomerDotyposAdapter, {
           classifyExactEmailCustomers: () =>
             Effect.succeed({ kind: "not-found" }),

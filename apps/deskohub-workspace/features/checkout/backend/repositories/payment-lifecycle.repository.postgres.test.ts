@@ -31,6 +31,7 @@ import {
 } from "@/db/schema";
 import { WorkspaceLockSections } from "@/db/workspace-locks";
 import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
+import { CustomerAccountSections } from "@/features/account/backend/customer-account-sections";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { signedInAuthentication } from "@/features/account/backend/customer-authentication.test-utils";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
@@ -164,8 +165,13 @@ const makeReferralService = async (input?: {
     input?.pool ?? testDatabase!.pool
   );
   const accountLinksLayer = CustomerAccountLinkRepository.Default.pipe(
-    Layer.provide(Layer.mergeAll(databaseLayer, lockLayer))
+    Layer.provide(databaseLayer)
   );
+  const authenticationLayer = input?.identity
+    ? signedInAuthentication(input.identity.accountId)
+    : Layer.succeed(CustomerAuthentication, {
+        currentUser: Effect.die("Identity is not used by quote lookup"),
+      });
 
   return Effect.runPromise(
     Effect.gen(function* () {
@@ -179,13 +185,16 @@ const makeReferralService = async (input?: {
               databaseLayer,
               lockLayer,
               accountLinksLayer,
-              input?.identity
-                ? signedInAuthentication(input.identity.accountId)
-                : Layer.succeed(CustomerAuthentication, {
-                    currentUser: Effect.die(
-                      "Identity is not used by quote lookup"
-                    ),
-                  }),
+              authenticationLayer,
+              CustomerAccountSections.Default.pipe(
+                Layer.provide(
+                  Layer.mergeAll(
+                    authenticationLayer,
+                    accountLinksLayer,
+                    lockLayer
+                  )
+                )
+              ),
               Layer.mock(DotyposService, {
                 listReservations:
                   input?.listReservations ?? (() => Effect.succeed([])),
