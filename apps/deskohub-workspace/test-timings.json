@@ -273,7 +273,6 @@
     "features/account/backend/auth/oauth-token-consent-binding-migration.postgres.test.ts": 2048,
     "features/account/backend/auth/send-magic-link-email.test.ts": 605,
     "features/account/backend/auto-linked-referral.postgres.test.ts": 531,
-    "features/account/backend/customer-account-activity.test.ts": 327,
     "features/account/backend/customer-account-by-email.postgres.test.ts": 292,
     "features/account/backend/customer-account-contact.service.test.ts": 303,
     "features/account/backend/customer-account-deletion.postgres.test.ts": 515,

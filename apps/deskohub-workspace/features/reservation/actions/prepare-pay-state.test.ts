@@ -21,8 +21,8 @@ import {
   customerMarketingConsents,
   type WorkspaceReservationRow,
 } from "@/db/schema";
-import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
+import type { CustomerAccountSectionsFixture } from "@/features/account/backend/customer-account-sections.test-utils";
 import { CustomerAccountAccessError } from "@/features/account/customer-account";
 import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout/checkout-pricing.service.mock";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
@@ -379,17 +379,17 @@ const makeReusableReservation = (
 // Only a signed-in account books, so scenarios run signed in unless they
 // pass their own session authority.
 const accountAuthorityFixture = async (
-  options: OptionalAccountActivityFixture = {
+  options: CustomerAccountSectionsFixture = {
     session: {},
     activityState: "active",
   }
 ) => {
-  const { makeOptionalAccountActivityGuard } = await import(
-    "@/features/account/backend/customer-account-activity.test-utils"
+  const { makeCustomerAccountSections } = await import(
+    "@/features/account/backend/customer-account-sections.test-utils"
   );
-  const guard = makeOptionalAccountActivityGuard(options);
+  const sections = makeCustomerAccountSections(options);
   // The signed-in account is an ordinary customer, not a review account.
-  return { ...guard, layer: Layer.merge(guard.layer, NoReviewAccounts) };
+  return { ...sections, layer: Layer.merge(sections.layer, NoReviewAccounts) };
 };
 
 /**
@@ -450,7 +450,7 @@ const runReusableReservationScenario = async (input: {
   readonly customer?: "account";
   readonly account?: CustomerAccountContactService["Service"]["currentAccount"];
   readonly linkedContact?: ReturnType<typeof mock>;
-  readonly completeProfileUnderHeldLock?: ReturnType<typeof mock>;
+  readonly completeProfile?: ReturnType<typeof mock>;
   readonly linkedAccount?: CustomerAccountContactService["Service"]["currentLinkedAccount"];
   readonly rememberedReferralCode?: string;
   readonly evaluateCheckoutReferral?: ReturnType<typeof mock>;
@@ -587,8 +587,8 @@ const runReusableReservationScenario = async (input: {
   const linkedContact =
     input.linkedContact ??
     mock(() => Effect.die("a linked contact must not be read"));
-  const completeProfileUnderHeldLock =
-    input.completeProfileUnderHeldLock ??
+  const completeProfile =
+    input.completeProfile ??
     mock(() => Effect.die("no profile may be created"));
   const evaluateCheckoutReferral =
     input.evaluateCheckoutReferral ??
@@ -602,7 +602,7 @@ const runReusableReservationScenario = async (input: {
   const contacts = Layer.mock(CustomerAccountContactService, {
     currentAccount: Effect.suspend(() => readAccount()),
     linkedContact: linkedContact as never,
-    completeProfileUnderHeldLock: completeProfileUnderHeldLock as never,
+    completeProfile: completeProfile as never,
     currentLinkedAccount: Effect.suspend(() => readLinkedAccount()),
   });
   const referrals =
@@ -756,7 +756,7 @@ const runReusableReservationScenario = async (input: {
     findOrCreateCustomer,
     readAccount,
     linkedContact,
-    completeProfileUnderHeldLock,
+    completeProfile,
     readLinkedAccount,
     evaluateCheckoutReferral,
     findAvailableCode,
@@ -2075,7 +2075,7 @@ describe("prepareWorkspacePayState", () => {
           });
           expect(scenario.guardEvents).toEqual([]);
           expect(scenario.readAccount).not.toHaveBeenCalled();
-          expect(scenario.completeProfileUnderHeldLock).not.toHaveBeenCalled();
+          expect(scenario.completeProfile).not.toHaveBeenCalled();
           expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
           expect(scenario.quoteForCustomer).not.toHaveBeenCalled();
           expect(scenario.recordMarketingConsent).not.toHaveBeenCalled();
@@ -2884,7 +2884,7 @@ describe("prepareWorkspacePayState", () => {
           bookingAgent,
           customer: "account",
           account: unlinkedAccountState(),
-          completeProfileUnderHeldLock: profileCompletion(),
+          completeProfile: profileCompletion(),
           findByAttemptKeys: mock(() => Effect.succeed(null)),
           createDraft: createFreshDraft(),
         });
@@ -2892,7 +2892,7 @@ describe("prepareWorkspacePayState", () => {
         expect(scenario.error).toMatchObject({
           _tag: "AgentBookingProfileRequiredError",
         });
-        expect(scenario.completeProfileUnderHeldLock).not.toHaveBeenCalled();
+        expect(scenario.completeProfile).not.toHaveBeenCalled();
         expect(scenario.createDraft).not.toHaveBeenCalled();
       });
 
@@ -2934,7 +2934,7 @@ describe("prepareWorkspacePayState", () => {
         accountId,
         dotyposCustomerId: accountDotyposCustomerId,
       });
-      expect(scenario.completeProfileUnderHeldLock).not.toHaveBeenCalled();
+      expect(scenario.completeProfile).not.toHaveBeenCalled();
       expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
       expect(scenario.createDraft).toHaveBeenCalledTimes(1);
       expect(scenario.createDraft.mock.calls[0]?.[0]).toMatchObject({
@@ -2988,7 +2988,7 @@ describe("prepareWorkspacePayState", () => {
       async (_label, billing, profileBilling) => {
         const lockProbe = { held: false };
         const lockSamples: boolean[] = [];
-        const completeProfileUnderHeldLock = mock(() =>
+        const completeProfile = mock(() =>
           Effect.suspend(() => {
             lockSamples.push(lockProbe.held);
             return accountContact({ dotyposCustomerId: createdCustomerId });
@@ -3007,13 +3007,13 @@ describe("prepareWorkspacePayState", () => {
           },
           customer: "account",
           account: unlinkedAccountState(),
-          completeProfileUnderHeldLock,
+          completeProfile,
         });
 
         expect(scenario.error).toBeUndefined();
         expect(scenario.result?.status).toBe("ready");
         expect(lockSamples).toEqual([true]);
-        expect(completeProfileUnderHeldLock.mock.calls).toEqual([
+        expect(completeProfile.mock.calls).toEqual([
           [
             { status: "unlinked", accountId, email: testEmailAddressForGrace },
             {
@@ -3134,7 +3134,7 @@ describe("prepareWorkspacePayState", () => {
         "the saved first profile has no name to book with",
         () => ({
           account: unlinkedAccountState(),
-          completeProfileUnderHeldLock: mock(() => Effect.succeed(null)),
+          completeProfile: mock(() => Effect.succeed(null)),
         }),
       ],
     ] as const)(
@@ -3177,7 +3177,7 @@ describe("prepareWorkspacePayState", () => {
         "the first profile cannot be saved",
         () => ({
           account: unlinkedAccountState(),
-          completeProfileUnderHeldLock: mock(() =>
+          completeProfile: mock(() =>
             Effect.fail(
               new CustomerAccountAccessError({ reason: "unavailable" })
             )
@@ -3387,7 +3387,7 @@ describe("prepareWorkspacePayState", () => {
 
       test("carries an eligible referral for the customer a first profile saved at checkout created", async () => {
         const order: string[] = [];
-        const completeProfileUnderHeldLock = mock(() =>
+        const completeProfile = mock(() =>
           Effect.sync(() => order.push("profile")).pipe(
             Effect.andThen(
               accountContact({ dotyposCustomerId: createdCustomerId })
@@ -3405,7 +3405,7 @@ describe("prepareWorkspacePayState", () => {
           createDraft: createFreshDraft(),
           customer: "account",
           account: unlinkedAccountState(),
-          completeProfileUnderHeldLock,
+          completeProfile,
           rememberedReferralCode: "RFL12345",
           evaluateCheckoutReferral,
         });
@@ -3589,7 +3589,7 @@ describe("prepareWorkspacePayState", () => {
                       email: testEmailAddressForGrace,
                     } as never)
               ),
-              completeProfileUnderHeldLock: profileCompletion(),
+              completeProfile: profileCompletion(),
             };
           },
           createdCustomerId,

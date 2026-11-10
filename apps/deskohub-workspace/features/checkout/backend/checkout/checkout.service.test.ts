@@ -11,8 +11,10 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Data, Duration, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
-import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
-import { makeOptionalAccountActivityGuard } from "@/features/account/backend/customer-account-activity.test-utils";
+import {
+  type CustomerAccountSectionsFixture,
+  makeCustomerAccountSections,
+} from "@/features/account/backend/customer-account-sections.test-utils";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
@@ -527,7 +529,7 @@ type CheckoutHarnessOptions<ReservationOverrides extends object> = {
   readonly completeInternalPayment?: ReturnType<typeof mock>;
   readonly createHostedPaymentPage?: ReturnType<typeof mock>;
   readonly run?: ReturnType<typeof mock>;
-  readonly accountAuthority?: OptionalAccountActivityFixture;
+  readonly accountAuthority?: CustomerAccountSectionsFixture;
   readonly returnTarget?: PaymentReturnTarget;
 };
 
@@ -687,7 +689,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
       }))
     );
 
-  const accountAuthority = makeOptionalAccountActivityGuard(
+  const accountAuthority = makeCustomerAccountSections(
     options.accountAuthority ?? { session: null }
   );
 
@@ -745,7 +747,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
 
   return {
     effect,
-    guardEvents: accountAuthority.events,
+    accountEvents: accountAuthority.events,
     affirm,
     createPendingNexiAttempt,
     completeInternalPayment,
@@ -2861,7 +2863,7 @@ describe("CheckoutService", () => {
     expect(affirm).toHaveBeenCalledTimes(2);
     expect(createPendingNexiAttempt).toHaveBeenCalledTimes(1);
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
-    expect(harness.guardEvents).toEqual([
+    expect(harness.accountEvents).toEqual([
       "account-session",
       "account-lock-acquired",
       "account-activity",
@@ -2948,7 +2950,7 @@ describe("CheckoutService", () => {
     expect(harness.updateReservationDetails).toHaveBeenCalledTimes(1);
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
     expect(harness.reservationRecord.authorAccountId).toBe(author);
-    expect(harness.guardEvents).toEqual([]);
+    expect(harness.accountEvents).toEqual([]);
   });
 
   test("does not make a payer the author of a reservation another account created", async () => {
@@ -3006,7 +3008,7 @@ describe("CheckoutService", () => {
       _tag: "CheckoutError",
       code: "checkout_failed",
     });
-    expect(harness.guardEvents).toEqual([
+    expect(harness.accountEvents).toEqual([
       "account-session",
       "account-lock-acquired",
       "account-activity",
@@ -3032,7 +3034,7 @@ describe("CheckoutService", () => {
       _tag: "CheckoutError",
       code: "checkout_failed",
     });
-    expect(harness.guardEvents).toEqual([
+    expect(harness.accountEvents).toEqual([
       "account-session",
       "account-lock-acquired",
       "account-activity",

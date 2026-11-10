@@ -42,7 +42,7 @@ const payStatePreparationServiceSet = Layer.mergeAll(
 /**
  * The services `prepareWorkspacePayState` books through, with the release
  * gates the caller decides, except the account services
- * (`OptionalAccountActivityGuard` and `CustomerAccountContactService`): each
+ * (`CustomerAccountSections` and `CustomerAccountContactService`): each
  * caller provides those for its own authentication, the browser session or
  * an agent's access token. A caller that decides the gates once per request,
  * such as the customer HTTP API, passes the gates it built, so preparation
