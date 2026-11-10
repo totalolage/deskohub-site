@@ -192,7 +192,6 @@ const Profile = Context.Service<
     ) => Effect.Effect<{ firstName: string }, never>;
     readonly create: (
       accountId: string,
-      email: string,
       input: ProfileInput,
       signupReferral?: SignupIntent
     ) => Effect.Effect<
@@ -211,10 +210,10 @@ Object.assign(Profile, {
       profileCalls.push({ op: "update", args: [account, input] });
       return Effect.succeed({ firstName: "Ada" });
     },
-    create: (accountId, email, input, signupReferral) => {
+    create: (accountId, input, signupReferral) => {
       profileCalls.push({
         op: "create",
-        args: [accountId, email, input, signupReferral],
+        args: [accountId, input, signupReferral],
       });
       // The real link repository stores the intent with the created link.
       storedIntent = signupReferral && {
@@ -394,7 +393,6 @@ describe("account actions", () => {
     expect(profileCalls.map(({ op }) => op)).toEqual(["create"]);
     expect(profileCalls[0]!.args).toEqual([
       "@test/account-id",
-      customerEmail,
       { firstName: "Ada" },
       undefined,
     ]);
@@ -434,7 +432,6 @@ describe("account actions", () => {
         op: "create",
         args: [
           "@test/account-id",
-          customerEmail,
           { firstName: "Ada" },
           codeTarget,
         ],
@@ -755,7 +752,6 @@ describe("account actions", () => {
         op: "create",
         args: [
           "@test/account-id",
-          customerEmail,
           { firstName: "Ada" },
           undefined,
         ],

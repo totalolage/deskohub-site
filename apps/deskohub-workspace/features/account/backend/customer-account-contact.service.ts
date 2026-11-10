@@ -131,10 +131,11 @@ interface ICustomerAccountContactService {
   /**
    * Saves the first profile of a signed-in account that has none, creating
    * or finding its Dotypos customer, and reads it back as the reservation
-   * contact. Run it inside the account activity guard, which holds the
-   * account lock; a profile whose name can't book yields null.
+   * contact. The profile creation holds the account's section, or runs
+   * under the enclosing section's hold of this account; a profile whose
+   * name can't book yields null.
    */
-  readonly completeProfileUnderHeldLock: (
+  readonly completeProfile: (
     account: { readonly accountId: CustomerAccountId; readonly email: string },
     profile: CustomerProfileSave
   ) => Effect.Effect<CustomerAccountContact | null, CustomerAccountAccessError>;
@@ -202,8 +203,8 @@ export class CustomerAccountContactService extends Context.Service<
         return toContact(account, profile);
       });
 
-      const completeProfileUnderHeldLock = Effect.fn(
-        "CustomerAccountContactService.completeProfileUnderHeldLock"
+      const completeProfile = Effect.fn(
+        "CustomerAccountContactService.completeProfile"
       )(function* (
         account: {
           readonly accountId: CustomerAccountId;
@@ -211,11 +212,7 @@ export class CustomerAccountContactService extends Context.Service<
         },
         input: CustomerProfileSave
       ) {
-        const created = yield* profiles.createUnderHeldLock(
-          account.accountId,
-          account.email,
-          input
-        );
+        const created = yield* profiles.create(account.accountId, input);
         return toContact(
           { ...created.account, email: account.email },
           created.profile
@@ -256,7 +253,7 @@ export class CustomerAccountContactService extends Context.Service<
 
       return {
         currentAccount,
-        completeProfileUnderHeldLock,
+        completeProfile,
         currentLinkedAccount,
         linkedContact,
         current,
@@ -276,7 +273,7 @@ export class CustomerAccountContactService extends Context.Service<
         Layer.mergeAll(
           authentication,
           CustomerAccountLinkRepository.Live,
-          CustomerProfileService.Live,
+          CustomerProfileService.withAuthentication(authentication),
           ReviewAccounts.Live
         )
       )

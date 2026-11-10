@@ -10,7 +10,7 @@ import { toAresBusinessBillingDraft } from "@/features/account/backend/ares-busi
 import { CustomerAccountDeletionEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
 import { requestCurrentAccountDeletion } from "@/features/account/backend/current-account-deletion";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
-import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
+import { CustomerAccountSections } from "@/features/account/backend/customer-account-sections";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { saveAccountLocalePreference } from "@/features/account/backend/customer-locale-preference";
@@ -84,11 +84,7 @@ const rememberedReferralLayer = RememberedReferral.Cookies.pipe(
 const saveLocalePreference = (accountId: CustomerAccountId, locale: Locale) =>
   saveAccountLocalePreference(accountId, locale).pipe(
     Effect.provide(
-      Layer.mergeAll(
-        WorkspaceDatabase.Default,
-        CustomerAccountLinkRepository.Live,
-        CustomerAuthentication.Default
-      )
+      Layer.mergeAll(WorkspaceDatabase.Default, CustomerAccountSections.Live)
     )
   );
 

@@ -18,8 +18,11 @@ import {
 } from "effect";
 import { TestClock } from "effect/testing";
 import sharp from "sharp";
+import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { customerAccountIdSchema } from "../customer-account";
+import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import { CustomerAccountSections } from "./customer-account-sections";
 import {
   type CustomerAccountSession,
   CustomerAuthentication,
@@ -288,47 +291,47 @@ mock.module(cloudinaryServerModule, () => ({
 let linkActivity: "active" | "deletion-requested" = "active";
 let deletionRequestedAt: Date | null = null;
 
-const Links = Context.Service<
-  Links,
-  {
-    readonly findActivityState: (
-      accountId: string
-    ) => Effect.Effect<
-      { kind: "active"; deletionRequestedAt: null } | { kind: "missing" },
-      never
-    >;
-    readonly withAccountLock: <A, E, R>(
-      accountId: string,
-      effect: Effect.Effect<A, E, R>
-    ) => Effect.Effect<A, E, R>;
-  }
->()("@test/AvatarLinks");
+/**
+ * The real account sections over the current fake session, account row, and
+ * an advisory lock that can hold a caller at the lock until the test
+ * releases it, so the session can change while the caller waits.
+ */
+const holdAccountLock = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  Effect.suspend(() => {
+    const gate = accountLockGate;
+    return gate === null
+      ? effect
+      : Deferred.succeed(gate.entered, undefined).pipe(
+          Effect.andThen(Deferred.await(gate.release)),
+          Effect.andThen(effect)
+        );
+  });
 
-const LinksLayer = Layer.succeed(Links, {
-  findActivityState: () =>
-    Effect.succeed(
-      linkActivity === "active"
-        ? { kind: "active", deletionRequestedAt: null }
-        : {
-            kind: "active",
-            deletionRequestedAt: deletionRequestedAt ?? new Date(),
-          }
-    ),
-  withAccountLock: (_accountId, effect) =>
-    Effect.suspend(() => {
-      const gate = accountLockGate;
-      return gate === null
-        ? effect
-        : Deferred.succeed(gate.entered, undefined).pipe(
-            Effect.andThen(Deferred.await(gate.release)),
-            Effect.andThen(effect)
-          );
-    }),
-});
-
-mock.module("./customer-account-link.repository", () => ({
-  CustomerAccountLinkRepository: Links,
-}));
+const SectionsLayer = CustomerAccountSections.Default.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      Layer.succeed(CustomerAuthentication, {
+        currentUser: Effect.suspend(() => Effect.succeed(currentSession)),
+      }),
+      Layer.mock(CustomerAccountLinkRepository, {
+        findActivityState: () =>
+          Effect.sync(() => ({
+            kind: "active" as const,
+            email: makeSession(accountId).email,
+            deletionRequestedAt:
+              linkActivity === "active"
+                ? null
+                : (deletionRequestedAt ?? new Date()),
+          })),
+      }),
+      Layer.succeed(WorkspaceDatabaseAdvisoryLock, {
+        withTransactionPermit: (effect) => effect,
+        withLock: (_key, effect) => holdAccountLock(effect),
+        withLocks: (_keys, effect) => holdAccountLock(effect),
+      })
+    )
+  )
+);
 
 const {
   CustomerAvatarService,
@@ -341,14 +344,7 @@ const makeLayer = (namespace: Option.Option<string>) =>
     Layer.provide(
       Layer.mergeAll(
         CloudinaryLayer,
-        LinksLayer,
-        Layer.succeed(CustomerAuthentication, {
-          currentUser: Effect.suspend(() =>
-            currentSession === null
-              ? Effect.succeed(null)
-              : Effect.succeed(currentSession)
-          ),
-        }),
+        SectionsLayer,
         Layer.succeed(CustomerAvatarSettings, { namespace })
       )
     )

@@ -45,7 +45,7 @@ const runCurrent = (
     readonly session?: CustomerAccountSession | null;
     readonly find?: ReturnType<typeof mock>;
     readonly profile?: CustomerProfile;
-    readonly createUnderHeldLock?: ReturnType<typeof mock>;
+    readonly create?: ReturnType<typeof mock>;
   } = {},
   operation: (
     contacts: CustomerAccountContactService["Service"]
@@ -59,11 +59,9 @@ const runCurrent = (
     Effect.die("markDeletionRequested must not be called")
   );
   const load = mock(() => Effect.succeed(options.profile ?? profile()));
-  const create = mock(() => Effect.die("create must not be called"));
+  const create =
+    options.create ?? mock(() => Effect.die("create must not be called"));
   const update = mock(() => Effect.die("update must not be called"));
-  const createUnderHeldLock =
-    options.createUnderHeldLock ??
-    mock(() => Effect.die("createUnderHeldLock must not be called"));
   const currentSession =
     options.session !== undefined ? options.session : session();
 
@@ -81,7 +79,6 @@ const runCurrent = (
         Layer.mock(CustomerProfileService, {
           load,
           create,
-          createUnderHeldLock,
           update,
         }),
         NoReviewAccounts
@@ -101,7 +98,6 @@ const runCurrent = (
       markDeletionRequested,
       load,
       create,
-      createUnderHeldLock,
       update,
     }));
 };
@@ -311,7 +307,7 @@ describe("CustomerAccountContactService.currentLinkedAccount", () => {
   });
 });
 
-describe("CustomerAccountContactService.completeProfileUnderHeldLock", () => {
+describe("CustomerAccountContactService.completeProfile", () => {
   const profileInput = {
     firstName: "Ada",
     lastName: "Lovelace",
@@ -320,21 +316,20 @@ describe("CustomerAccountContactService.completeProfileUnderHeldLock", () => {
   const unlinkedAccount = { accountId, email: customerEmail };
 
   const runComplete = (createdProfile: CustomerProfile) => {
-    const createUnderHeldLock = mock(() =>
+    const create = mock(() =>
       Effect.succeed({
         account: { accountId, dotyposCustomerId: "60999" },
         profile: createdProfile,
         created: true,
       })
     );
-    return runCurrent({ createUnderHeldLock }, (contacts) =>
-      contacts.completeProfileUnderHeldLock(unlinkedAccount, profileInput)
+    return runCurrent({ create }, (contacts) =>
+      contacts.completeProfile(unlinkedAccount, profileInput)
     );
   };
 
-  test("saves the profile under the held lock and returns its contact", async () => {
-    const { outcome, createUnderHeldLock, create, find, load } =
-      await runComplete(profile());
+  test("creates the account's profile and returns its contact", async () => {
+    const { outcome, create, find, load } = await runComplete(profile());
 
     expect(Result.getOrThrow(outcome)).toEqual({
       accountId,
@@ -343,12 +338,7 @@ describe("CustomerAccountContactService.completeProfileUnderHeldLock", () => {
       email: customerEmail,
       phone: "+420 777 777 777",
     });
-    expect(createUnderHeldLock).toHaveBeenCalledWith(
-      accountId,
-      customerEmail,
-      profileInput
-    );
-    expect(create).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledWith(accountId, profileInput);
     expect(find).not.toHaveBeenCalled();
     expect(load).not.toHaveBeenCalled();
   });
@@ -362,7 +352,7 @@ describe("CustomerAccountContactService.completeProfileUnderHeldLock", () => {
   });
 
   test("keeps the profile creation failure", async () => {
-    const createUnderHeldLock = mock(() =>
+    const create = mock(() =>
       Effect.fail(
         new CustomerAccountAccessError({
           reason: "link-required",
@@ -370,8 +360,8 @@ describe("CustomerAccountContactService.completeProfileUnderHeldLock", () => {
         })
       )
     );
-    const { outcome } = await runCurrent({ createUnderHeldLock }, (contacts) =>
-      contacts.completeProfileUnderHeldLock(unlinkedAccount, profileInput)
+    const { outcome } = await runCurrent({ create }, (contacts) =>
+      contacts.completeProfile(unlinkedAccount, profileInput)
     );
 
     expect(outcome).toMatchObject({
