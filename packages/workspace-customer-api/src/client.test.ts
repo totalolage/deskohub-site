@@ -14,6 +14,7 @@ import {
 import {
   CustomerAccountLinkRequired,
   type CustomerAccountState,
+  type CustomerAnalyticsConsentSync,
 } from "./customer-account-api";
 import { CustomerAuthRejected } from "./customer-auth-api";
 import {
@@ -133,7 +134,7 @@ describe("makeWorkspaceCustomerApiClient", () => {
   });
 
   test("sends the app's analytics choice and decodes the account decision it takes", async () => {
-    const withdrawal = {
+    const withdrawal: CustomerAnalyticsConsentSync = {
       kind: "withdraw",
       decidedAt: "2026-11-05T10:00:00.123Z",
     };
