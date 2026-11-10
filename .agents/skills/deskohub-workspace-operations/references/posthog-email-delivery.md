@@ -15,9 +15,12 @@ Resend. Delivery rules are in the `deskohub-workspace-domain` skill's
   `POSTHOG_PERSON_PRIVACY_API_KEY`; don't widen either of those.
 - `POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET`: the signing secret of the PostHog
   webhook destination below.
-- Both are required in Production and optional in Preview and
-  development. Without the key the status poller reports `not-configured`
-  and reads nothing.
+- Both are optional in every environment, Production included, so a
+  release can ship before PostHog email is set up. Without the key, campaign
+  email goes through Resend alone, no delivery is tracked, and the status
+  poller reports `not-configured` and reads nothing. `configuredPostHogEmailConnection`
+  (`shared/backend/config/posthog-email.config.ts`) reads both the key and
+  the host for the provider and the status reader.
 - The host is `POSTHOG_API_HOST`. The provider calls the app host
   (`https://eu.posthog.com`); an ingestion host (`https://eu.i.posthog.com`)
   maps to the app host, so the secret key
@@ -30,7 +33,11 @@ Resend. Delivery rules are in the `deskohub-workspace-domain` skill's
 - PostHog answers a send with `202` and a message ID: queued, not delivered.
   The campaign recipient stores that ID as `provider_message_id`, and the
   email observer inserts a `posthog_email_deliveries` row (primary key
-  `message_id`) for status polling.
+  `message_id`) for status polling. The row's `tags` keep only what the
+  delivery-report handlers read: `category`, `deploymentEnvironment`, and
+  the metadata keys the email kind's schema declares
+  (`emailDeliveryReportTags` in `shared/backend/email/email-kind.ts`), never
+  other metadata.
 - PostHog's per-message status API (`queued`, `sent`, `failed`, `delivered`,
   `bounced`, `complained`) is the source of truth, and it keeps a message
   for 30 days. Engagement events only trigger a read.
@@ -38,8 +45,10 @@ Resend. Delivery rules are in the `deskohub-workspace-domain` skill's
   is a health check) verifies the Standard Webhooks headers (`webhook-id`,
   `webhook-timestamp`, `webhook-signature`; HMAC-SHA256, 5-minute timestamp
   tolerance) with `POSTHOG_EMAIL_WEBHOOK_SIGNING_SECRET` (the `whsec_` form
-  is accepted). A bad or missing signature gets 401; an unset secret gets a
-  retryable refusal, like the Resend route. A valid call is only a signal:
+  is accepted). A bad or missing signature gets 401. An unset or unusable
+  secret gets a bare 500 whose code (`posthog_webhook_secret_missing`,
+  `posthog_webhook_secret_invalid`) is only logged, so a caller learns
+  nothing of the setup and PostHog redelivers once the secret is set. A valid call is only a signal:
   the route ignores the payload, polls due rows (bounded), and answers 200.
 - `GET /api/cron/workspace/posthog-email-deliveries` runs every 15 minutes
   (`*/15 * * * *` in `vercel.json`) with the shared cron auth (`Bearer

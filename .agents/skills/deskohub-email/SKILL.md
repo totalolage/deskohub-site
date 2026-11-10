@@ -61,12 +61,16 @@ category) is in the app's `marketingCategories`, otherwise `transactional`.
 
 | App | Composition | Transactional | Marketing |
 | --- | --- | --- | --- |
-| Workspace | `apps/deskohub-workspace/shared/backend/config/email.config.ts` (`workspaceEmailProviders`, `WorkspaceEmailLayer`), recipient routed | Resend | PostHog, then Resend, for category `email-campaign` |
+| Workspace | `apps/deskohub-workspace/shared/backend/config/email.config.ts` (`workspaceEmailProviders`, `makeWorkspaceEmailLayer`, `WorkspaceEmailLayer`), recipient routed | Resend | PostHog, then Resend, for category `email-campaign`; Resend alone without `POSTHOG_EMAIL_SECRET_KEY` |
 | Boardgame Bar | `apps/deskohub-boardgame-bar/shared/backend/config/email.config.ts` (`boardgameProviderChain`) | Resend or Console (`EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_TEST_MODE`, stage) | none |
 
 Without a Resend key, Workspace sends everything to Console. The marketing
 stream is the category, not the campaign purpose: operational-purpose
-campaigns share `email-campaign` and also go to PostHog. PostHog stays off
+campaigns share `email-campaign` and also go to PostHog, while campaign
+test sends (`email-campaign-test`) are transactional and go through Resend
+alone. Without `POSTHOG_EMAIL_SECRET_KEY`, in any environment including
+production before PostHog email is set up, the marketing chain is Resend
+alone. PostHog stays off
 the transactional stream by decision: it receives recipients and bodies, so adding it
 to the transactional chain or another category changes the privacy notice
 first (`deskohub-workspace-account` skill, `references/privacy-and-retention.md`).
@@ -95,9 +99,13 @@ back per message as `EmailSendFailure`.
 ## Observing delivery
 
 `EmailDeliveryObserver` (a context reference; `.none` logs, `.all([...])`
-fans out) gets `onSent` and `onFallback`. Workspace uses it to record
-PostHog-accepted messages for status polling (`posthog_email_deliveries`)
-and to capture the anonymous `email provider fallback` event.
+fans out) gets `onSent` and `onFallback`. Workspace uses it to capture the
+anonymous `email provider fallback` event and, only with PostHog configured,
+to record PostHog-accepted messages for status polling
+(`posthog_email_deliveries`). That tracking writes through the database given
+to `makeWorkspaceEmailLayer`, which must be the instance its callers'
+transactions use (`WorkspaceEmailLayer` passes `WorkspaceDatabase.Default`);
+without PostHog the layer never builds it.
 
 ## Related
 
