@@ -118,6 +118,7 @@
         "@deskohub/dotypos#test",
         "@deskohub/effect-schema-resolver#test",
         "@deskohub/email#test",
+        "@deskohub/email-posthog#test",
         "@deskohub/google-calendar#test",
         "@deskohub/i18n#test",
         "@deskohub/igloohome#test",

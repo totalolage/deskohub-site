@@ -492,8 +492,11 @@
       "name": "@deskohub/email-posthog",
       "dependencies": {
         "@deskohub/email": "workspace:*",
+        "@deskohub/provider-request": "workspace:*",
         "effect": "4.0.0-beta.85",
-        "posthog-node": "^5.63.1",
+      },
+      "devDependencies": {
+        "@deskohub/test-email": "workspace:*",
       },
     },
     "packages/email-resend": {
