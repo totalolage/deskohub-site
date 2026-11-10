@@ -3,10 +3,10 @@ import { describe, expect, test } from "bun:test";
 import { Effect, type Schema } from "effect";
 import { m } from "@/features/i18n";
 import { meetingRoomSelectionLink } from "@/features/reservation/meeting-room-selection-link";
+import { atInstant } from "@/shared/testing/workspace-test-clock.test-utils";
 import type { CheckAvailabilityResult } from "./check-availability.schema";
 
 const {
-  atInstant,
   makeAgentToolTestServices,
   makeTestOccupancy,
   workspaceDateFromToday,
